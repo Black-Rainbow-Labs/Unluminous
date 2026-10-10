@@ -185,6 +185,17 @@ impl Session {
                 // is trivially the largest.
                 self.turn.input = self.turn.input.max(input);
                 self.turn.output = self.turn.output.max(output);
+                // What the next request will carry is roughly this one's input and its answer. An agent
+                // that reports its context exactly replaces this a moment later with `Reply::Context`.
+                self.chat.context_used = Some(self.turn.input + self.turn.output);
+            }
+            Reply::Context { used, window } => {
+                if let Some(used) = used {
+                    self.chat.context_used = Some(used);
+                }
+                if let Some(window) = window {
+                    self.chat.context_window = Some(window);
+                }
             }
             // **A turn that failed stays failed.** A stream that reports an error still ends, and the
             // end used to arrive as an ordinary stop a moment later and take the reason away — so a

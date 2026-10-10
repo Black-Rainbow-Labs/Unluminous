@@ -555,6 +555,8 @@ pub struct Decoder {
     /// The agent's own session, which is what the next turn is resumed with.
     pub session: String,
     started: bool,
+    /// How much context the last message of this turn started with, from its `message_start`.
+    context: Option<u64>,
 }
 
 impl Decoder {
@@ -566,6 +568,7 @@ impl Decoder {
             ended: false,
             session: String::new(),
             started: false,
+            context: None,
         }
     }
 
@@ -623,6 +626,15 @@ impl Decoder {
                 }
             "stream_event" => {
                 let event = &value["event"];
+                if event["type"] == "message_start" {
+                    let usage = &event["message"]["usage"];
+                    let used = usage["input_tokens"].as_u64().unwrap_or(0)
+                        + usage["cache_read_input_tokens"].as_u64().unwrap_or(0)
+                        + usage["cache_creation_input_tokens"].as_u64().unwrap_or(0);
+                    if used > 0 {
+                        self.context = Some(used);
+                    }
+                }
                 if !self.started {
                     if let Some(model) = event["message"]["model"].as_str() {
                         self.started = true;
@@ -677,6 +689,20 @@ impl Decoder {
                     false => out.push(Reply::Finished {
                         reason: value["subtype"].as_str().unwrap_or("stop").to_owned(),
                     }),
+                }
+                // After the end, so a turn's replies keep the order they always had.
+                let window = value["modelUsage"]
+                    .as_object()
+                    .into_iter()
+                    .flat_map(|models| models.values())
+                    .max_by_key(|model| {
+                        model["inputTokens"].as_u64().unwrap_or(0)
+                            + model["cacheReadInputTokens"].as_u64().unwrap_or(0)
+                            + model["cacheCreationInputTokens"].as_u64().unwrap_or(0)
+                    })
+                    .and_then(|model| model["contextWindow"].as_u64());
+                if self.context.is_some() || window.is_some() {
+                    out.push(Reply::Context { used: self.context.take(), window });
                 }
             }
             _ => {}
@@ -1378,5 +1404,18 @@ mod only_the_new_part {
             let rest = decoder.rest_of("item", &so_far).expect("one character is new");
             assert_eq!(rest, character.to_string(), "after {so_far:?}");
         }
+    }
+
+    /// `task-2235`: the Chat settings' context ring reads what Claude Code says about the context, and
+    /// the window is the one of the model that carried the conversation rather than a helper's.
+    #[test]
+    fn claude_code_says_how_much_context_is_used_and_how_large_it_is() {
+        let mut decoder = Decoder::new(Wire::ClaudeCli);
+        decoder.line(r#"{"type":"stream_event","event":{"type":"message_start","message":{"model":"m","usage":{"input_tokens":2,"cache_read_input_tokens":70000,"cache_creation_input_tokens":6000}}}}"#);
+        let replies = decoder.line(r#"{"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":2,"output_tokens":7},"modelUsage":{"small":{"inputTokens":900,"contextWindow":200000},"big":{"inputTokens":2,"cacheReadInputTokens":70000,"contextWindow":1000000}}}"#);
+        assert_eq!(
+            replies.last(),
+            Some(&Reply::Context { used: Some(76002), window: Some(1_000_000) })
+        );
     }
 }

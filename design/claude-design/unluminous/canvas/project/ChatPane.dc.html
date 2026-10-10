@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent-Chat pane</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/rux/tokens.css">
+<link rel="stylesheet" href="ds/rux/components/bundle.css">
+<script src="ds/rux/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<section aria-label="Agent-Chat" data-theme="unluminous-dark" style="position: relative; width: 460px; height: {{paneHeight}}; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--surface-1); color: var(--ink-700); font-family: var(--font-ui); --card: linear-gradient(145deg, #252a32, #1c2026); --well: #1a1e24; --out: -7px -7px 16px #2a2f37, 8px 8px 18px #0c0f13; --out-sm: -4px -4px 9px #2a2f37, 4px 4px 10px #0c0f13; --in: inset 5px 5px 10px #0c0f13, inset -5px -5px 10px #2a2f37; --in-sm: inset 2px 2px 5px #0c0f13, inset -2px -2px 5px #2a2f37; --grad: linear-gradient(135deg, #3d78ff, #5cb6ff); --grad-out: -4px -4px 9px #2a2f37, 4px 5px 12px rgba(20, 60, 160, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25); --up: #ff8f73; --down: #3ad6ad;">
+
+<div style="height: 32px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 6px 0 12px; background: var(--ul-toolbar); border-bottom: 1px solid var(--ul-divider); font-size: 12px; color: var(--ul-text-control);">
+<span>Agent-Chat</span>
+<button aria-label="Close Agent-Chat" style="width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--ul-icon); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.UlIcon" name="cross" size="20"></x-import></button>
+</div>
+
+<header style="flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 18px 18px 14px;">
+<button aria-label="History" style="width: 38px; height: 38px; flex-shrink: 0; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); color: var(--ink-500); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.UlIcon" name="clock" size="20"></x-import></button>
+<span style="flex: 1; min-width: 0; text-align: center; font-size: 14px; font-weight: 600; color: var(--ink-900); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Release build got slower</span>
+<button aria-label="New conversation" style="width: 38px; height: 38px; flex-shrink: 0; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); color: var(--ink-500); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.Icon" name="plus" size="15"></x-import></button>
+</header>
+
+<div style="flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; gap: 18px; padding: 12px 18px 14px; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 32px); mask-image: linear-gradient(to bottom, transparent 0, #000 32px);">
+
+<div style="align-self: flex-end; max-width: 300px; padding: 12px 16px; border-radius: 22px 22px 8px 22px; background: var(--card); box-shadow: var(--out-sm); font-size: 13px; line-height: 1.5; color: var(--ink-900);">Why did the release build get slower this week?</div>
+
+<article aria-label="Answer from claude" style="display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; align-items: center; gap: 10px;">
+<span style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); display: flex; align-items: center; justify-content: center; color: var(--ul-agent);"><x-import component-from-global-scope="Rux.Icon" name="spark" size="14" stroke="2"></x-import></span>
+<span style="font-size: 12.5px; font-weight: 600; color: var(--ink-900);">claude</span>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 12px; border-radius: 22px; background: var(--card); box-shadow: var(--out);">
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; background: var(--well); box-shadow: var(--in-sm); display: flex; align-items: center; justify-content: center; color: var(--down);"><x-import component-from-global-scope="Rux.UlIcon" name="tick" size="18"></x-import></span>
+<span style="flex: 1; display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 12.5px; color: var(--ink-900);">Ran 3 commands</span><span style="font-size: 11px; color: var(--ink-400);">3m 00s</span></span>
+<button aria-label="Hide commands" style="width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); color: var(--ink-400); display: flex; align-items: center; justify-content: center;"><span style="display: flex; transform: rotate(180deg);"><x-import component-from-global-scope="Rux.Icon" name="chevDown" size="12" stroke="2"></x-import></span></button>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 16px; background: var(--well); box-shadow: var(--in-sm);">
+<sc-for list="{{runs}}" as="run" hint-placeholder-count="3">
+<div style="display: flex; align-items: center; gap: 10px;">
+<span style="flex: 1; min-width: 0; font-family: var(--font-code); font-size: 11.5px; color: var(--ink-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{run.cmd}}</span>
+<span style="font-size: 11px; color: var(--ink-400);">{{run.time}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+
+<p style="margin: 0; font-size: 13px; line-height: 1.65; color: var(--ink-700); text-wrap: pretty;">Three crates got slower, and <span style="font-weight: 600; color: var(--ink-900);">unluminous-app</span> is most of it. The new <span style="font-family: var(--font-code); font-size: 12.5px; color: var(--ink-900);">rux</span> dependency pulled in a second copy of <span style="font-family: var(--font-code); font-size: 12.5px; color: var(--ink-900);">kurbo</span>, so the geometry is compiled twice.</p>
+
+<figure aria-label="Total release build 178 seconds: 128 seconds last week plus 50 seconds added" style="margin: 0; display: flex; align-items: center; gap: 20px; padding: 18px 20px 18px 18px; border-radius: 26px; background: var(--card); box-shadow: var(--out);">
+<div style="position: relative; width: 140px; height: 140px; flex-shrink: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); display: flex; align-items: center; justify-content: center;">
+<div style="width: 122px; height: 122px; border-radius: 50%; background: var(--well); box-shadow: var(--in);"></div>
+<svg width="140" height="140" viewBox="0 0 140 140" aria-hidden="true" style="position: absolute; inset: 0; transform: rotate(-90deg);">
+<defs><linearGradient id="dial" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color: #3d78ff;"></stop><stop offset="1" style="stop-color: #5cb6ff;"></stop></linearGradient></defs>
+<sc-for list="{{dial}}" as="s" hint-placeholder-count="2">
+<circle cx="70" cy="70" r="51" fill="none" style="stroke: {{s.stroke}}; stroke-width: 10; stroke-linecap: round; stroke-dasharray: {{s.dash}}; stroke-dashoffset: {{s.offset}};"></circle>
+</sc-for>
+</svg>
+<div style="position: absolute; width: 82px; height: 82px; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;">
+<span style="font-family: var(--font-sans); font-size: 24px; font-weight: 500; letter-spacing: -0.03em; line-height: 1; color: var(--ink-900);">178<span style="font-size: 12px; color: var(--ink-400);"> s</span></span>
+<span style="font-size: 10.5px; color: var(--up);">+39%</span>
+</div>
+</div>
+<div style="flex: 1; display: flex; flex-direction: column; gap: 14px;">
+<span style="font-size: 12px; color: var(--ink-500);">Release build</span>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ink-400);"><span style="width: 14px; height: 4px; border-radius: 2px; background: #3a404a;"></span>Last week</span>
+<span style="padding-left: 22px; font-family: var(--font-sans); font-size: 17px; font-weight: 500; color: var(--ink-700);">128 s</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ink-400);"><span style="width: 14px; height: 4px; border-radius: 2px; background: var(--grad);"></span>Added this week</span>
+<span style="padding-left: 22px; font-family: var(--font-sans); font-size: 17px; font-weight: 500; color: var(--ink-900);">50 s</span>
+</div>
+</div>
+</figure>
+
+<figure aria-label="Build time by crate" style="margin: 0; display: flex; flex-direction: column; gap: 18px; padding: 18px 20px 20px; border-radius: 26px; background: var(--card); box-shadow: var(--out);">
+<sc-for list="{{crates}}" as="c" hint-placeholder-count="3">
+<div style="display: flex; flex-direction: column; gap: 10px;">
+<div style="display: flex; align-items: baseline; gap: 8px;">
+<span style="flex: 1; font-size: 12.5px; color: var(--ink-900);">{{c.name}}</span>
+<span style="font-size: 11px; color: var(--ink-400);">{{c.last}} s →</span>
+<span style="font-family: var(--font-sans); font-size: 14px; font-weight: 500; color: var(--ink-900);">{{c.now}} s</span>
+<span style="width: 40px; text-align: right; font-size: 11px; color: {{c.colour}};">{{c.delta}}</span>
+</div>
+<div style="position: relative; height: 12px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm);">
+<div style="position: absolute; left: 2px; top: 2px; bottom: 2px; width: {{c.fill}}; border-radius: 999px; background: var(--grad);"></div>
+<span style="position: absolute; left: {{c.mark}}; top: -3px; width: 2px; height: 18px; border-radius: 1px; background: var(--ink-400); opacity: 0.6;"></span>
+<span style="position: absolute; left: {{c.knob}}; top: -5px; width: 22px; height: 22px; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm);"></span>
+</div>
+</div>
+</sc-for>
+<figcaption style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ink-400);"><span style="width: 2px; height: 12px; border-radius: 1px; background: var(--ink-400); opacity: 0.6;"></span>Last week</figcaption>
+</figure>
+
+<p style="margin: 0; font-size: 13px; line-height: 1.65; color: var(--ink-700); text-wrap: pretty;">Pin <span style="font-family: var(--font-code); font-size: 12.5px; color: var(--ink-900);">kurbo</span> to 0.11, the version rux is built against, and the second copy goes away.</p>
+
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 12px; border-radius: 22px; background: var(--card); box-shadow: var(--out);">
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; background: var(--well); box-shadow: var(--in-sm); display: flex; align-items: center; justify-content: center; color: var(--ink-500);"><x-import component-from-global-scope="Rux.UlIcon" name="file" size="18"></x-import></span>
+<span style="flex: 1; display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 12.5px; color: var(--ink-900);">Cargo.toml</span><span style="font-size: 11px; color: var(--ink-400);">1 line changed</span></span>
+</div>
+<div style="padding: 10px 0; border-radius: 16px; background: var(--well); box-shadow: var(--in-sm); font-family: var(--font-code); font-size: 11.5px; line-height: 21px;">
+<sc-for list="{{diff}}" as="d" hint-placeholder-count="5">
+<div style="display: grid; grid-template-columns: 34px 14px minmax(0, 1fr); padding-right: 12px; background: {{d.bg}};">
+<span style="text-align: right; padding-right: 10px; color: var(--ink-300);">{{d.n}}</span>
+<span style="color: {{d.signColour}};">{{d.sign}}</span>
+<span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-500);">{{d.key}}<span style="color: var(--ink-900);">{{d.val}}</span></span>
+</div>
+</sc-for>
+</div>
+<div style="display: flex; align-items: center; gap: 8px;">
+<button style="height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--ink-500); font-family: var(--font-ui); font-size: 12.5px;">Copy</button>
+<span style="flex: 1;"></span>
+<button style="height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--card); box-shadow: var(--out-sm); color: var(--ink-700); font-family: var(--font-ui); font-size: 12.5px; font-weight: 500;">Open in editor</button>
+<button style="height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--grad); box-shadow: var(--grad-out); color: #ffffff; font-family: var(--font-ui); font-size: 12.5px; font-weight: 600;">Apply change</button>
+</div>
+</div>
+</article>
+
+<div style="align-self: flex-end; max-width: 300px; padding: 12px 16px; border-radius: 22px 22px 8px 22px; background: var(--card); box-shadow: var(--out-sm); font-size: 13px; line-height: 1.5; color: var(--ink-900);">Apply it and rebuild.</div>
+
+<article aria-label="Answer from claude" style="display: flex; flex-direction: column; gap: 10px;">
+<div style="display: flex; align-items: center; gap: 10px;">
+<span style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); display: flex; align-items: center; justify-content: center; color: var(--ul-agent);"><x-import component-from-global-scope="Rux.Icon" name="spark" size="14" stroke="2"></x-import></span>
+<span style="font-size: 12.5px; font-weight: 600; color: var(--ink-900);">claude</span>
+</div>
+<p style="margin: 0; font-size: 13px; line-height: 1.65; color: var(--ink-700); text-wrap: pretty;">Done. kurbo is pinned to 0.11 and the release build is back to 124 seconds, a little faster than last week.</p>
+</article>
+
+<div style="align-self: flex-end; max-width: 300px; padding: 12px 16px; border-radius: 22px 22px 8px 22px; background: var(--card); box-shadow: var(--out-sm); font-size: 13px; line-height: 1.5; color: var(--ink-900);">Does the cli crate need the same pin?</div>
+
+<article aria-label="Answer from claude" style="display: flex; flex-direction: column; gap: 10px;">
+<div style="display: flex; align-items: center; gap: 10px;">
+<span style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); display: flex; align-items: center; justify-content: center; color: var(--ul-agent);"><x-import component-from-global-scope="Rux.Icon" name="spark" size="14" stroke="2"></x-import></span>
+<span style="font-size: 12.5px; font-weight: 600; color: var(--ink-900);">claude</span>
+</div>
+<p style="margin: 0; font-size: 13px; line-height: 1.65; color: var(--ink-700); text-wrap: pretty;">No. unluminous-cli doesn't depend on rux, so it only ever builds one copy of kurbo. The workspace pin covers it anyway.</p>
+</article>
+</div>
+
+<div style="flex-shrink: 0; display: flex; justify-content: center; padding: 4px 18px 14px;">
+<button aria-label="Chat settings" onClick="{{toggle}}" style="width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: {{gearShadow}}; color: {{gearColour}}; display: flex; align-items: center; justify-content: center; cursor: pointer;"><x-import component-from-global-scope="Rux.Icon" name="settings" size="13"></x-import></button>
+</div>
+
+<div style="flex-shrink: 0; padding: 0 18px 18px;">
+<div style="position: relative; display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 20px; border-radius: 30px; background: var(--well); box-shadow: var(--in);">
+<label for="pane-ask" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;">Ask the agent</label>
+<textarea id="pane-ask" rows="1" placeholder="Ask about this workspace" style="flex: 1; min-width: 0; resize: none; border: 0; outline: 0; padding: 0; background: transparent; color: var(--ink-900); font-family: var(--font-ui); font-size: 13px; line-height: 20px;"></textarea>
+<button aria-label="Send" style="width: 44px; height: 44px; flex-shrink: 0; padding: 0; border: 0; border-radius: 50%; background: var(--grad); box-shadow: var(--grad-out); color: #ffffff; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin: 1px 2px 0 0;"><path d="M21.5 2.5 14.6 21.4l-4-8-8-4z" fill="currentColor" fill-opacity="0.22"></path><path d="M21.5 2.5 10.6 13.4"></path></svg></button>
+</div>
+</div>
+
+<sc-if value="{{open}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; inset: 32px 0 0 0; display: flex; align-items: flex-end; justify-content: center; padding: 0 18px 120px; background: rgba(8, 10, 14, 0.55);">
+<div role="dialog" aria-label="Chat settings" style="width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 22px; padding: 20px 20px 22px; border-radius: 28px; background: var(--card); box-shadow: -6px -6px 16px rgba(42, 47, 55, 0.6), 0 24px 48px rgba(0, 0, 0, 0.55);">
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="flex: 1; font-size: 15px; font-weight: 600; color: var(--ink-900);">Chat settings</span>
+<button aria-label="Close settings" onClick="{{toggle}}" style="width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); color: var(--ink-500); display: flex; align-items: center; justify-content: center; cursor: pointer;"><x-import component-from-global-scope="Rux.Icon" name="x" size="12" stroke="2.2"></x-import></button>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px;">
+<span style="font-size: 12px; color: var(--ink-500);">Model</span>
+<div role="radiogroup" aria-label="Model" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 5px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm);">
+<sc-for list="{{models}}" as="m" hint-placeholder-count="3">
+<button role="radio" aria-checked="{{m.chosen}}" onClick="{{m.pick}}" style="height: 36px; padding: 0 8px; border: 0; border-radius: 999px; background: {{m.bg}}; box-shadow: {{m.shadow}}; color: {{m.colour}}; font-family: var(--font-ui); font-size: 12px; font-weight: 500; white-space: nowrap; cursor: pointer;">{{m.label}}</button>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; align-items: center; gap: 16px; padding: 14px 16px; border-radius: 20px; background: var(--well); box-shadow: var(--in-sm);">
+<span style="position: relative; width: 52px; height: 52px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;">
+<svg width="52" height="52" viewBox="0 0 52 52" aria-hidden="true" style="position: absolute; inset: 0; transform: rotate(-90deg);">
+<circle cx="26" cy="26" r="21" fill="none" style="stroke: #2c323b; stroke-width: 5;"></circle>
+<circle cx="26" cy="26" r="21" fill="none" style="stroke: #5cb6ff; stroke-width: 5; stroke-linecap: round; stroke-dasharray: {{ctx}};"></circle>
+</svg>
+<span style="font-size: 12px; font-weight: 600; color: var(--ink-900);">38%</span>
+</span>
+<span style="flex: 1; display: flex; flex-direction: column; gap: 2px;"><span style="font-size: 12.5px; color: var(--ink-900);">Context used</span><span style="font-size: 11px; color: var(--ink-400);">76k of 200k tokens</span></span>
+</div></div>
+</div>
+</sc-if>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"settingsOpen":{"editor":"boolean","default":false},"paneHeight":{"editor":null,"default":"1440px"},"$preview":{"width":460,"height":1440}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const open = this.state.open ?? this.props.settingsOpen ?? false;
+    const model = this.state.model ?? 0;
+    const C = 2 * Math.PI * 51;
+    const last = 128, total = 178, gap = 5;
+    const ctxC = 2 * Math.PI * 21;
+    const MAX = 140;
+    const pct = (v) => (v / MAX) * 100;
+    const crate = (name, a, b) => ({
+      name, last: a, now: b,
+      delta: `${b > a ? '+' : '−'}${Math.round(Math.abs(b - a) / a * 100)}%`,
+      colour: b > a ? 'var(--up)' : 'var(--down)',
+      fill: `calc(${pct(b).toFixed(1)}% - 4px)`,
+      mark: `calc(${pct(a).toFixed(1)}% - 1px)`,
+      knob: `calc(${pct(b).toFixed(1)}% - 13px)`
+    });
+    return {
+      open,
+      paneHeight: this.props.paneHeight ?? '1440px',
+      toggle: () => this.setState({ open: !open }),
+      gearShadow: open ? 'var(--in-sm)' : 'var(--out-sm)',
+      gearColour: open ? '#5cb6ff' : 'var(--ink-500)',
+      models: ['claude', 'codex', 'local qwen 27B'].map((label, i) => ({
+        label,
+        chosen: i === model ? 'true' : 'false',
+        bg: i === model ? 'var(--card)' : 'transparent',
+        shadow: i === model ? 'var(--out-sm)' : 'none',
+        colour: i === model ? 'var(--ink-900)' : 'var(--ink-500)',
+        pick: () => this.setState({ model: i })
+      })),
+      ctx: `${(ctxC * 0.38).toFixed(1)} ${ctxC.toFixed(1)}`,
+      dial: [{ v: last, stroke: '#3a404a' }, { v: total - last, stroke: 'url(#dial)' }].map((p, i) => {
+        const len = (C * p.v) / total;
+        const start = i === 0 ? 0 : (C * last) / total;
+        return { stroke: p.stroke, dash: `${(len - gap - 10).toFixed(2)} ${C.toFixed(2)}`, offset: (-(start + gap / 2 + 5)).toFixed(2) };
+      }),
+      runs: [
+        { cmd: 'cargo build --release --timings', time: '2m 58s' },
+        { cmd: 'cargo tree --duplicates -e normal', time: '1.4s' },
+        { cmd: 'git log --since=7.days -- Cargo.lock', time: '0.2s' }
+      ],
+      crates: [crate('unluminous-app', 81, 131), crate('unluminous-core', 41, 38), crate('unluminous-cli', 6, 9)],
+      diff: [
+        { n: '12', sign: '', key: '[workspace.dependencies]', val: '', bg: 'transparent', signColour: 'var(--ink-400)' },
+        { n: '13', sign: '', key: 'egui = ', val: '"0.36"', bg: 'transparent', signColour: 'var(--ink-400)' },
+        { n: '14', sign: '−', key: 'kurbo = ', val: '"0.12"', bg: 'rgba(255, 143, 115, 0.08)', signColour: 'var(--up)' },
+        { n: '14', sign: '+', key: 'kurbo = ', val: '"0.11"', bg: 'rgba(58, 214, 173, 0.08)', signColour: 'var(--down)' },
+        { n: '15', sign: '', key: 'vello_cpu = ', val: '"0.1"', bg: 'transparent', signColour: 'var(--ink-400)' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

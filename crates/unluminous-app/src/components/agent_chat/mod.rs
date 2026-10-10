@@ -13,6 +13,15 @@
 //! drawn. That split is what lets the whole surface be drawn from a borrow of the conversation while
 //! the things that change it need a mutable one.
 //!
+//! ## The Agent-Chat design (`task-2235`)
+//!
+//! Since `task-2235` the pane is drawn to the design on the Claude Design canvas "Unluminous", page
+//! Agent-Chat: no card round the whole pane, a header of two round buttons with the conversation's name
+//! centred between them, the person's messages as raised bubbles and the agent's words on the pane with
+//! no bubble, tool runs as cards with a status well, a 30 point gear centred over one carved prompt box,
+//! and the model choice and the context used in a Chat settings dialog the gear opens. Every surface is
+//! `rux`'s chat parts, through [`kit`].
+//!
 //! ## The ground is the window's
 //!
 //! `show_the_plugin_panes` fills the pane and reserves the decoration's slot before this is called. A
@@ -22,6 +31,7 @@
 
 pub mod blocks;
 pub mod composer;
+pub mod kit;
 pub mod message;
 pub mod settings_page;
 pub mod welcome;
@@ -29,48 +39,22 @@ pub mod welcome;
 use egui::{CornerRadius, Pos2, Rect, Stroke, Vec2};
 
 use crate::components::controls;
-use crate::services::agent_chat::{AgentChat, ModelSelect, Parts};
+use crate::services::agent_chat::{AgentChat, Parts};
 use crate::services::plugin_ui::{Look, Request};
-use crate::services::vello_canvas::{Fill, Lift};
-use crate::theme::crisp::CrispPainter;
 use crate::theme::icon;
 
-/// A colour moved towards black, which is the far end of a button's own gradient.
-///
-/// `components::agent_tasks` already has one and it is the same arithmetic; it is re-exported here so
-/// that both plugins darken a colour the same way rather than by two functions that agree today.
-pub(crate) use crate::components::agent_tasks::darken;
-
-/// The gap round the panel, which is the gap the explorer already leaves.
-pub const PAD: f32 = 8.0;
-/// The panel's own padding, from `ChatPanel.module.css`.
-pub const INNER: f32 = 10.0;
-/// The panel's corner radius: `--r-lg`.
-pub const RADIUS: f32 = 18.0;
-/// The header row, from `ChatHeader.module.css`'s padding plus its 13 point name.
-pub const HEADER: f32 = 32.0;
-/// Between two rows of the conversation.
-///
-/// Half of `ChatConversation.module.css`'s own `gap: 14px`, since `task-2200`: *"There's too much margin
-/// between messages. it should be about half."* A bubble here carries more padding of its own than the
-/// reference's does, so the reference's gap read as twice as much.
-pub const GAP: f32 = 7.0;
-/// How far in from the card's edge the conversation's own rows sit.
-///
-/// **Two points, where it used to be the card's full ten.** `task-1848`: "the margin on the sides of the
-/// messages is too large. It should be much smaller." The card keeps [`INNER`] for its header and its
-/// composer, which are controls and want room round them, and the conversation is given nearly the whole
-/// width — a message is text to read, and every point spent on margin here is a point taken off the line
-/// length twice over, because a bubble is then capped at a share of what is left.
-///
-/// Not zero: a bubble's own shadow reaches a little past its edge, and at zero the right-hand one was
-/// clipped by the card.
-pub const LIST_INSET: f32 = 2.0;
-
-/// How tall the model selector's trigger is. It fits inside [`HEADER`] with room above and below.
-pub const MODEL_SELECT_HEIGHT: f32 = 24.0;
-/// The most the model selector's trigger may take across the header.
-const MODEL_SELECT_WIDEST: f32 = 180.0;
+/// The pane's side padding and the header's top padding: `padding: 18px`.
+pub const SIDE: f32 = 18.0;
+/// The header row, which is as tall as its 38 point round buttons.
+pub const HEADER: f32 = 38.0;
+/// Under the header: `padding-bottom: 14px`.
+pub const UNDER_HEADER: f32 = 14.0;
+/// Between two rows of the conversation: `gap: 18px`.
+pub const GAP: f32 = 18.0;
+/// The gear above the prompt box, and the room above and below it: `padding: 4px 18px 14px`.
+pub const GEAR: f32 = 30.0;
+const ABOVE_GEAR: f32 = 4.0;
+const BELOW_GEAR: f32 = 14.0;
 
 /// What the drawing reported, applied by [`pane`] once everything has been drawn.
 #[derive(Debug, Clone, PartialEq)]
@@ -102,6 +86,8 @@ pub enum Act {
     Fill(String),
     /// A component asked for a project file to be opened, at a line when it named one.
     OpenFile(String, Option<u32>),
+    /// Open or close the Chat settings dialog.
+    ShowSettings(bool),
 }
 
 /// Draw the pane, and act on what was pressed.
@@ -174,55 +160,48 @@ fn copying(ui: &egui::Ui, chat: &mut AgentChat) -> Option<String> {
 }
 
 /// Everything inside the pane, from a borrow of the conversation.
+///
+/// Top to bottom: the header, the conversation, the gear and the prompt box, and the Chat settings dialog
+/// over all of it while it is open.
 fn surface(mut parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
     let scale = look.scale();
     let mut acts = Vec::new();
-    let panel = area.shrink(PAD * scale);
-    let radius = RADIUS * scale;
-    // **One raised card holds the whole chat**, which is `ChatPanel.module.css`'s `.panel`. With the
-    // decoration off it is the flat bordered panel every list in Unluminous draws, so switching the
-    // renderer off in the manifest or in `plugins.chrome` really withdraws the depth.
-    if look.chrome.is_recording() {
-        look.chrome.raised(panel, radius, Fill::Solid(look.palette.board_lane), Lift::Small);
-    } else {
-        ui.painter().rect(
-            panel,
-            CornerRadius::same(radius as u8),
-            look.ground(look.palette.board_lane),
-            Stroke::new(1.0, look.palette.control_border),
-            egui::StrokeKind::Inside,
-        );
-    }
-    let inner = panel.shrink(INNER * scale);
-    if inner.width() < 40.0 {
+    parts.state.speaker = parts.session.chat.provider.clone();
+    let side = SIDE * scale;
+    if area.width() < side * 2.0 + 40.0 {
         return acts;
     }
-
-    let header_rect = Rect::from_min_size(inner.min, Vec2::new(inner.width(), HEADER * scale));
+    let header_rect = Rect::from_min_size(
+        area.min + Vec2::new(side, side),
+        Vec2::new(area.width() - side * 2.0, HEADER * scale),
+    );
     acts.extend(header(&mut parts, ui, look, header_rect));
 
-    let composer_height = composer::height(&parts, look, inner.width());
+    let inner_width = area.width() - side * 2.0;
+    let composer_height = composer::height(&parts, look, inner_width);
     let composer_rect = Rect::from_min_size(
-        Pos2::new(inner.left(), inner.bottom() - composer_height),
-        Vec2::new(inner.width(), composer_height),
+        Pos2::new(area.left() + side, area.bottom() - side - composer_height),
+        Vec2::new(inner_width, composer_height),
     );
-    // The conversation is given back most of the card's side padding — see [`LIST_INSET`]. The header and
-    // the composer keep `inner`, because a control wants room round it and a paragraph does not.
-    let side = (INNER - LIST_INSET) * scale;
+    let gear_rect = Rect::from_center_size(
+        Pos2::new(area.center().x, composer_rect.top() - (BELOW_GEAR + GEAR / 2.0) * scale),
+        Vec2::splat(GEAR * scale),
+    );
+    // **The conversation is the pane's whole width**, and its rows are inset by [`SIDE`] inside it, so a
+    // bubble's shadow at the right-hand edge is not cut by the scrolling area's clip.
     let body = Rect::from_min_max(
-        Pos2::new(inner.left() - side, header_rect.bottom() + 4.0 * scale),
-        Pos2::new(inner.right() + side, composer_rect.top() - 4.0 * scale),
+        Pos2::new(area.left(), header_rect.bottom() + UNDER_HEADER * scale),
+        Pos2::new(area.right(), gear_rect.top() - ABOVE_GEAR * scale),
     );
     // Forgotten before it is drawn again, so a pane too short to hold a list does not go on answering a
     // wheel with where one used to be. See `PaneState::list_rect`.
     parts.state.list_rect = None;
     if body.height() > 20.0 {
         // The two lists are drawn **over** the conversation rather than in a popup, because egui keeps
-        // at most one popup open at a time — the rule that already shaped the flyouts, the colour wheel
-        // and the completion list — and a pane that could not open its own history while a menu was up
-        // would be a pane whose history is unreachable at the moment somebody wants it.
+        // at most one popup open at a time, and a pane that could not open its own history while a menu
+        // was up would be a pane whose history is unreachable at the moment somebody wants it.
         if parts.state.history_open {
-            acts.extend(history_list(&mut parts, ui, look, body));
+            acts.extend(history_list(&mut parts, ui, look, body.shrink2(Vec2::new(side, 0.0))));
         } else {
             acts.extend(conversation(&mut parts, ui, look, body));
         }
@@ -232,8 +211,246 @@ fn surface(mut parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
     // decides is that the rows are read on the frame after the right click that opened it, which is
     // `controls::field_menu`'s own shape.
     acts.extend(message_menu(&mut parts, ui, look));
+    acts.extend(gear(&mut parts, ui, look, gear_rect));
+    if parts.state.settings_open {
+        acts.extend(settings(&mut parts, ui, look, area));
+    }
+    kit::end_frame(parts.state);
     acts.extend(composer::show(parts, ui, look, composer_rect));
     acts
+}
+
+/// The gear centred over the prompt box, which opens and closes the Chat settings dialog.
+fn gear(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, rect: Rect) -> Vec<Act> {
+    let open = parts.state.settings_open;
+    let pressed = kit::layer(parts.state, look, ui, "gear", rect, kit::SMALL_REACH, |rux| {
+        rux::components::RoundButton::mark(rux::Icon::Settings, 13.0, "Chat settings")
+            .size(rux::components::RoundSize::Small)
+            .on(open)
+            .show(rux, rect)
+            .clicked()
+    });
+    match pressed {
+        true => vec![Act::ShowSettings(!open)],
+        false => Vec::new(),
+    }
+}
+
+/// The Chat settings dialog: the model as a pill switch with one pill a provider, and how much of the
+/// model's context the conversation fills. It closes with its round cross and nothing else, which is
+/// what the design asks (`task-2235`): no Done button, and a press on the scrim does nothing.
+///
+/// It is an overlay of the pane's own rather than a window modal: it is about this conversation, and on a
+/// canvas each chat node has its own. It is a layer of its own above the pane, so nothing under it takes
+/// the pointer while it is open.
+fn settings(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
+    let scale = look.scale();
+    let mut acts = Vec::new();
+    let names: Vec<String> =
+        parts.configuration.providers.iter().map(|one| one.name.clone()).collect();
+    let chosen = parts
+        .configuration
+        .provider()
+        .and_then(|chosen| names.iter().position(|name| *name == chosen.name));
+    let used = parts.session.chat.context_used;
+    let window = parts.session.chat.context_window;
+    let side = SIDE * scale;
+    let foot = settings_foot(parts, look, area);
+    // `padding: 20px 20px 22px; gap: 22px`: the title row, the model and the context well.
+    let height = (20.0 + 34.0 + 22.0 + 17.0 + 10.0 + 46.0 + 22.0 + 80.0 + 22.0) * scale;
+    let dialog = Rect::from_min_max(
+        Pos2::new(area.left() + side, (foot - height).max(area.top() + side)),
+        Pos2::new(area.right() - side, foot),
+    );
+    let id = ui.id().with("agent-chat-settings");
+    let still = parts.state.still;
+    let state = kit::state(&mut parts.state.chrome_rux, look, still);
+    // `kit::state` has already put it on the active theme; said again here because this file opens a
+    // `rux` layer of its own, and every file that does says so (`every_rux_drawing_follows_the_theme`).
+    crate::theme::in_step(state);
+    let ctx = ui.ctx().clone();
+    // **Drawn through the same transform as the pane**, so on a canvas node the dialog is placed and
+    // scaled with the node rather than in the window's own points.
+    let layer = egui::LayerId::new(egui::Order::Middle, id);
+    if let Some(to_global) = ctx.layer_transform_to_global(ui.layer_id()) {
+        ctx.set_transform_layer(layer, to_global);
+    }
+    let clip = area.intersect(ui.clip_rect());
+    egui::Area::new(id).order(egui::Order::Middle).fixed_pos(area.min).constrain(false).show(
+        &ctx,
+        |ui| {
+            ui.set_clip_rect(clip);
+            let mut child = ui.new_child(egui::UiBuilder::new().max_rect(area));
+            // The scrim, which takes every press under the dialog: `rgba(8, 10, 14, 0.55)`.
+            let _ = child.interact(area, id.with("scrim"), egui::Sense::click_and_drag());
+            child.painter().rect_filled(area, 0.0, crate::theme::rux_theme().interaction.scrim);
+            rux::layer(&mut child, state, id.with("chrome"), area, |rux| {
+                let chat = rux.theme().chat;
+                let theme = rux.theme();
+                rux.chrome.surface(
+                    dialog,
+                    rux.z(28.0),
+                    rux::Fill::gradient(chat.card, dialog),
+                    chat.floating(),
+                );
+                let inner = dialog.shrink2(Vec2::new(rux.z(20.0), 0.0));
+                let mut top = dialog.top() + rux.z(20.0);
+                // The title and the round cross.
+                let close = Rect::from_min_size(
+                    Pos2::new(inner.right() - rux.z(34.0), top),
+                    Vec2::splat(rux.z(34.0)),
+                );
+                let style = rux.zs(rux::Style::sans(15.0).semibold());
+                let title = rux.text(style, "Chat settings", theme.ink.i900);
+                rux::text::draw_left_capitals(
+                    rux.painter(),
+                    Pos2::new(inner.left(), close.center().y),
+                    title,
+                    style,
+                    theme.ink.i900,
+                );
+                let cross = rux::Mark::new(rux::Icon::X, 12.0).stroke(2.2);
+                if rux::components::RoundButton::new(
+                    rux::components::RoundContent::Mark(cross),
+                    "Close settings",
+                )
+                .size(rux::components::RoundSize::Close)
+                .show(rux, close)
+                .clicked()
+                {
+                    acts.push(Act::ShowSettings(false));
+                }
+                top = close.bottom() + rux.z(22.0);
+                // The model.
+                let label = rux.text(rux.zs(rux::Style::sans(12.0)), "Model", theme.ink.i500);
+                let label_height = label.size().y;
+                rux.painter().galley(Pos2::new(inner.left(), top), label, theme.ink.i500);
+                top += label_height + rux.z(10.0);
+                let switch = Rect::from_min_size(
+                    Pos2::new(inner.left(), top),
+                    Vec2::new(inner.width(), rux.z(46.0)),
+                );
+                if names.is_empty() {
+                    let none = rux.text(
+                        rux.zs(rux::Style::sans(12.0)),
+                        "No agent is set up. Add one on Settings, Agent-Chat.",
+                        theme.ink.i400,
+                    );
+                    let at = Pos2::new(switch.left(), switch.center().y - none.size().y / 2.0);
+                    rux.painter().galley(at, none, theme.ink.i400);
+                } else if let Some(index) =
+                    rux::components::PillSwitch::new(&names, chosen, "Model").show(rux, switch)
+                {
+                    if let Some(name) = names.get(index) {
+                        acts.push(Act::Choose(name.clone()));
+                    }
+                }
+                top = switch.bottom() + rux.z(22.0);
+                // The context used.
+                let well = Rect::from_min_size(
+                    Pos2::new(inner.left(), top),
+                    Vec2::new(inner.width(), rux.z(80.0)),
+                );
+                context_well(rux, well, used, window);
+            });
+        },
+    );
+    acts
+}
+
+/// Where the Chat settings dialog's foot is: just above the gear, which is the design's `padding-bottom:
+/// 120px` measured from the pane's own gear rather than written as a number.
+fn settings_foot(parts: &Parts<'_>, look: &Look<'_>, area: Rect) -> f32 {
+    let scale = look.scale();
+    let composer = composer::height(parts, look, area.width() - SIDE * 2.0 * scale);
+    area.bottom() - SIDE * scale - composer - (BELOW_GEAR + GEAR + 12.0) * scale
+}
+
+/// The well in the Chat settings that says how much of the model's context is used, with a ring.
+fn context_well(rux: &mut rux::Rux<'_>, well: Rect, used: Option<u64>, window: Option<u64>) {
+    let chat = rux.theme().chat;
+    let theme = rux.theme();
+    rux.chrome.surface(well, rux.z(20.0), chat.well, chat.carved_sm());
+    // A 52 point ring: `r="21"`, five points wide, the track in `#2c323b` and the used share in sky.
+    let centre = Pos2::new(well.left() + rux.z(16.0 + 26.0), well.center().y);
+    let radius = rux.z(21.0);
+    let width = rux.z(5.0);
+    rux.chrome.ring(centre, radius, width, chat.track);
+    let share = context_share(used, window);
+    if let Some(share) = share.filter(|share| *share > 0.0) {
+        // Round ends reach half the stroke past the arc, so the arc is shortened by the stroke and what
+        // is seen is exactly the share.
+        let seen = std::f32::consts::TAU * radius * share;
+        match seen > width {
+            true => rux.chrome.arc(
+                centre,
+                radius,
+                width,
+                width / 2.0 / radius,
+                (seen - width) / radius,
+                chat.sky,
+            ),
+            false => rux.chrome.arc_square(centre, radius, width, 0.0, seen / radius, chat.sky),
+        }
+    }
+    let middle = match share {
+        Some(share) => format!("{:.0}%", share * 100.0),
+        None => "\u{2013}".to_owned(),
+    };
+    let galley = rux.text(rux.zs(rux::Style::sans(12.0).semibold()), &middle, theme.ink.i900);
+    rux::text::draw_centred(
+        rux.painter(),
+        Rect::from_center_size(centre, Vec2::splat(radius * 2.0)),
+        galley,
+        theme.ink.i900,
+    );
+    let left = centre.x + rux.z(26.0 + 16.0);
+    let detail = context_words(used, window);
+    let room = (well.right() - rux.z(16.0) - left).max(0.0);
+    let title = rux.elided(rux.zs(rux::Style::sans(12.5)), "Context used", theme.ink.i900, room);
+    let line = rux.elided(rux.zs(rux::Style::sans(11.0)), &detail, theme.ink.i400, room);
+    let gap = rux.z(2.0);
+    let block = title.size().y + gap + line.size().y;
+    let top = well.center().y - block / 2.0;
+    let title_height = title.size().y;
+    rux.painter().galley(Pos2::new(left, top), title, theme.ink.i900);
+    rux.painter().galley(Pos2::new(left, top + title_height + gap), line, theme.ink.i400);
+}
+
+/// The share of the context used, when both numbers are known.
+pub fn context_share(used: Option<u64>, window: Option<u64>) -> Option<f32> {
+    match (used, window) {
+        (Some(used), Some(window)) if window > 0 => {
+            Some((used as f32 / window as f32).clamp(0.0, 1.0))
+        }
+        _ => None,
+    }
+}
+
+/// The line under "Context used": `76k of 200k tokens`, or what is not known.
+pub fn context_words(used: Option<u64>, window: Option<u64>) -> String {
+    match (used, window) {
+        (Some(used), Some(window)) => format!("{} of {} tokens", tokens(used), tokens(window)),
+        (Some(used), None) => {
+            format!("{} tokens; the agent does not say its context size", tokens(used))
+        }
+        (None, _) => "Not measured until the agent answers".to_owned(),
+    }
+}
+
+/// A token count the way the design writes one: `76k`, `200k`, `1.2M`.
+pub fn tokens(count: u64) -> String {
+    match count {
+        0..=999 => count.to_string(),
+        1_000..=999_999 => format!("{}k", (count as f64 / 1000.0).round() as u64),
+        _ => {
+            let millions = count as f64 / 1_000_000.0;
+            match (millions - millions.round()).abs() < 0.05 {
+                true => format!("{}M", millions.round() as u64),
+                false => format!("{millions:.1}M"),
+            }
+        }
+    }
 }
 
 /// How wide a message's right click menu is. Three short rows, so it is a field menu's width.
@@ -314,148 +531,56 @@ fn message_menu(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>) -> Ve
     acts
 }
 
-/// The header: the conversation's name, the model selector, history and new.
+/// The header: a round history button, the conversation's name centred, and a round new-conversation
+/// button, which is the design's `header` (`task-2235`).
 ///
-/// **Everything in it is sized by the pane's zoom**, `task-2200`: zoomed in, the title grew while the
-/// select, its words and the two buttons' marks stayed the size they are at one. The select takes the zoom
-/// through `rux::components::Select::zoom` and the buttons through `controls::icon_button_at`.
-///
-/// **There is no state dot.** `task-2200`: *"I don't want the dot at all. Just have the title"*. What the
-/// dot said is still said by the stop disc in the composer while an answer arrives and by the failure row
-/// when one fails.
+/// **The model selector is not here any more.** It moved into the Chat settings dialog the gear opens,
+/// as a pill switch. The history button stays pressed in, with its mark in sky, while the history is
+/// open. Everything is sized by the pane's zoom.
 fn header(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
     let scale = look.scale();
     let mut acts = Vec::new();
-    let painter = ui.painter_at(area);
-    let middle = area.center().y;
-
-    // The two buttons first, from the right, then the select to their left, so the title knows how much
-    // room is left for it.
-    // Two round keys the height of the model selector, so the three controls share one middle and one
-    // height and read as one row of instrument keys (`task-2219`).
-    let button = MODEL_SELECT_HEIGHT * scale;
-    let new = Rect::from_center_size(
-        Pos2::new(area.right() - 2.0 * scale - button / 2.0, middle),
-        Vec2::splat(button),
-    );
-    let history = Rect::from_center_size(
-        Pos2::new(new.center().x - button - 8.0 * scale, middle),
-        Vec2::splat(button),
-    );
-    let names: Vec<String> =
-        parts.configuration.providers.iter().map(|one| one.name.clone()).collect();
-    let chip_width = model_select_width(&painter, &names, scale);
-    let chip_height = MODEL_SELECT_HEIGHT * scale;
-    let chip = Rect::from_min_size(
-        Pos2::new(history.left() - 8.0 * scale - chip_width, middle - chip_height / 2.0),
-        Vec2::new(chip_width, chip_height),
-    );
-
-    // **One line, cut with an ellipsis before it reaches the select**, because a conversation named after
-    // a long first sentence has to lose its end rather than run under the select or gain a second line.
-    let font = egui::FontId::proportional(look.font_size * 0.82);
-    let left = area.left() + 2.0 * scale;
-    let right = match names.is_empty() {
-        true => history.left(),
-        false => chip.left(),
-    } - 10.0 * scale;
-    let room = (right - left).max(1.0);
-    let mut job = egui::text::LayoutJob::single_section(
-        parts.session.chat.display_name().to_owned(),
-        egui::TextFormat {
-            font_id: font.clone(),
-            color: look.palette.text_strong,
-            ..Default::default()
-        },
-    );
-    job.wrap = egui::text::TextWrapping {
-        max_width: room,
-        max_rows: 1,
-        break_anywhere: true,
-        overflow_character: Some('\u{2026}'),
-    };
-    let title = painter.crisp_layout_job(job);
-    // Placed by its capitals, so it shares a middle with the select's words and the buttons' marks.
-    let top = crate::theme::crisp::top_centring_capitals(&painter, &font, middle);
-    painter
-        .with_clip_rect(Rect::from_min_max(
-            Pos2::new(left, area.top()),
-            Pos2::new(right, area.bottom()),
-        ))
-        .crisp_galley(Pos2::new(left, top), title, look.palette.text_strong);
-
-    // **The model selector is `rux`'s `Select`**, the dropdown from Black Rainbow Labs' component
-    // library. `task-2096` asks for a dropdown menu from that library rather than a new one: the chip
-    // this replaces opened a list drawn over the whole conversation. The menu opens under the trigger on
-    // a foreground layer of its own, and a press anywhere else closes it. Its menu takes the theme's
-    // smallest raised shadow rather than the reference's largest, which spread a dark blur over the
-    // messages under it (`task-2200`).
-    let chosen = parts
-        .configuration
-        .provider()
-        .and_then(|chosen| names.iter().position(|name| *name == chosen.name));
-    if !names.is_empty() && chip.left() > left {
-        let select = parts.state.model_select.get_or_insert_with(ModelSelect::new);
-        let id = ui.id().with("agent-chat-model-select");
-        // The layer is the trigger and room round it for its shadow. The menu opens a layer of its own.
-        crate::theme::in_step(&select.rux);
-        let outcome = rux::layer(ui, &select.rux, id, chip.expand(24.0 * scale), |rux| {
-            let quiet = rux.theme().elevation.raised_sm;
-            rux::components::Select::new(&names, chosen)
-                .label("Model")
-                .placeholder("No endpoint")
-                .zoom(scale)
-                .menu_elevation(quiet)
-                .show(rux, chip, &mut select.menu)
-        });
-        select.rux.end_frame();
-        if let Some(name) = outcome.chosen.and_then(|index| names.get(index)) {
-            acts.push(Act::Choose(name.clone()));
-        }
-    }
-
-    // **Two round raised keys**, `task-2219`, where there were two ghost buttons with no surface until the
-    // pointer was on them: beside a raised model selector they read as two loose marks. The history key
-    // stays pressed in, with its mark in the accent, while the history is open.
+    let button = HEADER * scale;
+    let history = Rect::from_min_size(area.min, Vec2::splat(button));
+    let new =
+        Rect::from_min_size(Pos2::new(area.right() - button, area.top()), Vec2::splat(button));
     let open = parts.state.history_open;
-    if header_key(ui, look, history, "Conversations", icon::clock, open) {
+    let (history_pressed, new_pressed) =
+        kit::layer(parts.state, look, ui, "header", area, kit::SMALL_REACH, |rux| {
+            let history_pressed =
+                rux::components::RoundButton::mark(rux::Icon::Clock, 20.0, "Conversations")
+                    .on(open)
+                    .show(rux, history)
+                    .clicked();
+            let new_pressed =
+                rux::components::RoundButton::mark(rux::Icon::Plus, 15.0, "New Conversation")
+                    .show(rux, new)
+                    .clicked();
+            (history_pressed, new_pressed)
+        });
+    if history_pressed {
         acts.push(Act::ShowHistory(!open));
     }
-    if header_key(ui, look, new, "New Conversation", icon::plus, false) {
+    if new_pressed {
         acts.push(Act::New);
     }
-
-    // The hairline under it, which is the reference's `border-bottom`.
-    painter.rect_filled(
-        Rect::from_min_max(
-            Pos2::new(area.left(), area.bottom() - 1.0),
-            Pos2::new(area.right(), area.bottom()),
-        ),
-        0,
-        look.palette.divider,
+    // **One line, centred, cut with an ellipsis** before it reaches either button: `font-size: 14px;
+    // font-weight: 600; gap: 12px`.
+    let room = Rect::from_min_max(
+        Pos2::new(history.right() + 12.0 * scale, area.top()),
+        Pos2::new(new.left() - 12.0 * scale, area.bottom()),
     );
+    if room.width() > 8.0 {
+        let painter = ui.painter_at(room.intersect(ui.clip_rect()));
+        let style = rux::Style::sans(14.0 * scale).semibold();
+        let ink = crate::theme::rux_theme().ink.i900;
+        let name = parts.session.chat.display_name();
+        let galley = rux::text::elided(&painter, style, name, ink, room.width());
+        let at = Pos2::new(room.center().x - galley.size().x / 2.0, room.center().y);
+        rux::text::draw_left_capitals(&painter, at, galley, style, ink);
+        let _ = painter;
+    }
     acts
-}
-
-/// How wide the model selector's trigger is: the widest endpoint name, plus what the trigger and the
-/// menu under it each take round the words, whichever is more, all at the pane's zoom.
-///
-/// The widest rather than the chosen one, so the trigger stays the same width when a different endpoint
-/// is chosen and nothing beside it moves. The words are measured at the size `rux::Style::CONTROL`
-/// sets them in, times the zoom, which is what `Select::zoom` draws them at.
-fn model_select_width(painter: &egui::Painter, names: &[String], scale: f32) -> f32 {
-    let style = rux::Style::CONTROL;
-    let style = style.at(style.size * scale);
-    let widest =
-        names.iter().map(|name| rux::text::measure(painter, style, name).x).fold(0.0_f32, f32::max);
-    // **Wide enough for the menu's rows, not only for the trigger's words.** `rux` draws the menu
-    // exactly as wide as its trigger, and a row gives its words that width less six points each side
-    // of the menu, twelve each side of the row and eighteen for the tick. Sized for the trigger alone,
-    // which needs only `padding: 9px 12px`, an eight point gap and the thirteen point chevron, every
-    // row was cut to three letters: `cla…`, `cod…`, `loc…`, seen on the installed 0.56.0.
-    let trigger = widest + (12.0 * 2.0 + 8.0 + 13.0) * scale;
-    let row = widest + (6.0 * 2.0 + 12.0 * 2.0 + 18.0 + 4.0) * scale;
-    trigger.max(row).min(MODEL_SELECT_WIDEST * scale)
 }
 
 /// The conversation: every message, scrolled, with the empty state when there is nothing.
@@ -485,12 +610,8 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
     // rectangle cannot reach the canvas; `Decor::Clip` is the one thing that can. Measured on a real
     // window: a message scrolled off the top was drawn across the pane's own name.
     //
-    // **Cut above and below, not at the sides** (`task-2200`). The rows sit [`LIST_INSET`] from the card's
-    // edge, and a bubble from the person is raised at `Lift::Medium`, whose shadow reaches well past two
-    // points: cut at the list's own sides, the shadow down its right edge stopped in a hard vertical line.
-    // A shadow spilling sideways onto the card's padding is what it would do on the reference page.
-    let reach = crate::services::vello_canvas::Lift::Medium.reach() * look.scale();
-    look.chrome.clip(area.expand2(Vec2::new(reach, 0.0)), 0.0);
+    // Cut above and below only: the list is the pane's whole width since `task-2235`.
+    look.chrome.clip(area, 0.0);
     let mut scroller = egui::ScrollArea::vertical()
         .id_salt("agent-chat-conversation")
         // **Stuck to the bottom while an answer is arriving, and unstuck the moment somebody scrolls
@@ -532,7 +653,17 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
                 egui::style::ScrollAnimation::none(),
             );
         }
-        let width = area.width();
+        // The rows are inset by the pane's side padding inside a list as wide as the pane, so the shadows
+        // of the bubbles and cards are not cut at the list's edge (`task-2235`).
+        let side = SIDE * look.scale();
+        let width = (area.width() - side * 2.0).max(40.0);
+        // **A conversation shorter than the pane sits at its bottom**, next to the prompt, which is the
+        // design's `justify-content: flex-end`. Measured from last frame's rows, so the room put above
+        // them is never part of what it is worked out from.
+        let spare = (area.height() - parts.state.rows_height).max(0.0);
+        ui.add_space(spare);
+        let rows_top = ui.cursor().top();
+        ui.add_space(12.0 * look.scale());
         // The conversation, and then whatever was sent while this answer was arriving. A queued
         // question is **not** in the conversation — see `AgentChat::queued` for why — so it is drawn
         // after it, in the order it was sent, which is where it will be asked.
@@ -549,8 +680,11 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
                     if shape.height <= 0.0 {
                         continue;
                     }
-                    let (rect, _) = ui
-                        .allocate_exact_size(Vec2::new(width, shape.height), egui::Sense::hover());
+                    let (slot, _) = ui.allocate_exact_size(
+                        Vec2::new(area.width(), shape.height),
+                        egui::Sense::hover(),
+                    );
+                    let rect = slot.shrink2(Vec2::new(side, 0.0));
                     // **Only what can be seen is drawn**, which is `task-1666`'s rule and, here, also
                     // what keeps the decoration's canvas the size of the pane: a bubble scrolled a
                     // thousand points away would otherwise record shadows a thousand points outside it.
@@ -560,8 +694,9 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
                 }
                 Row::Tools(tools) => {
                     let height = message::run_height(&tools, parts.state, look, width);
-                    let (rect, _) =
-                        ui.allocate_exact_size(Vec2::new(width, height), egui::Sense::hover());
+                    let (slot, _) = ui
+                        .allocate_exact_size(Vec2::new(area.width(), height), egui::Sense::hover());
+                    let rect = slot.shrink2(Vec2::new(side, 0.0));
                     if rect.intersects(ui.clip_rect()) {
                         acts.extend(message::run_show(&tools, parts.state, ui, look, rect));
                     }
@@ -569,7 +704,9 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
             }
             ui.add_space(GAP * look.scale());
         }
+        ui.cursor().top() - rows_top
     });
+    parts.state.rows_height = scrolled.inner;
     // The canvases of components that were not drawn this frame are given back. Once a frame, after
     // every row has had its turn, which is what `rux::RuxState::end_frame` asks for.
     if let Some(kept) = &parts.state.blocks_rux {
@@ -634,49 +771,6 @@ fn rows_of<'a>(
 }
 
 /// The conversations kept, drawn over the conversation area.
-/// A round key in the header: raised, or pressed in while what it opens is open.
-///
-/// The hover changes the mark and not the decoration, so moving the pointer across the header rasterises
-/// nothing, which is the rule `services::vello_canvas` records about a hover.
-fn header_key(
-    ui: &mut egui::Ui,
-    look: &Look<'_>,
-    rect: Rect,
-    name: &str,
-    draw: fn(&egui::Painter, Pos2, egui::Color32),
-    down: bool,
-) -> bool {
-    let scale = look.scale();
-    let response = ui.interact(rect, ui.id().with(("agent-chat-key", name)), egui::Sense::click());
-    let response = controls::WithHint::with_hint(response, name);
-    let radius = rect.height() / 2.0;
-    if look.chrome.is_recording() {
-        match down {
-            true => look.chrome.sunken(rect, radius, look.palette.board_well, Lift::Small),
-            false => {
-                look.chrome.raised(rect, radius, Fill::Solid(look.palette.board_card), Lift::Small)
-            }
-        }
-    } else {
-        ui.painter().circle(
-            rect.center(),
-            radius,
-            look.ground(look.palette.board_card),
-            Stroke::new(1.0, look.palette.control_border),
-        );
-    }
-    let held = response.is_pointer_button_down_on();
-    let tint = match (down, response.hovered() || held) {
-        (true, _) => look.palette.accent,
-        (false, true) => look.palette.text_strong,
-        (false, false) => look.palette.text_dim,
-    };
-    let nudge = if held { Vec2::new(0.0, 0.5 * scale) } else { Vec2::ZERO };
-    icon::scaled(ui.painter(), rect.center() + nudge, tint, scale * 0.95, draw);
-    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, down, name));
-    response.clicked()
-}
-
 fn history_list(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
     let session: &unluminous_chat::Session = parts.session;
     let history = parts.history;
@@ -897,6 +991,9 @@ fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {
             Act::Copy(_) => {}
             Act::ShowHistory(open) => {
                 chat.ui.history_open = open;
+            }
+            Act::ShowSettings(open) => {
+                chat.ui.settings_open = open;
             }
             Act::ToggleTool(id) => match chat.ui.opened_tools.iter().position(|one| *one == id) {
                 Some(at) => {

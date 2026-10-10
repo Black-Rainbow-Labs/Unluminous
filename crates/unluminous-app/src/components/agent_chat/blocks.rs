@@ -30,7 +30,7 @@ use std::collections::HashMap;
 use egui::{Color32, Id, Pos2, Rect, Vec2};
 use rux::components::{
     instrument::{self, timing, Instrument, READING, SILK},
-    Chart, ChartKind as RuxChartKind, Checkbox, Column as RuxColumn, Fader, Item, Key, Meter,
+    Chart, ChartKind as RuxChartKind, Checkbox, Column as RuxColumn, Fader, Item, Key,
     Series as RuxSeries, Stage, Table, Timeline,
 };
 use rux::{Rux, Style};
@@ -1105,7 +1105,9 @@ fn group(text: &str) -> String {
     }
 }
 
-/// Labelled meters.
+/// Labelled amounts, each on the Agent-Chat design's slider track: a carved groove filled with the
+/// action's gradient up to the amount, with a raised knob at its end (`task-2235`). The track replaced
+/// the segmented meter this used to draw.
 fn progress(
     kit: &mut Kit<'_, '_>,
     key: &str,
@@ -1117,7 +1119,7 @@ fn progress(
     let style = kit.style(WORDS);
     let mono = kit.style(MONO.at(11.0));
     let line = kit.rux.measure(style, "Ag").y;
-    let meter = Meter::height(kit.rux);
+    let meter = kit.z(22.0);
     let mut pen = at.y;
     for (index, bar) in items.iter().enumerate() {
         if index > 0 {
@@ -1147,11 +1149,8 @@ fn progress(
                 mono,
                 theme.ink.i500,
             );
-            let colour = match fraction >= 1.0 {
-                true => theme.accent.mint,
-                false => theme.accent.blue,
-            };
-            Meter::new(fraction).colour(colour).id(kit.id(key, ("meter", index))).show(
+            let _ = key;
+            rux::components::Track::new(fraction, 1.0).label(bar.label.clone()).show(
                 kit.rux,
                 Rect::from_min_size(
                     Pos2::new(at.x, pen + line + kit.z(5.0)),
@@ -1628,7 +1627,7 @@ pub fn act_of(action: &Action) -> Act {
     }
 }
 
-/// Checkboxes, and a run of segments under them counting what is done.
+/// Checkboxes, and a slider track under them filled as far as what is done (`task-2235`).
 fn checklist(
     kit: &mut Kit<'_, '_>,
     key: &str,
@@ -1655,11 +1654,11 @@ fn checklist(
         }
         pen += height + kit.z(8.0);
     }
-    // The count, and one segment an item lit for each that is done.
+    // The count, and a track filled as far as what is done: the design has no segmented meters.
     let silk = kit.style(SILK);
     let words = format!("{done} of {}", items.len());
     let label = kit.rux.measure(silk, &words);
-    let row = kit.z(8.0).max(label.y);
+    let row = kit.z(22.0).max(label.y);
     if kit.draw && !items.is_empty() {
         let painter = kit.rux.painter().clone();
         let galley = rux::text::layout(&painter, silk, &words, theme.ink.i400);
@@ -1671,26 +1670,11 @@ fn checklist(
             theme.ink.i400,
         );
         let left = at.x + label.x + kit.z(12.0);
-        let gap = kit.z(3.0);
-        let count = items.len();
-        let each = ((at.x + width - left) - gap * (count as f32 - 1.0)) / count as f32;
-        // Unlit segments are holes in the plate, the screen's own colour, so the count reads as a meter.
-        let off = Instrument::of(theme).screen;
-        for segment in 0..count {
-            let cell = Rect::from_min_size(
-                Pos2::new(left + segment as f32 * (each + gap), pen + row / 2.0 - kit.z(3.0)),
-                Vec2::new(each, kit.z(6.0)),
-            );
-            let lit = segment < done;
-            if lit {
-                painter.rect_filled(
-                    cell.expand(kit.z(1.5)),
-                    kit.z(3.0),
-                    theme.accent.mint.gamma_multiply(0.15),
-                );
-            }
-            painter.rect_filled(cell, kit.z(2.0), if lit { theme.accent.mint } else { off });
-        }
+        let track = Rect::from_min_max(Pos2::new(left, pen), Pos2::new(at.x + width, pen + row));
+        rux::components::Track::new(done as f32, items.len() as f32)
+            .without_knob()
+            .label(words.clone())
+            .show(kit.rux, track);
     }
     pen + row - at.y
 }

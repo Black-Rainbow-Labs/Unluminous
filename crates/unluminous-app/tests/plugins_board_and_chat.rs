@@ -2462,14 +2462,22 @@ fn the_history_lists_each_conversation_on_two_lines() {
 ///
 /// `task-2219`: *"When I switch themes, the font colours sometimes don't immediately update unless I
 /// resize."* The rendered markdown was cached by its source and its width, so the words kept the colours
-/// they were first set in until a resize changed the width. Measured on the pixels inside the person's
-/// bubble: light words on the dark theme, dark words once the light theme is chosen.
+/// they were first set in until a resize changed the width. Measured on the pixels of the conversation,
+/// between the header and the gear: light words on the dark theme, dark words once the light theme is
+/// chosen. The band is found from the pane's own controls, because since `task-2235` a short
+/// conversation sits at the bottom of the pane rather than under the header.
 #[test]
 fn a_change_of_theme_recolours_the_words_already_on_the_screen() {
     let mut harness =
         a_chat(&[(unluminous_chat::Role::User, "Why is the release build slower this week?")]);
     steady(&mut harness);
-    let band = egui::Rect::from_min_max(egui::pos2(850.0, 128.0), egui::pos2(1160.0, 175.0));
+    let header = harness.get_by_label("New Conversation").rect();
+    let gear = harness.get_by_label("Chat settings").rect();
+    let field = harness.get_by_label("Message").rect();
+    let band = egui::Rect::from_min_max(
+        egui::pos2(field.left(), header.bottom() + 4.0),
+        egui::pos2(header.right(), gear.top() - 4.0),
+    );
     let darkest = |harness: &mut Harness<'static, UnluminousApp>| -> (u32, u32) {
         let scale = harness.ctx.pixels_per_point();
         let image = harness.render().expect("the window renders");
@@ -2618,13 +2626,10 @@ fn click_at(harness: &mut Harness<'static, UnluminousApp>, at: egui::Pos2) {
     steady(harness);
 }
 
-/// The model selector at the top right of the chat is `rux`'s dropdown, and choosing a row in it
-/// chooses that endpoint. `task-2096`.
-///
-/// The rows of a `rux` menu carry no names, so the row is found by where `rux` puts it: six points
-/// under the trigger, six points of padding, and one row height per row above it.
+/// The model is chosen in the Chat settings the gear opens, as a pill switch, and the dialog closes
+/// with its round cross and nothing else (`task-2235`). It used to be a dropdown in the header.
 #[test]
-fn the_model_selector_is_a_dropdown_and_a_row_in_it_chooses_that_endpoint() {
+fn the_gear_opens_chat_settings_where_a_pill_chooses_the_model() {
     let mut harness = harness("");
     did(&mut harness, "plugins pane agent-chat/chat --show");
     with_the_chat(&mut harness, |chat| {
@@ -2633,36 +2638,21 @@ fn the_model_selector_is_a_dropdown_and_a_row_in_it_chooses_that_endpoint() {
         chat.configuration_mut().providers.push(second);
     });
     steady(&mut harness);
-    let names: Vec<String> = {
-        let mut names = Vec::new();
-        with_the_chat(&mut harness, |chat| {
-            names = chat.configuration().providers.iter().map(|one| one.name.clone()).collect();
-        });
-        names
-    };
-    let trigger = harness.get_by_label("Model").rect();
-    harness.get_by_label("Model").click();
+    assert!(harness.query_by_label("Model: second").is_none(), "the dialog starts closed");
+    harness.get_by_label("Chat settings").click();
     steady(&mut harness);
-    let row = {
-        let painter = egui::Painter::new(
-            harness.ctx.clone(),
-            egui::LayerId::background(),
-            egui::Rect::EVERYTHING,
-        );
-        rux::text::measure(&painter, rux::Style::CONTROL, "Ag").y + 16.0
-    };
-    let last = names.len() - 1;
-    let at =
-        egui::pos2(trigger.center().x, trigger.bottom() + 6.0 + 6.0 + row * (last as f32 + 0.5));
-    click_at(&mut harness, at);
+    harness.get_by_label("Model: second").click();
+    steady(&mut harness);
     let mut chosen = String::new();
     with_the_chat(&mut harness, |chat| {
         chosen = chat.provider().map(|one| one.name.clone()).unwrap_or_default();
     });
-    assert_eq!(
-        chosen, "second",
-        "the last row of the dropdown was pressed; the rows are {names:?}"
-    );
+    assert_eq!(chosen, "second", "the pill for the second endpoint was pressed");
+    assert!(harness.query_by_label("Model: second").is_some(), "choosing a model leaves it open");
+    harness.snapshot(shot("agent_chat_settings_dialog").as_str());
+    harness.get_by_label("Close settings").click();
+    steady(&mut harness);
+    assert!(harness.query_by_label("Model: second").is_none(), "the round cross closes it");
 }
 
 /// Zooming a file does not resize the Agent-Tasks board either. `task-2200`: *"when i zoom in/out with mouse

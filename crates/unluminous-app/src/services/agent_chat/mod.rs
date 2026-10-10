@@ -550,6 +550,18 @@ pub struct PaneState {
     /// Whether the components hold still rather than move: for a person who asked for less motion, and
     /// for a test that photographs a frame. `plugins run agent-chat motion off`.
     pub still: bool,
+    /// The `rux` state the pane's own controls are drawn with: the header's round buttons, the bubbles,
+    /// the run cards, the gear, the prompt box and the Chat settings dialog (`task-2235`). Its own rather
+    /// than the components' state, so each is given back once a frame after its own drawing.
+    pub chrome_rux: Option<rux::RuxState>,
+    /// Whether the Chat settings dialog is open over the pane.
+    pub settings_open: bool,
+    /// Who answers in this conversation, which is the name over each answer.
+    pub speaker: String,
+    /// How tall the conversation's rows came out last frame, without the room put above them. A
+    /// conversation shorter than the pane sits at its bottom, next to the prompt, which is the design's
+    /// `justify-content: flex-end`.
+    pub rows_height: f32,
 }
 
 /// The model selector: `rux`'s `Select` and what it keeps between frames.
@@ -1603,6 +1615,24 @@ impl AgentChat {
     }
 
     /// What the pane holds, as data — which is what `unluminous-cli plugins view agent-chat` prints.
+    /// What the Chat settings dialog shows, as data: whether it is open, the models it offers, the one
+    /// in use, and how much of the context the conversation fills.
+    fn settings_value(&self) -> serde_json::Value {
+        let used = self.session.chat.context_used;
+        let window = self.session.chat.context_window;
+        serde_json::json!({
+            "open": self.ui.settings_open,
+            "models": self.configuration.providers.iter().map(|one| one.name.clone()).collect::<Vec<String>>(),
+            "chosen": self.provider().map(|one| one.name.clone()),
+            "context": {
+                "used": used,
+                "window": window,
+                "share": crate::components::agent_chat::context_share(used, window),
+                "words": crate::components::agent_chat::context_words(used, window),
+            },
+        })
+    }
+
     fn view_value(&self) -> serde_json::Value {
         serde_json::json!({
             "provider": self.provider().map(|one| serde_json::json!({
@@ -1623,6 +1653,7 @@ impl AgentChat {
             "scrollable": self.ui.scrollable,
             "tools": self.configuration.tools,
             "streaming": self.session.is_busy(),
+            "settings": self.settings_value(),
             // What the server reported this conversation has cost. Answered here rather than drawn under the
             // composer, which `task-2193` asked to be rid of.
             "usage": {
@@ -1979,6 +2010,22 @@ impl UiProvider for AgentChat {
                 .with(serde_json::json!({ "tools": self.configuration.tools })))
             }
             "view" => Ok(Answer::said("the pane").with(self.view_value())),
+            // The Chat settings dialog the gear opens (`task-2235`): the same flag the gear and the
+            // dialog's round cross set, so an agent opening it and a person pressing the gear are one
+            // thing. With nothing said it answers what the dialog shows.
+            "settings" => {
+                match rest.trim() {
+                    "open" => self.ui.settings_open = true,
+                    "close" => self.ui.settings_open = false,
+                    "" => {}
+                    other => return Err(format!("settings takes `open` or `close`, not `{other}`.")),
+                }
+                Ok(Answer::said(match self.ui.settings_open {
+                    true => "the Chat settings are open",
+                    false => "the Chat settings are closed",
+                })
+                .with(self.settings_value()))
+            }
             "motion" => {
                 match rest.trim() {
                     "on" => self.ui.still = false,
@@ -2025,6 +2072,10 @@ impl UiProvider for AgentChat {
                 "`on` or `off`: whether Unluminous's own commands are offered to the model.",
             ),
             ("view", "Everything the pane is showing, as data, including each component an answer holds and what it shows now."),
+            (
+                "settings",
+                "`open` or `close` the Chat settings the gear opens. Answers the models offered, the one in use, and how much of the context is used.",
+            ),
             (
                 "components",
                 "The components an answer can hold, with their fields and an example each. With a name, just that one.",

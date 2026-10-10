@@ -531,10 +531,13 @@ words wide with its own caret clipped off the end of it. Only rows that intersec
 are drawn, which is `task-1666`'s rule and also what keeps the decoration's canvas the size of the
 pane rather than the size of the transcript.
 
-**There is no context meter**, and that is the absent-control rule rather than an omission. The page
-this is modelled on draws one because its own server knows the window the model was loaded with; a URL
-and a model name say nothing about a context length, so a bar here would be a fraction of a number
-nobody measured. `task-2193` took away the row of tokens in and out under the composer as well; `plugins view agent-chat` still reports them.
+**The context ring is in the Chat settings, and it draws a fraction only when both numbers were
+measured** (`task-2235`). Claude Code says how large its context is (`contextWindow` in a turn's
+`result`) and how much each message started with (`message_start`), so for that agent the ring is a real
+share. No other shape names a window, so there the ring stays empty and its line says how many tokens
+were used and that the agent does not say its context size. `Reply::Context` carries the two numbers and
+`Conversation::context_used` and `context_window` keep them, on disk too. `task-2193` took away the row
+of tokens in and out under the composer; `plugins view agent-chat` still reports them.
 
 `unluminous-cli plugins run agent-chat …` is the agent's half — `new`, `send`, `stop`, `state`, `messages`,
 `last`, `attach`, `providers`, `use`, `history`, `open`, `remove`, `tools` — and `plugins view
@@ -542,6 +545,27 @@ agent-chat` answers the whole pane as data. **`send` does not wait**, because `U
 runs inside a frame and a command that blocked would stop the window drawing for the length of a
 model's answer, which is the sentence `unluminous_git::Worker` exists for; `state` says when it has
 finished, which is the shape `run start` and `run output` already have.
+
+### The pane is the Agent-Chat design, drawn with `rux`'s chat parts (`task-2235`)
+
+The Claude Design canvas "Unluminous", page Agent-Chat (artboards ChatPane, ChatSettings and ChatParts),
+is the picture the pane is measured against. No card round the whole pane; a header of two 38 point
+round buttons with the conversation's name centred between them; the person's messages as raised
+bubbles (`22px 22px 8px 22px`) and the agent's words on the pane with no bubble, under a round avatar
+and the agent's name; a run of tool calls as a command card with a status well; a 30 point gear centred
+over one carved prompt box with the 44 point send button; and the model choice (a pill switch, one pill
+a provider) and the context ring in a Chat settings dialog that only its round cross closes. Four rules:
+
+- **Every surface is `rux`.** `rux::theme::Chat` holds the design's values, worked out from the pane's
+  colour by `Chat::lit_from`, so on Unluminous Dark's `#1f232a` they are exactly the canvas's hex and on
+  Unluminous Light they are the same design turned the right way up. `components/agent_chat/kit.rs`
+  opens a small `rux` layer for each piece, and the words are drawn after it so they sit on top.
+- **There are no status dots and no segmented meters.** State is a `StatusWell`, an amount is a `Track`,
+  a `Dial` or a `Ring`; the components an answer holds use them too (`progress`, `checklist`).
+- **The model dropdown, the attach button and the file chip are not in the prompt box.** A picture still
+  goes up by dropping or pasting it.
+- **`plugins run agent-chat settings [open|close]`** is the agent's half of the gear, and `plugins view
+  agent-chat` answers `settings` with the models, the one in use and the context.
 
 ### An answer can hold components, drawn as instruments (`task-2211`)
 

@@ -2029,3 +2029,21 @@ pub fn key(painter: &egui::Painter, centre: Pos2, color: Color32) {
         painter.line_segment([at, Pos2::new(at.x + 1.6, at.y + 2.4)], Stroke::new(1.3, color));
     }
 }
+
+/// A paper airplane: send.
+///
+/// `task-2235`. The Agent-Chat design's send button carries it, drawn on the canvas as
+/// `M21.5 2.5 14.6 21.4l-4-8-8-4z` with a quarter-tinted body and a fold line from the nose to the
+/// middle. Here it is that path at half size round the centre, at the 1.3 point stroke the clock, the
+/// key and the file are drawn with, so it sits among the other marks at the same weight.
+pub fn send(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    let at = |x: f32, y: f32| Pos2::new(centre.x + (x - 12.0) * 0.5, centre.y + (y - 12.0) * 0.5);
+    let outline = vec![at(21.5, 2.5), at(14.6, 21.4), at(10.6, 13.4), at(2.6, 9.4)];
+    painter.add(egui::Shape::convex_polygon(
+        outline.clone(),
+        color.gamma_multiply(0.22),
+        Stroke::NONE,
+    ));
+    painter.add(egui::Shape::closed_line(outline, Stroke::new(1.3, color)));
+    painter.line_segment([at(21.5, 2.5), at(10.6, 13.4)], Stroke::new(1.3, color));
+}

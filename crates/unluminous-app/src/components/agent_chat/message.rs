@@ -1,10 +1,10 @@
 //! One row of the conversation: a bubble, its pictures, its tool blocks and its failure.
 //!
-//! `ChatMessage.module.css` is what this is measured against. A message from the person is right
-//! aligned and one from the model is left aligned, and both are **raised** (`task-2219`), the person's
-//! with a little of the accent in its colour; each has the corner
-//! nearest its own side squared off to six points, which is the detail that makes a column of
-//! bubbles read as a conversation rather than as a list.
+//! Since `task-2235` this is the Agent-Chat design on the Claude Design canvas: a message from the
+//! person is a raised bubble on the right, `border-radius: 22px 22px 8px 22px`, and an answer has **no
+//! bubble** at all: a round avatar and the agent's name over words set straight on the pane. A run of
+//! tool calls is a command card with a status well, and a failure is an error card. The surfaces are
+//! `rux`'s chat parts, drawn through [`super::kit`].
 //!
 //! ## The body is markdown, through the editor's own renderer
 //!
@@ -24,24 +24,29 @@
 //! so a row cannot be measured as one thing and drawn as another, which is the fault that leaves gaps
 //! between bubbles or overlaps them.
 
-use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
+use egui::{Color32, Pos2, Rect, Sense, Vec2};
 
 use unluminous_chat::model::{Message, Part, Role, ToolCall};
 use unluminous_chat::rich::{self, Segment};
 
-use super::Act;
+use super::{kit, Act};
 use crate::services::agent_chat::PaneState;
 use crate::services::plugin_ui::Look;
-use crate::services::vello_canvas::{Fill, Lift};
 use crate::theme::crisp::CrispPainter;
 use crate::theme::icon;
 
-/// A bubble's own padding, from `.messageWrapper`.
-const PAD_X: f32 = 12.0;
-const PAD_Y: f32 = 10.0;
-/// A bubble's corner radius, and the squared-off one nearest its own side.
-const RADIUS: f32 = 14.0;
-const CORNER: f32 = 5.0;
+/// A bubble's own padding: `padding: 12px 16px`. An answer has no bubble and no padding.
+const PAD_X: f32 = 16.0;
+const PAD_Y: f32 = 12.0;
+/// A bubble's corner radius, and the one at its foot on the person's side: `22px 22px 8px 22px`.
+const RADIUS: f32 = 22.0;
+const CORNER: f32 = 8.0;
+/// The widest a bubble is: `max-width: 300px`.
+const BUBBLE_MOST: f32 = 300.0;
+/// The avatar row over an answer: a 30 point round avatar and the agent's name.
+const SPEAKER: f32 = 30.0;
+/// Between the parts of one row: the avatar, the words, a picture.
+const PIECE_GAP: f32 = 12.0;
 /// How much of the row a bubble may take, by who said it.
 ///
 /// The reference's own are `75%` and `85%`, which is what makes an answer read as speech rather than as a
@@ -54,7 +59,6 @@ const CORNER: f32 = 5.0;
 /// spoke: an earlier version used 96 and at 96 the assistant bubble filled the pane and the alignment
 /// stopped meaning anything. The difference between 94 and the user's 82 is what carries it now.
 const USER_SHARE: f32 = 0.82;
-const MODEL_SHARE: f32 = 0.94;
 /// How wide a report is: a tool block, a failure, the thinking. Nearly the whole row, because none of
 /// them is speech.
 const BLOCK_SHARE: f32 = 0.98;
@@ -68,6 +72,8 @@ const THINKING_ROW: f32 = 20.0;
 /// One part of a row, with the height it takes.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Piece {
+    /// The round avatar and the agent's name over an answer.
+    Speaker,
     /// The `<think>` block's header, and its body when it is open.
     Thinking {
         body: f32,
@@ -80,6 +86,8 @@ enum Piece {
         body: f32,
         segment: usize,
         bubble: f32,
+        /// The padding above and below the words: a bubble's, or nothing for an answer.
+        pad: f32,
     },
     /// A component the agent wrote, which is segment `segment` of the answer.
     Block {
@@ -110,12 +118,13 @@ enum Piece {
 impl Piece {
     fn height(self) -> f32 {
         match self {
+            Self::Speaker => SPEAKER,
             Self::Thinking { body } => THINKING_ROW + body,
-            Self::Words { body, .. } => body + PAD_Y * 2.0,
+            Self::Words { body, pad, .. } => body + pad * 2.0,
             Self::Block { height, .. } => height,
             Self::Picture { height, .. } => height,
             Self::Tool { body, .. } => TOOL_ROW + body,
-            Self::Failure { body } => body + PAD_Y * 2.0,
+            Self::Failure { body } => body + 94.0,
             Self::Queued => THINKING_ROW,
         }
     }
@@ -137,11 +146,11 @@ fn pieces(
 ) -> (Vec<Piece>, f32, f32, String) {
     let scale = look.scale();
     let mine = message.role == Role::User;
-    let share = match mine {
-        true => USER_SHARE,
-        false => MODEL_SHARE,
+    // A bubble is as wide as its words up to 300 points, and an answer's words take the whole row.
+    let most = match mine {
+        true => (width * USER_SHARE).min(BUBBLE_MOST * scale),
+        false => width,
     };
-    let most = width * share;
     let text = message.text();
     // **A bubble is as wide as what is in it, up to its share.** A short question drawn at eighty per
     // cent of the pane would not read as a short question. Measured with egui's own layout of the
@@ -168,6 +177,11 @@ fn pieces(
     let in_block = (block - 24.0 * scale).max(24.0);
 
     let mut out = Vec::new();
+    // The avatar and the name over an answer, once, before anything else it said.
+    let says = !text.is_empty() || !message.thinking.is_empty() || message.failure.is_some();
+    if !mine && message.role == Role::Assistant && says {
+        out.push(Piece::Speaker);
+    }
     if !message.thinking.is_empty() {
         let body = match state.opened_thinking.contains(&message.id) {
             true => {
@@ -202,10 +216,8 @@ fn pieces(
         false => &[],
     };
     for (index, tool) in tools.iter().enumerate() {
-        let body = match state.opened_tools.contains(&tool.id) || tool.is_running() {
-            true => tool_body_height(state, look, tool, in_block),
-            false => 0.0,
-        };
+        // Drawn as a run of one, so a message that carries its own calls shows the same card.
+        let body = run_height(&[tool], state, look, block) / scale - TOOL_ROW;
         out.push(Piece::Tool { index, body });
     }
     if let Some(failure) = &message.failure {
@@ -256,7 +268,7 @@ pub fn shape(
     let scale = look.scale();
     let (pieces, bubble, block, text) = pieces(message, state, look, width, queued, with_tools, ui);
     let height = pieces.iter().map(|piece| piece.height() * scale).sum::<f32>()
-        + (pieces.len().saturating_sub(1) as f32) * 6.0 * scale;
+        + (pieces.len().saturating_sub(1) as f32) * PIECE_GAP * scale;
     Shape { pieces, bubble, block, text, height }
 }
 
@@ -274,8 +286,6 @@ pub fn show(
     let Shape { pieces, bubble: bubble_width, block: block_width, text: said, .. } = shape;
     let mine = message.role == Role::User;
     let segments = segments_of(message, &said);
-    // Only the first bubble of an answer keeps its squared corner, which is what says who spoke.
-    let mut said_before = false;
     let mut pen = area.top();
     for piece in pieces {
         let height = piece.height() * scale;
@@ -302,17 +312,20 @@ pub fn show(
         };
         let rect = Rect::from_min_size(Pos2::new(left, pen), Vec2::new(width, height));
         match piece {
+            Piece::Speaker => speaker(state, ui, look, rect, message.id),
             Piece::Thinking { body } => {
                 acts.extend(thinking(message, state, ui, look, rect, body > 0.0))
             }
-            Piece::Words { segment, .. } => {
-                bubble(ui, look, rect, mine, !said_before);
-                said_before = true;
+            Piece::Words { segment, pad, .. } => {
+                let pad_x = if mine { PAD_X } else { 0.0 };
+                if mine {
+                    bubble(state, ui, look, rect, message.id, segment);
+                }
                 let inside = Rect::from_min_size(
-                    rect.min + Vec2::new(PAD_X * scale, PAD_Y * scale),
+                    rect.min + Vec2::new(pad_x * scale, pad * scale),
                     Vec2::new(
-                        rect.width() - PAD_X * 2.0 * scale,
-                        rect.height() - PAD_Y * 2.0 * scale,
+                        rect.width() - pad_x * 2.0 * scale,
+                        rect.height() - pad * 2.0 * scale,
                     ),
                 );
                 let words_of = match segments.get(segment) {
@@ -331,13 +344,14 @@ pub fn show(
             Piece::Picture { index, .. } => picture(message, state, ui, look, rect, index),
             Piece::Tool { index, body } => {
                 if let Some(tool) = message.tools.get(index) {
-                    acts.extend(tool_block(tool, state, ui, look, rect, body > 0.0));
+                    let _ = body;
+                    acts.extend(run_show(&[tool], state, ui, look, rect));
                 }
             }
             Piece::Failure { .. } => failure(message, state, ui, look, rect),
             Piece::Queued => queued_note(ui, look, rect, mine),
         }
-        pen += height + 6.0 * scale;
+        pen += height + PIECE_GAP * scale;
     }
     acts
 }
@@ -493,54 +507,59 @@ fn painter_in(ui: &egui::Ui, rect: Rect) -> egui::Painter {
     ui.painter_at(rect.intersect(ui.clip_rect()))
 }
 
-/// The bubble itself, raised, with the person's tinted.
-fn bubble(ui: &mut egui::Ui, look: &Look<'_>, rect: Rect, mine: bool, first: bool) {
-    let scale = look.scale();
-    let radius = RADIUS * scale;
-    let squared = match first {
-        true => (CORNER * scale) as u8,
-        false => radius as u8,
-    };
-    // The corner nearest its own side is squared off, which is `.messageWrapper`'s
-    // `border-top-left-radius: 6px` and its mirror for a message from the person.
-    let corners = match mine {
-        true => CornerRadius { nw: radius as u8, ne: squared, sw: radius as u8, se: radius as u8 },
-        false => CornerRadius { nw: squared, ne: radius as u8, sw: radius as u8, se: radius as u8 },
-    };
-    if look.chrome.is_recording() {
-        // **The squared corner is the shape, not a patch over it.** `Chrome` used to take one radius, so
-        // this squared the corner by painting a flat rectangle of `board_card` across it — flat, so it
-        // carried none of the inset shadow the rest of the bubble has, and it read as a lighter block
-        // sitting proud of the top left of every answer. `task-1771` reported exactly that. Four radii go
-        // down to `vello_cpu` now and the corner is drawn once, in the same pass as the shadows, which is
-        // the only way the two can agree.
-        let corners = crate::services::vello_canvas::Corners::from(corners);
-        // **Both raised, at `Lift::Small`**, `task-2219`. A conversation is a column of objects of one
-        // kind, and which side a bubble is on and its tint say who spoke. An answer used to be pressed in
-        // at `Lift::Medium`, which on a light ground drew a grey band inside its top and left edges that
-        // read as dirt, and a question raised at `Medium` cast a shadow so wide that two bubbles shared one
-        // grey band. The elevation is three layers now, with a lit edge, so `Small` is enough to stand up.
-        look.chrome.raised(rect, corners, Fill::Solid(bubble_fill(look, mine)), Lift::Small);
-    } else {
-        ui.painter().rect(
-            rect,
-            corners,
-            look.ground(bubble_fill(look, mine)),
-            Stroke::new(1.0, look.palette.control_border),
-            egui::StrokeKind::Inside,
-        );
-    }
+/// The person's bubble: a raised card, `border-radius: 22px 22px 8px 22px`, drawn with `rux`'s chat
+/// values so it is the same surface as every card in the pane.
+fn bubble(
+    state: &mut PaneState,
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    rect: Rect,
+    message: u64,
+    segment: usize,
+) {
+    kit::layer(state, look, ui, ("bubble", message, segment), rect, kit::SMALL_REACH, |rux| {
+        let chat = rux.theme().chat;
+        let corners = rux::Corners {
+            nw: rux.z(RADIUS),
+            ne: rux.z(RADIUS),
+            se: rux.z(CORNER),
+            sw: rux.z(RADIUS),
+        };
+        rux.chrome.surface(rect, corners, rux::Fill::gradient(chat.card, rect), chat.raised_sm());
+    });
 }
 
-/// The colour of a bubble: the card for an answer, and the card with a little of the accent in it for
-/// something the person said, so the two sides differ by more than which edge they hug.
-pub(super) fn bubble_fill(look: &Look<'_>, mine: bool) -> egui::Color32 {
-    match mine {
-        true => {
-            crate::components::controls::mix(look.palette.board_card, look.palette.accent, 0.07)
-        }
-        false => look.palette.board_card,
-    }
+/// The round avatar and the agent's name over an answer: a 30 point raised disc with the spark in the
+/// agent's colour, and the name at 12.5 points.
+fn speaker(state: &mut PaneState, ui: &mut egui::Ui, look: &Look<'_>, rect: Rect, message: u64) {
+    let scale = look.scale();
+    let disc = Rect::from_min_size(rect.min, Vec2::splat(SPEAKER * scale));
+    let agent = look.palette.agent;
+    kit::layer(state, look, ui, ("speaker", message), disc, kit::SMALL_REACH, |rux| {
+        let chat = rux.theme().chat;
+        rux.chrome.surface(
+            disc,
+            disc.width() / 2.0,
+            rux::Fill::gradient(chat.card, disc),
+            chat.raised_sm(),
+        );
+        rux.mark(rux::Mark::new(rux::Icon::Spark, rux.z(14.0)).stroke(2.0), disc.center(), agent);
+    });
+    let name = match state.speaker.is_empty() {
+        true => "agent",
+        false => state.speaker.as_str(),
+    };
+    let painter = painter_in(ui, rect);
+    let style = rux::Style::sans(12.5 * scale).semibold();
+    let ink = crate::theme::rux_theme().ink.i900;
+    let galley = rux::text::layout(&painter, style, name, ink);
+    rux::text::draw_left_capitals(
+        &painter,
+        Pos2::new(disc.right() + 10.0 * scale, disc.center().y),
+        galley,
+        style,
+        ink,
+    );
 }
 
 /// The `<think>` block: a quiet row that opens.
@@ -664,7 +683,7 @@ fn picture(
             }
         }
     }
-    let Some(texture) = state.pictures.get(&key) else {
+    let Some(texture) = state.pictures.get(&key).cloned() else {
         return;
     };
     let scale = look.scale();
@@ -680,9 +699,10 @@ fn picture(
         Pos2::new(left, rect.top() + 4.0 * scale),
         Vec2::new(wide, tall) * scale,
     );
-    if look.chrome.is_recording() {
-        look.chrome.raised(drawn, 10.0 * scale, Fill::Solid(look.palette.board_well), Lift::Small);
-    }
+    kit::layer(state, look, ui, ("picture", message.id, index), drawn, kit::SMALL_REACH, |rux| {
+        let chat = rux.theme().chat;
+        rux.chrome.surface(drawn, rux.z(17.0), chat.well, chat.raised_sm());
+    });
     painter_in(ui, rect).image(
         texture.id(),
         drawn,
@@ -780,199 +800,114 @@ fn queued_note(ui: &mut egui::Ui, look: &Look<'_>, rect: Rect, mine: bool) {
     );
 }
 
-/// How far the ring round a tool call's mark reaches from its centre, at a scale of one.
-///
-/// 4.5 since `task-2096`: *"The icon to the left of a tool call in agent chat is too big. halve it."*
-/// It was 9, and the disc, the ring and the mark inside it are all halved together.
-const TOOL_RING: f32 = 4.5;
-
-/// One mark a tool block draws in its ring, at the pane's own scale.
-type Mark = fn(&egui::Painter, Pos2, Color32, f32);
-
-/// One tool call: a well with a round icon, the command's name, how long it took, and a caret.
-///
-/// `StatusTopicEl`'s own shape, in Unluminous's palette: open while it is running and collapsed once it
-/// has finished, which is that component's `isTopicOpen` rule.
-fn tool_block(
-    tool: &ToolCall,
-    state: &mut PaneState,
-    ui: &mut egui::Ui,
-    look: &Look<'_>,
-    rect: Rect,
-    open: bool,
-) -> Vec<Act> {
-    let scale = look.scale();
-    let mut acts = Vec::new();
-    if look.chrome.is_recording() {
-        look.chrome.sunken(rect, 10.0 * scale, look.palette.board_well, Lift::Small);
-    } else {
-        ui.painter().rect(
-            rect,
-            CornerRadius::same((10.0 * scale) as u8),
-            look.ground(look.palette.board_well),
-            Stroke::new(1.0, look.palette.control_border),
-            egui::StrokeKind::Inside,
-        );
-    }
-    let head = Rect::from_min_size(rect.min, Vec2::new(rect.width(), TOOL_ROW * scale));
-    let response = ui.interact(head, ui.id().with(("agent-chat-tool", &tool.id)), Sense::click());
-    response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Tool: {}", tool.name))
-    });
-    let painter = painter_in(ui, rect);
-    // The round raised disc, which is `.topicIcon`, with a ring round it in the colour of the state:
-    // the board's blue while it runs, git's added green when it worked, the close button's red when
-    // it did not.
-    //
-    // **A wrench rather than a tick.** `task-2060`: *"The checkbox icon for tool call is not good. it
-    // should be a wrench icon, and green colored outline."* A tick says *ticked off*, and a tool call
-    // is not an item on a checklist - it is the model reaching for a tool. A failure keeps the cross,
-    // because there the mark is the whole report and a wrench would say only what kind of thing had
-    // gone wrong.
-    // Five points of margin before the ring, as there were when it was twice the size.
-    let disc = Pos2::new(head.left() + (5.0 + TOOL_RING) * scale, head.center().y);
-    // **The mark takes the pane's scale, because the ring round it does.** Most icons in this window
-    // are drawn at one size whatever the type is, and that is right where the thing beside them is a
-    // row of the same height at every zoom. Here the ring is `TOOL_RING * scale`, so a mark that did not
-    // scale sat in the middle of it like something that had come loose. `task-2060` drew one at 1.8.
-    let (tint, drawing): (Color32, Mark) = match (tool.is_running(), tool.failed) {
-        (true, _) => (look.palette.board_accent, icon::wrench_at),
-        (false, true) => (crate::theme::color::close(), icon::cross_at),
-        (false, false) => (crate::theme::color::git_added(), icon::wrench_at),
-    };
-    if look.chrome.is_recording() {
-        look.chrome.raised(
-            Rect::from_center_size(disc, Vec2::splat(TOOL_RING * 2.0 * scale)),
-            TOOL_RING * scale,
-            Fill::Solid(look.palette.board_card),
-            Lift::Small,
-        );
-    }
-    // Drawn whether or not the decoration is recording: the ring is the **state**, and a state that
-    // only appeared with `plugins.chrome` on would be a state half the windows cannot see.
-    painter.circle_stroke(disc, TOOL_RING * scale, Stroke::new(1.0 * scale, tint));
-    // The mark is drawn for a ring of nine, so it is drawn at half the scale inside a ring of 4.5.
-    drawing(&painter, disc, tint, scale * TOOL_RING / 9.0);
-    // Seven points between the ring and the name, as before.
-    let mut pen = disc.x + (TOOL_RING + 7.0) * scale;
-    // **Centred on the row rather than measured up from its middle by a fraction of the font.**
-    // `Align2::LEFT_TOP` with a guessed offset put both of these a point or so high, and a point at
-    // sixteen points is the difference `task-2060` reports beside a mark that really is centred.
-    let name_font = egui::FontId::proportional(look.font_size * 0.82);
-    let name_width = painter
-        .layout_no_wrap(tool.name.clone(), name_font.clone(), look.palette.text_control)
-        .size()
-        .x;
-    painter.crisp_text(
-        Pos2::new(pen, head.center().y),
-        egui::Align2::LEFT_CENTER,
-        &tool.name,
-        name_font,
-        look.palette.text_control,
-    );
-    pen += name_width + 8.0 * scale;
-    let said = match tool.took {
-        Some(took) => format!("{:.2}s", took as f32 / 1000.0),
-        None => "running".to_owned(),
-    };
-    painter.crisp_text(
-        Pos2::new(pen, head.center().y),
-        egui::Align2::LEFT_CENTER,
-        said,
-        egui::FontId::monospace(look.font_size * 0.68),
-        look.palette.text_faint,
-    );
-    icon::disclosure_at(
-        &painter,
-        Pos2::new(head.right() - 12.0 * scale, head.center().y),
-        open,
-        look.palette.text_faint,
-        scale,
-    );
-    if response.clicked() {
-        acts.push(Act::ToggleTool(tool.id.clone()));
-    }
-    if open {
-        let inside = Rect::from_min_max(
-            Pos2::new(rect.left() + 12.0 * scale, head.bottom()),
-            Pos2::new(rect.right() - 12.0 * scale, rect.bottom() - 4.0 * scale),
-        );
-        let arguments = fenced(&tool.arguments);
-        let code = code_colours(look);
-        let made =
-            rendered(state, look, &format!("tool-args-{}", tool.id), &arguments, inside.width());
-        let used = made.height();
-        crate::components::markdown_text::show_with(
-            ui,
-            inside,
-            made,
-            look.renderer,
-            0.0,
-            Some(code),
-        );
-        if let Some(answer) = &tool.answer {
-            let below =
-                Rect::from_min_max(Pos2::new(inside.left(), inside.top() + used), inside.max);
-            let text = fenced(answer);
-            let made =
-                rendered(state, look, &format!("tool-answer-{}", tool.id), &text, below.width());
-            crate::components::markdown_text::show_with(
-                ui,
-                below,
-                made,
-                look.renderer,
-                0.0,
-                Some(code),
-            );
-        }
-    }
-    acts
-}
+/// A card's header row: as tall as its 34 point status well.
+const CARD_HEADER: f32 = 34.0;
+/// A card's padding and the gap between its rows: `padding: 12px; gap: 12px`.
+const CARD_PAD: f32 = 12.0;
+/// One tool's line inside an open run's well.
+const TOOL_LINE: f32 = 30.0;
+/// The padding inside a card's well: `padding: 12px 14px`.
+const WELL_PAD_X: f32 = 14.0;
+const WELL_PAD_Y: f32 = 12.0;
 
 /// The key a run of tool calls is opened and shut by: the first call's id, which no other run shares.
 pub fn run_key(tools: &[&ToolCall]) -> String {
     tools.first().map(|tool| format!("run-{}", tool.id)).unwrap_or_default()
 }
 
-/// How tall a run of tool calls is, in points at the size the window is set to.
-///
-/// `task-2193`: *"Tool calls between messages are supposed to be grouped so it doesn't fill the entire
-/// screen with tool calls."* An agent that reads a project before it answers makes a dozen calls, each
-/// across two or three rounds, and each was a block of its own — so the words it said were pushed off the
-/// top of the pane by the list of what it did to find them.
-///
-/// So the calls between two things said are one row. **One call is still its own block**, because a row
-/// saying "1 tool call" over one call is a heading over nothing. **Two or more are one row that opens**,
-/// named for how many there were and which commands they were, and shut until somebody opens it — while
-/// they are running as well, because the row's ring already says one is running and its name says which.
-pub fn run_height(tools: &[&ToolCall], state: &mut PaneState, look: &Look<'_>, width: f32) -> f32 {
-    let scale = look.scale();
-    let in_block = (width * BLOCK_SHARE - 24.0 * scale).max(24.0);
-    let one = |tool: &ToolCall, state: &mut PaneState| -> f32 {
-        let body = match state.opened_tools.contains(&tool.id) || tool.is_running() {
-            true => tool_body_height(state, look, tool, in_block),
-            false => 0.0,
-        };
-        TOOL_ROW + body
-    };
-    match tools {
-        [] => 0.0,
-        [only] => one(only, state) * scale,
-        many => {
-            let mut height = TOOL_ROW;
-            if state.opened_groups.contains(&run_key(many)) {
-                for tool in many {
-                    height += RUN_GAP + one(tool, state);
-                }
-                height += RUN_GAP;
-            }
-            height * scale
+/// What a run's status well says: running while any call is, failed when any failed, and done.
+fn run_status(tools: &[&ToolCall]) -> rux::components::Status {
+    use rux::components::Status;
+    match (tools.iter().any(|tool| tool.is_running()), tools.iter().any(|tool| tool.failed)) {
+        (true, _) => Status::Running,
+        (false, true) => Status::Failed,
+        (false, false) => Status::Done,
+    }
+}
+
+/// How long a call took, the way the design writes it: `0.2s`, `1.4s`, `2m 58s`.
+pub fn took(milliseconds: u64) -> String {
+    let seconds = milliseconds as f64 / 1000.0;
+    match seconds < 60.0 {
+        true => format!("{seconds:.1}s"),
+        false => {
+            let whole = seconds.round() as u64;
+            format!("{}m {:02}s", whole / 60, whole % 60)
         }
     }
 }
 
-/// Between one call and the next inside an open run.
-const RUN_GAP: f32 = 4.0;
+/// A tool's name without the `unluminous_` every one of Unluminous's own commands starts with.
+fn tool_name(tool: &ToolCall) -> &str {
+    tool.name.trim_start_matches("unluminous_")
+}
+
+/// What a call did, in the words a card shows: the command it ran when it ran one, which is what the
+/// design's run card names (`cargo build --release`), and otherwise its name and the file or pattern
+/// it was about.
+pub fn tool_title(tool: &ToolCall) -> String {
+    let arguments: serde_json::Value = serde_json::from_str(&tool.arguments).unwrap_or_default();
+    let said = |key: &str| arguments[key].as_str().map(str::trim).filter(|one| !one.is_empty());
+    if let Some(command) = said("command").or_else(|| said("cmd")) {
+        return command.lines().next().unwrap_or(command).to_owned();
+    }
+    let about = ["file_path", "path", "file", "pattern", "query", "url"].into_iter().find_map(said);
+    match about {
+        Some(about) => format!("{} {about}", tool_name(tool)),
+        None => tool_name(tool).to_owned(),
+    }
+}
+
+/// Whether one call's arguments and answer are showing.
+fn tool_open(tool: &ToolCall, state: &PaneState) -> bool {
+    state.opened_tools.contains(&tool.id) || tool.is_running()
+}
+
+/// How tall a run's open body is, in unscaled points: the well and what is in it.
+fn run_body(tools: &[&ToolCall], state: &mut PaneState, look: &Look<'_>, inside: f32) -> f32 {
+    match tools {
+        [] => 0.0,
+        [only] => tool_body_height(state, look, only, inside) + WELL_PAD_Y * 2.0,
+        many => {
+            let mut height = WELL_PAD_Y * 2.0;
+            for tool in many {
+                height += TOOL_LINE;
+                if tool_open(tool, state) {
+                    height += tool_body_height(state, look, tool, inside) + 4.0;
+                }
+            }
+            height
+        }
+    }
+}
+
+/// Whether a run's body is showing: one call shows its own, several show the list once opened.
+fn run_open(tools: &[&ToolCall], state: &PaneState) -> bool {
+    match tools {
+        [only] => tool_open(only, state),
+        many => state.opened_groups.contains(&run_key(many)),
+    }
+}
+
+/// How tall a run of tool calls is, in points at the size the window is set to.
+///
+/// `task-2193`: the calls between two things said are one row, so the words an agent said are not pushed
+/// off the top of the pane by the list of what it did to find them. Since `task-2235` that row is the
+/// design's command card: a status well, what ran and how long it took, and a chevron that shows the
+/// calls in a well carved into the card. One call shows its own arguments and answer there; several
+/// show one line each, and a line opens to show that call's.
+pub fn run_height(tools: &[&ToolCall], state: &mut PaneState, look: &Look<'_>, width: f32) -> f32 {
+    let scale = look.scale();
+    if tools.is_empty() {
+        return 0.0;
+    }
+    let inside = (width / scale - (CARD_PAD + WELL_PAD_X) * 2.0).max(24.0) * scale;
+    let mut height = CARD_PAD * 2.0 + CARD_HEADER;
+    if run_open(tools, state) {
+        height += CARD_PAD + run_body(tools, state, look, inside);
+    }
+    height * scale
+}
 
 /// Draw a run of tool calls into `rect`, which [`run_height`] measured.
 pub fn run_show(
@@ -982,145 +917,212 @@ pub fn run_show(
     look: &Look<'_>,
     rect: Rect,
 ) -> Vec<Act> {
+    use rux::components::{RoundButton, RoundContent, RoundSize, Status, StatusWell};
     let scale = look.scale();
-    let width = rect.width() * BLOCK_SHARE;
-    let block = Rect::from_min_size(rect.min, Vec2::new(width, rect.height()));
-    let open_one = |tool: &ToolCall, state: &PaneState| {
-        state.opened_tools.contains(&tool.id) || tool.is_running()
-    };
-    if let [only] = tools {
-        let open = open_one(only, state);
-        return tool_block(only, state, ui, look, block, open);
-    }
     let mut acts = Vec::new();
-    let key = run_key(tools);
-    let open = state.opened_groups.contains(&key);
-    if look.chrome.is_recording() {
-        look.chrome.sunken(block, 10.0 * scale, look.palette.board_well, Lift::Small);
-    } else {
-        ui.painter().rect(
-            block,
-            CornerRadius::same((10.0 * scale) as u8),
-            look.ground(look.palette.board_well),
-            Stroke::new(1.0, look.palette.control_border),
-            egui::StrokeKind::Inside,
-        );
-    }
-    let head = Rect::from_min_size(block.min, Vec2::new(block.width(), TOOL_ROW * scale));
-    let response = ui.interact(head, ui.id().with(("agent-chat-tool-run", &key)), Sense::click());
-    let running = tools.iter().find(|tool| tool.is_running());
-    let failed = tools.iter().filter(|tool| tool.failed).count();
-    let said = run_summary(tools);
-    response.widget_info(|| {
-        egui::WidgetInfo::selected(
-            egui::WidgetType::Button,
-            true,
-            open,
-            format!("Tool calls: {said}"),
-        )
-    });
-    let painter = painter_in(ui, block);
-    // The ring is the run's state, the way it is one call's: blue while one is running, red when one
-    // failed, git's green when every one worked.
-    let tint = match (running.is_some(), failed > 0) {
-        (true, _) => look.palette.board_accent,
-        (false, true) => crate::theme::color::close(),
-        (false, false) => crate::theme::color::git_added(),
+    let open = run_open(tools, state);
+    let status = run_status(tools);
+    let (title, mono) = match tools {
+        [only] => (tool_title(only), true),
+        many => (format!("Ran {} tool calls", many.len()), false),
     };
-    let disc = Pos2::new(head.left() + (5.0 + TOOL_RING) * scale, head.center().y);
-    if look.chrome.is_recording() {
-        look.chrome.raised(
-            Rect::from_center_size(disc, Vec2::splat(TOOL_RING * 2.0 * scale)),
-            TOOL_RING * scale,
-            Fill::Solid(look.palette.board_card),
-            Lift::Small,
-        );
-    }
-    painter.circle_stroke(disc, TOOL_RING * scale, Stroke::new(1.0 * scale, tint));
-    icon::wrench_at(&painter, disc, tint, scale * TOOL_RING / 9.0);
-    let left = disc.x + (TOOL_RING + 7.0) * scale;
-    let right = head.right() - 24.0 * scale;
-    let timing = match running {
-        Some(tool) => format!("running {}", tool.name),
+    let detail = match tools.iter().find(|tool| tool.is_running()) {
+        Some(tool) => format!("Running {}", tool_name(tool)),
         None => {
-            let took: u64 = tools.iter().filter_map(|tool| tool.took).sum();
-            format!("{:.1}s", took as f32 / 1000.0)
+            let total: u64 = tools.iter().filter_map(|tool| tool.took).sum();
+            let failed = tools.iter().filter(|tool| tool.failed).count();
+            match failed {
+                0 => took(total),
+                1 => format!("{} \u{00B7} 1 failed", took(total)),
+                count => format!("{} \u{00B7} {count} failed", took(total)),
+            }
         }
     };
-    let timing_font = egui::FontId::monospace(look.font_size * 0.68);
-    let timing_width = painter
-        .layout_no_wrap(timing.clone(), timing_font.clone(), look.palette.text_faint)
-        .size()
-        .x;
-    painter.crisp_text(
-        Pos2::new(right - timing_width, head.center().y),
-        egui::Align2::LEFT_CENTER,
-        &timing,
-        timing_font,
-        look.palette.text_faint,
+    let pad = CARD_PAD * scale;
+    let header = Rect::from_min_size(
+        rect.min + Vec2::splat(pad),
+        Vec2::new(rect.width() - pad * 2.0, CARD_HEADER * scale),
     );
-    // The count and the commands, cut to the room left of the timing rather than wrapped: a run is one
-    // row, and a second line would make it the thing it exists to stop being.
-    let words = painter.crisp_layout_no_wrap(
-        said.clone(),
-        egui::FontId::proportional(look.font_size * 0.82),
-        look.palette.text_control,
+    let well = Rect::from_min_max(
+        Pos2::new(header.left(), header.bottom() + pad),
+        Pos2::new(header.right(), rect.bottom() - pad),
     );
-    let room = (right - timing_width - 10.0 * scale - left).max(0.0);
-    painter
-        .with_clip_rect(Rect::from_min_max(
-            Pos2::new(left, head.top()),
-            Pos2::new(left + room, head.bottom()),
-        ))
-        .crisp_galley(
-            Pos2::new(left, head.center().y - words.size().y / 2.0),
-            words,
-            look.palette.text_control,
-        );
-    icon::disclosure_at(
-        &painter,
-        Pos2::new(head.right() - 12.0 * scale, head.center().y),
-        open,
-        look.palette.text_faint,
-        scale,
+    let toggle = Rect::from_center_size(
+        Pos2::new(header.right() - 15.0 * scale, header.center().y),
+        Vec2::splat(30.0 * scale),
     );
-    if response.clicked() {
-        acts.push(Act::ToggleGroup(key));
+    let lines: Vec<Rect> = match (open, tools) {
+        (true, [_, _, ..]) => {
+            let mut top = well.top() + WELL_PAD_Y * scale;
+            let inside = (well.width() - WELL_PAD_X * 2.0 * scale).max(24.0);
+            tools
+                .iter()
+                .map(|tool| {
+                    let line = Rect::from_min_size(
+                        Pos2::new(well.left(), top),
+                        Vec2::new(well.width(), TOOL_LINE * scale),
+                    );
+                    top += TOOL_LINE * scale;
+                    if tool_open(tool, state) {
+                        top += (tool_body_height(state, look, tool, inside) + 4.0) * scale;
+                    }
+                    line
+                })
+                .collect()
+        }
+        _ => Vec::new(),
+    };
+    let detail_colour = match status {
+        Status::Failed => Some(kit::chat().slower),
+        _ => None,
+    };
+    let pressed =
+        kit::layer(state, look, ui, ("run", run_key(tools)), rect, kit::CARD_REACH, |rux| {
+            let chat = rux.theme().chat;
+            let theme = rux.theme();
+            rux.chrome.surface(
+                rect,
+                rux.z(22.0),
+                rux::Fill::gradient(chat.card, rect),
+                chat.raised(),
+            );
+            let side = rux.z(CARD_HEADER);
+            StatusWell::new(status).show(rux, Rect::from_min_size(header.min, Vec2::splat(side)));
+            let left = header.left() + side + rux.z(12.0);
+            let room = (toggle.left() - rux.z(12.0) - left).max(0.0);
+            let title_style = match mono {
+                true => rux.zs(rux::Style::mono(12.0)),
+                false => rux.zs(rux::Style::sans(12.5)),
+            };
+            let title = rux.elided(title_style, &title, theme.ink.i900, room);
+            let ink = detail_colour.unwrap_or(theme.ink.i400);
+            let detail = rux.elided(rux.zs(rux::Style::sans(11.0)), &detail, ink, room);
+            let block = title.size().y + rux.z(1.0) + detail.size().y;
+            let top = header.center().y - block / 2.0;
+            let title_height = title.size().y;
+            rux.painter().galley(Pos2::new(left, top), title, theme.ink.i900);
+            rux.painter().galley(Pos2::new(left, top + title_height + rux.z(1.0)), detail, ink);
+            let (label, turn) = match open {
+                true => ("Hide tool calls", std::f32::consts::PI),
+                false => ("Show tool calls", 0.0),
+            };
+            let mark = rux::Mark::new(rux::Icon::ChevDown, 12.0).stroke(2.0).turn(turn);
+            let pressed = RoundButton::new(RoundContent::Mark(mark), label)
+                .size(RoundSize::Small)
+                .show(rux, toggle)
+                .clicked();
+            if open {
+                rux.chrome.surface(well, rux.z(16.0), chat.well, chat.carved_sm());
+            }
+            // One line a call in an open run: its state as a mark, its name, and how long it took.
+            for (tool, line) in tools.iter().zip(&lines) {
+                let (icon, colour) = match (tool.is_running(), tool.failed) {
+                    (true, _) => (rux::Icon::Clock, chat.sky),
+                    (false, true) => (rux::Icon::Cross, chat.slower),
+                    (false, false) => (rux::Icon::Tick, chat.faster),
+                };
+                let centre = Pos2::new(line.left() + rux.z(WELL_PAD_X + 6.0), line.center().y);
+                rux.mark(rux::Mark::new(icon, rux.z(16.0)), centre, colour);
+                let time = match tool.took {
+                    Some(ms) => took(ms),
+                    None => "running".to_owned(),
+                };
+                let time = rux.text(rux.zs(rux::Style::sans(11.0)), &time, theme.ink.i400);
+                let right = line.right() - rux.z(WELL_PAD_X);
+                let time_width = time.size().x;
+                rux::text::draw_left_centre(
+                    rux.painter(),
+                    Pos2::new(right - time_width, line.center().y),
+                    time,
+                    theme.ink.i400,
+                );
+                let start = centre.x + rux.z(14.0);
+                let name = rux.elided(
+                    rux.zs(rux::Style::mono(11.5)),
+                    &tool_title(tool),
+                    theme.ink.i500,
+                    (right - time_width - rux.z(10.0) - start).max(0.0),
+                );
+                rux::text::draw_left_centre(
+                    rux.painter(),
+                    Pos2::new(start, line.center().y),
+                    name,
+                    theme.ink.i500,
+                );
+            }
+            pressed
+        });
+    if pressed {
+        acts.push(match tools {
+            [only] => Act::ToggleTool(only.id.clone()),
+            many => Act::ToggleGroup(run_key(many)),
+        });
+    }
+    // Each line opens its own call, and what an open call said is drawn over the well with the editor's
+    // own markdown renderer, after the decoration so it sits on top.
+    for (tool, line) in tools.iter().zip(&lines) {
+        let response =
+            ui.interact(*line, ui.id().with(("agent-chat-tool", &tool.id)), Sense::click());
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(
+                egui::WidgetType::Button,
+                true,
+                format!("Tool: {}", tool.name),
+            )
+        });
+        if response.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        if response.clicked() {
+            acts.push(Act::ToggleTool(tool.id.clone()));
+        }
+        if tool_open(tool, state) {
+            let body = Rect::from_min_max(
+                Pos2::new(line.left() + WELL_PAD_X * scale, line.bottom()),
+                Pos2::new(line.right() - WELL_PAD_X * scale, well.bottom()),
+            );
+            tool_body(tool, state, ui, look, body);
+        }
     }
     if open {
-        let in_block = (width - 24.0 * scale).max(24.0);
-        let mut pen = head.bottom() + RUN_GAP * scale;
-        for tool in tools {
-            let opened = open_one(tool, state);
-            let body = match opened {
-                true => tool_body_height(state, look, tool, in_block),
-                false => 0.0,
-            };
-            let height = (TOOL_ROW + body) * scale;
-            let at = Rect::from_min_size(
-                Pos2::new(block.left() + 8.0 * scale, pen),
-                Vec2::new(block.width() - 16.0 * scale, height),
-            );
-            acts.extend(tool_block(tool, state, ui, look, at, opened));
-            pen += height + RUN_GAP * scale;
+        if let [only] = tools {
+            let body = well.shrink2(Vec2::new(WELL_PAD_X * scale, WELL_PAD_Y * scale));
+            tool_body(only, state, ui, look, body);
         }
     }
     acts
 }
 
-/// What a shut run says: how many calls, and which commands, each named once in the order first used.
-fn run_summary(tools: &[&ToolCall]) -> String {
-    let mut names: Vec<&str> = Vec::new();
-    for tool in tools {
-        let name = tool.name.trim_start_matches("unluminous_");
-        if !names.contains(&name) {
-            names.push(name);
-        }
+/// What a call was asked and what it answered, as fenced blocks, from the top of `area`.
+fn tool_body(
+    tool: &ToolCall,
+    state: &mut PaneState,
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    area: Rect,
+) {
+    let code = in_a_well(look);
+    let arguments = fenced(&tool.arguments);
+    let made = rendered(state, look, &format!("tool-args-{}", tool.id), &arguments, area.width());
+    let used = made.height();
+    crate::components::markdown_text::show_with(ui, area, made, look.renderer, 0.0, Some(code));
+    if let Some(answer) = &tool.answer {
+        let below = Rect::from_min_max(Pos2::new(area.left(), area.top() + used), area.max);
+        let text = fenced(answer);
+        let made = rendered(state, look, &format!("tool-answer-{}", tool.id), &text, below.width());
+        crate::components::markdown_text::show_with(
+            ui,
+            below,
+            made,
+            look.renderer,
+            0.0,
+            Some(code),
+        );
     }
-    format!("{} tool calls \u{b7} {}", tools.len(), names.join(", "))
 }
 
-/// What the server said when it refused, in its own words.
+/// An answer that stopped with an error: the design's error card, with the server's own words in its
+/// well.
 fn failure(
     message: &Message,
     state: &mut PaneState,
@@ -1132,24 +1134,46 @@ fn failure(
         return;
     };
     let scale = look.scale();
-    if look.chrome.is_recording() {
-        look.chrome.sunken(rect, 10.0 * scale, look.palette.board_well, Lift::Small);
-    } else {
-        ui.painter().rect_filled(
-            rect,
-            CornerRadius::same((10.0 * scale) as u8),
-            look.palette.board_well,
-        );
-    }
-    // The one red edge, which is the same mark a failed run wears in the run tile.
-    painter_in(ui, rect).rect_filled(
-        Rect::from_min_size(rect.min, Vec2::new(2.5 * scale, rect.height())),
-        CornerRadius::same(1),
-        crate::theme::color::close(),
+    let pad = CARD_PAD * scale;
+    let header = Rect::from_min_size(
+        rect.min + Vec2::splat(pad),
+        Vec2::new(rect.width() - pad * 2.0, CARD_HEADER * scale),
     );
-    let inside = rect.shrink2(Vec2::new(PAD_X * scale, PAD_Y * scale));
+    let well = Rect::from_min_max(
+        Pos2::new(header.left(), header.bottom() + pad),
+        Pos2::new(header.right(), rect.bottom() - pad),
+    );
+    let speaker = state.speaker.clone();
+    kit::layer(state, look, ui, ("failure", message.id), rect, kit::CARD_REACH, |rux| {
+        let chat = rux.theme().chat;
+        let theme = rux.theme();
+        rux.chrome.surface(rect, rux.z(22.0), rux::Fill::gradient(chat.card, rect), chat.raised());
+        let side = rux.z(CARD_HEADER);
+        rux::components::StatusWell::new(rux::components::Status::Failed)
+            .show(rux, Rect::from_min_size(header.min, Vec2::splat(side)));
+        let left = header.left() + side + rux.z(12.0);
+        let room = (header.right() - left).max(0.0);
+        let title = rux.elided(
+            rux.zs(rux::Style::sans(12.5)),
+            "The answer stopped with an error",
+            theme.ink.i900,
+            room,
+        );
+        let detail = rux.elided(rux.zs(rux::Style::sans(11.0)), &speaker, theme.ink.i400, room);
+        let block = title.size().y + rux.z(1.0) + detail.size().y;
+        let top = header.center().y - block / 2.0;
+        let title_height = title.size().y;
+        rux.painter().galley(Pos2::new(left, top), title, theme.ink.i900);
+        rux.painter().galley(
+            Pos2::new(left, top + title_height + rux.z(1.0)),
+            detail,
+            theme.ink.i400,
+        );
+        rux.chrome.surface(well, rux.z(16.0), chat.well, chat.carved_sm());
+    });
+    let inside = well.shrink2(Vec2::new(WELL_PAD_X * scale, WELL_PAD_Y * scale));
     let key = format!("failure-{}", message.id);
-    let code = code_colours(look);
+    let code = in_a_well(look);
     let made = rendered(state, look, &key, said, inside.width());
     crate::components::markdown_text::show_with(ui, inside, made, look.renderer, 0.0, Some(code));
 }
@@ -1164,7 +1188,7 @@ pub(super) fn colours(look: &Look<'_>) -> crate::components::markdown_text::Colo
         // **Blue, which is the reference's own `--accent-blue`.** It was the mint `attached` before,
         // which was the most conspicuously wrong colour in the pane: mint means *running* everywhere
         // else here, on a tool block and on the state dot.
-        code: look.palette.board_accent,
+        code: look.palette.text_strong,
         link: look.palette.accent,
         quiet: look.palette.text_dim,
         rule: look.palette.divider,
@@ -1178,8 +1202,19 @@ pub(super) fn colours(look: &Look<'_>) -> crate::components::markdown_text::Colo
 pub(super) fn code_colours(look: &Look<'_>) -> crate::components::markdown_text::CodeColors {
     crate::components::markdown_text::CodeColors {
         panel: look.palette.board_well,
-        chip: crate::theme::color::code_chip(),
+        // No chip behind inline code since `task-2235`: the design sets it in the code font and the
+        // strongest ink, on the pane, and nothing else.
+        chip: Color32::TRANSPARENT,
         radius: 6,
+    }
+}
+
+/// The same colours for markdown drawn inside a card's well, where the well is already the panel and a
+/// second one inside it would be a box in a box.
+fn in_a_well(look: &Look<'_>) -> crate::components::markdown_text::CodeColors {
+    crate::components::markdown_text::CodeColors {
+        panel: Color32::TRANSPARENT,
+        ..code_colours(look)
     }
 }
 
@@ -1275,17 +1310,28 @@ fn said(
     mut ui: Option<&mut egui::Ui>,
 ) -> Vec<Piece> {
     let scale = look.scale();
+    let mine = message.role == Role::User;
+    let (pad_x, pad) = match mine {
+        true => (PAD_X, PAD_Y),
+        false => (0.0, 0.0),
+    };
     let mut out = Vec::new();
     for (segment, one) in segments_of(message, text).iter().enumerate() {
         match one {
             Segment::Markdown(words) => {
-                let natural =
-                    measure(look, words, most - PAD_X * 2.0 * scale) + (PAD_X * 2.0 + 8.0) * scale;
-                let bubble = natural.clamp(smallest.min(most), most).max(smallest.min(most));
-                let inside = (bubble - PAD_X * 2.0 * scale).max(24.0);
+                // The person's bubble is as wide as their words; an answer's words take the row.
+                let bubble = match mine {
+                    true => {
+                        let natural = measure(look, words, most - pad_x * 2.0 * scale)
+                            + (pad_x * 2.0 + 8.0) * scale;
+                        natural.clamp(smallest.min(most), most).max(smallest.min(most))
+                    }
+                    false => most,
+                };
+                let inside = (bubble - pad_x * 2.0 * scale).max(24.0);
                 let body =
                     rendered_height(state, look, &words_key(message.id, segment), words, inside);
-                out.push(Piece::Words { body, segment, bubble });
+                out.push(Piece::Words { body, segment, bubble, pad });
             }
             Segment::Block { source, finished } => {
                 // Measured with the real fonts when a `Ui` is at hand, which is every frame that draws.
@@ -1458,6 +1504,19 @@ fn block_show(
 mod tests {
     use super::*;
 
+    /// `task-2235`: a run card names the command a call ran, which is what the design's card shows.
+    #[test]
+    fn a_tool_is_named_by_the_command_it_ran() {
+        let ran = ToolCall::new("a", "Bash", r#"{"command":"cargo build --release\nmore"}"#);
+        assert_eq!(tool_title(&ran), "cargo build --release");
+        let read = ToolCall::new("b", "Read", r#"{"file_path":"src/main.rs"}"#);
+        assert_eq!(tool_title(&read), "Read src/main.rs");
+        let own = ToolCall::new("c", "unluminous_status", "{}");
+        assert_eq!(tool_title(&own), "status");
+        assert_eq!(took(1400), "1.4s");
+        assert_eq!(took(178_000), "2m 58s");
+    }
+
     #[test]
     fn a_bubble_is_as_wide_as_what_is_in_it_up_to_its_share() {
         // A short question drawn at eighty per cent of the pane would not read as a short question,
@@ -1512,9 +1571,12 @@ mod tests {
         assert_eq!(Piece::Tool { index: 0, body: 30.0 }.height(), TOOL_ROW + 30.0);
         assert_eq!(Piece::Thinking { body: 0.0 }.height(), THINKING_ROW);
         assert_eq!(
-            Piece::Words { body: 10.0, segment: 0, bubble: 100.0 }.height(),
+            Piece::Words { body: 10.0, segment: 0, bubble: 100.0, pad: PAD_Y }.height(),
             10.0 + PAD_Y * 2.0
         );
+        // An answer has no bubble and so no padding (`task-2235`).
+        assert_eq!(Piece::Words { body: 10.0, segment: 0, bubble: 100.0, pad: 0.0 }.height(), 10.0);
+        assert_eq!(Piece::Speaker.height(), SPEAKER);
         assert_eq!(Piece::Block { segment: 1, height: 42.0 }.height(), 42.0);
     }
 

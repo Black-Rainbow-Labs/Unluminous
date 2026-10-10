@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent-Chat parts</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/rux/tokens.css">
+<link rel="stylesheet" href="ds/rux/components/bundle.css">
+<script src="ds/rux/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div data-theme="unluminous-dark" style="width: 1440px; height: 2140px; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; gap: 52px; padding: 56px 60px; background: var(--surface-1); color: var(--ink-700); font-family: var(--font-ui); --card: linear-gradient(145deg, #252a32, #1c2026); --well: #1a1e24; --out: -7px -7px 16px #2a2f37, 8px 8px 18px #0c0f13; --out-sm: -4px -4px 9px #2a2f37, 4px 4px 10px #0c0f13; --in: inset 5px 5px 10px #0c0f13, inset -5px -5px 10px #2a2f37; --in-sm: inset 2px 2px 5px #0c0f13, inset -2px -2px 5px #2a2f37; --grad: linear-gradient(135deg, #3d78ff, #5cb6ff); --grad-hover: linear-gradient(135deg, #4d86ff, #70c2ff); --grad-out: -4px -4px 9px #2a2f37, 4px 5px 12px rgba(20, 60, 160, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25); --grad-in: inset 3px 3px 7px rgba(0, 0, 0, 0.35), inset -2px -2px 5px rgba(140, 200, 255, 0.25); --ring: 0 0 0 2px #1f232a, 0 0 0 4px rgba(92, 182, 255, 0.6); --sky: #5cb6ff; --up: #ff8f73; --down: #3ad6ad; --wait: #ffc062;">
+
+<header style="display: flex; flex-direction: column; gap: 6px;">
+<h1 style="margin: 0; font-family: var(--font-sans); font-size: 32px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; color: var(--ink-900);">Agent-Chat parts</h1>
+<span style="font-size: 13px; color: var(--ink-400);">Unluminous Dark · every part an answer is built from, at rest and in each state</span>
+</header>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px;">
+<section style="grid-column: span 2; display: flex; flex-direction: column; gap: 22px;">
+<h2 style="margin: 0; font-size: 13px; font-weight: 600; color: var(--ink-500);">Buttons</h2>
+<div style="display: grid; grid-template-columns: 100px repeat(5, minmax(0, 1fr)); column-gap: 16px; row-gap: 26px; align-items: center; justify-items: start; padding: 26px 28px; border-radius: 28px; background: var(--card); box-shadow: var(--out);">
+<span></span>
+<span style="font-size: 11px; color: var(--ink-400);">Rest</span>
+<span style="font-size: 11px; color: var(--ink-400);">Hover</span>
+<span style="font-size: 11px; color: var(--ink-400);">Pressed</span>
+<span style="font-size: 11px; color: var(--ink-400);">Focus</span>
+<span style="font-size: 11px; color: var(--ink-400);">Disabled</span>
+
+<span style="font-size: 12px; color: var(--ink-500);">Primary</span>
+<button style="height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--grad); box-shadow: var(--grad-out); color: #ffffff; font-family: var(--font-ui); font-size: 12.5px; font-weight: 600;">Apply change</button>
+<button style="height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--grad-hover); box-shadow: var(--grad-out); color: #ffffff; font-family: var(--font-ui); font-size: 12.5px; font-weight: 600;">Apply change</button>
+<button style="height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--grad); box-shadow: var(--grad-in); color: #ffffff; font-family: var(--font-ui); font-size: 12.5px; font-weight: 600;">Apply change</button>
+<button style="height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--grad); box-shadow: var(--grad-out), var(--ring); color: #ffffff; font-family: var(--font-ui); font-size: 12.5px; font-weight: 600;">Apply change</button>
+<button disabled style="height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--grad); box-shadow: var(--grad-out); opacity: 0.4; color: #ffffff; font-family: var(--font-ui); font-size: 12.5px; font-weight: 600;">Apply change</button>
+
+<span style="font-size: 12px; color: var(--ink-500);">Secondary</span>
+<button style="height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--card); box-shadow: var(--out-sm); color: var(--ink-700); font-family: var(--font-ui); font-size: 12.5px; font-weight: 500;">Open in editor</button>
+<button style="height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--card); box-shadow: var(--out-sm); color: var(--sky); font-family: var(--font-ui); font-size: 12.5px; font-weight: 500;">Open in editor</button>
+<button style="height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm); color: var(--ink-900); font-family: var(--font-ui); font-size: 12.5px; font-weight: 500;">Open in editor</button>
+<button style="height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--card); box-shadow: var(--out-sm), var(--ring); color: var(--ink-700); font-family: var(--font-ui); font-size: 12.5px; font-weight: 500;">Open in editor</button>
+<button disabled style="height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--card); box-shadow: var(--out-sm); opacity: 0.4; color: var(--ink-700); font-family: var(--font-ui); font-size: 12.5px; font-weight: 500;">Open in editor</button>
+
+<span style="font-size: 12px; color: var(--ink-500);">Ghost</span>
+<button style="height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--ink-500); font-family: var(--font-ui); font-size: 12.5px;">Copy</button>
+<button style="height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--sky); font-family: var(--font-ui); font-size: 12.5px;">Copy</button>
+<button style="height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm); color: var(--ink-900); font-family: var(--font-ui); font-size: 12.5px;">Copy</button>
+<button style="height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; box-shadow: var(--ring); color: var(--ink-500); font-family: var(--font-ui); font-size: 12.5px;">Copy</button>
+<button disabled style="height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; opacity: 0.4; color: var(--ink-500); font-family: var(--font-ui); font-size: 12.5px;">Copy</button>
+
+<span style="font-size: 12px; color: var(--ink-500);">Round</span>
+<button aria-label="History" style="width: 38px; height: 38px; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); color: var(--ink-500); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.UlIcon" name="clock" size="20"></x-import></button>
+<button aria-label="History" style="width: 38px; height: 38px; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); color: var(--sky); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.UlIcon" name="clock" size="20"></x-import></button>
+<button aria-label="History" style="width: 38px; height: 38px; padding: 0; border: 0; border-radius: 50%; background: var(--well); box-shadow: var(--in-sm); color: var(--ink-900); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.UlIcon" name="clock" size="20"></x-import></button>
+<button aria-label="History" style="width: 38px; height: 38px; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm), var(--ring); color: var(--ink-500); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.UlIcon" name="clock" size="20"></x-import></button>
+<button disabled aria-label="History" style="width: 38px; height: 38px; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); opacity: 0.4; color: var(--ink-500); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.UlIcon" name="clock" size="20"></x-import></button>
+
+<span style="font-size: 12px; color: var(--ink-500);">Settings</span>
+<button aria-label="Chat settings" style="width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); color: var(--ink-500); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.Icon" name="settings" size="13"></x-import></button>
+<button aria-label="Chat settings" style="width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); color: var(--sky); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.Icon" name="settings" size="13"></x-import></button>
+<button aria-label="Chat settings" style="width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--well); box-shadow: var(--in-sm); color: var(--sky); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.Icon" name="settings" size="13"></x-import></button>
+<button aria-label="Chat settings" style="width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm), var(--ring); color: var(--ink-500); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.Icon" name="settings" size="13"></x-import></button>
+<button disabled aria-label="Chat settings" style="width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); opacity: 0.4; color: var(--ink-500); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.Icon" name="settings" size="13"></x-import></button>
+
+<span style="font-size: 12px; color: var(--ink-500);">Send</span>
+<button aria-label="Send" style="width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: var(--grad); box-shadow: var(--grad-out); color: #ffffff; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin: 1px 2px 0 0;"><path d="M21.5 2.5 14.6 21.4l-4-8-8-4z" fill="currentColor" fill-opacity="0.22"></path><path d="M21.5 2.5 10.6 13.4"></path></svg></button>
+<button aria-label="Send" style="width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: var(--grad-hover); box-shadow: var(--grad-out); color: #ffffff; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin: 1px 2px 0 0;"><path d="M21.5 2.5 14.6 21.4l-4-8-8-4z" fill="currentColor" fill-opacity="0.22"></path><path d="M21.5 2.5 10.6 13.4"></path></svg></button>
+<button aria-label="Send" style="width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: var(--grad); box-shadow: var(--grad-in); color: #ffffff; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin: 1px 2px 0 0;"><path d="M21.5 2.5 14.6 21.4l-4-8-8-4z" fill="currentColor" fill-opacity="0.22"></path><path d="M21.5 2.5 10.6 13.4"></path></svg></button>
+<button aria-label="Send" style="width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: var(--grad); box-shadow: var(--grad-out), var(--ring); color: #ffffff; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin: 1px 2px 0 0;"><path d="M21.5 2.5 14.6 21.4l-4-8-8-4z" fill="currentColor" fill-opacity="0.22"></path><path d="M21.5 2.5 10.6 13.4"></path></svg></button>
+<button disabled aria-label="Send" style="width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: var(--grad); box-shadow: var(--grad-out); opacity: 0.4; color: #ffffff; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin: 1px 2px 0 0;"><path d="M21.5 2.5 14.6 21.4l-4-8-8-4z" fill="currentColor" fill-opacity="0.22"></path><path d="M21.5 2.5 10.6 13.4"></path></svg></button>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 22px;">
+<h2 style="margin: 0; font-size: 13px; font-weight: 600; color: var(--ink-500);">Status</h2>
+<div style="display: flex; flex-direction: column; gap: 16px; padding: 22px; border-radius: 28px; background: var(--card); box-shadow: var(--out);">
+<div style="display: flex; align-items: center; gap: 14px;">
+<span style="width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; background: var(--well); box-shadow: var(--in-sm); display: flex; align-items: center; justify-content: center; color: var(--ink-400);"><x-import component-from-global-scope="Rux.UlIcon" name="clock" size="18"></x-import></span>
+<span style="display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 12.5px; color: var(--ink-900);">Waiting</span><span style="font-size: 11px; color: var(--ink-400);">Queued behind the current step</span></span>
+</div>
+<div style="display: flex; align-items: center; gap: 14px;">
+<span style="position: relative; width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; background: var(--well); box-shadow: var(--in-sm); display: flex; align-items: center; justify-content: center;"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" style="transform: rotate(-90deg);"><circle cx="10" cy="10" r="7.5" fill="none" style="stroke: #2c323b; stroke-width: 2.5;"></circle><circle cx="10" cy="10" r="7.5" fill="none" style="stroke: var(--sky); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 14 47;"></circle></svg></span>
+<span style="display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 12.5px; color: var(--ink-900);">Running</span><span style="font-size: 11px; color: var(--ink-400);">A command or a reply in progress</span></span>
+</div>
+<div style="display: flex; align-items: center; gap: 14px;">
+<span style="width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; background: var(--well); box-shadow: var(--in-sm); display: flex; align-items: center; justify-content: center; color: var(--down);"><x-import component-from-global-scope="Rux.UlIcon" name="tick" size="18"></x-import></span>
+<span style="display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 12.5px; color: var(--ink-900);">Done</span><span style="font-size: 11px; color: var(--ink-400);">Finished without an error</span></span>
+</div>
+<div style="display: flex; align-items: center; gap: 14px;">
+<span style="width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; background: var(--well); box-shadow: var(--in-sm); display: flex; align-items: center; justify-content: center; color: var(--wait);"><x-import component-from-global-scope="Rux.UlIcon" name="key" size="18"></x-import></span>
+<span style="display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 12.5px; color: var(--ink-900);">Needs your OK</span><span style="font-size: 11px; color: var(--ink-400);">Paused until you allow it</span></span>
+</div>
+<div style="display: flex; align-items: center; gap: 14px;">
+<span style="width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; background: var(--well); box-shadow: var(--in-sm); display: flex; align-items: center; justify-content: center; color: var(--up);"><x-import component-from-global-scope="Rux.UlIcon" name="cross" size="18"></x-import></span>
+<span style="display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 12.5px; color: var(--ink-900);">Failed</span><span style="font-size: 11px; color: var(--ink-400);">Stopped; the error says why</span></span>
+</div>
+</div>
+<div style="align-self: flex-start; display: flex; align-items: center; gap: 12px; padding: 6px 18px 6px 6px; border-radius: 999px; background: var(--card); box-shadow: var(--out-sm);">
+<span style="position: relative; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; color: var(--ul-agent);">
+<svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true" style="position: absolute; inset: 0; transform: rotate(-90deg);"><circle cx="15" cy="15" r="13" fill="none" style="stroke: #2c323b; stroke-width: 2;"></circle><circle cx="15" cy="15" r="13" fill="none" style="stroke: var(--ul-agent); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 22 82;"></circle></svg>
+<x-import component-from-global-scope="Rux.Icon" name="spark" size="13" stroke="2"></x-import>
+</span>
+<span style="font-size: 12px; color: var(--ink-700);">claude is thinking</span>
+<span style="font-size: 11px; color: var(--ink-400);">0:04</span>
+</div>
+</section>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; align-items: start;">
+<section style="display: flex; flex-direction: column; gap: 20px;">
+<h2 style="margin: 0; font-size: 13px; font-weight: 600; color: var(--ink-500);">Messages</h2>
+<div style="align-self: flex-end; max-width: 300px; padding: 12px 16px; border-radius: 22px 22px 8px 22px; background: var(--card); box-shadow: var(--out-sm); font-size: 13px; line-height: 1.5; color: var(--ink-900);">Apply it and rebuild.</div>
+<div style="align-self: flex-end; display: flex; flex-direction: column; gap: 10px; padding: 6px 6px 12px; border-radius: 22px 22px 8px 22px; background: var(--card); box-shadow: var(--out-sm);">
+<div style="width: 250px; height: 130px; border-radius: 17px; background: var(--well); box-shadow: var(--in); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--ink-400);">
+<x-import component-from-global-scope="Rux.UlIcon" name="photo" size="24"></x-import>
+<span style="font-size: 11px;">[ build-timings.png ]</span>
+</div>
+<span style="padding: 0 10px; font-size: 13px; line-height: 1.5; color: var(--ink-900);">Why is kurbo built twice in this one?</span>
+</div>
+<article style="display: flex; flex-direction: column; gap: 10px;">
+<div style="display: flex; align-items: center; gap: 10px;">
+<span style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); display: flex; align-items: center; justify-content: center; color: var(--ul-agent);"><x-import component-from-global-scope="Rux.Icon" name="spark" size="14" stroke="2"></x-import></span>
+<span style="font-size: 12.5px; font-weight: 600; color: var(--ink-900);">claude</span>
+</div>
+<p style="margin: 0; font-size: 13px; line-height: 1.65; color: var(--ink-700); text-wrap: pretty;">Done. <span style="font-family: var(--font-code); font-size: 12.5px; color: var(--ink-900);">kurbo</span> is pinned to 0.11 and the release build is back to <span style="font-weight: 600; color: var(--ink-900);">124 seconds</span>.</p>
+<div style="display: flex; align-items: center; gap: 4px;">
+<button aria-label="Copy answer" style="width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--ink-400); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.Icon" name="copy" size="14"></x-import></button>
+<button aria-label="Run again" style="width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--ink-400); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.UlIcon" name="rerun" size="18"></x-import></button>
+<span style="margin-left: 4px; font-size: 11px; color: var(--ink-400);">2m 41s · 1.2k tokens</span>
+</div>
+</article>
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 12px; border-radius: 22px; background: var(--card); box-shadow: var(--out);">
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; background: var(--well); box-shadow: var(--in-sm); display: flex; align-items: center; justify-content: center; color: var(--up);"><x-import component-from-global-scope="Rux.UlIcon" name="cross" size="18"></x-import></span>
+<span style="flex: 1; display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 12.5px; color: var(--ink-900);">cargo exited with code 101</span><span style="font-size: 11px; color: var(--ink-400);">cargo build --release</span></span>
+</div>
+<div style="padding: 12px 14px; border-radius: 16px; background: var(--well); box-shadow: var(--in-sm); font-family: var(--font-code); font-size: 11.5px; line-height: 1.65; white-space: pre; overflow: hidden;"><span style="color: var(--up);">error[E0432]: unresolved import `kurbo::BezPath`</span>
+<span style="color: var(--ink-400);">  --&gt; crates/unluminous-app/src/theme/icon.rs:4:5</span></div>
+<div style="display: flex; align-items: center; gap: 8px;">
+<button style="height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--ink-500); font-family: var(--font-ui); font-size: 12.5px;">Show full log</button>
+<span style="flex: 1;"></span>
+<button style="height: 36px; display: flex; align-items: center; gap: 6px; padding: 0 16px 0 12px; border: 0; border-radius: 999px; background: var(--card); box-shadow: var(--out-sm); color: var(--ink-700); font-family: var(--font-ui); font-size: 12.5px; font-weight: 500;"><x-import component-from-global-scope="Rux.UlIcon" name="rerun" size="17"></x-import>Retry</button>
+</div>
+</div>
+<div style="align-self: center; padding: 7px 16px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm); font-size: 11px; color: var(--ink-400);">Context compacted · 41k → 9k tokens</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 20px;">
+<h2 style="margin: 0; font-size: 13px; font-weight: 600; color: var(--ink-500);">Tool runs</h2>
+<div style="display: flex; flex-direction: column; gap: 14px; padding: 12px 12px 16px; border-radius: 22px; background: var(--card); box-shadow: var(--out);">
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; background: var(--well); box-shadow: var(--in-sm); display: flex; align-items: center; justify-content: center;"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" style="transform: rotate(-90deg);"><circle cx="10" cy="10" r="7.5" fill="none" style="stroke: #2c323b; stroke-width: 2.5;"></circle><circle cx="10" cy="10" r="7.5" fill="none" style="stroke: var(--sky); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 14 47;"></circle></svg></span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px;"><span style="font-family: var(--font-code); font-size: 12px; color: var(--ink-900); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">cargo build --release</span><span style="font-size: 11px; color: var(--ink-400);">Compiling 212 of 580 · 0:47</span></span>
+<button aria-label="Stop this command" style="width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); display: flex; align-items: center; justify-content: center;"><span style="width: 9px; height: 9px; border-radius: 2px; background: var(--up);"></span></button>
+</div>
+<div style="position: relative; margin: 0 6px; height: 12px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm);">
+<div style="position: absolute; left: 2px; top: 2px; bottom: 2px; width: calc(36% - 4px); border-radius: 999px; background: var(--grad);"></div>
+<span style="position: absolute; left: calc(36% - 13px); top: -5px; width: 22px; height: 22px; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm);"></span>
+</div>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 22px; background: var(--card); box-shadow: var(--out);">
+<span style="width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; background: var(--well); box-shadow: var(--in-sm); display: flex; align-items: center; justify-content: center; color: var(--down);"><x-import component-from-global-scope="Rux.UlIcon" name="tick" size="18"></x-import></span>
+<span style="flex: 1; display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 12.5px; color: var(--ink-900);">Ran 3 commands</span><span style="font-size: 11px; color: var(--ink-400);">3m 00s</span></span>
+<button aria-label="Show commands" style="width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); color: var(--ink-400); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.Icon" name="chevDown" size="12" stroke="2"></x-import></button>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 22px; background: var(--card); box-shadow: var(--out);">
+<span style="width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; background: var(--well); box-shadow: var(--in-sm); display: flex; align-items: center; justify-content: center; color: var(--up);"><x-import component-from-global-scope="Rux.UlIcon" name="cross" size="18"></x-import></span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px;"><span style="font-family: var(--font-code); font-size: 12px; color: var(--ink-900); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">cargo test -p unluminous-app</span><span style="font-size: 11px; color: var(--up);">Exited with 101 · 2 tests failed</span></span>
+<button aria-label="Show output" style="width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); color: var(--ink-400); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.Icon" name="chevDown" size="12" stroke="2"></x-import></button>
+</div>
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 12px; border-radius: 22px; background: var(--card); box-shadow: var(--out);">
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; background: var(--well); box-shadow: var(--in-sm); display: flex; align-items: center; justify-content: center; color: var(--down);"><x-import component-from-global-scope="Rux.UlIcon" name="tick" size="18"></x-import></span>
+<span style="flex: 1; display: flex; flex-direction: column; gap: 1px;"><span style="font-family: var(--font-code); font-size: 12px; color: var(--ink-900);">cargo tree --duplicates</span><span style="font-size: 11px; color: var(--ink-400);">1.4s</span></span>
+<button aria-label="Hide output" style="width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); color: var(--ink-400); display: flex; align-items: center; justify-content: center;"><span style="display: flex; transform: rotate(180deg);"><x-import component-from-global-scope="Rux.Icon" name="chevDown" size="12" stroke="2"></x-import></span></button>
+</div>
+<div style="padding: 12px 0; border-radius: 16px; background: var(--well); box-shadow: var(--in-sm); font-family: var(--font-code); font-size: 11.5px; line-height: 20px;">
+<sc-for list="{{tree}}" as="t" hint-placeholder-count="5">
+<div style="padding: 0 14px; white-space: pre; overflow: hidden; text-overflow: ellipsis; color: {{t.colour}};">{{t.text}}</div>
+</sc-for>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 12px; border-radius: 22px; background: var(--card); box-shadow: var(--out);">
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; background: var(--well); box-shadow: var(--in-sm); display: flex; align-items: center; justify-content: center; color: var(--down);"><x-import component-from-global-scope="Rux.UlIcon" name="tick" size="18"></x-import></span>
+<span style="flex: 1; display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 12.5px; color: var(--ink-900);">Read 4 files</span><span style="font-size: 11px; color: var(--ink-400);">0.1s</span></span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; padding: 0 2px 2px;">
+<sc-for list="{{files}}" as="f" hint-placeholder-count="4">
+<span style="height: 30px; display: flex; align-items: center; gap: 4px; padding: 0 12px 0 8px; border-radius: 999px; background: var(--card); box-shadow: var(--out-sm); font-size: 11.5px; color: var(--ink-700);"><span style="display: flex; color: var(--ink-400);"><x-import component-from-global-scope="Rux.UlIcon" name="file" size="15"></x-import></span>{{f}}</span>
+</sc-for>
+</div>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 20px;">
+<h2 style="margin: 0; font-size: 13px; font-weight: 600; color: var(--ink-500);">Asking · code · changes</h2>
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 12px; border-radius: 22px; background: var(--card); box-shadow: var(--out);">
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; background: var(--well); box-shadow: var(--in-sm); display: flex; align-items: center; justify-content: center; color: var(--wait);"><x-import component-from-global-scope="Rux.UlIcon" name="key" size="18"></x-import></span>
+<span style="flex: 1; display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 12.5px; color: var(--ink-900);">claude wants to run a command</span><span style="font-size: 11px; color: var(--ink-400);">It changes Cargo.lock</span></span>
+</div>
+<div style="padding: 12px 14px; border-radius: 16px; background: var(--well); box-shadow: var(--in-sm); font-family: var(--font-code); font-size: 12px; color: var(--ink-900);">cargo update -p kurbo --precise 0.11.1</div>
+<div style="display: flex; align-items: center; gap: 8px;">
+<button style="height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--ink-500); font-family: var(--font-ui); font-size: 12.5px;">Deny</button>
+<span style="flex: 1;"></span>
+<button style="height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--card); box-shadow: var(--out-sm); color: var(--ink-700); font-family: var(--font-ui); font-size: 12.5px; font-weight: 500;">Always allow</button>
+<button style="height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--grad); box-shadow: var(--grad-out); color: #ffffff; font-family: var(--font-ui); font-size: 12.5px; font-weight: 600;">Allow once</button>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 12px; border-radius: 22px; background: var(--card); box-shadow: var(--out);">
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; background: var(--well); box-shadow: var(--in-sm); display: flex; align-items: center; justify-content: center; color: var(--ink-500);"><x-import component-from-global-scope="Rux.UlIcon" name="file" size="18"></x-import></span>
+<span style="flex: 1; display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 12.5px; color: var(--ink-900);">icon.rs</span><span style="font-size: 11px; color: var(--ink-400);">Rust · lines 1–6</span></span>
+<button aria-label="Copy code" style="width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); color: var(--ink-500); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.Icon" name="copy" size="13"></x-import></button>
+</div>
+<div style="padding: 12px 0; border-radius: 16px; background: var(--well); box-shadow: var(--in-sm); font-family: var(--font-code); font-size: 11px; line-height: 20px;">
+<sc-for list="{{code}}" as="line" hint-placeholder-count="6">
+<div style="display: grid; grid-template-columns: 30px minmax(0, 1fr);">
+<span style="text-align: right; padding-right: 10px; color: var(--ink-300);">{{line.n}}</span>
+<span style="white-space: pre; overflow: hidden;"><sc-for list="{{line.parts}}" as="p" hint-placeholder-count="4"><span style="color: {{p.c}};">{{p.t}}</span></sc-for></span>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 12px; border-radius: 22px; background: var(--card); box-shadow: var(--out);">
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; background: var(--well); box-shadow: var(--in-sm); display: flex; align-items: center; justify-content: center; color: var(--ink-500);"><x-import component-from-global-scope="Rux.UlIcon" name="file" size="18"></x-import></span>
+<span style="flex: 1; display: flex; flex-direction: column; gap: 1px;"><span style="font-size: 12.5px; color: var(--ink-900);">icon.rs</span><span style="font-size: 11px; color: var(--ink-400);">1 line changed</span></span>
+</div>
+<div style="padding: 10px 0; border-radius: 16px; background: var(--well); box-shadow: var(--in-sm); font-family: var(--font-code); font-size: 11.5px; line-height: 21px;">
+<sc-for list="{{diff}}" as="d" hint-placeholder-count="4">
+<div style="display: grid; grid-template-columns: 34px 14px minmax(0, 1fr); padding-right: 12px; background: {{d.bg}};">
+<span style="text-align: right; padding-right: 10px; color: var(--ink-300);">{{d.n}}</span>
+<span style="color: {{d.signColour}};">{{d.sign}}</span>
+<span style="white-space: pre; overflow: hidden; color: var(--ink-700);">{{d.text}}</span>
+</div>
+</sc-for>
+</div>
+<div style="display: flex; align-items: center; gap: 8px;">
+<button style="height: 36px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--ink-500); font-family: var(--font-ui); font-size: 12.5px;">Reject</button>
+<span style="flex: 1;"></span>
+<button style="height: 36px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--card); box-shadow: var(--out-sm); color: var(--ink-700); font-family: var(--font-ui); font-size: 12.5px; font-weight: 500;">Open in editor</button>
+<button style="height: 36px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--grad); box-shadow: var(--grad-out); color: #ffffff; font-family: var(--font-ui); font-size: 12.5px; font-weight: 600;">Apply change</button>
+</div>
+</div>
+</section>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; align-items: start;">
+<section style="grid-column: span 2; display: flex; flex-direction: column; gap: 20px;">
+<h2 style="margin: 0; font-size: 13px; font-weight: 600; color: var(--ink-500);">Charts</h2>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px;">
+
+<figure aria-label="Total release build 178 seconds: 128 seconds last week plus 50 seconds added" style="margin: 0; display: flex; align-items: center; gap: 22px; padding: 20px 22px 20px 20px; border-radius: 26px; background: var(--card); box-shadow: var(--out);">
+<div style="position: relative; width: 150px; height: 150px; flex-shrink: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); display: flex; align-items: center; justify-content: center;">
+<div style="width: 132px; height: 132px; border-radius: 50%; background: var(--well); box-shadow: var(--in);"></div>
+<svg width="150" height="150" viewBox="0 0 150 150" aria-hidden="true" style="position: absolute; inset: 0; transform: rotate(-90deg);">
+<defs><linearGradient id="dial" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color: #3d78ff;"></stop><stop offset="1" style="stop-color: #5cb6ff;"></stop></linearGradient></defs>
+<sc-for list="{{dial}}" as="s" hint-placeholder-count="2">
+<circle cx="75" cy="75" r="55" fill="none" style="stroke: {{s.stroke}}; stroke-width: 10; stroke-linecap: round; stroke-dasharray: {{s.dash}}; stroke-dashoffset: {{s.offset}};"></circle>
+</sc-for>
+</svg>
+<div style="position: absolute; width: 88px; height: 88px; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;">
+<span style="font-family: var(--font-sans); font-size: 25px; font-weight: 500; letter-spacing: -0.03em; line-height: 1; color: var(--ink-900);">178<span style="font-size: 12px; color: var(--ink-400);"> s</span></span>
+<span style="font-size: 10.5px; color: var(--up);">+39%</span>
+</div>
+</div>
+<div style="flex: 1; display: flex; flex-direction: column; gap: 14px;">
+<span style="font-size: 12px; color: var(--ink-500);">Release build</span>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ink-400);"><span style="width: 14px; height: 4px; border-radius: 2px; background: #3a404a;"></span>Last week</span>
+<span style="padding-left: 22px; font-family: var(--font-sans); font-size: 17px; font-weight: 500; color: var(--ink-700);">128 s</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px;">
+<span style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ink-400);"><span style="width: 14px; height: 4px; border-radius: 2px; background: var(--grad);"></span>Added this week</span>
+<span style="padding-left: 22px; font-family: var(--font-sans); font-size: 17px; font-weight: 500; color: var(--ink-900);">50 s</span>
+</div>
+</div>
+</figure>
+
+<figure aria-label="Where this week's 178 seconds went: app 131, core 38, cli 9" style="margin: 0; display: flex; align-items: center; gap: 22px; padding: 20px 22px 20px 20px; border-radius: 26px; background: var(--card); box-shadow: var(--out);">
+<div style="position: relative; width: 150px; height: 150px; flex-shrink: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); display: flex; align-items: center; justify-content: center;">
+<div style="width: 132px; height: 132px; border-radius: 50%; background: var(--well); box-shadow: var(--in);"></div>
+<svg width="150" height="150" viewBox="0 0 150 150" aria-hidden="true" style="position: absolute; inset: 0; transform: rotate(-90deg);">
+<defs><linearGradient id="donut" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color: #3d78ff;"></stop><stop offset="1" style="stop-color: #5cb6ff;"></stop></linearGradient></defs>
+<sc-for list="{{donut}}" as="s" hint-placeholder-count="3">
+<circle cx="75" cy="75" r="55" fill="none" style="stroke: {{s.stroke}}; stroke-width: 10; stroke-linecap: round; stroke-dasharray: {{s.dash}}; stroke-dashoffset: {{s.offset}};"></circle>
+</sc-for>
+</svg>
+<div style="position: absolute; width: 88px; height: 88px; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;">
+<span style="font-family: var(--font-sans); font-size: 21px; font-weight: 500; letter-spacing: -0.03em; line-height: 1; color: var(--ink-900);">74%</span>
+<span style="font-size: 10px; color: var(--ink-400);">app</span>
+</div>
+</div>
+<div style="flex: 1; display: flex; flex-direction: column; gap: 12px;">
+<span style="font-size: 12px; color: var(--ink-500);">Where the time goes</span>
+<sc-for list="{{donutLegend}}" as="l" hint-placeholder-count="3">
+<div style="display: flex; align-items: center; gap: 10px;">
+<span style="width: 10px; height: 10px; border-radius: 50%; background: {{l.swatch}};"></span>
+<span style="flex: 1; font-size: 12px; color: var(--ink-700);">{{l.name}}</span>
+<span style="font-family: var(--font-sans); font-size: 13px; font-weight: 500; color: var(--ink-900);">{{l.value}}</span>
+</div>
+</sc-for>
+</div>
+</figure>
+
+<figure aria-label="Build time by crate" style="margin: 0; display: flex; flex-direction: column; gap: 18px; padding: 20px 22px 22px; border-radius: 26px; background: var(--card); box-shadow: var(--out);">
+<sc-for list="{{crates}}" as="c" hint-placeholder-count="3">
+<div style="display: flex; flex-direction: column; gap: 10px;">
+<div style="display: flex; align-items: baseline; gap: 8px;">
+<span style="flex: 1; font-size: 12.5px; color: var(--ink-900);">{{c.name}}</span>
+<span style="font-size: 11px; color: var(--ink-400);">{{c.last}} s →</span>
+<span style="font-family: var(--font-sans); font-size: 14px; font-weight: 500; color: var(--ink-900);">{{c.now}} s</span>
+<span style="width: 40px; text-align: right; font-size: 11px; color: {{c.colour}};">{{c.delta}}</span>
+</div>
+<div style="position: relative; height: 12px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm);">
+<div style="position: absolute; left: 2px; top: 2px; bottom: 2px; width: {{c.fill}}; border-radius: 999px; background: var(--grad);"></div>
+<span style="position: absolute; left: {{c.mark}}; top: -3px; width: 2px; height: 18px; border-radius: 1px; background: var(--ink-400); opacity: 0.6;"></span>
+<span style="position: absolute; left: {{c.knob}}; top: -5px; width: 22px; height: 22px; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm);"></span>
+</div>
+</div>
+</sc-for>
+<figcaption style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ink-400);"><span style="width: 2px; height: 12px; border-radius: 1px; background: var(--ink-400); opacity: 0.6;"></span>Last week</figcaption>
+</figure>
+
+<figure aria-label="Release build over the last 14 days, rising from 119 to 178 seconds after rux was added" style="margin: 0; display: flex; flex-direction: column; gap: 14px; padding: 20px 22px 18px; border-radius: 26px; background: var(--card); box-shadow: var(--out);">
+<div style="display: flex; align-items: baseline; gap: 10px;">
+<span style="flex: 1; font-size: 12px; color: var(--ink-500);">Release build · 14 days</span>
+<span style="font-family: var(--font-sans); font-size: 20px; font-weight: 500; letter-spacing: -0.02em; color: var(--ink-900);">178<span style="font-size: 11px; color: var(--ink-400);"> s</span></span>
+<span style="font-size: 11px; color: var(--up);">+50%</span>
+</div>
+<div style="padding: 14px 14px 10px; border-radius: 18px; background: var(--well); box-shadow: var(--in-sm);">
+<svg width="100%" height="150" viewBox="0 0 360 150" aria-hidden="true" style="display: block; overflow: visible;">
+<defs>
+<linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color: #3d78ff; stop-opacity: 0.4;"></stop><stop offset="1" style="stop-color: #3d78ff; stop-opacity: 0;"></stop></linearGradient>
+<linearGradient id="stroke" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color: #3d78ff;"></stop><stop offset="1" style="stop-color: #5cb6ff;"></stop></linearGradient>
+</defs>
+<line x1="{{line.markX}}" x2="{{line.markX}}" y1="6" y2="140" style="stroke: var(--ink-400); stroke-opacity: 0.4; stroke-width: 1; stroke-dasharray: 3 4;"></line>
+<text x="{{line.markTx}}" y="14" style="font-family: var(--font-ui); font-size: 10px; fill: var(--ink-400);">rux added</text>
+<path d="{{line.area}}" style="fill: url(#area);"></path>
+<path d="{{line.path}}" fill="none" style="stroke: url(#stroke); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round;"></path>
+<circle cx="{{line.lastX}}" cy="{{line.lastY}}" r="7" style="fill: #232830; stroke: var(--sky); stroke-width: 3;"></circle>
+</svg>
+<div style="display: flex; justify-content: space-between; padding-top: 6px; font-size: 10.5px; color: var(--ink-400);"><span>26 Sep</span><span>9 Oct</span></div>
+</div>
+</figure>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 20px;">
+<h2 style="margin: 0; font-size: 13px; font-weight: 600; color: var(--ink-500);">Readouts</h2>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;">
+<sc-for list="{{kpis}}" as="k" hint-placeholder-count="3">
+<div style="display: flex; flex-direction: column; gap: 6px; padding: 16px 14px 14px; border-radius: 22px; background: var(--card); box-shadow: var(--out);">
+<span style="font-size: 11px; color: var(--ink-400);">{{k.label}}</span>
+<span style="font-family: var(--font-sans); font-size: 24px; font-weight: 500; letter-spacing: -0.03em; line-height: 1.1; color: var(--ink-900);">{{k.value}}<span style="font-size: 12px; color: var(--ink-400);"> s</span></span>
+<span style="font-size: 11px; color: {{k.colour}};">{{k.delta}}</span>
+<svg width="100%" height="26" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="display: block; margin-top: 4px;"><path d="{{k.spark}}" fill="none" vector-effect="non-scaling-stroke" style="stroke: {{k.colour}}; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"></path></svg>
+</div>
+</sc-for>
+</div>
+<div style="padding: 8px 4px; border-radius: 22px; background: var(--well); box-shadow: var(--in-sm);">
+<table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+<thead>
+<tr>
+<th scope="col" style="padding: 10px 14px 8px; text-align: left; font-size: 11px; font-weight: 400; color: var(--ink-400);">Crate</th>
+<th scope="col" style="padding: 10px 14px 8px; text-align: right; font-size: 11px; font-weight: 400; color: var(--ink-400);">Last</th>
+<th scope="col" style="padding: 10px 14px 8px; text-align: right; font-size: 11px; font-weight: 400; color: var(--ink-400);">This</th>
+<th scope="col" style="padding: 10px 14px 8px; text-align: right; font-size: 11px; font-weight: 400; color: var(--ink-400);">Change</th>
+</tr>
+</thead>
+<tbody>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="4">
+<tr>
+<td style="padding: 9px 14px; border-top: 1px solid rgba(255, 255, 255, 0.04); color: var(--ink-900);">{{r.name}}</td>
+<td style="padding: 9px 14px; border-top: 1px solid rgba(255, 255, 255, 0.04); text-align: right; color: var(--ink-500);">{{r.last}}</td>
+<td style="padding: 9px 14px; border-top: 1px solid rgba(255, 255, 255, 0.04); text-align: right; color: var(--ink-900);">{{r.now}}</td>
+<td style="padding: 9px 14px; border-top: 1px solid rgba(255, 255, 255, 0.04); text-align: right; color: {{r.colour}};">{{r.delta}}</td>
+</tr>
+</sc-for>
+</tbody>
+</table>
+</div>
+</section>
+</div>
+
+<section style="display: flex; flex-direction: column; gap: 20px;">
+<h2 style="margin: 0; font-size: 13px; font-weight: 600; color: var(--ink-500);">Prompt</h2>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 40px; align-items: end;">
+
+<div style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
+<span style="align-self: flex-start; font-size: 11px; color: var(--ink-400);">Empty</span>
+<button aria-label="Chat settings" style="width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); color: var(--ink-500); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.Icon" name="settings" size="13"></x-import></button>
+<div style="position: relative; width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 20px; border-radius: 30px; background: var(--well); box-shadow: var(--in);">
+<label for="p-empty" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;">Ask the agent</label>
+<textarea id="p-empty" rows="1" placeholder="Ask about this workspace" style="flex: 1; min-width: 0; resize: none; border: 0; outline: 0; padding: 0; background: transparent; color: var(--ink-900); font-family: var(--font-ui); font-size: 13px; line-height: 20px;"></textarea>
+<button disabled aria-label="Send" style="width: 44px; height: 44px; flex-shrink: 0; padding: 0; border: 0; border-radius: 50%; background: var(--grad); box-shadow: var(--grad-out); opacity: 0.4; color: #ffffff; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin: 1px 2px 0 0;"><path d="M21.5 2.5 14.6 21.4l-4-8-8-4z" fill="currentColor" fill-opacity="0.22"></path><path d="M21.5 2.5 10.6 13.4"></path></svg></button>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
+<span style="align-self: flex-start; font-size: 11px; color: var(--ink-400);">Writing</span>
+<button aria-label="Chat settings" style="width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); color: var(--ink-500); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.Icon" name="settings" size="13"></x-import></button>
+<div style="position: relative; width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 20px; border-radius: 30px; background: var(--well); box-shadow: var(--in);">
+<label for="p-writing" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;">Ask the agent</label>
+<textarea id="p-writing" rows="1" style="flex: 1; min-width: 0; resize: none; border: 0; outline: 0; padding: 0; background: transparent; color: var(--ink-900); font-family: var(--font-ui); font-size: 13px; line-height: 20px;">Does the cli crate need the same pin?</textarea>
+<button aria-label="Send" style="width: 44px; height: 44px; flex-shrink: 0; padding: 0; border: 0; border-radius: 50%; background: var(--grad); box-shadow: var(--grad-out); color: #ffffff; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin: 1px 2px 0 0;"><path d="M21.5 2.5 14.6 21.4l-4-8-8-4z" fill="currentColor" fill-opacity="0.22"></path><path d="M21.5 2.5 10.6 13.4"></path></svg></button>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
+<span style="align-self: flex-start; font-size: 11px; color: var(--ink-400);">Answering</span>
+<button aria-label="Chat settings" style="width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); color: var(--ink-500); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.Icon" name="settings" size="13"></x-import></button>
+<div style="position: relative; width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 20px; border-radius: 30px; background: var(--well); box-shadow: var(--in);">
+<label for="p-busy" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;">Ask the agent</label>
+<textarea id="p-busy" rows="1" placeholder="claude is answering…" style="flex: 1; min-width: 0; resize: none; border: 0; outline: 0; padding: 0; background: transparent; color: var(--ink-900); font-family: var(--font-ui); font-size: 13px; line-height: 20px;"></textarea>
+<button aria-label="Stop the answer" style="width: 44px; height: 44px; flex-shrink: 0; padding: 0; border: 0; border-radius: 50%; background: var(--card); box-shadow: var(--out-sm); display: flex; align-items: center; justify-content: center;"><span style="width: 12px; height: 12px; border-radius: 3px; background: var(--up);"></span></button>
+</div>
+</div>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2140}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const last = 128, total = 178;
+    const MAX = 140;
+    const pct = (v) => (v / MAX) * 100;
+    const crate = (name, a, b) => ({
+      name, last: a, now: b,
+      delta: `${b > a ? '+' : '−'}${Math.round(Math.abs(b - a) / a * 100)}%`,
+      colour: b > a ? 'var(--up)' : 'var(--down)',
+      fill: `calc(${pct(b).toFixed(1)}% - 4px)`,
+      mark: `calc(${pct(a).toFixed(1)}% - 1px)`,
+      knob: `calc(${pct(b).toFixed(1)}% - 13px)`
+    });
+    const smooth = (pts) => {
+      let d = `M ${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+        const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
+        const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+        d += ` C ${c1[0].toFixed(1)},${c1[1].toFixed(1)} ${c2[0].toFixed(1)},${c2[1].toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+      }
+      return d;
+    };
+    const days = [119, 121, 118, 124, 122, 126, 125, 131, 129, 134, 151, 170, 176, 178];
+    const X0 = 8, X1 = 350, Y0 = 138, Y1 = 26, LO = 110, HI = 185;
+    const px = (i) => X0 + (i * (X1 - X0)) / (days.length - 1);
+    const py = (v) => Y0 - ((v - LO) / (HI - LO)) * (Y0 - Y1);
+    const pts = days.map((d, i) => [px(i), py(d)]);
+    const path = smooth(pts);
+    const spark = (vals) => {
+      const lo = Math.min(...vals), hi = Math.max(...vals), span = hi - lo || 1;
+      return smooth(vals.map((v, i) => [2 + (i * 96) / (vals.length - 1), 22 - ((v - lo) / span) * 18]));
+    };
+    const arcs = (parts, r, sw, gapPx) => {
+      const circ = 2 * Math.PI * r;
+      const sum = parts.reduce((s, p) => s + p.v, 0);
+      let acc = 0;
+      return parts.map((p) => {
+        const len = (circ * p.v) / sum;
+        const seg = { stroke: p.stroke, dash: `${Math.max(0.5, len - gapPx - sw).toFixed(2)} ${circ.toFixed(2)}`, offset: (-(acc + gapPx / 2 + sw / 2)).toFixed(2) };
+        acc += len;
+        return seg;
+      });
+    };
+    const donut = arcs([{ v: 131, stroke: 'url(#donut)' }, { v: 38, stroke: '#4a515c' }, { v: 9, stroke: '#363c46' }], 55, 10, 5);
+    const K = (c) => `var(--ul-syntax-${c})`;
+    const coral = 'var(--up)', mint = 'var(--down)';
+    return {
+      dial: arcs([{ v: last, stroke: '#3a404a' }, { v: total - last, stroke: 'url(#dial)' }], 55, 10, 5),
+      donut,
+      donutLegend: [
+        { name: 'unluminous-app', value: '131 s', swatch: 'linear-gradient(135deg, #3d78ff, #5cb6ff)' },
+        { name: 'unluminous-core', value: '38 s', swatch: '#4a515c' },
+        { name: 'unluminous-cli', value: '9 s', swatch: '#363c46' }
+      ],
+      crates: [crate('unluminous-app', 81, 131), crate('unluminous-core', 41, 38), crate('unluminous-cli', 6, 9)],
+      line: {
+        path,
+        area: `${path} L ${px(days.length - 1).toFixed(1)},${Y0 + 6} L ${px(0).toFixed(1)},${Y0 + 6} Z`,
+        lastX: px(days.length - 1).toFixed(1),
+        lastY: py(days[days.length - 1]).toFixed(1),
+        markX: px(10).toFixed(1),
+        markTx: (px(10) - 58).toFixed(1)
+      },
+      kpis: [
+        { label: 'Total', value: '178', delta: '+39%', colour: coral, spark: spark([126, 131, 129, 134, 151, 170, 178]) },
+        { label: 'App', value: '131', delta: '+62%', colour: coral, spark: spark([81, 84, 83, 88, 104, 122, 131]) },
+        { label: 'Core', value: '38', delta: '−7%', colour: mint, spark: spark([41, 41, 40, 40, 39, 38, 38]) }
+      ],
+      rows: [
+        { name: 'unluminous-app', last: '81 s', now: '131 s', delta: '+62%', colour: coral },
+        { name: 'unluminous-core', last: '41 s', now: '38 s', delta: '−7%', colour: mint },
+        { name: 'unluminous-chat', last: '22 s', now: '24 s', delta: '+9%', colour: coral },
+        { name: 'unluminous-cli', last: '6 s', now: '9 s', delta: '+50%', colour: coral }
+      ],
+      tree: [
+        { text: 'kurbo v0.11.1', colour: 'var(--ink-900)' },
+        { text: '└── rux v0.4.0', colour: 'var(--ink-500)' },
+        { text: '    └── unluminous-app v0.68.2', colour: 'var(--ink-500)' },
+        { text: 'kurbo v0.12.0', colour: 'var(--ink-900)' },
+        { text: '└── unluminous-app v0.68.2', colour: 'var(--ink-500)' }
+      ],
+      files: ['Cargo.toml', 'Cargo.lock', 'theme/mod.rs', 'theme/icon.rs'],
+      code: [
+        { n: '1', parts: [{ t: 'pub fn ', c: K('keyword') }, { t: 'more', c: K('function') }, { t: '(painter: &', c: K('text') }, { t: 'Painter', c: K('type') }, { t: ', centre: ', c: K('text') }, { t: 'Pos2', c: K('type') }, { t: ') {', c: K('text') }] },
+        { n: '2', parts: [{ t: '    for ', c: K('keyword') }, { t: 'step ', c: K('text') }, { t: 'in ', c: K('keyword') }, { t: '[', c: K('text') }, { t: '-4.5, 0.0, 4.5', c: K('number') }, { t: '] {', c: K('text') }] },
+        { n: '3', parts: [{ t: '        let ', c: K('keyword') }, { t: 'dot = ', c: K('text') }, { t: 'Pos2', c: K('type') }, { t: '::', c: K('operator') }, { t: 'new', c: K('function') }, { t: '(centre.x, centre.y + step);', c: K('text') }] },
+        { n: '4', parts: [{ t: '        painter.', c: K('text') }, { t: 'circle_filled', c: K('function') }, { t: '(dot, ', c: K('text') }, { t: '1.4', c: K('number') }, { t: ', ', c: K('text') }, { t: 'INK', c: K('builtin') }, { t: ');', c: K('text') }] },
+        { n: '5', parts: [{ t: '    }', c: K('text') }] },
+        { n: '6', parts: [{ t: '}', c: K('text') }] }
+      ],
+      diff: [
+        { n: '3', sign: '', text: 'use egui::{Color32, Pos2, Stroke};', bg: 'transparent', signColour: 'var(--ink-400)' },
+        { n: '4', sign: '−', text: 'use kurbo::BezPath;', bg: 'rgba(255, 143, 115, 0.08)', signColour: coral },
+        { n: '4', sign: '+', text: 'use rux::kurbo::BezPath;', bg: 'rgba(58, 214, 173, 0.08)', signColour: mint },
+        { n: '5', sign: '', text: '', bg: 'transparent', signColour: 'var(--ink-400)' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

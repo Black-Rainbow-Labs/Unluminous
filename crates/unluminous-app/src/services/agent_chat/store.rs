@@ -213,6 +213,7 @@ fn to_json(chat: &Conversation) -> serde_json::Value {
         "provider": chat.provider,
         "changed": chat.changed,
         "usage": { "input": chat.usage.input, "output": chat.usage.output },
+        "context": { "used": chat.context_used, "window": chat.context_window },
         "messages": chat.messages.iter().map(|message| serde_json::json!({
             "id": message.id,
             "role": message.role.wire_name(),
@@ -253,6 +254,8 @@ fn from_json(id: &str, value: &serde_json::Value) -> Conversation {
         input: value["usage"]["input"].as_u64().unwrap_or(0),
         output: value["usage"]["output"].as_u64().unwrap_or(0),
     };
+    chat.context_used = value["context"]["used"].as_u64();
+    chat.context_window = value["context"]["window"].as_u64();
     for one in value["messages"].as_array().map(Vec::as_slice).unwrap_or_default() {
         let role = match one["role"].as_str() {
             Some("user") => Role::User,

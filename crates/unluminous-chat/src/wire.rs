@@ -75,6 +75,17 @@ pub enum Reply {
         input: u64,
         output: u64,
     },
+    /// How much of the model's context the conversation now fills, and how large that context is,
+    /// when the agent says (`task-2235`).
+    ///
+    /// Claude Code says both: each message's `message_start` carries its input, cache included, and
+    /// the turn's `result` names each model's `contextWindow`. Nothing else names a window, so for
+    /// every other shape the size is unknown and the Chat settings say so rather than drawing a
+    /// fraction of a number nobody measured.
+    Context {
+        used: Option<u64>,
+        window: Option<u64>,
+    },
     /// The answer is over, and why: `stop`, `tool_use`, `length`.
     Finished {
         reason: String,

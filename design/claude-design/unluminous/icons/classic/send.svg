@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+<!-- unluminous theme::icon, classic set: send -->
+<polygon points="16.750,7.250 13.300,16.700 11.300,12.700 7.300,10.700" fill="#202432" fill-opacity="0.220" stroke="none" stroke-width="0.000" stroke-linejoin="round" stroke-linecap="round"/>
+<polygon points="16.750,7.250 13.300,16.700 11.300,12.700 7.300,10.700" fill="none" stroke="#1e2530" stroke-width="1.300" stroke-linejoin="round" stroke-linecap="round"/>
+<line x1="16.750" y1="7.250" x2="11.300" y2="12.700" stroke="#1e2530" stroke-width="1.300" stroke-linecap="round"/>
+</svg>

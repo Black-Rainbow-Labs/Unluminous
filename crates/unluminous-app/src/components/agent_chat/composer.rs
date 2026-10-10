@@ -12,14 +12,20 @@
 //! end of the prompt is whichever applies. That is `PromptInput`'s own `onStopButtonPress`, and it is
 //! Unluminous's rule about a control that cannot apply being absent rather than present and refusing.
 //!
-//! ## There is no context meter and no token count
+//! ## No token count under the prompt
 //!
-//! The page this is modelled on draws a bar of how much of the model's context has been used, and it
-//! can: its own server knows the window the model was loaded with. Unluminous does not — a URL and a model
-//! name say nothing about a context length — so a bar here would be a fraction of a number nobody
-//! measured. A row of the tokens in and out stood in its place until `task-2193`: *"The in/out is not
-//! needed."* It was a number somebody had to learn to ignore, under the one control they came to use.
-//! `plugins view agent-chat` still answers it, for whoever is counting.
+//! A row of the tokens in and out stood under the composer until `task-2193`: *"The in/out is not
+//! needed."* How much of the context is used is in the Chat settings the gear opens since `task-2235`,
+//! as a ring that draws a share only when the agent said how large its context is. `plugins view
+//! agent-chat` still answers the counts, for whoever is counting.
+//!
+//! ## One carved prompt box, with send on its right (`task-2235`)
+//!
+//! The Agent-Chat design's prompt is one well carved into the pane, `border-radius: 30px; padding: 8px
+//! 8px 8px 20px`, with the round 44 point send button, the paper airplane on the action's gradient,
+//! centred on its right. While an answer arrives the same place holds stop, a coral square on a raised
+//! card. Nothing else is in the box: no attach button, no file chip and no model dropdown. A picture
+//! still goes up by dropping or pasting it, and the model is chosen in the Chat settings the gear opens.
 //!
 //! ## The words start at the top of the well
 //!
@@ -29,13 +35,14 @@
 //! grew downwards while the words grew both ways. The first line now sits where a one line prompt has it,
 //! and every line after it goes below, so the field grows the way a page does.
 
-use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
+use egui::{Color32, CornerRadius, Pos2, Rect, Vec2};
 
-use super::Act;
-use crate::services::agent_chat::Parts;
-use crate::services::plugin_ui::Look;
 use crate::services::vello_canvas::{Fill, Lift};
 use crate::theme::icon;
+
+use super::{kit, Act};
+use crate::services::agent_chat::Parts;
+use crate::services::plugin_ui::Look;
 
 /// A thumbnail of an attached picture, and the row it sits in.
 const THUMB: f32 = 38.0;
@@ -45,13 +52,17 @@ const THUMB: f32 = 38.0;
 /// the reference's forty-two read as cramped beside a thirty-two point disc, and `task-2200` reported the
 /// sixty-eight as *"too much padding on the prompt input"*: one line of text sat in a well three lines
 /// tall.
-const PROMPT: f32 = 48.0;
+///
+/// **Sixty** since `task-2235`: the 44 point send button and eight points above and below it.
+const PROMPT: f32 = 60.0;
 const PROMPT_ROWS: usize = 6;
-/// The disc at the end of the prompt.
-const SEND: f32 = 32.0;
+/// The round send button at the end of the prompt: 44 points.
+const SEND: f32 = 44.0;
 /// How far the disc's edge is from the well's right edge. The well's corners are eighteen points round,
 /// so at five the disc sat against the curve; `task-2200` reported it as too close to the right.
-const SEND_INSET: f32 = 10.0;
+///
+/// Eight since `task-2235`, which is the design's `padding-right: 8px`.
+const SEND_INSET: f32 = 8.0;
 /// Between the composer's rows.
 const GAP: f32 = 8.0;
 
@@ -104,9 +115,9 @@ fn hint(long_is: f32, width: f32, nothing_attached: bool) -> &'static str {
 }
 
 /// The long form, which names the two ways a picture goes up.
-const LONG_HINT: &str = "Ask anything… or drop or paste a picture";
+const LONG_HINT: &str = "Ask about this workspace, or drop or paste a picture";
 /// The short form, for a field the long one would wrap in.
-const SHORT_HINT: &str = "Ask anything…";
+const SHORT_HINT: &str = "Ask about this workspace";
 
 /// How many lines the draft takes at roughly the width of the field.
 ///
@@ -237,20 +248,13 @@ fn thumbnails(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: R
 fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
     let scale = look.scale();
     let mut acts = Vec::new();
-    let radius = (area.height() / 2.0).min(18.0 * scale);
-    // **Deeper than anything else in the pane**, which is `PromptInput.module.css`'s `--e-pressed`:
-    // the field somebody types into is the one thing pressed furthest into the page.
-    if look.chrome.is_recording() {
-        look.chrome.sunken(area, radius, look.palette.board_well, Lift::Medium);
-    } else {
-        ui.painter().rect(
-            area,
-            CornerRadius::same(radius as u8),
-            look.ground(look.palette.board_well),
-            Stroke::new(1.0, look.palette.control_border),
-            egui::StrokeKind::Inside,
-        );
-    }
+    // **Carved into the pane**, `--in`: the field somebody types into is the one thing pressed
+    // furthest into it. `border-radius: 30px`, so one line is a pill.
+    let radius = (area.height() / 2.0).min(30.0 * scale);
+    kit::layer(parts.state, look, ui, "prompt-well", area, 0.0, |rux| {
+        let chat = rux.theme().chat;
+        rux.chrome.surface(area, radius, chat.well, chat.carved());
+    });
     let busy = parts.session.is_busy();
     let ready_to_send = !parts.draft.trim().is_empty() || !parts.attachments.is_empty();
     // **Centred on the bottom line of the well.** `task-2060`: *"The send button is not vertically
@@ -277,11 +281,16 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
         false => disc,
     };
     let field = Rect::from_min_max(
-        Pos2::new(area.left() + 12.0 * scale, area.top() + 6.0 * scale),
+        Pos2::new(area.left() + 20.0 * scale, area.top() + 6.0 * scale),
         Pos2::new(send_disc.left() - 8.0 * scale, area.bottom() - 6.0 * scale),
     );
 
     parts.state.prompt_focused = false;
+    // `claude is answering…` while an answer arrives, which is the design's prompt in that state.
+    let answering = match parts.state.speaker.is_empty() {
+        true => "The agent is answering\u{2026}".to_owned(),
+        false => format!("{} is answering\u{2026}", parts.state.speaker),
+    };
     if field.width() > 30.0 {
         // As many rows as there is text, so the box is the height of what is in it and `Ui::put`
         // centres it in the well. See [`prompt_lines`].
@@ -333,7 +342,12 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
                         // the routes. A control removed with nothing said in its place is a feature nobody finds.
                         // It says it only while nothing is attached, so it is a hint rather than a label.
                         .hint_text(crate::components::controls::placeholder(
-                            hint(measured, field.width(), parts.attachments.is_empty()),
+                            match busy {
+                                true => answering.as_str(),
+                                false => {
+                                    hint(measured, field.width(), parts.attachments.is_empty())
+                                }
+                            },
                             &prompt_font,
                             look.palette.text_faint,
                         ))
@@ -385,118 +399,30 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
         }
     }
 
-    // The disc at the end of the prompt: stop while an answer is arriving, send otherwise — and
-    // both while an answer is arriving and something has been typed, because then there really are
-    // two things to do and the send one queues.
-    let accent = (look.palette.board_accent, super::darken(look.palette.board_accent, 0.15));
-    let red = (crate::theme::color::close(), crate::theme::color::close().gamma_multiply(0.75));
-    if busy
-        && one_disc(ui, look, area, disc, "agent-chat-stop", "Stop answering", true, red, stop_mark)
-    {
+    // The round button at the end of the prompt: stop while an answer is arriving, send otherwise, and
+    // both while an answer is arriving and something has been typed, because then there really are two
+    // things to do and the send one queues.
+    //
+    // **Send is there with nothing typed, at 0.4**, which is the design's disabled look: a button that
+    // vanished as the field emptied would make the field jump about while somebody was typing in it.
+    let (stopped, sent) =
+        kit::layer(parts.state, look, ui, "prompt-buttons", area, kit::SMALL_REACH, |rux| {
+            let stopped = busy
+                && rux::components::RoundButton::stop("Stop answering").show(rux, disc).clicked();
+            let sent = (!busy || second)
+                && rux::components::RoundButton::send("Send")
+                    .enabled(ready_to_send)
+                    .show(rux, send_disc)
+                    .clicked();
+            (stopped, sent)
+        });
+    if stopped {
         acts.push(Act::Stop);
     }
-    if !busy || second {
-        // Nothing to send: the disc is there but quiet, because a button that vanished as the field
-        // emptied would make the field jump about while somebody was typing in it. **Inert rather
-        // than gone**, which is Unluminous's rule about a control that cannot apply here.
-        let colours = match ready_to_send {
-            true => accent,
-            false => (look.palette.board_card, look.palette.board_card),
-        };
-        if one_disc(
-            ui,
-            look,
-            area,
-            send_disc,
-            "agent-chat-send",
-            "Send",
-            ready_to_send,
-            colours,
-            send_arrow,
-        ) {
-            acts.push(Act::Send);
-        }
+    if sent {
+        acts.push(Act::Send);
     }
     acts
-}
-
-/// One of the discs at the end of the prompt: a gradient circle with a mark on it, and whether it
-/// was pressed.
-///
-/// One function rather than two arms of an `if`, because since `task-2060` there can be two of them
-/// on the same row and a second copy of the gradient, the glow and the tint is two places to get the
-/// same button wrong.
-#[allow(clippy::too_many_arguments)]
-fn one_disc(
-    ui: &mut egui::Ui,
-    look: &Look<'_>,
-    area: Rect,
-    disc: Rect,
-    id: &'static str,
-    name: &'static str,
-    enabled: bool,
-    (start, end): (Color32, Color32),
-    mark: fn(&egui::Painter, Pos2, Color32, f32),
-) -> bool {
-    let scale = look.scale();
-    // **It senses a click only when it can do something**, which is Unluminous's rule about a control
-    // that cannot apply.
-    let sense = match enabled {
-        true => Sense::click(),
-        false => Sense::hover(),
-    };
-    let response = ui.interact(disc, ui.id().with(id), sense);
-    response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, name.to_owned())
-    });
-    if look.chrome.is_recording() {
-        if enabled {
-            // The glow under the primary button. The reference's own is `4px 4px 12px
-            // rgba(29,79,219,0.35)`; `task-2200` reported that as too much blur round a disc this small,
-            // so it is tighter and fainter: a rim of colour rather than a cloud.
-            look.chrome.glow(disc, disc.width() / 2.0, start.gamma_multiply(0.28), 3.0 * scale);
-        }
-        look.chrome.disc(disc.center(), disc.width() / 2.0, Fill::diagonal(disc, start, end));
-    } else {
-        ui.painter().circle_filled(disc.center(), disc.width() / 2.0, start);
-    }
-    let tint = match enabled {
-        // The palette's own white rather than `Color32::WHITE`: the palette is closed, and a colour
-        // written out here is a colour no theme can reach.
-        true => look.palette.text_strong,
-        false => look.palette.text_faint,
-    };
-    mark(&ui.painter_at(area), disc.center(), tint, scale);
-    response.clicked()
-}
-
-/// The stop square, at the shape [`one_disc`] hands its mark.
-fn stop_mark(painter: &egui::Painter, centre: Pos2, tint: Color32, scale: f32) {
-    icon::scaled(painter, centre, tint, scale, icon::stop);
-}
-
-/// The arrow on the send button: a shaft and two strokes, drawn rather than lettered.
-fn send_arrow(painter: &egui::Painter, centre: Pos2, tint: Color32, scale: f32) {
-    let half = 5.0 * scale;
-    let stroke = Stroke::new(1.8 * scale, tint);
-    painter.line_segment(
-        [Pos2::new(centre.x, centre.y + half), Pos2::new(centre.x, centre.y - half)],
-        stroke,
-    );
-    painter.line_segment(
-        [
-            Pos2::new(centre.x - half * 0.75, centre.y - half * 0.2),
-            Pos2::new(centre.x, centre.y - half),
-        ],
-        stroke,
-    );
-    painter.line_segment(
-        [
-            Pos2::new(centre.x + half * 0.75, centre.y - half * 0.2),
-            Pos2::new(centre.x, centre.y - half),
-        ],
-        stroke,
-    );
 }
 
 #[cfg(test)]

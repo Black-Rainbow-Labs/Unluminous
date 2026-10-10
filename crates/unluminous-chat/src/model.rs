@@ -277,6 +277,11 @@ pub struct Conversation {
     /// context, and it is sent again every turn.
     pub session: String,
     pub usage: Usage,
+    /// How many tokens of the model's context the conversation filled at the end of the last turn, and
+    /// how large that context is when the agent named it. See `Reply::Context`. Written down with the
+    /// conversation, so one reopened from the history still says how full it was.
+    pub context_used: Option<u64>,
+    pub context_window: Option<u64>,
     /// When it was last changed, as seconds since the epoch, for ordering the history.
     pub changed: u64,
     /// The next message id. Ids are per conversation and never reused, so a cached render keyed on
@@ -296,6 +301,8 @@ impl Conversation {
             provider: provider.into(),
             session: String::new(),
             usage: Usage::default(),
+            context_used: None,
+            context_window: None,
             changed: 0,
             next_id: 1,
         }
