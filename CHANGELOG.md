@@ -6,11 +6,14 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.71.0 — 2026-10-10
 
 - Completion with structure and language servers, measured against the reference editor (`task-2232`)
 - The held out gate and its scorecard, with the latency reading for G4 (`task-2232`)
 - Unluminous-lsp takes the workspace version after the rebase onto 0.70.0 (`task-2232`)
+- The changelog lists the completion work as unreleased (`task-2232`)
+- Rustfmt on the files the tuning changed (`task-2232`)
+- Clippy's sort_by_key in the rust-analyzer toolchain search (`task-2232`)
 
 ## 0.70.0 — 2026-10-10
 
