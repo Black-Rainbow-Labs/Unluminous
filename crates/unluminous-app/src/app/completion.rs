@@ -682,7 +682,10 @@ impl UnluminousApp {
     /// @param stem - what has been typed
     /// @param offset - the caret
     fn server_members(&mut self, stem: &str, offset: usize) -> Vec<Candidate> {
-        self.server_candidates(stem, offset).into_iter().map(|c| c.at(completion::Locality::Receiver)).collect()
+        self.server_candidates(stem, offset)
+            .into_iter()
+            .map(|c| c.at(completion::Locality::Receiver))
+            .collect()
     }
 
     /// Marks every candidate with how many times its name is already written in the file that is
@@ -1437,7 +1440,6 @@ mod member_tests {
     }
 }
 
-
 /// True when every row an offer holds is exactly the word already typed, so the list has nothing to
 /// complete it to. The automatic list does not open for such an offer, which is what keeps `Enter`
 /// meaning a new line once a word is fully typed.
@@ -2012,7 +2014,10 @@ mod tests {
         typing(&mut app, "draw");
         let state = app.completion().expect("draw_frame is longer, so the list is open");
         assert_eq!(state.chosen_row().map(|row| row.name.as_str()), Some("draw"));
-        assert!(!pressing(&mut app, egui::Key::Enter, egui::Modifiers::NONE), "Enter is left for the new line");
+        assert!(
+            !pressing(&mut app, egui::Key::Enter, egui::Modifiers::NONE),
+            "Enter is left for the new line"
+        );
         assert!(app.completion().is_none(), "and the list goes");
         std::fs::remove_dir_all(&folder).ok();
     }

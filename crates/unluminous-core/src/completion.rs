@@ -1524,13 +1524,17 @@ mod tests {
 
     #[test]
     fn a_name_from_a_dependency_comes_after_the_projects_own_whatever_the_server_order() {
-        let mut dependency = Candidate::described("TextBuffer", Source::Server, Some(Kind::Struct), "");
+        let mut dependency =
+            Candidate::described("TextBuffer", Source::Server, Some(Kind::Struct), "");
         dependency.info.server_order = Some(1);
         dependency.info.locality = Locality::Dependency;
         let mut own = Candidate::described("TextRenderer", Source::Server, Some(Kind::Struct), "");
         own.info.server_order = Some(2);
         own.info.locality = Locality::NeedsImport;
-        assert_eq!(ordered(&Question::stem("Text"), vec![dependency, own]), ["TextRenderer", "TextBuffer"]);
+        assert_eq!(
+            ordered(&Question::stem("Text"), vec![dependency, own]),
+            ["TextRenderer", "TextBuffer"]
+        );
     }
 
     #[test]
@@ -1545,9 +1549,11 @@ mod tests {
 
     #[test]
     fn a_server_row_comes_before_a_row_no_server_offered() {
-        let mut served = Candidate::described("draw_line", Source::Server, Some(Kind::Function), "");
+        let mut served =
+            Candidate::described("draw_line", Source::Server, Some(Kind::Function), "");
         served.info.server_order = Some(5);
-        let pool = vec![Candidate::described("draw", Source::ThisFile, Some(Kind::Function), ""), served];
+        let pool =
+            vec![Candidate::described("draw", Source::ThisFile, Some(Kind::Function), ""), served];
         assert_eq!(ordered(&Question::stem("dr"), pool), ["draw_line", "draw"]);
     }
 

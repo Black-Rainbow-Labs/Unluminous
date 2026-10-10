@@ -376,13 +376,22 @@ mod tests {
             ("    let a = 3.|", Place::Expression),
             ("    for i in 0..|", Place::Expression),
             // A field of a literal takes a value; a field of a definition takes a type.
-            ("    let l = Layout {
-        width: |", Place::Expression),
+            (
+                "    let l = Layout {
+        width: |",
+                Place::Expression,
+            ),
             ("    let l = Layout { width: 1.0, height: |", Place::Expression),
-            ("pub struct Layout {
-    width: |", Place::Type),
-            ("fn f() {
-    let width: |", Place::Type),
+            (
+                "pub struct Layout {
+    width: |",
+                Place::Type,
+            ),
+            (
+                "fn f() {
+    let width: |",
+                Place::Type,
+            ),
         ];
         for (written, expected) in table {
             assert_eq!(place(written), expected, "{written:?}");

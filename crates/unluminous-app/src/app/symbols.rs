@@ -1165,7 +1165,10 @@ pub fn count_the_words(text: &str) -> std::collections::HashMap<String, u32> {
         while at < bytes.len() && word_byte(bytes[at]) {
             at += 1;
         }
-        if !bytes[start].is_ascii_digit() && text.is_char_boundary(start) && text.is_char_boundary(at) {
+        if !bytes[start].is_ascii_digit()
+            && text.is_char_boundary(start)
+            && text.is_char_boundary(at)
+        {
             *counts.entry(&text[start..at]).or_insert(0) += 1;
         }
     }

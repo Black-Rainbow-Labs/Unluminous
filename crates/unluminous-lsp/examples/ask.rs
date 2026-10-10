@@ -139,12 +139,17 @@ fn answer(server: &mut Server, query: &Value, revision: u64) -> Value {
     // `"raw": n` adds the server's own JSON for the first n rows, which is how a ranking question about
     // a server's rows is looked into.
     let raw: Vec<Value> = match query["raw"].as_u64() {
-        Some(n) => items.iter().take(n as usize).filter_map(|i| serde_json::from_str(&i.handle).ok()).collect(),
+        Some(n) => items
+            .iter()
+            .take(n as usize)
+            .filter_map(|i| serde_json::from_str(&i.handle).ok())
+            .collect(),
         None => Vec::new(),
     };
     let labels = labels_for(items, &stem_before(text, offset));
     let ms = started.elapsed().as_secs_f64() * 1000.0;
-    let mut answer = json!({"id": query["id"], "prefix": query["prefix"], "labels": labels, "ms": ms});
+    let mut answer =
+        json!({"id": query["id"], "prefix": query["prefix"], "labels": labels, "ms": ms});
     if !raw.is_empty() {
         answer["raw"] = Value::Array(raw);
     }

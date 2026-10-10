@@ -209,13 +209,10 @@ impl UnluminousApp {
         let path = file.path()?.to_path_buf();
         let revision = file.document.text_revision();
         let lines = file.document.text().len_lines();
-        let fresh = file
-            .cached
-            .structure
-            .as_ref()
-            .is_some_and(|s| {
-                s.revision == revision || (!exact && s.lines.abs_diff(lines) <= LINES_A_KEYSTROKE_MAY_MOVE)
-            });
+        let fresh = file.cached.structure.as_ref().is_some_and(|s| {
+            s.revision == revision
+                || (!exact && s.lines.abs_diff(lines) <= LINES_A_KEYSTROKE_MAY_MOVE)
+        });
         if !fresh {
             let language = self.language_path(&path);
             let rel = language.file_name()?.to_string_lossy().into_owned();

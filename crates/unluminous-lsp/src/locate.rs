@@ -120,13 +120,14 @@ fn another_toolchains(root: &Path) -> Option<PathBuf> {
         Some(PathBuf::from(profile).join(".rustup"))
     })?;
     let name = if cfg!(windows) { "rust-analyzer.exe" } else { "rust-analyzer" };
-    let mut found: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(home.join("toolchains"))
-        .ok()?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path().join("bin").join(name))
-        .filter(|path| path.is_file())
-        .filter_map(|path| Some((path.metadata().ok()?.modified().ok()?, path)))
-        .collect();
+    let mut found: Vec<(std::time::SystemTime, PathBuf)> =
+        std::fs::read_dir(home.join("toolchains"))
+            .ok()?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path().join("bin").join(name))
+            .filter(|path| path.is_file())
+            .filter_map(|path| Some((path.metadata().ok()?.modified().ok()?, path)))
+            .collect();
     found.sort_by(|a, b| b.0.cmp(&a.0));
     found.into_iter().map(|(_, path)| path).find(|path| runs(path, root))
 }
