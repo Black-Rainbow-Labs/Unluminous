@@ -6,10 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.70.0 — 2026-10-10
 
 - TDD for completion equal to IntelliJ, Rust and TypeScript first (`task-2231`)
 - Agent-Chat drawn to the approved design, in dark and light (`task-2235`)
+- The changelog lists the Agent-Chat redesign as unreleased (`task-2235`)
 
 ## 0.69.1 — 2026-10-09
 
