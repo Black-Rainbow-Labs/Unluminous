@@ -86,10 +86,10 @@ def main():
         f'pub const NAMES: [&str; FEATURES] = [{", ".join(json.dumps(n) for n in NAMES)}];',
         '',
         '/// Where each tree starts in [`NODES`].',
-        f'pub const ROOTS: [u32; {len(roots)}] = [{", ".join(str(r) for r in roots)}];',
+        f'pub static ROOTS: [u32; {len(roots)}] = [{", ".join(str(r) for r in roots)}];',
         '',
         '/// Every node of every tree.',
-        f'pub const NODES: [Node; {len(nodes)}] = [',
+        f'pub static NODES: [Node; {len(nodes)}] = [',
     ]
     for feature, threshold, left, right in nodes:
         lines.append(f'    Node {{ feature: {feature}, threshold: {threshold!r}, left: {left}, right: {right} }},')
@@ -101,7 +101,7 @@ def main():
         '/// @param x - the features',
         'pub fn score(x: &[f64; FEATURES]) -> f64 {',
         '    let mut total = 0.0;',
-        '    for root in ROOTS {',
+        '    for root in ROOTS.iter().copied() {',
         '        let mut at = root as usize;',
         '        loop {',
         '            let node = &NODES[at];',
