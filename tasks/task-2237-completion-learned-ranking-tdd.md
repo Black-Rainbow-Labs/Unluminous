@@ -161,7 +161,37 @@ pools before it is kept:
 | A server's answer differs between runs, so a pool is not exactly reproducible. | The confirming runs are real window runs, and the final number is a real window run. |
 | The order surprises a person: a subsequence match above a prefix match. | The match class stays ahead of the score. |
 
-## 7. Sources
+## 7. What was built, and where it differs from this design
+
+Written after the work, from the hill climb record in `_agent_output/task-2237/hillclimb/`.
+
+- **The empty stem was a fault, not a pool choice.** `completion::could_match` answers false for an
+  empty stem, and `completion_candidates` used it for this file's definitions, its words and the
+  keywords. So a list asked for with nothing typed held the enclosing function's locals and the
+  server's rows and nothing else. It now holds this file's definitions, its words and the keywords;
+  another tab's definitions and the project's names still need a letter.
+- **The order.** A server's preselected row, then the match class, then the model's score, then the
+  chain's rank. While fewer than four letters are typed (`EXACT_FIRST_FROM`), a name exactly equal to
+  the stem is in the prefix group rather than ahead of it: with `fi` typed, a project function called
+  `fi` was first whatever the model said, and taking that rule out was the largest single gain of the
+  climb (Rust 73.6 to 77.3, TypeScript 71.3 to 81.6, offline). From four letters the exact name comes
+  first, so `Enter` on a word typed in full is still a new line.
+- **What the model scores.** The chain's first 100 rows and the 100 written nearest the caret
+  (`SCORED_BY_THE_CHAIN`, `SCORED_BY_NEARNESS`). A 450 tree model scoring every row cost 47 ms a
+  keystroke; 133 trees on at most 200 rows cost 3.9 ms on `app/realm.rs`'s worst stem.
+- **Features beyond 4.1.** The kind of token before the word and after it on its line
+  (`completion::token_class`). The token after the caret is read on its own line only, because a person
+  typing new code is at the end of a line, and the model is trained on every query twice, once with
+  nothing after the caret, so it ranks well there too.
+- **Members.** After `.` or `::` the list also offers the words this file writes straight after that
+  separator. A library member such as `map` or `max` is not in the structure, and with tsserver slow
+  it was not in the list at all.
+- **Imports.** Import lists are ordered by the model too.
+- **The data.** `editor complete --explain` reports each row's `chainRank`, so pools can be gathered
+  from a build that already has a model. The engine runs one window per corpus, three at a time,
+  confined to 12 of the 24 processors at below normal priority (`D:/unluminous-completion-eval/capped.ps1`).
+
+## 8. Sources
 
 - Bibaev et al., "All You Need Is Logs: Improving Code Completion by Learning from Anonymous IDE Usage
   Logs", ESEC/FSE 2022. https://arxiv.org/abs/2205.10692

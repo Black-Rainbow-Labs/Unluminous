@@ -1,5 +1,87 @@
 # Scorecard: Unluminous completion against the reference editor
 
+## task-2237: a learned ranking
+
+`task-2237` replaced the ordering half of `task-2232`'s design with a ranking learned from the tune half
+of the frozen positions (`tasks/task-2237-completion-learned-ranking-tdd.md`). The held half was read
+once, by the run below, with the build of commit `c0621e04` (the two commits after it change no behaviour).
+
+### The held gate
+
+`t2237-gate-on`: servers on, `--wait 1000`, one window at a time as `gate-unluminous-on` ran, on the
+same 21,082 held queries.
+
+| Language | This build R@1 / R@5 / MRR | Reference, ML on | Reference, ML off | 0.71.0 (`gate-unluminous-on`) |
+|---|---|---|---|---|
+| Rust | **75.8 / 93.4 / 0.836** | 66.6 / 83.6 / 0.745 | 47.9 / 69.3 / 0.577 | 56.9 / 77.7 / 0.663 |
+| TypeScript | **81.7 / 92.3 / 0.864** | 58.1 / 75.9 / 0.663 | 42.1 / 63.6 / 0.521 | 40.1 / 64.4 / 0.513 |
+
+R@1 by class, this build against the reference editor with ML on:
+
+| Class | Rust | TypeScript |
+|---|---|---|
+| member | 72.3 / 66.1 | 74.3 / 60.1 |
+| path | 80.2 / 77.0 | |
+| local | 79.7 / 79.3 | 87.0 / 69.0 |
+| global | 73.4 / 65.6 | 78.2 / 43.0 |
+| type | 85.5 / 71.3 | 84.0 / 68.2 |
+| import | 73.7 / 58.2 | 80.1 / 59.4 |
+| needs-import | 61.1 / 51.2 | 75.0 / 29.2 |
+| keyword | 80.1 / 63.3 | 91.3 / 71.2 |
+
+R@1 by letters typed, this build / the reference with ML on / 0.71.0:
+
+| Prefix | Rust | TypeScript |
+|---|---|---|
+| 0 | 37.8 / 27.8 / 21.4 | 62.2 / 34.9 / 12.8 |
+| 1 | 84.4 / 70.5 / 53.1 | 85.3 / 56.6 / 34.3 |
+| 2 | 90.0 / 82.9 / 72.6 | 89.1 / 67.7 / 53.1 |
+| 3 | 91.7 / 86.2 / 81.7 | 90.3 / 73.8 / 60.7 |
+
+| Goal (TDD section 2) | Result | Verdict |
+|---|---|---|
+| G1 better than the reference with ML on | R@1 and MRR above it in both languages, and in every class | **met** |
+| G2 no class more than 3 R@1 points behind 0.71.0 | every class of both languages is ahead of `gate-unluminous-on` | **met** |
+| G3 the keystroke under 5 ms | worst stem 3.93 ms on `app/realm.rs`; `self.` 1.68 ms; the read at a new revision 2.22 ms | **met** |
+| G4 one ranking for every reader | the popup, `editor complete` and the harness read `completion::order`; `editor complete --explain` shows each row's facts and score | **met** |
+
+### The controls, with no language server
+
+`t2237-gate-off-controls`: `editor.servers = off`, the held control positions. The model was trained on
+Rust and TypeScript only; these two languages read it as a third language.
+
+| Language | This build R@1 / R@5 / MRR | 0.71.0 (`gate-unluminous-off`) | 0.69.1 |
+|---|---|---|---|
+| Python | **63.5 / 77.8 / 0.699** | 35.9 / 54.8 / 0.444 | 18.2 / 37.6 / 0.273 |
+| Go | **85.6 / 96.5 / 0.905** | 37.9 / 51.1 / 0.447 | 0.0 |
+
+Python `member`, the one class `task-2232` made worse (21.1 to 15.7), is 63.2. Every class of both
+languages is ahead of 0.71.0.
+
+### How the ranking was found
+
+`_agent_output/task-2237/hillclimb/` holds every round. The tune half was split again by a hash of the
+position id: four fifths to fit, one fifth (the validation fifth) to choose and report. R@1 on the
+validation fifth:
+
+| Round | Change | Rust | TypeScript | Measured |
+|---|---|---|---|---|
+| baseline | 0.71.0's chain, with the empty stem fix | 57.4 | 42.3 | offline |
+| v1 | LightGBM lambdarank over the facts of TDD 4.1 | 72.1 | 69.9 | offline |
+| v1 | same | 70.7 | 66.7 | windows, six at a time |
+| v2 | separator words for members, imports by the model, token classes, 133 trees | 73.6 | 71.3 | offline |
+| v3 | an exact match ranked inside the prefix group while fewer than 4 letters are typed | 77.3 | 81.6 | offline |
+| v3 | same | 77.1 | 79.8 | windows, three at a time |
+| reference | IntelliJ ML on, same queries | 66.0 | 58.8 | its own run |
+
+The pools are gathered with `engine-unluminous.mjs --explain 100`, trained with
+`rank-model/train.py`, written into `crates/unluminous-core/src/completion_model.rs` with
+`rank-model/export.py`, and the window runs confirm what the offline numbers say.
+
+---
+
+# task-2232's scorecard
+
 `task-2232` built what `tasks/task-2231-autocomplete-intellisense-tdd.md` designs: a structural tier read
 by Atrius, a semantic tier driven by rust-analyzer and tsserver, and one weigher chain that orders the
 rows of all three. This page is the held out gate, the record of every run looked at on the way, and
