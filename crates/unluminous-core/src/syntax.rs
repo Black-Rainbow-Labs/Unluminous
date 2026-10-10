@@ -236,7 +236,39 @@ pub struct Grammar {
     /// language nothing claims. Checking it would mean one plugin refusing to load because another
     /// was switched off.
     pub raw_text: Vec<(String, Option<String>)>,
+    /// What the completion tiers of `task-2231` read from the manifest: what reaches a member, how a
+    /// type is written, which blocks hold members, and which language server answers for the language.
+    /// Every key is optional and off unless a language names it.
+    pub completion: CompletionKeys,
 }
+
+/// The manifest keys `task-2231` added for completion, read by `crate::place` and by the window.
+///
+/// The structural reading itself happens in the code index (`atrius_index::structure`), which reads
+/// the same keys from the same manifest; these are the ones the editor needs on its own side.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CompletionKeys {
+    /// `language.members`: what reaches a member, such as `., ::` for Rust and `., ?.` for TypeScript.
+    /// Typing one opens the list of the members of what is in front of it.
+    pub members: Vec<String>,
+    /// `language.annotation`: what stands between a name and its type, such as `:`.
+    pub annotation: Option<String>,
+    /// `language.returns`: what stands between a parameter list and its return type, such as `->`.
+    pub returns: Option<String>,
+    /// `language.containers`: the words a block that holds members starts with, such as `impl`.
+    pub containers: Vec<String>,
+    /// `language.server`: the language server adapter that answers for this language, one of
+    /// [`SERVERS`]. Checked when the manifest is read.
+    pub server: Option<String>,
+    /// `language.server_command`: the program the adapter starts, when the manifest names one.
+    pub server_command: Option<String>,
+    /// `language.server_args`: the arguments it is started with.
+    pub server_args: Vec<String>,
+}
+
+/// The language server adapters built into Unluminous, which `language.server` may name. `lsp` speaks
+/// the Language Server Protocol (rust-analyzer); `tsserver` speaks TypeScript's own protocol.
+pub const SERVERS: &[&str] = &["lsp", "tsserver"];
 
 /// How a language writes the module an import names.
 ///

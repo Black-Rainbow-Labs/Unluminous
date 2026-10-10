@@ -296,7 +296,7 @@ fn code_harness(open: &str) -> Harness<'static, UnluminousApp> {
         let ready = harness
             .state()
             .symbols_indexer()
-            .is_some_and(|indexer| !indexer.is_building() && !indexer.index().is_empty());
+            .is_some_and(|indexer| !indexer.is_building() && !indexer.is_empty());
         if ready {
             break;
         }
@@ -922,7 +922,7 @@ fn import_harness() -> Harness<'static, UnluminousApp> {
         let ready = harness
             .state()
             .symbols_indexer()
-            .is_some_and(|indexer| !indexer.is_building() && !indexer.index().is_empty());
+            .is_some_and(|indexer| !indexer.is_building() && !indexer.is_empty());
         if ready {
             break;
         }
@@ -1037,7 +1037,7 @@ fn completion_harness(open: &str) -> Harness<'static, UnluminousApp> {
         let ready = harness
             .state()
             .symbols_indexer()
-            .is_some_and(|indexer| !indexer.is_building() && !indexer.index().is_empty());
+            .is_some_and(|indexer| !indexer.is_building() && !indexer.is_empty());
         if ready {
             break;
         }
@@ -1066,14 +1066,17 @@ fn a_hypothetical_completion_stem_changes_nothing_in_the_document() {
     let before_undo = harness.state().document().can_undo();
     let before_redo = harness.state().document().can_redo();
 
-    let result = did(&mut harness, "editor complete --stem ar --limit 20");
+    // `car` rather than `ar`: since `task-2231` a name from the project index is matched from its
+    // start, a word start or its humps, as the reference editor matches by default, and `ar` is in the
+    // middle of `Caret`.
+    let result = did(&mut harness, "editor complete --stem car --limit 20");
     let names: Vec<&str> = result["rows"]
         .as_array()
         .expect("completion rows")
         .iter()
         .filter_map(|row| row["name"].as_str())
         .collect();
-    assert_eq!(result["stem"], "ar");
+    assert_eq!(result["stem"], "car");
     assert!(
         names.contains(&"Caret"),
         "the project index was ranked for the supplied stem: {names:?}"
@@ -1108,23 +1111,26 @@ fn typing_a_word_offers_the_names_it_could_become() {
     assert_eq!(
         offered,
         [
-            "draw",
             "drawn",
-            "drawings",
-            "Drawing",
+            "draw",
             "draw_caret",
             "draw_frame",
             "draw_gutter",
             "draw_everything",
             "DRAW_LIMIT",
+            "drawings",
+            "Drawing",
             "redraw",
         ],
-        "the order the rubric gives"
+        // `task-2231`'s weigher chain, `unluminous_core::completion::order`: the exact match first,
+        // where the row fits the place it is typed in before which file it came from, and the
+        // middle of a word last.
+        "the order the weighers give"
     );
     assert_eq!(harness.state().completion().expect("open").chosen, 0, "the best row is pre-chosen");
     // Every row names itself, which is what makes it findable at all.
     harness.get_by_label("Completion draw");
-    harness.get_by_label("Completion Drawing");
+    harness.get_by_label("Completion DRAW_LIMIT");
     // The list is drawn under the caret's own line.
     let anchor = harness.state().completion_anchor().expect("the popup was drawn");
     assert!(anchor.pane.contains_rect(unluminous_app::components::completion::where_it_goes(
@@ -1218,14 +1224,16 @@ fn tab_takes_the_best_row_and_the_editing_area_never_sees_the_key() {
     harness.key_press(egui::Key::Tab);
     steady(&mut harness);
     let after = harness.state().document().text().to_string();
-    assert!(after.contains("draw\nconst DRAW_LIMIT"), "{after:?}");
+    // The best row is `drawn`, which the file already writes twice: `task-2231` ranks a name by how
+    // often the file uses it before it ranks by length.
+    assert!(after.contains("drawn\nconst DRAW_LIMIT"), "{after:?}");
     assert!(!after.contains('\t'), "no tab was typed into the file");
     assert!(harness.state().completion().is_none());
     // And with the list shut, `Tab` means what it always meant.
     harness.key_press(egui::Key::Tab);
     steady(&mut harness);
     assert!(
-        harness.state().document().text().to_string().contains("draw\t"),
+        harness.state().document().text().to_string().contains("drawn\t"),
         "{:?}",
         harness.state().document().text().to_string()
     );

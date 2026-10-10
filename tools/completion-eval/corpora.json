@@ -1,0 +1,13 @@
+{
+  "comment": "The corpora the completion evaluation reads, each pinned to a commit. prepare-corpora.mjs writes D:/unluminous-completion-eval/corpora/<name> from these. 'tree' is the folder inside the repository that is the corpus root; 'node_modules' is a folder linked into the copy, read only, so the TypeScript corpora resolve their dependencies.",
+  "corpora": {
+    "unluminous": { "language": "rust", "repo": "C:/jason/dev/unluminous", "commit": "6e5a567", "tree": "" },
+    "atrius-index": { "language": "rust", "repo": "C:/jason/dev/atrius-index", "commit": "347529a", "tree": "" },
+    "ripgrep": { "language": "rust", "repo": "D:/atrius-corpora/ripgrep", "commit": "4649aa9700619f94cf9c66876e9549d83420e16c", "tree": "" },
+    "ai-service-ui": { "language": "typescript", "repo": "C:/jason/dev/ai-service", "commit": "0f66de9bcb35abd8fce255253a33ca9183693dad", "tree": "ui", "node_modules": "C:/jason/dev/ai-service/ui/node_modules" },
+    "inillucent-ts": { "language": "typescript", "repo": "C:/jason/dev/inillucent-clients", "commit": "e5bd532deadf8c25f0fa08cb773bef4a80f2a123", "tree": "typescript", "node_modules": "C:/jason/dev/inillucent-clients/typescript/node_modules" },
+    "zod": { "language": "typescript", "clone": "https://github.com/colinhacks/zod.git", "tag": "v3.23.8", "commit": "ca42965df46b2f7e2747db29c40a26bcb32a51d5", "tree": "", "install": true },
+    "requests": { "language": "python", "repo": "D:/atrius-corpora/requests", "commit": "0e322af87745eff34caffe4df68456ebc20d9068", "tree": "", "control": true },
+    "cobra": { "language": "go", "repo": "D:/atrius-corpora/cobra", "commit": "40b5bc1437a564fc795d388b23835e84f54cd1d1", "tree": "", "control": true }
+  }
+}

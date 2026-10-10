@@ -158,3 +158,34 @@ fn every_drawn_mark_of_the_material_set_on_one_sheet() {
 fn every_drawn_mark_of_the_classic_set_on_one_sheet() {
     draw_the_sheet(IconSet::Classic, "icons_classic");
 }
+
+/// The glyph beside each completion row, one for every kind a row can be, on a sheet of its own.
+/// `task-2231` §6.6. A glyph is drawn by kind rather than by a function of its own, so it does not fit
+/// [`Mark`], and a sheet of them is how a change to one is seen.
+#[test]
+fn every_completion_kind_glyph_on_one_sheet() {
+    use unluminous_core::completion::Kind;
+    let down = Kind::ALL.len().div_ceil(ACROSS);
+    let margin = 24.0;
+    let size = Vec2::new(CELL * ACROSS as f32 + margin, CELL * down as f32 + margin);
+    let mut harness = builder().with_pixels_per_point(ZOOM).with_size(size).build_ui(move |ui| {
+        let area = ui.max_rect();
+        let painter = ui.painter_at(area);
+        painter.rect_filled(area, egui::CornerRadius::ZERO, color::menu());
+        for (index, kind) in Kind::ALL.into_iter().enumerate() {
+            let centre = Pos2::new(
+                area.left() + CELL * (index % ACROSS) as f32 + CELL / 2.0,
+                area.top() + CELL * (index / ACROSS) as f32 + CELL / 2.0,
+            );
+            painter.rect_stroke(
+                Rect::from_center_size(centre, Vec2::splat(CELL)),
+                egui::CornerRadius::ZERO,
+                egui::Stroke::new(0.2, color::divider()),
+                egui::StrokeKind::Inside,
+            );
+            icon::completion_kind(&painter, centre, kind, color::icon());
+        }
+    });
+    harness.run();
+    harness.snapshot(shot("icons_completion_kinds").as_str());
+}

@@ -145,11 +145,11 @@ cannot rely on being there.
 
 **One command at a time reaches the window.** The listener queues a request and the window answers it
 at the top of its next frame, so a command's effect is in the frame about to be painted — which is
-why a screenshot taken straight after a command shows what the command did. Thirty-two commands are
+why a screenshot taken straight after a command shows what the command did. Thirty-three commands are
 answered later than the frame they arrived on — each one waits for something that is not the window's
 to decide, so the answer belongs to whichever frame it arrives on. They are: `status`, `window
 screenshot`, `input move`, `input click`, `input drag`, `input key`, `input text`, `input wheel`,
-`realm browser`, `editor references`, `editor rename`, `editor complete`, `update check`, `terminal
+`realm browser`, `editor references`, `editor rename`, `editor complete`, `editor signature`, `update check`, `terminal
 read`, `run output`, `debug start`, `debug continue`, `debug step-over`, `debug step-into`, `debug
 step-out`, `debug run-to`, `debug hover`, `debug evaluate`, `debug status`, `modal results`, `notebook
 run`, `notebook variables`, `notebook complete`, `notebook kernel`, `git status`, `git action` and

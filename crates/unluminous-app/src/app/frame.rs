@@ -230,10 +230,24 @@ impl UnluminousApp {
         crate::services::frame_trace::phase("kernels");
         self.colour_the_open_file();
         crate::services::frame_trace::phase("colour");
-        // The project's definitions, read on a thread. Beside the colouring because it is the same
-        // kind of thing — what the files say, worked out from what they hold — and because both are
-        // keyed on something cheap enough to ask about every frame.
-        self.keep_the_symbol_index_fresh();
+        // The project's definitions, from the code index (`task-2231` §5.2). Opened from the second
+        // frame on, never the first: nothing the first frame does not need happens before the window
+        // is shown, and the index reads the project on threads of its own.
+        if ui.ctx().cumulative_pass_nr() > 0 {
+            self.keep_the_symbol_index_fresh();
+            // The language servers start on the second frame as well, and every reply they sent since
+            // the last frame is read here. Nothing in a frame waits on one. `task-2231` §5.3.
+            self.keep_the_servers_running();
+            // The showing tab's structure, read again on a frame nobody typed in. `app::gather`.
+            if ui.input(|input| input.events.is_empty()) {
+                self.refresh_the_tab_structure_when_idle();
+            }
+            crate::services::frame_trace::phase("servers");
+        }
+        // What a person chose from the completion list, written once the window has settled after
+        // the choice and never on the keystroke. `task-2231` §6.3.
+        let now = ui.input(|input| input.time);
+        self.completion_stats.write_when_settled(now, crate::app::WINDOW_SETTLE);
         crate::services::frame_trace::phase("index");
         // Before the explorer is drawn, so a file another program has just made is in the tree on
         // this frame rather than the next one.
@@ -934,6 +948,8 @@ impl UnluminousApp {
         // anything knows where that pane's caret ended up, and one popup drawn here can never be
         // underneath a divider or drawn twice in a split view.
         self.show_the_completion(ui);
+        // The signature line, from the same caret. `task-2231` §6.8.
+        self.show_the_signature(ui);
         // The value tooltip, drawn from the geometry the pane recorded, after the loop for exactly
         // the reason above. `task-1696`.
         self.show_the_value_tooltip(ui);
@@ -1407,6 +1423,15 @@ impl UnluminousApp {
             file_kind::kind_name(self.document().path())
         };
         let encoding = self.line_ending_label();
+        // The language server answering for this file and what it is doing, beside the language, so
+        // a list missing its members while rust-analyzer is still indexing explains itself.
+        // `task-2231` §6.9. The full reason a server was not found or stopped is in
+        // `status --section servers`; the footer says it in two words.
+        let kind = match self.showing_server_state() {
+            Some((label, state)) => format!("{kind} \u{00B7} {label} {}", footer_words(&state)),
+            None => kind.to_owned(),
+        };
+        let kind = kind.as_str();
         status_bar::show(
             ui,
             status_rect,
@@ -2314,5 +2339,18 @@ impl UnluminousApp {
             self.change_browser_tab(id, |tab| tab.problem = Some(problem.clone()));
             self.message = Some(problem);
         }
+    }
+}
+
+/// A language server's state in the two or three words the footer has room for.
+///
+/// @param state - what the server is doing
+fn footer_words(state: &unluminous_lsp::ServerState) -> String {
+    match state {
+        unluminous_lsp::ServerState::Indexing { percent: Some(p), .. } => format!("indexing {p}%"),
+        unluminous_lsp::ServerState::Indexing { percent: None, .. } => "indexing".to_owned(),
+        unluminous_lsp::ServerState::Failed(_) => "stopped".to_owned(),
+        unluminous_lsp::ServerState::Absent(_) => "not found".to_owned(),
+        other => other.describe(),
     }
 }

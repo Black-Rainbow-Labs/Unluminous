@@ -238,6 +238,43 @@ impl Suggestions {
     }
 }
 
+/// Whether completion asks a language server. `task-2231` §6.9.
+///
+/// `off` is the switch for somebody who wants the editor to run nothing: no rust-analyzer and no
+/// tsserver is ever started, and completion answers from the project's structure alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Servers {
+    /// A Rust or TypeScript file starts the server its plugin names, when one is found.
+    #[default]
+    Automatic,
+    /// No language server is started.
+    Off,
+}
+
+impl Servers {
+    /// The word the settings file, the command line and a test spell it with.
+    pub fn name(self) -> &'static str {
+        match self {
+            Servers::Automatic => "automatic",
+            Servers::Off => "off",
+        }
+    }
+
+    /// Read a value, or nothing when the file holds something this version does not have.
+    pub fn parse(name: &str) -> Option<Self> {
+        match name.trim().to_lowercase().as_str() {
+            "automatic" => Some(Servers::Automatic),
+            "off" => Some(Servers::Off),
+            _ => None,
+        }
+    }
+
+    /// True when servers may be started, which is what the tick box shows.
+    pub fn is_automatic(self) -> bool {
+        self == Servers::Automatic
+    }
+}
+
 /// What one indent is made of: a tab, or that many spaces. `task-1922` WP4.
 ///
 /// **The default is a tab, because that is what the `Tab` key types today and a setting added to a
@@ -953,6 +990,8 @@ settings! {
     coded {
         /// Whether the completion popup arrives while you type, or waits to be asked.
         suggestions: Suggestions = Suggestions::Automatic => "editor.suggestions", "automatic or manual";
+        /// Whether completion asks a language server. See [`Servers`].
+        servers: Servers = Servers::Automatic => "editor.servers", "automatic or off";
         /// What one indent is made of. See [`Indent`], whose default is what `Tab` already typed.
         indent: Indent = Indent::Tab => "editor.indent", "tabs or spaces:N, N from 2 to 8";
         /// What line breaks a file is written back with. See [`LineEndings`].
@@ -1538,6 +1577,7 @@ mod tests {
             "editor.trim",
             "notebook.scroll_outputs",
             "editor.suggestions",
+            "editor.servers",
             "editor.indent",
             "editor.line_ending",
             "update.check",
@@ -1602,6 +1642,7 @@ mod tests {
             trim_on_save: true,
             notebook_scroll_outputs: false,
             suggestions: Suggestions::Manual,
+            servers: Servers::Off,
             line_endings: LineEndings::Crlf,
             update_check: UpdateCheck::Start,
             update_skip: "0.99.0".to_owned(),

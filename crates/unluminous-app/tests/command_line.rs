@@ -923,6 +923,7 @@ const SETTINGS_HELP: &[&str] = &[
     "Whether the editing area has a column of line numbers.",
     "Whether PowerShell is asked to report the folder it is in, so a tab reopens where you were rather than where it started. Off. PowerShell's Set-Location never moves the process's own current directory, so there is no other way to read it; turning this on adds one line to the prompt, after your own profile has set it up. A shell that already reports its folder is followed whatever this says.",
     "Whether the completion popup arrives as you type. Ctrl+Space works either way.",
+    "Whether completion asks a language server: `automatic` starts rust-analyzer for Rust and tsserver for TypeScript and JavaScript when one is found; `off` starts nothing and completion answers from the project's own structure.",
     "What line breaks a file is written back with. `keep` writes it the way it was read, which is what leaves a one character edit as a one line diff. A new file gets the platform's own either way.",
     "Patterns Go to File, Find in Files, completion, Go to Definition and Find References leave out, beside the project's own .gitignore, which is read already. The explorer goes on showing everything.",
     "Whether Unluminous asks unluminous.com for a newer version on its own: `daily`, the default, asks at most once a day across every window; `start` asks whenever a window opens; `off` asks nothing until somebody presses Check for Updates or runs `update check`. A newer version is offered in a notice with Install & Restart and Don't Ask Again, and nothing is installed until that is pressed.",
@@ -1899,6 +1900,9 @@ fn drive_the_editing_commands(coverage: &mut Coverage) {
     c.works(&mut harness, "editor select --all");
     c.works(&mut harness, "editor scroll --top");
     c.works(&mut harness, "editor complete --stem he --limit 5 --json");
+    // Outside a call it answers that there is no signature, which is a success: the question had an
+    // answer. Inside one it is `tests/completion_semantic.rs`'s.
+    c.works(&mut harness, "editor signature --json");
     c.refuses(&mut harness, "editor complete --choose no_such_candidate_at_all");
 
     // **The four that read the file as it was written come before the ones that change it.** Line 1

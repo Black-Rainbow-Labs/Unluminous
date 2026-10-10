@@ -33,6 +33,7 @@
 
 pub mod action_names;
 pub mod actions;
+pub mod auto_import;
 mod breakpoints;
 mod browsing;
 pub mod cli;
@@ -47,6 +48,7 @@ pub mod files;
 mod find;
 pub mod folding;
 mod frame;
+pub mod gather;
 pub mod git;
 pub mod hover_value;
 mod menus;
@@ -60,6 +62,8 @@ pub mod notebook_frame;
 pub mod notebook_kernel;
 mod opening;
 mod panels;
+pub mod servers;
+pub mod signature;
 // The window's side of the UI plugins: which providers are open, and which of their panes are showing.
 pub mod plugin_panes;
 mod preview;
@@ -74,8 +78,6 @@ mod updating;
 mod zooming;
 
 use std::collections::HashMap;
-
-use crate::services::symbol_index::Indexer;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -728,49 +730,6 @@ fn apply_what_a_fields_menu_asked_for(ui: &mut egui::Ui) {
     ui.ctx().input_mut(|input| input.events.push(event));
 }
 
-/// The project's definitions, and whether what is indexed is still what is on the disk.
-///
-/// Nothing is started until something asks a question about a symbol, so a window a unit test builds has
-/// no thread reading a folder behind it.
-///
-/// Three fields before, and two of them could not disagree: an `Indexer` with nothing recorded about what
-/// it was asked for, and a record of what it was asked for with no indexer behind it. Both are written in
-/// the same two lines of `keep_the_symbol_index_fresh` and neither can happen.
-pub(crate) enum SymbolIndexState {
-    /// Nothing has asked, so no thread has been started.
-    NotStarted,
-    /// The index, and the project it was read for.
-    Reading {
-        /// Boxed because it is far bigger than the variant beside it, and an enum whose two
-        /// variants differ that much is one every holder pays for. One allocation, the first time
-        /// anything asks a question about a symbol.
-        indexer: Box<Indexer>,
-        /// What the index was last asked about: the project, how many files were in it, and how many
-        /// plugins were switched on. A change to any of the three is what asks for another read.
-        asked: (PathBuf, usize, usize),
-        /// Set when a file on the disk changed under the index — a save, a rename, a reload.
-        stale: bool,
-    },
-}
-
-impl SymbolIndexState {
-    /// The index, once something has asked for one.
-    pub(crate) fn indexer(&self) -> Option<&Indexer> {
-        match self {
-            SymbolIndexState::NotStarted => None,
-            SymbolIndexState::Reading { indexer, .. } => Some(indexer),
-        }
-    }
-
-    /// Whether the disk has moved since the index was read.
-    ///
-    /// An index nobody has started is never stale: there is nothing to be stale, and the next question
-    /// rebuilds it anyway because it has no record of having been asked.
-    pub(crate) fn is_stale(&self) -> bool {
-        matches!(self, SymbolIndexState::Reading { stale: true, .. })
-    }
-}
-
 /// Where each part of the window is on this frame.
 ///
 /// Worked out once, by [`UnluminousApp::lay_the_frame_out`], and handed to every phase after it. The
@@ -1278,9 +1237,36 @@ pub struct UnluminousApp {
     /// The references, candidates or rename modal, when one is open. Like `Find in Files` it holds
     /// the thread it searches on, so shutting it is what stops that thread.
     pub references: Option<References>,
-    /// The project's definitions, the thread they are read on, and whether what is indexed is still
-    /// what is on the disk. See [`SymbolIndexState`] and `app::symbols`.
-    pub(crate) symbol_index: SymbolIndexState,
+    /// The project's definitions, from the code index held in this process. `None` until something
+    /// asks a question about a symbol, so a window a unit test builds starts no index behind it. See
+    /// `services::project_symbols` and `app::symbols`.
+    pub(crate) project_symbols: Option<crate::services::project_symbols::ProjectSymbols>,
+    /// True when the window may be the code index's host and write the index file, which only the
+    /// released binary asks for (`UnluminousApp::index_on_disk`). A window a test builds holds its index
+    /// in memory, because a test must not write into the person's own cache.
+    pub(crate) index_on_disk: bool,
+    /// What a person chose from the completion list before. `task-2231` §6.3.
+    pub(crate) completion_stats: crate::services::stats::CompletionStats,
+    /// The completion row that is chosen and since when, so its documentation is shown once it has
+    /// rested for a heartbeat.
+    pub(crate) completion_rest: Option<(String, f64)>,
+    /// A clock for the completion statistics' settle time, which a choice is stamped with.
+    pub(crate) completion_clock: std::time::Instant,
+    /// The language servers this window runs, one for each project root and adapter. `task-2231` §5.3.
+    pub(crate) servers: crate::app::servers::Servers,
+    /// True while `editor complete --stem` asks a hypothetical question, so no server is asked about
+    /// text the person has not typed.
+    pub(crate) asking_hypothetically: bool,
+    /// True when a member trigger found nothing structural and the popup waits for the server's rows.
+    pub(crate) awaiting_a_server_popup: bool,
+    /// The place `editor complete --after` asks about, read from the text as it would be with `after`
+    /// typed, in place of the place at the caret.
+    pub(crate) asked_override: Option<crate::app::gather::Asked>,
+    /// True while the signature help line is open. `task-2231` §6.8.
+    pub(crate) signature_open: bool,
+    /// Where the caret of the pane with the keyboard was drawn this frame, whether or not a popup is
+    /// open, which the signature line hangs from.
+    pub(crate) caret_anchor: Option<completion::CompletionAnchor>,
     /// The word under the pointer while the modifier is held, and where a click on it would go.
     /// Cached against the text revision and the word, so a resting pointer costs one comparison.
     pub(crate) hover: Option<symbols::Hover>,
@@ -1575,7 +1561,17 @@ impl UnluminousApp {
             find: None,
             find_in_files: None,
             references: None,
-            symbol_index: SymbolIndexState::NotStarted,
+            project_symbols: None,
+            index_on_disk: false,
+            completion_stats: Default::default(),
+            completion_rest: None,
+            completion_clock: std::time::Instant::now(),
+            servers: Default::default(),
+            asking_hypothetically: false,
+            awaiting_a_server_popup: false,
+            asked_override: None,
+            signature_open: false,
+            caret_anchor: None,
             hover: None,
             rename: None,
             back: Vec::new(),
@@ -1714,6 +1710,7 @@ impl UnluminousApp {
 
     /// The same, against a named folder, which is what a test that wants to check the settings uses.
     pub fn use_store(&mut self, store: Store) {
+        self.completion_stats = crate::services::stats::CompletionStats::read_from(store.folder());
         self.browser.set_profile(store.folder().join("browser"));
         self.visits = crate::services::browser_session::Visits::in_folder(store.folder());
         // **Whether this is a fresh Unluminous, asked before anything is written.** The five bundled
@@ -2522,6 +2519,10 @@ impl eframe::App for UnluminousApp {
         // they have been stopped. `realm::Reading::OnTheWayOut` says which of the six values this moment can
         // answer for and why the other two are left out.
         self.note_the_live_state_into_the_nodes(realm::Reading::OnTheWayOut);
+        // The completion list's statistics, whether or not the window has settled.
+        self.completion_stats.write_when_settled(f64::INFINITY, 0.0);
+        // The language servers are told to shut down and are not waited for past their own grace.
+        self.servers.stop_everything();
         // **Before the sessions are killed**, because a screen is read out of a live terminal and a killed one
         // has nothing to read. `task-1908` for the canvas's terminals, `task-1945` for the tile's.
         self.write_the_screens_down();

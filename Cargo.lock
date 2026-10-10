@@ -456,9 +456,9 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "atrius-index"
-version = "0.1.2"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99f6d949221187a50dbaee88980d7b53e449cb51ef74fa4f74238eb9aa3c72fc"
+checksum = "1edbd7708755aa2b85c2a94f69c98a6632b9f7e1ad9406bc7ef13770a8d3c447"
 dependencies = [
  "blake3",
  "crossbeam-channel",
@@ -6032,6 +6032,7 @@ dependencies = [
  "unluminous-db",
  "unluminous-git",
  "unluminous-jupyter",
+ "unluminous-lsp",
  "unluminous-terminal",
  "ureq",
  "url",
@@ -6105,6 +6106,15 @@ name = "unluminous-jupyter"
 version = "0.70.0"
 dependencies = [
  "serde_json",
+]
+
+[[package]]
+name = "unluminous-lsp"
+version = "0.69.1"
+dependencies = [
+ "serde_json",
+ "unluminous-core",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

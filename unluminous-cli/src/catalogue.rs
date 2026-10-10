@@ -212,7 +212,7 @@ impl Command {
                 | ("git", "status" | "action" | "switch")
                 | ("window", "screenshot")
                 | ("input", _)
-                | ("editor", "references" | "rename" | "complete")
+                | ("editor", "references" | "rename" | "complete" | "signature")
                 | ("modal", "results")
                 | ("terminal", "read")
                 | ("run", "output")
@@ -676,10 +676,10 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "",
         verb: "status",
-        summary: "Everything about the window in one answer: its version and build date, the project, the tabs, the panes, the terminal, who holds the keyboard, the modal that is open, the settings and git. Ask for one part with --section and the answer is only that part. `--section keyboard` is the one to read when typing goes somewhere unexpected: it says which surface Unluminous gave the keys to, and whether a text box anywhere has egui's own focus - while one has, every other surface stands aside.",
+        summary: "Everything about the window in one answer: its version and build date, the project, the tabs, the panes, the terminal, who holds the keyboard, the modal that is open, the settings and git. Ask for one part with --section and the answer is only that part. `--section keyboard` is the one to read when typing goes somewhere unexpected: it says which surface Unluminous gave the keys to, and whether a text box anywhere has egui's own focus - while one has, every other surface stands aside. `--section servers` says what each language server is doing.",
         arguments: NO_ARGUMENTS,
-        flags: &[option("section", "name", "One part of the answer: editor, tabs, panes, panels, explorer, terminal, keyboard, modal, settings, git, window, project or message. Several, comma-separated, for more than one. The whole answer when it is left out.")],
-        examples: &["unluminous-cli status --json", "unluminous-cli status --section panes --json"],
+        flags: &[option("section", "name", "One part of the answer: editor, tabs, panes, panels, explorer, terminal, keyboard, modal, settings, git, servers, window, project or message. Several, comma-separated, for more than one. The whole answer when it is left out.")],
+        examples: &["unluminous-cli status --json", "unluminous-cli status --section servers --json"],
         local: false,
     },
     Command {
@@ -1322,14 +1322,26 @@ pub const COMMANDS: &[Command] = &[
             option("stem", "text", "Ask what this hypothetical word would offer at the position, without inserting it or changing the document."),
             whole_option("limit", "number", "Print at most this many rows. 50 when it is left out, and 0 means all of them."),
             option("choose", "name", "Apply this row to the word being typed, as Enter would. It is the completion's **name**, never a row number: `--choose 0` is refused with the names there are."),
+            option("after", "text", "Ask as if this text were typed first: `--after .` lists the members of the value before the caret."),
+            whole_option("wait", "milliseconds", "How long to wait for the language server's rows. 300 by default; 0 answers from the project's structure alone."),
         ],
         examples: &[
             "unluminous-cli editor complete --json",
             "unluminous-cli editor complete --stem ar --limit 5 --json",
+            "unluminous-cli editor complete --after . --limit 10 --json",
             "unluminous-cli editor complete --limit 5 --json",
             "unluminous-cli editor complete --choose draw_frame",
             "unluminous-cli editor complete --choose ./layout",
         ],
+        local: false,
+    },
+    Command {
+        area: "editor",
+        verb: "signature",
+        summary: "The function whose brackets the caret is inside, with its parameters and which one is being typed. From the language server when one runs, otherwise from the project's definitions.",
+        arguments: NO_ARGUMENTS,
+        flags: &[whole_option("wait", "milliseconds", "How long to wait for the language server. 300 by default.")],
+        examples: &["unluminous-cli editor signature --json"],
         local: false,
     },
     Command {

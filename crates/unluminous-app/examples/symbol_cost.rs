@@ -20,7 +20,7 @@ use std::time::Instant;
 
 use unluminous_app::services::file_tree::FileTree;
 use unluminous_app::services::plugins::Plugins;
-use unluminous_app::services::symbol_index::Index;
+use unluminous_app::services::project_symbols::ProjectSymbols;
 use unluminous_app::services::text_search;
 use unluminous_core::symbols::FileSymbols;
 
@@ -59,22 +59,26 @@ fn main() {
     );
 
     // ---------------------------------------------------------------- building the index
+    // The code index, held in memory as a window a test builds holds it (`task-2231` §5.2).
     let start = Instant::now();
-    let index = Index::build(&files, &grammars, &|| false).expect("a build");
-    let build = start.elapsed().as_secs_f64() * 1000.0;
-    println!("\nIndex");
-    println!("  build              {build:8.1} ms  (budget: under 500 cold, on the thread)");
-    println!("  files read         {:8}", index.files());
-    println!("  definitions        {:8}", index.len());
-    println!("  names              {:8}", index.names());
-    if index.capped() {
-        println!("  capped             the project holds more than the index keeps");
+    let index = ProjectSymbols::open(&folder, false);
+    while index.is_building() {
+        std::thread::sleep(std::time::Duration::from_millis(5));
     }
+    let build = start.elapsed().as_secs_f64() * 1000.0;
+    let (files_read, definitions, names) = index
+        .read(|t| (t.files().count(), t.files().map(|(_, d)| d.len()).sum::<usize>(), t.len()))
+        .unwrap_or_default();
+    println!("\nIndex");
+    println!("  build              {build:8.1} ms  (on the code index's own threads)");
+    println!("  files read         {files_read:8}");
+    println!("  definitions        {definitions:8}");
+    println!("  names              {names:8}");
 
     // The name to ask about: the one on the command line, or the commonest one in the project,
     // which is the worst case for a lookup that has to walk a list of candidates.
     let name = wanted.unwrap_or_else(|| commonest(&index));
-    let candidates = index.definitions_of(&name).len();
+    let candidates = index.read(|t| t.named(&name.to_lowercase()).len()).unwrap_or(0);
     println!("\nAsking about '{name}' ({candidates} definitions)");
 
     // ---------------------------------------------------------------- one file, read once
@@ -162,10 +166,10 @@ fn main() {
 }
 
 /// The name with the most definitions, which is the worst case a lookup has.
-fn commonest(index: &Index) -> String {
+fn commonest(index: &ProjectSymbols) -> String {
     let mut best = ("new".to_owned(), 0);
     for name in candidate_names() {
-        let found = index.definitions_of(name).len();
+        let found = index.read(|t| t.named(name).len()).unwrap_or(0);
         if found > best.1 {
             best = ((*name).to_owned(), found);
         }

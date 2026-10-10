@@ -9,7 +9,7 @@
 use std::collections::BTreeMap;
 
 use crate::symbols::SymbolKind;
-use crate::syntax::{Grammar, ImportStyle, PathRoot};
+use crate::syntax::{CompletionKeys, Grammar, ImportStyle, PathRoot};
 
 /// Named values read from or written to the settings file.
 ///
@@ -210,6 +210,37 @@ pub fn language_grammar(values: &Values, name: &str) -> Result<Grammar, String> 
         // The two `task-1694` added, and the same rule a sixth time.
         markup: values.flag("language.markup").unwrap_or(false),
         raw_text: raw_text(values)?,
+        completion: completion_keys(values)?,
+    })
+}
+
+/// The keys `task-2231` added for completion. `language.server` is checked against the adapters built
+/// into Unluminous and refused with the list, as `debug.adapter` is.
+///
+/// @param values - the manifest
+fn completion_keys(values: &Values) -> Result<CompletionKeys, String> {
+    let server = word(values, "language.server");
+    if let Some(named) = &server {
+        if !crate::syntax::SERVERS.contains(&named.as_str()) {
+            return Err(format!(
+                "language.server is `{named}`, and a language server adapter in Unluminous is one of {}",
+                crate::syntax::SERVERS.join(", ")
+            ));
+        }
+    }
+    Ok(CompletionKeys {
+        members: list(values, "language.members"),
+        annotation: word(values, "language.annotation"),
+        returns: word(values, "language.returns"),
+        containers: list(values, "language.containers"),
+        server,
+        server_command: word(values, "language.server_command"),
+        server_args: values
+            .text("language.server_args")
+            .unwrap_or_default()
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect(),
     })
 }
 

@@ -65,6 +65,15 @@ fn main() {
         .filter(|path| grammars.for_path(path).is_some())
         .filter_map(|path| Some((path.clone(), std::fs::metadata(path).ok()?.len())))
         .max_by_key(|(_, size)| *size);
+    // `COMPLETION_COST_FILE` names the file instead, which is how `task-2231` §8.2's `app/realm.rs` is
+    // measured when it is not the largest.
+    let biggest = match std::env::var_os("COMPLETION_COST_FILE") {
+        Some(file) => {
+            let path = folder.join(file);
+            std::fs::metadata(&path).ok().map(|m| (path, m.len()))
+        }
+        None => biggest,
+    };
     let Some((path, size)) = biggest else {
         eprintln!("No file in {} is in a language a plugin claims.", folder.display());
         return;
@@ -76,7 +85,8 @@ fn main() {
     build_the_index(&mut app);
     let index_build = start.elapsed().as_secs_f64() * 1000.0;
 
-    let names = app.symbols_indexer().map_or(0, |indexer| indexer.index().sorted_names().len());
+    let names =
+        app.symbols_indexer().and_then(|symbols| symbols.read(|table| table.len())).unwrap_or(0);
     let text_length = app.document().text().len_bytes();
 
     // The other half of a keystroke, and the half that is paid once however many questions are
@@ -114,6 +124,29 @@ fn main() {
         std::hint::black_box(FileSymbols::read(&text, &grammar));
     });
     println!("  of which language.export_keyword is {:.3} ms", (with - without).max(0.0));
+    // The structural read `task-2231` added, also paid once a text revision and only when completion
+    // asks: containers, parameters, types and imports, read the way the code index reads a file.
+    let rel = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let structure = timed(10, || {
+        std::hint::black_box(atrius_index::outline::read_structure(&rel, &text));
+    });
+    let (definitions, imports) = atrius_index::outline::read_structure(&rel, &text);
+    println!(
+        "  read into its structure: {structure:.3} ms  ({} definitions, {} imports)",
+        definitions.len(),
+        imports.len()
+    );
+    // A member question: straight after `self.` inside a method of the file, the case `task-2231`
+    // §8.2 holds to 2 ms.
+    if let Some(at) = text.find("        self.").map(|at| at + "        self.".len()) {
+        let document_at = text[..at].matches("\r\n").count();
+        let offset = at - document_at;
+        let members = timed(20, || {
+            std::hint::black_box(app.completion_rows("", offset));
+        });
+        let offered = app.completion_rows("", offset).len();
+        println!("  members after `self.`: {members:.3} ms, {offered} offered (budget: under 2)");
+    }
     println!();
     println!(
         "{:<8}{:>10}{:>10}{:>12}{:>12}{:>10}",

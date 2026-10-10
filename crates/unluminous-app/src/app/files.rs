@@ -76,6 +76,9 @@ pub struct Cached {
     /// Keyed on `text_revision`, the same key `colour_the_file` is keyed on, so a caret move
     /// recomputes nothing.
     pub symbols: Option<crate::app::symbols::TabSymbols>,
+    /// The same text's structure, as the code index reads a file: containers, parameters, types and
+    /// imports. Read only when completion asks and kept until the text changes. `task-2231` §5.2.
+    pub structure: Option<crate::app::gather::TabStructure>,
     /// What in this file could be collapsed, read from its live text and kept until that text
     /// changes. Keyed on `text_revision`, the same key the two above are keyed on.
     ///

@@ -192,6 +192,9 @@ pub enum Waiting {
     /// without the kernel's, so a busy kernel costs a caller a few seconds and not a failure.
     /// `task-2229`.
     Completion { offset: usize, choose: Option<String>, answer_by: Instant, until: Instant },
+    /// `editor signature` waiting for the language server's signature help. At `answer_by` the
+    /// structural reading is given instead. `task-2231` §6.10.
+    Signature { answer_by: Instant, until: Instant },
 }
 
 /// Who asked for a tool call to be run, which is who its answer goes back to.
@@ -241,6 +244,7 @@ impl Waiting {
             | Waiting::NotebookPythons { until }
             | Waiting::NotebookKernels { until, .. }
             | Waiting::Completion { until, .. }
+            | Waiting::Signature { until, .. }
             | Waiting::DebugPause { until, .. }
             | Waiting::DebugEvaluate { until, .. }
             | Waiting::DebugHover { until, .. } => *until,
@@ -554,6 +558,10 @@ impl UnluminousApp {
                 let (offset, choose, answer_by) = (*offset, choose.clone(), *answer_by);
                 self.completion_answer(request, offset, choose.as_deref(), answer_by)
             }
+            Waiting::Signature { answer_by, .. } => {
+                let answer_by = *answer_by;
+                self.signature_answer(request, answer_by)
+            }
             Waiting::NotebookKernels { python, .. } => {
                 let python = python.clone();
                 self.notebook_kernels_answer(request, &python)
@@ -724,7 +732,12 @@ impl UnluminousApp {
             ),
             Waiting::Completion { .. } => (
                 "editor.complete",
-                "The kernel had not answered the completion when the time ran out.".to_owned(),
+                "The kernel or the language server had not answered the completion when the time ran out."
+                    .to_owned(),
+            ),
+            Waiting::Signature { .. } => (
+                "editor.signature",
+                "The language server had not answered when the time ran out.".to_owned(),
             ),
             Waiting::References { rename, .. } => (
                 if rename.is_some() { "editor.rename" } else { "editor.references" },
@@ -1214,8 +1227,44 @@ impl UnluminousApp {
             "modal": self.modal_value(ctx),
             "settings": self.settings_value(),
             "git": self.git_value(),
+            // The language servers and what each is doing: starting, indexing with how far it has
+            // got, ready, failed with its reason, or absent with where the program was looked for.
+            // `task-2231` §6.9, so an agent can wait for `ready` rather than guess.
+            "servers": self.servers_value(),
             "message": self.message,
         })
+    }
+}
+
+impl crate::app::UnluminousApp {
+    /// The language servers this window runs, as data.
+    fn servers_value(&self) -> Value {
+        let showing = self.showing_server_state().map(|(label, _)| label);
+        let servers: Vec<Value> = self
+            .server_states()
+            .into_iter()
+            .map(|(label, state, root)| {
+                let (name, message, percent) = match &state {
+                    unluminous_lsp::ServerState::Starting => ("starting", None, None),
+                    unluminous_lsp::ServerState::Indexing { message, percent } => {
+                        ("indexing", Some(message.clone()), *percent)
+                    }
+                    unluminous_lsp::ServerState::Ready => ("ready", None, None),
+                    unluminous_lsp::ServerState::Failed(why) => ("failed", Some(why.clone()), None),
+                    unluminous_lsp::ServerState::Absent(why) => ("absent", Some(why.clone()), None),
+                };
+                json!({
+                    "server": label,
+                    "state": name,
+                    "describe": state.describe(),
+                    "message": message,
+                    "percent": percent,
+                    "root": unluminous_terminal::paths::plain(&root).display().to_string(),
+                    "answersTheShowingFile": showing.as_deref() == Some(label.as_str()),
+                })
+            })
+            .collect();
+        json!({ "setting": self.settings.servers.name(), "running": servers })
     }
 }
 
@@ -1264,6 +1313,7 @@ const STATUS_SECTIONS: &[(&str, &[&str])] = &[
     ("modal", &["modal"]),
     ("settings", &["settings"]),
     ("git", &["git"]),
+    ("servers", &["servers"]),
     (
         "window",
         &[

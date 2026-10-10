@@ -1,0 +1,19 @@
+[package]
+name = "unluminous-lsp"
+description = "A language server client for completion and signature help: the Language Server Protocol for rust-analyzer and TypeScript's own protocol for tsserver, each on a worker thread. No user interface dependency."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+# Both protocols are JSON. Read and written as values rather than through derive macros, the choice
+# `unluminous-dap` made for the same reason: these are open protocols other people's programs speak.
+serde_json.workspace = true
+# The completion vocabulary the rest of the editor speaks: what a row is and what accepting it inserts.
+unluminous-core.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+# A job object every server is put in, so the operating system ends the servers when the window's
+# process ends, including when it is killed and nothing in it runs.
+windows-sys.workspace = true

@@ -155,5 +155,12 @@
  "expect":"Uses `unluminous_search` (`find`, `def`, `refs`, `fragment`) to find where `area_of` is defined and every place it is used, and reads the function with `fragment`, rather than its own grep, glob or a read of the whole file. Asked in plain English for the code that measures a Collatz chain, it uses `find` with the question and names `collatzLength`. Asked about something the project does not contain, it reports that nothing matches rather than naming unrelated code.",
  "prompts":["Where is area_of defined, and where is it used? Show me the function.",
             "Which function works out how long a Collatz chain is?",
-            "Where does this project retry a failed network request?"]}
+            "Where does this project retry a failed network request?"]},
+
+{"id":"s34-members-and-signature","area":"editor/completion","name":"Members, a signature and the language server, without typing",
+ "after":{"servers":["status","--section","servers"]},
+ "expect":"Uses `editor complete --after .` to list what a value offers without typing the dot into the file, `editor signature` to read the parameters of the call the caret is inside, and `status --section servers` to say whether rust-analyzer is ready, rather than reading the source of `shapes.rs` or running rust-analyzer itself. The document is unchanged at the end.",
+ "prompts":["In src/main.rs, put the caret just after the word `rects` on the line that calls total_area, and tell me what I could write after a dot there. Do not change the file.",
+            "Put the caret inside the brackets of the call to area_of and tell me what it takes.",
+            "Is the language server for this project ready yet?"]}
 ]

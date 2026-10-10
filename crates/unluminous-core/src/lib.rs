@@ -23,6 +23,7 @@ pub mod manifest;
 pub mod markdown;
 pub mod mermaid;
 pub mod metrics;
+pub mod place;
 pub mod rope;
 pub mod scroll_sync;
 pub mod style;
@@ -55,4 +56,4 @@ pub use style::{
     Align, CharStyle, Color, ParagraphStyle, ParagraphStyles, StyleChange, StyleSpans,
 };
 pub use symbols::{Confidence, Definition, Occurrence, Role, SymbolKind};
-pub use syntax::{highlight, Grammar, ImportStyle, PathRoot, Token};
+pub use syntax::{highlight, CompletionKeys, Grammar, ImportStyle, PathRoot, Token};

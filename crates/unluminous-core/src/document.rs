@@ -1484,6 +1484,10 @@ impl Document {
             self.remove_range(range.clone());
             if !replacement.is_empty() {
                 self.splice(at..at, replacement);
+                // `splice` leaves the syntax dirt alone, so the insertion is noted here. Without it an
+                // edit that only inserts, such as an import line a completion adds at the top of the
+                // file, was never coloured and its folds were read off the tokens it replaced.
+                self.syntax_dirt = self.syntax_dirt.note(at, 0, replacement.len());
             }
         }
 
@@ -4474,6 +4478,26 @@ mod line_command_tests {
                 crate::incremental::Dirt::Whole,
                 "{command:?} left the colours as they were"
             );
+        }
+    }
+
+    /// An insertion `ReplaceMany` makes with an empty range is noted for colouring, as typing is. An
+    /// accepted completion that adds an import line at the top of the file is one such edit.
+    #[test]
+    fn an_insertion_with_no_range_says_where_the_colours_have_to_be_read_again() {
+        let mut document = Document::from_text("fn main() {\n    sh\n}\n");
+        document.set_syntax(Color::WHITE, &[]);
+        let stem = document.text().to_string().find("sh").unwrap();
+        document.apply(Command::ReplaceMany(vec![
+            (0..0, "use crate::shapes::shape;\n".to_owned()),
+            (stem..stem + 2, "shape".to_owned()),
+        ]));
+        match document.syntax_dirt() {
+            crate::incremental::Dirt::Part { from, to, .. } => {
+                assert_eq!(from, 0, "the import line at the top is dirty");
+                assert!(to >= "use crate::shapes::shape;\n".len(), "and all of it: {to}");
+            }
+            other => panic!("expected part of the file to be dirty, not {other:?}"),
         }
     }
 }

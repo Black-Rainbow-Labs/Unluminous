@@ -309,6 +309,11 @@ fn main() -> eframe::Result {
             // The operating system's clipboard is the person's, so the binary switches it on and a
             // test, which does not, never overwrites what they copied.
             app.use_the_system_clipboard();
+            // The code index's file is in the person's own cache, so the binary lets the window be the
+            // project's index host and a test, which does not, holds its index in memory.
+            app.index_on_disk();
+            // And it may start rust-analyzer and tsserver, which a test's window does not.
+            app.allow_language_servers();
             unluminous_app::services::frame_trace::mark("settings");
             // What was left open in this project last time. After the settings, because it opens files
             // and they have to be set in the font the settings name; before the file argument, so a file

@@ -120,6 +120,32 @@ impl Plugins {
                 by_extension.push((extension.clone(), plugin.grammar.clone()));
             }
         }
+        // **Every language the code index reads is a language completion reads** (`task-2231` G2).
+        // The code index bundles twenty-four manifests and Unluminous ships plugins for eleven, so a
+        // `.go` file had a structure in the index and nothing at all in the editor. An extension no
+        // installed plugin claims, switched on or off, is read with the index's own manifest; one a
+        // plugin claims is left to that plugin, so switching a plugin off still withdraws it.
+        for (id, manifest) in atrius_index::grammars::BUNDLED {
+            let values = unluminous_core::manifest::Values::parse(manifest);
+            let claimed = |extension: &String| {
+                self.installed.iter().any(|plugin| plugin.extensions.contains(extension))
+                    || by_extension.iter().any(|(known, _)| known == extension)
+            };
+            let extensions: Vec<String> = unluminous_core::manifest::language_extensions(&values)
+                .into_iter()
+                .filter(|extension| !claimed(extension))
+                .collect();
+            if extensions.is_empty() {
+                continue;
+            }
+            let name = values.text("plugin.name").unwrap_or(id).to_owned();
+            let Ok(grammar) = unluminous_core::manifest::language_grammar(&values, &name) else {
+                continue;
+            };
+            for extension in extensions {
+                by_extension.push((extension, grammar.clone()));
+            }
+        }
         self.grammars = Grammars::of(by_extension);
     }
 

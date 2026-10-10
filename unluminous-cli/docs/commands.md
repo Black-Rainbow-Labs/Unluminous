@@ -294,13 +294,13 @@ Six commands are typed on their own, because they are about the CLI or about a w
 unluminous-cli status [--section <name>]
 ```
 
-Everything about the window in one answer: its version and build date, the project, the tabs, the panes, the terminal, who holds the keyboard, the modal that is open, the settings and git. Ask for one part with --section and the answer is only that part. `--section keyboard` is the one to read when typing goes somewhere unexpected: it says which surface Unluminous gave the keys to, and whether a text box anywhere has egui's own focus - while one has, every other surface stands aside.
+Everything about the window in one answer: its version and build date, the project, the tabs, the panes, the terminal, who holds the keyboard, the modal that is open, the settings and git. Ask for one part with --section and the answer is only that part. `--section keyboard` is the one to read when typing goes somewhere unexpected: it says which surface Unluminous gave the keys to, and whether a text box anywhere has egui's own focus - while one has, every other surface stands aside. `--section servers` says what each language server is doing.
 
-- `--section <name>` — One part of the answer: editor, tabs, panes, panels, explorer, terminal, keyboard, modal, settings, git, window, project or message. Several, comma-separated, for more than one. The whole answer when it is left out.
+- `--section <name>` — One part of the answer: editor, tabs, panes, panels, explorer, terminal, keyboard, modal, settings, git, servers, window, project or message. Several, comma-separated, for more than one. The whole answer when it is left out.
 
 ```sh
 unluminous-cli status --json
-unluminous-cli status --section panes --json
+unluminous-cli status --section servers --json
 ```
 
 ### instances
@@ -1193,7 +1193,7 @@ unluminous-cli editor rename total --scope project --include comments --apply
 ### editor complete
 
 ```
-unluminous-cli editor complete [--offset <bytes>] [--line <number>] [--column <number>] [--stem <text>] [--limit <number>] [--choose <name>]
+unluminous-cli editor complete [--offset <bytes>] [--line <number>] [--column <number>] [--stem <text>] [--limit <number>] [--choose <name>] [--after <text>] [--wait <milliseconds>]
 ```
 
 The names a word could become, best first, with what each row is and where it came from. By default the word is read from the document at the caret; --stem asks hypothetically without editing the document. Inside an import the rows are what can be imported instead. --choose applies a real document row exactly as Enter would, and takes the row's name rather than its position.
@@ -1204,13 +1204,30 @@ The names a word could become, best first, with what each row is and where it ca
 - `--stem <text>` — Ask what this hypothetical word would offer at the position, without inserting it or changing the document.
 - `--limit <number>` — Print at most this many rows. 50 when it is left out, and 0 means all of them.
 - `--choose <name>` — Apply this row to the word being typed, as Enter would. It is the completion's **name**, never a row number: `--choose 0` is refused with the names there are.
+- `--after <text>` — Ask as if this text were typed first: `--after .` lists the members of the value before the caret.
+- `--wait <milliseconds>` — How long to wait for the language server's rows. 300 by default; 0 answers from the project's structure alone.
 
 ```sh
 unluminous-cli editor complete --json
 unluminous-cli editor complete --stem ar --limit 5 --json
+unluminous-cli editor complete --after . --limit 10 --json
 unluminous-cli editor complete --limit 5 --json
 unluminous-cli editor complete --choose draw_frame
 unluminous-cli editor complete --choose ./layout
+```
+
+### editor signature
+
+```
+unluminous-cli editor signature [--wait <milliseconds>]
+```
+
+The function whose brackets the caret is inside, with its parameters and which one is being typed. From the language server when one runs, otherwise from the project's definitions.
+
+- `--wait <milliseconds>` — How long to wait for the language server. 300 by default.
+
+```sh
+unluminous-cli editor signature --json
 ```
 
 ### editor navigate-back

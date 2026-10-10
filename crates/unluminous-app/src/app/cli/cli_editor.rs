@@ -27,6 +27,11 @@ const COMPLETIONS_SHOWN: usize = 50;
 /// it. A kernel that is running a cell answers when the cell finishes, so this is generous. `task-2229`.
 const KERNEL_COMPLETION_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 
+/// How long `editor complete` waits for a language server's answer when it is not told: the
+/// reference editor shows its list within 150 ms, and a warm server answers well inside this.
+/// `task-2231` §6.10.
+const SERVER_COMPLETION_WAIT_MS: usize = 300;
+
 impl UnluminousApp {
     /// The refusal every editor command answers with while a rendered page is the tab that is showing.
     ///
@@ -73,6 +78,7 @@ impl UnluminousApp {
             "references" => self.cli_editor_references(request),
             "rename" => self.cli_editor_rename(request),
             "complete" => self.cli_editor_complete(request),
+            "signature" => self.cli_editor_signature(request),
             "find" => self.cli_editor_find(request),
             "replace" => self.cli_editor_replace(request),
             "navigate-back" => self.cli_navigate(request, true),
@@ -1003,6 +1009,85 @@ impl UnluminousApp {
         Ok((name, offset, false))
     }
 
+    /// `unluminous-cli editor signature` — the callable whose brackets the caret is inside, and which
+    /// of its parameters is being typed. The language server's answer when the file's server answers
+    /// within `--wait`, and otherwise the structural reading, which is also what the line above the
+    /// caret shows. Changes nothing. `task-2231` §6.10.
+    fn cli_editor_signature(&mut self, request: &Request) -> Outcome {
+        if !self.completion_applies_here() {
+            return no(
+                request,
+                code::NOT_APPLICABLE,
+                "No plugin claims this file, so there is no signature to read.",
+            );
+        }
+        self.ask_for_signature_help();
+        let wait = request.whole("wait").unwrap_or(SERVER_COMPLETION_WAIT_MS);
+        let waiting = matches!(self.server_signature(), Some((false, _)));
+        if wait > 0 && waiting {
+            let answer_by = Instant::now() + std::time::Duration::from_millis(wait as u64);
+            return Outcome::Hold(Waiting::Signature {
+                answer_by,
+                until: answer_by + std::time::Duration::from_secs(5),
+            });
+        }
+        self.signature_reply(request)
+    }
+
+    /// The held `editor signature`, answered once the server has answered or `answer_by` has passed.
+    ///
+    /// @param request - the request
+    /// @param answer_by - when the structural reading is given without the server's
+    pub(crate) fn signature_answer(
+        &mut self,
+        request: &Request,
+        answer_by: Instant,
+    ) -> Option<Reply> {
+        let waiting = matches!(self.server_signature(), Some((false, _)));
+        if waiting && Instant::now() < answer_by {
+            return None;
+        }
+        match self.signature_reply(request) {
+            Outcome::Reply(reply) => Some(reply),
+            _ => None,
+        }
+    }
+
+    /// The signature at the caret as a reply.
+    ///
+    /// @param request - the request
+    fn signature_reply(&mut self, request: &Request) -> Outcome {
+        let Some(signature) = self.signature_at_the_caret() else {
+            return ok(
+                request,
+                "The caret is not inside a call this file's definitions or its server know.",
+                json!({ "signature": null }),
+            );
+        };
+        let parameters: Vec<String> = signature
+            .parameters
+            .iter()
+            .map(|range| signature.label[range.clone()].to_owned())
+            .collect();
+        let active = signature.active.and_then(|a| parameters.get(a).cloned());
+        let message = match &active {
+            Some(parameter) => format!("{} (typing {parameter})", signature.label),
+            None => signature.label.clone(),
+        };
+        ok(
+            request,
+            message,
+            json!({
+                "signature": signature.label,
+                "parameters": parameters,
+                "active": signature.active,
+                "activeParameter": active,
+                "doc": signature.doc,
+                "source": if signature.from_server { "server" } else { "structure" },
+            }),
+        )
+    }
+
     /// `unluminous-cli editor complete` — the names the word being typed could become.
     ///
     /// It goes through the same two functions the popup does: `completion_offer` works out what a
@@ -1022,8 +1107,17 @@ impl UnluminousApp {
                 "No plugin claims this file, so Unluminous has no words to offer.",
             );
         }
-        let hypothetical = request.text("stem").map(|stem| stem.trim().to_owned());
-        if request.has("stem") && hypothetical.as_deref().is_none_or(str::is_empty) {
+        let after = request.text("after").map(|a| a.to_owned()).filter(|a| !a.is_empty());
+        let hypothetical = request
+            .text("stem")
+            .map(|stem| stem.trim().to_owned())
+            .or_else(|| after.as_ref().map(|_| String::new()));
+        // A hypothetical stem may be empty only when `--after` puts something in front of it to be a
+        // member of: `--after .` asks what the value before the caret has. `task-2231` §6.10.
+        if request.has("stem")
+            && hypothetical.as_deref().is_none_or(str::is_empty)
+            && after.is_none()
+        {
             return no(request, code::USAGE, "A hypothetical stem cannot be empty.");
         }
         if hypothetical.is_some() && request.has("choose") {
@@ -1037,7 +1131,37 @@ impl UnluminousApp {
             Ok(offset) => offset,
             Err(problem) => return no(request, code::USAGE, problem),
         };
+        if let Some(after) = after.as_deref() {
+            return self.cli_complete_after(
+                request,
+                offset,
+                after,
+                hypothetical.as_deref().unwrap_or(""),
+            );
+        }
         self.cli_complete_at(request, offset, hypothetical.as_deref())
+    }
+
+    /// `editor complete --after <text> [--stem <text>]`: what would be offered if `after` and the stem
+    /// were typed at the position, without typing either. `task-2231` §6.10.
+    fn cli_complete_after(
+        &mut self,
+        request: &Request,
+        offset: usize,
+        after: &str,
+        stem: &str,
+    ) -> Outcome {
+        let text = self.document().text().to_string();
+        if offset > text.len() || !text.is_char_boundary(offset) {
+            return no(request, code::USAGE, "That position is not in the text.");
+        }
+        let mut written = text.clone();
+        written.insert_str(offset, after);
+        let asked = self.asked_in(&written, offset + after.len());
+        self.asked_override = Some(asked);
+        let outcome = self.cli_complete_now(request, offset, Some(stem));
+        self.asked_override = None;
+        outcome
     }
 
     /// What `editor complete` and `notebook complete` answer at `offset`, once the position is known.
@@ -1052,8 +1176,22 @@ impl UnluminousApp {
         hypothetical: Option<&str>,
     ) -> Outcome {
         if hypothetical.is_none() {
-            // Worked out once to ask the kernel, which is what the popup does.
+            // Worked out once to ask the kernel and the language server, which is what the popup does.
             let start = self.completion_offer(offset).range.start;
+            // `--wait`: how long a language server's answer is waited for, when one is being asked.
+            // 300 ms unless the caller says otherwise, and 0 answers at once with the structural rows.
+            let wait = request.whole("wait").unwrap_or(SERVER_COMPLETION_WAIT_MS);
+            if wait > 0 && self.server_is_being_asked() {
+                let choose = request.text("choose").map(|name| name.trim().to_owned());
+                let now = Instant::now();
+                let answer_by = now + std::time::Duration::from_millis(wait as u64);
+                return Outcome::Hold(Waiting::Completion {
+                    offset,
+                    choose,
+                    answer_by,
+                    until: answer_by + std::time::Duration::from_secs(5),
+                });
+            }
             if self.kernel_is_being_asked(start, offset) {
                 let choose = request.text("choose").map(|name| name.trim().to_owned());
                 let now = Instant::now();
@@ -1077,7 +1215,8 @@ impl UnluminousApp {
         answer_by: Instant,
     ) -> Option<Reply> {
         let start = self.completion_offer(offset).range.start;
-        if self.kernel_is_being_asked(start, offset) && Instant::now() < answer_by {
+        let waiting = self.kernel_is_being_asked(start, offset) || self.server_is_being_asked();
+        if waiting && Instant::now() < answer_by {
             return None;
         }
         let outcome = match choose {
@@ -1100,6 +1239,10 @@ impl UnluminousApp {
         if let Some(name) = request.text("choose") {
             return self.cli_editor_complete_choose(request, offset, name.trim());
         }
+        // The command line is not a keystroke, so it reads the structure at this very revision rather
+        // than the one a keystroke may keep. `app::gather::LINES_A_KEYSTROKE_MAY_MOVE`.
+        let active = self.files.active_index();
+        self.exact_tab_structure(active);
         let offer = match hypothetical {
             Some(stem) => self.hypothetical_completion_offer(offset, stem),
             None => self.completion_offer(offset),
@@ -1139,6 +1282,10 @@ impl UnluminousApp {
                     "source": row.source.name(),
                     "detail": row.detail,
                     "matched": row.matched,
+                    "container": row.info.container,
+                    "signature": row.info.signature,
+                    "needsImport": row.info.needs_import.is_some(),
+                    "match": row.class.name(),
                 })
             })
             .collect();

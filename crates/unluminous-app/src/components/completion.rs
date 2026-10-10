@@ -33,9 +33,13 @@ use crate::theme::{color, icon, size};
 /// One row. A menu row, which is what `design/style-guide.md` gives a list of things to choose
 /// between — the same 24 points the menu bar, the context menus and the text menu all use.
 pub const ROW: f32 = 24.0;
-/// How wide the list is. Wide enough for a long identifier and a file name beside it, and narrow
-/// enough that it reads as a list hanging off a word rather than as a panel.
-const WIDTH: f32 = 360.0;
+/// How wide the list is. Wide enough for a long identifier and its signature beside it (`task-2231`
+/// §6.6 took it from 360 to 480), and narrow enough that it reads as a list hanging off a word.
+const WIDTH: f32 = 480.0;
+/// How wide the documentation panel to the right of the list is.
+pub const PANEL: f32 = 360.0;
+/// The most lines of documentation the panel shows; the rest is cut with an ellipsis.
+const PANEL_LINES: usize = 12;
 /// The frame's own margin, matching `components::context_menu`'s.
 const PADDING: f32 = 6.0;
 /// How far below the caret's line the list hangs, so it never touches the letters it is about.
@@ -51,8 +55,16 @@ pub struct Outcome {
     pub accepted: Option<String>,
 }
 
-/// Draw the list. `caret` is the caret's box on the screen and `pane` is the editing area it is in.
-pub fn show(ui: &mut egui::Ui, state: &CompletionState, caret: Rect, pane: Rect) -> Outcome {
+/// Draw the list, and the documentation panel beside it when `documented` says the chosen row has
+/// rested long enough to be read about. `caret` is the caret's box on the screen and `pane` is the
+/// editing area it is in.
+pub fn show(
+    ui: &mut egui::Ui,
+    state: &CompletionState,
+    caret: Rect,
+    pane: Rect,
+    documented: bool,
+) -> Outcome {
     let mut outcome = Outcome::default();
     let shown = state.shown();
     if shown.is_empty() {
@@ -78,7 +90,93 @@ pub fn show(ui: &mut egui::Ui, state: &CompletionState, caret: Rect, pane: Rect)
                 }
             }
         });
+    if documented {
+        if let Some(row) = state.chosen_row() {
+            documentation(ui, row, area, pane);
+        }
+    }
     outcome
+}
+
+/// The documentation panel: the chosen row's signature and its documentation, beside the list, on the
+/// side of it there is room for. Nothing is drawn for a row with nothing to say.
+///
+/// Named `Completion documentation`, so a test can find it.
+fn documentation(
+    ui: &mut egui::Ui,
+    row: &unluminous_core::completion::Row,
+    list: Rect,
+    pane: Rect,
+) {
+    let signature = row.info.signature.clone().filter(|s| *s != row.name);
+    let doc = row.info.doc.clone();
+    if signature.is_none() && doc.is_none() {
+        return;
+    }
+    let mut lines: Vec<String> = Vec::new();
+    if let Some(signature) = &signature {
+        lines.push(signature.clone());
+    }
+    if let Some(doc) = &doc {
+        lines.extend(doc.lines().map(str::to_owned));
+    }
+    if lines.len() > PANEL_LINES {
+        lines.truncate(PANEL_LINES);
+        lines.push("\u{2026}".to_owned());
+    }
+    let height = lines.len() as f32 * 16.0 + PADDING * 2.0;
+    let area = documentation_goes(list, pane, height);
+    egui::Area::new(egui::Id::new("unluminous-completion-documentation"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(area.min)
+        .interactable(false)
+        .show(ui.ctx(), |ui| {
+            let response =
+                ui.allocate_rect(Rect::from_min_size(area.min, area.size()), Sense::hover());
+            frame(ui, area);
+            let painter = ui.painter();
+            for (at, line) in lines.iter().enumerate() {
+                let (font, tint) = match at == 0 && signature.is_some() {
+                    true => (egui::FontId::monospace(11.5), color::text_strong()),
+                    false => (egui::FontId::proportional(11.5), color::text_control()),
+                };
+                let galley = painter.layout(line.clone(), font, tint, PANEL - PADDING * 2.0);
+                let y = area.top() + PADDING + at as f32 * 16.0;
+                painter.with_clip_rect(area.shrink(PADDING / 2.0)).galley(
+                    Pos2::new(area.left() + PADDING, y),
+                    galley,
+                    tint,
+                );
+            }
+            response.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::WidgetType::Label, true, "Completion documentation")
+            });
+        });
+}
+
+/// Where the documentation panel goes: beside the list on the right, else on the left, and when the
+/// pane has no room on either side, under the list, or above it when there is no room under it. It is
+/// never drawn over the list, whose rows are what the panel is about.
+///
+/// A pure function of its three arguments, so it can be checked with no window.
+///
+/// @param list - the list's rectangle
+/// @param pane - the editing area
+/// @param height - the panel's height
+pub fn documentation_goes(list: Rect, pane: Rect, height: f32) -> Rect {
+    let size = Vec2::new(PANEL, height);
+    if list.right() + GAP + PANEL <= pane.right() {
+        return Rect::from_min_size(Pos2::new(list.right() + GAP, list.top()), size);
+    }
+    if list.left() - GAP - PANEL >= pane.left() {
+        return Rect::from_min_size(Pos2::new(list.left() - GAP - PANEL, list.top()), size);
+    }
+    let left = list.left().min(pane.right() - PANEL).max(pane.left());
+    let top = match list.bottom() + GAP + height <= pane.bottom() {
+        true => list.bottom() + GAP,
+        false => list.top() - GAP - height,
+    };
+    Rect::from_min_size(Pos2::new(left, top), size)
 }
 
 /// Where the list is drawn: under the caret, flipped above it near the bottom of the pane, and
@@ -133,7 +231,7 @@ fn draw_row(
         painter.rect_filled(area, CornerRadius::same(4), color::control());
     }
     if let Some(kind) = row.kind {
-        icon::symbol_kind(
+        icon::completion_kind(
             painter,
             Pos2::new(area.left() + GLYPH / 2.0 + 2.0, area.center().y),
             kind,
@@ -151,16 +249,30 @@ fn draw_row(
         egui::FontId::proportional(12.5),
     );
     let left = area.left() + GLYPH + 6.0;
-    painter.galley(Pos2::new(left, area.center().y - galley.size().y / 2.0), galley, tint);
-    if !row.detail.is_empty() {
+    let name_width = galley.size().x;
+    let name_top = area.center().y - galley.size().y / 2.0;
+    painter.galley(Pos2::new(left, name_top), galley, tint);
+    // A deprecated row is struck through, as the reference editor draws one.
+    if row.info.deprecated {
+        let y = area.center().y;
+        painter.line_segment(
+            [Pos2::new(left, y), Pos2::new(left + name_width, y)],
+            Stroke::new(1.0, tint),
+        );
+    }
+    let suffix_text = row_detail(row);
+    if !suffix_text.is_empty() {
+        // Cut to the column there is: from just after the name to the row's right edge.
+        let room = (area.right() - 6.0 - (left + name_width + 12.0)).max(0.0);
         let suffix = painter.layout_no_wrap(
-            format!("\u{00B7} {}", row.detail),
+            suffix_text,
             egui::FontId::proportional(11.0),
             color::text_faint(),
         );
-        painter.galley(
+        let clip = Rect::from_min_max(Pos2::new(area.right() - 6.0 - room, area.top()), area.max);
+        painter.with_clip_rect(clip).galley(
             Pos2::new(
-                area.right() - 6.0 - suffix.size().x,
+                area.right() - 6.0 - suffix.size().x.min(room),
                 area.center().y - suffix.size().y / 2.0,
             ),
             suffix,
@@ -172,12 +284,51 @@ fn draw_row(
     response.clicked()
 }
 
+/// What a row says after its name: the import it would add, its signature cut to what follows the
+/// name, or its detail.
+///
+/// @param row - the row
+pub fn row_detail(row: &unluminous_core::completion::Row) -> String {
+    if row.info.needs_import.is_some() {
+        return format!("\u{00B7} {}", row.detail);
+    }
+    let signature = row.info.signature.as_deref().unwrap_or_default();
+    let tail = signature.strip_prefix(row.name.as_str()).filter(|t| !t.is_empty());
+    // A detail the signature already ends with, the `f32` after `-> f32`, is said once.
+    let said =
+        tail.is_some_and(|t| !row.detail.is_empty() && t.trim_end().ends_with(row.detail.trim()));
+    match (tail, row.detail.is_empty() || said) {
+        (Some(tail), true) => tail.to_owned(),
+        (Some(tail), false) => format!("{tail}  \u{00B7} {}", row.detail),
+        (None, false) => format!("\u{00B7} {}", row.detail),
+        (None, true) => String::new(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn pane() -> Rect {
         Rect::from_min_size(Pos2::new(100.0, 50.0), Vec2::new(800.0, 600.0))
+    }
+
+    #[test]
+    fn the_documentation_panel_never_covers_the_list() {
+        // Room on the right: beside it.
+        let list = Rect::from_min_size(Pos2::new(120.0, 100.0), Vec2::new(300.0, 200.0));
+        let beside = documentation_goes(list, pane(), 80.0);
+        assert!(beside.left() >= list.right());
+        // No room on either side of a wide list in a narrow pane: under it.
+        let wide = Rect::from_min_size(Pos2::new(300.0, 100.0), Vec2::new(480.0, 200.0));
+        let under = documentation_goes(wide, pane(), 80.0);
+        assert!(!under.intersects(wide), "{under:?} covers {wide:?}");
+        assert!(under.top() >= wide.bottom());
+        // And above it when it hangs at the bottom of the pane.
+        let low = Rect::from_min_size(Pos2::new(300.0, 500.0), Vec2::new(480.0, 140.0));
+        let above = documentation_goes(low, pane(), 80.0);
+        assert!(!above.intersects(low));
+        assert!(above.bottom() <= low.top());
     }
 
     #[test]

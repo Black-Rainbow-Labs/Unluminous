@@ -1098,6 +1098,26 @@ fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Drawn 
         "A list of names appears under the caret once two letters of a word have been typed, in a file whose language a plugin claims. Off, nothing appears until you ask: Ctrl+Space, or Complete Word on the Edit menu, which work either way.",
     );
     pen += 44.0;
+    // `task-2231` §6.9. The one switch for an editor that runs nothing: off, rust-analyzer and tsserver
+    // are never started and completion answers from the project's structure alone.
+    let row = row_at(area, pen);
+    let mut servers = settings.servers.is_automatic();
+    if checkbox(ui, row, "Ask language servers (rust-analyzer, tsserver)", &mut servers) {
+        settings.servers = if servers {
+            crate::settings::Servers::Automatic
+        } else {
+            crate::settings::Servers::Off
+        };
+        changed = true;
+    }
+    pen += 32.0;
+    note(
+        ui,
+        area,
+        pen,
+        "Rust and TypeScript files ask the language server the project already has for the members of a value, the import a name needs and a call's parameters. Off, no server is started and the structural answers stand alone.",
+    );
+    pen += 44.0;
     // `task-1922` WP4. Three rows about what a key types, which is the one thing on this page a
     // person changes because of how they were taught to write code rather than because of what
     // Unluminous does.

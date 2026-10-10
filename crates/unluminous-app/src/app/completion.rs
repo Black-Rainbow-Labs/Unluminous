@@ -10,9 +10,18 @@
 //! There is no new index, no new thread and no watcher. The four sources are ones `task-1676`
 //! already keeps fresh: this tab's definitions and its distinct words, cached on the tab and keyed
 //! on `Document::text_revision()`; the other open tabs' definitions, the same; the project's
-//! `services::symbol_index`, built on its own worker and generation-cancelled; and the file's
-//! `Grammar`, which has been in memory since the plugin was read. Completion **reads** what is
-//! there, which is what makes it a small feature where most editors' completion is an enormous one.
+//! definitions from the code index (`services::project_symbols`, which Atrius keeps fresh on its own
+//! threads); and the file's `Grammar`. Completion **reads** what is there.
+//!
+//! ## Three tiers, one order (`task-2231`)
+//!
+//! The lexical tier is the four sources above. The structural tier (`app::gather`) adds what the code
+//! index knows about the shape of a definition: the locals and parameters of the enclosing function,
+//! the members of the value before a `.` or `::`, and the project's names a file does not import yet,
+//! which accepting imports. The semantic tier is a language server's answer (`app::servers`), merged in
+//! when it arrives. All of it is ordered by `unluminous_core::completion::order`, the chain of weighers,
+//! with the place the caret is in and what was chosen before, so the popup and `unluminous-cli editor
+//! complete` cannot disagree.
 //!
 //! The ownership rule of `task-1675` §3.3 carries over unchanged: *a file that is open is owned by
 //! its `Document`, and every other file is owned by the index*. So the open files' paths are
@@ -37,9 +46,8 @@
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use unluminous_core::completion::{self, Candidate, Row, Source};
+use unluminous_core::completion::{self, Candidate, Kind, Question, Row, Source};
 use unluminous_core::imports::{self as core_imports, Context as ImportContext};
-use unluminous_core::symbols::SymbolKind;
 use unluminous_core::{Command, Grammar, Role};
 
 use crate::app::{Focus, UnluminousApp};
@@ -82,6 +90,8 @@ pub struct CompletionState {
     /// tab changes or the keyboard moves to another pane — derived from the state rather than fired
     /// from each of the places a tab can change.
     pub path: PathBuf,
+    /// The kind of place the rows were offered at, which a choice is counted under. `task-2231` §6.3.
+    pub place: unluminous_core::place::Place,
     /// The import the rows were worked out for, when they were worked out for one. `task-1680`.
     ///
     /// It is carried so that accepting knows what `Tab` means — a specifier's whole range comes out
@@ -213,6 +223,16 @@ pub struct CompletionAnchor {
 /// `cargo run --release -p unluminous-app --example completion_cost` is how this is measured again.
 pub const MOST_FROM_THE_INDEX: usize = 2_000;
 
+/// How many of the project index's names a stem of one letter may draw. A tighter cap than
+/// [`MOST_FROM_THE_INDEX`] because one letter reaches the most names of any stem and is only ever asked
+/// by hand: with the richer rows of `task-2231` a thousand more of them cost a millisecond, and the
+/// budget for a whole keystroke is five.
+pub const MOST_FOR_ONE_LETTER: usize = 1_000;
+
+/// How many rows have the import they would add worked out for their detail: the most the command line
+/// prints without being asked for more, and more than the popup shows.
+const COMPLETIONS_LABELLED: usize = 50;
+
 impl UnluminousApp {
     /// Whether auto-complete applies to the file that is showing.
     pub fn completion_applies_here(&self) -> bool {
@@ -241,22 +261,40 @@ impl UnluminousApp {
     /// between a keystroke that allocates and one that does not.
     pub fn completion_candidates(&mut self, stem: &str, offset: usize) -> Vec<Candidate> {
         let mut pool: Vec<Candidate> = Vec::new();
-        if stem.is_empty() {
-            return pool;
+        let word_start = offset.saturating_sub(stem.len());
+        // With nothing typed straight after a `.` or `::`, the members of the value are the answer
+        // (`task-2231` §6.1). Anywhere else, nothing typed is a list somebody asked for, with
+        // Ctrl+Space or the command line, and it holds what fits here: the locals, this file's
+        // definitions, the server's rows and the language's words, but not every name in the project
+        // or every word of the file, which with nothing to filter them would bury the rest.
+        let nothing_typed = stem.is_empty();
+        if nothing_typed {
+            if let Some(receiver) = self.asked_at(word_start).receiver {
+                if !self.at_a_member_access(word_start) {
+                    let mut pool = self.member_candidates(&receiver, stem, offset);
+                    pool.extend(self.server_members(stem, offset));
+                    return pool;
+                }
+                return pool;
+            }
         }
         // After a dot in a notebook the kernel knows what the value has, and a keyword, a word of the
         // file or a definition elsewhere is not a member of it: `df.de` offering `def` and `del` is a
         // list nobody can use. Until the kernel answers, the ordinary sources stand in. `task-2229`.
-        let word_start = offset.saturating_sub(stem.len());
         if self.at_a_member_access(word_start) {
             let from_the_kernel = self.kernel_candidates(stem, offset);
             if !from_the_kernel.is_empty() || self.kernel_is_being_asked(word_start, offset) {
                 return from_the_kernel;
             }
         }
+        // After a `.` or `::` the members of the value are the answer, and a keyword, a word of the
+        // file or an unrelated project name is not one of them. `task-2231` §6.4.
+        if let Some(receiver) = self.asked_at(word_start).receiver {
+            let mut pool = self.member_candidates(&receiver, stem, offset);
+            pool.extend(self.server_members(stem, offset));
+            return pool;
+        }
         let here = self.files.active_index();
-        let open: Vec<PathBuf> =
-            self.files.iter().filter_map(|file| file.path().map(Path::to_path_buf)).collect();
 
         // The open tabs, read from their live text: this one's definitions and its words first,
         // then every other tab's definitions.
@@ -270,7 +308,7 @@ impl UnluminousApp {
                     pool.push(Candidate::described(
                         name.clone(),
                         source,
-                        Some(definition.kind),
+                        Some(Kind::from(definition.kind)),
                         detail.clone(),
                     ));
                 }
@@ -278,9 +316,11 @@ impl UnluminousApp {
             // Only this file's words. Harvesting every open file's words is §12's rejection: the
             // index's definitions are the cross-file offer, and they carry a kind and a file where
             // a raw word carries nothing.
-            if index == here {
+            if index == here && !nothing_typed {
+                // The word being typed is in the file too, half typed; it is never offered from here.
+                // A real name equal to it still comes from the definitions and the server.
                 for word in &symbols.words {
-                    if completion::could_match(stem, word) {
+                    if word != stem && completion::could_match(stem, word) {
                         pool.push(Candidate::new(word.clone(), Source::Word));
                     }
                 }
@@ -302,30 +342,11 @@ impl UnluminousApp {
         // person is most likely to want and are small; the last is smaller still and must never be
         // lost, because a keyword the language defines is always a right answer. What is left is the
         // project, which is both the largest and the least certain.
-        if let Some(indexer) = self.symbols_indexer() {
-            let index = indexer.index();
-            let mut from_the_index = 0usize;
-            for name in index.sorted_names() {
-                if from_the_index >= MOST_FROM_THE_INDEX {
-                    break;
-                }
-                if !completion::could_match(stem, name) {
-                    continue;
-                }
-                let Some(entry) =
-                    index.definitions_of(name).iter().find(|entry| !open.contains(&entry.path))
-                else {
-                    continue;
-                };
-                from_the_index += 1;
-                pool.push(Candidate::described(
-                    name.clone(),
-                    Source::Index,
-                    Some(entry.kind),
-                    file_name(&entry.path),
-                ));
-            }
+        pool.extend(self.local_candidates(stem, offset));
+        if !nothing_typed {
+            pool.extend(self.project_candidates(stem));
         }
+        pool.extend(self.server_candidates(stem, offset));
 
         // The language's own words. The manifest already holds them; completion is the second
         // reader of the same data. In a markup file the position decides which of the lists is
@@ -368,10 +389,11 @@ impl UnluminousApp {
             for (list, detail) in lists {
                 for word in list {
                     if completion::could_match(stem, word) {
+                        let kind = (detail == "keyword").then_some(Kind::Keyword);
                         pool.push(Candidate::described(
                             word.clone(),
                             Source::Language,
-                            None,
+                            kind,
                             detail,
                         ));
                     }
@@ -425,12 +447,7 @@ impl UnluminousApp {
             .into_iter()
             .filter(|(written, _)| offers(typed, written))
             .map(|(written, path)| {
-                Candidate::described(
-                    written,
-                    Source::Module,
-                    Some(SymbolKind::Module),
-                    file_name(&path),
-                )
+                Candidate::described(written, Source::Module, Some(Kind::Module), file_name(&path))
             })
             .collect()
     }
@@ -457,7 +474,7 @@ impl UnluminousApp {
                             true => "package",
                             false => "module",
                         };
-                        Candidate::described(name, Source::Module, Some(SymbolKind::Module), detail)
+                        Candidate::described(name, Source::Module, Some(Kind::Module), detail)
                     })
                     .collect();
                 return rows;
@@ -478,7 +495,7 @@ impl UnluminousApp {
                     pool.push(Candidate::described(
                         name,
                         Source::Module,
-                        Some(SymbolKind::Module),
+                        Some(Kind::Module),
                         detail,
                     ));
                 }
@@ -509,29 +526,40 @@ impl UnluminousApp {
                     Candidate::described(
                         name.clone(),
                         Source::OpenTab,
-                        Some(definition.kind),
+                        Some(Kind::from(definition.kind)),
                         detail.clone(),
                     )
                 })
                 .collect();
         }
-        let Some(indexer) = self.symbols_indexer() else {
+        let Some(symbols) = self.project_symbols.as_ref() else {
             return Vec::new();
         };
-        indexer
-            .index()
-            .exports_of(module)
-            .iter()
-            .filter(|export| offers(typed, &export.name))
-            .map(|export| {
-                Candidate::described(
-                    export.name.clone(),
-                    Source::Index,
-                    Some(export.kind),
-                    detail.clone(),
-                )
+        let Some(rel) = symbols.relative(module) else { return Vec::new() };
+        symbols
+            .read(|table| {
+                table
+                    .files()
+                    .find(|(path, _)| *path == rel)
+                    .map(|(_, defs)| {
+                        defs.iter()
+                            .filter(|d| {
+                                d.exported && d.container.is_none() && offers(typed, &d.name)
+                            })
+                            .map(|d| {
+                                let kind = crate::app::gather::kind_of(d.symbol_kind);
+                                Candidate::described(
+                                    d.name.clone(),
+                                    Source::Index,
+                                    Some(kind),
+                                    detail.clone(),
+                                )
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default()
             })
-            .collect()
+            .unwrap_or_default()
     }
 
     /// What is on offer at a point: what a row replaces, what has been typed of it, the rows
@@ -547,7 +575,13 @@ impl UnluminousApp {
         if let Some(context) = core_imports::context_at(&text, offset, &grammar) {
             let range = context.typed_range();
             let typed = text[range.clone()].to_owned();
-            let pool = self.import_candidates(&context, &typed);
+            let mut pool = self.import_candidates(&context, &typed);
+            // The project's own modules come from the structure; the standard library and the
+            // project's dependencies are only known to a language server. Asked only where the caret
+            // is the end of what is typed, which a server can answer about.
+            if range.end == offset {
+                pool.extend(self.server_candidates(&typed, offset));
+            }
             let rows = completion::rank_all(&typed, pool);
             return Offer { range, typed, rows, import: Some(context) };
         }
@@ -557,7 +591,7 @@ impl UnluminousApp {
             // front has, which is the answer a notebook is for. `task-2229`.
             let rows = match self.at_a_member_access(offset) {
                 true => completion::rank_all("", self.kernel_candidates("", offset)),
-                false => Vec::new(),
+                false => self.completion_rows("", offset),
             };
             return Offer { range, typed: String::new(), rows, import: None };
         }
@@ -602,19 +636,65 @@ impl UnluminousApp {
                 import: Some(context),
             };
         }
-        Offer {
-            range: offset..offset,
-            typed: stem.to_owned(),
-            rows: self.completion_rows(stem, offset),
-            import: None,
-        }
+        // A hypothetical word is not in the document, so no language server is asked about it: the
+        // server would answer about the text as it is, which is not the question.
+        self.asking_hypothetically = true;
+        let rows = self.completion_rows(stem, offset);
+        self.asking_hypothetically = false;
+        Offer { range: offset..offset, typed: stem.to_owned(), rows, import: None }
+    }
+
+    /// Opens the popup at a caret if the rows there offer anything, the way typing does. A language
+    /// server's answer arriving after a member trigger found nothing structural calls it.
+    ///
+    /// @param offset - the caret
+    pub(crate) fn open_the_completion_if_anything(&mut self, offset: usize) {
+        self.open_the_completion(offset, false);
     }
 
     /// The rows a stem offers here, best first. What the popup shows and what the command line
     /// prints, so the two can never disagree.
     pub fn completion_rows(&mut self, stem: &str, offset: usize) -> Vec<Row> {
-        let pool = self.completion_candidates(stem, offset);
-        completion::rank(stem, pool)
+        let word_start = offset.saturating_sub(stem.len());
+        let asked = self.asked_at(word_start);
+        let mut pool = self.completion_candidates(stem, offset);
+        self.mark_the_names_written_here(&mut pool);
+        let language = self.completion_grammar().language;
+        let question = Question { stem: stem.to_owned(), place: asked.place };
+        let stats = &self.completion_stats;
+        let mut rows = completion::order(&question, pool, &|name| {
+            stats.chosen(&language, asked.place, stem, name)
+        });
+        // A row that needs its import says which, worked out for the rows anybody can see.
+        for row in rows.iter_mut().take(COMPLETIONS_LABELLED) {
+            if let Some(rel) = row.info.needs_import.clone() {
+                if let Some(label) = self.import_label(&rel) {
+                    row.detail = label;
+                }
+            }
+        }
+        rows
+    }
+
+    /// The server's rows at a member access, as near as the value's own members: the server knows the
+    /// value's type, where the structure, when it could not work the type out, only guesses.
+    ///
+    /// @param stem - what has been typed
+    /// @param offset - the caret
+    fn server_members(&mut self, stem: &str, offset: usize) -> Vec<Candidate> {
+        self.server_candidates(stem, offset).into_iter().map(|c| c.at(completion::Locality::Receiver)).collect()
+    }
+
+    /// Marks every candidate with how many times its name is already written in the file that is
+    /// showing ([`completion::Info::uses_here`]), from the counts the tab keeps for its revision.
+    ///
+    /// @param pool - the candidates
+    fn mark_the_names_written_here(&mut self, pool: &mut [Candidate]) {
+        let here = self.files.active_index();
+        let counts = &self.tab_symbols(here).counts;
+        for candidate in pool.iter_mut() {
+            candidate.info.uses_here = counts.get(candidate.name.as_str()).copied().unwrap_or(0);
+        }
     }
 
     /// The grammar reading the file that is showing, or an empty one.
@@ -641,6 +721,7 @@ impl UnluminousApp {
         if self.completion.is_none() && typed {
             self.offer_a_completion();
         }
+        self.keep_the_signature_fresh(typed);
     }
 
     /// Open the popup unasked, if every one of §5.1's conditions holds.
@@ -668,10 +749,19 @@ impl UnluminousApp {
             }
             None => {
                 let stem = completion::stem_at(&text, head, &grammar);
-                // In a notebook, `.` and `::` ask the kernel at once, with nothing typed after them.
-                if stem.is_empty() && self.at_a_member_access(head) {
-                    if self.point_is_code(head - 1) {
-                        self.open_the_completion(head, false);
+                // In a notebook, `.` and `::` ask the kernel at once, with nothing typed after them,
+                // and in any language a separator `language.members` names opens the members of the
+                // value in front of it. `task-2231` §6.1.
+                let member =
+                    self.at_a_member_access(head) || self.asked_at(head).receiver.is_some();
+                if stem.is_empty() && member {
+                    // When the structure has nothing to offer for this value, the popup opens when the
+                    // language server answers, which `server_completions_arrived` does.
+                    if head > 0
+                        && self.point_is_code(head - 1)
+                        && !self.open_the_completion(head, false)
+                    {
+                        self.awaiting_a_server_popup = self.server_is_being_asked();
                     }
                     return;
                 }
@@ -712,12 +802,6 @@ impl UnluminousApp {
         let grammar = self.completion_grammar();
         let inside_an_import = core_imports::context_at(&text, head, &grammar).is_some();
         let stem = completion::stem_at(&text, head, &grammar);
-        let member = stem.is_empty() && self.at_a_member_access(head);
-        if stem.is_empty() && !inside_an_import && !member {
-            self.completion = None;
-            self.message = Some("There is nothing to complete here.".to_owned());
-            return;
-        }
         let word = text[stem.clone()].to_owned();
         if !self.open_the_completion(head, true) {
             // A notebook's kernel answers a round trip later, and the popup opens when it does.
@@ -725,9 +809,10 @@ impl UnluminousApp {
                 self.message = Some("Asking the kernel...".to_owned());
                 return;
             }
-            self.message = match word.is_empty() {
-                true => Some("There is nothing to import here.".to_owned()),
-                false => Some(format!("Nothing completes '{word}'.")),
+            self.message = match (word.is_empty(), inside_an_import) {
+                (true, true) => Some("There is nothing to import here.".to_owned()),
+                (true, false) => Some("There is nothing to complete here.".to_owned()),
+                (false, _) => Some(format!("Nothing completes '{word}'.")),
             };
         }
     }
@@ -862,14 +947,16 @@ impl UnluminousApp {
             return false;
         };
         let offer = self.completion_offer(offset);
-        if offer.rows.is_empty() {
+        if offer.rows.is_empty() || (!manual && nothing_longer(&offer)) {
             self.completion = None;
             return false;
         }
         // Whatever the status bar was saying described the state before this list existed, and a
         // popup opening over a stale sentence reads as an answer to the wrong question.
         self.message = None;
+        let place = self.asked_at(offer.range.start).place;
         self.completion = Some(CompletionState {
+            place,
             stem: offer.range,
             rows: offer.rows,
             chosen: 0,
@@ -936,9 +1023,10 @@ impl UnluminousApp {
         // the stem's first byte moved — with this one, which says the same thing everywhere the
         // older one did and also lets a specifier grow a `/` and a module path grow a `::`.
         let offer = self.completion_offer(head);
-        if offer.rows.is_empty() {
-            // Typing narrowed it to nothing. It does not linger empty; the next character typed
-            // asks again.
+        let manual = self.completion.as_ref().is_some_and(|state| state.manual);
+        if offer.rows.is_empty() || (!manual && nothing_longer(&offer)) {
+            // Typing narrowed it to nothing, or to the word already typed. It does not linger; the
+            // next character typed asks again.
             self.close_the_completion();
             return;
         }
@@ -966,13 +1054,34 @@ impl UnluminousApp {
     /// what a test of the **consumption** wants is a real context with a real key event in it — the
     /// property that a key the popup took never reaches `editor_view::handle_input`.
     pub(crate) fn route_the_completion_keys(&mut self, ui: &egui::Ui) {
+        // `Escape` closes the signature line when no list is open to take it first. `task-2231` §6.8.
+        if self.completion.is_none()
+            && self.signature_open
+            && self.focus == Focus::Editor
+            && !crate::app::text_box_has_the_keyboard(ui.ctx())
+            && ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+        {
+            self.close_the_signature();
+            return;
+        }
         if self.completion.is_none()
             || self.focus != Focus::Editor
             || crate::app::text_box_has_the_keyboard(ui.ctx())
         {
             return;
         }
-        let keys = ui.input_mut(take_the_five_keys);
+        // `Enter` on the row that is exactly the word already typed would change nothing, so it is left
+        // for the editing area as the new line it means and the list goes. `task-2231` offers that
+        // row, as the reference editor does, where `task-1678` used to drop it.
+        let typed_already = self.completion.as_ref().is_some_and(|state| {
+            let typed = self.document().text().byte_slice(state.stem.clone());
+            state.chosen_row().is_some_and(|row| row.name == typed)
+        });
+        let keys = ui.input_mut(|input| take_the_five_keys(input, !typed_already));
+        if typed_already && ui.input(|input| input.key_pressed(egui::Key::Enter)) {
+            self.close_the_completion();
+            return;
+        }
         self.the_completion_keys(keys);
     }
 
@@ -1059,15 +1168,85 @@ impl UnluminousApp {
         // A range that came out empty is a caret with nothing to its left, which cannot happen while
         // a popup is open; falling back to the stem rather than inserting at a guess keeps it true.
         let range = if range.is_empty() { state.stem.clone() } else { range };
-        let applied =
-            self.document_mut().apply(Command::ReplaceMany(vec![(range, row.name.clone())]));
+        let (range, inserted, caret_in) = insertion(&row, range, whole_word, &text);
+        // The import the name needs, in the same command so one undo takes both away. A server's
+        // own edits when it gave them; the structural tier's when the row needs an import and no
+        // server answered. `task-2231` §6.5.
+        let mut extra: Vec<completion::Edit> = row.info.extra_edits.clone();
+        if extra.is_empty() && row.source == Source::Import {
+            if let Some(rel) = row.info.needs_import.clone() {
+                extra.extend(self.import_edit(&row.name, &rel));
+            }
+        }
+        extra.retain(|edit| edit.range.end <= range.start || edit.range.start >= range.end);
+        let shift: isize = extra
+            .iter()
+            .filter(|edit| edit.range.end <= range.start)
+            .map(|edit| edit.text.len() as isize - (edit.range.end - edit.range.start) as isize)
+            .sum();
+        let caret = (range.start as isize + shift) as usize + caret_in;
+        let mut edits = vec![(range.clone(), inserted)];
+        edits.extend(extra.into_iter().map(|edit| (edit.range, edit.text)));
+        let typed = text.get(state.stem.clone()).unwrap_or_default().to_owned();
+        let applied = self.document_mut().apply(Command::ReplaceMany(edits));
         if applied {
+            self.document_mut().apply(Command::PlaceCaret { offset: caret, extend: false });
             // Completing into a file you were only glancing at plainly means you meant to open it,
             // which is what typing into one already does.
             let active = self.files.active_index();
             self.files.make_permanent(active);
+            let language = self.completion_grammar().language;
+            let now = self.completion_clock.elapsed().as_secs_f64();
+            self.completion_stats.record(&language, state.place, &typed, &row.name, now);
+            // A call with parameters to type, whether the structure inserted it or a server's snippet
+            // did, opens the signature line. A server row says so by leaving the caret after `(`.
+            let opens_a_call = match &row.info.insert {
+                completion::Insert::Call { has_parameters } => *has_parameters,
+                completion::Insert::Text { text, caret, .. } => {
+                    caret.is_some_and(|at| text[..at.min(text.len())].ends_with('('))
+                }
+                completion::Insert::Name => false,
+            };
+            if opens_a_call {
+                self.open_the_signature();
+            }
         }
         applied
+    }
+}
+
+/// What accepting a row puts where: the range it replaces, the text, and where the caret goes inside
+/// that text. `task-2231` §6.7.
+///
+/// A call's brackets are added unless a bracket already follows the word, with the caret between them
+/// when the function takes parameters and after them when it takes none. A server's own text replaces
+/// its own range: `insert` on `Enter`, `replace` on `Tab`.
+///
+/// @param row - the row
+/// @param range - the stem or the word, whichever the key replaces
+/// @param whole_word - true for `Tab`
+/// @param text - the document's text
+fn insertion(
+    row: &Row,
+    range: Range<usize>,
+    whole_word: bool,
+    text: &str,
+) -> (Range<usize>, String, usize) {
+    match &row.info.insert {
+        completion::Insert::Name => (range, row.name.clone(), row.name.len()),
+        completion::Insert::Call { has_parameters } => {
+            if text[range.end..].starts_with('(') {
+                return (range, row.name.clone(), row.name.len());
+            }
+            let caret = row.name.len() + if *has_parameters { 1 } else { 2 };
+            (range, format!("{}()", row.name), caret)
+        }
+        completion::Insert::Text { insert, replace, text: written, caret } => {
+            let chosen = if whole_word { replace.clone() } else { insert.clone() };
+            // A server's range is for the text it was asked about; a stem typed since only grows it.
+            let chosen = chosen.start.min(range.start)..chosen.end.max(range.end);
+            (chosen, written.clone(), caret.unwrap_or(written.len()))
+        }
     }
 }
 
@@ -1086,7 +1265,8 @@ impl UnluminousApp {
         area: egui::Rect,
     ) {
         self.completion_anchor = None;
-        if self.completion.is_none() {
+        self.caret_anchor = None;
+        if self.completion.is_none() && !self.signature_open {
             return;
         }
         let caret = self.layout().caret_at(self.document().selection().head);
@@ -1098,7 +1278,11 @@ impl UnluminousApp {
             self.close_the_completion();
             return;
         }
-        self.completion_anchor = Some(CompletionAnchor { caret: box_of_it, pane: area });
+        // The signature line hangs from the same caret, and is drawn whether or not a list is open.
+        self.caret_anchor = Some(CompletionAnchor { caret: box_of_it, pane: area });
+        if self.completion.is_some() {
+            self.completion_anchor = self.caret_anchor;
+        }
     }
 
     /// Draw the popup, and take the row a click landed on.
@@ -1107,9 +1291,24 @@ impl UnluminousApp {
     /// area behind it, because the list's own `Area` is in front and takes the hit.
     pub(crate) fn show_the_completion(&mut self, ui: &mut egui::Ui) {
         let (Some(anchor), Some(state)) = (self.completion_anchor, self.completion.as_ref()) else {
+            self.completion_rest = None;
             return;
         };
-        let outcome = view::show(ui, state, anchor.caret, anchor.pane);
+        // The documentation panel is drawn once the chosen row has rested for one heartbeat, which
+        // the window already asks for on every frame, so no timer of its own. `task-2231` §6.6.
+        let now = ui.input(|input| input.time);
+        let chosen = state.chosen_row().map(|row| row.name.clone()).unwrap_or_default();
+        let since = match &self.completion_rest {
+            Some((name, since)) if *name == chosen => *since,
+            _ => now,
+        };
+        self.completion_rest = Some((chosen, since));
+        let documented = now - since >= crate::app::HEARTBEAT.as_secs_f64();
+        if documented {
+            self.resolve_the_chosen_completion();
+        }
+        let Some(state) = self.completion.as_ref() else { return };
+        let outcome = view::show(ui, state, anchor.caret, anchor.pane, documented);
         if let Some(name) = outcome.accepted {
             if self.choose_the_completion(&name) {
                 self.accept_the_completion(false);
@@ -1129,7 +1328,7 @@ impl UnluminousApp {
 ///
 /// `Ctrl+Tab` was never at risk, because the command key is the one modifier `matches_logically`
 /// does compare both ways — but a rule that holds for one of the four by accident is not a rule.
-fn take_the_five_keys(input: &mut egui::InputState) -> CompletionKeys {
+fn take_the_five_keys(input: &mut egui::InputState, take_enter: bool) -> CompletionKeys {
     let mut keys = CompletionKeys::default();
     input.events.retain(|event| {
         let egui::Event::Key { key, pressed: true, modifiers, .. } = event else {
@@ -1142,7 +1341,8 @@ fn take_the_five_keys(input: &mut egui::InputState) -> CompletionKeys {
             egui::Key::ArrowDown => keys.down = true,
             egui::Key::ArrowUp => keys.up = true,
             egui::Key::Tab => keys.tab = true,
-            egui::Key::Enter => keys.enter = true,
+            egui::Key::Enter if take_enter => keys.enter = true,
+            egui::Key::Enter => return true,
             egui::Key::Escape => keys.escape = true,
             _ => return true,
         }
@@ -1180,15 +1380,22 @@ pub fn is_a_member_access(before: &str) -> bool {
 }
 
 /// The kind of definition a kernel's type for a match names, for the row's icon and its order.
-fn kind_of(kernel: Option<&str>) -> Option<SymbolKind> {
+fn kind_of(kernel: Option<&str>) -> Option<Kind> {
     match kernel? {
-        "function" | "method" | "macro" | "magic" => Some(SymbolKind::Function),
-        "class" | "struct" | "enum" | "trait" | "type" | "union" => Some(SymbolKind::Type),
-        "module" | "crate" | "namespace" => Some(SymbolKind::Module),
-        "instance" | "statement" | "variable" | "param" | "local" | "field" | "property" => {
-            Some(SymbolKind::Variable)
-        }
-        "const" | "constant" => Some(SymbolKind::Constant),
+        "function" | "magic" => Some(Kind::Function),
+        "method" => Some(Kind::Method),
+        "macro" => Some(Kind::Macro),
+        "class" => Some(Kind::Class),
+        "struct" | "union" => Some(Kind::Struct),
+        "enum" => Some(Kind::Enum),
+        "trait" => Some(Kind::Trait),
+        "type" => Some(Kind::Type),
+        "module" | "crate" | "namespace" => Some(Kind::Module),
+        "field" | "property" => Some(Kind::Field),
+        "param" => Some(Kind::Parameter),
+        "instance" | "statement" | "variable" | "local" => Some(Kind::Variable),
+        "const" | "constant" => Some(Kind::Constant),
+        "keyword" => Some(Kind::Keyword),
         _ => None,
     }
 }
@@ -1220,13 +1427,24 @@ mod member_tests {
 
     #[test]
     fn a_kernels_type_names_the_kind_of_row() {
-        assert_eq!(kind_of(Some("function")), Some(SymbolKind::Function));
-        assert_eq!(kind_of(Some("module")), Some(SymbolKind::Module));
-        assert_eq!(kind_of(Some("instance")), Some(SymbolKind::Variable));
-        assert_eq!(kind_of(Some("class")), Some(SymbolKind::Type));
-        assert_eq!(kind_of(Some("keyword")), None);
+        assert_eq!(kind_of(Some("function")), Some(Kind::Function));
+        assert_eq!(kind_of(Some("module")), Some(Kind::Module));
+        assert_eq!(kind_of(Some("instance")), Some(Kind::Variable));
+        assert_eq!(kind_of(Some("class")), Some(Kind::Class));
+        assert_eq!(kind_of(Some("keyword")), Some(Kind::Keyword));
+        assert_eq!(kind_of(Some("snippet")), None);
         assert_eq!(kind_of(None), None);
     }
+}
+
+
+/// True when every row an offer holds is exactly the word already typed, so the list has nothing to
+/// complete it to. The automatic list does not open for such an offer, which is what keeps `Enter`
+/// meaning a new line once a word is fully typed.
+///
+/// @param offer - the offer
+fn nothing_longer(offer: &Offer) -> bool {
+    offer.rows.iter().all(|row| row.name == offer.typed)
 }
 
 #[cfg(test)]
@@ -1302,7 +1520,10 @@ mod tests {
         app.document_mut().apply(Command::PlaceCaret { offset: end, extend: false });
 
         let pool = app.completion_candidates("dr", end);
-        let from_the_index = pool.iter().filter(|one| one.source == Source::Index).count();
+        // A project name a file does not import comes as needing its import (`task-2231` §6.5), and
+        // it is still the project index it came from.
+        let from_the_index =
+            pool.iter().filter(|one| matches!(one.source, Source::Index | Source::Import)).count();
         assert!(
             from_the_index > 0,
             "the fixture really does reach the index, or this test is about nothing"
@@ -1637,7 +1858,9 @@ mod tests {
         assert_eq!(app.completion().expect("open").chosen, 2);
         app.the_completion_keys(CompletionKeys::enter());
         assert!(app.completion().is_none(), "accepting closes it");
-        assert!(text_of(&app).ends_with("draw_everything"), "{:?}", text_of(&app));
+        // A function is inserted with its call brackets, the caret after them when it takes no
+        // parameters (`task-2231` §6.7).
+        assert!(text_of(&app).ends_with("draw_everything()"), "{:?}", text_of(&app));
         assert_eq!(
             app.document().selection().head,
             app.document().text().len_bytes(),
@@ -1781,6 +2004,27 @@ mod tests {
         std::fs::remove_dir_all(&folder).ok();
     }
 
+    #[test]
+    fn enter_on_the_word_already_typed_is_a_new_line_and_closes_the_list() {
+        // `task-2231` offers the typed word as a row, first, and `Enter` on it must still be the new
+        // line somebody who finished typing a word meant.
+        let (folder, mut app) = a_window("unluminous-completion-enter-on-the-typed-word");
+        typing(&mut app, "draw");
+        let state = app.completion().expect("draw_frame is longer, so the list is open");
+        assert_eq!(state.chosen_row().map(|row| row.name.as_str()), Some("draw"));
+        assert!(!pressing(&mut app, egui::Key::Enter, egui::Modifiers::NONE), "Enter is left for the new line");
+        assert!(app.completion().is_none(), "and the list goes");
+        std::fs::remove_dir_all(&folder).ok();
+    }
+
+    #[test]
+    fn a_word_typed_in_full_with_nothing_longer_opens_no_list() {
+        let (folder, mut app) = a_window("unluminous-completion-nothing-longer");
+        typing(&mut app, "redraw");
+        assert!(app.completion().is_none(), "{:?}", offered(&app));
+        std::fs::remove_dir_all(&folder).ok();
+    }
+
     /// Press one key at a real `egui::Context` and say whether the popup took it out of the frame.
     ///
     /// The consumption is the property, so it is measured the only way it can be: the event is put
@@ -1819,7 +2063,9 @@ mod tests {
         let everything: Vec<&Row> =
             rows.iter().filter(|row| row.name == "draw_everything").collect();
         assert_eq!(everything.len(), 1, "one row for it: {rows:?}");
-        assert_eq!(everything[0].source, Source::Index, "and it comes from the index");
+        // From the index, and needing its import, since nothing in `layout.rs` imports it.
+        assert_eq!(everything[0].source, Source::Import, "and it comes from the index");
+        assert!(everything[0].info.needs_import.is_some());
         assert_eq!(everything[0].detail, "distant.rs");
         let here: Vec<&Row> = rows.iter().filter(|row| row.name == "draw_frame").collect();
         assert_eq!(here.len(), 1, "and the open file's own definition is not doubled: {here:?}");

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/unluminous-core", "crates/unluminous-chat", "crates/unluminous-db", "crates/unluminous-dap", "crates/unluminous-git", "crates/unluminous-terminal", "crates/unluminous-jupyter", "crates/unluminous-app", "unluminous-cli"]
+members = ["crates/unluminous-core", "crates/unluminous-chat", "crates/unluminous-db", "crates/unluminous-dap", "crates/unluminous-lsp", "crates/unluminous-git", "crates/unluminous-terminal", "crates/unluminous-jupyter", "crates/unluminous-app", "unluminous-cli"]
 
 [workspace.package]
 version = "0.70.0"
@@ -13,13 +13,14 @@ unluminous-core = { path = "crates/unluminous-core" }
 unluminous-chat = { path = "crates/unluminous-chat" }
 unluminous-db = { path = "crates/unluminous-db" }
 unluminous-dap = { path = "crates/unluminous-dap" }
+unluminous-lsp = { path = "crates/unluminous-lsp" }
 unluminous-git = { path = "crates/unluminous-git" }
 unluminous-terminal = { path = "crates/unluminous-terminal" }
 unluminous-jupyter = { path = "crates/unluminous-jupyter" }
 # The code index is Atrius, its own product since task-2172: the engine, the index host and the wire
 # protocol. `unluminous-cli/src/search.rs` is the seam. `crates/unluminous-index` is the copy it was
 # made from and is no longer built.
-atrius-index = "0.1"
+atrius-index = "0.2"
 # The command catalogue and the wire format the CLI and the window share. It lives beside the client
 # it belongs to rather than under `crates`, because `unluminous-cli/` holds the CLI's documentation as
 # well as its code and the two are read together.
@@ -180,6 +181,9 @@ windows-sys = { version = "0.61", features = [
     # `CryptProtectData`, which encrypts the browser's session cookies for the current user the way
     # Chromium encrypts its own. See `services/browser_session.rs`.
     "Win32_Security_Cryptography",
+    # A job object that ends every language server when the window's process ends, however it ends.
+    # See `unluminous-lsp`'s `worker.rs`.
+    "Win32_System_JobObjects",
 ] }
 # Already in the tree under `wry`, at the versions `wry` uses; named here because a browser node adds
 # `Select Element` to WebView2's own right click menu, which `wry` does not wrap. See

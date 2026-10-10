@@ -50,13 +50,14 @@ pub mod plugin_ui;
 pub mod plugins;
 pub mod preview_images;
 pub mod project_state;
+pub mod project_symbols;
 /// The Realm: the canvas of nodes `task-1904` asks for.
 pub mod realm;
 pub mod recycle;
 pub mod run_configurations;
 pub mod shell_integration;
+pub mod stats;
 pub mod store;
-pub mod symbol_index;
 pub mod system_files;
 pub mod terminal_colours;
 pub mod text_renderer;

@@ -505,6 +505,7 @@ impl UnluminousApp {
             "editor.auto_indent" => self.settings.auto_indent.to_string(),
             "editor.trim" => self.settings.trim_on_save.to_string(),
             "editor.suggestions" => self.settings.suggestions.name().to_owned(),
+            "editor.servers" => self.settings.servers.name().to_owned(),
             "editor.line_ending" => self.settings.line_endings.name().to_owned(),
             "update.check" => self.settings.update_check.name().to_owned(),
             "update.skip" => self.settings.update_skip.clone(),
@@ -1223,6 +1224,10 @@ const SETTINGS: &[SettingKey] = &[
         help: "Whether the completion popup arrives as you type. Ctrl+Space works either way.",
     },
     SettingKey {
+        name: "editor.servers",
+        help: "Whether completion asks a language server: `automatic` starts rust-analyzer for Rust and tsserver for TypeScript and JavaScript when one is found; `off` starts nothing and completion answers from the project's own structure.",
+    },
+    SettingKey {
         name: "editor.line_ending",
         help: "What line breaks a file is written back with. `keep` writes it the way it was read, which is what leaves a one character edit as a one line diff. A new file gets the platform's own either way.",
     },
@@ -1312,6 +1317,7 @@ fn fresh_value(name: &str, fresh: &crate::settings::Settings) -> String {
         "editor.auto_indent" => fresh.auto_indent.to_string(),
         "editor.trim" => fresh.trim_on_save.to_string(),
         "editor.suggestions" => fresh.suggestions.name().to_owned(),
+        "editor.servers" => fresh.servers.name().to_owned(),
         "editor.line_ending" => fresh.line_endings.name().to_owned(),
         "update.check" => fresh.update_check.name().to_owned(),
         "update.skip" => fresh.update_skip.clone(),

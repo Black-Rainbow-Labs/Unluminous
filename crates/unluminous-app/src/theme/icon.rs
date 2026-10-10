@@ -1142,6 +1142,143 @@ pub fn symbol_kind(
     }
 }
 
+/// The mark a completion row is drawn with, one for each kind the structural index and the language
+/// servers answer in. `task-2231` §6.6.
+///
+/// The five a definer keyword gives keep the marks [`symbol_kind`] draws, so a function, a type, a
+/// constant, a variable and a module look the same in the completion list as in the references modal.
+/// The others are each a variation a person can tell apart at twelve points: a method is a function's
+/// brackets with a dot between them, a field a short bar with a dot on it, a parameter a hollow dot, an
+/// interface a ring, a trait a diamond, a variant a small filled diamond, a struct a square with a bar
+/// across it, an enum a square with two, a class a square with a filled centre, an alias a square with
+/// a slash, a macro an exclamation mark, a keyword a chevron and a snippet a pair of square brackets.
+pub fn completion_kind(
+    painter: &egui::Painter,
+    centre: Pos2,
+    kind: unluminous_core::completion::Kind,
+    color: Color32,
+) {
+    use unluminous_core::completion::Kind;
+    use unluminous_core::SymbolKind;
+    let stroke = Stroke::new(1.3, color);
+    let square = Rect::from_center_size(centre, egui::Vec2::splat(7.6));
+    let outline = |painter: &egui::Painter| {
+        painter.rect_stroke(square, CornerRadius::same(1), stroke, egui::StrokeKind::Inside)
+    };
+    let bar = |painter: &egui::Painter, dy: f32| {
+        painter.line_segment(
+            [
+                Pos2::new(square.left() + 1.0, centre.y + dy),
+                Pos2::new(square.right() - 1.0, centre.y + dy),
+            ],
+            stroke,
+        )
+    };
+    let diamond = |r: f32| {
+        vec![
+            Pos2::new(centre.x, centre.y - r),
+            Pos2::new(centre.x + r, centre.y),
+            Pos2::new(centre.x, centre.y + r),
+            Pos2::new(centre.x - r, centre.y),
+        ]
+    };
+    match kind {
+        Kind::Function => symbol_kind(painter, centre, SymbolKind::Function, color),
+        Kind::Type => symbol_kind(painter, centre, SymbolKind::Type, color),
+        Kind::Constant => symbol_kind(painter, centre, SymbolKind::Constant, color),
+        Kind::Variable => symbol_kind(painter, centre, SymbolKind::Variable, color),
+        Kind::Module => symbol_kind(painter, centre, SymbolKind::Module, color),
+        Kind::Method => {
+            symbol_kind(painter, centre, SymbolKind::Function, color);
+            painter.circle_filled(centre, 1.1, color);
+        }
+        Kind::Field => {
+            painter.line_segment(
+                [
+                    Pos2::new(centre.x - 4.0, centre.y + 2.0),
+                    Pos2::new(centre.x + 4.0, centre.y + 2.0),
+                ],
+                stroke,
+            );
+            painter.circle_filled(Pos2::new(centre.x, centre.y - 1.6), 1.8, color);
+        }
+        Kind::Parameter => {
+            painter.circle_stroke(centre, 2.8, stroke);
+        }
+        Kind::Interface => {
+            painter.circle_stroke(centre, 3.8, stroke);
+        }
+        Kind::Trait => {
+            painter.add(egui::Shape::closed_line(diamond(4.2), stroke));
+        }
+        Kind::Variant => {
+            painter.add(egui::Shape::convex_polygon(diamond(3.0), color, Stroke::NONE));
+        }
+        Kind::Struct => {
+            outline(painter);
+            bar(painter, 0.0);
+        }
+        Kind::Enum => {
+            outline(painter);
+            bar(painter, -1.3);
+            bar(painter, 1.3);
+        }
+        Kind::Class => {
+            outline(painter);
+            painter.rect_filled(
+                Rect::from_center_size(centre, egui::Vec2::splat(2.6)),
+                CornerRadius::ZERO,
+                color,
+            );
+        }
+        Kind::TypeAlias => {
+            outline(painter);
+            painter.line_segment(
+                [
+                    Pos2::new(square.left() + 1.5, square.bottom() - 1.5),
+                    Pos2::new(square.right() - 1.5, square.top() + 1.5),
+                ],
+                stroke,
+            );
+        }
+        Kind::Macro => {
+            painter.line_segment(
+                [Pos2::new(centre.x, centre.y - 4.2), Pos2::new(centre.x, centre.y + 1.2)],
+                stroke,
+            );
+            painter.circle_filled(Pos2::new(centre.x, centre.y + 3.6), 0.9, color);
+        }
+        Kind::Keyword => {
+            painter.line_segment(
+                [Pos2::new(centre.x - 2.6, centre.y - 3.6), Pos2::new(centre.x + 2.2, centre.y)],
+                stroke,
+            );
+            painter.line_segment(
+                [Pos2::new(centre.x + 2.2, centre.y), Pos2::new(centre.x - 2.6, centre.y + 3.6)],
+                stroke,
+            );
+        }
+        Kind::Snippet => {
+            for side in [-1.0_f32, 1.0] {
+                let inner = centre.x + side * 1.6;
+                let outer = centre.x + side * 3.6;
+                painter.line_segment(
+                    [Pos2::new(inner, centre.y - 4.0), Pos2::new(outer, centre.y - 4.0)],
+                    stroke,
+                );
+                painter.line_segment(
+                    [Pos2::new(outer, centre.y - 4.0), Pos2::new(outer, centre.y + 4.0)],
+                    stroke,
+                );
+                painter.line_segment(
+                    [Pos2::new(outer, centre.y + 4.0), Pos2::new(inner, centre.y + 4.0)],
+                    stroke,
+                );
+            }
+        }
+    }
+}
+
 /// A filled triangle pointing right: run.
 ///
 /// `task-1683`'s widget and the run tile both use it, and so does each row of the flyout at a

@@ -1,0 +1,14 @@
+<idea-plugin>
+  <id>org.unluminous.completioneval</id>
+  <name>Unluminous Completion Eval</name>
+  <version>1.0</version>
+  <vendor>Unluminous</vendor>
+  <description>Runs basic code completion at every query of a positions.json file, headless, and writes the labels offered.</description>
+  <depends>com.intellij.modules.platform</depends>
+  <depends>com.intellij.modules.lang</depends>
+  <depends optional="true" config-file="rust.xml">com.jetbrains.rust</depends>
+  <depends optional="true" config-file="ml.xml">com.intellij.completion.ml.ranking</depends>
+  <extensions defaultExtensionNs="com.intellij">
+    <appStarter id="completionEval" implementation="org.unluminous.completioneval.CompletionEvalStarter"/>
+  </extensions>
+</idea-plugin>

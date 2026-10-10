@@ -38,9 +38,19 @@
 //! Ties are broken by source, then by the shorter name, then by the name's own bytes, so the same
 //! text and the same stem give the same list in the same order every time. That is not tidiness:
 //! the popup's screenshot tests and the command line's output both rest on it.
+//!
+//! ## The order is a chain of weighers (`task-2231` §6.3)
+//!
+//! A row's place is decided by [`order`]: its match class first ([`MatchClass`]: the name is the stem,
+//! starts with it, is reached by its humps, by a later word, or only as a subsequence), then what a
+//! language server says about it, how well its kind fits the place, how near its answer is
+//! ([`Locality`]), how often it was chosen before, and only then the alignment score. The candidates
+//! carry what each source knows about them in [`Info`], so the structural index, a server and a kernel
+//! each fill in what they know and the order reads it all the same way.
 
 use std::ops::Range;
 
+use crate::place::Place;
 use crate::symbols::SymbolKind;
 use crate::syntax::Grammar;
 
@@ -87,45 +97,34 @@ pub enum Source {
     /// What a running Jupyter kernel answered for a notebook cell: the names that really exist in
     /// it now, which is how `df.` offers a DataFrame's columns. `task-2220`.
     Kernel,
+    /// A member of the value before a `.` or `::`, read from the structural index: the fields and
+    /// methods of the receiver's type. `task-2231` §6.4.
+    Member,
+    /// A name the project exports from a file this one does not import, which accepting adds the
+    /// import for. `task-2231` §6.5.
+    Import,
+    /// What a language server answered: rust-analyzer or tsserver. `task-2231` §5.3.
+    Server,
 }
 
 impl Source {
-    /// Where this source comes in the offered order, which is only ever used to break a tie between
-    /// two equally-scored rows.
-    ///
-    /// The nearest answer first: what this file defines, then what this file says, then the other
-    /// tabs, then the disk, then the language itself — which is last because a keyword is the one
-    /// candidate a person can always type out from memory.
-    /// A module comes first, which only ever decides a tie and only inside an import, where a
-    /// module and an item of the same name can both be offered. The module wins it, because
-    /// `use a::b` with `b` both a module and a function far more often means the module.
-    pub fn order(self) -> u8 {
-        match self {
-            Source::Module => 0,
-            Source::ThisFile => 1,
-            Source::Kernel => 2,
-            Source::Word => 3,
-            Source::OpenTab => 4,
-            Source::Index => 5,
-            Source::Language => 6,
-        }
-    }
-
     /// Which source wins the row when two of them offer the same spelling.
     ///
-    /// A different order from [`Self::order`], and deliberately: **a definition beats a keyword
-    /// beats a plain word**, because a definition has the most to say about itself and a plain word
-    /// has nothing at all. Offering is about how near the answer is; labelling is about how much
-    /// the answer knows.
+    /// **A server beats a definition beats a keyword beats a plain word**, because a server's row
+    /// carries the edit that inserts it correctly and resolved knowledge of what it is, and a plain
+    /// word has nothing at all. A name already in scope beats the same name offered with an import.
     fn describes_itself(self) -> u8 {
         match self {
-            Source::Module => 0,
-            Source::ThisFile => 1,
-            Source::Kernel => 2,
-            Source::OpenTab => 3,
-            Source::Index => 4,
-            Source::Language => 5,
-            Source::Word => 6,
+            Source::Server => 0,
+            Source::Module => 1,
+            Source::ThisFile => 2,
+            Source::Member => 3,
+            Source::Kernel => 4,
+            Source::OpenTab => 5,
+            Source::Index => 6,
+            Source::Import => 7,
+            Source::Language => 8,
+            Source::Word => 9,
         }
     }
 
@@ -139,8 +138,266 @@ impl Source {
             Source::Language => "language",
             Source::Module => "module",
             Source::Kernel => "kernel",
+            Source::Member => "member",
+            Source::Import => "needs import",
+            Source::Server => "server",
         }
     }
+
+    /// How near a source's answer is, when nothing better is known about the row. The gatherer says
+    /// more where it knows more: a parameter of the enclosing function is nearer than this file.
+    pub fn locality(self) -> Locality {
+        match self {
+            Source::Member | Source::Module => Locality::Receiver,
+            Source::ThisFile | Source::Word | Source::Kernel => Locality::ThisFile,
+            Source::OpenTab => Locality::OpenTab,
+            Source::Index | Source::Server => Locality::Project,
+            Source::Import => Locality::NeedsImport,
+            Source::Language => Locality::Language,
+        }
+    }
+}
+
+/// What a row names, finer than the five kinds a definer keyword gives. The structural index
+/// (`atrius_index::structure::Kind`) and the language servers both answer in these.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Kind {
+    Function,
+    Method,
+    Type,
+    Struct,
+    Enum,
+    Variant,
+    Trait,
+    Interface,
+    Class,
+    Field,
+    Constant,
+    Variable,
+    Module,
+    Parameter,
+    TypeAlias,
+    Macro,
+    Keyword,
+    Snippet,
+}
+
+impl Kind {
+    /// Every kind.
+    pub const ALL: [Kind; 18] = [
+        Kind::Function,
+        Kind::Method,
+        Kind::Type,
+        Kind::Struct,
+        Kind::Enum,
+        Kind::Variant,
+        Kind::Trait,
+        Kind::Interface,
+        Kind::Class,
+        Kind::Field,
+        Kind::Constant,
+        Kind::Variable,
+        Kind::Module,
+        Kind::Parameter,
+        Kind::TypeAlias,
+        Kind::Macro,
+        Kind::Keyword,
+        Kind::Snippet,
+    ];
+
+    /// The word the command line prints. The structural index uses the same words, `alias` for a
+    /// type alias included, so its rows are read with [`Kind::parse`].
+    pub fn name(self) -> &'static str {
+        match self {
+            Kind::Function => "function",
+            Kind::Method => "method",
+            Kind::Type => "type",
+            Kind::Struct => "struct",
+            Kind::Enum => "enum",
+            Kind::Variant => "variant",
+            Kind::Trait => "trait",
+            Kind::Interface => "interface",
+            Kind::Class => "class",
+            Kind::Field => "field",
+            Kind::Constant => "constant",
+            Kind::Variable => "variable",
+            Kind::Module => "module",
+            Kind::Parameter => "parameter",
+            Kind::TypeAlias => "alias",
+            Kind::Macro => "macro",
+            Kind::Keyword => "keyword",
+            Kind::Snippet => "snippet",
+        }
+    }
+
+    /// The kind a word names.
+    pub fn parse(word: &str) -> Option<Kind> {
+        Kind::ALL.iter().copied().find(|kind| kind.name() == word)
+    }
+
+    /// True for a kind a value is made of or a member looked up on.
+    pub fn is_type(self) -> bool {
+        matches!(
+            self,
+            Kind::Type
+                | Kind::Struct
+                | Kind::Enum
+                | Kind::Trait
+                | Kind::Interface
+                | Kind::Class
+                | Kind::TypeAlias
+        )
+    }
+
+    /// True for a kind that is called with brackets.
+    pub fn is_callable(self) -> bool {
+        matches!(self, Kind::Function | Kind::Method | Kind::Macro)
+    }
+
+    /// True for a kind that stands for a value where an expression is written.
+    pub fn is_value(self) -> bool {
+        matches!(
+            self,
+            Kind::Variable
+                | Kind::Parameter
+                | Kind::Constant
+                | Kind::Field
+                | Kind::Variant
+                | Kind::Function
+                | Kind::Method
+                | Kind::Macro
+        )
+    }
+}
+
+impl From<SymbolKind> for Kind {
+    fn from(kind: SymbolKind) -> Self {
+        match kind {
+            SymbolKind::Function => Kind::Function,
+            SymbolKind::Type => Kind::Type,
+            SymbolKind::Constant => Kind::Constant,
+            SymbolKind::Variable => Kind::Variable,
+            SymbolKind::Module => Kind::Module,
+        }
+    }
+}
+
+/// How a stem lines up with a name, best first. `task-2231` §6.2.
+///
+/// The first weigher of [`order`]: the reference editor's matcher prefers a name the stem starts, then
+/// one whose words the stem's letters each start (`lsm` for `layout_scroll_margin`), then one with a
+/// later word the stem starts (`scroll` in `layout_scroll`), and only then any other subsequence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum MatchClass {
+    /// The name is the stem, in another case.
+    Exact,
+    /// The name starts with the stem.
+    Prefix,
+    /// Each matched letter starts a word of the name or follows one that does, from the first word.
+    Humps,
+    /// The stem starts a later word of the name.
+    WordStart,
+    /// Any other subsequence.
+    Subsequence,
+}
+
+impl MatchClass {
+    /// The word the command line prints.
+    pub fn name(self) -> &'static str {
+        match self {
+            MatchClass::Exact => "exact",
+            MatchClass::Prefix => "prefix",
+            MatchClass::Humps => "humps",
+            MatchClass::WordStart => "word start",
+            MatchClass::Subsequence => "subsequence",
+        }
+    }
+}
+
+/// How near a row's answer is to the caret, nearest first: the fourth weigher. `task-2231` §6.3.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub enum Locality {
+    /// A member of the receiver's own type.
+    Receiver,
+    /// A local or a parameter of the enclosing function.
+    Local,
+    /// Defined or written in this file.
+    ThisFile,
+    /// Defined in an open tab.
+    OpenTab,
+    /// Defined in a file in the same folder.
+    SameFolder,
+    /// Defined in the same crate or package.
+    Package,
+    /// Defined somewhere in the project.
+    #[default]
+    Project,
+    /// Defined in the project and not imported here: accepting it adds the import.
+    NeedsImport,
+    /// Defined in a dependency and not imported here: a language server's auto import from a crate
+    /// or a package the project uses, farther than any name of the project's own.
+    Dependency,
+    /// One of the language's own words.
+    Language,
+}
+
+/// One change to the text, in the bytes of the document at the revision it was worked out for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Edit {
+    pub range: Range<usize>,
+    pub text: String,
+}
+
+/// What accepting a row puts in the document. `task-2231` §6.7.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Insert {
+    /// The name, over the stem (`Enter`) or the word (`Tab`). What every row did before.
+    #[default]
+    Name,
+    /// A server's own text and range. `insert` is the range `Enter` replaces and `replace` the one
+    /// `Tab` replaces; the caret goes to `caret` bytes into the text when it is set, after it otherwise.
+    Text { insert: Range<usize>, replace: Range<usize>, text: String, caret: Option<usize> },
+    /// A call: `name()`, with the caret between the brackets when it takes parameters and after
+    /// them when it takes none.
+    Call { has_parameters: bool },
+}
+
+/// Everything a row carries beyond its name, its source, its kind and its detail.
+///
+/// Kept in one place so a candidate and the row it becomes cannot disagree about it, and so the
+/// structural tier, the server and the kernel can each fill in what they know and leave the rest.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Info {
+    /// What the stem is matched against when it is not the name: a server's `filterText`.
+    pub filter: Option<String>,
+    /// The definition's head line, or a server's detail: `fn draw(&self, ui: &mut Ui) -> Response`.
+    pub signature: Option<String>,
+    /// The type or module it belongs to.
+    pub container: Option<String>,
+    /// The first line of its documentation, or the whole of it once a server has resolved the row.
+    pub doc: Option<String>,
+    pub insert: Insert,
+    /// Changes elsewhere in the file that accepting makes: the import a name needs.
+    pub extra_edits: Vec<Edit>,
+    /// The import accepting adds, as it would be written, for the row's detail: `use crate::layout`.
+    pub needs_import: Option<String>,
+    pub locality: Locality,
+    /// True when a server said the row's type is the type expected here.
+    pub expected_type: bool,
+    /// How many times the name is already written in the file being edited, keywords included. A name
+    /// used nearby is the likelier of two that otherwise tie: `push` over `pop` after `flags.` in a file
+    /// that pushes onto `flags` already, and `const` over `case` in a file full of `const`.
+    pub uses_here: u32,
+    /// A server's own order, smaller first, read from its sort text. `None` for every other source.
+    pub server_order: Option<u64>,
+    pub deprecated: bool,
+    /// True when a server asked for this row to be chosen first.
+    pub preselect: bool,
+    /// True when the server's answer has to be resolved before its documentation and its import are
+    /// known.
+    pub needs_resolve: bool,
+    /// A server's own handle for resolving this row.
+    pub handle: Option<String>,
 }
 
 /// One thing that could be offered, before anything has been matched against it.
@@ -150,27 +407,36 @@ pub struct Candidate {
     /// because two entries that would type the same bytes are one offer.
     pub name: String,
     pub source: Source,
-    /// What the definition names, where the candidate is one. Nothing for a word or a keyword.
-    pub kind: Option<SymbolKind>,
+    /// What the definition names, where the candidate is one. Nothing for a word.
+    pub kind: Option<Kind>,
     /// The quiet suffix a row shows — the defining file's name, or `keyword`. Empty where the
     /// candidate needs no explanation, which is what this file's own words need.
     pub detail: String,
+    pub info: Info,
 }
 
 impl Candidate {
     /// A candidate with nothing to say about itself but its name, which is what a word is.
     pub fn new(name: impl Into<String>, source: Source) -> Self {
-        Self { name: name.into(), source, kind: None, detail: String::new() }
+        let info = Info { locality: source.locality(), ..Info::default() };
+        Self { name: name.into(), source, kind: None, detail: String::new(), info }
     }
 
     /// The same, carrying what it is and where it came from.
     pub fn described(
         name: impl Into<String>,
         source: Source,
-        kind: Option<SymbolKind>,
+        kind: Option<Kind>,
         detail: impl Into<String>,
     ) -> Self {
-        Self { name: name.into(), source, kind, detail: detail.into() }
+        let info = Info { locality: source.locality(), ..Info::default() };
+        Self { name: name.into(), source, kind, detail: detail.into(), info }
+    }
+
+    /// The same candidate, nearer or further than its source says.
+    pub fn at(mut self, locality: Locality) -> Self {
+        self.info.locality = locality;
+        self
     }
 }
 
@@ -179,7 +445,7 @@ impl Candidate {
 pub struct Row {
     pub name: String,
     pub source: Source,
-    pub kind: Option<SymbolKind>,
+    pub kind: Option<Kind>,
     pub detail: String,
     /// Which **characters** of the name the stem landed on, in order.
     ///
@@ -189,6 +455,22 @@ pub struct Row {
     /// before it.
     pub matched: Vec<usize>,
     pub score: i32,
+    pub class: MatchClass,
+    pub info: Info,
+}
+
+/// What [`order`] needs to know about the place the rows are offered at, beyond the stem.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Question {
+    pub stem: String,
+    pub place: Place,
+}
+
+impl Question {
+    /// A question about a stem with nothing known about the place.
+    pub fn stem(stem: &str) -> Self {
+        Self { stem: stem.to_owned(), place: Place::Unknown }
+    }
 }
 
 /// The identifier characters immediately left of the caret: what has been typed of the word so far.
@@ -262,68 +544,250 @@ pub fn could_match(stem: &str, name: &str) -> bool {
 
 /// Which rows a stem offers, best first.
 ///
-/// The whole of the module's work in one function: drop what does not match, drop the row equal to
-/// the stem, score what is left, keep one row per spelling, and sort into a total order.
+/// The row **equal to the stem** is offered, first, as the reference editor offers it: a name typed in
+/// full is still a question worth answering, and the evaluation counts it. What made `task-1678` drop
+/// it was `Enter`, and the window keeps that safe instead: a list with nothing longer than the typed
+/// word does not open, and `Enter` on the typed word is the new line it means.
 ///
-/// The row **equal to the stem** is dropped rather than offered, which is what makes `Enter` safe
-/// once a word is completely typed: with nothing longer to offer the popup has already closed, so
-/// `Enter` means the new line the person meant. VS Code grew a three-way setting for the same trap;
-/// dropping the no-op row answers it at candidate time instead, and also stops the list offering a
-/// row that would do nothing.
+/// An empty stem offers nothing: with nothing typed there is nothing being completed. [`rank_all`]
+/// is the form for the places the language itself says what comes next.
 pub fn rank(stem: &str, candidates: Vec<Candidate>) -> Vec<Row> {
     if stem.is_empty() {
         return Vec::new();
     }
-    rank_all(stem, candidates)
+    order(&Question::stem(stem), candidates, &|_| 0)
 }
 
 /// The same, except that an **empty** stem offers everything rather than nothing.
 ///
-/// `task-1680`. [`rank`]'s guard is right for a word being typed — with nothing typed there is
-/// nothing being completed, and a list that opened on every space would be unusable — and wrong
-/// for an import, where `from '│'` and `use │` are positions at which the language itself says
-/// what comes next, so a list is an answer rather than an interruption. The reference editor opens its own
-/// popup at zero characters after a `.` and after `import` for the same reason.
-///
-/// With nothing typed nothing can be scored, so the rows come back in the tie-break's own order:
-/// by source, then by the shorter name, then by the name's bytes. Which is still total, so the
-/// determinism the popup's pictures rest on holds here too.
+/// `task-1680`. [`rank`]'s guard is right for a word being typed and wrong for an import, where
+/// `from '│'` and `use │` are positions at which the language itself says what comes next, and wrong
+/// straight after a `.`, where the members of the value are the answer (`task-2231` §6.1).
 pub fn rank_all(stem: &str, candidates: Vec<Candidate>) -> Vec<Row> {
-    if stem.is_empty() {
-        return everything(candidates);
+    order(&Question::stem(stem), candidates, &|_| 0)
+}
+
+/// The rows a question offers, in the order of the weigher chain. `task-2231` §6.3.
+///
+/// A pure function of the question, the candidates and what was chosen before, so the popup, the
+/// command line and the evaluation harness all get the same list. The weighers, compared in order:
+///
+/// 1. a server's preselected row, when the stem is its prefix, comes first outright;
+/// 2. the match class ([`MatchClass`]);
+/// 3. a capital typed first asks for a name that starts with one: `Co` is a type or a constant;
+/// 4. a row a server said has the expected type;
+/// 5. a name from a dependency the file does not import yet after every other, then a server's own
+///    order, and every row a server offered before every row it did not;
+/// 6. how well the row's kind fits the place ([`place_fit`]);
+/// 7. locality ([`Locality`]);
+/// 8. how often the name is already written in this file ([`Info::uses_here`]);
+/// 9. how often the row was chosen before here (`chosen_before`, the window's selection statistics);
+/// 10. a deprecated row last;
+/// 11. the alignment score, the shorter name, the source, the bytes.
+///
+/// Three of these were moved while tuning against the evaluation's tune positions
+/// (`tools/completion-eval/SCORECARD.md`). The case and the file's own words came up from the end of
+/// the chain. The server's order came up from after the statistics: rust-analyzer's order alone
+/// ranked the answer first more often than the chain did with it last, and tsserver's order is
+/// groups (locals, then globals, then auto imports) inside which the rest of the chain still
+/// decides.
+///
+/// Every part of the key is an integer or the name's bytes, so the order is total and the same on
+/// every machine, which the popup's pictures and the command line's output rest on.
+///
+/// @param question - the stem and the place
+/// @param candidates - every candidate the sources gathered
+/// @param chosen_before - how many times a row of this name was chosen before for this question
+pub fn order(
+    question: &Question,
+    candidates: Vec<Candidate>,
+    chosen_before: &dyn Fn(&str) -> u32,
+) -> Vec<Row> {
+    let rows = matched(&question.stem, candidates);
+    let first_upper = question.stem.chars().next().map(char::is_uppercase);
+    let mut keyed: Vec<(OrderKey, usize)> = rows
+        .iter()
+        .enumerate()
+        .map(|(at, row)| (key_of(question, row, first_upper, chosen_before(&row.name)), at))
+        .collect();
+    keyed.sort_by(|left, right| {
+        left.0.cmp(&right.0).then(rows[left.1].name.as_bytes().cmp(rows[right.1].name.as_bytes()))
+    });
+    let mut taken: Vec<Option<Row>> = rows.into_iter().map(Some).collect();
+    keyed.into_iter().filter_map(|(_, at)| taken[at].take()).collect()
+}
+
+/// The parts of a row's place in the order, compared left to right. See [`order`]. Two tuples, because
+/// a tuple compares as a whole only up to twelve parts.
+type OrderKey = (
+    (u8, MatchClass, u8, u8, u8, u64, u8, Locality, std::cmp::Reverse<u32>),
+    (std::cmp::Reverse<u32>, u8, i32, usize, u8),
+);
+
+/// A row's place in the order.
+///
+/// @param question - the stem and the place
+/// @param row - the row
+/// @param first_upper - whether the stem's first letter is a capital, when there is one
+/// @param chosen - how many times the row was chosen before here
+fn key_of(question: &Question, row: &Row, first_upper: Option<bool>, chosen: u32) -> OrderKey {
+    let preselected = row.info.preselect && row.class <= MatchClass::Prefix;
+    // Only a capital is a signal. Lowercase is how most people type whatever they mean, `lay` for
+    // `Layout` as often as for `layout`, so a lowercase first letter leaves the place to decide.
+    let case_agrees = match (first_upper, row.name.chars().next()) {
+        (Some(true), Some(first)) if first.is_alphabetic() => first.is_uppercase(),
+        _ => true,
+    };
+    (
+        (
+            u8::from(!preselected),
+            row.class,
+            u8::from(!case_agrees),
+            u8::from(!row.info.expected_type),
+            u8::from(row.info.locality == Locality::Dependency),
+            row.info.server_order.unwrap_or(u64::MAX),
+            place_fit(question.place, row.kind),
+            locality_here(question.place, row),
+            std::cmp::Reverse(row.info.uses_here),
+        ),
+        (
+            std::cmp::Reverse(chosen),
+            u8::from(row.info.deprecated),
+            -row.score,
+            row.name.chars().count(),
+            row.source.tie(),
+        ),
+    )
+}
+
+/// A row's locality as the order reads it. Where a statement or an expression starts, the language's
+/// own keywords are as near as a local: `let`, `return` and `await` are written there more often than
+/// any one project name, and left at [`Locality::Language`] a one letter stem buried them under the
+/// project's names.
+///
+/// @param place - where the caret is
+/// @param row - the row
+fn locality_here(place: Place, row: &Row) -> Locality {
+    let opens_a_statement = matches!(place, Place::Statement | Place::Expression | Place::Unknown);
+    match (row.kind, opens_a_statement) {
+        (Some(Kind::Keyword), true) => row.info.locality.min(Locality::Local),
+        _ => row.info.locality,
     }
+}
+
+/// How well a kind fits a place, smaller better: 0 for what the place asks for, 1 for what it allows,
+/// 2 for what it does not want. A row with no kind, a plain word, is always 1. `task-2231` §6.3.
+///
+/// @param place - where the caret is
+/// @param kind - what the row names
+pub fn place_fit(place: Place, kind: Option<Kind>) -> u8 {
+    let Some(kind) = kind else { return 1 };
+    match place {
+        // A keyword where a type goes is a primitive or a type operator: `string`, `keyof`, `typeof`,
+        // Rust's `dyn` and `impl`. tsserver and rust-analyzer both send the primitives as keywords.
+        Place::Type => match kind {
+            k if k.is_type() || k == Kind::Keyword => 0,
+            Kind::Module => 1,
+            _ => 2,
+        },
+        Place::Import => match kind {
+            Kind::Module => 0,
+            k if k.is_type() || k.is_callable() || k == Kind::Constant => 0,
+            _ => 1,
+        },
+        Place::Member => match kind {
+            Kind::Field | Kind::Method | Kind::Variant | Kind::Constant => 0,
+            Kind::Keyword => 2,
+            _ => 1,
+        },
+        Place::Pattern => match kind {
+            Kind::Variant | Kind::Struct | Kind::Constant => 0,
+            _ => 1,
+        },
+        Place::Statement => match kind {
+            Kind::Variable | Kind::Parameter | Kind::Function | Kind::Keyword | Kind::Macro => 0,
+            Kind::Method | Kind::Field => 2,
+            _ => 1,
+        },
+        Place::Expression | Place::Argument => match kind {
+            Kind::Method | Kind::Field => 2,
+            k if k.is_value() => 0,
+            _ => 1,
+        },
+        Place::Unknown => 1,
+    }
+}
+
+impl Source {
+    /// Where this source comes when everything else about two rows is equal: the nearest answer
+    /// first, and the language's own words last, because a keyword is the one candidate a person can
+    /// always type out from memory. A module wins inside an import, where `use a::b` with `b` both a
+    /// module and a function far more often means the module.
+    fn tie(self) -> u8 {
+        match self {
+            Source::Module => 0,
+            Source::Member => 1,
+            Source::Server => 2,
+            Source::ThisFile => 3,
+            Source::Kernel => 4,
+            Source::Word => 5,
+            Source::OpenTab => 6,
+            Source::Index => 7,
+            Source::Import => 8,
+            Source::Language => 9,
+        }
+    }
+}
+
+/// Every candidate that matches the stem, one row a spelling, scored and classed, in the order they
+/// were gathered. An empty stem matches everything, unscored.
+///
+/// One row per spelling is chosen as the pool is walked, by a table rather than by searching the
+/// rows already kept: a stem of one letter on this repository's largest file offers well over two
+/// thousand rows. The source that describes itself best keeps the row, and what it does not know
+/// (a structural row's documentation under a server's row) is taken from the one it replaces.
+///
+/// @param stem - what has been typed
+/// @param candidates - the pool
+fn matched(stem: &str, candidates: Vec<Candidate>) -> Vec<Row> {
     let needle: Vec<char> = stem.chars().collect();
     let lowered: Vec<char> = needle.iter().flat_map(|c| c.to_lowercase()).collect();
-    // The stem's own letters, folded once. A stem whose case folding changes its length — the
-    // Turkish dotted capital, and a handful like it — is compared unfolded, because a subsequence
-    // of characters is only meaningful while one character stays one character.
+    // A stem whose case folding changes its length is compared unfolded, because a subsequence of
+    // characters is only meaningful while one character stays one character.
     let folded = (lowered.len() == needle.len()).then_some(lowered);
     let folded = folded.as_deref().unwrap_or(&needle);
     let mut scratch = Scratch::default();
-    // One row per spelling, chosen as the pool is walked rather than swept up afterwards. Looking a
-    // name up in a table rather than searching the rows already kept is not tidiness: a stem of one
-    // letter on this repository's largest file offers well over two thousand rows, and the search
-    // that was here first compared several million pairs of strings to find that out.
     let mut seen: std::collections::HashMap<String, usize> =
         std::collections::HashMap::with_capacity(candidates.len());
     let mut rows: Vec<Row> = Vec::with_capacity(candidates.len());
-    for candidate in candidates {
-        if candidate.name == stem || candidate.name.is_empty() {
+    let mut kernel_order = 0u64;
+    for mut candidate in candidates {
+        // A short word that differs from the stem only in case completes nothing: `Eg` for `eg`, `S`
+        // for `s`. From four letters a word of the other case is a real answer, `Layout` for
+        // `layout`, and the Exact class. The row exactly equal to the stem is offered, as the
+        // reference editor offers it; the window keeps `Enter` a new line on it.
+        let short_case_variant = stem.chars().count() < 4
+            && candidate.name != stem
+            && candidate.name.eq_ignore_ascii_case(stem);
+        // A row equal to the stem with no kind is the half typed word itself, which tsserver also sends
+        // among the file's plain identifiers; a definition or a keyword of that name has a kind.
+        let the_typed_word = !stem.is_empty() && candidate.name == stem && candidate.kind.is_none();
+        if candidate.name.is_empty() || short_case_variant || the_typed_word {
             continue;
         }
-        // Two entries that would type the same bytes are one offer, and they always score the same,
-        // because the score is a function of the name. So a spelling already seen is not scored
-        // again — what is being chosen is only the label, and `describes_itself` chooses it.
+        // A kernel's rows keep the kernel's own order when nothing else decides, as a server's do:
+        // with nothing typed after `v.`, rust-analyzer and Jedi put the value's own members first.
+        if candidate.source == Source::Kernel && candidate.info.server_order.is_none() {
+            candidate.info.server_order = Some(kernel_order);
+            kernel_order += 1;
+        }
         if let Some(at) = seen.get(&candidate.name) {
-            let known: &mut Row = &mut rows[*at];
-            if candidate.source.describes_itself() < known.source.describes_itself() {
-                known.source = candidate.source;
-                known.kind = candidate.kind;
-                known.detail = candidate.detail;
-            }
+            merge_into(&mut rows[*at], candidate);
             continue;
         }
-        let Some(found) = score(folded, &needle, &candidate.name, &mut scratch) else {
+        let Some((class, score, matched)) =
+            class_and_score(folded, &needle, &candidate, &mut scratch)
+        else {
             continue;
         };
         seen.insert(candidate.name.clone(), rows.len());
@@ -332,75 +796,128 @@ pub fn rank_all(stem: &str, candidates: Vec<Candidate>) -> Vec<Row> {
             source: candidate.source,
             kind: candidate.kind,
             detail: candidate.detail,
-            matched: found.matched,
-            score: found.score,
+            matched,
+            score,
+            class,
+            info: candidate.info,
         });
     }
-    // Sorted on a key worked out once a row rather than inside the comparison, which would have
-    // counted every name's characters again at every one of its comparisons. Every part of it is an
-    // integer or the name's own bytes, so the order is total and the same on every machine — which
-    // is what the determinism property rests on.
-    let mut order: Vec<(i32, u8, usize, usize)> = rows
-        .iter()
-        .enumerate()
-        .map(|(at, row)| (-row.score, row.source.order(), row.name.chars().count(), at))
-        .collect();
-    order.sort_by(|left, right| {
-        left.0
-            .cmp(&right.0)
-            .then(left.1.cmp(&right.1))
-            .then(left.2.cmp(&right.2))
-            .then(rows[left.3].name.as_bytes().cmp(rows[right.3].name.as_bytes()))
-    });
-    let mut taken: Vec<Option<Row>> = rows.into_iter().map(Some).collect();
-    order.into_iter().filter_map(|(_, _, _, at)| taken[at].take()).collect()
+    rows
 }
 
-/// Every candidate as a row, deduplicated and in the tie-break's order. What an empty stem offers.
+/// A second candidate of a spelling already offered: it takes the row when it describes itself better,
+/// and either way what the row does not know is filled in from it.
 ///
-/// No scoring, because there is nothing to score against: every row's score is zero and no letter
-/// of any name is marked. The deduplication is the same rule [`rank`] uses — two entries that would
-/// type the same bytes are one offer, and the source that describes itself best keeps the label.
-fn everything(candidates: Vec<Candidate>) -> Vec<Row> {
-    let mut seen: std::collections::HashMap<String, usize> =
-        std::collections::HashMap::with_capacity(candidates.len());
-    let mut rows: Vec<Row> = Vec::with_capacity(candidates.len());
-    for candidate in candidates {
-        if candidate.name.is_empty() {
-            continue;
+/// @param row - the row already offered
+/// @param candidate - the candidate of the same spelling
+fn merge_into(row: &mut Row, candidate: Candidate) {
+    let better = candidate.source.describes_itself() < row.source.describes_itself();
+    let (mut keep, other) = match better {
+        true => {
+            let old = std::mem::replace(&mut row.info, candidate.info);
+            row.source = candidate.source;
+            row.kind = candidate.kind.or(row.kind);
+            row.detail = candidate.detail;
+            (std::mem::take(&mut row.info), old)
         }
-        if let Some(at) = seen.get(&candidate.name) {
-            let known: &mut Row = &mut rows[*at];
-            if candidate.source.describes_itself() < known.source.describes_itself() {
-                known.source = candidate.source;
-                known.kind = candidate.kind;
-                known.detail = candidate.detail;
-            }
-            continue;
-        }
-        seen.insert(candidate.name.clone(), rows.len());
-        rows.push(Row {
-            name: candidate.name,
-            source: candidate.source,
-            kind: candidate.kind,
-            detail: candidate.detail,
-            matched: Vec::new(),
-            score: 0,
-        });
+        false => (std::mem::take(&mut row.info), candidate.info),
+    };
+    keep.doc = keep.doc.or(other.doc);
+    keep.signature = keep.signature.or(other.signature);
+    keep.container = keep.container.or(other.container);
+    keep.locality = keep.locality.min(other.locality);
+    keep.expected_type |= other.expected_type;
+    keep.uses_here = keep.uses_here.max(other.uses_here);
+    keep.server_order = match (keep.server_order, other.server_order) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
+    };
+    row.info = keep;
+}
+
+/// The class, score and matched letters of one candidate, or nothing when the stem does not match.
+/// Matched against a server's filter text when it has one, never against its label.
+///
+/// @param folded - the stem lowercased
+/// @param typed - the stem as typed
+/// @param candidate - the candidate
+/// @param scratch - reused working space
+fn class_and_score(
+    folded: &[char],
+    typed: &[char],
+    candidate: &Candidate,
+    scratch: &mut Scratch,
+) -> Option<(MatchClass, i32, Vec<usize>)> {
+    if typed.is_empty() {
+        return Some((MatchClass::Prefix, 0, Vec::new()));
     }
-    rows.sort_by(|left, right| {
-        let by_source = left.source.order().cmp(&right.source.order());
-        // A kernel's rows keep the kernel's own order, which the sort being stable preserves: with
-        // nothing typed after `v.`, rust-analyzer and Jedi put the value's own members first, and
-        // shortest first would put `eq` and `ge` from a trait ahead of them. `task-2229`.
-        if left.source == Source::Kernel && right.source == Source::Kernel {
-            return by_source;
+    let against = candidate.info.filter.as_deref().unwrap_or(&candidate.name);
+    let found = score(folded, typed, against, scratch)?;
+    let class = match_class(folded, &scratch.letters, &scratch.lowered);
+    // The letters to pick out are the name's, which is what is drawn; a filter text that is not the
+    // name marks nothing rather than marking the wrong letters.
+    let matched = match against == candidate.name {
+        true => found.matched,
+        false => {
+            score(folded, typed, &candidate.name, scratch).map(|s| s.matched).unwrap_or_default()
         }
-        by_source
-            .then(left.name.chars().count().cmp(&right.name.chars().count()))
-            .then(left.name.as_bytes().cmp(right.name.as_bytes()))
-    });
-    rows
+    };
+    Some((class, found.score, matched))
+}
+
+/// The class of a match, from the stem and the name's letters (as typed and lowercased).
+///
+/// @param stem - the stem lowercased
+/// @param letters - the name's letters
+/// @param lowered - the name's letters lowercased
+fn match_class(stem: &[char], letters: &[char], lowered: &[char]) -> MatchClass {
+    if lowered == stem {
+        return MatchClass::Exact;
+    }
+    if lowered.starts_with(stem) {
+        return MatchClass::Prefix;
+    }
+    let starts: Vec<bool> = (0..letters.len()).map(|at| is_boundary(letters, at)).collect();
+    if humps(stem, lowered, &starts, 0, 0, false) {
+        return MatchClass::Humps;
+    }
+    let later_word = (1..lowered.len()).any(|at| starts[at] && lowered[at..].starts_with(stem));
+    match later_word {
+        true => MatchClass::WordStart,
+        false => MatchClass::Subsequence,
+    }
+}
+
+/// Whether the rest of a stem lines up with the rest of a name with every letter starting a word or
+/// following a matched letter, the first at the name's first letter. `NPE` and `NuPoEx` both reach
+/// `NullPointerException`; `lsm` reaches `layout_scroll_margin`.
+///
+/// Identifiers are short and the recursion stops at the first reading that works, so this is a few
+/// steps for the names a stem can match at all.
+///
+/// @param stem - the stem lowercased
+/// @param name - the name lowercased
+/// @param starts - which of the name's letters start a word
+/// @param i - how much of the stem is matched
+/// @param j - where in the name to carry on
+/// @param running - whether the letter before `j` was matched
+fn humps(stem: &[char], name: &[char], starts: &[bool], i: usize, j: usize, running: bool) -> bool {
+    if i == stem.len() {
+        return true;
+    }
+    if j >= name.len() {
+        return false;
+    }
+    if i == 0 && j == 0 {
+        return name[0] == stem[0] && humps(stem, name, starts, 1, 1, true);
+    }
+    if running && name[j] == stem[i] && humps(stem, name, starts, i + 1, j + 1, true) {
+        return true;
+    }
+    // Skip to the next word start that holds the next letter.
+    (j..name.len())
+        .filter(|&at| starts[at] && name[at] == stem[i])
+        .any(|at| humps(stem, name, starts, i + 1, at + 1, true))
 }
 
 /// Working space reused across a whole pool, so scoring a project's worth of names allocates once.
@@ -618,8 +1135,8 @@ mod tests {
         // where `from '|'` is a position at which the language itself says what comes next.
         let pool = || {
             vec![
-                Candidate::described("./layout", Source::Module, Some(SymbolKind::Module), "src"),
-                Candidate::described("./caret", Source::Module, Some(SymbolKind::Module), "src"),
+                Candidate::described("./layout", Source::Module, Some(Kind::Module), "src"),
+                Candidate::described("./caret", Source::Module, Some(Kind::Module), "src"),
                 Candidate::new("draw", Source::Word),
             ]
         };
@@ -639,8 +1156,8 @@ mod tests {
         let rows = rank(
             "part",
             vec![
-                Candidate::described("parts", Source::Index, Some(SymbolKind::Function), "a.rs"),
-                Candidate::described("parts", Source::Module, Some(SymbolKind::Module), "a/"),
+                Candidate::described("parts", Source::Index, Some(Kind::Function), "a.rs"),
+                Candidate::described("parts", Source::Module, Some(Kind::Module), "a/"),
             ],
         );
         assert_eq!(rows.len(), 1, "two entries that would type the same bytes are one offer");
@@ -695,10 +1212,33 @@ mod tests {
     }
 
     #[test]
-    fn the_row_equal_to_the_stem_is_never_offered() {
-        // Scenario 4. It is what makes `Enter` mean a new line once a word is completely typed.
-        assert_eq!(offered("draw", &["draw", "draw_frame", "redraw"]), ["draw_frame", "redraw"]);
-        assert!(offered("draw", &["draw"]).is_empty());
+    fn the_row_equal_to_the_stem_is_offered_first() {
+        // Scenario 4, changed by `task-2231`: the typed word is offered, as the reference editor offers
+        // it, and the window keeps `Enter` a new line on it.
+        let defined = |names: &[&str]| -> Vec<String> {
+            let pool = names
+                .iter()
+                .map(|name| Candidate::described(*name, Source::ThisFile, Some(Kind::Function), ""))
+                .collect();
+            rank("draw", pool).into_iter().map(|row| row.name).collect()
+        };
+        assert_eq!(defined(&["draw", "draw_frame", "redraw"]), ["draw", "draw_frame", "redraw"]);
+        assert_eq!(defined(&["draw"]), ["draw"]);
+    }
+
+    #[test]
+    fn the_half_typed_word_with_no_kind_is_not_offered() {
+        let pool = vec![
+            Candidate::new("st", Source::Server),
+            Candidate::described("stamp", Source::Server, Some(Kind::Function), ""),
+        ];
+        assert_eq!(ordered(&Question::stem("st"), pool), ["stamp"]);
+    }
+
+    #[test]
+    fn a_short_word_that_differs_only_in_case_is_not_offered() {
+        assert_eq!(offered("eg", &["Eg", "egui"]), ["egui"]);
+        assert_eq!(offered("layout", &["Layout", "layout_scroll"]), ["Layout", "layout_scroll"]);
     }
 
     #[test]
@@ -722,13 +1262,13 @@ mod tests {
 
         let pool = vec![
             Candidate::described("draw", Source::Language, None, "keyword"),
-            Candidate::described("draw", Source::ThisFile, Some(SymbolKind::Function), "layout.rs"),
+            Candidate::described("draw", Source::ThisFile, Some(Kind::Function), "layout.rs"),
             Candidate::new("draw", Source::Word),
         ];
         let rows = rank("dr", pool);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].source, Source::ThisFile, "a definition has the most to say");
-        assert_eq!(rows[0].kind, Some(SymbolKind::Function));
+        assert_eq!(rows[0].kind, Some(Kind::Function));
     }
 
     #[test]
@@ -737,9 +1277,9 @@ mod tests {
         // source decides.
         let pool = vec![
             Candidate::described("drawc", Source::Language, None, "keyword"),
-            Candidate::described("drawb", Source::Index, Some(SymbolKind::Function), "far.rs"),
+            Candidate::described("drawb", Source::Index, Some(Kind::Function), "far.rs"),
             Candidate::new("drawd", Source::Word),
-            Candidate::described("drawa", Source::ThisFile, Some(SymbolKind::Function), "here.rs"),
+            Candidate::described("drawa", Source::ThisFile, Some(Kind::Function), "here.rs"),
         ];
         let order: Vec<Source> = rank("draw", pool).into_iter().map(|row| row.source).collect();
         assert_eq!(
@@ -783,8 +1323,8 @@ mod tests {
             vec![
                 Candidate::new("draw", Source::Word),
                 Candidate::new("draw_frame", Source::Word),
-                Candidate::described("draw_all", Source::Index, Some(SymbolKind::Function), "a.rs"),
-                Candidate::described("redraw", Source::OpenTab, Some(SymbolKind::Function), "b.rs"),
+                Candidate::described("draw_all", Source::Index, Some(Kind::Function), "a.rs"),
+                Candidate::described("redraw", Source::OpenTab, Some(Kind::Function), "b.rs"),
                 Candidate::described("drop", Source::Language, None, "keyword"),
             ]
         };
@@ -877,7 +1417,6 @@ mod tests {
                 let picked: String = row.matched.iter().map(|at| lower(letters[*at])).collect();
                 let wanted: String = stem.chars().map(lower).collect();
                 assert_eq!(picked, wanted, "{stem} against {}", row.name);
-                assert_ne!(row.name, stem, "the row equal to the stem is never offered");
             }
         }
     }
@@ -913,10 +1452,237 @@ mod tests {
             Candidate::new("d\u{00E9}j\u{00E0}", Source::Word),
             Candidate::new("--brand-hue", Source::Word),
             Candidate::new("paintText", Source::Word),
-            Candidate::described("layout", Source::ThisFile, Some(SymbolKind::Type), "layout.rs"),
-            Candidate::described("new", Source::Index, Some(SymbolKind::Function), "caret.rs"),
+            Candidate::described("layout", Source::ThisFile, Some(Kind::Type), "layout.rs"),
+            Candidate::described("new", Source::Index, Some(Kind::Function), "caret.rs"),
             Candidate::described("let", Source::Language, None, "keyword"),
             Candidate::new(String::new(), Source::Word),
         ]
+    }
+
+    /// The names a question offers, in order.
+    fn ordered(question: &Question, pool: Vec<Candidate>) -> Vec<String> {
+        order(question, pool, &|_| 0).into_iter().map(|row| row.name).collect()
+    }
+
+    #[test]
+    fn the_match_classes_are_told_apart() {
+        let class = |stem: &str, name: &str| {
+            rank(stem, vec![Candidate::new(name, Source::Word)]).first().map(|row| row.class)
+        };
+        assert_eq!(class("layout", "Layout"), Some(MatchClass::Exact));
+        assert_eq!(class("lay", "layout_scroll"), Some(MatchClass::Prefix));
+        assert_eq!(class("lsm", "layout_scroll_margin"), Some(MatchClass::Humps));
+        assert_eq!(class("NPE", "NullPointerException"), Some(MatchClass::Humps));
+        assert_eq!(class("NuPoEx", "NullPointerException"), Some(MatchClass::Humps));
+        assert_eq!(class("scroll", "layout_scroll"), Some(MatchClass::WordStart));
+        assert_eq!(class("rects", "selectionRectsIn"), Some(MatchClass::WordStart));
+        assert_eq!(class("lyt", "layout"), Some(MatchClass::Subsequence));
+    }
+
+    #[test]
+    fn weigher_one_the_match_class_comes_before_the_alignment_score() {
+        // `scroll` starts a later word of the second and is only a subsequence of the third.
+        let pool = vec![
+            Candidate::new("sXcXrXoXlXl", Source::ThisFile),
+            Candidate::new("layout_scroll", Source::Index),
+            Candidate::new("scroller", Source::Index),
+        ];
+        assert_eq!(
+            ordered(&Question::stem("scroll"), pool),
+            ["scroller", "layout_scroll", "sXcXrXoXlXl"]
+        );
+        // A hump match beats a subsequence even when the subsequence is shorter.
+        let pool = vec![
+            Candidate::new("lasm", Source::Word),
+            Candidate::new("layout_scroll_margin", Source::Word),
+        ];
+        assert_eq!(ordered(&Question::stem("lsm"), pool)[0], "layout_scroll_margin");
+    }
+
+    #[test]
+    fn weigher_two_a_row_of_the_expected_type_comes_first_among_equals() {
+        let mut typed = Candidate::described("draw_line", Source::Server, Some(Kind::Function), "");
+        typed.info.expected_type = true;
+        let pool =
+            vec![Candidate::described("draw", Source::ThisFile, Some(Kind::Function), ""), typed];
+        assert_eq!(ordered(&Question::stem("dr"), pool), ["draw_line", "draw"]);
+    }
+
+    #[test]
+    fn a_capital_typed_first_asks_for_a_name_that_starts_with_one() {
+        let pool = || {
+            vec![
+                Candidate::described("command", Source::ThisFile, Some(Kind::Function), ""),
+                Candidate::described("Command", Source::ThisFile, Some(Kind::Struct), ""),
+            ]
+        };
+        let at = |stem: &str| Question { stem: stem.to_owned(), place: Place::Statement };
+        assert_eq!(ordered(&at("Co"), pool()), ["Command", "command"]);
+        // Lowercase leaves it to the place, where a statement wants the function.
+        assert_eq!(ordered(&at("co"), pool()), ["command", "Command"]);
+    }
+
+    #[test]
+    fn a_name_from_a_dependency_comes_after_the_projects_own_whatever_the_server_order() {
+        let mut dependency = Candidate::described("TextBuffer", Source::Server, Some(Kind::Struct), "");
+        dependency.info.server_order = Some(1);
+        dependency.info.locality = Locality::Dependency;
+        let mut own = Candidate::described("TextRenderer", Source::Server, Some(Kind::Struct), "");
+        own.info.server_order = Some(2);
+        own.info.locality = Locality::NeedsImport;
+        assert_eq!(ordered(&Question::stem("Text"), vec![dependency, own]), ["TextRenderer", "TextBuffer"]);
+    }
+
+    #[test]
+    fn a_keyword_where_a_statement_starts_is_as_near_as_a_local() {
+        let pool = vec![
+            Candidate::described("letters", Source::Index, Some(Kind::Function), ""),
+            Candidate::described("let", Source::Language, Some(Kind::Keyword), ""),
+        ];
+        let question = Question { stem: "le".to_owned(), place: Place::Statement };
+        assert_eq!(ordered(&question, pool), ["let", "letters"]);
+    }
+
+    #[test]
+    fn a_server_row_comes_before_a_row_no_server_offered() {
+        let mut served = Candidate::described("draw_line", Source::Server, Some(Kind::Function), "");
+        served.info.server_order = Some(5);
+        let pool = vec![Candidate::described("draw", Source::ThisFile, Some(Kind::Function), ""), served];
+        assert_eq!(ordered(&Question::stem("dr"), pool), ["draw_line", "draw"]);
+    }
+
+    #[test]
+    fn a_name_already_written_in_this_file_wins_a_tie() {
+        let mut push = Candidate::described("push", Source::Server, Some(Kind::Method), "");
+        push.info.uses_here = 3;
+        let pop = Candidate::described("pop", Source::Server, Some(Kind::Method), "");
+        let question = Question { stem: "p".to_owned(), place: Place::Member };
+        assert_eq!(ordered(&question, vec![pop, push]), ["push", "pop"]);
+    }
+
+    #[test]
+    fn weigher_three_the_place_decides_between_a_type_and_a_value() {
+        let pool = || {
+            vec![
+                Candidate::described("layout", Source::ThisFile, Some(Kind::Variable), ""),
+                Candidate::described("Layout", Source::Index, Some(Kind::Struct), ""),
+            ]
+        };
+        let at = |place| Question { stem: "lay".to_owned(), place };
+        assert_eq!(ordered(&at(Place::Type), pool()), ["Layout", "layout"]);
+        assert_eq!(ordered(&at(Place::Expression), pool()), ["layout", "Layout"]);
+    }
+
+    #[test]
+    fn weigher_four_a_local_beats_this_file_beats_the_project_beats_an_import() {
+        let pool = vec![
+            Candidate::described("drawc", Source::Import, Some(Kind::Function), ""),
+            Candidate::described("drawb", Source::Index, Some(Kind::Function), ""),
+            Candidate::described("drawd", Source::ThisFile, Some(Kind::Function), ""),
+            Candidate::described("drawa", Source::Word, Some(Kind::Variable), "")
+                .at(Locality::Local),
+        ];
+        assert_eq!(ordered(&Question::stem("draw"), pool), ["drawa", "drawd", "drawb", "drawc"]);
+    }
+
+    #[test]
+    fn weigher_five_a_row_chosen_before_comes_first_among_equals() {
+        let pool =
+            || vec![Candidate::new("drawb", Source::Index), Candidate::new("drawa", Source::Index)];
+        let names: Vec<String> =
+            order(&Question::stem("draw"), pool(), &|name| u32::from(name == "drawb"))
+                .into_iter()
+                .map(|row| row.name)
+                .collect();
+        assert_eq!(names, ["drawb", "drawa"]);
+        assert_eq!(ordered(&Question::stem("draw"), pool()), ["drawa", "drawb"]);
+    }
+
+    #[test]
+    fn weigher_six_a_servers_own_order_decides_among_its_equals() {
+        let row = |name: &str, at: u64| {
+            let mut c = Candidate::described(name, Source::Server, Some(Kind::Method), "");
+            c.info.server_order = Some(at);
+            c
+        };
+        let pool = vec![row("aaa_b", 2), row("aaa_c", 0), row("aaa_a", 1)];
+        assert_eq!(ordered(&Question::stem("aaa"), pool), ["aaa_c", "aaa_a", "aaa_b"]);
+    }
+
+    #[test]
+    fn weigher_seven_a_deprecated_row_comes_last_in_its_class() {
+        let mut old = Candidate::new("drawa", Source::Server);
+        old.info.deprecated = true;
+        let pool = vec![old, Candidate::new("drawb", Source::Server)];
+        assert_eq!(ordered(&Question::stem("draw"), pool), ["drawb", "drawa"]);
+    }
+
+    #[test]
+    fn weigher_eight_the_first_letters_case_then_the_score_then_the_length() {
+        let pool =
+            vec![Candidate::new("layout", Source::Word), Candidate::new("Layout", Source::Word)];
+        assert_eq!(ordered(&Question::stem("La"), pool.clone()), ["Layout", "layout"]);
+        assert_eq!(ordered(&Question::stem("la"), pool), ["layout", "Layout"]);
+    }
+
+    #[test]
+    fn a_preselected_server_row_wins_outright_when_the_stem_is_its_prefix() {
+        let mut chosen = Candidate::new("draw_everything", Source::Server);
+        chosen.info.preselect = true;
+        let pool = vec![Candidate::new("draw", Source::ThisFile).at(Locality::Local), chosen];
+        assert_eq!(ordered(&Question::stem("dr"), pool)[0], "draw_everything");
+    }
+
+    #[test]
+    fn a_server_row_is_matched_on_its_filter_text_never_its_label() {
+        let mut row = Candidate::new("draw(…)", Source::Server);
+        row.info.filter = Some("draw".to_owned());
+        assert_eq!(ordered(&Question::stem("dra"), vec![row]), ["draw(…)"]);
+        let mut row = Candidate::new("fn draw(&self)", Source::Server);
+        row.info.filter = Some("draw".to_owned());
+        assert!(ordered(&Question::stem("fn"), vec![row]).is_empty(), "the label does not match");
+    }
+
+    #[test]
+    fn a_server_row_takes_the_name_and_keeps_what_the_structural_row_knew() {
+        let mut structural =
+            Candidate::described("draw", Source::Member, Some(Kind::Method), "Layout");
+        structural.info.doc = Some("Draws the layout.".to_owned());
+        let mut server =
+            Candidate::described("draw", Source::Server, Some(Kind::Method), "fn(&self)");
+        server.info.insert = Insert::Call { has_parameters: false };
+        let rows = order(&Question::stem("dr"), vec![structural, server], &|_| 0);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].source, Source::Server);
+        assert_eq!(rows[0].info.insert, Insert::Call { has_parameters: false });
+        assert_eq!(rows[0].info.doc.as_deref(), Some("Draws the layout."));
+    }
+
+    #[test]
+    fn a_stale_server_answer_filtered_by_a_longer_stem_never_shows_a_row_that_cannot_match() {
+        let answer: Vec<Candidate> = ["draw", "drain", "dry_run", "redraw"]
+            .iter()
+            .map(|n| Candidate::new(*n, Source::Server))
+            .collect();
+        for row in order(&Question::stem("drw"), answer, &|_| 0) {
+            assert!(could_match("drw", &row.name), "{} cannot match drw", row.name);
+        }
+    }
+
+    #[test]
+    fn the_order_is_the_same_every_time() {
+        let pool = || {
+            let mut server =
+                Candidate::described("draw_line", Source::Server, Some(Kind::Method), "");
+            server.info.server_order = Some(3);
+            vec![
+                server,
+                Candidate::described("draw", Source::ThisFile, Some(Kind::Function), ""),
+                Candidate::described("Drawer", Source::Index, Some(Kind::Struct), ""),
+                Candidate::described("drawn", Source::Import, Some(Kind::Constant), ""),
+            ]
+        };
+        let q = Question { stem: "dra".to_owned(), place: Place::Expression };
+        assert_eq!(order(&q, pool(), &|_| 0), order(&q, pool(), &|_| 0));
     }
 }

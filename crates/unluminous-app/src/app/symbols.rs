@@ -1,6 +1,6 @@
 //! The window's half of go to definition, find all references and rename.
 //!
-//! `unluminous_core::symbols` says what a definition is; `services::symbol_index` says where the
+//! `unluminous_core::symbols` says what a definition is; `services::project_symbols` says where the
 //! project's are; this is what sits between them and the screen. Nothing here draws — the modal is
 //! `components::references` and the underline is the editing area's painter — and nothing here
 //! decides what a definition is.
@@ -31,10 +31,10 @@ use std::sync::Arc;
 use unluminous_core::symbols::{self, Confidence, FileSymbols, RankKey, Role, SymbolKind};
 use unluminous_core::{Command, Grammar};
 
-use crate::app::{SymbolIndexState, UnluminousApp};
+use crate::app::UnluminousApp;
 use crate::components::references::{self, Purpose, References};
 use crate::services::file_kind;
-use crate::services::symbol_index::Indexer;
+use crate::services::project_symbols::{self, ProjectSymbols};
 use crate::services::text_search::Hit;
 
 /// How many places the back stack remembers.
@@ -84,6 +84,9 @@ pub struct TabSymbols {
     /// same `text_revision` as everything else on this structure, so a caret moving recomputes
     /// nothing.
     pub words: Vec<String>,
+    /// How many times each word of the file is written in it, keywords included, which completion
+    /// ranks ties by (`task-2231`). One pass over the bytes a text revision.
+    pub counts: std::collections::HashMap<String, u32>,
 }
 
 /// The word under the pointer while the modifier is held, and where a click on it would go.
@@ -124,7 +127,7 @@ pub struct Hover {
 /// when nothing in the project defines the name, `here` is `None` when the rename was asked in a tab
 /// that has never been saved, and `ticked_up_to` counts up on its own as the search streams. None of
 /// the three implies either of the others, so there is no pair of them to fold into a variant — which
-/// is the opposite finding from [`SymbolIndexState`], where two of three fields could not disagree.
+/// is the opposite finding from a state where two of three fields could not disagree.
 ///
 /// What the `Option` around it says is the one thing the three fields could not: whether a rename has
 /// been started at all. It is only ever read while a `Purpose::Rename` modal is open, and the two
@@ -164,65 +167,34 @@ impl UnluminousApp {
     /// Public because the measuring instruments drive a real window with no frames in it, and a
     /// window whose index has never been asked for would measure a project with nothing in it.
     pub fn keep_the_symbol_index_fresh(&mut self) {
-        let root = self.tree.root().to_path_buf();
-        let files = self.tree.file_count();
-        // The file list and the plugins together are what the answer depends on, so a plugin
-        // switched off or a folder that grew is what asks for another read. A file *changed* is not
-        // in there, deliberately: saving is what says so, through `SymbolIndexState::is_stale`.
-        let asked = (root, files, self.plugins.enabled_count());
-        let up_to_date = !self.symbol_index.is_stale()
-            && matches!(&self.symbol_index, SymbolIndexState::Reading { asked: recorded, .. } if *recorded == asked);
-        if up_to_date {
-            if let SymbolIndexState::Reading { indexer, .. } = &mut self.symbol_index {
-                indexer.poll();
-            }
+        let root = atrius_index::host::canonical(self.tree.root());
+        let open_here = self.project_symbols.as_ref().is_some_and(|symbols| symbols.root() == root);
+        if open_here {
             return;
         }
-        let waker = self.thread_waker();
-        let grammars = Arc::new(self.plugins.grammars().clone());
-        let list = self.tree.all_files().to_vec();
-        if matches!(self.symbol_index, SymbolIndexState::NotStarted) {
-            // A thread that could not be started leaves the index not started, so the next question
-            // tries again and nothing else in the window notices -- which is what `Indexer::start`
-            // answering `None` is for (`task-1984` S6).
-            let Some(indexer) = Indexer::start(waker) else {
-                self.message = Some(
-                    "Unluminous could not start the thread that reads the project's definitions, so \n                     Go to Definition has nothing to answer with."
-                        .to_owned(),
-                );
-                return;
-            };
-            self.symbol_index = SymbolIndexState::Reading {
-                indexer: Box::new(indexer),
-                asked: asked.clone(),
-                stale: false,
-            };
-        }
-        let SymbolIndexState::Reading { indexer, asked: recorded, stale } = &mut self.symbol_index
-        else {
-            return;
-        };
-        indexer.rebuild(list, grammars);
-        *recorded = asked;
-        *stale = false;
+        // The code index reads and watches the project on threads of its own (`task-2231` §5.2), so
+        // opening it is all a frame does, once, and a project opened later opens its own.
+        self.project_symbols = Some(ProjectSymbols::open(&root, self.index_on_disk));
     }
 
-    /// Say that a file on the disk has changed, so the index is read again on the next frame.
-    ///
-    /// Nothing to say when no index has been started: the next question rebuilds it anyway, because
-    /// it has no record of having been asked.
-    pub fn the_project_changed_on_disk(&mut self) {
-        if let SymbolIndexState::Reading { stale, .. } = &mut self.symbol_index {
-            *stale = true;
-        }
+    /// Say that a file on the disk has changed. Nothing to do: the code index watches the project
+    /// itself and has the change within a third of a second. Kept so the places that know a file moved
+    /// still say so, which costs nothing.
+    pub fn the_project_changed_on_disk(&mut self) {}
+
+    /// Lets the window be the code index's host and write the index file. The released binary calls
+    /// it from `main.rs` and nothing else does, as with `load_settings`, so a window a test builds
+    /// holds its index in memory and writes nothing into the person's cache.
+    pub fn index_on_disk(&mut self) {
+        self.index_on_disk = true;
     }
 
-    /// The index and the thread it is read on, once something has asked for one.
+    /// The project's definitions, once something has asked for them.
     ///
     /// Public because a screenshot test has to wait for the read the way it waits for git and for
     /// the text search, and because `symbol_cost` reports what it holds.
-    pub fn symbols_indexer(&self) -> Option<&Indexer> {
-        self.symbol_index.indexer()
+    pub fn symbols_indexer(&self) -> Option<&ProjectSymbols> {
+        self.project_symbols.as_ref()
     }
 
     /// The grammar that reads a file, if a plugin that is switched on claims it.
@@ -287,8 +259,9 @@ impl UnluminousApp {
                 })
                 .collect();
             let words = read.distinct_words(&text);
+            let counts = count_the_words(&text);
             self.files.at_mut(index).cached.symbols =
-                Some(TabSymbols { revision, read, named, words });
+                Some(TabSymbols { revision, read, named, words, counts });
         }
         self.files.at(index).cached.symbols.as_ref().expect("just read")
     }
@@ -324,24 +297,53 @@ impl UnluminousApp {
                 });
             }
         }
-        if let Some(indexer) = self.symbol_index.indexer() {
-            for entry in indexer.index().definitions_of(name) {
-                if open.iter().any(|known| known == &entry.path) {
-                    continue;
-                }
-                candidates.push(Candidate {
-                    path: entry.path.clone(),
-                    name_range: entry.name_range.clone(),
-                    kind: entry.kind,
-                    confidence: entry.confidence,
-                    open: false,
-                });
-            }
-        }
+        candidates.extend(self.project_definitions_of(name, &open));
         if candidates.is_empty() {
             candidates.extend(self.where_it_is_first_written(name, asked_in, asked_at));
         }
         self.rank_candidates(candidates, asked_in, asked_at)
+    }
+
+    /// Where the project's closed files define a name, from the code index, with each range turned into
+    /// the one the file's `Document` would have. Open files are left out: the ownership rule.
+    ///
+    /// The file is read for the range's sake, which happens for the few definitions of one name and
+    /// only when somebody asks where a name is defined.
+    fn project_definitions_of(&self, name: &str, open: &[PathBuf]) -> Vec<Candidate> {
+        let Some(symbols) = self.project_symbols.as_ref() else { return Vec::new() };
+        let found: Vec<(String, std::ops::Range<usize>, SymbolKind, bool)> = symbols
+            .read(|table| {
+                table
+                    .named(&name.to_lowercase())
+                    .iter()
+                    .filter(|d| {
+                        d.definition.name == name && !d.definition.member && symbols.offers(&d.path)
+                    })
+                    .map(|d| {
+                        let kind =
+                            SymbolKind::parse(d.definition.kind).unwrap_or(SymbolKind::Variable);
+                        (d.path.clone(), d.definition.range.clone(), kind, d.definition.likely)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        found
+            .into_iter()
+            .filter_map(|(rel, range, kind, likely)| {
+                let path = symbols.absolute(&rel);
+                if open.iter().any(|known| atrius_index::host::canonical(known) == path) {
+                    return None;
+                }
+                let text = std::fs::read_to_string(&path).unwrap_or_default();
+                Some(Candidate {
+                    path,
+                    name_range: project_symbols::document_range(&text, range),
+                    kind,
+                    confidence: if likely { Confidence::Likely } else { Confidence::Sure },
+                    open: false,
+                })
+            })
+            .collect()
     }
 
     /// For a name no definer declares, where it is first written in the file it was asked about.
@@ -395,7 +397,10 @@ impl UnluminousApp {
         asked_in: Option<&Path>,
         asked_at: usize,
     ) -> Vec<Candidate> {
-        let order = self.symbol_index.indexer();
+        // A tie between two files is broken by their paths, which is the same every time.
+        let mut paths: Vec<&Path> = candidates.iter().map(|c| c.path.as_path()).collect();
+        paths.sort();
+        paths.dedup();
         let keys: Vec<RankKey> = candidates
             .iter()
             .map(|candidate| RankKey {
@@ -403,7 +408,7 @@ impl UnluminousApp {
                 start: candidate.name_range.start,
                 kind: candidate.kind,
                 confidence: candidate.confidence,
-                file_order: order.map_or(0, |indexer| indexer.index().file_order(&candidate.path)),
+                file_order: paths.binary_search(&candidate.path.as_path()).unwrap_or(usize::MAX),
             })
             .collect();
         let mut ordered: Vec<Candidate> = Vec::with_capacity(candidates.len());
@@ -1142,6 +1147,31 @@ pub fn ticked_by_default(role: Role, kind: Option<SymbolKind>, same_file: bool) 
     }
 }
 
+/// How many times each word is written in a text: every run of letters, digits, `_` and `$` that does
+/// not start with a digit, keywords included.
+///
+/// @param text - the text
+pub fn count_the_words(text: &str) -> std::collections::HashMap<String, u32> {
+    let mut counts: std::collections::HashMap<&str, u32> = std::collections::HashMap::new();
+    let bytes = text.as_bytes();
+    let mut at = 0;
+    while at < bytes.len() {
+        let word_byte = |b: u8| b.is_ascii_alphanumeric() || b == b'_' || b == b'$' || b >= 0x80;
+        if !word_byte(bytes[at]) {
+            at += 1;
+            continue;
+        }
+        let start = at;
+        while at < bytes.len() && word_byte(bytes[at]) {
+            at += 1;
+        }
+        if !bytes[start].is_ascii_digit() && text.is_char_boundary(start) && text.is_char_boundary(at) {
+            *counts.entry(&text[start..at]).or_insert(0) += 1;
+        }
+    }
+    counts.into_iter().map(|(word, count)| (word.to_owned(), count)).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1644,23 +1674,24 @@ mod tests {
         let mut app = UnluminousApp::new(&folder);
         let walked = app.tree.all_files().len();
         build_the_index(&mut app);
-        let index = app.symbols_indexer().expect("an indexer").index();
-        assert_eq!(index.files(), walked, "the index read the list the walker handed it");
-        assert_eq!(index.names(), walked, "one name a file, because that is what they define");
+        let (files, names, definitions, shared) = app
+            .symbols_indexer()
+            .expect("an index")
+            .read(|table| {
+                let files = table.files().count();
+                let definitions: usize = table.files().map(|(_, defs)| defs.len()).sum();
+                (files, table.len(), definitions, table.named("shared").len())
+            })
+            .expect("the table is built");
+        assert_eq!(files, walked, "the index read every file the walker found");
+        assert_eq!(names, walked, "one name a file, because that is what they define");
         assert_eq!(
-            index.len(),
+            definitions,
             walked,
             "and one entry a definition \u{2014} the {} uses of `shared` are not in here at all",
             walked * 5
         );
-        assert!(index.definitions_of("shared").is_empty(), "nothing defines it, so it is absent");
-        assert!(!index.capped());
-
-        // A build that has been overtaken stops where it is and hands nothing over, so the memory a
-        // half-finished one would have held is never kept either.
-        let files = app.tree.all_files().to_vec();
-        let grammars = app.plugins.grammars();
-        assert!(crate::services::symbol_index::Index::build(&files, grammars, &|| true).is_none());
+        assert_eq!(shared, 0, "nothing defines it, so it is absent");
         std::fs::remove_dir_all(&folder).ok();
     }
 
@@ -1782,18 +1813,22 @@ mod tests {
     }
 
     #[test]
-    fn the_index_is_read_again_when_a_file_is_saved_and_not_on_every_frame() {
+    fn a_file_written_by_another_program_reaches_the_index_without_the_window_asking() {
         let (folder, mut app) = a_window("unluminous-symbols-staleness");
-        // Nothing changed: asking again does not start another build.
+        // Asking again opens nothing new: the index is the project's, opened once.
         app.keep_the_symbol_index_fresh();
-        assert!(!app.symbols_indexer().expect("an indexer").is_building());
-        // A save says the disk moved, and the next frame reads it again.
-        app.the_project_changed_on_disk();
-        app.keep_the_symbol_index_fresh();
-        assert!(
-            app.symbols_indexer().expect("an indexer").is_building()
-                || !app.symbol_index.is_stale()
-        );
+        assert!(!app.symbols_indexer().expect("an index").is_building());
+        std::fs::write(folder.join("later.rs"), "pub fn written_later() {}\n").expect("write");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let mut found = false;
+        while std::time::Instant::now() < deadline && !found {
+            found = app
+                .symbols_indexer()
+                .and_then(|symbols| symbols.read(|table| !table.named("written_later").is_empty()))
+                .unwrap_or(false);
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(found, "the code index watches the project and gates on its own thread");
         std::fs::remove_dir_all(&folder).ok();
     }
 
