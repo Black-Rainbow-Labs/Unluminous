@@ -905,7 +905,28 @@ pub fn features(
         bit(Source::Server),
         f64::from(question.before),
         f64::from(question.after),
+        first_case_same(&question.stem, &row.name),
     ]
+}
+
+/// 1 when the first letter typed and the name's first letter are the same case, 0 when they differ,
+/// 0.5 when either is not a letter or nothing is typed. The reference editor matches the first
+/// letter's case by default; here it is one fact the model weighs, so `dra` prefers `draw` to
+/// `DRAW_LIMIT` without ever leaving `DRAW_LIMIT` out. `task-2237`.
+///
+/// @param stem - what has been typed
+/// @param name - the row's name
+fn first_case_same(stem: &str, name: &str) -> f64 {
+    match (stem.chars().next(), name.chars().next()) {
+        (Some(typed), Some(first)) if typed.is_alphabetic() && first.is_alphabetic() => {
+            if typed.is_uppercase() == first.is_uppercase() {
+                1.0
+            } else {
+                0.0
+            }
+        }
+        _ => 0.5,
+    }
 }
 
 /// The parts of a row's place in the order, compared left to right. See [`order`]. Two tuples, because

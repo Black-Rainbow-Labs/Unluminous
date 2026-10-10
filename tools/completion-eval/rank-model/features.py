@@ -26,7 +26,7 @@ NAMES = [
     'kind', 'source', 'sources', 'server_score', 'language', 'uses_here', 'lines_above',
     'lines_below', 'uses_near', 'same_before', 'same_after', 'words_nearby', 'score', 'length', 'left_to_type',
     'chain_rank', 'is_this_file', 'is_word', 'is_open_tab', 'is_index', 'is_language', 'is_module', 'is_member',
-    'is_import', 'is_server', 'before', 'after',
+    'is_import', 'is_server', 'before', 'after', 'first_case_same',
 ]
 
 LANGUAGES = {'rust': 0, 'typescript': 1}
@@ -45,6 +45,14 @@ def server_score(order, language):
     if order > 0xFFFF:
         return float((0xFFFFFFFF - order) - 0x7FFFFFFF)
     return -float(order)
+
+
+def first_case_same(stem, name):
+    """1 when the first letter typed and the name's first letter are the same case, 0 when they differ,
+    0.5 when either is not a letter or nothing is typed. `completion::first_case_same`."""
+    if not stem or not name or not stem[0].isalpha() or not name[0].isalpha():
+        return 0.5
+    return 1.0 if stem[0].isupper() == name[0].isupper() else 0.0
 
 
 def chain_rank(row):
@@ -99,4 +107,4 @@ def features(row, stem, place, language, tokens=(0, 0)):
         float(length),
         float(length - len(stem)),
         float(chain_rank(row)),
-    ] + [1.0 if (bits >> i) & 1 else 0.0 for i in (0, 1, 2, 3, 4, 5, 7, 8, 9)] + [float(tokens[0]), float(tokens[1])]
+    ] + [1.0 if (bits >> i) & 1 else 0.0 for i in (0, 1, 2, 3, 4, 5, 7, 8, 9)] + [float(tokens[0]), float(tokens[1]), first_case_same(stem, name)]

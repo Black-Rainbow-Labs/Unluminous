@@ -1108,25 +1108,34 @@ fn typing_a_word_offers_the_names_it_could_become() {
     type_letters(&mut harness, "ra");
 
     let offered = completions(&harness);
+    // The order is the learned ranking's (`task-2237`). What is asserted is what a person can rely
+    // on: every name the file and the project offer is there, a lowercase `dra` puts the names that
+    // start with a lowercase letter first, and a match in the middle of a word comes last.
+    let mut names = offered.clone();
+    names.sort();
     assert_eq!(
-        offered,
+        names,
         [
-            "drawn",
+            "DRAW_LIMIT",
+            "Drawing",
             "draw",
             "draw_caret",
+            "draw_everything",
             "draw_frame",
             "draw_gutter",
-            "draw_everything",
-            "DRAW_LIMIT",
             "drawings",
-            "Drawing",
+            "drawn",
             "redraw",
         ],
-        // `task-2231`'s weigher chain, `unluminous_core::completion::order`: the exact match first,
-        // where the row fits the place it is typed in before which file it came from, and the
-        // middle of a word last.
-        "the order the weighers give"
+        "{offered:?}"
     );
+    let first_capital = offered.iter().position(|n| n.starts_with(char::is_uppercase));
+    let first_capital = first_capital.expect("DRAW_LIMIT and Drawing are offered");
+    assert!(
+        offered[..first_capital].iter().all(|n| n.starts_with("draw")),
+        "lowercase names lead: {offered:?}"
+    );
+    assert_eq!(offered.last().map(String::as_str), Some("redraw"), "{offered:?}");
     assert_eq!(harness.state().completion().expect("open").chosen, 0, "the best row is pre-chosen");
     // Every row names itself, which is what makes it findable at all.
     harness.get_by_label("Completion draw");
@@ -1221,19 +1230,19 @@ fn tab_takes_the_best_row_and_the_editing_area_never_sees_the_key() {
     harness.state_mut().command(Command::PlaceCaret { offset: blank, extend: false });
     steady(&mut harness);
     type_letters(&mut harness, "dra");
+    let best = completions(&harness)[0].clone();
     harness.key_press(egui::Key::Tab);
     steady(&mut harness);
     let after = harness.state().document().text().to_string();
-    // The best row is `drawn`, which the file already writes twice: `task-2231` ranks a name by how
-    // often the file uses it before it ranks by length.
-    assert!(after.contains("drawn\nconst DRAW_LIMIT"), "{after:?}");
+    // `Tab` takes the first row, whichever the ranking put there (`task-2237`).
+    assert!(after.contains(&format!("{best}\nconst DRAW_LIMIT")), "{best}: {after:?}");
     assert!(!after.contains('\t'), "no tab was typed into the file");
     assert!(harness.state().completion().is_none());
     // And with the list shut, `Tab` means what it always meant.
     harness.key_press(egui::Key::Tab);
     steady(&mut harness);
     assert!(
-        harness.state().document().text().to_string().contains("drawn\t"),
+        harness.state().document().text().to_string().contains(&format!("{best}\t")),
         "{:?}",
         harness.state().document().text().to_string()
     );
