@@ -6110,7 +6110,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-lsp"
-version = "0.69.1"
+version = "0.70.0"
 dependencies = [
  "serde_json",
  "unluminous-core",
