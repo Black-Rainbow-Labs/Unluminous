@@ -84,9 +84,13 @@ pub struct TabSymbols {
     /// same `text_revision` as everything else on this structure, so a caret moving recomputes
     /// nothing.
     pub words: Vec<String>,
-    /// How many times each word of the file is written in it, keywords included, which completion
-    /// ranks ties by (`task-2231`). One pass over the bytes a text revision.
-    pub counts: std::collections::HashMap<String, u32>,
+    /// Where each word of the file is written in it, keywords included, as byte offsets in order. How
+    /// many there are is what completion ranks ties by (`task-2231`), and how near the caret the
+    /// nearest one is tells a name used a line ago from one used once at the top (`task-2237`). One
+    /// pass over the bytes a text revision.
+    pub places: std::collections::HashMap<String, Vec<u32>>,
+    /// The byte offset each line starts at, the first being 0, for turning a place into a line.
+    pub line_starts: Vec<u32>,
 }
 
 /// The word under the pointer while the modifier is held, and where a click on it would go.
@@ -259,9 +263,9 @@ impl UnluminousApp {
                 })
                 .collect();
             let words = read.distinct_words(&text);
-            let counts = count_the_words(&text);
+            let (places, line_starts) = where_the_words_are(&text);
             self.files.at_mut(index).cached.symbols =
-                Some(TabSymbols { revision, read, named, words, counts });
+                Some(TabSymbols { revision, read, named, words, places, line_starts });
         }
         self.files.at(index).cached.symbols.as_ref().expect("just read")
     }
@@ -1147,17 +1151,22 @@ pub fn ticked_by_default(role: Role, kind: Option<SymbolKind>, same_file: bool) 
     }
 }
 
-/// How many times each word is written in a text: every run of letters, digits, `_` and `$` that does
-/// not start with a digit, keywords included.
+/// Where each word is written in a text, and where each line starts: every run of letters, digits,
+/// `_` and `$` that does not start with a digit, keywords included, with the byte offset of each
+/// time it is written, in order.
 ///
 /// @param text - the text
-pub fn count_the_words(text: &str) -> std::collections::HashMap<String, u32> {
-    let mut counts: std::collections::HashMap<&str, u32> = std::collections::HashMap::new();
+pub fn where_the_words_are(text: &str) -> (std::collections::HashMap<String, Vec<u32>>, Vec<u32>) {
+    let mut places: std::collections::HashMap<&str, Vec<u32>> = std::collections::HashMap::new();
+    let mut line_starts = vec![0u32];
     let bytes = text.as_bytes();
     let mut at = 0;
     while at < bytes.len() {
         let word_byte = |b: u8| b.is_ascii_alphanumeric() || b == b'_' || b == b'$' || b >= 0x80;
         if !word_byte(bytes[at]) {
+            if bytes[at] == b'\n' {
+                line_starts.push(at as u32 + 1);
+            }
             at += 1;
             continue;
         }
@@ -1169,10 +1178,10 @@ pub fn count_the_words(text: &str) -> std::collections::HashMap<String, u32> {
             && text.is_char_boundary(start)
             && text.is_char_boundary(at)
         {
-            *counts.entry(&text[start..at]).or_insert(0) += 1;
+            places.entry(&text[start..at]).or_default().push(start as u32);
         }
     }
-    counts.into_iter().map(|(word, count)| (word.to_owned(), count)).collect()
+    (places.into_iter().map(|(word, at)| (word.to_owned(), at)).collect(), line_starts)
 }
 
 #[cfg(test)]

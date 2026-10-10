@@ -10,6 +10,8 @@
 
 pub mod breakpoints;
 pub mod completion;
+#[rustfmt::skip]
+pub mod completion_model;
 pub mod cursor;
 pub mod document;
 pub mod encoding;

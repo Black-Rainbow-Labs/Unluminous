@@ -1260,7 +1260,24 @@ impl UnluminousApp {
             Some(asked) => asked,
             None => COMPLETIONS_SHOWN,
         };
-        let shown: Vec<&unluminous_core::completion::Row> = rows.iter().take(limit).collect();
+        let explain = request.switch("explain").then(|| self.asked_at(stem.start).place);
+        // With `--explain`, the rows written nearest the caret are added after the first `--limit`,
+        // up to `--limit` more, each with its rank: a name the file uses a line above the caret and
+        // the order put two thousandth is the row a person asking "why" most wants to see.
+        let mut picked: Vec<usize> = (0..rows.len().min(limit)).collect();
+        if explain.is_some() && rows.len() > limit {
+            let mut near: Vec<(u32, usize)> = rows
+                .iter()
+                .enumerate()
+                .skip(limit)
+                .map(|(at, row)| (row.info.lines_above.min(row.info.lines_below), at))
+                .filter(|(lines, _)| *lines != u32::MAX)
+                .collect();
+            near.sort_unstable();
+            picked.extend(near.into_iter().take(limit).map(|(_, at)| at));
+        }
+        let shown: Vec<&unluminous_core::completion::Row> =
+            picked.iter().map(|at| &rows[*at]).collect();
         let lines_of_it: Vec<String> = shown
             .iter()
             .map(|row| {
@@ -1275,8 +1292,9 @@ impl UnluminousApp {
             .collect();
         let value: Vec<Value> = shown
             .iter()
-            .map(|row| {
-                json!({
+            .zip(&picked)
+            .map(|(row, rank)| {
+                let mut value = json!({
                     "name": row.name,
                     "kind": row.kind.map(|kind| kind.name()),
                     "source": row.source.name(),
@@ -1286,7 +1304,12 @@ impl UnluminousApp {
                     "signature": row.info.signature,
                     "needsImport": row.info.needs_import.is_some(),
                     "match": row.class.name(),
-                })
+                });
+                if let Some(place) = explain {
+                    value["why"] = why_a_row_is_where_it_is(place, row);
+                    value["rank"] = json!(rank);
+                }
+                value
             })
             .collect();
         lines(
@@ -1305,6 +1328,8 @@ impl UnluminousApp {
                 "stem": word,
                 "offset": stem.start,
                 "end": stem.end,
+                "place": explain.map(|place| place.name()),
+                "tokens": explain.map(|_| self.tokens_around(stem.start, offset)),
                 "total": rows.len(),
                 "shown": shown.len(),
                 "rows": value,
@@ -1822,4 +1847,56 @@ impl UnluminousApp {
             }),
         )
     }
+}
+
+/// `editor complete --explain`: every fact the ranking read about a row, so an agent or a person can
+/// ask why a row is first. `task-2237`.
+///
+/// @param place - where the caret is
+/// @param row - the row
+fn why_a_row_is_where_it_is(
+    place: unluminous_core::place::Place,
+    row: &unluminous_core::completion::Row,
+) -> Value {
+    use unluminous_core::completion::{self, Source};
+    let sources = [
+        Source::ThisFile,
+        Source::Word,
+        Source::OpenTab,
+        Source::Index,
+        Source::Language,
+        Source::Module,
+        Source::Kernel,
+        Source::Member,
+        Source::Import,
+        Source::Server,
+    ];
+    let offered_by: Vec<&str> = sources
+        .iter()
+        .filter(|source| row.info.offered_by & source.bit() != 0)
+        .map(|source| source.name())
+        .collect();
+    let lines = |n: u32| (n != u32::MAX).then_some(n);
+    json!({
+        "match": row.class.name(),
+        "score": row.score,
+        "offeredBy": offered_by,
+        "locality": format!("{:?}", row.info.locality),
+        "placeFit": completion::place_fit(place, row.kind),
+        "expectedType": row.info.expected_type,
+        "serverOrder": row.info.server_order,
+        "preselect": row.info.preselect,
+        "deprecated": row.info.deprecated,
+        "usesHere": row.info.uses_here,
+        "linesAbove": lines(row.info.lines_above),
+        "linesBelow": lines(row.info.lines_below),
+        "usesNear": row.info.uses_near,
+        "sameBefore": row.info.same_before,
+        "sameAfter": row.info.same_after,
+        "wordsNearby": row.info.words_nearby,
+        "needsImport": row.info.needs_import,
+        "length": row.name.chars().count(),
+        "learnedScore": row.info.learned.map(|score| score as f64 / 1e6),
+        "chainRank": row.info.chain_rank,
+    })
 }

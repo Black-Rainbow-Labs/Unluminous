@@ -1324,9 +1324,11 @@ pub const COMMANDS: &[Command] = &[
             option("choose", "name", "Apply this row to the word being typed, as Enter would. It is the completion's **name**, never a row number: `--choose 0` is refused with the names there are."),
             option("after", "text", "Ask as if this text were typed first: `--after .` lists the members of the value before the caret."),
             whole_option("wait", "milliseconds", "How long to wait for the language server's rows. 300 by default; 0 answers from the project's structure alone."),
+            switch("explain", "Say why each row is where it is: every fact the ranking read about it (how the word matched, which sources offered it, its kind against the place, how near its last use is, the server's own order) and the score the ranking gave it. The rows written nearest the caret are added after the first --limit, up to --limit more, each with its rank."),
         ],
         examples: &[
             "unluminous-cli editor complete --json",
+            "unluminous-cli editor complete --explain --limit 3 --json",
             "unluminous-cli editor complete --stem ar --limit 5 --json",
             "unluminous-cli editor complete --after . --limit 10 --json",
             "unluminous-cli editor complete --limit 5 --json",

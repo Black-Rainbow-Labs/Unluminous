@@ -1193,7 +1193,7 @@ unluminous-cli editor rename total --scope project --include comments --apply
 ### editor complete
 
 ```
-unluminous-cli editor complete [--offset <bytes>] [--line <number>] [--column <number>] [--stem <text>] [--limit <number>] [--choose <name>] [--after <text>] [--wait <milliseconds>]
+unluminous-cli editor complete [--offset <bytes>] [--line <number>] [--column <number>] [--stem <text>] [--limit <number>] [--choose <name>] [--after <text>] [--wait <milliseconds>] [--explain]
 ```
 
 The names a word could become, best first, with what each row is and where it came from. By default the word is read from the document at the caret; --stem asks hypothetically without editing the document. Inside an import the rows are what can be imported instead. --choose applies a real document row exactly as Enter would, and takes the row's name rather than its position.
@@ -1206,9 +1206,11 @@ The names a word could become, best first, with what each row is and where it ca
 - `--choose <name>` — Apply this row to the word being typed, as Enter would. It is the completion's **name**, never a row number: `--choose 0` is refused with the names there are.
 - `--after <text>` — Ask as if this text were typed first: `--after .` lists the members of the value before the caret.
 - `--wait <milliseconds>` — How long to wait for the language server's rows. 300 by default; 0 answers from the project's structure alone.
+- `--explain` — Say why each row is where it is: every fact the ranking read about it (how the word matched, which sources offered it, its kind against the place, how near its last use is, the server's own order) and the score the ranking gave it.
 
 ```sh
 unluminous-cli editor complete --json
+unluminous-cli editor complete --explain --limit 3 --json
 unluminous-cli editor complete --stem ar --limit 5 --json
 unluminous-cli editor complete --after . --limit 10 --json
 unluminous-cli editor complete --limit 5 --json

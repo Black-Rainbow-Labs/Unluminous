@@ -13,7 +13,11 @@
 //
 //   node tools/completion-eval/engine-unluminous.mjs --run <name> --binary <folder holding unluminous.exe>
 //        [--split tune|held|all] [--corpus <name>] [--limit <n per corpus>] [--controls]
-//        [--servers off|automatic] [--wait <ms>] [--warm <seconds>]
+//        [--servers off|automatic] [--wait <ms>] [--warm <seconds>] [--explain <rows>] [--part validation|fit]
+//
+// `--explain <rows>` (`task-2237`) also writes `pools.jsonl` beside `results.jsonl`: for each query the
+// place and the first `<rows>` rows with every fact the ranking read about them (`editor complete
+// --explain`), so a ranking can be tuned offline against the very pools the window gathered.
 
 import crypto from 'node:crypto';
 import { execFileSync, spawn } from 'node:child_process';
@@ -251,6 +255,13 @@ async function main() {
   });
   for (const [name] of corpora) {
     let chosen = frozen.positions.filter((p) => p.corpus === name && (split === 'all' || p.split === split));
+    // `--part validation|fit` (`task-2237`): the fifth of the positions the ranking model is chosen and
+    // reported on, or the four fifths it is fitted to, by the first byte of a sha256 of the id, as
+    // `tools/completion-eval/rank-model/train.py` splits them.
+    if (options.part) {
+      const isValidation = (id) => crypto.createHash('sha256').update(id).digest()[0] % 5 === 0;
+      chosen = chosen.filter((p) => isValidation(p.id) === (options.part === 'validation'));
+    }
     if (options.limit) chosen = chosen.slice(0, Number(options.limit));
     if (!chosen.length) continue;
     const copy = copyCorpus(name, path.join(runFolder, 'corpora', name));
@@ -288,7 +299,12 @@ async function main() {
             // as a line break and move every offset after it. Each backslash is doubled to arrive as one.
             const set = await window.ask('editor.set-text', { text: text.replaceAll('\\', '\\\\') });
             if (!set.ok) throw new Error(`set-text: ${set.error?.message}`);
-            const args = { offset: caret, limit: 50 };
+            const explain = options.explain ? Number(options.explain) : 0;
+            // With `--explain` the window answers the first `explain` rows of its own order and the
+            // `explain` rows written nearest the caret, so a ranking tuned offline can lift a name the
+            // window's order left low.
+            const args = { offset: caret, limit: explain ? Math.max(50, explain) : 50 };
+            if (explain) args.explain = true;
             // `--first`: the list the popup draws at once, before any server has answered, and when
             // it came. G4 is the time to a list holding the right answer, and that list may be this one.
             if (options.first) {
@@ -301,7 +317,19 @@ async function main() {
             const began = performance.now();
             const reply = await window.ask('editor.complete', args);
             row.ms = performance.now() - began;
-            row.labels = labelsOf(reply);
+            row.labels = labelsOf(reply).slice(0, 50);
+            if (explain && reply.ok) {
+              const pool = {
+                id: position.id,
+                prefix: p,
+                place: reply.result.place,
+                tokens: reply.result.tokens,
+                total: reply.result.total,
+                rows: reply.result.rows.map((r) => ({ name: typedName(r.name), at: r.rank, kind: r.kind, source: r.source, ...r.why })),
+              };
+              fs.appendFileSync(path.join(runFolder, 'pools.jsonl'), `${JSON.stringify(pool)}
+`);
+            }
             if (!reply.ok && reply.error?.code !== 'not-applicable') row.error = reply.error?.message;
             const undo = await window.ask('editor.undo');
             if (!undo.ok) throw new Error(`undo: ${undo.error?.message}`);

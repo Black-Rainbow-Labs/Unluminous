@@ -814,6 +814,34 @@ fn editor_complete_answers_in_a_payload_proportionate_to_the_question() {
     assert_eq!(three["total"], all["total"]);
 }
 
+/// `editor complete --explain` says, for every row, what the ranking read about it, and says nothing
+/// of the kind without the flag, so an ordinary answer stays its ordinary size. `task-2237`.
+#[test]
+fn editor_complete_explains_each_row_only_when_asked() {
+    let mut harness = harness_in(&sample_folder());
+    did(&mut harness, "tab open program.rs --permanent");
+
+    let plain = did(&mut harness, "editor complete --stem a --limit 3");
+    let rows = plain["rows"].as_array().expect("the rows");
+    assert!(!rows.is_empty(), "the fixture offers something for a");
+    assert!(rows.iter().all(|row| row.get("why").is_none()), "no reasons unless asked");
+
+    let explained = did(&mut harness, "editor complete --stem a --limit 3 --explain");
+    assert!(explained["place"].is_string(), "the place the rows are offered at: {explained}");
+    for row in explained["rows"].as_array().expect("the rows") {
+        let why = &row["why"];
+        for fact in
+            ["match", "offeredBy", "locality", "placeFit", "usesHere", "sameBefore", "wordsNearby"]
+        {
+            assert!(why.get(fact).is_some(), "{fact} is said for {}: {why}", row["name"]);
+        }
+        assert!(
+            !why["offeredBy"].as_array().expect("the sources").is_empty(),
+            "every row was offered by something: {why}"
+        );
+    }
+}
+
 /// `action list --menu` answers with the menu that was asked for and nothing else, and every
 /// menu is still the answer when none is named.
 #[test]

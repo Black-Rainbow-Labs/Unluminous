@@ -107,7 +107,16 @@ pub enum Source {
     Server,
 }
 
+/// How far from the caret, in lines, a place the name is written counts as near it: about a screen of
+/// a function. [`Info::uses_near`].
+pub const NEAR_LINES: u32 = 30;
+
 impl Source {
+    /// This source's bit in [`Info::offered_by`].
+    pub fn bit(self) -> u16 {
+        1 << (self as u16)
+    }
+
     /// Which source wins the row when two of them offer the same spelling.
     ///
     /// **A server beats a definition beats a keyword beats a plain word**, because a server's row
@@ -388,6 +397,33 @@ pub struct Info {
     /// used nearby is the likelier of two that otherwise tie: `push` over `pop` after `flags.` in a file
     /// that pushes onto `flags` already, and `const` over `case` in a file full of `const`.
     pub uses_here: u32,
+    /// How many lines above the caret the nearest place the name is written is, `u32::MAX` when it is
+    /// not written above it. A name written a line ago is the likelier of two that otherwise tie, which
+    /// is the strongest single thing a ranking learned from people's choices reads (`task-2237`).
+    pub lines_above: u32,
+    /// How many lines below the caret the nearest place the name is written is, `u32::MAX` when none.
+    pub lines_below: u32,
+    /// How many times the name is written within [`NEAR_LINES`] lines of the caret.
+    pub uses_near: u32,
+    /// How many places the name is written in this file come straight after the token that comes
+    /// straight before the word here: `let` before `mut`, `.` before a method this file calls on a
+    /// value, `->` before a type. One file's bigrams, read off the places the name is written.
+    pub same_before: u32,
+    /// How many of those places are followed by the token that follows the word here: `(` after a
+    /// function this file calls, `::` after a module.
+    pub same_after: u32,
+    /// How many of the name's words (`draw_frame` is `draw` and `frame`, `drawFrame` too) are written
+    /// on the lines around the caret, in thousandths of the name's words.
+    pub words_nearby: u32,
+    /// The learned score the order gave this row, in millionths, larger better. `None` where the chain
+    /// alone ordered the rows. What `editor complete --explain` prints. `task-2237`.
+    pub learned: Option<i64>,
+    /// Where the chain of weighers put this row, from 0, which the learned score reads. Set by
+    /// [`order`]. `task-2237`.
+    pub chain_rank: u32,
+    /// Every source that offered this spelling, one bit a [`Source`] (`1 << source as u16`). A name the
+    /// server, this file and the project all offer is a surer answer than one only a server offers.
+    pub offered_by: u16,
     /// A server's own order, smaller first, read from its sort text. `None` for every other source.
     pub server_order: Option<u64>,
     pub deprecated: bool,
@@ -464,12 +500,102 @@ pub struct Row {
 pub struct Question {
     pub stem: String,
     pub place: Place,
+    /// The language of the file, the plugin's id: `rust`, `typescript`. A question with a language is
+    /// ordered by the learned score ([`crate::completion_model`]); one with none, an import list or a
+    /// kernel's rows, by the chain alone. `task-2237`.
+    pub language: String,
+    /// What kind of token comes straight before the word, as [`token_class`] numbers it: `let`, `.`,
+    /// `::`, `(`. What the model reads beside the place, because `let` and `return` ask for different
+    /// names though both start an expression.
+    pub before: u8,
+    /// What kind of token comes straight after the word on its line: `(` after a function, `:` after a
+    /// field, `=` after a variable being set. 0 at the end of the line.
+    pub after: u8,
+}
+
+/// The words a token class names beyond "a word", each its own class from [`WORD_CLASSES_START`].
+const CLASSED_WORDS: [&str; 34] = [
+    "let",
+    "mut",
+    "fn",
+    "const",
+    "return",
+    "use",
+    "import",
+    "from",
+    "pub",
+    "impl",
+    "struct",
+    "new",
+    "if",
+    "match",
+    "for",
+    "in",
+    "as",
+    "await",
+    "type",
+    "extends",
+    "export",
+    "async",
+    "function",
+    "class",
+    "interface",
+    "enum",
+    "crate",
+    "self",
+    "super",
+    "Self",
+    "this",
+    "typeof",
+    "keyof",
+    "else",
+];
+
+/// Where the word classes start in [`token_class`]'s numbering.
+const WORD_CLASSES_START: u8 = 20;
+
+/// A small number standing for a token, the same in the window and in the trainer: 0 for nothing, 1
+/// for any other word, the marks from 2, and the words a language asks for one kind of name after from
+/// [`WORD_CLASSES_START`]. `task-2237`.
+///
+/// @param token - the token's bytes
+pub fn token_class(token: &[u8]) -> u8 {
+    let Ok(token) = std::str::from_utf8(token) else { return 1 };
+    if token.is_empty() {
+        return 0;
+    }
+    if let Some(at) = CLASSED_WORDS.iter().position(|word| *word == token) {
+        return WORD_CLASSES_START + at as u8;
+    }
+    let first = token.as_bytes()[0];
+    if first.is_ascii_alphanumeric() || first == b'_' || first == b'$' || first >= 0x80 {
+        return 1;
+    }
+    match token {
+        "." | "?." => 2,
+        "::" => 3,
+        "(" => 4,
+        "," => 5,
+        "=" => 6,
+        ":" => 7,
+        "{" => 8,
+        "}" => 9,
+        ";" => 10,
+        "<" => 11,
+        "->" | "=>" => 12,
+        "&" | "&&" => 13,
+        "[" => 14,
+        ")" => 15,
+        "!" => 16,
+        "|" | "||" => 17,
+        _ => 18,
+    }
 }
 
 impl Question {
     /// A question about a stem with nothing known about the place.
     pub fn stem(stem: &str) -> Self {
-        Self { stem: stem.to_owned(), place: Place::Unknown }
+        Self { stem: stem.to_owned(), place: Place::Unknown, ..Self::default() }
     }
 }
 
@@ -614,7 +740,172 @@ pub fn order(
         left.0.cmp(&right.0).then(rows[left.1].name.as_bytes().cmp(rows[right.1].name.as_bytes()))
     });
     let mut taken: Vec<Option<Row>> = rows.into_iter().map(Some).collect();
-    keyed.into_iter().filter_map(|(_, at)| taken[at].take()).collect()
+    let mut chained: Vec<Row> = keyed.into_iter().filter_map(|(_, at)| taken[at].take()).collect();
+    for (rank, row) in chained.iter_mut().enumerate() {
+        row.info.chain_rank = rank as u32;
+    }
+    if question.language.is_empty() || crate::completion_model::ROOTS.is_empty() {
+        return chained;
+    }
+    learned_order(question, chained)
+}
+
+/// The rows in the learned order: a server's preselected row when the stem is its prefix, then the
+/// match class, then the model's score, then the name's bytes. `task-2237`.
+///
+/// The match class stays ahead of the score, because a person who has typed `lay` and sees `Layout`
+/// below `replay` reads the list as broken whatever a model thinks. The chain's own order is one of
+/// the features ([`features`]), so what the chain knew is not thrown away.
+///
+/// @param question - the stem, the place and the language
+/// @param chained - the rows in the chain's order
+fn learned_order(question: &Question, chained: Vec<Row>) -> Vec<Row> {
+    let near = nearest_rows(&chained);
+    // A row the model does not score keeps the chain's order, after every row it does score in its
+    // class, which is what an unscored row's `f64::NEG_INFINITY` and the chain rank as the last tie
+    // break give.
+    let mut scored: Vec<(f64, usize, Row)> = chained
+        .into_iter()
+        .enumerate()
+        .map(|(rank, mut row)| {
+            let score = match rank < SCORED_BY_THE_CHAIN || near[rank] {
+                true => crate::completion_model::score(&features(question, &row, rank)),
+                false => f64::NEG_INFINITY,
+            };
+            row.info.learned = score.is_finite().then(|| (score * 1e6).round() as i64);
+            (score, rank, row)
+        })
+        .collect();
+    let preselected = |row: &Row| row.info.preselect && row.class <= MatchClass::Prefix;
+    // A name equal to a short stem is in the prefix group rather than ahead of it: with `fi` typed, a
+    // project function called `fi` is rarely the name being typed, and the model sees that nothing is
+    // left to type and weighs it against everything else. From [`EXACT_FIRST_FROM`] letters a name
+    // equal to the stem is the word typed in full and comes first, which keeps `Enter` a new line.
+    let short = question.stem.chars().count() < EXACT_FIRST_FROM;
+    let group = |row: &Row| match short {
+        true => row.class.max(MatchClass::Prefix),
+        false => row.class,
+    };
+    scored.sort_by(|(left_score, left_rank, left), (right_score, right_rank, right)| {
+        (!preselected(left))
+            .cmp(&!preselected(right))
+            .then(group(left).cmp(&group(right)))
+            .then(right_score.total_cmp(left_score))
+            .then(left_rank.cmp(right_rank))
+    });
+    scored.into_iter().map(|(_, _, row)| row).collect()
+}
+
+/// From how many letters typed a name equal to the stem comes first in the learned order. `task-2237`.
+pub const EXACT_FIRST_FROM: usize = 4;
+
+/// How many of the chain's first rows the model scores. A TypeScript server offers fifteen thousand
+/// names with one letter typed, nearly all of them auto imports, and the model costs a few
+/// microseconds a row, so it scores the top of the chain and the names written nearest the caret, as
+/// IntelliJ's model reorders only the top of its list. `task-2237`.
+pub const SCORED_BY_THE_CHAIN: usize = 100;
+
+/// How many of the rows written nearest the caret the model scores beside the chain's first rows.
+pub const SCORED_BY_NEARNESS: usize = 100;
+
+/// Which rows, by chain rank, are among the [`SCORED_BY_NEARNESS`] written nearest the caret: by the
+/// nearer of the lines above and below, then by chain rank. A row written nowhere in the file is
+/// never one of them.
+///
+/// @param chained - the rows in the chain's order
+fn nearest_rows(chained: &[Row]) -> Vec<bool> {
+    let mut near: Vec<(u32, usize)> = chained
+        .iter()
+        .enumerate()
+        .map(|(rank, row)| (row.info.lines_above.min(row.info.lines_below), rank))
+        .filter(|(lines, _)| *lines != u32::MAX)
+        .collect();
+    near.sort_unstable();
+    let mut is_near = vec![false; chained.len()];
+    for (_, rank) in near.into_iter().take(SCORED_BY_NEARNESS) {
+        is_near[rank] = true;
+    }
+    is_near
+}
+
+/// A distance in lines with no place to measure it to, as the model reads it.
+const FAR: f64 = 100_000.0;
+
+/// What the model reads about a row, in the order of [`crate::completion_model::NAMES`]. The trainer,
+/// `tools/completion-eval/rank-model/features.py`, works the same numbers out of
+/// `editor complete --explain`, and `tests/completion_model.rs` checks the two agree.
+///
+/// @param question - the stem, the place and the language
+/// @param row - the row
+/// @param chain_rank - where the chain of weighers put the row, from 0
+pub fn features(
+    question: &Question,
+    row: &Row,
+    chain_rank: usize,
+) -> [f64; crate::completion_model::FEATURES] {
+    let info = &row.info;
+    let stem_length = question.stem.chars().count();
+    let case_agrees = match (question.stem.chars().next(), row.name.chars().next()) {
+        (Some(typed), Some(first)) if typed.is_uppercase() && first.is_alphabetic() => {
+            first.is_uppercase()
+        }
+        _ => true,
+    };
+    let kind =
+        row.kind.and_then(|k| Kind::ALL.iter().position(|a| *a == k)).unwrap_or(Kind::ALL.len());
+    let server_score = match info.server_order {
+        Some(order) if order <= 0xFFFF_FFFF => match order > 0xFFFF {
+            true => (0xFFFF_FFFF_i64 - order as i64 - 0x7FFF_FFFF) as f64,
+            false => -(order as f64),
+        },
+        _ => -1000.0,
+    };
+    let language = match question.language.as_str() {
+        "rust" => 0.0,
+        "typescript" | "javascript" => 1.0,
+        _ => 2.0,
+    };
+    let lines = |n: u32| if n == u32::MAX { FAR } else { f64::from(n) };
+    let length = row.name.chars().count();
+    let flag = |b: bool| if b { 1.0 } else { 0.0 };
+    let bit = |source: Source| flag(info.offered_by & source.bit() != 0);
+    [
+        stem_length as f64,
+        flag(case_agrees),
+        flag(info.expected_type),
+        flag(info.preselect),
+        flag(info.deprecated),
+        info.locality as u8 as f64,
+        f64::from(place_fit(question.place, row.kind)),
+        question.place as u8 as f64,
+        kind as f64,
+        row.source as u8 as f64,
+        f64::from(info.offered_by.count_ones()),
+        server_score,
+        language,
+        f64::from(info.uses_here),
+        lines(info.lines_above),
+        lines(info.lines_below),
+        f64::from(info.uses_near),
+        f64::from(info.same_before),
+        f64::from(info.same_after),
+        f64::from(info.words_nearby),
+        f64::from(row.score),
+        length as f64,
+        length as f64 - stem_length as f64,
+        chain_rank as f64,
+        bit(Source::ThisFile),
+        bit(Source::Word),
+        bit(Source::OpenTab),
+        bit(Source::Index),
+        bit(Source::Language),
+        bit(Source::Module),
+        bit(Source::Member),
+        bit(Source::Import),
+        bit(Source::Server),
+        f64::from(question.before),
+        f64::from(question.after),
+    ]
 }
 
 /// The parts of a row's place in the order, compared left to right. See [`order`]. Two tuples, because
@@ -777,6 +1068,7 @@ fn matched(stem: &str, candidates: Vec<Candidate>) -> Vec<Row> {
         }
         // A kernel's rows keep the kernel's own order when nothing else decides, as a server's do:
         // with nothing typed after `v.`, rust-analyzer and Jedi put the value's own members first.
+        candidate.info.offered_by |= candidate.source.bit();
         if candidate.source == Source::Kernel && candidate.info.server_order.is_none() {
             candidate.info.server_order = Some(kernel_order);
             kernel_order += 1;
@@ -828,6 +1120,13 @@ fn merge_into(row: &mut Row, candidate: Candidate) {
     keep.locality = keep.locality.min(other.locality);
     keep.expected_type |= other.expected_type;
     keep.uses_here = keep.uses_here.max(other.uses_here);
+    keep.lines_above = keep.lines_above.min(other.lines_above);
+    keep.lines_below = keep.lines_below.min(other.lines_below);
+    keep.uses_near = keep.uses_near.max(other.uses_near);
+    keep.offered_by |= other.offered_by;
+    keep.same_before = keep.same_before.max(other.same_before);
+    keep.same_after = keep.same_after.max(other.same_after);
+    keep.words_nearby = keep.words_nearby.max(other.words_nearby);
     keep.server_order = match (keep.server_order, other.server_order) {
         (Some(a), Some(b)) => Some(a.min(b)),
         (a, b) => a.or(b),
@@ -1101,6 +1400,22 @@ fn lower(character: char) -> char {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_model_scores_a_row_exactly_as_the_trainer_does() {
+        // Written by `tools/completion-eval/rank-model/export.py`: the trainer's score, then the row's
+        // features, a row a line. `task-2237`.
+        let checks = include_str!("completion_model_checks.txt");
+        let mut read = 0;
+        for line in checks.lines().filter(|l| !l.trim().is_empty()) {
+            let numbers: Vec<f64> = line.split(' ').map(|v| v.parse().unwrap()).collect();
+            let x: [f64; crate::completion_model::FEATURES] = numbers[1..].try_into().unwrap();
+            let score = crate::completion_model::score(&x);
+            assert!((score - numbers[0]).abs() < 1e-9, "{score} against {} for {line}", numbers[0]);
+            read += 1;
+        }
+        assert!(read > 0 || crate::completion_model::ROOTS.is_empty());
+    }
 
     #[test]
     fn with_nothing_typed_a_kernels_rows_keep_the_kernels_order() {
@@ -1516,7 +1831,11 @@ mod tests {
                 Candidate::described("Command", Source::ThisFile, Some(Kind::Struct), ""),
             ]
         };
-        let at = |stem: &str| Question { stem: stem.to_owned(), place: Place::Statement };
+        let at = |stem: &str| Question {
+            stem: stem.to_owned(),
+            place: Place::Statement,
+            ..Default::default()
+        };
         assert_eq!(ordered(&at("Co"), pool()), ["Command", "command"]);
         // Lowercase leaves it to the place, where a statement wants the function.
         assert_eq!(ordered(&at("co"), pool()), ["command", "Command"]);
@@ -1543,7 +1862,8 @@ mod tests {
             Candidate::described("letters", Source::Index, Some(Kind::Function), ""),
             Candidate::described("let", Source::Language, Some(Kind::Keyword), ""),
         ];
-        let question = Question { stem: "le".to_owned(), place: Place::Statement };
+        let question =
+            Question { stem: "le".to_owned(), place: Place::Statement, ..Default::default() };
         assert_eq!(ordered(&question, pool), ["let", "letters"]);
     }
 
@@ -1562,7 +1882,8 @@ mod tests {
         let mut push = Candidate::described("push", Source::Server, Some(Kind::Method), "");
         push.info.uses_here = 3;
         let pop = Candidate::described("pop", Source::Server, Some(Kind::Method), "");
-        let question = Question { stem: "p".to_owned(), place: Place::Member };
+        let question =
+            Question { stem: "p".to_owned(), place: Place::Member, ..Default::default() };
         assert_eq!(ordered(&question, vec![pop, push]), ["push", "pop"]);
     }
 
@@ -1574,7 +1895,7 @@ mod tests {
                 Candidate::described("Layout", Source::Index, Some(Kind::Struct), ""),
             ]
         };
-        let at = |place| Question { stem: "lay".to_owned(), place };
+        let at = |place| Question { stem: "lay".to_owned(), place, ..Default::default() };
         assert_eq!(ordered(&at(Place::Type), pool()), ["Layout", "layout"]);
         assert_eq!(ordered(&at(Place::Expression), pool()), ["layout", "Layout"]);
     }
@@ -1688,7 +2009,7 @@ mod tests {
                 Candidate::described("drawn", Source::Import, Some(Kind::Constant), ""),
             ]
         };
-        let q = Question { stem: "dra".to_owned(), place: Place::Expression };
+        let q = Question { stem: "dra".to_owned(), place: Place::Expression, ..Default::default() };
         assert_eq!(order(&q, pool(), &|_| 0), order(&q, pool(), &|_| 0));
     }
 }

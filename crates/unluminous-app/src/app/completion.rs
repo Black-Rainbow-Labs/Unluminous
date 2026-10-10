@@ -273,6 +273,7 @@ impl UnluminousApp {
                 if !self.at_a_member_access(word_start) {
                     let mut pool = self.member_candidates(&receiver, stem, offset);
                     pool.extend(self.server_members(stem, offset));
+                    pool.extend(self.words_after_the_same_separator(stem, word_start));
                     return pool;
                 }
                 return pool;
@@ -292,6 +293,7 @@ impl UnluminousApp {
         if let Some(receiver) = self.asked_at(word_start).receiver {
             let mut pool = self.member_candidates(&receiver, stem, offset);
             pool.extend(self.server_members(stem, offset));
+            pool.extend(self.words_after_the_same_separator(stem, word_start));
             return pool;
         }
         let here = self.files.active_index();
@@ -303,8 +305,15 @@ impl UnluminousApp {
             let detail = path.as_deref().map(file_name).unwrap_or_default();
             let source = if index == here { Source::ThisFile } else { Source::OpenTab };
             let symbols = self.tab_symbols(index);
+            // With nothing typed this file's own definitions are offered and another tab's are not:
+            // `could_match` answers no to an empty stem, which until `task-2237` left a list asked for
+            // with nothing typed holding the locals and the server's rows and nothing else.
+            let reaches = |name: &str| match nothing_typed {
+                true => index == here,
+                false => completion::could_match(stem, name),
+            };
             for (name, definition) in &symbols.named {
-                if completion::could_match(stem, name) {
+                if reaches(name) {
                     pool.push(Candidate::described(
                         name.clone(),
                         source,
@@ -315,12 +324,14 @@ impl UnluminousApp {
             }
             // Only this file's words. Harvesting every open file's words is §12's rejection: the
             // index's definitions are the cross-file offer, and they carry a kind and a file where
-            // a raw word carries nothing.
-            if index == here && !nothing_typed {
+            // a raw word carries nothing. With nothing typed they are offered too, since `task-2237`:
+            // the words written near the caret are the likeliest to be written next, and the ranking
+            // reads how near each one is, so they no longer bury the rest.
+            if index == here {
                 // The word being typed is in the file too, half typed; it is never offered from here.
                 // A real name equal to it still comes from the definitions and the server.
                 for word in &symbols.words {
-                    if word != stem && completion::could_match(stem, word) {
+                    if word != stem && (nothing_typed || completion::could_match(stem, word)) {
                         pool.push(Candidate::new(word.clone(), Source::Word));
                     }
                 }
@@ -388,7 +399,7 @@ impl UnluminousApp {
             };
             for (list, detail) in lists {
                 for word in list {
-                    if completion::could_match(stem, word) {
+                    if nothing_typed || completion::could_match(stem, word) {
                         let kind = (detail == "keyword").then_some(Kind::Keyword);
                         pool.push(Candidate::described(
                             word.clone(),
@@ -582,7 +593,18 @@ impl UnluminousApp {
             if range.end == offset {
                 pool.extend(self.server_candidates(&typed, offset));
             }
-            let rows = completion::rank_all(&typed, pool);
+            self.mark_the_names_written_here(&mut pool, range.start, offset);
+            // Ordered by the learned score like any other list (`task-2237`), with the place the
+            // command line's `--explain` reports.
+            let (before, after) = self.tokens_around(range.start, offset);
+            let question = Question {
+                stem: typed.clone(),
+                place: self.asked_at(range.start).place,
+                language: grammar.language.clone(),
+                before,
+                after,
+            };
+            let rows = completion::order(&question, pool, &|_| 0);
             return Offer { range, typed, rows, import: Some(context) };
         }
         let range = completion::stem_at(&text, offset, &grammar);
@@ -658,9 +680,16 @@ impl UnluminousApp {
         let word_start = offset.saturating_sub(stem.len());
         let asked = self.asked_at(word_start);
         let mut pool = self.completion_candidates(stem, offset);
-        self.mark_the_names_written_here(&mut pool);
+        self.mark_the_names_written_here(&mut pool, word_start, offset);
         let language = self.completion_grammar().language;
-        let question = Question { stem: stem.to_owned(), place: asked.place };
+        let (before, after) = self.tokens_around(word_start, offset);
+        let question = Question {
+            stem: stem.to_owned(),
+            place: asked.place,
+            language: language.clone(),
+            before,
+            after,
+        };
         let stats = &self.completion_stats;
         let mut rows = completion::order(&question, pool, &|name| {
             stats.chosen(&language, asked.place, stem, name)
@@ -688,16 +717,139 @@ impl UnluminousApp {
             .collect()
     }
 
-    /// Marks every candidate with how many times its name is already written in the file that is
-    /// showing ([`completion::Info::uses_here`]), from the counts the tab keeps for its revision.
+    /// Marks every candidate with where its name is already written in the file that is showing: how
+    /// many times ([`completion::Info::uses_here`]), how many lines above and below the caret the
+    /// nearest place is, how many places are near the caret, how many of them sit between the same two
+    /// tokens as the word here, and how many of the name's words are on the lines around the caret.
+    /// From the places the tab keeps for its revision. The word being typed is not one of the places.
+    /// `task-2237`.
     ///
     /// @param pool - the candidates
-    fn mark_the_names_written_here(&mut self, pool: &mut [Candidate]) {
+    /// @param word_start - where the word being typed starts
+    /// @param offset - the caret, where it ends
+    fn mark_the_names_written_here(
+        &mut self,
+        pool: &mut [Candidate],
+        word_start: usize,
+        offset: usize,
+    ) {
         let here = self.files.active_index();
-        let counts = &self.tab_symbols(here).counts;
+        let text = self.document().text().to_string();
+        let bytes = text.as_bytes();
+        let symbols = self.tab_symbols(here);
+        let line_of = |at: u32| symbols.line_starts.partition_point(|start| *start <= at) as u32;
+        let caret_line = line_of(word_start as u32);
+        let before_here = token_before(bytes, word_start);
+        let after_here = token_after(bytes, offset.min(bytes.len()));
+        let nearby =
+            words_on_the_lines_around(bytes, &symbols.line_starts, caret_line, word_start..offset);
+        // One name often arrives from three sources; its facts are worked out once.
+        let mut known: std::collections::HashMap<String, Marks> = std::collections::HashMap::new();
         for candidate in pool.iter_mut() {
-            candidate.info.uses_here = counts.get(candidate.name.as_str()).copied().unwrap_or(0);
+            let marks = match known.get(candidate.name.as_str()) {
+                Some(marks) => *marks,
+                None => {
+                    let name = candidate.name.as_str();
+                    let places = symbols.places.get(name).map(Vec::as_slice).unwrap_or_default();
+                    // The word being typed starts at `word_start`; a place there is it, not a use.
+                    let elsewhere =
+                        || places.iter().copied().filter(|at| *at as usize != word_start);
+                    let split = places.partition_point(|at| (*at as usize) < word_start);
+                    let (mut same_before, mut same_after) = (0, 0);
+                    for at in elsewhere().take(PLACES_READ) {
+                        let at = at as usize;
+                        same_before += u32::from(
+                            !before_here.is_empty() && token_before(bytes, at) == before_here,
+                        );
+                        same_after += u32::from(
+                            !after_here.is_empty()
+                                && token_after(bytes, at + name.len()) == after_here,
+                        );
+                    }
+                    let words = words_of_a_name(name);
+                    let shared = words.iter().filter(|w| nearby.contains(w.as_str())).count();
+                    let marks = Marks {
+                        uses_here: elsewhere().count() as u32,
+                        lines_above: places[..split]
+                            .last()
+                            .map_or(u32::MAX, |at| caret_line - line_of(*at)),
+                        lines_below: places[split..]
+                            .iter()
+                            .find(|at| **at as usize != word_start)
+                            .map_or(u32::MAX, |at| line_of(*at) - caret_line),
+                        uses_near: elsewhere()
+                            .filter(|at| {
+                                line_of(*at).abs_diff(caret_line) <= completion::NEAR_LINES
+                            })
+                            .count() as u32,
+                        same_before,
+                        same_after,
+                        words_nearby: (shared * 1000 / words.len().max(1)) as u32,
+                    };
+                    known.insert(name.to_owned(), marks);
+                    marks
+                }
+            };
+            let info = &mut candidate.info;
+            info.uses_here = marks.uses_here;
+            info.lines_above = marks.lines_above;
+            info.lines_below = marks.lines_below;
+            info.uses_near = marks.uses_near;
+            info.same_before = marks.same_before;
+            info.same_after = marks.same_after;
+            info.words_nearby = marks.words_nearby;
         }
+    }
+
+    /// The words of the file that are written straight after the same separator as the word being
+    /// typed: after `.`, the names this file already reaches through a dot, `map`, `push`, `len`. What
+    /// a member access can offer when the structure cannot work the receiver's type out and the server
+    /// has not answered, which for a library's members is often; the ranking reads how near and how
+    /// alike each one is. `task-2237`.
+    ///
+    /// @param stem - what has been typed
+    /// @param word_start - where the word being typed starts
+    fn words_after_the_same_separator(&mut self, stem: &str, word_start: usize) -> Vec<Candidate> {
+        let text = self.document().text().to_string();
+        let bytes = text.as_bytes();
+        let separator = token_before(bytes, word_start).to_vec();
+        let touching = word_start >= separator.len()
+            && bytes[word_start - separator.len()..word_start] == separator[..];
+        if separator.is_empty() || is_word_byte(separator[0]) || !touching {
+            return Vec::new();
+        }
+        let here = self.files.active_index();
+        let symbols = self.tab_symbols(here);
+        let mut out = Vec::new();
+        for (word, places) in &symbols.places {
+            if word == stem || !(stem.is_empty() || completion::could_match(stem, word)) {
+                continue;
+            }
+            // Straight after it, with nothing between: a full stop ending a comment on the line above
+            // is not a member access.
+            let after_it = places.iter().filter(|at| **at as usize != word_start).any(|at| {
+                let at = *at as usize;
+                at >= separator.len() && &bytes[at - separator.len()..at] == separator.as_slice()
+            });
+            if after_it {
+                out.push(Candidate::new(word.clone(), Source::Word));
+            }
+        }
+        out
+    }
+
+    /// The classes of the tokens straight before a word and straight after it on its line
+    /// ([`completion::token_class`]), which the ranking reads. `task-2237`.
+    ///
+    /// @param word_start - where the word starts
+    /// @param offset - the caret, where it ends
+    pub(crate) fn tokens_around(&self, word_start: usize, offset: usize) -> (u8, u8) {
+        let text = self.document().text().to_string();
+        let bytes = text.as_bytes();
+        (
+            completion::token_class(token_before(bytes, word_start)),
+            completion::token_class(token_after(bytes, offset.min(bytes.len()))),
+        )
     }
 
     /// The grammar reading the file that is showing, or an empty one.
@@ -1027,7 +1179,12 @@ impl UnluminousApp {
         // older one did and also lets a specifier grow a `/` and a module path grow a `::`.
         let offer = self.completion_offer(head);
         let manual = self.completion.as_ref().is_some_and(|state| state.manual);
-        if offer.rows.is_empty() || (!manual && nothing_longer(&offer)) {
+        // The word being typed ended: `(`, a space or a `.` was typed after it. With nothing typed a
+        // list still has rows to offer since `task-2237`, so this is asked of the stem rather than of
+        // the rows; a member trigger opens its own list in the same frame.
+        let had_a_word = self.completion.as_ref().is_some_and(|state| !state.stem.is_empty());
+        let ended = had_a_word && offer.typed.is_empty() && offer.import.is_none();
+        if ended || offer.rows.is_empty() || (!manual && nothing_longer(&offer)) {
             // Typing narrowed it to nothing, or to the word already typed. It does not linger; the
             // next character typed asks again.
             self.close_the_completion();
@@ -1622,7 +1779,9 @@ mod tests {
             state.chosen, 0,
             "the first row is pre-chosen, so Tab alone takes the best match"
         );
-        assert_eq!(state.rows[0].name, "draw", "which is the shortest thing starting with `dr`");
+        // Which `dr` name is first is the learned ranking's decision (`task-2237`); that it is one is
+        // the property.
+        assert!(state.rows[0].name.starts_with("dr"), "{:?}", offered(&app));
         assert!(offered(&app).contains(&"draw_frame".to_owned()), "{:?}", offered(&app));
         std::fs::remove_dir_all(&folder).ok();
     }
@@ -1633,9 +1792,10 @@ mod tests {
         let (folder, mut app) = a_window("unluminous-completion-one-letter");
         typing(&mut app, "d");
         assert!(app.completion().is_none());
-        // And an empty stem answers nothing however it is asked.
-        assert!(app.completion_candidates("", 0).is_empty());
-        assert!(app.completion_rows("", 0).is_empty());
+        // Asked for with nothing typed, the list holds what fits here: this file's names and the
+        // language's keywords (`task-2237`; an empty stem used to gather nothing but locals).
+        let rows = app.completion_rows("", 0);
+        assert!(rows.iter().any(|row| row.name == "fn"), "a keyword: {rows:?}");
         std::fs::remove_dir_all(&folder).ok();
     }
 
@@ -1809,13 +1969,15 @@ mod tests {
     }
 
     #[test]
-    fn asking_with_no_word_to_the_left_of_the_caret_says_so_and_opens_nothing() {
-        // Scenario 21, and it works from one character, which the automatic path does not.
+    fn asking_with_nothing_typed_opens_the_list_of_what_fits_here() {
+        // Scenario 21, changed by `task-2237`: Ctrl+Space with nothing typed opens the list, as the
+        // reference editor's does, holding this file's names and the keywords. It works from one
+        // character too, which the automatic path does not.
         let (folder, mut app) = a_window("unluminous-completion-nothing-there");
         typing(&mut app, " ");
         app.complete_word();
-        assert!(app.completion().is_none());
-        assert_eq!(app.message.as_deref(), Some("There is nothing to complete here."));
+        assert!(app.completion().is_some(), "{:?}", app.message);
+        app.close_the_completion();
         app.message = None;
         typing(&mut app, "d");
         assert!(app.completion().is_none(), "one letter is still not an unasked offer");
@@ -1850,11 +2012,11 @@ mod tests {
         let (folder, mut app) = a_window("unluminous-completion-accept");
         let before = text_of(&app);
         typing(&mut app, "dra");
-        assert_eq!(
-            offered(&app),
-            vec!["draw", "draw_frame", "draw_everything", "redraw"],
-            "the order the rubric gives"
-        );
+        let rows = offered(&app);
+        let mut names = rows.clone();
+        names.sort();
+        assert_eq!(names, vec!["draw", "draw_everything", "draw_frame", "redraw"], "{rows:?}");
+        let third = rows[2].clone();
         app.the_completion_keys(CompletionKeys::down());
         app.the_completion_keys(CompletionKeys::down());
         assert_eq!(app.completion().expect("open").chosen, 2);
@@ -1862,7 +2024,7 @@ mod tests {
         assert!(app.completion().is_none(), "accepting closes it");
         // A function is inserted with its call brackets, the caret after them when it takes no
         // parameters (`task-2231` §6.7).
-        assert!(text_of(&app).ends_with("draw_everything()"), "{:?}", text_of(&app));
+        assert!(text_of(&app).ends_with(&format!("{third}()")), "{:?}", text_of(&app));
         assert_eq!(
             app.document().selection().head,
             app.document().text().len_bytes(),
@@ -2424,4 +2586,146 @@ mod tests {
         assert_eq!(app.completion(), Some(&before), "ten idle frames changed nothing");
         std::fs::remove_dir_all(&folder).ok();
     }
+}
+
+/// What [`UnluminousApp::mark_the_names_written_here`] works out about one name.
+#[derive(Debug, Clone, Copy)]
+struct Marks {
+    uses_here: u32,
+    lines_above: u32,
+    lines_below: u32,
+    uses_near: u32,
+    same_before: u32,
+    same_after: u32,
+    words_nearby: u32,
+}
+
+/// How many places a name is written are read for the tokens around them, at most: a name written a
+/// thousand times says what it says about its neighbours in its first couple of hundred.
+const PLACES_READ: usize = 200;
+
+/// How many lines above the caret, and below it, [`words_on_the_lines_around`] reads.
+const LINES_AROUND: (u32, u32) = (3, 1);
+
+/// Whether a byte is part of a word, as [`crate::app::symbols::where_the_words_are`] reads one.
+fn is_word_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_' || b == b'$' || b >= 0x80
+}
+
+/// Whether a byte is a mark: neither part of a word nor a space.
+fn is_mark(b: u8) -> bool {
+    !is_word_byte(b) && !b.is_ascii_whitespace()
+}
+
+/// The token straight before `at`, past any spaces: a whole word, or up to two marks such as `.`,
+/// `::`, `->` or `(`. Empty at the start of the text.
+///
+/// @param bytes - the text
+/// @param at - where to look back from
+fn token_before(bytes: &[u8], at: usize) -> &[u8] {
+    let mut end = at.min(bytes.len());
+    while end > 0 && bytes[end - 1].is_ascii_whitespace() {
+        end -= 1;
+    }
+    let mut start = end;
+    if start > 0 && is_word_byte(bytes[start - 1]) {
+        while start > 0 && is_word_byte(bytes[start - 1]) {
+            start -= 1;
+        }
+    } else {
+        while start > 0 && end - start < 2 && is_mark(bytes[start - 1]) {
+            start -= 1;
+        }
+    }
+    &bytes[start..end]
+}
+
+/// The token straight after `at` on the same line, past any spaces, as [`token_before`] reads one.
+/// Empty at the end of a line, which is where a person typing new code usually is: what the next line
+/// starts with says nothing about the word being typed.
+///
+/// @param bytes - the text
+/// @param at - where to look on from
+fn token_after(bytes: &[u8], at: usize) -> &[u8] {
+    let mut start = at.min(bytes.len());
+    while start < bytes.len() && (bytes[start] == b' ' || bytes[start] == b'\t') {
+        start += 1;
+    }
+    let mut end = start;
+    if end < bytes.len() && is_word_byte(bytes[end]) {
+        while end < bytes.len() && is_word_byte(bytes[end]) {
+            end += 1;
+        }
+    } else {
+        while end < bytes.len() && end - start < 2 && is_mark(bytes[end]) {
+            end += 1;
+        }
+    }
+    &bytes[start..end]
+}
+
+/// The lowercase words a name is made of: `draw_frame`, `drawFrame` and `DrawFrame` are all `draw`
+/// and `frame`.
+///
+/// @param name - the name
+pub(crate) fn words_of_a_name(name: &str) -> Vec<String> {
+    let mut words: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut previous_lower = false;
+    for c in name.chars() {
+        if !c.is_alphanumeric() {
+            if !current.is_empty() {
+                words.push(std::mem::take(&mut current));
+            }
+            previous_lower = false;
+            continue;
+        }
+        if c.is_uppercase() && previous_lower && !current.is_empty() {
+            words.push(std::mem::take(&mut current));
+        }
+        previous_lower = c.is_lowercase() || c.is_ascii_digit();
+        current.extend(c.to_lowercase());
+    }
+    if !current.is_empty() {
+        words.push(current);
+    }
+    words
+}
+
+/// Every lowercase word of every name written on the lines around the caret ([`LINES_AROUND`]), the
+/// word being typed left out.
+///
+/// @param bytes - the text
+/// @param line_starts - where each line starts
+/// @param caret_line - the caret's line, counting from 1
+/// @param typed - the word being typed
+fn words_on_the_lines_around(
+    bytes: &[u8],
+    line_starts: &[u32],
+    caret_line: u32,
+    typed: std::ops::Range<usize>,
+) -> std::collections::HashSet<String> {
+    let first = caret_line.saturating_sub(LINES_AROUND.0).max(1) as usize - 1;
+    let last = (caret_line + LINES_AROUND.1) as usize;
+    let start = line_starts.get(first).copied().unwrap_or(0) as usize;
+    let end = line_starts.get(last).map_or(bytes.len(), |at| *at as usize).min(bytes.len());
+    let mut words = std::collections::HashSet::new();
+    let mut at = start.min(end);
+    while at < end {
+        if !is_word_byte(bytes[at]) {
+            at += 1;
+            continue;
+        }
+        let from = at;
+        while at < end && is_word_byte(bytes[at]) {
+            at += 1;
+        }
+        if from == typed.start {
+            continue;
+        }
+        if let Ok(name) = std::str::from_utf8(&bytes[from..at]) {
+            words.extend(words_of_a_name(name));
+        }
+    }
+    words
 }
