@@ -1171,12 +1171,38 @@ impl AgentChat {
         sent
     }
 
+    /// Ask again the question an answer was given to: the answer with `id`, or the last one.
+    ///
+    /// What the run again button under an answer does (`task-2235`). The question is the person's
+    /// message before that answer, sent again through [`Self::send_words`], so it queues behind an answer
+    /// still arriving exactly as typing it again would.
+    pub fn rerun(&mut self, id: Option<u64>) -> Result<u64, String> {
+        let messages = &self.session.chat.messages;
+        let answer = match id {
+            Some(id) => messages.iter().position(|message| message.id == id),
+            None => messages.iter().rposition(|message| message.role == Role::Assistant),
+        }
+        .ok_or_else(|| "There is no answer to run again.".to_owned())?;
+        let question = messages[..answer]
+            .iter()
+            .rev()
+            .find(|message| message.role == Role::User)
+            .map(unluminous_chat::Message::text)
+            .filter(|text| !text.trim().is_empty())
+            .ok_or_else(|| "That answer has no question before it to ask again.".to_owned())?;
+        self.send_words(&question)
+    }
+
     /// The requests that open a project file at a line, which is what a component's file row asks for.
     ///
     /// **A path inside the project only.** A component is an agent's writing, and the one thing it may
     /// not do is reach outside the folder the person opened: an absolute path and a `..` are refused.
     pub fn open_a_file(&self, path: &str, line: Option<u32>) -> Result<Vec<Request>, String> {
-        let relative = Path::new(path.trim());
+        // **An agent names the files it read by their whole path**, so a path inside the open project
+        // is taken as the part after the project's folder. Anything else absolute is still refused.
+        let inside =
+            self.project.as_ref().and_then(|root| Path::new(path.trim()).strip_prefix(root).ok());
+        let relative = inside.unwrap_or_else(|| Path::new(path.trim()));
         let escapes = relative.is_absolute()
             || relative.has_root()
             || relative.components().any(|part| matches!(part, std::path::Component::ParentDir));
@@ -1184,7 +1210,7 @@ impl AgentChat {
             return Err(format!("{path} is not a file inside the project, so it was not opened."));
         }
         let mut open = serde_json::Map::new();
-        open.insert("path".to_owned(), serde_json::Value::String(path.trim().to_owned()));
+        open.insert("path".to_owned(), serde_json::Value::String(relative.display().to_string()));
         open.insert("permanent".to_owned(), serde_json::Value::Bool(true));
         let mut asked = vec![Request::RunCommand {
             id: format!("{OPENING}{path}"),
@@ -1921,6 +1947,8 @@ impl UiProvider for AgentChat {
                             "text": last.map(unluminous_chat::Message::text),
                             "failure": last.and_then(|message| message.failure.clone()),
                             "finish": last.and_then(|message| message.finish.clone()),
+                            "took": last.and_then(|message| message.took_ms),
+                            "tokens": last.and_then(|message| message.tokens),
                         }),
                     ),
                 )
@@ -2013,6 +2041,17 @@ impl UiProvider for AgentChat {
             // The Chat settings dialog the gear opens (`task-2235`): the same flag the gear and the
             // dialog's round cross set, so an agent opening it and a person pressing the gear are one
             // thing. With nothing said it answers what the dialog shows.
+            // The run again button under an answer, by the answer's id or `last`.
+            "rerun" => {
+                let id = match rest.trim() {
+                    "" | "last" => None,
+                    words => Some(words.parse::<u64>().map_err(|_| {
+                        format!("rerun takes an answer's id or `last`, not `{words}`.")
+                    })?),
+                };
+                let sent = self.rerun(id)?;
+                Ok(Answer::said(format!("asked again as message {sent}")).with(serde_json::json!({ "id": sent })))
+            }
             "settings" => {
                 match rest.trim() {
                     "open" => self.ui.settings_open = true,
@@ -2057,7 +2096,8 @@ impl UiProvider for AgentChat {
                 "Idle, sending, streaming, waiting-for-tools, finished or failed.",
             ),
             ("messages", "The whole conversation as data."),
-            ("last", "Just the last answer."),
+            ("last", "Just the last answer, with how long it took and how many tokens it wrote."),
+            ("rerun", "Ask again the question an answer was given to: `rerun <answer id or last>`."),
             ("attach", "Attach a picture to the message being composed."),
             (
                 "providers",
@@ -2468,6 +2508,29 @@ mod tests {
         // And the draft is still there, because a refusal must not eat what somebody typed.
         assert_eq!(chat.draft, "hello");
         assert_eq!(chat.session.chat.messages.len(), 0);
+    }
+
+    #[test]
+    fn run_again_asks_the_question_the_answer_was_given_to_through_the_same_path_as_typing_it() {
+        let mut chat = opened("rerun");
+        // Nothing to run again yet.
+        let problem = chat.command("rerun", &["last".to_owned()]).expect_err("no answer");
+        assert!(problem.contains("no answer"), "{problem}");
+        chat.session.ask(Message::said(0, Role::User, "Why is the build slower?"));
+        chat.session.reply(unluminous_chat::Reply::Text("Because of kurbo.".to_owned()));
+        chat.session.reply(unluminous_chat::Reply::Finished { reason: "stop".to_owned() });
+        let answer = chat.session.chat.last().expect("an answer").id;
+        chat.draft = "half a thought".to_owned();
+        // The agent named here is not installed, so the question goes as far as `send` and is refused
+        // there, which is where typing it again and pressing send would have been refused too.
+        chat.configuration.choose("claude").expect("chosen");
+        chat.configuration.providers[0].command = "unluminous-no-such-agent-anywhere".to_owned();
+        let problem = chat.rerun(Some(answer)).expect_err("not installed");
+        assert!(problem.contains("unluminous-no-such-agent-anywhere"), "{problem}");
+        let problem = chat.command("rerun", &["last".to_owned()]).expect_err("not installed");
+        assert!(problem.contains("unluminous-no-such-agent-anywhere"), "{problem}");
+        assert_eq!(chat.draft, "half a thought", "what the person was typing stays where it was");
+        assert!(chat.command("rerun", &["soon".to_owned()]).is_err());
     }
 
     #[test]

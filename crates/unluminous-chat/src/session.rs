@@ -70,6 +70,9 @@ pub struct Session {
     /// every time. The largest report wins here, and the message's final figure is added to the
     /// conversation when the message ends.
     turn: Usage,
+    /// When the question that started this turn went out, and how many tokens the conversation had
+    /// been written before it, so the answer can say how long it took and what it wrote.
+    asked: Option<(std::time::Instant, u64)>,
 }
 
 impl Session {
@@ -81,6 +84,7 @@ impl Session {
             model: String::new(),
             round: 0,
             turn: Usage::default(),
+            asked: None,
         }
     }
 
@@ -116,9 +120,16 @@ impl Session {
     /// all. `task-2060`.
     pub fn ask_keeping_the_id(&mut self, message: Message) -> u64 {
         let id = self.chat.push(message);
+        self.asked = Some((std::time::Instant::now(), self.chat.usage.output));
         self.round = 0;
         self.begin();
         id
+    }
+
+    /// When the question that started the turn still arriving went out, for the pill that says how
+    /// long the agent has been thinking. `None` once the turn has ended.
+    pub fn turn_started(&self) -> Option<std::time::Instant> {
+        self.asked.map(|(at, _)| at)
     }
 
     /// A request has gone out, for this turn or for the round after a tool.
@@ -189,6 +200,15 @@ impl Session {
                 // that reports its context exactly replaces this a moment later with `Reply::Context`.
                 self.chat.context_used = Some(self.turn.input + self.turn.output);
             }
+            // A note between the messages, which says nothing and is never sent: `has_content` is false.
+            Reply::Compacted { before } => {
+                let id = self.chat.next_id();
+                let mut note = Message::new(id, Role::Assistant);
+                note.compacted = Some(before);
+                self.chat.push(note);
+                // The answer that was arriving carries on in a message after the note.
+                self.answering = None;
+            }
             Reply::Context { used, window } => {
                 if let Some(used) = used {
                     self.chat.context_used = Some(used);
@@ -217,6 +237,9 @@ impl Session {
                 }
                 self.drop_an_empty_answer();
                 self.bank_the_turn();
+                if !wants_tools {
+                    self.stamp_the_answer();
+                }
                 self.state = match wants_tools {
                     true => State::WaitingForTools,
                     false => State::Finished { reason },
@@ -237,6 +260,23 @@ impl Session {
                 self.bank_the_turn();
                 self.state = State::Failed(problem);
             }
+        }
+    }
+
+    /// Write how long the turn took and how many tokens it wrote onto the last answer of it.
+    fn stamp_the_answer(&mut self) {
+        let Some((started, before)) = self.asked.take() else { return };
+        let took = started.elapsed().as_millis() as u64;
+        let tokens = self.chat.usage.output.saturating_sub(before);
+        if let Some(message) = self
+            .chat
+            .messages
+            .iter_mut()
+            .rev()
+            .find(|message| message.role == Role::Assistant && message.compacted.is_none())
+        {
+            message.took_ms = Some(took);
+            message.tokens = (tokens > 0).then_some(tokens);
         }
     }
 
@@ -371,6 +411,30 @@ mod tests {
         let mut session = Session::new(Conversation::new("c1", "claude"));
         session.ask(Message::said(0, Role::User, "Why?"));
         session
+    }
+
+    #[test]
+    fn a_finished_answer_says_how_long_the_turn_took_and_what_it_wrote() {
+        let mut session = a_session();
+        session.reply(Reply::Text("Because".to_owned()));
+        session.reply(Reply::Usage { input: 10, output: 42 });
+        session.reply(Reply::Finished { reason: "stop".to_owned() });
+        let answer = session.chat.last().expect("an answer");
+        assert_eq!(answer.tokens, Some(42));
+        assert!(answer.took_ms.is_some());
+    }
+
+    #[test]
+    fn a_compacted_context_is_a_note_between_the_messages_and_is_never_sent() {
+        let mut session = a_session();
+        session.reply(Reply::Text("Half".to_owned()));
+        session.reply(Reply::Compacted { before: 41_000 });
+        session.reply(Reply::Text("Rest".to_owned()));
+        session.reply(Reply::Finished { reason: "stop".to_owned() });
+        let roles: Vec<Option<u64>> = session.chat.messages.iter().map(|m| m.compacted).collect();
+        assert_eq!(roles, vec![None, None, Some(41_000), None]);
+        assert!(!session.chat.messages[2].has_content());
+        assert_eq!(session.chat.last().expect("the rest").text(), "Rest");
     }
 
     #[test]

@@ -66,8 +66,14 @@ const BLOCK_SHARE: f32 = 0.98;
 const PICTURE: f32 = 200.0;
 /// One tool block's own header.
 const TOOL_ROW: f32 = 24.0;
-/// The thinking row's own header.
-const THINKING_ROW: f32 = 20.0;
+/// The thinking pill: `padding: 6px`, a 30 point avatar.
+const THINKING_ROW: f32 = 42.0;
+/// The row under an answer: two 30 point round buttons, and how long it took.
+const ACTIONS: f32 = 30.0;
+/// The note between two messages: `padding: 7px 16px` round 11 point words.
+const NOTE: f32 = 28.0;
+/// A picture inside the person's bubble sits in it with `padding: 6px`.
+const PICTURE_PAD: f32 = 6.0;
 
 /// One part of a row, with the height it takes.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -113,6 +119,10 @@ enum Piece {
     },
     /// The line under a question that has been sent and is waiting its turn.
     Queued,
+    /// Copy, run again, and how long the answer took and what it wrote.
+    Actions,
+    /// A note between the messages: the context was compacted here.
+    Note,
 }
 
 impl Piece {
@@ -125,7 +135,9 @@ impl Piece {
             Self::Picture { height, .. } => height,
             Self::Tool { body, .. } => TOOL_ROW + body,
             Self::Failure { body } => body + 94.0,
-            Self::Queued => THINKING_ROW,
+            Self::Queued => 20.0,
+            Self::Actions => ACTIONS,
+            Self::Note => NOTE,
         }
     }
 }
@@ -177,6 +189,11 @@ fn pieces(
     let in_block = (block - 24.0 * scale).max(24.0);
 
     let mut out = Vec::new();
+    // A note between the messages says nothing else.
+    if message.compacted.is_some() {
+        out.push(Piece::Note);
+        return (out, bubble, width * BLOCK_SHARE, text);
+    }
     // The avatar and the name over an answer, once, before anything else it said.
     let says = !text.is_empty() || !message.thinking.is_empty() || message.failure.is_some();
     if !mine && message.role == Role::Assistant && says {
@@ -191,24 +208,44 @@ fn pieces(
                     &format!("think-{}", message.id),
                     &message.thinking,
                     in_block,
-                ) + 6.0
+                ) + 24.0
+                    + 10.0
             }
             false => 0.0,
         };
         out.push(Piece::Thinking { body });
     }
+    // **The person's pictures go in their bubble, over their words**, which is the design's image
+    // bubble: a well holding the picture with six points round it, and the words under it.
+    let pictures: Vec<Piece> = message
+        .parts
+        .iter()
+        .enumerate()
+        .filter_map(|(index, part)| match part {
+            Part::Picture { bytes, .. } => {
+                let inside = most / scale - PICTURE_PAD * 2.0;
+                let key = picture_key(message, index);
+                let height = picture_height(state, &key, bytes, inside);
+                // **As wide as the picture**, so the bubble round it fits it rather than the row.
+                let wide =
+                    state.picture_sizes.get(&key).map_or(inside, |size| fit(*size, inside).0);
+                let width = match mine {
+                    true => ((wide + PICTURE_PAD * 2.0) * scale).min(most),
+                    false => most,
+                };
+                Some(Piece::Picture { index, width, height: height + PICTURE_PAD * 2.0 })
+            }
+            _ => None,
+        })
+        .collect();
+    if mine {
+        out.extend(pictures.iter().copied());
+    }
     if !text.is_empty() {
         out.extend(said(message, &text, state, look, width, most, smallest, ui));
     }
-    for (index, part) in message.parts.iter().enumerate() {
-        if let Part::Picture { bytes, .. } = part {
-            out.push(Piece::Picture {
-                index,
-                width: most,
-                height: picture_height(state, &picture_key(message, index), bytes, most / scale)
-                    + 8.0,
-            });
-        }
+    if !mine {
+        out.extend(pictures);
     }
     // A message whose tools are drawn as a run of their own — see [`run_height`] — leaves them out here.
     let tools = match with_tools {
@@ -228,6 +265,10 @@ fn pieces(
     // Under the bubble rather than over it, because it is a note about the question above it.
     if queued {
         out.push(Piece::Queued);
+    }
+    // **Copy and run again under a finished answer**, with how long it took and what it wrote.
+    if message.role == Role::Assistant && !text.is_empty() && message.finish.is_some() {
+        out.push(Piece::Actions);
     }
     (out, bubble, block, text)
 }
@@ -286,6 +327,30 @@ pub fn show(
     let Shape { pieces, bubble: bubble_width, block: block_width, text: said, .. } = shape;
     let mine = message.role == Role::User;
     let segments = segments_of(message, &said);
+    // **One bubble round a picture and the words under it.** Drawn first, so the picture and the
+    // words sit on it, and the words then draw no bubble of their own.
+    let pictured = mine && pieces.iter().any(|piece| matches!(piece, Piece::Picture { .. }));
+    let widest = pieces
+        .iter()
+        .map(|piece| match piece {
+            Piece::Picture { width, .. } => *width,
+            Piece::Words { bubble, .. } => *bubble,
+            _ => 0.0,
+        })
+        .fold(0.0_f32, f32::max);
+    if pictured {
+        let height: f32 = pieces
+            .iter()
+            .filter(|piece| matches!(piece, Piece::Picture { .. } | Piece::Words { .. }))
+            .map(|piece| piece.height() * scale + PIECE_GAP * scale)
+            .sum::<f32>()
+            - PIECE_GAP * scale;
+        let rect = Rect::from_min_size(
+            Pos2::new(area.right() - widest, area.top()),
+            Vec2::new(widest, height.max(0.0)),
+        );
+        bubble(state, ui, look, rect, message.id, usize::MAX);
+    }
     let mut pen = area.top();
     for piece in pieces {
         let height = piece.height() * scale;
@@ -297,18 +362,24 @@ pub fn show(
                 | Piece::Failure { .. }
                 | Piece::Thinking { .. }
                 | Piece::Block { .. }
+                | Piece::Speaker
+                | Piece::Actions
         );
         let width = match piece {
             Piece::Picture { width, .. } => width,
+            Piece::Words { .. } if pictured => widest,
             Piece::Words { bubble, .. } => bubble,
+            Piece::Note => area.width(),
             _ => match wide {
                 true => block_width,
                 false => bubble_width,
             },
         };
-        let left = match mine && !wide {
-            true => area.right() - width,
-            false => area.left(),
+        let left = match (mine && !wide, piece) {
+            // A picture in the person's bubble starts where the bubble does, over the words.
+            (true, Piece::Picture { .. }) if pictured => area.right() - widest,
+            (true, _) => area.right() - width,
+            (false, _) => area.left(),
         };
         let rect = Rect::from_min_size(Pos2::new(left, pen), Vec2::new(width, height));
         match piece {
@@ -318,7 +389,7 @@ pub fn show(
             }
             Piece::Words { segment, pad, .. } => {
                 let pad_x = if mine { PAD_X } else { 0.0 };
-                if mine {
+                if mine && !pictured {
                     bubble(state, ui, look, rect, message.id, segment);
                 }
                 let inside = Rect::from_min_size(
@@ -350,6 +421,8 @@ pub fn show(
             }
             Piece::Failure { .. } => failure(message, state, ui, look, rect),
             Piece::Queued => queued_note(ui, look, rect, mine),
+            Piece::Actions => acts.extend(answer_actions(message, &said, state, ui, look, rect)),
+            Piece::Note => note(message, state, ui, look, area, rect),
         }
         pen += height + PIECE_GAP * scale;
     }
@@ -469,8 +542,9 @@ fn words(
     if response.contains_pointer() {
         state.copy_shown = Some((message.id, now));
     }
-    let up =
-        state.copy_shown.is_some_and(|(id, when)| id == message.id && now - when < COPY_LINGER);
+    // An answer has its copy button in the row under it, so the hover button is the person's alone.
+    let up = mine
+        && state.copy_shown.is_some_and(|(id, when)| id == message.id && now - when < COPY_LINGER);
     if up {
         let at = Rect::from_center_size(
             Pos2::new(
@@ -562,7 +636,8 @@ fn speaker(state: &mut PaneState, ui: &mut egui::Ui, look: &Look<'_>, rect: Rect
     );
 }
 
-/// The `<think>` block: a quiet row that opens.
+/// The `<think>` block: the design's thinking pill, standing still because the thinking is over,
+/// which opens the reasoning in a well under it.
 fn thinking(
     message: &Message,
     state: &mut PaneState,
@@ -573,41 +648,148 @@ fn thinking(
 ) -> Vec<Act> {
     let scale = look.scale();
     let mut acts = Vec::new();
-    let head = Rect::from_min_size(rect.min, Vec2::new(rect.width(), THINKING_ROW * scale));
-    let response =
-        ui.interact(head, ui.id().with(("agent-chat-thinking", message.id)), Sense::click());
-    response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Thinking".to_owned())
-    });
-    let painter = painter_in(ui, rect);
-    icon::disclosure_at(
-        &painter,
-        Pos2::new(head.left() + 6.0 * scale, head.center().y),
-        open,
-        look.palette.text_faint,
-        scale,
-    );
-    painter.crisp_text(
-        Pos2::new(head.left() + 16.0 * scale, head.center().y),
-        egui::Align2::LEFT_CENTER,
-        "Thinking",
-        egui::FontId::proportional(look.font_size * 0.78),
-        look.palette.text_faint,
-    );
-    if response.clicked() {
+    let agent = look.palette.agent;
+    let words = match state.speaker.is_empty() {
+        true => "How the agent thought it through".to_owned(),
+        false => format!("How {} thought it through", state.speaker),
+    };
+    let label = match open {
+        true => "Hide",
+        false => "Show",
+    };
+    let pressed =
+        kit::layer(state, look, ui, ("thinking", message.id), rect, kit::SMALL_REACH, |rux| {
+            let pill = rux::components::ThinkingPill::new(&words, label, agent).running(false);
+            let size = pill.measure(rux);
+            let at = Rect::from_min_size(rect.min, Vec2::new(size.x.min(rect.width()), size.y));
+            pill.show(rux, at).clicked()
+        });
+    if pressed {
         acts.push(Act::ToggleThinking(message.id));
     }
     if open {
-        let body = Rect::from_min_max(
-            Pos2::new(rect.left() + 16.0 * scale, head.bottom() + 2.0 * scale),
+        let well = Rect::from_min_max(
+            Pos2::new(rect.left(), rect.top() + (THINKING_ROW + 10.0) * scale),
             rect.max,
         );
+        kit::layer(state, look, ui, ("thinking-well", message.id), well, 0.0, |rux| {
+            rux::components::chat_well(rux, well, rux.z(16.0));
+        });
+        let body = well.shrink2(Vec2::new(14.0 * scale, 12.0 * scale));
         let key = format!("think-{}", message.id);
-        let code = code_colours(look);
+        let code = in_a_well(look);
         let made = rendered(state, look, &key, &message.thinking, body.width());
         crate::components::markdown_text::show_with(ui, body, made, look.renderer, 0.0, Some(code));
     }
     acts
+}
+
+/// The row under a finished answer: copy it, ask the same question again, and how long the answer
+/// took and how many tokens it wrote, which is the design's `2m 41s · 1.2k tokens`.
+fn answer_actions(
+    message: &Message,
+    said: &str,
+    state: &mut PaneState,
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    rect: Rect,
+) -> Vec<Act> {
+    let scale = look.scale();
+    let mut acts = Vec::new();
+    let side = ACTIONS * scale;
+    let copy = Rect::from_min_size(rect.min, Vec2::splat(side));
+    let again =
+        Rect::from_min_size(Pos2::new(copy.right() + 4.0 * scale, rect.top()), Vec2::splat(side));
+    let (copied, rerun) = kit::layer(
+        state,
+        look,
+        ui,
+        ("answer-actions", message.id),
+        rect,
+        kit::SMALL_REACH,
+        |rux| {
+            use rux::components::{RoundButton, RoundSize};
+            let copied = RoundButton::mark(rux::Icon::Copy, 14.0, "Copy answer")
+                .size(RoundSize::Small)
+                .ghost()
+                .show(rux, copy)
+                .clicked();
+            let rerun = RoundButton::mark(rux::Icon::Rerun, 18.0, "Run again")
+                .size(RoundSize::Small)
+                .ghost()
+                .show(rux, again)
+                .clicked();
+            (copied, rerun)
+        },
+    );
+    if copied {
+        acts.push(Act::Copy(said.to_owned()));
+    }
+    if rerun {
+        acts.push(Act::Rerun(message.id));
+    }
+    let words = answer_figures(message);
+    if !words.is_empty() {
+        let painter = painter_in(ui, rect);
+        let style = rux::Style::sans(11.0 * scale);
+        let ink = crate::theme::rux_theme().ink.i400;
+        let galley = rux::text::layout(&painter, style, &words, ink);
+        rux::text::draw_left_capitals(
+            &painter,
+            Pos2::new(again.right() + 8.0 * scale, rect.center().y),
+            galley,
+            style,
+            ink,
+        );
+    }
+    acts
+}
+
+/// How long an answer took and how many tokens it wrote: `2m 41s · 1.2k tokens`. Either half is left
+/// out when the agent did not say it.
+pub fn answer_figures(message: &Message) -> String {
+    let mut parts = Vec::new();
+    if let Some(took_ms) = message.took_ms {
+        parts.push(took(took_ms));
+    }
+    if let Some(tokens) = message.tokens {
+        parts.push(match tokens >= 1000 {
+            true => format!("{:.1}k tokens", tokens as f64 / 1000.0),
+            false => format!("{tokens} tokens"),
+        });
+    }
+    parts.join(" \u{b7} ")
+}
+
+/// The note that the agent compacted its context here, centred between the messages in a well.
+fn note(
+    message: &Message,
+    state: &mut PaneState,
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    area: Rect,
+    rect: Rect,
+) {
+    let before = message.compacted.unwrap_or(0);
+    let words = match before {
+        0 => "Context compacted".to_owned(),
+        _ => format!("Context compacted \u{b7} {} tokens before", compact_count(before)),
+    };
+    kit::layer(state, look, ui, ("note", message.id), rect, kit::SMALL_REACH, |rux| {
+        let pill = rux::components::NotePill::new(&words);
+        let size = pill.measure(rux);
+        let at = Rect::from_center_size(Pos2::new(area.center().x, rect.center().y), size);
+        pill.show(rux, at);
+    });
+}
+
+/// `41234` as `41k`, `1200000` as `1.2M`.
+pub fn compact_count(count: u64) -> String {
+    match count {
+        0..=999 => count.to_string(),
+        1000..=999_999 => format!("{}k", (count as f64 / 1000.0).round()),
+        _ => format!("{:.1}M", count as f64 / 1_000_000.0),
+    }
 }
 
 /// Where a message's picture is cached, by the message and the part.
@@ -688,27 +870,35 @@ fn picture(
     };
     let scale = look.scale();
     let size = texture.size_vec2();
-    // The same arithmetic the row was measured with, so the picture fills the room reserved for it.
-    let (wide, tall) = fit((size.x, size.y), rect.width() / scale);
-    // On its own side, which is what makes a picture somebody sent read as part of what they said.
-    let left = match message.role == Role::User {
-        true => rect.right() - (wide + 2.0) * scale,
-        false => rect.left() + 2.0 * scale,
+    let mine = message.role == Role::User;
+    let pad = PICTURE_PAD * scale;
+    let room = match mine {
+        true => rect.width() / scale - PICTURE_PAD * 2.0,
+        false => rect.width() / scale,
     };
-    let drawn = Rect::from_min_size(
-        Pos2::new(left, rect.top() + 4.0 * scale),
-        Vec2::new(wide, tall) * scale,
-    );
+    // The same arithmetic the row was measured with, so the picture fills the room reserved for it.
+    let (wide, tall) = fit((size.x, size.y), room);
+    // In the person's bubble with six points round it; under an answer on the pane.
+    let drawn = match mine {
+        true => Rect::from_min_size(
+            Pos2::new(rect.left() + pad, rect.top() + pad),
+            Vec2::new(wide, tall) * scale,
+        ),
+        false => Rect::from_min_size(
+            rect.min + Vec2::new(2.0, 4.0) * scale,
+            Vec2::new(wide, tall) * scale,
+        ),
+    };
+    let radius = 17.0 * scale;
     kit::layer(state, look, ui, ("picture", message.id, index), drawn, kit::SMALL_REACH, |rux| {
         let chat = rux.theme().chat;
-        rux.chrome.surface(drawn, rux.z(17.0), chat.well, chat.raised_sm());
+        rux.chrome.surface(drawn, radius, chat.well, chat.carved());
     });
-    painter_in(ui, rect).image(
-        texture.id(),
-        drawn,
-        Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-        Color32::WHITE, // any ground: an image's tint, which leaves it as it is
-    );
+    // **Round corners on the picture itself**, `border-radius: 17px`, through a textured rectangle.
+    let tint = Color32::WHITE; // any ground: an image's tint, which leaves it as it is
+    let shape = egui::epaint::RectShape::filled(drawn, radius, tint)
+        .with_texture(texture.id(), Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)));
+    painter_in(ui, rect).add(shape);
 }
 
 /// How tall a tool block's open body is.
@@ -858,6 +1048,68 @@ pub fn tool_title(tool: &ToolCall) -> String {
     }
 }
 
+/// Whether a call ran a shell command: its arguments name one.
+fn ran_a_command(tool: &ToolCall) -> bool {
+    let arguments: serde_json::Value = serde_json::from_str(&tool.arguments).unwrap_or_default();
+    arguments["command"].is_string() || arguments["cmd"].is_string()
+}
+
+/// The file a call read, when it is a read of one file: Claude Code's `Read`, and the `read` and
+/// `view` tools other agents have.
+fn file_read(tool: &ToolCall) -> Option<String> {
+    let name = tool_name(tool).to_ascii_lowercase();
+    if !matches!(name.as_str(), "read" | "read_file" | "view" | "readfile") {
+        return None;
+    }
+    let arguments: serde_json::Value = serde_json::from_str(&tool.arguments).ok()?;
+    ["file_path", "path", "file"]
+        .into_iter()
+        .find_map(|key| arguments[key].as_str().map(str::trim).filter(|one| !one.is_empty()))
+        .map(str::to_owned)
+}
+
+/// The files a run read, when every call in it finished reading one: the design's `Read 4 files` card,
+/// which shows them as chips rather than as a list to open.
+fn reads(tools: &[&ToolCall]) -> Option<Vec<String>> {
+    if tools.iter().any(|tool| tool.is_running() || tool.failed) {
+        return None;
+    }
+    tools.iter().map(|tool| file_read(tool)).collect()
+}
+
+/// The name a chip shows for a path: the file, and its folder when it has one, `theme/icon.rs`.
+fn chip_name(path: &str) -> String {
+    let parts: Vec<&str> = path.split(['/', '\\']).filter(|part| !part.is_empty()).collect();
+    match parts.as_slice() {
+        [.., folder, file] => format!("{folder}/{file}"),
+        [file] => (*file).to_owned(),
+        [] => path.to_owned(),
+    }
+}
+
+/// Where each chip of a `Read` card goes, in unscaled points from the top left of the chips: `height:
+/// 30px; gap: 8px`, wrapped at `width`. A chip's width is worked out from its letters, the same way
+/// for measuring and drawing, so the two agree.
+fn chip_places(names: &[String], width: f32) -> Vec<Rect> {
+    let mut places = Vec::with_capacity(names.len());
+    let (mut x, mut y) = (0.0_f32, 0.0_f32);
+    for name in names {
+        let wide = (name.chars().count() as f32 * 6.4 + 39.0).min(width);
+        if x > 0.0 && x + wide > width {
+            x = 0.0;
+            y += 38.0;
+        }
+        places.push(Rect::from_min_size(Pos2::new(x, y), Vec2::new(wide, 30.0)));
+        x += wide + 8.0;
+    }
+    places
+}
+
+/// How tall a `Read` card's chips are, in unscaled points.
+fn chips_height(names: &[String], width: f32) -> f32 {
+    chip_places(names, width).last().map_or(0.0, |last| last.bottom())
+}
+
 /// Whether one call's arguments and answer are showing.
 fn tool_open(tool: &ToolCall, state: &PaneState) -> bool {
     state.opened_tools.contains(&tool.id) || tool.is_running()
@@ -903,6 +1155,11 @@ pub fn run_height(tools: &[&ToolCall], state: &mut PaneState, look: &Look<'_>, w
     }
     let inside = (width / scale - (CARD_PAD + WELL_PAD_X) * 2.0).max(24.0) * scale;
     let mut height = CARD_PAD * 2.0 + CARD_HEADER;
+    if let Some(files) = reads(tools) {
+        let names: Vec<String> = files.iter().map(|file| chip_name(file)).collect();
+        return (height + CARD_PAD + chips_height(&names, width / scale - CARD_PAD * 2.0 - 4.0))
+            * scale;
+    }
     if run_open(tools, state) {
         height += CARD_PAD + run_body(tools, state, look, inside);
     }
@@ -920,10 +1177,17 @@ pub fn run_show(
     use rux::components::{RoundButton, RoundContent, RoundSize, Status, StatusWell};
     let scale = look.scale();
     let mut acts = Vec::new();
+    if let Some(files) = reads(tools) {
+        return read_card(tools, &files, state, ui, look, rect);
+    }
     let open = run_open(tools, state);
     let status = run_status(tools);
     let (title, mono) = match tools {
         [only] => (tool_title(only), true),
+        // `Ran 3 commands` when every call ran one, which is the design's word for a shell command.
+        many if many.iter().all(|tool| ran_a_command(tool)) => {
+            (format!("Ran {} commands", many.len()), false)
+        }
         many => (format!("Ran {} tool calls", many.len()), false),
     };
     let detail = match tools.iter().find(|tool| tool.is_running()) {
@@ -1089,6 +1353,62 @@ pub fn run_show(
             let body = well.shrink2(Vec2::new(WELL_PAD_X * scale, WELL_PAD_Y * scale));
             tool_body(only, state, ui, look, body);
         }
+    }
+    acts
+}
+
+/// A run of reads: a card with a done well, `Read 4 files` and how long it took, and a chip for each
+/// file that opens it.
+fn read_card(
+    tools: &[&ToolCall],
+    files: &[String],
+    state: &mut PaneState,
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    rect: Rect,
+) -> Vec<Act> {
+    let scale = look.scale();
+    let mut acts = Vec::new();
+    let names: Vec<String> = files.iter().map(|file| chip_name(file)).collect();
+    let title = match files.len() {
+        1 => "Read 1 file".to_owned(),
+        count => format!("Read {count} files"),
+    };
+    let total: u64 = tools.iter().filter_map(|tool| tool.took).sum();
+    let pad = CARD_PAD * scale;
+    let header = Rect::from_min_size(
+        rect.min + Vec2::splat(pad),
+        Vec2::new(rect.width() - pad * 2.0, CARD_HEADER * scale),
+    );
+    let origin = Pos2::new(header.left() + 2.0 * scale, header.bottom() + pad);
+    let places = chip_places(&names, rect.width() / scale - CARD_PAD * 2.0 - 4.0);
+    let pressed =
+        kit::layer(state, look, ui, ("reads", run_key(tools)), rect, kit::CARD_REACH, |rux| {
+            rux::components::chat_card(rux, rect, rux.z(22.0));
+            rux::components::card_header(
+                rux,
+                header,
+                rux::components::Lead::Status(rux::components::Status::Done),
+                &title,
+                &took(total),
+                None,
+            );
+            let mut pressed = None;
+            for (index, (name, place)) in names.iter().zip(&places).enumerate() {
+                let chip =
+                    Rect::from_min_size(origin + place.min.to_vec2() * scale, place.size() * scale);
+                if rux::components::FileChip::new(name)
+                    .label(format!("Open {}", files[index]))
+                    .show(rux, chip)
+                    .clicked()
+                {
+                    pressed = Some(index);
+                }
+            }
+            pressed
+        });
+    if let Some(index) = pressed {
+        acts.push(Act::OpenFile(files[index].clone(), None));
     }
     acts
 }
@@ -1476,8 +1796,8 @@ fn block_show(
     rux_state.set_zoom(look.scale());
     rux_state.set_still(*still);
     crate::theme::in_step(rux_state);
-    // Room round the plate for its shadow, which the layer's canvas would otherwise cut off.
-    let reach = 14.0 * look.scale();
+    // Room round the card for its shadow, which the layer's canvas would otherwise cut off.
+    let reach = kit::CARD_REACH * look.scale();
     let scope = ui.id();
     let id = scope.with(("agent-chat-block-layer", &key));
     // A component takes a press over its own rectangle, for the reason `welcome::show` gives: on a
@@ -1503,6 +1823,50 @@ fn block_show(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The row under an answer: how long it took and what it wrote, each left out when not known.
+    #[test]
+    fn an_answer_says_how_long_it_took_and_what_it_wrote() {
+        let mut answer = Message::new(1, Role::Assistant);
+        assert_eq!(answer_figures(&answer), "");
+        answer.took_ms = Some(161_000);
+        answer.tokens = Some(1_240);
+        assert_eq!(answer_figures(&answer), "2m 41s \u{b7} 1.2k tokens");
+        answer.took_ms = None;
+        answer.tokens = Some(310);
+        assert_eq!(answer_figures(&answer), "310 tokens");
+        assert_eq!(compact_count(41_234), "41k");
+        assert_eq!(compact_count(1_200_000), "1.2M");
+    }
+
+    /// A run of reads that all finished is the `Read 4 files` card; anything else in it is not.
+    #[test]
+    fn a_run_of_reads_is_shown_as_the_files_it_read() {
+        let mut read = ToolCall::new("a", "Read", r#"{"file_path":"C:/p/src/theme/icon.rs"}"#);
+        read.answer = Some("...".into());
+        let mut other = ToolCall::new("b", "Bash", r#"{"command":"cargo test"}"#);
+        other.answer = Some("ok".into());
+        assert_eq!(reads(&[&read]), Some(vec!["C:/p/src/theme/icon.rs".to_owned()]));
+        assert_eq!(reads(&[&read, &other]), None);
+        let running = ToolCall::new("c", "Read", r#"{"file_path":"a.rs"}"#);
+        assert_eq!(reads(&[&running]), None, "a read still running is not a file read yet");
+        assert_eq!(chip_name("C:/p/src/theme/icon.rs"), "theme/icon.rs");
+        assert!(ran_a_command(&other) && !ran_a_command(&read));
+    }
+
+    /// The chips wrap where measuring said they would, so the card is as tall as what it draws.
+    #[test]
+    fn the_chips_wrap_inside_their_width() {
+        let names: Vec<String> = ["Cargo.toml", "Cargo.lock", "theme/mod.rs", "theme/icon.rs"]
+            .map(String::from)
+            .to_vec();
+        let places = chip_places(&names, 260.0);
+        assert!(places.iter().all(|place| place.right() <= 260.0 + 0.01));
+        assert!(places
+            .windows(2)
+            .all(|pair| pair[0].bottom() <= pair[1].top() || pair[0].right() <= pair[1].left()));
+        assert_eq!(chips_height(&names, 260.0), places.last().expect("chips").bottom());
+    }
 
     /// `task-2235`: a run card names the command a call ran, which is what the design's card shows.
     #[test]

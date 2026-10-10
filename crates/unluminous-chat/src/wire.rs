@@ -86,6 +86,11 @@ pub enum Reply {
         used: Option<u64>,
         window: Option<u64>,
     },
+    /// The agent compacted its context, which held `before` tokens (`task-2235`). Claude Code says so
+    /// with a `compact_boundary` system message.
+    Compacted {
+        before: u64,
+    },
     /// The answer is over, and why: `stop`, `tool_use`, `length`.
     Finished {
         reason: String,

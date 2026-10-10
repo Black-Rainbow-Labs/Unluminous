@@ -123,10 +123,13 @@ pub enum ChartKind {
     Line,
     Area,
     Donut,
+    /// What something was and what was added to it, as a ring of two with the total in the middle
+    /// (`task-2235`). One series of two values.
+    Dial,
 }
 
 impl ChartKind {
-    pub const NAMES: &'static [&'static str] = &["bar", "line", "area", "donut"];
+    pub const NAMES: &'static [&'static str] = &["bar", "line", "area", "donut", "dial"];
 
     pub fn name(self) -> &'static str {
         Self::NAMES[self as usize]
@@ -183,6 +186,8 @@ pub struct Stat {
     /// Whether going up is good. A build time going up is bad, a pass rate going up is good.
     pub up_is_good: bool,
     pub note: String,
+    /// The last few values, oldest first, drawn as a sparkline under the number (`task-2235`).
+    pub history: Vec<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -853,6 +858,12 @@ impl Reader {
                 trend,
                 up_is_good,
                 note: self.text(item, &here, "note", false),
+                history: self
+                    .list(item, &here, "history", false)
+                    .iter()
+                    .filter_map(Value::as_f64)
+                    .filter(|number| number.is_finite())
+                    .collect(),
             });
         }
         Kind::Stats { items }
@@ -878,6 +889,7 @@ impl Reader {
             Some("line") => ChartKind::Line,
             Some("area") => ChartKind::Area,
             Some("donut") | Some("pie") => ChartKind::Donut,
+            Some("dial") | Some("gauge") => ChartKind::Dial,
             _ => ChartKind::Bar,
         }
     }

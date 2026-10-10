@@ -88,6 +88,8 @@ pub enum Act {
     OpenFile(String, Option<u32>),
     /// Open or close the Chat settings dialog.
     ShowSettings(bool),
+    /// Ask again the question the answer with this id was given to.
+    Rerun(u64),
 }
 
 /// Draw the pane, and act on what was pressed.
@@ -635,9 +637,11 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
         // the conversation as it was last frame and therefore lands at the bottom once clamped, while
         // being an ordinary number all the way through.
         //
-        // `scrolled` is where the conversation was left, measured at the end of the previous frame, and
-        // one pane's height past it is further than any single message can have added.
-        scroller = scroller.vertical_scroll_offset(parts.state.scrolled.max(0.0) + area.height());
+        // `scrollable` is how far the conversation could be scrolled at the end of the previous frame,
+        // and one pane's height past that is further than any single message can have added. Past
+        // `scrolled` alone was not enough from near the top of a long conversation.
+        let bottom = parts.state.scrollable.max(parts.state.scrolled).max(0.0);
+        scroller = scroller.vertical_scroll_offset(bottom + area.height());
     } else if let Some(offset) = parts.state.scroll_to.take() {
         // A zoom moved everything, so the point that was under the pointer is put back under it. The same
         // one-shot shape, worked out by `AgentChat::zoomed`. `task-1771`.
@@ -704,6 +708,31 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
             }
             ui.add_space(GAP * look.scale());
         }
+        // **`claude is thinking 0:04`** while a turn is on and nothing it said is arriving yet: the
+        // design's thinking pill, its arc going round the avatar. Gone the moment words arrive.
+        if let Some(started) = waiting_since(session) {
+            let height = 42.0 * look.scale();
+            let (slot, _) =
+                ui.allocate_exact_size(Vec2::new(area.width(), height), egui::Sense::hover());
+            let rect = slot.shrink2(Vec2::new(side, 0.0));
+            let seconds = started.elapsed().as_secs();
+            let time = format!("{}:{:02}", seconds / 60, seconds % 60);
+            let words = match parts.state.speaker.is_empty() {
+                true => "The agent is thinking".to_owned(),
+                false => format!("{} is thinking", parts.state.speaker),
+            };
+            let agent = look.palette.agent;
+            kit::layer(parts.state, look, ui, "thinking-now", rect, kit::SMALL_REACH, |rux| {
+                let pill = rux::components::ThinkingPill::new(&words, &time, agent);
+                let size = pill.measure(rux);
+                pill.show(
+                    rux,
+                    Rect::from_min_size(rect.min, Vec2::new(size.x.min(rect.width()), size.y)),
+                );
+            });
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(250));
+            ui.add_space(GAP * look.scale());
+        }
         ui.cursor().top() - rows_top
     });
     parts.state.rows_height = scrolled.inner;
@@ -719,6 +748,25 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
     parts.state.scrollable = (scrolled.content_size.y - area.height()).max(0.0);
     look.chrome.unclip();
     acts
+}
+
+/// When the turn that is on started, while nothing it says is arriving: the last message is the
+/// question, or an answer with no words yet and no tool still running.
+fn waiting_since(session: &unluminous_chat::Session) -> Option<std::time::Instant> {
+    if !session.is_busy() {
+        return None;
+    }
+    let last = session
+        .chat
+        .messages
+        .iter()
+        .rev()
+        .find(|message| message.role != unluminous_chat::Role::Tool)?;
+    let quiet = match last.role {
+        unluminous_chat::Role::User => true,
+        _ => last.text().trim().is_empty() && !last.tools.iter().any(|tool| tool.is_running()),
+    };
+    quiet.then(|| session.turn_started()).flatten()
 }
 
 /// One row of the conversation: something said, or a run of tool calls between two things said.
@@ -756,6 +804,7 @@ fn rows_of<'a>(
             || !one.text().trim().is_empty()
             || !one.thinking.is_empty()
             || one.failure.is_some()
+            || one.compacted.is_some()
             || one
                 .parts
                 .iter()
@@ -1011,6 +1060,14 @@ fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {
                 // Through the same path as typing and pressing send, so it queues behind an answer
                 // that is still arriving and refuses with a notice when nothing can answer it.
                 if let Err(problem) = chat.send_words(&words) {
+                    requests.push(Request::Notice {
+                        text: problem,
+                        kind: crate::components::toast::Kind::Problem,
+                    });
+                }
+            }
+            Act::Rerun(id) => {
+                if let Err(problem) = chat.rerun(Some(id)) {
                     requests.push(Request::Notice {
                         text: problem,
                         kind: crate::components::toast::Kind::Problem,

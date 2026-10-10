@@ -560,8 +560,20 @@ a provider) and the context ring in a Chat settings dialog that only its round c
   colour by `Chat::lit_from`, so on Unluminous Dark's `#1f232a` they are exactly the canvas's hex and on
   Unluminous Light they are the same design turned the right way up. `components/agent_chat/kit.rs`
   opens a small `rux` layer for each piece, and the words are drawn after it so they sit on top.
-- **There are no status dots and no segmented meters.** State is a `StatusWell`, an amount is a `Track`,
-  a `Dial` or a `Ring`; the components an answer holds use them too (`progress`, `checklist`).
+- **There are no status dots, lamps or segmented meters anywhere in the pane**, the answer components
+  included. State is a `StatusWell`, an amount is a `Track`, a `Dial`, a `Ring` or an `AreaChart`, a
+  headline number is a `Readout` with its sparkline, and pressing is a `PillButton` or a `PillSwitch`.
+  `blocks.rs` draws every component from these: a donut is the ring and its `Legend`, `kind: dial` is
+  what was added, bars are tracks with last time's mark, a line or an area is the area chart in a
+  well, a table and a list of names and values are wells with hairlines, files are `FileChip`s and a
+  diff is the `DiffCard`. Nothing in `components/agent_chat` uses `rux::components::instrument` now.
+- **Under a finished answer is copy, run again, and how long it took and what it wrote**
+  (`Message::took_ms` and `tokens`, set when the turn ends). `plugins run agent-chat rerun <id|last>`
+  is the agent's half. A turn waiting for its first words shows `claude is thinking 0:04`, the
+  reasoning is a `ThinkingPill` that opens into a well, a run of reads is `Read 4 files` with a chip
+  each, a picture the person sends is in their bubble, and Claude Code's `compact_boundary` becomes a
+  `NotePill` between the messages (`Reply::Compacted`, a message whose `compacted` is set and which is
+  never sent).
 - **The model dropdown, the attach button and the file chip are not in the prompt box.** A picture still
   goes up by dropping or pasting it.
 - **`plugins run agent-chat settings [open|close]`** is the agent's half of the gear, and `plugins view

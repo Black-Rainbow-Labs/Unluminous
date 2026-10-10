@@ -167,6 +167,14 @@ pub struct Message {
     pub finish: Option<String>,
     /// The server's own words, when the request failed. Never invented — see `unluminous-git`'s rule.
     pub failure: Option<String>,
+    /// How long the turn this answer ended took, from the question going out to the answer finishing,
+    /// in milliseconds. Drawn under the answer beside its tokens (`task-2235`).
+    pub took_ms: Option<u64>,
+    /// How many tokens the model wrote for the turn this answer ended.
+    pub tokens: Option<u64>,
+    /// The agent compacted its context here, and this many tokens were in it before. A message with
+    /// this set says nothing and is not sent; it is drawn as a note between the messages.
+    pub compacted: Option<u64>,
 }
 
 impl Message {
@@ -180,6 +188,9 @@ impl Message {
             tools: Vec::new(),
             finish: None,
             failure: None,
+            took_ms: None,
+            tokens: None,
+            compacted: None,
         }
     }
 
@@ -370,6 +381,9 @@ fn message_json(message: &Message) -> serde_json::Value {
         "thinking": message.thinking,
         "finish": message.finish,
         "failure": message.failure,
+        "took": message.took_ms,
+        "tokens": message.tokens,
+        "compacted": message.compacted,
         "pictures": message
             .pictures()
             .map(|(name, media, bytes)| serde_json::json!({ "name": name, "media": media, "bytes": bytes.len() }))

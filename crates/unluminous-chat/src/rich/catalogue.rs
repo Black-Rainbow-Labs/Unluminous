@@ -129,10 +129,10 @@ pub const ENTRIES: &[Entry] = &[
         when: "two to six headline numbers, each with how it changed",
         fields: &[required(
             "items",
-            "[{label, value, delta, trend, good, note}]",
-            "trend is up, down or flat (read from a +/- delta when left out); good is up or down, which way is better; up when left out",
+            "[{label, value, delta, trend, good, note, history}]",
+            "trend is up, down or flat (read from a +/- delta when left out); good is up or down, which way is better; up when left out; history is the last few values, oldest first, drawn as a sparkline",
         )],
-        example: r#"{"type": "stats", "items": [{"label": "Total", "value": "178 s", "delta": "+42%", "good": "down"}, {"label": "App", "value": "131 s", "delta": "+61%", "good": "down"}, {"label": "Core", "value": "38 s", "delta": "-7%", "good": "down"}]}"#,
+        example: r#"{"type": "stats", "items": [{"label": "Total", "value": "178 s", "delta": "+39%", "good": "down", "history": [126, 131, 129, 134, 151, 170, 178]}, {"label": "App", "value": "131 s", "delta": "+62%", "good": "down", "history": [81, 84, 83, 88, 104, 122, 131]}, {"label": "Core", "value": "38 s", "delta": "-7%", "good": "down", "history": [41, 41, 40, 40, 39, 38, 38]}]}"#,
     },
     Entry {
         name: "progress",
@@ -146,7 +146,7 @@ pub const ENTRIES: &[Entry] = &[
         group: "Numbers",
         when: "numbers compared across categories or over time",
         fields: &[
-            field("kind", "bar | line | area | donut", "bar when left out; donut takes one series"),
+            field("kind", "bar | line | area | donut | dial", "bar when left out; donut takes one series, its first value is the one the chart is about; dial takes one series of two values, what it was and what was added; bar with two series draws this one against the last as a marker"),
             required("labels", "[text]", "the categories, or the points along the x axis"),
             required("series", "[{name, values}]", "one list of numbers per series, as long as labels"),
             field("unit", "text", "written after every value, like s or MB; $ goes in front"),
@@ -345,6 +345,34 @@ pub fn gallery() -> Vec<(&'static str, String)> {
                 block("chart"),
                 block("actions")
             ),
+        ),
+        (
+            "Where does the release build's time go?",
+            concat!(
+                "This week's 178 seconds against last week's 128:
+
+",
+                "```ui
+{\"type\": \"chart\", \"kind\": \"dial\", \"title\": \"Release build\", \"unit\": \"s\", \"labels\": [\"Last week\", \"Added this week\"], \"series\": [{\"name\": \"seconds\", \"values\": [128, 50]}]}
+```
+
+",
+                "Most of it is the app crate:
+
+",
+                "```ui
+{\"type\": \"chart\", \"kind\": \"donut\", \"title\": \"Where the time goes\", \"unit\": \"s\", \"labels\": [\"unluminous-app\", \"unluminous-core\", \"unluminous-cli\"], \"series\": [{\"name\": \"seconds\", \"values\": [131, 38, 9]}]}
+```
+
+",
+                "It rose when rux was added:
+
+",
+                "```ui
+{\"type\": \"chart\", \"kind\": \"area\", \"title\": \"Release build · 14 days\", \"unit\": \"s\", \"labels\": [\"26 Sep\", \"27 Sep\", \"28 Sep\", \"29 Sep\", \"30 Sep\", \"1 Oct\", \"2 Oct\", \"3 Oct\", \"4 Oct\", \"5 Oct\", \"6 Oct\", \"7 Oct\", \"8 Oct\", \"9 Oct\"], \"series\": [{\"name\": \"seconds\", \"values\": [119, 121, 118, 124, 122, 126, 125, 131, 129, 134, 151, 170, 176, 178]}]}
+```"
+            )
+            .to_owned(),
         ),
         (
             "Is it safe to rebase task-2211 onto main now?",

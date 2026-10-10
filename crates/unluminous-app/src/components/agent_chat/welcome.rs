@@ -5,20 +5,21 @@
 //! needs before the first question and cannot see anywhere else in the window:
 //!
 //! 1. **Who is answering.** The agent's name, set large, on the project it is working in.
-//! 2. **Whether it can.** A status screen whose lamps light in turn as the pane opens, the way an
-//!    instrument's do when it is switched on: the agent ready or not installed, the access it has, the
-//!    project, and the file showing. These are the facts a person needs to trust an answer about code.
+//! 2. **Whether it can.** A card of rows, each led by a status well or a mark in a well: the agent
+//!    ready or not installed, the access it has, the project, and the file showing. These are the
+//!    facts a person needs to trust an answer about code.
 //! 3. **Where you were.** The last three conversations, each a row that opens it. They are the person's
 //!    own, so they are not suggestions.
 //! 4. **The keys.** One quiet line over the composer.
 //!
-//! It is laid out in the instrument language of `blocks` (`tasks/task-2211-agent-chat-intelligent-ui-tdd.md`
-//! §5.0) and drawn with the same `rux` state, and it gives up its sections from the bottom as the pane
-//! gets shorter, so a narrow column or a strip along the bottom still reads as a composed page.
+//! It is drawn with the Agent-Chat design's parts, as `blocks` is (`task-2235`): the agent's avatar
+//! raised from the pane, a card holding the rows, and the earlier conversations in a well. There are
+//! no lamps. It gives up its sections from the bottom as the pane gets shorter, so a narrow column or
+//! a strip along the bottom still reads as a composed page.
 
-use egui::{Pos2, Rect, Sense, Stroke, Vec2};
-use rux::components::instrument::{self, timing, Instrument, SILK};
-use rux::Style;
+use egui::{Pos2, Rect, Sense, Vec2};
+use rux::components::{card_header, chat_card, chat_raised_sm, chat_well, Lead, Status as State};
+use rux::{Icon, Style};
 use unluminous_chat::Wire;
 
 use super::Act;
@@ -29,10 +30,8 @@ use crate::services::plugin_ui::Look;
 const HEADLINE: Style = Style::sans(19.0).semibold().tracking(-0.02).leading(1.2);
 /// The line under it.
 const LEDE: Style = Style::sans(12.5).leading(1.55);
-/// A value on the status screen.
-const VALUE: Style = Style::sans(12.5);
-/// A detail at the right of a status row.
-const DETAIL: Style = Style::mono(10.5);
+/// How old a conversation is, at the right of its row.
+const DETAIL: Style = Style::sans(11.0);
 /// A conversation's name in the list.
 const ROW: Style = Style::sans(12.5);
 
@@ -58,13 +57,12 @@ pub fn ago(changed: u64, now: u64) -> String {
     }
 }
 
-/// One row of the status screen.
+/// One row of the status card: what leads it, the value, and what the value is.
 struct Status {
+    lead: Lead,
     label: &'static str,
     value: String,
     detail: String,
-    /// The lamp's colour, or `None` for a dark one.
-    lamp: Option<egui::Color32>,
 }
 
 /// Draw the welcome into `area`, and say what was pressed.
@@ -96,6 +94,7 @@ pub fn show(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
     let showing = parts.showing.map(|path| path.to_path_buf());
     let permission = parts.configuration.permission;
     let tools = parts.configuration.tools;
+    let agent = look.palette.agent;
     // **Under the pane's own id**, which is how the bubbles are named too: a canvas can hold several
     // chat nodes, each showing a welcome, and two widgets with one id are one widget to egui.
     let id = ui.id().with("agent-chat-welcome");
@@ -107,7 +106,6 @@ pub fn show(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
     crate::theme::in_step(kept);
     rux::layer(ui, kept, id, area, |rux| {
         let theme = rux.theme();
-        let colours = Instrument::of(theme);
         let zoom = rux.zoom();
         let z = move |v: f32| v * zoom;
         let width = (area.width() - z(32.0)).min(z(420.0));
@@ -138,6 +136,7 @@ pub fn show(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
         // What it can see, and whether it can answer.
         let ready = problem.is_none() && provider.is_some();
         let mut rows = vec![Status {
+            lead: Lead::Status(if ready { State::Done } else { State::NeedsOk }),
             label: "Agent",
             value: match (provider.is_some(), ready) {
                 (false, _) => "none".to_owned(),
@@ -151,7 +150,6 @@ pub fn show(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
                     false => one.model.trim().to_owned(),
                 })
                 .unwrap_or_default(),
-            lamp: Some(if ready { theme.accent.mint } else { theme.accent.amber }),
         }];
         if let Some(one) = &provider {
             let (value, detail) = match one.is_a_program() {
@@ -172,17 +170,18 @@ pub fn show(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
                     "tools".to_owned(),
                 ),
             };
-            rows.push(Status { label: "Access", value, detail, lamp: Some(theme.accent.mint) });
+            rows.push(Status { lead: Lead::Mark(Icon::Key), label: "Access", value, detail });
         }
         if let Some(path) = &project {
             rows.push(Status {
+                lead: Lead::Mark(Icon::Folder),
                 label: "Project",
                 value: place.clone().unwrap_or_default(),
                 detail: path.parent().map(|p| p.display().to_string()).unwrap_or_default(),
-                lamp: Some(theme.accent.blue),
             });
         }
         rows.push(Status {
+            lead: Lead::Mark(Icon::File),
             label: "Showing",
             value: showing
                 .as_ref()
@@ -199,7 +198,6 @@ pub fn show(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
                     .unwrap_or_default(),
                 _ => String::new(),
             },
-            lamp: showing.as_ref().map(|_| theme.accent.blue),
         });
 
         // Measure, then give sections up from the bottom until it fits.
@@ -215,11 +213,13 @@ pub fn show(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
             theme.ink.i500,
             width.min(z(360.0)),
         );
-        let row = z(26.0);
-        let screen_height = z(12.0) * 2.0 + row * rows.len() as f32;
+        // `padding: 12px; gap: 14px` round 34 point rows, which is the canvas's Status card.
+        let row = z(34.0);
+        let screen_height =
+            z(12.0) * 2.0 + row * rows.len() as f32 + z(14.0) * (rows.len() as f32 - 1.0);
         let history_height = match history.is_empty() {
             true => 0.0,
-            false => z(22.0) + z(34.0) * history.len() as f32,
+            false => z(22.0) + z(16.0) + z(36.0) * history.len() as f32,
         };
         let top_part = mark + z(16.0) + headline_galley.size().y + z(6.0) + lede_galley.size().y;
         let keys_height = z(24.0);
@@ -235,25 +235,10 @@ pub fn show(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
         let mut pen = area.top() + ((room - total) * 0.38).max(z(12.0));
 
         if show_mark {
-            let plate = Rect::from_min_size(Pos2::new(left, pen), Vec2::splat(mark));
-            instrument::plate(rux, plate, z(17.0), 0.0);
-            cube(rux.painter(), plate.center(), mark * 0.24, theme.ink.i700, z(1.6));
-            // The lamp on the mark: the agent's own state, lit as the pane opens.
-            let on = instrument::ease_out(instrument::appearing(
-                rux,
-                id.with("mark"),
-                0.05,
-                timing::LIGHT * 2.0,
-            ));
-            let lamp = if ready { theme.accent.mint } else { theme.accent.amber };
-            instrument::led(
-                rux.painter(),
-                Pos2::new(plate.right() - z(10.0), plate.top() + z(10.0)),
-                z(2.5),
-                lamp,
-                colours.led_off,
-                on,
-            );
+            // The agent's avatar, larger: a raised disc with the spark in the agent's colour.
+            let disc = Rect::from_min_size(Pos2::new(left, pen), Vec2::splat(mark));
+            chat_raised_sm(rux, disc, mark / 2.0);
+            rux.mark(rux::Mark::new(Icon::Spark, z(24.0)).stroke(2.0), disc.center(), agent);
             pen += mark + z(16.0);
             rux.painter().galley(Pos2::new(left, pen), headline_galley.clone(), theme.ink.i900);
             pen += headline_galley.size().y + z(6.0);
@@ -263,100 +248,42 @@ pub fn show(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
 
         if show_screen {
             pen += z(22.0);
-            let screen = Rect::from_min_size(Pos2::new(left, pen), Vec2::new(width, screen_height));
-            instrument::screen(rux, screen, z(11.0), true);
-            let silk = rux.zs(SILK);
-            let value_style = rux.zs(VALUE);
-            let detail_style = rux.zs(DETAIL);
+            let card = Rect::from_min_size(Pos2::new(left, pen), Vec2::new(width, screen_height));
+            chat_card(rux, card, z(22.0));
             for (index, status) in rows.iter().enumerate() {
-                let middle = screen.top() + z(12.0) + row * (index as f32 + 0.5);
-                let lit = instrument::ease_out(instrument::appearing(
-                    rux,
-                    id.with(("lamp", index)),
-                    0.12 + index as f32 * 0.1,
-                    timing::LIGHT * 2.0,
-                ));
-                let lamp_at = Pos2::new(screen.left() + z(16.0), middle);
-                match status.lamp {
-                    Some(colour) => instrument::led(
-                        rux.painter(),
-                        lamp_at,
-                        z(3.0),
-                        colour,
-                        colours.led_off,
-                        lit,
-                    ),
-                    None => instrument::led(
-                        rux.painter(),
-                        lamp_at,
-                        z(3.0),
-                        theme.ink.i300,
-                        colours.led_off,
-                        0.0,
-                    ),
-                }
-                let painter = rux.painter().clone();
-                let label = rux::text::layout(&painter, silk, status.label, theme.ink.i400);
-                rux::text::draw_left_capitals(
-                    &painter,
-                    Pos2::new(screen.left() + z(30.0), middle),
-                    label,
-                    silk,
-                    theme.ink.i400,
+                let top = card.top() + z(12.0) + (row + z(14.0)) * index as f32;
+                let line = Rect::from_min_size(
+                    Pos2::new(card.left() + z(12.0), top),
+                    Vec2::new(card.width() - z(24.0), row),
                 );
-                let value_left = screen.left() + z(30.0) + z(72.0);
-                let detail_width = match wide && !status.detail.is_empty() {
-                    true => {
-                        (rux.measure(detail_style, &status.detail).x + z(14.0)).min(width * 0.42)
-                    }
-                    false => 0.0,
+                let detail = match (wide, status.detail.is_empty()) {
+                    (true, false) => format!("{} \u{b7} {}", status.label, status.detail),
+                    _ => status.label.to_owned(),
                 };
-                let value_room = screen.right() - z(14.0) - detail_width - value_left;
-                let value = rux::text::elided(
-                    &painter,
-                    value_style,
-                    &status.value,
-                    theme.ink.i900,
-                    value_room,
-                );
-                rux::text::draw_left_capitals(
-                    &painter,
-                    Pos2::new(value_left, middle),
-                    value,
-                    value_style,
-                    theme.ink.i900,
-                );
-                if detail_width > 0.0 {
-                    let detail = rux::text::elided(
-                        &painter,
-                        detail_style,
-                        &status.detail,
-                        theme.ink.i300,
-                        detail_width - z(14.0),
-                    );
-                    let x = screen.right() - z(14.0) - detail.size().x;
-                    rux::text::draw_left_capitals(
-                        &painter,
-                        Pos2::new(x, middle),
-                        detail,
-                        detail_style,
-                        theme.ink.i300,
-                    );
-                }
+                card_header(rux, line, status.lead, &status.value, &detail, None);
             }
             pen += screen_height;
         }
 
         if show_history && !history.is_empty() {
             pen += z(22.0);
-            let silk = rux.zs(SILK);
-            let galley = rux::text::layout(rux.painter(), silk, "Earlier", theme.ink.i400);
-            rux.painter().galley(Pos2::new(left + z(10.0), pen), galley, theme.ink.i400);
+            let small = rux.zs(Style::sans(12.0));
+            let galley = rux::text::layout(rux.painter(), small, "Earlier", theme.ink.i500);
+            rux.painter().galley(Pos2::new(left + z(4.0), pen), galley, theme.ink.i500);
             pen += z(22.0);
             let row_style = rux.zs(ROW);
             let detail_style = rux.zs(DETAIL);
-            for (conversation, name, changed) in &history {
-                let rect = Rect::from_min_size(Pos2::new(left, pen), Vec2::new(width, z(34.0)));
+            let list = Rect::from_min_size(
+                Pos2::new(left, pen),
+                Vec2::new(width, z(16.0) + z(36.0) * history.len() as f32),
+            );
+            chat_well(rux, list, z(22.0));
+            pen += z(8.0);
+            for (index, (conversation, name, changed)) in history.iter().enumerate() {
+                let rect = Rect::from_min_size(
+                    Pos2::new(left + z(4.0), pen),
+                    Vec2::new(width - z(8.0), z(36.0)),
+                );
                 let response =
                     rux.ui.interact(rect, id.with(("earlier", conversation)), Sense::click());
                 response.widget_info(|| {
@@ -366,29 +293,26 @@ pub fn show(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
                         format!("Conversation: {name}"),
                     )
                 });
-                if response.hovered() {
+                let hovered = response.hovered();
+                if hovered {
                     rux.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                 }
-                // A row under the pointer rises as a key cap does; the rest lie flat on the pane.
-                let lift = instrument::toward(
-                    rux,
-                    response.id.with("lift"),
-                    response.hovered(),
-                    timing::PRESS * 1.5,
-                );
-                if lift > 0.01 {
-                    let theme_elevation = theme.elevation.raised_sm;
-                    let faded =
-                        instrument::sinking(theme_elevation, rux::Elevation::NONE, 1.0 - lift);
-                    rux.chrome.surface(rect, z(10.0), rux::Fill::Solid(colours.plate), faded);
-                }
-                // No lamp beside the name (`task-2219`): the row rising under the pointer is the whole of
-                // the hover, and the name starts where the heading above it does.
                 let painter = rux.painter().clone();
+                if index > 0 {
+                    let hairline = match theme.dark {
+                        true => egui::Color32::from_white_alpha(12), // any ground: the canvas's hairline on the dark well
+                        false => egui::Color32::from_black_alpha(14), // any ground: the same line on the light well
+                    };
+                    painter.hline(
+                        rect.left() + z(10.0)..=rect.right() - z(10.0),
+                        rect.top(),
+                        egui::Stroke::new(1.0, hairline),
+                    );
+                }
                 let age = ago(*changed, now);
-                let age_galley = rux::text::layout(&painter, detail_style, &age, theme.ink.i300);
+                let age_galley = rux::text::layout(&painter, detail_style, &age, theme.ink.i400);
                 let room = rect.width() - z(12.0) - age_galley.size().x - z(24.0);
-                let ink = if lift > 0.5 { theme.ink.i900 } else { theme.ink.i700 };
+                let ink = if hovered { theme.chat.sky } else { theme.ink.i900 };
                 let words = rux::text::elided(&painter, row_style, name, ink, room);
                 rux::text::draw_left_capitals(
                     &painter,
@@ -402,12 +326,12 @@ pub fn show(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
                     Pos2::new(rect.right() - z(12.0) - age_galley.size().x, rect.center().y),
                     age_galley,
                     detail_style,
-                    theme.ink.i300,
+                    theme.ink.i400,
                 );
                 if response.clicked() {
                     acts.push(Act::Open(conversation.clone()));
                 }
-                pen += z(34.0);
+                pen += z(36.0);
             }
         }
 
@@ -428,26 +352,6 @@ pub fn show(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
         rux.painter().galley(at, galley, theme.ink.i300);
     });
     acts
-}
-
-/// The mark on the welcome's plate: a cube drawn in three strokes, the editor as a box of tools.
-fn cube(painter: &egui::Painter, centre: Pos2, size: f32, colour: egui::Color32, width: f32) {
-    let stroke = Stroke::new(width, colour);
-    let h = size;
-    let w = size * 0.87;
-    let top = Pos2::new(centre.x, centre.y - h);
-    let upper_left = Pos2::new(centre.x - w, centre.y - h / 2.0);
-    let upper_right = Pos2::new(centre.x + w, centre.y - h / 2.0);
-    let middle = centre;
-    let lower_left = Pos2::new(centre.x - w, centre.y + h / 2.0);
-    let lower_right = Pos2::new(centre.x + w, centre.y + h / 2.0);
-    let bottom = Pos2::new(centre.x, centre.y + h);
-    painter.add(egui::Shape::closed_line(
-        vec![top, upper_right, lower_right, bottom, lower_left, upper_left],
-        stroke,
-    ));
-    painter.add(egui::Shape::line(vec![upper_left, middle, upper_right], stroke));
-    painter.line_segment([middle, bottom], stroke);
 }
 
 #[cfg(test)]

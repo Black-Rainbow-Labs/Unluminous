@@ -624,6 +624,12 @@ impl Decoder {
                         }
                     }
                 }
+            // **The context was compacted**, which Claude Code says between two turns or in the middle of
+            // one. The note is drawn where it happened.
+            "system" if value["subtype"] == "compact_boundary" => {
+                let before = value["compact_metadata"]["pre_tokens"].as_u64().unwrap_or(0);
+                out.push(Reply::Compacted { before });
+            }
             "stream_event" => {
                 let event = &value["event"];
                 if event["type"] == "message_start" {
@@ -1042,6 +1048,18 @@ mod tests {
         let prompt = prompt_for(&provider(Wire::ClaudeCli), &ask);
         assert!(prompt.contains("What is wrong with this?"));
         assert!(prompt.contains("shot.png"), "{prompt}");
+    }
+
+    #[test]
+    fn claude_code_saying_it_compacted_its_context_is_read_as_a_note() {
+        let mut decoder = Decoder::new(Wire::ClaudeCli);
+        let replies = feed(
+            &mut decoder,
+            &[
+                r#"{"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"auto","pre_tokens":41234}}"#,
+            ],
+        );
+        assert_eq!(replies, vec![Reply::Compacted { before: 41_234 }]);
     }
 
     #[test]

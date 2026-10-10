@@ -220,6 +220,9 @@ fn to_json(chat: &Conversation) -> serde_json::Value {
             "thinking": message.thinking,
             "finish": message.finish,
             "failure": message.failure,
+            "took": message.took_ms,
+            "tokens": message.tokens,
+            "compacted": message.compacted,
             "parts": message.parts.iter().map(|part| match part {
                 Part::Text(text) => serde_json::json!({ "type": "text", "text": text }),
                 Part::Picture { media, bytes, name } => serde_json::json!({
@@ -266,6 +269,9 @@ fn from_json(id: &str, value: &serde_json::Value) -> Conversation {
         message.thinking = one["thinking"].as_str().unwrap_or_default().to_owned();
         message.finish = one["finish"].as_str().map(str::to_owned);
         message.failure = one["failure"].as_str().map(str::to_owned);
+        message.took_ms = one["took"].as_u64();
+        message.tokens = one["tokens"].as_u64();
+        message.compacted = one["compacted"].as_u64();
         for part in one["parts"].as_array().map(Vec::as_slice).unwrap_or_default() {
             match part["type"].as_str() {
                 Some("picture") => {
