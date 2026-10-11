@@ -7,55 +7,98 @@
 //! `Unluminous` is first and sits at the very left of the bar, so it reads `Unluminous  File  Edit  View`, which is
 //! what `tasks/improvements.md` asks for. When the menus are in the window the three window buttons move
 //! to the right hand end of the bar, which is where Windows puts them, because the left is taken.
+//!
+//! **Each menu is a pill** (`task-2241`, the Editing code design): its word in the quieter ink with no surface,
+//! and while its list is open the pill is carved into the bar with the word in the strong ink. `Unluminous` is
+//! the application's own menu and its word is set in the stronger weight.
 
-use egui::{Pos2, Rect, Stroke, Vec2};
+use egui::{Pos2, Rect, Vec2};
 
 use crate::app::actions::{Action, Entry, Menu};
 use crate::components::controls;
-use crate::theme::color;
+use crate::theme::crisp::CrispPainter;
 
-/// How much room the bar needs, so the title bar can leave it clear.
-pub fn width(menus: &[Menu]) -> f32 {
-    menus.iter().map(|menu| button_width(&menu.name) + GAP).sum::<f32>() + LEFT
-}
+/// Between the bar's left edge and the first word, and between two pills.
+const LEFT: f32 = 8.0;
+const GAP: f32 = 2.0;
+/// `height: 30px; padding: 0 11px; font-size: 12.5px`.
+const PILL: f32 = 30.0;
+const PAD: f32 = 11.0;
 
-const LEFT: f32 = 14.0;
-const GAP: f32 = 4.0;
-
-fn button_width(name: &str) -> f32 {
-    // Roughly seven points a letter at 12.5 point, plus room either side. Measuring the text would need a
-    // painter, and the bar is drawn before one is to hand.
-    (name.chars().count() as f32 * 7.0 + 18.0).max(40.0)
-}
-
-/// Draw the bar into `area` and return what was chosen.
-pub fn show(ui: &mut egui::Ui, area: Rect, menus: &[Menu]) -> Option<Action> {
+/// Draw the bar into the left of `area`, and answer what was chosen and where the last pill ended.
+pub fn show(ui: &mut egui::Ui, area: Rect, menus: &[Menu]) -> (Option<Action>, f32) {
     let mut chosen = None;
     let mut pen = area.left() + LEFT;
+    let font = egui::FontId::proportional(12.5);
+    let strong = egui::FontId::new(12.5, egui::FontFamily::Name(crate::theme::BOLD_FAMILY.into()));
+    let ink = crate::theme::rux_theme().ink;
+    let chat = crate::components::chrome_kit::chat();
+    // Laid out first, so the decoration of the open pill can be recorded in one layer for the whole bar.
+    let mut pills = Vec::with_capacity(menus.len());
     for menu in menus {
-        let width = button_width(&menu.name);
-        let button =
-            Rect::from_min_size(Pos2::new(pen, area.center().y - 11.0), Vec2::new(width, 22.0));
-        // The application's own menu is drawn a little brighter, as macOS draws it.
-        let response = controls::bar_button(ui, button, &menu.name, menu.name == "Unluminous");
-        if let Some(action) = popup(ui, &response, &menu.entries) {
-            chosen = Some(action);
-        }
-        pen += width + GAP;
+        let app = menu.name == "Unluminous";
+        let used = match app {
+            true => &strong,
+            false => &font,
+        };
+        let width = ui.painter().layout_no_wrap(menu.name.clone(), used.clone(), ink.i900).size().x
+            + PAD * 2.0;
+        let rect = Rect::from_min_size(
+            Pos2::new(pen, area.center().y - PILL / 2.0),
+            Vec2::new(width, PILL),
+        );
+        pills.push((menu, rect, app));
+        pen = rect.right() + GAP;
     }
-    chosen
+    let reach =
+        Rect::from_min_max(Pos2::new(area.left(), area.top()), Pos2::new(pen, area.bottom()));
+    crate::components::chrome_kit::layer(ui, "menu-bar", reach, 4.0, |rux| {
+        for (menu, rect, app) in &pills {
+            let response = rux.ui.interact(
+                *rect,
+                rux.ui.id().with(("bar-button", &menu.name)),
+                egui::Sense::click(),
+            );
+            let open =
+                egui::Popup::is_id_open(rux.ui.ctx(), egui::Popup::default_response_id(&response));
+            if open {
+                rux.chrome.surface(*rect, PILL / 2.0, chat.well, chat.carved_sm());
+            } else if response.hovered() {
+                rux.wash(*rect, PILL / 2.0, rux.theme().interaction.hover);
+            }
+            let tint = match (open || *app, response.hovered()) {
+                (true, _) => ink.i900,
+                (false, true) => chat.sky,
+                (false, false) => ink.i500,
+            };
+            let used = match app {
+                true => &strong,
+                false => &font,
+            };
+            let painter = rux.ui.painter();
+            let label = painter.crisp_layout_no_wrap(menu.name.clone(), used.clone(), tint);
+            let top = crate::theme::crisp::top_centring_capitals(painter, used, rect.center().y);
+            painter.crisp_galley(
+                Pos2::new(rect.center().x - label.size().x / 2.0, top),
+                label,
+                tint,
+            );
+            response.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::WidgetType::Button, true, menu.name.clone())
+            });
+            if let Some(action) = popup(rux.ui, &response, &menu.entries) {
+                chosen = Some(action);
+            }
+        }
+    });
+    (chosen, pen)
 }
 
 /// The list that drops down from one of the words in the bar.
 fn popup(ui: &mut egui::Ui, response: &egui::Response, entries: &[Entry]) -> Option<Action> {
     egui::Popup::from_toggle_button_response(response)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
-        .frame(
-            egui::Frame::popup(ui.style())
-                .fill(color::menu())
-                .stroke(Stroke::new(1.0, color::control_border()))
-                .inner_margin(6),
-        )
+        .frame(controls::menu_frame(ui))
         // Wide enough that the longest entry and its shortcut do not meet in the middle. `Open Folder in New
         // Window` at `Cmd+Option+O` is the longest pair, and at 260 points they overlapped, which a
         // screenshot showed.

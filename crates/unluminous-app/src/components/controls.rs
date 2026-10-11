@@ -905,43 +905,73 @@ pub fn flyout<T>(
     width: f32,
     contents: impl FnOnce(&mut egui::Ui) -> T,
 ) -> Option<T> {
+    flyout_drawn(
+        ui,
+        area,
+        name,
+        |ui, open, hovered| paint_flyout_button(ui, area, draw, open, hovered),
+        width,
+        contents,
+    )
+}
+
+/// A flyout whose button the caller draws: `paint` is handed the `Ui`, whether the panel is open by the
+/// end of this frame, and whether the pointer is on the button.
+///
+/// The title bar's text options button is a raised round chip (`task-2241`), which is `rux` decoration
+/// and needs a layer of its own, so the drawing is the caller's while the opening and closing stay here.
+pub fn flyout_drawn<T>(
+    ui: &mut egui::Ui,
+    area: Rect,
+    name: &str,
+    paint: impl FnOnce(&mut egui::Ui, bool, bool),
+    width: f32,
+    contents: impl FnOnce(&mut egui::Ui) -> T,
+) -> Option<T> {
     let response =
         ui.interact(area, ui.id().with(("flyout", name)), Sense::click()).with_hint(name);
     // What the panel will be by the time it is drawn: the click this frame is what toggles it, and
     // the button has to be tinted for the state it is going into rather than the one it is leaving.
     let open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&response))
         != response.clicked();
-    let painter = ui.painter();
-    // Open is a soft wash of the accent with the mark in the accent, and a hover is the hover wash
-    // (`task-2219`). An open flyout used to be a solid accent square with a white mark, which made a
-    // panel being open the most saturated thing in the window.
-    if open {
-        painter.rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), accent_wash());
-    } else if response.hovered() {
-        painter.rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), hover_fill());
-    }
-    let tint = match (open, response.hovered()) {
-        (true, _) => color::accent(),
-        (false, true) => color::text_strong(),
-        (false, false) => color::text_control(),
-    };
-    icon::crisp(painter, area.center(), tint, 1.0, draw);
+    paint(ui, open, response.hovered());
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), open, name)
     });
     egui::Popup::from_toggle_button_response(&response)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-        .frame(
-            egui::Frame::popup(ui.style())
-                .fill(color::menu())
-                .stroke(Stroke::new(1.0, color::control_border())),
-        )
+        .frame(menu_frame(ui))
         .width(width)
         .show(|ui| {
             set_in_the_list_size(ui);
             contents(ui)
         })
         .map(|inner| inner.inner)
+}
+
+/// The square icon button a plain [`flyout`] draws.
+fn paint_flyout_button(
+    ui: &mut egui::Ui,
+    area: Rect,
+    draw: fn(&egui::Painter, Pos2, Color32),
+    open: bool,
+    hovered: bool,
+) {
+    let painter = ui.painter();
+    // Open is a soft wash of the accent with the mark in the accent, and a hover is the hover wash
+    // (`task-2219`). An open flyout used to be a solid accent square with a white mark, which made a
+    // panel being open the most saturated thing in the window.
+    if open {
+        painter.rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), accent_wash());
+    } else if hovered {
+        painter.rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), hover_fill());
+    }
+    let tint = match (open, hovered) {
+        (true, _) => color::accent(),
+        (false, true) => color::text_strong(),
+        (false, false) => color::text_control(),
+    };
+    icon::crisp(painter, area.center(), tint, 1.0, draw);
 }
 
 /// A flyout whose button carries a word and a chevron rather than an icon.
@@ -1036,11 +1066,7 @@ pub fn labelled_flyout_with_icon<T>(
     });
     egui::Popup::from_toggle_button_response(&response)
         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-        .frame(
-            egui::Frame::popup(ui.style())
-                .fill(color::menu())
-                .stroke(Stroke::new(1.0, color::control_border())),
-        )
+        .frame(menu_frame(ui))
         .width(width)
         .show(|ui| {
             set_in_the_list_size(ui);
@@ -1168,13 +1194,37 @@ pub fn menu_rows(ui: &mut egui::Ui, entries: &[Entry], indent: f32) -> Option<Ac
     rows(ui, entries, indent)
 }
 
+/// The frame a menu drops down in: a raised card eighteen points round with `padding: 8px` and a long soft
+/// shadow under it, which is the Editing code design's dropdown (`task-2241`).
+pub fn menu_frame(ui: &egui::Ui) -> egui::Frame {
+    let chat = crate::theme::rux_theme().chat;
+    egui::Frame::popup(ui.style())
+        .fill(chat.card.from)
+        .stroke(Stroke::NONE)
+        .corner_radius(CornerRadius::same(18))
+        .inner_margin(8)
+        .shadow(egui::Shadow {
+            offset: [0, 16],
+            blur: 22,
+            spread: 0,
+            color: chat.dark.gamma_multiply(0.9),
+        })
+}
+
 /// The rows themselves, once it has been decided whether they scroll.
 fn rows(ui: &mut egui::Ui, entries: &[Entry], indent: f32) -> Option<Action> {
     let mut chosen = None;
     for entry in entries {
         match entry {
             Entry::Separator => {
-                ui.separator();
+                // A groove rather than a hairline: a dark line and a lit one under it, ten points in.
+                let (rect, _) =
+                    ui.allocate_exact_size(Vec2::new(ui.available_width(), 11.0), Sense::hover());
+                crate::components::chrome_kit::groove(
+                    ui.painter(),
+                    Pos2::new(rect.left() + 10.0, rect.center().y),
+                    Pos2::new(rect.right() - 10.0, rect.center().y),
+                );
             }
             Entry::Item { name, action, shortcut, enabled, checked, .. } => {
                 let keys = shortcut.map(|shortcut| shortcut.label()).unwrap_or_default();
@@ -1183,8 +1233,7 @@ fn rows(ui: &mut egui::Ui, entries: &[Entry], indent: f32) -> Option<Action> {
                 }
             }
             Entry::Submenu { name, entries } => {
-                menu_heading(ui, name, indent);
-                if let Some(action) = rows(ui, entries, indent + 14.0) {
+                if let Some(action) = submenu(ui, name, entries, indent) {
                     chosen = Some(action);
                 }
             }
@@ -1205,11 +1254,84 @@ fn tall(entries: &[Entry], gap: f32) -> f32 {
     entries
         .iter()
         .map(|entry| match entry {
-            Entry::Separator => 8.0 + gap,
-            Entry::Item { .. } => 24.0 + gap,
-            Entry::Submenu { entries, .. } => 22.0 + gap + tall(entries, gap),
+            Entry::Separator => 11.0 + gap,
+            Entry::Item { .. } => MENU_ROW + gap,
+            Entry::Submenu { .. } => MENU_ROW + gap,
         })
         .sum()
+}
+
+/// A menu inside a menu: a row with a chevron at its right hand end, and its entries in a list of their own
+/// beside it while the pointer is on the row or the row was pressed.
+///
+/// `task-2241`, the Editing code design: `Open Recent` opens to the side rather than being drawn as a heading
+/// with its entries under it. It is also what keeps a menu inside the window now that a row is 30 points:
+/// `Edit` with `Highlight` drawn under a heading ran `Settings` off the bottom of a 740 point window.
+///
+/// It is egui's own submenu, so the menu it is in stays open while the list beside it is used, and the
+/// list is the same raised card as the menu.
+fn submenu(ui: &mut egui::Ui, name: &str, entries: &[Entry], indent: f32) -> Option<Action> {
+    let enabled = !entries.is_empty();
+    let sense = if enabled { Sense::click() } else { Sense::hover() };
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), MENU_ROW), sense);
+    let id = egui::containers::menu::SubMenu::id_from_widget_id(response.id);
+    let open = egui::Popup::is_id_open(ui.ctx(), id);
+    let chat = crate::theme::rux_theme().chat;
+    let ink = crate::theme::rux_theme().ink;
+    if (response.hovered() || open) && enabled {
+        let painter = ui.painter();
+        painter.rect_filled(rect, CornerRadius::same(10), chat.well);
+        painter.rect_stroke(
+            rect.shrink(0.5),
+            CornerRadius::same(10),
+            Stroke::new(1.0, chat.dark.gamma_multiply(0.55)),
+            egui::StrokeKind::Inside,
+        );
+    }
+    let painter = ui.painter();
+    let tint = if enabled { ink.i900 } else { ink.i900.gamma_multiply(0.4) };
+    let left = rect.left() + 10.0 + indent;
+    let font = egui::FontId::proportional(12.5);
+    let (shown, _) = elide_in(ui, name, &font, (rect.right() - 30.0 - left - 26.0).max(0.0));
+    let label = painter.crisp_layout_no_wrap(shown, font, tint);
+    painter.crisp_galley(
+        Pos2::new(left + 26.0, rect.center().y - label.size().y / 2.0),
+        label,
+        tint,
+    );
+    // `M3.8 2.5L6.3 5 3.8 7.5` on a ten unit box: the chevron, in the sky colour while the list is open.
+    let chevron = Pos2::new(rect.right() - 14.0, rect.center().y);
+    let colour = if open { chat.sky } else { ink.i400 };
+    painter.add(egui::Shape::line(
+        vec![
+            chevron + Vec2::new(-1.2, -2.5),
+            chevron + Vec2::new(1.3, 0.0),
+            chevron + Vec2::new(-1.2, 2.5),
+        ],
+        Stroke::new(1.6, colour),
+    ));
+    response
+        .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, enabled, open, name));
+    if !enabled {
+        return None;
+    }
+    // egui frames a submenu with `Frame::menu` of the style it is shown from, so the style is the menu frame's.
+    let frame = menu_frame(ui);
+    ui.scope(|ui| {
+        let visuals = &mut ui.style_mut().visuals;
+        visuals.window_fill = frame.fill;
+        visuals.window_stroke = frame.stroke;
+        visuals.menu_corner_radius = frame.corner_radius;
+        visuals.popup_shadow = frame.shadow;
+        ui.style_mut().spacing.menu_margin = frame.inner_margin;
+        egui::containers::menu::SubMenu::new()
+            .show(ui, &response, |ui| {
+                ui.set_width(280.0);
+                rows(ui, entries, 0.0)
+            })
+            .and_then(|inner| inner.inner)
+    })
+    .inner
 }
 
 /// One row of a menu: a tick when it is switched on, its name, and its keyboard shortcut on the right.
@@ -1225,44 +1347,53 @@ pub fn menu_row(
     checked: bool,
     indent: f32,
 ) -> bool {
-    let height = 24.0;
     let sense = if enabled { Sense::click() } else { Sense::hover() };
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height), sense);
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), MENU_ROW), sense);
+    let chat = crate::theme::rux_theme().chat;
+    let ink = crate::theme::rux_theme().ink;
+    // **The row under the pointer is carved in** (`task-2241`): a well ten points round, with the dark half
+    // of the carving along its top and left inside edge.
     if response.hovered() && enabled {
-        pill(ui.painter(), rect, 4);
+        let painter = ui.painter();
+        painter.rect_filled(rect, CornerRadius::same(10), chat.well);
+        painter.rect_stroke(
+            rect.shrink(0.5),
+            CornerRadius::same(10),
+            Stroke::new(1.0, chat.dark.gamma_multiply(0.55)),
+            egui::StrokeKind::Inside,
+        );
     }
     let painter = ui.painter();
-    let tint =
-        if enabled { color::text_control() } else { color::text_faint().gamma_multiply(0.6) };
-    let left = rect.left() + 8.0 + indent;
+    let tint = if enabled { ink.i900 } else { ink.i900.gamma_multiply(0.4) };
+    let left = rect.left() + 10.0 + indent;
     if checked {
         // Drawn, not the character at U+2713. No font in the stack Unluminous hands egui has a shape for
         // it, so it came out as the empty box a missing glyph renders as — visible against
         // `Raw Markdown` on the View menu in any capture of it, and the exact fault the style guide
         // already records for the shift symbol. `icon::tick` is the same tick every tick box in
         // Unluminous draws.
-        icon::tick(painter, Pos2::new(left + 6.0, rect.center().y), color::accent());
+        icon::tick(painter, Pos2::new(left + 9.0, rect.center().y), chat.faster);
     }
     // The quiet column first, because the name is cut to whatever room it leaves. `task-2229`.
-    let mut name_right = rect.right() - 8.0;
+    let mut name_right = rect.right() - 12.0;
     if !shortcut.is_empty() {
         let keys = painter.crisp_layout_no_wrap(
             shortcut.to_owned(),
             egui::FontId::proportional(11.5),
-            color::text_faint(),
+            ink.i400,
         );
-        name_right = rect.right() - 8.0 - keys.size().x - 12.0;
+        name_right = rect.right() - 12.0 - keys.size().x - 12.0;
         painter.crisp_galley(
-            Pos2::new(rect.right() - 8.0 - keys.size().x, rect.center().y - keys.size().y / 2.0),
+            Pos2::new(rect.right() - 12.0 - keys.size().x, rect.center().y - keys.size().y / 2.0),
             keys,
-            color::text_faint(),
+            ink.i400,
         );
     }
     let font = egui::FontId::proportional(12.5);
-    let (shown, cut) = elide_in(ui, name, &font, (name_right - left - 18.0).max(0.0));
+    let (shown, cut) = elide_in(ui, name, &font, (name_right - left - 26.0).max(0.0));
     let label = painter.crisp_layout_no_wrap(shown, font, tint);
     painter.crisp_galley(
-        Pos2::new(left + 18.0, rect.center().y - label.size().y / 2.0),
+        Pos2::new(left + 26.0, rect.center().y - label.size().y / 2.0),
         label,
         tint,
     );
@@ -1273,6 +1404,9 @@ pub fn menu_row(
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, name));
     response.clicked()
 }
+
+/// How tall one row of a menu is: `height: 30px` in the Editing code design (`task-2241`).
+pub const MENU_ROW: f32 = 30.0;
 
 /// A heading inside a menu, which is what a menu inside a menu is drawn as inside the window.
 pub fn menu_heading(ui: &mut egui::Ui, name: &str, indent: f32) {
@@ -1285,15 +1419,13 @@ pub fn menu_heading(ui: &mut egui::Ui, name: &str, indent: f32) {
     // no name cannot be tested, and a heading is what a submenu's title is drawn as here.
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, name));
     let painter = ui.painter();
-    let label = painter.crisp_layout_no_wrap(
-        name.to_owned(),
-        egui::FontId::proportional(11.0),
-        color::text_dim(),
-    );
+    let quiet = crate::theme::rux_theme().ink.i400;
+    let label =
+        painter.crisp_layout_no_wrap(name.to_owned(), egui::FontId::proportional(11.0), quiet);
     painter.crisp_galley(
-        Pos2::new(rect.left() + 8.0 + indent, rect.center().y - label.size().y / 2.0),
+        Pos2::new(rect.left() + 36.0 + indent, rect.center().y - label.size().y / 2.0),
         label,
-        color::text_dim(),
+        quiet,
     );
 }
 

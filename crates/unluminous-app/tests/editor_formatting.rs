@@ -1370,12 +1370,14 @@ fn a_right_click_inside_a_selection_leaves_the_selection_alone() {
 #[test]
 fn the_edit_menu_holds_the_four_colours_under_a_highlight_heading() {
     // The four colours are on a menu so that each has an `Action` with a name, which is what puts
-    // them on the command line. Inside the window a submenu is drawn as a heading with its rows
-    // indented under it, which is what Recent Projects and the explorer's Git submenu already do.
+    // them on the command line. Inside the window a submenu opens beside its row (`task-2241`), so the
+    // `Highlight` row is pressed first.
     let mut harness = harness(MARKABLE);
     harness.state_mut().menu_placement = MenuPlacement::InWindow;
     select_phrase(&mut harness, "quick brown fox", &[]);
     harness.get_by_label("Edit").click();
+    steady(&mut harness);
+    harness.get_by_label("Highlight").click();
     steady(&mut harness);
     for entry in ["Yellow", "Green", "Blue", "Pink", "Clear Highlight", "Clear All Highlights"] {
         harness.get_by_label(entry);

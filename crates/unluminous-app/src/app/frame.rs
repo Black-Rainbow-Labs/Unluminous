@@ -156,6 +156,8 @@ impl UnluminousApp {
             self.browser.follow(&self.browser_placements, &occluders);
         }
         crate::services::frame_trace::phase("action");
+        // The title bar's and the rail's `rux` canvases that were not drawn this frame are given back.
+        crate::components::chrome_kit::end_frame(ui.ctx());
         self.end_the_frame(ui);
     }
 

@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Editing code</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/rux/tokens.css">
+<link rel="stylesheet" href="ds/rux/components/bundle.css">
+<script src="ds/rux/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div data-theme="unluminous-dark" style="position: relative; width: {{winW}}; height: {{winH}}; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; border-radius: 12px; background: var(--surface-1); color: var(--ul-text); font-family: var(--font-ui); --card: linear-gradient(145deg, #252a32, #1c2026); --chip: linear-gradient(145deg, #262b33, #20242b); --well: #1a1e24; --out: -7px -7px 16px #2a2f37, 8px 8px 18px #0c0f13; --out-sm: -2px -2px 5px rgba(46, 52, 61, 0.7), 3px 3px 6px #0b0d11, inset 0 0 0 1px rgba(255, 255, 255, 0.045), inset 0 1px 0 rgba(255, 255, 255, 0.05); --in-sm: inset 2px 2px 5px #0c0f13, inset -2px -2px 5px #2a2f37; --sky: #5cb6ff; --down: #3ad6ad;">
+
+<header style="height: 46px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 0 0 12px; background: var(--surface-1);">
+<sc-if value="{{isMac}}" hint-placeholder-val="{{false}}">
+<div aria-hidden="true" style="display: flex; gap: 8px; padding: 0 14px 0 6px;">
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.25);"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #febc2e; box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.25);"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #28c840; box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.25);"></span>
+</div>
+</sc-if>
+<sc-if value="{{isWin}}" hint-placeholder-val="{{true}}">
+<nav aria-label="Menu bar" style="display: flex; align-items: center; gap: 2px;">
+<span style="padding: 0 10px 0 4px; font-size: 12.5px; font-weight: 600; color: var(--ink-900);">Unluminous</span>
+<sc-for list="{{menus}}" as="m" hint-placeholder-count="8">
+<button aria-haspopup="menu" aria-expanded="{{m.expanded}}" onClick="{{m.pick}}" style="height: 30px; padding: 0 11px; border: 0; border-radius: 999px; background: {{m.bg}}; box-shadow: {{m.shadow}}; color: {{m.colour}}; font-family: var(--font-ui); font-size: 12.5px; cursor: pointer;">{{m.label}}</button>
+</sc-for>
+</nav>
+</sc-if>
+<span style="height: 30px; display: flex; align-items: center; gap: 7px; margin-left: 10px; padding: 0 14px 0 11px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm); font-size: 12px; color: var(--ink-700);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="display: block;"><path d="{{ic.project}}" style="stroke: var(--ink-400); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"></path></svg>unluminous</span>
+<span style="flex: 1;"></span>
+
+<button aria-label="Text options" style="width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: var(--chip); box-shadow: var(--out-sm); color: var(--ink-500); display: flex; align-items: center; justify-content: center; line-height: 0; cursor: pointer;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="display: block;"><path d="{{ic.text}}" style="stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;"></path></svg></button>
+<div role="radiogroup" aria-label="View mode" style="display: flex; gap: 2px; margin: 0 6px; padding: 3px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm);">
+<sc-for list="{{views}}" as="vw" hint-placeholder-count="3">
+<button role="radio" aria-checked="{{vw.checked}}" aria-label="{{vw.label}}" onClick="{{vw.pick}}" style="width: 34px; height: 28px; padding: 0; border: 0; border-radius: 999px; background: {{vw.bg}}; box-shadow: {{vw.shadow}}; color: {{vw.colour}}; display: flex; align-items: center; justify-content: center; line-height: 0; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="display: block;"><path d="{{vw.d}}" style="stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"></path></svg></button>
+</sc-for>
+</div>
+<button aria-label="Run the selected configuration" style="width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: var(--chip); box-shadow: var(--out-sm); color: var(--down); display: flex; align-items: center; justify-content: center; line-height: 0; cursor: pointer;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="display: block; margin-left: 2px;"><path d="M8 5.5v13l10.5-6.5z" style="fill: currentColor; fill-opacity: 0.18; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round;"></path></svg></button>
+<button aria-label="Debug the selected configuration" style="width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: var(--chip); box-shadow: var(--out-sm); color: var(--ink-500); display: flex; align-items: center; justify-content: center; line-height: 0; cursor: pointer;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="display: block;"><path d="{{ic.bug}}" style="stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;"></path></svg></button>
+
+<sc-if value="{{isWin}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; margin-left: 10px; align-self: stretch;">
+<button aria-label="Minimise" style="width: 46px; padding: 0; border: 0; background: transparent; color: var(--ink-500); display: flex; align-items: center; justify-content: center; line-height: 0;"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" style="display: block;"><path d="M0.5 5h9" style="stroke: currentColor; stroke-width: 1;"></path></svg></button>
+<button aria-label="Maximise" style="width: 46px; padding: 0; border: 0; background: transparent; color: var(--ink-500); display: flex; align-items: center; justify-content: center; line-height: 0;"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true" style="display: block;"><rect x="0.5" y="0.5" width="9" height="9" rx="1.5" style="stroke: currentColor; stroke-width: 1;"></rect></svg></button>
+<button aria-label="Close" style="width: 46px; padding: 0; border: 0; background: transparent; color: var(--ink-500); display: flex; align-items: center; justify-content: center; line-height: 0;"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" style="display: block;"><path d="M0.8 0.8l8.4 8.4M9.2 0.8L0.8 9.2" style="stroke: currentColor; stroke-width: 1;"></path></svg></button>
+</div>
+</sc-if>
+<sc-if value="{{isMac}}" hint-placeholder-val="{{false}}"><span style="width: 8px;"></span></sc-if>
+</header>
+<div aria-hidden="true" style="flex-shrink: 0; height: 0; border-top: 1px solid #0e1115; border-bottom: 1px solid #2a2f37;"></div>
+
+<div style="display: flex; flex: 1; min-height: 0;">
+<nav aria-label="Panes" style="width: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 8px 0; background: var(--surface-1); border-right: 1px solid #0e1115; box-shadow: 1px 0 0 #2a2f37;">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+<sc-for list="{{railTop}}" as="r" hint-placeholder-count="7">
+<button aria-label="{{r.label}}" aria-pressed="{{r.pressed}}" title="{{r.label}}" onClick="{{r.toggle}}" style="width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%; background: {{r.bg}}; box-shadow: {{r.shadow}}; color: {{r.colour}}; display: flex; align-items: center; justify-content: center; line-height: 0; cursor: pointer;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="display: block;"><path d="{{r.f}}" style="fill: {{r.fill}}; stroke: none;"></path><path d="{{r.d}}" style="stroke: currentColor; stroke-width: {{r.sw}}; stroke-linecap: round; stroke-linejoin: round;"></path></svg></button>
+</sc-for>
+</div>
+<div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+<sc-for list="{{railBottom}}" as="r" hint-placeholder-count="3">
+<button aria-label="{{r.label}}" aria-pressed="{{r.pressed}}" title="{{r.label}}" onClick="{{r.toggle}}" style="width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%; background: {{r.bg}}; box-shadow: {{r.shadow}}; color: {{r.colour}}; display: flex; align-items: center; justify-content: center; line-height: 0; cursor: pointer;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="display: block;"><path d="{{r.f}}" style="fill: {{r.fill}}; stroke: none;"></path><path d="{{r.d}}" style="stroke: currentColor; stroke-width: {{r.sw}}; stroke-linecap: round; stroke-linejoin: round;"></path></svg></button>
+</sc-for>
+</div>
+</nav>
+<sc-if value="{{showExplorer}}" hint-placeholder-val="{{true}}">
+<x-import component-from-global-scope="Rux.UlExplorer" project="unluminous" rows="{{rows}}" footer="1,216 files · 775 can be opened" style="display: flex;"></x-import>
+</sc-if>
+<div style="display: flex; flex-direction: column; flex: 1; min-width: 0;">
+<x-import component-from-global-scope="Rux.UlTabStrip" tabs="{{tabs}}"></x-import>
+<x-import component-from-global-scope="Rux.UlEditor" code="{{code}}" caret-line="{{caret}}" breakpoints="{{breakpoints}}" style="display: flex; flex: 1; min-height: 0;"></x-import>
+</div>
+</div>
+<x-import component-from-global-scope="Rux.UlStatusBar" items="{{status}}" right="Consolas · 14 pt"></x-import>
+
+<div style="position: absolute; inset: 0; z-index: 5; pointer-events: none; filter: drop-shadow(-4px -4px 8px rgba(46, 52, 61, 0.55)) drop-shadow(0 16px 22px rgba(0, 0, 0, 0.55));">
+<sc-if value="{{menuOpen}}" hint-placeholder-val="{{false}}">
+<div role="menu" aria-label="{{openMenu}}" style="position: absolute; left: {{menuLeft}}; top: 44px; width: 300px; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px; padding: 8px; border-radius: 18px; background: #23282f; pointer-events: auto;">
+<sc-for list="{{fileMenu}}" as="it" hint-placeholder-count="12">
+<sc-if value="{{it.isSep}}" hint-placeholder-val="{{false}}"><div role="separator" style="height: 0; margin: 5px 10px; border-top: 1px solid #0e1115; border-bottom: 1px solid #2a2f37;"></div></sc-if>
+<sc-if value="{{it.isHeading}}" hint-placeholder-val="{{false}}"><div style="padding: 6px 12px 2px 36px; font-size: 11px; color: var(--ink-400);">{{it.heading}}</div></sc-if>
+<sc-if value="{{it.isItem}}" hint-placeholder-val="{{true}}">
+<button role="menuitem" aria-haspopup="{{it.haspopup}}" aria-expanded="{{it.expanded}}" disabled="{{it.disabled}}" onClick="{{it.pick}}" style="height: 30px; display: flex; align-items: center; gap: 8px; margin-right: {{it.mr}}; padding: 0 12px 0 10px; border: 0; border-radius: {{it.radius}}; background: {{it.bg}}; box-shadow: {{it.shadow}}; opacity: {{it.opacity}}; color: var(--ink-900); font-family: var(--font-ui); font-size: 12.5px; text-align: left; cursor: pointer;">
+<span style="width: 18px; display: flex; justify-content: center; line-height: 0;"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" style="display: block; opacity: {{it.tick}};"><path d="M2.6 6.2l2.2 2.2 4.6-4.8" style="stroke: var(--down); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"></path></svg></span>
+<span style="flex: 1;">{{it.label}}</span>
+<span style="font-size: 11.5px; color: var(--ink-400);">{{it.shortcut}}</span>
+<svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true" style="display: block; margin-right: {{it.chevMr}}; opacity: {{it.chev}};"><path d="M3.8 2.5L6.3 5 3.8 7.5" style="stroke: {{it.chevColour}}; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;"></path></svg>
+</button>
+</sc-if>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{subOpen}}" hint-placeholder-val="{{false}}">
+<span aria-hidden="true" style="position: absolute; left: {{filletLeft}}; top: 164px; width: 8px; height: 8px; background: radial-gradient(circle at 100% 0, transparent 7.5px, #23282f 8px);"></span>
+<span aria-hidden="true" style="position: absolute; left: {{filletLeft}}; top: 328px; width: 8px; height: 8px; background: radial-gradient(circle at 100% 100%, transparent 7.5px, #23282f 8px);"></span>
+<div role="menu" aria-label="Open Recent" style="position: absolute; left: {{subLeft}}; top: 172px; width: 298px; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px; padding: 8px 8px 8px 16px; border-radius: 0 18px 18px 18px; background: #23282f; pointer-events: auto;">
+<sc-for list="{{recent}}" as="rc" hint-placeholder-count="5">
+<sc-if value="{{rc.isSep}}" hint-placeholder-val="{{false}}"><div role="separator" style="height: 0; margin: 5px 10px; border-top: 1px solid #0e1115; border-bottom: 1px solid #2a2f37;"></div></sc-if>
+<sc-if value="{{rc.isItem}}" hint-placeholder-val="{{true}}">
+<button role="menuitem" style="height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 10px; border: 0; border-radius: 10px; background: {{rc.bg}}; box-shadow: {{rc.shadow}}; color: var(--ink-900); font-family: var(--font-ui); font-size: 12.5px; text-align: left; cursor: pointer;">
+<span style="width: 18px; display: flex; justify-content: center; line-height: 0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="display: block;"><path d="{{ic.project}}" style="stroke: var(--ink-400); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;"></path></svg></span>
+<span style="flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{rc.label}}</span>
+<span style="font-size: 11.5px; color: var(--ink-400);">{{rc.shortcut}}</span>
+</button>
+</sc-if>
+</sc-for>
+</div>
+</sc-if>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"platform":{"editor":"enum","options":["windows","macos"],"default":"windows"},"iconStyle":{"editor":"enum","options":["line","duotone"],"default":"line"},"openMenu":{"editor":"enum","options":["","File","Edit","View"],"default":""},"openSub":{"editor":null,"default":""},"onPanes":{"editor":null},"winW":{"editor":null,"default":"1180px"},"winH":{"editor":null,"default":"740px"},"$preview":{"width":1180,"height":740}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const platform = this.props.platform ?? 'windows';
+    const isMac = platform === 'macos';
+    const duo = (this.props.iconStyle ?? 'line') === 'duotone';
+    const openMenu = this.state.openMenu ?? this.props.openMenu ?? '';
+    const view = this.state.view ?? 0;
+    const subOpen = (this.state.openSub ?? this.props.openSub ?? '') !== '' && (this.state.openMenu ?? this.props.openMenu ?? '') === 'File';
+    const on = this.state.on ?? this.props.onPanes ?? { explorer: true, editor: true, chat: false };
+    const I = {
+      project: 'M3.5 7.5a2 2 0 0 1 2-2h3.6l2 2h7.4a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z',
+      editor: 'M7 3.5h7l4 4v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2zM14 3.5v4h4M8.5 12h7M8.5 15.5h4.5',
+      git: 'M7 4a2 2 0 1 1 0 4a2 2 0 1 1 0-4zM7 16a2 2 0 1 1 0 4a2 2 0 1 1 0-4zM17 6a2 2 0 1 1 0 4a2 2 0 1 1 0-4zM7 8v8M17 10c0 3.5-3 4.5-8.6 6.4',
+      realm: 'M6 4.8a2.2 2.2 0 1 1 0 4.4a2.2 2.2 0 1 1 0-4.4zM18 4.8a2.2 2.2 0 1 1 0 4.4a2.2 2.2 0 1 1 0-4.4zM12 14.8a2.2 2.2 0 1 1 0 4.4a2.2 2.2 0 1 1 0-4.4zM8.2 7h7.6M7.2 8.9l3.6 6.2M16.8 8.9l-3.6 6.2',
+      chat: 'M5 7a2.5 2.5 0 0 1 2.5-2.5h9A2.5 2.5 0 0 1 19 7v5.5a2.5 2.5 0 0 1-2.5 2.5H11l-4 3.5V15h0.5A2.5 2.5 0 0 1 5 12.5zM9 9.8h6',
+      tasks: 'M4.5 6a1.5 1.5 0 0 1 1.5-1.5h12A1.5 1.5 0 0 1 19.5 6v12a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 18zM9.5 4.5v15M14.5 4.5v15',
+      database: 'M5 6.5C5 5.1 8.1 4 12 4s7 1.1 7 2.5S15.9 9 12 9 5 7.9 5 6.5zM5 6.5v11c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-11M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5',
+      bug: 'M8.5 10a3.5 3.5 0 0 1 7 0v3.5a3.5 3.5 0 0 1-7 0zM12 10v7M8.5 12.5H5M15.5 12.5H19M8.8 16l-2.6 2M15.2 16l2.6 2M8.8 9l-2.4-2M15.2 9l2.4-2M10 6.8 9 5M14 6.8l1-1.8',
+      run: 'M12 3.5a8.5 8.5 0 1 1 0 17a8.5 8.5 0 1 1 0-17zM10.3 8.9v6.2l4.9-3.1z',
+      terminal: 'M4 6.5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM7.8 9.5l2.8 2.5-2.8 2.5M12.6 15h3.8',
+      text: 'M3.5 18L8 6.5h1L13.5 18M5.2 14h6.6M20 12.2v5.8M20 15a2.2 2.2 0 1 1 0-0.01',
+      raw: 'M5 7h14M5 11h14M5 15h14M5 19h8',
+      split: 'M4 6.5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM12 4.5v15',
+      preview: 'M2.8 12s3.4-6 9.2-6 9.2 6 9.2 6-3.4 6-9.2 6-9.2-6-9.2-6zM12 9.3a2.7 2.7 0 1 1 0 5.4a2.7 2.7 0 1 1 0-5.4z'
+    };
+    const FILL = {
+      project: 'M3.5 9.5h17v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z',
+      editor: 'M7 3.5h7l4 4v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2z',
+      git: 'M7 4a2 2 0 1 1 0 4a2 2 0 1 1 0-4zM7 16a2 2 0 1 1 0 4a2 2 0 1 1 0-4zM17 6a2 2 0 1 1 0 4a2 2 0 1 1 0-4z',
+      realm: 'M6 4.8a2.2 2.2 0 1 1 0 4.4a2.2 2.2 0 1 1 0-4.4zM18 4.8a2.2 2.2 0 1 1 0 4.4a2.2 2.2 0 1 1 0-4.4zM12 14.8a2.2 2.2 0 1 1 0 4.4a2.2 2.2 0 1 1 0-4.4z',
+      chat: 'M5 7a2.5 2.5 0 0 1 2.5-2.5h9A2.5 2.5 0 0 1 19 7v5.5a2.5 2.5 0 0 1-2.5 2.5H11l-4 3.5V15h0.5A2.5 2.5 0 0 1 5 12.5z',
+      tasks: 'M9.5 4.5h5v15h-5z',
+      database: 'M5 6.5C5 5.1 8.1 4 12 4s7 1.1 7 2.5S15.9 9 12 9 5 7.9 5 6.5z',
+      bug: 'M8.5 10a3.5 3.5 0 0 1 7 0v3.5a3.5 3.5 0 0 1-7 0z',
+      run: 'M12 3.5a8.5 8.5 0 1 1 0 17a8.5 8.5 0 1 1 0-17z',
+      terminal: 'M4 6.5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z'
+    };
+    const HUE = { project: '#f2c46d', editor: '#9db8ff', git: '#ff8f73', realm: '#3ad6ad', chat: '#b49cff', tasks: '#5cb6ff', database: '#7fe0d0', bug: '#f59ac0', run: '#3ad6ad', terminal: '#c8cedb' };
+    const rail = (list) => list.map((r) => {
+      const pressed = !!on[r.id];
+      return {
+        ...r,
+        d: I[r.icon],
+        f: FILL[r.icon],
+        sw: duo ? 1.6 : 1.7,
+        fill: !duo ? 'transparent' : pressed ? `color-mix(in srgb, ${HUE[r.icon]} 55%, transparent)` : 'rgba(139, 147, 163, 0.16)',
+        pressed: pressed ? 'true' : 'false',
+        bg: pressed ? 'var(--well)' : 'transparent',
+        shadow: pressed ? 'var(--in-sm)' : 'none',
+        colour: pressed ? 'var(--ink-900)' : 'var(--ink-400)',
+        toggle: () => this.setState({ on: { ...on, [r.id]: !pressed } })
+      };
+    });
+    const menuNames = ['File', 'Edit', 'Code', 'Find', 'View', 'Run', 'Git', 'Plugins'];
+    const menuX = { File: 98, Edit: 136, View: 270 };
+    const F = [
+      { label: 'New File', shortcut: 'Ctrl+N' }, { label: 'Open File…', shortcut: 'Ctrl+O' }, { label: 'Open Folder…', shortcut: 'Ctrl+Alt+O' }, { label: 'Open Folder in New Window' },
+      { label: 'Open Recent', submenu: true },
+      { sep: true }, { label: 'Save', shortcut: 'Ctrl+S' }, { label: 'Save As…', shortcut: 'Ctrl+Shift+S', disabled: true }, { label: 'Word Wrap', ticked: true },
+      { sep: true }, { label: 'Settings', shortcut: 'Ctrl+,' }
+    ];
+    return {
+      isMac,
+      isWin: !isMac,
+      winW: this.props.winW ?? '1180px',
+      winH: this.props.winH ?? '740px',
+      ic: I,
+      openMenu,
+      menuOpen: !isMac && openMenu !== '',
+      menuLeft: `${menuX[openMenu] ?? 98}px`,
+      menus: menuNames.map((label) => ({
+        label,
+        expanded: label === openMenu ? 'true' : 'false',
+        bg: label === openMenu ? 'var(--well)' : 'transparent',
+        shadow: label === openMenu ? 'var(--in-sm)' : 'none',
+        colour: label === openMenu ? 'var(--ink-900)' : 'var(--ink-500)',
+        pick: () => this.setState({ openMenu: label === openMenu ? '' : label })
+      })),
+      subOpen: subOpen,
+      subLeft: `${(menuX[openMenu] ?? 98) + 292}px`,
+      filletLeft: `${(menuX[openMenu] ?? 98) + 300}px`,
+      recent: [
+        { label: 'unluminous', hover: true },
+        { label: 'inillucent' },
+        { label: 'black-rainbow-labs-rux' },
+        { sep: true },
+        { label: 'Clear Recent' }
+      ].map((it) => ({ isSep: !!it.sep, isItem: !it.sep, label: it.label || '', shortcut: it.shortcut || '', bg: it.hover ? 'var(--well)' : 'transparent', shadow: it.hover ? 'inset 2px 2px 5px #0c0f13, inset -2px -2px 5px #2e343d' : 'none' })),
+      fileMenu: F.map((it) => ({
+        isSep: !!it.sep,
+        isHeading: !!it.heading,
+        isItem: !it.sep && !it.heading,
+        heading: it.heading || '',
+        label: it.label || '',
+        shortcut: it.shortcut || '',
+        disabled: !!it.disabled,
+        opacity: it.disabled ? '0.4' : '1',
+        tick: it.ticked ? '1' : '0',
+        chev: it.submenu ? '1' : '0',
+        pick: it.submenu ? () => this.setState({ openSub: subOpen ? '' : it.label }) : () => {},
+        haspopup: it.submenu ? 'menu' : 'false',
+        expanded: it.submenu && subOpen ? 'true' : 'false',
+        chevColour: it.submenu && subOpen ? 'var(--ink-900)' : 'var(--ink-400)',
+        chevMr: '0px',
+        mr: '0px',
+        radius: '10px',
+        bg: it.submenu && subOpen ? 'rgba(255, 255, 255, 0.045)' : it.hover ? 'var(--well)' : 'transparent',
+        shadow: it.submenu && subOpen ? 'none' : it.hover ? 'var(--in-sm)' : 'none'
+      })),
+      views: [{ label: 'Raw', d: I.raw }, { label: 'Side by side', d: I.split }, { label: 'Preview', d: I.preview }].map((v, i) => ({
+        ...v,
+        checked: i === view ? 'true' : 'false',
+        bg: i === view ? 'var(--chip)' : 'transparent',
+        shadow: i === view ? 'var(--out-sm)' : 'none',
+        colour: i === view ? 'var(--ink-900)' : 'var(--ink-400)',
+        pick: () => this.setState({ view: i })
+      })),
+      railTop: rail([
+        { id: 'explorer', icon: 'project', label: 'Project' },
+        { id: 'editor', icon: 'editor', label: 'Editing Area' },
+        { id: 'git', icon: 'git', label: 'Git' },
+        { id: 'realm', icon: 'realm', label: 'Realm' },
+        { id: 'chat', icon: 'chat', label: 'Agent-Chat' },
+        { id: 'tasks', icon: 'tasks', label: 'Agent-Tasks' },
+        { id: 'database', icon: 'database', label: 'Database' }
+      ]),
+      railBottom: rail([
+        { id: 'debug', icon: 'bug', label: 'Debug tile' },
+        { id: 'run', icon: 'run', label: 'Run tile' },
+        { id: 'terminal', icon: 'terminal', label: 'Terminal tile' }
+      ]),
+      showExplorer: !!on.explorer,
+      caret: 7,
+      breakpoints: [12],
+      rows: [
+        { name: '.cargo', folder: true },
+        { name: 'crates', folder: true, open: true },
+        { name: 'unluminous-app', folder: true, open: true, depth: 1 },
+        { name: 'examples', folder: true, depth: 2 },
+        { name: 'plugins', folder: true, depth: 2 },
+        { name: 'src', folder: true, open: true, depth: 2 },
+        { name: 'app', folder: true, depth: 3 },
+        { name: 'components', folder: true, depth: 3 },
+        { name: 'services', folder: true, depth: 3 },
+        { name: 'theme', folder: true, open: true, depth: 3 },
+        { name: 'crisp.rs', depth: 4, badge: { letter: 'R', colour: '#b7410e' } },
+        { name: 'icon.rs', depth: 4, badge: { letter: 'R', colour: '#b7410e' }, chosen: true, git: 'modified' },
+        { name: 'mod.rs', depth: 4, badge: { letter: 'R', colour: '#b7410e' } },
+        { name: 'unluminous-core', folder: true, depth: 1 },
+        { name: 'design', folder: true },
+        { name: 'Cargo.toml', mark: 'page' },
+        { name: 'CLAUDE.md', mark: 'prose' },
+        { name: 'README.md', mark: 'prose' }
+      ],
+      tabs: [
+        { name: 'icon.rs', active: true, badge: { letter: 'R', colour: '#b7410e' } },
+        { name: 'mod.rs', badge: { letter: 'R', colour: '#b7410e' } },
+        { name: 'style-guide.md' }
+      ],
+      code: [
+        'pub fn more(painter: &egui::Painter, centre: Pos2, color: Color32) {',
+        '    for step in [-4.5, 0.0, 4.5] {',
+        '        painter.circle_filled(Pos2::new(centre.x, centre.y + step), 1.4, color);',
+        '    }',
+        '}',
+        '',
+        'pub fn plus(painter: &egui::Painter, centre: Pos2, color: Color32) {',
+        '    let stroke = Stroke::new(1.5, color);',
+        '    painter.line_segment(',
+        '        [Pos2::new(centre.x - 4.0, centre.y), Pos2::new(centre.x + 4.0, centre.y)],',
+        '        stroke,',
+        '    );',
+        '    painter.line_segment(',
+        '        [Pos2::new(centre.x, centre.y - 4.0), Pos2::new(centre.x, centre.y + 4.0)],',
+        '        stroke,',
+        '    );',
+        '}',
+        '',
+        '/// A circle with a plus in it, for the canvas zoom in button.',
+        'pub fn zoom_in(painter: &egui::Painter, centre: Pos2, color: Color32) {',
+        '    zoom_mark(painter, centre, color, true);',
+        '}'
+      ].join('\n'),
+      status: ['icon.rs', 'Rust', 'LF', 'Ln 7, Col 5']
+    };
+  }
+}
+</script>
+</body>
+</html>

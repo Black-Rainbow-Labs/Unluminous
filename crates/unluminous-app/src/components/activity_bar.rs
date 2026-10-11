@@ -44,19 +44,22 @@ use crate::app::actions::{Action, GitAction};
 use crate::components::controls::WithHint as _;
 use crate::theme::{color, icon, size};
 
-/// How big one button in the rail is, and how far apart two of them are.
-const BUTTON: f32 = 24.0;
-const STEP: f32 = 30.0;
+/// How big one button in the rail is, and how far apart two of them are: round buttons 34 points across
+/// with four between them, which is the Editing code design (`task-2241`).
+const BUTTON: f32 = 34.0;
+const STEP: f32 = 38.0;
 /// Space between the top or bottom edge of the rail and the first button.
 const MARGIN: f32 = 8.0;
-/// The wash drawn behind an open or hovered button, and how round it is. Twenty six points against the
-/// twenty four of the button's hit area, centred on it, which leaves the wash two points from the rail's
-/// right edge.
-const WELL: f32 = 26.0;
-const WELL_CORNER: u8 = 7;
+/// How large a mark is drawn in a button: `width="19"` on a 24 unit view box.
+const MARK: f32 = 19.0;
 
-/// The icon a rail button draws: paint it at a point, in a colour.
-type IconDrawer = fn(&egui::Painter, Pos2, egui::Color32);
+/// The icon a rail button draws: one of the design's line marks, or a drawing of Unluminous's own for a plugin
+/// that names a mark the design has no line version of.
+#[derive(Clone, Copy)]
+enum IconDrawer {
+    Line(rux::Icon),
+    Drawn(fn(&egui::Painter, Pos2, egui::Color32)),
+}
 
 /// One row of the panes that live at the side of the rail: its name, its icon, whether it is
 /// showing, whether it can be pressed, the action pressing it performs, and the panel its right
@@ -159,16 +162,25 @@ pub fn show_with(
     plugins: &[PluginButton],
 ) -> RailOutcome {
     let painter = ui.painter_at(area);
-    painter.rect_filled(
-        area,
-        CornerRadius::ZERO,
-        crate::theme::faded(color::explorer_footer(), opacity),
+    painter.rect_filled(area, CornerRadius::ZERO, crate::theme::faded(color::title_bar(), opacity));
+    // The groove down the rail's right hand edge: a dark line and a lit one beside it.
+    crate::components::chrome_kit::groove(
+        &painter,
+        Pos2::new(area.right() - 2.0, area.top()),
+        Pos2::new(area.right() - 2.0, area.bottom()),
     );
-    painter.line_segment(
-        [Pos2::new(area.right(), area.top()), Pos2::new(area.right(), area.bottom())],
-        egui::Stroke::new(1.0, color::divider()),
-    );
+    crate::components::chrome_kit::layer(ui, "rail", area, 0.0, |rux| {
+        buttons(rux, area, state, plugins)
+    })
+}
 
+/// Every button in the rail, drawn into one `rux` layer.
+fn buttons(
+    rux: &mut rux::Rux<'_>,
+    area: Rect,
+    state: RailState,
+    plugins: &[PluginButton],
+) -> RailOutcome {
     let mut outcome = RailOutcome::default();
     // Six points in from the left rather than centred in the rail, because the outer six belong to
     // `components::resize_edges` and a button that reached into them would lose those clicks to the
@@ -179,7 +191,7 @@ pub fn show_with(
     let top: [SideButtonRow; 4] = [
         (
             "Project",
-            icon::folder,
+            IconDrawer::Line(rux::Icon::Project),
             state.explorer_visible,
             true,
             Action::ToggleExplorer,
@@ -193,7 +205,7 @@ pub fn show_with(
             // It is not a `Panel`, so a right click on it opens no menu: the editing area is what is left when
             // the panels have taken their room, and there is no edge to move it to.
             "Editing Area",
-            icon::editing_area,
+            IconDrawer::Line(rux::Icon::Document),
             state.editor_visible,
             true,
             Action::ToggleEditor,
@@ -204,7 +216,7 @@ pub fn show_with(
             // a name — a test cannot tell them apart and neither can anybody reading them out. This
             // button opens the commit panel, which is the reference editor's Version Control tool window.
             "Version Control",
-            icon::branch,
+            IconDrawer::Line(rux::Icon::Git),
             state.git_open,
             state.in_repository,
             Action::Git(GitAction::Commit),
@@ -217,7 +229,7 @@ pub fn show_with(
             // groups say what a panel *is*: the bottom one holds the things that are a character
             // grid, and a canvas is a surface with several of them inside it rather than one.
             "Realm",
-            icon::realm,
+            IconDrawer::Line(rux::Icon::Realm),
             state.realm_visible,
             true,
             Action::Realm(crate::app::actions::RealmAction::Toggle),
@@ -229,7 +241,7 @@ pub fn show_with(
     let top = top.into_iter().filter(|(name, ..)| *name != "Realm" || state.realm_available);
     for (index, (name, draw, on, enabled, action, panel)) in top.enumerate() {
         let centre = Pos2::new(centre_x, area.top() + MARGIN + BUTTON / 2.0 + index as f32 * STEP);
-        let pressed = rail_button(ui, centre, name, draw, on, enabled);
+        let pressed = rail_button(rux, centre, name, draw, on, enabled);
         if pressed.clicked {
             outcome.chosen = Some(action);
         }
@@ -252,21 +264,21 @@ pub fn show_with(
     let bottom: [BottomButtonRow; 3] = [
         (
             "Terminal tile",
-            icon::terminal,
+            IconDrawer::Line(rux::Icon::Terminal),
             state.terminal_visible,
             Action::ToggleTerminal,
             crate::app::dock::Panel::Terminal,
         ),
         (
             "Run tile",
-            icon::run,
+            IconDrawer::Line(rux::Icon::RunTile),
             state.run_visible,
             Action::ToggleRunTile,
             crate::app::dock::Panel::Run,
         ),
         (
             "Debug tile",
-            icon::bug,
+            IconDrawer::Line(rux::Icon::Bug),
             state.debug_visible,
             Action::ToggleDebugTile,
             crate::app::dock::Panel::Debug,
@@ -275,7 +287,7 @@ pub fn show_with(
     for (index, (name, draw, on, action, panel)) in bottom.into_iter().enumerate() {
         let centre =
             Pos2::new(centre_x, area.bottom() - MARGIN - BUTTON / 2.0 - index as f32 * STEP);
-        let pressed = rail_button(ui, centre, name, draw, on, true);
+        let pressed = rail_button(rux, centre, name, draw, on, true);
         if pressed.clicked {
             outcome.chosen = Some(action);
         }
@@ -312,7 +324,7 @@ pub fn show_with(
             continue;
         }
         let pressed =
-            rail_button(ui, centre, &button.label, pane_icon(&button.icon), button.on, true);
+            rail_button(rux, centre, &button.label, rail_mark(&button.icon), button.on, true);
         if pressed.clicked {
             outcome.chosen = Some(match button.opens {
                 Opens::Pane => Action::PluginPane { pane: button.key.clone() },
@@ -351,6 +363,22 @@ pub fn pane_icon(name: &str) -> fn(&egui::Painter, Pos2, egui::Color32) {
     }
 }
 
+/// The mark a plugin's button draws: the design's line mark where it has one for the name, and Unluminous's own
+/// drawing for the rest.
+fn rail_mark(name: &str) -> IconDrawer {
+    match name {
+        "board" => IconDrawer::Line(rux::Icon::Board),
+        "folder" => IconDrawer::Line(rux::Icon::Project),
+        "terminal" => IconDrawer::Line(rux::Icon::Terminal),
+        "run" => IconDrawer::Line(rux::Icon::RunTile),
+        "bug" => IconDrawer::Line(rux::Icon::Bug),
+        "branch" => IconDrawer::Line(rux::Icon::Git),
+        "chat" => IconDrawer::Line(rux::Icon::Bubble),
+        "database" => IconDrawer::Line(rux::Icon::Database),
+        other => IconDrawer::Drawn(pane_icon(other)),
+    }
+}
+
 /// What one button in the rail reported.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 struct Pressed {
@@ -359,49 +387,41 @@ struct Pressed {
     menu: Option<Pos2>,
 }
 
-/// One button in the rail: a pill when what it opens is open, and a drawn icon.
+/// One button in the rail: round, carved into the rail while what it opens is open, and a line mark.
+///
+/// `task-2241`, the Editing code design: `width: 34px; height: 34px; border-radius: 50%`, carved with
+/// `--in-sm` and the mark in the strong ink while the pane is showing, no surface and the quiet ink while it
+/// is not. The pointer turns the mark the sky colour.
 fn rail_button(
-    ui: &mut egui::Ui,
+    rux: &mut rux::Rux<'_>,
     centre: Pos2,
     name: &str,
-    draw: fn(&egui::Painter, Pos2, egui::Color32),
+    draw: IconDrawer,
     on: bool,
     enabled: bool,
 ) -> Pressed {
     let hit = Rect::from_center_size(centre, Vec2::splat(BUTTON));
     let sense = if enabled { Sense::click() } else { Sense::hover() };
-    let response = ui.interact(hit, ui.id().with(("activity", name)), sense).with_hint(name);
-    let painter = ui.painter();
-    // **A pane that is open is a soft wash of the accent with its mark in the accent, and a short bar of
-    // the accent against the rail's edge**, `task-2219`. It was the list's chosen-row pill at the full size
-    // of the button with the mark in near black: three pale blue squares down a rail that is nearly always
-    // in that state, which read as a highlighter rather than as a control. The bar and the wash are what
-    // the reference editors draw for an open tool window; together they say "open" at a glance without being the loudest thing in
-    // the window. A hover is the same shape in the hover wash.
-    let well = Rect::from_center_size(centre, Vec2::splat(WELL));
-    let corner = CornerRadius::same(WELL_CORNER);
+    let response =
+        rux.ui.interact(hit, rux.ui.id().with(("activity", name)), sense).with_hint(name);
+    let chat = crate::components::chrome_kit::chat();
+    let ink = rux.theme().ink;
     if on {
-        painter.rect_filled(well, corner, color::accent().gamma_multiply(0.15));
-        let bar = Rect::from_min_size(
-            Pos2::new(ui.clip_rect().left().max(hit.left() - 6.0), centre.y - 7.0),
-            Vec2::new(2.5, 14.0),
-        );
-        painter.rect_filled(bar, CornerRadius { nw: 0, sw: 0, ne: 2, se: 2 }, color::accent());
-    } else if response.hovered() && enabled {
-        painter.rect_filled(well, corner, color::hover_wash().gamma_multiply(0.07));
+        rux.chrome.surface(hit, BUTTON / 2.0, chat.well, chat.carved_sm());
     }
-    // The rail's three states, through the palette's icon roles. A pane that is open takes the accent
-    // rather than `icon_active`, so the mark and the wash behind it are one colour family.
     let tint = if !enabled {
-        color::icon_disabled().gamma_multiply(0.6)
-    } else if on {
-        color::accent()
+        ink.i400.gamma_multiply(0.45)
     } else if response.hovered() {
-        color::icon_active()
+        chat.sky
+    } else if on {
+        ink.i900
     } else {
-        color::icon()
+        ink.i400
     };
-    icon::crisp(painter, centre, tint, 1.08, draw);
+    match draw {
+        IconDrawer::Line(mark) => rux.mark(rux::Mark::new(mark, MARK), centre, tint),
+        IconDrawer::Drawn(paint) => icon::crisp(rux.ui.painter(), centre, tint, 1.2, paint),
+    }
     response
         .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, enabled, on, name));
     Pressed {
@@ -417,10 +437,6 @@ fn rail_button(
 // every value involved is known at compile time: clippy is right that a runtime `assert!` on
 // them can only ever pass or fail the same way, so a build fails before it ever draws a rail
 // that could not fit its own buttons.
-const _: () = assert!(
-    size::ACTIVITY_BAR < 40.0,
-    "narrower than the reference editor's, which is what was asked for"
-);
 const _: () = assert!(size::ACTIVITY_BAR >= BUTTON + 4.0, "a button has to fit inside it");
 // The button starts where the window's own left resize grip stops, so the two never overlap.
 const _: () = assert!(

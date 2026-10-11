@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Editing code on macOS</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/rux/tokens.css">
+<link rel="stylesheet" href="ds/rux/components/bundle.css">
+<script src="ds/rux/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1180px; height: 800px; overflow: hidden; display: flex; flex-direction: column; background: linear-gradient(160deg, #2b313b, #14171c); font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;">
+<div role="presentation" style="height: 26px; flex-shrink: 0; display: flex; align-items: center; gap: 18px; padding: 0 18px; background: rgba(30, 32, 36, 0.78); box-shadow: inset 0 -0.5px 0 rgba(255, 255, 255, 0.08); font-size: 13px; color: rgba(255, 255, 255, 0.92);">
+<span style="width: 14px; height: 14px; border-radius: 4px; background: rgba(255, 255, 255, 0.18);" aria-label="[ system menu ]"></span>
+<span style="font-weight: 700;">Unluminous</span>
+<sc-for list="{{menus}}" as="m" hint-placeholder-count="10"><span>{{m}}</span></sc-for>
+</div>
+<div style="flex: 1; display: flex; align-items: center; justify-content: center;">
+<div style="width: 1140px; height: 734px; border-radius: 12px; overflow: hidden; box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.6), 0 24px 60px rgba(0, 0, 0, 0.55);">
+<dc-import name="EditorWindow" platform="macos" win-w="1140px" win-h="734px" hint-size="1140px,734px"></dc-import>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1180,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { menus: ['File', 'Edit', 'Code', 'Find', 'View', 'Run', 'Git', 'Plugins', 'Window', 'Help'] };
+  }
+}
+</script>
+</body>
+</html>

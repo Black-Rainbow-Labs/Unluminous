@@ -150,7 +150,7 @@ egui's layout, because the window follows an image and the numbers come from tha
 | `WINDOW_CORNER`, `CONTROL_CORNER` | 12, 6 |
 
 Per-component numbers that more than one component needs live beside them: the terminal tile's header
-is 32, a file tab strip is 32, a menu row is 24, and the window's own resize grip is 6 at the edges
+is 32, a file tab strip is 32, a menu row is 30, and the window's own resize grip is 6 at the edges
 and 16 at the corners.
 
 There is no `TOOLBAR` height any more. The strip that held the text options and the Markdown view
@@ -160,7 +160,7 @@ points. `task-1658` moved those controls into the right hand end of the title ba
 changes. `color::TOOLBAR` stays: it is the fill behind the file tabs and the terminal tile.
 
 **A row is 28 points.** In the explorer, in the settings list, in the git changes tree, in the plugin
-list. A menu row is 24, and that is the only other row height in Unluminous. A third one is not added
+list. A menu row is 30, and that is the only other row height in Unluminous. A third one is not added
 without a reason written down.
 
 ## The shapes
@@ -246,12 +246,14 @@ egui lays a `TextEdit` out at the top of the rectangle it is given and `Frame::N
 to push it down with, so a field that hands over its whole height puts its words against its top edge,
 on a different line from the magnifier. That was true of all five fields in Unluminous until `task-1657`.
 
-**A menu.** `MENU` filled, one point `CONTROL_BORDER` stroke, 6 point inner margin, 340 points wide —
+**A menu.** `controls::menu_frame`, the Editing code design's dropdown (`task-2241`): a raised card in
+the `rux` card colour, an 18 point radius, an 8 point margin and a soft shadow below it, 340 points wide —
 wide enough that `Open Folder in New Window` and `Cmd+Option+O` do not meet in the middle, which they
-did at 260. A row is 24 points: a tick at the left when it is on, the name at 18 points in, the
-shortcut right aligned in `TEXT_FAINT`. A row that cannot be used is drawn in
-`TEXT_FAINT.gamma_multiply(0.6)` and takes no clicks. Every menu — the bar's, the explorer's context
-menu, the gutter's — goes through `controls::menu_rows`, so they cannot drift apart.
+did at 260. A row is 30 points: a tick at the left in the faster green when it is on, the name at 26 points
+in, the shortcut right aligned in the quiet ink. The pointer carves a small well under a row, and a
+separator is a groove. A row that cannot be used is drawn faint and takes no clicks. Every menu — the
+bar's, the explorer's context menu, the gutter's — goes through `controls::menu_rows`, so they cannot
+drift apart, and every flyout uses the same frame.
 
 **A modal.** `components::modal::show`, always — never `egui::Modal` directly. Filled `EXPLORER`
 over a `from_black_alpha(120)` backdrop, a one point `CONTROL_BORDER` stroke, corner radius 10. A 46
@@ -288,13 +290,12 @@ asks for.
 **A section heading inside a page.** The name in `TEXT_STRONG` at 12.5 points, then a `DIVIDER` rule
 running to the right margin, as IntelliJ draws one. `settings_dialog::section`.
 
-**A rail button.** `components::activity_bar`. A 24 point square in the 36 point rail down the far
-left, inset 6 from its left edge — which is exactly what `components::resize_edges` takes, so a button
-and the window's own resize grip never want the same point. On, it is the selection pill in
-`SELECTED_ROW` with the icon in `TEXT_STRONG`; hovered, the same pill in `CONTROL`; otherwise no fill
-and the icon in `TEXT_DIM`. Not a filled `ACCENT` square: a pane being open is a state rather than a
-press, and three bright blue squares in a rail that is nearly always in that state would be the
-loudest thing in the window.
+**A rail button.** `components::activity_bar`. A round button 34 points across in the 44 point rail
+down the far left, starting clear of the 6 points `components::resize_edges` takes from the window's edge,
+so a button and the window's own resize grip never want the same point. On, it is carved into the rail
+with the mark in the strong ink; hovered, the mark is the sky blue; otherwise the mark is in the quiet
+ink and there is no surface. The marks are the design's line marks, `rux::Icon::WINDOW` (`task-2241`).
+Not a filled `ACCENT` square: a pane being open is a state rather than a press.
 
 **A place a panel can be dropped.** `components::dock::zones`, drawn only while a panel is being
 carried to another edge of the window. Nothing new in the palette: it is `ACCENT`, the one blue the

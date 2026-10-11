@@ -25,6 +25,7 @@ pub mod agent_tasks;
 pub mod background_dialog;
 pub mod branch_widget;
 pub mod browser_view;
+pub mod chrome_kit;
 pub mod color_wheel;
 pub mod command_palette;
 pub mod completion;

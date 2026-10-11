@@ -44,11 +44,13 @@ use crate::app::actions::{Action, DebugAction, RunAction};
 use crate::components::controls;
 use crate::components::controls::WithHint as _;
 use crate::services::run_configurations::Origin;
-use crate::theme::{color, icon, size};
+use crate::theme::{color, icon};
 
 /// How big one of the widget's square buttons is. The text tools' button, because they sit beside
 /// each other in the same bar and two nearly-equal sizes would read as a mistake.
 pub const BUTTON: f32 = crate::components::text_tools::BUTTON;
+/// Between two of the widget's chips, so each one's raised edge has room.
+pub const GAP: f32 = 6.0;
 
 /// How many characters of a configuration's name are shown before it is cut short.
 ///
@@ -124,10 +126,10 @@ pub fn width(state: &WidgetState) -> f32 {
         width += name_width(&state.label()) + 4.0;
     }
     if state.debuggable {
-        width += 2.0 + BUTTON;
+        width += GAP + BUTTON;
     }
     if state.running {
-        width += 2.0 + BUTTON;
+        width += GAP + BUTTON;
     }
     width
 }
@@ -170,13 +172,13 @@ pub fn show(ui: &mut egui::Ui, area: Rect, state: &WidgetState) -> Option<Action
         Some(_) => "Run the selected configuration",
         None => "Add a run configuration",
     };
-    if square_button(ui, play, name, icon::run, state.selected.is_some()) {
+    if chip_button(ui, play, name, Mark::Line(rux::Icon::Start), true) {
         chosen = Some(match state.selected {
             Some(_) => Action::Run(RunAction::Start(None)),
             None => Action::Run(RunAction::Edit),
         });
     }
-    pen = play.right() + 2.0;
+    pen = play.right() + GAP;
 
     // Debug, beside it, which is the reference editor's pair and the reference editor's order. Same configuration, same
     // command, under a debugger — so with nothing chosen it opens the dialog, exactly as play does.
@@ -191,19 +193,20 @@ pub fn show(ui: &mut egui::Ui, area: Rect, state: &WidgetState) -> Option<Action
         // a play triangle with a bug on it rather than a bare insect, so the two buttons read as one
         // start and the same start watched. The bare insect stays on the rail's Debug tile button,
         // which is about the debugger rather than about starting anything.
-        if square_button(ui, debug, name, icon::debug_run, state.selected.is_some()) {
+        if chip_button(ui, debug, name, Mark::Line(rux::Icon::Bug), false) {
             chosen = Some(match state.selected {
                 Some(_) => Action::Debug(DebugAction::Start(None)),
                 None => Action::Run(RunAction::Edit),
             });
         }
-        pen = debug.right() + 2.0;
+        pen = debug.right() + GAP;
     }
 
     // Stop, drawn only while it can apply — Unluminous's rule for a control that cannot.
     if state.running {
         let stop = Rect::from_min_size(Pos2::new(pen, middle - BUTTON / 2.0), Vec2::splat(BUTTON));
-        if square_button(ui, stop, "Stop the selected configuration", icon::stop, false) {
+        if chip_button(ui, stop, "Stop the selected configuration", Mark::Drawn(icon::stop), false)
+        {
             chosen = Some(Action::Run(RunAction::Stop(None)));
         }
     }
@@ -211,38 +214,45 @@ pub fn show(ui: &mut egui::Ui, area: Rect, state: &WidgetState) -> Option<Action
     chosen
 }
 
-/// One of the widget's square buttons: hovered fill, a drawn icon, a plain name.
+/// The mark a chip carries: one of the design's line marks, or Unluminous's own stop square.
+#[derive(Clone, Copy)]
+enum Mark {
+    Line(rux::Icon),
+    Drawn(fn(&egui::Painter, Pos2, egui::Color32)),
+}
+
+/// One of the widget's buttons: a round chip raised out of the bar with a mark in it, and a plain name.
 ///
-/// `green` tints the icon with the colour that means "this starts something", which is the reference editor's
-/// own colour for the same button and is `theme::color::git_added()` here — the palette is closed,
-/// and that is the green in it.
-fn square_button(
-    ui: &mut egui::Ui,
-    area: Rect,
-    name: &str,
-    draw: fn(&egui::Painter, Pos2, egui::Color32),
-    green: bool,
-) -> bool {
-    let response =
-        ui.interact(area, ui.id().with(("run-widget", name)), Sense::click()).with_hint(name);
-    if response.hovered() {
-        ui.painter().rect_filled(
-            area,
-            CornerRadius::same(size::CONTROL_CORNER),
-            controls::hover_fill(),
-        );
-    }
-    let tint = match (green, response.hovered()) {
-        (true, _) => color::git_added(),
-        (false, true) => color::text_strong(),
-        (false, false) => color::text_control(),
-    };
-    // On the pixel grid, so the triangle, the bug and the square share one weight and have edges
-    // (`task-2219`).
-    icon::crisp(ui.painter(), area.center(), tint, 1.0, draw);
-    response
-        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), name));
-    response.clicked()
+/// `task-2241`, the Editing code design: Run is a chip with a play triangle in the green, Debug a chip with the
+/// bug, and Stop a chip with a square. `green` tints the mark with the colour that means "this starts
+/// something", which is the design's `color: var(--down)` on Run whether or not a configuration is chosen.
+fn chip_button(ui: &mut egui::Ui, area: Rect, name: &str, mark: Mark, green: bool) -> bool {
+    crate::components::chrome_kit::layer(ui, ("run-widget", name), area, 10.0, |rux| {
+        let response = rux
+            .ui
+            .interact(area, rux.ui.id().with(("run-widget", name)), Sense::click())
+            .with_hint(name);
+        let chat = rux.theme().chat;
+        let ink = rux.theme().ink;
+        rux::components::chip_disc(rux, area);
+        let tint = match (green, response.hovered()) {
+            (true, _) => chat.faster,
+            (false, true) => chat.sky,
+            (false, false) => ink.i500,
+        };
+        match mark {
+            // `width="15"` for the play triangle, nudged two points right as the design does, and `17` for the bug.
+            Mark::Line(rux::Icon::Start) => rux.mark(
+                rux::Mark::new(rux::Icon::Start, 15.0),
+                area.center() + Vec2::new(1.0, 0.0),
+                tint,
+            ),
+            Mark::Line(icon) => rux.mark(rux::Mark::new(icon, 17.0), area.center(), tint),
+            Mark::Drawn(paint) => icon::crisp(rux.ui.painter(), area.center(), tint, 1.0, paint),
+        }
+        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name));
+        response.clicked()
+    })
 }
 
 /// The flyout: the configurations, then `Run Current File`, then `Edit Configurations...`.
@@ -384,10 +394,10 @@ mod tests {
             ..WidgetState::default()
         };
         let with_debug = WidgetState { debuggable: true, ..plain.clone() };
-        assert_eq!(width(&with_debug) - width(&plain), 2.0 + BUTTON);
+        assert_eq!(width(&with_debug) - width(&plain), GAP + BUTTON);
         // And both at once is both, which is what a running debug session looks like.
         let running = WidgetState { running: true, ..with_debug.clone() };
-        assert_eq!(width(&running) - width(&plain), 2.0 * (2.0 + BUTTON));
+        assert_eq!(width(&running) - width(&plain), 2.0 * (GAP + BUTTON));
     }
 
     #[test]
@@ -398,7 +408,7 @@ mod tests {
             ..WidgetState::default()
         };
         let running = WidgetState { running: true, ..idle.clone() };
-        assert_eq!(width(&running) - width(&idle), 2.0 + BUTTON);
+        assert_eq!(width(&running) - width(&idle), GAP + BUTTON);
     }
 
     #[test]

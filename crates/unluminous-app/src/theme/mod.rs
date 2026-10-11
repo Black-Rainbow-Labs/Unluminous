@@ -828,17 +828,15 @@ pub fn syntax() -> Option<crate::services::plugins::SyntaxTheme> {
 pub mod size {
     /// Height of the bar holding the window buttons and the file name.
     ///
-    /// Fifty left more room above and below the buttons than anything in the bar needed — nothing in
-    /// it is taller than the twenty four point run widget — so the window opened with a band of empty
-    /// colour across the top. Thirty eight keeps seven points clear of the tallest thing in it.
-    pub const TITLE_BAR: f32 = 38.0;
+    /// Forty six, the Editing code design's `height: 46px` (`task-2241`): the menus are 30 point pills and the
+    /// run widget's chips are 32 across, so seven points are left above and below the tallest of them.
+    pub const TITLE_BAR: f32 = 46.0;
     /// Width of the rail of pane buttons down the far left of the window.
     ///
-    /// Narrower than the reference editor's, which is about forty points, because `task-1658` asks for that and
-    /// because Unluminous's holds three buttons rather than a dozen. Twenty four for the button, six either
-    /// side — and the six on the left is exactly what `components::resize_edges` takes, so a button and
-    /// the window's own left grip never fight over the same point.
-    pub const ACTIVITY_BAR: f32 = 36.0;
+    /// Forty four, the Editing code design's `width: 44px` (`task-2241`): round buttons 34 points across.
+    /// Each starts clear of the six points `components::resize_edges` takes from the window's left edge, so a
+    /// button and the window's own grip never want the same point.
+    pub const ACTIVITY_BAR: f32 = 44.0;
     /// Height of the bar along the bottom of the window.
     pub const STATUS_BAR: f32 = 32.0;
     /// Width of the file explorer.

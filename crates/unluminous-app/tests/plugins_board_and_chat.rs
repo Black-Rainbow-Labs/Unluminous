@@ -99,11 +99,12 @@ fn the_board_contributes_a_pane_and_no_tab() {
 
     // The board is reached from its menu entry instead, which is the control a person uses. Since
     // `task-1848` that entry is one level deeper: `Plugins` in the bar, then `Show Board` under the
-    // `Agent-Tasks` heading — a submenu is drawn inline here, so the entry is on the screen as soon as
-    // the `Plugins` menu is open and there is nothing to click on the heading itself.
+    // `Agent-Tasks` row, a submenu that opens beside its row since `task-2241`.
     harness.state_mut().menu_placement = MenuPlacement::InWindow;
     steady(&mut harness);
     harness.get_by_label(unluminous_app::app::actions::PLUGINS_MENU).click();
+    steady(&mut harness);
+    harness.get_by_label("Agent-Tasks").click();
     steady(&mut harness);
     harness.get_by_label("Show Board").click();
     steady(&mut harness);
@@ -2383,7 +2384,10 @@ fn the_chat_pane_with_nothing_said_in_it() {
 #[test]
 fn a_question_and_an_answer_are_two_bubbles_on_opposite_sides() {
     let mut harness = a_chat(&[
-        (unluminous_chat::Role::User, "Why is `relayout` keeping a paragraph it should have thrown away?"),
+        (
+            unluminous_chat::Role::User,
+            "Why is `relayout` keeping a paragraph it should have thrown away?",
+        ),
         (
             unluminous_chat::Role::Assistant,
             "Because the fingerprint does not carry the hidden flag.\n\n```rust\nlet fingerprint = (text, style, hidden);\n```\n\n| Case | Kept |\n|---|---|\n| edited | no |\n| folded | yes |\n",
@@ -3764,7 +3768,10 @@ fn the_welcome_in_a_narrow_column() {
 fn a_real_answer_from_claude_code_draws_its_table_with_every_column_readable() {
     let answer = include_str!("fixtures/agent-chat-real-answer.md");
     let mut harness = a_chat(&[
-        (unluminous_chat::Role::User, "Count the lines in each file of crates/unluminous-chat/src/rich and show me how the module breaks down, then suggest what I should review first."),
+        (
+            unluminous_chat::Role::User,
+            "Count the lines in each file of crates/unluminous-chat/src/rich and show me how the module breaks down, then suggest what I should review first.",
+        ),
         (unluminous_chat::Role::Assistant, answer),
     ]);
     did(&mut harness, "plugins run agent-chat motion off");

@@ -980,7 +980,9 @@ fn the_file_menu_holds_new_window_open_save_and_recent_projects() {
     for entry in ["New Window", "Open File", "Open Folder", "Save", "Save As", "Close Window"] {
         harness.get_by_label(entry);
     }
-    // The recent projects are listed under a heading of their own inside the File menu.
+    // The recent projects are a submenu of the File menu, opened beside its row (`task-2241`).
+    harness.get_by_label("Recent Projects").click();
+    steady(&mut harness);
     harness.get_by_label("unluminous-recent-one");
     harness.get_by_label("unluminous-recent-two");
     harness.get_by_label("Forget Recent Projects");
@@ -1582,7 +1584,10 @@ fn the_explorers_menu_opens_from_the_empty_space_below_the_rows() {
     assert_eq!(aimed, unluminous_app::app::actions::Aim::AtEmptySpace);
     steady(&mut harness);
     // The entry somebody who right clicked the empty space came for. `File` is asked for by the
-    // menu's own row rather than by name, because `File` is also a menu in the bar.
+    // menu's own row rather than by name, because `File` is also a menu in the bar. `New` is a submenu
+    // and opens beside its row (`task-2241`).
+    harness.get_by_label("New").click();
+    steady(&mut harness);
     harness.get_by_label("Folder");
     // And the ones that are about a particular file are dimmed rather than absent.
     let entries = unluminous_app::app::actions::explorer_menu(
@@ -2222,6 +2227,8 @@ fn the_recent_projects_menu_opens_a_project_without_closing_this_one() {
     let before = harness.state().tree.root().to_path_buf();
 
     harness.get_by_label("File").click();
+    steady(&mut harness);
+    harness.get_by_label("Recent Projects").click();
     steady(&mut harness);
     harness.get_by_label("unluminous-recent-open-test");
     harness.snapshot(shot("recent_projects_menu"));

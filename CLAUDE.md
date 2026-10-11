@@ -2074,7 +2074,7 @@ binary `load_settings` gives it the person's store, so nothing a person sees cha
 ## The look is written down, and a new control is measured against it
 
 `design/style-guide.md` says what a control in Unluminous is built from: the palette is closed, a list row
-is 28 points and a menu row is 24, selection is one pill drawn one way, a modal has one shape, icons
+is 28 points and a menu row is 30, selection is one pill drawn one way, a modal has one shape, icons
 are drawn rather than lettered, and every control has a plain name. **Read it before drawing anything
 new**, and add to it rather than inventing a second answer.
 
@@ -2144,6 +2144,34 @@ function is what stops a sixth field being the sixth chance to get it wrong.
 **A flyout must not hold a dropdown or another flyout.** egui keeps at most one popup open at a time,
 so opening the second shuts the first — which is why the three line spacings in the text options
 panel are three buttons rather than the dropdown they used to be.
+
+
+### The title bar, the menus and the rail are the Editing code design (`task-2241`)
+
+The Claude Design canvas "Unluminous", page Editing code (artboards EditorWindow, EditorMenuOpen and
+EditorMac), is the picture the window's furniture is measured against. The file editor, the tabs, the
+explorer's rows and the status bar are not part of it and were not changed. Five rules:
+
+- **The furniture is `rux` decoration, drawn through `components::chrome_kit`.** It keeps one `RuxState`
+  per thread, for the reason the active theme is per thread, and `chrome_kit::end_frame` gives back the
+  canvases not drawn in a frame. `chrome_kit::groove` is the dark line and the lit line under the title bar
+  and down the rail's edge.
+- **The title bar is 46 points.** A menu is a 30 point pill whose word is in the quiet ink, carved into the
+  bar while its list is open. The project is a carved chip. On Windows the three window buttons are flat
+  46 point strips, and the close button turns the close red under the pointer. On macOS the traffic lights
+  are drawn by Unluminous and keep their colours.
+- **A menu's list is `controls::menu_frame`**: a raised card with an 18 point radius. A row is 30 points, the
+  hover is a small carved well, and a separator is a groove. The flyouts use the same frame.
+- **The rail is 44 points wide and its buttons are round, 34 across**, carved in while their pane is showing,
+  with the design's line marks: `rux::Icon::Project`, `Document`, `Git`, `Realm`, `Bubble`, `Board`,
+  `Database`, `Bug`, `RunTile` and `Terminal`, which are `rux::Icon::WINDOW`. A plugin naming a mark the
+  design has no line version of keeps Unluminous's own drawing.
+- **The tools in the bar are chips.** Text options is a 32 point round chip with `rux::Icon::Letters`, the
+  three view modes are a carved track of 34 by 28 pills with the chosen one raised, and Run, Debug and Stop
+  are 32 point chips. Every control keeps the name it had, so the tests find them as before.
+
+The design also offers duotone rail marks (EditorDuotone). The default is the line marks, and that is what
+is drawn.
 
 ## Find is a bar and Replace is one undo step, and neither is a modal
 

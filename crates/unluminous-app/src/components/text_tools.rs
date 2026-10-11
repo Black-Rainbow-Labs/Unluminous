@@ -64,10 +64,15 @@ pub const COLORS: &[(&str, Color)] = &[
 /// The line spacings the spacing control offers, with the name shown for each.
 pub const SPACINGS: &[(&str, f32)] = &[("Single", 1.0), ("One and a half", 1.5), ("Double", 2.0)];
 
-/// How big one tool button is, and from the left edge of one to the left edge of the next.
-pub const BUTTON: f32 = 28.0;
-const STEP: f32 = 32.0;
-/// Between the `F` button and the three view modes, so they read as two groups rather than four
+/// How big a round button in the title bar is: the text options chip and the run widget's chips, 32 points
+/// across in the Editing code design (`task-2241`).
+pub const BUTTON: f32 = 32.0;
+/// One view mode pill, and the carved track the three sit in: `width: 34px; height: 28px` inside a well
+/// with three points round them and two between.
+const MODE: Vec2 = Vec2::new(34.0, 28.0);
+const TRACK_PAD: f32 = 3.0;
+const MODE_GAP: f32 = 2.0;
+/// Between the text options chip and the three view modes, so they read as two groups rather than four
 /// buttons in a row.
 const GROUP_GAP: f32 = 10.0;
 
@@ -108,8 +113,7 @@ pub fn width(path: Option<&Path>) -> f32 {
     if !applies(path) {
         return 0.0;
     }
-    let modes = crate::app::ViewMode::ALL.len() as f32;
-    let modes_width = modes * STEP - (STEP - BUTTON);
+    let modes_width = track_width();
     match (file_kind::formatting_applies(path), file_kind::preview_applies(path)) {
         (true, true) => BUTTON + GROUP_GAP + modes_width,
         (true, false) => BUTTON,
@@ -117,6 +121,12 @@ pub fn width(path: Option<&Path>) -> f32 {
         (false, true) => modes_width,
         (false, false) => 0.0,
     }
+}
+
+/// How wide the carved track holding the three view modes is.
+fn track_width() -> f32 {
+    let modes = crate::app::ViewMode::ALL.len() as f32;
+    modes * MODE.x + (modes - 1.0) * MODE_GAP + 2.0 * TRACK_PAD
 }
 
 /// Draw the tools into `area`, which is the rectangle the title bar left clear for them.
@@ -141,8 +151,10 @@ pub fn show(
     if file_kind::formatting_applies(path) {
         let button =
             Rect::from_min_size(Pos2::new(pen, middle - BUTTON / 2.0), Vec2::splat(BUTTON));
+        let paint =
+            |ui: &mut egui::Ui, open: bool, hovered: bool| options_chip(ui, button, open, hovered);
         if let Some(commands) =
-            controls::flyout(ui, button, "Text options", icon::font, PANEL, |panel| {
+            controls::flyout_drawn(ui, button, "Text options", paint, PANEL, |panel| {
                 text_options(panel, document, bold_family)
             })
         {
@@ -155,31 +167,52 @@ pub fn show(
     // tools rather than one at each end of a bar.
     if file_kind::preview_applies(path) {
         let kind = file_kind::preview_kind(path);
-        // **One segmented control rather than three loose buttons**, `task-2219`. The three are one choice,
-        // so they sit in one recessed track, and the chosen one is a raised segment with its mark in the
-        // accent rather than a solid accent square with a white mark, which was the most saturated thing
-        // in the window for a setting that is nearly always on.
-        let count = crate::app::ViewMode::ALL.len() as f32;
+        // **One pill switch rather than three loose buttons**, `task-2219` and then `task-2241`. The three are
+        // one choice, so they sit in one carved track, and the chosen one is a chip raised out of it with its
+        // mark in the strong ink.
         let track = Rect::from_min_size(
-            Pos2::new(pen, middle - BUTTON / 2.0),
-            Vec2::new(count * STEP - (STEP - BUTTON), BUTTON),
+            Pos2::new(pen, middle - (MODE.y + 2.0 * TRACK_PAD) / 2.0),
+            Vec2::new(track_width(), MODE.y + 2.0 * TRACK_PAD),
         );
-        ui.painter().rect_filled(
-            track,
-            CornerRadius::same(size::CONTROL_CORNER + 2),
-            color::segment_track(),
-        );
-        for mode in crate::app::ViewMode::ALL {
-            let button =
-                Rect::from_min_size(Pos2::new(pen, middle - BUTTON / 2.0), Vec2::splat(BUTTON));
-            if view_mode_button(ui, button, mode, view_mode == mode, kind) {
-                outcome.view_mode = Some(mode);
+        let picked = crate::components::chrome_kit::layer(ui, "view-modes", track, 8.0, |rux| {
+            let chat = rux.theme().chat;
+            rux.chrome.surface(track, track.height() / 2.0, chat.well, chat.carved_sm());
+            let mut picked = None;
+            let mut left = track.left() + TRACK_PAD;
+            for mode in crate::app::ViewMode::ALL {
+                let button = Rect::from_min_size(Pos2::new(left, middle - MODE.y / 2.0), MODE);
+                if view_mode_button(rux, button, mode, view_mode == mode, kind) {
+                    picked = Some(mode);
+                }
+                left += MODE.x + MODE_GAP;
             }
-            pen += STEP;
+            picked
+        });
+        if picked.is_some() {
+            outcome.view_mode = picked;
         }
     }
 
     outcome
+}
+
+/// The text options button: a round chip raised out of the bar with the design's letters mark, carved in
+/// while its panel is open.
+fn options_chip(ui: &mut egui::Ui, button: Rect, open: bool, hovered: bool) {
+    crate::components::chrome_kit::layer(ui, "text-options", button, 10.0, |rux| {
+        let chat = rux.theme().chat;
+        let ink = rux.theme().ink;
+        match open {
+            true => rux.chrome.surface(button, BUTTON / 2.0, chat.well, chat.carved_sm()),
+            false => rux::components::chip_disc(rux, button),
+        }
+        let tint = match (open, hovered) {
+            (true, _) => ink.i900,
+            (false, true) => chat.sky,
+            (false, false) => ink.i500,
+        };
+        rux.mark(rux::Mark::new(rux::Icon::Letters, 17.0), button.center(), tint);
+    });
 }
 
 /// The panel behind the `F` button: four rows, each named down the left.
@@ -350,55 +383,42 @@ fn format_button(
 
 /// One of the three view mode buttons, drawn as a small picture of what that mode shows.
 fn view_mode_button(
-    ui: &mut egui::Ui,
+    rux: &mut rux::Rux<'_>,
     area: Rect,
     mode: crate::app::ViewMode,
     active: bool,
     kind: file_kind::PreviewKind,
 ) -> bool {
     let name = mode.label_for(kind);
-    let response = ui
-        .interact(area, ui.id().with(("view-mode", name)), Sense::click())
+    let response = rux
+        .ui
+        .interact(area, rux.ui.id().with(("view-mode", name)), Sense::click())
         .with_hint(mode.description_for(kind));
-    let painter = ui.painter();
-    let segment = area.shrink(2.0);
+    let chat = rux.theme().chat;
+    let ink = rux.theme().ink;
     if active {
-        // The raised segment: the control colour over a small soft shadow, which is how a segmented
-        // control's chosen segment is drawn everywhere.
-        painter.add(egui::Shape::Rect(
-            egui::epaint::RectShape::filled(
-                segment.translate(Vec2::new(0.0, 1.0)),
-                CornerRadius::same(size::CONTROL_CORNER),
-                // any ground: a shadow is dark on a light title bar and on a dark one
-                egui::Color32::from_black_alpha(38),
-            )
-            .with_blur_width(3.0),
-        ));
-        painter.rect(
-            segment,
-            CornerRadius::same(size::CONTROL_CORNER),
-            color::segment_chosen(),
-            Stroke::new(1.0, color::divider().gamma_multiply(0.6)),
-            egui::StrokeKind::Inside,
+        rux.chrome.surface(
+            area,
+            area.height() / 2.0,
+            rux::components::chip(&chat, area),
+            chat.raised_chip(),
         );
     } else if response.hovered() {
-        painter.rect_filled(
-            segment,
-            CornerRadius::same(size::CONTROL_CORNER),
-            controls::hover_fill(),
-        );
+        rux.wash(area, area.height() / 2.0, rux.theme().interaction.hover);
     }
     let tint = match (active, response.hovered()) {
-        (true, _) => color::accent(),
-        (false, true) => color::text_strong(),
-        (false, false) => color::text_control(),
+        (true, _) => ink.i900,
+        (false, true) => chat.sky,
+        (false, false) => ink.i400,
     };
-    icon::on_the_pixel_grid(painter, |painter| {
-        icon::view_mode(painter, area.shrink(7.0), mode, tint);
-    });
-    response.widget_info(|| {
-        egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), active, name)
-    });
+    let mark = match mode {
+        crate::app::ViewMode::Raw => rux::Icon::Lines,
+        crate::app::ViewMode::SideBySide => rux::Icon::Halves,
+        crate::app::ViewMode::Preview => rux::Icon::Eye,
+    };
+    rux.mark(rux::Mark::new(mark, 16.0), area.center(), tint);
+    response
+        .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, active, name));
     response.clicked()
 }
 
@@ -439,7 +459,7 @@ mod tests {
         let markdown = width(Some(Path::new("notes.md")));
         let plain = width(Some(Path::new("notes.txt")));
         assert_eq!(plain, BUTTON, "a text file has nothing to preview, so it is the F alone");
-        assert_eq!(markdown, BUTTON + GROUP_GAP + 3.0 * STEP - (STEP - BUTTON));
+        assert_eq!(markdown, BUTTON + GROUP_GAP + 3.0 * MODE.x + 2.0 * MODE_GAP + 2.0 * TRACK_PAD);
         assert!(markdown > plain);
         // A document that has never been saved is treated as the beginning of a Markdown file, which
         // is what `file_kind::preview_applies` already decides for the View menu.

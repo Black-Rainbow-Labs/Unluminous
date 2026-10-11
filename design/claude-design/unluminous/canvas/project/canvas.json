@@ -7,7 +7,7 @@
  "title": "Unluminous",
  "launch": {
   "view": "canvas",
-  "page": "tasks"
+  "page": "editor"
  },
  "pages": [
   {
@@ -21,6 +21,10 @@
   {
    "id": "tasks",
    "name": "Agent-Tasks"
+  },
+  {
+   "id": "editor",
+   "name": "Editing code"
   }
  ],
  "boards": {
@@ -144,6 +148,40 @@
    "h": 760,
    "title": "New task",
    "page": "tasks"
+  },
+  "EditorWindow.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1180,
+   "h": 740,
+   "title": "Windows · menus in the title bar · line icons",
+   "page": "editor",
+   "is_interactive": true
+  },
+  "EditorMenuOpen.dc.html": {
+   "x": 1260,
+   "y": 0,
+   "w": 1180,
+   "h": 740,
+   "title": "Windows · File menu open",
+   "page": "editor"
+  },
+  "EditorMac.dc.html": {
+   "x": 0,
+   "y": 860,
+   "w": 1180,
+   "h": 800,
+   "title": "macOS · menus in the system menu bar",
+   "page": "editor"
+  },
+  "EditorDuotone.dc.html": {
+   "x": 1260,
+   "y": 860,
+   "w": 1180,
+   "h": 740,
+   "title": "Rail icons · duotone (new approach)",
+   "page": "editor",
+   "is_interactive": true
   }
  },
  "order": [
@@ -162,7 +200,11 @@
   "ChatParts.dc.html",
   "TasksBoard.dc.html",
   "TaskModal.dc.html",
-  "TaskCreate.dc.html"
+  "TaskCreate.dc.html",
+  "EditorWindow.dc.html",
+  "EditorMenuOpen.dc.html",
+  "EditorMac.dc.html",
+  "EditorDuotone.dc.html"
  ],
  "notes": {
   "window": {
@@ -227,6 +269,24 @@
    "kind": "title1",
    "maxW": 2440,
    "page": "tasks"
+  },
+  "editorTitle": {
+   "x": 0,
+   "y": -300,
+   "text": "Editing code, redesigned",
+   "kind": "title1",
+   "maxW": 2440,
+   "page": "editor"
+  },
+  "macMenus": {
+   "x": 2520,
+   "y": 0,
+   "w": 460,
+   "maxH": 760,
+   "fill": "orange",
+   "size": "m",
+   "page": "editor",
+   "text": "macOS menus are native and can't be styled.\n\nOn a Mac the File…Plugins menus live in the system menu bar, drawn by macOS (NSMenu). An app chooses the words, keyboard shortcuts, ticks, disabled items, separators, submenus and, if wanted, small template icons (SF Symbols). It can't change the colours, font, size, spacing, shadows or corners; those follow the system's light or dark appearance. Window and Help are expected there too.\n\nWhat Unluminous does own on a Mac is the window's top bar: with a transparent, full-size title bar the traffic lights stay where macOS puts them and everything to their right (project, text options, view switch, Run, Debug) is ours, drawn exactly as on Windows.\n\nOn Windows the whole bar is ours, menus included, so the menus follow the neumorphic style (open menu = pressed pill, dropdown = raised card).\n\nFor egui/winit, the muda crate builds the native macOS menu bar from the same menu definitions the Windows bar draws."
   }
  },
  "designSystems": [
