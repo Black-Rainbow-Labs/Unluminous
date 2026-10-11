@@ -126,14 +126,25 @@ function Get-DefaultRoot {
 .PARAMETER Target - the target directory to search
 #>
 function Get-ProfileDirectories([string] $Target) {
-  $found = @()
-  foreach ($child in Get-ChildItem -LiteralPath $Target -Directory -Force -ErrorAction SilentlyContinue) {
-    if (Test-IsProfileDirectory $child.FullName) { $found += $child.FullName; continue }
-    foreach ($grand in Get-ChildItem -LiteralPath $child.FullName -Directory -Force -ErrorAction SilentlyContinue) {
-      if (Test-IsProfileDirectory $grand.FullName) { $found += $grand.FullName }
-    }
+  return @(Find-ProfileDirectories -Dir $Target -Depth 3)
+}
+
+<#
+.SYNOPSIS Every cargo profile directory at most Depth levels below Dir, without looking inside one.
+
+          Three levels since task-2240, because the release now gives each build a target directory
+          of its own under target: `target/clippy/debug`, `target/waiting/debug` from tools/test.mjs,
+          and `target/mac-aarch64-apple-darwin/aarch64-apple-darwin/release` from the macOS build,
+          which is three below target.
+.PARAMETER Dir - the directory to search
+.PARAMETER Depth - how many levels further down to look
+#>
+function Find-ProfileDirectories([string] $Dir, [int] $Depth) {
+  if ($Depth -le 0) { return }
+  foreach ($child in Get-ChildItem -LiteralPath $Dir -Directory -Force -ErrorAction SilentlyContinue) {
+    if (Test-IsProfileDirectory $child.FullName) { $child.FullName; continue }
+    Find-ProfileDirectories -Dir $child.FullName -Depth ($Depth - 1)
   }
-  return $found
 }
 
 <#

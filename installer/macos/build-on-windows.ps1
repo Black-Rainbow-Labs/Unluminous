@@ -191,23 +191,55 @@ downloads one.
 "@
 }
 
-function Build-AppleTarget {
+function Get-AppleTargetDir {
     <#
     .SYNOPSIS
-        Cross compiles one Apple architecture with zig as the linker.
+        The target directory one Apple architecture builds into: its own, under
+        the cargo target directory.
 
     .DESCRIPTION
-        -headerpad_max_install_names reserves room for the code signature load
-        command. A Mach-O linked by zig for x86-64 has neither the command nor
-        space to add one, and rcodesign then refuses it.
+        `task-2240`. Cargo holds a lock on a target directory for the whole of
+        a build, and a cross build writes its build scripts and procedural
+        macros into the same `release` folder the Windows build uses. So the two
+        architectures, and the Windows build beside them, waited for each other
+        when they shared one, and three of them started at once took 507 s
+        against 383 s one after another. In a directory each they took 210 s,
+        all three at once on 80% of the processors.
 
     .PARAMETER Target
         The triple.
+    #>
+    param([string] $Target)
+    return (Join-Path (Get-CargoTargetDir) "mac-$Target")
+}
+
+function Build-AppleTargets {
+    <#
+    .SYNOPSIS
+        Cross compiles every Apple architecture at once, each with zig as the
+        linker and each in its own target directory, and throws if any failed.
+
+    .DESCRIPTION
+        One process per architecture, started together and waited for
+        together, because most of a build after an ordinary change is the one
+        `unluminous-app` crate, which keeps about half of the processors busy
+        on its own. Two of them side by side fill the rest. Their output
+        reaches this console interleaved; every line cargo prints names its
+        crate, and a failure names its triple below.
+
+        -headerpad_max_install_names reserves room for the code signature load
+        command. A Mach-O linked by zig for x86-64 has neither the command nor
+        space to add one, and rcodesign then refuses it. It is given as
+        CARGO_TARGET_<TRIPLE>_RUSTFLAGS, which is the environment form of the
+        `target.<triple>.rustflags` setting this used to pass with --config.
+
+    .PARAMETER Targets
+        The triples.
 
     .PARAMETER SdkRoot
         The macOS SDK, or an empty string when only the CLI is being built.
     #>
-    param([string] $Target, [string] $SdkRoot)
+    param([string[]] $Targets, [string] $SdkRoot)
 
     if (-not (Test-Path -LiteralPath $cargoZigbuild)) {
         throw 'cargo-zigbuild is missing. Run: pwsh tools/cross/fetch-toolchain.ps1'
@@ -218,20 +250,26 @@ function Build-AppleTarget {
         @('-p', 'unluminous-app', '--bin', 'unluminous', '-p', 'unluminous-cli', '--bin', 'unluminous-cli')
     }
 
-    $previousPath = $env:PATH
-    $previousSdk = $env:SDKROOT
-    $env:PATH = "$zigDir;$env:PATH"
-    if ($SdkRoot) { $env:SDKROOT = $SdkRoot }
-    try {
-        & $cargoZigbuild zigbuild --manifest-path (Join-Path $repo 'Cargo.toml') `
-            --release --locked --target $Target `
-            --config "target.$Target.rustflags=[`"-C`",`"link-arg=-Wl,-headerpad_max_install_names`"]" `
-            @packages
-        if ($LASTEXITCODE -ne 0) { throw "cargo-zigbuild failed for $Target with $LASTEXITCODE" }
-    } finally {
-        $env:PATH = $previousPath
-        $env:SDKROOT = $previousSdk
+    $builds = @()
+    foreach ($target in $Targets) {
+        $start = [System.Diagnostics.ProcessStartInfo]::new($cargoZigbuild)
+        foreach ($argument in @('zigbuild', '--manifest-path', (Join-Path $repo 'Cargo.toml'), '--release', '--locked', '--target', $target) + $packages) {
+            $start.ArgumentList.Add($argument)
+        }
+        $start.UseShellExecute = $false
+        $start.Environment['PATH'] = "$zigDir;$env:PATH"
+        $start.Environment['CARGO_TARGET_DIR'] = Get-AppleTargetDir $target
+        $start.Environment["CARGO_TARGET_$($target.ToUpperInvariant().Replace('-', '_'))_RUSTFLAGS"] = '-C link-arg=-Wl,-headerpad_max_install_names'
+        if ($SdkRoot) { $start.Environment['SDKROOT'] = $SdkRoot }
+        Write-Host "==> $target, into $(Get-AppleTargetDir $target)"
+        $builds += [pscustomobject]@{ Target = $target; Process = [System.Diagnostics.Process]::Start($start) }
     }
+    $failed = @()
+    foreach ($build in $builds) {
+        $build.Process.WaitForExit()
+        if ($build.Process.ExitCode -ne 0) { $failed += "$($build.Target) with $($build.Process.ExitCode)" }
+    }
+    if ($failed.Count -gt 0) { throw "cargo-zigbuild failed for $($failed -join ', ')" }
 }
 
 function New-UniversalBinary {
@@ -253,8 +291,7 @@ function New-UniversalBinary {
     #>
     param([string] $Name, [string] $Into)
 
-    $targetDir = Get-CargoTargetDir
-    $slices = $appleTargets | ForEach-Object { Join-Path $targetDir "$_/release/$Name" }
+    $slices = $appleTargets | ForEach-Object { Join-Path (Get-AppleTargetDir $_) "$_/release/$Name" }
     foreach ($slice in $slices) {
         if (-not (Test-Path -LiteralPath $slice)) { throw "the build did not produce $slice" }
     }
@@ -633,10 +670,7 @@ Write-Host "Unluminous $Version - macOS, built on Windows"
 if ($sdkRoot) { Write-Host "  SDK: $sdkRoot" }
 
 if (-not $SkipBuild) {
-    foreach ($target in $appleTargets) {
-        Write-Host "==> $target"
-        Build-AppleTarget -Target $target -SdkRoot $sdkRoot
-    }
+    Build-AppleTargets -Targets $appleTargets -SdkRoot $sdkRoot
 }
 
 if ($CliOnly) {

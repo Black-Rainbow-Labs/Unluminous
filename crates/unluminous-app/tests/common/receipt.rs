@@ -22,9 +22,35 @@ use std::io::Write;
 use std::sync::OnceLock;
 
 /// Where the receipts live. Under `_agent_output`, which is gitignored, because a receipt is about
-/// this machine and this checkout rather than about the code.
+/// this machine rather than about the code.
+///
+/// **In the main checkout, whichever checkout the binary was built in (`task-2240`).** A ticket runs
+/// the suite in its own worktree and the release is cut from the main checkout, so while each
+/// checkout kept its own folder the main checkout had no receipts after a merge, and the whole suite
+/// was built and run a second time there on code it had already passed. A receipt names a commit, and
+/// `tools/window-suite.mjs` only accepts one that HEAD is built on with nothing a window is made of
+/// changed since, so a receipt from another ticket's branch is reported stale rather than trusted.
 pub fn folder() -> std::path::PathBuf {
-    repository_root().join("_agent_output").join("window-suite")
+    main_checkout().join("_agent_output").join("window-suite")
+}
+
+/// The main checkout: the parent of git's common directory, asked from this checkout. A worktree's
+/// common directory is the main checkout's `.git`. Outside git, or when git cannot answer, this
+/// checkout.
+fn main_checkout() -> std::path::PathBuf {
+    let root = repository_root();
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&root)
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .output();
+    match output {
+        Ok(output) if output.status.success() => {
+            let common = std::path::PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+            common.parent().map(std::path::Path::to_path_buf).unwrap_or(root)
+        }
+        _ => root,
+    }
 }
 
 /// The checkout this test is running out of.

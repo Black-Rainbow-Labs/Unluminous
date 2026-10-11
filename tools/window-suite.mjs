@@ -20,9 +20,30 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { versionless, workspaceMembersInLock } from './versionless.mjs';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const receipts = path.join(repo, '_agent_output', 'window-suite');
+
+/**
+ * The main checkout, found from any worktree through git's common directory.
+ *
+ * `task-2240`: the receipts are kept there, by `crates/unluminous-app/tests/common/receipt.rs` as
+ * well as read from there, because a ticket runs the suite in its own worktree and the release is
+ * cut from the main checkout. While each checkout kept its own folder, the main checkout had no
+ * receipts after a merge and the whole suite was built and run a second time there before every
+ * release, on code it had already passed.
+ */
+function mainCheckout() {
+  try {
+    const common = execFileSync('git', ['-C', repo, 'rev-parse', '--git-common-dir'], { encoding: 'utf8' }).trim();
+    const absolute = path.isAbsolute(common) ? common : path.join(repo, common);
+    return path.dirname(path.resolve(absolute));
+  } catch {
+    return repo;
+  }
+}
+
+const receipts = path.join(mainCheckout(), '_agent_output', 'window-suite');
 const testsDir = path.join(repo, 'crates', 'unluminous-app', 'tests');
 
 // The one binary a receipt is not asked of, and why. `agent_board`'s six tests are every one of them
@@ -88,11 +109,33 @@ function whatMovedSince(commit) {
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean)
-      .filter(CHANGES_A_WINDOW);
+      .filter(CHANGES_A_WINDOW)
+      .filter((file) => !onlyTheVersionMoved(file, commit));
   } catch {
     // A commit git cannot reach is already reported as stale by the ancestor check above.
     return [];
   }
+}
+
+/**
+ * Whether `Cargo.toml` or `Cargo.lock` differs between `commit` and HEAD only in the release's
+ * version number.
+ *
+ * `task-2240`. Every release commits a new version into both files and nothing else, so before this
+ * every receipt went stale the moment a release was cut, and the next ticket's release asked for the
+ * whole suite again even when that ticket changed nothing a window is drawn from. No accepted picture
+ * draws the version: if one did, every release would have needed new pictures accepted, and none has.
+ * The window tests that read `CARGO_PKG_VERSION` compare against it rather than against a written
+ * number, so a version-only change passes or fails them the same way.
+ * @param file - a path from `git diff --name-only`
+ * @param commit - the commit the receipt names
+ */
+function onlyTheVersionMoved(file, commit) {
+  if (file !== 'Cargo.toml' && file !== 'Cargo.lock') return false;
+  const show = (revision, name) =>
+    execFileSync('git', ['-C', repo, 'show', `${revision}:${name}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const members = workspaceMembersInLock(show('HEAD', 'Cargo.lock'));
+  return versionless(file, show(commit, file), members) === versionless(file, show('HEAD', file), members);
 }
 
 const check = process.argv.includes('--check');
@@ -151,5 +194,5 @@ for (const [commit, since] of moved) {
 }
 console.error('');
 console.error('Run it and look at any image that changed:');
-console.error("  cargo test -p unluminous-app --test '*' --no-fail-fast");
+console.error("  pwsh tools/capped.ps1 cargo test -p unluminous-app --test '*' --no-fail-fast");
 process.exit(1);

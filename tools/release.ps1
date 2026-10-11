@@ -93,10 +93,22 @@ param(
     # Skip the suite. For a release whose tests were just run by hand; the gate exists because
     # `task-1922` found every release so far had been made with nothing checking the build at all.
     [switch] $SkipTests,
+    # Run clippy and the tests for every crate, rather than only for the crates whose inputs have
+    # changed since they last passed (`task-2240`). For a release after a toolchain or machine change
+    # that the inputs `tools/test.mjs` hashes would not see.
+    [switch] $FullTests,
     [switch] $SkipMacos
 )
 
 $ErrorActionPreference = 'Stop'
+
+# **On 80% of the processors, and everything this starts as well (`task-2240`).** A release used to
+# hold all 24 logical processors at 100% through clippy, the test build and three release builds, on
+# the machine a person is working at and other tickets render and build on. The affinity mask is set
+# here, before anything is started, so cargo, rustc, the linker, every test binary, Inno Setup and the
+# macOS build inherit it. `UNLUMINOUS_CPU_PERCENT=100` removes it. See `tools/processor-share.ps1`.
+. (Join-Path $PSScriptRoot 'processor-share.ps1')
+if (-not $WhatIf) { Enter-ProcessorShare }
 
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Repo = (Resolve-Path (Join-Path $Here '..')).Path
@@ -126,9 +138,53 @@ $SitePublishers = @(
     @{ Name = 'blackrainbowlabs.com'; Script = (Join-Path $ParentSiteRepo 'scripts/publish.ps1'); Versioned = $false }
 )
 
+# Each step's name and when it started, so the release can say where its time went (`task-2240`).
+$script:Steps = [System.Collections.Generic.List[object]]::new()
+$script:ReleaseStarted = Get-Date
+
+<#
+.SYNOPSIS
+  Prints a step's heading and starts timing it. The previous step's time ends where this one starts.
+.PARAMETER Message
+  The step's heading.
+#>
 function Write-Step([string] $Message) {
+    $script:Steps.Add([pscustomobject]@{ Step = $Message; Started = Get-Date })
     Write-Host ''
     Write-Host "==> $Message" -ForegroundColor Cyan
+}
+
+<#
+.SYNOPSIS
+  Prints how long each step took and writes the same to `_agent_output/release-timings/`.
+.DESCRIPTION
+  `task-2240` was asked why a release took so long, and nothing had recorded where a release's time
+  went: the only evidence was the times on the files it left behind. Every release now leaves one JSON
+  file naming each step, its seconds and the processor share it ran on.
+.PARAMETER Version
+  The version being released, which names the file.
+#>
+function Write-StepTimes([string] $Version) {
+    $finished = Get-Date
+    $rows = @()
+    for ($index = 0; $index -lt $script:Steps.Count; $index++) {
+        $until = if ($index + 1 -lt $script:Steps.Count) { $script:Steps[$index + 1].Started } else { $finished }
+        $rows += [pscustomobject]@{ step = $script:Steps[$index].Step; seconds = [math]::Round(($until - $script:Steps[$index].Started).TotalSeconds, 1) }
+    }
+    $total = [math]::Round(($finished - $script:ReleaseStarted).TotalSeconds, 1)
+    Write-Host ''
+    Write-Host "Where the $total seconds went:" -ForegroundColor Cyan
+    foreach ($row in $rows) { Write-Host ("  {0,7:N1} s  {1}" -f $row.seconds, $row.step) }
+    $folder = Join-Path $Repo '_agent_output\release-timings'
+    New-Item -ItemType Directory -Force -Path $folder | Out-Null
+    [pscustomobject]@{
+        version = $Version
+        started = $script:ReleaseStarted.ToString('o')
+        seconds = $total
+        processorShare = $(if ($env:UNLUMINOUS_CPU_PERCENT) { $env:UNLUMINOUS_CPU_PERCENT } else { '80' })
+        cargoBuildJobs = $env:CARGO_BUILD_JOBS
+        steps = $rows
+    } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $folder "$Version.json") -Encoding utf8
 }
 
 function Invoke-Checked([string] $What, [scriptblock] $Body) {
@@ -332,13 +388,16 @@ Write-Host "Unluminous $current -> $next  on $branch"
 if ($WhatIf) {
     Write-Host ''
     Write-Host 'What would happen:' -ForegroundColor Yellow
-    Write-Host "  0. cargo fmt --check, cargo clippy -D warnings, changelog --check, contrast --check,"
-    Write-Host "     the window suite's receipt, then cargo test --workspace --exclude unluminous-app"
-    Write-Host "     and -p unluminous-app --lib --bins"
+    Write-Host "  0. on $(Get-ProcessorSharePercent 0)% of the processors: cargo fmt --check, changelog --check,"
+    Write-Host "     contrast --check, node tools\test.mjs$(if ($FullTests) { ' --all' }) (clippy and tests for the crates that changed),"
+    Write-Host "     and the window suite's receipt"
+    $dryRun = @((Join-Path $Repo 'tools\test.mjs'), '--dry-run')
+    if ($FullTests) { $dryRun += '--all' }
+    & node @dryRun | ForEach-Object { Write-Host "     $_" }
     Write-Host "  1. Cargo.toml version -> $next"
     Write-Host "  2. installer\windows\build.ps1$(if (-not $SkipInstall) { ' -Install' })"
     Write-Host "  3. releases\UnluminousSetup-$next-x64.exe"
-    if (-not $SkipMacos) { Write-Host "  3b. installer\macos\build-on-windows.ps1 -Notarize, then releases\Unluminous-$next-macos.zip, if its preflight passes" }
+    if (-not $SkipMacos) { Write-Host "  3b. at the same time as 2: installer\macos\build-on-windows.ps1 -Notarize, both architectures at once, then releases\Unluminous-$next-macos.zip, if its preflight passes" }
     Write-Host "  4. commit `"Unluminous $next`", tag v$next, push $branch"
     if (-not $SkipPublish) {
         Write-Host "  5. gh release create v$next with the installer attached, on jasonmcaffee/unluminous"
@@ -381,33 +440,28 @@ if (-not $SkipTests) {
         Invoke-Checked 'cargo fmt --all -- --check' {
             & cargo fmt --manifest-path $Manifest --all -- --check
         }
-        Invoke-Checked 'cargo clippy --workspace --all-targets -- -D warnings' {
-            & cargo clippy --manifest-path $Manifest --workspace --all-targets -- -D warnings
-        }
         Invoke-Checked 'node tools\changelog.mjs --check' {
             & node (Join-Path $Repo 'tools\changelog.mjs') --check
         }
         Invoke-Checked 'node tools\contrast.mjs --check' {
             & node (Join-Path $Repo 'tools\contrast.mjs') --check
         }
-        # The notebook kernel tests skip on a machine with no Python that has ipykernel, which would
-        # let a release pass without starting a kernel at all. A release must prove the kernel code,
-        # so here a missing Python fails them (task-2220).
-        $requiredBefore = $env:UNLUMINOUS_REQUIRE_KERNEL
-        $env:UNLUMINOUS_REQUIRE_KERNEL = '1'
-        try {
-            Invoke-Checked 'cargo test --workspace --exclude unluminous-app' {
-                & cargo test --manifest-path $Manifest --workspace --exclude unluminous-app
-            }
-        } finally {
-            $env:UNLUMINOUS_REQUIRE_KERNEL = $requiredBefore
-        }
-        Invoke-Checked 'cargo test -p unluminous-app --lib --bins' {
-            & cargo test --manifest-path $Manifest -p unluminous-app --lib --bins
-        }
+        # **Clippy and the tests, for the crates whose inputs have changed since they last passed
+        # (`task-2240`).** This used to be `cargo clippy --workspace --all-targets`, `cargo test
+        # --workspace --exclude unluminous-app` and `cargo test -p unluminous-app --lib --bins` on every
+        # release, and nine of the twenty releases from 0.64.2 to 0.73.0 changed no crate outside
+        # `crates/unluminous-app`. `tools/test.mjs` hashes what each crate's build and tests can read,
+        # skips a crate that has passed on exactly that content before (in this checkout or in a
+        # ticket's worktree), and runs clippy, the Jupyter kernel tests and the rest in three lanes at
+        # once. The commands it runs for a crate are the ones above, and the notebook kernel tests still
+        # run with UNLUMINOUS_REQUIRE_KERNEL=1, so a missing Python fails them (task-2220).
+        # `-FullTests` runs every crate.
+        $testArguments = @((Join-Path $Repo 'tools\test.mjs'))
+        if ($FullTests) { $testArguments += '--all' }
+        Invoke-Checked 'node tools\test.mjs' { & node @testArguments }
     }
     Write-Host 'The window through wgpu is not run here: it needs a graphics card and a person to look'
-    Write-Host "at any image that changed. Run it by hand: cargo test -p unluminous-app --test '*' --no-fail-fast"
+    Write-Host "at any image that changed. Run it by hand: pwsh tools/capped.ps1 cargo test -p unluminous-app --test '*' --no-fail-fast"
     # What is checked instead is that somebody did. `task-1984` T9: the window suite is deliberately
     # manual and nothing recorded when it last passed, so a release could be made from a commit it
     # had never seen.
@@ -482,12 +536,38 @@ foreach ($destination in $plan.Keys) {
 Write-Step "Setting the version to $next"
 Set-Version $next
 
+# **The macOS half starts first and builds beside the Windows half (`task-2240`).** The two platforms
+# share the version and nothing else, and each build after an ordinary change is mostly the one
+# `unluminous-app` crate, which keeps about half of the processors busy on its own. One after another,
+# the Windows build and the two Apple architectures took 383 s after a one line change; all three at
+# once, each in its own target directory and on 80% of the processors, took 210 s. Notarisation then
+# waits on Apple while the Windows installer is compiled and installed. Its output goes to a log in
+# `_agent_output/release-logs/`, printed below when it finishes.
+$macosProcess = $null
+$macosLog = $null
+if ($doMacos) {
+    $logs = Join-Path $Repo '_agent_output\release-logs'
+    New-Item -ItemType Directory -Force -Path $logs | Out-Null
+    $macosLog = Join-Path $logs "macos-$next.log"
+    Write-Host "Started the macOS build beside the Windows one. Its log: $macosLog"
+    $macosProcess = Start-Process -FilePath 'pwsh' -NoNewWindow -PassThru `
+        -ArgumentList @('-NoProfile', '-File', "`"$macosBuild`"", '-Version', $next, '-Notarize') `
+        -RedirectStandardOutput $macosLog -RedirectStandardError "$macosLog.err"
+    # Read now, so the exit code is still there to read after the process has gone.
+    $null = $macosProcess.Handle
+}
+
 Write-Step 'Building the installer, and installing it'
 $build = Join-Path $Repo 'installer\windows\build.ps1'
 $arguments = @('-File', $build)
 if (-not $SkipInstall) { $arguments += '-Install' }
 & powershell @arguments
-if ($LASTEXITCODE -ne 0) { throw 'installer\windows\build.ps1 failed.' }
+if ($LASTEXITCODE -ne 0) {
+    # The macOS build started above is this release's own child, and a release that stops here
+    # publishes nothing, so it is stopped with everything it started rather than left building.
+    if ($macosProcess -and -not $macosProcess.HasExited) { & taskkill /PID $macosProcess.Id /T /F | Out-Null }
+    throw 'installer\windows\build.ps1 failed.'
+}
 
 $setup = Join-Path $Repo "installer\dist\UnluminousSetup-$next-x64.exe"
 if (-not (Test-Path $setup)) { throw "The installer was not written to $setup." }
@@ -501,9 +581,13 @@ Write-Host "Kept $kept"
 # The bundle is signed and notarised by that script, so what comes back is ready to attach.
 $macosZip = $null
 if ($doMacos) {
-    Write-Step 'Building, signing and notarising the macOS bundle'
-    & pwsh -NoProfile -File $macosBuild -Version $next -Notarize
-    if ($LASTEXITCODE -ne 0) { throw 'installer\macos\build-on-windows.ps1 failed.' }
+    Write-Step 'Waiting for the macOS bundle to be built, signed and notarised'
+    $macosProcess.WaitForExit()
+    $lines = @(Get-Content -LiteralPath $macosLog -ErrorAction SilentlyContinue) + @(Get-Content -LiteralPath "$macosLog.err" -ErrorAction SilentlyContinue)
+    $lines | Where-Object { $_ -notmatch '^\s+(Compiling|Checking|Fresh|Blocking)\b' } | Select-Object -Last 40 | ForEach-Object { Write-Host "  $_" }
+    if ($macosProcess.ExitCode -ne 0) {
+        throw "installer\macos\build-on-windows.ps1 failed with exit code $($macosProcess.ExitCode). The whole log: $macosLog"
+    }
     $macosZip = Join-Path $ReleasesDir "Unluminous-$next-macos.zip"
     if (-not (Test-Path $macosZip)) { throw "The macOS archive was not written to $macosZip." }
     Write-Host "Kept $macosZip"
@@ -557,6 +641,7 @@ Invoke-Checked 'git push --tags' { & git push origin "v$next" }
 if ($SkipPublish) {
     Write-Host ''
     Write-Host "Tagged and pushed v$next. Not published, because -SkipPublish was given." -ForegroundColor Green
+    Write-StepTimes $next
     return
 }
 
@@ -729,6 +814,8 @@ if (-not $SkipInstall) {
 # 0, so a release that never reached the site was indistinguishable from one that did - to a person
 # skimming, and to anything that runs this and reads its exit code. Every check still runs and every
 # line is still printed; only the ending changes.
+Write-StepTimes $next
+
 if ($script:MissedDestinations.Count -gt 0) {
     Write-Host ''
     Write-Host "Unluminous $next did not reach $($script:MissedDestinations.Count) destination(s):" -ForegroundColor Red

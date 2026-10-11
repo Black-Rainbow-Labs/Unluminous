@@ -247,12 +247,13 @@ if (-not $SkipBuild) {
     $keptCc = $env:CC; $keptCxx = $env:CXX
     if ($env:CC -and -not $env:INCLUDE) { $env:CC = $null; $env:CXX = $null }
     try {
-        & cargo build --release --manifest-path (Join-Path $Repo 'Cargo.toml') -p unluminous-app --bin unluminous
-        if ($LASTEXITCODE -ne 0) { throw 'cargo build failed.' }
         # The command line ships beside the editor, and `unluminous-cli` looks for `unluminous` next to itself,
-        # so the two have to be installed into one folder.
-        & cargo build --release --manifest-path (Join-Path $Repo 'Cargo.toml') -p unluminous-cli --bin unluminous-cli
-        if ($LASTEXITCODE -ne 0) { throw 'cargo build failed for unluminous-cli.' }
+        # so the two have to be installed into one folder. One cargo command builds both (`task-2240`):
+        # cargo then schedules the command line's crates into the gaps the editor's leaves, where two
+        # commands one after the other waited for the editor's link before starting the second.
+        # `installer/macos/build-on-windows.ps1` already built them this way.
+        & cargo build --release --manifest-path (Join-Path $Repo 'Cargo.toml') -p unluminous-app --bin unluminous -p unluminous-cli --bin unluminous-cli
+        if ($LASTEXITCODE -ne 0) { throw 'cargo build failed.' }
     } finally {
         $env:CC = $keptCc
         $env:CXX = $keptCxx

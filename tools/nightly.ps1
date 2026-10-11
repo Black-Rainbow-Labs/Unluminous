@@ -70,6 +70,11 @@ if (-not $env:ANTHROPIC_API_KEY) {
     Write-Warning 'ANTHROPIC_API_KEY is not set in this shell, so the agent will have no key.'
 }
 
+# On 80% of the processors, like the release (`task-2240`): it runs at 03:00 on the machine other
+# tickets render and train on overnight. See `tools/processor-share.ps1`.
+. (Join-Path $Here 'processor-share.ps1')
+Enter-ProcessorShare
+
 $out = Join-Path $Repo '_agent_output\nightly'
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 $stamp = Get-Date -Format 'yyyy-MM-dd-HHmmss'
