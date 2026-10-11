@@ -37,14 +37,123 @@
 
 use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
-use super::{clipped_in, darken, lighten, primary_button, text, PAD};
+use super::{clipped_in, darken, lighten, text, PAD};
 use crate::components::controls;
 use crate::services::agent_tasks::model::{Priority, Sprint, SprintStatus, Status, Task};
 use crate::services::agent_tasks::{AgentTasks, Group, View, SWATCHES};
 use crate::services::plugin_ui::{Look, Request};
-use crate::services::vello_canvas::{Fill, Lift};
 use crate::theme::crisp::CrispPainter;
 use crate::theme::icon;
+
+/// What a listing draws its surfaces with: the board's `rux` decoration, in the Agent-Tasks design's values.
+///
+/// `task-2241`. The board's lanes and cards are `rux::components::board`; a listing is the same board seen as a
+/// list, so a group is a well carved into the page as a lane is, a row is a chip raised out of it, an epic is a
+/// card, and a field is a small carved well. One value handed down rather than four recipes repeated.
+struct Deco<'a> {
+    chrome: &'a rux::Chrome,
+    chat: rux::theme::Chat,
+}
+
+impl Deco<'_> {
+    /// A well carved into the page: `--in`.
+    fn well(&self, rect: Rect, radius: f32) {
+        self.chrome.surface(rect, radius, self.chat.well, self.chat.carved());
+    }
+
+    /// A small well for a field: `--in-sm`.
+    fn field(&self, rect: Rect, radius: f32) {
+        self.chrome.surface(rect, radius, self.chat.well, self.chat.carved_sm());
+    }
+
+    /// A card extruded from the page: `--card` with `--out`.
+    fn card(&self, rect: Rect, radius: f32) {
+        self.chrome.surface(
+            rect,
+            radius,
+            rux::Fill::gradient(self.chat.card, rect),
+            self.chat.raised(),
+        );
+    }
+
+    /// A chip, flatter than a card: `--chip` with the board's `--out-sm`.
+    fn chip(&self, rect: Rect, radius: f32) {
+        self.chrome.surface(
+            rect,
+            radius,
+            rux::Fill::gradient(self.chat.chip, rect),
+            self.chat.raised_chip(),
+        );
+    }
+
+    /// A surface of a colour the data chose, lit along its diagonal, raised as a chip.
+    fn coloured(&self, rect: Rect, radius: f32, tint: egui::Color32) {
+        let fill = rux::Fill::Linear {
+            from: rect.left_top(),
+            to: rect.right_bottom(),
+            start: lighten(tint, 0.06),
+            end: darken(tint, 0.1),
+        };
+        self.chrome.surface(rect, radius, fill, self.chat.raised_chip());
+    }
+
+    /// The action's gradient: the one button a strip is for.
+    fn action(&self, rect: Rect, radius: f32) {
+        self.chrome.surface(
+            rect,
+            radius,
+            rux::Fill::gradient(self.chat.action, rect),
+            self.chat.action_raised(),
+        );
+    }
+}
+
+/// The action pill a listing's strip ends in: `Add epic`, in white on the action's gradient.
+fn action_pill(
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    deco: &Deco<'_>,
+    area: Rect,
+    label: &str,
+) -> bool {
+    let response = ui.interact(area, ui.id().with(("agent-tasks-action", label)), Sense::click());
+    deco.action(area, area.height() / 2.0);
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        ui.painter().rect_filled(
+            area,
+            CornerRadius::same((area.height() / 2.0) as u8),
+            crate::theme::color::hover_wash().gamma_multiply(22.0 / 255.0),
+        );
+    }
+    let scale = look.scale();
+    let font =
+        egui::FontId::new(13.0 * scale, egui::FontFamily::Name(crate::theme::BOLD_FAMILY.into()));
+    let galley =
+        ui.painter().crisp_layout_no_wrap(label.to_owned(), font, crate::theme::color::on_accent());
+    let mark = 14.0 * scale;
+    let width = mark + 8.0 * scale + galley.size().x;
+    let left = area.center().x - width / 2.0;
+    let centre = Pos2::new(left + mark / 2.0, area.center().y);
+    let stroke = Stroke::new(2.0 * scale, crate::theme::color::on_accent());
+    ui.painter().line_segment(
+        [centre - Vec2::new(mark * 0.4, 0.0), centre + Vec2::new(mark * 0.4, 0.0)],
+        stroke,
+    );
+    ui.painter().line_segment(
+        [centre - Vec2::new(0.0, mark * 0.4), centre + Vec2::new(0.0, mark * 0.4)],
+        stroke,
+    );
+    ui.painter().crisp_galley(
+        Pos2::new(left + mark + 8.0 * scale, area.center().y - galley.size().y / 2.0),
+        galley,
+        crate::theme::color::on_accent(),
+    );
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label)
+    });
+    response.clicked()
+}
 
 /// One row of a listing, and the gap between two.
 ///
@@ -272,10 +381,29 @@ pub fn act(board: &mut AgentTasks, pressed: Pressed) -> Vec<Request> {
 /// and whether its rows can be carried — and two copies would be two things to keep in step.
 pub fn groups(
     board: &mut AgentTasks,
+    state: &rux::RuxState,
     ui: &mut egui::Ui,
     look: &Look<'_>,
     area: Rect,
     view: View,
+    bar: Option<Rect>,
+) -> Vec<Request> {
+    let reach = bar.map_or(area, |bar| area.union(bar));
+    super::kit::layer(state, ui, ("listing", view.name()), reach, 16.0 * look.scale(), |rux| {
+        let deco = Deco { chrome: rux.chrome, chat: rux.theme().chat };
+        groups_in(board, rux.ui, look, &deco, area, view, bar)
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn groups_in(
+    board: &mut AgentTasks,
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    deco: &Deco<'_>,
+    area: Rect,
+    view: View,
+    bar: Option<Rect>,
 ) -> Vec<Request> {
     let scale = look.scale();
     let finished = view == View::Completed;
@@ -300,14 +428,17 @@ pub fn groups(
 
     let mut pressed = Pressed::default();
     // The toolbar is the Backlog view's only one: `+ New sprint`, which the Completed view has no use for.
-    let toolbar = match finished {
-        true => 0.0,
-        false => TOOLBAR_AT_DEFAULT * scale + GROUP_GAP * scale,
+    // **In the header when the header has room for it** (`task-2241`), beside the view's own name, so the
+    // groups start straight under the header rather than under a strip holding one button.
+    let toolbar = match (finished, bar) {
+        (true, _) | (false, Some(_)) => 0.0,
+        (false, None) => TOOLBAR_AT_DEFAULT * scale + GROUP_GAP * scale,
     };
     if !finished {
-        let bar =
-            Rect::from_min_size(area.min, Vec2::new(area.width(), TOOLBAR_AT_DEFAULT * scale));
-        new_sprint_bar(board, ui, look, bar, &mut pressed);
+        let bar = bar.unwrap_or_else(|| {
+            Rect::from_min_size(area.min, Vec2::new(area.width(), TOOLBAR_AT_DEFAULT * scale))
+        });
+        new_sprint_bar(board, ui, look, deco, bar, &mut pressed);
     }
 
     // How tall the whole column is, so the scroll knows what there is to scroll.
@@ -327,7 +458,7 @@ pub fn groups(
     // Intersected rather than replaced, so a listing drawn in a canvas node stays inside the node. See
     // `lanes::show` for what replacing it looked like.
     column.set_clip_rect(body.intersect(ui.clip_rect()));
-    look.chrome.clip(body, 0.0);
+    deco.chrome.clip(body, 0.0);
 
     let mut pen = body.min.y - down;
     // Where each group ended up, so the one the pointer is over can be found **after** every one of them
@@ -348,6 +479,7 @@ pub fn groups(
         one_group(
             &mut column,
             look,
+            deco,
             at,
             group,
             GroupLook { epics: &epics, finished, folded, landing, asked: board.sprint_to_delete() },
@@ -358,7 +490,7 @@ pub fn groups(
     // rows, which is what the page this is modelled on does: an empty sprint has to be a target, or there
     // would be no way to put the first ticket in one.
     let over: Option<Option<i64>> = settle_the_group_drop(pressed.carrying, &placed);
-    look.chrome.unclip();
+    deco.chrome.unclip();
     if pressed.carrying.is_some() || pressed.dropped {
         board.hover_group(over);
     }
@@ -402,6 +534,7 @@ struct GroupLook<'a> {
 fn one_group(
     ui: &mut egui::Ui,
     look: &Look<'_>,
+    deco: &Deco<'_>,
     area: Rect,
     group: &Group,
     how: GroupLook<'_>,
@@ -409,25 +542,10 @@ fn one_group(
 ) {
     let scale = look.scale();
     let radius = GROUP_RADIUS * scale;
-    // **The panel a group sits on.** Raised, which is what a lane is, so a listing and a board are plainly
-    // the same board seen two ways. A group a row would land in is outlined in the accent, which is what
-    // `.sprint-group__body--drop` does and is the one thing on this page that says a drop will work.
-    if look.chrome.is_recording() {
-        look.chrome.raised(
-            area,
-            radius,
-            Fill::Solid(look.ground(look.palette.board_lane)),
-            Lift::Small,
-        );
-    } else {
-        ui.painter().rect(
-            area,
-            CornerRadius::same(radius as u8),
-            look.ground(look.palette.board_lane),
-            Stroke::new(1.0, look.palette.control_border),
-            egui::StrokeKind::Inside,
-        );
-    }
+    // **The well a group sits in.** Carved, which is what a lane is since `task-2241`, so a listing and a board
+    // are plainly the same board seen two ways. A group a row would land in is outlined in the accent, which is
+    // what `.sprint-group__body--drop` does and is the one thing on this page that says a drop will work.
+    deco.well(area, radius);
     if how.landing {
         ui.painter().rect_stroke(
             area,
@@ -463,7 +581,7 @@ fn one_group(
             Vec2::new(head.width(), row_height(look)),
         );
         pen += row_height(look) + ROW_GAP * scale;
-        row(ui, look, at, task, how.epics, !how.finished, pressed);
+        row(ui, look, deco, at, task, how.epics, !how.finished, pressed);
     }
 }
 
@@ -712,9 +830,11 @@ fn quiet_button_named(
 }
 
 /// One ticket, as a row: the key, the priority, the title, the epic, the lane and who has it.
+#[allow(clippy::too_many_arguments)]
 fn row(
     ui: &mut egui::Ui,
     look: &Look<'_>,
+    deco: &Deco<'_>,
     area: Rect,
     task: &Task,
     epics: &[crate::services::agent_tasks::model::Epic],
@@ -728,22 +848,7 @@ fn row(
     };
     let response = ui.interact(area, ui.id().with(("agent-tasks-row", task.id)), sense);
     let radius = ROW_RADIUS * scale;
-    if look.chrome.is_recording() {
-        look.chrome.raised(
-            area,
-            radius,
-            Fill::Solid(look.ground(look.palette.board_card)),
-            Lift::Small,
-        );
-    } else {
-        ui.painter().rect(
-            area,
-            CornerRadius::same(radius as u8),
-            look.ground(look.palette.board_card),
-            Stroke::new(1.0, look.palette.control_border),
-            egui::StrokeKind::Inside,
-        );
-    }
+    deco.chip(area, radius);
     if response.hovered() {
         ui.painter().rect_filled(
             area,
@@ -953,6 +1058,7 @@ fn new_sprint_bar(
     board: &mut AgentTasks,
     ui: &mut egui::Ui,
     look: &Look<'_>,
+    deco: &Deco<'_>,
     area: Rect,
     pressed: &mut Pressed,
 ) {
@@ -966,6 +1072,12 @@ fn new_sprint_bar(
             Vec2::new(width, height),
         );
         let hit = quiet_button(ui, look, at.max.x, at.center().y, "+ New sprint", false);
+        // On a chip, which is what every button in the design that is not the action sits on.
+        let chip = Rect::from_min_max(
+            Pos2::new(hit.0, at.center().y - 15.0 * scale),
+            Pos2::new(at.max.x, at.center().y + 15.0 * scale),
+        );
+        deco.chip(chip, chip.height() / 2.0);
         if hit.1 {
             pressed.name_a_sprint = Some(true);
         }
@@ -988,36 +1100,31 @@ fn new_sprint_bar(
         Pos2::new(right - width, middle - height / 2.0),
         Vec2::new(width, height),
     );
-    if plain_field(ui, look, field, "New sprint name", "Sprint name…", board.new_sprint_draft()) {
+    if plain_field(
+        ui,
+        look,
+        deco,
+        field,
+        "New sprint name",
+        "Sprint name…",
+        board.new_sprint_draft(),
+    ) {
         pressed.create_sprint = true;
     }
 }
 
 /// A one-line text box drawn the way the board draws a well. Answers whether Enter was pressed in it.
+#[allow(clippy::too_many_arguments)]
 fn plain_field(
     ui: &mut egui::Ui,
     look: &Look<'_>,
+    deco: &Deco<'_>,
     area: Rect,
     name: &str,
     hint: &str,
     value: &mut String,
 ) -> bool {
-    if look.chrome.is_recording() {
-        look.chrome.sunken(
-            area,
-            area.height() / 2.0,
-            look.ground(look.palette.board_well),
-            Lift::Small,
-        );
-    } else {
-        ui.painter().rect(
-            area,
-            CornerRadius::same((area.height() / 2.0) as u8),
-            look.palette.field,
-            Stroke::new(1.0, look.palette.control_border),
-            egui::StrokeKind::Inside,
-        );
-    }
+    deco.field(area, area.height() / 2.0);
     let field_id = ui.id().with(("agent-tasks-listing-field", name));
     let inner = crate::components::controls::field_takes_the_whole_rectangle_at(
         ui,
@@ -1051,17 +1158,41 @@ fn plain_field(
 /// The Epics view: a bar that makes one, and a grid of cards.
 pub fn epics(
     board: &mut AgentTasks,
+    state: &rux::RuxState,
     ui: &mut egui::Ui,
     look: &Look<'_>,
     area: Rect,
+    in_the_header: Option<Rect>,
+) -> Vec<Request> {
+    let reach = in_the_header.map_or(area, |bar| area.union(bar));
+    super::kit::layer(state, ui, "listing-epics", reach, 32.0 * look.scale(), |rux| {
+        let deco = Deco { chrome: rux.chrome, chat: rux.theme().chat };
+        epics_in(board, rux.ui, look, &deco, area, in_the_header)
+    })
+}
+
+fn epics_in(
+    board: &mut AgentTasks,
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    deco: &Deco<'_>,
+    area: Rect,
+    in_the_header: Option<Rect>,
 ) -> Vec<Request> {
     let scale = look.scale();
     let mut pressed = Pressed::default();
-    let bar = Rect::from_min_size(area.min, Vec2::new(area.width(), TOOLBAR_AT_DEFAULT * scale));
-    new_epic_bar(board, ui, look, bar, &mut pressed);
+    // In the header beside the view's name when the header has room for it, as the Backlog's is. `task-2241`.
+    let bar = in_the_header.unwrap_or_else(|| {
+        Rect::from_min_size(area.min, Vec2::new(area.width(), TOOLBAR_AT_DEFAULT * scale))
+    });
+    new_epic_bar(board, ui, look, deco, bar, &mut pressed);
 
     let epics = board.board().epics.clone();
-    let body = Rect::from_min_max(Pos2::new(area.min.x, bar.max.y + GROUP_GAP * scale), area.max);
+    let top = match in_the_header {
+        Some(_) => area.min.y,
+        None => bar.max.y + GROUP_GAP * scale,
+    };
+    let body = Rect::from_min_max(Pos2::new(area.min.x, top), area.max);
     if epics.is_empty() {
         text(
             ui.painter(),
@@ -1090,7 +1221,7 @@ pub fn epics(
     let counts: Vec<i64> = epics.iter().map(|epic| board.epic_count(epic.id)).collect();
     let mut grid = ui.new_child(egui::UiBuilder::new().max_rect(body));
     grid.set_clip_rect(body.intersect(ui.clip_rect()));
-    look.chrome.clip(body, 0.0);
+    deco.chrome.clip(body, 0.0);
     for (index, epic) in epics.iter().enumerate() {
         let column = index % across;
         let row_of = index / across;
@@ -1107,6 +1238,7 @@ pub fn epics(
         epic_card(
             &mut grid,
             look,
+            deco,
             EpicCard {
                 area: at,
                 epic,
@@ -1117,7 +1249,7 @@ pub fn epics(
             &mut pressed,
         );
     }
-    look.chrome.unclip();
+    deco.chrome.unclip();
     // The name being typed into a card is borrowed mutably, so it is drawn after the loop rather than
     // inside it: the loop holds the epics, which came off the board.
     if let Some(id) = renaming {
@@ -1137,8 +1269,15 @@ pub fn epics(
             );
             let mut naming = ui.new_child(egui::UiBuilder::new().max_rect(body));
             naming.set_clip_rect(body.intersect(ui.clip_rect()));
-            if plain_field(&mut naming, look, field, "Epic name", "Name…", board.epic_name_draft())
-            {
+            if plain_field(
+                &mut naming,
+                look,
+                deco,
+                field,
+                "Epic name",
+                "Name…",
+                board.epic_name_draft(),
+            ) {
                 pressed.save_epic_name = Some(id);
             }
         }
@@ -1151,6 +1290,7 @@ fn new_epic_bar(
     board: &mut AgentTasks,
     ui: &mut egui::Ui,
     look: &Look<'_>,
+    deco: &Deco<'_>,
     area: Rect,
     pressed: &mut Pressed,
 ) {
@@ -1160,7 +1300,7 @@ fn new_epic_bar(
     let button = Vec2::new((120.0 * scale).min(area.width() * 0.4), height + 4.0 * scale);
     let add =
         Rect::from_min_size(Pos2::new(area.max.x - button.x, middle - button.y / 2.0), button);
-    if primary_button(ui, look, add, "+ Add epic") {
+    if action_pill(ui, look, deco, add, "Add epic") {
         pressed.create_epic = true;
     }
     // The seven swatches, in front of the button, squeezed together before they run past the field. See
@@ -1173,7 +1313,7 @@ fn new_epic_bar(
     let mut pen = add.min.x - 12.0 * scale - swatches;
     for colour in SWATCHES {
         let at = Rect::from_center_size(Pos2::new(pen + size / 2.0, middle), Vec2::splat(size));
-        if swatch(ui, look, at, colour, chosen == **colour, "new epic") {
+        if swatch(ui, look, deco, at, colour, chosen == **colour, "new epic") {
             pressed.choose_colour = Some((*colour).to_owned());
         }
         pen += step;
@@ -1181,7 +1321,8 @@ fn new_epic_bar(
     let width = (240.0 * scale).min((add.min.x - 12.0 - swatches - area.min.x).max(40.0));
     let field =
         Rect::from_min_size(Pos2::new(area.min.x, middle - height / 2.0), Vec2::new(width, height));
-    if plain_field(ui, look, field, "New epic name", "New epic name…", board.new_epic_draft()) {
+    if plain_field(ui, look, deco, field, "New epic name", "New epic name…", board.new_epic_draft())
+    {
         pressed.create_epic = true;
     }
 }
@@ -1190,6 +1331,7 @@ fn new_epic_bar(
 fn swatch(
     ui: &mut egui::Ui,
     look: &Look<'_>,
+    deco: &Deco<'_>,
     area: Rect,
     colour: &str,
     chosen: bool,
@@ -1202,15 +1344,7 @@ fn swatch(
     let response =
         ui.interact(area, ui.id().with(("agent-tasks-swatch", what, colour)), Sense::click());
     let radius = area.width() / 2.0;
-    if look.chrome.is_recording() {
-        look.chrome.disc(
-            area.center(),
-            radius,
-            Fill::diagonal(area, lighten(tint, 0.06), darken(tint, 0.1)),
-        );
-    } else {
-        ui.painter().circle_filled(area.center(), radius, tint);
-    }
+    deco.coloured(area, radius, tint);
     if chosen {
         ui.painter().circle_stroke(
             area.center(),
@@ -1246,26 +1380,17 @@ struct EpicCard<'a> {
 }
 
 /// One epic: its colour, its name, how many tickets carry it, its seven colours, and two buttons.
-fn epic_card(ui: &mut egui::Ui, look: &Look<'_>, card: EpicCard<'_>, pressed: &mut Pressed) {
+fn epic_card(
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    deco: &Deco<'_>,
+    card: EpicCard<'_>,
+    pressed: &mut Pressed,
+) {
     let EpicCard { area, epic, count, renaming, asked } = card;
     let scale = look.scale();
-    let radius = GROUP_RADIUS * scale;
-    if look.chrome.is_recording() {
-        look.chrome.raised(
-            area,
-            radius,
-            Fill::Solid(look.ground(look.palette.board_card)),
-            Lift::Small,
-        );
-    } else {
-        ui.painter().rect(
-            area,
-            CornerRadius::same(radius as u8),
-            look.ground(look.palette.board_card),
-            Stroke::new(1.0, look.palette.control_border),
-            egui::StrokeKind::Inside,
-        );
-    }
+    let radius = 20.0 * scale;
+    deco.card(area, radius);
     let painter = ui.painter().clone();
     let inset = 12.0 * scale;
 
@@ -1276,16 +1401,7 @@ fn epic_card(ui: &mut egui::Ui, look: &Look<'_>, card: EpicCard<'_>, pressed: &m
     );
     if let Some(found) = crate::services::plugins::colour(&epic.color) {
         let tint = egui::Color32::from_rgb(found.r, found.g, found.b);
-        if look.chrome.is_recording() {
-            look.chrome.raised(
-                mark,
-                8.0 * scale,
-                Fill::diagonal(mark, lighten(tint, 0.06), darken(tint, 0.1)),
-                Lift::Small,
-            );
-        } else {
-            painter.rect_filled(mark, CornerRadius::same((8.0 * scale) as u8), tint);
-        }
+        deco.coloured(mark, 8.0 * scale, tint);
     }
     let count_said = painter.crisp_layout_no_wrap(
         count.to_string(),
@@ -1328,7 +1444,7 @@ fn epic_card(ui: &mut egui::Ui, look: &Look<'_>, card: EpicCard<'_>, pressed: &m
     let swatch_y = mark.max.y + 16.0 * scale;
     for colour in SWATCHES {
         let at = Rect::from_center_size(Pos2::new(pen + size / 2.0, swatch_y), Vec2::splat(size));
-        if swatch(ui, look, at, colour, epic.color.eq_ignore_ascii_case(colour), &epic.name) {
+        if swatch(ui, look, deco, at, colour, epic.color.eq_ignore_ascii_case(colour), &epic.name) {
             pressed.recolour_epic = Some((epic.id, (*colour).to_owned()));
         }
         pen += step;

@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Task modal</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/rux/tokens.css">
+<link rel="stylesheet" href="ds/rux/components/bundle.css">
+<script src="ds/rux/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div data-theme="unluminous-dark" style="position: relative; width: 1180px; height: 760px; overflow: hidden; background: var(--surface-1); font-family: var(--font-ui); color: var(--ink-700); --card: linear-gradient(145deg, #252a32, #1c2026); --chip: linear-gradient(145deg, #262b33, #20242b); --well: #1a1e24; --out: -7px -7px 16px #2a2f37, 8px 8px 18px #0c0f13; --out-sm: -2px -2px 5px rgba(46, 52, 61, 0.7), 3px 3px 6px #0b0d11, inset 0 0 0 1px rgba(255, 255, 255, 0.045), inset 0 1px 0 rgba(255, 255, 255, 0.05); --in: inset 5px 5px 10px #0c0f13, inset -5px -5px 10px #2a2f37; --in-sm: inset 2px 2px 5px #0c0f13, inset -2px -2px 5px #2a2f37; --grad: linear-gradient(135deg, #3d78ff, #5cb6ff); --grad-out: -3px -3px 7px rgba(46, 52, 61, 0.7), 4px 5px 12px rgba(20, 60, 160, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25); --sky: #5cb6ff; --up: #ff8f73; --down: #3ad6ad;">
+
+<div aria-hidden="true" style="position: absolute; left: 0; top: 0; width: 1180px; height: 660px; overflow: hidden;">
+<dc-import name="TasksBoard" hint-size="1180px,660px"></dc-import>
+</div>
+<div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(8, 10, 14, 0.62);"></div>
+
+<div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;">
+<section role="dialog" aria-label="{{dialogLabel}}" style="width: 1000px; height: 690px; box-sizing: border-box; display: flex; flex-direction: column; gap: 22px; padding: 22px 24px 24px 28px; border-radius: 30px; background: var(--surface-1); box-shadow: -6px -6px 16px rgba(42, 47, 55, 0.5), 0 30px 60px rgba(0, 0, 0, 0.6);">
+
+<header style="display: flex; align-items: center; gap: 16px;">
+<sc-if value="{{isEdit}}" hint-placeholder-val="{{true}}">
+<span style="padding: 7px 12px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm); font-family: var(--font-code); font-size: 12px; color: var(--ink-500);">task-2230</span>
+</sc-if>
+<sc-if value="{{isCreate}}" hint-placeholder-val="{{false}}">
+<span style="padding: 7px 12px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm); font-size: 12px; color: var(--ink-500);">New task</span>
+</sc-if>
+<label for="task-title" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;">Title</label>
+<input id="task-title" value="{{titleValue}}" placeholder="Task title" style="flex: 1; min-width: 0; border: 0; outline: 0; padding: 0; background: transparent; color: var(--ink-900); font-family: var(--font-sans); font-size: 20px; font-weight: 600; letter-spacing: -0.015em;">
+<button aria-label="Close" style="width: 36px; height: 36px; flex-shrink: 0; padding: 0; border: 0; border-radius: 50%; background: var(--chip); box-shadow: var(--out-sm); color: var(--ink-500); display: flex; align-items: center; justify-content: center; cursor: pointer;"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" style="display: block;"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" style="stroke: currentColor; stroke-width: 1.8; stroke-linecap: round;"></path></svg></button>
+</header>
+
+<div style="flex: 1; min-height: 0; display: flex; gap: 28px;">
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 20px; overflow: hidden;">
+
+<div style="display: flex; flex-direction: column; gap: 10px;">
+<label for="task-desc" style="font-size: 12px; font-weight: 600; color: var(--ink-500);">Description</label>
+<div style="position: relative;">
+<textarea id="task-desc" rows="3" placeholder="What should be done, and how will you know it's finished?" style="display: block; resize: vertical; min-height: 76px; max-height: 360px; box-sizing: border-box; width: 100%; border: 0; outline: 0; padding: 14px 32px 14px 18px; border-radius: 20px; background: var(--well); box-shadow: var(--in-sm); color: var(--ink-900); font-family: var(--font-ui); font-size: 13px; line-height: 1.6;">{{descValue}}</textarea>
+<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" style="position: absolute; right: 12px; bottom: 10px; display: block; pointer-events: none;"><path d="M10.5 4.5l-6 6M10.5 8l-2.5 2.5" style="stroke: var(--ink-400); stroke-width: 1.5; stroke-linecap: round;"></path></svg>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 10px;">
+<div style="display: flex; align-items: center; gap: 12px;">
+<button aria-expanded="{{todosOpenStr}}" aria-controls="todo-list" onClick="{{toggleTodos}}" style="display: flex; align-items: center; gap: 10px; padding: 0; border: 0; background: transparent; cursor: pointer;">
+<span style="width: 24px; height: 24px; border-radius: 50%; background: var(--chip); box-shadow: var(--out-sm); display: flex; align-items: center; justify-content: center; line-height: 0;"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true" style="display: block; transform: {{chevRot}};"><path d="M2.5 3.8L5 6.3l2.5-2.5" style="stroke: var(--ink-500); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;"></path></svg></span>
+<span style="font-family: var(--font-ui); font-size: 12px; font-weight: 600; color: var(--ink-500);">Todos</span>
+</button>
+<sc-if value="{{hasTodos}}" hint-placeholder-val="{{true}}">
+<span style="display: flex; align-items: center; gap: 10px; flex: 1;">
+<span style="position: relative; flex: 1; max-width: 180px; height: 8px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm);"><span style="position: absolute; left: 2px; top: 2px; bottom: 2px; width: {{todoFill}}; border-radius: 999px; background: var(--grad);"></span></span>
+<span style="font-size: 11px; color: var(--ink-400);">{{todoCount}}</span>
+</span>
+</sc-if>
+</div>
+<sc-if value="{{todosOpen}}" hint-placeholder-val="{{true}}">
+<div id="todo-list" style="display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: 20px; background: var(--well); box-shadow: var(--in-sm);">
+<sc-for list="{{todos}}" as="t" hint-placeholder-count="3">
+<button role="checkbox" aria-checked="{{t.checked}}" onClick="{{t.toggle}}" style="display: flex; align-items: center; gap: 12px; padding: 7px 10px; border: 0; border-radius: 14px; background: transparent; text-align: left; cursor: pointer;">
+<span style="width: 22px; height: 22px; flex-shrink: 0; border-radius: 50%; background: {{t.boxBg}}; box-shadow: {{t.boxShadow}}; display: flex; align-items: center; justify-content: center; line-height: 0;"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" style="display: block; opacity: {{t.tickOpacity}};"><path d="M2.6 6.2l2.2 2.2 4.6-4.8" style="stroke: var(--down); stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round;"></path></svg></span>
+<span style="font-family: var(--font-ui); font-size: 13px; color: {{t.colour}};">{{t.label}}</span>
+</button>
+</sc-for>
+<div style="position: relative; display: flex; align-items: center; gap: 10px; margin-top: 2px; padding: 4px 4px 4px 14px; border-radius: 999px; background: var(--surface-1); box-shadow: var(--out-sm);">
+<label for="todo-add" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;">Add a todo</label>
+<input id="todo-add" placeholder="Add a todo" style="flex: 1; min-width: 0; border: 0; outline: 0; padding: 0; background: transparent; color: var(--ink-900); font-family: var(--font-ui); font-size: 12.5px;">
+<button aria-label="Add todo" style="width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--chip); box-shadow: var(--out-sm); color: var(--ink-500); display: flex; align-items: center; justify-content: center; cursor: pointer;"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" style="display: block;"><path d="M6 2.2v7.6M2.2 6h7.6" style="stroke: currentColor; stroke-width: 1.8; stroke-linecap: round;"></path></svg></button>
+</div>
+</div>
+</sc-if>
+</div>
+
+<sc-if value="{{isEdit}}" hint-placeholder-val="{{true}}">
+<div style="display: flex; flex-direction: column; gap: 10px;">
+<span style="font-size: 12px; font-weight: 600; color: var(--ink-500);">Agent terminal</span>
+<div style="display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 20px; background: var(--well); box-shadow: var(--in-sm);">
+<span style="width: 34px; height: 34px; flex-shrink: 0; border-radius: 50%; background: var(--chip); box-shadow: var(--out-sm); display: flex; align-items: center; justify-content: center; color: var(--ink-400); line-height: 0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" style="display: block;"><path d="M3.5 5l3 3-3 3M8.5 11h4" style="stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;"></path></svg></span>
+<span style="flex: 1; font-size: 12px; line-height: 1.5; color: var(--ink-400);">No terminal for this task yet. Start Work launches its agent; Resume session hands its conversation back.</span>
+<button style="height: 34px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--chip); box-shadow: var(--out-sm); color: var(--ink-700); font-family: var(--font-ui); font-size: 12px; font-weight: 500; white-space: nowrap; cursor: pointer;">Resume session</button>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 12px;">
+<span style="font-size: 12px; font-weight: 600; color: var(--ink-500);">Comments · 1</span>
+<div style="display: flex; gap: 12px;">
+<span style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; background: var(--chip); box-shadow: var(--out-sm); display: flex; align-items: center; justify-content: center; color: var(--ul-agent);"><x-import component-from-global-scope="Rux.Icon" name="spark" size="13" stroke="2"></x-import></span>
+<div style="display: flex; flex-direction: column; gap: 3px;">
+<span style="font-size: 11.5px; color: var(--ink-400);"><span style="font-weight: 600; color: var(--ink-700);">claude</span> · just now</span>
+<span style="font-size: 13px; line-height: 1.5; color: var(--ink-900);">The design system and the canvas are ready to iterate on.</span>
+</div>
+</div>
+<div style="position: relative; display: flex; align-items: center; gap: 8px; padding: 5px 5px 5px 18px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm);">
+<label for="comment-add" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;">Add a comment</label>
+<input id="comment-add" placeholder="Add a comment" style="flex: 1; min-width: 0; border: 0; outline: 0; padding: 0; background: transparent; color: var(--ink-900); font-family: var(--font-ui); font-size: 12.5px;">
+<button style="height: 34px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: var(--ink-500); font-family: var(--font-ui); font-size: 12px; white-space: nowrap; cursor: pointer;">Send to terminal</button>
+<button style="height: 34px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--chip); box-shadow: var(--out-sm); color: var(--ink-700); font-family: var(--font-ui); font-size: 12px; font-weight: 500; white-space: nowrap; cursor: pointer;">Post comment</button>
+</div>
+</div>
+</sc-if>
+</div>
+
+<aside style="width: 270px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; padding: 18px; box-sizing: border-box; border-radius: 26px; background: var(--card); box-shadow: var(--out);">
+<sc-if value="{{isEdit}}" hint-placeholder-val="{{true}}">
+<button style="height: 44px; display: flex; align-items: center; justify-content: center; gap: 9px; border: 0; border-radius: 999px; background: var(--grad); box-shadow: var(--grad-out); color: #ffffff; font-family: var(--font-ui); font-size: 13.5px; font-weight: 600; cursor: pointer;"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" style="display: block;"><path d="M3.5 2.2v7.6L9.6 6z" style="fill: currentColor;"></path></svg>Start Work</button>
+</sc-if>
+<sc-for list="{{fields}}" as="f" hint-placeholder-count="5">
+<div style="display: flex; flex-direction: column; gap: 7px;">
+<span style="font-size: 11px; color: var(--ink-400);">{{f.label}}</span>
+<button aria-label="{{f.label}}: {{f.value}}" style="height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 14px 0 12px; border: 0; border-radius: 999px; background: var(--chip); box-shadow: var(--out-sm); color: var(--ink-900); font-family: var(--font-ui); font-size: 12.5px; text-align: left; cursor: pointer;">
+<span style="width: 18px; height: 18px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; line-height: 0;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" style="display: block;"><sc-for list="{{f.paths}}" as="p" hint-placeholder-count="1"><path d="{{p.d}}" style="stroke: {{p.stroke}}; stroke-width: {{p.w}}; stroke-linecap: round; stroke-linejoin: round;"></path></sc-for></svg></span>
+<span style="flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{f.value}}</span>
+<svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true" style="display: block; flex-shrink: 0;"><path d="M2.5 3.8L5 6.3l2.5-2.5" style="stroke: var(--ink-400); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;"></path></svg>
+</button>
+</div>
+</sc-for>
+<div style="display: flex; flex-direction: column; gap: 7px;">
+<span style="font-size: 11px; color: var(--ink-400);">Priority</span>
+<div role="radiogroup" aria-label="Priority" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; padding: 4px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm);">
+<sc-for list="{{priorities}}" as="pr" hint-placeholder-count="3">
+<button role="radio" aria-checked="{{pr.chosen}}" onClick="{{pr.pick}}" style="height: 30px; border: 0; border-radius: 999px; background: {{pr.bg}}; box-shadow: {{pr.shadow}}; color: {{pr.colour}}; font-family: var(--font-ui); font-size: 12px; cursor: pointer;">{{pr.label}}</button>
+</sc-for>
+</div>
+</div>
+<span style="flex: 1;"></span>
+<sc-if value="{{isCreate}}" hint-placeholder-val="{{false}}">
+<button style="height: 44px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 999px; background: var(--grad); box-shadow: var(--grad-out); color: #ffffff; font-family: var(--font-ui); font-size: 13.5px; font-weight: 600; cursor: pointer;"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" style="display: block;"><path d="M6 2.2v7.6M2.2 6h7.6" style="stroke: currentColor; stroke-width: 2; stroke-linecap: round;"></path></svg>Create task</button>
+</sc-if>
+</aside>
+</div>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"mode":{"editor":"enum","options":["edit","create"],"default":"edit"},"$preview":{"width":1180,"height":760}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const mode = this.props.mode ?? 'edit';
+    const isEdit = mode === 'edit';
+    const RING = 'M8 2a6 6 0 1 1 0 12a6 6 0 1 1 0-12';
+    const base = isEdit
+      ? [{ label: 'Export the window marks as SVG', on: true }, { label: 'Port rux to React and CSS', on: true }, { label: 'Carry the redesign back to Rust', on: false }]
+      : [];
+    const done = this.state.done ?? base.map((t) => t.on);
+    const doneCount = done.filter(Boolean).length + (isEdit ? 3 : 0);
+    const totalCount = base.length + (isEdit ? 4 : 0);
+    const priority = this.state.priority ?? 1;
+    const todosOpen = this.state.todosOpen ?? true;
+    const status = isEdit
+      ? { value: 'In progress', paths: [{ d: RING, stroke: '#2c323b', w: 2 }, { d: 'M8 2a6 6 0 0 1 5.91 7.04', stroke: 'var(--sky)', w: 2 }] }
+      : { value: 'New', paths: [{ d: RING, stroke: 'var(--ink-400)', w: 1.5 }, { d: 'M8 4.9V8l2.1 1.4', stroke: 'var(--ink-400)', w: 1.5 }] };
+    return {
+      isEdit,
+      isCreate: !isEdit,
+      hasTodos: base.length > 0,
+      todosOpen,
+      todosOpenStr: todosOpen ? 'true' : 'false',
+      chevRot: todosOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+      toggleTodos: () => this.setState({ todosOpen: !todosOpen }),
+      dialogLabel: isEdit ? 'task-2230 Unluminous Design Updates Prep' : 'New task',
+      titleValue: isEdit ? 'Unluminous Design Updates Prep' : '',
+      descValue: isEdit ? 'Work through the design changes for Unluminous: icons, shadowing, components and modals. Design on the web first in Claude Design, then carry the result into Rust.' : '',
+      todoFill: totalCount ? `calc(${((doneCount / totalCount) * 100).toFixed(1)}% - 4px)` : '0px',
+      todoCount: `${doneCount}/${totalCount}`,
+      todos: base.map((t, i) => ({
+        label: t.label,
+        checked: done[i] ? 'true' : 'false',
+        boxBg: done[i] ? 'var(--well)' : 'var(--chip)',
+        boxShadow: done[i] ? 'var(--in-sm)' : 'var(--out-sm)',
+        tickOpacity: done[i] ? '1' : '0',
+        colour: done[i] ? 'var(--ink-400)' : 'var(--ink-900)',
+        toggle: () => { const next = done.slice(); next[i] = !next[i]; this.setState({ done: next }); }
+      })),
+      fields: [
+        { label: 'Status', ...status },
+        { label: 'Assignee', value: 'claude', paths: [{ d: 'M8 2.5v11M2.5 8h11M4.1 4.1l7.8 7.8M11.9 4.1l-7.8 7.8', stroke: 'var(--ul-agent)', w: 1.5 }] },
+        { label: 'Model', value: 'claude-opus-5-5[1m]', paths: [{ d: 'M8 2.5l4.8 2.75v5.5L8 13.5l-4.8-2.75v-5.5z', stroke: 'var(--ink-400)', w: 1.4 }] },
+        { label: 'Project', value: isEdit ? 'unluminous' : 'black-rainbow-labs-rux', paths: [{ d: 'M2.5 5V12a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V6.5a1 1 0 0 0-1-1H8L6.5 4H3.5a1 1 0 0 0-1 1z', stroke: 'var(--ink-400)', w: 1.4 }] },
+        { label: 'Epic', value: isEdit ? 'general' : 'No epic', paths: [{ d: 'M8 2.5l5 3-5 3-5-3zM3 8.5l5 3 5-3', stroke: 'var(--ink-400)', w: 1.4 }] }
+      ],
+      priorities: ['Low', 'Medium', 'High'].map((label, i) => ({
+        label,
+        chosen: i === priority ? 'true' : 'false',
+        bg: i === priority ? 'var(--chip)' : 'transparent',
+        shadow: i === priority ? 'var(--out-sm)' : 'none',
+        colour: i === priority ? 'var(--ink-900)' : 'var(--ink-500)',
+        pick: () => this.setState({ priority: i })
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

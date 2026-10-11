@@ -1,124 +1,134 @@
-//! The four lanes, and the four listings that are not lanes.
+//! The four lanes.
 //!
 //! Which lane a card is in and where a drag lands are `services::agent_tasks::board`; this paints them.
+//!
+//! ## The look is the Agent-Tasks design (`task-2241`)
+//!
+//! The Claude Design canvas "Unluminous", page Agent-Tasks, artboard "Agent-Tasks board · Dark". Each lane is
+//! a well carved into the page, `border-radius: 26px` with `--in`, the four of them sharing the width 22 points
+//! apart and running the whole height of the board. A lane's heading is a round chip holding a mark for the
+//! lane, its name and a count. A card is extruded from the well with `--out`: its title, a track of its todos,
+//! and at its foot its key, who has it and one round button. All of it is `rux::components::board`, drawn
+//! through `kit::layer`, and none of the colours are chosen here.
+//!
+//! What the design took away from a card, and why it is not drawn: the epic's coloured edge and chip, the
+//! priority chevron and the comment count. They are all still in the ticket modal, which is one click away.
 
-use egui::{CornerRadius, Pos2, Rect, Vec2};
+use egui::{Pos2, Rect, Vec2};
 
-use super::{card, text};
-use crate::services::agent_tasks::model::Status;
+use super::kit;
+use crate::services::agent_tasks::model::{Assignee, Status, Task};
 use crate::services::agent_tasks::{board as arithmetic, AgentTasks};
 use crate::services::plugin_ui::{Look, Request};
-use crate::theme::crisp::CrispPainter;
 
-/// How wide a lane is when there is room, how narrow it is squeezed to before the board starts
-/// scrolling instead, and the gap between two.
+/// The narrowest a lane is squeezed to before the board scrolls sideways instead, and the gap between two.
 ///
-/// 300 points is what the design image shows. A pane can be 420 points wide down the side of the window,
-/// which holds one lane and a sliver, so below the point where four lanes fit they are narrowed as far as
-/// [`LANE_MIN`] and the board scrolls sideways after that. Narrowing further would leave a lane too thin
-/// for a card's title, which is worse than scrolling.
-const LANE: f32 = 328.0;
+/// A pane can be 420 points wide down the side of the window, which holds one lane and a sliver, so below the
+/// point where four lanes fit they are narrowed as far as [`LANE_MIN`] and the board scrolls sideways after
+/// that. Narrowing further would leave a lane too thin for a card's title, which is worse than scrolling.
 const LANE_MIN: f32 = 240.0;
 const GAP: f32 = 22.0;
-/// How round a lane's corners are, and how far its cards are inset from its edges.
-///
-/// Measured off `_agent_output/task-1765-vello-board/reference-board.png`: a lane there is 328 wide with a
-/// 14 point inset either side, so its cards are 300, and its corner radius is 18 — which is the
-/// stylesheet's `--r-lg`.
-const LANE_RADIUS: f32 = 18.0;
-const LANE_INSET: f32 = 14.0;
-/// How tall the strip at the top of a lane holding its name and its count is.
-/// How tall a lane's heading is at the default font size, read through `lane_header` so a window set to large
-/// text gets a heading that can hold it. See `Look::scale`.
-const LANE_HEADER_AT_DEFAULT: f32 = 57.0;
-/// How much of a lane's foot is kept clear of cards, which is what `+ Add task` sits in.
-const FOOT_AT_DEFAULT: f32 = 56.0;
-/// How much of the New lane is kept clear under its heading, which is what the agent chooser and its play
-/// button sit in. Reserved whether or not New holds a card, so the cards under it do not jump when the last
-/// one is dragged out of the lane.
-const QUICK_LAUNCH_AT_DEFAULT: f32 = 42.0;
+/// The gap between two cards in a lane: the lane's own `gap: 14px`.
+const CARD_GAP: f32 = 14.0;
+/// `padding: 6px 26px 26px` round the lanes.
+const ABOVE: f32 = 6.0;
+const BELOW: f32 = 26.0;
+/// A lane's padding, and how far below its top its cards start: the padding, the heading's two points, the
+/// 30 point chip and the gap under it. The same arithmetic as `rux::components::Lane::heading`.
+const LANE_PAD: f32 = 14.0;
+const LANE_HEADING: f32 = 14.0 + 2.0 + 30.0 + 14.0;
+/// How round a lane is, for the clip its cards are cut to while it is scrolled.
+const LANE_RADIUS: f32 = 26.0;
 
-/// How far below a lane's heading its cards start.
-///
-/// Only the New lane reserves the quick launch band, so this is a function of the lane rather than a
-/// constant. Everything that positions a card reads it, including the line drawn where a dragged card would
-/// land: an earlier version added the band to the drawing and not to that line, which put the line half a
-/// card away from where the card actually went.
-fn under_the_heading(status: Status, look: &Look<'_>) -> f32 {
+/// What a lane is called on the board: the design writes them in sentence case.
+fn lane_name(status: Status) -> &'static str {
     match status {
-        Status::New => (LANE_HEADER_AT_DEFAULT + QUICK_LAUNCH_AT_DEFAULT) * look.scale(),
-        _ => LANE_HEADER_AT_DEFAULT * look.scale(),
+        Status::New => "New",
+        Status::QaFailed => "QA failed",
+        Status::InProgress => "In progress",
+        Status::AgentDone => "Agent done",
     }
 }
 
-/// How tall a lane's heading is in this window.
-fn lane_header(look: &Look<'_>) -> f32 {
-    LANE_HEADER_AT_DEFAULT * look.scale()
-}
-
-/// How much of a lane's foot is kept clear of cards in this window.
-///
-/// Only the New lane has anything down there — `+ Add task` — so every other lane's foot is the padding that
-/// stops the last card touching the lane's own curve. It used to be the full 40 points for all four, which
-/// with lanes that hug their contents left a band of empty lane under the last card of every one of them.
-fn foot(status: Status, look: &Look<'_>) -> f32 {
+/// The mark in a lane's chip.
+fn lane_mark(status: Status) -> rux::components::LaneMark {
     match status {
-        Status::New => FOOT_AT_DEFAULT * look.scale(),
-        _ => LANE_INSET * look.scale(),
+        Status::New => rux::components::LaneMark::New,
+        Status::QaFailed => rux::components::LaneMark::Failed,
+        Status::InProgress => rux::components::LaneMark::Running,
+        Status::AgentDone => rux::components::LaneMark::Done,
     }
 }
-const PAD: f32 = 8.0;
-
-/// How far a lane's cards and heading are inset from its edges in this window.
-///
-/// `task-2214`: *"many visual issues, especially when zooming in/out."* The lanes kept their width, their gaps and
-/// their insets while everything in them was zoomed, so a board zoomed out was four wide lanes of tiny cards
-/// with most of each lane empty, and a board zoomed in squeezed cards twice the size into lanes of the same
-/// width until a lane's name ran into its count. Every measurement of a lane is now read through the board's
-/// scale, the way a card's height already was.
-fn inset(look: &Look<'_>) -> f32 {
-    LANE_INSET * look.scale()
-}
-/// How tall the well an empty lane draws is, which is also how much of an empty lane a card can be dropped on.
-const EMPTY_WELL: f32 = 84.0;
 
 /// How tall a run of cards is: one gap **between** each pair and none after the last.
-///
-/// One function rather than the arithmetic written out three times, because a lane is now as tall as its
-/// contents and the three places have to agree exactly — a trailing gap counted in one of them and not in
-/// the others put a scrollbar down a lane with nothing to scroll.
-fn cards_tall(held: usize, look: &Look<'_>) -> f32 {
-    match held {
+fn cards_tall(heights: &[f32], look: &Look<'_>) -> f32 {
+    match heights.len() {
         0 => 0.0,
-        held => held as f32 * (card::height(look) + card::gap(look)) - card::gap(look),
+        held => heights.iter().sum::<f32>() + (held - 1) as f32 * CARD_GAP * look.scale(),
     }
 }
 
 /// What the window knows about a ticket that its row does not: whether its agent is running here, and
 /// whether Start would do anything.
-fn live_for(board: &AgentTasks, task: &crate::services::agent_tasks::model::Task) -> card::Live {
+fn live_for(board: &AgentTasks, task: &Task) -> Live {
     let attached =
         board.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());
-    card::Live {
+    Live {
         attached,
         // Start claims an unclaimed ticket. One that already has a session is resumed instead, and one
         // assigned to a person is handed to the configured agent — which is still a start, so it counts.
         //
         // **And a Codex ticket whose process has gone can be started again.** Codex names its own sessions, so
-        // the id on the ticket is only Unluminous's marker that a worker was here and there is nothing to resume. The
-        // card showed no Start and the modal offered `Resume session`, which refused and told the person to press
-        // Start — a button that was not drawn anywhere. The only thing that can be done to such a ticket is start
-        // it afresh, so that is what is offered.
+        // the id on the ticket is only Unluminous's marker that a worker was here and there is nothing to resume.
         can_start: task.session_id.is_none()
             || (!attached
                 && !crate::services::agent_tasks::agent::can_resume(task.assignee)
                 && task.assignee.is_an_agent()),
+        can_resume: !attached
+            && task.session_id.is_some()
+            && crate::services::agent_tasks::agent::can_resume(task.assignee),
+    }
+}
+
+/// What the window knows about a ticket, which decides what the round button on its card does.
+///
+/// Unluminous's rule is that a control which cannot apply is absent, so a card for a person's ticket with
+/// nothing to resume carries no button at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Live {
+    /// A terminal for this ticket is running in this window.
+    pub attached: bool,
+    /// Start would do something: the ticket is not already claimed and is not a person's.
+    pub can_start: bool,
+    /// The ticket has a conversation its agent can be brought back into.
+    pub can_resume: bool,
+}
+
+/// What the round button on a card does: the design's play and pause.
+fn card_action(live: Live) -> (rux::components::CardAction, &'static str) {
+    match (live.attached, live.can_start, live.can_resume) {
+        // Pause is an interrupt: the agent stops what it is doing and its terminal stays, so the work can be
+        // carried on with a word. Closing the terminal is the modal's `Stop`.
+        (true, _, _) => (rux::components::CardAction::Pause, "interrupt"),
+        (false, true, _) => (rux::components::CardAction::Start, "start"),
+        (false, false, true) => (rux::components::CardAction::Start, "resume"),
+        _ => (rux::components::CardAction::None, ""),
+    }
+}
+
+/// What a card's round button is called, which is what a screen reader says and what a test presses.
+fn action_label(command: &str, key: &str) -> String {
+    match command {
+        "interrupt" => format!("Pause {key}"),
+        "resume" => format!("Resume {key}"),
+        _ => format!("Start {key}"),
     }
 }
 
 /// The board: four lanes across, scrolling sideways when the pane is narrower than they are.
 pub fn show(
     board: &mut AgentTasks,
+    state: &rux::RuxState,
     ui: &mut egui::Ui,
     look: &Look<'_>,
     area: Rect,
@@ -129,8 +139,6 @@ pub fn show(
     // added first is under every card and every button, so it answers only for a press nothing else wanted.
     let background =
         ui.interact(area, ui.id().with("agent-tasks-board-background"), egui::Sense::click());
-    // Named, because every control in Unluminous has a plain name and a test finds one by it. This is the one that
-    // gives the board the keyboard.
     background.widget_info(|| {
         egui::WidgetInfo::labeled(egui::WidgetType::Other, ui.is_enabled(), "Board background")
     });
@@ -139,20 +147,19 @@ pub fn show(
         // And away from a ticket's terminal, if it had them: the keys now move the ring on the board.
         board.focus_the_terminal(false);
     }
-    // How wide a lane is here, and how far the board has been scrolled sideways. Four lanes at their full
-    // width need 1236 points; anything narrower squeezes them to `LANE_MIN` and then scrolls.
-    let room = area.width() - PAD * 2.0;
-    let lanes = Status::ALL.len() as f32;
     let scale = look.scale();
+    let side = super::SIDE * scale;
+    let room = area.width() - side * 2.0;
+    let lanes = Status::ALL.len() as f32;
     let gap = GAP * scale;
-    let lane_width = ((room - gap * (lanes - 1.0)) / lanes).clamp(LANE_MIN * scale, LANE * scale);
+    // The four share the width, which is what the design's grid does, and are squeezed no narrower than
+    // `LANE_MIN`: past that the board scrolls sideways.
+    let lane_width = ((room - gap * (lanes - 1.0)) / lanes).max(LANE_MIN * scale);
     let content = lane_width * lanes + gap * (lanes - 1.0);
     let scroll = board.scroll_the_lanes(ui, area, content - room);
+    let card_width = lane_width - LANE_PAD * scale * 2.0;
     let mut to_open = None;
-    let mut to_start = None;
-    let mut add_a_task = false;
-    let mut next_agent = false;
-    let mut start_the_next: Option<String> = None;
+    let mut to_act: Option<(&'static str, String)> = None;
     let mut dragged = None;
     let mut dropped: Option<(Status, i64)> = None;
     // In this `Ui`'s own points, because a board drawn on a canvas node is inside a layer carrying the
@@ -161,59 +168,55 @@ pub fn show(
     let released = ui.ctx().input(|input| input.pointer.any_released());
     let query = board.query().to_owned();
     let dragging = board.dragging;
-    let mut lane_lefts = Vec::new();
 
     // Laid out in three passes, and the order is a borrow rather than a preference: the geometry needs
-    // nothing, the scroll offsets change the provider, and the drawing reads it. Doing them in one pass is
-    // what made an earlier version clone the whole board every frame — every ticket's description copied to
-    // satisfy the borrow checker, which on a board of any size is the largest thing the frame does.
+    // nothing, the scroll offsets change the provider, and the drawing reads it.
     //
-    // First: where each lane is, and how many cards it holds.
-    let room_for_cards = |lane: Rect, status: Status| {
-        lane.height() - under_the_heading(status, look) - foot(status, look)
-    };
-    let mut geometry: Vec<(Status, Rect, usize)> = Vec::new();
+    // First: where each lane is, and how tall each of its cards is. **A card is as tall as its title**, one
+    // line or two, which is what the design draws, so the heights are measured before anything is placed.
+    let top = area.min.y + ABOVE * scale;
+    let bottom = (area.max.y - BELOW * scale).max(top);
+    let mut geometry: Vec<(Status, Rect, Vec<f32>)> = Vec::new();
     for (index, status) in Status::ALL.into_iter().enumerate() {
-        let left = area.min.x + PAD + index as f32 * (lane_width + gap) - scroll;
+        let left = area.min.x + side + index as f32 * (lane_width + gap) - scroll;
         if left > area.max.x || left + lane_width < area.min.x {
             continue;
         }
         // **The lane keeps its full width and is clipped by the pane's edge**, rather than being shrunk to what
-        // is visible. Clamping the rectangle to the viewport meant that a lane half off the right edge was a
-        // narrower lane: its cards were re-laid out at the reduced width, so scrolling the board sideways made
-        // the cards in the edge lane shrink and their text reflow as they went, instead of sliding behind the
-        // edge the way a column of cards should. The clip rectangle each lane's cards are drawn into is what
-        // stops the drawing escaping the pane.
-        let held = board
+        // is visible, so a lane half off the edge slides behind it instead of reflowing its cards.
+        let heights = board
             .board()
             .lane(status)
-            .map(|lane| lane.tasks.iter().filter(|task| arithmetic::matches(task, &query)).count())
-            .unwrap_or(0);
-        // **A lane is as tall as what is in it**, which is what the picture shows: an empty lane is a short
-        // box with a well in it and a full one runs to the bottom of the pane. A column of fixed height with
-        // three cards in it and six hundred points of nothing under them is the thing that made the board
-        // read as four empty troughs.
-        //
-        // Never shorter than its heading plus one card's worth of well, because that empty space is what a
-        // card is dropped onto: a lane that shrank to its heading would be a lane nothing could be moved to.
-        let cards_tall = match held {
-            0 => EMPTY_WELL * scale,
-            held => cards_tall(held, look),
-        };
-        let wanted = under_the_heading(status, look) + cards_tall + foot(status, look);
-        let available = area.height() - PAD * 2.0;
-        let lane_area = Rect::from_min_size(
-            Pos2::new(left, area.min.y + PAD),
-            Vec2::new(lane_width, wanted.min(available).max(0.0)),
-        );
-        geometry.push((status, lane_area, held));
+            .map(|lane| {
+                lane.tasks
+                    .iter()
+                    .filter(|task| arithmetic::matches(task, &query))
+                    .map(|task| {
+                        rux::components::TaskCard::height_of(
+                            ui.painter(),
+                            scale,
+                            task.display_title(),
+                            card_width,
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let lane_area =
+            Rect::from_min_max(Pos2::new(left, top), Pos2::new(left + lane_width, bottom));
+        geometry.push((status, lane_area, heights));
     }
+    let cards_area_of = |lane: Rect| {
+        Rect::from_min_max(
+            Pos2::new(lane.min.x + LANE_PAD * scale, lane.min.y + LANE_HEADING * scale),
+            Pos2::new(lane.max.x - LANE_PAD * scale, lane.max.y - LANE_PAD * scale),
+        )
+    };
     // Second: how far each of them is scrolled, which is the only thing here that changes anything.
     let downs: Vec<f32> = geometry
         .iter()
-        .map(|(status, lane_area, held)| {
-            let content = cards_tall(*held, look);
-            let most = (content - room_for_cards(*lane_area, *status)).max(0.0);
+        .map(|(status, lane_area, heights)| {
+            let most = (cards_tall(heights, look) - cards_area_of(*lane_area).height()).max(0.0);
             // The visible part, because a lane keeps its full width even when it runs off the edge and a wheel
             // over the pane next door is not a wheel over this lane.
             board.scroll_a_lane(ui, *status, lane_area.intersect(area), most)
@@ -222,11 +225,7 @@ pub fn show(
     // The keyboard, between the geometry and the drawing, because moving the ring needs the counts each lane
     // holds **after** the search has narrowed it and the drawing needs to know where the ring ended up.
     //
-    // Only when the window says this plugin has the keys, and only when nothing is typing: `Look` carries the
-    // first, and a text box or a modal holding the keyboard is what the other two check. Without all three, an
-    // arrow key moving the caret in the editor would also move the ring on a board nobody was looking at.
-    // All four lanes rather than the ones on screen, because the ring has to be able to cross to a lane the board
-    // has scrolled past — and then the board is scrolled so that lane is showing.
+    // Only when the window says this plugin has the keys, and only when nothing is typing.
     let counts = board.lane_counts();
     let mut open_the_chosen = None;
     if look.has_the_keyboard
@@ -234,8 +233,7 @@ pub fn show(
         && !crate::app::a_modal_has_the_keyboard(ui.ctx())
     {
         // **Consumed, not just read.** A key the board acts on has to be taken out of the frame's input, or
-        // whatever is drawn after the board sees the same press: the Enter that opens a ticket was still there when
-        // the modal drew, so the modal took it as its own confirm and shut again in the frame it opened.
+        // whatever is drawn after the board sees the same press.
         let (across, down, enter) = ui.ctx().input_mut(|input| {
             let none = egui::Modifiers::NONE;
             (
@@ -260,127 +258,110 @@ pub fn show(
 
     // Third: the drawing, which only reads.
     let snapshot = board.board();
-    for (index, (status, lane_area, _)) in geometry.iter().copied().enumerate() {
-        lane_lefts.push((status, lane_area.min.x));
-        // A lane stands off the page rather than being a rectangle painted on it, and its cards are cut to
-        // its own curve — which is the one thing on the board `egui` cannot do at all, since its clip
-        // rectangle is square. The clip is closed after this lane's cards, below.
-        if look.chrome.is_recording() {
-            look.chrome.raised(
-                lane_area,
-                LANE_RADIUS,
-                crate::services::vello_canvas::Fill::Solid(look.ground(look.palette.board_lane)),
-                crate::services::vello_canvas::Lift::Medium,
-            );
-            look.chrome.clip(lane_area, LANE_RADIUS);
-        } else {
-            ui.painter().rect_filled(
-                lane_area,
-                CornerRadius::same(LANE_RADIUS as u8),
-                look.ground(look.palette.board_lane),
-            );
-        }
-        let cards: Vec<&crate::services::agent_tasks::model::Task> = snapshot
+    let agent = look.palette.agent;
+    for (index, (status, lane_area, heights)) in geometry.iter().enumerate() {
+        let status = *status;
+        let lane_area = *lane_area;
+        let cards: Vec<&Task> = snapshot
             .lane(status)
             .map(|lane| {
                 lane.tasks.iter().filter(|task| arithmetic::matches(task, &query)).collect()
             })
             .unwrap_or_default();
-        header(ui, look, lane_area, status, cards.len());
-        // **A lane scrolls rather than stopping.** It used to draw as many cards as fit and then a `3 more`
-        // that nothing could reach, so a card past the fold was a card nobody could open, tick or drag.
-        let room = room_for_cards(lane_area, status);
-        let content = cards_tall(cards.len(), look);
+        let lives: Vec<Live> = cards.iter().map(|task| live_for(board, task)).collect();
+        let cards_area = cards_area_of(lane_area);
+        let content = cards_tall(heights, look);
         let down = downs.get(index).copied().unwrap_or(0.0);
         let mut tops = Vec::new();
-        let cards_area = Rect::from_min_max(
-            Pos2::new(lane_area.min.x, lane_area.min.y + under_the_heading(status, look)),
-            Pos2::new(lane_area.max.x, lane_area.max.y - foot(status, look)),
-        );
-        let mut lane_ui = ui.new_child(egui::UiBuilder::new().max_rect(cards_area));
-        // Intersected with the board's own area, not replaced by the lane's. A lane now keeps its full width even
-        // when half of it is off the edge, so its cards' rectangle reaches past the pane and the clip has to be
-        // the part of it that is really on screen.
-        // **And with whatever the caller had cut this `Ui` to**, which on the canvas is the node's own
-        // part of the pane. `Ui::set_clip_rect` is an assignment, so writing the lane's rectangle over it
-        // threw the pane's edge away: `task-1914`'s sweep found a card of a node scrolled off the left of
-        // the canvas drawn over the editing area beside it. It is `components::explorer`'s own rule.
-        lane_ui.set_clip_rect(cards_area.intersect(area).intersect(ui.clip_rect()));
-        // **The decoration is cut to the same rectangle as the drawing**, while the lane has more cards than room.
-        // `task-2214`: *"Cards go above the header when I scroll."* The clip above cuts what `egui` draws, and a
-        // card's surface, its shadows, its badge and its play button are recorded into the lane's canvas, which
-        // was cut only to the whole lane. So a card scrolled up under the heading lost its words at the right
-        // place and kept its body, which was drawn over the lane's name and count. A lane that is not scrolled
-        // has nothing under its heading, and is left uncut so the top card keeps the halo above it.
-        let cut = content > room && look.chrome.is_recording();
-        if cut {
-            look.chrome.clip(cards_area.intersect(area), 0.0);
+        let mut pen = cards_area.min.y - down;
+        for height in heights {
+            tops.push(pen);
+            pen += height + CARD_GAP * scale;
         }
-        for (row, task) in cards.iter().enumerate() {
-            let top = cards_area.min.y + row as f32 * (card::height(look) + card::gap(look)) - down;
-            tops.push(top);
-            if top + card::height(look) < cards_area.min.y || top > cards_area.max.y {
-                continue;
+        let cut = content > cards_area.height();
+        // The lane is drawn into a layer of its own, wide enough for its cards' shadows to fall into the gap
+        // beside it. It is clipped to the pane, so a lane half off the edge is cut by it.
+        let pane_clip = ui.clip_rect().intersect(area);
+        kit::layer(state, ui, ("lane", status.name()), lane_area, gap / 2.0, |rux| {
+            rux::components::Lane::new(lane_name(status), cards.len(), lane_mark(status))
+                .show(rux, lane_area);
+            // **The cards are cut to the lane while it is scrolled**, both what `egui` draws and the
+            // decoration, so a card scrolled up under the heading does not draw its body over the lane's name.
+            // A lane that is not scrolled is left uncut, so its top card keeps the shadow above it.
+            let room = Rect::from_min_max(
+                Pos2::new(lane_area.min.x, cards_area.min.y),
+                Pos2::new(lane_area.max.x, lane_area.max.y),
+            );
+            if cut {
+                rux.chrome.clip(room, rux::Corners::bottom(LANE_RADIUS * scale));
             }
-            let at = Rect::from_min_size(
-                Pos2::new(lane_area.min.x + inset(look), top),
-                Vec2::new(lane_area.width() - inset(look) * 2.0, card::height(look)),
-            );
-            let pressed = card::show(
-                &mut lane_ui,
-                look,
-                at,
-                task,
-                snapshot,
-                dragging == Some(task.id),
-                live_for(board, task),
-            );
-            // The ring, so the keyboard's place on the board can be seen. Drawn after the card, because the card
-            // paints its own ground and border and a ring drawn first would be under them.
-            if ring == Some((status, row)) {
-                lane_ui.painter().rect_stroke(
-                    at.expand(2.0),
-                    CornerRadius::same(look.corner_radius as u8 + 1),
-                    egui::Stroke::new(1.5, look.palette.accent),
-                    egui::StrokeKind::Outside,
+            let mut cards_ui = rux.ui.new_child(egui::UiBuilder::new().max_rect(cards_area));
+            // Intersected with whatever the caller had cut this `Ui` to, which on the canvas is the node's own
+            // part of the pane. `Ui::set_clip_rect` is an assignment. `task-1914`.
+            let clip = match cut {
+                true => room.intersect(pane_clip),
+                false => lane_area.expand(gap / 2.0).intersect(pane_clip),
+            };
+            cards_ui.set_clip_rect(clip);
+            let mut inner = rux::Rux { ui: &mut cards_ui, state: rux.state, chrome: rux.chrome };
+            for (row, task) in cards.iter().enumerate() {
+                let height = heights[row];
+                let card_top = tops[row];
+                if card_top + height < cards_area.min.y || card_top > cards_area.max.y {
+                    continue;
+                }
+                let at = Rect::from_min_size(
+                    Pos2::new(cards_area.min.x, card_top),
+                    Vec2::new(cards_area.width(), height),
                 );
+                // The card's own press and drag, claimed before the card is drawn so the round button drawn
+                // inside it is what takes a press on the button.
+                let response = inner.ui.interact(
+                    at,
+                    inner.ui.id().with(("agent-tasks-card", task.id)),
+                    egui::Sense::click_and_drag(),
+                );
+                let name = format!("{} {}", task.key, task.display_title());
+                response.widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name.clone())
+                });
+                let (action, command) = card_action(lives[row]);
+                let label = action_label(command, &task.key);
+                let who = match task.assignee {
+                    Assignee::Human => rux::components::Assignee::Person,
+                    _ => rux::components::Assignee::Agent(agent),
+                };
+                let pressed = rux::components::TaskCard::new(task.display_title(), &task.key)
+                    .todos(task.todo_done_count.max(0) as u32, task.todo_count.max(0) as u32)
+                    .assignee(who)
+                    .action(action, &label)
+                    .hovered(response.hovered() || dragging == Some(task.id))
+                    .chosen(ring == Some((status, row)))
+                    .show(&mut inner, at);
+                if pressed.action {
+                    to_act = Some((command, task.key.clone()));
+                } else if response.clicked() {
+                    to_open = Some(task.id);
+                }
+                if response.drag_started() {
+                    dragged = Some(task.id);
+                }
             }
-            if pressed.open {
-                to_open = Some(task.id);
+            if cut {
+                rux.chrome.unclip();
             }
-            if pressed.start {
-                to_start = Some(task.key.clone());
-            }
-            if pressed.drag {
-                dragged = Some(task.id);
-            }
-        }
-        if cut {
-            look.chrome.unclip();
-        }
-        // How much of the lane is out of sight.
-        //
-        // **Hand painted, and `task-1984` §3.6 asked why** — the answer is that
-        // `components::scrollbar` is a control rather than a mark: it reserves `GRAB` points of the
-        // width it is given, takes the pointer, carries a name into the accessibility tree and fades
-        // between two palette colours as it is used. A lane is a hundred points wide with cards in
-        // it, and giving each of four lanes a real scrollbar would take a tenth of every lane's width
-        // for a bar nobody drags, and put four more controls in the tree. What this draws is two
-        // points of `divider` saying *there is more below*, which is the same thing the card counts
-        // in the lane heading say and is not a control at all.
-        //
-        // The comment here used to say it was the bar the board's sideways scroll draws, and the
-        // comment there used to say that one was `components::scrollbar`. Neither was true. If the
-        // board ever wants real scrollbars, what it needs first is a horizontal form of `Bar`, which
-        // it has not got.
-        if content > room {
+        });
+        // How much of the lane is out of sight: two points of the divider down the lane's inside edge. A mark
+        // rather than a control, for the reason `task-1984` §3.6 gave: four real scrollbars would take a tenth
+        // of every lane's width for bars nobody drags.
+        if content > cards_area.height() {
             let track = Rect::from_min_max(
-                Pos2::new(lane_area.max.x - 4.0, cards_area.min.y),
-                Pos2::new(lane_area.max.x - 2.0, cards_area.max.y),
+                Pos2::new(lane_area.max.x - 7.0 * scale, cards_area.min.y),
+                Pos2::new(lane_area.max.x - 5.0 * scale, cards_area.max.y),
             );
-            let share = (room / content).clamp(0.08, 1.0);
-            let at = down / (content - room);
-            ui.painter().rect_filled(track, 0, look.palette.divider);
+            let share = (cards_area.height() / content).clamp(0.08, 1.0);
+            let at = down / (content - cards_area.height());
+            ui.painter().rect_filled(track, 1.0, look.palette.divider);
             ui.painter().rect_filled(
                 Rect::from_min_size(
                     Pos2::new(
@@ -389,39 +370,36 @@ pub fn show(
                     ),
                     Vec2::new(track.width(), track.height() * share),
                 ),
-                0,
+                1.0,
                 look.palette.text_faint,
             );
         }
-        // Where a card being dragged would land in this lane, drawn as the accent line every drop target
-        // in Unluminous is drawn as.
+        // Where a card being dragged would land in this lane, drawn as the accent line every drop target in
+        // Unluminous is drawn as.
         if let (Some(_), Some(pointer)) = (dragging, pointer) {
             if lane_area.contains(pointer) {
-                // The index among the cards that are **drawn**, turned into the index among all of them: with a
-                // search narrowing the lane, dropping between the second and third visible card wrote `2` into a
-                // lane whose second and third rows were different tickets, quietly reordering hidden ones.
-                let among_visible = arithmetic::position_at(&tops, card::height(look), pointer.y);
+                // The middle of each card, so a card goes after every card whose middle the pointer has
+                // passed. `position_at` takes tops and one height; a middle with a height of nothing is that.
+                let middles: Vec<f32> =
+                    tops.iter().zip(heights).map(|(top, height)| top + height / 2.0).collect();
+                let among_visible = arithmetic::position_at(&middles, 0.0, pointer.y);
+                // The index among the cards that are **drawn**, turned into the index among all of them, so a
+                // drop while a search narrows the lane does not reorder tickets nobody can see.
                 let position = arithmetic::among_all(
                     snapshot.lane(status).map(|lane| lane.tasks.as_slice()).unwrap_or_default(),
                     &query,
                     among_visible,
                 );
-                // **Drawn where the card will appear, which is the visible index and this lane's scroll.** The
-                // line used to be placed from `position`, the index among all the cards including the ones a
-                // search had hidden, and it ignored how far the lane was scrolled down — so in a long lane the
-                // line was drawn a card's height away from the pointer for every row scrolled past, and in a
-                // filtered lane it was drawn against a row nobody could see. Releasing still moved the card to
-                // the right place; the line was simply pointing somewhere else.
-                let y = cards_area.min.y
-                    + among_visible as f32 * (card::height(look) + card::gap(look))
-                    - down
-                    - card::gap(look) / 2.0;
+                let y = match tops.get(among_visible as usize) {
+                    Some(top) => top - CARD_GAP * scale / 2.0,
+                    None => pen - CARD_GAP * scale / 2.0,
+                };
                 ui.painter().rect_filled(
                     Rect::from_min_size(
-                        Pos2::new(lane_area.min.x + inset(look), y),
-                        Vec2::new(lane_area.width() - inset(look) * 2.0, 2.0),
+                        Pos2::new(cards_area.min.x, y - 1.0),
+                        Vec2::new(cards_area.width(), 2.0),
                     ),
-                    0,
+                    1.0,
                     look.palette.accent,
                 );
                 if released {
@@ -429,201 +407,25 @@ pub fn show(
                 }
             }
         }
-        // The agent chooser and its play button under the New lane's heading, which is where the reference
-        // capture puts them: a quick launch that starts the **next** ticket in New with a chosen agent
-        // without opening it.
-        if status == Status::New {
-            let tall = 34.0 * look.scale();
-            let strip = Rect::from_min_size(
-                Pos2::new(lane_area.min.x + inset(look), lane_area.min.y + lane_header(look) + 4.0),
-                Vec2::new(lane_area.width() - inset(look) * 2.0, tall),
-            );
-            let play =
-                Rect::from_min_size(Pos2::new(strip.max.x - tall, strip.min.y), Vec2::splat(tall));
-            let chooser = Rect::from_min_max(strip.min, Pos2::new(play.min.x - 8.0, strip.max.y));
-            // The chooser is a field, so it is pressed into the lane rather than raised off it: the picture
-            // draws it as a well with the agent's name in it, which is what `sunken` is.
-            if look.chrome.is_recording() {
-                look.chrome.sunken(
-                    chooser,
-                    chooser.height() / 2.0,
-                    look.ground(look.palette.board_well),
-                    crate::services::vello_canvas::Lift::Small,
-                );
-            }
-            let chosen = board.configuration().agent;
-            // One button that cycles rather than a dropdown, because egui keeps one popup open at a time and
-            // there are two agents to choose between. Pressing it names the other one.
-            if super::chooser_button(
-                ui,
-                look,
-                chooser,
-                chosen.name(),
-                &format!("Agent for a new ticket: {}", chosen.name()),
-            ) {
-                next_agent = true;
-            }
-            // Nothing to start when New is empty, so the button is not drawn — but its room is still
-            // reserved, so the cards do not move when the lane empties.
-            if !cards.is_empty()
-                && super::round_button(
-                    ui,
-                    look,
-                    play,
-                    &format!("Start the next ticket with {}", chosen.name()),
-                    crate::theme::icon::run,
-                )
-            {
-                start_the_next = cards.first().map(|task| task.key.clone());
-            }
-        }
-        // `+ Add task` at the foot of the New lane, which is where the design image puts it.
-        if status == Status::New {
-            let at = Rect::from_min_size(
-                Pos2::new(lane_area.min.x + inset(look), lane_area.max.y - 42.0 * look.scale()),
-                Vec2::new(lane_area.width() - inset(look) * 2.0, 42.0 * look.scale()),
-            );
-            // A well rather than a button, which is what the picture shows: the row where a card would go if
-            // there were one, pressed into the lane.
-            if look.chrome.is_recording() {
-                look.chrome.sunken(
-                    at,
-                    card::RADIUS,
-                    look.ground(look.palette.board_well),
-                    crate::services::vello_canvas::Lift::Small,
-                );
-            }
-            // With the decoration off, `choice_button_over` draws its own frame — see the `ground` argument
-            // below — so there is nothing to add here.
-            // Acted on after the loop, because the board is being read while it is drawn and creating a
-            // ticket changes it. That is the rule every component here follows: report, then act.
-            // The word is drawn here rather than by the button, at the board's own size: the button sets its word
-            // at the interface's 12.5 points whatever the pane is zoomed to, so on a zoomed board it was the one
-            // piece of text that did not change size.
-            if crate::components::controls::choice_button_over(
-                ui,
-                at,
-                "",
-                "+ Add task",
-                false,
-                !look.chrome.is_recording(),
-            ) {
-                add_a_task = true;
-            }
-            let font = egui::FontId::proportional(look.less(2.5));
-            let said = ui.painter().crisp_layout_no_wrap(
-                "+ Add task".to_owned(),
-                font.clone(),
-                look.palette.text_control,
-            );
-            let top =
-                crate::theme::crisp::top_centring_capitals(ui.painter(), &font, at.center().y);
-            ui.painter().crisp_galley(
-                Pos2::new(at.center().x - said.size().x / 2.0, top),
-                said,
-                look.palette.text_control,
-            );
-        }
-        // A lane with nothing in it says so, in a well the size of the space a card would take — which is
-        // what the picture shows and is better than an empty box, because an empty box reads as a board that
-        // failed to draw rather than as a lane nobody has filled.
-        // Every lane, New included. New has `+ Add task` at its foot and could have been left with the
-        // bare space above it, but a lane that is empty in one place and merely blank in another is two
-        // answers to one question — and the space is the drop target, so saying what it is for is better
-        // than leaving it to be guessed at.
-        if cards.is_empty() {
-            let empty = Rect::from_min_max(
-                Pos2::new(cards_area.min.x + inset(look), cards_area.min.y),
-                Pos2::new(
-                    cards_area.max.x - inset(look),
-                    (cards_area.min.y + EMPTY_WELL * scale).min(cards_area.max.y),
-                ),
-            );
-            if empty.height() > 24.0 {
-                match look.chrome.is_recording() {
-                    true => look.chrome.sunken(
-                        empty,
-                        card::RADIUS,
-                        look.ground(look.palette.board_well),
-                        crate::services::vello_canvas::Lift::Medium,
-                    ),
-                    // The flat form, which is what a board with the decoration switched off draws. Every
-                    // well on the board has one: a well drawn as nothing at all is a hole in the lane.
-                    false => {
-                        ui.painter().rect(
-                            empty,
-                            CornerRadius::same(card::RADIUS as u8),
-                            look.ground(look.palette.board_well),
-                            egui::Stroke::new(1.0, look.palette.divider),
-                            egui::StrokeKind::Inside,
-                        );
-                    }
-                }
-                let said = ui.painter().crisp_layout_no_wrap(
-                    "Nothing here".to_owned(),
-                    egui::FontId::proportional(look.less(1.0)),
-                    look.palette.text_faint,
-                );
-                ui.painter().crisp_galley(
-                    empty.center() - said.size() / 2.0,
-                    said,
-                    look.palette.text_faint,
-                );
-            }
-        }
-        // The lane's own curve stops cutting here, which is the matching `unclip` for the `clip` above.
-        if look.chrome.is_recording() {
-            look.chrome.unclip();
-        }
-    }
-    if next_agent {
-        if let Err(problem) = board.use_the_next_agent() {
-            requests.push(Request::Message(problem));
-        }
-    }
-    if let Some(key) = start_the_next {
-        match board.command_now("start", &[key]) {
-            Ok(answer) => requests.push(Request::Message(answer.message)),
-            Err(problem) => requests.push(Request::Message(problem)),
-        }
-        requests.push(Request::Repaint);
-    }
-    if add_a_task {
-        match board.command_now("new-task", &[]) {
-            // The new ticket's detail opens, which is what makes the editor able to name it: the row exists
-            // from the moment it is created, so typing into the title saves as it is typed.
-            Ok(_) => {}
-            Err(problem) => requests.push(Request::Message(problem)),
-        }
     }
     if let Some(id) = dragged {
         board.dragging = Some(id);
     }
-    // How far there is left to scroll, drawn as a thin bar along the bottom when there is any, which is
-    // the only thing that says the lanes go on past the edge.
+    // How far there is left to scroll, as a thin bar along the bottom when there is any, which is the only
+    // thing that says the lanes go on past the edge.
     if content > room {
-        // Five points, not two. It is the only thing on the board that says the lanes go on past the edge —
-        // a fourth lane cut off by the pane with a two-point hairline under it reads as clipped rather than
-        // as reachable.
-        //
-        // **Not `components::scrollbar`**, which `task-1984` §3.6 found this comment claiming: that
-        // one is vertical and has no horizontal form, so a bar along the bottom of anything cannot be
-        // it. See the lane's own bar above for why neither is a control.
         let track = Rect::from_min_max(
-            Pos2::new(area.min.x + PAD, area.max.y - 7.0),
-            Pos2::new(area.max.x - PAD, area.max.y - 2.0),
+            Pos2::new(area.min.x + side, area.max.y - 12.0 * scale),
+            Pos2::new(area.max.x - side, area.max.y - 7.0 * scale),
         );
         let share = (room / content).clamp(0.1, 1.0);
-        let at = match content > room {
-            true => scroll / (content - room),
-            false => 0.0,
-        };
+        let at = scroll / (content - room);
         let thumb = Rect::from_min_size(
             Pos2::new(track.min.x + (track.width() - track.width() * share) * at, track.min.y),
             Vec2::new(track.width() * share, track.height()),
         );
-        ui.painter().rect_filled(track, CornerRadius::same(2), look.palette.divider);
-        ui.painter().rect_filled(thumb, CornerRadius::same(2), look.palette.text_dim);
+        ui.painter().rect_filled(track, 2.0, look.palette.divider);
+        ui.painter().rect_filled(thumb, 2.0, look.palette.text_dim);
     }
     if let Some((status, position)) = dropped {
         let moved = board.dragging.take();
@@ -635,8 +437,8 @@ pub fn show(
     } else if released {
         board.dragging = None;
     }
-    if let Some(key) = to_start {
-        match board.command_now("start", &[key]) {
+    if let Some((command, key)) = to_act {
+        match board.command_now(command, &[key]) {
             Ok(answer) => requests.push(Request::Message(answer.message)),
             Err(problem) => requests.push(Request::Message(problem)),
         }
@@ -648,129 +450,13 @@ pub fn show(
     }
     if let Some(id) = to_open {
         // **Always the modal**, whatever the window's size. `components::modal` already fits a dialog to the room
-        // there is and never lets it grow past the window, so the modal is the one view that works at every
-        // size — and it is the only one with the description, the fields and Delete in it. Falling back to the
-        // pane's own detail below 1160 points meant a person with a smaller window could not reach a ticket's
-        // editor at all.
+        // there is and never lets it grow past the window.
         if let Err(problem) = board.open_the_modal(id) {
             requests.push(Request::Message(problem));
         }
     }
     requests
 }
-
-/// A lane's name, its coloured dot and its count.
-///
-/// The dot's colour says which lane it is without reading the name, which is what the design image does:
-/// New is quiet, In Progress is the modified colour, QA Failed is the unsaved colour and Agent Done is
-/// the added colour. All four come from `theme::color`.
-fn header(ui: &mut egui::Ui, look: &Look<'_>, lane: Rect, status: Status, count: usize) {
-    let painter = ui.painter().clone();
-    // Four colours a person can tell apart at nine points across, which is what the picture uses: grey for
-    // untouched, red for failed, blue for running and the agent's violet for done. Three of the four are
-    // already Unluminous's; the violet is `color::agent()`, and the reason it was added is written down beside it.
-    let dot = match status {
-        Status::New => look.palette.text_dim,
-        Status::QaFailed => crate::theme::color::close(),
-        Status::InProgress => look.palette.board_accent,
-        Status::AgentDone => look.palette.agent,
-    };
-    let middle = lane.min.y + lane_header(look) / 2.0;
-    // **Everything on the heading is measured from the lane's own scale**, so a pane zoomed in or out keeps the
-    // dot, the name and the count in proportion with each other. They were fixed sizes beside a name that grew.
-    let scale = look.scale();
-    let radius = 4.5 * scale;
-    let centre = Pos2::new(lane.min.x + inset(look) + 5.0 * scale, middle);
-    // The halo round the dot, which is the whole of what makes it read as lit rather than printed. `epaint`
-    // has no blur that is not a rectangle, so with the decoration off it is simply the dot.
-    if look.chrome.is_recording() {
-        // Five points of halo, which is what the reference measures, and at nearly the dot's own strength:
-        // at 3.5 and 75% it read as a speck rather than as something lit.
-        look.chrome.glow(
-            Rect::from_center_size(centre, Vec2::splat(radius * 2.0)),
-            radius,
-            dot.gamma_multiply(0.9),
-            5.0 * scale,
-        );
-        look.chrome.disc(centre, radius, crate::services::vello_canvas::Fill::Solid(dot));
-    } else {
-        painter.circle_filled(centre, radius, dot);
-    }
-    // The lane's name is set with the tracking the stylesheet gives its caption class, `0.14em`, because at
-    // this size a run of capitals set solid reads as one word. Spaced with a thin space by hand, since
-    // `egui` has no letter spacing of its own.
-    //
-    // **Placed by its capitals, on the dot's own middle.** `task-2214`: *"the dots next to the column labels
-    // aren't vertically centered."* The name was put at the middle less half of the editor's font size while
-    // being set three points smaller, and the letters of a galley do not sit in the middle of its line anyway,
-    // so the capitals were below the dot. A lane's name is all capitals, so centring the capital band on the
-    // dot is exact. `crisp::top_centring_capitals` is what the explorer's rows use for a name beside an icon.
-    let spaced: String = status.label().chars().flat_map(|letter| [letter, '\u{2009}']).collect();
-    let spaced = spaced.trim_end().to_owned();
-    let count_font = egui::FontId::proportional(look.less(2.5));
-    let said =
-        painter.crisp_layout_no_wrap(count.to_string(), count_font.clone(), look.palette.text_dim);
-    // The count sits in a pill pressed into the lane, which is `--e-pressed-sm` and is the one part of the
-    // picture that was measured pixel by pixel: six points of dark ramp inside its top left edge and six of
-    // pale inside its bottom right.
-    let chip_size = Vec2::new((40.0 * scale).max(said.size().x + 16.0 * scale), 22.0 * scale);
-    let chip = Rect::from_min_size(
-        Pos2::new(lane.max.x - inset(look) - chip_size.x, middle - chip_size.y / 2.0),
-        chip_size,
-    );
-    // **The name is never drawn under the count.** A lane squeezed to its narrowest at a large zoom had less
-    // room than `IN PROGRESS` set in tracked capitals, and the name ran into the pill. Where it does not fit it
-    // is set smaller, by as much as it is too wide, rather than cut short, because a lane whose name ends in an
-    // ellipsis has lost the one word that says which lane it is.
-    let name_left = centre.x + radius + 7.5 * scale;
-    let room = (chip.min.x - 8.0 * scale - name_left).max(1.0);
-    let mut name_size = look.less(3.0);
-    let wide = painter
-        .crisp_layout_no_wrap(
-            spaced.clone(),
-            egui::FontId::proportional(name_size),
-            look.palette.text_dim,
-        )
-        .size()
-        .x;
-    if wide > room {
-        name_size *= room / wide;
-    }
-    let name_font = egui::FontId::proportional(name_size);
-    let name_top = crate::theme::crisp::top_centring_capitals(&painter, &name_font, middle);
-    text(&painter, Pos2::new(name_left, name_top), &spaced, name_size, look.palette.text_dim);
-    let chip_radius = chip.height() / 2.0 - 1.0;
-    match look.chrome.is_recording() {
-        true => look.chrome.sunken(
-            chip,
-            chip_radius,
-            look.ground(look.palette.board_well),
-            crate::services::vello_canvas::Lift::Small,
-        ),
-        false => {
-            painter.rect(
-                chip,
-                CornerRadius::same(chip_radius as u8),
-                look.ground(look.palette.board_well),
-                egui::Stroke::new(1.0, look.palette.divider),
-                egui::StrokeKind::Inside,
-            );
-        }
-    }
-    // Digits are as tall as capitals, so the count is placed the way the name is and the two sit on one line.
-    let count_top = crate::theme::crisp::top_centring_capitals(&painter, &count_font, middle);
-    painter.crisp_galley(
-        Pos2::new(chip.center().x - said.size().x / 2.0, count_top),
-        said,
-        look.palette.text_dim,
-    );
-}
-
-// **The two listings that used to live here are gone.** `listing` drew the Backlog and the Completed views
-// as one flat column of the same cards the lanes hold, and `epics` drew a coloured dot beside a name.
-// `task-1771` asked for both to be what the page this board is modelled on has - groups by sprint, rows
-// rather than cards, drag and drop between them, and epics you can rename, recolour and delete - which is
-// enough of its own thing to be its own file: `components::agent_tasks::listings`.
 
 #[cfg(test)]
 mod tests {
@@ -824,47 +510,25 @@ mod tests {
     }
 
     #[test]
-    fn only_the_new_lane_reserves_room_for_the_quick_launch_band() {
-        let renderer = TextRenderer::new();
-        let look = a_look(&renderer);
-        assert_eq!(under_the_heading(Status::New, &look), lane_header(&look) + 42.0);
-        for status in [Status::QaFailed, Status::InProgress, Status::AgentDone] {
-            assert_eq!(
-                under_the_heading(status, &look),
-                lane_header(&look),
-                "{status:?} has no quick launch band under its heading"
-            );
-        }
-    }
-
-    #[test]
-    fn every_fixed_height_scales_with_the_editor_font() {
-        let renderer = TextRenderer::new();
-        let mut settings = Settings::new();
-        settings.font_size = crate::settings::DEFAULT_FONT_SIZE * 2.0;
-        let look = Look::of(&settings, &renderer);
-        assert_eq!(look.scale(), 2.0);
-        assert_eq!(lane_header(&look), LANE_HEADER_AT_DEFAULT * 2.0);
-        assert_eq!(under_the_heading(Status::New, &look), (57.0 + 42.0) * 2.0);
-    }
-
-    #[test]
-    fn only_the_new_lane_keeps_room_clear_of_cards_for_add_task() {
-        let renderer = TextRenderer::new();
-        let look = a_look(&renderer);
-        assert_eq!(foot(Status::New, &look), FOOT_AT_DEFAULT);
-        assert_eq!(foot(Status::QaFailed, &look), LANE_INSET);
-    }
-
-    #[test]
     fn a_run_of_cards_has_one_gap_between_each_pair_and_none_after_the_last() {
         let renderer = TextRenderer::new();
         let look = a_look(&renderer);
-        let one = card::height(&look) + card::GAP;
-        assert_eq!(cards_tall(0, &look), 0.0, "an empty lane has nothing to be tall for");
-        assert_eq!(cards_tall(1, &look), card::height(&look), "one card, and no trailing gap");
-        assert_eq!(cards_tall(2, &look), 2.0 * one - card::GAP);
-        assert_eq!(cards_tall(5, &look), 5.0 * one - card::GAP);
+        assert_eq!(cards_tall(&[], &look), 0.0, "an empty lane has nothing to be tall for");
+        assert_eq!(cards_tall(&[120.0], &look), 120.0, "one card, and no trailing gap");
+        assert_eq!(cards_tall(&[120.0, 140.0], &look), 120.0 + CARD_GAP + 140.0);
+    }
+
+    #[test]
+    fn a_running_agent_is_paused_and_a_finished_one_is_resumed() {
+        use rux::components::CardAction;
+        let running = Live { attached: true, can_start: false, can_resume: false };
+        assert_eq!(card_action(running), (CardAction::Pause, "interrupt"));
+        let fresh = Live { attached: false, can_start: true, can_resume: false };
+        assert_eq!(card_action(fresh), (CardAction::Start, "start"));
+        let finished = Live { attached: false, can_start: false, can_resume: true };
+        assert_eq!(card_action(finished), (CardAction::Start, "resume"));
+        assert_eq!(card_action(Live::default()).0, CardAction::None);
+        assert_eq!(action_label("resume", "task-7"), "Resume task-7");
     }
 
     /// `live_for`'s `attached` half needs a real terminal session, which this board has none of; every
@@ -881,10 +545,9 @@ mod tests {
     fn a_claude_ticket_with_a_session_offers_resume_rather_than_start() {
         let board = AgentTasks::new();
         let task = a_task(Some("session-1"), Assignee::Claude);
-        assert!(
-            !live_for(&board, &task).can_start,
-            "Claude resumes the session it has, so Start would do nothing"
-        );
+        let live = live_for(&board, &task);
+        assert!(!live.can_start, "Claude resumes the session it has, so Start would do nothing");
+        assert!(live.can_resume, "and the card offers to resume it");
     }
 
     #[test]

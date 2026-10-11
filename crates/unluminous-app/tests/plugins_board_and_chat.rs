@@ -812,7 +812,7 @@ fn the_board_keeps_add_task_at_the_width_the_rail_appears_at() {
         "the pane was asked for at 360 points wide and is {}",
         pane.width()
     );
-    harness.get_by_label("+ Add Task");
+    harness.get_by_label("Add Task");
     harness.snapshot(shot("agent_tasks_narrow_header").as_str());
 }
 
@@ -877,9 +877,9 @@ fn the_backlog_groups_by_sprint_and_a_row_dragged_between_them_moves_the_ticket(
     );
     did(&mut harness, "plugins run agent-tasks view backlog");
     steady(&mut harness);
+    harness.snapshot(shot("agent_tasks_backlog").as_str());
     harness.get_by_label("August 2nd Half");
     harness.get_by_label_contains("task-3");
-    harness.snapshot(shot("agent_tasks_backlog").as_str());
 
     // **The move a drop makes, asked for the way the command line asks for it.** A row let go over a group
     // calls `AgentTasks::drop_the_carried_row`, which is `set_sprint_of` — the same change
@@ -1429,20 +1429,6 @@ fn sending_a_ticket_back_from_agent_done_to_qa_failed_asks_its_agent_to_come_bac
     );
 }
 
-/// Which agent a new ticket goes to, read from the provider rather than from a command.
-///
-/// The same field the Settings page writes and the chooser under the New lane cycles, so a test that reads it
-/// here is reading what both of them changed.
-fn chosen_agent(harness: &mut Harness<'static, UnluminousApp>) -> String {
-    let provider =
-        harness.state_mut().plugin_ui.provider("agent-tasks").expect("the board is open");
-    let tasks = provider
-        .as_any_mut()
-        .and_then(|any| any.downcast_mut::<unluminous_app::services::agent_tasks::AgentTasks>())
-        .expect("the Agent-Tasks provider");
-    tasks.configuration().agent.name().to_owned()
-}
-
 #[test]
 fn the_arrow_keys_move_a_ring_round_the_board_and_enter_opens_what_it_is_on() {
     // The board can be driven from the keyboard, which the first pass could not do at all: every card had to be
@@ -1610,34 +1596,23 @@ fn a_person_can_change_their_own_comment_and_cannot_change_an_agents() {
 }
 
 #[test]
-fn the_new_lane_chooses_an_agent_and_starts_the_next_ticket_with_it() {
-    // The quick launch under the New lane's heading: the chooser names which agent, and the play button next to
-    // it starts the ticket at the top of New without opening it. Both are pressed here by the labels they carry,
-    // which is what a person does with them.
+fn a_cards_round_button_starts_its_ticket() {
+    // `task-2241`: the Agent-Tasks design puts one round button at the foot of every card, a play mark that
+    // starts the ticket's agent and a pause mark while it is running. It is pressed here by the label it
+    // carries, which is what a person does with it.
     let mut harness = harness("");
     did(&mut harness, "plugins pane agent-tasks/board --show");
     did(&mut harness, "plugins run agent-tasks new-task First in the lane");
-    // Creating a ticket opens it, so the pane is showing that ticket rather than the lanes. `back` returns to
-    // the lanes, which is where the quick launch is. It also shuts the modal, and that matters: the modal is an
-    // `egui::Area` in the foreground layer, so while it is open nothing on the board behind it can be pressed.
+    // Creating a ticket opens it. `back` returns to the lanes and shuts the modal, which matters: the modal is
+    // an `egui::Area` in the foreground layer, so while it is open nothing on the board behind it can be pressed.
     did(&mut harness, "plugins run agent-tasks back");
     steady(&mut harness);
-    // The chooser names the agent a new ticket goes to, which starts as `claude`.
-    harness.get_by_label("Agent for a new ticket: claude").click();
-    steady(&mut harness);
-    assert_eq!(chosen_agent(&mut harness), "codex", "pressing the chooser names the other agent");
-    // And it is the same setting the Settings page writes, so the two cannot disagree.
-    harness.get_by_label("Agent for a new ticket: codex").click();
-    steady(&mut harness);
-    assert_eq!(chosen_agent(&mut harness), "claude", "and pressing it again comes back round");
-    // The play button starts the ticket at the top of New. No agent is on this machine under test, so what it
-    // proves is that the button reaches `start` for that ticket and reports what happened.
-    harness.get_by_label("Start the next ticket with claude").click();
+    // No agent is on this machine under test, so what it proves is that the button reaches `start` for that
+    // ticket and reports what happened.
+    harness.get_by_label("Start task-1").click();
     // `nudge`, not `run`: starting a ticket launches a terminal, and a live terminal asks for a frame whenever
     // it prints, so a `run` that insists the window goes quiet fails for a reason that is not a fault.
     nudge(&mut harness);
-    // `did_while_waiting`, for the same reason: the command goes down the same path but steps the window rather
-    // than insisting it settles.
     let board = did_while_waiting(&mut harness, "plugins view agent-tasks");
     let said = board["message"].as_str().unwrap_or_default();
     assert!(!said.is_empty(), "the play button says what happened: `{said}`");
@@ -1776,7 +1751,9 @@ fn choosing_in_each_dropdown_writes_the_field_it_names() {
         pick_a_row(harness, control, row);
     };
 
-    pick(&mut harness, "Priority", 2);
+    // The priority is a small pill switch since `task-2241`, so its choice is pressed by name.
+    harness.get_by_label("Priority: High").click();
+    steady(&mut harness);
     pick(&mut harness, "Assignee", 1);
     // The model list follows the agent that was just chosen, which is the reason `Assignee` is chosen first.
     // Its first row is "The agent's default", so the first model is the second row.
@@ -1811,13 +1788,15 @@ fn add_task_opens_an_editor_with_every_field_a_ticket_needs() {
     did(&mut harness, "plugins pane agent-tasks/board --show");
     did(&mut harness, "plugins run agent-tasks new-task");
     steady(&mut harness);
-    // The modal is open, on a ticket nobody has named, which is what makes its footer an editor's.
+    // The modal is open, on a ticket nobody has named, which is what gives its card `Create task`.
     let view = did(&mut harness, "plugins view agent-tasks");
     assert_eq!(view["total"], 1);
-    // `Discard` and `Done` are the editor's own footer, and a control rather than a painted heading: a ticket
-    // that exists gets `Close` instead.
-    assert!(harness.query_all_by_label_contains("Discard").count() > 0, "the editor's footer");
-    assert!(harness.query_all_by_label_contains("Done").count() > 0);
+    // `Create task` closes the editor and keeps the ticket; a ticket that exists has `Start Work` instead.
+    assert!(
+        harness.query_all_by_label_contains("Create task").count() > 0,
+        "the editor's own button"
+    );
+    assert_eq!(harness.query_all_by_label_contains("Start Work").count(), 0);
     // Every field is reachable by name, which is what proves each has a control rather than a comment saying it
     // should have one.
     for control in ["Assignee", "Model", "Effort", "Priority", "Epic", "Project"] {
@@ -1835,7 +1814,8 @@ fn add_task_opens_an_editor_with_every_field_a_ticket_needs() {
     );
     pick_a_row(&mut harness, "Model", claude_models.len());
     pick_a_row(&mut harness, "Effort", 5);
-    pick_a_row(&mut harness, "Priority", 2);
+    harness.get_by_label("Priority: High").click();
+    steady(&mut harness);
     let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
     assert_eq!(ticket["task"]["model"], claude_models.last().cloned().unwrap_or_default());
     assert_eq!(ticket["task"]["effort"], "max");
@@ -2667,14 +2647,14 @@ fn zooming_a_file_leaves_the_board_the_size_it_was() {
     did(&mut harness, "plugins run agent-tasks new-sprint Current Sprint");
     did(&mut harness, "plugins run agent-tasks board");
     steady(&mut harness);
-    let before = harness.get_by_label("+ Add Task").rect();
+    let before = harness.get_by_label("Add Task").rect();
     did(&mut harness, "settings set appearance.font.size 32");
     steady(&mut harness);
-    let after = harness.get_by_label("+ Add Task").rect();
+    let after = harness.get_by_label("Add Task").rect();
     assert_eq!(before.size(), after.size(), "the board changed size with the editor's font");
     did(&mut harness, "panel zoom agent-tasks/board 1.5");
     steady(&mut harness);
-    let zoomed = harness.get_by_label("+ Add Task").rect();
+    let zoomed = harness.get_by_label("Add Task").rect();
     assert!(zoomed.height() > after.height(), "{zoomed:?} against {after:?}");
 }
 
@@ -3875,17 +3855,21 @@ fn the_description_is_resized_by_dragging_its_bottom_edge() {
     a_ticket_open(&mut harness);
     let asked = did(&mut harness, "plugins run agent-tasks description-height");
     assert!(asked["height"].is_null(), "nobody has dragged it yet: {asked}");
-    // Smaller, which is what the ticket asked for, and the sections under it move up into the room.
+    // Taller, and the sections under it move down to make the room. The design's well starts three lines tall,
+    // 92 points, and the least it can be made is 76, so a drag down is the one that has room to show.
     let grip = harness.get_by_label("Resize description").rect();
     let below = harness.get_by_label_contains("Todos").rect();
-    drag(&mut harness, grip.center(), grip.center() - vec2(0.0, 60.0));
+    drag(&mut harness, grip.center(), grip.center() + vec2(0.0, 60.0));
     let after = did(&mut harness, "plugins run agent-tasks description-height");
     let height = after["height"].as_f64().expect("a height once it was dragged");
-    assert!((80.0..=120.0).contains(&height), "dragged sixty points up from 160: {height}");
+    assert!((130.0..=170.0).contains(&height), "dragged sixty points down from 92: {height}");
     let moved = harness.get_by_label("Resize description").rect();
-    assert!(moved.center().y < grip.center().y - 40.0, "the edge moved up: {grip:?} to {moved:?}");
-    let raised = harness.get_by_label_contains("Todos").rect();
-    assert!(raised.top() < below.top() - 40.0, "the todos moved up into the room");
+    assert!(
+        moved.center().y > grip.center().y + 40.0,
+        "the edge moved down: {grip:?} to {moved:?}"
+    );
+    let lowered = harness.get_by_label_contains("Todos").rect();
+    assert!(lowered.top() > below.top() + 40.0, "the todos moved down to make the room");
 
     // The agent's half sets the same number, and `auto` gives it back to the modal.
     did(&mut harness, "plugins run agent-tasks description-height 200");

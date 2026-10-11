@@ -207,6 +207,32 @@ pub fn show<R>(
     height: f32,
     contents: impl FnOnce(&mut egui::Ui, Rect) -> R,
 ) -> (R, bool) {
+    show_framed(ctx, id, width, height, true, contents)
+}
+
+/// The same, with no frame: the dialog paints its own surface, and may let its shadow fall past its edge.
+///
+/// The Agent-Tasks ticket (`task-2241`) is a `rux` surface thirty points round with a long soft shadow
+/// under it, which the window's own ten point frame would show through at the corners and its clip would
+/// cut off.
+pub fn show_unframed<R>(
+    ctx: &egui::Context,
+    id: &str,
+    width: f32,
+    height: f32,
+    contents: impl FnOnce(&mut egui::Ui, Rect) -> R,
+) -> (R, bool) {
+    show_framed(ctx, id, width, height, false, contents)
+}
+
+fn show_framed<R>(
+    ctx: &egui::Context,
+    id: &str,
+    width: f32,
+    height: f32,
+    framed: bool,
+    contents: impl FnOnce(&mut egui::Ui, Rect) -> R,
+) -> (R, bool) {
     let mut placement = placement(ctx, id);
     let (position, size) = place(ctx, width, height, &mut placement);
     remember_drawn(ctx, id, Rect::from_min_size(position, size));
@@ -247,20 +273,27 @@ pub fn show<R>(
             ui.painter().rect_filled(window, CornerRadius::ZERO, color::scrim());
             let frame_at = ui.painter().add(egui::Shape::Noop);
             let (area, _) = ui.allocate_exact_size(laid_out, Sense::hover());
-            ui.painter().set(
-                frame_at,
-                egui::Shape::Rect(egui::epaint::RectShape::new(
-                    area.expand(1.0),
-                    CornerRadius::same(10),
-                    color::explorer(),
-                    Stroke::new(1.0, color::control_border()),
-                    egui::StrokeKind::Inside,
-                )),
-            );
+            if framed {
+                ui.painter().set(
+                    frame_at,
+                    egui::Shape::Rect(egui::epaint::RectShape::new(
+                        area.expand(1.0),
+                        CornerRadius::same(10),
+                        color::explorer(),
+                        Stroke::new(1.0, color::control_border()),
+                        egui::StrokeKind::Inside,
+                    )),
+                );
+            }
             // **Nothing a dialog draws reaches past its own frame.** The area's clip was the whole window, so a
             // section that ran out of room painted over the backdrop under the modal, which a zoom makes easy to
-            // reach: a modal zoomed in has less room in its own points. `task-2198`.
-            ui.set_clip_rect(area.expand(1.0).intersect(ui.clip_rect()));
+            // reach: a modal zoomed in has less room in its own points. `task-2198`. A dialog with no frame
+            // keeps room round it for the shadow it paints.
+            let reach = match framed {
+                true => 1.0,
+                false => 64.0,
+            };
+            ui.set_clip_rect(area.expand(reach).intersect(ui.clip_rect()));
             // Before the contents, so the close cross the header draws sits over the strip.
             let moved = drag_strip(ui, area, id, &mut placement, zoom);
             let inner = contents(ui, area);

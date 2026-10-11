@@ -542,6 +542,9 @@ pub struct AgentTasks {
     /// What the ticket modal's `rux` controls keep between frames: their decoration and which dropdown
     /// is open. Made the first time the modal is drawn. `task-2193`.
     pub ticket_kit: Option<TicketKit>,
+    /// What the board's own `rux` parts keep between frames: the decoration of the header and of each
+    /// lane. Made the first time the board is drawn. `task-2241`.
+    pub board_rux: Option<rux::RuxState>,
     /// True while a selection is being dragged out in a ticket's terminal.
     pub terminal_selecting: bool,
     /// True when the ticket's terminal has the keyboard, so typing goes to the agent rather than to the

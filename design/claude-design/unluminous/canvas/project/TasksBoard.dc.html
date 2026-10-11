@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent-Tasks board</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/rux/tokens.css">
+<link rel="stylesheet" href="ds/rux/components/bundle.css">
+<script src="ds/rux/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<section aria-label="Agent-Tasks" data-theme="unluminous-dark" style="width: 1180px; height: 660px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; background: var(--surface-1); color: var(--ink-700); font-family: var(--font-ui); --card: linear-gradient(145deg, #252a32, #1c2026); --well: #1a1e24; --out: -7px -7px 16px #2a2f37, 8px 8px 18px #0c0f13; --out-sm: -2px -2px 5px rgba(46, 52, 61, 0.7), 3px 3px 6px #0b0d11, inset 0 0 0 1px rgba(255, 255, 255, 0.045), inset 0 1px 0 rgba(255, 255, 255, 0.05); --chip: linear-gradient(145deg, #262b33, #20242b); --in: inset 5px 5px 10px #0c0f13, inset -5px -5px 10px #2a2f37; --in-sm: inset 2px 2px 5px #0c0f13, inset -2px -2px 5px #2a2f37; --grad: linear-gradient(135deg, #3d78ff, #5cb6ff); --grad-out: -4px -4px 9px #2a2f37, 4px 5px 12px rgba(20, 60, 160, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25); --sky: #5cb6ff; --up: #ff8f73; --down: #3ad6ad;">
+
+<div style="height: 32px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 12px; background: var(--ul-toolbar); border-bottom: 1px solid var(--ul-divider); font-size: 12px; color: var(--ul-text-control);">
+<span>Agent-Tasks</span>
+<span style="flex: 1;"></span>
+<button aria-label="Close Agent-Tasks" style="width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--ul-icon); display: flex; align-items: center; justify-content: center;"><x-import component-from-global-scope="Rux.UlIcon" name="cross" size="20"></x-import></button>
+</div>
+
+<header style="flex-shrink: 0; display: flex; align-items: center; gap: 22px; padding: 22px 26px 18px;">
+<div role="tablist" aria-label="Views" style="display: flex; gap: 4px; padding: 5px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm);">
+<sc-for list="{{views}}" as="vw" hint-placeholder-count="4">
+<button role="tab" aria-selected="{{vw.selected}}" onClick="{{vw.pick}}" style="height: 34px; display: flex; align-items: center; gap: 7px; padding: 0 14px 0 12px; border: 0; border-radius: 999px; background: {{vw.bg}}; box-shadow: {{vw.shadow}}; color: {{vw.colour}}; font-family: var(--font-ui); font-size: 12px; font-weight: 500; cursor: pointer;"><x-import component-from-global-scope="Rux.Icon" name="{{vw.icon}}" size="13"></x-import>{{vw.label}}</button>
+</sc-for>
+</div>
+
+<div style="display: flex; align-items: center; gap: 14px;">
+<span style="position: relative; width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; background: var(--chip); box-shadow: var(--out-sm); display: flex; align-items: center; justify-content: center;">
+<svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true" style="position: absolute; inset: 0; transform: rotate(-90deg);">
+<defs><linearGradient id="sprint" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color: #3d78ff;"></stop><stop offset="1" style="stop-color: #5cb6ff;"></stop></linearGradient></defs>
+<circle cx="22" cy="22" r="16" fill="none" style="stroke: #2c323b; stroke-width: 4;"></circle>
+<circle cx="22" cy="22" r="16" fill="none" style="stroke: url(#sprint); stroke-width: 4; stroke-linecap: round; stroke-dasharray: {{sprintDash}};"></circle>
+</svg>
+<span style="font-size: 10px; font-weight: 600; color: var(--ink-900);">95%</span>
+</span>
+<span style="display: flex; flex-direction: column; gap: 2px;">
+<h2 style="margin: 0; font-family: var(--font-sans); font-size: 22px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; color: var(--ink-900); white-space: nowrap;">Current Sprint</h2>
+<span style="font-size: 11.5px; color: var(--ink-400); white-space: nowrap;">4 tasks · 20 of 21 todos done</span>
+</span>
+</div>
+
+<span style="flex: 1;"></span>
+
+<div style="position: relative; width: 260px; height: 42px; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 0 16px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm);">
+<span style="display: flex; color: var(--ink-400);"><x-import component-from-global-scope="Rux.Icon" name="search" size="14"></x-import></span>
+<label for="task-search" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;">Search tasks</label>
+<input id="task-search" placeholder="Search tasks" style="flex: 1; min-width: 0; border: 0; outline: 0; padding: 0; background: transparent; color: var(--ink-900); font-family: var(--font-ui); font-size: 12.5px;">
+</div>
+<button style="height: 42px; display: flex; align-items: center; gap: 8px; padding: 0 20px 0 16px; border: 0; border-radius: 999px; background: var(--grad); box-shadow: var(--grad-out); color: #ffffff; font-family: var(--font-ui); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer;"><x-import component-from-global-scope="Rux.Icon" name="plus" size="14" stroke="2.2"></x-import>Add Task</button>
+</header>
+
+<div style="flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px; padding: 6px 26px 26px;">
+<sc-for list="{{lanes}}" as="lane" hint-placeholder-count="4">
+<div style="min-width: 0; display: flex; flex-direction: column; gap: 14px; padding: 14px; border-radius: 26px; background: var(--well); box-shadow: var(--in);">
+<div style="display: flex; align-items: center; gap: 10px; padding: 2px 2px 0;">
+<span style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; background: var(--chip); box-shadow: var(--out-sm); display: flex; align-items: center; justify-content: center; line-height: 0;">
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" style="display: block;">
+<sc-for list="{{lane.paths}}" as="p" hint-placeholder-count="2">
+<path d="{{p.d}}" style="stroke: {{p.stroke}}; stroke-width: {{p.w}}; stroke-linecap: round; stroke-linejoin: round;"></path>
+</sc-for>
+</svg>
+</span>
+<span style="flex: 1; font-size: 13px; font-weight: 600; color: var(--ink-900);">{{lane.name}}</span>
+<span style="min-width: 26px; height: 26px; box-sizing: border-box; padding: 0 8px; border-radius: 999px; background: var(--chip); box-shadow: var(--out-sm); display: flex; align-items: center; justify-content: center; font-size: 11.5px; color: var(--ink-500);">{{lane.count}}</span>
+</div>
+
+<sc-for list="{{lane.cards}}" as="card" hint-placeholder-count="1">
+<article style="display: flex; flex-direction: column; gap: 14px; padding: 16px 16px 14px; border-radius: 20px; background: var(--card); box-shadow: var(--out);">
+<span style="font-size: 13px; font-weight: 600; line-height: 1.4; color: var(--ink-900); text-wrap: pretty;">{{card.title}}</span>
+<div style="display: flex; align-items: center; gap: 10px;">
+<div style="position: relative; flex: 1; height: 8px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm);">
+<div style="position: absolute; left: 2px; top: 2px; bottom: 2px; width: {{card.fill}}; border-radius: 999px; background: {{card.fillBg}};"></div>
+</div>
+<span style="font-size: 11px; color: var(--ink-400);">{{card.todos}}</span>
+</div>
+<div style="display: flex; align-items: center; gap: 10px;">
+<span style="flex: 1; font-family: var(--font-code); font-size: 11.5px; color: var(--ink-400);">{{card.key}}</span>
+<span aria-label="Assigned to {{card.assignee}}" style="width: 28px; height: 28px; border-radius: 50%; background: var(--chip); box-shadow: var(--out-sm); display: flex; align-items: center; justify-content: center; color: var(--ul-agent);"><x-import component-from-global-scope="Rux.Icon" name="spark" size="12" stroke="2"></x-import></span>
+<button aria-label="{{card.action}}" style="width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: {{card.btnBg}}; box-shadow: {{card.btnShadow}}; color: {{card.btnColour}}; display: flex; align-items: center; justify-content: center; cursor: pointer;"><span style="display: flex; margin-left: {{card.nudge}};"><x-import component-from-global-scope="Rux.Icon" name="{{card.btnIcon}}" size="12" stroke="2.2"></x-import></span></button>
+</div>
+</article>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1180,"height":660}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const view = this.state.view ?? 0;
+    const ringC = 2 * Math.PI * 16;
+    const RING = 'M8 2a6 6 0 1 1 0 12a6 6 0 1 1 0-12';
+    const card = (title, key, done, total, running) => {
+      const frac = total ? done / total : 0;
+      return {
+        title, key, assignee: 'claude',
+        todos: `${done}/${total}`,
+        fill: total ? `calc(${(frac * 100).toFixed(1)}% - 4px)` : '0px',
+        fillBg: frac === 1 ? 'linear-gradient(135deg, #2fb98f, #3ad6ad)' : 'var(--grad)',
+        action: running ? 'Pause work' : 'Start Work',
+        btnIcon: running ? 'pause' : 'play',
+        nudge: running ? '0px' : '2px',
+        btnBg: running ? 'var(--well)' : 'var(--chip)',
+        btnShadow: running ? 'var(--in-sm)' : 'var(--out-sm)',
+        btnColour: running ? 'var(--sky)' : 'var(--ink-500)'
+      };
+    };
+    return {
+      sprintDash: `${(ringC * 0.95).toFixed(1)} ${ringC.toFixed(1)}`,
+      views: [
+        { label: 'Board', icon: 'storyboard' },
+        { label: 'Backlog', icon: 'layers' },
+        { label: 'Completed', icon: 'check' },
+        { label: 'Epics', icon: 'cube' }
+      ].map((v, i) => ({
+        ...v,
+        selected: i === view ? 'true' : 'false',
+        bg: i === view ? 'var(--chip)' : 'transparent',
+        shadow: i === view ? 'var(--out-sm)' : 'none',
+        colour: i === view ? 'var(--ink-900)' : 'var(--ink-500)',
+        pick: () => this.setState({ view: i })
+      })),
+      lanes: [
+        { name: 'New', count: 1, paths: [{ d: RING, stroke: 'var(--ink-400)', w: 1.6 }, { d: 'M8 4.9V8l2.1 1.4', stroke: 'var(--ink-400)', w: 1.6 }], cards: [card('Unluminous: icons for the realm nodes', 'task-2231', 0, 0, false)] },
+        { name: 'QA failed', count: 0, paths: [{ d: 'M5.2 5.2l5.6 5.6M10.8 5.2l-5.6 5.6', stroke: 'var(--up)', w: 1.9 }], cards: [] },
+        { name: 'In progress', count: 1, paths: [{ d: RING, stroke: '#2c323b', w: 2.2 }, { d: 'M8 2a6 6 0 0 1 5.91 7.04', stroke: 'var(--sky)', w: 2.2 }], cards: [card('Unluminous Design Updates Prep', 'task-2230', 6, 7, true)] },
+        { name: 'Agent done', count: 2, paths: [{ d: 'M4.3 8.3l2.5 2.5 4.9-5.1', stroke: 'var(--down)', w: 1.9 }], cards: [card('Jupyter notebooks', 'task-2220', 9, 9, false), card('Light theme', 'task-2215', 5, 5, false)] }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -954,12 +954,10 @@ setting. A provider that draws only with `egui` costs no pixmap, no rasterisatio
 added to `CHROME` the choice is already a choice; and `ui.chrome` on a plugin that is not a `ui` plugin is
 refused, because a renderer with no pane to draw is a line that would do nothing silently.
 
-**The board's own furniture came out of the reference too**, and two pieces of it are worth knowing about.
-It has a **rail** of its own down the left — four icon buttons, one a view, the chosen one lit — which is
-not `components::activity_bar`: that rail is on the window's edge and belongs to the window, and a plugin
-adding entries to it would be a plugin deciding what the window's furniture is. And the rail is inset
-**16** points where everything else is inset 8, because a raised surface's shadow reaches about 24 and the
-canvas is cut to the pane: at 8 the rail's own shadow was clipped and it read as a strip stuck to the side.
+**The board's own furniture came out of the reference too.** It had a **rail** of its own down the left,
+one icon button a view, which was not `components::activity_bar`: that rail is on the window's edge and
+belongs to the window. `task-2241` moved the views into the header as a pill switch, which is what the
+Agent-Tasks design draws; see the section on that design below.
 
 ### A surface has four corners, and a modal has a canvas of its own
 
@@ -1016,7 +1014,9 @@ under another with no scroll, so a budget that overflows does not clip — it dr
 the bottom edge and the one before it over its own buttons. The description used to be given "whatever is
 left, floored at ninety", and a floor is exactly the thing that makes a budget stop adding up. Every
 section says what it **wants** and what it can be **cut to**, and the shortfall comes off them in order:
-the terminal first, then the comments, then the todos, and the description last.
+the terminal first, then the comments, then the todos, and the description last. Since `task-2241` the
+description gives way before the comments and the todos, down to three lines, because it scrolls and the
+todos are the plan an agent is working through.
 
 Two smaller rules the modal keeps. A section's name is painted in small spaced capitals and **named** in
 the case a person reads — `paint_label` and `label` are that split, and a disclosure follows it, so a
@@ -1034,9 +1034,9 @@ arguments that names one, so `sprint-rename August 2nd Half September` needs no 
   `board.sqlite3` is imported into `board.rdb` beside it the first time it is opened and is never written to.
 - **`new-task` with a title opens nothing.** Only `+ Add Task`, which sends `new-task` with no title, opens the
   empty ticket in the modal. `describe <key> <text>` writes a description, and `task <key>` reads it back.
-- **The ticket modal is set at 14 points whatever the editor is**, through `Look::at_a_fixed_size`, because it
-  used to follow the editor's font while its fields did not. Its controls are `rux` components, and it asks for
-  at most 1180 by 820 points.
+- **The ticket modal is set in one size whatever the editor is**, through `Look::at_a_fixed_size`, because it
+  used to follow the editor's font while its fields did not. Its controls are `rux` components. Since
+  `task-2241` the size is the design's 13 points and it asks for at most 1000 by 720 points.
 - **On macOS the menu bar's `Cut`, `Copy`, `Paste` and `Select All` go to the text box with the keyboard**, not
   to the document behind it, through `give_the_clipboard_entry_to_a_text_box`. AppKit gives the chord to the menu
   and the window never sees the key.
@@ -1046,6 +1046,32 @@ arguments that names one, so `sprint-rename August 2nd Half September` needs no 
   rendered description each copy their source, through `controls::read_only_menu`, which is `field_menu`'s shape
   for words a plugin draws. The Markdown preview's own menu, `Copy` and `Select All`, is the window's
   (`actions::preview_menu`, opened into `UnluminousApp::preview_menu`).
+
+### The board and the ticket are the Agent-Tasks design, drawn with `rux`'s board parts (`task-2241`)
+
+The Claude Design canvas "Unluminous", page Agent-Tasks, artboards "Agent-Tasks board · Dark", "Edit task" and
+"New task", is what the board and the ticket modal are measured against. Copies of the three artboards are in
+`design/claude-design/unluminous/canvas/project/`. Five things to know:
+
+- **Every surface is `rux`.** `rux::components::board` holds the parts: `ViewSwitch`, `SprintRing`,
+  `search_well`, `Lane` and its four `LaneMark`s, `TaskCard`, `ChipButton` and `round_check`, all in
+  `rux::theme::Chat`'s values plus the chip, a flatter raised surface than a card. `Select::chip` is the ticket's
+  field, `PillSwitch::small` its priority, `PillButton::large` is `Add Task` and `RoundButton::action` is `Add
+  Task` on a board too narrow for its words. `components/agent_tasks/kit.rs` keeps the board's `RuxState` in
+  `AgentTasks::board_rux`, taken off the board for the length of a frame because the lanes read the board while
+  they draw.
+- **The views are a pill switch in the header**, beside the sprint's ring and counts, the search well and `Add
+  Task`. On a narrow pane the search goes first, then the views' words, then `Add Task`'s words, then the views.
+  On a listing the strip that makes a sprint or an epic sits in the header beside the view's name.
+- **A lane is a carved well the whole height of the board, and a card is as tall as its title**, one line or
+  two. A card's round button is play for a ticket that can be started or resumed, and pause while its agent is
+  running here; pause is `interrupt`, so the terminal stays. The quick launch under New and the lane's own `+
+  Add task` are gone; the agent a new ticket goes to is chosen on the Settings page.
+- **The ticket modal is `modal::show_unframed`**: the dialog paints its own thirty point surface and shadow, and
+  keeps the dragging, the resizing and the zoom every modal has. A new ticket closed with no title is thrown
+  away, and `Create task` closes it and keeps it. The terminal's heading folds as the todos' does.
+- **The listings are the same language**: a group is a carved well, a row a chip, an epic a card, through
+  `listings::Deco`.
 
 ### The plus sits after the last view, which is where a browser puts it
 

@@ -1,47 +1,41 @@
 //! One ticket, in full: the modal the board opens a card into.
 //!
-//! `tasks/agent-tasks-ui-tdd.md` §2.4 is the list this is measured against, and §5 is the design. Two columns
-//! inside one frame, which is what the browser board does, and the frame is `components::modal`'s — the same
-//! header, body and footer the Settings window and the nine git dialogs are made of, with the dragging and
-//! resizing `modal::show` already owns.
+//! ## The look is the Agent-Tasks design (`task-2241`)
 //!
-//! ## What is inside the frame is `rux`
+//! The Claude Design canvas "Unluminous", page Agent-Tasks, artboards "Edit task" and "New task"
+//! (`TaskModal.dc.html`). One surface thirty points round on the pane's own ground, with a long soft shadow
+//! under it and no title bar or footer: a header row of the ticket's key in a carved chip, the title as a field
+//! and a round close button; then two columns. On the left the description in a carved well, the todos with a
+//! track of how many are done, the agent's terminal and the comments, each under a small heading. On the right
+//! a raised card holding `Start Work` and the fields that say what the ticket is, each a chip with a mark and a
+//! chevron, and the priority as a small pill switch. A new ticket's card ends in `Create task`.
 //!
-//! `task-2193`: *"The modal is very hard to read, has inconsistent font sizes that don't relatively fit (e.g.
-//! labels are way larger than input text). Use blackrainbowlabs-rux and do a thorough design that is highly
-//! polished."* The labels were drawn from the editor's own font size and the fields were not, so on a machine
-//! whose editor is set large a field's name was twice the size of what was in it.
+//! Every surface is `rux`: `rux::components::board` for the chips, the tick boxes and the round buttons, and
+//! `Select::chip` for the fields. `components::modal::show_unframed` is the dialog, so it keeps the dragging,
+//! the resizing and the zoom every other modal has.
 //!
-//! So everything in the body is set in one type scale, `rux`'s: the start button, the dropdowns, the fields,
-//! the section headings, the wells the description, the todos and the terminal sit in, and the footer's
-//! buttons are `rux` components, and what is still drawn by Unluminous's own helpers — the todo rows, the
-//! comments, the two view buttons — is drawn with a [`Look`] fixed at [`BODY`] points through
-//! `Look::at_a_fixed_size`, so it is in proportion with them. The editor's font no longer reaches into the
-//! dialog at all, which is what makes the dialog look the same on every machine.
+//! ## One type size, whatever the editor is
 //!
-//! ## The description scrolls inside its own well
+//! `task-2193`: the labels were drawn from the editor's own font size and the fields were not, so on a machine
+//! whose editor is set large a field's name was twice the size of what was in it. Everything here is set in
+//! the design's sizes, and what Unluminous's own helpers draw (the description, the comments) is drawn with a
+//! [`Look`] fixed at [`BODY`] points through `Look::at_a_fixed_size`.
 //!
-//! *"The Description overlaps the todos and terminal."* A `TextEdit` holding more lines than its rectangle
-//! grows past it, and nothing clipped the old one. `description::in_a_well` puts it in a `ScrollArea` cut to
-//! the well, and the heights below are shared out so the sections can never be given more than there is.
+//! ## The heights add up
 //!
-//! ## It is a dialog, not the whole window
-//!
-//! *"When an agent creates a task it fills the whole window."* It asked for nine tenths of the window, which
-//! on a large display is the whole of it. It is at most [`LARGEST`] now, and an agent making a ticket does not
-//! open it at all — see the `new-task` command.
+//! The four sections on the left are laid out one under another. Each says what it **wants** and what it can be
+//! cut to, and the shortfall is taken from them in order: the terminal, then the description down to three
+//! lines, then the comments, and the todos last. The description, the comments and the todos all scroll.
 //!
 //! ## Every field writes through one function
 //!
-//! Seven controls down the right are seven calls to `AgentTasks::edit_field`, so there is one place a column
-//! is written and no second path to drift from it. `Model` and `Effort` are **absent** for a ticket assigned
-//! to a person rather than disabled, which is Unluminous's rule and the one place this deliberately differs from
-//! the browser.
+//! The controls down the right are calls to `AgentTasks::edit_field`, so there is one place a column is written.
+//! `Model` and `Effort` are **absent** for a ticket assigned to a person rather than disabled, which is
+//! Unluminous's rule.
 
 use egui::{Pos2, Rect, Vec2};
-use rux::components::{Button, ButtonSize, ButtonVariant, Select, SubGroup, TextInput, Well};
-use rux::icon::Icon;
-use rux::layout::Pad;
+use rux::components::{ChipButton, PillSwitch, Select, SelectLead};
+use rux::icon::{Icon, Mark};
 use rux::text::Style;
 
 use crate::components::modal;
@@ -52,83 +46,79 @@ use crate::services::plugin_ui::{Look, Request};
 /// The id the modal is drawn under, which is what its place and its zoom are kept against.
 pub const MODAL_ID: &str = "agent-tasks-ticket";
 
-/// The type size the whole dialog is set in: `rux`'s own body size, which its fields and buttons match.
-pub const BODY: f32 = 14.0;
+/// The type size the description and the comments are set in: the design's 13 points.
+pub const BODY: f32 = 13.0;
 
-/// The most room the modal asks for, however large the window is.
-pub const LARGEST: Vec2 = Vec2::new(1180.0, 820.0);
+/// The most room the modal asks for, however large the window is: the design's 1000 by 690, and a little more
+/// height so a ticket with comments shows more than one.
+pub const LARGEST: Vec2 = Vec2::new(1000.0, 720.0);
 
-/// How much of the window it may take before [`LARGEST`] stops it.
+/// How much of the window it may take before [`LARGEST`] stops it: nine tenths of its width, and a little more
+/// of its height, because the dialog's four sections stack and the design's 690 points is most of a small window.
 const WINDOW_SHARE: f32 = 0.9;
+const WINDOW_SHARE_TALL: f32 = 0.94;
 
 /// The smallest it will ask for, whatever the window is.
-///
-/// A window dragged down to a few hundred points would otherwise ask for a modal too small to hold the
-/// two columns, and `modal::fit` already clamps anything larger than the window, so a floor above the
-/// window's own size costs nothing and reads correctly at every size in between.
 const SMALLEST_WIDTH: f32 = 720.0;
 const SMALLEST_HEIGHT: f32 = 520.0;
 
 /// How big the modal asks to be in this window: nine tenths of it, and never more than [`LARGEST`].
 pub fn size(ctx: &egui::Context, _look: &Look<'_>) -> (f32, f32) {
     let window = ctx.content_rect().size();
-    let side = |window: f32, largest: f32, smallest: f32| {
-        (window * WINDOW_SHARE).min(largest).max(smallest.min(window))
+    let side = |window: f32, share: f32, largest: f32, smallest: f32| {
+        (window * share).min(largest).max(smallest.min(window))
     };
-    (side(window.x, LARGEST.x, SMALLEST_WIDTH), side(window.y, LARGEST.y, SMALLEST_HEIGHT))
+    (
+        side(window.x, WINDOW_SHARE, LARGEST.x, SMALLEST_WIDTH),
+        side(window.y, WINDOW_SHARE_TALL, LARGEST.y, SMALLEST_HEIGHT),
+    )
 }
 
-/// How wide the column of fields down the right is, and the dialog width below which it goes underneath.
-const ASIDE: f32 = 290.0;
+/// `padding: 22px 24px 24px 28px` round the dialog, and the header row's height and the gap under it.
+const PAD_TOP: f32 = 22.0;
+const PAD_RIGHT: f32 = 24.0;
+const PAD_BOTTOM: f32 = 24.0;
+const PAD_LEFT: f32 = 28.0;
+const HEADER: f32 = 36.0;
+const HEADER_GAP: f32 = 22.0;
+/// How round the dialog is.
+const RADIUS: f32 = 30.0;
+/// How wide the card of fields down the right is, and the dialog width below which it goes underneath.
+const ASIDE: f32 = 270.0;
 const TWO_COLUMNS: f32 = 700.0;
-/// Between the two columns, and between one section and the next.
+/// Between the two columns, between one section and the next, and under a section's heading.
 const GUTTER: f32 = 28.0;
-const GAP: f32 = 16.0;
-/// A field's caption, the gap under it, and the control.
-const CAPTION: f32 = 14.0;
-const CONTROL: f32 = 34.0;
-/// One section's heading row.
-const HEADING: f32 = 22.0;
-/// How much of the room left under the description the agent's terminal takes, and its two bounds.
+const SECTION_GAP: f32 = 20.0;
+const LABEL_GAP: f32 = 10.0;
+/// A section's heading: 12 point semibold words.
+const LABEL: f32 = 15.0;
+/// The todos' heading row, which holds the 24 point fold disc.
+const TODO_HEAD: f32 = 24.0;
+/// One todo row, the gap between two, the list's padding, and the row that adds one.
+const TODO_ROW: f32 = 36.0;
+const TODO_GAP: f32 = 4.0;
+const TODO_PAD: f32 = 8.0;
+const TODO_ADD: f32 = 38.0;
+/// The description's well when nobody has dragged its edge, and the least it can be made.
+const DESCRIPTION: f32 = 92.0;
+const DESCRIPTION_LEAST: f32 = 76.0;
+/// How tall the strip under the description that resizes it is.
+const DESCRIPTION_GRIP: f32 = 8.0;
+/// The terminal: the strip that says there is none, and the room a live one wants.
+const TERMINAL_EMPTY: f32 = 58.0;
 const TERMINAL_SHARE: f32 = 0.34;
 const TERMINAL_SMALLEST: f32 = 150.0;
 const TERMINAL_LEAST: f32 = 64.0;
-const TERMINAL_LARGEST: f32 = 520.0;
-/// What the comments want, and the least they can be given.
-///
-/// `task-2214`: *"The comment section isn't tall enough."* It wanted 190 points and could be cut to 100, and the
-/// box and the buttons under the list take 50 of those, so on an ordinary window a ticket showed one comment at a
-/// time. It wants 300 now, and whatever room is left over once every section has what it wants goes to the
-/// comments rather than to the description. It can still be cut to 140 in a small window, because below that the
-/// description, which is the last to give way, would be cut to nothing.
-const COMMENTS: f32 = 300.0;
-const COMMENTS_LEAST: f32 = 140.0;
-/// How tall one comment roughly is, its header and two lines.
+const TERMINAL_LARGEST: f32 = 420.0;
+/// What the comments want and the least they can be given: the box that writes one and about one comment.
+const COMMENTS: f32 = 260.0;
 const COMMENT_ROUGHLY: f32 = 56.0;
-/// How tall the description is when nobody has dragged its edge, and the least it can be made.
-///
-/// `task-2214`: *"The description in the modal needs to be resizable so it can take less height."* The
-/// description took everything the other sections did not, which on a ticket with a long conversation was most of
-/// the dialog. Now it asks for [`DESCRIPTION`] and the edge under it can be dragged anywhere down to
-/// [`DESCRIPTION_LEAST`], which is three lines, and the comments take what it gives up.
-const DESCRIPTION: f32 = 160.0;
-const DESCRIPTION_LEAST: f32 = 64.0;
-/// How tall the strip under the description that resizes it is. It sits in the gap above the next section.
-const DESCRIPTION_GRIP: f32 = 8.0;
-/// What one section after the description takes before its body: eight points, `SubGroup`'s hairline and the
-/// fourteen points under it, its twenty point heading, and eight more.
-const SECTION: f32 = 8.0 + 14.0 + 20.0 + 8.0;
-
-/// A field's caption: small mono capitals, which is `rux`'s heading face.
-const CAPTION_STYLE: Style = Style::mono(10.5).medium().tracking(0.12).upper();
-/// A quiet line under a field saying what it is for.
-const HELP_STYLE: Style = Style::sans(12.0).leading(1.4);
 
 /// What the modal reported.
 #[derive(Debug, Default)]
 pub struct Outcome {
     pub requests: Vec<Request>,
-    /// The modal was closed, by its cross, by `Escape`, by a click outside it, or by its footer.
+    /// The modal was closed, by its cross, by `Escape`, by a click outside it, or by `Create task`.
     pub closed: bool,
 }
 
@@ -138,21 +128,16 @@ pub fn show(board: &mut AgentTasks, ctx: &egui::Context, look: &Look<'_>) -> Out
     let Some(task) = board.detail().task.clone() else {
         return outcome;
     };
-    // A ticket nobody has named yet is a new one, and the footer says so: `Discard` deletes the row rather than
-    // closing the modal, because `+ Add Task` created it before anybody typed.
+    // A ticket nobody has named yet is a new one: `Add Task` created the row before anybody typed.
     let new = board.detail().is_new;
     let (width, height) = size(ctx, look);
-    // **One type scale for the whole dialog**, whatever the editor is set to — see the module comment.
     let look = look.clone().at_a_fixed_size(BODY).flat();
     // Taken out of the board for the length of the drawing, because the drawing needs the board too.
     let mut kit = board.ticket_kit.take().unwrap_or_default();
-    // **`Tab` walks the text boxes, and nothing else.** `task-2214`: *"Tab press should navigate fields/inputs."*
-    // egui's own walk visits every widget that can take the keyboard in the order it was added, and in this modal
-    // that is mostly invisible ones: the ground a field claims presses with, the close cross, each dropdown and
-    // each button, none of which draws anything to say it has the keyboard. So a press of `Tab` seemed to do
-    // nothing, and a second one did nothing either. egui's walk is cancelled here, before any widget in the
-    // modal has been drawn, and the box to move to is chosen once the modal has been drawn and every box in it
-    // has said where it is.
+    // **`Tab` walks the text boxes, and nothing else.** `task-2214`. egui's own walk visits every widget that
+    // can take the keyboard, and in this modal that is mostly ones that draw nothing to say they have it. So
+    // egui's walk is cancelled here, before any widget in the modal has been drawn, and the box to move to is
+    // chosen once every box has said where it is.
     let tab = ctx.input(|input| {
         let pressed = input.key_pressed(egui::Key::Tab)
             && !input.modifiers.command
@@ -164,11 +149,9 @@ pub fn show(board: &mut AgentTasks, ctx: &egui::Context, look: &Look<'_>) -> Out
         ctx.memory_mut(|memory| memory.move_focus(egui::FocusDirection::None));
     }
     kit.tab_order.clear();
-    let (inner, should_close) = modal::show(ctx, MODAL_ID, width, height, |ui, area| {
-        // **The agent's terminal is drawn by Unluminous's own glyph engine**, which `crisp` does not reach, so
-        // it is told the transform the modal is drawn through, the way a canvas node tells it. Asked here,
-        // inside the modal, because that is where the transform for this frame has been set. A modal's zoom
-        // moves in steps rather than gliding, so it is always settled. `task-2198`, `task-2216`.
+    let (inner, should_close) = modal::show_unframed(ctx, MODAL_ID, width, height, |ui, area| {
+        // **The agent's terminal is drawn by Unluminous's own glyph engine**, which `crisp` does not reach, so it
+        // is told the transform the modal is drawn through. `task-2198`, `task-2216`.
         let transform = ui.ctx().layer_transform_to_global(ui.layer_id()).unwrap_or_default();
         let was = look.renderer.composite_through(transform, true);
         let drawn = contents(board, &mut kit, ui, area, &look, &task, new);
@@ -192,6 +175,13 @@ pub fn show(board: &mut AgentTasks, ctx: &egui::Context, look: &Look<'_>) -> Out
     board.ticket_kit = Some(kit);
     outcome.requests = inner.requests;
     outcome.closed = inner.closed || should_close;
+    // A new ticket closed with nothing typed into it is thrown away, because `Add Task` made the row before
+    // anybody asked for one. One with a title is kept, which is what `Create task` does too.
+    if outcome.closed && new && board.detail().title_draft.trim().is_empty() {
+        if let Err(problem) = board.discard_the_ticket() {
+            outcome.requests.push(Request::Message(problem));
+        }
+    }
     outcome
 }
 
@@ -225,6 +215,7 @@ pub fn the_next_box(
     order.get(next).copied()
 }
 
+/// The dialog's surface, its header row, and the two columns under it.
 fn contents(
     board: &mut AgentTasks,
     kit: &mut TicketKit,
@@ -235,145 +226,232 @@ fn contents(
     new: bool,
 ) -> Outcome {
     let mut outcome = Outcome::default();
-    // **The key and the title**, which is what the page this is modelled on puts in its header: the key in a
-    // dim monospaced face and the title beside it.
-    let (key, heading) = match new {
-        true => (None, "New task".to_owned()),
-        false => (Some(task.key.as_str()), board.detail().title_draft.clone()),
-    };
-    if modal::header_of(ui, area, key, &heading) {
-        outcome.closed = true;
-    }
-    let body = modal::body(area);
-    let footer = Rect::from_min_max(Pos2::new(area.min.x, body.max.y), area.max);
-
-    let main_id = ui.id().with("agent-tasks-ticket-rux");
     let state = &kit.rux;
     crate::theme::in_step(state);
     let selects = &mut kit.selects;
     let order = &mut kit.tab_order;
-    let (requests, closed) = rux::layer(ui, state, main_id, area, |rux| {
+    let main_id = ui.id().with("agent-tasks-ticket-rux");
+    let (requests, closed) = rux::layer(ui, state, main_id, area.expand(60.0), |rux| {
+        let chat = rux.theme().chat;
+        rux.chrome.surface(area, RADIUS, chat.ground, chat.floating());
         let mut requests = Vec::new();
+        let inner = Rect::from_min_max(
+            Pos2::new(area.min.x + PAD_LEFT, area.min.y + PAD_TOP),
+            Pos2::new(area.max.x - PAD_RIGHT, area.max.y - PAD_BOTTOM),
+        );
+        let header = Rect::from_min_size(inner.min, Vec2::new(inner.width(), HEADER));
+        let (closed, said) = header_row(board, rux, order, header, task, new);
+        requests.extend(said);
+        let body = Rect::from_min_max(Pos2::new(inner.min.x, header.max.y + HEADER_GAP), inner.max);
         if body.width() >= TWO_COLUMNS {
-            let split = (body.max.x - ASIDE).round();
-            let main = Rect::from_min_max(body.min, Pos2::new(split - GUTTER, body.max.y));
-            let aside = Rect::from_min_max(Pos2::new(split, body.min.y), body.max);
-            let divider = split - GUTTER / 2.0;
-            rux.chrome.line(
-                Pos2::new(divider, body.min.y),
-                Pos2::new(divider, body.max.y),
-                1.0,
-                rux.theme().surface.sunken,
-            );
+            let aside = Rect::from_min_max(Pos2::new(body.max.x - ASIDE, body.min.y), body.max);
+            let main = Rect::from_min_max(body.min, Pos2::new(aside.min.x - GUTTER, body.max.y));
             requests.extend(main_column(board, rux, order, main, look, task, new));
-            requests.extend(fields(board, rux, selects, order, aside, look, task, new));
+            let (more, create) = fields(board, rux, selects, order, aside, task, new);
+            requests.extend(more);
+            (requests, closed || create)
         } else {
-            // One column: the fields first and never more than half the height, scrolled inside it, then the
-            // rest — which is what the browser board's own narrow layout does.
-            let fields_at = Rect::from_min_max(
+            // One column: the card of fields first and never more than half the height, scrolled inside it,
+            // then the rest, which is what the browser board's own narrow layout does.
+            let aside = Rect::from_min_max(
                 body.min,
                 Pos2::new(body.max.x, body.min.y + (body.height() * 0.45).min(330.0)),
             );
-            let rest = Rect::from_min_max(Pos2::new(body.min.x, fields_at.max.y + GAP), body.max);
-            // The main column first in the walk, because a person tabs from the title and the description
-            // into the fields after them, whichever way the dialog is laid out.
+            let rest =
+                Rect::from_min_max(Pos2::new(body.min.x, aside.max.y + SECTION_GAP), body.max);
             let mut column = Vec::new();
-            requests.extend(fields(board, rux, selects, order, fields_at, look, task, new));
+            let (more, create) = fields(board, rux, selects, order, aside, task, new);
+            requests.extend(more);
             if rest.height() > 120.0 {
                 requests.extend(main_column(board, rux, &mut column, rest, look, task, new));
             }
             order.splice(0..0, column);
+            (requests, closed || create)
         }
-        let (closed, more) = footer_row(board, rux, footer, new);
-        requests.extend(more);
-        (requests, closed)
     });
     outcome.requests.extend(requests);
     outcome.closed |= closed;
+    // **The command key with Enter closes it**, not Enter on its own: the description and the comment box are
+    // multiline fields where Enter is a new line, which is the commit panel's reason for the same choice.
+    if ui.ctx().input(|input| input.key_pressed(egui::Key::Enter) && input.modifiers.command_only())
+    {
+        outcome.closed = true;
+    }
     outcome
 }
 
-/// The footer: what a new ticket says about saving, and the buttons.
-///
-/// `rux` buttons, because the dialog above them is `rux`. A new ticket gets `Discard` and `Done`; one that
-/// exists gets `Close`. **The command key with Enter presses the last of them**, not Enter on its own: the
-/// description and the comment box are multiline fields where Enter is a new line, which is the commit
-/// panel's reason for the same choice.
-fn footer_row(
+/// The key in a carved chip, the title as a field, and the round close button. Answers whether it was closed.
+fn header_row(
     board: &mut AgentTasks,
     rux: &mut rux::Rux<'_>,
-    footer: Rect,
+    order: &mut Vec<egui::Id>,
+    area: Rect,
+    task: &Task,
     new: bool,
 ) -> (bool, Vec<Request>) {
     let mut requests = Vec::new();
+    let chat = rux.theme().chat;
     let theme = rux.theme();
-    rux.chrome.line(
-        Pos2::new(footer.left() + 20.0, footer.top()),
-        Pos2::new(footer.right() - 20.0, footer.top()),
-        1.0,
-        theme.surface.sunken,
+    // `padding: 7px 12px` round the key in the code face, or `New task` in the ordinary one.
+    let (said, style) = match new {
+        true => ("New task".to_owned(), Style::sans(12.0)),
+        false => (task.key.clone(), Style::mono(12.0)),
+    };
+    let galley = rux.text(style, &said, theme.ink.i500);
+    let chip = Rect::from_min_size(
+        Pos2::new(area.min.x, area.center().y - (galley.size().y + 14.0) / 2.0),
+        Vec2::new(galley.size().x + 24.0, galley.size().y + 14.0),
     );
-    let middle = footer.center().y;
-    let height = 36.0;
-    let labels: &[&str] = match new {
-        true => &["Discard", "Done"],
-        false => &["Close"],
-    };
-    let mut right = footer.right() - 20.0;
-    let mut pressed = None;
-    for (index, label) in labels.iter().enumerate().rev() {
-        let mut button = Button::new(label).size(ButtonSize::Small);
-        if index == labels.len() - 1 && new {
-            button = button.primary();
-        }
-        let width = button.measure(rux).x.max(96.0);
-        let at = Rect::from_min_size(
-            Pos2::new(right - width, middle - height / 2.0),
-            Vec2::new(width, height),
-        );
-        if button.show(rux, at).clicked() {
-            pressed = Some(index);
-        }
-        right = at.left() - 10.0;
-    }
-    let chord = rux
-        .ctx()
-        .input(|input| input.key_pressed(egui::Key::Enter) && input.modifiers.command_only());
-    if chord {
-        pressed = Some(labels.len() - 1);
-    }
+    rux.chrome.surface(chip, chip.height() / 2.0, chat.well, chat.carved_sm());
+    rux::text::draw_centred(rux.painter(), chip, galley, theme.ink.i500);
+    let close =
+        Rect::from_center_size(Pos2::new(area.max.x - 18.0, area.center().y), Vec2::splat(36.0));
+    let closed =
+        ChipButton::new(Icon::X, 36.0, "Close").mark(12.0, Some(1.8)).show(rux, close).clicked();
+    // The title, typed into in place: 20 point semibold, with no frame round it, saved as it is typed.
+    let font = Style::sans(20.0).semibold().tracking(-0.015).font();
+    let field = Rect::from_min_max(
+        Pos2::new(chip.max.x + 16.0, area.min.y),
+        Pos2::new(close.min.x - 16.0, area.max.y),
+    );
+    let id = rux.ui.id().with("agent-tasks-ticket-title");
+    let text = crate::components::controls::field_takes_the_whole_rectangle_at(
+        rux.ui,
+        field,
+        0.0,
+        id,
+        "Ticket title field",
+        &font,
+    );
+    let mut title = board.detail().title_draft.clone();
+    let mut child = rux.ui.new_child(egui::UiBuilder::new().max_rect(text));
+    let response = child.add(
+        egui::TextEdit::singleline(&mut title)
+            .id(id)
+            .hint_text(crate::components::controls::placeholder(
+                "Task title",
+                &font,
+                theme.ink.i400,
+            ))
+            .font(font.clone())
+            .frame(egui::Frame::NONE)
+            .desired_width(text.width())
+            .text_color(theme.ink.i900),
+    );
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Ticket title")
+    });
+    // In the `Tab` walk for a new ticket, where the title is the first thing to type. A ticket that exists is
+    // opened to work on, so its walk starts at the description.
     if new {
-        let galley = rux.text(Style::sans(12.0), "Starts saving as you type", theme.ink.i400);
-        rux::text::draw_left_centre(
-            rux.ui.painter(),
-            Pos2::new(footer.left() + 22.0, middle),
-            galley,
-            theme.ink.i400,
-        );
+        order.push(id);
     }
-    let closed = match (new, pressed) {
-        (_, None) => false,
-        (true, Some(0)) => match board.discard_the_ticket() {
-            Ok(()) => true,
-            Err(problem) => {
-                requests.push(Request::Message(problem));
-                false
-            }
-        },
-        _ => true,
-    };
+    if response.changed() {
+        board.detail_mut().title_draft = title;
+        if let Err(problem) = board.save_the_title() {
+            requests.push(Request::Message(problem));
+        }
+    }
+    super::enter_was_used(rux.ui, &response);
     (closed, requests)
 }
 
+/// A section's heading: the design's 12 point semibold words in the quieter ink, named so a test finds it.
+fn label(rux: &mut rux::Rux<'_>, at: Pos2, name: &str) -> f32 {
+    let theme = rux.theme();
+    let style = Style::sans(12.0).semibold();
+    let galley = rux.text(style, name, theme.ink.i500);
+    let size = galley.size();
+    rux.painter().galley(at, galley, theme.ink.i500);
+    let response = rux.ui.interact(
+        Rect::from_min_size(at, size),
+        rux.ui.id().with(("agent-tasks-heading", name)),
+        egui::Sense::hover(),
+    );
+    let named = name.to_owned();
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, named.clone()));
+    size.x
+}
+
+/// How much room each section of the left column is given, worked out before any of it is drawn.
+struct Budget {
+    description: f32,
+    todos: f32,
+    terminal: f32,
+    comments: f32,
+}
+
+/// Share the column's height out, taking the shortfall from the terminal, then the description down to three
+/// lines, then the comments, and the todos last, because the todos are the plan an agent is working through.
+fn budget(board: &AgentTasks, rux: &rux::Rux<'_>, area: Rect, task: &Task, new: bool) -> Budget {
+    let room = area.height();
+    let todos_open = !board.todos_shut;
+    let rows = board.detail().todos.len() as f32;
+    let list = |rows: f32| TODO_PAD * 2.0 + rows * (TODO_ROW + TODO_GAP) + TODO_ADD + 2.0;
+    let (todo_want, todo_least) = match todos_open {
+        true => (list(rows.min(5.0)), list(rows.min(1.0))),
+        false => (0.0, 0.0),
+    };
+    let live = board.terminal_for(task.id).is_some();
+    let terminal_open = !board.terminal_shut;
+    let (terminal_want, terminal_least) = match (new, live, terminal_open) {
+        (true, _, _) | (false, _, false) => (0.0, 0.0),
+        (false, true, true) => {
+            ((room * TERMINAL_SHARE).clamp(TERMINAL_SMALLEST, TERMINAL_LARGEST), TERMINAL_LEAST)
+        }
+        (false, false, true) => (TERMINAL_EMPTY, TERMINAL_EMPTY),
+    };
+    let composer = super::detail::composer_room(rux, area.width());
+    let (comment_want, comment_least) = match new {
+        true => (0.0, 0.0),
+        false => {
+            let used = board.detail().comments.len() as f32 * COMMENT_ROUGHLY + composer;
+            (COMMENTS.min(used), (composer + COMMENT_ROUGHLY).min(used))
+        }
+    };
+    let headings = match new {
+        true => (LABEL + LABEL_GAP) + (TODO_HEAD + LABEL_GAP) + SECTION_GAP,
+        false => {
+            (LABEL + LABEL_GAP) * 2.0 + (TODO_HEAD + LABEL_GAP) * 2.0 + SECTION_GAP * 3.0 + 2.0
+        }
+    };
+    let description_want = match new {
+        true => (room - headings - todo_want).max(DESCRIPTION_LEAST),
+        false => board.description_height.unwrap_or(DESCRIPTION).max(DESCRIPTION_LEAST),
+    };
+    let wanted = headings + description_want + todo_want + terminal_want + comment_want;
+    let mut short = (wanted - room).max(0.0);
+    let spare = (room - wanted).max(0.0);
+    let give = |want: f32, least: f32, short: &mut f32| -> f32 {
+        let spare = (want - least).max(0.0).min(*short);
+        *short -= spare;
+        want - spare
+    };
+    let terminal = give(terminal_want, terminal_least, &mut short);
+    let description = give(description_want, DESCRIPTION_LEAST, &mut short);
+    let comments = give(comment_want, comment_least, &mut short) + spare;
+    let todos = give(todo_want, todo_least, &mut short);
+    // When every section is at its least and the dialog is still short, the others go below theirs before the
+    // description does, and whatever is still short comes off the description, which scrolls.
+    let terminal = give(terminal, 0.0, &mut short);
+    let comments = give(comments, composer.min(comments), &mut short);
+    let todos = give(todos, (TODO_ADD + TODO_PAD * 2.0).min(todos), &mut short);
+    let description = (description - short).max(0.0);
+    // **The todos are given whole rows**, and what a part of a row would have taken goes to the description,
+    // which scrolls: a row cut through its middle reads as a drawing fault rather than as a list that scrolls.
+    let (todos, description) = match todos_open && rows > 0.0 && todos > 0.0 {
+        true => {
+            let fit = ((todos - list(0.0)) / (TODO_ROW + TODO_GAP)).floor().clamp(0.0, rows);
+            let whole = list(fit).min(todos);
+            (whole, description + (todos - whole))
+        }
+        false => (todos, description),
+    };
+    Budget { description, todos, terminal, comments }
+}
+
 /// The description, the todos, the terminal and the comments.
-///
-/// ## The heights add up, and that is the whole of this function's difficulty
-///
-/// The four sections are laid out one under another, so a budget that overflows draws the last section off
-/// the bottom edge and the one before it over its own buttons. Every section says what it **wants** and what it
-/// can be cut to, and the shortfall is taken from them in order — the terminal first, then the comments, then
-/// the todos, and the description last, because a ticket is opened to write in far more often than to read an
-/// agent's scrollback. Whatever is left over goes to the description, which scrolls inside whatever it gets.
 fn main_column(
     board: &mut AgentTasks,
     rux: &mut rux::Rux<'_>,
@@ -385,123 +463,37 @@ fn main_column(
 ) -> Vec<Request> {
     let mut requests = Vec::new();
     let theme = rux.theme();
+    let chat = theme.chat;
+    let budget = budget(board, rux, area, task, new);
     let mut pen = area.min.y;
 
-    // The title, which is in the header on a ticket that exists. A **new** one has no title yet and this is
-    // where it is typed, because a header is not a field.
-    if new {
-        let at = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(area.width(), 46.0));
-        let mut title = board.detail().title_draft.clone();
-        let typed = TextInput::new(&mut title)
-            .hint("What needs doing?")
-            .style(Style::sans(16.0).medium())
-            .label("Ticket title")
-            .id_salt("agent-tasks-ticket-title")
-            .show(rux, at);
-        order.push(text_input_id(rux, "agent-tasks-ticket-title"));
-        if typed.changed {
-            board.detail_mut().title_draft = title;
-            if let Err(problem) = board.save_the_title() {
-                requests.push(Request::Message(problem));
-            }
-        }
-        pen = at.max.y + GAP;
-    }
-
-    let todos_open = !board.todos_shut;
-    let terminal_open = !board.terminal_shut;
-    let room = area.max.y - pen;
-    // A section that is shut wants its heading and nothing else, which is what makes shutting one worth doing.
-    // The todos want a row each and one more for the box that adds one, inside the well's own padding; the
-    // least they can be given is one todo and that box, because a todo list with no room for a todo is a strip.
-    let row = look.row_height;
-    let (todo_want, todo_least) = match (new, todos_open) {
-        (true, _) | (_, false) => (0.0, 0.0),
-        _ => {
-            let rows = board.detail().todos.len() as f32;
-            // The well's padding, and two points more so a row that fits exactly is not lost to rounding: with
-            // exactly the padding, three todos were given room for three and drew two.
-            let well = 14.0;
-            (((rows + 1.0) * row + well).min(6.0 * row + well), (rows.min(4.0) + 1.0) * row + well)
-        }
-    };
-    let (terminal_want, terminal_least) = match (new, terminal_open) {
-        (true, _) | (_, false) => (0.0, 0.0),
-        _ => ((room * TERMINAL_SHARE).clamp(TERMINAL_SMALLEST, TERMINAL_LARGEST), TERMINAL_LEAST),
-    };
-    // **No more than the comments there are can use.** A ticket with one short comment asked for the same 300
-    // points as one with forty, and in a small window that kept 140 points of empty room under one comment while
-    // the description was cut to three lines and a todo was out of sight. A comment is about two lines and its
-    // header, so the want is that much a comment and the box under them, and the list scrolls if a comment is
-    // longer than that.
-    let composer_room = super::detail::composer_room(rux, area.width());
-    let (comment_want, comment_least) = match new {
-        true => (0.0, 0.0),
-        false => {
-            let used = board.detail().comments.len() as f32 * COMMENT_ROUGHLY + composer_room;
-            (COMMENTS.min(used), COMMENTS_LEAST.min(used))
-        }
-    };
-    // The headings and the gaps round them, which are room nothing else can have.
-    let headings = match new {
-        true => HEADING + 8.0,
-        false => HEADING + 8.0 + SECTION * 3.0,
-    };
-    // A new ticket has nothing under its description, so the description has the room. A ticket that exists asks
-    // for the height somebody dragged it to, or for [`DESCRIPTION`].
-    let description_want = match new {
-        true => (room - headings).max(DESCRIPTION_LEAST),
-        false => board.description_height.unwrap_or(DESCRIPTION).max(DESCRIPTION_LEAST),
-    };
-    let wanted = headings + description_want + todo_want + terminal_want + comment_want;
-    let mut short = (wanted - room).max(0.0);
-    let spare = (room - wanted).max(0.0);
-    let give = |want: f32, least: f32, short: &mut f32| -> f32 {
-        let spare = (want - least).max(0.0).min(*short);
-        *short -= spare;
-        want - spare
-    };
-    // The terminal gives way first, then the comments down to their least, then the todos, and the description
-    // last, so dragging the description smaller is what gives the comments more.
-    let terminal_height = give(terminal_want, terminal_least, &mut short);
-    let comment_height = give(comment_want, comment_least, &mut short) + spare;
-    let todo_height = give(todo_want, todo_least, &mut short);
-    let description_height = give(description_want, DESCRIPTION_LEAST, &mut short);
-    // **When every section is at its least and the dialog is still short, the others go below theirs before the
-    // description does.** A small window, or a modal zoomed in, used to take the whole of what was left off the
-    // description, which was drawn as a heading with nothing under it, while the terminal kept its 80 points of
-    // `No terminal for this ticket`. The terminal can go to nothing, since it folds and scrolls; the comments keep
-    // the box that writes one; the todos keep the box that adds one.
-    let terminal_height = give(terminal_height, 0.0, &mut short);
-    let comment_height =
-        give(comment_height, (composer_room + COMMENT_ROUGHLY).min(comment_height), &mut short);
-    let todo_height = give(todo_height, (look.row_height + 14.0).min(todo_height), &mut short);
-    // **Whatever is still short comes off the description**, the one section that scrolls, so a modal dragged
-    // down to its smallest still adds up rather than running off the bottom.
-    let description_height = (description_height - short).max(0.0);
-
     // ------------------------------------------------------------------ the description
-    heading_row(rux, Pos2::new(area.min.x, pen), "Description", Icon::Docs, theme.accent.blue);
+    label(rux, Pos2::new(area.min.x, pen), "Description");
     // The two view buttons, on the heading's own row and right aligned, which is where a section's controls go.
     if let Some(rendered) = super::raw_or_rendered(
         rux.ui,
         look,
-        Rect::from_min_size(Pos2::new(area.min.x, pen + 1.0), Vec2::new(area.width(), 18.0)),
+        Rect::from_min_size(Pos2::new(area.min.x, pen - 2.0), Vec2::new(area.width(), 18.0)),
         "the description",
         board.detail().description_rendered,
     ) {
         board.show_the_description_rendered(rendered);
     }
-    pen += HEADING + 8.0;
+    pen += LABEL + LABEL_GAP;
     let well = Rect::from_min_size(
         Pos2::new(area.min.x, pen),
-        Vec2::new(area.width(), description_height),
+        Vec2::new(area.width(), budget.description),
     );
     if well.height() > 24.0 {
+        rux.chrome.surface(well, 20.0, chat.well, chat.carved_sm());
         if !board.detail().description_rendered {
             order.push(rux.ui.id().with("agent-tasks-description"));
         }
-        let inside = Well::new().pad(Pad::axes(12.0, 14.0)).show(rux, well);
+        // `padding: 14px 32px 14px 18px`: the right hand room is where the resize mark sits.
+        let inside = Rect::from_min_max(
+            Pos2::new(well.min.x + 18.0, well.min.y + 14.0),
+            Pos2::new(well.max.x - 32.0, well.max.y - 14.0),
+        );
         requests.extend(super::description::in_a_well(
             board,
             rux.ui,
@@ -510,82 +502,132 @@ fn main_column(
             look,
             theme.ink.i900,
         ));
+        if let Some(height) = description_grip(rux, well, area.max.y - well.min.y) {
+            board.description_height = height;
+        }
     }
-    pen = well.max.y;
-    if new {
-        return requests;
-    }
-    if let Some(height) = description_grip(rux, well, area.max.y - well.min.y) {
-        board.description_height = height;
-    }
+    pen = well.max.y + SECTION_GAP;
 
     // ------------------------------------------------------------------ the todos
-    //
-    // **Todos and the terminal fold**, which is what the page this is modelled on does and what makes a ticket
-    // with a long conversation on it readable at all. The flags are the provider's, so a section left shut
-    // stays shut while the board is refreshed under it.
-    let title = format!("Todos \u{b7} {}/{}", task.todo_done_count, task.todo_count);
-    let (toggled, body) =
-        folding_section(rux, &mut pen, area, &title, Icon::Check, theme.accent.mint, todos_open);
-    if toggled {
-        board.todos_shut = todos_open;
+    let open = !board.todos_shut;
+    let head = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(area.width(), TODO_HEAD));
+    let disc = Rect::from_min_size(head.min, Vec2::splat(TODO_HEAD));
+    let turn = match open {
+        true => std::f32::consts::PI,
+        false => 0.0,
+    };
+    let fold = ChipButton::new(Icon::ChevDown, TODO_HEAD, "Todos")
+        .mark(10.0, Some(1.6))
+        .turn(turn)
+        .folds(open)
+        .show(rux, disc);
+    if fold.clicked() {
+        board.todos_shut = open;
     }
-    if todos_open && todo_height > 0.0 {
-        let at = Rect::from_min_size(body, Vec2::new(area.width(), todo_height));
-        let inside = Well::new().shallow().pad(Pad::axes(6.0, 12.0)).show(rux, at);
-        requests.extend(super::detail::todo_rows(board, rux.ui, inside, look));
+    let words = rux.text(Style::sans(12.0).semibold(), "Todos", theme.ink.i500);
+    let words_width = words.size().x;
+    rux::text::draw_left_capitals(
+        rux.painter(),
+        Pos2::new(disc.max.x + 10.0, head.center().y),
+        words,
+        Style::sans(12.0).semibold(),
+        theme.ink.i500,
+    );
+    if task.todo_count > 0 {
+        let count = format!("{}/{}", task.todo_done_count, task.todo_count);
+        let count_galley = rux.text(Style::sans(11.0), &count, theme.ink.i400);
+        let left = disc.max.x + 10.0 + words_width + 12.0;
+        let track = Rect::from_min_size(
+            Pos2::new(left, head.center().y - 4.0),
+            Vec2::new((area.max.x - left - count_galley.size().x - 10.0).clamp(0.0, 180.0), 8.0),
+        );
+        if track.width() > 16.0 {
+            todo_track(rux, track, task);
+        }
+        rux::text::draw_left_capitals(
+            rux.painter(),
+            Pos2::new(track.max.x + 10.0, head.center().y),
+            count_galley,
+            Style::sans(11.0),
+            theme.ink.i400,
+        );
+    }
+    pen = head.max.y + LABEL_GAP;
+    if open && budget.todos > 0.0 {
+        let at =
+            Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(area.width(), budget.todos));
+        rux.chrome.surface(at, 20.0, chat.well, chat.carved_sm());
+        requests.extend(super::detail::todo_rows(board, rux, at.shrink(TODO_PAD), look));
         order.push(rux.ui.id().with("agent-tasks-todo-draft"));
         pen = at.max.y;
     }
+    if new {
+        return requests;
+    }
+    pen += SECTION_GAP;
 
     // ------------------------------------------------------------------ the agent's terminal
+    let live = board.terminal_for(task.id).is_some();
     let attached =
         board.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());
     let title = match attached {
         true => format!("Agent terminal \u{b7} live \u{b7} {}", task.key),
         false => "Agent terminal".to_owned(),
     };
-    let accent = match attached {
-        true => theme.semantic.success,
-        false => theme.ink.i400,
+    // **The terminal folds**, as the todos do, and with the same round disc before its heading: a ticket whose
+    // agent has written a screenful is unreadable until it is put away. The design draws the fold for the todos
+    // only; the terminal has it too because it is the section that most needs it.
+    let open = !board.terminal_shut;
+    let disc = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::splat(TODO_HEAD));
+    let turn = match open {
+        true => std::f32::consts::PI,
+        false => 0.0,
     };
-    let (toggled, body) =
-        folding_section(rux, &mut pen, area, &title, Icon::Spark, accent, terminal_open);
-    if toggled {
-        board.terminal_shut = terminal_open;
+    if ChipButton::new(Icon::ChevDown, TODO_HEAD, "Agent terminal")
+        .mark(10.0, Some(1.6))
+        .turn(turn)
+        .folds(open)
+        .show(rux, disc)
+        .clicked()
+    {
+        board.terminal_shut = open;
     }
-    if terminal_open && terminal_height > 24.0 {
-        let at = Rect::from_min_size(body, Vec2::new(area.width(), terminal_height));
-        let inside = Well::new().pad(Pad::all(6.0)).show(rux, at);
-        if inside.height() > 20.0 {
-            requests
-                .extend(super::detail::terminal_section(board, rux.ui, inside, look, task, false));
+    let style = Style::sans(12.0).semibold();
+    let words = rux.text(style, &title, theme.ink.i500);
+    rux::text::draw_left_capitals(
+        rux.painter(),
+        Pos2::new(disc.max.x + 10.0, disc.center().y),
+        words,
+        style,
+        theme.ink.i500,
+    );
+    pen += TODO_HEAD + LABEL_GAP;
+    if open && budget.terminal > 24.0 {
+        let at = Rect::from_min_size(
+            Pos2::new(area.min.x, pen),
+            Vec2::new(area.width(), budget.terminal),
+        );
+        rux.chrome.surface(at, 20.0, chat.well, chat.carved_sm());
+        match live {
+            true => {
+                let grid = at.shrink2(Vec2::new(10.0, 10.0));
+                let focused = board.terminal_focused;
+                requests
+                    .extend(super::detail::terminal(board, rux.ui, look, grid, task.id, focused));
+            }
+            false => requests.extend(no_terminal(board, rux, at, task)),
         }
         pen = at.max.y;
     }
+    pen += SECTION_GAP;
 
     // ------------------------------------------------------------------ the comments
-    //
-    // A heading that does not fold, with the same hairline over it, because the comments are what the other
-    // sections are folded to make room for.
-    rux.chrome.line(
-        Pos2::new(area.min.x, pen + 8.0),
-        Pos2::new(area.max.x, pen + 8.0),
-        1.0,
-        theme.surface.sunken,
-    );
     let title = format!("Comments \u{b7} {}", task.comment_count);
-    heading_row(
-        rux,
-        Pos2::new(area.min.x, pen + 8.0 + 14.0),
-        &title,
-        Icon::Chat,
-        theme.accent.violet,
-    );
-    pen += SECTION;
+    label(rux, Pos2::new(area.min.x, pen), &title);
+    pen += LABEL + 12.0;
     let comments_at = Rect::from_min_max(
         Pos2::new(area.min.x, pen),
-        Pos2::new(area.max.x, (pen + comment_height).min(area.max.y)),
+        Pos2::new(area.max.x, (pen + budget.comments).min(area.max.y)),
     );
     if comments_at.height() > 20.0 {
         requests.extend(super::detail::comment_section(board, rux, order, comments_at, look));
@@ -593,40 +635,100 @@ fn main_column(
     requests
 }
 
-/// A section that folds: `rux`'s `SubGroup`, a hairline over a heading that is the whole fold control.
-///
-/// Moves `pen` past the heading and answers whether it was pressed and where the section's body starts.
-fn folding_section(
-    rux: &mut rux::Rux<'_>,
-    pen: &mut f32,
-    area: Rect,
-    title: &str,
-    icon: Icon,
-    accent: egui::Color32,
-    open: bool,
-) -> (bool, Pos2) {
-    let group = SubGroup::new(title, icon, accent, open);
-    let head = group.head_height(rux);
-    let shown = group.show(
-        rux,
-        Rect::from_min_size(Pos2::new(area.min.x, *pen + 8.0), Vec2::new(area.width(), head)),
+/// The todos' track: the share of them done, in the action's gradient.
+fn todo_track(rux: &mut rux::Rux<'_>, track: Rect, task: &Task) {
+    let chat = rux.theme().chat;
+    rux.chrome.surface(track, track.height() / 2.0, chat.well, chat.carved_sm());
+    let fraction = rux::components::TaskCard::fraction(
+        task.todo_done_count.max(0) as u32,
+        task.todo_count.max(0) as u32,
     );
-    *pen += SECTION;
-    (shown.toggled, Pos2::new(area.min.x, *pen))
+    let length = track.width() * fraction - 4.0;
+    if length > 0.5 {
+        let fill = Rect::from_min_size(
+            track.min + Vec2::splat(2.0),
+            Vec2::new(length, track.height() - 4.0),
+        );
+        rux.chrome.rect(fill, fill.height() / 2.0, rux::Fill::gradient(chat.action, fill));
+    }
 }
 
-/// The strip under the description that resizes it, answering the height to keep when it was dragged.
+/// The strip that says a ticket has no terminal, with `Resume session` when there is a conversation to hand
+/// back.
+fn no_terminal(
+    board: &mut AgentTasks,
+    rux: &mut rux::Rux<'_>,
+    at: Rect,
+    task: &Task,
+) -> Vec<Request> {
+    let mut requests = Vec::new();
+    let theme = rux.theme();
+    let disc =
+        Rect::from_center_size(Pos2::new(at.min.x + 14.0 + 17.0, at.center().y), Vec2::splat(34.0));
+    rux::components::chip_disc(rux, disc);
+    terminal_mark(rux, disc.center(), theme.ink.i400);
+    let resumable =
+        task.session_id.is_some() && crate::services::agent_tasks::agent::can_resume(task.assignee);
+    let mut right = at.max.x - 14.0;
+    if resumable {
+        let button = rux::components::PillButton::new("Resume session");
+        let width = button.measure(rux).x;
+        let place = Rect::from_min_size(
+            Pos2::new(right - width, at.center().y - 17.0),
+            Vec2::new(width, 34.0),
+        );
+        if button.show(rux, place).clicked() {
+            match board.command_now("resume", std::slice::from_ref(&task.key)) {
+                Ok(answer) if !answer.message.is_empty() => {
+                    requests.push(Request::Message(answer.message))
+                }
+                Ok(_) => {}
+                Err(problem) => requests.push(Request::Message(problem)),
+            }
+        }
+        right = place.min.x - 14.0;
+    }
+    let said =
+        "No terminal for this task yet. Start Work launches its agent; Resume session hands its \
+                conversation back.";
+    let left = disc.max.x + 14.0;
+    let galley = rux::text::wrapped(
+        rux.painter(),
+        Style::sans(12.0).leading(1.5),
+        said,
+        theme.ink.i400,
+        (right - left).max(40.0),
+    );
+    let top = at.center().y - galley.size().y / 2.0;
+    rux.painter().with_clip_rect(at).galley(Pos2::new(left, top), galley, theme.ink.i400);
+    requests
+}
+
+/// The terminal's mark: a chevron and an underscore, `M3.5 5l3 3-3 3M8.5 11h4` in a 16 unit box.
+fn terminal_mark(rux: &rux::Rux<'_>, centre: Pos2, colour: egui::Color32) {
+    let at = |x: f32, y: f32| Pos2::new(centre.x + x - 8.0, centre.y + y - 8.0);
+    let stroke = egui::Stroke::new(1.7, colour);
+    rux.painter().add(egui::Shape::line(vec![at(3.5, 5.0), at(6.5, 8.0), at(3.5, 11.0)], stroke));
+    rux.painter().line_segment([at(8.5, 11.0), at(12.5, 11.0)], stroke);
+}
+
+/// The corner of the description's well that resizes it, answering the height to keep when it was dragged.
 ///
-/// `task-2214`. A short pill in the middle of the gap under the well says the edge can be moved, brighter while
-/// the pointer is on it, and the whole width of the gap takes the drag. A double click answers `Some(None)`, which
-/// puts the description back to the height the modal chooses. `most` is the furthest the well may reach.
+/// `task-2214`. The design draws a small diagonal mark in the well's bottom right corner, which is where a
+/// browser puts a resizable box's handle; the strip under the well takes the drag as well, so the edge can be
+/// caught anywhere along it. A double click answers `Some(None)`, which puts the description back to the height
+/// the modal chooses. `most` is the furthest the well may reach.
 fn description_grip(rux: &mut rux::Rux<'_>, well: Rect, most: f32) -> Option<Option<f32>> {
+    let corner = Rect::from_min_max(
+        well.max - Vec2::new(24.0, 22.0),
+        well.max + Vec2::new(0.0, DESCRIPTION_GRIP),
+    );
     let strip = Rect::from_min_size(
         Pos2::new(well.min.x, well.max.y),
         Vec2::new(well.width(), DESCRIPTION_GRIP),
     );
     let response = rux.ui.interact(
-        strip,
+        corner.union(strip),
         rux.ui.id().with("agent-tasks-description-grip"),
         egui::Sense::click_and_drag(),
     );
@@ -639,18 +741,20 @@ fn description_grip(rux: &mut rux::Rux<'_>, well: Rect, most: f32) -> Option<Opt
     }
     let theme = rux.theme();
     let tint = match active {
-        true => theme.accent.blue,
+        true => theme.chat.sky,
         false => theme.ink.i400,
     };
-    let pill = Rect::from_center_size(strip.center(), Vec2::new(36.0, 3.0));
-    rux.ui.painter().rect_filled(pill, egui::CornerRadius::same(2), tint.gamma_multiply(0.8));
+    // `M10.5 4.5l-6 6M10.5 8l-2.5 2.5` in a 12 point box, `right: 12px; bottom: 10px`.
+    let origin = Pos2::new(well.max.x - 12.0 - 12.0, well.max.y - 10.0 - 12.0);
+    let at = |x: f32, y: f32| origin + Vec2::new(x, y);
+    let stroke = egui::Stroke::new(1.5, tint);
+    rux.painter().line_segment([at(10.5, 4.5), at(4.5, 10.5)], stroke);
+    rux.painter().line_segment([at(10.5, 8.0), at(8.0, 10.5)], stroke);
     if response.double_clicked() {
         return Some(None);
     }
     // **Measured from where the press began**, against the height the well had then. egui reports a drag only
-    // once the pointer has moved past its threshold, and the movement that crossed it is not in the first frame's
-    // `drag_delta`, so adding up deltas lost the first few points of every drag and a quick drag lost nearly all
-    // of it.
+    // once the pointer has moved past its threshold, so adding up deltas lost the first few points of every drag.
     let started = rux.ui.id().with("agent-tasks-description-grip-start");
     if response.drag_started() {
         rux.ui.ctx().data_mut(|data| data.insert_temp(started, well.height()));
@@ -671,78 +775,63 @@ fn description_grip(rux: &mut rux::Rux<'_>, well: Rect, most: f32) -> Option<Opt
     None
 }
 
-/// The id `rux` gives a one line field it was handed `salt` for, so the modal can name it in its `Tab` walk.
-fn text_input_id(rux: &rux::Rux<'_>, salt: &str) -> egui::Id {
-    rux.ui.id().with(("rux-text-input", egui::Id::new(salt)))
-}
-
-/// A section's heading that does not fold: its mark in the section's accent, and its name in capitals.
+/// The card of fields down the right: `Start Work`, what the ticket is, and its priority. Answers whatever was
+/// asked for, and whether `Create task` was pressed.
 ///
-/// **Named**, because every control and every heading over one has a plain name a test and an agent find it
-/// by, in the case a person reads; the drawing is what shouts.
-fn heading_row(rux: &mut rux::Rux<'_>, at: Pos2, name: &str, icon: Icon, accent: egui::Color32) {
-    let theme = rux.theme();
-    let middle = at.y + HEADING / 2.0;
-    rux.mark(rux::icon::Mark::new(icon, 13.0), Pos2::new(at.x + 6.5, middle), accent);
-    let galley = rux.text(CAPTION_STYLE, name, theme.ink.i700);
-    let width = galley.size().x;
-    rux::text::draw_left_centre(
-        rux.ui.painter(),
-        Pos2::new(at.x + 21.0, middle),
-        galley,
-        theme.ink.i700,
-    );
-    let area = Rect::from_min_size(at, Vec2::new(width + 21.0, HEADING));
-    let response = rux.ui.interact(
-        area,
-        rux.ui.id().with(("agent-tasks-heading", name)),
-        egui::Sense::hover(),
-    );
-    let named = name.to_owned();
-    response
-        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, named.clone()));
-}
-
-/// Everything that is a property of the ticket rather than its contents.
-///
-/// **In the order the page this is modelled on has them**: the one button somebody opens a ticket to press is
-/// at the top, then the seven things about the ticket, then the JIRA issue and when it was made, and `Delete
-/// task` last and in the coral the reference keeps for destruction.
-///
-/// **It scrolls, because it cannot be made to fit** in a dialog dragged towards its smallest — every one of
-/// these is a thing a ticket needs before an agent can be started. The column is drawn into a `rux` layer of its
-/// own inside the scrolling area, because the decoration has to move with what it decorates.
-#[allow(clippy::too_many_arguments)]
+/// `padding: 18px; gap: 16px` on the card gradient with `--out`, `border-radius: 26px`. **It scrolls**, because
+/// in a dialog dragged towards its smallest it cannot be made to fit, and the JIRA key, the date and `Delete task`
+/// are under the priority, past the design's own fields.
 fn fields(
     board: &mut AgentTasks,
     rux: &mut rux::Rux<'_>,
     selects: &mut std::collections::HashMap<&'static str, rux::components::SelectState>,
     order: &mut Vec<egui::Id>,
     area: Rect,
-    look: &Look<'_>,
     task: &Task,
     new: bool,
-) -> Vec<Request> {
+) -> (Vec<Request>, bool) {
+    let chat = rux.theme().chat;
+    rux.chrome.surface(area, 26.0, rux::Fill::gradient(chat.card, area), chat.raised());
     let mut requests = Vec::new();
+    let mut create = false;
     let state = rux.state;
-    // **The scrolling area is larger than the fields by the reach of their shadows** (`task-2200`: *"the
-    // dropdown options for the task, such as status, priority, etc have shadowing that is being clipped"*). A
-    // scrolling area clips to its own rectangle, which was the column's, so every select's raised shadow was
-    // cut along the column's left edge and the first control's along its top. The fields stay where they
-    // were; the area round them reaches into the gutter beside the column and the gap above it.
-    let reach = Vec2::new(12.0, 8.0);
-    let viewport = area.expand2(reach);
+    let inner = area.shrink(18.0);
+    // `Create task` sits at the foot of a new ticket's card, outside the scrolling part.
+    let foot = match new {
+        true => 44.0 + 16.0,
+        false => 0.0,
+    };
+    let list = Rect::from_min_max(inner.min, Pos2::new(inner.max.x, inner.max.y - foot));
+    // **The design's 16 points between fields when they fit, and 12 when they would not.** The design has five
+    // fields; a ticket for an agent has six, because `Effort` is one, and in a short window the priority would
+    // otherwise be under the fold.
+    let fields = match task.assignee.is_an_agent() {
+        true => 6.0,
+        false => 4.0,
+    };
+    let start = match new {
+        true => 0.0,
+        false => 44.0,
+    };
+    let wanted = |gap: f32| start + gap + (fields + 1.0) * (13.0 + 7.0 + 38.0 + gap);
+    let gap = match wanted(16.0) <= list.height() {
+        true => 16.0,
+        false => 12.0,
+    };
+    // The scrolling part reaches past the controls by the reach of their shadows, so a raised chip is not cut
+    // along its edge. `task-2200`.
+    let reach = Vec2::new(12.0, 10.0);
+    let viewport = list.expand2(reach);
     let mut inside = rux.ui.new_child(egui::UiBuilder::new().max_rect(viewport));
     inside.set_clip_rect(viewport.intersect(rux.ui.clip_rect()));
     egui::ScrollArea::vertical()
         .id_salt("agent-tasks-ticket-fields")
         .auto_shrink([false, false])
+        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
         .show(&mut inside, |ui| {
             let top = ui.cursor().min.y + reach.y;
-            let content = Rect::from_min_size(
-                Pos2::new(area.min.x, top),
-                Vec2::new(area.width() - 10.0, 900.0),
-            );
+            let content =
+                Rect::from_min_size(Pos2::new(list.min.x, top), Vec2::new(list.width(), 1200.0));
             let used = rux::layer(
                 ui,
                 state,
@@ -750,21 +839,39 @@ fn fields(
                 content.expand(24.0),
                 |rux| {
                     let (asked, used) =
-                        field_column(board, rux, selects, order, content, look, task, new);
+                        field_column(board, rux, selects, order, content, task, new, gap);
                     requests = asked;
                     used
                 },
             );
-            // What the scrollbar measures itself against: the column's own rectangle, included rather than
-            // allocated after whatever is already there. The JIRA field's text box is put into this `Ui` and
-            // has already moved its cursor, so allocating the height again counted most of the column twice
-            // and let it scroll a screenful past its last control.
             ui.expand_to_include_rect(Rect::from_min_size(
-                Pos2::new(area.min.x, top),
-                Vec2::new(area.width() - 10.0, (used - top + reach.y).max(0.0)),
+                Pos2::new(list.min.x, top),
+                Vec2::new(list.width(), (used - top + reach.y).max(0.0)),
             ));
         });
-    requests
+    if new {
+        let at = Rect::from_min_size(
+            Pos2::new(inner.min.x, inner.max.y - 44.0),
+            Vec2::new(inner.width(), 44.0),
+        );
+        create = action_pill(rux, at, "Create task", Icon::Plus, true).clicked();
+    }
+    (requests, create)
+}
+
+/// The design's 44 point action pill: `Start Work` and `Create task`, in the action's gradient.
+fn action_pill(
+    rux: &mut rux::Rux<'_>,
+    at: Rect,
+    label: &str,
+    icon: Icon,
+    primary: bool,
+) -> egui::Response {
+    let mut button = rux::components::PillButton::new(label).large().mark(icon);
+    if primary {
+        button = button.primary();
+    }
+    button.show(rux, Rect::from_center_size(at.center(), Vec2::new(at.width(), 44.0)))
 }
 
 /// The fields themselves, answering where the last of them ended.
@@ -775,20 +882,20 @@ fn field_column(
     selects: &mut std::collections::HashMap<&'static str, rux::components::SelectState>,
     order: &mut Vec<egui::Id>,
     area: Rect,
-    _look: &Look<'_>,
     task: &Task,
     new: bool,
+    gap: f32,
 ) -> (Vec<Request>, f32) {
     let mut requests = Vec::new();
     let theme = rux.theme();
+    let chat = theme.chat;
     let width = area.width();
     let mut pen = area.min.y;
 
     // ---------------------------------------------------------------- the one thing to press
     //
-    // At the top, which is where the reference puts it and where somebody opening a ticket to start an agent
-    // looks first. Absent when it cannot apply: a ticket with an agent already running offers `Stop` instead,
-    // and a new one offers nothing at all because it has no title yet.
+    // At the top, where somebody opening a ticket to start an agent looks first. A ticket with an agent already
+    // running offers `Stop`, and a new one offers nothing because it has no title yet.
     if !new {
         let attached =
             board.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());
@@ -798,17 +905,12 @@ fn field_column(
             _ if crate::services::agent_tasks::agent::can_resume(task.assignee) => {
                 ("Resume session", "resume", Icon::Play)
             }
-            // **`Start Work again`, not `Resume session`.** Codex names its own sessions, so the id on a
-            // Codex ticket is only Unluminous's marker that a worker was here and there is no conversation to
-            // hand back. The label says `again` because it is a new conversation.
+            // **`Start Work again`, not `Resume session`.** Codex names its own sessions, so the id on a Codex
+            // ticket is only Unluminous's marker that a worker was here and there is no conversation to hand back.
             _ => ("Start Work again", "start", Icon::Play),
         };
         let at = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(width, 44.0));
-        let button = match attached {
-            true => Button::new(label).variant(ButtonVariant::Danger),
-            false => Button::new(label).primary(),
-        };
-        if button.icon(icon).size(ButtonSize::Large).stretch().show(rux, at).clicked() {
+        if action_pill(rux, at, label, icon, !attached).clicked() {
             match board.command_now(command, std::slice::from_ref(&task.key)) {
                 Ok(answer) if !answer.message.is_empty() => {
                     requests.push(Request::Message(answer.message))
@@ -817,30 +919,30 @@ fn field_column(
                 Err(problem) => requests.push(Request::Message(problem)),
             }
         }
-        pen += 44.0 + 18.0;
+        pen += 44.0 + gap;
     }
 
     // ---------------------------------------------------------------- what the ticket is
-    if !new {
-        let options: Vec<(String, String)> = Status::ALL
-            .iter()
-            .map(|status| (status.name().to_owned(), status.label().to_owned()))
-            .collect();
-        if let Some(chosen) = choice(
-            rux,
-            selects,
-            &mut pen,
-            area.min.x,
-            width,
-            "Status",
-            &options,
-            task.status.name(),
-            None,
-        ) {
-            if let Some(status) = Status::parse(&chosen) {
-                if let Err(problem) = board.move_card(task.id, status, i64::MAX) {
-                    requests.push(Request::Message(problem));
-                }
+    let options: Vec<(String, String)> = Status::ALL
+        .iter()
+        .map(|status| (status.name().to_owned(), status_name(*status).to_owned()))
+        .collect();
+    if let Some(chosen) = choice(
+        rux,
+        selects,
+        &mut pen,
+        area.min.x,
+        width,
+        "Status",
+        SelectLead::Lane(lane_mark(task.status)),
+        &options,
+        task.status.name(),
+        None,
+        gap,
+    ) {
+        if let Some(status) = Status::parse(&chosen) {
+            if let Err(problem) = board.move_card(task.id, status, i64::MAX) {
+                requests.push(Request::Message(problem));
             }
         }
     }
@@ -849,6 +951,10 @@ fn field_column(
         .iter()
         .map(|assignee| (assignee.name().to_owned(), assignee.name().to_owned()))
         .collect();
+    let who = match task.assignee {
+        Assignee::Human => SelectLead::Mark(Icon::User, theme.ink.i400),
+        _ => SelectLead::Mark(Icon::Spark, crate::theme::color::agent()),
+    };
     if let Some(chosen) = choice(
         rux,
         selects,
@@ -856,9 +962,11 @@ fn field_column(
         area.min.x,
         width,
         "Assignee",
+        who,
         &options,
         task.assignee.name(),
         None,
+        gap,
     ) {
         requests.extend(write(board, task, Field::Assignee(chosen)));
     }
@@ -880,9 +988,11 @@ fn field_column(
             area.min.x,
             width,
             "Model",
+            SelectLead::Mark(Icon::Cube, theme.ink.i400),
             &models,
             &model,
             Some("The agent's default"),
+            gap,
         ) {
             requests.extend(write(board, task, Field::Model(chosen)));
         }
@@ -895,13 +1005,14 @@ fn field_column(
             area.min.x,
             width,
             "Effort",
+            SelectLead::Mark(Icon::Spark, theme.ink.i400),
             &efforts,
             task.effort.as_deref().unwrap_or(""),
             Some("Model default"),
+            gap,
         ) {
             requests.extend(write(board, task, Field::Effort(chosen)));
         }
-        pen = help(rux, pen, area.min.x, width, "How hard the agent thinks before it answers.");
     }
 
     // The projects this window knows about, which is the list `File -> Open Recent` draws. A ticket may still
@@ -919,30 +1030,13 @@ fn field_column(
         area.min.x,
         width,
         "Project",
+        SelectLead::Mark(Icon::Folder, theme.ink.i400),
         &projects,
         &project,
         Some("The folder this window has open"),
+        gap,
     ) {
         requests.extend(write(board, task, Field::Project(chosen)));
-    }
-    pen = help(rux, pen, area.min.x, width, "The folder the agent's terminal opens in.");
-
-    let options: Vec<(String, String)> = Priority::ALL
-        .iter()
-        .map(|priority| (priority.name().to_owned(), priority.name().to_owned()))
-        .collect();
-    if let Some(chosen) = choice(
-        rux,
-        selects,
-        &mut pen,
-        area.min.x,
-        width,
-        "Priority",
-        &options,
-        task.priority.name(),
-        None,
-    ) {
-        requests.extend(write(board, task, Field::Priority(chosen)));
     }
 
     let epics: Vec<(String, String)> =
@@ -954,12 +1048,28 @@ fn field_column(
         area.min.x,
         width,
         "Epic",
+        SelectLead::Mark(Icon::Layers, theme.ink.i400),
         &epics,
         &task.epic_id.map(|id| id.to_string()).unwrap_or_default(),
         Some("No epic"),
+        gap,
     ) {
         requests.extend(write(board, task, Field::Epic(chosen)));
     }
+
+    // The priority, as a small pill switch: the design's `Low`, `Medium` and `High`.
+    pen = caption(rux, pen, area.min.x, "Priority");
+    let names: Vec<String> =
+        Priority::ALL.iter().map(|priority| priority_name(*priority).to_owned()).collect();
+    let chosen = Priority::ALL.iter().position(|priority| *priority == task.priority);
+    let at = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(width, 38.0));
+    if let Some(index) = PillSwitch::new(&names, chosen, "Priority").small().show(rux, at) {
+        if Some(index) != chosen {
+            let priority = Priority::ALL[index];
+            requests.extend(write(board, task, Field::Priority(priority.name().to_owned())));
+        }
+    }
+    pen += 38.0 + gap;
 
     if new {
         return (requests, pen);
@@ -967,89 +1077,140 @@ fn field_column(
 
     // ---------------------------------------------------------------- the JIRA issue, and when it was made
     //
-    // **It does not sync.** There is no HTTP client in Unluminous, so the key is a field somebody types. Copy
-    // hands over the row's own `jira_url` when it has one and the key otherwise.
+    // **It does not sync.** There is no HTTP client in Unluminous, so the key is a field somebody types.
     pen = caption(rux, pen, area.min.x, "JIRA");
     let mut key = task.jira_key.clone().unwrap_or_default();
-    let at = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(width, CONTROL));
-    let typed = TextInput::new(&mut key)
-        .hint("No issue")
-        .style(Style::CONTROL)
-        .pad(Pad::axes(8.0, 12.0))
-        .label("JIRA")
-        .id_salt("agent-tasks-ticket-jira")
-        .show(rux, at);
-    order.push(text_input_id(rux, "agent-tasks-ticket-jira"));
-    if typed.changed {
+    let at = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(width, 38.0));
+    rux.chrome.surface(at, 19.0, chat.well, chat.carved_sm());
+    let font = Style::sans(12.5).font();
+    let id = rux.ui.id().with(("rux-text-input", egui::Id::new("agent-tasks-ticket-jira")));
+    let text = crate::components::controls::field_takes_the_whole_rectangle_at(
+        rux.ui,
+        at.shrink2(Vec2::new(14.0, 0.0)),
+        0.0,
+        id,
+        "JIRA field",
+        &font,
+    );
+    let mut child = rux.ui.new_child(egui::UiBuilder::new().max_rect(text));
+    let response = child.add(
+        egui::TextEdit::singleline(&mut key)
+            .id(id)
+            .hint_text(crate::components::controls::placeholder("No issue", &font, theme.ink.i400))
+            .font(font.clone())
+            .frame(egui::Frame::NONE)
+            .desired_width(text.width())
+            .text_color(theme.ink.i900),
+    );
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "JIRA"));
+    order.push(id);
+    if response.changed() {
         requests.extend(write(board, task, Field::JiraKey(key.clone())));
     }
-    pen += CONTROL + 8.0;
+    pen += 38.0 + 10.0;
     if !key.trim().is_empty() {
-        let at = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(width.min(150.0), 30.0));
-        if Button::new("Copy issue link")
-            .icon(Icon::Copy)
-            .size(ButtonSize::Mini)
-            .show(rux, at)
-            .clicked()
-        {
+        let button = rux::components::PillButton::new("Copy issue link").mark(Icon::Copy).ghost();
+        let size = button.measure(rux);
+        let at = Rect::from_min_size(Pos2::new(area.min.x, pen), size);
+        if button.show(rux, at).clicked() {
             requests.push(Request::Copy(board.jira_link(&key)));
             requests.push(Request::Message(format!("copied the link to {key}")));
         }
-        pen += 30.0 + 8.0;
+        pen += size.y + 10.0;
     }
-    pen += 8.0;
+    pen += 6.0;
 
     pen = caption(rux, pen, area.min.x, "Created");
     let now = clock::now();
     let said = clock::relative(&task.created_at, &now);
-    let galley = rux.text(Style::sans(13.0), &said, theme.ink.i700);
+    let galley = rux.text(Style::sans(12.5), &said, theme.ink.i700);
     let tall = galley.size().y;
-    rux.ui.painter().galley(Pos2::new(area.min.x, pen), galley, theme.ink.i700);
-    pen += tall + 24.0;
+    rux.painter().galley(Pos2::new(area.min.x, pen), galley, theme.ink.i700);
+    pen += tall + 20.0;
 
     // ------------------------------------------------------------ and the one thing that destroys work
     //
-    // Last, in the coral `rux` keeps for destruction and never as a filled button. One press deletes the ticket
-    // with its todos and comments. `task-2198`: *"When I press Delete task it should just delete, not prompt me
-    // again."* It used to change into `Keep it` and `Delete for good` and wait for a second press.
-    let at = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(width, CONTROL));
-    if Button::new("Delete task")
-        .variant(ButtonVariant::Danger)
-        .icon(Icon::Trash)
-        .stretch()
-        .show(rux, at)
-        .clicked()
-    {
+    // Last, as a ghost pill whose words are in the slower colour, which the design keeps for things that fail
+    // or are taken away. One press deletes the ticket with its todos and comments. `task-2198`.
+    let at = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(width, 36.0));
+    if delete_button(rux, at).clicked() {
         if let Err(problem) = board.discard_the_ticket() {
             requests.push(Request::Message(problem));
         }
     }
-    pen += CONTROL + 12.0;
+    pen += 36.0 + 12.0;
     (requests, pen)
 }
 
-/// A field's caption, answering where the control under it goes.
-fn caption(rux: &mut rux::Rux<'_>, pen: f32, left: f32, name: &str) -> f32 {
-    let theme = rux.theme();
-    let galley = rux.text(CAPTION_STYLE, name, theme.ink.i500);
-    rux.ui.painter().galley(Pos2::new(left + 2.0, pen), galley, theme.ink.i500);
-    pen + CAPTION + 6.0
+/// `Delete task`: a ghost pill with a bin, in the slower colour, washed under the pointer.
+fn delete_button(rux: &mut rux::Rux<'_>, at: Rect) -> egui::Response {
+    let response =
+        rux.ui.interact(at, rux.ui.id().with("agent-tasks-delete"), egui::Sense::click());
+    let chat = rux.theme().chat;
+    if response.hovered() {
+        rux.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        rux.wash(at, at.height() / 2.0, chat.slower.gamma_multiply(0.12));
+    }
+    let style = Style::sans(12.5).medium();
+    let galley = rux.text(style, "Delete task", chat.slower);
+    let width = galley.size().x + 14.0 + 8.0;
+    let left = at.center().x - width / 2.0;
+    rux.mark(Mark::new(Icon::Trash, 14.0), Pos2::new(left + 7.0, at.center().y), chat.slower);
+    rux::text::draw_left_capitals(
+        rux.painter(),
+        Pos2::new(left + 22.0, at.center().y),
+        galley,
+        style,
+        chat.slower,
+    );
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Delete task"));
+    response
 }
 
-/// A quiet line under a field saying what it is for, answering where the next field goes.
-fn help(rux: &mut rux::Rux<'_>, pen: f32, left: f32, width: f32, said: &str) -> f32 {
+/// What the modal calls a status: the lane's name in the design's sentence case.
+fn status_name(status: Status) -> &'static str {
+    match status {
+        Status::New => "New",
+        Status::QaFailed => "QA failed",
+        Status::InProgress => "In progress",
+        Status::AgentDone => "Agent done",
+    }
+}
+
+/// The mark a status is drawn with, which is its lane's.
+fn lane_mark(status: Status) -> rux::components::LaneMark {
+    match status {
+        Status::New => rux::components::LaneMark::New,
+        Status::QaFailed => rux::components::LaneMark::Failed,
+        Status::InProgress => rux::components::LaneMark::Running,
+        Status::AgentDone => rux::components::LaneMark::Done,
+    }
+}
+
+/// What the priority switch calls each priority.
+fn priority_name(priority: Priority) -> &'static str {
+    match priority {
+        Priority::Low => "Low",
+        Priority::Medium => "Medium",
+        Priority::High => "High",
+    }
+}
+
+/// A field's caption, `font-size: 11px` in the quiet ink, answering where the control under it goes.
+fn caption(rux: &mut rux::Rux<'_>, pen: f32, left: f32, name: &str) -> f32 {
     let theme = rux.theme();
-    let galley = rux::text::wrapped(rux.ui.painter(), HELP_STYLE, said, theme.ink.i400, width);
+    let galley = rux.text(Style::sans(11.0), name, theme.ink.i400);
     let tall = galley.size().y;
-    rux.ui.painter().galley(Pos2::new(left + 2.0, pen - 8.0), galley, theme.ink.i400);
-    pen - 8.0 + tall + 14.0
+    rux.painter().galley(Pos2::new(left, pen), galley, theme.ink.i400);
+    pen + tall + 7.0
 }
 
 /// A named value chosen from a list, answering what was chosen when it changed.
 ///
-/// `rux`'s `Select`, with the field's name in capitals over it. `options` is `(value, said)` pairs — the value
-/// written to the row and the words a person reads. `empty` is what the list calls holding nothing, for a field
-/// that may, and it is the first row; `None` means the field is required.
+/// `rux`'s `Select` drawn as the design's chip, with the field's name over it. `options` is `(value, said)`
+/// pairs: the value written to the row and the words a person reads. `empty` is what the list calls holding
+/// nothing, for a field that may, and it is the first row; `None` means the field is required.
 #[allow(clippy::too_many_arguments)]
 fn choice(
     rux: &mut rux::Rux<'_>,
@@ -1058,9 +1219,11 @@ fn choice(
     left: f32,
     width: f32,
     name: &'static str,
+    lead: SelectLead,
     options: &[(String, String)],
     chosen: &str,
     empty: Option<&str>,
+    gap: f32,
 ) -> Option<String> {
     *pen = caption(rux, *pen, left, name);
     let mut values: Vec<String> = Vec::new();
@@ -1074,10 +1237,14 @@ fn choice(
         said.push(words.clone());
     }
     let selected = values.iter().position(|value| value == chosen);
-    let at = Rect::from_min_size(Pos2::new(left, *pen), Vec2::new(width, CONTROL));
+    let at = Rect::from_min_size(Pos2::new(left, *pen), Vec2::new(width, 38.0));
     let state = selects.entry(name).or_default();
-    let outcome = Select::new(&said, selected).label(name).placeholder("—").show(rux, at, state);
-    *pen += CONTROL + 12.0;
+    let outcome = Select::new(&said, selected)
+        .label(name)
+        .placeholder("\u{2014}")
+        .chip(lead)
+        .show(rux, at, state);
+    *pen += 38.0 + gap;
     outcome.chosen.and_then(|index| values.get(index).cloned()).filter(|value| {
         Some(value.as_str()) != selected.and_then(|at| values.get(at)).map(String::as_str)
     })

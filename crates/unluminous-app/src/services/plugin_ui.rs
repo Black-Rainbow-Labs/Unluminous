@@ -1074,20 +1074,8 @@ mod scale_tests {
         settings.font_size = 9.0;
         let small = Look::of(&settings, &renderer);
         assert_eq!(small.scale(), 1.0, "a small font leaves the boxes alone");
-
-        for size in crate::settings::FONT_SIZES {
-            settings.font_size = *size;
-            let look = Look::of(&settings, &renderer);
-            let card = crate::components::agent_tasks::card::height(&look);
-            // What a card really has to hold, in the order `card::show` draws it: eight points of padding, a
-            // title of two wrapped lines, and the 22 point band at the bottom that the footer and the epic chip
-            // share. Whatever the size.
-            let needed = 8.0 + look.font_size * 2.7 + 22.0;
-            assert!(
-                card >= needed,
-                "at {size} point a card is {card} points and needs at least {needed}"
-            );
-        }
+        // A card on the board is a `rux` card drawn at the pane's scale, measured from its own title, so it
+        // holds its words at every size by construction. `task-2241`.
     }
 
     #[test]

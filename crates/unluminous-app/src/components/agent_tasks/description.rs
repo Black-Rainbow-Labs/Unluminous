@@ -63,7 +63,7 @@ pub fn in_a_well(
                     .frame(egui::Frame::NONE)
                     .margin(egui::Margin::ZERO)
                     .hint_text(crate::components::controls::placeholder(
-                        "What needs doing, in markdown.",
+                        "What should be done, and how will you know it's finished?",
                         &font,
                         look.palette.text_faint,
                     ))

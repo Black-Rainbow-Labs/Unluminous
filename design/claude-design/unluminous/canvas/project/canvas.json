@@ -7,7 +7,7 @@
  "title": "Unluminous",
  "launch": {
   "view": "canvas",
-  "page": "chat"
+  "page": "tasks"
  },
  "pages": [
   {
@@ -17,6 +17,10 @@
   {
    "id": "chat",
    "name": "Agent-Chat"
+  },
+  {
+   "id": "tasks",
+   "name": "Agent-Tasks"
   }
  ],
  "boards": {
@@ -114,6 +118,32 @@
    "h": 2140,
    "title": "Chat parts · Dark",
    "page": "chat"
+  },
+  "TasksBoard.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1180,
+   "h": 660,
+   "title": "Agent-Tasks board · Dark",
+   "page": "tasks",
+   "is_interactive": true
+  },
+  "TaskModal.dc.html": {
+   "x": 0,
+   "y": 780,
+   "w": 1180,
+   "h": 760,
+   "title": "Edit task",
+   "page": "tasks",
+   "is_interactive": true
+  },
+  "TaskCreate.dc.html": {
+   "x": 1260,
+   "y": 780,
+   "w": 1180,
+   "h": 760,
+   "title": "New task",
+   "page": "tasks"
   }
  },
  "order": [
@@ -129,7 +159,10 @@
   "Library.dc.html",
   "ChatPane.dc.html",
   "ChatSettings.dc.html",
-  "ChatParts.dc.html"
+  "ChatParts.dc.html",
+  "TasksBoard.dc.html",
+  "TaskModal.dc.html",
+  "TaskCreate.dc.html"
  ],
  "notes": {
   "window": {
@@ -186,6 +219,14 @@
    "size": "m",
    "page": "chat",
    "text": "One light, top left. Cards and controls are extruded from the pane with a soft paired shadow; wells and tracks are carved into it.\n\nEverything you press is round or a pill. No status dots, no segmented meters: state is an icon in a carved well, a dial or a slider.\n\nYour messages are raised bubbles; claude's text sits on the pane with no bubble.\n\nOne blue gradient for the action and for data; coral for slower, mint for faster.\n\nThe gear above the prompt opens Chat settings (model, context used). The pane artboard is clickable in Play."
+  },
+  "tasksTitle": {
+   "x": 0,
+   "y": -300,
+   "text": "Agent-Tasks, redesigned",
+   "kind": "title1",
+   "maxW": 2440,
+   "page": "tasks"
   }
  },
  "designSystems": [

@@ -261,6 +261,42 @@ pub struct Task {
 }
 
 impl Task {
+    /// A ticket with every field at its plainest, for a test that sets only the fields it reads.
+    #[cfg(test)]
+    pub fn for_tests(key: &str) -> Task {
+        Task {
+            id: 1,
+            key: key.to_owned(),
+            title: "A ticket".to_owned(),
+            description: String::new(),
+            priority: Priority::Medium,
+            status: Status::New,
+            assignee: Assignee::Claude,
+            model: None,
+            effort: None,
+            epic_id: None,
+            sprint_id: None,
+            position: 0,
+            project: None,
+            session_id: None,
+            heartbeat_at: None,
+            lease_minutes: None,
+            watchdog_strikes: 0,
+            watchdog_nudges: 0,
+            watchdog_nudged_at: None,
+            source: Source::Local,
+            jira_key: None,
+            jira_url: None,
+            jira_status: None,
+            jira_issue_type: None,
+            created_at: String::new(),
+            updated_at: String::new(),
+            todo_count: 0,
+            todo_done_count: 0,
+            comment_count: 0,
+        }
+    }
+
     /// What the card shows when the title is empty, which it is for the moment between `Add Task`
     /// creating the row and somebody typing.
     pub fn display_title(&self) -> &str {
