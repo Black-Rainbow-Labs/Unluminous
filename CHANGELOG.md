@@ -10,6 +10,8 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 - The release speed design records the 0.73.1 release and the after numbers (`task-2240`)
 - Agent-Tasks drawn to the approved design, the board and the ticket (`task-2241`)
+- The changelog lists the Agent-Tasks redesign as unreleased (`task-2241`)
+- The title bar, the menus and the rail drawn to the Editing code design (`task-2241`)
 
 ## 0.73.1 — 2026-10-10
 
