@@ -128,6 +128,13 @@ function New-Fixture {
   New-Generation (Join-Path $cross 'deps') 'libcross' 'bbbb2222bbbb2222' 72
   New-Generation (Join-Path $cross 'deps') 'libcross' 'cccc3333cccc3333' 48
 
+  # A macOS architecture in a target directory of its own under target, three levels down, which
+  # is where installer/macos/build-on-windows.ps1 builds since task-2240.
+  $own = Join-Path (Join-Path (Join-Path (Join-Path $root 'target') 'mac-aarch64-apple-darwin') 'aarch64-apple-darwin') 'release'
+  New-Generation (Join-Path $own 'deps') 'libown' 'aaaa1111aaaa1111' 96
+  New-Generation (Join-Path $own 'deps') 'libown' 'bbbb2222bbbb2222' 72
+  New-Generation (Join-Path $own 'deps') 'libown' 'cccc3333cccc3333' 48
+
   return [PSCustomObject]@{
     Root = $root
     Profile = $profileDir
@@ -137,6 +144,7 @@ function New-Fixture {
     Fingerprint = Join-Path $profileDir '.fingerprint'
     Build = Join-Path $profileDir 'build'
     CrossDeps = Join-Path $cross 'deps'
+    OwnDeps = Join-Path $own 'deps'
     Lock = Join-Path $profileDir '.cargo-lock'
   }
 }
@@ -214,6 +222,8 @@ Assert-That 'the newest incremental cache is kept' `
 Write-Host 'a cross-compiled profile under its triple is found'
 Assert-That 'the superseded cross artifact is removed' (Test-GenerationGone $f.CrossDeps 'libcross' 'aaaa1111aaaa1111')
 Assert-That 'the newest cross artifact is kept' (-not (Test-GenerationGone $f.CrossDeps 'libcross' 'cccc3333cccc3333'))
+Assert-That 'a superseded artifact three levels down is removed' (Test-GenerationGone $f.OwnDeps 'libown' 'aaaa1111aaaa1111')
+Assert-That 'the newest artifact three levels down is kept' (-not (Test-GenerationGone $f.OwnDeps 'libown' 'cccc3333cccc3333'))
 
 # --- the build-in-flight guard ---------------------------------------------------------------------
 

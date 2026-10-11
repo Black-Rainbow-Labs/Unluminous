@@ -239,6 +239,33 @@ build converges rather than oscillating. `tools/prune-target.test.ps1` builds a 
 directory and checks both halves, the removals and the survivals, with no cargo and no toolchain
 behind it.
 
+### A release uses 80% of the processors and tests only what changed (`task-2240`)
+
+`tasks/task-2240-release-speed-tdd.md` has the measurements. What a ticket needs to know:
+
+- **Every build and test the release starts runs on 19 of the 24 logical processors.**
+  `tools/processor-share.ps1` sets an affinity mask that every child inherits, and sets
+  `CARGO_BUILD_JOBS` and `RUST_TEST_THREADS` to match. A job object rate cap does not work here,
+  because the Store `pwsh` lets every child leave every job (Inillucent task-2205 measured it).
+  `UNLUMINOUS_CPU_PERCENT=100` removes the limit.
+- **Run heavy cargo commands by hand through `pwsh tools/capped.ps1`**, which applies the same mask
+  and takes `CC` out of the environment: `pwsh tools/capped.ps1 cargo test -p unluminous-app --test
+  '*' --no-fail-fast`.
+- **The gate runs clippy and tests only for crates whose inputs changed.** `node tools/test.mjs`
+  hashes what each crate can read and skips a crate that has already passed on exactly that content.
+  A pass is recorded in the main checkout's `_agent_output/test-receipts/`, wherever it ran, so
+  **run `pwsh tools/capped.ps1 node tools/test.mjs` in your worktree after committing**, and the
+  release after the merge has nothing left to run. `--dry-run` prints the plan; `release.ps1
+  -FullTests` runs every crate.
+- **Window suite receipts are kept in the main checkout too**, and a version bump no longer makes
+  them stale. Run the window suite once, in your worktree, after committing. The release accepts it
+  after the merge as long as nothing a window is built from changed in between.
+- **The macOS build runs beside the Windows build, both architectures at once**, each in its own
+  target directory: `target/mac-aarch64-apple-darwin` and `target/mac-x86_64-apple-darwin`. The
+  macOS output goes to `_agent_output/release-logs/macos-<version>.log`.
+- **Each release writes `_agent_output/release-timings/<version>.json`** with the seconds every step
+  took.
+
 ## What the crates are for
 
 | Crate | What is in it | What must never be in it |

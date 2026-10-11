@@ -21,8 +21,10 @@ whatever you changed. Two things follow:
 - Do not go looking for a cause in your own work, and do not "fix" `commands.md` — rewriting its
   line endings in a worktree would commit 3,794 changed lines.
 - **Run `pwsh tools/release.ps1` from `C:\jason\dev\unluminous`, after merging**, not from the
-  worktree. The release runs `cargo test --workspace --exclude unluminous-app`, which includes that
-  test, so a release cut from a worktree is refused by a failure that is not real.
+  worktree. The release runs `cargo test -p unluminous-cli` whenever `unluminous-cli` has changed
+  since its tests last passed, which includes that test, so a release cut from a worktree can be
+  refused by a failure that is not real. (On task-2240 the test passed in a fresh worktree, so this
+  may no longer happen; the rule costs nothing to keep.)
 
 ## The window suite writes a receipt, and the receipt names a commit
 
@@ -32,12 +34,27 @@ refuses while a binary's receipt names a commit whose drawing code has moved sin
 
 ```sh
 git -C <worktree> commit -m "task-N: ..."
-cargo test -p unluminous-app --test '*' --no-fail-fast    # from the worktree; needs a graphics card
+pwsh tools/capped.ps1 cargo test -p unluminous-app --test '*' --no-fail-fast    # needs a graphics card
+pwsh tools/capped.ps1 node tools/test.mjs                                       # clippy and the other tests
 node tools/window-suite.mjs --check
 ```
 
 Running the suite before the commit leaves a receipt at the previous commit, and the release then
 tells you every file that has changed since it.
+
+**Since `task-2240` both kinds of receipt are written into the main checkout's `_agent_output/`**,
+from whichever checkout ran them, so the suite and the tests run once, in the worktree, and the
+release after a fast forward merge finds them passed. A rebase makes new commits, so after a rebase
+the window receipts name commits HEAD is not built on and the suite has to run again. The
+`tools/test.mjs` receipts are keyed by content and survive a rebase that changed nothing.
+
+**Window tests that fail on unchanged code.** In the first two task-2240 runs, on code identical to
+`main`, two window tests failed each time and they were different tests each time:
+`the_find_bar_counts_the_matches_and_marks_every_one_of_them`,
+`a_program_that_prints_and_stops_leaves_what_it_printed_in_its_tab`, and
+`a_newer_version_is_offered_and_dont_ask_again_declines_that_version`, whose local update server
+refused the connection. Run the failing binary again on its own before looking for a cause in your
+change.
 
 ## Window test binaries from every checkout take turns
 

@@ -42,6 +42,7 @@
 //   node tools/test.mjs --all           every unit, whatever has passed before
 //   node tools/test.mjs --dry-run       say what would run and run nothing
 //   node tools/test.mjs --no-clippy     tests only
+//   node tools/test.mjs --kernel-optional   the notebook kernel tests may skip with no Python (release.sh)
 //
 // Run it through `pwsh tools/capped.ps1 node tools/test.mjs` from a shell, or let `tools/release.ps1`
 // run it, so it stays on the 80% processor share.
@@ -50,7 +51,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { versionless } from './versionless.mjs';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -122,12 +123,14 @@ function workingTreeBlobs() {
     const tab = entry.indexOf('\t');
     blobs.set(entry.slice(tab + 1), entry.split(' ')[1]);
   }
-  const dirty = git(['status', '--porcelain=v1', '-z', '--untracked-files=all'])
-    .split('\0')
-    .filter((line) => line.length > 3);
+  const entries = git(['status', '--porcelain=v1', '-z', '--untracked-files=all']).split('\0');
   const present = [];
-  for (const line of dirty) {
-    const file = line.slice(3);
+  for (let index = 0; index < entries.length; index++) {
+    const entry = entries[index];
+    if (entry.length <= 3) continue;
+    // A rename or a copy is followed by the path it came from, as an entry of its own.
+    if (entry[0] === 'R' || entry[0] === 'C') blobs.delete(entries[++index]);
+    const file = entry.slice(3);
     if (fs.existsSync(path.join(repo, file))) present.push(file);
     else blobs.delete(file);
   }
@@ -257,16 +260,23 @@ function recordPass(unit) {
 
 /**
  * Every unit: clippy and the tests for each crate, with the command `tools/release.ps1` ran before.
+ *
+ * The tests run with UNLUMINOUS_REQUIRE_KERNEL=1, so a machine with no Python that has ipykernel
+ * fails the notebook kernel tests rather than skipping them (task-2220), unless `kernelOptional` is
+ * set, which `tools/release.sh` does because the Mac it runs on was never held to that. The variable
+ * is part of each unit's hash, so a pass without it is never taken for a pass with it.
  * @param crates - the workspace crates
+ * @param kernelOptional - whether the kernel tests may skip on a machine with no kernel
  */
-function allUnits(crates) {
+function allUnits(crates, kernelOptional = false) {
   const byName = new Map(crates.map((crate) => [crate.name, crate]));
+  const testEnvironment = kernelOptional ? {} : { UNLUMINOUS_REQUIRE_KERNEL: '1' };
   const units = [];
   for (const crate of crates) {
     const closure = closureOf(crate, byName);
     units.push({ kind: 'clippy', crate: crate.name, closure, command: ['--all-targets', '--', '-D', 'warnings'], environment: {} });
     const targets = crate.name === APP ? ['--lib', '--bins'] : [];
-    units.push({ kind: 'test', crate: crate.name, closure, command: targets, environment: { UNLUMINOUS_REQUIRE_KERNEL: '1' } });
+    units.push({ kind: 'test', crate: crate.name, closure, command: targets, environment: testEnvironment });
   }
   return units;
 }
@@ -314,7 +324,7 @@ function commandsFor(units, manifest) {
       units: waiting,
       lane: 'waiting',
       args: ['test', '--manifest-path', manifest, ...packages(waiting), '--no-fail-fast'],
-      environment: { CARGO_TARGET_DIR: path.join(target, 'waiting'), UNLUMINOUS_REQUIRE_KERNEL: '1' },
+      environment: { ...waiting[0].environment, CARGO_TARGET_DIR: path.join(target, 'waiting') },
     });
   }
   if (clippy.length > 0) {
@@ -332,7 +342,7 @@ function commandsFor(units, manifest) {
       units: tests,
       lane: 'test',
       args: ['test', '--manifest-path', manifest, ...packages(tests), '--no-fail-fast'],
-      environment: { CARGO_TARGET_DIR: target, UNLUMINOUS_REQUIRE_KERNEL: '1' },
+      environment: { ...tests[0].environment, CARGO_TARGET_DIR: target },
     });
   }
   if (app.length > 0) {
@@ -341,7 +351,7 @@ function commandsFor(units, manifest) {
       units: app,
       lane: 'test',
       args: ['test', '--manifest-path', manifest, '-p', APP, '--lib', '--bins'],
-      environment: { CARGO_TARGET_DIR: target, UNLUMINOUS_REQUIRE_KERNEL: '1' },
+      environment: { ...app[0].environment, CARGO_TARGET_DIR: target },
     });
   }
   return groups;
@@ -365,12 +375,13 @@ async function main() {
   const all = process.argv.includes('--all');
   const dryRun = process.argv.includes('--dry-run');
   const noClippy = process.argv.includes('--no-clippy');
+  const kernelOptional = process.argv.includes('--kernel-optional');
   const crates = workspaceCrates();
   const members = new Set(crates.map((crate) => crate.name));
   const blobs = workingTreeBlobs();
   const shared = READ_BY_EVERY_BUILD.map((file) => `${file}\n${versionlessText(file, members)}\n`).join('');
 
-  const units = allUnits(crates).filter((unit) => !(noClippy && unit.kind === 'clippy'));
+  const units = allUnits(crates, kernelOptional).filter((unit) => !(noClippy && unit.kind === 'clippy'));
   const toRun = [];
   console.log('Clippy and tests, by what each crate can read:');
   for (const unit of units) {
@@ -407,4 +418,7 @@ async function main() {
   console.log(`\nPassed in ${seconds} s: ${toRun.length} of ${units.length} units ran.`);
 }
 
-await main();
+// Run only when started as a program, so `tools/test.test.mjs` can import the selection without running it.
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) await main();
+
+export { closureOf, isInput, unitHash, allUnits, commandsFor };

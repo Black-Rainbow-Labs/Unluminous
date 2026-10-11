@@ -44,6 +44,7 @@
 #   tools/release.sh --skip-notarize     # sign but do not send it to Apple: a build for this machine only
 #   tools/release.sh --dry-run           # say what would happen and change nothing
 #   tools/release.sh --skip-tests        # for a release whose suite was just run by hand
+#   tools/release.sh --full-tests        # clippy and tests for every crate, not only the changed ones
 #
 # **No `gh` and no second credential.** `release.ps1` installs the GitHub CLI with winget the first
 # time; the equivalent here would be a download, because this machine has no homebrew either. The
@@ -70,6 +71,7 @@ skip_install=0
 skip_publish=0
 skip_notarize=0
 skip_tests=0
+full_tests=0
 dry_run=0
 
 # A while loop rather than `for argument in "$@"`, because the bash macOS ships is 3.2 and that one
@@ -83,12 +85,25 @@ while [ "$#" -gt 0 ]; do
         --skip-publish) skip_publish=1 ;;
         --skip-notarize) skip_notarize=1 ;;
         --skip-tests) skip_tests=1 ;;
+        --full-tests) full_tests=1 ;;
         --dry-run|--whatif) dry_run=1 ;;
-        -h|--help) sed -n '3,53p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '3,54p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
     shift
 done
+
+# **80% of the processors (`task-2240`).** `tools/release.ps1` sets an affinity mask on Windows; macOS
+# has no affinity mask a process can set, so cargo and the test harness are told the count instead.
+# `UNLUMINOUS_CPU_PERCENT=100` removes the limit.
+processors="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 8)"
+share=$(( processors * ${UNLUMINOUS_CPU_PERCENT:-80} / 100 ))
+[ "$share" -ge 1 ] || share=1
+if [ "${UNLUMINOUS_CPU_PERCENT:-80}" -lt 100 ]; then
+    export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$share}"
+    export RUST_TEST_THREADS="${RUST_TEST_THREADS:-$share}"
+    echo "  processor share: CARGO_BUILD_JOBS=$CARGO_BUILD_JOBS of $processors processors"
+fi
 
 case "$part" in
     patch|minor|major) ;;
@@ -185,11 +200,14 @@ if [ "$skip_tests" = 1 ]; then
     echo 'the window suite has ever been run against it.'
 else
     env -u CC cargo fmt --manifest-path "$repo/Cargo.toml" --all -- --check
-    env -u CC cargo clippy --manifest-path "$repo/Cargo.toml" --workspace --all-targets -- -D warnings
     node "$repo/tools/changelog.mjs" --check
     node "$repo/tools/contrast.mjs" --check
-    env -u CC cargo test --manifest-path "$repo/Cargo.toml" --workspace --exclude unluminous-app
-    env -u CC cargo test --manifest-path "$repo/Cargo.toml" -p unluminous-app --lib --bins
+    # Clippy and the tests for the crates whose inputs changed since they last passed, three lanes at
+    # once (`task-2240`, `tools/test.mjs`). `--kernel-optional` keeps this script's rule that the
+    # notebook kernel tests may skip on a Mac with no Python; the Windows release requires them.
+    test_arguments=(--kernel-optional)
+    [ "$full_tests" = 1 ] && test_arguments+=(--all)
+    env -u CC node "$repo/tools/test.mjs" "${test_arguments[@]}"
     echo 'The window through wgpu is not run here: it needs a graphics card and a person to look at'
     echo "any image that changed. Run it by hand: cargo test -p unluminous-app --test '*' --no-fail-fast"
     # What is checked instead is that somebody did. `task-1984` T9: the window suite is deliberately
