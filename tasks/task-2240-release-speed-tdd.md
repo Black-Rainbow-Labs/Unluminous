@@ -105,8 +105,20 @@ directory` four times.
 | step | command | seconds | mean machine | samples over 80% |
 |---|---|---:|---:|---:|
 | W1 | `cargo test -p unluminous-app --test '*' --no-fail-fast`, first build of the suite | 832.2 | 67% | 37% |
+| W2 | the same after a one line change to `unluminous-app`, no limit (60 s of build) | 650.0 | 54% | 28% |
+| W3 | the same after another one line change, on the 80% share (33 s of build) | 655.8 | 62% | 47% |
 
-WINDOW_SUITE_DETAIL
+The suite is fifteen binaries run one at a time, because each holds a lock for the whole machine
+(`tests/common/turn.rs`). The longest in W1 were `plugins_board_and_chat` 139 s, `debugging` 89 s,
+`notebooks` 73 s, `command_line` 58 s and `canvas_realm` 39 s. The 80% share cost the suite nothing
+(W3 against W2).
+
+**The suite fails on unchanged code.** Every one of W1, W2, W3 and W5 had one to three failures, on
+code identical to `main` apart from this ticket's receipt change, and the failing tests were
+different each time: the find bar's count, a terminal tab's output, the update check's local server
+refusing a connection, two snapshot comparisons, a menu and the MCP settings page. W4 passed
+completely. A failing binary deletes its receipt, so each of these costs a ticket a rerun of that
+binary at least.
 
 ## 4. Research
 
@@ -316,6 +328,28 @@ release stops after `-SkipPublish` or with destinations missing, it prints each 
 writes `_agent_output/release-timings/<version>.json` with the steps, the total, the processor share
 and `CARGO_BUILD_JOBS`.
 
+### 5.6 Line tables only in a test build
+
+`Cargo.toml` sets `[profile.test] debug = "line-tables-only"`. A verbose build with only
+`CARGO_PROFILE_TEST_DEBUG` set showed the dependencies of a test build getting
+`-C debuginfo=line-tables-only` as well, so the setting reaches everything a test binary links.
+
+| measurement | full debug information | line tables only |
+|---|---:|---:|
+| rebuild of the window suite after a one line change, 80% share | 32.6 s (W3) | 15.3 s (W5) |
+| `window_and_chrome` test executable | 125.0 MB | 111.0 MB |
+| `window_and_chrome` PDB | 699.1 MB | 291.7 MB |
+| a whole build and run of the suite after a one line change, 80% share | 655.8 s (W3) | 704.0 s (W5) |
+| W4, a whole first build and run of the suite, 80% share | | 569.5 s, every test passed |
+
+The whole run in W5 was longer than in W3 although its build was 17 s shorter: the suite's run time
+moves by more than that between runs (W2 and W3, identical apart from the share, ran 590 s and
+623 s), so the rebuild and the disk are what this setting is measured by.
+
+A panic still names its file and line. A debugger attached to a test binary loses local variables.
+`[profile.dev]` is unchanged, so a dev build of the application debugs as before; a dev build and a
+test build no longer share dependency artifacts.
+
 ## 6. Considered and not done
 
 - **A job object rate cap.** Does not hold with the Store `pwsh` (§4).
@@ -329,13 +363,19 @@ and `CARGO_BUILD_JOBS`.
   then goes out without macOS whenever notarisation fails after the tag is pushed. The tag is the step
   that cannot be quietly taken back, so macOS stays finished before it.
 - **cargo-nextest and `universal2-apple-darwin`.** §4.
-- **`debug = "line-tables-only"` for the test profile.** LINE_TABLES_RESULT
+- **`debug = "line-tables-only"` for the dev profile.** Inillucent task-2114 did this. Here it would
+  also take the local variables out of a debugger attached to a dev build of the application, so it
+  is set for the test profile only (§5.6).
 
 ## 7. Measured after implementation
 
 AFTER_RESULTS
 
 ## 8. Recommendations not built here
+
+- **Fix the window tests that fail on unchanged code.** §3.3 lists them. A failing binary deletes
+  its receipt, so each flaky failure costs a ticket a rerun, and an agent that does not know they
+  are flaky spends time looking for a cause in its own change. `.claude/repo-plan.md` now names them.
 
 - **Make the Jupyter kernel tests faster.** They are the longest binary outside the window suite and
   the one most slowed by other load. Sharing one started kernel between the tests that only execute

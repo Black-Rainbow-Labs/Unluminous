@@ -202,6 +202,16 @@ objc2 = { version = "0.6", default-features = false, features = ["std"] }
 # Already in the tree under the objc2 crates; named here because `services/wake.rs` uses it directly.
 dispatch2 = { version = "0.3", default-features = false, features = ["std"] }
 
+# Line numbers and nothing else in the debug information of a test build (`task-2240`). Every window
+# test binary links all of `unluminous-app` and wrote a 699 MB PDB beside a 125 MB executable; with
+# line tables only that is 292 MB, and the rebuild of the whole window suite after a one line change
+# to `unluminous-app` went from 32.6 s to 15.3 s, on the same 80% processor share. A panic still names
+# its file and line. What is lost is a debugger's view of local variables inside a test binary.
+# `[profile.dev]` is left as it was, so `cargo run` and a debugger on the application are unchanged;
+# the cost is that a dev build and a test build no longer share their dependencies' artifacts.
+[profile.test]
+debug = "line-tables-only"
+
 [profile.release]
 opt-level = 3
 # Thin rather than fat, and the default number of codegen units rather than one, because `task-1805`

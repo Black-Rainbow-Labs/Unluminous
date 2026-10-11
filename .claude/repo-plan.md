@@ -48,13 +48,16 @@ release after a fast forward merge finds them passed. A rebase makes new commits
 the window receipts name commits HEAD is not built on and the suite has to run again. The
 `tools/test.mjs` receipts are keyed by content and survive a rebase that changed nothing.
 
-**Window tests that fail on unchanged code.** In the first two task-2240 runs, on code identical to
-`main`, two window tests failed each time and they were different tests each time:
+**Window tests that fail on unchanged code.** Four of five task-2240 runs of the suite, on code
+identical to `main`, had one to three failures, and they were different tests each time:
 `the_find_bar_counts_the_matches_and_marks_every_one_of_them`,
-`a_program_that_prints_and_stops_leaves_what_it_printed_in_its_tab`, and
-`a_newer_version_is_offered_and_dont_ask_again_declines_that_version`, whose local update server
-refused the connection. Run the failing binary again on its own before looking for a cause in your
-change.
+`a_program_that_prints_and_stops_leaves_what_it_printed_in_its_tab`,
+`a_newer_version_is_offered_and_dont_ask_again_declines_that_version` (its local update server
+refused the connection, which also fails `every_catalogue_command_is_driven_both_ways`),
+`a_canvas_with_one_node_of_each_kind` and `the_chat_pane_with_nothing_said_in_it` (snapshot
+differences), `the_file_menu_holds_new_window_open_save_and_recent_projects` and
+`the_mcp_page_holds_the_install_buttons_the_server_and_the_configuration_to_copy`. Run the failing
+binary again on its own before looking for a cause in your change.
 
 ## Window test binaries from every checkout take turns
 
