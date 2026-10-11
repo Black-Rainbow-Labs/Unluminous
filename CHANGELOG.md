@@ -6,6 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- An inventory of every setting the Settings modal shows, for the designer (`task-2244`)
+- The settings inventory as one file per screen, each short enough for one canvas comment (`task-2244`)
+- The Settings window is the Settings design, every page drawn with a shared settings kit (`task-2246`)
+- The settings pages formatted the way cargo fmt writes them (`task-2246`)
+
 ## 0.74.0 — 2026-10-11
 
 - The release speed design records the 0.73.1 release and the after numbers (`task-2240`)
