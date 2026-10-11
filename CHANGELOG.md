@@ -6,7 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 0.73.1 — 2026-10-11
+## Unreleased
+
+- The release speed design records the 0.73.1 release and the after numbers (`task-2240`)
+- Agent-Tasks drawn to the approved design, the board and the ticket (`task-2241`)
+
+## 0.73.1 — 2026-10-10
 
 - Release on 80% of the processors, test only the crates that changed, build both platforms at once (`task-2240`)
 - Release.sh uses the same gate, tests for the selection, and the design (`task-2240`)
