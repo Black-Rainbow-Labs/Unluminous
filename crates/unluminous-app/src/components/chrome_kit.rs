@@ -48,6 +48,13 @@ fn state_for(ctx: &egui::Context) -> Rc<rux::RuxState> {
     })
 }
 
+/// The window's `rux` state for the context drawing now, for a part of the window that opens its own layers:
+/// the Settings window's cards (`components::settings_kit`), which share the furniture's canvases and its
+/// `end_frame`.
+pub fn state_for_the_window(ctx: &egui::Context) -> Rc<rux::RuxState> {
+    state_for(ctx)
+}
+
 /// Draw with `rux` into `rect`, in a layer that reaches `reach` points past it for the shadows.
 pub fn layer<R>(
     ui: &mut egui::Ui,

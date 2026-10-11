@@ -1341,7 +1341,7 @@ fn the_settings_window_opens_from_the_edit_menu_and_holds_the_font_and_the_backg
 fn the_settings_window_closes_on_the_close_button() {
     let mut harness = harness("");
     open_settings(&mut harness);
-    harness.get_by_label("Done").click();
+    harness.get_by_label("Close settings").click();
     steady(&mut harness);
     assert!(!harness.state().settings_window.open);
 }
@@ -1395,7 +1395,10 @@ fn the_mcp_page_holds_the_install_buttons_the_server_and_the_configuration_to_co
     harness.get_by_label("MCP port");
     harness.get_by_label("MCP tool shape");
     harness.get_by_label("Claude Code configuration");
-    // One block at a time, and the other client's is a click away.
+    // One block at a time, and the other client's is a click away. The Configuration card is at the bottom of
+    // the page, below what the dialog shows at first, so the page is scrolled to it the way a person would.
+    harness.state_mut().settings_window.scroll = 10_000.0;
+    steady(&mut harness);
     harness.get_by_label("Codex").click();
     steady(&mut harness);
     harness.get_by_label("Codex configuration");
@@ -2257,7 +2260,7 @@ fn the_menu_shortcuts_work_from_the_keyboard() {
     harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::Comma);
     steady(&mut harness);
     assert!(harness.state().settings_window.open, "command and comma should open the settings");
-    harness.get_by_label("Done").click();
+    harness.get_by_label("Close settings").click();
     steady(&mut harness);
 
     // Command and one, two and three switch between the three ways of looking at the file.

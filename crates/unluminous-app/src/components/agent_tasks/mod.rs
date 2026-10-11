@@ -645,68 +645,6 @@ pub(crate) fn raw_or_rendered(
     chosen
 }
 
-/// One value chosen from a list, drawn into `at`, answering what was chosen when it changed.
-///
-/// `task-28`: "Dropdowns. We need UI dropdowns for values." This is the **only** place the plugin draws a list
-/// of values, so a ticket's `Model` and the Settings page's `Default model` are the same control offering the
-/// same list — they used to be a text field and a text field, and each would have had to be corrected
-/// separately.
-///
-/// `components::controls::dropdown` is what it is made of, which the toolbar and `Settings -> Appearance`
-/// already use, so it opens, closes and reads like every other dropdown in Unluminous. `options` is `(value, said)`
-/// pairs: the value written down and the words a person reads, because `agent_done` is not what anybody calls
-/// that lane. `empty` is what the list calls holding nothing, for a value that may hold nothing; `None` means
-/// the value is required and there is no way to clear it.
-///
-/// Choosing what is already chosen answers `None`, so nothing is written and nothing is reported.
-pub(crate) fn value_dropdown(
-    ui: &mut egui::Ui,
-    at: Rect,
-    name: &str,
-    options: &[(String, String)],
-    chosen: &str,
-    empty: Option<&str>,
-) -> Option<String> {
-    value_dropdown_over(ui, at, name, options, chosen, empty, true)
-}
-
-/// The same, told whether to draw its own ground. See `controls::dropdown_over`.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn value_dropdown_over(
-    ui: &mut egui::Ui,
-    at: Rect,
-    name: &str,
-    options: &[(String, String)],
-    chosen: &str,
-    empty: Option<&str>,
-    ground: bool,
-) -> Option<String> {
-    let showing = options
-        .iter()
-        .find(|(value, _)| value == chosen)
-        .map(|(_, said)| said.clone())
-        .unwrap_or_else(|| empty.unwrap_or("").to_owned());
-    let rows: Vec<(String, String)> = match empty {
-        Some(said) => std::iter::once((String::new(), said.to_owned()))
-            .chain(options.iter().cloned())
-            .collect(),
-        None => options.to_vec(),
-    };
-    let picked =
-        crate::components::controls::dropdown_over(ui, at, &showing, name, None, ground, |ui| {
-            let mut picked = None;
-            for (value, said) in &rows {
-                // `selectable_label` rather than a painted row, because the list is inside egui's own popup and this
-                // is what every other dropdown in Unluminous puts in one.
-                if ui.selectable_label(value == chosen, said).clicked() {
-                    picked = Some(value.clone());
-                }
-            }
-            picked
-        });
-    picked.filter(|value| value != chosen)
-}
-
 /// The text is shortened until it fits rather than the drawing being clipped, so that what is cut off is
 /// announced by an ellipsis instead of being silently invisible. A first slice keeps the search cheap on a
 /// description sized string: how many characters could possibly fit is known from the width and the size, and

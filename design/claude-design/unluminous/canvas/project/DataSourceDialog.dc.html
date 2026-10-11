@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>New Data Source dialog</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/rux/tokens.css">
+<link rel="stylesheet" href="ds/rux/components/bundle.css">
+<script src="ds/rux/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div data-theme="unluminous-dark" style="position: relative; width: 1180px; height: 860px; overflow: hidden; background: var(--surface-1); font-family: var(--font-ui); color: var(--ink-700); --card: linear-gradient(145deg, #252a32, #1c2026); --chip: linear-gradient(145deg, #262b33, #20242b); --well: #1a1e24; --out-sm: -2px -2px 5px rgba(46, 52, 61, 0.7), 3px 3px 6px #0b0d11, inset 0 0 0 1px rgba(255, 255, 255, 0.045), inset 0 1px 0 rgba(255, 255, 255, 0.05); --in-sm: inset 2px 2px 5px #0c0f13, inset -2px -2px 5px #2a2f37; --grad: linear-gradient(135deg, #3d78ff, #5cb6ff); --grad-out: -3px -3px 7px rgba(46, 52, 61, 0.7), 4px 5px 12px rgba(20, 60, 160, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25);">
+<div aria-hidden="true" style="position: absolute; inset: 0; overflow: hidden;">
+<dc-import name="SettingsModal" section="Database" expanded="{{yes}}" height="860px" hint-size="1180px,860px"></dc-import>
+</div>
+<div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(8, 10, 14, 0.5);"></div>
+
+<div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;">
+<section role="dialog" aria-label="New Data Source" style="width: 560px; box-sizing: border-box; display: flex; flex-direction: column; gap: 18px; padding: 22px 24px 22px; border-radius: 28px; background: var(--surface-1); box-shadow: -6px -6px 16px rgba(42, 47, 55, 0.5), 0 30px 60px rgba(0, 0, 0, 0.6);">
+<header style="display: flex; align-items: center; gap: 12px;">
+<span style="flex: 1; font-family: var(--font-sans); font-size: 18px; font-weight: 600; letter-spacing: -0.015em; color: var(--ink-900);">New Data Source</span>
+<button aria-label="Close" style="width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%; background: var(--chip); box-shadow: var(--out-sm); color: var(--ink-500); display: flex; align-items: center; justify-content: center; line-height: 0; cursor: pointer;"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" style="display: block;"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" style="stroke: currentColor; stroke-width: 1.8; stroke-linecap: round;"></path></svg></button>
+</header>
+
+<div style="display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; border-radius: 22px; background: var(--card); box-shadow: -7px -7px 16px #2a2f37, 8px 8px 18px #0c0f13;">
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="flex: 1; font-size: 13px; font-weight: 600; color: var(--ink-900);">General</span>
+<span style="font-size: 11.5px; color: var(--ink-400);">Not tested yet</span>
+<button style="height: 32px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--chip); box-shadow: var(--out-sm); color: var(--ink-700); font-family: var(--font-ui); font-size: 12px; font-weight: 500; cursor: pointer;">Test Connection</button>
+</div>
+<div style="display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 12px 14px; align-items: center;">
+<label for="ds-name" style="font-size: 12.5px; color: var(--ink-500);">Name</label>
+<input id="ds-name" style="height: 36px; box-sizing: border-box; padding: 0 16px; border: 0; outline: 0; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm); color: var(--ink-900); font-family: var(--font-ui); font-size: 12.5px;">
+
+<span style="font-size: 12.5px; color: var(--ink-500);">Engine</span>
+<div role="radiogroup" aria-label="Engine" style="display: flex; gap: 3px; width: fit-content; padding: 4px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm);">
+<span role="radio" aria-checked="true" style="min-width: 90px; height: 28px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; border-radius: 999px; background: var(--chip); box-shadow: var(--out-sm); font-size: 12px; color: var(--ink-900);">PostgreSQL</span>
+<span role="radio" aria-checked="false" style="min-width: 90px; height: 28px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; border-radius: 999px; font-size: 12px; color: var(--ink-500);">SQLite</span>
+<span role="radio" aria-checked="false" style="min-width: 90px; height: 28px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; border-radius: 999px; font-size: 12px; color: var(--ink-500);">Inillucent</span>
+</div>
+
+<span style="font-size: 12.5px; color: var(--ink-500);">Host and port</span>
+<div style="display: flex; gap: 8px;">
+<input aria-label="Host" value="localhost" style="flex: 1; min-width: 0; height: 36px; box-sizing: border-box; padding: 0 16px; border: 0; outline: 0; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm); color: var(--ink-900); font-family: var(--font-code); font-size: 12px;">
+<input aria-label="Port" value="5432" style="width: 84px; height: 36px; box-sizing: border-box; padding: 0 16px; border: 0; outline: 0; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm); color: var(--ink-900); font-family: var(--font-code); font-size: 12px;">
+</div>
+
+<label for="ds-db" style="font-size: 12.5px; color: var(--ink-500);">Database</label>
+<input id="ds-db" style="height: 36px; box-sizing: border-box; padding: 0 16px; border: 0; outline: 0; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm); color: var(--ink-900); font-family: var(--font-code); font-size: 12px;">
+
+<label for="ds-user" style="font-size: 12.5px; color: var(--ink-500);">User</label>
+<input id="ds-user" style="height: 36px; box-sizing: border-box; padding: 0 16px; border: 0; outline: 0; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm); color: var(--ink-900); font-family: var(--font-code); font-size: 12px;">
+
+<label for="ds-pass" style="font-size: 12.5px; color: var(--ink-500);">Password</label>
+<input id="ds-pass" type="password" style="height: 36px; box-sizing: border-box; padding: 0 16px; border: 0; outline: 0; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm); color: var(--ink-900); font-family: var(--font-ui); font-size: 12.5px;">
+<span></span>
+<p style="margin: -4px 0 0; font-size: 11.5px; line-height: 1.55; color: var(--ink-400);">Kept in this machine's own credential store. Unluminous writes no password to a file, ever: what the settings file records is the name of the entry.</p>
+
+<span style="font-size: 12.5px; color: var(--ink-500);">Connection security</span>
+<div role="radiogroup" aria-label="Connection security" style="display: flex; gap: 3px; width: fit-content; padding: 4px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm);">
+<span role="radio" aria-checked="false" style="min-width: 80px; height: 28px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; border-radius: 999px; font-size: 12px; color: var(--ink-500);">Off</span>
+<span role="radio" aria-checked="true" style="min-width: 80px; height: 28px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; border-radius: 999px; background: var(--chip); box-shadow: var(--out-sm); font-size: 12px; color: var(--ink-900);">If offered</span>
+<span role="radio" aria-checked="false" style="min-width: 80px; height: 28px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; border-radius: 999px; font-size: 12px; color: var(--ink-500);">Required</span>
+</div>
+<span></span>
+<p style="margin: -4px 0 0; font-size: 11.5px; line-height: 1.55; color: var(--ink-400);">Whether the connection to the server is encrypted. Required refuses to connect without it.</p>
+</div>
+</div>
+
+<footer style="display: flex; justify-content: flex-end; gap: 8px;">
+<button style="height: 38px; padding: 0 16px; border: 0; border-radius: 999px; background: transparent; color: var(--ink-500); font-family: var(--font-ui); font-size: 12.5px; cursor: pointer;">Cancel</button>
+<button style="height: 38px; padding: 0 22px; border: 0; border-radius: 999px; background: var(--grad); box-shadow: var(--grad-out); color: #ffffff; font-family: var(--font-ui); font-size: 13px; font-weight: 600; cursor: pointer;">Save</button>
+</footer>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1180,"height":860}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { yes: true };
+  }
+}
+</script>
+</body>
+</html>

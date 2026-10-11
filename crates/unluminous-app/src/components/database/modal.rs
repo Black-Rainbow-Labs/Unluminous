@@ -1,12 +1,12 @@
-//! The plugin's four modals, all built from `components::modal`'s own furniture.
-//!
-//! A tenth modal that drew its own header would be a tenth modal that almost agrees with the other
-//! nine, so the frame, the header, the body, the footer and the buttons are the window's — and so are
-//! the dragging and the resizing, which `modal::show` gives every dialog without asking.
+//! The plugin's modals. The New Data Source dialog is drawn in the Settings design's look, because it is
+//! opened from the Database page of the Settings window and is drawn over it; the others are built from
+//! `components::modal`'s own furniture. Every one keeps the dragging, the resizing and the zoom that
+//! `modal::show` and `modal::show_unframed` give every dialog without asking.
 //!
 //! - **New Data Source** — the reference editor's General tab, cut to what applies: name, engine, host, port,
-//!   database, user, where the password is, ssl mode, read only, and Test Connection reporting the
-//!   server's own version string.
+//!   database, user, where the password is, ssl mode, and Test Connection reporting the server's own
+//!   version string. `task-2246` drew it as the design's `DataSourceDialog.dc.html`: one raised card on
+//!   the dialog's ground, carved wells, the engine and the connection security as carved tracks.
 //! - **Preview pending changes** — the actual statements Submit will send, from the same call Submit
 //!   makes, so the preview cannot drift from what happens.
 //! - **DDL** — a `CREATE` statement.
@@ -16,7 +16,12 @@ use egui::{Pos2, Rect, Vec2};
 
 use unluminous_db::source::{Engine, Secret, SslMode};
 
+use rux::components::ChipButton;
+use rux::icon::Icon;
+use rux::{Fill, Style};
+
 use crate::components::modal;
+use crate::components::settings_kit::{self as kit, Kind as ButtonKind};
 use crate::services::database::{ColumnForm, DatabaseExplorer, Modal, SourceForm, TableForm};
 use crate::services::plugin_ui::{Look, Request};
 use crate::theme::color;
@@ -190,7 +195,27 @@ struct Outcome {
     test: bool,
 }
 
-/// The New Data Source dialog.
+/// The modal's id, which is what its place, its zoom and its measured height are kept against.
+const SOURCE_ID: &str = "unluminous-database-source";
+/// The dialog's width, padding and corner: `width: 560px; padding: 22px 24px; border-radius: 28px`.
+const SOURCE_WIDTH: f32 = 560.0;
+const SOURCE_PAD_X: f32 = 24.0;
+const SOURCE_PAD_Y: f32 = 22.0;
+const SOURCE_RADIUS: f32 = 28.0;
+/// The General card's padding and corner, and the gaps the dialog lays its parts out with.
+const CARD_PAD_X: f32 = 20.0;
+const CARD_PAD_Y: f32 = 18.0;
+const CARD_RADIUS: f32 = 22.0;
+const SOURCE_GAP: f32 = 18.0;
+/// A field's height, the gap between two rows, and the label column: `grid-template-columns: 130px 1fr;
+/// gap: 12px 14px`.
+const SOURCE_FIELD: f32 = 36.0;
+const SOURCE_ROW_GAP: f32 = 12.0;
+const SOURCE_LABEL: f32 = 130.0 + 14.0;
+
+/// The New Data Source dialog, in the Settings design's look (`task-2246`, `DataSourceDialog.dc.html`): a
+/// heading and a round close button, one raised card holding the General settings with `Test Connection` at
+/// its top right, and `Cancel` and `Save` under it.
 fn source_modal(
     explorer: &mut DatabaseExplorer,
     ctx: &egui::Context,
@@ -204,58 +229,79 @@ fn source_modal(
         true => "New Data Source",
         false => "Data Source",
     };
-    // **The heights add up**, which is the whole of a modal's difficulty here: the rows are laid out
-    // one under another with no scroll, so a budget that overflows draws the last of them over the
-    // buttons — which is exactly what the first version of this dialog did. 470 is what the rows below
-    // need, counted rather than guessed: `task-1795` took the whole Password section and the whole
-    // Safety section away and put one Password field under User instead.
-    let (_, escaped) = modal::show(ctx, "unluminous-database-source", 520.0, 470.0, |ui, area| {
-        if modal::header(ui, area, heading) {
-            outcome.close = true;
-        }
-        let body = modal::body(area);
-        let mut pen = body.top() + 2.0;
-        pen = modal::section(ui, body, pen, "General");
-        pen = fields(ui, body, pen, &mut form);
-        let test = Rect::from_min_size(Pos2::new(body.left(), pen + 10.0), Vec2::new(126.0, 26.0));
-        if modal::button(ui, test, "Test Connection", true, false) {
-            outcome.test = true;
-        }
-        // What the server called itself, or why it would not answer - beside the button that asked,
-        // so the two read as one thing rather than as an answer floating above the footer. While the
-        // question is still out it says so, because the connection is on a thread now and an answer
-        // that simply appears some seconds later with nothing in between reads as a button that did
-        // nothing (`task-1984` S2).
-        let testing = explorer.is_testing();
-        if testing || form.tested.is_some() {
-            let (said, tint) = match (&form.tested, testing) {
-                (_, true) => ("Testing\u{2026}".to_owned(), color::text_dim()),
-                (Some(Ok(version)), _) => (version.clone(), color::git_added()),
-                (Some(Err(why)), _) => (why.clone(), color::unsaved()),
-                (None, false) => (String::new(), color::text_dim()),
-            };
-            let painter = ui.painter_at(body);
-            let galley = painter.layout(
-                said,
-                egui::FontId::proportional(11.5),
-                tint,
-                (body.right() - test.right() - 12.0).max(40.0),
-            );
-            painter.galley(Pos2::new(test.right() + 12.0, test.top()), galley, tint);
-        }
-        match modal::footer(ui, area, &[("Cancel", true), ("Save", true)]) {
-            Some(0) => outcome.close = true,
-            Some(1) => outcome.save = true,
-            _ => {}
-        }
+    // **The height is what the rows came out at last frame.** The rows are laid out one under another with no
+    // scroll, so a budget that was guessed drew the last of them over the buttons. Measured instead, and a
+    // first frame for an engine that has not been measured yet asks for the height that engine usually takes.
+    let measured = egui::Id::new(SOURCE_ID).with(("height", form.source.engine.title()));
+    let height = ctx.data(|data| data.get_temp::<f32>(measured)).unwrap_or(match form.source.engine {
+        Engine::Postgres => 660.0,
+        Engine::Sqlite | Engine::Inillucent => 430.0,
     });
-    // **Both of these are changes to the world, and neither happens in a draw any more**
-    // (`task-1984` S2 and S9). Test Connection opened a connection synchronously -- about twenty one
-    // seconds of TCP against a host that is down, with the window drawing nothing -- and the password
-    // was written to the credential store from here, which on macOS and Linux spawns `security` or
-    // `secret-tool` and can put an unlock prompt up behind a frozen window. The explorer owns both
-    // now, which is what makes `components/mod.rs`'s "no component changes the window's state"
-    // true of this file.
+    let testing = explorer.is_testing();
+    let (needed, escaped) = modal::show_unframed(ctx, SOURCE_ID, SOURCE_WIDTH, height, |ui, area| {
+        kit::layer(ui, "database-source-surface", area, |rux| {
+            let chat = rux.theme().chat;
+            rux.chrome.surface(area, SOURCE_RADIUS, chat.ground, chat.floating());
+        });
+        let inner = Rect::from_min_max(
+            Pos2::new(area.left() + SOURCE_PAD_X, area.top() + SOURCE_PAD_Y),
+            Pos2::new(area.right() - SOURCE_PAD_X, area.bottom() - SOURCE_PAD_Y),
+        );
+        let needed = kit::layer(ui, "database-source", inner, |rux| {
+            let theme = rux.theme();
+            // The heading and the round close button.
+            let close = Rect::from_center_size(
+                Pos2::new(inner.right() - 17.0, inner.top() + 17.0),
+                Vec2::splat(34.0),
+            );
+            if ChipButton::new(Icon::X, 34.0, "Close").mark(12.0, Some(1.8)).show(rux, close).clicked() {
+                outcome.close = true;
+            }
+            let style = Style::sans(18.0).semibold().tracking(-0.015);
+            let galley = rux.text(style, heading, theme.ink.i900);
+            rux::text::draw_left_capitals(
+                rux.painter(),
+                Pos2::new(inner.left(), close.center().y),
+                galley,
+                style,
+                theme.ink.i900,
+            );
+            let card_top = close.bottom() + SOURCE_GAP;
+            let card_bottom = general(rux, inner, card_top, &mut form, testing, &mut outcome);
+            // `Cancel` with no surface, and `Save` on the action's gradient.
+            let footer = card_bottom + SOURCE_GAP;
+            let save_width = rux.measure(Style::sans(13.0).semibold(), "Save").x + 44.0;
+            let save = Rect::from_min_size(
+                Pos2::new(inner.right() - save_width, footer),
+                Vec2::new(save_width, 38.0),
+            );
+            if primary(rux, save, "Save") {
+                outcome.save = true;
+            }
+            let cancel_width = kit::button_width(rux, "Cancel", false) + 2.0;
+            let cancel = Rect::from_min_size(
+                Pos2::new(save.left() - 8.0 - cancel_width, footer),
+                Vec2::new(cancel_width, 38.0),
+            );
+            if kit::button(rux, cancel, "Cancel", ButtonKind::Ghost) {
+                outcome.close = true;
+            }
+            save.bottom() + SOURCE_PAD_Y - area.top()
+        });
+        // Enter is `Save`, as the last button of every modal's footer is.
+        if modal::Confirm::Enter.pressed(ui) {
+            outcome.save = true;
+        }
+        needed
+    });
+    if (needed - height).abs() > 0.5 {
+        ctx.data_mut(|data| data.insert_temp(measured, needed));
+        ctx.request_repaint();
+    }
+    // **Both of these are changes to the world, and neither happens in a draw any more** (`task-1984` S2 and
+    // S9). Test Connection opened a connection synchronously, about twenty one seconds of TCP against a host
+    // that is down with the window drawing nothing, and the password was written to the credential store from
+    // here. The explorer owns both now.
     if outcome.test {
         form.tested = None;
         explorer.test_the_source(&form);
@@ -283,128 +329,228 @@ fn source_modal(
     (requests, closed)
 }
 
-/// The fields of the General tab.
-fn fields(ui: &mut egui::Ui, body: Rect, top: f32, form: &mut SourceForm) -> f32 {
-    let mut pen = top;
-    modal::field(ui, labelled(ui, body, pen, "Name"), "Name", &mut form.source.name);
-    pen += FIELD + GAP;
+/// The button that does the thing: the action's gradient, lifted, with white words.
+fn primary(rux: &mut rux::Rux<'_>, rect: Rect, label: &str) -> bool {
+    let chat = rux.theme().chat;
+    let response =
+        rux.ui.interact(rect, rux.ui.id().with(("database-source-primary", label)), egui::Sense::click());
+    if response.hovered() {
+        rux.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    let (gradient, elevation) = match (response.is_pointer_button_down_on(), response.hovered()) {
+        (true, _) => (chat.action, chat.action_pressed()),
+        (false, true) => (chat.action_hover, chat.action_raised()),
+        (false, false) => (chat.action, chat.action_raised()),
+    };
+    rux.chrome.surface(rect, rect.height() / 2.0, Fill::gradient(gradient, rect), elevation);
+    let ink = color::on_accent();
+    let galley = rux.text(Style::sans(13.0).semibold(), label, ink);
+    rux::text::draw_centred(rux.painter(), rect, galley, ink);
+    let named = label.to_owned();
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, named.clone()));
+    response.clicked()
+}
 
-    // Two buttons rather than a dropdown, because there are two engines and which one is chosen can
-    // then be seen without opening anything — the rule the three line spacings already keep.
-    let engines = labelled(ui, body, pen, "Engine");
-    for (index, engine) in
-        [Engine::Postgres, Engine::Sqlite, Engine::Inillucent].into_iter().enumerate()
-    {
-        let button = Rect::from_min_size(
-            Pos2::new(engines.left() + index as f32 * 96.0, engines.top()),
-            Vec2::new(90.0, engines.height()),
+/// The General card: what the last test said and `Test Connection`, then the fields. Answers where it ended.
+fn general(
+    rux: &mut rux::Rux<'_>,
+    inner: Rect,
+    top: f32,
+    form: &mut SourceForm,
+    testing: bool,
+    outcome: &mut Outcome,
+) -> f32 {
+    let theme = rux.theme();
+    let chat = theme.chat;
+    // The card's surface first, at the height its rows came out at, which is only known once they have been
+    // drawn: the rows go into a layer of their own, reserved after this one, so the card is under them.
+    let left = inner.left() + CARD_PAD_X;
+    let right = inner.right() - CARD_PAD_X;
+    let state = rux.state;
+    crate::theme::in_step(state);
+    let rows_area = Rect::from_min_max(Pos2::new(inner.left(), top), Pos2::new(inner.right(), top + 2_000.0));
+    let id = rux.ui.id().with("database-source-rows");
+    let bottom = rux::layer(&mut *rux.ui, state, id, rows_area.expand(kit::CARD_REACH), |rows| {
+        let theme = rows.theme();
+        let mut pen = top + CARD_PAD_Y;
+        // `General`, what the last test said, and the button that asks.
+        let head = Rect::from_min_max(Pos2::new(left, pen), Pos2::new(right, pen + 32.0));
+        let test_width = kit::button_width(rows, "Test Connection", false);
+        let test = Rect::from_min_size(Pos2::new(right - test_width, head.top()), Vec2::new(test_width, 32.0));
+        if kit::button(rows, test, "Test Connection", ButtonKind::Chip) {
+            outcome.test = true;
+        }
+        let galley = rows.text(Style::sans(13.0).semibold(), "General", theme.ink.i900);
+        rux::text::draw_left_capitals(
+            rows.painter(),
+            Pos2::new(left, head.center().y),
+            galley,
+            Style::sans(13.0).semibold(),
+            theme.ink.i900,
         );
-        let name = engine.title();
-        if crate::components::controls::choice_button(
-            ui,
-            button,
-            name,
-            form.source.engine == engine,
-        ) {
-            form.source.engine = engine;
-            if engine.is_a_file() {
-                form.source.host = String::new();
-                form.source.port = 0;
-            } else if form.source.port == 0 {
-                form.source.host = "localhost".to_owned();
-                form.source.port = 5432;
-            }
+        // What the server called itself, or why it would not answer, beside the button that asked. While the
+        // question is still out it says so, because the connection is on a thread and an answer that simply
+        // appears seconds later reads as a button that did nothing (`task-1984` S2).
+        let (said, tint) = match (&form.tested, testing) {
+            (_, true) => ("Testing\u{2026}".to_owned(), theme.ink.i400),
+            (Some(Ok(version)), _) => (version.clone(), theme.chat.faster),
+            (Some(Err(why)), _) => (why.clone(), theme.chat.slower),
+            (None, false) => ("Not tested yet".to_owned(), theme.ink.i400),
+        };
+        let room = test.left() - 12.0 - (left + 80.0);
+        let galley = rows.elided(Style::sans(11.5), &said, tint, room);
+        let width = galley.size().x;
+        rux::text::draw_left_capitals(
+            rows.painter(),
+            Pos2::new(test.left() - 12.0 - width, head.center().y),
+            galley,
+            Style::sans(11.5),
+            tint,
+        );
+        pen = head.bottom() + 14.0;
+        pen = fields(rows, left, right, pen, form);
+        pen + CARD_PAD_Y
+    });
+    let card = Rect::from_min_max(Pos2::new(inner.left(), top), Pos2::new(inner.right(), bottom));
+    rux.chrome.surface(card, CARD_RADIUS, Fill::gradient(chat.card, card), chat.raised());
+    bottom
+}
+
+/// One labelled row of the General card: the label at the left, centred on the first line. Answers where the
+/// controls start.
+fn label(rux: &mut rux::Rux<'_>, left: f32, pen: f32, name: &str) -> f32 {
+    let theme = rux.theme();
+    let galley = rux.text(Style::sans(12.5), name, theme.ink.i500);
+    rux::text::draw_left_capitals(
+        rux.painter(),
+        Pos2::new(left, pen + SOURCE_FIELD / 2.0),
+        galley,
+        Style::sans(12.5),
+        theme.ink.i500,
+    );
+    left + SOURCE_LABEL
+}
+
+/// A line of help under the controls, across the control column. Answers where it ended.
+fn help(rux: &mut rux::Rux<'_>, left: f32, right: f32, pen: f32, said: &str) -> f32 {
+    kit::paragraph(rux, Pos2::new(left + SOURCE_LABEL, pen + 8.0), right - left - SOURCE_LABEL, said)
+}
+
+/// The fields of the General card.
+fn fields(rux: &mut rux::Rux<'_>, left: f32, right: f32, top: f32, form: &mut SourceForm) -> f32 {
+    let mut pen = top;
+    let at = label(rux, left, pen, "Name");
+    let field = Rect::from_min_max(Pos2::new(at, pen), Pos2::new(right, pen + SOURCE_FIELD));
+    kit::text_well(rux, field, "Name", &mut form.source.name, "", false, false);
+    pen = field.bottom() + SOURCE_ROW_GAP;
+
+    // A track of three rather than a list, because which engine is chosen can then be seen without opening
+    // anything.
+    let at = label(rux, left, pen, "Engine");
+    let engines = [Engine::Postgres, Engine::Sqlite, Engine::Inillucent];
+    let names: Vec<&str> = engines.iter().map(|engine| engine.title()).collect();
+    let width = kit::segmented_width(rux, &names, 90.0, false, 12.0);
+    let track = Rect::from_min_size(Pos2::new(at, pen), Vec2::new(width, SOURCE_FIELD));
+    let chosen = engines.iter().position(|engine| *engine == form.source.engine);
+    if let Some(index) =
+        kit::segmented_sized(rux, track, "Engine", &names, chosen, 90.0, false, 28.0, 12.0)
+    {
+        let engine = engines[index];
+        form.source.engine = engine;
+        if engine.is_a_file() {
+            form.source.host = String::new();
+            form.source.port = 0;
+        } else if form.source.port == 0 {
+            form.source.host = "localhost".to_owned();
+            form.source.port = 5432;
         }
     }
-    pen += FIELD + GAP;
+    pen = track.bottom() + SOURCE_ROW_GAP;
 
     match form.source.engine {
         Engine::Sqlite | Engine::Inillucent => {
-            // The field and a picker beside it. A path is often quicker pasted or typed than walked
-            // to, and an agent cannot press a Browse button at all, so the field is not replaced by
-            // the picker - `rfd` is the same dialog `Open File` and `Open Folder` already use.
-            let line = labelled(ui, body, pen, "File");
+            // The field and a picker beside it. A path is often quicker pasted or typed than walked to, and an
+            // agent cannot press a Browse button at all, so the field is not replaced by the picker.
+            let at = label(rux, left, pen, "File");
+            let browse_width = kit::button_width(rux, "Browse\u{2026}", false);
             let browse = Rect::from_min_size(
-                Pos2::new(line.right() - 82.0, line.top()),
-                Vec2::new(82.0, line.height()),
+                Pos2::new(right - browse_width, pen + (SOURCE_FIELD - kit::BUTTON) / 2.0),
+                Vec2::new(browse_width, kit::BUTTON),
             );
-            let path = Rect::from_min_max(line.min, Pos2::new(browse.left() - 8.0, line.bottom()));
-            modal::field(ui, path, "File", &mut form.source.database);
-            if modal::button(ui, browse, "Browse\u{2026}", true, false) {
+            let field = Rect::from_min_max(Pos2::new(at, pen), Pos2::new(browse.left() - 8.0, pen + SOURCE_FIELD));
+            kit::text_well(rux, field, "File", &mut form.source.database, "", true, false);
+            if kit::button(rux, browse, "Browse\u{2026}", ButtonKind::Chip) {
                 if let Some(chosen) = choose_a_sqlite_file(&form.source.database) {
                     form.source.database = chosen;
-                    // A file that was just picked plainly exists, so whatever the last test said
-                    // about the last path no longer applies.
+                    // A file that was just picked plainly exists, so whatever the last test said about the
+                    // last path no longer applies.
                     form.tested = None;
                 }
             }
-            pen = modal::note(
-                ui,
-                body,
-                pen + FIELD + 2.0,
-                "The path of a SQLite file. It is opened, never created - a mistyped path says so \
-                 rather than quietly making an empty database.",
+            pen = help(
+                rux,
+                left,
+                right,
+                field.bottom(),
+                "The path of a SQLite file. It is opened, never created: a mistyped path says so rather than \
+                 quietly making an empty database.",
             );
         }
         Engine::Postgres => {
-            let line = labelled(ui, body, pen, "Host and port");
-            let host = Rect::from_min_size(line.min, Vec2::new(line.width() - 90.0, line.height()));
-            let port = Rect::from_min_size(
-                Pos2::new(line.right() - 82.0, line.top()),
-                Vec2::new(82.0, line.height()),
-            );
-            modal::field(ui, host, "Host", &mut form.source.host);
+            let at = label(rux, left, pen, "Host and port");
+            let port = Rect::from_min_size(Pos2::new(right - 84.0, pen), Vec2::new(84.0, SOURCE_FIELD));
+            let host = Rect::from_min_max(Pos2::new(at, pen), Pos2::new(port.left() - 8.0, pen + SOURCE_FIELD));
+            kit::text_well(rux, host, "Host", &mut form.source.host, "", true, false);
             let mut said = form.source.port.to_string();
-            if modal::field(ui, port, "Port", &mut said).changed() {
+            if kit::text_well(rux, port, "Port", &mut said, "", true, false).changed() {
                 form.source.port = said.parse().unwrap_or(form.source.port);
             }
-            pen += FIELD + GAP;
-            modal::field(
-                ui,
-                labelled(ui, body, pen, "Database"),
-                "Database",
-                &mut form.source.database,
-            );
-            pen += FIELD + GAP;
-            modal::field(ui, labelled(ui, body, pen, "User"), "User", &mut form.source.user);
-            pen += FIELD + GAP;
-
-            // **The password sits under the user**, which is where `task-1795` asks for it and where
-            // every other tool puts it. There is no environment-variable field any more: a password
-            // typed here is written to this machine’s own credential store when Save is pressed, and
-            // what the settings file records is the *name* of the entry.
-            secret_field(ui, labelled(ui, body, pen, "Password"), &mut form.typed);
-            pen = modal::note(ui, body, pen + FIELD + 2.0, secret_note(&form.source.secret));
-
-            // **`Connection security`, not `Encryption`.** `task-1795`: "No idea what encryption
-            // option means." The row is `sslmode`, the values it stores are unchanged, and the words
-            // are now the question a person can answer - with a line saying which of the two things
-            // called encryption this one is.
-            let modes = labelled(ui, body, pen, "Connection security");
-            for (index, mode) in
-                [SslMode::Disable, SslMode::Prefer, SslMode::Require].into_iter().enumerate()
+            pen = host.bottom() + SOURCE_ROW_GAP;
+            for (name, value) in
+                [("Database", &mut form.source.database), ("User", &mut form.source.user)]
             {
-                let button = Rect::from_min_size(
-                    Pos2::new(modes.left() + index as f32 * 92.0, modes.top()),
-                    Vec2::new(86.0, modes.height()),
-                );
-                if crate::components::controls::choice_button_named(
-                    ui,
-                    button,
-                    plain_words_for(mode),
-                    &format!("sslmode {}", mode.name()),
-                    form.source.ssl == mode,
-                ) {
-                    form.source.ssl = mode;
-                }
+                let at = label(rux, left, pen, name);
+                let field = Rect::from_min_max(Pos2::new(at, pen), Pos2::new(right, pen + SOURCE_FIELD));
+                kit::text_well(rux, field, name, value, "", true, false);
+                pen = field.bottom() + SOURCE_ROW_GAP;
             }
-            pen = modal::note(
-                ui,
-                body,
-                modes.bottom() + 2.0,
-                "Whether the connection to the server is encrypted. Required refuses to connect \
-                 without it. This is about the connection, not about how your password is kept - \
-                 that is always in this machine’s own credential store.",
+            // **The password sits under the user**, which is where `task-1795` asks for it. A password typed
+            // here is written to this machine's own credential store when Save is pressed, and what the settings
+            // file records is the *name* of the entry. `egui`'s own password mode draws dots in the galley
+            // rather than in the value, so a screenshot of this dialog carries no secret.
+            let at = label(rux, left, pen, "Password");
+            let field = Rect::from_min_max(Pos2::new(at, pen), Pos2::new(right, pen + SOURCE_FIELD));
+            kit::text_well(rux, field, "Password", &mut form.typed, "", false, true);
+            pen = help(rux, left, right, field.bottom(), secret_note(&form.source.secret)) + SOURCE_ROW_GAP;
+
+            // **`Connection security`, not `Encryption`.** `task-1795`: "No idea what encryption option
+            // means." The row is `sslmode`, the values it stores are unchanged, and the words are the question a
+            // person can answer.
+            let at = label(rux, left, pen, "Connection security");
+            let modes = [SslMode::Disable, SslMode::Prefer, SslMode::Require];
+            let names: Vec<&str> = modes.iter().map(|mode| plain_words_for(*mode)).collect();
+            let width = kit::segmented_width(rux, &names, 80.0, false, 12.0);
+            let track = Rect::from_min_size(Pos2::new(at, pen), Vec2::new(width, SOURCE_FIELD));
+            let chosen = modes.iter().position(|mode| *mode == form.source.ssl);
+            if let Some(index) = kit::segmented_sized(
+                rux,
+                track,
+                "Connection security",
+                &names,
+                chosen,
+                80.0,
+                false,
+                28.0,
+                12.0,
+            ) {
+                form.source.ssl = modes[index];
+            }
+            pen = help(
+                rux,
+                left,
+                right,
+                track.bottom(),
+                "Whether the connection to the server is encrypted. Required refuses to connect without it.",
             );
         }
     }
@@ -455,49 +601,10 @@ fn secret_note(secret: &Secret) -> &'static str {
              set up. Type one here to move it into this machine’s own credential store instead."
         }
         Secret::None => {
-            "Kept in this machine’s own credential store - the keychain on macOS, the Secret Service \
-             on Linux, Credential Manager on Windows. Unluminous writes no password to a file, ever: \
+            "Kept in this machine’s own credential store. Unluminous writes no password to a file, ever: \
              what the settings file records is the name of the entry."
         }
     }
-}
-
-/// A field that never draws what is in it.
-///
-/// `egui`'s own password mode, which replaces every character with a dot in the galley rather than in
-/// the value — so what is drawn is dots whether or not the field has the keyboard, and a screenshot of
-/// this page carries no secret.
-fn secret_field(ui: &mut egui::Ui, area: Rect, value: &mut String) {
-    ui.painter().rect(
-        area,
-        egui::CornerRadius::same(crate::theme::size::CONTROL_CORNER),
-        color::field(),
-        egui::Stroke::new(1.0, color::control_border()),
-        egui::StrokeKind::Inside,
-    );
-    let id = ui.id().with("database-source-password");
-    let inside = crate::components::controls::field_takes_the_whole_rectangle(
-        ui,
-        area,
-        8.0,
-        id,
-        "Password field",
-    );
-    let mut edit = ui.new_child(egui::UiBuilder::new().max_rect(inside.rect));
-    let response = edit.add(
-        egui::TextEdit::singleline(value)
-            .id(id)
-            .frame(egui::Frame::NONE)
-            .password(true)
-            .font(inside.font.clone())
-            .desired_width(inside.rect.width())
-            .text_color(color::text_control()),
-    );
-    response.widget_info(|| {
-        // Named, never valued: `WidgetInfo::labeled` would otherwise read the field's contents out to
-        // a test and to assistive technology.
-        egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Password")
-    });
 }
 
 /// Where the password for this form is, as the settings file will record it.

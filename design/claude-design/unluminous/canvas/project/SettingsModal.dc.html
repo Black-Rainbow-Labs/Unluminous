@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/rux/tokens.css">
+<link rel="stylesheet" href="ds/rux/components/bundle.css">
+<script src="ds/rux/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div data-theme="unluminous-dark" style="position: relative; width: 1180px; height: {{rootH}}; overflow: hidden; background: var(--surface-1); font-family: var(--font-ui); color: var(--ink-700); --card: linear-gradient(145deg, #252a32, #1c2026); --chip: linear-gradient(145deg, #262b33, #20242b); --well: #1a1e24; --out: -7px -7px 16px #2a2f37, 8px 8px 18px #0c0f13; --out-sm: -2px -2px 5px rgba(46, 52, 61, 0.7), 3px 3px 6px #0b0d11, inset 0 0 0 1px rgba(255, 255, 255, 0.045), inset 0 1px 0 rgba(255, 255, 255, 0.05); --in: inset 5px 5px 10px #0c0f13, inset -5px -5px 10px #2a2f37; --in-sm: inset 2px 2px 5px #0c0f13, inset -2px -2px 5px #2a2f37; --grad: linear-gradient(135deg, #3d78ff, #5cb6ff); --grad-out: -3px -3px 7px rgba(46, 52, 61, 0.7), 4px 5px 12px rgba(20, 60, 160, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25); --sky: #5cb6ff; --down: #3ad6ad; --up: #ff8f73;">
+
+<sc-if value="{{showBackdrop}}" hint-placeholder-val="{{true}}">
+<div aria-hidden="true" style="position: absolute; left: 0; top: 0; width: 1180px; height: 740px; overflow: hidden;">
+<dc-import name="EditorWindow" hint-size="1180px,740px"></dc-import>
+</div>
+</sc-if>
+<div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(8, 10, 14, 0.62);"></div>
+
+<div style="position: absolute; inset: 0; display: flex; align-items: {{align}}; justify-content: center; padding: {{outerPad}};">
+<section role="dialog" aria-label="Settings — unluminous" style="width: 1000px; height: {{modalH}}; box-sizing: border-box; display: flex; gap: 24px; padding: 20px; border-radius: 30px; background: var(--surface-1); box-shadow: -6px -6px 16px rgba(42, 47, 55, 0.5), 0 30px 60px rgba(0, 0, 0, 0.6);">
+
+<nav aria-label="Settings pages" style="width: 248px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 3px; padding: 14px 12px; border-radius: 24px; background: var(--card); box-shadow: var(--out); align-self: stretch;">
+<div style="padding: 2px 12px 12px; font-size: 13px; font-weight: 600; color: var(--ink-900);">Settings <span style="font-weight: 400; color: var(--ink-400);">— unluminous</span></div>
+<div style="position: relative; display: flex; align-items: center; gap: 9px; margin-bottom: 8px; padding: 0 14px; height: 38px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm);">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="display: block; flex-shrink: 0;"><path d="M10.5 4a6.5 6.5 0 1 1 0 13a6.5 6.5 0 1 1 0-13zM15.5 15.5l4.5 4.5" style="stroke: var(--ink-400); stroke-width: 1.8; stroke-linecap: round;"></path></svg>
+<input aria-label="Search settings" placeholder="Search settings" style="flex: 1; min-width: 0; border: 0; outline: 0; padding: 0; background: transparent; color: var(--ink-900); font-family: var(--font-ui); font-size: 12.5px;">
+</div>
+<sc-for list="{{nav}}" as="n" hint-placeholder-count="14">
+<sc-if value="{{n.isGroup}}" hint-placeholder-val="{{false}}">
+<div style="padding: 10px 12px 3px; font-size: 11px; color: var(--ink-400);">{{n.label}}</div>
+</sc-if>
+<sc-if value="{{n.isGap}}" hint-placeholder-val="{{false}}"><div style="height: 8px;"></div></sc-if>
+<sc-if value="{{n.isPage}}" hint-placeholder-val="{{true}}">
+<button aria-current="{{n.current}}" onClick="{{n.pick}}" style="height: 34px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 0; border-radius: 999px; background: {{n.bg}}; box-shadow: {{n.shadow}}; color: {{n.colour}}; font-family: var(--font-ui); font-size: 12.5px; text-align: left; cursor: pointer;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="display: block; flex-shrink: 0;"><path d="{{n.d}}" style="stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;"></path></svg>
+<span>{{n.label}}</span>
+</button>
+</sc-if>
+</sc-for>
+<span style="flex: 1;"></span>
+<span style="padding: 8px 12px 0; font-size: 11px; line-height: 1.5; color: var(--ink-400);">Changes take effect at once.</span>
+</nav>
+
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 18px;">
+<header style="flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 4px 0 0 4px;">
+<span style="flex: 1; font-size: 13px; color: var(--ink-400);"><sc-if value="{{hasGroup}}" hint-placeholder-val="{{true}}"><span>{{group}}<span style="padding: 0 6px;">›</span></span></sc-if><span style="font-family: var(--font-sans); font-size: 20px; font-weight: 600; letter-spacing: -0.015em; color: var(--ink-900);">{{page}}</span></span>
+<button aria-label="Close settings" style="width: 36px; height: 36px; flex-shrink: 0; padding: 0; border: 0; border-radius: 50%; background: var(--chip); box-shadow: var(--out-sm); color: var(--ink-500); display: flex; align-items: center; justify-content: center; line-height: 0; cursor: pointer;"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" style="display: block;"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" style="stroke: currentColor; stroke-width: 1.8; stroke-linecap: round;"></path></svg></button>
+</header>
+
+<div style="flex: 1; min-height: 0; overflow-y: {{scroll}}; display: flex; flex-direction: column; gap: 18px; padding: 24px 30px 30px 24px; margin: -24px -30px -30px -24px;">
+
+<sc-if value="{{isPlugins}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; align-items: center; gap: 14px;">
+<div role="tablist" aria-label="Plugins" style="display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm);">
+<button role="tab" aria-selected="false" style="height: 32px; padding: 0 16px; border: 0; border-radius: 999px; background: transparent; color: var(--ink-500); font-family: var(--font-ui); font-size: 12px; cursor: pointer;">Marketplace</button>
+<button role="tab" aria-selected="true" style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 16px; border: 0; border-radius: 999px; background: var(--chip); box-shadow: var(--out-sm); color: var(--ink-900); font-family: var(--font-ui); font-size: 12px; cursor: pointer;">Installed<span style="min-width: 20px; height: 20px; padding: 0 6px; box-sizing: border-box; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm); display: flex; align-items: center; justify-content: center; font-size: 10.5px; color: var(--ink-500);">4</span></button>
+</div>
+<div style="flex: 1; display: flex; align-items: center; gap: 9px; height: 36px; padding: 0 14px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm);">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="display: block;"><path d="M10.5 4a6.5 6.5 0 1 1 0 13a6.5 6.5 0 1 1 0-13zM15.5 15.5l4.5 4.5" style="stroke: var(--ink-400); stroke-width: 1.8; stroke-linecap: round;"></path></svg>
+<input aria-label="Search plugins" placeholder="Search plugins" style="flex: 1; min-width: 0; border: 0; outline: 0; padding: 0; background: transparent; color: var(--ink-900); font-family: var(--font-ui); font-size: 12.5px;">
+</div>
+</div>
+<div style="display: flex; gap: 18px; align-items: flex-start;">
+<div style="width: 240px; flex-shrink: 0; display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: 22px; background: var(--well); box-shadow: var(--in-sm);">
+<sc-for list="{{pluginList}}" as="pl" hint-placeholder-count="4">
+<button style="display: flex; flex-direction: column; gap: 2px; padding: 9px 14px; border: 0; border-radius: 16px; background: {{pl.bg}}; box-shadow: {{pl.shadow}}; text-align: left; cursor: pointer;">
+<span style="font-family: var(--font-ui); font-size: 12.5px; color: var(--ink-900);">{{pl.name}}</span>
+<span style="font-family: var(--font-ui); font-size: 11px; color: var(--ink-400);">{{pl.note}}</span>
+</button>
+</sc-for>
+</div>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; border-radius: 24px; background: var(--card); box-shadow: var(--out);">
+<div style="display: flex; align-items: center; gap: 12px;">
+<span style="flex: 1; display: flex; flex-direction: column; gap: 2px;"><span style="font-family: var(--font-sans); font-size: 17px; font-weight: 600; color: var(--ink-900);">Agent-Chat</span><span style="font-size: 11.5px; color: var(--ink-400);">[ vendor ]</span></span>
+<button role="switch" aria-checked="true" aria-label="Enabled" style="width: 44px; height: 24px; padding: 0; border: 0; border-radius: 999px; background: var(--grad); box-shadow: inset 1px 1px 3px rgba(0, 0, 0, 0.35); position: relative; cursor: pointer;"><span style="position: absolute; left: 22px; top: 2px; width: 20px; height: 20px; border-radius: 50%; background: #e8ebf1; box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.4);"></span></button>
+<button style="height: 34px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--chip); box-shadow: var(--out-sm); color: var(--ink-700); font-family: var(--font-ui); font-size: 12px; font-weight: 500; cursor: pointer;">Customise</button>
+</div>
+<p style="margin: 0; font-size: 11.5px; line-height: 1.55; color: var(--ink-400);">Installed with Unluminous and working. Customising writes its folder out where it can be edited by hand.</p>
+<span style="font-size: 12.5px; font-weight: 600; color: var(--ink-900);">Overview</span>
+<div style="height: 64px; display: flex; align-items: center; justify-content: center; border-radius: 16px; background: var(--well); box-shadow: var(--in-sm); font-size: 11.5px; color: var(--ink-400);">[ the plugin's overview ]</div>
+<span style="font-size: 12.5px; font-weight: 600; color: var(--ink-900);">What it does not do</span>
+<div style="height: 52px; display: flex; align-items: center; justify-content: center; border-radius: 16px; background: var(--well); box-shadow: var(--in-sm); font-size: 11.5px; color: var(--ink-400);">[ what it does not do ]</div>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-for list="{{sections}}" as="sec" hint-placeholder-count="3">
+<div style="flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; padding: 18px 20px 20px; border-radius: 24px; background: var(--card); box-shadow: var(--out);">
+<div style="display: flex; flex-direction: column; gap: 5px;">
+<span style="font-size: 13px; font-weight: 600; color: var(--ink-900);">{{sec.title}}</span>
+<sc-if value="{{sec.hasHelp}}" hint-placeholder-val="{{false}}"><p style="margin: 0; font-size: 11.5px; line-height: 1.55; color: var(--ink-400); text-wrap: pretty;">{{sec.help}}</p></sc-if>
+</div>
+
+<sc-if value="{{sec.isThemes}}" hint-placeholder-val="{{false}}">
+<div role="radiogroup" aria-label="Theme" style="display: flex; flex-direction: column; gap: 4px; padding: 8px; border-radius: 20px; background: var(--well); box-shadow: var(--in-sm);">
+<sc-for list="{{themes}}" as="t" hint-placeholder-count="8">
+<button role="radio" aria-checked="{{t.checked}}" onClick="{{t.pick}}" style="height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border: 0; border-radius: 999px; background: {{t.bg}}; box-shadow: {{t.shadow}}; text-align: left; cursor: pointer;">
+<span style="font-family: var(--font-ui); font-size: 12.5px; color: var(--ink-900);">{{t.name}}</span>
+<span style="flex: 1; font-family: var(--font-ui); font-size: 11px; color: var(--ink-400);">{{t.plugin}}</span>
+<sc-for list="{{t.sw}}" as="c" hint-placeholder-count="6"><span style="width: 14px; height: 14px; border-radius: 50%; background: {{c}}; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);"></span></sc-for>
+</button>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{sec.isEndpoints}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 14px;">
+<sc-for list="{{endpoints}}" as="ep" hint-placeholder-count="3">
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; border-radius: 20px; background: {{ep.bg}}; box-shadow: {{ep.shadow}};">
+<div style="display: flex; align-items: center; gap: 10px;">
+<input aria-label="Endpoint name" value="{{ep.name}}" style="width: 140px; height: 34px; box-sizing: border-box; padding: 0 14px; border: 0; outline: 0; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm); color: var(--ink-900); font-family: var(--font-ui); font-size: 12.5px; font-weight: 600;">
+<span style="flex: 1;"></span>
+<sc-if value="{{ep.inUse}}" hint-placeholder-val="{{false}}"><span style="height: 26px; display: flex; align-items: center; gap: 6px; padding: 0 12px 0 10px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm); font-size: 11.5px; color: var(--down);"><svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true" style="display: block;"><path d="M2.6 6.2l2.2 2.2 4.6-4.8" style="stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round;"></path></svg>In use</span></sc-if>
+<sc-if value="{{ep.notInUse}}" hint-placeholder-val="{{true}}"><button style="height: 30px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--chip); box-shadow: var(--out-sm); color: var(--ink-700); font-family: var(--font-ui); font-size: 12px; cursor: pointer;">Use</button></sc-if>
+<button style="height: 30px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: var(--ink-500); font-family: var(--font-ui); font-size: 12px; cursor: pointer;">Remove</button>
+</div>
+<div style="display: grid; grid-template-columns: 96px 1fr; gap: 10px 14px; align-items: center;">
+<span style="font-size: 12px; color: var(--ink-500);">Speaks</span>
+<div style="display: flex; gap: 3px; width: fit-content; padding: 4px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm);">
+<sc-for list="{{ep.wires}}" as="w" hint-placeholder-count="5"><span style="height: 26px; display: flex; align-items: center; padding: 0 11px; border-radius: 999px; background: {{w.bg}}; box-shadow: {{w.shadow}}; font-family: var(--font-code); font-size: 11px; color: {{w.colour}};">{{w.label}}</span></sc-for>
+</div>
+<sc-for list="{{ep.fields}}" as="f" hint-placeholder-count="2">
+<span style="font-size: 12px; color: var(--ink-500);">{{f.label}}</span>
+<input aria-label="{{f.label}}" value="{{f.value}}" placeholder="{{f.hint}}" style="width: {{f.w}}; height: 34px; box-sizing: border-box; padding: 0 14px; border: 0; outline: 0; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm); color: var(--ink-900); font-family: var(--font-code); font-size: 12px;">
+</sc-for>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--ink-400);"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" style="display: block;"><path d="M3.2 7.2l2.4 2.4 5.2-5.4" style="stroke: var(--down); stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round;"></path></svg>{{ep.status}}</div>
+</div>
+</sc-for>
+<button style="align-self: flex-start; height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 16px 0 13px; border: 0; border-radius: 999px; background: var(--chip); box-shadow: var(--out-sm); color: var(--ink-700); font-family: var(--font-ui); font-size: 12.5px; font-weight: 500; cursor: pointer;"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" style="display: block;"><path d="M6 2.2v7.6M2.2 6h7.6" style="stroke: currentColor; stroke-width: 1.8; stroke-linecap: round;"></path></svg>Add endpoint</button>
+</div>
+</sc-if>
+
+<sc-if value="{{sec.isSources}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; flex-direction: column; gap: 12px;">
+<div style="height: 64px; display: flex; align-items: center; justify-content: center; border-radius: 18px; background: var(--well); box-shadow: var(--in-sm); font-size: 12px; color: var(--ink-400);">There are none yet.</div>
+<button style="align-self: flex-start; height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 16px 0 13px; border: 0; border-radius: 999px; background: var(--chip); box-shadow: var(--out-sm); color: var(--ink-700); font-family: var(--font-ui); font-size: 12.5px; font-weight: 500; cursor: pointer;"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" style="display: block;"><path d="M6 2.2v7.6M2.2 6h7.6" style="stroke: currentColor; stroke-width: 1.8; stroke-linecap: round;"></path></svg>New data source</button>
+</div>
+</sc-if>
+
+<sc-for list="{{sec.rows}}" as="r" hint-placeholder-count="2">
+<sc-if value="{{r.isSwitch}}" hint-placeholder-val="{{false}}">
+<div style="display: flex; gap: 14px; align-items: flex-start;">
+<button role="switch" aria-checked="{{r.checked}}" aria-label="{{r.label}}" style="position: relative; width: 44px; height: 24px; flex-shrink: 0; margin-top: 1px; padding: 0; border: 0; border-radius: 999px; background: {{r.trackBg}}; box-shadow: {{r.trackShadow}}; cursor: pointer;"><span style="position: absolute; left: {{r.knobLeft}}; top: 2px; width: 20px; height: 20px; border-radius: 50%; background: {{r.knobBg}}; box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);"></span></button>
+<div style="flex: 1; display: flex; flex-direction: column; gap: 5px;">
+<span style="font-size: 12.5px; line-height: 26px; color: var(--ink-900);">{{r.label}}</span>
+<sc-if value="{{r.hasHelp}}" hint-placeholder-val="{{false}}"><p style="margin: 0; font-size: 11.5px; line-height: 1.55; color: var(--ink-400); white-space: pre-line; text-wrap: pretty;">{{r.help}}</p></sc-if>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{r.isField}}" hint-placeholder-val="{{true}}">
+<div style="display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 14px; align-items: start;">
+<span style="font-size: 12.5px; line-height: 38px; color: var(--ink-500);">{{r.label}}</span>
+<div style="display: flex; flex-direction: column; gap: 7px; min-width: 0;">
+<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 38px;">
+<sc-if value="{{r.isSelect}}" hint-placeholder-val="{{true}}">
+<button aria-label="{{r.label}} {{r.value}}" style="width: {{r.w}}; height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 14px 0 16px; border: 0; border-radius: 999px; background: var(--chip); box-shadow: var(--out-sm); color: var(--ink-900); font-family: {{r.font}}; font-size: 12.5px; text-align: left; cursor: pointer;"><span style="flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{r.value}}</span><svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true" style="display: block; flex-shrink: 0;"><path d="M2.5 3.8L5 6.3l2.5-2.5" style="stroke: var(--ink-400); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;"></path></svg></button>
+</sc-if>
+<sc-if value="{{r.isText}}" hint-placeholder-val="{{false}}">
+<input aria-label="{{r.label}}" type="{{r.inputType}}" value="{{r.value}}" placeholder="{{r.hint}}" style="width: {{r.w}}; height: 38px; box-sizing: border-box; padding: 0 16px; border: 0; outline: 0; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm); color: var(--ink-900); font-family: {{r.font}}; font-size: 12.5px;">
+</sc-if>
+<sc-if value="{{r.isPath}}" hint-placeholder-val="{{false}}">
+<span style="width: {{r.w}}; height: 38px; box-sizing: border-box; display: flex; align-items: center; padding: 0 16px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm); font-family: var(--font-code); font-size: 12px; color: var(--ink-500); white-space: nowrap; overflow: hidden;">{{r.value}}</span>
+</sc-if>
+<sc-if value="{{r.isSeg}}" hint-placeholder-val="{{false}}">
+<div role="radiogroup" aria-label="{{r.label}}" style="display: flex; gap: 3px; padding: 4px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm);">
+<sc-for list="{{r.opts}}" as="o" hint-placeholder-count="3"><span role="radio" aria-checked="{{o.checked}}" style="height: 30px; min-width: {{o.minW}}; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 0 12px; border-radius: 999px; background: {{o.bg}}; box-shadow: {{o.shadow}}; font-family: {{o.font}}; font-size: 12px; color: {{o.colour}};">{{o.label}}</span></sc-for>
+</div>
+</sc-if>
+<sc-if value="{{r.isSlider}}" hint-placeholder-val="{{false}}">
+<div style="position: relative; width: 280px; height: 12px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm);">
+<div style="position: absolute; left: 2px; top: 2px; bottom: 2px; width: {{r.fill}}; border-radius: 999px; background: var(--grad);"></div>
+<span style="position: absolute; left: {{r.knob}}; top: -6px; width: 24px; height: 24px; border-radius: 50%; background: var(--chip); box-shadow: var(--out-sm);"></span>
+</div>
+</sc-if>
+<sc-if value="{{r.isSwatches}}" hint-placeholder-val="{{false}}">
+<div role="radiogroup" aria-label="Accent" style="display: flex; gap: 12px; padding: 7px 12px; border-radius: 999px; background: var(--well); box-shadow: var(--in-sm);">
+<sc-for list="{{r.swatches}}" as="s" hint-placeholder-count="8"><span role="radio" aria-checked="{{s.checked}}" title="{{s.name}}" style="width: 24px; height: 24px; box-sizing: border-box; border-radius: 50%; background: {{s.bg}}; border: {{s.border}}; box-shadow: {{s.ring}};"></span></sc-for>
+</div>
+</sc-if>
+<sc-if value="{{r.isStatus}}" hint-placeholder-val="{{false}}">
+<span style="display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-500);"><span style="width: 22px; height: 22px; border-radius: 50%; background: var(--well); box-shadow: var(--in-sm); display: flex; align-items: center; justify-content: center; line-height: 0;"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true" style="display: block;"><path d="M2.5 5h5" style="stroke: var(--ink-400); stroke-width: 1.7; stroke-linecap: round;"></path></svg></span>{{r.value}}</span>
+</sc-if>
+<sc-for list="{{r.buttons}}" as="b" hint-placeholder-count="0">
+<button style="height: 34px; padding: 0 15px; border: 0; border-radius: 999px; background: {{b.bg}}; box-shadow: {{b.shadow}}; color: {{b.colour}}; font-family: var(--font-ui); font-size: 12px; font-weight: 500; white-space: nowrap; cursor: pointer;">{{b.label}}</button>
+</sc-for>
+<sc-if value="{{r.hasSuffix}}" hint-placeholder-val="{{false}}"><span style="font-size: 12px; color: var(--ink-500);">{{r.suffix}}</span></sc-if>
+</div>
+<sc-if value="{{r.isCode}}" hint-placeholder-val="{{false}}">
+<pre style="margin: 0; padding: 14px 16px; border-radius: 16px; background: var(--well); box-shadow: var(--in-sm); font-family: var(--font-code); font-size: 11.5px; line-height: 1.6; color: var(--ink-700); white-space: pre; overflow: hidden;">{{r.code}}</pre>
+</sc-if>
+<sc-if value="{{r.hasHelp}}" hint-placeholder-val="{{false}}"><p style="margin: 0; font-size: 11.5px; line-height: 1.55; color: var(--ink-400); white-space: pre-line; text-wrap: pretty;">{{r.help}}</p></sc-if>
+</div>
+</div>
+</sc-if>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</div>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"section":{"editor":"enum","options":["Appearance","Theme","Editor","Plugins","Terminal","MCP","Agent-Chat","Agent-Tasks","Database"],"default":"Appearance"},"expanded":{"editor":null,"default":false},"height":{"editor":null,"default":"760px"},"$preview":{"width":1180,"height":760}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const page = this.state.page ?? this.props.section ?? 'Appearance';
+    const expanded = !!this.props.expanded;
+    const theme = this.state.theme ?? 0;
+    const I = {
+      Appearance: 'M3.5 18L8 6.5h1L13.5 18M5.2 14h6.6M20 12.2v5.8M20 15a2.2 2.2 0 1 1 0-0.01',
+      Theme: 'M12 3.5a8.5 8.5 0 1 1 0 17a8.5 8.5 0 1 1 0-17zM12 3.5v17M12 7.5h4.5M12 11.5h6M12 15.5h4.5',
+      Editor: 'M7 3.5h7l4 4v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2zM14 3.5v4h4M8.5 12h7M8.5 15.5h4.5',
+      Plugins: 'M9.5 4.5a2 2 0 0 1 4 0V6h3.5a1 1 0 0 1 1 1v3.5h-1.5a2 2 0 0 0 0 4H18V18a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h2.5z',
+      Terminal: 'M4 6.5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM7.8 9.5l2.8 2.5-2.8 2.5M12.6 15h3.8',
+      MCP: 'M9 3.5v4M15 3.5v4M7 7.5h10v3a5 5 0 0 1-10 0zM12 15.5v5',
+      'Agent-Chat': 'M5 7a2.5 2.5 0 0 1 2.5-2.5h9A2.5 2.5 0 0 1 19 7v5.5a2.5 2.5 0 0 1-2.5 2.5H11l-4 3.5V15h0.5A2.5 2.5 0 0 1 5 12.5zM9 9.8h6',
+      'Agent-Tasks': 'M4.5 6a1.5 1.5 0 0 1 1.5-1.5h12A1.5 1.5 0 0 1 19.5 6v12a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 18zM9.5 4.5v15M14.5 4.5v15',
+      Database: 'M5 6.5C5 5.1 8.1 4 12 4s7 1.1 7 2.5S15.9 9 12 9 5 7.9 5 6.5zM5 6.5v11c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-11M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5'
+    };
+    const navItems = [
+      { group: 'Appearance & Behavior' }, { label: 'Appearance' }, { label: 'Theme' },
+      { group: 'Editor' }, { label: 'Editor' },
+      { gap: true }, { label: 'Plugins' },
+      { group: 'Tools' }, { label: 'Terminal' }, { label: 'MCP' },
+      { group: 'Plugins' }, { label: 'Agent-Chat' }, { label: 'Agent-Tasks' }, { label: 'Database' }
+    ];
+    let g = '', pageGroup = '';
+    navItems.forEach((it) => { if (it.group) g = it.group; else if (it.gap) g = ''; else if (it.label === page) pageGroup = g; });
+
+    const SANS = 'var(--font-ui)', MONO = 'var(--font-code)';
+    const sec = (title, rows, help, extra) => ({ title, rows: rows || [], help: help || '', hasHelp: !!help, isThemes: false, isEndpoints: false, isSources: false, ...(extra || {}) });
+    const base = { isSwitch: false, isField: true, isSelect: false, isText: false, isPath: false, isSeg: false, isSlider: false, isSwatches: false, isStatus: false, isCode: false, buttons: [], hasSuffix: false, suffix: '', help: '', hasHelp: false, font: SANS, w: '260px', value: '', hint: '', inputType: 'text' };
+    const withHelp = (o, help) => ({ ...o, help: help || '', hasHelp: !!help });
+    const btn = (label, kind) => ({ label, bg: kind === 'ghost' ? 'transparent' : 'var(--chip)', shadow: kind === 'ghost' ? 'none' : 'var(--out-sm)', colour: kind === 'ghost' ? 'var(--ink-500)' : 'var(--ink-700)' });
+    const select = (label, value, help, o) => withHelp({ ...base, isSelect: true, label, value, ...(o || {}) }, help);
+    const text = (label, value, hint, help, o) => withHelp({ ...base, isText: true, label, value: value || '', hint: hint || '', ...(o || {}) }, help);
+    const sw = (label, on, help) => withHelp({ ...base, isField: false, isSwitch: true, label, checked: on ? 'true' : 'false', trackBg: on ? 'var(--grad)' : 'var(--well)', trackShadow: on ? 'inset 1px 1px 3px rgba(0, 0, 0, 0.35)' : 'var(--in-sm)', knobLeft: on ? '22px' : '2px', knobBg: on ? '#e8ebf1' : '#2c323b' }, help);
+    const seg = (label, opts, chosen, help, o) => withHelp({ ...base, isSeg: true, label, opts: opts.map((x, i) => ({ label: x, checked: i === chosen ? 'true' : 'false', bg: i === chosen ? 'var(--chip)' : 'transparent', shadow: i === chosen ? 'var(--out-sm)' : 'none', colour: i === chosen ? 'var(--ink-900)' : 'var(--ink-500)', font: (o && o.mono) ? MONO : SANS, minW: (o && o.minW) || '0px' })), ...(o || {}) }, help);
+    const buttons = (label, list, help) => withHelp({ ...base, label, buttons: list }, help);
+
+    const P = {};
+    P.Appearance = [
+      sec('Font', [
+        select('Family', 'Consolas', '', { font: MONO }),
+        select('Size', '16', 'The font the editor sets every open file in. Bold, italic and colour stay as they were, and the size is also on the keyboard at Ctrl with plus and minus.', { w: '110px' })
+      ]),
+      sec('Interface', [
+        select('Family', "The editor's"),
+        select('Size', '12.5', 'The menus, the rail, the explorer and the status bar. The editing area keeps its own font above.', { w: '110px' })
+      ]),
+      sec('Background', [
+        withHelp({ ...base, isSlider: true, label: 'Opacity', fill: 'calc(86% - 4px)', knob: 'calc(86% - 13px)', hasSuffix: true, suffix: '86%' }, 'Fades the window so what is behind shows through. Text stays fully solid at every setting.'),
+        select('Behind', 'forest-1.jpg', 'A picture behind the window, or the desktop. Pictures chosen here are kept in Unluminous’s own folder, so moving the original does not lose it.')
+      ]),
+      sec('Plugin panes', [sw('Draw depth in plugin panes', true, 'Soft shadows, gradients and pressed edges behind a plugin’s own pane, drawn on the processor. Off, a plugin draws flat, which costs nothing at all.')])
+    ];
+    const swatchNames = [['The theme’s own', 'transparent'], ['Accent', '#489ff8'], ['Unsaved', '#febc2e'], ['Added', '#7fca98'], ['Modified', '#4d9dc3'], ['Agent', '#9b7cf6'], ['Blame', '#b4588c'], ['Close', '#ff5f57']];
+    P.Theme = [
+      sec('Theme', [], 'A theme says what every colour in Unluminous’s own palette means. One that names the nine token colours also recolours code, in every language at once, in the same frame.', { isThemes: true }),
+      sec('Accent', [withHelp({ ...base, isSwatches: true, label: 'Accent', swatches: swatchNames.map(([name, c], i) => ({ name, checked: i === 0 ? 'true' : 'false', bg: c, border: i === 0 ? '2px solid #8b93a3' : '0', ring: i === 0 ? '0 0 0 2px #1a1e24, 0 0 0 4px rgba(232, 235, 241, 0.7)' : 'none' })) }, 'One colour for everything the accent means: the caret, the open tab, an open folder and the line a program is stopped on. The first is whatever the theme chose.')]),
+      sec('Icons', [select('Icon set', 'Follow the theme', 'Which drawn marks the rail buttons, the folder arrow and the small controls use. Material draws a chevron where the classic set draws a triangle, and puts a folder in front of a folder’s name.')])
+    ];
+    P.Editor = [
+      sec('Gutter', [sw('Show line numbers', true, 'A number against each line of the file. Unluminous wraps, so a paragraph that runs over several rows is numbered once, against its first row. Right clicking the gutter puts the numbers away and annotates with git blame.')]),
+      sec('Notebooks', [sw('Scroll long outputs', true, 'An output taller than thirty lines scrolls inside its cell. Off, every output is drawn at its full height.')]),
+      sec('Suggestions', [
+        sw('Suggest completions as you type', true, 'A list of names appears under the caret once two letters of a word have been typed, in a file whose language a plugin claims. Off, nothing appears until you ask: Ctrl+Space, or Complete Word on the Edit menu, which work either way.'),
+        sw('Ask language servers (rust-analyzer, tsserver)', true, 'Rust and TypeScript files ask the language server the project already has for the members of a value, the import a name needs and a call’s parameters. Off, no server is started and the structural answers stand alone.')
+      ]),
+      sec('Indentation', [
+        select('One indent is', 'Tabs', 'What the Tab key types where nothing is selected. Indenting a selection still moves each line by one character, which is what Tab over a selection has always done.', { w: '160px' }),
+        sw('Indent a new line like the one above it', true, 'Pressing Enter starts the new line with the whitespace the line it was started from begins with.'),
+        sw('Trim trailing whitespace on save', false, 'Off by default, and never on a Markdown file, where two spaces at the end of a line are a line break.')
+      ]),
+      sec('Debugger', [
+        sw('Show value tooltip', true, 'While a program is stopped, resting the pointer on a name shows what it holds, and a structure opens into its fields, which can be typed over. Off, nothing appears until you ask: Show Value on the Debug menu.'),
+        text('lldb path', '', '', '', { w: '300px', font: MONO }),
+        text('node path', '', '', 'Leave empty to search the usual places; the debug tile offers to install one when none is found.', { w: '300px', font: MONO })
+      ]),
+      sec('Files', [
+        select('Line endings', 'Keep what the file has', 'What a file is written back with. Kept as it was found is what leaves a one character edit as a one line diff; the other two bring every file that is saved into line.', { w: '240px' }),
+        text('Exclude', '', '', 'Patterns Go to File, Find in Files, completion and Go to Definition leave out, separated by commas, written the way a .gitignore line is.\nThe project’s own .gitignore is read already; this is a list beside it. The explorer goes on showing everything either way.', { w: '300px', font: MONO })
+      ]),
+      sec('Updates', [sw('Check for a newer version once a day', true, 'One request to unluminous.com a day, shared by every window. A newer version is offered in a notice with Install & Restart and Don’t Ask Again. Off, Unluminous sends nothing until you ask: Check for Updates on the Unluminous menu works either way.')])
+    ];
+    P.Plugins = [];
+    P.Terminal = [
+      sec('Font', [select('Size', '13', 'The size of one cell in the terminal grid. Changing it tells the running program the new size.', { w: '110px' })]),
+      sec('Shell', [text('Program', '', 'PowerShell', 'The program each tab runs, started in the folder the explorer is showing. Leave it empty for PowerShell.', { w: '240px', font: MONO })]),
+      sec('Where a tab reopens', [sw('Ask PowerShell where it is', false, 'A tab reopens in the folder its shell was in, read off the shell’s own process. That answers for cmd.exe, bash and zsh and cannot answer for PowerShell: Set-Location moves PowerShell’s location and never the process’s current directory.\nOn, Unluminous adds one line to the prompt, after your own profile has set it up, so the shell says where it is. Off, nothing about your shell is changed. A shell that already reports its folder is followed either way.')])
+    ];
+    P.MCP = [
+      sec('Install', [buttons('', [btn('Install for Claude Code'), btn('Install for Codex')], 'Restart the agent afterwards. In Claude Code, /mcp then lists Unluminous’s tools.')], 'Writes Unluminous into the agent’s own configuration. The agent then launches Unluminous’s server itself over a pipe, so nothing listens on a port.'),
+      sec('Server', [
+        sw('Also serve over HTTP on this machine', false, ''),
+        text('Port', '7345', '', '', { w: '96px' }),
+        select('Tools', 'One tool an area', '', { w: '200px' }),
+        text('Areas', '', 'every area', 'Which parts of the catalogue this offers, such as editor,git. Empty offers everything.\n[N] tools. One an area names every command Unluminous has for about a third of the context one a command costs; one a command lets an agent permit a single tool by name.', { w: '300px', font: MONO }),
+        withHelp({ ...base, isStatus: true, label: 'State', value: 'Not listening. Agents that launch Unluminous’s server themselves still work.' }, '')
+      ]),
+      sec('Configuration', [withHelp({ ...seg('Client', ['Claude Code', 'Codex'], 0, '', { minW: '110px' }), buttons: [btn('Copy')], isCode: true, code: '{\n  "mcpServers": {\n    "unluminous": {\n      "command": "[ path to unluminous ]",\n      "args": [ "[ … ]" ]\n    }\n  }\n}' }, '')], 'For an agent with no button above. Paste it into that client’s own configuration file.')
+    ];
+    P['Agent-Chat'] = [
+      sec('Endpoints', [], 'What answers. claude-cli and codex-cli run the agent already installed on this machine: they need no key, they bring their own tools, and they read the open project’s own instructions. openai, anthropic and responses send to a URL instead; for those a key is never stored by Unluminous, so name the environment variable it is in.', { isEndpoints: true }),
+      sec('Answering', [withHelp(seg('May', ['read', 'edit', 'full'], 2, '', { minW: '72px' }), 'Anything at all: edit any file and run any command, with no sandbox and nothing to ask. This is what ships, because the agent on the other end is the one already signed in on this machine and trusted with this checkout.')], 'The chosen row is a program on this machine, so it answers with its own tools, its own sandbox and its own account. It runs in the project this window has open and reads that project’s own instructions.'),
+      sec('Conversation', [
+        text('System', '', 'nothing', 'Added after Unluminous’s own line, which says which file is showing. The file’s text is never sent by Unluminous.', { w: '340px' }),
+        text('History', '20', '', 'How many conversations are kept.', { w: '96px' })
+      ])
+    ];
+    P['Agent-Tasks'] = [
+      sec('The board', [
+        withHelp({ ...base, isPath: true, label: 'Board file', value: '[ the board’s path in the settings folder ]', w: '300px', buttons: [btn('Copy'), btn('Reveal')] }, 'One Inillucent file. Copy the path to back it up, Reveal to open the folder it is in, or set database in this plugin’s own settings.conf to move it.'),
+        text('Default project', '', 'the folder this window has open', 'Where an agent is launched when a ticket names no project of its own.', { w: '300px', buttons: [btn('Copy', 'ghost')] }),
+        text('Lease', '45', '45', 'How many minutes the board waits to hear from an agent before the watchdog calls its lease expired and starts nudging it.', { w: '96px', hasSuffix: true, suffix: 'minutes' })
+      ]),
+      sec('What a new ticket gets', [
+        seg('Default agent', ['claude', 'codex'], 0, 'Which agent a new ticket is assigned to, and which one takes a ticket assigned to a person.', { minW: '84px', mono: true }),
+        select('Default model', 'The agent’s own default', 'Passed as --model. The models the chosen agent has, and whatever this setting already names if it is not one of them.', { w: '300px' }),
+        select('Default effort', 'The agent’s own default', 'Passed as --effort. Codex knows nothing above high, so xhigh and max collapse onto it.', { w: '300px' })
+      ]),
+      sec('How an agent is launched', [
+        text('Claude command', '', 'claude --dangerously-skip-permissions', 'The program and the flags in front of it, for a ticket assigned to Claude. The ticket’s own model and effort and the session flag are added after it. No shell runs this, so nothing expands and a path with spaces in it goes in "quotes".', { w: '360px', font: MONO }),
+        text('Codex command', '', 'codex', 'The same for a ticket assigned to Codex. resume <id> stays the first thing after the program, because it is a subcommand rather than a flag.', { w: '360px', font: MONO })
+      ]),
+      sec('Where the agent connects', [
+        text('Iliad URL', '[ gateway URL ]', 'the agent’s own endpoint', 'The gateway the agent talks to, handed to it as ANTHROPIC_BASE_URL and OPENAI_BASE_URL. Empty means whichever endpoint the agent itself is configured for, which is api.anthropic.com for Claude.', { w: '360px', font: MONO }),
+        text('Iliad key', '', 'not set: type it here, or export ANTHROPIC_API_KEY in your shell profile', 'Typed once and never shown again. It goes to this machine’s keychain under iliad, not to a file, and Unluminous reads it at the moment an agent is launched and hands it over as ANTHROPIC_API_KEY, OPENAI_API_KEY and ILIAD_API_KEY.', { w: '360px', inputType: 'password', buttons: [btn('Save key'), btn('Clear', 'ghost')] })
+      ])
+    ];
+    P.Database = [
+      sec('Data sources', [], 'Where each one points, and where its password is kept. Unluminous never writes a password into a file: it goes into this machine’s own credential store (the keychain on macOS, the Secret Service on Linux, Credential Manager on Windows), and what is written down is the name of the entry.', { isSources: true }),
+      sec('Rows', [text('Page size', '200', '', 'One more than this is asked for and thrown away, which is what makes 1-200 of 200+ honest: nobody counted the rest.', { w: '96px', hasSuffix: true, suffix: 'rows a page, in a grid and in a console result' })])
+    ];
+
+    const themeList = [
+      { name: 'Unluminous Dark', plugin: 'built in', sw: ['#1a1f26', '#1f232a', '#489ff8', '#7fca98', '#febc2e', '#ff5f57'] },
+      { name: 'Unluminous Light', plugin: 'built in', sw: ['#fbfcfd', '#f1f3f7', '#2a63f0', '#1c8448', '#d99200', '#ff5f57'] },
+      { name: 'Islands Dracula Colorful', plugin: 'themes-bundle-1', sw: ['#282a36', '#21222c', '#bd93f9', '#50fa7b', '#ffb86c', '#ff5555'] },
+      { name: 'Material Palenight', plugin: 'themes-bundle-1', sw: ['#292d3e', '#232635', '#c792ea', '#c3e88d', '#ffcb6b', '#f07178'] },
+      { name: 'Material Deep Ocean', plugin: 'themes-bundle-1', sw: ['#0f111a', '#090b10', '#84ffff', '#c3e88d', '#ffcb6b', '#f07178'] },
+      { name: 'Monokai Pro', plugin: 'themes-bundle-1', sw: ['#2d2a2e', '#221f22', '#ffd866', '#a9dc76', '#fc9867', '#ff6188'] },
+      { name: 'One Dark', plugin: 'themes-bundle-1', sw: ['#282c34', '#21252b', '#61afef', '#98c379', '#e5c07b', '#e06c75'] }
+    ];
+    const wiresAll = ['claude-cli', 'codex-cli', 'openai', 'anthropic', 'responses'];
+    const ep = (name, wire, inUse, fields, status) => ({
+      name, inUse, notInUse: !inUse, status,
+      bg: inUse ? 'var(--chip)' : 'var(--well)',
+      shadow: inUse ? 'var(--out-sm)' : 'var(--in-sm)',
+      wires: wiresAll.map((w) => ({ label: w, bg: w === wire ? 'var(--chip)' : 'transparent', shadow: w === wire ? 'var(--out-sm)' : 'none', colour: w === wire ? 'var(--ink-900)' : 'var(--ink-400)' })),
+      fields
+    });
+    const sections = (P[page] || []).map((s) => s);
+    const heights = { true: this.props.height ?? '760px' };
+    return {
+      page,
+      group: pageGroup,
+      hasGroup: pageGroup !== '',
+      isPlugins: page === 'Plugins',
+      sections,
+      rootH: expanded ? (this.props.height ?? '1400px') : '760px',
+      modalH: expanded ? 'auto' : '700px',
+      align: expanded ? 'flex-start' : 'center',
+      outerPad: expanded ? '40px 0' : '0',
+      scroll: expanded ? 'visible' : 'auto',
+      showBackdrop: !expanded,
+      nav: navItems.map((it) => ({
+        isGroup: !!it.group, isGap: !!it.gap, isPage: !!it.label,
+        label: it.group || it.label || '',
+        d: it.label ? I[it.label] : '',
+        current: it.label === page ? 'page' : 'false',
+        bg: it.label === page ? 'var(--well)' : 'transparent',
+        shadow: it.label === page ? 'var(--in-sm)' : 'none',
+        colour: it.label === page ? 'var(--ink-900)' : 'var(--ink-500)',
+        pick: () => this.setState({ page: it.label })
+      })),
+      themes: themeList.map((t, i) => ({
+        ...t,
+        checked: i === theme ? 'true' : 'false',
+        bg: i === theme ? 'var(--chip)' : 'transparent',
+        shadow: i === theme ? 'var(--out-sm)' : 'none',
+        pick: () => this.setState({ theme: i })
+      })),
+      endpoints: [
+        ep('claude', 'claude-cli', true, [{ label: 'Program', value: '', hint: 'claude', w: '220px' }, { label: 'Model', value: '', hint: 'the agent’s own', w: '220px' }], 'Ready · found on this machine, and it holds its own account'),
+        ep('codex', 'codex-cli', false, [{ label: 'Program', value: '', hint: 'codex', w: '220px' }, { label: 'Model', value: '', hint: 'the agent’s own', w: '220px' }], 'Ready · found on this machine, and it holds its own account'),
+        ep('local', 'openai', false, [{ label: 'URL', value: 'http://127.0.0.1:8080/v1/chat/completions', hint: 'https://…', w: '360px' }, { label: 'Model', value: 'local', hint: 'the model’s name', w: '220px' }, { label: 'Key from', value: '', hint: 'OPENAI_API_KEY', w: '220px' }, { label: 'Most tokens', value: '4096', hint: '', w: '110px' }], 'Ready · no key needed')
+      ],
+      pluginList: [
+        { name: 'Agent-Chat', note: 'Bundled · enabled', bg: 'var(--chip)', shadow: 'var(--out-sm)' },
+        { name: 'Agent-Tasks', note: 'Bundled · enabled', bg: 'transparent', shadow: 'none' },
+        { name: 'Database', note: 'Bundled · enabled', bg: 'transparent', shadow: 'none' },
+        { name: 'themes-bundle-1', note: 'Bundled · enabled', bg: 'transparent', shadow: 'none' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,25 +1,26 @@
 //! `Settings -> Plugins`: the marketplace, and what is installed.
 //!
-//! Laid out like the capture in `tasks/unluminous-ide-tdd.md`, and built out of the Settings window's own
-//! parts, because a second window that looks nearly the same is worse than one that looks the same:
-//! a search box, `Marketplace` and `Installed` tabs with a count on the second, the list at the
-//! left, and the chosen plugin's own page at the right with its vendor, a button, and what it does
-//! and does not do.
+//! Laid out the way the Settings design draws it (`task-2246`): a carved track holding `Marketplace` and
+//! `Installed` with a count on the second, a search well beside it, the list of plugins in a carved well at the
+//! left with the chosen one raised out of it, and the chosen plugin's own card at the right with its vendor, a
+//! switch that turns it on and off, a button, what it does and what it does not do.
 //!
-//! **The catalogue is the bundled set, and there is no network call.** Fetching a plugin over the
-//! network means signature checking, a trust decision and a story about downloaded code, none of
-//! which a format that executes nothing has earned yet. The page used to carry a paragraph saying
-//! so; `task-1795` took it out, because it answered a question about Unluminous on every plugin’s own
-//! page, nine times over, where what a reader is there for is that plugin.
+//! **The catalogue is the bundled set, and there is no network call.** Fetching a plugin over the network
+//! means signature checking, a trust decision and a story about downloaded code, none of which a format that
+//! executes nothing has earned yet.
 
-use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
+use egui::{Pos2, Rect, Sense, Vec2};
+use rux::{Fill, Style};
 
-use crate::components::{controls, modal};
+use crate::components::settings_kit::{self as kit, Kind as ButtonKind};
 use crate::services::plugins::{Plugin, Plugins};
-use crate::theme::{color, icon, size};
 
-/// How wide the list at the left is.
-const LIST: f32 = 300.0;
+/// How wide the list at the left is: `width: 240px`.
+const LIST: f32 = 240.0;
+/// Between the list and the card, and between the tabs and the search well.
+const GAP: f32 = 18.0;
+/// How tall the row of tabs and the search well is.
+const BAR: f32 = 40.0;
 
 /// Which of the two tabs is showing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -34,7 +35,7 @@ pub enum Tab {
 pub struct PluginsState {
     pub tab: Tab,
     pub search: String,
-    /// The plugin whose page is showing, by id.
+    /// The plugin whose card is showing, by id.
     pub chosen: Option<String>,
 }
 
@@ -47,147 +48,141 @@ pub struct PluginsOutcome {
     pub uninstall: Option<String>,
     /// Switch a plugin on or off.
     pub set_enabled: Option<(String, bool)>,
-    /// How tall the page came out. This one sizes itself to the rectangle it is given — both of its
-    /// columns run to `area.bottom()` and each scrolls on its own — so it is exactly the room there
-    /// is, and the dialog never draws a second bar over the two it already has.
+    /// How tall the page came out, which is what decides whether the dialog gives it a scrollbar.
     pub height: f32,
 }
 
-/// Draw the page into `area`.
+/// Draw the page down `area`.
 pub fn show(
     ui: &mut egui::Ui,
     area: Rect,
     state: &mut PluginsState,
     plugins: &Plugins,
     installed_on_disk: &dyn Fn(&str) -> bool,
-    icon_for: &dyn Fn(&str) -> Option<egui::TextureHandle>,
+    _icon_for: &dyn Fn(&str) -> Option<egui::TextureHandle>,
 ) -> PluginsOutcome {
-    let mut outcome = PluginsOutcome { height: area.height(), ..PluginsOutcome::default() };
-    let header = header(ui, area, state, plugins);
-    let list = Rect::from_min_max(
-        Pos2::new(area.left() + 20.0, header),
-        Pos2::new(area.left() + 20.0 + LIST, area.bottom() - 16.0),
-    );
-    let page = Rect::from_min_max(
-        Pos2::new(list.right() + 20.0, header),
-        Pos2::new(area.right() - 20.0, area.bottom() - 16.0),
-    );
-    let showing = list_of_plugins(ui, list, state, plugins, icon_for);
-    if state.chosen.is_none() {
+    let mut outcome = PluginsOutcome::default();
+    let bar = Rect::from_min_size(area.min, Vec2::new(area.width(), BAR));
+    tabs_and_search(ui, bar, state, plugins);
+    let top = bar.bottom() + 16.0;
+    let list = Rect::from_min_size(Pos2::new(area.left(), top), Vec2::new(LIST, 0.0));
+    let (showing, list_bottom) = list_of_plugins(ui, list, state, plugins);
+    if state.chosen.as_ref().is_none_or(|chosen| !showing.contains(chosen)) {
         state.chosen = showing.first().cloned();
     }
+    let mut bottom = list_bottom;
     if let Some(id) = state.chosen.clone() {
         if let Some(plugin) = plugins.get(&id) {
-            detail(ui, page, plugin, installed_on_disk(&id), icon_for, &mut outcome);
+            let card = Rect::from_min_max(
+                Pos2::new(list.right() + GAP, top),
+                Pos2::new(area.right(), top),
+            );
+            bottom = bottom.max(detail(ui, card, plugin, installed_on_disk(&id), &mut outcome));
         }
     }
+    outcome.height = bottom - area.top() + 20.0;
     outcome
 }
 
-/// The tabs and the search box. Returns the y everything else starts at.
-fn header(ui: &mut egui::Ui, area: Rect, state: &mut PluginsState, plugins: &Plugins) -> f32 {
-    let top = area.top() + 16.0;
-    let heading = ui.painter().layout_no_wrap(
-        "Plugins".to_owned(),
-        egui::FontId::proportional(13.5),
-        color::text_strong(),
-    );
-    ui.painter().galley(Pos2::new(area.left() + 20.0, top), heading, color::text_strong());
-
-    let mut pen = area.left() + 120.0;
-    for (tab, name) in [(Tab::Marketplace, "Marketplace"), (Tab::Installed, "Installed")] {
-        let count = if tab == Tab::Installed { Some(plugins.enabled_count()) } else { None };
-        let label = match count {
-            Some(count) => format!("{name}  {count}"),
-            None => name.to_owned(),
-        };
-        let width = label.chars().count() as f32 * 7.0 + 26.0;
-        let rect = Rect::from_min_size(Pos2::new(pen, top - 4.0), Vec2::new(width, 24.0));
-        let response = ui.interact(rect, ui.id().with(("plugins-tab", name)), Sense::click());
-        let chosen = state.tab == tab;
-        if chosen {
-            controls::pill_with_stroke(
-                ui.painter(),
-                rect,
-                size::CONTROL_CORNER,
-                Stroke::new(1.0, color::accent()),
+/// The two tabs and the search well.
+fn tabs_and_search(ui: &mut egui::Ui, bar: Rect, state: &mut PluginsState, plugins: &Plugins) {
+    kit::layer(ui, "plugins-bar", bar, |rux| {
+        let theme = rux.theme();
+        let chat = theme.chat;
+        let style = Style::sans(12.0);
+        let count = plugins.enabled_count().to_string();
+        let count_width = (rux.measure(Style::sans(10.5), &count).x + 12.0).max(20.0);
+        let widths = [
+            rux.measure(style, "Marketplace").x + 32.0,
+            rux.measure(style, "Installed").x + 16.0 + 8.0 + count_width + 12.0,
+        ];
+        let track = Rect::from_min_size(
+            Pos2::new(bar.left(), bar.center().y - 20.0),
+            Vec2::new(widths[0] + widths[1] + 4.0 + 8.0, 40.0),
+        );
+        rux.chrome.surface(track, 20.0, chat.well, chat.carved_sm());
+        let mut x = track.left() + 4.0;
+        for (index, (tab, name)) in
+            [(Tab::Marketplace, "Marketplace"), (Tab::Installed, "Installed")].into_iter().enumerate()
+        {
+            let pill = Rect::from_min_size(Pos2::new(x, track.center().y - 16.0), Vec2::new(widths[index], 32.0));
+            let on = state.tab == tab;
+            let response = rux.ui.interact(pill, rux.ui.id().with(("plugins-tab", name)), Sense::click());
+            if on {
+                rux.chrome.surface(pill, 16.0, Fill::gradient(chat.chip, pill), chat.raised_chip());
+            } else if response.hovered() {
+                rux.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            let ink = match on {
+                true => theme.ink.i900,
+                false => theme.ink.i500,
+            };
+            let galley = rux.text(style, name, ink);
+            rux::text::draw_left_capitals(
+                rux.painter(),
+                Pos2::new(pill.left() + 16.0, pill.center().y),
+                galley,
+                style,
+                ink,
             );
-        } else if response.hovered() {
-            ui.painter().rect_filled(
-                rect,
-                CornerRadius::same(size::CONTROL_CORNER),
-                color::control(),
-            );
+            if tab == Tab::Installed {
+                let badge = Rect::from_min_size(
+                    Pos2::new(pill.right() - 12.0 - count_width, pill.center().y - 10.0),
+                    Vec2::new(count_width, 20.0),
+                );
+                rux.chrome.surface(badge, 10.0, chat.well, chat.carved_sm());
+                let galley = rux.text(Style::sans(10.5), &count, theme.ink.i500);
+                rux::text::draw_centred(rux.painter(), badge, galley, theme.ink.i500);
+            }
+            response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, on, name));
+            if response.clicked() && !on {
+                state.tab = tab;
+                state.chosen = None;
+            }
+            x = pill.right() + 4.0;
         }
-        let tint = if chosen { color::text_strong() } else { color::text_control() };
-        modal::label(ui.painter(), rect, rect.left() + 12.0, &label, tint, 12.0);
-        response.widget_info(|| {
-            egui::WidgetInfo::selected(egui::WidgetType::Button, true, chosen, name)
-        });
-        if response.clicked() {
-            state.tab = tab;
-            state.chosen = None;
-        }
-        pen += width + 8.0;
-    }
 
-    let search =
-        Rect::from_min_size(Pos2::new(area.left() + 20.0, top + 30.0), Vec2::new(LIST, 26.0));
-    ui.painter().rect(
-        search,
-        CornerRadius::same(size::CONTROL_CORNER),
-        color::field(),
-        Stroke::new(1.0, color::control_border()),
-        egui::StrokeKind::Inside,
-    );
-    icon::magnifier(
-        ui.painter(),
-        Pos2::new(search.left() + 13.0, search.center().y),
-        color::text_faint(),
-    );
-    let search_id = ui.id().with("plugins-search");
-    let inside = crate::components::controls::field_takes_the_whole_rectangle(
-        ui,
-        search,
-        26.0,
-        search_id,
-        "Search field",
-    );
-    let mut field = ui.new_child(egui::UiBuilder::new().max_rect(inside.rect));
-    let response = field.add(
-        egui::TextEdit::singleline(&mut state.search)
-            .id(search_id)
-            .hint_text(crate::components::controls::placeholder(
-                "Search plugins",
-                &inside.font,
-                color::text_faint(),
-            ))
-            .font(inside.font.clone())
-            .frame(egui::Frame::NONE)
-            .desired_width(inside.rect.width())
-            .text_color(color::text_control()),
-    );
-    response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Search plugins")
+        let well = Rect::from_min_max(
+            Pos2::new(track.right() + 14.0, bar.center().y - 18.0),
+            Pos2::new(bar.right(), bar.center().y + 18.0),
+        );
+        rux.chrome.surface(well, 18.0, chat.well, chat.carved_sm());
+        rux.mark(
+            rux::Mark::new(rux::Icon::Search, 14.0).stroke(1.8 * 24.0 / 14.0),
+            Pos2::new(well.left() + 21.0, well.center().y),
+            theme.ink.i400,
+        );
+        let font = Style::sans(12.5).font();
+        let id = rux.ui.id().with("plugins-search");
+        let text = crate::components::controls::field_takes_the_whole_rectangle_at(
+            rux.ui,
+            well,
+            37.0,
+            id,
+            "Search field",
+            &font,
+        );
+        let mut child = rux.ui.new_child(egui::UiBuilder::new().max_rect(text));
+        let response = child.add(
+            egui::TextEdit::singleline(&mut state.search)
+                .id(id)
+                .hint_text(crate::components::controls::placeholder("Search plugins", &font, theme.ink.i400))
+                .font(font.clone())
+                .frame(egui::Frame::NONE)
+                .desired_width(text.width())
+                .text_color(theme.ink.i900),
+        );
+        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Search plugins"));
     });
-    search.bottom() + 12.0
 }
 
-/// The list at the left. Returns the ids it showed, in order.
+/// The list at the left, in a carved well. Answers the ids it showed, in order, and where it ended.
 fn list_of_plugins(
     ui: &mut egui::Ui,
     area: Rect,
     state: &mut PluginsState,
     plugins: &Plugins,
-    icon_for: &dyn Fn(&str) -> Option<egui::TextureHandle>,
-) -> Vec<String> {
-    ui.painter().rect(
-        area,
-        CornerRadius::same(size::CONTROL_CORNER),
-        color::explorer_footer(),
-        Stroke::new(1.0, color::divider()),
-        egui::StrokeKind::Inside,
-    );
+) -> (Vec<String>, f32) {
     let needle = state.search.trim().to_lowercase();
     let showing: Vec<&Plugin> = plugins
         .all()
@@ -200,219 +195,193 @@ fn list_of_plugins(
         })
         .collect();
     let ids: Vec<String> = showing.iter().map(|plugin| plugin.id.clone()).collect();
-
-    let inner = area.shrink(4.0);
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
-    child.set_clip_rect(inner);
+    const ROW: f32 = 50.0;
+    let rows = showing.len().max(1) as f32;
+    let well = Rect::from_min_size(area.min, Vec2::new(area.width(), 16.0 + rows * ROW + (rows - 1.0) * 4.0));
     let mut chosen = None;
-    egui::ScrollArea::vertical().id_salt("plugin-list").show(&mut child, |ui| {
+    kit::layer(ui, "plugins-list", well, |rux| {
+        let theme = rux.theme();
+        kit::list_well(rux, well, 22.0);
         if showing.is_empty() {
-            ui.add_space(8.0);
-            ui.label(
-                egui::RichText::new("  Nothing matches.").size(11.5).color(color::text_faint()),
+            let galley = rux.text(Style::sans(11.5), "Nothing matches.", theme.ink.i400);
+            rux::text::draw_left_capitals(
+                rux.painter(),
+                Pos2::new(well.left() + 22.0, well.top() + 8.0 + ROW / 2.0),
+                galley,
+                Style::sans(11.5),
+                theme.ink.i400,
             );
         }
+        let mut top = well.top() + 8.0;
         for plugin in &showing {
+            let row = Rect::from_min_size(Pos2::new(well.left() + 8.0, top), Vec2::new(well.width() - 16.0, ROW));
             let picked = state.chosen.as_deref() == Some(plugin.id.as_str());
-            let name = plugin.name.clone();
-            let under = format!("{}  {}", plugin.version, plugin.vendor);
-            let enabled = plugin.enabled;
-            let picture = icon_for(&plugin.id);
-            let label = name.clone();
-            let response = row(ui, &plugin.id, &label, picked, move |painter, rect| {
-                if let Some(picture) = &picture {
-                    crate::services::icons::draw(
-                        painter,
-                        Pos2::new(rect.left() + 22.0, rect.center().y),
-                        picture,
-                    );
-                }
-                let tint = if picked { color::text_strong() } else { color::text_control() };
-                modal::label(painter, rect, rect.left() + 40.0, &name, tint, 12.5);
-                let lower = Rect::from_min_size(
-                    Pos2::new(rect.left(), rect.center().y + 8.0),
-                    Vec2::new(rect.width(), 14.0),
-                );
-                modal::label(painter, lower, rect.left() + 40.0, &under, color::text_faint(), 10.5);
-                if enabled {
-                    let box_rect = Rect::from_center_size(
-                        Pos2::new(rect.right() - 20.0, rect.center().y),
-                        Vec2::splat(15.0),
-                    );
-                    painter.rect_filled(box_rect, CornerRadius::same(3), color::accent());
-                    icon::tick(painter, box_rect.center(), color::on_accent());
-                }
-            });
-            if response.clicked() {
+            if kit::list_row(rux, row, 16.0, &plugin.name, picked).clicked() {
                 chosen = Some(plugin.id.clone());
             }
+            let name = rux.elided(Style::sans(12.5), &plugin.name, theme.ink.i900, row.width() - 28.0);
+            rux.painter().galley(Pos2::new(row.left() + 14.0, row.top() + 9.0), name, theme.ink.i900);
+            let note = format!(
+                "{} \u{00B7} {}",
+                match plugin.bundled {
+                    true => "Bundled",
+                    false => "Installed",
+                },
+                match plugin.enabled {
+                    true => "enabled",
+                    false => "disabled",
+                },
+            );
+            let note = rux.elided(Style::sans(11.0), &note, theme.ink.i400, row.width() - 28.0);
+            rux.painter().galley(Pos2::new(row.left() + 14.0, row.top() + 27.0), note, theme.ink.i400);
+            top = row.bottom() + 4.0;
         }
     });
     if let Some(id) = chosen {
         state.chosen = Some(id);
     }
-    ids
+    (ids, well.bottom())
 }
 
-/// A row that is two lines tall, because a plugin shows its name and its version and vendor.
-fn row(
-    ui: &mut egui::Ui,
-    id: &str,
-    name: &str,
-    chosen: bool,
-    draw: impl FnOnce(&egui::Painter, Rect),
-) -> egui::Response {
-    let width = ui.available_width();
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 44.0), Sense::hover());
-    let response = ui.interact(rect, ui.id().with(("plugin-row", id)), Sense::click());
-    let pill = rect.shrink2(Vec2::new(6.0, 2.0));
-    if chosen {
-        controls::pill(ui.painter(), pill, 5);
-    } else if response.hovered() {
-        ui.painter().rect_filled(pill, CornerRadius::same(5), color::control());
-    }
-    let upper = Rect::from_min_size(rect.min, Vec2::new(rect.width(), 26.0));
-    draw(ui.painter(), upper);
-    response.widget_info(|| {
-        egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), chosen, name)
-    });
-    response
-}
-
-/// The chosen plugin's own page.
+/// The chosen plugin's own card. Answers where it ended.
 fn detail(
     ui: &mut egui::Ui,
     area: Rect,
     plugin: &Plugin,
     on_disk: bool,
-    icon_for: &dyn Fn(&str) -> Option<egui::TextureHandle>,
     outcome: &mut PluginsOutcome,
-) {
-    let mut pen = area.top();
-    if let Some(picture) = icon_for(&plugin.id) {
-        crate::services::icons::draw(
-            ui.painter(),
-            Pos2::new(area.left() + 10.0, pen + 10.0),
-            &picture,
-        );
-    }
-    let title = ui.painter().layout_no_wrap(
-        plugin.name.clone(),
-        egui::FontId::proportional(16.0),
-        color::text_strong(),
-    );
-    ui.painter().galley(Pos2::new(area.left() + 26.0, pen), title.clone(), color::text_strong());
-    pen += title.size().y + 6.0;
-
-    let vendor = format!("{}  \u{00B7}  version {}", plugin.vendor, plugin.version);
-    pen = modal::note(ui, area, pen, &vendor);
-
-    // **Two buttons, because one of them used to mean three things.** `task-1795`: *"The Install
-    // button should be Uninstall if the plugin is already installed."*
-    //
-    // And the word on the first one has to be what pressing it *does*, which is the harder half of
-    // that sentence. A bundled plugin is already installed in every sense a person means — it is in
-    // the list, it is ticked, and it is working — so a button saying `INSTALL` on it is exactly the
-    // thing the ticket is complaining about. What pressing it really does is write the folder out so
-    // it can be edited by hand, which is `CUSTOMISE`. `INSTALL` is kept for the one state where it is
-    // the true word: a plugin that is neither bundled nor on disk. Switching one on and off is a
-    // different question and has a button of its own beside them.
-    let button = Rect::from_min_size(Pos2::new(area.left(), pen + 4.0), Vec2::new(120.0, 28.0));
-    let (word, filled) = match (on_disk, plugin.bundled) {
-        (true, _) => ("UNINSTALL", false),
-        (false, true) => ("CUSTOMISE", true),
-        (false, false) => ("INSTALL", true),
+) -> f32 {
+    let mut column = kit::Column::new(area.left(), area.right(), area.top());
+    // **Two controls, because one button used to mean three things.** `task-1795`: *"The Install button
+    // should be Uninstall if the plugin is already installed."* The word on the button is what pressing it
+    // **does**. A bundled plugin is already installed in every sense a person means, so what pressing it does
+    // is write the folder out so it can be edited by hand, which is `Customise`. `Install` is kept for the one
+    // state where it is the true word: a plugin that is neither bundled nor on disk. Switching one on and off
+    // is a different question and is the switch beside it.
+    let word = match (on_disk, plugin.bundled) {
+        (true, _) => "Uninstall",
+        (false, true) => "Customise",
+        (false, false) => "Install",
     };
-    if modal::button(ui, button, word, true, filled) {
-        match on_disk {
-            true => outcome.uninstall = Some(plugin.id.clone()),
-            false => outcome.install = Some(plugin.id.clone()),
-        }
-    }
-    let second =
-        Rect::from_min_size(Pos2::new(button.right() + 8.0, button.top()), Vec2::new(120.0, 28.0));
-    let switch = if plugin.enabled { "DISABLE" } else { "ENABLE" };
-    if modal::button(ui, second, switch, true, !plugin.enabled) {
-        outcome.set_enabled = Some((plugin.id.clone(), !plugin.enabled));
-    }
-    pen = button.bottom() + 10.0;
     let where_from = match (on_disk, plugin.bundled) {
         (true, true) => "Its folder is under the settings folder and can be edited by hand. Uninstalling takes that folder away and puts the plugin back to the one Unluminous ships.",
         (true, false) => "Its folder is under the settings folder and can be edited by hand. Uninstalling removes it.",
         (false, _) => "Installed with Unluminous and working. Customising writes its folder out where it can be edited by hand.",
     };
-    pen = modal::note(ui, area, pen, where_from);
-
-    // Everything below the button scrolls, because a plugin that has a lot to say about what it does
-    // not do would otherwise have the last of it cut off by the bottom of the window.
-    let rest = Rect::from_min_max(Pos2::new(area.left(), pen + 6.0), area.max);
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rest));
-    child.set_clip_rect(rest);
-    egui::ScrollArea::vertical().id_salt("plugin-detail").show(&mut child, |ui| {
-        let heading = |ui: &mut egui::Ui, text: &str| {
-            ui.add_space(6.0);
-            ui.label(egui::RichText::new(text).size(12.5).color(color::text_strong()));
-        };
-        let note = |ui: &mut egui::Ui, text: String| {
-            ui.label(egui::RichText::new(text).size(11.5).color(color::text_faint()));
-        };
-        heading(ui, "Overview");
-        note(ui, plugin.description.clone());
-        // What a plugin claims depends on which kind it is: a language claims file types and brings a
-        // colour scheme, and a plugin that draws claims neither and adds to the window instead. Saying
-        // `Colour scheme: Dracula` about a plugin that names no colours would be a small wrongness a
-        // reader notices at once, and it would also be a claim no plugin is allowed to make.
-        match plugin.kind {
-            crate::services::plugins::Kind::Language => {
-                let extensions: Vec<String> =
-                    plugin.extensions.iter().map(|extension| format!(".{extension}")).collect();
-                note(ui, format!("Claims {}", extensions.join(", ")));
-                // The scheme that is actually colouring this language's files, which since `task-1776`
-                // is the theme's when the theme names the nine tokens. Naming the plugin's own here
-                // while a theme was overriding it would be a small wrongness a reader notices at once,
-                // and it is the same rule the `match` above this one keeps about a plugin's kind.
-                let scheme = crate::services::plugins::scheme_of(plugin);
-                let from = match crate::theme::syntax().is_some() {
-                    true => " \u{2014} from the theme, which colours every language at once",
-                    false => "",
-                };
-                note(
-                    ui,
-                    format!(
-                        "Colour scheme: {}{from}. A scheme colours the tokens and not the editing area, so the window still lets the desktop through.",
-                        scheme.name
-                    ),
-                );
+    let vendor = format!("{} \u{00B7} version {}", plugin.vendor, plugin.version);
+    let overview = overview_of(plugin);
+    // A card with no heading of its own: the name is set larger than a card's title, with the vendor under
+    // it and the switch and the button at its right.
+    kit::card(ui, &mut column, "", None, |card| {
+        card.grow(|rux, column| {
+            let theme = rux.theme();
+            let name_style = Style::sans(17.0).semibold();
+            let name = rux.elided(name_style, &plugin.name, theme.ink.i900, column.width() - 220.0);
+            let name_height = name.size().y;
+            rux.painter().galley(Pos2::new(column.left, column.pen), name, theme.ink.i900);
+            let vendor_galley = rux.text(Style::sans(11.5), &vendor, theme.ink.i400);
+            let vendor_height = vendor_galley.size().y;
+            rux.painter().galley(
+                Pos2::new(column.left, column.pen + name_height + 2.0),
+                vendor_galley,
+                theme.ink.i400,
+            );
+            let header = name_height + 2.0 + vendor_height;
+            let button_width = kit::button_width(rux, word, false);
+            let button = Rect::from_min_size(
+                Pos2::new(column.right - button_width, column.pen + (header - kit::BUTTON) / 2.0),
+                Vec2::new(button_width, kit::BUTTON),
+            );
+            if kit::button(rux, button, word, ButtonKind::Chip) {
+                match on_disk {
+                    true => outcome.uninstall = Some(plugin.id.clone()),
+                    false => outcome.install = Some(plugin.id.clone()),
+                }
             }
-            crate::services::plugins::Kind::Ui => {
-                note(ui, format!("Adds {}", contributions_of(plugin)));
-                note(
-                    ui,
-                    "It draws with Unluminous's own controls, so it takes the font and the transparency from Appearance and cannot name a colour of its own.".to_owned(),
-                );
+            let track = Rect::from_min_size(
+                Pos2::new(button.left() - 12.0 - kit::SWITCH.x, button.center().y - kit::SWITCH.y / 2.0),
+                kit::SWITCH,
+            );
+            let mut enabled = plugin.enabled;
+            if kit::switch(rux, track, "Enabled", &mut enabled, track) {
+                outcome.set_enabled = Some((plugin.id.clone(), enabled));
             }
-            crate::services::plugins::Kind::Theme => {
-                let names: Vec<&str> =
-                    plugin.themes.iter().map(|theme| theme.name.as_str()).collect();
-                note(ui, format!("Carries {}", names.join(", ")));
-                note(
-                    ui,
-                    "A theme says what every name in Unluminous's own palette means, so the list of colours stays closed while what they are changes. Choose one in Appearance & Behavior -> Theme.".to_owned(),
-                );
+            let mut pen = column.pen + header + 14.0;
+            pen = kit::paragraph(rux, Pos2::new(column.left, pen), column.width(), where_from);
+            pen = section(rux, column, pen + 14.0, "Overview", &overview);
+            if !plugin.limitations.is_empty() {
+                pen = section(rux, column, pen + 14.0, "What it does not do", &plugin.limitations);
             }
-        }
-        if !plugin.limitations.is_empty() {
-            heading(ui, "What it does not do");
-            note(ui, plugin.limitations.clone());
-        }
+            ((), pen)
+        });
     });
+    column.pen - kit::CARD_GAP
 }
 
-/// What a plugin that draws adds to the window, as a sentence for its own row in the Plugins page.
+/// A heading and a carved well of words under it.
+fn section(rux: &mut rux::Rux<'_>, column: kit::Column, top: f32, heading: &str, said: &str) -> f32 {
+    let theme = rux.theme();
+    let style = Style::sans(12.5).semibold();
+    let galley = rux.text(style, heading, theme.ink.i900);
+    let height = galley.size().y;
+    rux.painter().galley(Pos2::new(column.left, top), galley, theme.ink.i900);
+    let words = rux::text::wrapped(rux.painter(), kit::help_style(), said, theme.ink.i500, column.width() - 32.0);
+    let well = Rect::from_min_size(
+        Pos2::new(column.left, top + height + 10.0),
+        Vec2::new(column.width(), words.size().y + 28.0),
+    );
+    kit::list_well(rux, well, 16.0);
+    rux.painter().galley(well.min + Vec2::new(16.0, 14.0), words, theme.ink.i500);
+    well.bottom()
+}
+
+/// What a plugin is and what it claims, as one paragraph for its Overview well.
 ///
-/// Read from the manifest rather than written down here, so a plugin that later contributes a second
-/// thing says so with no change to this page.
-fn contributions_of(plugin: &crate::services::plugins::Plugin) -> String {
+/// What a plugin claims depends on which kind it is: a language claims file types and brings a colour
+/// scheme, and a plugin that draws claims neither and adds to the window instead. Saying `Colour scheme:
+/// Dracula` about a plugin that names no colours would be a claim no plugin is allowed to make.
+fn overview_of(plugin: &Plugin) -> String {
+    let mut lines = vec![plugin.description.clone()];
+    match plugin.kind {
+        crate::services::plugins::Kind::Language => {
+            let extensions: Vec<String> =
+                plugin.extensions.iter().map(|extension| format!(".{extension}")).collect();
+            lines.push(format!("Claims {}.", extensions.join(", ")));
+            // The scheme that is actually colouring this language's files, which since `task-1776` is the
+            // theme's when the theme names the nine tokens.
+            let scheme = crate::services::plugins::scheme_of(plugin);
+            let from = match crate::theme::syntax().is_some() {
+                true => ", from the theme, which colours every language at once",
+                false => "",
+            };
+            lines.push(format!(
+                "Colour scheme: {}{from}. A scheme colours the tokens and not the editing area, so the window still lets the desktop through.",
+                scheme.name
+            ));
+        }
+        crate::services::plugins::Kind::Ui => {
+            lines.push(format!("Adds {}", contributions_of(plugin)));
+            lines.push(
+                "It draws with Unluminous's own controls, so it takes the font and the transparency from Appearance and cannot name a colour of its own.".to_owned(),
+            );
+        }
+        crate::services::plugins::Kind::Theme => {
+            let names: Vec<&str> = plugin.themes.iter().map(|theme| theme.name.as_str()).collect();
+            lines.push(format!("Carries {}.", names.join(", ")));
+            lines.push(
+                "A theme says what every name in Unluminous's own palette means, so the list of colours stays closed while what they are changes. Choose one in Appearance & Behavior, Theme.".to_owned(),
+            );
+        }
+    }
+    lines.retain(|line| !line.trim().is_empty());
+    lines.join("\n")
+}
+
+/// What a plugin that draws adds to the window, as a sentence for its card.
+///
+/// Read from the manifest rather than written down here, so a plugin that later contributes a second thing
+/// says so with no change to this page.
+fn contributions_of(plugin: &Plugin) -> String {
     let mut added: Vec<String> = Vec::new();
     if let Some(pane) = &plugin.contributions.pane {
         added.push(format!("a pane called {} with a button in the rail", pane.label));
@@ -427,7 +396,7 @@ fn contributions_of(plugin: &crate::services::plugins::Plugin) -> String {
         added.push("a page in these settings".to_owned());
     }
     match added.is_empty() {
-        true => "nothing to the window".to_owned(),
+        true => "nothing to the window.".to_owned(),
         false => format!("{}.", added.join(", ")),
     }
 }

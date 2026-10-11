@@ -202,7 +202,7 @@ fn an_html_file_is_coloured_by_its_plugin() {
 #[test]
 fn the_plugins_page_lists_the_ones_that_ship_with_unluminous() {
     let mut harness = harness("");
-    // A store of its own, because `CUSTOMISE` writes a plugin's folder out under it and a test must
+    // A store of its own, because `Customise` writes a plugin's folder out under it and a test must
     // not touch the settings of the person running it.
     let store = std::env::temp_dir().join("unluminous-plugins-page-store");
     let _ = std::fs::remove_dir_all(&store);
@@ -216,20 +216,20 @@ fn the_plugins_page_lists_the_ones_that_ship_with_unluminous() {
     }
     harness.get_by_label("Marketplace");
 
-    // **The button says what pressing it does.** `task-1795` reported `INSTALL` on a plugin that is
+    // **The button says what pressing it does.** `task-1795` reported `Install` on a plugin that is
     // bundled, ticked and working, which is exactly what it reads as. Writing the folder out so it
-    // can be edited is `CUSTOMISE`; `UNINSTALL` is what takes that folder away again.
-    assert_eq!(harness.query_all_by_label("INSTALL").count(), 0, "nothing here is uninstalled");
-    harness.get_by_label("CUSTOMISE").click();
+    // can be edited is `Customise`; `Uninstall` is what takes that folder away again.
+    assert_eq!(harness.query_all_by_label("Install").count(), 0, "nothing here is uninstalled");
+    harness.get_by_label("Customise").click();
     steady(&mut harness);
     steady(&mut harness);
-    harness.get_by_label("UNINSTALL");
-    assert_eq!(harness.query_all_by_label("CUSTOMISE").count(), 0, "it is on disk now");
+    harness.get_by_label("Uninstall");
+    assert_eq!(harness.query_all_by_label("Customise").count(), 0, "it is on disk now");
 
-    harness.get_by_label("UNINSTALL").click();
+    harness.get_by_label("Uninstall").click();
     steady(&mut harness);
     steady(&mut harness);
-    harness.get_by_label("CUSTOMISE");
+    harness.get_by_label("Customise");
     assert!(
         harness.state().plugins.all().iter().any(|plugin| plugin.id == "agent-chat"),
         "uninstalling a bundled plugin puts it back to the one Unluminous ships rather than removing it",

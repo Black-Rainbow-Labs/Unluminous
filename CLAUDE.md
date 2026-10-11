@@ -2093,18 +2093,12 @@ The Editor page ran 217 points past the body, and its `Check for a newer version
 was painted 89 points below the dialog's bottom edge, over the window, in an accepted picture nobody
 had questioned. The MCP page was 40 points over.
 
-So the window stayed at 680 and `components::settings_dialog` gained a scrolling page area instead.
-The four numbers it rests on: the page is drawn into the body **lifted** by however far it is scrolled,
-because every page positions what it draws from `area.top()` down and no page has to know it is being
-scrolled; what keeps it inside the body is the **clip**, since `Painter::with_clip_rect` intersects and
-`Ui::interact` cuts a control's interact rectangle the same way; the clip is saved and restored round
-the page rather than the page being drawn into a child `Ui`, because a child has an id of its own and
-every control on every page is named from the id of the `Ui` it is drawn into; and a page reports how
-tall it came out, because a page is a pen running down the rectangle it was given and where the pen
-stopped is only known once the last thing has been drawn. The bar is `components::scrollbar`, the one
-every document already has, and `Bar::new` answers `None` when a page fits — so the seven pages that
-already fitted show no bar and are drawn exactly where they were. The Plugins page and the three pages
-a plugin contributes report the body's own height, because each of them already scrolls itself.
+So the window stopped growing and `components::settings_dialog` gained a scrolling page area instead.
+The page is drawn into its room **lifted** by however far it is scrolled, because every page lays its cards
+out from `area.top()` down and no page has to know it is being scrolled; what keeps it inside the room is the
+**clip**; and a page reports how tall it came out, because where its last card ended is only known once it
+has been drawn. `Bar::new` answers `None` when a page fits, so a page that fits shows no bar. The three pages
+a plugin contributes scroll themselves, through `settings_kit::plugin_page`.
 
 `cargo test -p unluminous-app --lib how_tall_every_page_is -- --nocapture` prints how tall every page
 is against the body, so the next row added to one is measured rather than guessed at.
@@ -2145,6 +2139,30 @@ function is what stops a sixth field being the sixth chance to get it wrong.
 so opening the second shuts the first — which is why the three line spacings in the text options
 panel are three buttons rather than the dropdown they used to be.
 
+
+### The Settings window is the Settings design, drawn with `components::settings_kit` (`task-2246`)
+
+The Claude Design canvas "Unluminous", page Settings: `SettingsModal.dc.html` and one artboard a page beside
+it, plus `DataSourceDialog.dc.html`. Copies are in `design/claude-design/unluminous/canvas/project/`. Five
+things to know:
+
+- **The dialog is `modal::show_unframed`, 1000 by 700 points.** One surface thirty points round on the pane's
+  ground; down the left a raised card with the window's name, a carved search well and the pages as pills with
+  a line mark, the one showing carved in; on the right the group and the page's name as a breadcrumb, a round
+  `Close settings` button, and the page's settings as raised cards. There is no footer and no `Done`: the round
+  cross and Enter close it.
+- **Every page is cards from `components::settings_kit`**, Unluminous's own six and the three a plugin
+  contributes. A card is two `rux` layers: the outer records the card's surface once its height is known, and
+  the inner, reserved after it, records the rows' wells, chips and switches, so they are painted over the
+  card and the words over both. A row is a 150 point label column and the controls: `select` (rux's
+  `Select::chip`), `text` and `code_text` (a carved well), `segmented` (a carved track with the chosen word
+  raised), `switch`, `slider`, `button` and `ghost`, `chooser`, `path` and `status`.
+- **Every size is the design's, whatever the interface font is**, as the ticket modal's are.
+- **The marks for Theme, Plugins and MCP are `rux::Icon::Palette`, `Puzzle` and `Plug`**, added to rux for this.
+  A contributed page is listed with its plugin's own rail mark.
+- **The New Data Source dialog is the design's too** (`components/database/modal.rs`): one raised General
+  card with `Test Connection` at its top right, carved wells, the engine and the connection security as
+  carved tracks, and `Cancel` and a gradient `Save`.
 
 ### The title bar, the menus and the rail are the Editing code design (`task-2241`)
 

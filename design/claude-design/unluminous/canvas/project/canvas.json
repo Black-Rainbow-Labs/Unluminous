@@ -7,7 +7,7 @@
  "title": "Unluminous",
  "launch": {
   "view": "canvas",
-  "page": "editor"
+  "page": "settings"
  },
  "pages": [
   {
@@ -25,6 +25,10 @@
   {
    "id": "editor",
    "name": "Editing code"
+  },
+  {
+   "id": "settings",
+   "name": "Settings"
   }
  ],
  "boards": {
@@ -182,6 +186,95 @@
    "title": "Rail icons · duotone (new approach)",
    "page": "editor",
    "is_interactive": true
+  },
+  "SettingsModal.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1180,
+   "h": 760,
+   "title": "Settings · interactive (Appearance)",
+   "page": "settings",
+   "is_interactive": true
+  },
+  "DataSourceDialog.dc.html": {
+   "x": 1260,
+   "y": 0,
+   "w": 1180,
+   "h": 860,
+   "title": "Database › New Data Source dialog",
+   "page": "settings"
+  },
+  "SettingsAppearance.dc.html": {
+   "x": 2520,
+   "y": 0,
+   "w": 1180,
+   "h": 1050,
+   "title": "Appearance",
+   "page": "settings"
+  },
+  "SettingsTheme.dc.html": {
+   "x": 0,
+   "y": 1170,
+   "w": 1180,
+   "h": 1050,
+   "title": "Theme",
+   "page": "settings"
+  },
+  "SettingsPlugins.dc.html": {
+   "x": 1260,
+   "y": 1170,
+   "w": 1180,
+   "h": 860,
+   "title": "Plugins",
+   "page": "settings"
+  },
+  "SettingsTerminal.dc.html": {
+   "x": 2520,
+   "y": 1170,
+   "w": 1180,
+   "h": 860,
+   "title": "Terminal",
+   "page": "settings"
+  },
+  "SettingsEditor.dc.html": {
+   "x": 0,
+   "y": 2340,
+   "w": 1180,
+   "h": 2000,
+   "title": "Editor",
+   "page": "settings"
+  },
+  "SettingsMCP.dc.html": {
+   "x": 1260,
+   "y": 2340,
+   "w": 1180,
+   "h": 1250,
+   "title": "MCP",
+   "page": "settings"
+  },
+  "SettingsDatabase.dc.html": {
+   "x": 2520,
+   "y": 2340,
+   "w": 1180,
+   "h": 860,
+   "title": "Database",
+   "page": "settings"
+  },
+  "SettingsAgentChat.dc.html": {
+   "x": 1260,
+   "y": 3710,
+   "w": 1180,
+   "h": 1560,
+   "title": "Agent-Chat",
+   "page": "settings"
+  },
+  "SettingsAgentTasks.dc.html": {
+   "x": 2520,
+   "y": 3710,
+   "w": 1180,
+   "h": 1600,
+   "title": "Agent-Tasks",
+   "page": "settings"
   }
  },
  "order": [
@@ -204,7 +297,18 @@
   "EditorWindow.dc.html",
   "EditorMenuOpen.dc.html",
   "EditorMac.dc.html",
-  "EditorDuotone.dc.html"
+  "EditorDuotone.dc.html",
+  "SettingsModal.dc.html",
+  "DataSourceDialog.dc.html",
+  "SettingsAppearance.dc.html",
+  "SettingsTheme.dc.html",
+  "SettingsPlugins.dc.html",
+  "SettingsTerminal.dc.html",
+  "SettingsEditor.dc.html",
+  "SettingsMCP.dc.html",
+  "SettingsDatabase.dc.html",
+  "SettingsAgentChat.dc.html",
+  "SettingsAgentTasks.dc.html"
  ],
  "notes": {
   "window": {
@@ -252,6 +356,14 @@
    "maxW": 2520,
    "page": "chat"
   },
+  "tasksTitle": {
+   "x": 0,
+   "y": -300,
+   "text": "Agent-Tasks, redesigned",
+   "kind": "title1",
+   "maxW": 2440,
+   "page": "tasks"
+  },
   "chatRules": {
    "x": 2600,
    "y": 0,
@@ -261,14 +373,6 @@
    "size": "m",
    "page": "chat",
    "text": "One light, top left. Cards and controls are extruded from the pane with a soft paired shadow; wells and tracks are carved into it.\n\nEverything you press is round or a pill. No status dots, no segmented meters: state is an icon in a carved well, a dial or a slider.\n\nYour messages are raised bubbles; claude's text sits on the pane with no bubble.\n\nOne blue gradient for the action and for data; coral for slower, mint for faster.\n\nThe gear above the prompt opens Chat settings (model, context used). The pane artboard is clickable in Play."
-  },
-  "tasksTitle": {
-   "x": 0,
-   "y": -300,
-   "text": "Agent-Tasks, redesigned",
-   "kind": "title1",
-   "maxW": 2440,
-   "page": "tasks"
   },
   "editorTitle": {
    "x": 0,
@@ -287,6 +391,14 @@
    "size": "m",
    "page": "editor",
    "text": "macOS menus are native and can't be styled.\n\nOn a Mac the File…Plugins menus live in the system menu bar, drawn by macOS (NSMenu). An app chooses the words, keyboard shortcuts, ticks, disabled items, separators, submenus and, if wanted, small template icons (SF Symbols). It can't change the colours, font, size, spacing, shadows or corners; those follow the system's light or dark appearance. Window and Help are expected there too.\n\nWhat Unluminous does own on a Mac is the window's top bar: with a transparent, full-size title bar the traffic lights stay where macOS puts them and everything to their right (project, text options, view switch, Run, Debug) is ours, drawn exactly as on Windows.\n\nOn Windows the whole bar is ours, menus included, so the menus follow the neumorphic style (open menu = pressed pill, dropdown = raised card).\n\nFor egui/winit, the muda crate builds the native macOS menu bar from the same menu definitions the Windows bar draws."
+  },
+  "settingsTitle": {
+   "x": 0,
+   "y": -300,
+   "text": "Settings, redesigned",
+   "kind": "title1",
+   "maxW": 3700,
+   "page": "settings"
   }
  },
  "designSystems": [

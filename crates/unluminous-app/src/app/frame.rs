@@ -1832,6 +1832,22 @@ impl UnluminousApp {
             .iter()
             .map(|surface| surface.what.name.clone())
             .collect();
+        // And the mark each is listed with, which is the plugin's own rail mark when it has a pane.
+        let page_marks: Vec<String> = self
+            .plugin_ui
+            .surfaces()
+            .pages
+            .iter()
+            .map(|page| {
+                self.plugin_ui
+                    .surfaces()
+                    .panes
+                    .iter()
+                    .find(|pane| pane.plugin == page.plugin)
+                    .map(|pane| pane.what.icon.clone())
+                    .unwrap_or_default()
+            })
+            .collect();
         // Taken apart before the call so the closure below can borrow `plugin_ui` while the dialog holds
         // `settings` and `settings_window`. Two disjoint fields of one value, which the compiler allows
         // only when they are named separately.
@@ -1854,6 +1870,7 @@ impl UnluminousApp {
             installed_on_disk: &on_disk,
             icon_for: &icon_for,
             plugin_pages: &page_names,
+            plugin_page_marks: &page_marks,
         };
         let settings_outcome = settings_dialog::show(
             ui.ctx(),

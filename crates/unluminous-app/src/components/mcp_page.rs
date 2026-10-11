@@ -1,8 +1,7 @@
 //! `Settings -> Tools -> MCP`: how an AI agent is given Unluminous.
 //!
-//! Built out of the Settings window's own furniture — `settings_dialog`'s breadcrumb, sections,
-//! rows, notes, tick box and button — for the reason `plugins_page` records: a second page that
-//! looks nearly the same is worse than one that looks the same.
+//! Three cards from `components::settings_kit`, which every page of the Settings window is drawn with,
+//! in the Settings design's layout (`task-2246`): Install, Server and Configuration.
 //!
 //! ## Install comes first, because it is what somebody opened the page for
 //!
@@ -22,30 +21,20 @@
 //! the TOML Codex reads. It is the answer for a client nobody has written a button for, and it is
 //! also how somebody checks what a button just did.
 //!
-//! **One block at a time, chosen by two buttons**, rather than both at once. Two reasons, and the
-//! first is the ordinary one: a page is a fixed rectangle and a settings page in Unluminous does not
-//! scroll, so the two together ran off the bottom of the modal. The second is why the chooser is
-//! two buttons rather than a dropdown — a dropdown is a popup, egui keeps at most one of those open
-//! at a time, and this page already has one for the tool shape. It is the rule that turned the
-//! three line spacings in the text options panel into three buttons.
+//! **One block at a time, chosen by a carved track of two**, rather than both at once, and rather than a
+//! list that has to be opened, which would hide which block is showing.
 
 use std::path::{Path, PathBuf};
 
-use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
+use egui::{Pos2, Rect};
 
 use unluminous_cli::mcp::install::{self, Client, Wanted};
 use unluminous_cli::mcp::Shape;
 
-use crate::components::controls;
-use crate::components::settings_dialog::{
-    breadcrumb, checkbox, drawn, label, note, row_at, section, wide_button,
-};
+use crate::components::settings_dialog::drawn;
+use crate::components::settings_kit::{self as kit, Column};
 use crate::services::mcp::State;
-use crate::settings::{clamp_port, Page, Settings};
-use crate::theme::{color, size};
-
-/// How wide the configuration blocks are drawn.
-const BLOCK_WIDTH: f32 = 560.0;
+use crate::settings::{clamp_port, Settings};
 
 /// What the page is showing between frames.
 ///
@@ -90,7 +79,7 @@ pub struct McpOutcome {
     pub height: f32,
 }
 
-/// Draw the page into `area`.
+/// Draw the page down `area`.
 pub fn show(
     ui: &mut egui::Ui,
     area: Rect,
@@ -103,266 +92,165 @@ pub fn show(
     if !state.read {
         state.refresh(settings, program);
     }
-    let mut pen = breadcrumb(ui, area, Page::Mcp);
-
-    pen = install_section(ui, area, pen, state, settings, program);
-    pen = server_section(ui, area, pen + 6.0, state, settings, running, &mut outcome);
-    pen = configuration_section(ui, area, pen + 6.0, state, settings, program);
-    outcome.height = drawn(area, pen, false).height;
+    let mut column = Column::new(area.left(), area.right(), area.top());
+    install_card(ui, &mut column, state, settings, program);
+    server_card(ui, &mut column, state, settings, running, &mut outcome);
+    configuration_card(ui, &mut column, state, settings, program);
+    outcome.height = drawn(area.top(), &column, false).height;
     outcome
 }
 
 /// The two buttons, and what the last one did.
-fn install_section(
+fn install_card(
     ui: &mut egui::Ui,
-    area: Rect,
-    top: f32,
+    column: &mut Column,
     state: &mut McpState,
     settings: &Settings,
     program: &Path,
-) -> f32 {
-    let mut pen = section(ui, area, top, "Install");
-    pen = note(
+) {
+    let help = match &state.said {
+        Some(said) => said.clone(),
+        None => "Restart the agent afterwards. In Claude Code, /mcp then lists Unluminous's tools."
+            .to_owned(),
+    };
+    kit::card(
         ui,
-        area,
-        pen,
-        "Writes Unluminous into the agent's own configuration. The agent then launches Unluminous's server \
-         itself over a pipe, so nothing listens on a port.",
-    );
-    let row = row_at(area, pen);
-    let mut left = row.left();
-    for (client, installed) in
-        [(Client::Claude, state.claude_installed), (Client::Codex, state.codex_installed)]
-    {
-        let name = if installed {
-            format!("Remove from {}", client.title())
-        } else {
-            format!("Install for {}", client.title())
-        };
-        let button = Rect::from_min_size(Pos2::new(left, row.top()), Vec2::new(196.0, 28.0));
-        if wide_button(ui, button, &name) {
-            let wanted = wanted_from(settings, program);
-            let done = if installed {
-                install::remove(client, &wanted)
-            } else {
-                install::install(client, &wanted)
-            };
-            state.said = Some(match done {
-                Ok(done) => done.message,
-                Err(problem) => problem,
-            });
-            state.refresh(settings, program);
-        }
-        left = button.right() + 12.0;
-    }
-    pen += 32.0;
-    match &state.said {
-        Some(said) => note(ui, area, pen, said),
-        None => note(
-            ui,
-            area,
-            pen,
-            "Restart the agent afterwards. In Claude Code, `/mcp` then lists Unluminous's tools.",
+        column,
+        "Install",
+        Some(
+            "Writes Unluminous into the agent's own configuration. The agent then launches Unluminous's server \
+             itself over a pipe, so nothing listens on a port.",
         ),
-    }
+        |card| {
+            card.row("", Some(&help), |row| {
+                for (client, installed) in
+                    [(Client::Claude, state.claude_installed), (Client::Codex, state.codex_installed)]
+                {
+                    let name = match installed {
+                        true => format!("Remove from {}", client.title()),
+                        false => format!("Install for {}", client.title()),
+                    };
+                    if row.button(&name) {
+                        let wanted = wanted_from(settings, program);
+                        let done = match installed {
+                            true => install::remove(client, &wanted),
+                            false => install::install(client, &wanted),
+                        };
+                        state.said = Some(match done {
+                            Ok(done) => done.message,
+                            Err(problem) => problem,
+                        });
+                        state.refresh(settings, program);
+                    }
+                }
+            });
+        },
+    );
 }
 
-/// The tick box, the port, the tool shape, and what is actually happening right now.
-fn server_section(
+/// The switch, the port, the tool shape, the areas, and what is actually happening right now.
+fn server_card(
     ui: &mut egui::Ui,
-    area: Rect,
-    top: f32,
+    column: &mut Column,
     state: &mut McpState,
     settings: &mut Settings,
     running: &State,
     outcome: &mut McpOutcome,
-) -> f32 {
-    let mut pen = section(ui, area, top, "Server");
-    let row = row_at(area, pen);
-    let mut enabled = settings.mcp_enabled;
-    if checkbox(ui, row, "Also serve over HTTP on this machine", &mut enabled) {
-        settings.mcp_enabled = enabled;
-        outcome.changed = true;
-    }
-    pen += 34.0;
-
-    // The port and the tool shape share a row. Two rows of one control each is what this looked
-    // like first, and it cost a line the page has not got: everything below is the thing somebody
-    // came here to copy.
-    let port_row = row_at(area, pen);
-    label(ui, area, port_row, "Port:");
-    let before = state.port.clone();
-    crate::components::modal::field(
-        ui,
-        Rect::from_min_size(Pos2::new(area.left() + 70.0, port_row.top()), Vec2::new(84.0, 28.0)),
-        "MCP port",
-        &mut state.port,
-    );
-    if state.port != before {
-        // A number is taken from the field only when it is one. Half a port number is what somebody
-        // typing looks like, and snapping the setting to `73` on the way to `7345` would start a
-        // listener on a port nobody asked for.
-        if let Ok(port) = state.port.trim().parse::<f32>() {
-            let port = clamp_port(port);
-            if port != settings.mcp_port {
-                settings.mcp_port = port;
-                outcome.changed = true;
-            }
+) {
+    kit::card(ui, column, "Server", None, |card| {
+        let mut enabled = settings.mcp_enabled;
+        if card.switch("Also serve over HTTP on this machine", None, &mut enabled) {
+            settings.mcp_enabled = enabled;
+            outcome.changed = true;
         }
-    }
-    let shape_row = Rect::from_min_size(
-        Pos2::new(port_row.left() + 200.0, port_row.top()),
-        Vec2::new(port_row.width() - 200.0, port_row.height()),
-    );
-    label(ui, area, shape_row, "Tools:");
-    if let Some(chosen) = controls::dropdown(
-        ui,
-        Rect::from_min_size(
-            Pos2::new(shape_row.left() + 54.0, shape_row.top()),
-            Vec2::new(200.0, 28.0),
-        ),
-        shape_name(settings.mcp_tools),
-        "MCP tool shape",
-        None,
-        |ui| {
-            let mut chosen = None;
-            for shape in [Shape::Grouped, Shape::Every] {
-                if ui.selectable_label(settings.mcp_tools == shape, shape_name(shape)).clicked() {
-                    chosen = Some(shape);
+        card.row("Port", None, |row| {
+            let before = state.port.clone();
+            row.text("MCP port", &mut state.port, "", 96.0);
+            if state.port != before {
+                // A number is taken from the field only when it is one. Half a port number is what
+                // somebody typing looks like, and snapping the setting to `73` on the way to `7345` would
+                // start a listener on a port nobody asked for.
+                if let Ok(port) = state.port.trim().parse::<f32>() {
+                    let port = clamp_port(port);
+                    if port != settings.mcp_port {
+                        settings.mcp_port = port;
+                        outcome.changed = true;
+                    }
                 }
             }
-            chosen
-        },
-    ) {
-        settings.mcp_tools = chosen;
-        outcome.changed = true;
-    }
-    pen += 32.0;
-
-    let areas_row = row_at(area, pen);
-    label(ui, area, areas_row, "Areas:");
-    let before_areas = settings.mcp_areas.clone();
-    crate::components::modal::field(
-        ui,
-        Rect::from_min_size(Pos2::new(area.left() + 70.0, areas_row.top()), Vec2::new(300.0, 28.0)),
-        "MCP areas",
-        &mut settings.mcp_areas,
-    );
-    if settings.mcp_areas != before_areas {
-        outcome.changed = true;
-    }
-    pen += 34.0;
-    pen = note(
-        ui,
-        area,
-        pen,
-        "Which parts of the catalogue this offers, such as editor,git. Empty offers everything.",
-    );
-
-    pen = note(
-        ui,
-        area,
-        pen,
-        &format!(
-            "{} tools. One an area names every command Unluminous has for about a third of the context \
-             one a command costs; one a command lets an agent permit a single tool by name.",
+        });
+        let shapes = [Shape::Grouped, Shape::Every];
+        let options: Vec<String> = shapes.iter().map(|shape| shape_name(*shape).to_owned()).collect();
+        let chosen = shapes.iter().position(|shape| *shape == settings.mcp_tools);
+        card.row("Tools", None, |row| {
+            if let Some(index) = row.select("MCP tool shape", &options, chosen, 200.0) {
+                settings.mcp_tools = shapes[index];
+                outcome.changed = true;
+            }
+        });
+        let help = format!(
+            "Which parts of the catalogue this offers, such as editor,git. Empty offers everything.\n{} tools. \
+             One an area names every command Unluminous has for about a third of the context one a command \
+             costs; one a command lets an agent permit a single tool by name.",
             unluminous_cli::mcp::tools::tools(settings.mcp_tools).len()
-        ),
-    );
-    note(ui, area, pen, &running.message())
+        );
+        let before = settings.mcp_areas.clone();
+        card.row("Areas", Some(&help), |row| {
+            row.code_text("MCP areas", &mut settings.mcp_areas, "every area", 300.0);
+        });
+        if settings.mcp_areas != before {
+            outcome.changed = true;
+        }
+        card.row("State", None, |row| {
+            row.status(&running.message());
+        });
+    });
 }
 
-/// The two blocks, and a `Copy` for each.
-fn configuration_section(
+/// The block for the chosen client, and a `Copy` for it.
+///
+/// **One block at a time, chosen by a track of two**, because the two together ran off the bottom of the
+/// page, and because a list that has to be opened would hide which one is showing.
+fn configuration_card(
     ui: &mut egui::Ui,
-    area: Rect,
-    top: f32,
+    column: &mut Column,
     state: &mut McpState,
     settings: &Settings,
     program: &Path,
-) -> f32 {
-    let mut pen = section(ui, area, top, "Configuration");
-    pen = note(
-        ui,
-        area,
-        pen,
-        "For an agent with no button above. Paste it into that client's own configuration file.",
-    );
+) {
     let showing = state.showing.unwrap_or(Client::Claude);
-    let row = row_at(area, pen);
-    let mut left = row.left();
-    for client in Client::ALL {
-        let button = Rect::from_min_size(Pos2::new(left, row.top()), Vec2::new(118.0, 26.0));
-        if chooser(ui, button, client.title(), client == showing) {
-            state.showing = Some(client);
-        }
-        left = button.right() + 8.0;
-    }
     let wanted = wanted_from(settings, program);
-    let copy = Rect::from_min_size(Pos2::new(row.right() - 60.0, row.top()), Vec2::new(60.0, 26.0));
-    if wide_button(ui, copy, "Copy") {
-        ui.ctx().copy_text(wanted.example(showing));
-    }
-    block(ui, area, pen + 32.0, showing.title(), &wanted.example(showing))
-}
-
-/// One of the two buttons that choose which block is showing, drawn the way a chosen control is
-/// drawn everywhere else: the accent behind it, the ordinary control fill behind the other.
-fn chooser(ui: &mut egui::Ui, area: Rect, name: &str, chosen: bool) -> bool {
-    let response = ui.interact(area, ui.id().with(("mcp-chooser", name)), Sense::click());
-    let fill = if chosen || response.hovered() { color::accent() } else { color::control() };
-    // The words sit on the accent while it is lit, so they are drawn in the colour meant for it.
-    let ink = if chosen || response.hovered() { color::on_accent() } else { color::text_strong() };
-    let painter = ui.painter();
-    painter.rect(
-        area,
-        CornerRadius::same(size::CONTROL_CORNER),
-        fill,
-        Stroke::new(1.0, color::control_border()),
-        egui::StrokeKind::Inside,
+    let text = wanted.example(showing);
+    kit::card(
+        ui,
+        column,
+        "Configuration",
+        Some("For an agent with no button above. Paste it into that client's own configuration file."),
+        |card| {
+            card.row("Client", None, |row| {
+                let names: Vec<&str> = Client::ALL.iter().map(|client| client.title()).collect();
+                let chosen = Client::ALL.iter().position(|client| *client == showing);
+                if let Some(index) = row.segmented("MCP client", &names, chosen, 110.0, false) {
+                    state.showing = Some(Client::ALL[index]);
+                }
+                if row.button("Copy") {
+                    row.rux.ui.ctx().copy_text(text.clone());
+                }
+                let width = row.right - row.left;
+                let at = Pos2::new(row.left, row.bottom + 12.0);
+                // Named so a screenshot test can find it, and so somebody reading the window out loud is told
+                // what the block is rather than being read the whole of it.
+                let block = kit::code_block(
+                    row.rux,
+                    at,
+                    width,
+                    &format!("{} configuration", showing.title()),
+                    &text,
+                );
+                row.bottom = block.bottom();
+            });
+        },
     );
-    let galley = painter.layout_no_wrap(name.to_owned(), egui::FontId::proportional(12.0), ink);
-    painter.galley(area.center() - galley.size() / 2.0, galley, ink);
-    response.widget_info(|| {
-        egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), chosen, name)
-    });
-    response.clicked()
-}
-
-/// One read-only block of configuration.
-fn block(ui: &mut egui::Ui, area: Rect, top: f32, title: &str, text: &str) -> f32 {
-    let mut pen = top;
-    let painter = ui.painter_at(area);
-    let galley = painter.layout(
-        text.to_owned(),
-        egui::FontId::monospace(10.5),
-        color::text_control(),
-        BLOCK_WIDTH - 24.0,
-    );
-    let frame = Rect::from_min_size(
-        Pos2::new(area.left() + 24.0, pen),
-        Vec2::new(BLOCK_WIDTH.min(area.width() - 48.0), galley.size().y + 16.0),
-    );
-    painter.rect(
-        frame,
-        CornerRadius::same(size::CONTROL_CORNER),
-        color::field(),
-        Stroke::new(1.0, color::control_border()),
-        egui::StrokeKind::Inside,
-    );
-    painter.galley(frame.min + Vec2::new(12.0, 8.0), galley, color::text_control());
-    // Named so a screenshot test can find it, and so somebody reading the window out loud is told
-    // what the block is rather than being read the whole of it.
-    let response = ui.interact(frame, ui.id().with(("mcp-block", title)), Sense::hover());
-    response.widget_info(|| {
-        egui::WidgetInfo::labeled(
-            egui::WidgetType::Label,
-            ui.is_enabled(),
-            format!("{title} configuration"),
-        )
-    });
-    pen += frame.height() + 10.0;
-    pen
 }
 
 fn shape_name(shape: Shape) -> &'static str {
