@@ -6,6 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- Release on 80% of the processors, test only the crates that changed, build both platforms at once (`task-2240`)
+- Release.sh uses the same gate, tests for the selection, and the design (`task-2240`)
+- Line tables only in test builds, and the window suite measurements (`task-2240`)
+
 ## 0.73.0 — 2026-10-10
 
 - A learned completion ranking, trained on the tune half of the evaluation (`task-2237`)
