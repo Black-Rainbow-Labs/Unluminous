@@ -103,11 +103,17 @@ fn tabs_and_search(ui: &mut egui::Ui, bar: Rect, state: &mut PluginsState, plugi
         rux.chrome.surface(track, 20.0, chat.well, chat.carved_sm());
         let mut x = track.left() + 4.0;
         for (index, (tab, name)) in
-            [(Tab::Marketplace, "Marketplace"), (Tab::Installed, "Installed")].into_iter().enumerate()
+            [(Tab::Marketplace, "Marketplace"), (Tab::Installed, "Installed")]
+                .into_iter()
+                .enumerate()
         {
-            let pill = Rect::from_min_size(Pos2::new(x, track.center().y - 16.0), Vec2::new(widths[index], 32.0));
+            let pill = Rect::from_min_size(
+                Pos2::new(x, track.center().y - 16.0),
+                Vec2::new(widths[index], 32.0),
+            );
             let on = state.tab == tab;
-            let response = rux.ui.interact(pill, rux.ui.id().with(("plugins-tab", name)), Sense::click());
+            let response =
+                rux.ui.interact(pill, rux.ui.id().with(("plugins-tab", name)), Sense::click());
             if on {
                 rux.chrome.surface(pill, 16.0, Fill::gradient(chat.chip, pill), chat.raised_chip());
             } else if response.hovered() {
@@ -134,7 +140,9 @@ fn tabs_and_search(ui: &mut egui::Ui, bar: Rect, state: &mut PluginsState, plugi
                 let galley = rux.text(Style::sans(10.5), &count, theme.ink.i500);
                 rux::text::draw_centred(rux.painter(), badge, galley, theme.ink.i500);
             }
-            response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, on, name));
+            response.widget_info(|| {
+                egui::WidgetInfo::selected(egui::WidgetType::Button, true, on, name)
+            });
             if response.clicked() && !on {
                 state.tab = tab;
                 state.chosen = None;
@@ -166,13 +174,19 @@ fn tabs_and_search(ui: &mut egui::Ui, bar: Rect, state: &mut PluginsState, plugi
         let response = child.add(
             egui::TextEdit::singleline(&mut state.search)
                 .id(id)
-                .hint_text(crate::components::controls::placeholder("Search plugins", &font, theme.ink.i400))
+                .hint_text(crate::components::controls::placeholder(
+                    "Search plugins",
+                    &font,
+                    theme.ink.i400,
+                ))
                 .font(font.clone())
                 .frame(egui::Frame::NONE)
                 .desired_width(text.width())
                 .text_color(theme.ink.i900),
         );
-        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Search plugins"));
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Search plugins")
+        });
     });
 }
 
@@ -197,7 +211,10 @@ fn list_of_plugins(
     let ids: Vec<String> = showing.iter().map(|plugin| plugin.id.clone()).collect();
     const ROW: f32 = 50.0;
     let rows = showing.len().max(1) as f32;
-    let well = Rect::from_min_size(area.min, Vec2::new(area.width(), 16.0 + rows * ROW + (rows - 1.0) * 4.0));
+    let well = Rect::from_min_size(
+        area.min,
+        Vec2::new(area.width(), 16.0 + rows * ROW + (rows - 1.0) * 4.0),
+    );
     let mut chosen = None;
     kit::layer(ui, "plugins-list", well, |rux| {
         let theme = rux.theme();
@@ -214,13 +231,21 @@ fn list_of_plugins(
         }
         let mut top = well.top() + 8.0;
         for plugin in &showing {
-            let row = Rect::from_min_size(Pos2::new(well.left() + 8.0, top), Vec2::new(well.width() - 16.0, ROW));
+            let row = Rect::from_min_size(
+                Pos2::new(well.left() + 8.0, top),
+                Vec2::new(well.width() - 16.0, ROW),
+            );
             let picked = state.chosen.as_deref() == Some(plugin.id.as_str());
             if kit::list_row(rux, row, 16.0, &plugin.name, picked).clicked() {
                 chosen = Some(plugin.id.clone());
             }
-            let name = rux.elided(Style::sans(12.5), &plugin.name, theme.ink.i900, row.width() - 28.0);
-            rux.painter().galley(Pos2::new(row.left() + 14.0, row.top() + 9.0), name, theme.ink.i900);
+            let name =
+                rux.elided(Style::sans(12.5), &plugin.name, theme.ink.i900, row.width() - 28.0);
+            rux.painter().galley(
+                Pos2::new(row.left() + 14.0, row.top() + 9.0),
+                name,
+                theme.ink.i900,
+            );
             let note = format!(
                 "{} \u{00B7} {}",
                 match plugin.bundled {
@@ -233,7 +258,11 @@ fn list_of_plugins(
                 },
             );
             let note = rux.elided(Style::sans(11.0), &note, theme.ink.i400, row.width() - 28.0);
-            rux.painter().galley(Pos2::new(row.left() + 14.0, row.top() + 27.0), note, theme.ink.i400);
+            rux.painter().galley(
+                Pos2::new(row.left() + 14.0, row.top() + 27.0),
+                note,
+                theme.ink.i400,
+            );
             top = row.bottom() + 4.0;
         }
     });
@@ -299,7 +328,10 @@ fn detail(
                 }
             }
             let track = Rect::from_min_size(
-                Pos2::new(button.left() - 12.0 - kit::SWITCH.x, button.center().y - kit::SWITCH.y / 2.0),
+                Pos2::new(
+                    button.left() - 12.0 - kit::SWITCH.x,
+                    button.center().y - kit::SWITCH.y / 2.0,
+                ),
                 kit::SWITCH,
             );
             let mut enabled = plugin.enabled;
@@ -319,13 +351,25 @@ fn detail(
 }
 
 /// A heading and a carved well of words under it.
-fn section(rux: &mut rux::Rux<'_>, column: kit::Column, top: f32, heading: &str, said: &str) -> f32 {
+fn section(
+    rux: &mut rux::Rux<'_>,
+    column: kit::Column,
+    top: f32,
+    heading: &str,
+    said: &str,
+) -> f32 {
     let theme = rux.theme();
     let style = Style::sans(12.5).semibold();
     let galley = rux.text(style, heading, theme.ink.i900);
     let height = galley.size().y;
     rux.painter().galley(Pos2::new(column.left, top), galley, theme.ink.i900);
-    let words = rux::text::wrapped(rux.painter(), kit::help_style(), said, theme.ink.i500, column.width() - 32.0);
+    let words = rux::text::wrapped(
+        rux.painter(),
+        kit::help_style(),
+        said,
+        theme.ink.i500,
+        column.width() - 32.0,
+    );
     let well = Rect::from_min_size(
         Pos2::new(column.left, top + height + 10.0),
         Vec2::new(column.width(), words.size().y + 28.0),

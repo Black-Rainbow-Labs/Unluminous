@@ -121,39 +121,46 @@ pub fn card<R>(
 ) -> R {
     let state = state(ui.ctx());
     let top = column.pen;
-    let outer = Rect::from_min_max(
-        Pos2::new(column.left, top),
-        Pos2::new(column.right, top + 10_000.0),
-    );
+    let outer =
+        Rect::from_min_max(Pos2::new(column.left, top), Pos2::new(column.right, top + 10_000.0));
     let outer_id = ui.id().with(("settings-card", title));
     let inner_id = ui.id().with(("settings-card-rows", title));
-    let (result, bottom) = rux::layer(ui, &state, outer_id, outer.expand(CARD_REACH), |outer_rux| {
-        let state = outer_rux.state;
-        let (result, bottom) =
-            rux::layer(&mut *outer_rux.ui, state, inner_id, outer.expand(CARD_REACH), |rux| {
-                let mut card = Card {
-                    rux,
-                    left: column.left + CARD_SIDE,
-                    right: column.right - CARD_SIDE,
-                    pen: top + CARD_TOP,
-                    rows: 0,
-                };
-                card.heading(title, help);
-                let result = add(&mut card);
-                (result, card.pen + CARD_BOTTOM)
-            });
-        let chat = outer_rux.theme().chat;
-        let rect = Rect::from_min_max(Pos2::new(column.left, top), Pos2::new(column.right, bottom));
-        outer_rux.chrome.surface(rect, CARD_RADIUS, Fill::gradient(chat.card, rect), chat.raised());
-        (result, bottom)
-    });
+    let (result, bottom) =
+        rux::layer(ui, &state, outer_id, outer.expand(CARD_REACH), |outer_rux| {
+            let state = outer_rux.state;
+            let (result, bottom) =
+                rux::layer(&mut *outer_rux.ui, state, inner_id, outer.expand(CARD_REACH), |rux| {
+                    let mut card = Card {
+                        rux,
+                        left: column.left + CARD_SIDE,
+                        right: column.right - CARD_SIDE,
+                        pen: top + CARD_TOP,
+                        rows: 0,
+                    };
+                    card.heading(title, help);
+                    let result = add(&mut card);
+                    (result, card.pen + CARD_BOTTOM)
+                });
+            let chat = outer_rux.theme().chat;
+            let rect =
+                Rect::from_min_max(Pos2::new(column.left, top), Pos2::new(column.right, bottom));
+            outer_rux.chrome.surface(
+                rect,
+                CARD_RADIUS,
+                Fill::gradient(chat.card, rect),
+                chat.raised(),
+            );
+            (result, bottom)
+        });
     // A card is named after its title, so a test can find which card a setting is on and a person reading the
     // window out loud hears the group before its settings.
     let rect = Rect::from_min_max(Pos2::new(column.left, top), Pos2::new(column.right, bottom));
     let response = ui.interact(rect, ui.id().with(("settings-card-name", title)), Sense::hover());
     if !title.is_empty() {
         let named = format!("{title} settings");
-        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, named.clone()));
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Other, true, named.clone())
+        });
     }
     column.pen = bottom + CARD_GAP;
     result
@@ -245,10 +252,8 @@ impl<'r, 'u> Card<'r, 'u> {
         let track = Rect::from_min_size(Pos2::new(self.left, top + 1.0), SWITCH);
         let words_left = track.right() + 14.0;
         let galley = self.rux.text(label_style(), label, theme.ink.i900);
-        let label_rect = Rect::from_min_size(
-            Pos2::new(words_left, top),
-            Vec2::new(galley.size().x, 26.0),
-        );
+        let label_rect =
+            Rect::from_min_size(Pos2::new(words_left, top), Vec2::new(galley.size().x, 26.0));
         rux::text::draw_left_capitals(
             self.rux.painter(),
             Pos2::new(words_left, top + 13.0),
@@ -467,7 +472,13 @@ pub const SWITCH: Vec2 = Vec2::new(44.0, 24.0);
 /// Drawn here rather than with `rux::components::Switch`, whose label is a `&'static str` and whose off
 /// track is the page's ground rather than the design's well. `label_rect` is the words beside it, which a
 /// press on also flips it, the way a `<label>` does.
-pub fn switch(rux: &mut Rux<'_>, track: Rect, name: &str, value: &mut bool, label_rect: Rect) -> bool {
+pub fn switch(
+    rux: &mut Rux<'_>,
+    track: Rect,
+    name: &str,
+    value: &mut bool,
+    label_rect: Rect,
+) -> bool {
     let theme = rux.theme();
     let chat = theme.chat;
     let id = rux.ui.id().with(("settings-switch", name));
@@ -530,8 +541,7 @@ pub fn select(
     selected: Option<usize>,
 ) -> Option<usize> {
     let key = rux.ui.id().with(("settings-select", name));
-    let mut state: SelectState =
-        rux.ui.ctx().data(|data| data.get_temp(key)).unwrap_or_default();
+    let mut state: SelectState = rux.ui.ctx().data(|data| data.get_temp(key)).unwrap_or_default();
     let mut child = rux.ui.new_child(egui::UiBuilder::new().max_rect(rect).id_salt(key));
     let outcome = {
         let mut inner = Rux { ui: &mut child, state: rux.state, chrome: rux.chrome };
@@ -551,7 +561,8 @@ pub fn select(
 pub fn chooser(rux: &mut Rux<'_>, rect: Rect, name: &str, value: &str) -> bool {
     let theme = rux.theme();
     let chat = theme.chat;
-    let response = rux.ui.interact(rect, rux.ui.id().with(("settings-chooser", name)), Sense::click());
+    let response =
+        rux.ui.interact(rect, rux.ui.id().with(("settings-chooser", name)), Sense::click());
     if response.hovered() {
         rux.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
@@ -562,7 +573,8 @@ pub fn chooser(rux: &mut Rux<'_>, rect: Rect, name: &str, value: &str) -> bool {
     rux.chrome.surface(rect, rect.height() / 2.0, Fill::gradient(chat.chip, rect), elevation);
     let chevron = Pos2::new(rect.right() - 14.0 - 5.0, rect.center().y);
     rux.mark(Mark::new(Icon::ChevDown, 10.0).stroke(1.6 * 2.4), chevron, theme.ink.i400);
-    let galley = rux.elided(value_style(false), value, theme.ink.i900, rect.width() - 16.0 - 14.0 - 20.0);
+    let galley =
+        rux.elided(value_style(false), value, theme.ink.i900, rect.width() - 16.0 - 14.0 - 20.0);
     rux::text::draw_left_capitals(
         rux.painter(),
         Pos2::new(rect.left() + 16.0, rect.center().y),
@@ -630,7 +642,8 @@ pub fn text_well_styled(
             .text_color(theme.ink.i900),
     );
     let named = name.to_owned();
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, named.clone()));
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, named.clone()));
     response
 }
 
@@ -665,10 +678,8 @@ const SEGMENT_PAD: f32 = 12.0;
 /// How wide a segmented track is for these words.
 pub fn segmented_width(rux: &Rux<'_>, options: &[&str], least: f32, mono: bool, pad: f32) -> f32 {
     let style = segment_style(mono);
-    let inside: f32 = options
-        .iter()
-        .map(|option| (rux.measure(style, option).x + pad * 2.0).max(least))
-        .sum();
+    let inside: f32 =
+        options.iter().map(|option| (rux.measure(style, option).x + pad * 2.0).max(least)).sum();
     inside + 3.0 * (options.len().saturating_sub(1)) as f32 + 8.0
 }
 
@@ -711,10 +722,7 @@ pub fn segmented_sized(
         true => 11.0,
         false => 12.0,
     });
-    let track = Rect::from_center_size(
-        rect.center(),
-        Vec2::new(rect.width(), option_height + 8.0),
-    );
+    let track = Rect::from_center_size(rect.center(), Vec2::new(rect.width(), option_height + 8.0));
     rux.chrome.surface(track, track.height() / 2.0, chat.well, chat.carved_sm());
     let mut x = track.left() + 4.0;
     let mut picked = None;
@@ -731,7 +739,12 @@ pub fn segmented_sized(
             Sense::click(),
         );
         if on {
-            rux.chrome.surface(pill, option_height / 2.0, Fill::gradient(chat.chip, pill), chat.raised_chip());
+            rux.chrome.surface(
+                pill,
+                option_height / 2.0,
+                Fill::gradient(chat.chip, pill),
+                chat.raised_chip(),
+            );
         } else if response.hovered() {
             rux.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
@@ -751,9 +764,11 @@ pub fn segmented_sized(
         }
         x = pill.right() + 3.0;
     }
-    let response = rux.ui.interact(track, rux.ui.id().with(("settings-segments", name)), Sense::hover());
+    let response =
+        rux.ui.interact(track, rux.ui.id().with(("settings-segments", name)), Sense::hover());
     let named = name.to_owned();
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, named.clone()));
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, named.clone()));
     picked
 }
 
@@ -782,8 +797,7 @@ pub fn button_width(rux: &Rux<'_>, label: &str, plus: bool) -> f32 {
 pub fn button(rux: &mut Rux<'_>, rect: Rect, label: &str, kind: Kind) -> bool {
     let theme = rux.theme();
     let chat = theme.chat;
-    let response =
-        rux.ui.interact(
+    let response = rux.ui.interact(
         rect,
         rux.ui.id().with(("settings-button", label, rect.min.x.to_bits(), rect.min.y.to_bits())),
         Sense::click(),
@@ -797,7 +811,12 @@ pub fn button(rux: &mut Rux<'_>, rect: Rect, label: &str, kind: Kind) -> bool {
                 true => chat.carved_sm(),
                 false => chat.raised_chip(),
             };
-            rux.chrome.surface(rect, rect.height() / 2.0, Fill::gradient(chat.chip, rect), elevation);
+            rux.chrome.surface(
+                rect,
+                rect.height() / 2.0,
+                Fill::gradient(chat.chip, rect),
+                elevation,
+            );
             match response.hovered() {
                 true => theme.ink.i900,
                 false => theme.ink.i700,
@@ -811,7 +830,8 @@ pub fn button(rux: &mut Rux<'_>, rect: Rect, label: &str, kind: Kind) -> bool {
     let galley = rux.text(Style::sans(12.0).medium(), label, ink);
     rux::text::draw_centred(rux.painter(), rect, galley, ink);
     let named = label.to_owned();
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, named.clone()));
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, named.clone()));
     response.clicked()
 }
 
@@ -834,7 +854,11 @@ pub fn add_button(rux: &mut Rux<'_>, at: Pos2, label: &str) -> (bool, Rect) {
         true => theme.ink.i900,
         false => theme.ink.i700,
     };
-    rux.mark(Mark::new(Icon::Plus, 12.0).stroke(1.8 * 2.0), Pos2::new(rect.left() + 19.0, rect.center().y), ink);
+    rux.mark(
+        Mark::new(Icon::Plus, 12.0).stroke(1.8 * 2.0),
+        Pos2::new(rect.left() + 19.0, rect.center().y),
+        ink,
+    );
     let galley = rux.text(Style::sans(12.5).medium(), label, ink);
     rux::text::draw_left_capitals(
         rux.painter(),
@@ -844,16 +868,25 @@ pub fn add_button(rux: &mut Rux<'_>, at: Pos2, label: &str) -> (bool, Rect) {
         ink,
     );
     let named = label.to_owned();
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, named.clone()));
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, named.clone()));
     (response.clicked(), rect)
 }
 
 /// A fraction on a carved track with the action's gradient filled to it and a raised knob.
-pub fn slider(rux: &mut Rux<'_>, rect: Rect, name: &str, value: &mut f32, low: f32, high: f32) -> bool {
+pub fn slider(
+    rux: &mut Rux<'_>,
+    rect: Rect,
+    name: &str,
+    value: &mut f32,
+    low: f32,
+    high: f32,
+) -> bool {
     let theme = rux.theme();
     let chat = theme.chat;
     let track = Rect::from_center_size(rect.center(), Vec2::new(rect.width(), 12.0));
-    let response = rux.ui.interact(rect, rux.ui.id().with(("settings-slider", name)), Sense::click_and_drag());
+    let response =
+        rux.ui.interact(rect, rux.ui.id().with(("settings-slider", name)), Sense::click_and_drag());
     let mut changed = false;
     if let Some(at) = response.interact_pointer_pos() {
         if response.dragged() || response.clicked() || response.drag_started() {
@@ -872,7 +905,10 @@ pub fn slider(rux: &mut Rux<'_>, rect: Rect, name: &str, value: &mut f32, low: f
     rux.chrome.surface(track, 6.0, chat.well, chat.carved_sm());
     let fill = Rect::from_min_max(
         Pos2::new(track.left() + 2.0, track.top() + 2.0),
-        Pos2::new((track.left() + 2.0 + (track.width() - 4.0) * fraction).max(track.left() + 6.0), track.bottom() - 2.0),
+        Pos2::new(
+            (track.left() + 2.0 + (track.width() - 4.0) * fraction).max(track.left() + 6.0),
+            track.bottom() - 2.0,
+        ),
     );
     rux.chrome.rect(fill, 4.0, Fill::gradient(chat.action, fill));
     let knob = Rect::from_center_size(
@@ -907,14 +943,16 @@ pub fn swatches(
     let theme = rux.theme();
     let chat = theme.chat;
     let count = colours.len() as f32;
-    let track = Rect::from_min_size(at, Vec2::new(24.0 + count * 24.0 + (count - 1.0) * 12.0, CONTROL));
+    let track =
+        Rect::from_min_size(at, Vec2::new(24.0 + count * 24.0 + (count - 1.0) * 12.0, CONTROL));
     rux.chrome.surface(track, CONTROL / 2.0, chat.well, chat.carved_sm());
     let mut picked = None;
     for (index, (own, shown)) in colours.iter().enumerate() {
         let centre = Pos2::new(track.left() + 12.0 + 12.0 + index as f32 * 36.0, track.center().y);
         let disc = Rect::from_center_size(centre, Vec2::splat(24.0));
         let name = names.get(index).copied().unwrap_or("Colour");
-        let response = rux.ui.interact(disc, rux.ui.id().with(("settings-swatch", name)), Sense::click());
+        let response =
+            rux.ui.interact(disc, rux.ui.id().with(("settings-swatch", name)), Sense::click());
         let response = controls::WithHint::with_hint(response, name);
         let on = chosen == Some(index);
         let painter = rux.painter().clone();
@@ -927,7 +965,11 @@ pub fn swatches(
             }
         }
         if on {
-            painter.circle_stroke(centre, 15.0, egui::Stroke::new(2.0, theme.ink.i900.gamma_multiply(0.7)));
+            painter.circle_stroke(
+                centre,
+                15.0,
+                egui::Stroke::new(2.0, theme.ink.i900.gamma_multiply(0.7)),
+            );
         } else if response.hovered() {
             painter.circle_stroke(centre, 15.0, egui::Stroke::new(1.0, theme.ink.i400));
         }
@@ -953,7 +995,8 @@ pub fn code_block(rux: &mut Rux<'_>, at: Pos2, width: f32, name: &str, text: &st
     rux.painter().galley(rect.min + Vec2::new(16.0, 14.0), galley, theme.ink.i700);
     let response = rux.ui.interact(rect, rux.ui.id().with(("settings-code", name)), Sense::hover());
     let named = name.to_owned();
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, named.clone()));
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, named.clone()));
     rect
 }
 
@@ -964,9 +1007,16 @@ pub fn list_well(rux: &mut Rux<'_>, rect: Rect, radius: f32) {
 }
 
 /// One row in a [`list_well`], raised when it is the chosen one. Answers its response.
-pub fn list_row(rux: &mut Rux<'_>, rect: Rect, radius: f32, name: &str, chosen: bool) -> egui::Response {
+pub fn list_row(
+    rux: &mut Rux<'_>,
+    rect: Rect,
+    radius: f32,
+    name: &str,
+    chosen: bool,
+) -> egui::Response {
     let chat = rux.theme().chat;
-    let response = rux.ui.interact(rect, rux.ui.id().with(("settings-list-row", name)), Sense::click());
+    let response =
+        rux.ui.interact(rect, rux.ui.id().with(("settings-list-row", name)), Sense::click());
     if chosen {
         rux.chrome.surface(rect, radius, Fill::gradient(chat.chip, rect), chat.raised_chip());
     } else if response.hovered() {
@@ -974,7 +1024,9 @@ pub fn list_row(rux: &mut Rux<'_>, rect: Rect, radius: f32, name: &str, chosen: 
         rux.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     let named = name.to_owned();
-    response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, chosen, named.clone()));
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::Button, true, chosen, named.clone())
+    });
     response
 }
 

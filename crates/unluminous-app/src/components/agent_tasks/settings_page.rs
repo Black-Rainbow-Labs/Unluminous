@@ -61,13 +61,21 @@ fn cards(board: &mut AgentTasks, ui: &mut egui::Ui, column: &mut Column) -> Vec<
             }
         }
 
-        let mut project =
-            configuration.project.clone().map(|path| path.display().to_string()).unwrap_or_default();
+        let mut project = configuration
+            .project
+            .clone()
+            .map(|path| path.display().to_string())
+            .unwrap_or_default();
         let copy = card.row(
             "Default project",
             Some("Where an agent is launched when a ticket names no project of its own."),
             |row| {
-                if row.text("Default project", &mut project, "the folder this window has open", 300.0) {
+                if row.text(
+                    "Default project",
+                    &mut project,
+                    "the folder this window has open",
+                    300.0,
+                ) {
                     changed.project = Some(project.clone())
                         .filter(|value: &String| !value.trim().is_empty())
                         .map(std::path::PathBuf::from);

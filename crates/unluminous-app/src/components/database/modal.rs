@@ -233,67 +233,73 @@ fn source_modal(
     // scroll, so a budget that was guessed drew the last of them over the buttons. Measured instead, and a
     // first frame for an engine that has not been measured yet asks for the height that engine usually takes.
     let measured = egui::Id::new(SOURCE_ID).with(("height", form.source.engine.title()));
-    let height = ctx.data(|data| data.get_temp::<f32>(measured)).unwrap_or(match form.source.engine {
-        Engine::Postgres => 660.0,
-        Engine::Sqlite | Engine::Inillucent => 430.0,
-    });
-    let testing = explorer.is_testing();
-    let (needed, escaped) = modal::show_unframed(ctx, SOURCE_ID, SOURCE_WIDTH, height, |ui, area| {
-        kit::layer(ui, "database-source-surface", area, |rux| {
-            let chat = rux.theme().chat;
-            rux.chrome.surface(area, SOURCE_RADIUS, chat.ground, chat.floating());
+    let height =
+        ctx.data(|data| data.get_temp::<f32>(measured)).unwrap_or(match form.source.engine {
+            Engine::Postgres => 660.0,
+            Engine::Sqlite | Engine::Inillucent => 430.0,
         });
-        let inner = Rect::from_min_max(
-            Pos2::new(area.left() + SOURCE_PAD_X, area.top() + SOURCE_PAD_Y),
-            Pos2::new(area.right() - SOURCE_PAD_X, area.bottom() - SOURCE_PAD_Y),
-        );
-        let needed = kit::layer(ui, "database-source", inner, |rux| {
-            let theme = rux.theme();
-            // The heading and the round close button.
-            let close = Rect::from_center_size(
-                Pos2::new(inner.right() - 17.0, inner.top() + 17.0),
-                Vec2::splat(34.0),
+    let testing = explorer.is_testing();
+    let (needed, escaped) =
+        modal::show_unframed(ctx, SOURCE_ID, SOURCE_WIDTH, height, |ui, area| {
+            kit::layer(ui, "database-source-surface", area, |rux| {
+                let chat = rux.theme().chat;
+                rux.chrome.surface(area, SOURCE_RADIUS, chat.ground, chat.floating());
+            });
+            let inner = Rect::from_min_max(
+                Pos2::new(area.left() + SOURCE_PAD_X, area.top() + SOURCE_PAD_Y),
+                Pos2::new(area.right() - SOURCE_PAD_X, area.bottom() - SOURCE_PAD_Y),
             );
-            if ChipButton::new(Icon::X, 34.0, "Close").mark(12.0, Some(1.8)).show(rux, close).clicked() {
-                outcome.close = true;
-            }
-            let style = Style::sans(18.0).semibold().tracking(-0.015);
-            let galley = rux.text(style, heading, theme.ink.i900);
-            rux::text::draw_left_capitals(
-                rux.painter(),
-                Pos2::new(inner.left(), close.center().y),
-                galley,
-                style,
-                theme.ink.i900,
-            );
-            let card_top = close.bottom() + SOURCE_GAP;
-            let card_bottom = general(rux, inner, card_top, &mut form, testing, &mut outcome);
-            // `Cancel` with no surface, and `Save` on the action's gradient.
-            let footer = card_bottom + SOURCE_GAP;
-            let save_width = rux.measure(Style::sans(13.0).semibold(), "Save").x + 44.0;
-            let save = Rect::from_min_size(
-                Pos2::new(inner.right() - save_width, footer),
-                Vec2::new(save_width, 38.0),
-            );
-            if primary(rux, save, "Save") {
+            let needed = kit::layer(ui, "database-source", inner, |rux| {
+                let theme = rux.theme();
+                // The heading and the round close button.
+                let close = Rect::from_center_size(
+                    Pos2::new(inner.right() - 17.0, inner.top() + 17.0),
+                    Vec2::splat(34.0),
+                );
+                if ChipButton::new(Icon::X, 34.0, "Close")
+                    .mark(12.0, Some(1.8))
+                    .show(rux, close)
+                    .clicked()
+                {
+                    outcome.close = true;
+                }
+                let style = Style::sans(18.0).semibold().tracking(-0.015);
+                let galley = rux.text(style, heading, theme.ink.i900);
+                rux::text::draw_left_capitals(
+                    rux.painter(),
+                    Pos2::new(inner.left(), close.center().y),
+                    galley,
+                    style,
+                    theme.ink.i900,
+                );
+                let card_top = close.bottom() + SOURCE_GAP;
+                let card_bottom = general(rux, inner, card_top, &mut form, testing, &mut outcome);
+                // `Cancel` with no surface, and `Save` on the action's gradient.
+                let footer = card_bottom + SOURCE_GAP;
+                let save_width = rux.measure(Style::sans(13.0).semibold(), "Save").x + 44.0;
+                let save = Rect::from_min_size(
+                    Pos2::new(inner.right() - save_width, footer),
+                    Vec2::new(save_width, 38.0),
+                );
+                if primary(rux, save, "Save") {
+                    outcome.save = true;
+                }
+                let cancel_width = kit::button_width(rux, "Cancel", false) + 2.0;
+                let cancel = Rect::from_min_size(
+                    Pos2::new(save.left() - 8.0 - cancel_width, footer),
+                    Vec2::new(cancel_width, 38.0),
+                );
+                if kit::button(rux, cancel, "Cancel", ButtonKind::Ghost) {
+                    outcome.close = true;
+                }
+                save.bottom() + SOURCE_PAD_Y - area.top()
+            });
+            // Enter is `Save`, as the last button of every modal's footer is.
+            if modal::Confirm::Enter.pressed(ui) {
                 outcome.save = true;
             }
-            let cancel_width = kit::button_width(rux, "Cancel", false) + 2.0;
-            let cancel = Rect::from_min_size(
-                Pos2::new(save.left() - 8.0 - cancel_width, footer),
-                Vec2::new(cancel_width, 38.0),
-            );
-            if kit::button(rux, cancel, "Cancel", ButtonKind::Ghost) {
-                outcome.close = true;
-            }
-            save.bottom() + SOURCE_PAD_Y - area.top()
+            needed
         });
-        // Enter is `Save`, as the last button of every modal's footer is.
-        if modal::Confirm::Enter.pressed(ui) {
-            outcome.save = true;
-        }
-        needed
-    });
     if (needed - height).abs() > 0.5 {
         ctx.data_mut(|data| data.insert_temp(measured, needed));
         ctx.request_repaint();
@@ -332,8 +338,11 @@ fn source_modal(
 /// The button that does the thing: the action's gradient, lifted, with white words.
 fn primary(rux: &mut rux::Rux<'_>, rect: Rect, label: &str) -> bool {
     let chat = rux.theme().chat;
-    let response =
-        rux.ui.interact(rect, rux.ui.id().with(("database-source-primary", label)), egui::Sense::click());
+    let response = rux.ui.interact(
+        rect,
+        rux.ui.id().with(("database-source-primary", label)),
+        egui::Sense::click(),
+    );
     if response.hovered() {
         rux.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
@@ -347,7 +356,8 @@ fn primary(rux: &mut rux::Rux<'_>, rect: Rect, label: &str) -> bool {
     let galley = rux.text(Style::sans(13.0).semibold(), label, ink);
     rux::text::draw_centred(rux.painter(), rect, galley, ink);
     let named = label.to_owned();
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, named.clone()));
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, named.clone()));
     response.clicked()
 }
 
@@ -368,7 +378,8 @@ fn general(
     let right = inner.right() - CARD_PAD_X;
     let state = rux.state;
     crate::theme::in_step(state);
-    let rows_area = Rect::from_min_max(Pos2::new(inner.left(), top), Pos2::new(inner.right(), top + 2_000.0));
+    let rows_area =
+        Rect::from_min_max(Pos2::new(inner.left(), top), Pos2::new(inner.right(), top + 2_000.0));
     let id = rux.ui.id().with("database-source-rows");
     let bottom = rux::layer(&mut *rux.ui, state, id, rows_area.expand(kit::CARD_REACH), |rows| {
         let theme = rows.theme();
@@ -376,7 +387,10 @@ fn general(
         // `General`, what the last test said, and the button that asks.
         let head = Rect::from_min_max(Pos2::new(left, pen), Pos2::new(right, pen + 32.0));
         let test_width = kit::button_width(rows, "Test Connection", false);
-        let test = Rect::from_min_size(Pos2::new(right - test_width, head.top()), Vec2::new(test_width, 32.0));
+        let test = Rect::from_min_size(
+            Pos2::new(right - test_width, head.top()),
+            Vec2::new(test_width, 32.0),
+        );
         if kit::button(rows, test, "Test Connection", ButtonKind::Chip) {
             outcome.test = true;
         }
@@ -433,7 +447,12 @@ fn label(rux: &mut rux::Rux<'_>, left: f32, pen: f32, name: &str) -> f32 {
 
 /// A line of help under the controls, across the control column. Answers where it ended.
 fn help(rux: &mut rux::Rux<'_>, left: f32, right: f32, pen: f32, said: &str) -> f32 {
-    kit::paragraph(rux, Pos2::new(left + SOURCE_LABEL, pen + 8.0), right - left - SOURCE_LABEL, said)
+    kit::paragraph(
+        rux,
+        Pos2::new(left + SOURCE_LABEL, pen + 8.0),
+        right - left - SOURCE_LABEL,
+        said,
+    )
 }
 
 /// The fields of the General card.
@@ -477,7 +496,10 @@ fn fields(rux: &mut rux::Rux<'_>, left: f32, right: f32, top: f32, form: &mut So
                 Pos2::new(right - browse_width, pen + (SOURCE_FIELD - kit::BUTTON) / 2.0),
                 Vec2::new(browse_width, kit::BUTTON),
             );
-            let field = Rect::from_min_max(Pos2::new(at, pen), Pos2::new(browse.left() - 8.0, pen + SOURCE_FIELD));
+            let field = Rect::from_min_max(
+                Pos2::new(at, pen),
+                Pos2::new(browse.left() - 8.0, pen + SOURCE_FIELD),
+            );
             kit::text_well(rux, field, "File", &mut form.source.database, "", true, false);
             if kit::button(rux, browse, "Browse\u{2026}", ButtonKind::Chip) {
                 if let Some(chosen) = choose_a_sqlite_file(&form.source.database) {
@@ -498,8 +520,12 @@ fn fields(rux: &mut rux::Rux<'_>, left: f32, right: f32, top: f32, form: &mut So
         }
         Engine::Postgres => {
             let at = label(rux, left, pen, "Host and port");
-            let port = Rect::from_min_size(Pos2::new(right - 84.0, pen), Vec2::new(84.0, SOURCE_FIELD));
-            let host = Rect::from_min_max(Pos2::new(at, pen), Pos2::new(port.left() - 8.0, pen + SOURCE_FIELD));
+            let port =
+                Rect::from_min_size(Pos2::new(right - 84.0, pen), Vec2::new(84.0, SOURCE_FIELD));
+            let host = Rect::from_min_max(
+                Pos2::new(at, pen),
+                Pos2::new(port.left() - 8.0, pen + SOURCE_FIELD),
+            );
             kit::text_well(rux, host, "Host", &mut form.source.host, "", true, false);
             let mut said = form.source.port.to_string();
             if kit::text_well(rux, port, "Port", &mut said, "", true, false).changed() {
@@ -510,7 +536,8 @@ fn fields(rux: &mut rux::Rux<'_>, left: f32, right: f32, top: f32, form: &mut So
                 [("Database", &mut form.source.database), ("User", &mut form.source.user)]
             {
                 let at = label(rux, left, pen, name);
-                let field = Rect::from_min_max(Pos2::new(at, pen), Pos2::new(right, pen + SOURCE_FIELD));
+                let field =
+                    Rect::from_min_max(Pos2::new(at, pen), Pos2::new(right, pen + SOURCE_FIELD));
                 kit::text_well(rux, field, name, value, "", true, false);
                 pen = field.bottom() + SOURCE_ROW_GAP;
             }
@@ -519,9 +546,11 @@ fn fields(rux: &mut rux::Rux<'_>, left: f32, right: f32, top: f32, form: &mut So
             // file records is the *name* of the entry. `egui`'s own password mode draws dots in the galley
             // rather than in the value, so a screenshot of this dialog carries no secret.
             let at = label(rux, left, pen, "Password");
-            let field = Rect::from_min_max(Pos2::new(at, pen), Pos2::new(right, pen + SOURCE_FIELD));
+            let field =
+                Rect::from_min_max(Pos2::new(at, pen), Pos2::new(right, pen + SOURCE_FIELD));
             kit::text_well(rux, field, "Password", &mut form.typed, "", false, true);
-            pen = help(rux, left, right, field.bottom(), secret_note(&form.source.secret)) + SOURCE_ROW_GAP;
+            pen = help(rux, left, right, field.bottom(), secret_note(&form.source.secret))
+                + SOURCE_ROW_GAP;
 
             // **`Connection security`, not `Encryption`.** `task-1795`: "No idea what encryption option
             // means." The row is `sslmode`, the values it stores are unchanged, and the words are the question a

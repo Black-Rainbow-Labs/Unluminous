@@ -180,7 +180,8 @@ fn server_card(
             }
         });
         let shapes = [Shape::Grouped, Shape::Every];
-        let options: Vec<String> = shapes.iter().map(|shape| shape_name(*shape).to_owned()).collect();
+        let options: Vec<String> =
+            shapes.iter().map(|shape| shape_name(*shape).to_owned()).collect();
         let chosen = shapes.iter().position(|shape| *shape == settings.mcp_tools);
         card.row("Tools", None, |row| {
             if let Some(index) = row.select("MCP tool shape", &options, chosen, 200.0) {

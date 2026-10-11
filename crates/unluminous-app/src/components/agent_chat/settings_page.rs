@@ -306,7 +306,9 @@ struct EndpointRow<'a> {
 fn fields_of(provider: &Provider) -> Vec<(&'static str, f32)> {
     match provider.is_a_program() {
         true => vec![("Program", 220.0), ("Model", 220.0)],
-        false => vec![("URL", 360.0), ("Model", 220.0), ("Key from", 220.0), ("Most tokens", 110.0)],
+        false => {
+            vec![("URL", 360.0), ("Model", 220.0), ("Key from", 220.0), ("Most tokens", 110.0)]
+        }
     }
 }
 
@@ -335,7 +337,12 @@ fn endpoint(
         + ENDPOINT_STATUS;
     let card = Rect::from_min_max(Pos2::new(left, top), Pos2::new(right, top + height));
     match in_use {
-        true => rux.chrome.surface(card, ENDPOINT_RADIUS, Fill::gradient(chat.chip, card), chat.raised_chip()),
+        true => rux.chrome.surface(
+            card,
+            ENDPOINT_RADIUS,
+            Fill::gradient(chat.chip, card),
+            chat.raised_chip(),
+        ),
         false => rux.chrome.surface(card, ENDPOINT_RADIUS, chat.well, chat.carved_sm()),
     }
     let inside_left = card.left() + ENDPOINT_PAD_X;
@@ -345,8 +352,16 @@ fn endpoint(
     // The name, and the two things that can be done to the row, on one line.
     let mut name = configuration.providers[index].name.clone();
     let name_at = Rect::from_min_size(Pos2::new(inside_left, pen), Vec2::new(140.0, ENDPOINT_HEAD));
-    if kit::text_well_styled(rux, name_at, "Endpoint name", &mut name, "", Style::sans(12.5).semibold(), false)
-        .changed()
+    if kit::text_well_styled(
+        rux,
+        name_at,
+        "Endpoint name",
+        &mut name,
+        "",
+        Style::sans(12.5).semibold(),
+        false,
+    )
+    .changed()
     {
         configuration.providers[index].name = name.trim().to_owned();
         act = Some(Act::Changed);
@@ -369,7 +384,11 @@ fn endpoint(
             Vec2::new(words + 10.0 + 11.0 + 6.0 + 12.0, 26.0),
         );
         rux.chrome.surface(badge, 13.0, chat.well, chat.carved_sm());
-        rux.mark(Mark::new(Icon::Tick, 11.0), Pos2::new(badge.left() + 10.0 + 5.5, badge.center().y), chat.faster);
+        rux.mark(
+            Mark::new(Icon::Tick, 11.0),
+            Pos2::new(badge.left() + 10.0 + 5.5, badge.center().y),
+            chat.faster,
+        );
         let galley = rux.text(Style::sans(11.5), "In use", chat.faster);
         rux::text::draw_left_capitals(
             rux.painter(),
@@ -378,7 +397,8 @@ fn endpoint(
             Style::sans(11.5),
             chat.faster,
         );
-        let response = rux.ui.interact(badge, rux.ui.id().with("agent-chat-in-use"), egui::Sense::hover());
+        let response =
+            rux.ui.interact(badge, rux.ui.id().with("agent-chat-in-use"), egui::Sense::hover());
         response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, "In use"));
     } else {
         let width = kit::button_width(rux, "Use", false) - 2.0;
@@ -393,8 +413,11 @@ fn endpoint(
     // row is, so a list that has to be opened would hide the answer. A shape that cannot work on this machine is
     // not offered, and the one this row already uses always is.
     let here = configuration.providers[index].wire;
-    let offered: Vec<&str> =
-        WIRES.iter().copied().filter(|named| shapes.contains(named) || here.name() == *named).collect();
+    let offered: Vec<&str> = WIRES
+        .iter()
+        .copied()
+        .filter(|named| shapes.contains(named) || here.name() == *named)
+        .collect();
     label(rux, Pos2::new(inside_left, pen + ENDPOINT_ROW / 2.0), "Speaks");
     let controls_left = inside_left + ENDPOINT_LABEL + 14.0;
     let width = kit::segmented_width(rux, &offered, 0.0, true, 11.0);
@@ -476,7 +499,9 @@ fn endpoint(
             match (provider.is_a_program(), provider.wants_a_key()) {
                 // **Not the path it was found at.** A person's own home folder is in that path, and this page is
                 // drawn into a screenshot test that is committed.
-                (true, _) => "Ready \u{00B7} found on this machine, and it holds its own account".to_owned(),
+                (true, _) => {
+                    "Ready \u{00B7} found on this machine, and it holds its own account".to_owned()
+                }
                 (false, true) => format!("Ready \u{00B7} key set from ${}", provider.key_env),
                 (false, false) => "Ready \u{00B7} no key needed".to_owned(),
             },
@@ -486,7 +511,8 @@ fn endpoint(
     };
     let centre = pen + ENDPOINT_STATUS / 2.0;
     rux.mark(Mark::new(mark, 14.0), Pos2::new(inside_left + 7.0, centre), tint);
-    let galley = rux.elided(Style::sans(11.5), &said, theme.ink.i400, inside_right - inside_left - 22.0);
+    let galley =
+        rux.elided(Style::sans(11.5), &said, theme.ink.i400, inside_right - inside_left - 22.0);
     rux::text::draw_left_capitals(
         rux.painter(),
         Pos2::new(inside_left + 22.0, centre),

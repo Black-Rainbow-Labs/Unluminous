@@ -237,7 +237,8 @@ fn layout(area: Rect) -> Layout {
         Vec2::new(right.width(), HEADER),
     );
     let top = header.bottom() + HEADER_GAP;
-    let column = Rect::from_min_max(Pos2::new(right.left(), top), Pos2::new(right.right(), area.bottom()));
+    let column =
+        Rect::from_min_max(Pos2::new(right.left(), top), Pos2::new(right.right(), area.bottom()));
     let view = Rect::from_min_max(
         Pos2::new(right.left() - kit::PAGE_MARGIN.left, top - VIEW_ABOVE),
         Pos2::new(area.right(), area.bottom()),
@@ -259,7 +260,12 @@ fn contents(
     kit::layer(ui, "settings-frame", area, |rux| {
         let chat = rux.theme().chat;
         rux.chrome.surface(area, RADIUS, chat.ground, chat.floating());
-        rux.chrome.surface(parts.nav, kit::CARD_RADIUS, Fill::gradient(chat.card, parts.nav), chat.raised());
+        rux.chrome.surface(
+            parts.nav,
+            kit::CARD_RADIUS,
+            Fill::gradient(chat.card, parts.nav),
+            chat.raised(),
+        );
     });
     show_list(ui, parts.nav, state, context);
     if header(ui, parts.header, state.page, context.plugin_pages) {
@@ -287,7 +293,8 @@ fn contents(
     }
 
     let view = parts.view.bottom() - parts.column.top();
-    let room = Rect::from_min_max(parts.column.min, Pos2::new(area.right() - 4.0, area.bottom() - PAD));
+    let room =
+        Rect::from_min_max(parts.column.min, Pos2::new(area.right() - 4.0, area.bottom() - PAD));
     let was = state.scroll;
     // The bar down the right, taken hold of **before** the page is drawn so that it wins the pointer over
     // whatever the page puts underneath it, `components::scrollbar`'s own rule.
@@ -478,7 +485,11 @@ fn show_list(ui: &mut egui::Ui, area: Rect, state: &mut SettingsWindow, context:
         // The search well.
         let well = Rect::from_min_max(Pos2::new(left, pen), Pos2::new(right, pen + 38.0));
         rux.chrome.surface(well, 19.0, chat.well, chat.carved_sm());
-        rux.mark(Mark::new(Icon::Search, 14.0).stroke(1.8 * 24.0 / 14.0), Pos2::new(well.left() + 21.0, well.center().y), theme.ink.i400);
+        rux.mark(
+            Mark::new(Icon::Search, 14.0).stroke(1.8 * 24.0 / 14.0),
+            Pos2::new(well.left() + 21.0, well.center().y),
+            theme.ink.i400,
+        );
         let font = Style::sans(12.5).font();
         let search_id = rux.ui.id().with("settings-search");
         let text = crate::components::controls::field_takes_the_whole_rectangle_at(
@@ -610,7 +621,11 @@ fn page_row(
         true => theme.ink.i900,
         false => theme.ink.i500,
     };
-    rux.mark(Mark::new(mark_of(page, plugin_page_marks), 16.0), Pos2::new(row.left() + 20.0, row.center().y), ink);
+    rux.mark(
+        Mark::new(mark_of(page, plugin_page_marks), 16.0),
+        Pos2::new(row.left() + 20.0, row.center().y),
+        ink,
+    );
     let galley = rux.text(Style::sans(12.5), title, ink);
     rux::text::draw_left_capitals(
         rux.painter(),
@@ -619,9 +634,8 @@ fn page_row(
         Style::sans(12.5),
         ink,
     );
-    response.widget_info(|| {
-        egui::WidgetInfo::selected(egui::WidgetType::Button, true, chosen, title)
-    });
+    response
+        .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, chosen, title));
     response.clicked()
 }
 
@@ -664,7 +678,12 @@ fn options_with(list: Vec<String>, current: &str) -> (Vec<String>, Option<usize>
 }
 
 /// `Appearance & Behavior > Appearance`: the editor's font, the interface's, and the window's background.
-fn appearance_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings, families: &[String]) -> Drawn {
+fn appearance_page(
+    ui: &mut egui::Ui,
+    area: Rect,
+    settings: &mut Settings,
+    families: &[String],
+) -> Drawn {
     let mut changed = false;
     let mut backgrounds = false;
     let mut column = Column::new(area.left(), area.right(), area.top());
@@ -908,7 +927,11 @@ fn theme_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings, plugins: &
         options.extend(crate::theme::IconSet::ALL.iter().map(|set| icon_set_name(*set).to_owned()));
         let chosen = match settings.icon_set() {
             None => 0,
-            Some(set) => crate::theme::IconSet::ALL.iter().position(|one| *one == set).map(|at| at + 1).unwrap_or(0),
+            Some(set) => crate::theme::IconSet::ALL
+                .iter()
+                .position(|one| *one == set)
+                .map(|at| at + 1)
+                .unwrap_or(0),
         };
         card.row(
             "Icon set",
@@ -1054,7 +1077,8 @@ fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Drawn 
     // `task-1804` §7.1. What a file is written back with, and what the index leaves out.
     kit::card(ui, &mut column, "Files", None, |card| {
         let list = [LineEndings::Keep, LineEndings::Lf, LineEndings::Crlf];
-        let options: Vec<String> = list.iter().map(|one| line_ending_name(*one).to_owned()).collect();
+        let options: Vec<String> =
+            list.iter().map(|one| line_ending_name(*one).to_owned()).collect();
         let chosen = list.iter().position(|one| *one == settings.line_endings);
         card.row(
             "Line endings",
@@ -1112,7 +1136,8 @@ fn terminal_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Draw
     let mut changed = false;
     let mut column = Column::new(area.left(), area.right(), area.top());
     kit::card(ui, &mut column, "Font", None, |card| {
-        let sizes: Vec<String> = TERMINAL_FONT_SIZES.iter().map(|size| format!("{size:.0}")).collect();
+        let sizes: Vec<String> =
+            TERMINAL_FONT_SIZES.iter().map(|size| format!("{size:.0}")).collect();
         let (sizes, chosen) = options_with(sizes, &format!("{:.0}", settings.terminal_font_size));
         card.row(
             "Size",
@@ -1136,7 +1161,12 @@ fn terminal_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Draw
             default_shell_name()
         );
         card.row("Program", Some(&help), |row| {
-            row.code_text("Terminal shell", &mut settings.terminal_shell, default_shell_hint(), 240.0);
+            row.code_text(
+                "Terminal shell",
+                &mut settings.terminal_shell,
+                default_shell_hint(),
+                240.0,
+            );
         });
         if settings.terminal_shell != before {
             changed = true;
@@ -1288,7 +1318,8 @@ mod tests {
         let area = dialog();
         let plugins = crate::services::plugins::Plugins::load(None).0;
         let mut settings = Settings::default();
-        let mut state = SettingsWindow { open: true, page: Page::Editor, ..SettingsWindow::default() };
+        let mut state =
+            SettingsWindow { open: true, page: Page::Editor, ..SettingsWindow::default() };
         state.mcp.read = true;
         let running = crate::services::mcp::State::Off;
         let program = std::path::PathBuf::from("unluminous-cli");
