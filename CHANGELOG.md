@@ -6,12 +6,15 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.74.0 — 2026-10-11
 
 - The release speed design records the 0.73.1 release and the after numbers (`task-2240`)
 - Agent-Tasks drawn to the approved design, the board and the ticket (`task-2241`)
 - The changelog lists the Agent-Tasks redesign as unreleased (`task-2241`)
 - The title bar, the menus and the rail drawn to the Editing code design (`task-2241`)
+- The changelog lists the window chrome redesign as unreleased (`task-2241`)
+- The pictures a test draws in a second window on the same thread, taken with the chrome state tied to its context (`task-2241`)
+- The renamed terminal tab picture without the index's fence file in the sample folder (`task-2241`)
 
 ## 0.73.1 — 2026-10-10
 
