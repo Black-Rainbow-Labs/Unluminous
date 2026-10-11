@@ -369,7 +369,59 @@ test build no longer share dependency artifacts.
 
 ## 7. Measured after implementation
 
-AFTER_RESULTS
+### 7.1 The gate
+
+On the 80% share, in a fresh target directory (T1) and then in the same one (T2, T3):
+
+| measurement | before | after | change |
+|---|---:|---:|---:|
+| every crate, cold | 329.1 s, B2 + B3 + B4, no limit | 240.1 s (T1) | 37% faster, on 19 processors instead of 24 |
+| nothing changed since the last pass | 201.7 s or more, B3w alone | 1.1 s (T2) | the tests are not run |
+| one line changed in `unluminous-app` | every crate again | 27.2 s (T3): clippy and lib tests of `unluminous-app` only | |
+| the gate inside the 0.73.1 release | | 7.0 s: `cargo fmt`, the two checks, and every unit already passed | |
+
+### 7.2 The 0.73.1 release
+
+`pwsh tools/release.ps1` from the main checkout after the merge, sampled like every other
+measurement (`R1-release-0.73.1`), with its own record in `_agent_output/release-timings/0.73.1.json`:
+
+| step | seconds |
+|---|---:|
+| the gate (`Running the suite`) | 7.0 |
+| the Windows build, installer and install, with both macOS builds beside it | 383.7 |
+| waiting for macOS after that, signing and Apple's notarisation included | 63.4 |
+| prune, changelog, commit, tag, push | 11.0 |
+| the private GitHub release | 12.2 |
+| the public source and release | 44.9 |
+| unluminous.com | 34.3 |
+| blackrainbowlabs.com | 28.1 |
+| everything else | 2.6 |
+| **total** | **587.2** |
+
+Every destination reported `ok` and the macOS bundle was signed and notarised.
+
+This release was the expensive case twice over. The version bump recompiles every workspace crate
+in a release build, and the two macOS folders `target/mac-<triple>` did not exist yet, so both
+architectures were cold: 6 min 12 s and 6 min 42 s, at the same time as the Windows build. A release
+after this one finds them warm, which is the 210 s case in §5.3.
+
+0.73.0, the release before, can only be bounded from its files: 12 min 6 s from the last ticket
+commit to the release commit, before any publishing. 0.73.1 reached its release commit after
+7 min 46 s, with the macOS folders cold.
+
+The machine as a whole averaged 62% during the release, with 60% of samples over 80%: the release's
+19 processors were busy, and the rest of the desktop ran on the other 5. Sampled per processor during
+a capped run, the 5 processors outside the mask sat at 1% to 11%.
+
+### 7.3 What a ticket now pays, against before
+
+| | before | after |
+|---|---|---|
+| window suite | run in the worktree, then again in the main checkout | run once, in the worktree |
+| window suite rebuild after a change | 32.6 s | 15.3 s |
+| clippy and tests | in the worktree by hand, then all ten crates again in the release | once in the worktree with `tools/test.mjs`; the release runs nothing |
+| the three release builds | 383 s one after another | 210 s at once (warm) |
+| processors used | all 24 | 19 of 24 |
 
 ## 8. Recommendations not built here
 
