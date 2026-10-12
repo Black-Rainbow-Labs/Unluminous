@@ -2830,7 +2830,7 @@ mod tests {
         // back. **The key is the thing that must not be there**: an endpoint names the environment
         // variable it is in, and the value is read at the moment a request is sent and never held.
         let folder = a_folder("settings-round-trip");
-        let mut configuration = Configuration {
+        let configuration = Configuration {
             chosen: "codex".to_owned(),
             tools: true,
             shell: true,

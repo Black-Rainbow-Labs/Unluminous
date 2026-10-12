@@ -226,24 +226,30 @@ pub fn set(providers: &mut Vec<Provider>, name: &str, value: &str) -> Option<Res
             "there is no endpoint {index}: ai.providers says how many there are"
         )));
     };
-    Some(match field {
-        "name" if value.is_empty() => Err("an endpoint's name cannot be empty".to_owned()),
-        "name" => Ok(provider.name = value.to_owned()),
+    if field == "name" && value.is_empty() {
+        return Some(Err("an endpoint's name cannot be empty".to_owned()));
+    }
+    match field {
+        "name" => provider.name = value.to_owned(),
         "wire" => match Wire::from_name(value) {
-            Some(wire) => Ok(provider.wire = wire),
+            Some(wire) => provider.wire = wire,
             None => {
-                Err(format!("`{value}` is not a shape this version speaks: {}", WIRES.join(", ")))
+                return Some(Err(format!(
+                    "`{value}` is not a shape this version speaks: {}",
+                    WIRES.join(", ")
+                )))
             }
         },
-        "command" => Ok(provider.command = value.to_owned()),
-        "url" => Ok(provider.url = value.to_owned()),
-        "model" => Ok(provider.model = value.to_owned()),
-        "key-env" => Ok(provider.key_env = value.to_owned()),
+        "command" => provider.command = value.to_owned(),
+        "url" => provider.url = value.to_owned(),
+        "model" => provider.model = value.to_owned(),
+        "key-env" => provider.key_env = value.to_owned(),
         _ => match value.parse::<u32>() {
-            Ok(count) => Ok(provider.max_tokens = count.clamp(64, 200_000)),
-            Err(_) => Err("max-tokens is a number of tokens".to_owned()),
+            Ok(count) => provider.max_tokens = count.clamp(64, 200_000),
+            Err(_) => return Some(Err("max-tokens is a number of tokens".to_owned())),
         },
-    })
+    }
+    Some(Ok(()))
 }
 
 /// A name no endpoint has yet, so `Add endpoint` twice makes two rows rather than two of one name.
