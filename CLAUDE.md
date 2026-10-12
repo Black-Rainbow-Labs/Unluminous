@@ -4742,6 +4742,12 @@ downloaded. Four rules came out of measuring it, and each is a constant with its
 - **The processor embeds at most `PROCESSOR_CHUNK_LIMIT` chunks** (100,000). Past that a repository is
   searched by its words unless `INILLUCENT_EMBED_DEVICE` names a card. `UNLUMINOUS_EMBED=off` stops
   embedding, which a speed run sets.
+- **The model is let go a minute after its last use** (`search::MODEL_IDLE`, `task-2247`). While ONNX
+  Runtime and `nomic-embed-text` are loaded they are about 1 GB of the process: a window on a folder
+  of one file measured 1,208 MB of working set with the model and 175 MB without it. Inillucent keeps
+  it five minutes by default. `search::configure` sets `INILLUCENT_EMBED_RESIDENCY=idle:60s` unless
+  that variable or a recorded residency says otherwise, and `ProjectSymbols::open` calls it, because
+  the window starts its host there and not through `search::ask`.
 
 **An answer an agent reads is short and saves it a turn.** Every answer is cut to a token budget and
 says what was left out. A small `find`, a `def` with one definition and a plain English answer carry

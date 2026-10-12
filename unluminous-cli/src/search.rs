@@ -30,7 +30,7 @@ pub const IDLE_EXIT: Duration = atrius_index::host::IDLE_EXIT;
 
 /// Configures Atrius once per process: which program a spawned host is, what this process is called in
 /// the host file, and the settings Unluminous used to read under its own names.
-fn configure() {
+pub fn configure() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
         // `UNLUMINOUS_INDEX_CACHE` and `UNLUMINOUS_EMBED` are what the evaluation harness, the tests
@@ -50,6 +50,7 @@ fn configure() {
                 }
             }
         }
+        keep_the_model_briefly();
         if let Some(cli) = cli_program() {
             atrius_index::host::set_server_command(cli, vec!["search".into(), "serve".into()]);
         }
@@ -58,6 +59,50 @@ fn configure() {
             env!("CARGO_PKG_VERSION")
         ));
     });
+}
+
+/// How long an index host in this process keeps the embedding model once nothing is asking for it.
+pub const MODEL_IDLE: &str = "idle:60s";
+
+/// Releases the embedding model a minute after its last use, unless somebody has chosen otherwise.
+///
+/// The model is ONNX Runtime and `nomic-embed-text`, and while it is loaded it is about 1 GB of the
+/// process: measured on 0.76.0, a window on a folder with one file in it was 1,208 MB of working set
+/// with the model and 175 MB without it (`task-2247`). Inillucent's own default keeps it for five
+/// minutes after the last embedding or question, which is right for a database a person queries and
+/// wrong for an editor that embeds a few changed passages and then sits open all day. A minute still
+/// covers a burst of questions. `INILLUCENT_EMBED_RESIDENCY`, or a residency `inillucent
+/// setup-embeddings` recorded, wins over this.
+fn keep_the_model_briefly() {
+    const VARIABLE: &str = "INILLUCENT_EMBED_RESIDENCY";
+    if std::env::var_os(VARIABLE).is_some() || a_residency_was_recorded() {
+        return;
+    }
+    std::env::set_var(VARIABLE, MODEL_IDLE);
+}
+
+/// Whether `inillucent setup-embeddings` wrote a residency into its install state, read from where
+/// Inillucent's `install::home` keeps it.
+fn a_residency_was_recorded() -> bool {
+    let named = std::env::var_os("INILLUCENT_HOME").filter(|home| !home.is_empty());
+    let home = if let Some(named) = named {
+        Some(PathBuf::from(named))
+    } else if cfg!(windows) {
+        std::env::var_os("LOCALAPPDATA").map(|local| PathBuf::from(local).join("inillucent"))
+    } else if cfg!(target_os = "macos") {
+        std::env::var_os("HOME")
+            .map(|home| PathBuf::from(home).join("Library/Application Support/inillucent"))
+    } else {
+        std::env::var_os("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share"))
+            })
+            .map(|data| data.join("inillucent"))
+    };
+    home.and_then(|home| std::fs::read(home.join("embeddings.json")).ok())
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+        .is_some_and(|state| state.get("residency").is_some_and(|value| !value.is_null()))
 }
 
 /// The `unluminous-cli` program: this one when it is the CLI under any name that starts with its own
@@ -123,5 +168,21 @@ pub fn serve(root: &Path) -> i32 {
             eprintln!("unluminous-cli search serve: {problem}");
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Inillucent reads `INILLUCENT_EMBED_RESIDENCY` as `resident`, `on-demand`, `idle` or
+    /// `idle:<duration>`, and ignores anything else with one line on standard error. `60s` alone was
+    /// ignored that way, so the model stayed for Inillucent's five minutes (`task-2247`).
+    #[test]
+    fn the_model_is_kept_for_a_minute_in_the_form_inillucent_reads() {
+        let after = MODEL_IDLE.strip_prefix("idle:").expect("written as idle:<duration>");
+        let seconds: u64 =
+            after.strip_suffix('s').and_then(|n| n.parse().ok()).expect("a number of seconds");
+        assert_eq!(seconds, 60);
     }
 }

@@ -51,6 +51,9 @@ impl ProjectSymbols {
     /// @param root - the project folder
     /// @param on_disk - whether the window may be the index host and write the index file
     pub fn open(root: &Path, on_disk: bool) -> ProjectSymbols {
+        // Before the host starts, so the settings the command line's host is given reach this one too:
+        // the older `UNLUMINOUS_*` names and how long the embedding model is kept (`task-2247`).
+        unluminous_cli::search::configure();
         let canonical = atrius_index::host::canonical(root);
         let host = match on_disk {
             true => atrius_index::host::in_process(&canonical),
