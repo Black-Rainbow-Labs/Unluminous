@@ -6,9 +6,10 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.76.1 — 2026-10-12
 
 - The embedding model is let go a minute after its last use (`task-2247`)
+- The changelog written from the history (`task-2247`)
 
 ## 0.76.0 — 2026-10-11
 
