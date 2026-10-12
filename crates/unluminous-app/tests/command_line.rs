@@ -932,6 +932,8 @@ fn settings_list_keeps_a_long_value_and_its_help_apart() {
 /// The help of every setting, so the test can find the seam in a row without a second copy of the
 /// settings list.
 const SETTINGS_HELP: &[&str] = &[
+    // `task-2247`: every key of every AI endpoint, which `Settings -> AI Configuration` edits.
+    "An AI endpoint, which Settings -> AI Configuration edits.",
     // `task-1922` WP4's three, which are the reason this list is a list rather than a rule: a help
     // string added to `cli_settings::SETTINGS` and not added here fails this test, which is what it
     // is for.
