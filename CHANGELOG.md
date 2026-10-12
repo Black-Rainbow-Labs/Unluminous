@@ -6,10 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.77.0 — 2026-10-12
 
 - TDD for an optional code index and half the memory when it is on (`task-2249`)
 - The Database pane and the Realm in the Settings design's language (`task-2250`)
+- The changelog written from the history (`task-2250`)
 
 ## 0.76.1 — 2026-10-11
 
