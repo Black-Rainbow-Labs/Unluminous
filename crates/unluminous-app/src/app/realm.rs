@@ -278,8 +278,8 @@ impl UnluminousApp {
         let look = realm_view::Look {
             opacity: self.settings.opacity,
             page: crate::theme::color::editor(),
-            card: crate::theme::color::code_panel(),
-            header: crate::theme::color::explorer(),
+            card: realm_view::card_colour(),
+            header: realm_view::card_colour(),
             chrome: &chrome,
         };
         self.settle_the_zoom(ui, body);

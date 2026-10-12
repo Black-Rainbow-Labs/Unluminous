@@ -915,3 +915,60 @@ fn a_sqlite_file_added_as_inillucent_is_told_where_to_go() {
     assert!(std::path::Path::new(&built).exists(), "{built}");
     assert_eq!(std::fs::read(&sqlite).expect("the original"), before, "the source is untouched");
 }
+
+/// `New query` goes on the data source of the page showing, else the one the tree is pointed at, else the
+/// first there is, and with no data source at all there is nothing to put it on. `task-2250`.
+#[test]
+fn a_new_query_goes_on_the_data_source_somebody_is_looking_at() {
+    let empty = DatabaseExplorer::new();
+    assert_eq!(empty.source_for_a_new_query(), None, "nothing to query yet");
+
+    let (mut explorer, file) = opened("new-query");
+    assert_eq!(explorer.source_for_a_new_query().as_deref(), Some("test"));
+    explorer
+        .command("add-source", &["other".to_owned(), file.to_string_lossy().into_owned()])
+        .expect("a second source");
+    run(&mut explorer, "use", &["other"]);
+    assert_eq!(explorer.source_for_a_new_query().as_deref(), Some("other"), "the one pointed at");
+    run(&mut explorer, "console", &["test"]);
+    assert_eq!(
+        explorer.source_for_a_new_query().as_deref(),
+        Some("test"),
+        "the page showing wins over the one the tree is pointed at"
+    );
+    let answer = value(&mut explorer, "new-query", &[]);
+    assert_eq!(answer["source"], "test");
+}
+
+/// The dropdown points a console at another data source: the statement stays, the last answer goes, and a
+/// console still running is refused.
+#[test]
+fn a_console_can_be_pointed_at_another_data_source() {
+    let (mut explorer, file) = opened("console-source");
+    explorer
+        .command("add-source", &["other".to_owned(), file.to_string_lossy().into_owned()])
+        .expect("a second source");
+    let id = value(&mut explorer, "console", &["test"])["page"].as_u64().expect("a page");
+    if let Some(Page { sheet: Sheet::Console(console), .. }) =
+        explorer.pages.iter_mut().find(|page| page.id == id)
+    {
+        console.text = "select count(*) from member".to_owned();
+    }
+    explorer.execute(id).expect("sent");
+    settle(&mut explorer);
+    explorer.point_the_console_at(id, "other").expect("moved");
+    let Some(Page { sheet: Sheet::Console(console), .. }) = explorer.page(id) else {
+        panic!("the console is gone")
+    };
+    assert_eq!(console.source, "other");
+    assert_eq!(console.text, "select count(*) from member", "the statement stays");
+    assert!(console.result.is_none(), "the other database's answer is not left under this one");
+    assert_eq!(explorer.page(id).map(Page::title).as_deref(), Some("Query 1"), "the same page");
+
+    assert!(explorer.point_the_console_at(id, "nowhere").is_err());
+    explorer.mark_running_for_tests(id, 99);
+    assert!(
+        explorer.point_the_console_at(id, "test").is_err(),
+        "an answer is on its way from the source it was sent to"
+    );
+}

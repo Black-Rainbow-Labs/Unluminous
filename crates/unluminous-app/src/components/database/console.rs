@@ -16,14 +16,20 @@
 //! and cannot reach `components::editor_view`; that is `tasks/ui-plugin-architecture.md`'s own rule.
 
 use egui::{Pos2, Rect, Vec2};
+use rux::icon::Icon;
+use rux::Style;
 
-use crate::components::database::{along, code, text, well, Act, TOOLBAR};
+use crate::components::database::{code, kit, well, Act};
 use crate::services::database::{DatabaseExplorer, Page, Sheet};
 use crate::services::plugin_ui::Look;
-use crate::theme::{color, icon};
+use crate::theme::color;
 
 /// How tall the results area is, as a share of the page.
 const RESULTS: f32 = 0.45;
+/// How tall the console's toolbar is: a 38 point chip and the Run pill.
+pub const TOOLBAR: f32 = 38.0;
+/// The widest the data source dropdown is drawn.
+const SOURCE_WIDEST: f32 = 220.0;
 
 /// Draw one console.
 pub fn show(
@@ -40,27 +46,32 @@ pub fn show(
 
     let has_result = matches!(
         explorer.page(id),
-        Some(Page { sheet: Sheet::Console(console), .. }) if console.result.is_some() || !console.output.is_empty()
+        Some(Page { sheet: Sheet::Console(console), .. })
+            if console.result.is_some() || console.failure.is_some() || !console.output.is_empty()
     );
     let split = match has_result {
         true => area.bottom() - area.height() * RESULTS,
         false => area.bottom(),
     };
     let editor = Rect::from_min_max(
-        Pos2::new(area.left(), bar.bottom() + 4.0 * scale),
-        Pos2::new(area.right(), split - 4.0 * scale),
+        Pos2::new(area.left(), bar.bottom() + 12.0 * scale),
+        Pos2::new(area.right(), split - 6.0 * scale),
     );
     if editor.height() > 20.0 {
         acts.extend(sql_editor(explorer, ui, look, editor, id));
     }
     if has_result {
-        let results = Rect::from_min_max(Pos2::new(area.left(), split), area.max);
+        let results = Rect::from_min_max(Pos2::new(area.left(), split + 6.0 * scale), area.max);
         acts.extend(the_results(explorer, ui, look, results, id));
     }
     acts
 }
 
-/// Execute, Stop, and the schema switcher on the right.
+/// Run and Stop at the left, and the data source the console is on, as a dropdown, at the right.
+///
+/// `task-2250`: *"The query console should allow me to select which db to use in a dropdown on the right.
+/// Right now it just shows the db currently referenced."* The dropdown is the Settings design's chip, which is
+/// `settings_kit::select`, so it is the same control the Settings window chooses a value from a list with.
 fn toolbar(
     explorer: &DatabaseExplorer,
     ui: &mut egui::Ui,
@@ -72,66 +83,78 @@ fn toolbar(
     let mut acts = Vec::new();
     let Some(Page { sheet: Sheet::Console(console), .. }) = explorer.page(id) else { return acts };
     let running = console.running.is_some();
-    let mut at = bar.left();
-    let step = 26.0 * scale;
-
-    // The one button on the page that does the thing the page is for, so it is the board's own
-    // primary button rather than an icon in a row of icons.
-    let execute = Rect::from_min_size(
-        Pos2::new(at, bar.top() + 3.0 * scale),
-        Vec2::new(74.0 * scale, bar.height() - 6.0 * scale),
-    );
-    at += execute.width() + 6.0 * scale;
-    if crate::components::modal::button(ui, execute, "Execute", !running, true) {
-        acts.push(Act::Execute(id));
-    }
     // Stop is absent unless something is running **and this engine can stop one**: a control that
     // cannot apply is not drawn, which is the same rule that leaves the `F` button off a `.rs` file.
-    let can_stop = explorer.can_stop(&console.source);
-    if running
-        && can_stop
-        && crate::components::controls::icon_button(
-            ui,
-            along(bar, &mut at, step),
-            "Stop",
-            icon::stop,
-        )
-    {
-        acts.push(Act::Stop(id));
-    }
-    let source = console.source.clone();
+    let can_stop = running && explorer.can_stop(&console.source);
+    let names: Vec<String> = explorer.sources().iter().map(|source| source.name.clone()).collect();
+    let chosen = names.iter().position(|name| *name == console.source);
     let schema = console.schema.clone();
-    let where_it_is = match schema.is_empty() {
-        true => source.clone(),
-        false => format!("{source}.{schema}"),
-    };
-    // Pinned to the right, which is where the reference editor's schema switcher is.
-    let painter = ui.painter();
-    let mark = Pos2::new(bar.right() - 8.0 * scale, bar.center().y);
-    let drawn = painter
-        .layout_no_wrap(
-            where_it_is.clone(),
-            egui::FontId::proportional(look.font_size * 0.85),
-            color::text_dim(),
-        )
-        .size()
-        .x;
-    text(
-        painter,
-        Pos2::new(mark.x - drawn, mark.y),
-        &where_it_is,
-        color::text_dim(),
-        look.font_size * 0.85,
-        drawn + 2.0,
-    );
-    if running {
-        crate::components::database::waiting(
-            painter,
-            Pos2::new(mark.x - drawn - 24.0 * scale, mark.y),
-            color::accent(),
-            ui.input(|input| input.time),
+    let time = ui.input(|input| input.time);
+    kit::layer(ui, scale, ("database-console-bar", id), bar, |rux| {
+        // The one button on the page that does the thing the page is for, so it is the action's pill
+        // rather than an icon in a row of icons.
+        let run = rux::components::PillButton::new("Execute")
+            .primary()
+            .mark(Icon::Play)
+            .enabled(!running);
+        let size = run.measure(rux);
+        let run_rect =
+            Rect::from_min_size(Pos2::new(bar.left(), bar.center().y - size.y / 2.0), size);
+        if run.show(rux, run_rect).clicked() {
+            acts.push(Act::Execute(id));
+        }
+        let mut pen = run_rect.right() + 10.0 * scale;
+        if can_stop {
+            let stop = Rect::from_center_size(
+                Pos2::new(pen + 16.0 * scale, bar.center().y),
+                Vec2::splat(32.0 * scale),
+            );
+            if kit::chip_button(rux, stop, Icon::Pause, 32.0, "Stop") {
+                acts.push(Act::Stop(id));
+            }
+            pen = stop.right() + 10.0 * scale;
+        }
+        if running {
+            crate::components::database::waiting(
+                rux.painter(),
+                Pos2::new(pen + 10.0 * scale, bar.center().y),
+                color::accent(),
+                time,
+            );
+            pen += 28.0 * scale;
+        }
+        // The data source, pinned to the right, which is where the reference editor's schema switcher is.
+        let room = bar.right() - pen;
+        let width = (room * 0.6).min(SOURCE_WIDEST * scale);
+        if width < 90.0 * scale || names.is_empty() {
+            return;
+        }
+        let height = crate::components::settings_kit::CONTROL * scale;
+        let rect = Rect::from_min_size(
+            Pos2::new(bar.right() - width, bar.center().y - height / 2.0),
+            Vec2::new(width, height),
         );
-    }
+        if let Some(picked) =
+            crate::components::settings_kit::select(rux, rect, "Data source", &names, chosen)
+        {
+            if let Some(name) = names.get(picked) {
+                acts.push(Act::ConsoleSource(id, name.clone()));
+            }
+        }
+        // The schema the console reads, in front of the dropdown, when there is room to name it.
+        if !schema.is_empty() && rect.left() - pen > 80.0 * scale {
+            let words = format!("schema {schema}");
+            let style = rux.zs(Style::sans(11.5));
+            let width = rux.measure(style, &words).x.min(rect.left() - pen - 12.0 * scale);
+            kit::quiet(
+                rux,
+                Pos2::new(rect.left() - 12.0 * scale - width, bar.center().y),
+                &words,
+                11.5,
+                width,
+            );
+        }
+    });
     acts
 }
 
@@ -145,8 +168,8 @@ fn sql_editor(
 ) -> Vec<Act> {
     let scale = look.scale();
     let mut acts = Vec::new();
-    well(ui, look, area, 8.0 * scale);
-    let inner = area.shrink(8.0 * scale);
+    well(ui, look, area, kit::WELL_RADIUS * scale);
+    let inner = area.shrink2(Vec2::new(14.0 * scale, 12.0 * scale));
     let Some(page) = explorer.pages.iter_mut().find(|page| page.id == id) else { return acts };
     let Sheet::Console(console) = &mut page.sheet else { return acts };
     // The whole well takes a click, not only the box inset eight points inside it. A press in that
@@ -247,7 +270,7 @@ fn format(font: egui::FontId, tint: egui::Color32) -> egui::text::TextFormat {
     egui::text::TextFormat { font_id: font, color: tint, ..egui::text::TextFormat::default() }
 }
 
-/// `Output` and `Result 1`, under the editor.
+/// `Output` and `Result`, under the editor: a heading with what came back, and a carved well holding it.
 fn the_results(
     explorer: &mut DatabaseExplorer,
     ui: &mut egui::Ui,
@@ -262,23 +285,28 @@ fn the_results(
     let result = console.result.clone();
     let failure = console.failure.clone();
 
-    let heading = Rect::from_min_size(area.min, Vec2::new(area.width(), 20.0 * scale));
-    let said = match (&result, &failure) {
-        (_, Some(_)) => "Output".to_owned(),
-        (Some(rows), None) => format!("Result 1 — {}", rows.summary()),
-        (None, None) => "Output".to_owned(),
+    let heading = Rect::from_min_size(area.min, Vec2::new(area.width(), 22.0 * scale));
+    let (said, detail) = match (&result, &failure) {
+        (_, Some(_)) => ("Output".to_owned(), "the statement failed".to_owned()),
+        (Some(rows), None) => ("Result".to_owned(), rows.summary()),
+        (None, None) => ("Output".to_owned(), String::new()),
     };
-    text(
-        ui.painter(),
-        Pos2::new(heading.left(), heading.center().y),
-        &said,
-        color::text_strong(),
-        look.font_size * 0.85,
-        heading.width(),
-    );
-    let body = Rect::from_min_max(Pos2::new(area.left(), heading.bottom() + 2.0 * scale), area.max);
-    well(ui, look, body, 8.0 * scale);
-    let inner = body.shrink(6.0 * scale);
+    kit::layer(ui, scale, ("database-console-heading", id), heading, |rux| {
+        let at = Pos2::new(heading.left() + 2.0 * scale, heading.center().y);
+        let drawn = kit::heading(rux, at, &said, 13.0, heading.width());
+        if !detail.is_empty() {
+            kit::quiet(
+                rux,
+                Pos2::new(heading.left() + drawn + 12.0 * scale, heading.center().y),
+                &detail,
+                11.5,
+                heading.width() - drawn - 12.0 * scale,
+            );
+        }
+    });
+    let body = Rect::from_min_max(Pos2::new(area.left(), heading.bottom() + 8.0 * scale), area.max);
+    well(ui, look, body, kit::WELL_RADIUS * scale);
+    let inner = body.shrink2(Vec2::new(10.0 * scale, 8.0 * scale));
 
     match (&result, &failure) {
         (_, Some(why)) => {

@@ -1061,3 +1061,132 @@ fn test_connection_does_not_stop_the_window_drawing() {
         "a Test Connection is in flight rather than one that was already answered inside the draw"
     );
 }
+
+// ------------------------------------------------------------------------------ task-2250's arrangement
+
+/// The consoles and grids are on the left and the data sources are on the right, once the pane is wide
+/// enough for two columns; a narrow pane stacks them with the tree on top.
+///
+/// `task-2250`: *"The db tables should be on the right, and the query console tabs/content should be to
+/// the left of it."* Asserted on where the controls really are, rather than on a picture, so it holds in
+/// any font on any machine.
+#[test]
+fn the_tree_is_on_the_right_of_the_consoles_when_the_pane_is_wide() {
+    let mut harness = a_database("arranged");
+    harness.state_mut().set_plugin_pane_width_for("database/explorer", 760.0);
+    did_while_waiting(&mut harness, "plugins run database console library");
+    until_the_database_settles(&mut harness);
+    let filter = harness
+        .get_by_role_and_label(egui::accesskit::Role::TextInput, "Filter database objects")
+        .rect();
+    let sql = harness.get_by_label("SQL").rect();
+    let new_query = harness.get_by_label("New query").rect();
+    assert!(filter.left() > sql.right(), "the tree {filter:?} is right of the console {sql:?}");
+    assert!(new_query.right() < filter.left(), "New query is on the workspace's side");
+    assert!(
+        (filter.top() - new_query.top()).abs() < 120.0,
+        "the two columns start at the same height: {filter:?} and {new_query:?}"
+    );
+
+    harness.state_mut().set_plugin_pane_width_for("database/explorer", 420.0);
+    steady(&mut harness);
+    let filter = harness
+        .get_by_role_and_label(egui::accesskit::Role::TextInput, "Filter database objects")
+        .rect();
+    let sql = harness.get_by_label("SQL").rect();
+    assert!(
+        filter.bottom() < sql.top(),
+        "narrow, the tree {filter:?} is above the console {sql:?}"
+    );
+}
+
+/// `New query` opens a console, and the dropdown at the right of the console's toolbar points it at
+/// another data source.
+///
+/// `task-2250`: *"There should be a new button to add a new query. The query console should allow me to
+/// select which db to use in a dropdown on the right."*
+#[test]
+fn new_query_opens_a_console_whose_data_source_is_chosen_from_a_dropdown() {
+    let mut harness = a_database("new-query");
+    harness.state_mut().set_plugin_pane_width_for("database/explorer", 760.0);
+    let second = a_database_file("new-query-second");
+    did(&mut harness, &format!("plugins run database add-source archive {}", second.display()));
+    did(&mut harness, "plugins run database use library");
+    steady(&mut harness);
+
+    harness.get_by_label("New query").click();
+    until_the_database_settles(&mut harness);
+    let pages = did(&mut harness, "plugins run database pages");
+    let pages = pages.as_array().expect("the pages").clone();
+    assert_eq!(pages.len(), 1, "one console: {pages:?}");
+    assert_eq!(pages[0]["title"], "Query 1");
+    assert_eq!(pages[0]["source"], "library");
+
+    harness.get_by_label("Data source").click();
+    steady(&mut harness);
+    harness.get_all_by_label("archive").last().expect("the dropdown offers `archive`").click();
+    until_the_database_settles(&mut harness);
+    let pages = did(&mut harness, "plugins run database pages");
+    assert_eq!(pages[0]["source"], "archive", "the dropdown moved the console: {pages}");
+    assert_eq!(pages[0]["title"], "Query 1", "and it is still the same page");
+
+    // The statement runs against the database the dropdown chose.
+    did_while_waiting(&mut harness, "plugins run database query select count(*) from album");
+    until_the_database_settles(&mut harness);
+    let result = did(&mut harness, "plugins run database result");
+    assert_eq!(result["result"]["rows"][0][0], "4", "{result}");
+
+    harness.snapshot(shot("database_new_query").as_str());
+}
+
+/// Every control the redesign added has an agent's half, and the two reach the same code.
+#[test]
+fn the_page_strip_and_the_dropdown_are_reachable_from_the_command_line() {
+    let mut harness = a_database("pages-by-command");
+    let second = a_database_file("pages-by-command-second");
+    did(&mut harness, &format!("plugins run database add-source archive {}", second.display()));
+    did(&mut harness, "plugins run database use library");
+    let first = did_while_waiting(&mut harness, "plugins run database new-query");
+    assert_eq!(first["source"], "library");
+    let second_page = did_while_waiting(&mut harness, "plugins run database new-query");
+    until_the_database_settles(&mut harness);
+    let pages = did(&mut harness, "plugins run database pages");
+    let titles: Vec<&str> =
+        pages.as_array().expect("pages").iter().filter_map(|page| page["title"].as_str()).collect();
+    assert_eq!(titles, ["Query 1", "Query 2"], "two consoles on one source have two names");
+
+    did(&mut harness, &format!("plugins run database show-page {}", first["page"]));
+    did(&mut harness, "plugins run database console-source archive");
+    let pages = did(&mut harness, "plugins run database pages");
+    assert_eq!(pages[0]["source"], "archive");
+    assert_eq!(pages[0]["showing"], true);
+    assert_eq!(pages[1]["source"], "library", "only the console showing moved");
+
+    assert_eq!(refused(&mut harness, "plugins run database console-source nowhere"), "failed");
+    did(&mut harness, &format!("plugins run database close-page {}", second_page["page"]));
+    let pages = did(&mut harness, "plugins run database pages");
+    assert_eq!(pages.as_array().map(Vec::len), Some(1));
+}
+
+/// The pane at the width it opens at: the workspace on the left with a result under the console, and the
+/// tree on the right with a table chosen.
+#[test]
+fn the_database_pane_side_by_side() {
+    let mut harness = a_database("side-by-side");
+    harness.state_mut().set_plugin_pane_width_for("database/explorer", 760.0);
+    harness.get_by_label("library").click();
+    until_the_database_settles(&mut harness);
+    harness.get_by_label("main").click();
+    until_the_database_settles(&mut harness);
+    harness.get_by_label("tables").click();
+    steady(&mut harness);
+    harness.get_by_label("album").click();
+    until_the_database_settles(&mut harness);
+    did_while_waiting(&mut harness, "plugins run database console library");
+    did_while_waiting(
+        &mut harness,
+        "plugins run database query select title, year from album order by year",
+    );
+    until_the_database_settles(&mut harness);
+    harness.snapshot(shot("database_side_by_side").as_str());
+}

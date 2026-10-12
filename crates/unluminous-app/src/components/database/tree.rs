@@ -14,10 +14,12 @@
 //! decoration's canvas the size of the pane rather than the size of the tree.
 
 use egui::{Pos2, Rect, Sense, Vec2};
+use rux::icon::Icon;
+use rux::Fill;
 
 use unluminous_db::catalog::Kind;
 
-use crate::components::database::{along, card, text, waiting, well, Act, PAD, RADIUS, TOOLBAR};
+use crate::components::database::{kit, text, waiting, Act};
 use crate::services::database::{Aimed, DatabaseExplorer};
 use crate::services::plugin_ui::Look;
 use crate::theme::{color, icon};
@@ -227,7 +229,17 @@ fn folders(
     }
 }
 
-/// Draw the pane.
+/// The room inside the tree's card, and the heights of the parts above the rows.
+const CARD_PAD: f32 = 16.0;
+const HEADING: f32 = 30.0;
+const CHIPS: f32 = 30.0;
+const SEARCH: f32 = 36.0;
+
+/// Draw the tree's card: its heading, its buttons, the filter and the rows.
+///
+/// `task-2250` drew it as a card of the Settings design: the heading wears the database mark in a chip, the
+/// toolbar's buttons are round chips under it, the filter is a carved search well, and the row that is chosen
+/// is raised out of the card the way the chosen row of the Settings window's lists is.
 pub fn show(
     explorer: &mut DatabaseExplorer,
     ui: &mut egui::Ui,
@@ -236,123 +248,163 @@ pub fn show(
 ) -> Vec<Act> {
     let scale = look.scale();
     let mut acts = Vec::new();
-    let panel = area.shrink(PAD * scale);
-    card(ui, look, panel, look.palette.board_lane, RADIUS * scale);
-
-    let inner = panel.shrink(PAD * scale);
-    let mut pen = inner.top();
+    let panel = area;
+    let inner = panel.shrink(CARD_PAD * scale);
+    let head = Rect::from_min_size(inner.min, Vec2::new(inner.width(), HEADING * scale));
     let bar = Rect::from_min_size(
-        Pos2::new(inner.left(), pen),
-        Vec2::new(inner.width(), TOOLBAR * scale),
+        Pos2::new(inner.left(), head.bottom() + 10.0 * scale),
+        Vec2::new(inner.width(), CHIPS * scale),
     );
-    acts.extend(toolbar(explorer, ui, look, bar));
-    pen = bar.bottom() + 4.0 * scale;
-
-    let field =
-        Rect::from_min_size(Pos2::new(inner.left(), pen), Vec2::new(inner.width(), 24.0 * scale));
-    well(ui, look, field, 6.0 * scale);
-    crate::components::controls::search_field_over(
-        ui,
-        field,
-        "Filter database objects",
-        "Filter",
-        &mut explorer.filter,
-        false,
+    let field = Rect::from_min_size(
+        Pos2::new(inner.left(), bar.bottom() + 12.0 * scale),
+        Vec2::new(inner.width(), SEARCH * scale),
     );
-    pen = field.bottom() + 6.0 * scale;
-
-    let rows = Rect::from_min_max(Pos2::new(inner.left(), pen), inner.max);
-    acts.extend(the_rows(explorer, ui, look, rows));
+    let count = explorer.sources().len();
+    let mut inside = Rect::NOTHING;
+    kit::layer(ui, scale, "database-tree", panel, |rux| {
+        kit::card_surface(rux, panel, kit::CARD_RADIUS * scale);
+        kit::badge(rux, Pos2::new(head.left() + 15.0 * scale, head.center().y), Icon::Database);
+        let count_words = match count {
+            1 => "1 source".to_owned(),
+            count => format!("{count} sources"),
+        };
+        let style = rux.zs(rux::Style::sans(11.5));
+        let count_width = rux.measure(style, &count_words).x;
+        let left = head.left() + 40.0 * scale;
+        let drawn = kit::heading(
+            rux,
+            Pos2::new(left, head.center().y),
+            "Data sources",
+            14.0,
+            head.right() - left - count_width - 10.0 * scale,
+        );
+        if head.right() - (left + drawn) > count_width + 10.0 * scale {
+            kit::quiet(
+                rux,
+                Pos2::new(head.right() - count_width, head.center().y),
+                &count_words,
+                11.5,
+                count_width + 1.0,
+            );
+        }
+        acts.extend(toolbar(explorer, rux, bar, scale));
+        if field.bottom() < panel.bottom() - 8.0 * scale {
+            inside = rux::components::search_well(rux, field);
+        }
+    });
+    if inside.is_positive() {
+        filter_box(ui, field, inside, &mut explorer.filter, scale);
+    }
+    let rows = Rect::from_min_max(
+        Pos2::new(inner.left() - 6.0 * scale, field.bottom() + 10.0 * scale),
+        Pos2::new(inner.right() + 6.0 * scale, inner.bottom()),
+    );
+    if rows.height() > 10.0 {
+        acts.extend(the_rows(explorer, ui, look, rows));
+    }
 
     if let Some(problem) = &explorer.problem {
         let said = problem.clone();
         let strip = Rect::from_min_max(
-            Pos2::new(panel.left(), panel.bottom() - 22.0 * scale),
-            Pos2::new(panel.right(), panel.bottom()),
+            Pos2::new(panel.left(), panel.bottom() - 26.0 * scale),
+            Pos2::new(panel.right(), panel.bottom() - 4.0 * scale),
         );
         text(
             &ui.painter_at(strip),
-            Pos2::new(strip.left() + 8.0 * scale, strip.center().y),
+            Pos2::new(strip.left() + CARD_PAD * scale, strip.center().y),
             &said,
             color::text_faint(),
             11.0 * scale,
-            strip.width() - 16.0 * scale,
+            strip.width() - CARD_PAD * 2.0 * scale,
         );
     }
     acts
 }
 
-/// The five buttons that apply, of the reference editor's eight.
-fn toolbar(explorer: &DatabaseExplorer, ui: &mut egui::Ui, look: &Look<'_>, bar: Rect) -> Vec<Act> {
-    let scale = look.scale();
-    let mut acts = Vec::new();
-    let step = 26.0 * scale;
-    let mut at = bar.left();
+/// The words of the filter, in the well `rux` drew. Answers whether they changed.
+///
+/// The whole well hands the keyboard to the box, which is `controls::field_takes_the_whole_rectangle_at`'s
+/// promise: a press in the well's own padding used to leave the pane without the keyboard (`task-1795`).
+fn filter_box(
+    ui: &mut egui::Ui,
+    well: Rect,
+    inside: Rect,
+    filter: &mut String,
+    scale: f32,
+) -> bool {
+    let font = egui::FontId::proportional(12.5 * scale);
+    let id = egui::Id::new("database-tree-filter");
+    let text_rect = crate::components::controls::field_takes_the_whole_rectangle_at(
+        ui,
+        well,
+        inside.left() - well.left(),
+        id,
+        "Filter field",
+        &font,
+    );
+    let text_rect = Rect::from_min_max(text_rect.min, Pos2::new(inside.right(), text_rect.max.y));
+    let mut field = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
+    let response = field.add(
+        egui::TextEdit::singleline(filter)
+            .id(id)
+            .hint_text(crate::components::controls::placeholder(
+                "Filter",
+                &font,
+                color::text_faint(),
+            ))
+            .font(font.clone())
+            .frame(egui::Frame::NONE)
+            .desired_width(text_rect.width())
+            .text_color(color::text_strong()),
+    );
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Filter database objects")
+    });
+    response.changed()
+}
+
+/// The buttons that apply, of the reference editor's eight, as a row of round chips.
+///
+/// A control that cannot apply is absent: `Disconnect` while nothing is connected, `Edit data` and `Show
+/// DDL` while no table is chosen. The chips close up rather than one being left off when the card is narrow.
+fn toolbar(explorer: &DatabaseExplorer, rux: &mut rux::Rux<'_>, bar: Rect, scale: f32) -> Vec<Act> {
     let chosen = explorer.chosen.clone();
     let chosen_source = chosen
         .as_ref()
         .map(|chosen| chosen.source.clone())
         .unwrap_or_else(|| explorer.configuration.chosen.clone());
-
-    if crate::components::controls::icon_button(
-        ui,
-        along(bar, &mut at, step),
-        "New data source",
-        icon::plus,
-    ) {
-        acts.push(Act::NewSource);
-    }
-    if !chosen_source.is_empty()
-        && crate::components::controls::icon_button(
-            ui,
-            along(bar, &mut at, step),
-            "Refresh",
-            icon::rerun,
-        )
-    {
-        acts.push(Act::Refresh(chosen_source.clone()));
-    }
-    // Absent while nothing is connected: a control that cannot apply is not drawn.
-    if explorer.is_connected(&chosen_source)
-        && crate::components::controls::icon_button(
-            ui,
-            along(bar, &mut at, step),
-            "Disconnect",
-            icon::stop,
-        )
-    {
-        acts.push(Act::Disconnect(chosen_source.clone()));
-    }
-    if !chosen_source.is_empty()
-        && crate::components::controls::icon_button(
-            ui,
-            along(bar, &mut at, step),
-            "Open console",
-            icon::run,
-        )
-    {
-        acts.push(Act::OpenConsole(chosen_source.clone()));
+    let mut buttons: Vec<(Icon, &str, Act)> = vec![(Icon::Plus, "New data source", Act::NewSource)];
+    if !chosen_source.is_empty() {
+        buttons.push((Icon::Rerun, "Refresh", Act::Refresh(chosen_source.clone())));
+        // Absent while nothing is connected: a control that cannot apply is not drawn.
+        if explorer.is_connected(&chosen_source) {
+            buttons.push((Icon::Plug, "Disconnect", Act::Disconnect(chosen_source.clone())));
+        }
+        buttons.push((Icon::Lines, "Open console", Act::OpenConsole(chosen_source.clone())));
     }
     if let Some(chosen) = chosen.filter(|chosen| !chosen.name.is_empty()) {
-        if crate::components::controls::icon_button(
-            ui,
-            along(bar, &mut at, step),
+        buttons.push((
+            Icon::Board,
             "Edit data",
-            icon::table,
-        ) {
-            acts.push(Act::OpenTable(
-                chosen.source.clone(),
-                chosen.schema.clone(),
-                chosen.name.clone(),
-            ));
+            Act::OpenTable(chosen.source.clone(), chosen.schema.clone(), chosen.name.clone()),
+        ));
+        buttons.push((Icon::Docs, "Show DDL", Act::Ddl(chosen.source, chosen.schema, chosen.name)));
+    }
+    let chip = CHIPS * scale;
+    let step = match buttons.len() {
+        0 | 1 => chip,
+        count => ((bar.width() - chip) / (count - 1) as f32)
+            .clamp(chip + 2.0 * scale, chip + 8.0 * scale),
+    };
+    let mut acts = Vec::new();
+    for (index, (icon, name, act)) in buttons.into_iter().enumerate() {
+        let left = bar.left() + index as f32 * step;
+        if left + chip > bar.right() + 1.0 {
+            break;
         }
-        if crate::components::controls::icon_button(
-            ui,
-            along(bar, &mut at, step),
-            "Show DDL",
-            icon::copy,
-        ) {
-            acts.push(Act::Ddl(chosen.source, chosen.schema, chosen.name));
+        let rect = Rect::from_min_size(Pos2::new(left, bar.top()), Vec2::splat(chip));
+        if kit::chip_button(rux, rect, icon, CHIPS, name) {
+            acts.push(act);
         }
     }
     acts
@@ -403,15 +455,29 @@ fn one(
     scale: f32,
 ) -> Vec<Act> {
     let mut acts = Vec::new();
-    let indent = rect.left() + 6.0 * scale + line.depth as f32 * 12.0 * scale;
+    let indent = rect.left() + 10.0 * scale + line.depth as f32 * 12.0 * scale;
     let name = row_name(line);
     let chosen = is_chosen(explorer, line);
     let response = ui.interact(rect, ui.id().with(("database-tree-row", index)), Sense::click());
-    let pill = rect.shrink2(Vec2::new(4.0 * scale, 1.0));
+    let pill = rect.shrink2(Vec2::new(4.0 * scale, 1.5 * scale));
+    // The chosen row is raised out of the card, which is how the Settings window's lists show theirs; a hover
+    // is a wash `egui` paints, so moving the pointer down the tree costs no new decoration.
     if chosen {
-        ui.painter().rect_filled(pill, egui::CornerRadius::same(5), look.palette.selected_row);
+        kit::layer(ui, scale, ("database-tree-chosen", index), pill, |rux| {
+            let chat = rux.theme().chat;
+            rux.chrome.surface(
+                pill,
+                pill.height() / 2.0,
+                Fill::gradient(chat.chip, pill),
+                chat.raised_chip(),
+            );
+        });
     } else if response.hovered() {
-        ui.painter().rect_filled(pill, egui::CornerRadius::same(5), look.palette.control);
+        ui.painter().rect_filled(
+            pill,
+            egui::CornerRadius::same((pill.height() / 2.0) as u8),
+            color::text_strong().gamma_multiply(0.05),
+        );
     }
     let painter = ui.painter();
     let middle = rect.center().y;

@@ -23,7 +23,7 @@ use egui::{Pos2, Rect, Sense, Vec2};
 use unluminous_db::rows::Rows;
 use unluminous_db::value::Value;
 
-use crate::components::database::{along, code, text, well, Act, TOOLBAR};
+use crate::components::database::{along, code, kit, text, well, Act};
 use crate::services::database::{why_not, DatabaseExplorer, Page, Sheet};
 use crate::services::plugin_ui::Look;
 use crate::theme::{color, icon};
@@ -35,6 +35,11 @@ const GUTTER: f32 = 44.0;
 const COLUMN: f32 = 150.0;
 /// The paging strip at the foot.
 const FOOT: f32 = 26.0;
+/// The toolbar's height, and a round chip in it.
+const TOOLBAR: f32 = 38.0;
+const CHIP: f32 = 30.0;
+/// The `WHERE` and `ORDER BY` wells.
+const FILTERS: f32 = 34.0;
 
 /// Draw one grid page.
 pub fn show(
@@ -50,15 +55,15 @@ pub fn show(
     acts.extend(toolbar(explorer, ui, look, bar, id));
 
     let filters = Rect::from_min_size(
-        Pos2::new(area.left(), bar.bottom() + 4.0 * scale),
-        Vec2::new(area.width(), 24.0 * scale),
+        Pos2::new(area.left(), bar.bottom() + 10.0 * scale),
+        Vec2::new(area.width(), FILTERS * scale),
     );
     acts.extend(where_and_order(explorer, ui, look, filters, id));
 
     let foot = Rect::from_min_max(Pos2::new(area.left(), area.bottom() - FOOT * scale), area.max);
     let body = Rect::from_min_max(
-        Pos2::new(area.left(), filters.bottom() + 4.0 * scale),
-        Pos2::new(area.right(), foot.top() - 4.0 * scale),
+        Pos2::new(area.left(), filters.bottom() + 10.0 * scale),
+        Pos2::new(area.right(), foot.top() - 6.0 * scale),
     );
     let Some(Page { sheet: Sheet::Grid(grid), .. }) = explorer.page(id) else { return acts };
     if let Some(why) = &grid.failure {
@@ -78,7 +83,8 @@ pub fn show(
     acts
 }
 
-/// The buttons of `data_editor_db_object_data.png` that apply.
+/// The buttons of `data_editor_db_object_data.png` that apply, as round chips, with `Save` as the action's
+/// pill once there is something to save.
 fn toolbar(
     explorer: &DatabaseExplorer,
     ui: &mut egui::Ui,
@@ -91,112 +97,90 @@ fn toolbar(
     let Some(Page { sheet: Sheet::Grid(grid), .. }) = explorer.page(id) else { return acts };
     let running = grid.running.is_some();
     let editable = why_not(grid).is_none();
+    let why = why_not(grid);
     let pending = grid.pending.len();
     let chosen_row = grid.chosen.map(|(row, _)| row);
-    let step = 26.0 * scale;
-    let mut at = bar.left();
-
-    if crate::components::controls::icon_button(
-        ui,
-        along(bar, &mut at, step),
-        "Reload",
-        icon::rerun,
-    ) {
-        acts.push(Act::Reload(id));
-    }
-    // Absent rather than dimmed when the engine cannot stop a statement at all - see
-    // `DatabaseExplorer::can_stop`.
-    if running
-        && explorer.can_stop(&grid.source)
-        && crate::components::controls::icon_button(
-            ui,
-            along(bar, &mut at, step),
-            "Stop",
-            icon::stop,
-        )
-    {
-        acts.push(Act::Stop(id));
-    }
-    if editable {
-        at += 6.0 * scale;
-        if crate::components::controls::icon_button(
-            ui,
-            along(bar, &mut at, step),
-            "Add row",
-            icon::plus,
-        ) {
-            acts.push(Act::AddRow(id));
+    let chosen_cell = grid.chosen.is_some();
+    let can_stop = running && explorer.can_stop(&grid.source);
+    let where_it_is = format!("{} \u{b7} {}", grid.source, grid.table.name);
+    let chip = CHIP * scale;
+    let step = chip + 8.0 * scale;
+    kit::layer(ui, scale, ("database-grid-bar", id), bar, |rux| {
+        let mut at = bar.left();
+        let next = |at: &mut f32| {
+            let rect =
+                Rect::from_min_size(Pos2::new(*at, bar.center().y - chip / 2.0), Vec2::splat(chip));
+            *at += step;
+            rect
+        };
+        if kit::chip_drawn(rux, next(&mut at), "Reload", icon::rerun) {
+            acts.push(Act::Reload(id));
         }
-        if let Some(row) = chosen_row {
-            if crate::components::controls::icon_button(
-                ui,
-                along(bar, &mut at, step),
-                "Delete row",
-                icon::bin,
-            ) {
-                acts.push(Act::DeleteRow(id, row));
+        // Absent rather than dimmed when the engine cannot stop a statement at all - see
+        // `DatabaseExplorer::can_stop`.
+        if can_stop && kit::chip_drawn(rux, next(&mut at), "Stop", icon::stop) {
+            acts.push(Act::Stop(id));
+        }
+        if editable {
+            at += 6.0 * scale;
+            if kit::chip_drawn(rux, next(&mut at), "Add row", icon::plus) {
+                acts.push(Act::AddRow(id));
+            }
+            if let Some(row) = chosen_row {
+                if kit::chip_drawn(rux, next(&mut at), "Delete row", icon::bin) {
+                    acts.push(Act::DeleteRow(id, row));
+                }
+            }
+            // Set NULL is here because an empty box cannot mean it: a cell is edited as its value, and a
+            // box that opened with the word `NULL` in it would write those four letters back. See
+            // `Grid::text_of`.
+            if chosen_cell && kit::chip_drawn(rux, next(&mut at), "Set NULL", icon::cross) {
+                acts.push(Act::NullTheCell(id));
+            }
+            if pending > 0 {
+                if kit::chip_drawn(rux, next(&mut at), "Revert", icon::undo) {
+                    acts.push(Act::RevertPending(id));
+                }
+                if kit::chip_drawn(rux, next(&mut at), "Preview pending changes", icon::copy) {
+                    acts.push(Act::Preview(id));
+                }
+                // **`Save`**, which is the word `task-1795` asks for: *"see a save button that writes to
+                // the table for that value"*. It is the same call `submit` has always been.
+                let label = format!("Save {pending}");
+                let save = rux::components::PillButton::new(&label).primary().enabled(!running);
+                let size = save.measure(rux);
+                let rect = Rect::from_min_size(
+                    Pos2::new(at + 4.0 * scale, bar.center().y - size.y / 2.0),
+                    size,
+                );
+                if save.show(rux, rect).clicked() {
+                    acts.push(Act::Submit(id));
+                }
+                at = rect.right() + 10.0 * scale;
             }
         }
-        // Set NULL is here because an empty box cannot mean it: a cell is edited as its value, and a
-        // box that opened with the word `NULL` in it would write those four letters back. See
-        // `Grid::text_of`.
-        if grid.chosen.is_some()
-            && crate::components::controls::icon_button(
-                ui,
-                along(bar, &mut at, step),
-                "Set NULL",
-                icon::cross,
-            )
-        {
-            acts.push(Act::NullTheCell(id));
-        }
-        if pending > 0 {
-            if crate::components::controls::icon_button(
-                ui,
-                along(bar, &mut at, step),
-                "Revert",
-                icon::undo,
-            ) {
-                acts.push(Act::RevertPending(id));
+        // Why the editing controls are absent, said once rather than left to be guessed at; otherwise which
+        // table this is, at the right, where the console names its data source.
+        let room = bar.right() - at - 4.0 * scale;
+        match &why {
+            Some(why) => {
+                kit::quiet(rux, Pos2::new(at + 4.0 * scale, bar.center().y), why, 11.5, room);
             }
-            if crate::components::controls::icon_button(
-                ui,
-                along(bar, &mut at, step),
-                "Preview pending changes",
-                icon::copy,
-            ) {
-                acts.push(Act::Preview(id));
-            }
-            // **`Save`**, which is the word `task-1795` asks for: *"see a save button that writes to
-            // the table for that value"*. It is the same call `submit` has always been.
-            let save = Rect::from_min_size(
-                Pos2::new(at + 6.0 * scale, bar.top() + 3.0 * scale),
-                Vec2::new(78.0 * scale, bar.height() - 6.0 * scale),
-            );
-            at = save.right();
-            if crate::components::modal::button(
-                ui,
-                save,
-                &format!("Save {pending}"),
-                !running,
-                true,
-            ) {
-                acts.push(Act::Submit(id));
+            None => {
+                let style = rux.zs(rux::Style::sans(11.5));
+                let width = rux.measure(style, &where_it_is).x.min(room);
+                if width > 40.0 * scale {
+                    kit::quiet(
+                        rux,
+                        Pos2::new(bar.right() - width, bar.center().y),
+                        &where_it_is,
+                        11.5,
+                        width,
+                    );
+                }
             }
         }
-    }
-    let _ = at;
-    // Why the editing controls are absent, said once rather than left to be guessed at.
-    if let Some(why) = why_not(grid) {
-        text(
-            ui.painter(),
-            Pos2::new(bar.left() + 60.0 * scale, bar.center().y),
-            &why,
-            color::text_faint(),
-            look.font_size * 0.8,
-            bar.width() - 70.0 * scale,
-        );
-    }
+    });
     acts
 }
 
@@ -216,8 +200,8 @@ fn where_and_order(
         Pos2::new(area.left() + half + 8.0 * scale, area.top()),
         Vec2::new(half, area.height()),
     );
-    well(ui, look, left, 6.0 * scale);
-    well(ui, look, right, 6.0 * scale);
+    well(ui, look, left, left.height() / 2.0);
+    well(ui, look, right, right.height() / 2.0);
     let Some(page) = explorer.pages.iter_mut().find(|page| page.id == id) else { return acts };
     let Sheet::Grid(grid) = &mut page.sheet else { return acts };
     let where_response = fragment_field(ui, look, left, "WHERE", &mut grid.where_clause);
@@ -258,15 +242,15 @@ fn fragment_field(
         .x;
     text(
         &painter,
-        Pos2::new(area.left() + 8.0 * scale, area.center().y),
+        Pos2::new(area.left() + 14.0 * scale, area.center().y),
         name,
         color::text_faint(),
         look.font_size * 0.75,
         label_width + 2.0,
     );
     let text_rect = Rect::from_min_max(
-        Pos2::new(area.left() + 16.0 * scale + label_width, area.top() + 2.0 * scale),
-        Pos2::new(area.right() - 6.0 * scale, area.bottom() - 2.0 * scale),
+        Pos2::new(area.left() + 22.0 * scale + label_width, area.top() + 2.0 * scale),
+        Pos2::new(area.right() - 14.0 * scale, area.bottom() - 2.0 * scale),
     );
     // The whole well, including the word in front of it, hands the keyboard to the box.
     let fragment_id = egui::Id::new(("database-fragment-field", name));
@@ -296,7 +280,8 @@ fn the_grid(
 ) -> Vec<Act> {
     let scale = look.scale();
     let mut acts = Vec::new();
-    well(ui, look, area, 8.0 * scale);
+    well(ui, look, area, kit::WELL_RADIUS * scale);
+    let area = area.shrink2(Vec2::new(6.0 * scale, 4.0 * scale));
     if rows.columns.is_empty() {
         text(
             ui.painter(),

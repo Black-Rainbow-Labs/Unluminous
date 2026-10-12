@@ -4,27 +4,24 @@
 //! kinds is a short list today; the field is there because the ticket says *"we'll have so many
 //! similar components"*, and a list that gets long later should not need a second design then.
 //!
-//! It is `components::modal`, so it has the frame, the header, the dragging, the resizing and the
-//! Enter that presses the last button that every other dialog in Unluminous has. A tenth modal drawing
-//! its own header would be a tenth modal that almost agrees with the other nine.
+//! It is `components::modal::show_unframed`, so it has the dragging, the resizing and the zoom every dialog
+//! in Unluminous has, and since `task-2250` it is drawn with the parts of `components::realm::dialog`, which
+//! are the New Data Source dialog's.
 
-use egui::{Align2, FontId, Pos2, Rect, Sense, Vec2};
+use egui::{Pos2, Rect, Vec2};
+use rux::Style;
 
-use crate::components::{controls, modal};
+use crate::components::realm::dialog;
+use crate::components::{modal, settings_kit};
 use crate::services::realm::Kind;
-use crate::theme::{color, size};
 
 /// The size it opens at. Narrow, because the list is names rather than sentences.
-const WIDTH: f32 = 380.0;
+const WIDTH: f32 = 460.0;
 /// How tall one row is.
 ///
 /// A name and two lines of summary, which is what the longest of the four needs: at 46 the second
 /// line of the terminal's own description ran into the row under it, which the first picture showed.
-const ROW: f32 = 60.0;
-/// How tall the search field is.
-const FIELD: f32 = 28.0;
-/// The gap between the field and the first row.
-const AFTER_THE_FIELD: f32 = 10.0;
+const ROW: f32 = 58.0;
 
 /// Tall enough for every kind, **worked out rather than chosen**.
 ///
@@ -34,13 +31,13 @@ const AFTER_THE_FIELD: f32 = 10.0;
 /// and the report it produced guessed the kind was missing from the modal rather than off the bottom of
 /// it. A number typed here is a number the next kind added would break again, so this is the arithmetic
 /// `modal::body` and `show_the_rows` really do.
-const HEIGHT: f32 = modal::HEADER
-    + 14.0
-    + FIELD
-    + AFTER_THE_FIELD
+const HEIGHT: f32 = dialog::PAD_Y
+    + dialog::CLOSE
+    + dialog::GAP
+    + dialog::SEARCH
+    + dialog::GAP
     + ROW * Kind::ALL.len() as f32
-    + modal::FOOTER
-    + 8.0;
+    + dialog::PAD_Y;
 
 /// What the person has typed and which row is picked out.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -77,36 +74,48 @@ pub fn matching(filter: &str) -> Vec<Kind> {
 }
 
 /// Draw the modal and report what was chosen.
+///
+/// `task-2250` drew it in the Settings design's language: see `components::realm::dialog`. Each kind wears
+/// the mark the rail and the node's own header use for it.
 pub fn show(ctx: &egui::Context, state: &mut State) -> Outcome {
     let mut outcome = Outcome::default();
-    let (chosen, closed) = modal::show(ctx, "unluminous-add-node", WIDTH, HEIGHT, |ui, area| {
-        let mut chosen = None;
-        if modal::header(ui, area, "Add a node") {
-            chosen = Some(None);
-        }
-        let body = modal::body(area);
-        let field = Rect::from_min_size(body.min, Vec2::new(body.width(), FIELD));
-        let response =
-            controls::search_field(ui, field, "Search nodes", "Search nodes", &mut state.filter);
-        // The keyboard starts in the field, which is what a modal opened to be typed into means.
-        if !response.has_focus() && ui.memory(|memory| memory.focused().is_none()) {
-            response.request_focus();
-        }
-        let found = matching(&state.filter);
-        state.highlighted = state.highlighted.min(found.len().saturating_sub(1));
-        walk_with_the_arrow_keys(ui, state, found.len());
-        let list =
-            Rect::from_min_max(Pos2::new(body.left(), field.bottom() + AFTER_THE_FIELD), body.max);
-        if let Some(kind) = show_the_rows(ui, list, &found, state) {
-            chosen = Some(Some(kind));
-        }
-        if ui.input(|input| input.key_pressed(egui::Key::Enter)) {
-            if let Some(kind) = found.get(state.highlighted) {
-                chosen = Some(Some(*kind));
+    let (chosen, closed) =
+        modal::show_unframed(ctx, "unluminous-add-node", WIDTH, HEIGHT, |ui, area| {
+            dialog::surface(ui, "add-node", area);
+            let mut chosen = None;
+            let inner = inner_of(area);
+            let found = matching(&state.filter);
+            state.highlighted = state.highlighted.min(found.len().saturating_sub(1));
+            walk_with_the_arrow_keys(ui, state, found.len());
+            settings_kit::layer(ui, "add-node", inner, |rux| {
+                if dialog::heading(rux, inner, "Add a node") {
+                    chosen = Some(None);
+                }
+                let well = Rect::from_min_size(
+                    Pos2::new(inner.left(), inner.top() + dialog::CLOSE + dialog::GAP),
+                    Vec2::new(inner.width(), dialog::SEARCH),
+                );
+                let response =
+                    dialog::search(rux, well, "Search nodes", "Search nodes", &mut state.filter);
+                // The keyboard starts in the field, which is what a modal opened to be typed into means.
+                if !response.has_focus() && rux.ui.memory(|memory| memory.focused().is_none()) {
+                    response.request_focus();
+                }
+                let list = Rect::from_min_max(
+                    Pos2::new(inner.left(), well.bottom() + dialog::GAP),
+                    inner.max,
+                );
+                if let Some(kind) = show_the_rows(rux, list, &found, state) {
+                    chosen = Some(Some(kind));
+                }
+            });
+            if ui.input(|input| input.key_pressed(egui::Key::Enter)) {
+                if let Some(kind) = found.get(state.highlighted) {
+                    chosen = Some(Some(*kind));
+                }
             }
-        }
-        chosen
-    });
+            chosen
+        });
     match chosen {
         Some(Some(kind)) => {
             outcome.chose = Some(kind);
@@ -116,6 +125,14 @@ pub fn show(ctx: &egui::Context, state: &mut State) -> Outcome {
         None => outcome.closed = closed,
     }
     outcome
+}
+
+/// The room inside the dialog's padding.
+fn inner_of(area: Rect) -> Rect {
+    Rect::from_min_max(
+        Pos2::new(area.left() + dialog::PAD_X, area.top() + dialog::PAD_Y),
+        Pos2::new(area.right() - dialog::PAD_X, area.bottom() - dialog::PAD_Y),
+    )
 }
 
 /// Up and down walk the list, and neither wraps.
@@ -138,16 +155,22 @@ fn walk_with_the_arrow_keys(ui: &egui::Ui, state: &mut State, rows: usize) {
     }
 }
 
-/// The rows themselves: a name, the line under it, and the pill on whichever is highlighted.
-fn show_the_rows(ui: &mut egui::Ui, area: Rect, found: &[Kind], state: &mut State) -> Option<Kind> {
+/// The rows themselves: the kind's mark in a chip, its name, the line under it, and the raised row on
+/// whichever is highlighted.
+fn show_the_rows(
+    rux: &mut rux::Rux<'_>,
+    area: Rect,
+    found: &[Kind],
+    state: &mut State,
+) -> Option<Kind> {
     let mut chosen = None;
+    let theme = rux.theme();
     if found.is_empty() {
-        ui.painter_at(area).text(
-            Pos2::new(area.left() + 4.0, area.top() + 12.0),
-            Align2::LEFT_TOP,
-            "Nothing is called that.",
-            FontId::proportional(12.0),
-            color::text_faint(),
+        let galley = rux.text(Style::sans(12.0), "Nothing is called that.", theme.ink.i400);
+        rux.painter().galley(
+            Pos2::new(area.left() + 4.0, area.top() + 8.0),
+            galley,
+            theme.ink.i400,
         );
         return None;
     }
@@ -156,32 +179,37 @@ fn show_the_rows(ui: &mut egui::Ui, area: Rect, found: &[Kind], state: &mut Stat
             Pos2::new(area.left(), area.top() + index as f32 * ROW),
             Vec2::new(area.width(), ROW - 4.0),
         );
-        if row.bottom() > area.bottom() {
+        if row.bottom() > area.bottom() + 1.0 {
             break;
         }
-        let response = ui.interact(row, ui.id().with(("add-node", kind.name())), Sense::click());
+        let on = index == state.highlighted;
+        let response = dialog::row(rux, row, kind.name(), on);
         if response.hovered() {
             state.highlighted = index;
         }
-        let on = index == state.highlighted;
-        let painter = ui.painter_at(area);
-        if on {
-            painter.rect_filled(row, size::CONTROL_CORNER, color::selected_row());
-        }
-        painter.text(
-            Pos2::new(row.left() + 12.0, row.top() + 9.0),
-            Align2::LEFT_TOP,
-            kind.label(),
-            FontId::proportional(13.0),
-            color::text_strong(),
+        let disc = Rect::from_center_size(
+            Pos2::new(row.left() + 14.0 + 15.0, row.center().y),
+            Vec2::splat(30.0),
         );
-        let galley = painter.layout(
-            kind.summary().to_owned(),
-            FontId::proportional(11.0),
-            color::text_dim(),
-            row.width() - 24.0,
+        rux::components::chip_disc(rux, disc);
+        crate::components::realm::kind_mark_of(*kind)(rux.painter(), disc.center(), theme.chat.sky);
+        let left = disc.right() + 12.0;
+        let name_style = Style::sans(13.0).semibold();
+        let galley = rux.text(name_style, kind.label(), theme.ink.i900);
+        let name_height = galley.size().y;
+        rux.painter().galley(Pos2::new(left, row.top() + 7.0), galley, theme.ink.i900);
+        let galley = rux::text::wrapped(
+            rux.painter(),
+            Style::sans(11.0).leading(1.3),
+            kind.summary(),
+            theme.ink.i400,
+            row.right() - 14.0 - left,
         );
-        painter.galley(Pos2::new(row.left() + 12.0, row.top() + 26.0), galley, color::text_dim());
+        rux.painter().galley(
+            Pos2::new(left, row.top() + 7.0 + name_height + 1.0),
+            galley,
+            theme.ink.i400,
+        );
         response.widget_info(|| {
             egui::WidgetInfo::selected(egui::WidgetType::Button, true, on, kind.label())
         });
@@ -205,8 +233,8 @@ mod tests {
     #[test]
     fn every_kind_has_room_to_be_drawn_in_the_modal() {
         let area = Rect::from_min_size(Pos2::ZERO, Vec2::new(WIDTH, HEIGHT));
-        let body = modal::body(area);
-        let list_top = body.top() + FIELD + AFTER_THE_FIELD;
+        let body = inner_of(area);
+        let list_top = body.top() + dialog::CLOSE + dialog::GAP + dialog::SEARCH + dialog::GAP;
         let last = list_top + (Kind::ALL.len() - 1) as f32 * ROW + ROW - 4.0;
         assert!(
             last <= body.bottom(),

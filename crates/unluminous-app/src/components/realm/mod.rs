@@ -22,22 +22,25 @@
 //! glyphs. At 1.0, which is the default and where somebody reads code, it is exact.
 
 pub mod add_modal;
+pub mod dialog;
 pub mod manager;
 
-use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, Sense, Vec2};
+use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Sense, Vec2};
 
 use crate::services::realm::geometry::{self, Grip};
 use std::path::{Path, PathBuf};
 
 use crate::services::realm::{Camera, Kind, Node, Pipe, Realm};
-use crate::services::vello_canvas::{Chrome, Fill, Lift};
+use crate::services::vello_canvas::{Chrome, Corners, Fill, Lift};
 use crate::theme::crisp::CrispPainter;
 use crate::theme::{color, icon};
 
-/// The strip along the top of the pane that lists the project's realms.
-pub const VIEW_BAR: f32 = 30.0;
+/// The strip along the top of the pane that lists the project's realms: a 36 point track with room round it.
+pub const VIEW_BAR: f32 = 50.0;
 /// A node's own header, in world points.
-pub const NODE_HEADER: f32 = 26.0;
+pub const NODE_HEADER: f32 = 30.0;
+/// How round a node's corners are, in world points: the Settings design's card.
+pub const NODE_RADIUS: f32 = 16.0;
 /// How far a port sticks out of a node's edge, and how big it is.
 pub const PORT: f32 = 6.0;
 /// How near an edge the pointer has to be to take hold of it, in screen points.
@@ -70,20 +73,30 @@ pub struct BarOutcome {
 }
 
 /// How much room the overflow row takes, when there is one.
-const MORE_ROW: f32 = 68.0;
-/// How much room the zoom controls take at the right hand end of the bar.
-const ZOOM_CONTROLS: f32 = 116.0;
-/// How much room the plus takes, which now sits after the last chip rather than at the far right.
+const MORE_ROW: f32 = 74.0;
+/// How much room the zoom controls take at the right hand end of the bar: a track holding two 26 point chips
+/// and the reading between them.
+const ZOOM_CONTROLS: f32 = 128.0;
+/// How much room the plus takes, which sits after the last chip rather than at the far right.
 ///
 /// `task-2004`: *"The + sign to add a new view to base of infinite space should be on the right of the
-/// last view/tab, similar to Firefox browser."* The button itself is 22 points across with six of gap
-/// in front of it, and the chips stop before whatever is left after this and the zoom controls — which
-/// is the same sum the bar always made, with the plus moved from one end of it to the other.
-const PLUS: f32 = 28.0;
+/// last view/tab, similar to Firefox browser."* The chip is 30 points across with ten of gap in front of it.
+const PLUS: f32 = 40.0;
+/// The track the realms sit in, and a realm's pill inside it.
+const TRACK: f32 = 36.0;
+const PILL: f32 = 28.0;
+const TRACK_PAD: f32 = 4.0;
+const PILL_GAP: f32 = 3.0;
+/// The bar's own margin at either end.
+const BAR_SIDE: f32 = 14.0;
 
-/// The realm bar along the top of the canvas: one chip a realm file in the project, the open one lit, and
-/// a plus. `task-2202`: it replaced the strip of views one for one, because a realm file is what a view
-/// was.
+/// The realm bar along the top of the canvas: one pill a realm file in the project, the open one raised, a
+/// round `+` chip after the last of them, and the zoom controls at the right.
+///
+/// `task-2202`: it replaced the strip of views one for one, because a realm file is what a view was.
+/// `task-2250` drew it in the language of the Agent-Tasks board's header: the realms are pills in a carved
+/// track with the one showing raised out of it, which is the board's view switch, and every button is a
+/// chip.
 ///
 /// `task-1904` asked to *"Edit project/view names, delete, create new, clone/duplicate"*. The four of those
 /// that are about one realm are on its right click menu, which is where the explorer, the tabs and every
@@ -102,114 +115,145 @@ pub fn view_bar(
 ) -> BarOutcome {
     let mut outcome = BarOutcome::default();
     let painter = ui.painter_at(area);
-    painter.rect_filled(
-        area,
-        CornerRadius::ZERO,
-        crate::theme::faded(color::toolbar(), look.opacity),
+    // The bar is the canvas's own ground with a groove under it, rather than a strip of a second colour: the
+    // pills and the chips are what say it is a bar.
+    painter.rect_filled(area, CornerRadius::ZERO, crate::theme::faded(look.page, look.opacity));
+    crate::components::chrome_kit::groove(
+        &painter,
+        Pos2::new(area.left(), area.bottom() - 1.5),
+        Pos2::new(area.right(), area.bottom() - 1.5),
     );
-    painter.line_segment(
-        [Pos2::new(area.left(), area.bottom() - 0.5), Pos2::new(area.right(), area.bottom() - 0.5)],
-        egui::Stroke::new(1.0, color::divider()),
-    );
-    let mut pen = area.left() + 8.0;
-    let mut drawn = 0usize;
-    for (view_id, view_name) in views {
-        let (view_id, view_name) = (view_id.clone(), view_name.as_str());
-        let width = chip_width(&painter, view_name);
-        let chip = Rect::from_min_size(
-            Pos2::new(pen, area.top() + 4.0),
-            Vec2::new(width, area.height() - 9.0),
+    let middle = area.center().y;
+    let style = rux::Style::sans(12.0).medium();
+    crate::components::chrome_kit::layer(ui, "realm-bar", area, 16.0, |rux| {
+        let theme = rux.theme();
+        let chat = theme.chat;
+        let limit = area.right() - BAR_SIDE - PLUS - ZOOM_CONTROLS - MORE_ROW;
+        let left = area.left() + BAR_SIDE;
+        // How many realms fit, measured before the track is drawn so the track is as long as what is in it.
+        let mut widths = Vec::new();
+        let mut right = left + TRACK_PAD;
+        for (_, name) in views {
+            let width = pill_width_for(rux.measure(style, name).x);
+            // **Room kept for the overflow row as well**, because a bar that filled itself to the edge and
+            // then said "3 more" off the end of itself would be the fault it is there to fix.
+            if right + width + TRACK_PAD > limit {
+                break;
+            }
+            widths.push(width);
+            right += width + PILL_GAP;
+        }
+        let drawn = widths.len();
+        // **How many are not listed, and a way to see them.** `task-1906`.
+        let left_out = manager::not_showing(views.len(), drawn);
+        let more_width = match left_out {
+            0 => 0.0,
+            _ => MORE_ROW - 10.0,
+        };
+        let track_right = match (drawn, left_out) {
+            (0, 0) => left,
+            _ => {
+                right - PILL_GAP
+                    + more_width
+                    + TRACK_PAD
+                    + if left_out > 0 { PILL_GAP } else { 0.0 }
+            }
+        };
+        let track = Rect::from_min_max(
+            Pos2::new(left, middle - TRACK / 2.0),
+            Pos2::new(track_right, middle + TRACK / 2.0),
         );
-        // **Room kept for the overflow row as well**, because a bar that filled itself to the edge and then
-        // said "3 more" off the end of itself would be the fault it is there to fix.
-        if chip.right() > area.right() - PLUS - ZOOM_CONTROLS - MORE_ROW {
-            break;
+        if track.width() > TRACK_PAD * 2.0 {
+            rux.chrome.surface(track, TRACK / 2.0, chat.well, chat.carved_sm());
         }
-        drawn += 1;
-        let on = view_id == current;
-        let response = ui.interact(chip, ui.id().with(("realm-view", &view_id)), Sense::click());
-        if on {
-            look.chrome.raised(chip, 6.0, Fill::Solid(look.card), Lift::Small);
-        }
-        if !on && response.hovered() {
-            painter.rect_filled(chip, CornerRadius::same(6), color::control());
-        }
-        let tint = if on { color::text_strong() } else { color::text_dim() };
-        painter.crisp_text(
-            chip.center(),
-            Align2::CENTER_CENTER,
-            view_name,
-            FontId::proportional(11.5),
-            tint,
-        );
-        response.widget_info(|| {
-            egui::WidgetInfo::selected(
-                egui::WidgetType::Button,
-                true,
-                on,
-                // Not `Realm: <name>`, which is the manager's row for the same realm: two controls must not
-                // share a name, and both can be on the screen at once.
-                format!("Realm tab: {}", view_name),
-            )
-        });
-        if response.clicked() {
-            outcome.show = Some(view_id.clone());
-        }
-        if response.secondary_clicked() {
-            if let Some(at) = response.interact_pointer_pos().or_else(|| response.hover_pos()) {
-                outcome.menu = Some((at, view_id));
+        let mut pen = left + TRACK_PAD;
+        for ((view_id, view_name), width) in views.iter().zip(widths) {
+            let chip =
+                Rect::from_min_size(Pos2::new(pen, middle - PILL / 2.0), Vec2::new(width, PILL));
+            pen = chip.right() + PILL_GAP;
+            let on = view_id == current;
+            let response =
+                rux.ui.interact(chip, rux.ui.id().with(("realm-view", view_id)), Sense::click());
+            let hovered = response.hovered();
+            if on {
+                rux.chrome.surface(
+                    chip,
+                    PILL / 2.0,
+                    rux::Fill::gradient(chat.chip, chip),
+                    chat.raised_chip(),
+                );
+            } else if hovered {
+                rux.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            let ink = match (on, hovered) {
+                (true, _) => theme.ink.i900,
+                (false, true) => chat.sky,
+                (false, false) => theme.ink.i500,
+            };
+            let galley = rux.elided(style, view_name, ink, width - 20.0);
+            rux::text::draw_centred(rux.painter(), chip, galley, ink);
+            response.widget_info(|| {
+                egui::WidgetInfo::selected(
+                    egui::WidgetType::Button,
+                    true,
+                    on,
+                    // Not `Realm: <name>`, which is the manager's row for the same realm: two controls
+                    // must not share a name, and both can be on the screen at once.
+                    format!("Realm tab: {}", view_name),
+                )
+            });
+            if response.clicked() {
+                outcome.show = Some(view_id.clone());
+            }
+            if response.secondary_clicked() {
+                if let Some(at) = response.interact_pointer_pos().or_else(|| response.hover_pos()) {
+                    outcome.menu = Some((at, view_id.clone()));
+                }
             }
         }
-        pen = chip.right() + 6.0;
-    }
-    // **How many are not listed, and a way to see them.** `view_bar` has always broken out of its loop when
-    // a chip would not fit, so past about six views the rest were not merely hard to reach — they were not
-    // drawn at all and nothing said so. `task-1906`.
-    let left_out = manager::not_showing(views.len(), drawn);
-    if left_out > 0 {
-        let row = Rect::from_min_size(
-            Pos2::new(pen, area.top() + 4.0),
-            Vec2::new(MORE_ROW - 6.0, area.height() - 9.0),
-        );
-        let response = ui.interact(row, ui.id().with("realm-views-more"), Sense::click());
-        if response.hovered() {
-            ui.painter_at(area).rect_filled(row, CornerRadius::same(6), color::control());
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        if left_out > 0 {
+            let row = Rect::from_min_size(
+                Pos2::new(pen, middle - PILL / 2.0),
+                Vec2::new(more_width, PILL),
+            );
+            let response =
+                rux.ui.interact(row, rux.ui.id().with("realm-views-more"), Sense::click());
+            let ink = match response.hovered() {
+                true => chat.sky,
+                false => theme.ink.i500,
+            };
+            if response.hovered() {
+                rux.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            let said = format!("+{left_out} more");
+            let galley = rux.text(rux::Style::sans(11.5), &said, ink);
+            rux::text::draw_centred(rux.painter(), row, galley, ink);
+            response.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Realms, {said}"))
+            });
+            if response.clicked() {
+                outcome.manage = true;
+            }
         }
-        let said = format!("+{left_out} more");
-        ui.painter_at(area).crisp_text(
-            row.center(),
-            Align2::CENTER_CENTER,
-            &said,
-            FontId::proportional(11.0),
-            color::text_dim(),
-        );
-        response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Realms, {said}"))
-        });
-        if response.clicked() {
-            outcome.manage = true;
+        // **After the last realm, which is where a browser puts it** — `task-2004`. It is kept clear of the
+        // zoom controls, so a bar full of realms puts the plus where they stopped rather than underneath the
+        // zoom buttons.
+        let plus_left =
+            (track.right() + 10.0).min(area.right() - BAR_SIDE - ZOOM_CONTROLS - PLUS + 10.0);
+        let plus = Rect::from_min_size(Pos2::new(plus_left, middle - 15.0), Vec2::splat(30.0));
+        if rux::components::ChipButton::new(rux::Icon::Plus, 30.0, "New Realm")
+            .mark(12.0, Some(1.8))
+            .show(rux, plus)
+            .clicked()
+        {
+            outcome.add = true;
         }
-        pen = row.right() + 6.0;
-    }
-    // **After the last chip, which is where a browser puts it** — `task-2004`. It was at
-    // `area.right() - 18.0`, past the zoom controls at the far end of the bar, so the one control that
-    // acts on the row of tabs was the furthest thing in the window from the row of tabs. It is kept clear
-    // of the zoom controls, so a bar full of chips puts the plus where the chips stopped rather than
-    // underneath the zoom buttons.
-    let plus_left = pen.min(area.right() - ZOOM_CONTROLS - PLUS);
-    let plus = Rect::from_center_size(
-        Pos2::new(plus_left + PLUS / 2.0 - 3.0, area.center().y),
-        Vec2::splat(22.0),
-    );
-    if crate::components::controls::icon_button(ui, plus, "New Realm", icon::plus) {
-        outcome.add = true;
-    }
-    show_the_zoom_controls(ui, area, zoom, &mut outcome);
+        show_the_zoom_controls(rux, area, zoom, &mut outcome);
+    });
     outcome
 }
 
-/// The two zoom buttons and the reading between them, at the right hand end of the bar.
+/// The two zoom buttons and the reading between them, at the right hand end of the bar, in a carved track.
 ///
 /// `task-1905` asks for *"classic - + buttons with cirlces around them"* at the top right, and the top
 /// right of the canvas **is** the right hand end of this bar: a floating control over the ground would be
@@ -219,84 +263,105 @@ pub fn view_bar(
 /// Both buttons **dim at the ends of the ladder** rather than disappearing, because a zoom that cannot go
 /// further is a control that will apply again the moment the other one is pressed. That is the dimmed half
 /// of Unluminous's absent-control rule.
-fn show_the_zoom_controls(ui: &mut egui::Ui, area: Rect, zoom: f32, outcome: &mut BarOutcome) {
+fn show_the_zoom_controls(rux: &mut rux::Rux<'_>, area: Rect, zoom: f32, outcome: &mut BarOutcome) {
+    let chat = rux.theme().chat;
+    let ink = rux.theme().ink;
     let middle = area.center().y;
-    let mut right = area.right() - 34.0;
-    let out = Rect::from_center_size(Pos2::new(right - 11.0, middle), Vec2::splat(22.0));
+    let track = Rect::from_min_max(
+        Pos2::new(area.right() - BAR_SIDE - ZOOM_CONTROLS, middle - TRACK / 2.0),
+        Pos2::new(area.right() - BAR_SIDE, middle + TRACK / 2.0),
+    );
+    rux.chrome.surface(track, TRACK / 2.0, chat.well, chat.carved_sm());
+    let chip = 28.0;
+    let into = Rect::from_center_size(
+        Pos2::new(track.left() + TRACK_PAD + chip / 2.0, middle),
+        Vec2::splat(chip),
+    );
+    let out = Rect::from_center_size(
+        Pos2::new(track.right() - TRACK_PAD - chip / 2.0, middle),
+        Vec2::splat(chip),
+    );
+    let can_zoom_in = zoom < crate::services::realm::node::MAX_ZOOM - 0.001;
+    if zoom_chip(rux, into, "Zoom in", can_zoom_in, true) {
+        outcome.zoom = 1;
+    }
     // At the bottom of the ladder there is nowhere further out to go.
     let can_zoom_out = zoom > crate::services::realm::node::MIN_ZOOM + 0.001;
-    if dimmable_icon_button(ui, out, "Zoom out", icon::zoom_out, can_zoom_out) {
+    if zoom_chip(rux, out, "Zoom out", can_zoom_out, false) {
         outcome.zoom = -1;
     }
-    right = out.left() - 2.0;
-    // The reading, which is a button: pressing it puts the zoom back to one, which is the
-    // `Reset Font Size` gesture every other zoom in Unluminous has.
+    // The reading, which is a button: pressing it puts the zoom back to one, which is the `Reset Font Size`
+    // gesture every other zoom in Unluminous has.
     let said = format!("{}%", (zoom * 100.0).round());
     let reading = Rect::from_min_max(
-        Pos2::new(right - 46.0, area.top() + 4.0),
-        Pos2::new(right, area.bottom() - 5.0),
+        Pos2::new(into.right() + 2.0, middle - PILL / 2.0),
+        Pos2::new(out.left() - 2.0, middle + PILL / 2.0),
     );
-    let response = ui.interact(reading, ui.id().with("realm-zoom-reading"), Sense::click());
+    let response = rux.ui.interact(reading, rux.ui.id().with("realm-zoom-reading"), Sense::click());
+    let tint = match response.hovered() {
+        true => chat.sky,
+        false => ink.i700,
+    };
     if response.hovered() {
-        ui.painter_at(area).rect_filled(reading, CornerRadius::same(6), color::control());
-        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        rux.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
-    ui.painter_at(area).crisp_text(
-        reading.center(),
-        Align2::CENTER_CENTER,
-        &said,
-        FontId::proportional(11.0),
-        color::text_dim(),
-    );
-    // The number is in the name, so a test reads the zoom out of the accessibility tree rather than out
-    // of a picture.
+    let galley = rux.text(rux::Style::sans(11.5).medium(), &said, tint);
+    rux::text::draw_centred(rux.painter(), reading, galley, tint);
+    // The number is in the name, so a test reads the zoom out of the accessibility tree rather than out of a
+    // picture.
     response.widget_info(|| {
         egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Reset zoom, {said}"))
     });
     if response.clicked() {
         outcome.reset_zoom = true;
     }
-    right = reading.left() - 2.0;
-    let into = Rect::from_center_size(Pos2::new(right - 11.0, middle), Vec2::splat(22.0));
-    let can_zoom_in = zoom < crate::services::realm::node::MAX_ZOOM - 0.001;
-    if dimmable_icon_button(ui, into, "Zoom in", icon::zoom_in, can_zoom_in) {
-        outcome.zoom = 1;
+}
+
+/// One of the two zoom chips: a raised chip with a plus or a minus, drawn quiet and answering nothing when it
+/// cannot apply.
+fn zoom_chip(rux: &mut rux::Rux<'_>, rect: Rect, name: &str, enabled: bool, plus: bool) -> bool {
+    let chat = rux.theme().chat;
+    let ink = rux.theme().ink;
+    let response = match enabled {
+        true => rux.ui.interact(rect, rux.ui.id().with(("realm-zoom", name)), Sense::click()),
+        false => rux.ui.interact(rect, rux.ui.id().with((name, "dimmed")), Sense::hover()),
+    };
+    let held = enabled && response.is_pointer_button_down_on();
+    match held {
+        true => rux.chrome.surface(rect, rect.width() / 2.0, chat.well, chat.carved_sm()),
+        false => rux.chrome.surface(
+            rect,
+            rect.width() / 2.0,
+            rux::Fill::gradient(chat.chip, rect),
+            chat.raised_chip(),
+        ),
     }
-}
-
-/// An icon button that is drawn quiet and answers nothing when it cannot apply.
-///
-/// `controls::icon_button` has no dimmed form, and the two here need one: a control at the end of its
-/// ladder is dimmed rather than absent, because it applies again the moment the other one is pressed.
-fn dimmable_icon_button(
-    ui: &mut egui::Ui,
-    area: Rect,
-    name: &str,
-    drawing: fn(&egui::Painter, Pos2, Color32),
-    enabled: bool,
-) -> bool {
-    if enabled {
-        return crate::components::controls::icon_button(ui, area, name, drawing);
+    let tint = match (enabled, response.hovered()) {
+        (false, _) => ink.i300,
+        (true, true) => chat.sky,
+        (true, false) => ink.i500,
+    };
+    if enabled && response.hovered() {
+        rux.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
-    let response = ui.interact(area, ui.id().with((name, "dimmed")), Sense::hover());
-    drawing(&ui.painter_at(area), area.center(), color::text_faint());
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, false, name));
-    false
+    let centre = rect.center();
+    let stroke = egui::Stroke::new(1.7, tint);
+    rux.painter()
+        .line_segment([centre - Vec2::new(5.0, 0.0), centre + Vec2::new(5.0, 0.0)], stroke);
+    if plus {
+        rux.painter()
+            .line_segment([centre - Vec2::new(0.0, 5.0), centre + Vec2::new(0.0, 5.0)], stroke);
+    }
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, name));
+    enabled && response.clicked()
 }
 
-/// How wide a view's chip is: its name with room either side, floored so a one letter name is a target.
-fn chip_width(painter: &egui::Painter, name: &str) -> f32 {
-    let galley =
-        painter.crisp_layout_no_wrap(name.to_owned(), FontId::proportional(11.5), color::text());
-    chip_width_for(galley.size().x)
-}
-
-/// The arithmetic behind it, with no fonts in it so a test can check the floor.
+/// How wide a realm's pill is for words this wide, floored so a one letter name is a target.
 ///
-/// `unluminous-core`'s layout tests are the same bargain: measure through a stub, and the expected
-/// numbers are arithmetic a reader can check on every machine.
-fn chip_width_for(word: f32) -> f32 {
-    (word + 22.0).max(54.0)
+/// The arithmetic on its own, with no fonts in it so a test can check the floor: `unluminous-core`'s layout
+/// tests are the same bargain.
+fn pill_width_for(word: f32) -> f32 {
+    (word + 28.0).max(58.0)
 }
 
 /// The colours and the canvas the canvas draws with.
@@ -455,10 +520,63 @@ pub struct Parts {
 /// flat and opaque, so where nothing overlaps the picture is exactly what it was. Painted in world points,
 /// because the layer carries the camera.
 pub fn cover(ui: &egui::Ui, node: &Node, look: Look<'_>) {
+    let _ = look;
     let parts = parts_of(node);
-    let painter = ui.painter();
-    painter.rect_filled(node.rect(), CornerRadius::same(8), look.card);
-    painter.rect_filled(parts.header, CornerRadius { nw: 8, ne: 8, sw: 0, se: 0 }, look.header);
+    let chat = crate::components::chrome_kit::chat();
+    gradient_card(ui.painter(), node.rect(), NODE_RADIUS, chat.card);
+    // The groove under the header, which is what says where the header ends now that the header is the
+    // card's own surface rather than a band of a second colour (`task-2250`).
+    let inset = 12.0;
+    crate::components::chrome_kit::groove(
+        ui.painter(),
+        Pos2::new(parts.header.left() + inset, parts.header.bottom() - 1.0),
+        Pos2::new(parts.header.right() - inset, parts.header.bottom() - 1.0),
+    );
+}
+
+/// A rounded rectangle filled with a `rux` gradient, painted with `egui`.
+///
+/// `egui` has no gradient fill, so the rectangle is tessellated flat and each vertex is given the colour the
+/// gradient has at that point. The tessellator's own feathering is kept by multiplying by the alpha it gave
+/// the vertex, so the edge is as smooth as a flat fill's.
+fn gradient_card(painter: &egui::Painter, rect: Rect, radius: f32, gradient: rux::theme::Gradient) {
+    let (from, to) = gradient.axis(rect);
+    let along = to - from;
+    let length = along.length_sq().max(f32::EPSILON);
+    let shape =
+        egui::epaint::RectShape::filled(rect, CornerRadius::same(radius as u8), Color32::WHITE); // any ground: every vertex is given the gradient's colour below
+    let mut mesh = egui::epaint::Mesh::default();
+    let mut tessellator = egui::epaint::Tessellator::new(
+        painter.ctx().pixels_per_point(),
+        egui::epaint::TessellationOptions::default(),
+        [1, 1],
+        Vec::new(),
+    );
+    tessellator.tessellate_rect(&shape, &mut mesh);
+    for vertex in &mut mesh.vertices {
+        let t = ((vertex.pos - from).dot(along) / length).clamp(0.0, 1.0);
+        let colour = lerp_colour(gradient.from, gradient.to, t);
+        vertex.color = colour.gamma_multiply(vertex.color.a() as f32 / 255.0);
+    }
+    painter.add(egui::Shape::mesh(mesh));
+}
+
+/// The colour a node's card reads as in the middle, which is what the ring round a port is drawn in so the
+/// port looks cut out of the card.
+pub fn card_colour() -> Color32 {
+    let gradient = crate::components::chrome_kit::chat().card;
+    lerp_colour(gradient.from, gradient.to, 0.5)
+}
+
+/// The colour a fraction of the way from one colour to another.
+fn lerp_colour(from: Color32, to: Color32, t: f32) -> Color32 {
+    let mix = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * t).round() as u8;
+    Color32::from_rgba_premultiplied(
+        mix(from.r(), to.r()),
+        mix(from.g(), to.g()),
+        mix(from.b(), to.b()),
+        mix(from.a(), to.a()),
+    )
 }
 
 /// A node's header and body, which the window needs before it draws the body.
@@ -533,20 +651,17 @@ pub fn frame(ui: &mut egui::Ui, node: &Node, framing: Framing<'_>, look: Look<'_
     let parts = parts_of(node);
     let rect = node.rect();
 
-    // The surface, in screen points, into the pane's canvas. A node is a raised card in the board's
-    // own ladder, with its header a step above its body.
-    look.chrome.raised(framing.on_screen, 8.0, Fill::Solid(look.card), Lift::Small);
-    let header_on_screen = Rect::from_min_max(
-        framing.on_screen.min,
-        Pos2::new(
-            framing.on_screen.right(),
-            framing.on_screen.top() + NODE_HEADER * scale_of(rect, framing.on_screen),
-        ),
-    );
-    look.chrome.rect(
-        header_on_screen,
-        crate::services::vello_canvas::Corners { nw: 8.0, ne: 8.0, se: 0.0, sw: 0.0 },
-        Fill::Solid(look.header),
+    // The surface's shadow, in screen points, into the pane's canvas. A node is a raised card in the
+    // Settings design's values (`task-2250`): the card's gradient, which [`cover`] paints into the node's own
+    // layer over this, and a medium lift, which is what lifts it off the dotted ground.
+    let scale = scale_of(rect, framing.on_screen);
+    let chat = crate::components::chrome_kit::chat();
+    let (from, to) = chat.card.axis(framing.on_screen);
+    look.chrome.raised(
+        framing.on_screen,
+        Corners::from(NODE_RADIUS * scale),
+        Fill::Linear { from, to, start: chat.card.from, end: chat.card.to },
+        Lift::Medium,
     );
     show_the_header(ui, node, parts.header, framing, &mut outcome);
     // **The grips before the ports**, because a grip's band runs the whole length of an edge and a
@@ -564,8 +679,8 @@ pub fn frame(ui: &mut egui::Ui, node: &Node, framing: Framing<'_>, look: Look<'_
             if framing.keyboard { color::accent() } else { color::accent().gamma_multiply(0.45) };
         ui.painter().rect_stroke(
             rect,
-            CornerRadius::same(8),
-            egui::Stroke::new(1.0, tint),
+            CornerRadius::same(NODE_RADIUS as u8),
+            egui::Stroke::new(1.5, tint),
             egui::StrokeKind::Inside,
         );
     }
@@ -618,13 +733,16 @@ fn show_the_header(
         ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
     }
     let painter = ui.painter_at(header);
-    let mark = Pos2::new(header.left() + 15.0, header.center().y);
-    kind_mark(node.kind())(&painter, mark, color::icon());
+    let chat = crate::components::chrome_kit::chat();
+    let mark = Pos2::new(header.left() + 20.0, header.center().y);
+    // The kind's mark in a small carved disc, which is how the design marks what a card is about.
+    painter.circle(mark, 10.0, chat.well, egui::Stroke::new(1.0, chat.dark.gamma_multiply(0.6)));
+    kind_mark(node.kind())(&painter, mark, chat.sky);
     let name = match node.title.trim().is_empty() {
         true => framing.fallback_title.to_owned(),
         false => node.title.clone(),
     };
-    let mut right = header.right() - 6.0;
+    let mut right = header.right() - 8.0;
     let close =
         Rect::from_center_size(Pos2::new(right - 9.0, header.center().y), Vec2::splat(18.0));
     // Prefixed for `no_two_controls_share_a_name`'s reason -- see `file_tabs::show`.
@@ -677,17 +795,28 @@ fn show_the_header(
         }
         right = bigger.left() - 2.0;
     }
-    let room = (right - (mark.x + 12.0)).max(10.0);
-    let galley =
-        painter.crisp_layout(name.clone(), FontId::proportional(12.0), color::text(), room);
+    let room = (right - (mark.x + 18.0)).max(10.0);
+    let font = title_font(ui.ctx());
+    let galley = painter.crisp_layout(name.clone(), font, color::text_strong(), room);
     painter.crisp_galley(
-        Pos2::new(mark.x + 12.0, header.center().y - galley.size().y / 2.0),
+        Pos2::new(mark.x + 18.0, header.center().y - galley.size().y / 2.0),
         galley,
-        color::text(),
+        color::text_strong(),
     );
     response.widget_info(|| {
         egui::WidgetInfo::labeled(egui::WidgetType::Other, true, format!("Node: {name}"))
     });
+}
+
+/// The design's semibold for a node's name, or the interface's own face in a window that has not bound
+/// `rux`'s families, which is a test's bare context.
+fn title_font(ctx: &egui::Context) -> FontId {
+    let font = rux::Style::sans(12.5).semibold().font();
+    let bound = ctx.fonts(|fonts| fonts.definitions().families.contains_key(&font.family));
+    match bound {
+        true => font,
+        false => FontId::proportional(12.5),
+    }
 }
 
 /// The view mode a note's view is, which is what the title bar's own buttons and `OpenFile::view_mode` use.
@@ -731,6 +860,11 @@ fn note_view_button(
     response
         .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, active, &name));
     response.clicked()
+}
+
+/// The drawn mark for each kind, for the Add a node dialog, which shows each kind with its mark.
+pub fn kind_mark_of(kind: Kind) -> fn(&egui::Painter, Pos2, Color32) {
+    kind_mark(kind)
 }
 
 /// The drawn mark for each kind, which is the same picture the rail uses for the pane it stands for.
@@ -1185,9 +1319,9 @@ mod tests {
     fn a_view_chip_is_wide_enough_to_be_a_target_however_short_its_name() {
         // The floor is what makes a one letter name a target somebody can hit; past it the chip is
         // the word with room either side.
-        assert_eq!(chip_width_for(4.0), 54.0);
-        assert_eq!(chip_width_for(0.0), 54.0);
-        assert_eq!(chip_width_for(100.0), 122.0);
-        assert!(chip_width_for(200.0) > chip_width_for(100.0));
+        assert_eq!(pill_width_for(4.0), 58.0);
+        assert_eq!(pill_width_for(0.0), 58.0);
+        assert_eq!(pill_width_for(100.0), 128.0);
+        assert!(pill_width_for(200.0) > pill_width_for(100.0));
     }
 }

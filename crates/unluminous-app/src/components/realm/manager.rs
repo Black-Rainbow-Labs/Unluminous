@@ -19,25 +19,26 @@
 //! whether it is the one showing, and everything a person can *do* to a view is on the right click menu it
 //! already has.
 
-use egui::{Align2, FontId, Pos2, Rect, Sense, Vec2};
+use egui::{Pos2, Rect, Vec2};
+use rux::Style;
 
-use crate::components::{controls, modal};
+use crate::components::realm::dialog;
+use crate::components::{modal, settings_kit};
 use std::path::PathBuf;
 
 /// A realm, named by where its file is in the project. `task-2202`: a realm file is what a view was.
 type ViewId = PathBuf;
-use crate::theme::{color, size};
+use crate::theme::color;
 
 /// The size it opens at.
 ///
 /// The same shape `Go to File` opens at, because it is the same kind of thing: a search box over a list you
 /// are looking through. **One size for every state**, which is the Settings window's rule — a modal that grew
 /// as views were added would be a modal that jumped under the pointer — so the list scrolls instead.
-const WIDTH: f32 = 520.0;
-const HEIGHT: f32 = 460.0;
-/// How tall the search field is, and the gap under it.
-const FIELD: f32 = 30.0;
-const AFTER_THE_FIELD: f32 = 10.0;
+const WIDTH: f32 = 560.0;
+const HEIGHT: f32 = 500.0;
+/// How tall one row of the list is.
+const ROW: f32 = 44.0;
 
 /// One row's worth of what the modal needs to know about a view.
 ///
@@ -96,105 +97,108 @@ pub fn not_showing(total: usize, drawn: usize) -> usize {
 }
 
 /// Draw the modal and report what was chosen.
+///
+/// `task-2250` drew it in the Settings design's language: see `components::realm::dialog`.
 pub fn show(ctx: &egui::Context, state: &mut State, rows: &[Row]) -> Outcome {
     let mut outcome = Outcome::default();
-    let (_, closed) = modal::show(ctx, "unluminous-realm-manager", WIDTH, HEIGHT, |ui, area| {
-        if modal::header(ui, area, "Realms") {
-            outcome.closed = true;
-        }
-        // The arrow keys and Enter are taken out of the frame's events before the field is drawn, because
-        // egui leaves what a text box consumed in the list for everyone else to read and a list moving is
-        // not the same as a caret moving. `go_to_file`'s own reason, kept.
-        let (down, up, enter) = ui.input_mut(|input| {
-            (
-                input.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
-                input.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
-                input.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
-            )
-        });
-
-        let body = modal::body(area);
-        // **What a canvas is, said once**, because a control that silently did less than its name suggests
-        // would be worse than one that says what it does — see §3.2 of the design.
-        let said = Rect::from_min_size(body.min, Vec2::new(body.width(), 30.0));
-        ui.painter_at(area).galley(
-            said.min,
-            ui.painter().layout(
-                "Every canvas in this project. A canvas belongs to the project it was made in, because its \
-                 nodes name that project's files."
-                    .to_owned(),
-                FontId::proportional(11.0),
-                color::text_faint(),
-                said.width(),
-            ),
-            color::text_faint(),
-        );
-        let field = Rect::from_min_size(
-            Pos2::new(body.left(), said.bottom() + 6.0),
-            Vec2::new(body.width(), FIELD),
-        );
-        let entry =
-            controls::search_field(ui, field, "Find a realm", "Type a name", &mut state.filter);
-        // The box has the keyboard from the moment the modal opens, because a search box that has to be
-        // clicked before it can be typed into is a search box that gets typed past.
-        if !entry.has_focus() {
-            entry.request_focus();
-        }
-
-        let found = matching(rows, &state.filter);
-        if down {
-            state.highlighted = (state.highlighted + 1).min(found.len().saturating_sub(1));
-        }
-        if up {
-            state.highlighted = state.highlighted.saturating_sub(1);
-        }
-        state.highlighted = state.highlighted.min(found.len().saturating_sub(1));
-
-        let list =
-            Rect::from_min_max(Pos2::new(body.left(), field.bottom() + AFTER_THE_FIELD), body.max);
-        show_the_rows(ui, list, &found, state, &mut outcome);
-        if enter {
-            if let Some(row) = found.get(state.highlighted) {
-                outcome.show = Some(row.id.clone());
+    let (_, closed) = modal::show_unframed(
+        ctx,
+        "unluminous-realm-manager",
+        WIDTH,
+        HEIGHT,
+        |ui, area| {
+            dialog::surface(ui, "realm-manager", area);
+            // The arrow keys and Enter are taken out of the frame's events before the field is drawn,
+            // because egui leaves what a text box consumed in the list for everyone else to read and a list
+            // moving is not the same as a caret moving. `go_to_file`'s own reason, kept.
+            let (down, up, enter) = ui.input_mut(|input| {
+                (
+                    input.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
+                    input.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
+                    input.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
+                )
+            });
+            let inner = Rect::from_min_max(
+                Pos2::new(area.left() + dialog::PAD_X, area.top() + dialog::PAD_Y),
+                Pos2::new(area.right() - dialog::PAD_X, area.bottom() - dialog::PAD_Y),
+            );
+            let found = matching(rows, &state.filter);
+            if down {
+                state.highlighted = (state.highlighted + 1).min(found.len().saturating_sub(1));
             }
-        }
-
-        let summary = match rows.len() {
-            1 => "1 realm".to_owned(),
-            many => format!("{many} realms"),
-        };
-        modal::label(
-            &ui.painter_at(area),
-            Rect::from_min_size(
-                Pos2::new(area.left() + 20.0, area.bottom() - modal::FOOTER),
-                Vec2::new(200.0, modal::FOOTER),
-            ),
-            area.left() + 20.0,
-            &summary,
-            color::text_faint(),
-            11.0,
-        );
-        // The last button is the one Enter presses, which is `modal::footer`'s rule — so the one that opens
-        // a realm is last and the two that do something else come before it.
-        match modal::footer(
-            ui,
-            area,
-            &[
-                ("OPEN ANOTHER PROJECT", true),
-                ("NEW SPACE", true),
-                ("OPEN", found.get(state.highlighted).is_some()),
-            ],
-        ) {
-            Some(0) => outcome.open_a_project = true,
-            Some(1) => outcome.add = true,
-            Some(2) => {
+            if up {
+                state.highlighted = state.highlighted.saturating_sub(1);
+            }
+            state.highlighted = state.highlighted.min(found.len().saturating_sub(1));
+            let list = settings_kit::layer(ui, "realm-manager", inner, |rux| {
+                if dialog::heading(rux, inner, "Realms") {
+                    outcome.closed = true;
+                }
+                // **What a canvas is, said once**, because a control that silently did less than its name
+                // suggests would be worse than one that says what it does — see §3.2 of the design.
+                let below = settings_kit::paragraph(
+                    rux,
+                    Pos2::new(inner.left(), inner.top() + dialog::CLOSE + 8.0),
+                    inner.width(),
+                    "Every canvas in this project. A canvas belongs to the project it was made in, because \
+                     its nodes name that project's files.",
+                );
+                let well = Rect::from_min_size(
+                    Pos2::new(inner.left(), below + dialog::GAP - 4.0),
+                    Vec2::new(inner.width(), dialog::SEARCH),
+                );
+                let entry =
+                    dialog::search(rux, well, "Find a realm", "Type a name", &mut state.filter);
+                // The box has the keyboard from the moment the modal opens, because a search box that has to
+                // be clicked before it can be typed into is a search box that gets typed past.
+                if !entry.has_focus() {
+                    entry.request_focus();
+                }
+                let summary = match rows.len() {
+                    1 => "1 realm".to_owned(),
+                    many => format!("{many} realms"),
+                };
+                let theme = rux.theme();
+                let galley = rux.text(Style::sans(11.5), &summary, theme.ink.i400);
+                rux::text::draw_left_capitals(
+                    rux.painter(),
+                    Pos2::new(inner.left() + 4.0, inner.bottom() - dialog::BUTTON / 2.0),
+                    galley,
+                    Style::sans(11.5),
+                    theme.ink.i400,
+                );
+                // The last button is the one Enter presses, which is `modal::footer`'s rule — so the one that
+                // opens a realm is last and the two that do something else come before it.
+                match dialog::footer(
+                    rux,
+                    inner,
+                    &[("Open Another Project…", false), ("New Realm", true)],
+                    ("Open", found.get(state.highlighted).is_some()),
+                ) {
+                    Some(0) => outcome.open_a_project = true,
+                    Some(1) => outcome.add = true,
+                    Some(2) => {
+                        if let Some(row) = found.get(state.highlighted) {
+                            outcome.show = Some(row.id.clone());
+                        }
+                    }
+                    _ => {}
+                }
+                let list = Rect::from_min_max(
+                    Pos2::new(inner.left(), well.bottom() + dialog::GAP),
+                    Pos2::new(inner.right(), inner.bottom() - dialog::BUTTON - dialog::GAP),
+                );
+                settings_kit::list_well(rux, list, 20.0);
+                list
+            });
+            show_the_rows(ui, list.shrink(6.0), &found, state, &mut outcome);
+            if enter {
                 if let Some(row) = found.get(state.highlighted) {
                     outcome.show = Some(row.id.clone());
                 }
             }
-            _ => {}
-        }
-    });
+        },
+    );
     if closed {
         outcome.closed = true;
     }
@@ -204,7 +208,7 @@ pub fn show(ctx: &egui::Context, state: &mut State, rows: &[Row]) -> Outcome {
     outcome
 }
 
-/// The rows: a name, what is on it, and the pill on whichever is highlighted.
+/// The rows: a name, what is on it, and the raised row on whichever is highlighted.
 fn show_the_rows(
     ui: &mut egui::Ui,
     area: Rect,
@@ -216,90 +220,105 @@ fn show_the_rows(
     child.set_clip_rect(ui.painter().clip_rect().intersect(area));
     egui::ScrollArea::vertical().id_salt("realm-manager-rows").show(&mut child, |ui| {
         if found.is_empty() {
-            ui.add_space(8.0);
+            ui.add_space(10.0);
             ui.label(
-                egui::RichText::new("  Nothing is called that")
-                    .size(11.5)
+                egui::RichText::new("   Nothing is called that")
+                    .size(12.0)
                     .color(color::text_faint()),
             );
             return;
         }
-        for (index, row) in found.iter().enumerate() {
-            let (rect, response) =
-                ui.allocate_exact_size(Vec2::new(ui.available_width(), size::ROW), Sense::click());
-            // **A press moves the choice; resting the pointer does not.** `go_to_file` reads its own rows the
-            // same way and for the reason the Codex Sol review gave about this one: the pointer very often sits
-            // still over a row while somebody walks the list with the arrow keys, so moving the choice on hover
-            // put it back under the pointer on every frame and `Enter` then opened the row the pointer
-            // happened to be over rather than the row the pill was on.
-            if response.clicked() {
-                state.highlighted = index;
-            }
-            let on = index == state.highlighted;
-            let painter = ui.painter();
-            if on {
-                painter.rect_filled(rect, size::CONTROL_CORNER, color::selected_row());
-            }
-            // The pointer still says where it is, which is what a row under it should look like — it is a
-            // wash rather than the choice, which is the distinction the explorer's two marks already draw.
-            if response.hovered() && !on {
-                painter.rect_filled(rect, size::CONTROL_CORNER, color::control());
-            }
-            let tint = match row.showing {
-                true => color::text_strong(),
-                false => color::text(),
-            };
-            painter.text(
-                Pos2::new(rect.left() + 12.0, rect.center().y),
-                Align2::LEFT_CENTER,
-                &row.name,
-                FontId::proportional(12.5),
-                tint,
-            );
-            // What is on it, and whether it is the one showing — the two things that tell one canvas from
-            // another when the names are all somebody's own words.
-            let count = match row.connections {
-                0 => format!("{} node{}", row.nodes, if row.nodes == 1 { "" } else { "s" }),
-                wires => format!(
-                    "{} node{} · {wires} connection{}",
-                    row.nodes,
-                    if row.nodes == 1 { "" } else { "s" },
-                    if wires == 1 { "" } else { "s" },
-                ),
-            };
-            painter.text(
-                Pos2::new(rect.right() - 74.0, rect.center().y),
-                Align2::RIGHT_CENTER,
-                &count,
-                FontId::proportional(11.0),
-                color::text_dim(),
-            );
-            if row.showing {
-                painter.text(
-                    Pos2::new(rect.right() - 10.0, rect.center().y),
-                    Align2::RIGHT_CENTER,
-                    "showing",
-                    FontId::proportional(10.5),
-                    color::accent(),
+        let width = ui.available_width();
+        let top = ui.cursor().top();
+        let total = Rect::from_min_size(
+            Pos2::new(ui.cursor().left(), top),
+            Vec2::new(width, ROW * found.len() as f32),
+        );
+        settings_kit::layer(ui, "realm-manager-rows", total, |rux| {
+            for (index, row) in found.iter().enumerate() {
+                let rect = Rect::from_min_size(
+                    Pos2::new(total.left(), top + index as f32 * ROW),
+                    Vec2::new(width, ROW - 4.0),
                 );
-            }
-            response.widget_info(|| {
-                egui::WidgetInfo::selected(
-                    egui::WidgetType::Button,
-                    true,
-                    row.showing,
-                    format!("Realm: {}", row.name),
-                )
-            });
-            if response.double_clicked() {
-                outcome.show = Some(row.id.clone());
-            }
-            if response.secondary_clicked() {
-                if let Some(at) = response.interact_pointer_pos().or_else(|| response.hover_pos()) {
-                    outcome.menu = Some((at, row.id.clone()));
+                let on = index == state.highlighted;
+                let response = dialog::row(rux, rect, &row.name, on);
+                // **A press moves the choice; resting the pointer does not.** `go_to_file` reads its own rows
+                // the same way and for the reason the Codex Sol review gave about this one: the pointer very
+                // often sits still over a row while somebody walks the list with the arrow keys, so moving the
+                // choice on hover put it back under the pointer on every frame and `Enter` then opened the row
+                // the pointer happened to be over rather than the row the pill was on.
+                if response.clicked() {
+                    state.highlighted = index;
+                }
+                let theme = rux.theme();
+                let name_style = Style::sans(13.0).medium();
+                let tint = match row.showing {
+                    true => theme.ink.i900,
+                    false => theme.ink.i700,
+                };
+                let galley = rux.elided(name_style, &row.name, tint, rect.width() * 0.5);
+                rux::text::draw_left_capitals(
+                    rux.painter(),
+                    Pos2::new(rect.left() + 16.0, rect.center().y),
+                    galley,
+                    name_style,
+                    tint,
+                );
+                // What is on it, and whether it is the one showing — the two things that tell one canvas
+                // from another when the names are all somebody's own words.
+                let count = match row.connections {
+                    0 => format!("{} node{}", row.nodes, if row.nodes == 1 { "" } else { "s" }),
+                    wires => format!(
+                        "{} node{} · {wires} connection{}",
+                        row.nodes,
+                        if row.nodes == 1 { "" } else { "s" },
+                        if wires == 1 { "" } else { "s" },
+                    ),
+                };
+                let mut right = rect.right() - 16.0;
+                if row.showing {
+                    let style = Style::sans(11.0).semibold();
+                    let galley = rux.text(style, "showing", theme.chat.sky);
+                    right -= galley.size().x;
+                    rux::text::draw_left_capitals(
+                        rux.painter(),
+                        Pos2::new(right, rect.center().y),
+                        galley,
+                        style,
+                        theme.chat.sky,
+                    );
+                    right -= 14.0;
+                }
+                let galley = rux.text(Style::sans(11.5), &count, theme.ink.i400);
+                right -= galley.size().x;
+                rux::text::draw_left_capitals(
+                    rux.painter(),
+                    Pos2::new(right, rect.center().y),
+                    galley,
+                    Style::sans(11.5),
+                    theme.ink.i400,
+                );
+                response.widget_info(|| {
+                    egui::WidgetInfo::selected(
+                        egui::WidgetType::Button,
+                        true,
+                        row.showing,
+                        format!("Realm: {}", row.name),
+                    )
+                });
+                if response.double_clicked() {
+                    outcome.show = Some(row.id.clone());
+                }
+                if response.secondary_clicked() {
+                    if let Some(at) =
+                        response.interact_pointer_pos().or_else(|| response.hover_pos())
+                    {
+                        outcome.menu = Some((at, row.id.clone()));
+                    }
                 }
             }
-        }
+        });
+        ui.allocate_space(total.size());
     });
 }
 

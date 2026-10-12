@@ -1235,6 +1235,19 @@ every one of them going through the same function the pointer does. The MCP grou
 18,511 tokens to 20,365 to hold the first twenty three, which is the largest single move that number has
 made; it is 21,801 today and is recorded beside the others in `mcp::tools`.
 
+### The bar and the nodes are the Settings design's (`task-2250`)
+
+The Realm was redrawn in the same language as the Database pane, with no design on the canvas to follow. The
+bar is 50 points: the realms are pills in a carved track with the one showing raised, `+N more` sits at the
+end of the track, `New Realm` is a round chip after it, and the zoom controls are two chips and the reading in
+a carved track at the right, all drawn with the furniture's `rux` state (`chrome_kit::layer`). A node is a
+card 16 points round in the chat card's gradient: the shadow is the pane's canvas (`Lift::Medium`), and the
+surface is painted into the node's own layer by `cover` as a tessellated rounded rectangle whose vertices carry
+the gradient, because `egui` has no gradient fill and a node's surface has to hide the nodes behind it. The
+header is the card's own surface with a groove under it, the kind's mark in a carved disc, and the name in the
+design's semibold. The realm manager and Add a node are `modal::show_unframed` dialogs built from
+`components::realm::dialog`, which is the New Data Source dialog's shape.
+
 ### A realm is a file in the project (`task-2202`)
 
 `tasks/task-2199-realm-tdd.md` is the design. Each realm is a `.realm` file, kept in `.realm-files/` by
@@ -1908,9 +1921,34 @@ still open a session that cannot write. Nothing in the window offers it.
 `unluminous-cli plugins run database …` is the agent's half — `sources`, `add-source`, `password`,
 `connect`, `schemas`, `tables`, `columns`, `ddl`, `open`, `console`, `query`, `state`, `result`,
 `page`, `filter`, `sort`, `set`, `add-row`, `delete-row`, `pending`, `submit`, `read-only`,
-`new-table`, `drop-table` — and `plugins view database` answers the whole plugin as data. **`query`
-does not wait**, for the reason Agent-Chat's `send` does not: `UiProvider::command` runs inside a
-frame.
+`new-table`, `drop-table`, `new-query`, `console-source`, `pages`, `show-page`, `close-page` — and
+`plugins view database` answers the whole plugin as data. **`query` does not wait**, for the reason
+Agent-Chat's `send` does not: `UiProvider::command` runs inside a frame.
+
+### The pane is the consoles on the left and the data sources on the right (`task-2250`)
+
+*"The db tables should be on the right, and the query console tabs/content should be to the left of it. There
+should be a new button to add a new query. The query console should allow me to select which db to use in a
+dropdown on the right."* There was no design for this on the Claude Design canvas, so it was drawn in the
+language the Settings window, the Agent-Tasks board and the Agent-Chat pane already use. Four things to know:
+
+- **`components::database::arrange` decides where things go.** From 560 points wide the tree is a card at
+  the right, between 220 and 340 points, and the workspace is everything to the left of it. Narrower, the tree
+  is on top and the workspace under it; shorter than 360 points, the pane is the tree alone. The manifest asks
+  for 720 points.
+- **Every surface is `rux`, through `components::database::kit`.** The plugin keeps a `rux` state of its own per
+  thread and per context, because the pane zooms by a multiplier and the title bar must not grow with it.
+  `card` and `well` each open a small layer, so a well drawn inside a card is painted on it and the words drawn
+  after both are on top: the grid and the tree still draw their rows and cells with `egui`.
+- **The page strip is the board's view switch**: a carved track of pills, the page showing raised out of it,
+  and `New query` a round chip after the last one. A console is named `Query N`, numbered across the session,
+  because its data source can change and a page whose name changed under it would be a different page to
+  anything that found it by name. `New query` opens a console on the page showing's data source, or the one
+  the tree is pointed at (`DatabaseExplorer::source_for_a_new_query`), and with none it opens the New Data
+  Source dialog.
+- **A console's data source is the `settings_kit::select` chip at the right of its toolbar**, with `Execute`
+  as the action's pill at the left. Choosing one keeps the statement and drops the last result, and a console
+  still running is refused (`DatabaseExplorer::point_the_console_at`).
 
 ### What `task-1795` changed, and the four faults it found
 

@@ -13,22 +13,22 @@
 //!
 //! ## The ground is the window's
 //!
-//! `show_the_plugin_panes` fills the pane and reserves the decoration's slot before this is called, so
-//! nothing here paints a second ground: it would go into the painter *after* the slot and wash the
-//! decoration out. What is painted here are the plugin's own surfaces, through `Chrome`.
+//! `show_the_plugin_panes` fills the pane before this is called, so nothing here paints a second ground.
+//! What is painted here are the plugin's own surfaces, and since `task-2250` they are `rux` surfaces in
+//! the Settings design's language: see `kit`.
 
 pub mod console;
 pub mod grid;
+pub mod kit;
 pub mod modal;
 pub mod settings_page;
 pub mod tree;
 pub mod workspace;
 
-use egui::{Color32, CornerRadius, Pos2, Rect, Stroke, Vec2};
+use egui::{Color32, Pos2, Rect, Vec2};
 
 use crate::services::database::{commands, Aimed, DatabaseExplorer, Modal, Page, Sheet};
 use crate::services::plugin_ui::{Look, Request};
-use crate::services::vello_canvas::{Fill, Lift};
 
 /// The gap round a surface, which is the gap the explorer already leaves.
 pub const PAD: f32 = 8.0;
@@ -50,6 +50,11 @@ pub enum Act {
     /// Open a grid on a table.
     OpenTable(String, String, String),
     OpenConsole(String),
+    /// The `New query` button: a console on the data source the page showing is on, or the one the
+    /// tree is pointed at.
+    NewQuery,
+    /// Point a console at another data source, which is the dropdown at the right of its toolbar.
+    ConsoleSource(u64, String),
     Connect(String),
     Disconnect(String),
     Refresh(String),
@@ -105,59 +110,89 @@ pub enum Act {
     Said(String),
 }
 
-/// Draw the tree pane, and act on what was pressed.
+/// Draw the pane, and act on what was pressed.
+///
+/// **The consoles and grids on the left and the data sources on the right** (`task-2250`): *"The db tables
+/// should be on the right, and the query console tabs/content should be to the left of it."* The workspace is
+/// what somebody opened the pane to read, so it takes the larger share and the reading side of the pane, and
+/// the tree is the column beside it that a table is picked out of. [`arrange`] decides where each goes, and a
+/// pane too narrow for two columns stacks them instead.
 pub fn pane(explorer: &mut DatabaseExplorer, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request> {
     let area = ui.available_rect_before_wrap();
     let mut acts = Vec::new();
     if area.width() > 40.0 && area.height() > 40.0 {
-        // **The tree and the workspace, one above the other.** `task-1848`: "Database query view should be
-        // part of the database pane, rather than a separate tab." So the pane is split — the tree on top
-        // and the consoles and grids under it — rather than the tree alone with its workspace somewhere
-        // else entirely.
-        //
-        // Split only when there is room for both to be worth drawing. Below `TREE_ALONE` the pane is the
-        // tree and nothing else, because a console in eighty points of height is a console nobody can read
-        // a result in, and half of a useful thing is worse than one whole one. That is the same judgement
-        // `components/agent_tasks/ticket_modal.rs` makes about its two columns.
-        let (tree_at, workspace_at) = match area.height() >= TREE_ALONE {
-            true => {
-                let tree_height = (area.height() * TREE_SHARE).clamp(120.0, area.height() - 160.0);
-                (
-                    Rect::from_min_size(area.min, Vec2::new(area.width(), tree_height)),
-                    Some(Rect::from_min_max(
-                        Pos2::new(area.min.x, area.min.y + tree_height),
-                        area.max,
-                    )),
-                )
-            }
-            false => (area, None),
-        };
-        acts = tree::show(explorer, ui, look, tree_at);
-        if let Some(workspace_at) = workspace_at {
-            // The divider between them, drawn rather than dragged: a second draggable split inside a pane
-            // that is itself resized by a divider would be two handles a few points apart, and
-            // `components::splitter` is the window's one answer to a draggable edge.
-            ui.painter().rect_filled(
-                Rect::from_min_size(workspace_at.min, Vec2::new(workspace_at.width(), 1.0)),
-                0,
-                crate::theme::color::divider(),
-            );
-            acts.extend(workspace::show(
-                explorer,
-                ui,
-                look,
-                workspace_at.shrink2(Vec2::new(0.0, 1.0)),
-            ));
+        let arranged = arrange(area, look.scale());
+        if let Some(workspace_at) = arranged.workspace {
+            acts.extend(workspace::show(explorer, ui, look, workspace_at));
         }
+        acts.extend(tree::show(explorer, ui, look, arranged.tree));
         // After the rows, so the popup is over them and takes the pointer first — the rule
         // `components::resize_edges` gives for anything added last.
         acts.extend(tree::menu(explorer, ui, look));
     }
+    kit::end_frame(ui.ctx());
     apply(explorer, acts)
 }
 
-/// How much of the pane the tree takes when the workspace is drawn under it, and the height below which
-/// the pane is the tree alone.
+/// Where the tree's card and the workspace go in a pane of this size.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Arranged {
+    /// The data source tree's card.
+    pub tree: Rect,
+    /// The page strip and the page under it, or `None` when the pane is the tree alone.
+    pub workspace: Option<Rect>,
+    /// True when the two are side by side, the tree on the right.
+    pub side_by_side: bool,
+}
+
+/// The room round everything in the pane, which keeps the cards' shadows inside it.
+pub const MARGIN: f32 = 14.0;
+/// The gap between the workspace and the tree.
+pub const GUTTER: f32 = 16.0;
+/// How wide a pane has to be before the tree goes beside the workspace rather than above it.
+///
+/// 560 points, so the 618 point pane this was reported from is two columns: a tree of 220 points and a
+/// workspace of about 350 beside it, which holds a strip of page names and a console with its data source
+/// chosen at the right.
+pub const SIDE_BY_SIDE: f32 = 560.0;
+/// How narrow and how wide the tree's column may be, and its share of a pane between the two.
+pub const TREE_NARROWEST: f32 = 220.0;
+pub const TREE_WIDEST: f32 = 340.0;
+const TREE_SHARE_ACROSS: f32 = 0.3;
+
+/// Where the tree and the workspace go.
+///
+/// **Side by side** once the pane is [`SIDE_BY_SIDE`] wide: the tree a column at the right, between
+/// [`TREE_NARROWEST`] and [`TREE_WIDEST`], and the workspace everything to the left of it. **Stacked**
+/// below that, with the tree on top taking [`TREE_SHARE`] of the height, because a column of 150 points is
+/// a column every table name is cut short in. **The tree alone** below `TREE_ALONE`, because a console in
+/// eighty points of height is a console nobody can read a result in.
+pub fn arrange(area: Rect, scale: f32) -> Arranged {
+    let inner = area.shrink(MARGIN * scale);
+    if inner.width() <= 0.0 || inner.height() <= 0.0 {
+        return Arranged { tree: area, workspace: None, side_by_side: false };
+    }
+    if area.width() >= SIDE_BY_SIDE * scale && area.height() >= 200.0 * scale {
+        let width = (inner.width() * TREE_SHARE_ACROSS)
+            .clamp(TREE_NARROWEST * scale, TREE_WIDEST * scale)
+            .min(inner.width() * 0.5);
+        let tree = Rect::from_min_max(Pos2::new(inner.right() - width, inner.top()), inner.max);
+        let workspace =
+            Rect::from_min_max(inner.min, Pos2::new(tree.left() - GUTTER * scale, inner.bottom()));
+        return Arranged { tree, workspace: Some(workspace), side_by_side: true };
+    }
+    if area.height() >= TREE_ALONE * scale {
+        let tree_height =
+            (inner.height() * TREE_SHARE).clamp(120.0 * scale, inner.height() - 160.0 * scale);
+        let tree = Rect::from_min_size(inner.min, Vec2::new(inner.width(), tree_height));
+        let workspace =
+            Rect::from_min_max(Pos2::new(inner.left(), tree.bottom() + GUTTER * scale), inner.max);
+        return Arranged { tree, workspace: Some(workspace), side_by_side: false };
+    }
+    Arranged { tree: inner, workspace: None, side_by_side: false }
+}
+
+/// How much of a stacked pane the tree takes, and the height below which the pane is the tree alone.
 ///
 /// A third, so the consoles and the grids get the two thirds they need: a result is the thing somebody
 /// opened the pane to read, and the tree is how they got to it.
@@ -204,6 +239,19 @@ pub fn apply(explorer: &mut DatabaseExplorer, acts: Vec<Act>) -> Vec<Request> {
                 Ok(_) => requests.push(Request::ShowTab),
                 Err(why) => requests.push(Request::Message(why)),
             },
+            Act::NewQuery => match explorer.source_for_a_new_query() {
+                Some(source) => match explorer.open_console(&source) {
+                    Ok(_) => requests.push(Request::ShowTab),
+                    Err(why) => requests.push(Request::Message(why)),
+                },
+                // Nothing to query yet, so the button does the one thing that would give it something.
+                None => explorer.modal = Some(Modal::Source(commands::a_new_source(explorer))),
+            },
+            Act::ConsoleSource(id, source) => {
+                if let Err(why) = explorer.point_the_console_at(id, &source) {
+                    requests.push(Request::Message(why));
+                }
+            }
             Act::Connect(name) => {
                 if let Err(why) = explorer.connect(&name) {
                     requests.push(Request::Message(why));
@@ -444,37 +492,17 @@ fn kind_of(
         .unwrap_or(unluminous_db::Kind::Table)
 }
 
-/// A raised card, or the flat bordered panel every list in Unluminous draws when the decoration is off.
+/// A raised card in the Settings design's values. See `kit`.
 ///
-/// One function rather than the same eight lines in four files, so switching `ui.chrome` off really
-/// does leave a flat panel rather than leaving one surface half drawn.
-pub fn card(ui: &egui::Ui, look: &Look<'_>, area: Rect, fill: Color32, radius: f32) {
-    if look.chrome.is_recording() {
-        look.chrome.raised(area, radius, Fill::Solid(fill), Lift::Small);
-        return;
-    }
-    ui.painter().rect(
-        area,
-        CornerRadius::same(radius as u8),
-        look.ground(fill),
-        Stroke::new(1.0, look.palette.control_border),
-        egui::StrokeKind::Inside,
-    );
+/// The colour of the surface is the design's card gradient, worked out from the theme, rather than a
+/// colour the caller chooses: every card in the pane is the same card.
+pub fn card(ui: &mut egui::Ui, look: &Look<'_>, area: Rect, radius: f32) {
+    kit::card(ui, look.scale(), area, radius);
 }
 
-/// A pressed well: a field, a results area, a toolbar's ground.
-pub fn well(ui: &egui::Ui, look: &Look<'_>, area: Rect, radius: f32) {
-    if look.chrome.is_recording() {
-        look.chrome.sunken(area, radius, look.palette.board_well, Lift::Small);
-        return;
-    }
-    ui.painter().rect(
-        area,
-        CornerRadius::same(radius as u8),
-        look.ground(look.palette.board_well),
-        Stroke::new(1.0, look.palette.divider),
-        egui::StrokeKind::Inside,
-    );
+/// A carved well: a field, a results area.
+pub fn well(ui: &mut egui::Ui, look: &Look<'_>, area: Rect, radius: f32) {
+    kit::well(ui, look.scale(), area, radius);
 }
 
 /// Text at a position, vertically centred in a row, cut to a width with an ellipsis.
@@ -569,6 +597,43 @@ mod tests {
         let second = along(toolbar, &mut at, 40.0);
         assert_eq!(second, Rect::from_min_size(Pos2::new(34.0, 20.0), Vec2::new(40.0, 32.0)));
         assert_eq!(at, 74.0);
+    }
+
+    /// Wide, the tree is a column at the right and the workspace everything left of it; narrow, the tree
+    /// is on top; short, the tree is alone. `task-2250`.
+    #[test]
+    fn a_wide_pane_puts_the_tree_at_the_right_of_the_workspace() {
+        let wide = Rect::from_min_size(Pos2::new(100.0, 50.0), Vec2::new(760.0, 600.0));
+        let arranged = arrange(wide, 1.0);
+        let workspace = arranged.workspace.expect("a workspace beside the tree");
+        assert!(arranged.side_by_side);
+        assert!(workspace.right() < arranged.tree.left(), "{workspace:?} then {:?}", arranged.tree);
+        assert_eq!(workspace.top(), arranged.tree.top(), "the two columns start together");
+        assert!(arranged.tree.width() >= TREE_NARROWEST && arranged.tree.width() <= TREE_WIDEST);
+        assert!(workspace.width() > arranged.tree.width(), "the workspace is the larger share");
+        assert!(wide.contains_rect(workspace) && wide.contains_rect(arranged.tree));
+
+        let narrow = Rect::from_min_size(Pos2::ZERO, Vec2::new(420.0, 600.0));
+        let arranged = arrange(narrow, 1.0);
+        let workspace = arranged.workspace.expect("a workspace under the tree");
+        assert!(!arranged.side_by_side);
+        assert!(arranged.tree.bottom() < workspace.top());
+
+        let short = Rect::from_min_size(Pos2::ZERO, Vec2::new(420.0, 300.0));
+        assert_eq!(
+            arrange(short, 1.0).workspace,
+            None,
+            "a console in this little height is unreadable"
+        );
+    }
+
+    /// The arrangement is measured in the pane's own points, so a zoomed pane needs more room before it
+    /// splits into two columns.
+    #[test]
+    fn a_zoomed_pane_needs_more_room_for_two_columns() {
+        let pane = Rect::from_min_size(Pos2::ZERO, Vec2::new(700.0, 700.0));
+        assert!(arrange(pane, 1.0).side_by_side);
+        assert!(!arrange(pane, 1.5).side_by_side, "560 points at 1.5 is 840");
     }
 
     #[test]

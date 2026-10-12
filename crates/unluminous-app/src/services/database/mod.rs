@@ -121,6 +121,9 @@ pub struct Loaded {
 /// A console: a SQL editor and whatever its last statement answered.
 #[derive(Debug, Clone, Default)]
 pub struct Console {
+    /// Which query this is, counted from one across the session, so two consoles on one data source have
+    /// two names: `Query 1` and `Query 2`.
+    pub number: u64,
     pub source: String,
     pub schema: String,
     pub text: String,
@@ -264,11 +267,11 @@ pub struct Page {
 impl Page {
     pub fn title(&self) -> String {
         match &self.sheet {
-            Sheet::Console(console) => match console.source.is_empty() {
-                true => "console".to_owned(),
-                false => format!("console [{}]", console.source),
-            },
-            Sheet::Grid(grid) => format!("{} [{}]", grid.table.name, grid.source),
+            // **The data source is not in a console's name** (`task-2250`), because a console can be pointed
+            // at another one from the dropdown in its toolbar, and a page whose name changed under it would
+            // be a different page to everything that had found it by name.
+            Sheet::Console(console) => format!("Query {}", console.number.max(1)),
+            Sheet::Grid(grid) => format!("{} \u{b7} {}", grid.table.name, grid.source),
         }
     }
 
@@ -406,6 +409,8 @@ pub struct DatabaseExplorer {
     /// The tree’s own menu: where it is, and what it was opened on.
     pub menu: Option<(egui::Pos2, Aimed)>,
     next_page: u64,
+    /// How many consoles have been opened, which is what the next one is numbered after.
+    queries: u64,
     /// How far down the tree is scrolled, which the provider keeps so a zoom can correct it.
     pub scrolled: f32,
     pub scroll_to: Option<f32>,
@@ -541,6 +546,7 @@ impl DatabaseExplorer {
             modal: None,
             menu: None,
             next_page: 1,
+            queries: 0,
             scrolled: 0.0,
             scroll_to: None,
             last_ddl: None,
@@ -899,11 +905,76 @@ impl DatabaseExplorer {
             .get(source)
             .and_then(|loaded| loaded.schemas.first().cloned())
             .unwrap_or_default();
+        self.queries += 1;
         Ok(self.add_page(Sheet::Console(Box::new(Console {
+            number: self.queries,
             source: source.to_owned(),
             schema,
             ..Console::default()
         }))))
+    }
+
+    /// The data source a new console goes on: the one the page showing is on, else the one the tree is
+    /// pointed at, else the first there is. `None` when there are no data sources at all.
+    ///
+    /// The page showing first, because `New query` pressed while reading one table's rows is a question
+    /// about that table's database.
+    pub fn source_for_a_new_query(&self) -> Option<String> {
+        let known = |name: &str| self.configuration.source(name).is_some();
+        let showing = self.pages.get(self.current).map(|page| page.source().to_owned());
+        let chosen = self.chosen.as_ref().map(|chosen| chosen.source.clone());
+        [showing, chosen, Some(self.configuration.chosen.clone())]
+            .into_iter()
+            .flatten()
+            .find(|name| !name.is_empty() && known(name))
+            .or_else(|| self.sources().first().map(|source| source.name.clone()))
+    }
+
+    /// Point a console at another data source, which is the dropdown at the right of its toolbar.
+    ///
+    /// The statement stays, because the reason to move a console is very often to run the same statement
+    /// somewhere else. What the last statement answered goes, because it was the other database's answer and
+    /// a result left under a different name would be read as this one's. A console that is still running is
+    /// refused: its answer is on its way from the source it was sent to.
+    pub fn point_the_console_at(&mut self, id: u64, source: &str) -> Result<(), String> {
+        if self.configuration.source(source).is_none() {
+            return Err(format!("there is no data source called `{source}`."));
+        }
+        let Some(Page { sheet: Sheet::Console(console), .. }) = self.page(id) else {
+            return Err("that page is not a console.".to_owned());
+        };
+        if console.source == source {
+            return Ok(());
+        }
+        if console.running.is_some() {
+            return Err("this console is still running a statement; stop it first.".to_owned());
+        }
+        let _ = self.connect(source);
+        let schema = self
+            .loaded
+            .get(source)
+            .and_then(|loaded| loaded.schemas.first().cloned())
+            .unwrap_or_default();
+        if let Some(Page { sheet: Sheet::Console(console), .. }) = self.page_mut(id) {
+            console.source = source.to_owned();
+            console.schema = schema;
+            console.result = None;
+            console.failure = None;
+            console.output.clear();
+        }
+        self.changed();
+        Ok(())
+    }
+
+    /// Show a page, by its number.
+    pub fn show_page(&mut self, id: u64) -> Result<(), String> {
+        match self.pages.iter().position(|page| page.id == id) {
+            Some(at) => {
+                self.current = at;
+                Ok(())
+            }
+            None => Err(format!("there is no page {id}.")),
+        }
     }
 
     /// Open a grid on a table. Its columns are asked for first, because the key decides everything.

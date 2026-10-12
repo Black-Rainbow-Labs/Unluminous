@@ -24,7 +24,9 @@ thread_local! {
 }
 
 /// The number this context was given the first time it drew furniture.
-fn owner(ctx: &egui::Context) -> u64 {
+///
+/// `components::database::kit` keeps a state of its own per context by the same number.
+pub(crate) fn owner(ctx: &egui::Context) -> u64 {
     ctx.data_mut(|data| {
         *data.get_temp_mut_or_insert_with(egui::Id::new("chrome-kit-owner"), || {
             NEXT_OWNER.fetch_add(1, Ordering::Relaxed)

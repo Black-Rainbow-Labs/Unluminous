@@ -32,6 +32,11 @@ pub const LIST: &[(&str, &str)] = &[
     ("ddl", "The `CREATE` statement for a table or a view."),
     ("open", "Open a grid on a table's rows. Takes `schema.table` or just `table`."),
     ("console", "Open a query console on a data source."),
+    ("new-query", "Open a console the way the pane's `New query` button does: on the data source of the page showing, or the one the tree is pointed at. With no data sources it opens the New Data Source dialog."),
+    ("console-source", "Point the current console at another data source, by name, which is the dropdown at the right of its toolbar. The statement stays; the last result goes."),
+    ("pages", "The pages of the workspace, in the order their tabs are drawn, and which one is showing."),
+    ("show-page", "Show a page, by the number `pages` gives it."),
+    ("close-page", "Close a page, by its number, or the one showing when no number is said."),
     ("query", "Run a statement. **Does not wait**; `state` says when it has finished and `result` has the rows."),
     ("state", "Whether the current page is still running, and what it last said."),
     ("result", "The columns and rows of the current page, bounded by the row limit."),
@@ -111,6 +116,61 @@ pub fn run(
             Ok(Answer::said(format!("a console on `{name}`"))
                 .with(serde_json::json!({ "page": id })))
         }
+        "new-query" => match explorer.source_for_a_new_query() {
+            Some(name) => {
+                let id = explorer.open_console(&name)?;
+                Ok(Answer::said(format!("a console on `{name}`"))
+                    .with(serde_json::json!({ "page": id, "source": name })))
+            }
+            None => {
+                explorer.modal =
+                    Some(crate::services::database::Modal::Source(a_new_source(explorer)));
+                Ok(Answer::said("there is no data source yet; fill in the new one"))
+            }
+        },
+        "console-source" => {
+            let name = a_source(explorer, &rest)?;
+            let id = current(explorer)?;
+            explorer.point_the_console_at(id, &name)?;
+            Ok(Answer::said(format!("the console is on `{name}`"))
+                .with(serde_json::json!({ "page": id, "source": name })))
+        }
+        "pages" => {
+            let pages: Vec<serde_json::Value> = explorer
+                .pages
+                .iter()
+                .enumerate()
+                .map(|(at, page)| {
+                    serde_json::json!({
+                        "page": page.id,
+                        "title": page.title(),
+                        "source": page.source(),
+                        "showing": at == explorer.current,
+                    })
+                })
+                .collect();
+            let said = match pages.len() {
+                0 => "nothing is open".to_owned(),
+                count => format!("{count} page(s)"),
+            };
+            Ok(Answer::said(said).with(serde_json::Value::Array(pages)))
+        }
+        "show-page" => {
+            let id = a_page_number(&rest)?;
+            explorer.show_page(id)?;
+            Ok(Answer::said(format!("page {id} is showing")))
+        }
+        "close-page" => {
+            let id = match rest.trim().is_empty() {
+                true => current(explorer)?,
+                false => a_page_number(&rest)?,
+            };
+            if explorer.page(id).is_none() {
+                return Err(format!("there is no page {id}."));
+            }
+            explorer.close_page(id);
+            Ok(Answer::said(format!("page {id} is closed")))
+        }
         "query" => query(explorer, &rest),
         "state" => state(explorer),
         "result" => result(explorer),
@@ -154,6 +214,13 @@ pub fn run(
         "view" => Ok(Answer::said("the database plugin").with(explorer.view())),
         other => Err(explorer.refuse(other)),
     }
+}
+
+/// A page's number, as `pages` gives it.
+fn a_page_number(rest: &str) -> Result<u64, String> {
+    rest.trim()
+        .parse::<u64>()
+        .map_err(|_| format!("`{}` is not a page number; `pages` lists them.", rest.trim()))
 }
 
 fn sources(explorer: &DatabaseExplorer) -> Result<Answer, String> {
