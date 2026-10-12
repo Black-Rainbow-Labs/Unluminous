@@ -6,11 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.76.0 — 2026-10-12
 
 - The code index stops taking 12 GB, AI Configuration, OpenCode, modals, scrollbars and the realm divider (`task-2247`)
 - Ai.provider settings written without assigning inside Ok, which clippy refuses (`task-2247`)
 - Settings list's seam test knows the AI endpoint rows' help (`task-2247`)
+- The changelog written from the history (`task-2247`)
 
 ## 0.75.0 — 2026-10-11
 
