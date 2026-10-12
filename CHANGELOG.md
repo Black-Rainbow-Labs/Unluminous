@@ -6,10 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.78.0 — 2026-10-12
 
 - A console SELECT in the table grid, a smooth browser zoom, sessions, and Agent-Tasks fixes (`task-2253`)
 - A window that is not on the screen keeps answering, and the format and lint fixes (`task-2253`)
+- The changelog written from the history (`task-2253`)
 
 ## 0.77.0 — 2026-10-11
 
