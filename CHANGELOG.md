@@ -6,7 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 0.76.0 — 2026-10-12
+## Unreleased
+
+- The embedding model is let go a minute after its last use (`task-2247`)
+
+## 0.76.0 — 2026-10-11
 
 - The code index stops taking 12 GB, AI Configuration, OpenCode, modals, scrollbars and the realm divider (`task-2247`)
 - Ai.provider settings written without assigning inside Ok, which clippy refuses (`task-2247`)
