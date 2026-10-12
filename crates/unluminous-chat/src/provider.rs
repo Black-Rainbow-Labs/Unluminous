@@ -328,8 +328,13 @@ impl Provider {
         }
         match program(named, environment) {
             Some(_) => None,
+            // **The PATH that was searched is in the sentence** (`task-2253`). A window whose shell profile
+            // could not be read searches launchd's `/usr/bin:/bin:/usr/sbin:/sbin`, and the sentence then says
+            // so, which points straight at the cause; without it a person is told a program they use every day
+            // is not installed.
             None => Some(format!(
-                "`{named}` is not installed, or is not on this window's PATH. Install it and start Unluminous again."
+                "`{named}` is not installed, or is not on this window's PATH, which is: {}",
+                crate::environment::variable_of(environment, "PATH").unwrap_or_default()
             )),
         }
     }

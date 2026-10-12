@@ -168,7 +168,8 @@ pub fn resolve(command: &str, shell: Option<String>) -> Result<Launch, String> {
         unluminous_chat::Environment::from(crate::services::login_shell::for_a_child());
     let Some(found) = unluminous_chat::provider::program(&named, &environment) else {
         return Err(format!(
-            "{named} is not installed, or is in a folder that is not on the PATH Unluminous searched."
+            "{named} is not installed, or is in a folder that is not on the PATH Unluminous searched: {}",
+            crate::services::login_shell::search_path().to_string_lossy()
         ));
     };
     Ok(of(&found, &words))

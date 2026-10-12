@@ -289,8 +289,14 @@ fn show_framed<R>(
                 // The frame the window is photographed in, so the photograph has nothing of the dialog.
                 ui.set_opacity(0.0);
             }
+            // **Assigned rather than intersected** (`task-2253`: *"When i zoom in/out of a modal, the black
+            // background stops filling the window"*). `Painter::with_clip_rect` intersects with the area's own
+            // clip, which is the window measured in the window's points; at a zoom below one the window in the
+            // layer's points is larger than that, so the intersection left the edges of the window uncovered.
+            let mut covering = ui.painter().clone();
+            covering.set_clip_rect(window);
             if let Some(texture) = &backdrop.texture {
-                ui.painter().with_clip_rect(window).image(
+                covering.image(
                     texture.id(),
                     window,
                     Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
@@ -299,7 +305,7 @@ fn show_framed<R>(
             }
             // Clipped to the window rather than to the area, whose clip is the window measured in the
             // layer's own points: at a zoom below one that left the top and the left of the window uncovered.
-            ui.painter().with_clip_rect(window).rect_filled(
+            covering.rect_filled(
                 window,
                 CornerRadius::ZERO,
                 color::scrim(),

@@ -27,7 +27,7 @@ pub mod workspace;
 
 use egui::{Color32, Pos2, Rect, Vec2};
 
-use crate::services::database::{commands, Aimed, DatabaseExplorer, Modal, Page, Sheet};
+use crate::services::database::{commands, Aimed, DatabaseExplorer, Modal};
 use crate::services::plugin_ui::{Look, Request};
 
 /// The gap round a surface, which is the gap the explorer already leaves.
@@ -310,7 +310,7 @@ pub fn apply(explorer: &mut DatabaseExplorer, acts: Vec<Act>) -> Vec<Request> {
             Act::ShowVector(id, row, column) => {
                 // Read from the cell rather than carried on the act, so what opens is what the grid
                 // is drawing at the moment it is asked - the same rule the DDL modal keeps.
-                if let Some(Page { sheet: Sheet::Grid(grid), .. }) = explorer.page(id) {
+                if let Some(grid) = explorer.grid(id) {
                     let name = grid.rows.columns.get(column).map(|column| column.name.clone());
                     let (value, _) = grid.cell(row, column);
                     let title = match name {
@@ -339,9 +339,7 @@ pub fn apply(explorer: &mut DatabaseExplorer, acts: Vec<Act>) -> Vec<Request> {
             }
             Act::Reload(id) => explorer.reload(id),
             Act::Page(id, at) => {
-                if let Some(Page { sheet: Sheet::Grid(grid), .. }) =
-                    explorer.pages.iter_mut().find(|page| page.id == id)
-                {
+                if let Some(grid) = explorer.grid_mut(id) {
                     grid.at = at;
                 }
                 explorer.reload(id);
@@ -469,9 +467,7 @@ fn with_grid(
     id: u64,
     work: impl FnOnce(&mut crate::services::database::Grid),
 ) {
-    if let Some(Page { sheet: Sheet::Grid(grid), .. }) =
-        explorer.pages.iter_mut().find(|page| page.id == id)
-    {
+    if let Some(grid) = explorer.grid_mut(id) {
         work(grid);
     }
 }

@@ -52,12 +52,20 @@
 //! is one they run by name every day. A list here would also have had nothing to say about the second
 //! failure above, which is about credentials rather than about where a file is.
 //!
-//! ## It is read once, on a thread, at startup
+//! ## It is read on a thread at startup, and read again after it fails
 //!
 //! Measured on the machine this was written on it costs 1.38 seconds, which is a window that does not
 //! appear for a second and a half if it is read before the window is built. [`start_reading`] is
-//! called from `main`, and everything here blocks only if something asks before the read has finished
-//! — `OnceLock::get_or_init` is what gives that for nothing.
+//! called from `main`, and everything here blocks only if something asks before the first read has
+//! finished.
+//!
+//! **A read that failed is not kept for the life of the window** (`task-2253`). It was a `OnceLock`, so a
+//! window whose read failed at startup searched launchd's `PATH` until it was closed: two windows restored
+//! with a session of eight both answered `/usr/bin:/bin:/usr/sbin:/sbin`, and Agent Chat and Agent Tasks said
+//! `claude` was not installed while it ran in the terminal beside them. Now the next question after a failure
+//! starts another read on a thread, at most once every [`RETRY_AFTER`], and its answer is used as soon as it
+//! arrives. Why each read failed is written to `login-shell.log` in the settings folder and is what
+//! [`problem`] answers, so the next time this happens it can be explained.
 //!
 //! **Nothing runs a person's profile unless [`start_reading`] was called**, which only the released
 //! binary does. That is the rule `load_settings` and `restore_project` already keep, and it matters
@@ -69,11 +77,27 @@
 
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Arc, Condvar, Mutex};
 
-/// The environment the login shell reported, read at most once. `None` when there was no shell to ask
-/// or it said nothing that could be read.
-static LOGIN: OnceLock<Option<Vec<(String, String)>>> = OnceLock::new();
+/// What is known about the login shell's environment.
+#[derive(Debug, Clone)]
+enum Reading {
+    /// Nothing has asked yet.
+    NotYet,
+    /// A read is running on a thread. `retrying` is false for the first one, which a question waits for.
+    Running { retrying: bool },
+    /// What the shell reported.
+    Read(Arc<Vec<(String, String)>>),
+    /// The last read failed, why, and when.
+    Failed { why: String, at: std::time::Instant },
+}
+
+/// The state of the read, and the signal a question waiting on the first read is woken by.
+static LOGIN: Mutex<Reading> = Mutex::new(Reading::NotYet);
+static READ: Condvar = Condvar::new();
+
+/// How long after a failed read the next question starts another one.
+const RETRY_AFTER: std::time::Duration = std::time::Duration::from_secs(20);
 
 /// Whether anything has asked for the shell to be run. See the note at the top of the file.
 static STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -98,9 +122,55 @@ const PATIENCE: std::time::Duration = std::time::Duration::from_secs(10);
 /// already keep: a test must not run the person's shell profile.
 pub fn start_reading() {
     STARTED.store(true, std::sync::atomic::Ordering::SeqCst);
+    begin_a_read(false);
+}
+
+/// Start a read on a thread, unless one is running.
+fn begin_a_read(retrying: bool) {
+    {
+        let mut state = LOGIN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if matches!(*state, Reading::Running { .. }) {
+            return;
+        }
+        *state = Reading::Running { retrying };
+    }
     std::thread::spawn(|| {
-        let _ = LOGIN.get_or_init(read_the_login_shell);
+        let answer = read_the_login_shell();
+        let mut state = LOGIN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        *state = match answer {
+            Ok(pairs) => Reading::Read(Arc::new(pairs)),
+            Err(why) => {
+                write_down_why(&why);
+                Reading::Failed { why, at: std::time::Instant::now() }
+            }
+        };
+        READ.notify_all();
     });
+}
+
+/// Why the last read of the login shell failed, or `None` when it has not failed.
+pub fn problem() -> Option<String> {
+    match &*LOGIN.lock().unwrap_or_else(std::sync::PoisonError::into_inner) {
+        Reading::Failed { why, .. } => Some(why.clone()),
+        _ => None,
+    }
+}
+
+/// Add a line to `login-shell.log` in the settings folder, and to the error output.
+fn write_down_why(why: &str) {
+    let line = format!("{} the login shell could not be read: {why}\n", unix_seconds());
+    eprint!("{line}");
+    let file = crate::services::store::Store::open().folder().join("login-shell.log");
+    if let Ok(mut log) = std::fs::OpenOptions::new().create(true).append(true).open(file) {
+        let _ = std::io::Write::write_all(&mut log, line.as_bytes());
+    }
+}
+
+/// The time now in seconds since 1970, which is enough to put the lines of a log in order.
+fn unix_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs())
 }
 
 /// What one variable is worth: the login shell's answer, then this process's own.
@@ -220,13 +290,33 @@ fn spellings(program: &str) -> Vec<String> {
     spellings
 }
 
-/// The login shell's environment, blocking until it has been read if it is being read now, and empty
-/// when nothing asked for it to be read at all.
-fn login() -> Option<&'static Vec<(String, String)>> {
+/// The login shell's environment, and nothing when nothing asked for it to be read at all.
+///
+/// A question asked while the **first** read is running waits for it, up to [`PATIENCE`] and a second, which
+/// is what the `OnceLock` this replaced did. A question asked after a read failed starts another one and is
+/// answered with nothing now, so a frame is never held for a second and a half by a shell that keeps failing.
+fn login() -> Option<Arc<Vec<(String, String)>>> {
     if !STARTED.load(std::sync::atomic::Ordering::SeqCst) {
         return None;
     }
-    LOGIN.get_or_init(read_the_login_shell).as_ref()
+    let mut state = LOGIN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let deadline = std::time::Instant::now() + PATIENCE + std::time::Duration::from_secs(1);
+    while matches!(*state, Reading::Running { retrying: false }) {
+        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        if left.is_zero() {
+            return None;
+        }
+        state = READ.wait_timeout(state, left).unwrap_or_else(std::sync::PoisonError::into_inner).0;
+    }
+    match &*state {
+        Reading::Read(pairs) => Some(pairs.clone()),
+        Reading::Failed { at, .. } if at.elapsed() >= RETRY_AFTER => {
+            drop(state);
+            begin_a_read(true);
+            None
+        }
+        _ => None,
+    }
 }
 
 /// `login` first, then every folder in `process` that `login` has not already named.
@@ -266,45 +356,93 @@ const MARKER: &str = "UNLUMINOUS-ENVIRONMENT";
 #[cfg_attr(windows, allow(dead_code))]
 const ENV: &str = "/usr/bin/env";
 
-/// Run the login shell and read the environment it reports.
+/// Run the login shell and read the environment it reports, or say why it could not be read.
+///
+/// **The output is read on a thread of its own while the shell runs**, rather than once it has exited. A
+/// pipe holds 64 KB on macOS, and an environment with a long `PATH`, a few certificates in it and a banner in
+/// front of it can be more than that: the shell then waited for ever on a pipe nobody was reading, was
+/// killed at the deadline, and read as a profile that hangs. Whether that is what happened on the machine
+/// `task-2253` was reported from is not known, which is why the reason is now written down.
 #[cfg(not(windows))]
-fn read_the_login_shell() -> Option<Vec<(String, String)>> {
-    let shell = std::env::var("SHELL").ok().filter(|shell| !shell.trim().is_empty())?;
+fn read_the_login_shell() -> Result<Vec<(String, String)>, String> {
+    let shell = std::env::var("SHELL")
+        .ok()
+        .filter(|shell| !shell.trim().is_empty())
+        .ok_or_else(|| "SHELL is not set, so there is no shell to ask".to_owned())?;
     let mut child = std::process::Command::new(&shell)
         .args(["-ilc", &format!("printf '{MARKER}\\0'; {ENV} -0")])
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
         .spawn()
-        .ok()?;
+        .map_err(|problem| format!("{shell} could not be started: {problem}"))?;
+    let mut stdout = child.stdout.take().ok_or("the shell's output could not be read")?;
+    let mut stderr = child.stderr.take().ok_or("the shell's errors could not be read")?;
+    let output = std::thread::spawn(move || {
+        let mut said = Vec::new();
+        let _ = std::io::Read::read_to_end(&mut stdout, &mut said);
+        said
+    });
+    let errors = std::thread::spawn(move || {
+        let mut said = Vec::new();
+        let _ = std::io::Read::read_to_end(&mut stderr, &mut said);
+        said
+    });
     let started = std::time::Instant::now();
     // Waited for by asking rather than by `wait`, so a profile that hangs is given up on instead of
     // holding this thread for the life of the process. The child is killed when the patience runs
     // out, or it would go on holding the pipe.
-    loop {
+    let status = loop {
         match child.try_wait() {
-            Ok(Some(_)) => break,
+            Ok(Some(status)) => break status,
             Ok(None) if started.elapsed() < PATIENCE => {
                 std::thread::sleep(std::time::Duration::from_millis(25));
             }
             Ok(None) => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return None;
+                return Err(format!(
+                    "{shell} -ilc did not finish in {} seconds and was stopped",
+                    PATIENCE.as_secs()
+                ));
             }
-            Err(_) => return None,
+            Err(problem) => return Err(format!("waiting for {shell} failed: {problem}")),
         }
-    }
-    let mut said = Vec::new();
-    std::io::Read::read_to_end(child.stdout.as_mut()?, &mut said).ok()?;
-    parse(&said)
+    };
+    let said = output.join().unwrap_or_default();
+    let complained = errors.join().unwrap_or_default();
+    parse(&said).ok_or_else(|| why_it_said_nothing(&shell, status, &said, &complained, started))
+}
+
+/// The sentence for a shell that ran and gave back nothing that could be read: how it exited, how long it
+/// took, how much it wrote, whether the marker was in it, and the end of what it wrote to its error output.
+#[cfg(not(windows))]
+fn why_it_said_nothing(
+    shell: &str,
+    status: std::process::ExitStatus,
+    said: &[u8],
+    complained: &[u8],
+    started: std::time::Instant,
+) -> String {
+    let errors = String::from_utf8_lossy(complained);
+    let errors = errors.trim();
+    let tail: String = errors.chars().skip(errors.chars().count().saturating_sub(300)).collect();
+    let marker = match said.windows(MARKER.len()).any(|window| window == MARKER.as_bytes()) {
+        true => "the marker and no variables",
+        false => "no marker",
+    };
+    format!(
+        "{shell} -ilc exited with {status} after {} ms and wrote {} bytes with {marker}; its errors ended: {tail:?}",
+        started.elapsed().as_millis(),
+        said.len()
+    )
 }
 
 /// Nothing to run: Explorer starts a program with the person's own environment, so what this process
-/// has on Windows is already the whole of it.
+/// has on Windows is already the whole of it. An empty answer, so every reader uses this process's own.
 #[cfg(windows)]
-fn read_the_login_shell() -> Option<Vec<(String, String)>> {
-    None
+fn read_the_login_shell() -> Result<Vec<(String, String)>, String> {
+    Ok(Vec::new())
 }
 
 /// The `NAME=value` records after the marker, which is what `printf` and `env -0` wrote.

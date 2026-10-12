@@ -1084,6 +1084,18 @@ arguments that names one, so `sprint-rename August 2nd Half September` needs no 
   for words a plugin draws. The Markdown preview's own menu, `Copy` and `Select All`, is the window's
   (`actions::preview_menu`, opened into `UnluminousApp::preview_menu`).
 
+### The supervisor, and a board other windows change (`task-2253`)
+
+`Chat with supervisor`, the round button in front of `Add Task`, opens `components::agent_tasks::supervisor_modal`:
+the supervisor's terminal, a message box and `Send`. The supervisor is one agent, the board's endpoint, started in
+the board's project folder by the same `spawn` a ticket's agent uses, keyed `SUPERVISOR` (0) among the tickets'
+terminals, and told the board's commands by `agent::supervisor_handoff`. `plugins run agent-tasks supervisor
+[start|stop|send <text>|open|close]` is the agent's half.
+
+Every window opens the same `board.rdb`, and a window read the board only when it changed something itself, so a
+ticket made in another window was missing from its board. `AgentTasks::notice_another_window` lists the board's
+files once a second and reads the board again when they changed.
+
 ### The board and the ticket are the Agent-Tasks design, drawn with `rux`'s board parts (`task-2241`)
 
 The Claude Design canvas "Unluminous", page Agent-Tasks, artboards "Agent-Tasks board · Dark", "Edit task" and
@@ -1380,6 +1392,17 @@ in both places and a component does not have to know which it is drawing in.
 
 The chat pane's endpoint list, which this paragraph used to be about, is gone: `task-2096` replaced it
 with a dropdown. See the section on the model selector.
+
+### While the canvas zoom moves, a browser node shows a picture of its page (`task-2253`)
+
+The engine lays a page out again on its own process after every change of zoom, so giving it a new bounds and
+zoom on every frame of a glide put a layout a few frames old in a rectangle that was not: the page drifted up
+to 3% from its node and ran off its right edge. `BrowserHost::photograph` takes a picture of the page on the
+frame a zoom starts (`PrintWindow` on Windows, 11 to 18 ms; none on macOS yet, where the live page is used as
+before), `app::realm::PageStill` draws it in the node's own layer while `RealmState::glide` is set, and the native
+view is left where it was with the whole page cut away. When the camera stops the view is given its new size,
+still cut away, and shown `PAGE_SETTLE` later. `_agent_output/task-2253-browser-zoom/repro.ps1` photographs the
+window every 20 ms through a zoom and measures how far the page drifts from its node.
 
 ### A page's zoom travels on its placement, beside the bounds
 
@@ -1885,8 +1908,10 @@ server checks the client's proof by the **inverse** of the way the client made i
 **A row can only be changed if it can be addressed, and there is no fallback.** A grid is editable
 when its rows came from one table with a primary key, or a SQLite table with a `rowid`; otherwise the
 Add, Delete and Submit buttons are **absent** with one line saying why. The alternative — an `UPDATE`
-matching on every column — quietly changes two identical rows, and it is the reason a console result
-is never editable at all. Changes stay pending, the preview shows the **actual statements** from the
+matching on every column — quietly changes two identical rows. A console `SELECT` answers in the same
+grid (`task-2253`), and it is editable only when `unluminous_db::one_table::read` says the statement reads
+one table's own columns; any other `SELECT` is read again inside `select * from (...)` so it filters, sorts
+and pages, and is never editable. Changes stay pending, the preview shows the **actual statements** from the
 same call Submit makes, and Submit is one transaction in which every value is a **bound parameter**,
 so a value containing a quote, a newline or a backslash is a non-event. An `UPDATE` reporting zero
 rows rolls the whole thing back: it means the row moved underneath, and reporting that as a success is
@@ -3176,11 +3201,14 @@ fooled by one the operating system has handed to something else — and a fooled
 resetting, which is the reported fault by a side door. A window's own row counts as alive without being asked
 about, which is what makes restoring safe however the starts interleave.
 
-**A line is still kept when a window closes**, and that trade-off is stated rather than hidden: a project
-closed in the middle of a session comes back at the next start, because by the time the last window closes the
-ones that closed before it are gone from any live registry and it cannot tell which of them were deliberate.
-It is bounded to one session now rather than to the life of the settings folder. `SESSION_LIMIT` bounds the
-rest, and `remember_open_window` writes nothing when the project is already listed.
+**A window closed by hand takes its line out, unless it was the only window open** (`task-2253`).
+`Store::forget_open_window` is asked from `on_exit` when `closed_by_hand` is set, which the close button,
+`Close Window`, `Quit` and `unluminous-cli quit` set. A window the operating system closes, or one that crashes,
+keeps its line, which is what brings a session back after a restart of the machine. **A window started with
+`--background` does not join the session at all**, because it is a window something is driving, and an alive
+one kept the person's session from ever ending; `UNLUMINOUS_SESSION=join|off` overrides that either way
+(`store::joins_the_session`). `_agent_output/task-2253-session/repro.ps1` is the reproduction. `SESSION_LIMIT`
+bounds the rest, and `remember_open_window` writes nothing when the project is already listed.
 
 **The run widget takes the right hand end of the title bar and the text tools sit in front of it.**
 That is the other way round from `task-1683`, and the reason is that only one of the two changes

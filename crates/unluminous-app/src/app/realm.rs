@@ -162,6 +162,45 @@ pub struct RealmState {
     /// **Here rather than on `Camera`**, because `Camera` is what `space.conf` holds and what a test
     /// compares: a canvas reopened tomorrow is at a zoom, not on its way to one. `task-1945`.
     pub glide: Option<(f32, Pos2)>,
+    /// A picture of the page of the browser node the native view shows, drawn in its place while the
+    /// camera's zoom moves. See [`PageStill`].
+    pub still: Option<PageStill>,
+}
+
+/// How long a page's picture stays over it after the zoom stops, while the live page is laid out at its new
+/// size underneath. With this wait, `_agent_output/task-2253-browser-zoom/repro.ps1` photographed the window
+/// every 20 ms through a zoom out and back in and found no frame with the page drawn at the old size.
+const PAGE_SETTLE: std::time::Duration = std::time::Duration::from_millis(160);
+
+/// A picture of a browser node's page, drawn in the page's place while the canvas zoom moves (`task-2253`).
+///
+/// *"In realm view, the web browser content adjusts as I zoom in and out, however, it's very jagged/jittery
+/// and isn't smooth. Often the content will be a bit smaller than the node as I'm zooming and will bounce
+/// fill until I stop."* A page is a native child window and cannot be transformed, so the canvas zoomed it
+/// by giving the engine a new bounds and a new zoom on every frame of a glide. The engine lays the page out
+/// again on its own process after each one, so what was on the screen was always a layout a few frames old
+/// in a rectangle that was not: measured with a page holding a box 300 CSS pixels wide, the box and the
+/// viewport drifted apart by up to 3% while the camera moved and the right edge of the page ran off the node.
+///
+/// So on the frame a zoom starts the page is photographed, and until the camera stops the picture is drawn
+/// in the node's own layer, which carries the camera like everything else in the node, so it scales with
+/// the node exactly. The native view is left where it was and cut away entirely, so nothing is laid out
+/// again while the camera moves. When the camera stops the view is given its new bounds and zoom, still cut
+/// away, and shown again [`PAGE_SETTLE`] later, once the engine has drawn it at the new size.
+pub struct PageStill {
+    /// The browser node.
+    pub node: u64,
+    pub texture: egui::TextureHandle,
+    /// Where the native view is left while the picture is showing, with the whole page cut away.
+    pub held: crate::services::browser::BrowserPlacement,
+    /// When the camera stopped and the live page was given its new size.
+    pub released: Option<std::time::Instant>,
+}
+
+impl std::fmt::Debug for PageStill {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.debug_struct("PageStill").field("node", &self.node).field("released", &self.released).finish()
+    }
 }
 
 impl Default for RealmState {
@@ -189,6 +228,7 @@ impl Default for RealmState {
             asked_what_is_running: None,
             body: Rect::ZERO,
             glide: None,
+            still: None,
         }
     }
 }
@@ -900,6 +940,7 @@ impl UnluminousApp {
             // is on the screen: a canvas at 0.5 draws a node half as wide, and a page that kept its world
             // size would hang out of it. That is what "resize/zoom/etc" asks for, and it costs one call.
             let camera = self.realm.realm.camera;
+            let page = placement.area;
             let whole = camera.rect_to_screen(self.realm.body.min, placement.area);
             // **The page keeps its whole width and the crop is a separate answer.**
             //
@@ -940,6 +981,12 @@ impl UnluminousApp {
             // in it would ask the view to be a pixel wide somewhere on the pane's edge. Asked of the
             // **visible** part, because the whole one is now the node wherever it is.
             if placement.visible.width() > 1.0 && placement.visible.height() > 1.0 {
+                let placement = match (&tab, showing) {
+                    (Some(tab), true) => {
+                        self.hold_the_page_still_while_zooming(ui, node.id, tab.id, page, placement)
+                    }
+                    _ => placement,
+                };
                 self.browser_placements.push(placement);
             }
         }
@@ -972,6 +1019,70 @@ impl UnluminousApp {
             self.realm.realm.choose(Some(node.id));
             self.take_the_keyboard_for_the_realm();
         }
+    }
+
+    /// Draw a picture of a browser node's page in its place while the canvas zoom moves, and say where the
+    /// native view goes meanwhile. See [`PageStill`].
+    ///
+    /// @param ui - the node's own layer, which carries the camera
+    /// @param node - the browser node
+    /// @param tab - the tab the native view is showing for it
+    /// @param page - the page's rectangle in canvas points, which is where the picture is drawn
+    /// @param placement - where the live page would go this frame
+    fn hold_the_page_still_while_zooming(
+        &mut self,
+        ui: &egui::Ui,
+        node: u64,
+        tab: u64,
+        page: Rect,
+        placement: crate::services::browser::BrowserPlacement,
+    ) -> crate::services::browser::BrowserPlacement {
+        let moving = self.realm.glide.is_some();
+        let cut_away = |mut placement: crate::services::browser::BrowserPlacement| {
+            placement.over.push(placement.visible);
+            placement
+        };
+        let mut still = match self.realm.still.take() {
+            Some(still) if still.node == node => still,
+            // A picture of another node's page is of no use here, and neither is starting one when the
+            // camera is still.
+            _ if !moving => return placement,
+            _ => {
+                let Some(picture) = self.browser.photograph(tab) else { return placement };
+                let texture =
+                    ui.ctx().load_texture("realm-page-still", picture, egui::TextureOptions::LINEAR);
+                PageStill { node, texture, held: cut_away(placement.clone()), released: None }
+            }
+        };
+        let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+        ui.painter().image(still.texture.id(), page, uv, egui::Color32::WHITE);
+        still.held.focused = placement.focused;
+        let now = std::time::Instant::now();
+        let held = match (moving, still.released) {
+            // While the camera moves the view stays exactly where it was, so the engine lays nothing out.
+            (true, _) => {
+                still.released = None;
+                still.held.clone()
+            }
+            // The camera has stopped: the view is given its new size, still cut away, so it is drawn at
+            // that size before it is shown.
+            (false, None) => {
+                still.released = Some(now);
+                still.held = cut_away(placement.clone());
+                still.held.clone()
+            }
+            (false, Some(at)) if now.duration_since(at) < PAGE_SETTLE => {
+                still.held = cut_away(placement.clone());
+                still.held.clone()
+            }
+            (false, Some(_)) => {
+                ui.ctx().request_repaint();
+                return placement;
+            }
+        };
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(16));
+        self.realm.still = Some(still);
+        held
     }
 
     /// A folder node: `components::explorer`, with its panel furniture left off.

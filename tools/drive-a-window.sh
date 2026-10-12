@@ -74,7 +74,10 @@ folder="$(cd "$folder" && pwd)"
 # its own would steal the focus. Running the binary directly also works and leaves the window unfocused,
 # but it does not get a bundle identity, so the menu bar and the Dock icon are wrong and a screenshot of
 # it is a screenshot of something that is not quite the application.
-open -g -n -a "$app" --args "$folder" 2>/dev/null
+#
+# `--background` as well, which on macOS is what keeps a driven window out of the person's session, so it is
+# not reopened the next time they start Unluminous (`task-2253`; see `store::joins_the_session`).
+open -g -n -a "$app" --args --background "$folder" 2>/dev/null
 
 # Waited for by asking rather than by sleeping a fixed time: a cold start is a second and a half on this
 # machine and much longer on a busy one, and `instances` is the honest signal that the control channel is

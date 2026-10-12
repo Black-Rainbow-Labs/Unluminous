@@ -340,6 +340,34 @@ pub fn handoff(agent: Assignee, key: &str) -> String {
     )
 }
 
+/// What the board's supervisor is told when it starts (`task-2253`).
+///
+/// The supervisor is one agent that works the board's tickets the way a person pressing `Start Work` on each in
+/// turn would: QA Failed first, then New, one at a time, watching each until its agent hands it back. It drives
+/// the board through the same commands a ticket's agent does, so it can do nothing a person at the board cannot.
+pub fn supervisor_handoff(agent: Assignee) -> String {
+    if matches!(agent, Assignee::Human) {
+        return String::new();
+    }
+    format!(
+        "You are the supervisor of Unluminous's own Agent-Tasks board. Do not use the /task or /process-tasks \
+         skills or look for TASKS_API_URL: this board is not that one, and everything you need is in this \
+         message. Drive it by running `${ENV_CLI} --instance ${ENV_INSTANCE} --json plugins run agent-tasks \
+         <command>`, and read the lanes with `${ENV_CLI} --instance ${ENV_INSTANCE} --json plugins view \
+         agent-tasks`. The commands are: `task <key>` to read a ticket with its description, todos and \
+         comments; `start <key>` to launch the agent a ticket is assigned to, which moves it to in_progress; \
+         `terminal <key> 40` to read the last forty lines its agent wrote; `send <key> <text>` to type a line \
+         into its agent; `comment <key> --as {author} <text>` to write on a ticket. Work the tickets in \
+         qa_failed first, then the ones in new, in the order they are in their lane, one at a time: start it, \
+         check on it every few minutes with `task` and `terminal`, answer its agent with `send` when it is \
+         waiting on a question you can answer, and move on when the ticket reaches agent_done. Never start a \
+         ticket assigned to human, and never start a second agent on a ticket that already has one. When no \
+         ticket is left in qa_failed or new, say so here and wait for a message. The person may type to you \
+         in this terminal at any time, and what they say comes before this plan.",
+        author = agent.name()
+    )
+}
+
 /// The variable that carries the path to `unluminous-cli` to a launched agent.
 ///
 /// Named rather than left to be found, because nothing puts `unluminous-cli` on `PATH`: on macOS it lives

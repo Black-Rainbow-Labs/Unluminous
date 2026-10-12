@@ -336,8 +336,14 @@ fn a_console_runs_a_statement_and_shows_what_came_back() {
     assert_eq!(state["running"], false);
     let result = did(&mut harness, "plugins run database result");
     assert_eq!(result["kind"], "console");
-    assert_eq!(result["result"]["count"], 4);
-    assert_eq!(result["result"]["rows"][0][0], "Kind of Blue");
+    // **A `SELECT` answers in the grid a table opens in** (`task-2253`), with the table's key read in front of
+    // the columns the statement named, so its rows can be changed and saved.
+    let grid = &result["grid"];
+    assert_eq!(grid["table"], "album");
+    assert_eq!(grid["editable"], true);
+    assert_eq!(grid["rows"]["count"], 4);
+    assert_eq!(grid["rows"]["columns"][0]["name"], "id");
+    assert_eq!(grid["rows"]["rows"][0][1], "Kind of Blue");
     harness.snapshot(shot("database_console").as_str());
 }
 
@@ -354,7 +360,10 @@ fn a_statement_that_returns_no_rows_fills_the_output_tab() {
     );
     until_the_database_settles(&mut harness);
     let result = did(&mut harness, "plugins run database result");
-    assert!(result["result"].is_null(), "no grid for a statement that returned no rows");
+    assert!(
+        result["result"].is_null() && result["grid"].is_null(),
+        "no grid for a statement that returned no rows"
+    );
     let output: Vec<&str> = result["output"]
         .as_array()
         .expect("output")
@@ -378,7 +387,7 @@ fn a_failing_statement_is_reported_in_the_engines_own_words() {
     // end: one bad statement in a console must not cost the session.
     did_while_waiting(&mut harness, "plugins run database query select 1");
     until_the_database_settles(&mut harness);
-    assert_eq!(did(&mut harness, "plugins run database result")["result"]["count"], 1);
+    assert_eq!(did(&mut harness, "plugins run database result")["grid"]["rows"]["count"], 1);
 }
 
 /// An edit is pending until it is submitted, and then the file on disk really changes.
@@ -518,8 +527,9 @@ fn ctrl_enter_runs_the_statement_under_the_caret() {
     // Enter alone is a new line. Nothing runs.
     harness.key_press(egui::Key::Enter);
     steady(&mut harness);
+    let page = the_open_page(&mut harness);
     assert!(
-        the_open_page(&mut harness)["result"].is_null(),
+        page["result"].is_null() && page["grid"].is_null(),
         "Enter on its own must not execute — a console has to be able to hold two lines",
     );
 
@@ -527,8 +537,8 @@ fn ctrl_enter_runs_the_statement_under_the_caret() {
     until_the_database_settles(&mut harness);
     let result = did(&mut harness, "plugins run database result");
     assert_eq!(result["kind"], "console");
-    assert_eq!(result["result"]["count"], 4, "the chord ran the statement: {result}");
-    assert_eq!(result["result"]["rows"][0][0], "Kind of Blue");
+    assert_eq!(result["grid"]["rows"]["count"], 4, "the chord ran the statement: {result}");
+    assert_eq!(result["grid"]["rows"]["rows"][0][1], "Kind of Blue");
 }
 
 /// A double click opens a cell for typing, and Save writes what was typed to the file.
@@ -1134,7 +1144,7 @@ fn new_query_opens_a_console_whose_data_source_is_chosen_from_a_dropdown() {
     did_while_waiting(&mut harness, "plugins run database query select count(*) from album");
     until_the_database_settles(&mut harness);
     let result = did(&mut harness, "plugins run database result");
-    assert_eq!(result["result"]["rows"][0][0], "4", "{result}");
+    assert_eq!(result["grid"]["rows"]["rows"][0][0], "4", "{result}");
 
     harness.snapshot(shot("database_new_query").as_str());
 }

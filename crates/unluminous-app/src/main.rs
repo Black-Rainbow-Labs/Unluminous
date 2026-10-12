@@ -265,6 +265,14 @@ fn main() -> eframe::Result {
     if arguments.background {
         viewport = viewport.with_active(false);
     }
+    // And whether this window is part of the person's session, which a window something is driving is not.
+    // See `store::joins_the_session`.
+    unluminous_app::services::store::set_joins_the_session(
+        unluminous_app::services::store::joins_the_session(
+            arguments.background,
+            std::env::var("UNLUMINOUS_SESSION").ok().as_deref(),
+        ),
+    );
 
     let options = eframe::NativeOptions {
         viewport: viewport

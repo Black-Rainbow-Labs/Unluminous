@@ -288,8 +288,15 @@ pub fn show(
             // **The cards are cut to the lane while it is scrolled**, both what `egui` draws and the
             // decoration, so a card scrolled up under the heading does not draw its body over the lane's name.
             // A lane that is not scrolled is left uncut, so its top card keeps the shadow above it.
+            //
+            // **And the cut starts in the gap under the heading, not at the first card's top edge** (`task-2253`:
+            // *"the card/task at the top of the column is clipped at the top so it's neomorphic effect is broken
+            // because the shadow and blur aren't shown"*). A lane with more cards than fit is cut, and a cut at
+            // the card's own edge took away the lifted half of its shadow, which is drawn above it. The gap is
+            // the lane's own `CARD_GAP`, and the heading's chip ends where it begins, so a card scrolled up still
+            // stops short of the lane's name.
             let room = Rect::from_min_max(
-                Pos2::new(lane_area.min.x, cards_area.min.y),
+                Pos2::new(lane_area.min.x, cards_area.min.y - (CARD_GAP - 1.0) * scale),
                 Pos2::new(lane_area.max.x, lane_area.max.y),
             );
             if cut {

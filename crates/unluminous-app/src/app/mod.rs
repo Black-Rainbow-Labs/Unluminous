@@ -923,6 +923,9 @@ pub struct UnluminousApp {
     pub toasts: crate::components::toast::Toasts,
     /// Set when the window has been asked to close, which a test can check instead of the window going.
     pub closing: bool,
+    /// Set when a person closed the window: its close button, `Close Window`, `Quit` or `unluminous-cli quit`.
+    /// Such a window leaves the session unless it is the only one open; see `Store::forget_open_window`.
+    pub closed_by_hand: bool,
     /// Where the settings are kept. Absent until [`Self::load_settings`] is called, which the released
     /// binary does and the tests do not, so a test never reads or writes the settings of the person running
     /// it.
@@ -1505,6 +1508,7 @@ impl UnluminousApp {
             message: None,
             toasts: crate::components::toast::Toasts::default(),
             closing: false,
+            closed_by_hand: false,
             store: None,
             unsaved_settings: false,
             os_focus: None,
@@ -1784,10 +1788,12 @@ impl UnluminousApp {
         // nothing else is running begins a new session and the file becomes that one row, which is what stops
         // the list being every project there has ever been. A *listed instance* rather than a bare process id,
         // because an id the operating system has handed to something else would read as a session still going.
-        store.remember_open_window(self.tree.root(), std::process::id(), &|pid| {
-            unluminous_cli::instances::listed().iter().any(|instance| instance.pid == pid)
-                && unluminous_cli::instances::is_running(pid)
-        });
+        //
+        // **And only a window a person would want back** (`task-2253`): one started with `--background`, which
+        // is a window something is driving, stays out. See `store::joins_the_session`.
+        if crate::services::store::this_window_joins_the_session() {
+            store.remember_open_window(self.tree.root(), std::process::id(), &window_is_running);
+        }
         self.recent = store.recent_projects();
         let (plugins, problems) = Plugins::load(Some(&store));
         self.plugins = plugins;
@@ -2558,7 +2564,21 @@ impl eframe::App for UnluminousApp {
         // `None`, so a geometry that has not settled is still written: this is the last chance there
         // is, and the wait exists for a window that is still moving.
         self.remember_the_project(None);
+        // **A window a person closed leaves the session**, unless it was the only one open (`task-2253`). A
+        // window the operating system closed keeps its line, so a restart of the machine brings it back.
+        if self.closed_by_hand && crate::services::store::this_window_joins_the_session() {
+            if let Some(store) = &self.store {
+                store.forget_open_window(self.tree.root(), std::process::id(), &window_is_running);
+            }
+        }
     }
+}
+
+/// Whether a process id is an Unluminous window that is still running: a **listed instance** with that id,
+/// because an id the operating system has handed to something else would otherwise read as a window still open.
+fn window_is_running(pid: u32) -> bool {
+    unluminous_cli::instances::listed().iter().any(|instance| instance.pid == pid)
+        && unluminous_cli::instances::is_running(pid)
 }
 
 /// Colouring a fenced code block with the grammar a plugin already supplies.

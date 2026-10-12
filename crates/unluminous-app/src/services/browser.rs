@@ -886,6 +886,25 @@ impl BrowserHost {
         self.native.zoom(factor)
     }
 
+    /// A picture of the page the tab is showing, as it is on the screen now, or `None` when the view is on
+    /// another tab or the platform cannot take one in the moment it is asked.
+    ///
+    /// `task-2253`: *"In realm view, the web browser content adjusts as I zoom in and out, however, it's very
+    /// jagged/jittery and isn't smooth. Often the content will be a bit smaller than the node as I'm zooming
+    /// and will bounce fill until I stop."* The engine lays a page out again on its own process after every
+    /// change of zoom, so a page that is given a new zoom on every frame of a glide is always drawn at a zoom
+    /// a few frames old inside bounds that are not. The canvas draws this picture in the page's place while
+    /// its zoom moves, scaled by the same transform as everything else in the node, and gives the live page
+    /// its new size once the camera has stopped. See `app::realm::show_a_browser_node`.
+    ///
+    /// @param id - the tab
+    pub fn photograph(&self, id: u64) -> Option<egui::ColorImage> {
+        if self.showing() != Some(id) {
+            return None;
+        }
+        self.native.photograph()
+    }
+
     /// Refuse to drive a tab that the one native view is not pointed at.
     fn for_the_showing_tab(&self, id: u64) -> Result<(), String> {
         match self.showing() == Some(id) {
@@ -1882,6 +1901,97 @@ mod native {
                 .zoom(factor)
                 .map_err(|problem| format!("The browser could not be zoomed: {problem}"))
         }
+
+        /// A picture of the page as it is on the screen now. See [`super::BrowserHost::photograph`].
+        pub fn photograph(&self) -> Option<egui::ColorImage> {
+            photograph(self.view.as_ref()?)
+        }
+    }
+
+    /// **On Windows it is `PrintWindow` on the container `wry` builds the engine inside**, with
+    /// `PW_RENDERFULLCONTENT`, which is the flag for content a compositor draws. Measured on `task-2253`
+    /// against a 640 by 352 point page: the picture held the page, and it took 11 to 18 ms. It is asked once,
+    /// on the frame a zoom starts. A picture that came back all one colour is a capture that did not work,
+    /// and is answered `None` so the live page is used instead.
+    #[cfg(windows)]
+    fn photograph(view: &NativeView) -> Option<egui::ColorImage> {
+        use windows_sys::Win32::Foundation::{HWND, RECT};
+        use windows_sys::Win32::Graphics::Gdi::{
+            CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits,
+            ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+        };
+        use windows_sys::Win32::Storage::Xps::PrintWindow;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{GetClientRect, PW_RENDERFULLCONTENT};
+        use wry::WebViewExtWindows as _;
+
+        let hwnd = view.webview.hwnd().0 as HWND;
+        if hwnd.is_null() {
+            return None;
+        }
+        let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        // SAFETY: the handle is the live container of the one view this host owns.
+        if unsafe { GetClientRect(hwnd, &mut rect) } == 0 {
+            return None;
+        }
+        let (width, height) = (rect.right - rect.left, rect.bottom - rect.top);
+        if width < 2 || height < 2 || width > 16_384 || height > 16_384 {
+            return None;
+        }
+        let mut pixels = vec![0u8; width as usize * height as usize * 4];
+        // SAFETY: every handle made here is released before returning, and `GetDIBits` writes at most
+        // `height` rows of `width` 32-bit pixels, which is the buffer's size.
+        let read = unsafe {
+            let screen = GetDC(std::ptr::null_mut());
+            let memory = CreateCompatibleDC(screen);
+            let bitmap = CreateCompatibleBitmap(screen, width, height);
+            let old = SelectObject(memory, bitmap as _);
+            let printed = PrintWindow(hwnd, memory, PW_RENDERFULLCONTENT) != 0;
+            SelectObject(memory, old);
+            let mut info: BITMAPINFO = std::mem::zeroed();
+            info.bmiHeader = BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                // Negative, so the rows come top first, which is the order egui reads them in.
+                biHeight: -height,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB,
+                ..std::mem::zeroed()
+            };
+            let rows = GetDIBits(
+                memory,
+                bitmap,
+                0,
+                height as u32,
+                pixels.as_mut_ptr().cast(),
+                &mut info,
+                DIB_RGB_COLORS,
+            );
+            DeleteObject(bitmap as _);
+            DeleteDC(memory);
+            ReleaseDC(std::ptr::null_mut(), screen);
+            printed && rows == height
+        };
+        if !read {
+            return None;
+        }
+        // GDI writes blue, green, red and a byte that means nothing; egui wants red, green, blue, alpha.
+        for pixel in pixels.chunks_exact_mut(4) {
+            pixel.swap(0, 2);
+            pixel[3] = 255;
+        }
+        let first = [pixels[0], pixels[1], pixels[2]];
+        if pixels.chunks_exact(4).all(|pixel| pixel[..3] == first) {
+            return None;
+        }
+        Some(egui::ColorImage::from_rgba_unmultiplied([width as usize, height as usize], &pixels))
+    }
+
+    /// **On macOS there is no picture yet**, because `WKWebView` takes one only asynchronously, and the
+    /// canvas then uses the live page during a zoom as it always did.
+    #[cfg(target_os = "macos")]
+    fn photograph(_view: &NativeView) -> Option<egui::ColorImage> {
+        None
     }
 
     /// A kept cookie in the form the engine takes, with no expiry, which is what makes it a session cookie.
@@ -2436,6 +2546,10 @@ mod native {
         /// And zooming, which is the engine's own number.
         pub fn zoom(&self, _factor: f64) -> Result<(), String> {
             Err(UNSUPPORTED.to_owned())
+        }
+        /// There is no page to take a picture of.
+        pub fn photograph(&self) -> Option<egui::ColorImage> {
+            None
         }
     }
 }

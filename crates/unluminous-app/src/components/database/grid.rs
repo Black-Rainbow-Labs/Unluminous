@@ -24,7 +24,7 @@ use unluminous_db::rows::Rows;
 use unluminous_db::value::Value;
 
 use crate::components::database::{along, code, kit, text, well, Act};
-use crate::services::database::{why_not, DatabaseExplorer, Page, Sheet};
+use crate::services::database::{why_not, DatabaseExplorer};
 use crate::services::plugin_ui::Look;
 use crate::theme::{color, icon};
 
@@ -65,7 +65,7 @@ pub fn show(
         Pos2::new(area.left(), filters.bottom() + 10.0 * scale),
         Pos2::new(area.right(), foot.top() - 6.0 * scale),
     );
-    let Some(Page { sheet: Sheet::Grid(grid), .. }) = explorer.page(id) else { return acts };
+    let Some(grid) = explorer.grid(id) else { return acts };
     if let Some(why) = &grid.failure {
         let painter = ui.painter_at(body);
         let galley = painter.layout(
@@ -94,7 +94,7 @@ fn toolbar(
 ) -> Vec<Act> {
     let scale = look.scale();
     let mut acts = Vec::new();
-    let Some(Page { sheet: Sheet::Grid(grid), .. }) = explorer.page(id) else { return acts };
+    let Some(grid) = explorer.grid(id) else { return acts };
     let running = grid.running.is_some();
     let editable = why_not(grid).is_none();
     let why = why_not(grid);
@@ -102,7 +102,11 @@ fn toolbar(
     let chosen_row = grid.chosen.map(|(row, _)| row);
     let chosen_cell = grid.chosen.is_some();
     let can_stop = running && explorer.can_stop(&grid.source);
-    let where_it_is = format!("{} \u{b7} {}", grid.source, grid.table.name);
+    // A console statement's rows that are not one table's have no table to name.
+    let where_it_is = match grid.table.name.is_empty() {
+        true => format!("{} \u{b7} a statement", grid.source),
+        false => format!("{} \u{b7} {}", grid.source, grid.table.name),
+    };
     let chip = CHIP * scale;
     let step = chip + 8.0 * scale;
     kit::layer(ui, scale, ("database-grid-bar", id), bar, |rux| {
@@ -202,8 +206,7 @@ fn where_and_order(
     );
     well(ui, look, left, left.height() / 2.0);
     well(ui, look, right, right.height() / 2.0);
-    let Some(page) = explorer.pages.iter_mut().find(|page| page.id == id) else { return acts };
-    let Sheet::Grid(grid) = &mut page.sheet else { return acts };
+    let Some(grid) = explorer.grid_mut(id) else { return acts };
     let where_response = fragment_field(ui, look, left, "WHERE", &mut grid.where_clause);
     let order_response = fragment_field(ui, look, right, "ORDER BY", &mut grid.order_by);
     // Enter sends it, which is what a filter field does everywhere else in Unluminous. Typing alone must
@@ -248,20 +251,29 @@ fn fragment_field(
         look.font_size * 0.75,
         label_width + 2.0,
     );
-    let text_rect = Rect::from_min_max(
-        Pos2::new(area.left() + 22.0 * scale + label_width, area.top() + 2.0 * scale),
-        Pos2::new(area.right() - 14.0 * scale, area.bottom() - 2.0 * scale),
-    );
-    // The whole well, including the word in front of it, hands the keyboard to the box.
+    let font = egui::FontId::monospace(look.monospace_size * 0.95);
+    // The whole well, including the word in front of it, hands the keyboard to the box, and the box is one
+    // text row centred in the well. It was laid out over the whole well, which egui draws at its top, so a
+    // fragment sat above the word in front of it; `task-2253` made that visible, because a console's `SELECT`
+    // now fills these two fields.
     let fragment_id = egui::Id::new(("database-fragment-field", name));
-    crate::components::controls::claim_the_field(ui, area, fragment_id, "Fragment field");
+    let row = crate::components::controls::field_takes_the_whole_rectangle_at(
+        ui,
+        area,
+        22.0 * scale + label_width,
+        fragment_id,
+        "Fragment field",
+        &font,
+    );
+    let text_rect =
+        Rect::from_min_max(row.min, Pos2::new(area.right() - 14.0 * scale, row.max.y));
     let mut edit = ui
         .new_child(egui::UiBuilder::new().max_rect(text_rect).id_salt(("database-fragment", name)));
     let response = edit.add(
         egui::TextEdit::singleline(value)
             .id(fragment_id)
             .frame(egui::Frame::NONE)
-            .font(egui::FontId::monospace(look.monospace_size * 0.95))
+            .font(font)
             .desired_width(text_rect.width())
             .text_color(color::text_control()),
     );
@@ -300,8 +312,8 @@ fn the_grid(
     // The rows that were read **and** the rows that have been added here. A pending insert is not in
     // `rows.rows`, so before `task-1795` pressing `Add row` changed a count and put nothing on the
     // screen.
-    let drawn_rows = match explorer.page(id) {
-        Some(Page { sheet: Sheet::Grid(grid), .. }) => grid.row_count(),
+    let drawn_rows = match explorer.grid(id) {
+        Some(grid) => grid.row_count(),
         _ => rows.rows.len(),
     };
 
@@ -383,8 +395,8 @@ fn header(
     acts: &mut Vec<Act>,
 ) {
     let scale = look.scale();
-    let order = match explorer.page(id) {
-        Some(Page { sheet: Sheet::Grid(grid), .. }) => grid.order_by.clone(),
+    let order = match explorer.grid(id) {
+        Some(grid) => grid.order_by.clone(),
         _ => String::new(),
     };
     let painter = ui.painter_at(head);
@@ -454,7 +466,7 @@ fn one_row(
     scale: f32,
 ) -> Vec<Act> {
     let mut acts = Vec::new();
-    let Some(Page { sheet: Sheet::Grid(grid), .. }) = explorer.page(id) else { return acts };
+    let Some(grid) = explorer.grid(id) else { return acts };
     let deleted = grid.row_of(at).is_some_and(|row| grid.pending.is_deleted(&row));
     let added = at >= grid.rows.rows.len();
     let editing = grid.editing.clone().filter(|editing| editing.at == at);
@@ -698,7 +710,7 @@ fn paging(
 ) -> Vec<Act> {
     let scale = look.scale();
     let mut acts = Vec::new();
-    let Some(Page { sheet: Sheet::Grid(grid), .. }) = explorer.page(id) else { return acts };
+    let Some(grid) = explorer.grid(id) else { return acts };
     let size = explorer.configuration.page_size;
     let first = grid.at * size + 1;
     let last = grid.at * size + grid.rows.rows.len();
@@ -745,11 +757,8 @@ fn paging(
     acts
 }
 
-/// A result with no editing on it, which is what a console shows.
-///
-/// A console result is **never editable**: The reference editor tries to resolve one back to a table, and Unluminous
-/// does not promise what it cannot enforce — a join has no one table behind it and guessing at which
-/// is how the wrong row gets updated. The row editor is one click away and has the `WHERE` field.
+/// A result with no editing on it, which is what a console shows for an answer it cannot read again, such as
+/// a `PRAGMA`'s or an `INSERT ... RETURNING`'s. A `SELECT` answers in [`show`] instead (`task-2253`).
 pub fn rows_only(ui: &mut egui::Ui, look: &Look<'_>, area: Rect, rows: &Rows, id: u64) {
     let scale = look.scale();
     let column_width = COLUMN * scale;

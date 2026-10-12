@@ -470,6 +470,7 @@ impl UnluminousApp {
                 // window stays when one of them could not be (`task-1984` A2).
                 if self.may_the_window_close() {
                     self.closing = true;
+                    self.closed_by_hand = true;
                     self.write_settings();
                     self.remember_the_project(None);
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);

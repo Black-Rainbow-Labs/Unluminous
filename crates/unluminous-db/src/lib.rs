@@ -39,6 +39,7 @@ pub mod catalog;
 pub mod edit;
 pub mod engine;
 pub mod inillucent;
+pub mod one_table;
 pub mod postgres;
 pub mod rows;
 pub mod source;

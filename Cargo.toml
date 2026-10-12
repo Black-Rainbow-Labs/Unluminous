@@ -184,6 +184,9 @@ windows-sys = { version = "0.61", features = [
     # A job object that ends every language server when the window's process ends, however it ends.
     # See `unluminous-lsp`'s `worker.rs`.
     "Win32_System_JobObjects",
+    # `PrintWindow`, a picture of a browser node's page that the canvas draws while its zoom moves. See
+    # `services::browser::BrowserHost::photograph`.
+    "Win32_Storage_Xps",
 ] }
 # Already in the tree under `wry`, at the versions `wry` uses; named here because a browser node adds
 # `Select Element` to WebView2's own right click menu, which `wry` does not wrap. See

@@ -399,7 +399,7 @@ fn vector(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, String>
         return Err("rows are numbered from 1".to_owned());
     }
     let page = explorer.pages.get(explorer.current).map(|page| page.id).ok_or("no page is open")?;
-    let Some(Page { sheet: Sheet::Grid(grid), .. }) = explorer.page(page) else {
+    let Some(grid) = explorer.grid(page) else {
         return Err("the page that is showing is a console rather than a grid".to_owned());
     };
     let at = grid
@@ -626,11 +626,10 @@ fn state(explorer: &mut DatabaseExplorer) -> Result<Answer, String> {
     explorer.take_the_replies();
     let id = current(explorer)?;
     let Some(page) = explorer.page(id) else { return Err("no such page.".to_owned()) };
-    let (running, said) = match &page.sheet {
-        Sheet::Console(console) => {
-            (console.running.is_some(), console.output.last().cloned().unwrap_or_default())
-        }
-        Sheet::Grid(grid) => (grid.running.is_some(), grid.rows.summary()),
+    let running = page.running().is_some();
+    let said = match &page.sheet {
+        Sheet::Console(console) => console.output.last().cloned().unwrap_or_default(),
+        Sheet::Grid(grid) => grid.rows.summary(),
     };
     Ok(Answer::said(match running {
         true => "running".to_owned(),
@@ -651,12 +650,16 @@ fn result(explorer: &mut DatabaseExplorer) -> Result<Answer, String> {
         })
         .unwrap_or(serde_json::Value::Null);
     let said = match &value {
-        serde_json::Value::Object(page) => page
-            .get("result")
-            .or_else(|| page.get("rows"))
-            .and_then(|rows| rows.get("count"))
-            .map(|count| format!("{count} rows"))
-            .unwrap_or_else(|| "nothing".to_owned()),
+        serde_json::Value::Object(page) => [
+            page.get("result"),
+            page.get("grid").and_then(|grid| grid.get("rows")),
+            page.get("rows"),
+        ]
+        .into_iter()
+        .flatten()
+        .find_map(|rows| rows.get("count"))
+        .map(|count| format!("{count} rows"))
+        .unwrap_or_else(|| "nothing".to_owned()),
         _ => "nothing".to_owned(),
     };
     Ok(Answer::said(said).with(value))
@@ -877,10 +880,10 @@ fn grid_mut(
     explorer: &mut DatabaseExplorer,
 ) -> Result<&mut crate::services::database::Grid, String> {
     let id = current(explorer)?;
-    match explorer.pages.iter_mut().find(|page| page.id == id) {
-        Some(Page { sheet: Sheet::Grid(grid), .. }) => Ok(grid),
-        _ => Err("the page showing is not a grid. `open <table>` first.".to_owned()),
-    }
+    explorer.grid_mut(id).ok_or_else(|| {
+        "the page showing is not a grid. `open <table>`, or run a `SELECT` in the console, first."
+            .to_owned()
+    })
 }
 
 /// A data source by name, or the chosen one when nothing was said.

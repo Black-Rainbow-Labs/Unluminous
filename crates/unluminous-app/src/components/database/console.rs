@@ -26,6 +26,9 @@ use crate::theme::color;
 
 /// How tall the results area is, as a share of the page.
 const RESULTS: f32 = 0.45;
+/// The same when the result is a grid, whose toolbar, `WHERE` and `ORDER BY` fields and paging strip take
+/// about 130 points before the first row.
+const RESULTS_AS_A_GRID: f32 = 0.62;
 /// How tall the console's toolbar is: a 38 point chip and the Run pill.
 pub const TOOLBAR: f32 = 38.0;
 /// The widest the data source dropdown is drawn.
@@ -44,13 +47,22 @@ pub fn show(
     let bar = Rect::from_min_size(area.min, Vec2::new(area.width(), TOOLBAR * scale));
     acts.extend(toolbar(explorer, ui, look, bar, id));
 
-    let has_result = matches!(
-        explorer.page(id),
-        Some(Page { sheet: Sheet::Console(console), .. })
-            if console.result.is_some() || console.failure.is_some() || !console.output.is_empty()
-    );
+    let (has_result, as_a_grid) = match explorer.page(id) {
+        Some(Page { sheet: Sheet::Console(console), .. }) => (
+            console.grid.is_some()
+                || console.result.is_some()
+                || console.failure.is_some()
+                || !console.output.is_empty(),
+            console.grid.is_some(),
+        ),
+        _ => (false, false),
+    };
+    let share = match as_a_grid {
+        true => RESULTS_AS_A_GRID,
+        false => RESULTS,
+    };
     let split = match has_result {
-        true => area.bottom() - area.height() * RESULTS,
+        true => area.bottom() - area.height() * share,
         false => area.bottom(),
     };
     let editor = Rect::from_min_max(
@@ -270,6 +282,38 @@ fn format(font: egui::FontId, tint: egui::Color32) -> egui::text::TextFormat {
     egui::text::TextFormat { font_id: font, color: tint, ..egui::text::TextFormat::default() }
 }
 
+/// `Result` and the grid a `SELECT` answered in.
+fn the_grid(
+    explorer: &mut DatabaseExplorer,
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    area: Rect,
+    id: u64,
+) -> Vec<Act> {
+    let scale = look.scale();
+    let detail = match explorer.grid(id) {
+        Some(grid) if grid.running.is_some() => "reading".to_owned(),
+        Some(grid) => grid.rows.summary(),
+        None => String::new(),
+    };
+    let heading = Rect::from_min_size(area.min, Vec2::new(area.width(), 22.0 * scale));
+    kit::layer(ui, scale, ("database-console-heading", id), heading, |rux| {
+        let at = Pos2::new(heading.left() + 2.0 * scale, heading.center().y);
+        let drawn = kit::heading(rux, at, "Result", 13.0, heading.width());
+        if !detail.is_empty() {
+            kit::quiet(
+                rux,
+                Pos2::new(heading.left() + drawn + 12.0 * scale, heading.center().y),
+                &detail,
+                11.5,
+                heading.width() - drawn - 12.0 * scale,
+            );
+        }
+    });
+    let body = Rect::from_min_max(Pos2::new(area.left(), heading.bottom() + 6.0 * scale), area.max);
+    crate::components::database::grid::show(explorer, ui, look, body, id)
+}
+
 /// `Output` and `Result`, under the editor: a heading with what came back, and a carved well holding it.
 fn the_results(
     explorer: &mut DatabaseExplorer,
@@ -281,6 +325,12 @@ fn the_results(
     let scale = look.scale();
     let acts = Vec::new();
     let Some(Page { sheet: Sheet::Console(console), .. }) = explorer.page(id) else { return acts };
+    // **A `SELECT` answers in the grid a table opens in** (`task-2253`): *"That should be the same result format
+    // as when I double click on a table, so i can edit, sort, save, etc."* The grid draws its own toolbar,
+    // fields, wells and paging, so the console only puts its heading above it.
+    if console.grid.is_some() {
+        return the_grid(explorer, ui, look, area, id);
+    }
     let output = console.output.clone();
     let result = console.result.clone();
     let failure = console.failure.clone();

@@ -78,6 +78,10 @@ enum Wanted {
     Rows {
         page: u64,
     },
+    /// A table a console statement reads, described so the console can show it as that table's grid.
+    ConsoleTable {
+        page: u64,
+    },
     Written {
         page: u64,
     },
@@ -134,6 +138,26 @@ pub struct Console {
     /// What a statement that returned no rows said, newest last.
     pub output: Vec<String>,
     pub running: Option<u64>,
+    /// What the last statement answered, as a grid, when it was a `SELECT` (`task-2253`). It is the grid a
+    /// table opens in, so its rows sort, page and filter the same way, and when the statement read one
+    /// table's own rows they are edited and saved the same way too. `result` is used only for an answer
+    /// that cannot be read again, such as a `PRAGMA` or an `INSERT ... RETURNING`.
+    pub grid: Option<Box<Grid>>,
+    /// The table a statement reads while its columns are being asked for, with the statement itself.
+    pub describing: Option<(unluminous_db::one_table::OneTable, String)>,
+}
+
+/// What a grid's rows are read with.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum Reads {
+    /// Every column of the table, which is what a table opened from the tree reads.
+    #[default]
+    Table,
+    /// The columns, the `LIMIT` and the `OFFSET` a console statement named on the one table it read.
+    Columns { columns: Vec<String>, limit: Option<usize>, offset: usize },
+    /// A console statement whose rows are not one table's own: read again inside
+    /// `select * from (...)`, so its rows can still be filtered, sorted and paged, and never changed.
+    Statement(String),
 }
 
 /// A grid on one table's rows.
@@ -155,6 +179,7 @@ pub struct Grid {
     pub chosen: Option<(usize, usize)>,
     /// The cell being typed into, and what has been typed so far.
     pub editing: Option<Editing>,
+    pub reads: Reads,
 }
 
 /// A cell that is open for typing.
@@ -175,6 +200,30 @@ pub struct Editing {
 }
 
 impl Grid {
+    /// A grid on a table with nothing read yet.
+    ///
+    /// @param source - the data source's name
+    /// @param table - the table, described
+    /// @param kind - what the tree says the table is
+    /// @param reads - what the rows are read with
+    pub fn new(source: &str, table: Table, kind: Kind, reads: Reads) -> Self {
+        Grid {
+            source: source.to_owned(),
+            table,
+            kind,
+            where_clause: String::new(),
+            order_by: String::new(),
+            at: 0,
+            rows: Rows::default(),
+            pending: Pending::default(),
+            failure: None,
+            running: None,
+            chosen: None,
+            editing: None,
+            reads,
+        }
+    }
+
     /// How many rows the grid draws: the ones that were read, then the ones that were added here.
     ///
     /// **Pressing `Add row` used to change a number and put nothing on the screen** — the grid drew
@@ -285,8 +334,26 @@ impl Page {
     /// Which job this page is waiting for, if any. What decides whether an answer is still wanted.
     pub fn running(&self) -> Option<u64> {
         match &self.sheet {
-            Sheet::Console(console) => console.running,
+            Sheet::Console(console) => {
+                console.running.or_else(|| console.grid.as_ref().and_then(|grid| grid.running))
+            }
             Sheet::Grid(grid) => grid.running,
+        }
+    }
+
+    /// The grid on this page: a table's own page, or the result of a console's last `SELECT`.
+    pub fn grid(&self) -> Option<&Grid> {
+        match &self.sheet {
+            Sheet::Grid(grid) => Some(grid),
+            Sheet::Console(console) => console.grid.as_deref(),
+        }
+    }
+
+    /// The same, to change.
+    pub fn grid_mut(&mut self) -> Option<&mut Grid> {
+        match &mut self.sheet {
+            Sheet::Grid(grid) => Some(grid),
+            Sheet::Console(console) => console.grid.as_deref_mut(),
         }
     }
 }
@@ -885,6 +952,16 @@ impl DatabaseExplorer {
         self.pages.iter().find(|page| page.id == id)
     }
 
+    /// The grid on a page, which is a table's page or a console showing what its `SELECT` answered.
+    pub fn grid(&self, id: u64) -> Option<&Grid> {
+        self.page(id).and_then(Page::grid)
+    }
+
+    /// The same, to change.
+    pub fn grid_mut(&mut self, id: u64) -> Option<&mut Grid> {
+        self.page_mut(id).and_then(Page::grid_mut)
+    }
+
     fn page_mut(&mut self, id: u64) -> Option<&mut Page> {
         self.pages.iter_mut().find(|page| page.id == id)
     }
@@ -946,7 +1023,7 @@ impl DatabaseExplorer {
         if console.source == source {
             return Ok(());
         }
-        if console.running.is_some() {
+        if self.page(id).and_then(Page::running).is_some() {
             return Err("this console is still running a statement; stop it first.".to_owned());
         }
         let _ = self.connect(source);
@@ -958,6 +1035,8 @@ impl DatabaseExplorer {
         if let Some(Page { sheet: Sheet::Console(console), .. }) = self.page_mut(id) {
             console.source = source.to_owned();
             console.schema = schema;
+            console.grid = None;
+            console.describing = None;
             console.result = None;
             console.failure = None;
             console.output.clear();
@@ -1003,34 +1082,14 @@ impl DatabaseExplorer {
     /// SQLite's own `Table` carries no schema at all, while the tree files its items under `main`.
     /// Looking the kind up by the wrong one made every SQLite view read as an editable table.
     fn grid_for(&mut self, source: &str, schema: &str, table: Table) {
-        let kind = self
-            .loaded
-            .get(source)
-            .and_then(|loaded| loaded.items.get(schema))
-            .and_then(|items| items.iter().find(|item| item.name == table.name))
-            .map(|item| item.kind)
-            .unwrap_or(Kind::Table);
-        let id = self.add_page(Sheet::Grid(Box::new(Grid {
-            source: source.to_owned(),
-            table,
-            kind,
-            where_clause: String::new(),
-            order_by: String::new(),
-            at: 0,
-            rows: Rows::default(),
-            pending: Pending::default(),
-            failure: None,
-            running: None,
-            chosen: None,
-            editing: None,
-        })));
+        let kind = self.kind_of(source, schema, &table.name);
+        let id = self.add_page(Sheet::Grid(Box::new(Grid::new(source, table, kind, Reads::Table))));
         self.reload(id);
     }
 
     /// Fill a grid, or run a console's statement again.
     pub fn reload(&mut self, id: u64) {
-        let Some(page) = self.page(id) else { return };
-        let Sheet::Grid(grid) = &page.sheet else { return };
+        let Some(grid) = self.grid(id) else { return };
         let source = grid.source.clone();
         let engine = self
             .configuration
@@ -1041,10 +1100,20 @@ impl DatabaseExplorer {
         let statement = select_for(grid, engine, limit, grid.at);
         let ticket =
             self.ask(&source, Job::Query { sql: statement, limit }, Wanted::Rows { page: id });
-        if let Some(Page { sheet: Sheet::Grid(grid), .. }) = self.page_mut(id) {
+        if let Some(grid) = self.grid_mut(id) {
             grid.running = ticket;
             grid.failure = None;
         }
+    }
+
+    /// What the tree says a table is, which is `Kind::Table` when the tree has not been read.
+    fn kind_of(&self, source: &str, schema: &str, name: &str) -> Kind {
+        self.loaded
+            .get(source)
+            .and_then(|loaded| loaded.items.get(schema))
+            .and_then(|items| items.iter().find(|item| item.name == name))
+            .map(|item| item.kind)
+            .unwrap_or(Kind::Table)
     }
 
     /// Run the statement under the caret of a console.
@@ -1084,11 +1153,20 @@ impl DatabaseExplorer {
                 source
             ));
         }
-        self.send_from_console(id, &sql);
+        match unluminous_db::one_table::read(&sql) {
+            Some(read) => self.read_one_table(id, read, &sql),
+            None if unluminous_db::one_table::can_be_read_again(&sql) => {
+                let reads = Reads::Statement(sql.clone());
+                self.show_as_a_grid(id, reads, Table::default(), Kind::Table, "", "");
+            }
+            None => self.send_from_console(id, &sql),
+        }
         Ok(sql)
     }
 
-    /// Send a console's statement, having decided it should be sent.
+    /// Send a console's statement as it was written, and show what it answers under the editor.
+    ///
+    /// This is the way for a statement that is not a `SELECT`, and for a `SELECT` whose grid could not be read.
     pub fn send_from_console(&mut self, id: u64, sql: &str) {
         let Some(Page { sheet: Sheet::Console(console), .. }) = self.page(id) else { return };
         let source = console.source.clone();
@@ -1098,7 +1176,140 @@ impl DatabaseExplorer {
         if let Some(Page { sheet: Sheet::Console(console), .. }) = self.page_mut(id) {
             console.running = ticket;
             console.failure = None;
+            console.grid = None;
+            console.describing = None;
         }
+    }
+
+    /// A console `SELECT` of one table's own rows: the table's columns are asked for first, because its key
+    /// decides whether the rows can be changed, and then the rows are read as that table's grid.
+    ///
+    /// @param id - the console's page
+    /// @param read - which table the statement reads, and how
+    /// @param sql - the statement, for when the table cannot be described
+    fn read_one_table(&mut self, id: u64, read: unluminous_db::one_table::OneTable, sql: &str) {
+        let Some(Page { sheet: Sheet::Console(console), .. }) = self.page(id) else { return };
+        let source = console.source.clone();
+        let schema = self.schema_for(&source, &read, &console.schema);
+        let name = self.name_in_the_tree(&source, &schema, &read.name);
+        let described = self
+            .loaded
+            .get(&source)
+            .and_then(|loaded| loaded.columns.get(&(schema.clone(), name.clone())))
+            .cloned();
+        if let Some(Page { sheet: Sheet::Console(console), .. }) = self.page_mut(id) {
+            console.describing = Some((read, sql.to_owned()));
+        }
+        match described {
+            Some(table) => self.console_table_described(id, table),
+            None => {
+                let ticket = self.ask(
+                    &source,
+                    Job::Describe { schema, table: name },
+                    Wanted::ConsoleTable { page: id },
+                );
+                if let Some(Page { sheet: Sheet::Console(console), .. }) = self.page_mut(id) {
+                    console.running = ticket;
+                    console.failure = None;
+                }
+            }
+        }
+    }
+
+    /// The schema a console statement's table is in: the one it was named in, else the console's own schema
+    /// when the tree has that table there, else `public` when the tree has it there, which is where
+    /// PostgreSQL's default search path finds an unqualified name. The console's schema otherwise.
+    fn schema_for(
+        &self,
+        source: &str,
+        read: &unluminous_db::one_table::OneTable,
+        console_schema: &str,
+    ) -> String {
+        if let Some(schema) = &read.schema {
+            return schema.clone();
+        }
+        let holds = |schema: &str| {
+            self.loaded.get(source).and_then(|loaded| loaded.items.get(schema)).is_some_and(
+                |items| items.iter().any(|item| item.name.eq_ignore_ascii_case(&read.name)),
+            )
+        };
+        [console_schema, "public"]
+            .into_iter()
+            .find(|schema| holds(schema))
+            .unwrap_or(console_schema)
+            .to_owned()
+    }
+
+    /// The name the tree files a table under when it matches the one written apart from its case, which is
+    /// how SQLite and an unquoted PostgreSQL name are both compared. The written name otherwise.
+    fn name_in_the_tree(&self, source: &str, schema: &str, written: &str) -> String {
+        self.loaded
+            .get(source)
+            .and_then(|loaded| loaded.items.get(schema))
+            .and_then(|items| {
+                items
+                    .iter()
+                    .find(|item| item.name == written)
+                    .or_else(|| items.iter().find(|item| item.name.eq_ignore_ascii_case(written)))
+            })
+            .map_or_else(|| written.to_owned(), |item| item.name.clone())
+    }
+
+    /// The table a console statement reads has been described, so its rows are read as its grid.
+    ///
+    /// A table with no columns is one the server does not know, such as a name a `WITH` made up, and then the
+    /// statement is sent as it was written so the server's own answer is what is shown.
+    ///
+    /// @param id - the console's page
+    /// @param table - the table, described
+    fn console_table_described(&mut self, id: u64, table: Table) {
+        let Some(Page { sheet: Sheet::Console(console), .. }) = self.page(id) else { return };
+        let Some((read, sql)) = console.describing.clone() else { return };
+        let source = console.source.clone();
+        let schema = self.schema_for(&source, &read, &console.schema);
+        if table.columns.is_empty() {
+            self.send_from_console(id, &sql);
+            return;
+        }
+        let name = self.name_in_the_tree(&source, &schema, &read.name);
+        self.loaded
+            .entry(source.clone())
+            .or_default()
+            .columns
+            .insert((schema.clone(), name.clone()), table.clone());
+        let kind = self.kind_of(&source, &schema, &name);
+        let reads =
+            Reads::Columns { columns: read.columns, limit: read.limit, offset: read.offset };
+        self.show_as_a_grid(id, reads, table, kind, &read.where_clause, &read.order_by);
+    }
+
+    /// Put a grid under a console's editor and read its first page.
+    ///
+    /// @param id - the console's page
+    /// @param reads - what the grid's rows are read with
+    /// @param table - the table the rows are, or an empty table for a statement's rows
+    /// @param kind - what the tree says the table is
+    /// @param where_clause - the statement's `WHERE`, put in the grid's own field
+    /// @param order_by - the statement's `ORDER BY`, put in the grid's own field
+    fn show_as_a_grid(
+        &mut self,
+        id: u64,
+        reads: Reads,
+        table: Table,
+        kind: Kind,
+        where_clause: &str,
+        order_by: &str,
+    ) {
+        let Some(Page { sheet: Sheet::Console(console), .. }) = self.page_mut(id) else { return };
+        let mut grid = Grid::new(&console.source, table, kind, reads);
+        grid.where_clause = where_clause.to_owned();
+        grid.order_by = order_by.to_owned();
+        console.grid = Some(Box::new(grid));
+        console.result = None;
+        console.failure = None;
+        console.describing = None;
+        console.running = None;
+        self.reload(id);
     }
 
     /// Send a statement that changes the shape of the database, and read the schema again.
@@ -1194,7 +1405,7 @@ impl DatabaseExplorer {
 
     /// Write a grid's pending changes as one transaction.
     pub fn submit(&mut self, id: u64) -> Result<usize, String> {
-        let Some(Page { sheet: Sheet::Grid(grid), .. }) = self.page(id) else {
+        let Some(grid) = self.grid(id) else {
             return Err("that page has nothing to submit.".to_owned());
         };
         if grid.pending.is_empty() {
@@ -1210,7 +1421,7 @@ impl DatabaseExplorer {
             grid.pending.statements(&grid.table, engine).map_err(|why| why.to_string())?;
         let count = statements.len();
         let ticket = self.ask(&source, Job::Write { statements }, Wanted::Written { page: id });
-        if let Some(Page { sheet: Sheet::Grid(grid), .. }) = self.page_mut(id) {
+        if let Some(grid) = self.grid_mut(id) {
             grid.running = ticket;
             grid.failure = None;
         }
@@ -1219,7 +1430,7 @@ impl DatabaseExplorer {
 
     /// The statements a grid's pending changes would become, for the preview modal.
     pub fn preview(&self, id: u64) -> Result<Vec<unluminous_db::Statement>, String> {
-        let Some(Page { sheet: Sheet::Grid(grid), .. }) = self.page(id) else {
+        let Some(grid) = self.grid(id) else {
             return Err("that page has nothing pending.".to_owned());
         };
         let engine = self
@@ -1310,6 +1521,11 @@ impl DatabaseExplorer {
                     self.grid_for(source, &asked, table);
                 }
             }
+            (Wanted::ConsoleTable { page }, Ok(Reply::Table(table))) => {
+                if self.page(page).and_then(Page::running) == Some(ticket) {
+                    self.console_table_described(page, table);
+                }
+            }
             (Wanted::Ddl { name, show }, Ok(Reply::Text(text))) => {
                 self.last_ddl = Some((name.clone(), text.clone()));
                 if show {
@@ -1321,7 +1537,7 @@ impl DatabaseExplorer {
                 if self.page(page).and_then(Page::running) != Some(ticket) {
                     return;
                 }
-                if let Some(Page { sheet: Sheet::Grid(grid), .. }) = self.page_mut(page) {
+                if let Some(grid) = self.grid_mut(page) {
                     grid.pending.clear();
                     grid.running = None;
                 }
@@ -1354,6 +1570,17 @@ impl DatabaseExplorer {
             return;
         }
         match &mut page.sheet {
+            Sheet::Console(console)
+                if console.grid.as_ref().is_some_and(|grid| grid.running == Some(ticket)) =>
+            {
+                if let Some(grid) = console.grid.as_deref_mut() {
+                    console.output.push(rows.summary());
+                    grid.running = None;
+                    grid.rows = rows;
+                    grid.chosen = None;
+                    grid.editing = None;
+                }
+            }
             Sheet::Console(console) => {
                 {
                     console.running = None;
@@ -1387,12 +1614,37 @@ impl DatabaseExplorer {
     /// report a statement nobody is waiting for.
     fn failed(&mut self, source: &str, ticket: u64, wanted: Wanted, why: Failure) {
         let said = why.to_string();
+        if self.a_console_grid_gives_way(&wanted, ticket) {
+            return;
+        }
         match wanted {
+            // The table a console statement named could not be described, so the statement goes to the
+            // server as it was written and the server's own answer is what the console shows.
+            Wanted::ConsoleTable { page } => {
+                let sql = match self.page(page) {
+                    Some(Page { sheet: Sheet::Console(console), .. })
+                        if console.running == Some(ticket) =>
+                    {
+                        console.describing.as_ref().map(|(_, sql)| sql.clone())
+                    }
+                    _ => None,
+                };
+                if let Some(sql) = sql {
+                    self.send_from_console(page, &sql);
+                }
+                return;
+            }
             Wanted::Rows { page } | Wanted::Written { page } => {
                 if let Some(page) =
                     self.page_mut(page).filter(|page| page.running() == Some(ticket))
                 {
                     match &mut page.sheet {
+                        Sheet::Console(console) if console.running != Some(ticket) => {
+                            if let Some(grid) = console.grid.as_deref_mut() {
+                                grid.running = None;
+                                grid.failure = Some(why);
+                            }
+                        }
                         Sheet::Console(console) => {
                             console.running = None;
                             console.output.push(said.clone());
@@ -1412,6 +1664,38 @@ impl DatabaseExplorer {
         self.problem = Some(said);
     }
 
+    /// A console grid whose **first** read failed gives way to the statement it was made from.
+    ///
+    /// The grid reads the statement through a statement of its own, so a server's refusal of it would quote
+    /// text nobody typed, and an engine that refused a subquery would make a `SELECT` that runs anywhere else
+    /// fail here. So the statement is sent as it was written, and what the server says about that is what is
+    /// shown. A grid that has read rows before keeps its failure, because that one is about a filter or a sort
+    /// somebody has typed into it since. True when it gave way.
+    fn a_console_grid_gives_way(&mut self, wanted: &Wanted, ticket: u64) -> bool {
+        let Wanted::Rows { page } = wanted else { return false };
+        let sql = match self.page(*page) {
+            Some(Page { sheet: Sheet::Console(console), .. }) => match console.grid.as_deref() {
+                Some(grid)
+                    if grid.running == Some(ticket)
+                        && grid.rows.columns.is_empty()
+                        && grid.at == 0 =>
+                {
+                    unluminous_db::sql::at(&console.text, console.caret)
+                        .map(|statement| statement.to_send().to_owned())
+                }
+                _ => None,
+            },
+            _ => None,
+        };
+        match sql {
+            Some(sql) if !sql.is_empty() => {
+                self.send_from_console(*page, &sql);
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// Hand a page a result as though a worker had answered it. Tests only.
     ///
     /// `UiProvider::as_any_mut` exists for exactly two callers and a test is one of them; these two
@@ -1425,7 +1709,10 @@ impl DatabaseExplorer {
     #[cfg(test)]
     pub fn mark_running_for_tests(&mut self, page: u64, ticket: u64) -> Option<u64> {
         match self.page_mut(page)? {
-            Page { sheet: Sheet::Console(console), .. } => console.running = Some(ticket),
+            Page { sheet: Sheet::Console(console), .. } => match console.grid.as_deref_mut() {
+                Some(grid) => grid.running = Some(ticket),
+                None => console.running = Some(ticket),
+            },
             Page { sheet: Sheet::Grid(grid), .. } => grid.running = Some(ticket),
         }
         Some(ticket)
@@ -1508,13 +1795,23 @@ impl DatabaseExplorer {
                 "source": console.source,
                 "schema": console.schema,
                 "text": console.text,
-                "running": console.running.is_some(),
+                "running": page.running().is_some(),
                 "output": console.output,
-                // A console result is never a table's rows, so nothing there is a declared vector.
+                // A result read once, such as a `PRAGMA`'s, is never a table's rows, so nothing there is a
+                // declared vector.
                 "result": console.result.as_ref().map(|rows| rows_value(rows, &[])),
+                // What a `SELECT` answered, as the grid it is shown in, with the same fields a table's page has.
+                "grid": console.grid.as_deref().map(|grid| grid_value(page, grid)),
                 "failure": console.failure.as_ref().map(std::string::ToString::to_string),
             }),
-            Sheet::Grid(grid) => serde_json::json!({
+            Sheet::Grid(grid) => grid_value(page, grid),
+        }
+    }
+}
+
+/// A grid as data, for a table's page and for a console showing what its `SELECT` answered.
+fn grid_value(page: &Page, grid: &Grid) -> serde_json::Value {
+    let mut value = serde_json::json!({
                 "id": page.id,
                 "kind": "grid",
                 "title": page.title(),
@@ -1537,9 +1834,16 @@ impl DatabaseExplorer {
                 })),
                 "rows": rows_value(&grid.rows, &grid.table.vector_columns),
                 "failure": grid.failure.as_ref().map(std::string::ToString::to_string),
-            }),
+    });
+    value["reads"] = serde_json::Value::String(
+        match &grid.reads {
+            Reads::Table => "table",
+            Reads::Columns { .. } => "columns",
+            Reads::Statement(_) => "statement",
         }
-    }
+        .to_owned(),
+    );
+    value
 }
 
 /// Why a grid cannot be edited, in one sentence, or nothing when it can.
@@ -1550,6 +1854,13 @@ impl DatabaseExplorer {
 /// table *can* be addressed perfectly well and must not be, which is the one that would otherwise
 /// read as an arbitrary refusal.
 pub fn why_not(grid: &Grid) -> Option<String> {
+    if let Reads::Statement(_) = grid.reads {
+        return Some(
+            "These rows come from a statement rather than from one table, so they cannot be changed here. \
+             A `SELECT` of one table's own columns, or the table opened from the tree, can be edited."
+                .to_owned(),
+        );
+    }
     // The table knows about ownership, so a shadow table's own sentence - which names the object to
     // write to instead - wins over anything composed from the kind.
     if grid.table.owned_by.is_some() {
@@ -1644,34 +1955,19 @@ fn rows_value(rows: &Rows, vectors: &[String]) -> serde_json::Value {
 /// So a table with a key is read **in key order** unless somebody has typed an order of their own.
 /// A table with no key has nothing to order by, and its rows are read-only anyway.
 pub fn select_for(grid: &Grid, engine: Engine, limit: usize, at: usize) -> String {
-    // SQLite's implicit key is not in `select *`, so a table addressed by it has to ask for it by
-    // name — and by **whichever** of its three names this table has not shadowed, which is what
-    // `unluminous_db::sqlite::ROWID_ALIASES` decides. Asking for the literal `rowid` on a table that
-    // declares a column of that name would select the declared column instead.
-    let by_rowid = engine == Engine::Sqlite
-        && grid
-            .table
-            .key
-            .first()
-            .is_some_and(|name| unluminous_db::sqlite::ROWID_ALIASES.contains(&name.as_str()));
-    let mut columns = match by_rowid {
-        true => format!("{}, *", grid.table.key[0]),
-        false => "*".to_owned(),
-    };
-    // **A vector is not in `select *` either**, and for the same reason the rowid is not: on a search
-    // table the vector arrives through a *hidden* column, so a grid that asked for `*` would show the
-    // title and the body of a row whose whole point is the embedding beside them. Measured against
-    // the engine: `select * from docs` answers `["title", "body"]`, and naming the column is what puts
-    // it back. This is the one line that decides whether the ticket's "ways to see our vectors" is
-    // true of the grid at all. From Inillucent 2.0.2 `table_info` leaves hidden columns out, so the
-    // hidden `vector` is not in the column list and is named here; a vector column that is an ordinary
-    // column, such as `v` of a `%_content` shadow, is already in `*` and is not named twice.
-    for column in &grid.table.vector_columns {
-        if !grid.table.columns.iter().any(|had| had.name == *column) {
-            columns.push_str(&format!(", {}", unluminous_db::catalog::quoted(column, '"')));
+    // A console statement whose rows are not one table's own is read inside a subquery, so the grid's own
+    // `WHERE`, `ORDER BY` and paging apply to its rows as they apply to a table's (`task-2253`). Its comments
+    // are taken out first, because a `--` comment at the end would swallow the closing bracket.
+    let (columns, from) = match &grid.reads {
+        Reads::Statement(sql) => (
+            "*".to_owned(),
+            format!("({}) as \"result\"", unluminous_db::sql::strip_comments(sql).trim()),
+        ),
+        Reads::Table | Reads::Columns { .. } => {
+            (the_column_list(grid, engine), grid.table.qualified('"'))
         }
-    }
-    let mut statement = format!("select {columns} from {}", grid.table.qualified('"'));
+    };
+    let mut statement = format!("select {columns} from {from}");
     if !grid.where_clause.trim().is_empty() {
         statement.push_str(&format!(" where {}", grid.where_clause.trim()));
     }
@@ -1689,9 +1985,87 @@ pub fn select_for(grid: &Grid, engine: Engine, limit: usize, at: usize) -> Strin
         }
         _ => {}
     }
-    // One more than is kept, which is what makes `1-200 of 200+` honest.
-    statement.push_str(&format!(" limit {} offset {}", limit + 1, at * limit));
+    let (skip, ask) = the_window(grid, limit, at);
+    statement.push_str(&format!(" limit {ask} offset {skip}"));
     statement
+}
+
+/// How many rows a page asks for and how many it skips.
+///
+/// One more than is kept, which is what makes `1-200 of 200+` honest. A console statement's own `LIMIT` is a
+/// cap across every page, and its `OFFSET` moves where the first page starts, so the grid shows exactly the
+/// rows the statement would have answered, a page at a time.
+fn the_window(grid: &Grid, limit: usize, at: usize) -> (usize, usize) {
+    let (cap, offset) = match &grid.reads {
+        Reads::Columns { limit: cap, offset, .. } => (*cap, *offset),
+        Reads::Table | Reads::Statement(_) => (None, 0),
+    };
+    let start = at * limit;
+    let ask = match cap {
+        Some(cap) => cap.saturating_sub(start).min(limit + 1),
+        None => limit + 1,
+    };
+    (offset + start, ask)
+}
+
+/// Whether a column name as a statement wrote it names the key column `key`: by its exact text when it was
+/// quoted, and without regard to case when it was not, which is how both engines compare an unquoted name.
+fn names_the_column(written: &str, key: &str) -> bool {
+    match unluminous_db::one_table::is_quoted(written) {
+        true => unluminous_db::one_table::unquote(written) == key,
+        false => written.eq_ignore_ascii_case(key),
+    }
+}
+
+/// The column list a table's grid asks for.
+///
+/// A console statement that named its columns gets those columns, with any key column it left out put in
+/// front of them: a row is changed by its key, so a grid without the key could show the rows and never save one.
+fn the_column_list(grid: &Grid, engine: Engine) -> String {
+    // SQLite's implicit key is not in `select *`, so a table addressed by it has to ask for it by
+    // name — and by **whichever** of its three names this table has not shadowed, which is what
+    // `unluminous_db::sqlite::ROWID_ALIASES` decides. Asking for the literal `rowid` on a table that
+    // declares a column of that name would select the declared column instead.
+    let by_rowid = engine == Engine::Sqlite
+        && grid
+            .table
+            .key
+            .first()
+            .is_some_and(|name| unluminous_db::sqlite::ROWID_ALIASES.contains(&name.as_str()));
+    if let Reads::Columns { columns: named, .. } = &grid.reads {
+        if !named.is_empty() {
+            let mut list: Vec<String> = grid
+                .table
+                .key
+                .iter()
+                .filter(|key| !named.iter().any(|written| names_the_column(written, key)))
+                .map(|key| match by_rowid {
+                    true => key.clone(),
+                    false => unluminous_db::catalog::quoted(key, '"'),
+                })
+                .collect();
+            list.extend(named.iter().cloned());
+            return list.join(", ");
+        }
+    }
+    let mut columns = match by_rowid {
+        true => format!("{}, *", grid.table.key[0]),
+        false => "*".to_owned(),
+    };
+    // **A vector is not in `select *` either**, and for the same reason the rowid is not: on a search
+    // table the vector arrives through a *hidden* column, so a grid that asked for `*` would show the
+    // title and the body of a row whose whole point is the embedding beside them. Measured against
+    // the engine: `select * from docs` answers `["title", "body"]`, and naming the column is what puts
+    // it back. This is the one line that decides whether the ticket's "ways to see our vectors" is
+    // true of the grid at all. From Inillucent 2.0.2 `table_info` leaves hidden columns out, so the
+    // hidden `vector` is not in the column list and is named here; a vector column that is an ordinary
+    // column, such as `v` of a `%_content` shadow, is already in `*` and is not named twice.
+    for column in &grid.table.vector_columns {
+        if !grid.table.columns.iter().any(|had| had.name == *column) {
+            columns.push_str(&format!(", {}", unluminous_db::catalog::quoted(column, '"')));
+        }
+    }
+    columns
 }
 
 impl UiProvider for DatabaseExplorer {

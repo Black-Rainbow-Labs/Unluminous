@@ -20,6 +20,7 @@ mod kit;
 mod lanes;
 pub(crate) mod listings;
 mod settings_page;
+pub mod supervisor_modal;
 pub mod ticket_modal;
 
 use egui::{Pos2, Rect, Vec2};
@@ -281,6 +282,8 @@ fn header_row(
     let mut query = board.query().to_owned();
     let mut searched = false;
     let mut adding = false;
+    let mut chatting = false;
+    let supervisor_open = board.supervisor_open;
     let mut picked = None;
     kit::layer(state, ui, "header", area, kit::CHIP_REACH * scale, |rux| {
         let switch = rux::components::ViewSwitch::new(&views, chosen_index);
@@ -294,6 +297,9 @@ fn header_row(
             .measure(rux)
             .x;
         let round = 44.0 * scale;
+        // `Chat with supervisor` is a round button in front of `Add Task` (`task-2253`), always drawn on the board
+        // for the reason `Add Task` is: it is how a person reaches the agent working the board.
+        let chat = round + gap;
         let heading_style = rux::Style::sans(22.0 * scale).semibold().tracking(-0.02);
         let sub_style = rux::Style::sans(11.5 * scale);
         let heading_width = rux.measure(heading_style, &title).x;
@@ -318,11 +324,11 @@ fn header_row(
                 (false, false) => (0.0, 0.0, false),
             },
             false => {
-                if full + gap + sprint_width + gap + 140.0 * scale + gap + pill_width <= width {
+                if full + gap + sprint_width + gap + 140.0 * scale + gap + chat + pill_width <= width {
                     (full, pill_width, false)
-                } else if marks + gap + 44.0 * scale + gap + pill_width <= width {
+                } else if marks + gap + 44.0 * scale + gap + chat + pill_width <= width {
                     (marks, pill_width, false)
-                } else if marks + gap + round <= width {
+                } else if marks + gap + chat + round <= width {
                     (marks, round, true)
                 } else {
                     (0.0, round, true)
@@ -334,7 +340,11 @@ fn header_row(
             false => row.min.x,
         };
         // The search box takes what is spare up to the design's 260 points, and goes below 140.
-        let left_over = row.max.x - add_width - gap - after_switch - sprint_width - gap;
+        let chat_width = match listing {
+            true => 0.0,
+            false => chat,
+        };
+        let left_over = row.max.x - add_width - chat_width - gap - after_switch - sprint_width - gap;
         let search_width = match listing {
             true => 0.0,
             false => left_over.min(260.0 * scale),
@@ -349,6 +359,7 @@ fn header_row(
         // shorter instead of taller, and drawn only into the room the controls on the right leave.
         let right_edge = row.max.x
             - add_width
+            - chat_width
             - match (show_search, add_width > 0.0) {
                 (true, _) => search_width + gap * 2.0,
                 (false, true) => gap,
@@ -410,9 +421,22 @@ fn header_row(
                     .show(rux, add_rect)
                     .clicked(),
             };
+            let chat_rect = Rect::from_min_size(
+                Pos2::new(add_rect.min.x - chat, row.center().y - 22.0 * scale),
+                Vec2::splat(round),
+            );
+            chatting = rux::components::RoundButton::mark(
+                rux::Icon::Bubble,
+                16.0,
+                "Chat with supervisor",
+            )
+            .size(rux::components::RoundSize::Send)
+            .on(supervisor_open)
+            .show(rux, chat_rect)
+            .clicked();
             if show_search {
                 let well = Rect::from_min_size(
-                    Pos2::new(add_rect.min.x - gap - search_width, row.center().y - 21.0 * scale),
+                    Pos2::new(chat_rect.min.x - gap - search_width, row.center().y - 21.0 * scale),
                     Vec2::new(search_width, 42.0 * scale),
                 );
                 let inside = rux::components::search_well(rux, well);
@@ -433,6 +457,9 @@ fn header_row(
         if at.x > row.min.x {
             painter.crisp_galley(at, said, look.palette.text_dim);
         }
+    }
+    if chatting {
+        board.supervisor_open = !board.supervisor_open;
     }
     if searched {
         if let Err(problem) = board.search(&query) {

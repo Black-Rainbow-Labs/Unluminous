@@ -16,7 +16,7 @@ Design Unluminous screens in `unluminous-dark` first; it is what a window opens 
 ## Content
 
 - Write the plain wording a person would say. A control's name is its label with no decoration: `Save`, `Start Work`, `Run the selected configuration`. No two controls on one screen share a name.
-- Verbs on buttons, sentence case: `Add Task`, `Post comment`, `Send to terminal`. A modal's last button names what it does (`Rename`, `Delete`), never `OK`.
+- Verbs on buttons, sentence case: `Add Task`, `Comment`, `Comment & Send to Agent`. A modal's last button names what it does (`Rename`, `Delete`), never `OK`.
 - A failure says what went wrong and what to do, in the program's own words where there are any (git's error, the server's message). Never an apology.
 - British spelling in prose (`colour`, `centre`), the code's spelling for names (`color` in a token).
 - No emoji anywhere: marks are drawn icons.

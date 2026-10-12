@@ -455,6 +455,7 @@ impl UnluminousApp {
             // closing ask, so none of them can be the one that forgets.
             if self.may_the_window_close() {
                 self.closing = true;
+                self.closed_by_hand = true;
                 self.write_settings();
                 self.remember_the_project(None);
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);

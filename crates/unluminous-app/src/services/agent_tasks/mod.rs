@@ -515,6 +515,53 @@ pub struct AgentTasks {
     ///
     /// `None` in a test, where nothing is drawing and a waker that does nothing is the right waker.
     waker: Option<unluminous_terminal::Waker>,
+    /// What the board's files looked like when this window last read the board, and when they were last
+    /// looked at. See [`Self::notice_another_window`].
+    files_read: Option<FilesStamp>,
+    files_asked: Option<std::time::Instant>,
+    /// True while the supervisor's modal is open: its terminal, the box a message is typed into and `Send`.
+    pub supervisor_open: bool,
+    /// What is typed in the supervisor modal's message box.
+    pub supervisor_draft: String,
+}
+
+/// The terminal the supervisor runs in is kept with the tickets' terminals, under an id no ticket has: a ticket's
+/// id is a row id, and those start at one.
+pub const SUPERVISOR: i64 = 0;
+
+/// The newest modified time, the total size and the number of the board's own files: `board.rdb` and the
+/// `board.rdb-wal.*` files the engine writes beside it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FilesStamp {
+    newest: std::time::SystemTime,
+    bytes: u64,
+    count: usize,
+}
+
+/// How often a window looks at the board's files for a change another window made.
+const FILES_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// The stamp of the board's files now, or `None` when the folder cannot be read.
+///
+/// @param database - the path of `board.rdb`
+fn stamp_the_files(database: &std::path::Path) -> Option<FilesStamp> {
+    let folder = database.parent()?;
+    let name = database.file_name()?.to_string_lossy().into_owned();
+    let mut stamp =
+        FilesStamp { newest: std::time::SystemTime::UNIX_EPOCH, bytes: 0, count: 0 };
+    for entry in std::fs::read_dir(folder).ok()?.flatten() {
+        let file = entry.file_name().to_string_lossy().into_owned();
+        if file != name && !file.starts_with(&format!("{name}-")) {
+            continue;
+        }
+        let Ok(metadata) = entry.metadata() else { continue };
+        stamp.bytes += metadata.len();
+        stamp.count += 1;
+        if let Ok(modified) = metadata.modified() {
+            stamp.newest = stamp.newest.max(modified);
+        }
+    }
+    Some(stamp)
 }
 
 impl std::fmt::Debug for AgentTasks {
@@ -855,6 +902,7 @@ impl AgentTasks {
     pub fn refresh(&mut self) -> Result<(), String> {
         let board = self.store()?.board()?;
         self.board = board;
+        self.files_read = self.store.as_ref().and_then(|store| stamp_the_files(store.path()));
         if let Some(open) = self.detail.task.as_ref().map(|task| task.id) {
             self.open_detail(open)?;
         }
@@ -1042,6 +1090,107 @@ impl AgentTasks {
             "folder": folder.display().to_string(),
             "command": launch.line(),
         })))
+    }
+
+    /// Start the board's supervisor: one agent that works the tickets in QA Failed and New one at a time.
+    ///
+    /// `task-2253`: *"We are missing a chat with supervisor button on agent tasks. when I click that, a modal should
+    /// open that has the terminal window, along with a message input and send button."* The board being replaced
+    /// has a supervisor that drains its sprint, and this one did not exist: the design left it out as "a second
+    /// protocol". It is the agent the board's endpoint names, started in the board's project folder exactly the way
+    /// a ticket's agent is ([`Self::spawn`]), and told the board's commands by [`agent::supervisor_handoff`].
+    pub fn start_the_supervisor(&mut self) -> Result<Answer, String> {
+        if self.supervisor_is_running() {
+            return Ok(Answer::said("the supervisor is already running"));
+        }
+        let (agent, endpoint) = self.default_assignee();
+        if !agent.is_an_agent() {
+            return Err(
+                "the board's agent is a person, so there is no supervisor to start: choose an AI endpoint in Settings -> Agent-Tasks"
+                    .to_owned(),
+            );
+        }
+        let folder = self
+            .configuration
+            .project
+            .clone()
+            .or_else(|| self.project.clone())
+            .ok_or("there is no project folder to start the supervisor in: open a folder, or set the board's project in Settings -> Agent-Tasks")?;
+        let chosen = self.endpoint_for(agent, endpoint.as_deref());
+        let plan = agent::Plan {
+            agent,
+            session: new_session_id(),
+            model: chosen
+                .as_ref()
+                .map(|one| one.model.trim().to_owned())
+                .filter(|model| !model.is_empty()),
+            effort: None,
+            resuming: false,
+            command: self.configuration.command_for(agent),
+            program: chosen
+                .map(|one| one.command.trim().to_owned())
+                .filter(|program| !program.is_empty()),
+        };
+        let launch = agent::launch(&plan)?;
+        self.terminals.retain(|terminal| terminal.task_id != SUPERVISOR);
+        self.spawn(SUPERVISOR, &plan.session, &launch, &folder, agent::supervisor_handoff(agent))?;
+        self.message = format!("the supervisor is {} in {}", agent.name(), folder.display());
+        Ok(Answer::said(self.message.clone()).with(json!({
+            "agent": agent.name(),
+            "session": plan.session,
+            "folder": folder.display().to_string(),
+            "command": launch.line(),
+        })))
+    }
+
+    /// Whether the supervisor's agent is running.
+    pub fn supervisor_is_running(&self) -> bool {
+        self.terminal_for(SUPERVISOR).is_some_and(|terminal| terminal.session.is_running())
+    }
+
+    /// Type a line into the supervisor, which is what the modal's `Send` does. Queued behind its prompt when it
+    /// has only just started, the way a ticket's handoff is.
+    pub fn send_to_the_supervisor(&mut self, line: &str) -> Result<Answer, String> {
+        let line = line.trim();
+        if line.is_empty() {
+            return Err("there is nothing to send".to_owned());
+        }
+        let terminal = self
+            .terminals
+            .iter_mut()
+            .find(|terminal| terminal.task_id == SUPERVISOR && terminal.session.is_running())
+            .ok_or("the supervisor is not running: start it first")?;
+        let queued = terminal.queue(line);
+        Ok(Answer::said(match queued {
+            true => "sent; the supervisor will read it once its prompt is ready",
+            false => "sent to the supervisor",
+        })
+        .with(json!({ "queued": queued })))
+    }
+
+    /// Close the supervisor's terminal, which ends its agent. The tickets it started keep their own agents.
+    pub fn stop_the_supervisor(&mut self) -> Answer {
+        let had = self.terminals.iter().any(|terminal| terminal.task_id == SUPERVISOR);
+        self.terminals.retain(|terminal| terminal.task_id != SUPERVISOR);
+        Answer::said(match had {
+            true => "the supervisor was stopped",
+            false => "the supervisor was not running",
+        })
+    }
+
+    /// What the supervisor has written, the last `lines` of it, for the command line.
+    pub fn supervisor_screen(&self, lines: usize) -> Option<String> {
+        let terminal = self.terminal_for(SUPERVISOR)?;
+        let text = terminal.session.written_text(Some(lines));
+        Some(text)
+    }
+
+    /// The modal's `Send`: what is in its box goes to the supervisor and the box is emptied.
+    pub fn send_the_supervisor_draft(&mut self) -> Result<String, String> {
+        let draft = self.supervisor_draft.clone();
+        let answer = self.send_to_the_supervisor(&draft)?;
+        self.supervisor_draft.clear();
+        Ok(answer.message)
     }
 
     /// Bring back a session that has been retired, without changing which lane the ticket is in.
@@ -1936,7 +2085,39 @@ impl AgentTasks {
         for terminal in &mut self.terminals {
             moved |= terminal.pump(&now);
         }
-        moved
+        moved | self.notice_another_window()
+    }
+
+    /// Read the board again when another window has written it.
+    ///
+    /// `task-2253`: *"when I add a new task, it's not showing up on the board."* Every window on a machine opens
+    /// the same `board.rdb`, and a window read the board only when it changed something itself. Measured with
+    /// two windows on one settings folder (`_agent_output/task-2253-board/two-windows.ps1`): a ticket made in
+    /// one window was in the file and on that window's board, and the other window's board went on without it
+    /// until something was changed there. So the board's files are looked at once every [`FILES_EVERY`], which is
+    /// one listing of the plugin's folder, and the board is read again when they differ from what they were the
+    /// last time it was read. True when it was read again, so the window draws it.
+    fn notice_another_window(&mut self) -> bool {
+        let Some(path) = self.store.as_ref().map(|store| store.path().to_path_buf()) else {
+            return false;
+        };
+        let now = std::time::Instant::now();
+        if self.files_asked.is_some_and(|asked| now.duration_since(asked) < FILES_EVERY) {
+            return false;
+        }
+        self.files_asked = Some(now);
+        let stamp = stamp_the_files(&path);
+        if stamp.is_none() || stamp == self.files_read {
+            return false;
+        }
+        match self.refresh() {
+            Ok(()) => true,
+            Err(problem) => {
+                self.message = problem;
+                self.files_read = stamp;
+                true
+            }
+        }
     }
 
     /// How the terminals ask the window to draw again. Set once, when the provider is opened.
@@ -2286,6 +2467,14 @@ impl UiProvider for AgentTasks {
         // the window would paint into on some later frame. It is filled in again below when a modal really
         // is drawn.
         self.modal_canvas = None;
+        // The supervisor's modal, when the ticket modal is not in front of it: one modal at a time.
+        if self.supervisor_open && !(self.modal_open && self.detail.task.is_some()) {
+            let outcome = crate::components::agent_tasks::supervisor_modal::show(self, ctx, look);
+            if outcome.closed {
+                self.supervisor_open = false;
+            }
+            return (outcome.requests, outcome.closed);
+        }
         if !self.modal_open || self.detail.task.is_none() {
             return (Vec::new(), false);
         }

@@ -136,9 +136,130 @@ fn a_console_runs_the_statement_under_the_caret() {
     explorer.execute(id).expect("sent");
     settle(&mut explorer);
     let result = value(&mut explorer, "result", &[]);
-    let rows = &result["result"]["rows"];
-    assert_eq!(rows[0][0], serde_json::json!("Jason"), "the second statement ran, not the first");
-    assert_eq!(result["result"]["count"], serde_json::json!(2));
+    // A `SELECT` of one table answers in that table's grid, which puts the key in front of the columns named.
+    let grid = &result["grid"];
+    assert_eq!(grid["rows"]["columns"][1]["name"], serde_json::json!("name"));
+    let rows = &grid["rows"]["rows"];
+    assert_eq!(rows[0][1], serde_json::json!("Jason"), "the second statement ran, not the first");
+    assert_eq!(grid["rows"]["count"], serde_json::json!(2));
+}
+
+/// A console on `test` holding `text`, run, with every answer taken.
+fn run_in_a_console(explorer: &mut DatabaseExplorer, text: &str) -> u64 {
+    let page = value(explorer, "console", &["test"]);
+    let id = page["page"].as_u64().expect("a page");
+    if let Some(Page { sheet: Sheet::Console(console), .. }) =
+        explorer.pages.iter_mut().find(|page| page.id == id)
+    {
+        console.text = text.to_owned();
+        console.caret = text.len();
+    }
+    explorer.execute(id).expect("sent");
+    settle(explorer);
+    id
+}
+
+#[test]
+fn a_console_select_of_one_table_is_edited_and_saved_like_the_table() {
+    // `task-2253`: "That should be the same result format as when I double click on a table, so i can edit,
+    // sort, save, etc."
+    let (mut explorer, file) = opened("console-grid");
+    run(&mut explorer, "read-only", &["test", "off"]);
+    let id = run_in_a_console(
+        &mut explorer,
+        "select name, note from member where id > 0 order by id desc",
+    );
+    let page = value(&mut explorer, "result", &[]);
+    let grid = &page["grid"];
+    assert_eq!(page["kind"], serde_json::json!("console"));
+    assert_eq!(grid["table"], serde_json::json!("member"));
+    assert_eq!(grid["reads"], serde_json::json!("columns"));
+    assert_eq!(grid["editable"], serde_json::json!(true));
+    assert_eq!(grid["where"], serde_json::json!("id > 0"), "the statement's WHERE is the grid's");
+    assert_eq!(grid["order_by"], serde_json::json!("id desc"), "and so is its ORDER BY");
+    let names: Vec<&str> = grid["rows"]["columns"]
+        .as_array()
+        .expect("columns")
+        .iter()
+        .filter_map(|column| column["name"].as_str())
+        .collect();
+    assert_eq!(names, ["id", "name", "note"], "the key the statement left out is read with it");
+    assert_eq!(grid["rows"]["rows"][0][1], serde_json::json!("Ada"));
+
+    // The same commands a table's page takes: sort, set and submit.
+    run(&mut explorer, "sort", &["name asc"]);
+    settle(&mut explorer);
+    let grid = &value(&mut explorer, "result", &[])["grid"];
+    assert_eq!(grid["rows"]["rows"][0][1], serde_json::json!("Ada"));
+    assert_eq!(grid["rows"]["rows"][1][1], serde_json::json!("Jason"));
+    run(&mut explorer, "set", &["2", "name", "Grace"]);
+    let pending = value(&mut explorer, "pending", &[]);
+    let sql = pending[0]["sql"].as_str().unwrap_or_default();
+    assert!(sql.starts_with("UPDATE \"member\" SET \"name\" = ?1 WHERE \"id\" = ?2"), "{sql}");
+    run(&mut explorer, "submit", &[]);
+    settle(&mut explorer);
+    let connection = rusqlite::Connection::open(&file).expect("opened");
+    let name: String = connection
+        .query_row("select name from member where id = 1", [], |row| row.get(0))
+        .expect("a row");
+    assert_eq!(name, "Grace");
+    // And the grid read its rows again afterwards, still under the console.
+    let grid = &value(&mut explorer, "result", &[])["grid"];
+    assert_eq!(grid["rows"]["rows"][1][1], serde_json::json!("Grace"));
+    assert!(explorer.grid(id).is_some());
+}
+
+#[test]
+fn a_console_statements_limit_and_offset_are_kept() {
+    let (mut explorer, _) = opened("console-limit");
+    run_in_a_console(&mut explorer, "select * from member limit 1 offset 1");
+    let grid = &value(&mut explorer, "result", &[])["grid"];
+    assert_eq!(grid["rows"]["count"], serde_json::json!(1));
+    assert_eq!(grid["rows"]["more"], serde_json::json!(false));
+    assert_eq!(grid["rows"]["rows"][0][1], serde_json::json!("Ada"));
+}
+
+#[test]
+fn a_result_that_is_not_one_tables_rows_is_a_grid_that_sorts_and_cannot_be_changed() {
+    let (mut explorer, _) = opened("console-join");
+    run_in_a_console(
+        &mut explorer,
+        "select m.name, p.\"left\" from member m, pairs p where p.\"left\" = 'a' -- one pair",
+    );
+    let grid = &value(&mut explorer, "result", &[])["grid"];
+    assert_eq!(grid["reads"], serde_json::json!("statement"));
+    assert_eq!(grid["editable"], serde_json::json!(false));
+    assert!(grid["why_not_editable"].as_str().is_some_and(|why| why.contains("statement")));
+    assert_eq!(grid["rows"]["count"], serde_json::json!(2));
+    run(&mut explorer, "sort", &["name desc"]);
+    settle(&mut explorer);
+    let grid = &value(&mut explorer, "result", &[])["grid"];
+    assert_eq!(grid["rows"]["rows"][0][0], serde_json::json!("Jason"));
+    assert_eq!(grid["rows"]["rows"][1][0], serde_json::json!("Ada"));
+    // A cell of it cannot be set, because nothing says which row of which table it is.
+    let refused = explorer.command("set", &["1".to_owned(), "name".to_owned(), "x".to_owned()]);
+    assert!(refused.is_err(), "{refused:?}");
+}
+
+#[test]
+fn a_statement_that_cannot_be_read_again_is_shown_as_it_came() {
+    let (mut explorer, _) = opened("console-pragma");
+    run_in_a_console(&mut explorer, "pragma table_info(member)");
+    let page = value(&mut explorer, "result", &[]);
+    assert!(page["grid"].is_null(), "a PRAGMA is not read again");
+    assert_eq!(page["result"]["count"], serde_json::json!(3));
+}
+
+#[test]
+fn a_select_of_a_table_that_is_not_there_says_what_the_server_says() {
+    // The table is described first; a refusal sends the statement as it was written, so the error is the
+    // server's own about the words that were typed.
+    let (mut explorer, _) = opened("console-missing");
+    run_in_a_console(&mut explorer, "select * from nothere");
+    let page = value(&mut explorer, "result", &[]);
+    assert!(page["grid"].is_null());
+    let failure = page["failure"].as_str().unwrap_or_default();
+    assert!(failure.contains("nothere"), "{failure}");
 }
 
 #[test]
@@ -427,6 +548,7 @@ fn a_grids_statement_asks_for_one_more_row_than_it_keeps() {
         running: None,
         chosen: None,
         editing: None,
+        reads: Reads::Table,
     };
     let statement = select_for(&grid, unluminous_db::Engine::Sqlite, 200, 2);
     assert_eq!(
@@ -515,6 +637,7 @@ fn a_cell_shows_what_is_pending_on_it_rather_than_what_was_read() {
         running: None,
         chosen: None,
         editing: None,
+        reads: Reads::Table,
     };
     assert_eq!(grid.cell(0, 1), (Value::typed("Jason"), false));
     let row = grid.row_of(0).expect("a row");
@@ -849,7 +972,11 @@ fn a_search_table_opens_a_console_holding_the_statement_that_searches_it() {
     );
     settle(&mut explorer);
     let rows = value(&mut explorer, "result", &[]);
-    assert_eq!(rows["result"]["rows"][0][0], serde_json::json!("release process"));
+    assert_eq!(
+        rows["grid"]["rows"]["rows"][0][0],
+        serde_json::json!("release process"),
+        "{rows:#}"
+    );
 }
 
 #[test]

@@ -308,11 +308,15 @@ fn comment_button(
     response.clicked()
 }
 
-/// The two buttons in the comment pill: `Send to terminal` with no surface, and `Post comment` on a chip.
+/// The two buttons in the comment pill: `Comment & Send to Agent` with no surface, and `Comment` on a chip.
+///
+/// `task-2253`: *"for comment, the buttons should be "Comment & Send to Agent" and "Comment". Comment and send
+/// should both add the comment, as well as send it to the terminal. Comment should just add the comment."*
+/// They are the board's `comment-send` and `comment` commands, which already did exactly that.
 fn composer_buttons() -> (rux::components::PillButton<'static>, rux::components::PillButton<'static>)
 {
     use rux::components::PillButton;
-    (PillButton::new("Post comment"), PillButton::new("Send to terminal").ghost())
+    (PillButton::new("Comment"), PillButton::new("Comment & Send to Agent").ghost())
 }
 
 /// How much of a comment section the pill that writes a comment takes, with the gap above it. The modal's
@@ -637,8 +641,8 @@ pub(crate) fn comment_section(
             Err(problem) => requests.push(Request::Message(problem)),
         }
     }
-    // The pill: carved in, `padding: 5px 5px 5px 18px`, the box, then `Send to terminal` with no surface and
-    // `Post comment` on a chip. Both are dimmed while the box is empty, because neither can do anything with no
+    // The pill: carved in, `padding: 5px 5px 5px 18px`, the box, then `Comment & Send to Agent` with no surface
+    // and `Comment` on a chip. Both are dimmed while the box is empty, because neither can do anything with no
     // words.
     let pill =
         Rect::from_min_size(Pos2::new(area.min.x, box_top), Vec2::new(area.width(), COMPOSER));

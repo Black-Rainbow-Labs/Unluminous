@@ -88,6 +88,10 @@ pub const LIST: &[(&str, &str)] = &[
     ("epic-colour", "Recolour an epic, as `#RRGGBB`. `epic-color` is the same command."),
     ("epic-delete", "Delete an epic. Its tickets keep existing with no epic."),
     ("sync", "Not implemented on this board: says so and does nothing. There is no menu entry for it."),
+    (
+        "supervisor",
+        "The board's supervisor, one agent that works QA Failed and then New a ticket at a time: `supervisor`          says whether it is running and shows its last lines, `supervisor start`, `supervisor stop`,          `supervisor send <text>` types a line into it, and `supervisor open` and `supervisor close` show and          put away the modal that holds its terminal, which is what `Chat with supervisor` opens.",
+    ),
     ("tick", "Read every terminal and run one watchdog tick. The window does this every two minutes."),
     ("watchdog", "The same as `tick`, named for what it is for."),
 ];
@@ -675,6 +679,7 @@ fn agent_commands(
     let rest = |index: usize| plugin_ui::rest(arguments, index);
     let now = clock::now();
     Some(match command {
+        "supervisor" => supervisor(tasks, argument(0), &rest(1)),
         "heartbeat" => (|| {
             let task = tasks.by_key(argument(0))?;
             let minutes = argument(1).parse::<i64>().ok();
@@ -1097,5 +1102,38 @@ mod tests {
                 "{name}'s summary is a sentence and ends with a stop: {summary:?}"
             );
         }
+    }
+}
+
+/// `supervisor`, and what follows it: `start`, `stop`, `send <text>`, `open`, `close`, or nothing for how it is.
+///
+/// @param tasks - the board
+/// @param verb - what to do, empty for the supervisor's state and its last lines
+/// @param rest - the text to send, for `send`
+fn supervisor(tasks: &mut AgentTasks, verb: &str, rest: &str) -> Result<Answer, String> {
+    match verb {
+        "start" => tasks.start_the_supervisor(),
+        "stop" => Ok(tasks.stop_the_supervisor()),
+        "send" => tasks.send_to_the_supervisor(rest),
+        "open" => {
+            tasks.supervisor_open = true;
+            Ok(Answer::said("the supervisor modal is open"))
+        }
+        "close" => {
+            tasks.supervisor_open = false;
+            Ok(Answer::said("the supervisor modal is closed"))
+        }
+        "" | "status" => {
+            let running = tasks.supervisor_is_running();
+            let screen = tasks.supervisor_screen(TAIL_LINES).unwrap_or_default();
+            Ok(Answer::said(match running {
+                true => "the supervisor is running",
+                false => "the supervisor is not running",
+            })
+            .with(json!({ "running": running, "open": tasks.supervisor_open, "screen": screen })))
+        }
+        other => Err(format!(
+            "`supervisor {other}` is not something the supervisor does: start, stop, send <text>, open or close"
+        )),
     }
 }

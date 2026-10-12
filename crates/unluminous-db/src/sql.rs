@@ -97,7 +97,7 @@ pub fn at(text: &str, caret: usize) -> Option<Statement> {
 }
 
 /// How far to skip if `index` starts something a `;` can hide inside, or `None` if it does not.
-fn skip_over(text: &str, index: usize) -> Option<usize> {
+pub(crate) fn skip_over(text: &str, index: usize) -> Option<usize> {
     let bytes = text.as_bytes();
     match bytes[index] {
         // A single-quoted literal. Two quotes in a row are one quote, which is SQL's own escape.

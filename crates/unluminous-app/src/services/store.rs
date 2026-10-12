@@ -122,6 +122,42 @@ const SESSION_FILE: &str = "session.txt";
 /// hand falls off the list after a week of ordinary work. See [`Store::open_windows`].
 pub const SESSION_LIMIT: usize = 8;
 
+/// Whether this window is one of the windows a person's session is made of. See [`joins_the_session`].
+static JOINS_THE_SESSION: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// Whether a window started this way is one a person would want back at the next start.
+///
+/// `task-2253`: *"when I restart Unluminous, it's opening every project window I've ever opened."* Two things
+/// filled the session. One was windows closed by hand, which [`Store::forget_open_window`] now takes out. The
+/// other was windows nobody opened by hand: `tools/drive-a-window.ps1`, the performance bench and every agent
+/// that drives a real window start one with `--background`, it joined the person's session, and because it was
+/// alive it also kept the session from ever ending. So a window started with `--background` stays out of it.
+///
+/// `UNLUMINOUS_SESSION` says otherwise in either direction: `off` keeps a window out, which is how
+/// `tools/drive-a-window.sh` keeps a window `open -g` started out on macOS, and `join` puts one in, which is how
+/// `_agent_output/task-2253-session/repro.ps1` stands in for a person without taking the keyboard.
+///
+/// @param background - whether the window was started with `--background`
+/// @param setting - what `UNLUMINOUS_SESSION` says, when it says anything
+pub fn joins_the_session(background: bool, setting: Option<&str>) -> bool {
+    match setting.map(str::trim) {
+        Some("off") => false,
+        Some("join") => true,
+        _ => !background,
+    }
+}
+
+/// Record whether this window joins the session, which `main` decides once before the window is built.
+pub fn set_joins_the_session(joins: bool) {
+    JOINS_THE_SESSION.store(joins, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Whether this window joins the session. True unless `main` said otherwise, so a test's window behaves as a
+/// person's does.
+pub fn this_window_joins_the_session() -> bool {
+    JOINS_THE_SESSION.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Named values read from or written to the settings file. The type lives in `unluminous-core`
 /// beside the plugin manifest reading it is shared with, so the code index reads a `plugin.conf` the
 /// way the window does; see `unluminous_core::manifest`.
@@ -171,11 +207,10 @@ impl Store {
     /// process each, so the beginning of a session is derived: it is a window opening while no other one is
     /// running.
     ///
-    /// **A line is still kept when a window closes**, and that is the trade-off, stated rather than hidden: a
-    /// project closed in the middle of a session comes back at the next start, because by the time the last
-    /// window closes the ones that closed before it are gone from any live registry and it cannot tell which
-    /// of them were deliberate. It is bounded to one session now rather than to the life of the settings
-    /// folder.
+    /// **A window closed by hand takes its line out, unless it was the only window open** (`task-2253`). That
+    /// is [`Self::forget_open_window`], and it is asked by the close button, `Close Window`, `Quit` and
+    /// `unluminous-cli quit`. A window the operating system closes, or one that crashes, keeps its line, which
+    /// is what brings a session back after a restart of the machine.
     ///
     /// A folder that is no longer there is left out, for the reason [`Self::recent_projects`] leaves
     /// one out of the menu.
@@ -258,6 +293,31 @@ impl Store {
             rows.remove(0);
         }
         self.write_session(&rows);
+    }
+
+    /// Take this window out of the session because a person closed it, unless it is the only window open.
+    ///
+    /// `task-2253`: *"When I close a project/window by hand with X button click, I don't want that project to
+    /// reopen next time I open Unluminous, unless it's the only project window."* So when another listed window
+    /// is still running, this window's line goes and the others are left as they are. When none is, this was the
+    /// last window of the session and the file becomes this one line: the windows that were closed by hand
+    /// before it have already gone, and a line left by a window that crashed is dropped with them.
+    ///
+    /// `alive` is the question [`Self::remember_open_window`] asks, for the same reason.
+    pub fn forget_open_window(&self, folder: &Path, pid: u32, alive: &dyn Fn(u32) -> bool) {
+        let folder = plain_absolute(folder);
+        let rows = self.session_rows();
+        let mine = |id: u32, path: &PathBuf| id == pid || *path == folder;
+        let others_running =
+            rows.iter().any(|(id, path)| !mine(*id, path) && *id != 0 && alive(*id));
+        match others_running {
+            true => {
+                let left: Vec<(u32, PathBuf)> =
+                    rows.into_iter().filter(|(id, path)| !mine(*id, path)).collect();
+                self.write_session(&left);
+            }
+            false => self.write_session(&[(pid, folder)]),
+        }
     }
 
     /// Write the session list out as exactly `windows`, each with the window that has it open.
@@ -513,6 +573,43 @@ mod tests {
         let windows = store.open_windows();
         assert_eq!(windows.len(), 1, "a session nobody is in is over, and the list is {windows:?}");
         assert!(windows[0].ends_with("fresh"));
+    }
+
+    /// `task-2253`: *"When I close a project/window by hand with X button click, I don't want that project to
+    /// reopen next time I open Unluminous, unless it's the only project window."*
+    #[test]
+    fn a_window_closed_by_hand_leaves_the_session_unless_it_was_the_only_one() {
+        let folder = temporary("unluminous-store-session-forget");
+        let store = Store::at(&folder);
+        let first = folder.join("first");
+        let second = folder.join("second");
+        let crashed = folder.join("crashed");
+        for project in [&first, &second, &crashed] {
+            std::fs::create_dir_all(project).expect("make a project");
+        }
+        store.write_session(&[(601, crashed.clone()), (602, first.clone()), (603, second.clone())]);
+
+        // The second is closed while the first is running, so it goes and the others stay.
+        store.forget_open_window(&second, 603, &|pid| pid == 602);
+        let windows = store.open_windows();
+        assert_eq!(windows.len(), 2, "{windows:?}");
+        assert!(!windows.iter().any(|window| window.ends_with("second")));
+
+        // The first is now the only window running, so it is what comes back, and the line a window that
+        // crashed left is dropped with the rest.
+        store.forget_open_window(&first, 602, &nothing_is_alive);
+        let windows = store.open_windows();
+        assert_eq!(windows.len(), 1, "{windows:?}");
+        assert!(windows[0].ends_with("first"));
+    }
+
+    /// A window something is driving is not part of anybody's session, and the setting can say so either way.
+    #[test]
+    fn a_window_started_in_the_background_stays_out_of_the_session() {
+        assert!(joins_the_session(false, None));
+        assert!(!joins_the_session(true, None));
+        assert!(joins_the_session(true, Some("join")));
+        assert!(!joins_the_session(false, Some("off")));
     }
 
     /// The other half of the same rule: a second window while the first is running joins its session.

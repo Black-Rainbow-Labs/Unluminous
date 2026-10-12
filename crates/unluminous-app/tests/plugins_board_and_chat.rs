@@ -1885,8 +1885,7 @@ fn the_ticket_modal_holds_every_section_the_browser_board_has() {
         "Todos",
         "Agent terminal",
         "Comments",
-        "Post comment",
-        "Send to terminal",
+        "Comment & Send to Agent",
         "Assignee",
         "Priority",
         "Epic",
@@ -1926,7 +1925,7 @@ fn the_ticket_modal_holds_every_section_the_browser_board_has() {
     did(&mut harness, "plugins run agent-tasks close");
     steady(&mut harness);
     assert_eq!(
-        harness.query_all_by_label_contains("Post comment").count(),
+        harness.query_all_by_label_contains("Comment & Send to Agent").count(),
         0,
         "the modal is gone once it is closed"
     );
@@ -1947,7 +1946,7 @@ fn enter_while_typing_in_a_ticket_does_not_close_it() {
     did(&mut harness, "plugins run agent-tasks open task-1");
     steady(&mut harness);
     assert!(
-        harness.query_all_by_label_contains("Post comment").count() > 0,
+        harness.query_all_by_label_contains("Comment & Send to Agent").count() > 0,
         "the modal is open to begin with"
     );
     for _ in 0..3 {
@@ -1955,14 +1954,14 @@ fn enter_while_typing_in_a_ticket_does_not_close_it() {
         steady(&mut harness);
     }
     assert!(
-        harness.query_all_by_label_contains("Post comment").count() > 0,
+        harness.query_all_by_label_contains("Comment & Send to Agent").count() > 0,
         "Enter is the body's, so the ticket is still open after three presses"
     );
     // And the ways out still work.
     harness.key_press(egui::Key::Escape);
     steady(&mut harness);
     assert_eq!(
-        harness.query_all_by_label_contains("Post comment").count(),
+        harness.query_all_by_label_contains("Comment & Send to Agent").count(),
         0,
         "Escape still closes it, which `modal::show` owns for every dialog"
     );
@@ -3922,4 +3921,32 @@ fn the_ticket_finished_last_is_at_the_top_of_agent_done() {
         at("task-3") < at("task-2") && at("task-2") < at("task-1"),
         "newest finished first: {said}"
     );
+}
+
+/// `task-2253`: *"We are missing a chat with supervisor button on agent tasks. when I click that, a modal should
+/// open that has the terminal window, along with a message input and send button."*
+#[test]
+fn chat_with_supervisor_opens_a_modal_with_its_terminal_a_message_box_and_send() {
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-tasks/board --show");
+    steady(&mut harness);
+    harness.get_by_label("Chat with supervisor").click();
+    steady(&mut harness);
+    for control in ["Start supervisor", "Message to the supervisor", "Send", "Close"] {
+        assert!(
+            harness.query_all_by_label_contains(control).count() > 0,
+            "the supervisor's modal has `{control}`"
+        );
+    }
+    // Nothing is running, so there is nothing to send to, and the command says so rather than pretending.
+    let state = did(&mut harness, "plugins run agent-tasks supervisor");
+    assert_eq!(state["running"], serde_json::json!(false));
+    assert_eq!(state["open"], serde_json::json!(true));
+    assert_eq!(refused(&mut harness, "plugins run agent-tasks supervisor send hello"), "failed");
+    did(&mut harness, "plugins run agent-tasks supervisor close");
+    steady(&mut harness);
+    assert_eq!(harness.query_all_by_label_contains("Start supervisor").count(), 0);
+    did(&mut harness, "plugins run agent-tasks supervisor open");
+    steady(&mut harness);
+    assert!(harness.query_all_by_label_contains("Start supervisor").count() > 0);
 }
