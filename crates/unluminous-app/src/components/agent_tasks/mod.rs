@@ -324,7 +324,9 @@ fn header_row(
                 (false, false) => (0.0, 0.0, false),
             },
             false => {
-                if full + gap + sprint_width + gap + 140.0 * scale + gap + chat + pill_width <= width {
+                if full + gap + sprint_width + gap + 140.0 * scale + gap + chat + pill_width
+                    <= width
+                {
                     (full, pill_width, false)
                 } else if marks + gap + 44.0 * scale + gap + chat + pill_width <= width {
                     (marks, pill_width, false)
@@ -344,7 +346,8 @@ fn header_row(
             true => 0.0,
             false => chat,
         };
-        let left_over = row.max.x - add_width - chat_width - gap - after_switch - sprint_width - gap;
+        let left_over =
+            row.max.x - add_width - chat_width - gap - after_switch - sprint_width - gap;
         let search_width = match listing {
             true => 0.0,
             false => left_over.min(260.0 * scale),
@@ -425,15 +428,12 @@ fn header_row(
                 Pos2::new(add_rect.min.x - chat, row.center().y - 22.0 * scale),
                 Vec2::splat(round),
             );
-            chatting = rux::components::RoundButton::mark(
-                rux::Icon::Bubble,
-                16.0,
-                "Chat with supervisor",
-            )
-            .size(rux::components::RoundSize::Send)
-            .on(supervisor_open)
-            .show(rux, chat_rect)
-            .clicked();
+            chatting =
+                rux::components::RoundButton::mark(rux::Icon::Bubble, 16.0, "Chat with supervisor")
+                    .size(rux::components::RoundSize::Send)
+                    .on(supervisor_open)
+                    .show(rux, chat_rect)
+                    .clicked();
             if show_search {
                 let well = Rect::from_min_size(
                     Pos2::new(chat_rect.min.x - gap - search_width, row.center().y - 21.0 * scale),

@@ -265,8 +265,7 @@ fn fragment_field(
         "Fragment field",
         &font,
     );
-    let text_rect =
-        Rect::from_min_max(row.min, Pos2::new(area.right() - 14.0 * scale, row.max.y));
+    let text_rect = Rect::from_min_max(row.min, Pos2::new(area.right() - 14.0 * scale, row.max.y));
     let mut edit = ui
         .new_child(egui::UiBuilder::new().max_rect(text_rect).id_salt(("database-fragment", name)));
     let response = edit.add(

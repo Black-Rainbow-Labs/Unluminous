@@ -294,6 +294,31 @@ impl UnluminousApp {
         }
     }
 
+    /// Everything a frame does that is not drawing, for a window the operating system says is not on the screen.
+    ///
+    /// `task-2253`: *"On my mac i have the latest unluminous but the agents keep reporting the window isn't
+    /// rendering ... by the last try it had not drawn a frame for 733 seconds, and every command to it timed
+    /// out without running."* eframe 0.36 runs **no UI pass at all** for a window that is minimised or occluded,
+    /// and on macOS a window behind other windows or on another Space is occluded. It calls `App::logic`
+    /// instead, and every command, every reply from a thread and every plugin's turn was taken inside the UI
+    /// pass, so a covered window answered nothing and its board never read a new ticket. Activating it uncovered
+    /// it, which is why that was the one thing that ever recovered one. Reproduced on Windows by minimising a
+    /// window, which takes the same path: `_agent_output/task-2253-hidden-window/repro.ps1`.
+    ///
+    /// So this runs the parts of a frame that answer somebody: the command line, the debug adapter, the
+    /// kernels, and the plugins, with the heartbeat asked for so it goes on being called. A command that needs a
+    /// frame drawn, such as `window screenshot`, is held and answered when the window is next drawn or when its
+    /// own deadline passes, as a held command always is.
+    pub(crate) fn keep_working_while_hidden(&mut self, ctx: &egui::Context) {
+        ctx.request_repaint_after(HEARTBEAT);
+        crate::services::wake::a_frame_was_drawn();
+        self.pump_control(ctx);
+        self.take_the_debug_replies(ctx);
+        self.hear_from_the_kernels();
+        self.let_the_plugins_catch_up(ctx);
+        self.tick_the_plugins();
+    }
+
     /// Ask to be woken again, say that a frame was drawn, and give every open plugin its turn.
     ///
     /// The heartbeat and the plugins are together because they are the same kind of thing: work that has

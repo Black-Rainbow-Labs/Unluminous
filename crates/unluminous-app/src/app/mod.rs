@@ -2494,6 +2494,13 @@ impl eframe::App for UnluminousApp {
         self.settle_the_native_views_before_the_pass(ctx, raw_input);
     }
 
+    /// Keep answering while the window is not on the screen. See [`UnluminousApp::keep_working_while_hidden`].
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if ctx.input(|input| input.viewport().visible()) == Some(false) {
+            self.keep_working_while_hidden(ctx);
+        }
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         // Nothing on macOS: the compositor there takes the surface's alpha on its own.
         #[cfg(windows)]

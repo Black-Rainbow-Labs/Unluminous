@@ -547,8 +547,7 @@ const FILES_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
 fn stamp_the_files(database: &std::path::Path) -> Option<FilesStamp> {
     let folder = database.parent()?;
     let name = database.file_name()?.to_string_lossy().into_owned();
-    let mut stamp =
-        FilesStamp { newest: std::time::SystemTime::UNIX_EPOCH, bytes: 0, count: 0 };
+    let mut stamp = FilesStamp { newest: std::time::SystemTime::UNIX_EPOCH, bytes: 0, count: 0 };
     for entry in std::fs::read_dir(folder).ok()?.flatten() {
         let file = entry.file_name().to_string_lossy().into_owned();
         if file != name && !file.starts_with(&format!("{name}-")) {

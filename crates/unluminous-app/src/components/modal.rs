@@ -305,11 +305,7 @@ fn show_framed<R>(
             }
             // Clipped to the window rather than to the area, whose clip is the window measured in the
             // layer's own points: at a zoom below one that left the top and the left of the window uncovered.
-            covering.rect_filled(
-                window,
-                CornerRadius::ZERO,
-                color::scrim(),
-            );
+            covering.rect_filled(window, CornerRadius::ZERO, color::scrim());
             let frame_at = ui.painter().add(egui::Shape::Noop);
             let (area, _) = ui.allocate_exact_size(laid_out, Sense::hover());
             if framed {

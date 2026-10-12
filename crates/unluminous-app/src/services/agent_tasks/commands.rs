@@ -934,6 +934,39 @@ fn recolour_epic(tasks: &mut AgentTasks, arguments: &[String]) -> Result<Answer,
     Ok(Answer::said(format!("{} is {colour}", epic.name)))
 }
 
+/// `supervisor`, and what follows it: `start`, `stop`, `send <text>`, `open`, `close`, or nothing for how it is.
+///
+/// @param tasks - the board
+/// @param verb - what to do, empty for the supervisor's state and its last lines
+/// @param rest - the text to send, for `send`
+fn supervisor(tasks: &mut AgentTasks, verb: &str, rest: &str) -> Result<Answer, String> {
+    match verb {
+        "start" => tasks.start_the_supervisor(),
+        "stop" => Ok(tasks.stop_the_supervisor()),
+        "send" => tasks.send_to_the_supervisor(rest),
+        "open" => {
+            tasks.supervisor_open = true;
+            Ok(Answer::said("the supervisor modal is open"))
+        }
+        "close" => {
+            tasks.supervisor_open = false;
+            Ok(Answer::said("the supervisor modal is closed"))
+        }
+        "" | "status" => {
+            let running = tasks.supervisor_is_running();
+            let screen = tasks.supervisor_screen(TAIL_LINES).unwrap_or_default();
+            Ok(Answer::said(match running {
+                true => "the supervisor is running",
+                false => "the supervisor is not running",
+            })
+            .with(json!({ "running": running, "open": tasks.supervisor_open, "screen": screen })))
+        }
+        other => Err(format!(
+            "`supervisor {other}` is not something the supervisor does: start, stop, send <text>, open or close"
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1102,38 +1135,5 @@ mod tests {
                 "{name}'s summary is a sentence and ends with a stop: {summary:?}"
             );
         }
-    }
-}
-
-/// `supervisor`, and what follows it: `start`, `stop`, `send <text>`, `open`, `close`, or nothing for how it is.
-///
-/// @param tasks - the board
-/// @param verb - what to do, empty for the supervisor's state and its last lines
-/// @param rest - the text to send, for `send`
-fn supervisor(tasks: &mut AgentTasks, verb: &str, rest: &str) -> Result<Answer, String> {
-    match verb {
-        "start" => tasks.start_the_supervisor(),
-        "stop" => Ok(tasks.stop_the_supervisor()),
-        "send" => tasks.send_to_the_supervisor(rest),
-        "open" => {
-            tasks.supervisor_open = true;
-            Ok(Answer::said("the supervisor modal is open"))
-        }
-        "close" => {
-            tasks.supervisor_open = false;
-            Ok(Answer::said("the supervisor modal is closed"))
-        }
-        "" | "status" => {
-            let running = tasks.supervisor_is_running();
-            let screen = tasks.supervisor_screen(TAIL_LINES).unwrap_or_default();
-            Ok(Answer::said(match running {
-                true => "the supervisor is running",
-                false => "the supervisor is not running",
-            })
-            .with(json!({ "running": running, "open": tasks.supervisor_open, "screen": screen })))
-        }
-        other => Err(format!(
-            "`supervisor {other}` is not something the supervisor does: start, stop, send <text>, open or close"
-        )),
     }
 }

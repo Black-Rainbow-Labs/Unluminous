@@ -49,10 +49,8 @@ pub fn show(board: &mut AgentTasks, ctx: &egui::Context, look: &Look<'_>) -> Out
         };
         outcome.closed |= modal::header(ui, area, title);
         let body = modal::body(area);
-        let terminal = Rect::from_min_max(
-            body.min,
-            Pos2::new(body.max.x, body.max.y - MESSAGE_ROW - 12.0),
-        );
+        let terminal =
+            Rect::from_min_max(body.min, Pos2::new(body.max.x, body.max.y - MESSAGE_ROW - 12.0));
         let focused = board.terminal_focused;
         match running {
             true => outcome.requests.extend(crate::components::agent_tasks::detail::terminal(
@@ -91,7 +89,12 @@ pub fn show(board: &mut AgentTasks, ctx: &egui::Context, look: &Look<'_>) -> Out
 }
 
 /// The message box and `Send`, along the bottom of the body. Enter sends too.
-fn message_row(board: &mut AgentTasks, ui: &mut egui::Ui, body: Rect, running: bool) -> Vec<Request> {
+fn message_row(
+    board: &mut AgentTasks,
+    ui: &mut egui::Ui,
+    body: Rect,
+    running: bool,
+) -> Vec<Request> {
     let mut requests = Vec::new();
     let row = Rect::from_min_max(Pos2::new(body.min.x, body.max.y - MESSAGE_ROW), body.max);
     let field = Rect::from_min_max(row.min, Pos2::new(row.max.x - SEND_WIDTH - 10.0, row.max.y));

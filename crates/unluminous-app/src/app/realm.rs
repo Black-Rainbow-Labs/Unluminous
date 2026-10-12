@@ -199,7 +199,10 @@ pub struct PageStill {
 
 impl std::fmt::Debug for PageStill {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        out.debug_struct("PageStill").field("node", &self.node).field("released", &self.released).finish()
+        out.debug_struct("PageStill")
+            .field("node", &self.node)
+            .field("released", &self.released)
+            .finish()
     }
 }
 
@@ -1049,8 +1052,11 @@ impl UnluminousApp {
             _ if !moving => return placement,
             _ => {
                 let Some(picture) = self.browser.photograph(tab) else { return placement };
-                let texture =
-                    ui.ctx().load_texture("realm-page-still", picture, egui::TextureOptions::LINEAR);
+                let texture = ui.ctx().load_texture(
+                    "realm-page-still",
+                    picture,
+                    egui::TextureOptions::LINEAR,
+                );
                 PageStill { node, texture, held: cut_away(placement.clone()), released: None }
             }
         };
