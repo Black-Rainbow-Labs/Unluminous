@@ -153,6 +153,8 @@ pub enum PageOutcome {
     SetEnabled(String, bool),
     /// The Appearance page asked for the Background grid. `task-2004`.
     OpenBackgrounds,
+    /// The AI Configuration page changed an endpoint, so the window writes the list and tells every pane.
+    EndpointsChanged,
 }
 
 /// What happened in the Settings window this frame.
@@ -195,6 +197,8 @@ pub fn show(
     state: &mut SettingsWindow,
     settings: &mut Settings,
     context: SettingsContext,
+    // The AI endpoints, which the AI Configuration page edits. The window's own, lent for the frame.
+    endpoints: &mut crate::services::ai_endpoints::Endpoints,
     // Draws a contributed page, given the page's slot and the rectangle it may be seen in. A closure because
     // only the window can reach a plugin's provider, and because the page has to be drawn **inside** the modal:
     // the modal is an `egui::Area` of its own, so anything painted into the window underneath it is covered.
@@ -206,7 +210,7 @@ pub fn show(
     }
     let (inner, should_close) =
         modal::show_unframed(ctx, "unluminous-settings", WIDTH, HEIGHT, |ui, area| {
-            contents(ui, area, state, settings, context, plugin_page)
+            contents(ui, area, state, settings, context, endpoints, plugin_page)
         });
     outcome.page = inner.page;
     if inner.closed || should_close {
@@ -252,14 +256,15 @@ fn contents(
     state: &mut SettingsWindow,
     settings: &mut Settings,
     context: SettingsContext,
+    endpoints: &mut crate::services::ai_endpoints::Endpoints,
     plugin_page: &mut dyn FnMut(&mut egui::Ui, usize, Rect),
 ) -> SettingsOutcome {
     let mut outcome = SettingsOutcome::default();
     let parts = layout(area);
     // The dialog's surface and the card of pages, in one layer under everything else.
-    kit::layer(ui, "settings-frame", area, |rux| {
+    kit::layer_reaching(ui, "settings-frame", area, modal::SHADOW_REACH, |rux| {
         let chat = rux.theme().chat;
-        rux.chrome.surface(area, RADIUS, chat.ground, chat.floating());
+        rux.chrome.surface(area, RADIUS, chat.ground, modal::shadow());
         rux.chrome.surface(
             parts.nav,
             kit::CARD_RADIUS,
@@ -298,7 +303,10 @@ fn contents(
     let was = state.scroll;
     // The bar down the right, taken hold of **before** the page is drawn so that it wins the pointer over
     // whatever the page puts underneath it, `components::scrollbar`'s own rule.
-    let grab = match scrollbar::Bar::new(room, was, state.page_height, room.height()) {
+    // The bar is measured against the same view the scroll is clamped to. It was measured against `room`,
+    // which stops short of the dialog's bottom edge, so a page scrolled to its end left the thumb short of
+    // the bottom of its track (`task-2247`).
+    let grab = match scrollbar::Bar::new(room, was, state.page_height, view) {
         Some(bar) => scrollbar::grab(ui, &bar, SCROLLBAR),
         None => scrollbar::Grab::default(),
     };
@@ -316,12 +324,12 @@ fn contents(
     let page_rect = lifted(parts.column, scroll);
     let clip = ui.clip_rect();
     ui.set_clip_rect(clip.intersect(parts.view));
-    let drawn = draw_the_page(ui, page_rect, state, settings, context);
+    let drawn = draw_the_page(ui, page_rect, state, settings, context, endpoints);
     ui.set_clip_rect(clip);
     outcome.page = drawn.0;
     let height = drawn.1;
     state.page_height = height;
-    if let Some(bar) = scrollbar::Bar::new(room, scroll, height, room.height()) {
+    if let Some(bar) = scrollbar::Bar::new(room, scroll, height, view) {
         scrollbar::paint(ui, &bar, SCROLLBAR, grab.active || (scroll - was).abs() > 0.01);
     }
     if modal::Confirm::Enter.pressed(ui) {
@@ -337,6 +345,7 @@ fn draw_the_page(
     state: &mut SettingsWindow,
     settings: &mut Settings,
     context: SettingsContext,
+    endpoints: &mut crate::services::ai_endpoints::Endpoints,
 ) -> (PageOutcome, f32) {
     let changed = |drawn: Drawn| match drawn.changed {
         true => PageOutcome::Changed,
@@ -376,6 +385,19 @@ fn draw_the_page(
             );
             let outcome = match page.changed {
                 true => PageOutcome::Changed,
+                false => PageOutcome::Nothing,
+            };
+            (outcome, page.height)
+        }
+        Page::Ai => {
+            let page = crate::components::ai_page::show(
+                ui,
+                area,
+                &mut endpoints.providers,
+                &mut endpoints.readiness,
+            );
+            let outcome = match page.changed {
+                true => PageOutcome::EndpointsChanged,
                 false => PageOutcome::Nothing,
             };
             (outcome, page.height)
@@ -588,6 +610,7 @@ fn mark_of(page: Page, plugin_page_marks: &[String]) -> Icon {
         Page::Plugins => Icon::Puzzle,
         Page::Terminal => Icon::Terminal,
         Page::Mcp => Icon::Plug,
+        Page::Ai => Icon::Spark,
         Page::Plugin(slot) => match plugin_page_marks.get(slot as usize).map(String::as_str) {
             Some("chat") => Icon::Bubble,
             Some("board") => Icon::Board,
@@ -1259,7 +1282,15 @@ mod tests {
                 state.scroll = scroll;
             }
             let output = egui.run_ui(egui::RawInput::default(), |ui| {
-                contents(ui, area, &mut state, &mut settings, context, &mut |_, _, _| {});
+                contents(
+                    ui,
+                    area,
+                    &mut state,
+                    &mut settings,
+                    context,
+                    &mut Default::default(),
+                    &mut |_, _, _| {},
+                );
             });
             shapes = output.shapes.clone();
             output.drop_without_applying_deltas();
@@ -1339,7 +1370,15 @@ mod tests {
         let egui = fonted();
         let mut once = |state: &mut SettingsWindow| {
             let output = egui.run_ui(egui::RawInput::default(), |ui| {
-                contents(ui, area, state, &mut settings, context, &mut |_, _, _| {});
+                contents(
+                    ui,
+                    area,
+                    state,
+                    &mut settings,
+                    context,
+                    &mut Default::default(),
+                    &mut |_, _, _| {},
+                );
             });
             output.drop_without_applying_deltas();
         };

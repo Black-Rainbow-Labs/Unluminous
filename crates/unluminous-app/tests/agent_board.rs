@@ -132,14 +132,13 @@ fn the_folder_the_agent_may_work_in() -> Option<PathBuf> {
     Some(folder)
 }
 
-/// Whether there is a key for the agent to log in with./// Whether there is a key for the agent to log in with.
+/// Whether there is an agent to launch./// Whether there is a key for the agent to log in with.
 fn there_is_a_key() -> bool {
-    let found = unluminous_app::services::agent_tasks::the_key().is_some();
+    // `task-2247`: the board hands the agent no key any more. Claude holds its own account, so what this needs
+    // is a `claude` that is installed.
+    let found = unluminous_app::services::login_shell::required("claude").is_ok();
     if !found {
-        eprintln!(
-            "skipped: no key in the keychain under `iliad` and no ANTHROPIC_API_KEY in the environment, so the \
-             agent has nothing to log in with"
-        );
+        eprintln!("skipped: no `claude` on this machine, so there is no agent to launch");
     }
     found
 }
@@ -187,6 +186,7 @@ impl Bench {
                 folder: Some(folder.clone()),
                 showing: None,
                 wake: None,
+                endpoints: Vec::new(),
             })
             .expect("a board opens");
         Self { folder, board, keys: Vec::new() }

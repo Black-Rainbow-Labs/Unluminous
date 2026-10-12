@@ -24,7 +24,7 @@ use super::model::Assignee;
 ///
 /// Checked the way `plugins::DEBUGGERS` is checked, and for the same reason: a ticket naming something
 /// that cannot be launched should say so plainly rather than open a terminal that sits at a shell.
-pub const AGENTS: &[&str] = &["claude", "codex"];
+pub const AGENTS: &[&str] = &["claude", "codex", "opencode"];
 
 /// The models each agent can be asked for, which is what the `Model` dropdown offers.
 ///
@@ -51,6 +51,9 @@ pub const MODELS: &[(&str, &[&str])] = &[
         ],
     ),
     ("codex", &["gpt-5.6-sol", "gpt-5.6-terra"]),
+    // OpenCode names a model as `provider/model` from its own configuration, so what is offered is what that
+    // file names on the machine this was written on. A ticket or an endpoint naming another keeps it.
+    ("opencode", &["llama-local/local", "llama-local/qwen-27b", "llama-local/qwen-35b-a3b"]),
 ];
 
 /// The models to offer for `agent`, with `holding` kept in the list wherever it is.
@@ -97,7 +100,7 @@ pub const CODEX_READY_MS: u64 = 3000;
 /// outside. Codex keeps the longer floor because it prints its banner and its model line first.
 pub fn ready_after(agent: Assignee) -> std::time::Duration {
     std::time::Duration::from_millis(match agent {
-        Assignee::Codex => CODEX_READY_MS,
+        Assignee::Codex | Assignee::OpenCode => CODEX_READY_MS,
         _ => CLAUDE_READY_MS,
     })
 }
@@ -139,6 +142,9 @@ pub struct Plan {
     /// The program and the flags in front of it, replacing Unluminous's own choice of both. Empty means the
     /// command line below. See [`command`] for what is still appended and why.
     pub command: Option<String>,
+    /// The program the ticket's AI endpoint names, which replaces the program Unluminous would start and keeps
+    /// the flags it would start it with (`task-2247`). `None` is the program of the agent's own name.
+    pub program: Option<String>,
 }
 
 /// The command line for `plan`, or a sentence when the ticket names something that cannot be launched.
@@ -146,6 +152,7 @@ pub fn launch(plan: &Plan) -> Result<Launch, String> {
     match plan.agent {
         Assignee::Claude => claude(plan),
         Assignee::Codex => codex(plan),
+        Assignee::OpenCode => opencode(plan),
         Assignee::Human => {
             Err("this ticket is assigned to a person, and a person is not launched in a terminal"
                 .to_owned())
@@ -169,6 +176,8 @@ fn command(plan: &Plan, fallback: &[&str]) -> Result<(String, Vec<String>), Stri
     else {
         let mut words = fallback.iter().map(|word| (*word).to_owned());
         let program = words.next().unwrap_or_default();
+        let program =
+            plan.program.clone().filter(|named| !named.trim().is_empty()).unwrap_or(program);
         return Ok((program, words.collect()));
     };
     let mut words = crate::services::run_configurations::split_command(written).into_iter();
@@ -243,6 +252,21 @@ fn codex(plan: &Plan) -> Result<Launch, String> {
     if let Some(effort) = &plan.effort {
         arguments.push("-c".to_owned());
         arguments.push(format!("model_reasoning_effort={}", codex_effort(effort)));
+    }
+    Ok(Launch { program, arguments })
+}
+
+/// OpenCode's own invocation, in its terminal interface.
+///
+/// `--auto` approves what its configuration has not refused, for the reason Claude is given
+/// `--dangerously-skip-permissions`: nobody is watching the terminal to answer. Its effort is a model
+/// variant rather than a level, so the ticket's effort is not passed. **Like Codex, it names its own
+/// sessions**, so a ticket's id is Unluminous's marker and [`can_resume`] is false for it.
+fn opencode(plan: &Plan) -> Result<Launch, String> {
+    let (program, mut arguments) = command(plan, &["opencode", "--auto"])?;
+    if let Some(model) = &plan.model {
+        arguments.push("--model".to_owned());
+        arguments.push(model.clone());
     }
     Ok(Launch { program, arguments })
 }
@@ -406,6 +430,7 @@ mod tests {
             effort: None,
             resuming: false,
             command: None,
+            program: None,
         }
     }
 
@@ -634,8 +659,8 @@ mod tests {
     }
 
     #[test]
-    fn the_two_agents_in_the_registry_are_the_two_that_can_be_launched() {
-        assert_eq!(AGENTS, ["claude", "codex"]);
+    fn the_agents_in_the_registry_are_the_ones_that_can_be_launched() {
+        assert_eq!(AGENTS, ["claude", "codex", "opencode"]);
         for name in AGENTS {
             let assignee =
                 Assignee::parse(name).unwrap_or_else(|| panic!("{name} is not an assignee"));

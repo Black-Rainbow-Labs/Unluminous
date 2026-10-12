@@ -1,23 +1,19 @@
 //! The Agent-Tasks page in the Settings window.
 //!
-//! Four cards from `components::settings_kit` in the Settings design's layout (`task-2246`): the board, what a
-//! new ticket gets, how an agent is launched, and where the agent connects. It scrolls inside the room the
-//! Settings window gives a page, as every page does.
+//! Three cards from `components::settings_kit` in the Settings design's layout (`task-2246`): the board, what a
+//! new ticket gets, and how an agent is launched. It scrolls inside the room the Settings window gives a page, as
+//! every page does.
+//!
+//! **Which agent a ticket goes to is an endpoint** (`task-2247`), chosen from the list in
+//! `Settings -> AI Configuration`. The card that named the Iliad gateway and held its key is gone: the agents
+//! the board launches are the command-line agents installed on this machine, and they hold their own accounts.
 //!
 //! ## A value can be copied where it is something to paste somewhere else
 //!
 //! The board's path has `Copy` and `Reveal`, because it is what a backup script or a terminal is given, and
 //! the default project has `Copy` for the same reason.
 //!
-//! ## No secret is drawn and no secret is written to a file
-//!
-//! The key's field says `set` or `not set` and never the key, because a page that showed it would be a page
-//! somebody screenshots. What is typed into it goes to the machine's own keychain through
-//! `services::agent_tasks::keychain`, and the settings file holds the **name** of that entry rather than what
-//! is in it.
-
 use crate::components::settings_kit::{self as kit, Column};
-use crate::services::agent_tasks::model::Assignee;
 use crate::services::agent_tasks::{AgentTasks, EFFORTS};
 use crate::services::plugin_ui::{Look, Request};
 
@@ -29,7 +25,7 @@ pub fn show(board: &mut AgentTasks, ui: &mut egui::Ui, _look: &Look<'_>) -> Vec<
     kit::plugin_page(ui, "agent-tasks-settings", |ui, column| cards(board, ui, column))
 }
 
-/// The page's four cards.
+/// The page's three cards.
 fn cards(board: &mut AgentTasks, ui: &mut egui::Ui, column: &mut Column) -> Vec<Request> {
     let mut requests = Vec::new();
     let configuration = board.configuration().clone();
@@ -109,19 +105,29 @@ fn cards(board: &mut AgentTasks, ui: &mut egui::Ui, column: &mut Column) -> Vec<
     });
 
     kit::card(ui, column, "What a new ticket gets", None, |card| {
-        // The agent as a track of two words: two are quicker to read than a list that has to be opened.
-        let agents = [Assignee::Claude, Assignee::Codex];
-        let names: Vec<&str> = agents.iter().map(|agent| agent.name()).collect();
-        let chosen = agents.iter().position(|agent| *agent == configuration.agent);
-        card.row(
-            "Default agent",
-            Some("Which agent a new ticket is assigned to, and which one takes a ticket assigned to a person."),
-            |row| {
-                if let Some(index) = row.segmented("Default agent", &names, chosen, 84.0, true) {
-                    changed.agent = agents[index];
-                }
-            },
+        // A list of the endpoints that run an agent, which is the same list a ticket's own assignee is chosen
+        // from. `task-2247`.
+        let mut names = board.assignee_choices();
+        names.retain(|name| name != "human");
+        let (_, now) = board.default_assignee();
+        let chosen = now
+            .or_else(|| Some(configuration.agent.name().to_owned()))
+            .and_then(|name| names.iter().position(|one| *one == name));
+        let picked = card.row(
+            "Endpoint",
+            Some(
+                "Which endpoint a new ticket is given to, and which one takes a ticket assigned to a person. The \
+                 endpoints are in Settings -> AI Configuration; the ones that run an agent on this machine are \
+                 offered here.",
+            ),
+            |row| row.select("Default endpoint", &names, chosen, 240.0),
         );
+        if let Some(index) = picked {
+            if let Ok((kind, endpoint)) = board.assignee_named(&names[index]) {
+                changed.agent = kind;
+                changed.endpoint = endpoint;
+            }
+        }
 
         // A list rather than a field, and the **same** list a ticket's own `Model` is chosen from, so the value a
         // new ticket gets and the value a ticket holds are chosen from one list. `task-28`.
@@ -182,81 +188,6 @@ fn cards(board: &mut AgentTasks, ui: &mut egui::Ui, column: &mut Column) -> Vec<
                 }
             },
         );
-    });
-
-    kit::card(ui, column, "Where the agent connects", None, |card| {
-        // **Two settings, not four.** `task-28`: what a connection is, is a gateway and a key.
-        let mut base = configuration.base_url.clone().unwrap_or_default();
-        card.row(
-            "Iliad URL",
-            Some(
-                "The gateway the agent talks to, handed to it as ANTHROPIC_BASE_URL and OPENAI_BASE_URL. Empty \
-                 means whichever endpoint the agent itself is configured for, which is api.anthropic.com for \
-                 Claude.",
-            ),
-            |row| {
-                if row.code_text("Iliad URL", &mut base, "the agent's own endpoint", 360.0) {
-                    changed.base_url = Some(base.clone()).filter(|value| !value.trim().is_empty());
-                }
-            },
-        );
-
-        // The key itself. Never drawn, and what is typed goes straight to the keychain rather than into the
-        // configuration. **Read once**, not once a frame: `keychain::is_set` runs the platform's own tool, so
-        // asking it sixty times a second spawned sixty processes a second. `AgentTasks` remembers the answer.
-        let found = board.where_the_key_is();
-        // Whether this machine has a keychain Unluminous can drive at all.
-        let has_a_keychain = cfg!(any(target_os = "macos", target_os = "linux"));
-        // **Where it came from, not just whether there is one.** A key can reach the agent from two places.
-        let key_state = match (found, has_a_keychain) {
-            (Some(source), _) => format!("set, from {source}"),
-            (None, true) => {
-                "not set: type it here, or export ANTHROPIC_API_KEY in your shell profile".to_owned()
-            }
-            (None, false) => format!(
-                "not set, and Unluminous has no keychain on {}: export ANTHROPIC_API_KEY in your shell profile",
-                std::env::consts::OS
-            ),
-        };
-        let help = match has_a_keychain {
-            true => {
-                "Typed once and never shown again. It goes to this machine's keychain under iliad, not to a file, \
-                 and Unluminous reads it at the moment an agent is launched and hands it over as \
-                 ANTHROPIC_API_KEY, OPENAI_API_KEY and ILIAD_API_KEY. Nothing needs typing here when your shell \
-                 profile already exports ANTHROPIC_API_KEY."
-            }
-            false => {
-                "There is no keychain here for Unluminous to write to, so nothing can be typed. Export \
-                 ANTHROPIC_API_KEY in your shell profile and the agent is given it."
-            }
-        };
-        let mut secret = board.key_draft.clone();
-        let (typed, save, clear) = card.row("Iliad key", Some(help), |row| {
-            // **Absent rather than dimmed** on a platform with no keychain: the field and its two buttons cannot
-            // do anything there, so what is drawn in their place is the sentence saying why.
-            if !has_a_keychain {
-                row.status(&key_state);
-                return (false, false, false);
-            }
-            let typed = row.password("Iliad key", &mut secret, &key_state, 360.0);
-            (typed, row.button("Save key"), row.ghost("Clear"))
-        });
-        if typed {
-            board.key_draft = secret;
-        }
-        if save {
-            match board.save_the_key() {
-                Ok(said) => requests.push(Request::Message(said)),
-                Err(problem) => requests.push(Request::Message(problem)),
-            }
-        }
-        if clear {
-            board.key_draft.clear();
-            match board.clear_the_key() {
-                Ok(said) => requests.push(Request::Message(said)),
-                Err(problem) => requests.push(Request::Message(problem)),
-            }
-        }
     });
 
     // Written once anything above changed, on the same terms the window's own settings are.

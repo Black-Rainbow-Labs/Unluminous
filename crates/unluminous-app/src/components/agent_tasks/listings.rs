@@ -1559,6 +1559,7 @@ mod tests {
             priority: Priority::Medium,
             status: Status::New,
             assignee: Assignee::Claude,
+            endpoint: None,
             model: None,
             effort: None,
             epic_id: None,

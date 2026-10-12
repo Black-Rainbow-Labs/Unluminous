@@ -556,6 +556,12 @@ fn read_directory(path: &Path, shows: &[String]) -> std::io::Result<Vec<Entry>> 
         if name.starts_with('.') && !shows.contains(&name) {
             continue;
         }
+        // The code index's fence, which it writes into a project that is not a git repository and removes
+        // a quarter of a second later (`atrius_index::freshness`). Listed, it flashed into the explorer and
+        // into a folder node's picture for that quarter of a second (`task-2247`).
+        if name.starts_with("atrius-index-fence-") {
+            continue;
+        }
         // A child whose metadata cannot be read at all is listed as something that is not a file, which is
         // the honest answer: something is there and Unluminous cannot say what.
         let (kind, size) = match entry.metadata() {

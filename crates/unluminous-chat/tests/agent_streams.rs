@@ -254,3 +254,36 @@ fn a_tool_answer_lands_on_the_call_that_is_still_running() {
     let answers: Vec<&str> = calls.iter().filter_map(|call| call.answer.as_deref()).collect();
     assert_eq!(answers, ["second", "first"], "newest first, which is the order they were filled");
 }
+
+/// `opencode run --format json` against a local model through llama.cpp (`task-2247`): one text part, one
+/// session, and the usage of the one step it took.
+#[test]
+fn a_recorded_opencode_turn_is_read_as_one_answer() {
+    let (replies, decoder) = replies_from("opencode-cli.jsonl", Wire::OpenCodeCli);
+    assert_eq!(replies[0], Reply::Session("ses_ed2b56f3effe51LUUe89KIhMR4".to_owned()));
+    assert_eq!(texts(&replies), "pineapple");
+    assert!(decoder.ended, "the last step finishing is the end of the turn");
+    assert!(replies.contains(&Reply::Usage { input: 35537, output: 4 }), "{replies:?}");
+    assert!(matches!(replies.last(), Some(Reply::Finished { .. })), "{replies:?}");
+}
+
+/// A tool OpenCode ran itself is one tool block holding its answer, and the turn does not end at the step
+/// that asked for it.
+#[test]
+fn a_tool_opencode_ran_is_shown_with_the_answer_it_got() {
+    let (replies, _) = replies_from("opencode-cli-tool.jsonl", Wire::OpenCodeCli);
+    let calls: Vec<&Reply> =
+        replies.iter().filter(|reply| matches!(reply, Reply::ToolCall { .. })).collect();
+    assert_eq!(calls.len(), 1, "{replies:?}");
+    let Reply::ToolCall { id, name, arguments } = calls[0] else { unreachable!() };
+    assert_eq!(name, "read");
+    assert!(arguments.contains("note.txt"), "{arguments}");
+    let answered = replies.iter().any(|reply| {
+        matches!(reply, Reply::ToolAnswer { id: answered, answer, failed: false }
+            if answered == id && answer.contains("hello from a file"))
+    });
+    assert!(answered, "{replies:?}");
+    assert_eq!(texts(&replies), "It says: `hello from a file`");
+    let finished = replies.iter().filter(|reply| matches!(reply, Reply::Finished { .. })).count();
+    assert_eq!(finished, 1, "a step that ends in tool-calls is not the end of the turn");
+}

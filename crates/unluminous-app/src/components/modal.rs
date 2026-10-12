@@ -66,6 +66,20 @@ pub const MIN_HEIGHT: f32 = 220.0;
 /// The same numbers `components::resize_edges` uses for the window, because they answer the same
 /// question: a one point target cannot be hit with a mouse, and a corner has to win where it
 /// overlaps an edge.
+/// How far past a dialog's edge [`shadow`] reaches: twenty four points down and a blur radius of forty
+/// eight, which is a Gaussian of twenty four that has faded to nothing three of them out.
+pub const SHADOW_REACH: f32 = 100.0;
+
+/// The shadow under a dialog that paints its own surface: one long soft dark shadow and nothing else.
+///
+/// `rux`'s `floating` elevation also carries a pale shadow up and to the left, which is neumorphism's way
+/// of saying a surface is lifted out of the ground it is made of. A dialog is not made of the window under
+/// it, it is a layer over it, so the pale half read as a light source behind the dialog (`task-2247`).
+pub fn shadow() -> rux::Elevation {
+    let dark = Color32::from_black_alpha(140); // any ground: a shadow under a layer is dark on a light ground too
+    rux::Elevation::of([rux::Shadow::outer(0.0, 24.0, 48.0, dark)])
+}
+
 const EDGE: f32 = 6.0;
 const CORNER: f32 = 16.0;
 
@@ -246,6 +260,7 @@ fn show_framed<R>(
     let laid_out = size / zoom;
     // The whole window, in the layer's own points, which is what the backdrop has to cover.
     let window = to_screen.inverse().mul_rect(ctx.content_rect());
+    let backdrop = blurred_backdrop(ctx, egui::Id::new(id));
 
     let response = egui::Modal::new(egui::Id::new(id))
         .area(
@@ -270,7 +285,25 @@ fn show_framed<R>(
         .backdrop_color(Color32::TRANSPARENT)
         .frame(egui::Frame::NONE.inner_margin(1))
         .show(ctx, |ui| {
-            ui.painter().rect_filled(window, CornerRadius::ZERO, color::scrim());
+            if backdrop.hide {
+                // The frame the window is photographed in, so the photograph has nothing of the dialog.
+                ui.set_opacity(0.0);
+            }
+            if let Some(texture) = &backdrop.texture {
+                ui.painter().with_clip_rect(window).image(
+                    texture.id(),
+                    window,
+                    Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                    Color32::WHITE, // any ground: a white tint draws the picture in its own colours
+                );
+            }
+            // Clipped to the window rather than to the area, whose clip is the window measured in the
+            // layer's own points: at a zoom below one that left the top and the left of the window uncovered.
+            ui.painter().with_clip_rect(window).rect_filled(
+                window,
+                CornerRadius::ZERO,
+                color::scrim(),
+            );
             let frame_at = ui.painter().add(egui::Shape::Noop);
             let (area, _) = ui.allocate_exact_size(laid_out, Sense::hover());
             if framed {
@@ -291,7 +324,7 @@ fn show_framed<R>(
             // keeps room round it for the shadow it paints.
             let reach = match framed {
                 true => 1.0,
-                false => 64.0,
+                false => SHADOW_REACH,
             };
             ui.set_clip_rect(area.expand(reach).intersect(ui.clip_rect()));
             // Before the contents, so the close cross the header draws sits over the strip.
@@ -308,15 +341,112 @@ fn show_framed<R>(
         crate::services::text_renderer::Crispness::ladder(zoom, true),
     );
 
-    let should_close = response.should_close();
+    // Escape closes any modal, which is the one thing every dialog on every platform agrees about. Read
+    // before `should_close`, which takes the key out of the frame.
+    let escaped = ctx.input(|input| input.key_pressed(egui::Key::Escape));
+    // A press on the title bar moves the window rather than dismissing the dialog (`task-2247`): with a
+    // modal open the bar starts the window's drag itself, and a press there that does not move is not a
+    // click outside the dialog that means "close".
+    let pointer = ctx.input(|input| input.pointer.interact_pos());
+    let on_the_title_bar = pointer.is_some_and(|at| {
+        at.y < size::TITLE_BAR
+            && ctx.layer_id_at(at).is_none_or(|layer| layer.id != egui::Id::new(id))
+    });
+    let should_close = response.should_close() && !on_the_title_bar;
     let (inner, changed) = response.inner;
     if changed {
         remember_placement(ctx, id, placement);
     }
-    // Escape closes any modal, which is the one thing every dialog on every platform agrees about.
-    let escaped = ctx.input(|input| input.key_pressed(egui::Key::Escape));
-    let close = should_close || escaped;
-    (inner, close)
+    (inner, should_close || escaped)
+}
+
+/// What a modal's backdrop draws on this frame: the blurred picture of the window once there is one, and
+/// whether this is the frame the picture is being taken in.
+struct Backdrop {
+    texture: Option<egui::TextureHandle>,
+    hide: bool,
+}
+
+/// What [`blurred_backdrop`] keeps between frames.
+#[derive(Clone)]
+struct BlurState {
+    /// The window's size and the theme's colours when it was taken. Either changing takes it again.
+    key: (u32, u32, [u8; 12]),
+    /// When the modal was last drawn, in egui's seconds, so a modal opened again is photographed again.
+    ///
+    /// A time rather than a pass number: egui can run more than one pass in a frame, and a gap of two passes
+    /// read as the modal having been closed, so a screenshot was asked for on every frame. In a test window
+    /// that is a second a frame, which is what `every_git_operation_can_be_driven_from_the_window` found.
+    drawn: f64,
+    /// When the picture was asked for, in egui's seconds; `None` once it has arrived or been given up on.
+    asked: Option<f64>,
+    texture: Option<egui::TextureHandle>,
+}
+
+/// How long a screenshot is waited for before the backdrop settles for the plain dark one. A test's window
+/// never answers one.
+const BLUR_WAIT: f64 = 1.0;
+
+/// How long a modal can go undrawn and still be the same opening of it. A test's frame is a quarter of a
+/// second, so this is several frames.
+const GAP: f64 = 1.5;
+
+/// The blurred picture of what is behind the modal with `modal` as its id (`task-2247`). See
+/// `services::backdrop_blur` for why it is a photograph.
+fn blurred_backdrop(ctx: &egui::Context, modal: egui::Id) -> Backdrop {
+    // **One for each modal**, because two can be open at once, a confirmation over the commit panel. Kept in
+    // one slot they each read the other's as a modal that had just opened, and asked for a screenshot and
+    // drew themselves invisible on every frame.
+    let slot = egui::Id::new("unluminous-modal-backdrop").with(modal);
+    let now = ctx.input(|input| input.time);
+    let window = ctx.content_rect().size();
+    let mut tones = [0u8; 12];
+    for (at, colour) in [color::editor(), color::text(), color::accent()].iter().enumerate() {
+        tones[at * 4..at * 4 + 4].copy_from_slice(&colour.to_array());
+    }
+    let key = (window.x.round() as u32, window.y.round() as u32, tones);
+    let kept: Option<BlurState> = ctx.data(|data| data.get_temp(slot));
+    let mut hide = false;
+    let mut state = match kept {
+        Some(state) if state.key == key && now - state.drawn <= GAP => state,
+        _ => {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::new(
+                crate::services::backdrop_blur::Marker,
+            )));
+            ctx.request_repaint();
+            hide = true;
+            BlurState { key, drawn: now, asked: Some(now), texture: None }
+        }
+    };
+    state.drawn = now;
+    if let Some(asked) = state.asked.filter(|_| !hide) {
+        let picture = ctx.input(|input| {
+            input.events.iter().find_map(|event| match event {
+                egui::Event::Screenshot { image, user_data, .. }
+                    if crate::services::backdrop_blur::is_ours(user_data) =>
+                {
+                    Some(image.clone())
+                }
+                _ => None,
+            })
+        });
+        if let Some(picture) = picture {
+            let blurred = crate::services::backdrop_blur::blurred(&picture);
+            state.texture = Some(ctx.load_texture(
+                "unluminous-modal-backdrop",
+                blurred,
+                egui::TextureOptions::LINEAR,
+            ));
+            state.asked = None;
+        } else if now - asked > BLUR_WAIT {
+            state.asked = None;
+        } else {
+            ctx.request_repaint();
+        }
+    }
+    let texture = state.texture.clone();
+    ctx.data_mut(|data| data.insert_temp(slot, state));
+    Backdrop { texture, hide }
 }
 
 /// Where a modal of this size sits, and how big it really comes out.

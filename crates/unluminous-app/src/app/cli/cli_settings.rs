@@ -209,10 +209,19 @@ impl UnluminousApp {
                 // And every installed plugin's own configuration, which before `task-1804` §4.2
                 // was reachable from a Settings page and from nowhere else -- so an agent could open
                 // the Agent-Chat pane and not configure it, and add a data source only by hand.
-                let plugin_values = self.plugin_settings();
+                let mut plugin_values = self.plugin_settings();
                 named.extend(plugin_values.iter().map(|(name, _)| {
                     (name.clone(), "A key in this plugin's own configuration file.".to_owned())
                 }));
+                // The AI endpoints, which `Settings -> AI Configuration` edits (`task-2247`).
+                let endpoints = crate::services::ai_endpoints::settings(&self.endpoints.providers);
+                named.extend(endpoints.iter().map(|(name, _)| {
+                    (
+                        name.clone(),
+                        "An AI endpoint, which Settings -> AI Configuration edits.".to_owned(),
+                    )
+                }));
+                plugin_values.extend(endpoints);
                 let values: Vec<String> = named
                     .iter()
                     .map(|(name, _)| match plugin_values.iter().find(|(key, _)| key == name) {
@@ -262,7 +271,12 @@ impl UnluminousApp {
                                 "accepts": measure.accepts(),
                             }),
                         ),
-                        None => match self.plugin_setting_value(&name) {
+                        None => match self.plugin_setting_value(&name).or_else(|| {
+                            crate::services::ai_endpoints::settings(&self.endpoints.providers)
+                                .into_iter()
+                                .find(|(key, _)| *key == name)
+                                .map(|(_, value)| value)
+                        }) {
                             Some(value) => ok(
                                 request,
                                 value.clone(),
@@ -392,6 +406,22 @@ impl UnluminousApp {
         let (Some(name), Some(value)) = (request.text("key"), request.text("value")) else {
             return no(request, code::USAGE, "Say a setting and a value.");
         };
+        // An AI endpoint is written to `ai-endpoints.conf` and handed to every pane at once (`task-2247`).
+        let before = crate::services::ai_endpoints::settings(&self.endpoints.providers);
+        if let Some(done) =
+            crate::services::ai_endpoints::set(&mut self.endpoints.providers, &name, &value)
+        {
+            if let Err(problem) = done {
+                return no(request, code::USAGE, problem);
+            }
+            self.the_endpoints_changed();
+            let was = before.into_iter().find(|(key, _)| *key == name).map(|(_, value)| value);
+            return ok(
+                request,
+                format!("{name} is {}", value.trim()),
+                json!({ "key": name, "value": value.trim(), "was": was }),
+            );
+        }
         // A plugin's own configuration is written into the plugin's own file rather than into the
         // window's, and the plugins are read again afterwards so the change takes effect in the pane
         // rather than only on disk. `task-1804` §4.2.

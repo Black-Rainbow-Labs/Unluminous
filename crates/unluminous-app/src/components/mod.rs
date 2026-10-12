@@ -22,6 +22,7 @@ pub mod agent_chat;
 /// The Agent-Tasks board, which is the first plugin that draws. Nothing in it decides anything: the
 /// lanes, the drag and the search are `services::agent_tasks`.
 pub mod agent_tasks;
+pub mod ai_page;
 pub mod background_dialog;
 pub mod branch_widget;
 pub mod browser_view;

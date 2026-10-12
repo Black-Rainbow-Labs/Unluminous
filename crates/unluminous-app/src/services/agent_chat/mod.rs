@@ -28,7 +28,7 @@ pub mod tools;
 use std::path::{Path, PathBuf};
 
 use unluminous_chat::model::{Message, Part, Role};
-use unluminous_chat::provider::{Provider, Wire, WIRES};
+use unluminous_chat::provider::Provider;
 use unluminous_chat::{Client, Conversation, Session, State};
 
 use crate::services::plugin_ui::{self, Answer, Context, Look, Request, UiProvider};
@@ -178,8 +178,7 @@ impl Configuration {
     /// with a list to avoid.
     pub fn of(values: &Values) -> (Self, Vec<String>) {
         let mut configuration = Self { providers: Vec::new(), ..Self::default() };
-        let (providers, mut refused) =
-            plugin_ui::read_numbered_rows(values, "provider", 32, provider_at);
+        let (providers, mut refused) = crate::services::ai_endpoints::read_rows(values);
         configuration.providers = providers;
         // A file that names no provider at all — or whose every row was refused — gets the three
         // that ship, because a pane with no endpoint is a pane that cannot do anything and a person
@@ -231,7 +230,7 @@ impl Configuration {
             }
         }
         if let Some(system) = values.text("system") {
-            configuration.system = system.to_owned();
+            configuration.system = unescape_lines(system);
         }
         if let Some(history) = values.number("history") {
             configuration.history = history.clamp(1.0, 500.0) as usize;
@@ -240,18 +239,18 @@ impl Configuration {
     }
 
     /// Write it back into the plugin's folder.
+    ///
+    /// **The endpoints are not written here any more** (`task-2247`). They are `ai-endpoints.conf` in the
+    /// settings folder, which `Settings -> AI Configuration` edits, and this file keeps the **name** of the
+    /// one the chat talks to. Rows a file written before that still holds are left where they are, because
+    /// `services::ai_endpoints::load` reads them the first time it runs and nothing reads them after.
     pub fn write(&self, folder: &Path) -> Result<(), String> {
         let mut values = Values::new();
-        values.set("providers", self.providers.len().to_string());
-        for (index, provider) in self.providers.iter().enumerate() {
-            values.set(&format!("provider.{index}.name"), provider.name.clone());
-            values.set(&format!("provider.{index}.wire"), provider.wire.name());
-            values.set(&format!("provider.{index}.command"), provider.command.clone());
-            values.set(&format!("provider.{index}.url"), provider.url.clone());
-            values.set(&format!("provider.{index}.model"), provider.model.clone());
-            values.set(&format!("provider.{index}.key-env"), provider.key_env.clone());
-            values.set(&format!("provider.{index}.key-entry"), provider.key_entry.clone());
-            values.set(&format!("provider.{index}.max-tokens"), provider.max_tokens.to_string());
+        if let Ok(text) = std::fs::read_to_string(folder.join(Self::FILE)) {
+            let (kept, _) = crate::services::ai_endpoints::read_rows(&Values::parse(&text));
+            if !kept.is_empty() {
+                crate::services::ai_endpoints::write_rows(&mut values, &kept);
+            }
         }
         values.set("chosen", self.chosen.clone());
         values.set("tools", self.tools.to_string());
@@ -259,17 +258,17 @@ impl Configuration {
         values.set("tool-limit", self.tool_limit.to_string());
         values.set("version", Self::VERSION.to_string());
         values.set("permission", self.permission.name());
-        values.set("system", self.system.replace('\n', " "));
+        // Escaped rather than flattened, because the System box is several lines now (`task-2247`).
+        values.set("system", escape_lines(&self.system));
         values.set("history", self.history.to_string());
         plugin_ui::write_values(
             folder,
             Self::FILE,
             &values,
             "# The Agent-Chat plugin's settings. `Settings -> Agent-Chat` writes this file and reads it back.\n\
-             # `wire` is `claude-cli` or `codex-cli` for a row that runs the agent installed on this machine —\n\
-             # those need no key at all — or `openai`, `anthropic` or `responses` for one that sends to a URL.\n\
-             # A row that sends names the environment variable its key comes from; the key itself is never\n\
-             # written here or anywhere else by Unluminous.",
+             # `chosen` names the endpoint the chat talks to. The endpoints themselves are\n\
+             # `ai-endpoints.conf` in the settings folder, which `Settings -> AI Configuration` edits; any\n\
+             # `provider` rows here were written before that and are read once, to fill that file.",
         )
     }
 
@@ -341,50 +340,31 @@ impl Configuration {
 /// `language.renders`, `run.project`, `debug.adapter` and `ui.chrome` all keep. A row whose wire is
 /// unknown would be an endpoint every request to which fails obscurely — and a row silently dropped
 /// is worse still, because the Settings page then shows a list somebody's file does not match.
-fn provider_at(values: &Values, index: usize) -> Result<Option<Provider>, String> {
-    let Some(name) = values.text(&format!("provider.{index}.name")) else {
-        return Ok(None);
-    };
-    let name = name.trim().to_owned();
-    if name.is_empty() {
-        return Ok(None);
+/// A value that may hold several lines, written on one: a backslash and a line break each become two
+/// characters, `\\` and `\n`. [`unescape_lines`] reads it back.
+fn escape_lines(text: &str) -> String {
+    text.replace('\\', "\\\\").replace('\r', "").replace('\n', "\\n")
+}
+
+/// The reverse of [`escape_lines`]. A file written before it held one line with no escapes in it, which
+/// reads back as itself unless it happened to hold a backslash followed by `n`.
+fn unescape_lines(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut letters = text.chars();
+    while let Some(letter) = letters.next() {
+        match (letter, letters.clone().next()) {
+            ('\\', Some('n')) => {
+                out.push('\n');
+                letters.next();
+            }
+            ('\\', Some('\\')) => {
+                out.push('\\');
+                letters.next();
+            }
+            _ => out.push(letter),
+        }
     }
-    let named = values.text(&format!("provider.{index}.wire")).unwrap_or("openai").trim();
-    let Some(wire) = Wire::from_name(named) else {
-        return Err(format!(
-            "`{name}` speaks `{named}`, and this version of Unluminous speaks {}.",
-            WIRES.join(", ")
-        ));
-    };
-    Ok(Some(Provider {
-        name,
-        wire,
-        command: values
-            .text(&format!("provider.{index}.command"))
-            .unwrap_or_default()
-            .trim()
-            .to_owned(),
-        url: values.text(&format!("provider.{index}.url")).unwrap_or_default().trim().to_owned(),
-        model: values
-            .text(&format!("provider.{index}.model"))
-            .unwrap_or_default()
-            .trim()
-            .to_owned(),
-        key_env: values
-            .text(&format!("provider.{index}.key-env"))
-            .unwrap_or_default()
-            .trim()
-            .to_owned(),
-        key_entry: values
-            .text(&format!("provider.{index}.key-entry"))
-            .unwrap_or_default()
-            .trim()
-            .to_owned(),
-        max_tokens: values
-            .number(&format!("provider.{index}.max-tokens"))
-            .unwrap_or(unluminous_chat::provider::DEFAULT_MAX_TOKENS as f32)
-            .clamp(64.0, 200_000.0) as u32,
-    }))
+    out
 }
 
 /// A picture waiting to go up with the next message.
@@ -1811,6 +1791,7 @@ impl UiProvider for AgentChat {
 
     fn open(&mut self, context: &Context) -> Result<(), String> {
         self.folder = context.folder.clone();
+        let endpoints = context.endpoints.clone();
         self.project = context.project.clone();
         // **Told at open, not only when it next changes.** The window compares before it tells, so a
         // provider opened after the comparison had already settled was never told at all and its
@@ -1821,6 +1802,11 @@ impl UiProvider for AgentChat {
             let (mut configuration, refused) = Configuration::read(folder);
             // Before anything is drawn or offered, so the endpoint list, the header's chip and the
             // Settings page all see the same list. See [`Configuration::forget_the_agents_that_are_not_installed`].
+            // **The endpoints are the window's** (`task-2247`), handed over at open; a test that gave none
+            // keeps whatever the file or the defaults said.
+            if !endpoints.is_empty() {
+                configuration.providers = endpoints.clone();
+            }
             configuration.forget_the_agents_that_are_not_installed(&Self::the_environment());
             self.configuration = configuration;
             if !refused.is_empty() {
@@ -2187,6 +2173,17 @@ impl UiProvider for AgentChat {
         self.showing = file.map(Path::to_path_buf);
     }
 
+    /// The endpoints changed in `Settings -> AI Configuration` (`task-2247`). The chat keeps the name of the
+    /// one it talks to, so a renamed or removed endpoint falls back to the first one there is.
+    fn endpoints(&mut self, endpoints: &[unluminous_chat::Provider]) {
+        if endpoints.is_empty() {
+            return;
+        }
+        self.configuration.providers = endpoints.to_vec();
+        self.configuration.forget_the_agents_that_are_not_installed(&Self::the_environment());
+        self.readiness_may_have_changed();
+    }
+
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
     }
@@ -2421,21 +2418,15 @@ mod tests {
             permission: unluminous_chat::Permission::Edit,
             ..Configuration::default()
         };
-        configuration.providers[2].url = "http://127.0.0.1:9999/v1/chat/completions".to_owned();
-        configuration.providers[2].key_env = "OPENAI_API_KEY".to_owned();
+        configuration.system = "Be terse.\nAnswer in one line.".to_owned();
         configuration.write(&folder).expect("written");
         let (read, refused) = Configuration::read(&folder);
-        assert_eq!(read, configuration);
+        assert_eq!(read, configuration, "a System prompt of several lines comes back as it was");
         assert!(refused.is_empty(), "{refused:?}");
         let text = std::fs::read_to_string(folder.join(Configuration::FILE)).expect("the file");
-        // The two rows that ship run a program, so what is written down for them is the program.
-        assert!(text.contains("provider.0.command = claude"), "{text}");
-        assert!(text.contains("provider.1.command = codex"), "{text}");
-        // And a row that does send names the variable its key comes from — never the key.
-        assert!(
-            text.contains("OPENAI_API_KEY"),
-            "the name of the variable is written down: {text}"
-        );
+        // `task-2247`: the endpoints are `ai-endpoints.conf`, so this file names the chosen one and holds none.
+        assert!(text.contains("chosen = codex"), "{text}");
+        assert!(!text.contains("provider."), "the endpoints are not written here any more: {text}");
         assert!(!text.to_lowercase().contains("secret"));
     }
 
@@ -2465,12 +2456,12 @@ mod tests {
     }
 
     #[test]
-    fn a_file_that_names_no_provider_gets_the_three_that_ship() {
+    fn a_file_that_names_no_provider_gets_the_ones_that_ship() {
         // A pane with no endpoint cannot do anything, and somebody who wanted none would have
         // switched the plugin off.
         // A `stream = false` left by an older version is read and ignored: the answer always streams.
         let (configuration, refused) = Configuration::of(&Values::parse("stream = false\n"));
-        assert_eq!(configuration.providers.len(), 3);
+        assert_eq!(configuration.providers, Provider::defaults());
         assert!(refused.is_empty());
     }
 
@@ -2847,10 +2838,6 @@ mod tests {
             permission: unluminous_chat::Permission::Full,
             ..Configuration::default()
         };
-        configuration.providers[0].wire = unluminous_chat::Wire::Anthropic;
-        configuration.providers[0].url = "https://example.test/v1/messages".to_owned();
-        configuration.providers[0].key_env = "ANTHROPIC_API_KEY".to_owned();
-        configuration.providers[0].max_tokens = 2048;
         configuration.write(&folder).expect("the settings are written");
 
         let (read, refused) = Configuration::read(&folder);
@@ -2859,17 +2846,43 @@ mod tests {
         assert!(read.tools);
         assert!(read.shell, "the second switch is remembered separately from the first");
         assert_eq!(read.tool_limit, 3);
-        assert_eq!(read.providers[0].url, "https://example.test/v1/messages");
-        assert_eq!(read.providers[0].max_tokens, 2048);
-        assert_eq!(read.providers[1].wire, unluminous_chat::Wire::CodexCli);
         assert_eq!(read.permission, unluminous_chat::Permission::Full);
 
         let written = std::fs::read_to_string(folder.join(Configuration::FILE)).expect("the file");
         assert!(!written.contains("sk-"), "a key reached the disk: {written}");
-        assert!(
-            written.contains("ANTHROPIC_API_KEY"),
-            "what is written down is the name of the place the key is: {written}"
-        );
+
+        // `task-2247`: an endpoint, and where its key is, are `ai-endpoints.conf`'s, and what that file writes
+        // down for a row that sends is the name of the variable its key is in.
+        let mut endpoints = Provider::defaults();
+        endpoints[0].wire = unluminous_chat::Wire::Anthropic;
+        endpoints[0].url = "https://example.test/v1/messages".to_owned();
+        endpoints[0].key_env = "ANTHROPIC_API_KEY".to_owned();
+        endpoints[0].max_tokens = 2048;
+        crate::services::ai_endpoints::write(&folder, &endpoints)
+            .expect("the endpoints are written");
+        let (read, _) = crate::services::ai_endpoints::load(&folder);
+        assert_eq!(read, endpoints);
+        let written = std::fs::read_to_string(folder.join(crate::services::ai_endpoints::FILE))
+            .expect("the endpoints file");
+        assert!(written.contains("ANTHROPIC_API_KEY"), "{written}");
+        assert!(!written.contains("sk-"), "a key reached the disk: {written}");
+    }
+
+    /// `task-2247`: the endpoints are the window's, handed to the pane when they change. The chat keeps the
+    /// name of the one it talks to, and a name no longer in the list falls back to the first one there is.
+    #[test]
+    fn the_endpoints_the_window_hands_over_are_the_ones_the_chat_offers() {
+        let mut chat = AgentChat::new();
+        let mut gateway = Provider::defaults()[2].clone();
+        gateway.name = "gateway".to_owned();
+        chat.configuration_mut().chosen = "gateway".to_owned();
+        UiProvider::endpoints(&mut chat, &[gateway.clone()]);
+        assert_eq!(chat.configuration().providers, vec![gateway.clone()]);
+        assert_eq!(chat.provider().map(|one| one.name.clone()).as_deref(), Some("gateway"));
+        let mut renamed = gateway;
+        renamed.name = "renamed".to_owned();
+        UiProvider::endpoints(&mut chat, &[renamed]);
+        assert_eq!(chat.provider().map(|one| one.name.clone()).as_deref(), Some("renamed"));
     }
 
     #[test]

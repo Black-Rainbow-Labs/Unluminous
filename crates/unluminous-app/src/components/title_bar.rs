@@ -270,9 +270,34 @@ pub fn show(
         if drag.double_clicked() {
             outcome.toggle_maximise = true;
         }
+        // **A modal takes every press under it, the title bar's included**, so with Settings open the
+        // window could not be moved at all (`task-2247`). The press is read from the frame's input
+        // instead, and only where the dialog itself is not: a modal near the top of a small window can
+        // reach up over the bar, and a press on the dialog is the dialog's.
+        if !drag.drag_started() && pressed_past_a_modal(ui.ctx(), drag_area) {
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
+            outcome.dragged = true;
+        }
     }
 
     outcome
+}
+
+/// Whether the primary button went down inside `area` on this frame while a modal is open, somewhere the
+/// modal's own dialog is not.
+fn pressed_past_a_modal(ctx: &egui::Context, area: Rect) -> bool {
+    if crate::components::modal::the_open_one(ctx).is_none() {
+        return false;
+    }
+    let Some(at) = ctx.input(|input| {
+        input.pointer.primary_pressed().then(|| input.pointer.press_origin()).flatten()
+    }) else {
+        return false;
+    };
+    let over_the_dialog = ctx
+        .layer_id_at(at)
+        .is_some_and(|layer| Some(layer.id) == crate::components::modal::the_open_one(ctx));
+    area.contains(at) && !over_the_dialog
 }
 
 /// The project's name in a carved pill with a folder before it, answering the rectangle it took.

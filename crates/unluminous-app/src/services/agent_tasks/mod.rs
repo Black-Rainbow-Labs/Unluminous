@@ -22,7 +22,6 @@
 mod configuration;
 mod terminal;
 
-use configuration::KEY_NAME;
 pub use configuration::{Configuration, View};
 pub use terminal::TicketTerminal;
 use terminal::{AGENT_SESSION_MARKERS, PROMPT_CEILING};
@@ -224,40 +223,6 @@ mod reaching_this_window {
         let cli = format!("{0}tools{0}unluminous-cli", std::path::MAIN_SEPARATOR);
         let folder = format!("{0}tools", std::path::MAIN_SEPARATOR);
         assert_eq!(path_with_the_cli_in_front(&cli, None), Some(folder));
-    }
-}
-
-/// The agent's authentication key: the keychain first, then what the person's shell sets.
-///
-/// `task-28` asked for "the iliad key from zshrc", and the second half of that only worked when Unluminous had
-/// been started from a terminal, because that is the only way `ANTHROPIC_API_KEY` was in this process at
-/// all. `services::login_shell::variable` reads the profile itself, so an Unluminous started from the Dock has the
-/// same key an Unluminous started from a terminal has — which is what the Settings page has claimed since it was
-/// written, and what makes the keychain the place to put a key that is *not* in the profile rather than the
-/// only place a key can come from.
-///
-/// The keychain wins when both have one, because it is the value somebody chose here.
-pub fn the_key() -> Option<String> {
-    keychain::read(KEY_NAME).or_else(|| {
-        crate::services::login_shell::variable("ANTHROPIC_API_KEY")
-            .map(|value| value.trim().to_owned())
-            .filter(|value| !value.is_empty())
-    })
-}
-
-/// Which of the two the key came from, for the Settings page to say. `None` when there is no key at all.
-///
-/// A page that said `set` without saying where from would leave somebody wondering why clearing the keychain
-/// changed nothing, which is exactly what happens when the shell's own value is the one answering.
-pub fn where_the_key_came_from() -> Option<&'static str> {
-    if keychain::read(KEY_NAME).is_some() {
-        return Some("this machine's keychain");
-    }
-    match crate::services::login_shell::variable("ANTHROPIC_API_KEY") {
-        Some(value) if !value.trim().is_empty() => {
-            Some("ANTHROPIC_API_KEY set by your shell profile")
-        }
-        _ => None,
     }
 }
 
@@ -499,16 +464,10 @@ pub struct AgentTasks {
     /// Here rather than on `Detail` because a laid out page is not `Clone` and `Detail` is. It is drawing state,
     /// which is what `todo_scroll` and `modal_open` beside it already are.
     pub markdown: crate::components::markdown_text::Cache,
-    /// What has been typed into the authentication key field, before it is saved to the keychain.
-    ///
-    /// Never written to a file and cleared as soon as it is saved, so it is in this process for as long as it
-    /// takes somebody to press the button beside it.
-    pub key_draft: String,
-    /// Whether the key has been looked for since anything changed, and where it was found.
-    ///
-    /// Asked once rather than once a frame. See [`AgentTasks::where_the_key_is`].
-    key_checked: Option<String>,
-    key_source: Option<&'static str>,
+    /// The AI endpoints from `Settings -> AI Configuration`, which a ticket is given to by name
+    /// (`task-2247`). Empty for a board nobody gave any to, which is a test's: it then offers the kinds of agent
+    /// by their own names.
+    pub endpoints: Vec<unluminous_chat::Provider>,
     /// Which card the keyboard is on: a lane and how far down it.
     ///
     /// A lane and a row rather than a ticket's id, because the board changes under it — a card moved, a ticket
@@ -1015,12 +974,12 @@ impl AgentTasks {
     /// after this Unluminous has closed.
     pub fn start(&mut self, key: &str) -> Result<Answer, String> {
         let task = self.by_key(key)?;
-        let agent = match task.assignee.is_an_agent() {
-            true => task.assignee,
-            // A ticket the JIRA sync wrote is assigned to a person. Handing it to the configured agent
+        let (agent, endpoint) = match task.assignee.is_an_agent() {
+            true => (task.assignee, task.endpoint.clone()),
+            // A ticket the JIRA sync wrote is assigned to a person. Handing it to the configured endpoint
             // is what the board being replaced does, and it is the only way such a ticket reaches an
             // agent without somebody opening the detail and changing the assignee by hand.
-            false => self.configuration.agent,
+            false => self.default_assignee(),
         };
         let folder = self.working_folder(&task)?;
         // A ticket that already has a session is already being worked, and starting it again would be a
@@ -1040,14 +999,7 @@ impl AgentTasks {
         let session = task.session_id.clone().filter(|_| resuming).unwrap_or_else(new_session_id);
         self.terminals
             .retain(|terminal| terminal.task_id != task.id || terminal.session.is_running());
-        let plan = agent::Plan {
-            agent,
-            session: session.clone(),
-            model: task.model.clone(),
-            effort: task.effort.clone(),
-            resuming,
-            command: self.configuration.command_for(agent),
-        };
+        let plan = self.plan_for(&task, agent, endpoint.as_deref(), session.clone(), resuming);
         let launch = agent::launch(&plan)?;
         let now = clock::now();
         // A fresh ticket is claimed; one being started again is already claimed and is recorded instead, which is
@@ -1121,14 +1073,13 @@ impl AgentTasks {
         self.terminals
             .retain(|terminal| terminal.task_id != task.id || terminal.session.is_running());
         let folder = self.working_folder(&task)?;
-        let launch = agent::launch(&agent::Plan {
+        let launch = agent::launch(&self.plan_for(
+            &task,
             agent,
-            session: session.clone(),
-            model: task.model.clone(),
-            effort: task.effort.clone(),
-            resuming: true,
-            command: self.configuration.command_for(agent),
-        })?;
+            task.endpoint.as_deref(),
+            session.clone(),
+            true,
+        ))?;
         // The task protocol requires a resumed run to re-read the ticket and take its newest human comments
         // as the specification, so that is what it is told. An empty handoff was a resumed agent that had
         // been told nothing and would carry on from whatever it last remembered.
@@ -1182,8 +1133,13 @@ impl AgentTasks {
         handoff: String,
     ) -> Result<(), String> {
         // Which agent this is, so the queue waits as long as that agent takes to draw its prompt.
-        let agent_kind = match launch.program.as_str() {
+        let named = std::path::Path::new(&launch.program)
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        let agent_kind = match named.as_str() {
             "codex" => Assignee::Codex,
+            "opencode" => Assignee::OpenCode,
             _ => Assignee::Claude,
         };
         // **The agent is started by its full path, not by its name.** `claude` installs itself into
@@ -1243,10 +1199,6 @@ impl AgentTasks {
                 // really have; this process's own is a different and shorter list when Unluminous was
                 // started from the Dock.
                 environment.extend(how_to_reach_this_window(&environment));
-                // Last, so the board's gateway and key beat the profile's. They are what the Settings
-                // page shows and what somebody edits there, and a page whose value was quietly
-                // overruled by a shell profile would be a page that lies.
-                environment.extend(self.configuration.environment());
                 environment
             },
             // The agent is the program that is started, so the tab is named after it in the ordinary way.
@@ -1360,16 +1312,9 @@ impl AgentTasks {
         let mut edit = TaskEdit::default();
         match &field {
             Field::Assignee(value) => {
-                edit.assignee = Some(Assignee::parse(value).ok_or_else(|| {
-                    format!(
-                        "there is no `{value}` assignee: {}",
-                        Assignee::ALL
-                            .iter()
-                            .map(|one| one.name())
-                            .collect::<Vec<&str>>()
-                            .join(", ")
-                    )
-                })?);
+                let (kind, endpoint) = self.assignee_named(value)?;
+                edit.assignee = Some(kind);
+                edit.endpoint = Some(endpoint);
             }
             Field::Priority(value) => {
                 edit.priority = Some(Priority::parse(value).ok_or_else(|| {
@@ -1546,80 +1491,142 @@ impl AgentTasks {
         }
     }
 
-    /// Where the agent's key is coming from, read once rather than once a frame.
+    /// The kind of agent and the endpoint a name on a ticket means.
     ///
-    /// Asking the keychain runs the platform's own tool and copies the secret into this process to answer, so a
-    /// Settings page that asked while it drew spawned a process every frame and could provoke a keychain prompt on
-    /// every one of them. The answer is remembered and forgotten when a key is written or taken away.
-    ///
-    /// `None` means there is no key anywhere, which is not an error: both agents already know how to log in, and
-    /// a board that would not start anything until it had been told a key would be worse than one that lets the
-    /// agent use its own credentials.
-    pub fn where_the_key_is(&mut self) -> Option<&'static str> {
-        if self.key_checked.is_none() {
-            self.key_checked = Some(KEY_NAME.to_owned());
-            self.key_source = where_the_key_came_from();
+    /// `human` is a person. Any other name is one of the endpoints that run an agent, and an endpoint that
+    /// sends to an address is refused because it cannot be launched in a terminal. With no endpoints at all,
+    /// which is a board a test opened, the kinds answer to their own names.
+    pub fn assignee_named(&self, name: &str) -> Result<(Assignee, Option<String>), String> {
+        let name = name.trim();
+        if name == Assignee::Human.name() {
+            return Ok((Assignee::Human, None));
         }
-        self.key_source
-    }
-
-    /// Whether there is a key at all, which is what a caller that only wants a yes or a no asks.
-    pub fn the_key_is_set(&mut self) -> bool {
-        self.where_the_key_is().is_some()
-    }
-
-    /// Forget what the keychain last said, because something has just changed it.
-    fn the_key_changed(&mut self) {
-        self.key_checked = None;
-    }
-
-    /// Put what was typed into the key field into the machine's keychain.
-    ///
-    /// The value is taken out of the draft rather than copied, so it is gone from this process as soon as the
-    /// keychain has it. There is no name to give it: it is [`KEY_NAME`], because `task-28` asked for the
-    /// minimum needed to connect and a name somebody has to invent is not part of that minimum.
-    pub fn save_the_key(&mut self) -> Result<String, String> {
-        let secret = self.key_draft.clone();
-        if secret.trim().is_empty() {
-            return Err("nothing was typed, so nothing was saved".to_owned());
+        if let Some(endpoint) = self.endpoints.iter().find(|endpoint| endpoint.name == name) {
+            return match Assignee::of_wire(endpoint.wire) {
+                Some(kind) => Ok((kind, Some(endpoint.name.clone()))),
+                None => Err(format!(
+                    "`{name}` sends to an address, and a ticket can only be given to an endpoint that runs an \
+                     agent on this machine: {}",
+                    self.assignee_choices().join(", ")
+                )),
+            };
         }
-        // Written first and **then** forgotten. Taking it out of the draft before the write meant a keychain that
-        // refused it left somebody with nothing typed and nothing saved.
-        keychain::write(KEY_NAME, &secret)?;
-        self.key_draft.clear();
-        self.the_key_changed();
-        Ok(format!("the key is in this machine's keychain as `{KEY_NAME}`"))
-    }
-
-    /// Take the key out of the keychain.
-    ///
-    /// This does not, and cannot, take away a key Unluminous inherited in its own environment. The page says which of
-    /// the two answered, so that clearing the keychain and seeing `set` still shown is explained rather than
-    /// puzzling.
-    pub fn clear_the_key(&mut self) -> Result<String, String> {
-        keychain::remove(KEY_NAME)?;
-        self.the_key_changed();
-        match std::env::var("ANTHROPIC_API_KEY").ok().filter(|value| !value.trim().is_empty()) {
-            Some(_) => Ok(format!(
-                "`{KEY_NAME}` is out of the keychain. Unluminous's own environment still has ANTHROPIC_API_KEY, and \
-                 the agent will use that."
+        match Assignee::parse(name) {
+            Some(kind) if self.endpoints.is_empty() => Ok((kind, None)),
+            _ => Err(format!(
+                "there is no `{name}` assignee: {}",
+                self.assignee_choices().join(", ")
             )),
-            None => Ok(format!("`{KEY_NAME}` is out of the keychain")),
         }
     }
 
-    /// Choose the next agent, which is what the chooser under the New lane's heading does.
+    /// The names a ticket can be given to: every endpoint that runs an agent, then `human`.
+    pub fn assignee_choices(&self) -> Vec<String> {
+        let mut choices: Vec<String> = match self.endpoints.is_empty() {
+            true => Assignee::ALL
+                .iter()
+                .filter(|kind| kind.is_an_agent())
+                .map(|kind| kind.name().to_owned())
+                .collect(),
+            false => crate::services::ai_endpoints::agents(&self.endpoints)
+                .map(|endpoint| endpoint.name.clone())
+                .collect(),
+        };
+        choices.push(Assignee::Human.name().to_owned());
+        choices
+    }
+
+    /// What a ticket says it is assigned to: its endpoint's name, or its kind when it names none.
+    pub fn assignee_said(task: &Task) -> String {
+        task.endpoint.clone().unwrap_or_else(|| task.assignee.name().to_owned())
+    }
+
+    /// The endpoint a ticket of this kind is launched through: the one it names, or the first one of its
+    /// kind. `None` when there is none, and the agent is then launched the way its kind always was.
+    fn endpoint_for(
+        &self,
+        kind: Assignee,
+        named: Option<&str>,
+    ) -> Option<unluminous_chat::Provider> {
+        let of_kind =
+            |endpoint: &&unluminous_chat::Provider| Assignee::of_wire(endpoint.wire) == Some(kind);
+        named
+            .and_then(|name| {
+                self.endpoints.iter().filter(of_kind).find(|endpoint| endpoint.name == name)
+            })
+            .or_else(|| self.endpoints.iter().find(of_kind))
+            .cloned()
+    }
+
+    /// The kind and the endpoint a new ticket is given to, which is the Settings page's `Endpoint`.
+    pub fn default_assignee(&self) -> (Assignee, Option<String>) {
+        if let Some(named) = self.configuration.endpoint.as_deref() {
+            if let Ok(found) = self.assignee_named(named) {
+                return found;
+            }
+        }
+        let endpoint = self.endpoint_for(self.configuration.agent, None).map(|one| one.name);
+        (self.configuration.agent, endpoint)
+    }
+
+    /// The plan a ticket is launched with: its own model and effort, and the endpoint's program and model
+    /// where the ticket names none.
+    fn plan_for(
+        &self,
+        task: &Task,
+        agent: Assignee,
+        endpoint: Option<&str>,
+        session: String,
+        resuming: bool,
+    ) -> agent::Plan {
+        let endpoint = self.endpoint_for(agent, endpoint);
+        let model = task.model.clone().or_else(|| {
+            endpoint
+                .as_ref()
+                .map(|one| one.model.trim().to_owned())
+                .filter(|model| !model.is_empty())
+        });
+        agent::Plan {
+            agent,
+            session,
+            model,
+            effort: task.effort.clone(),
+            resuming,
+            command: self.configuration.command_for(agent),
+            program: endpoint
+                .map(|one| one.command.trim().to_owned())
+                .filter(|program| !program.is_empty()),
+        }
+    }
+
+    /// Choose the next agent, which is what the chooser under the New lane's heading does.    /// Choose the next agent, which is what the chooser under the New lane's heading does.
     ///
     /// A cycle rather than a dropdown, because egui keeps one popup open at a time and there are two agents
     /// that can be launched. It writes the same `agent` the Settings page writes, so the chooser on the board
     /// and the setting in the window can never disagree.
     pub fn use_the_next_agent(&mut self) -> Result<(), String> {
-        let agents: Vec<Assignee> =
-            Assignee::ALL.into_iter().filter(|agent| agent.is_an_agent()).collect();
-        let at = agents.iter().position(|agent| *agent == self.configuration.agent).unwrap_or(0);
-        let next = agents[(at + 1) % agents.len()];
+        let mut agents = self.assignee_choices();
+        agents.retain(|name| name != Assignee::Human.name());
+        if agents.is_empty() {
+            return Err(
+                "there is no endpoint that runs an agent: Settings -> AI Configuration".to_owned()
+            );
+        }
+        let (_, now) = self.default_assignee();
+        let at = now.and_then(|name| agents.iter().position(|one| *one == name)).unwrap_or(0);
+        self.use_the_endpoint(&agents[(at + 1) % agents.len()])
+    }
+
+    /// Give new tickets to the endpoint named `name`, which is the Settings page's `Endpoint`.
+    pub fn use_the_endpoint(&mut self, name: &str) -> Result<(), String> {
+        let (kind, endpoint) = self.assignee_named(name)?;
+        if !kind.is_an_agent() {
+            return Err("a new ticket is given to an agent, so a person is not one of the choices"
+                .to_owned());
+        }
         let mut changed = self.configuration.clone();
-        changed.agent = next;
+        changed.agent = kind;
+        changed.endpoint = endpoint;
         self.change_the_configuration(changed)
     }
 
@@ -2139,6 +2146,7 @@ impl UiProvider for AgentTasks {
     fn open(&mut self, context: &Context) -> Result<(), String> {
         self.project = context.project.clone();
         self.recent_projects = context.recent_projects.clone();
+        self.endpoints = context.endpoints.clone();
         // How a terminal asks for a frame. Without one, a terminal that printed while nobody was pointing at
         // the window would wait for the pointer to move, and asking for a frame on a timer instead would keep
         // the graphics card busy while an agent sits at its prompt.
@@ -2172,6 +2180,12 @@ impl UiProvider for AgentTasks {
     /// clip. `task-1765` is why, and `tasks/agent-tasks-vello-ui-tdd.md` is the design.
     fn zoomed(&mut self, ratio: f32, above: f32) {
         self.zoom_the_listing(ratio, above);
+    }
+
+    /// The endpoints changed in `Settings -> AI Configuration`. A ticket keeps the name of the one it was
+    /// given to, so a renamed endpoint leaves it launching the first one of its kind.
+    fn endpoints(&mut self, endpoints: &[unluminous_chat::Provider]) {
+        self.endpoints = endpoints.to_vec();
     }
 
     fn draws_chrome(&self) -> bool {
@@ -2386,7 +2400,8 @@ fn card_json(task: &Task) -> serde_json::Value {
         "title": task.display_title(),
         "status": task.status.name(),
         "priority": task.priority.name(),
-        "assignee": task.assignee.name(),
+        "assignee": AgentTasks::assignee_said(task),
+        "kind": task.assignee.name(),
         "model": task.model,
         "effort": task.effort,
         "todos": format!("{}/{}", task.todo_done_count, task.todo_count),
@@ -2400,7 +2415,6 @@ fn card_json(task: &Task) -> serde_json::Value {
 
 #[cfg(test)]
 mod tests_task_28 {
-    use super::configuration::{ILIAD_URL, KEY_VARIABLES};
     use super::*;
 
     /// Two conversation ids made one after another are never the same id.
@@ -2452,102 +2466,67 @@ mod tests_task_28 {
     /// `task-28`: "Prefill my settings with the base url for Iliad."
     ///
     /// A configuration that has never been written points at Iliad, and so does one read from a settings file
-    /// that has no `base-url` line in it — which is every file written by the version before this one.
+    /// `task-2247`: the Iliad gateway and key are gone. A settings file written before keeps every other setting
+    /// it had, and once written again names no gateway at all.
     #[test]
-    fn a_configuration_nobody_has_written_points_at_iliad() {
-        assert_eq!(Configuration::default().base_url.as_deref(), Some(ILIAD_URL));
-        let folder =
-            std::env::temp_dir().join(format!("unluminous-board-iliad-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&folder);
-        std::fs::create_dir_all(&folder).expect("a folder");
-        // A file from before this change: it has the other settings and no `base-url`.
-        std::fs::write(folder.join("settings.conf"), "agent = claude\nlease = 45\n")
-            .expect("an old file");
-        assert_eq!(Configuration::read(&folder).base_url.as_deref(), Some(ILIAD_URL));
-
-        // And a file whose line is **present and empty** is one somebody cleared on purpose, which means the
-        // agent's own endpoint rather than Iliad's URL handed back again.
-        std::fs::write(folder.join("settings.conf"), "agent = claude\nbase-url =\n")
-            .expect("a cleared file");
-        assert_eq!(Configuration::read(&folder).base_url, None, "cleared means the agent's own");
-        let _ = std::fs::remove_dir_all(&folder);
-    }
-
-    /// The old `key-name` and `key-variable` lines are read without complaint and are gone once it is written
-    /// again, which is what `Configuration::read` already does with any name it does not know.
-    #[test]
-    fn a_settings_file_naming_a_key_and_a_variable_is_read_and_written_back_without_them() {
-        let folder =
-            std::env::temp_dir().join(format!("unluminous-board-oldkeys-{}", std::process::id()));
+    fn a_settings_file_naming_the_old_gateway_is_read_and_written_back_without_it() {
+        let folder = std::env::temp_dir()
+            .join(format!("unluminous-board-oldgateway-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).expect("a folder");
         std::fs::write(
             folder.join("settings.conf"),
-            "agent = codex\nkey-name = something\nkey-variable = SOMETHING_ELSE\nbase-url = https://gateway\n",
+            "agent = codex\nkey-name = something\nbase-url = https://gateway\nlease = 30\n",
         )
         .expect("a file from the version before this one");
         let read = Configuration::read(&folder);
         assert_eq!(read.agent, Assignee::Codex, "the settings it does know are still read");
-        assert_eq!(read.base_url.as_deref(), Some("https://gateway"));
+        assert_eq!(read.lease_minutes, 30);
         read.write(&folder).expect("written back");
         let text = std::fs::read_to_string(folder.join("settings.conf")).expect("the file");
-        assert!(
-            !text.contains("key-name"),
-            "the name of a keychain entry is not a setting any more: {text}"
-        );
-        assert!(!text.contains("key-variable"), "and neither is a variable name: {text}");
-        assert!(text.contains("base-url = https://gateway"), "{text}");
-        // No secret is in the file, which is the rule that matters most about it.
-        assert!(!text.contains("x-api-key"), "{text}");
+        for gone in ["base-url", "key-name", "gateway"] {
+            assert!(!text.contains(gone), "{gone} is not a setting any more: {text}");
+        }
         let _ = std::fs::remove_dir_all(&folder);
     }
 
-    /// What the agent is launched with: every name that matters, and the gateway.
+    /// `task-2247`: a ticket is given to an endpoint by name, and the endpoint decides the kind of agent, the
+    /// program and the model.
     #[test]
-    fn the_key_reaches_the_agent_under_every_name_that_matters() {
-        let configuration = Configuration::default();
-        let handed = configuration.environment_given(Some("a-key"));
-        let names: Vec<&str> = handed.iter().map(|(name, _)| name.as_str()).collect();
-        for wanted in KEY_VARIABLES {
-            assert!(names.contains(wanted), "{wanted} is set: {names:?}");
-        }
+    fn a_ticket_is_given_to_an_endpoint_and_launched_with_its_program_and_model() {
+        let mut board = AgentTasks::new();
+        let mut local = unluminous_chat::Provider::defaults()[3].clone();
+        local.name = "local-agent".to_owned();
+        local.model = "llama-local/local".to_owned();
+        board.endpoints = vec![unluminous_chat::Provider::defaults()[0].clone(), local];
+        assert_eq!(board.assignee_choices(), ["claude", "local-agent", "human"]);
         assert_eq!(
-            handed
-                .iter()
-                .find(|(name, _)| name == "ANTHROPIC_CUSTOM_HEADERS")
-                .map(|(_, value)| value.as_str()),
-            Some("x-api-key: a-key"),
-            "the header the gateway wants, which `~/.zshrc` also sets"
+            board.assignee_named("local-agent").expect("an endpoint"),
+            (Assignee::OpenCode, Some("local-agent".to_owned()))
         );
-        assert_eq!(
-            handed
-                .iter()
-                .find(|(name, _)| name == "ANTHROPIC_BASE_URL")
-                .map(|(_, value)| value.as_str()),
-            Some(ILIAD_URL)
-        );
-        assert_eq!(
-            handed
-                .iter()
-                .find(|(name, _)| name == "OPENAI_BASE_URL")
-                .map(|(_, value)| value.as_str()),
-            Some(ILIAD_URL)
-        );
+        assert_eq!(board.assignee_named("human").expect("a person"), (Assignee::Human, None));
+        let refused = board.assignee_named("codex").expect_err("not one of these endpoints");
+        assert!(refused.contains("claude, local-agent, human"), "{refused}");
 
-        // No key anywhere is not an error: both agents know how to log in, so nothing about a key is set and
-        // the gateway is still named.
-        let without = configuration.environment_given(None);
+        let mut task = Task::for_tests("task-1");
+        task.assignee = Assignee::OpenCode;
+        task.endpoint = Some("local-agent".to_owned());
+        let plan =
+            board.plan_for(&task, Assignee::OpenCode, Some("local-agent"), "s".to_owned(), false);
+        let launched = agent::launch(&plan).expect("launched");
+        assert_eq!(launched.program, "opencode");
         assert!(
-            without.iter().all(|(name, _)| name.ends_with("BASE_URL")),
-            "with no key, only the gateway is handed over: {without:?}"
+            launched.arguments.windows(2).any(|pair| pair == ["--model", "llama-local/local"]),
+            "{launched:?}"
         );
-
-        // And with no gateway either, nothing at all is handed over and the agent uses its own endpoint.
-        let bare = Configuration { base_url: None, ..Configuration::default() };
-        assert!(
-            bare.environment_given(None).is_empty(),
-            "the agent's own configuration is left alone"
-        );
+        // A model the ticket names wins over the endpoint's.
+        task.model = Some("llama-local/qwen-27b".to_owned());
+        let plan =
+            board.plan_for(&task, Assignee::OpenCode, Some("local-agent"), "s".to_owned(), false);
+        assert!(agent::launch(&plan)
+            .expect("launched")
+            .arguments
+            .contains(&"llama-local/qwen-27b".to_owned()));
     }
 
     /// `task-28`: the `Project` field was free text. The dropdown offers this window's folder and the recent
@@ -2563,6 +2542,7 @@ mod tests_task_28 {
                 recent_projects: vec![PathBuf::from("/older"), PathBuf::from("/here/now")],
                 folder: None,
                 wake: None,
+                endpoints: Vec::new(),
             })
             .expect("a board with no settings folder opens in memory");
 

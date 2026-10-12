@@ -577,7 +577,12 @@ impl UnluminousApp {
             // scales a side down whenever the panels ask for more room than there is, and that happens with
             // the editing area showing too — which is what `task-1907` reports and what the gate on
             // `editor_visible` missed.
-            match !self.editor_visible || self.the_sizes_are_being_shared(panel) {
+            // A column with another column inside it on its own side moves the boundary with that one, which
+            // only the sharing path does (`task-2247`).
+            let shared = !self.editor_visible
+                || self.the_sizes_are_being_shared(panel)
+                || self.has_a_column_inside_it(panel);
+            match shared {
                 true => self.move_a_divider_by_sharing(panel, drag.delta * sign),
                 false => {
                     let room = match self.panes.dock.side_of(panel).is_a_column() {
@@ -593,6 +598,23 @@ impl UnluminousApp {
             self.panes.reset_size_of(panel);
             self.unsaved_settings = true;
         }
+    }
+
+    /// Whether `panel` is a column with another showing column between it and the middle, on its own side.
+    fn has_a_column_inside_it(&self, panel: dock::Panel) -> bool {
+        let side = self.panes.dock.side_of(panel);
+        if !side.is_a_column() {
+            return false;
+        }
+        let at = self.panes.dock.order_of(panel);
+        let showing = self.panels_showing();
+        self.panes.dock.panels_on(side).into_iter().filter(|one| showing[one.index()]).any(|one| {
+            let order = self.panes.dock.order_of(one);
+            match side {
+                dock::Side::Left => order > at,
+                _ => order < at,
+            }
+        })
     }
 
     /// Whether the panels on `panel`'s axis are being drawn at the sizes they asked for.
@@ -797,6 +819,83 @@ impl UnluminousApp {
             // width, so a column's only source of room is the side facing it.
             (true, false) => 0.0,
         };
+        // **A column's divider is the boundary with the panels between it and the middle, first** (`task-2247`).
+        // With the explorer and the canvas on the left and the Database on the right, the Database's divider is
+        // its left edge, and the panel on the far side of that edge is the canvas only when the canvas is on the
+        // Database's own side. Asked only of the facing side and the middle, dragging the Database left stopped
+        // as soon as the explorer reached its smallest width, while the canvas beside it never gave a point.
+        // Order is screen order along x, so the panels inner to this one are the later ones on the left and the
+        // earlier ones on the right, and the nearest is asked first.
+        let inner: Vec<dock::Panel> = match (column, side) {
+            (true, dock::Side::Left) => {
+                let at = self.panes.dock.order_of(panel);
+                let mut found: Vec<dock::Panel> = mine
+                    .iter()
+                    .copied()
+                    .filter(|one| self.panes.dock.order_of(*one) > at)
+                    .collect();
+                found.sort_by_key(|one| self.panes.dock.order_of(*one));
+                found
+            }
+            (true, dock::Side::Right) => {
+                let at = self.panes.dock.order_of(panel);
+                let mut found: Vec<dock::Panel> = mine
+                    .iter()
+                    .copied()
+                    .filter(|one| self.panes.dock.order_of(*one) < at)
+                    .collect();
+                found.sort_by_key(|one| std::cmp::Reverse(self.panes.dock.order_of(*one)));
+                found
+            }
+            _ => Vec::new(),
+        };
+        if !inner.is_empty() {
+            let own = (measured(&self.panes, panel) - smallest(&self.panes, panel)).max(0.0);
+            let inner_spare: f32 = inner
+                .iter()
+                .map(|one| (measured(&self.panes, *one) - smallest(&self.panes, *one)).max(0.0))
+                .sum();
+            let taken = by.clamp(-own, inner_spare);
+            // What the neighbours could not give comes from the middle and the far side, as before.
+            let rest = match by > inner_spare {
+                true => (by - inner_spare).min(givable + from_the_middle).max(0.0),
+                false => 0.0,
+            };
+            if taken + rest == 0.0 {
+                return;
+            }
+            for (one, value) in &settled {
+                set(&mut self.panes, *one, *value);
+            }
+            let was = measured(&self.panes, panel);
+            set(&mut self.panes, panel, was + taken + rest);
+            match taken < 0.0 {
+                // Narrower: the room goes to the nearest neighbour, which is what moving a boundary means.
+                true => {
+                    let next = inner[0];
+                    let now = measured(&self.panes, next);
+                    set(&mut self.panes, next, now - taken);
+                }
+                // Wider: the nearest neighbour gives what it has, then the next.
+                false => {
+                    let mut owed = taken;
+                    for one in &inner {
+                        let now = measured(&self.panes, *one);
+                        let give = owed.min((now - smallest(&self.panes, *one)).max(0.0));
+                        set(&mut self.panes, *one, now - give);
+                        owed -= give;
+                    }
+                }
+            }
+            if rest > 0.0 && givable > 0.0 {
+                for one in facing {
+                    let spare = (measured(&self.panes, one) - smallest(&self.panes, one)).max(0.0);
+                    let now = measured(&self.panes, one);
+                    set(&mut self.panes, one, now - rest * (spare / givable));
+                }
+            }
+            return;
+        }
         let by = by.clamp(-sparable, givable + from_the_middle);
         if by == 0.0 {
             return;

@@ -1206,7 +1206,7 @@ The names a word could become, best first, with what each row is and where it ca
 - `--choose <name>` — Apply this row to the word being typed, as Enter would. It is the completion's **name**, never a row number: `--choose 0` is refused with the names there are.
 - `--after <text>` — Ask as if this text were typed first: `--after .` lists the members of the value before the caret.
 - `--wait <milliseconds>` — How long to wait for the language server's rows. 300 by default; 0 answers from the project's structure alone.
-- `--explain` — Say why each row is where it is: every fact the ranking read about it (how the word matched, which sources offered it, its kind against the place, how near its last use is, the server's own order) and the score the ranking gave it.
+- `--explain` — Say why each row is where it is: every fact the ranking read about it (how the word matched, which sources offered it, its kind against the place, how near its last use is, the server's own order) and the score the ranking gave it. The rows written nearest the caret are added after the first --limit, up to --limit more, each with its rank.
 
 ```sh
 unluminous-cli editor complete --json
@@ -3634,7 +3634,7 @@ Open a modal, and put something in its box in the same breath.
 
 - `--query <text>` — Type this into the modal's box as it opens.
 - `--path <path>` — The folder a new file goes in, or the file being renamed. Needed by new-file and rename.
-- `--page <name>` — Which page the Settings modal shows: appearance, editor, plugins, terminal or mcp.
+- `--page <name>` — Which page the Settings modal shows: appearance, editor, plugins, terminal, mcp or ai (AI Configuration).
 
 ```sh
 unluminous-cli modal open go-to-file --query mdrs

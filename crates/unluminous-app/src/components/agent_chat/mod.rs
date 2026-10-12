@@ -293,7 +293,7 @@ fn settings(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
                     dialog,
                     rux.z(28.0),
                     rux::Fill::gradient(chat.card, dialog),
-                    chat.floating(),
+                    crate::components::modal::shadow(),
                 );
                 let inner = dialog.shrink2(Vec2::new(rux.z(20.0), 0.0));
                 let mut top = dialog.top() + rux.z(20.0);

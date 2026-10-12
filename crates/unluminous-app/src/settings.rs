@@ -506,6 +506,9 @@ pub enum Page {
     Terminal,
     /// The Model Context Protocol server, which is how an AI agent drives Unluminous.
     Mcp,
+    /// What can answer: the one list of AI endpoints that Agent Chat and Agent Tasks pick from
+    /// (`task-2247`). See `services::ai_endpoints`.
+    Ai,
     /// A page a plugin contributed, by its place in `plugins::Surfaces::pages`.
     ///
     /// A slot rather than a name, so `Page` stays `Copy` — it is passed by value through the dialog and
@@ -517,12 +520,19 @@ pub enum Page {
 }
 
 impl Page {
-    /// Unluminous's own six. A plugin's page is not in it, because there is no compile time list of them;
+    /// Unluminous's own seven. A plugin's page is not in it, because there is no compile time list of them;
     /// [`Page::all`] is the one that includes them.
-    pub const ALL: [Page; 6] =
-        [Page::Appearance, Page::Theme, Page::Editor, Page::Plugins, Page::Terminal, Page::Mcp];
+    pub const ALL: [Page; 7] = [
+        Page::Appearance,
+        Page::Theme,
+        Page::Editor,
+        Page::Plugins,
+        Page::Terminal,
+        Page::Mcp,
+        Page::Ai,
+    ];
 
-    /// Unluminous's own six, then one per plugin that contributed a page, in the order the plugins are
+    /// Unluminous's own seven, then one per plugin that contributed a page, in the order the plugins are
     /// listed.
     pub fn all(contributed: usize) -> Vec<Page> {
         let mut found = Page::ALL.to_vec();
@@ -547,6 +557,7 @@ impl Page {
             Page::Plugins => "Plugins",
             Page::Terminal => "Terminal",
             Page::Mcp => "MCP",
+            Page::Ai => "AI Configuration",
             // A contributed page's real name is `settings.page` in its manifest, which this function has
             // no way to reach. `settings_dialog::title_of` is what draws it, asking the surfaces; this is
             // the answer for a slot with no plugin in it, which nothing draws.
@@ -568,6 +579,8 @@ impl Page {
             // The same heading as the terminal: both are a way of reaching something outside the
             // editor from inside it.
             Page::Mcp => "Tools",
+            // Under Tools beside the MCP server, because both are about Unluminous and a model.
+            Page::Ai => "Tools",
             // A contributed page is listed under `Plugins`, so a person looking for what a plugin added
             // finds it under the heading that says where it came from.
             Page::Plugin(_) => "Plugins",
@@ -583,6 +596,7 @@ impl Page {
             Page::Plugins => &["Marketplace", "Installed", "Colour Scheme", "Syntax"],
             Page::Terminal => &["Font", "Shell"],
             Page::Mcp => &["Install", "Server", "Configuration"],
+            Page::Ai => &["Endpoints", "Keys", "OpenCode", "Claude", "Codex"],
             // A contributed page's headings are its own, and a manifest does not name them: the plugin
             // draws its page. So it has none here, which means the search box finds it by its name.
             Page::Plugin(_) => &[],

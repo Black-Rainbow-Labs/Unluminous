@@ -68,6 +68,8 @@ pub struct PluginUi {
     recent_projects: Vec<PathBuf>,
     /// How a provider asks the window to draw again from another thread.
     wake: Option<std::sync::Arc<dyn Fn() + Send + Sync>>,
+    /// The AI endpoints, told to a provider when it opens. See `plugin_ui::Context::endpoints`.
+    endpoints: Vec<unluminous_chat::Provider>,
 }
 
 impl std::fmt::Debug for PluginUi {
@@ -128,6 +130,11 @@ impl PluginUi {
     /// change. See `plugin_ui::Context::showing`.
     pub fn set_showing(&mut self, showing: Option<PathBuf>) {
         self.showing_file = showing;
+    }
+
+    /// The AI endpoints, so a provider opened later starts with them. See `plugin_ui::Context::endpoints`.
+    pub fn set_endpoints(&mut self, endpoints: Vec<unluminous_chat::Provider>) {
+        self.endpoints = endpoints;
     }
 
     /// The recent projects, for a provider that offers them as choices. See `plugin_ui::Context`.
@@ -274,6 +281,7 @@ impl PluginUi {
             recent_projects: self.recent_projects.clone(),
             folder: self.settings_folder.as_ref().map(|folder| folder.join(plugin)),
             wake: self.wake.clone(),
+            endpoints: self.endpoints.clone(),
         }
     }
 
@@ -873,6 +881,7 @@ impl UnluminousApp {
             self.act_on_a_plugin_request(&plugin, request, ctx);
         }
         self.tell_the_plugins_what_is_showing();
+        self.tell_the_plugins_the_endpoints();
         // The canvas, on exactly the same terms and for the same reason - `task-1904`. A terminal
         // node that printed while its node was scrolled off the canvas, or while the canvas was put
         // away, must not lose what it printed, and a pipe between two of them has to be read whether
@@ -913,6 +922,40 @@ impl UnluminousApp {
                 provider.showing(project.as_deref(), showing.as_deref());
             }
         }
+    }
+
+    /// Tell every open provider, and every chat node on the canvas, what the AI endpoints are now.
+    ///
+    /// **Only when the list has changed**, which is one integer comparison a frame. `task-2247`.
+    pub(crate) fn tell_the_plugins_the_endpoints(&mut self) {
+        if self.told_the_endpoints == self.endpoints.revision {
+            return;
+        }
+        self.told_the_endpoints = self.endpoints.revision;
+        let providers = self.endpoints.providers.clone();
+        self.plugin_ui.set_endpoints(providers.clone());
+        for plugin in self.plugin_ui.surfaces().plugins() {
+            if !self.plugin_ui.is_open(&plugin) {
+                continue;
+            }
+            if let Some(provider) = self.plugin_ui.provider(&plugin) {
+                provider.endpoints(&providers);
+            }
+        }
+        self.realm.live.tell_the_chats_the_endpoints(&providers);
+    }
+
+    /// Write the AI endpoints to the settings folder and tell everything that uses them.
+    pub(crate) fn the_endpoints_changed(&mut self) {
+        self.endpoints.changed();
+        if let Some(folder) = self.store.as_ref().map(|store| store.folder().to_path_buf()) {
+            if let Err(problem) =
+                crate::services::ai_endpoints::write(&folder, &self.endpoints.providers)
+            {
+                self.message = Some(problem);
+            }
+        }
+        self.tell_the_plugins_the_endpoints();
     }
 
     /// Let every open plugin do whatever it does on a clock.

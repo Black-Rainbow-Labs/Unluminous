@@ -3165,7 +3165,7 @@ pub const COMMANDS: &[Command] = &[
         flags: &[
             option("query", "text", "Type this into the modal's box as it opens."),
             option("path", "path", "The folder a new file goes in, or the file being renamed. Needed by new-file and rename."),
-            option("page", "name", "Which page the Settings modal shows: appearance, editor, plugins, terminal or mcp."),
+            option("page", "name", "Which page the Settings modal shows: appearance, editor, plugins, terminal, mcp or ai (AI Configuration)."),
         ],
         examples: &[
             "unluminous-cli modal open go-to-file --query mdrs",

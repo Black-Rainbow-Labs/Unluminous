@@ -14,7 +14,7 @@ use serde_json::json;
 
 use crate::services::plugin_ui::{self, Answer, UiProvider};
 
-use super::model::{Assignee, Author, Priority, Status};
+use super::model::{Author, Priority, Status};
 use super::store::{NewTask, TaskEdit};
 use super::{agent, clock, model, split_off_a_name, AgentTasks, Field, View, SWATCHES, TAIL_LINES};
 
@@ -54,7 +54,7 @@ pub const LIST: &[(&str, &str)] = &[
     ("move-task", "Move a ticket to a lane and a place in it."),
     ("delete-task", "Delete a ticket, its todos and its comments."),
     ("priority", "Set a ticket's priority to low, medium or high."),
-    ("assign", "Assign a ticket to claude, codex or human."),
+    ("assign", "Assign a ticket to an AI endpoint that runs an agent, by its name, or to human."),
     ("todo-add", "Add a todo to a ticket."),
     ("todo-done", "Tick a ticket's nth todo."),
     ("todo-undone", "Untick a ticket's nth todo."),
@@ -435,9 +435,11 @@ fn task_commands(
     Some(match command {
         "new-task" => (|| {
             let title = arguments.join(" ");
+            let (assignee, endpoint) = tasks.default_assignee();
             let draft = NewTask {
                 title: title.trim().to_owned(),
-                assignee: tasks.configuration.agent,
+                assignee,
+                endpoint,
                 sprint_id: tasks.board.sprint.as_ref().map(|sprint| sprint.id),
                 project: tasks
                     .configuration
@@ -527,13 +529,17 @@ fn task_commands(
         })(),
         "assign" => (|| {
             let task = tasks.by_key(argument(0))?;
-            let assignee = Assignee::parse(argument(1)).ok_or_else(|| {
-                format!("there is no `{}` assignee: claude, codex or human", argument(1))
-            })?;
-            let edit = TaskEdit { assignee: Some(assignee), ..TaskEdit::default() };
+            // An endpoint's name or `human` (`task-2247`), the same names the ticket's own dropdown offers.
+            let (assignee, endpoint) = tasks.assignee_named(argument(1))?;
+            let edit = TaskEdit {
+                assignee: Some(assignee),
+                endpoint: Some(endpoint.clone()),
+                ..TaskEdit::default()
+            };
             tasks.store()?.edit_task(task.id, &edit, &now)?;
             tasks.refresh()?;
-            Ok(Answer::said(format!("{} is {}'s", task.key, assignee.name())))
+            let said = endpoint.unwrap_or_else(|| assignee.name().to_owned());
+            Ok(Answer::said(format!("{} is {said}'s", task.key)))
         })(),
         _ => return None,
     })

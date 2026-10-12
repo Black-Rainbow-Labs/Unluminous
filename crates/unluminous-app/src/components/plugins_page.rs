@@ -12,7 +12,11 @@
 use egui::{Pos2, Rect, Sense, Vec2};
 use rux::{Fill, Style};
 
+use crate::components::scrollbar;
 use crate::components::settings_kit::{self as kit, Kind as ButtonKind};
+
+/// What the list's scrollbar is called.
+const LIST_SCROLLBAR: &str = "plugins list";
 use crate::services::plugins::{Plugin, Plugins};
 
 /// How wide the list at the left is: `width: 240px`.
@@ -21,6 +25,13 @@ const LIST: f32 = 240.0;
 const GAP: f32 = 18.0;
 /// How tall the row of tabs and the search well is.
 const BAR: f32 = 40.0;
+/// What is left under the list, above the dialog's bottom edge.
+const LIST_MARGIN: f32 = 24.0;
+/// The list is never shorter than this, in a dialog made very small.
+const LIST_SHORTEST: f32 = 160.0;
+/// How tall one plugin's row is, and the gap between two.
+const ROW: f32 = 50.0;
+const ROW_GAP: f32 = 4.0;
 
 /// Which of the two tabs is showing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -37,6 +48,8 @@ pub struct PluginsState {
     pub search: String,
     /// The plugin whose card is showing, by id.
     pub chosen: Option<String>,
+    /// How far the list at the left is scrolled, in points.
+    pub list_scroll: f32,
 }
 
 /// What the page asked for.
@@ -65,7 +78,10 @@ pub fn show(
     let bar = Rect::from_min_size(area.min, Vec2::new(area.width(), BAR));
     tabs_and_search(ui, bar, state, plugins);
     let top = bar.bottom() + 16.0;
-    let list = Rect::from_min_size(Pos2::new(area.left(), top), Vec2::new(LIST, 0.0));
+    // **The list is as tall as the room under the tabs and scrolls on its own** (`task-2247`). Grown to hold
+    // every plugin, the marketplace made the whole page scroll, the card at the right included.
+    let room = (area.bottom() - top - LIST_MARGIN).max(LIST_SHORTEST);
+    let list = Rect::from_min_size(Pos2::new(area.left(), top), Vec2::new(LIST, room));
     let (showing, list_bottom) = list_of_plugins(ui, list, state, plugins);
     if state.chosen.as_ref().is_none_or(|chosen| !showing.contains(chosen)) {
         state.chosen = showing.first().cloned();
@@ -209,16 +225,31 @@ fn list_of_plugins(
         })
         .collect();
     let ids: Vec<String> = showing.iter().map(|plugin| plugin.id.clone()).collect();
-    const ROW: f32 = 50.0;
     let rows = showing.len().max(1) as f32;
-    let well = Rect::from_min_size(
-        area.min,
-        Vec2::new(area.width(), 16.0 + rows * ROW + (rows - 1.0) * 4.0),
-    );
+    let well = area;
+    let content = 16.0 + rows * ROW + (rows - 1.0) * ROW_GAP;
+    let was = state.list_scroll;
+    let bar = scrollbar::Bar::new(well, was, content, well.height());
+    let grab = match &bar {
+        Some(bar) => scrollbar::grab(ui, bar, LIST_SCROLLBAR),
+        None => scrollbar::Grab::default(),
+    };
+    if let Some(to) = grab.scroll {
+        state.list_scroll = to;
+    }
+    if ui.rect_contains_pointer(well) {
+        // Taken out of the frame, so the dialog does not also scroll the page under the list.
+        let wheel = ui.input_mut(|input| std::mem::take(&mut input.smooth_scroll_delta.y));
+        state.list_scroll -= wheel;
+    }
+    state.list_scroll = state.list_scroll.clamp(0.0, (content - well.height()).max(0.0));
+    let scroll = state.list_scroll;
     let mut chosen = None;
+    kit::layer(ui, "plugins-list-well", well, |rux| kit::list_well(rux, well, 22.0));
+    let clip = ui.clip_rect();
+    ui.set_clip_rect(clip.intersect(well.shrink(2.0)));
     kit::layer(ui, "plugins-list", well, |rux| {
         let theme = rux.theme();
-        kit::list_well(rux, well, 22.0);
         if showing.is_empty() {
             let galley = rux.text(Style::sans(11.5), "Nothing matches.", theme.ink.i400);
             rux::text::draw_left_capitals(
@@ -229,7 +260,7 @@ fn list_of_plugins(
                 theme.ink.i400,
             );
         }
-        let mut top = well.top() + 8.0;
+        let mut top = well.top() + 8.0 - scroll;
         for plugin in &showing {
             let row = Rect::from_min_size(
                 Pos2::new(well.left() + 8.0, top),
@@ -263,9 +294,13 @@ fn list_of_plugins(
                 note,
                 theme.ink.i400,
             );
-            top = row.bottom() + 4.0;
+            top = row.bottom() + ROW_GAP;
         }
     });
+    ui.set_clip_rect(clip);
+    if let Some(bar) = scrollbar::Bar::new(well, scroll, content, well.height()) {
+        scrollbar::paint(ui, &bar, LIST_SCROLLBAR, grab.active || (scroll - was).abs() > 0.01);
+    }
     if let Some(id) = chosen {
         state.chosen = Some(id);
     }

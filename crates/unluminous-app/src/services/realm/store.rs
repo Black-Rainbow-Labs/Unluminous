@@ -851,8 +851,13 @@ pub fn duplicate(root: &Path, realm: &Realm) -> Result<PathBuf, String> {
 /// `.realm-files/` is one. It skips what a build writes and the folders that are never a project's own:
 /// `.git`, `.unluminous`, `target`, `node_modules`, and every other dot folder, which is where tools keep
 /// their state. Bounded, so a project the size of a home folder answers quickly with what it found.
+///
+/// **A folder `.gitignore` leaves out is not walked either** (`task-2247`). Agents keep whole copies of
+/// a project under `_agent_output/`, each with its own `.realm-files/`, and one checkout listed 101
+/// realms that nobody had made, every one of them a tab in the panel's strip.
 pub fn list(root: &Path) -> Vec<PathBuf> {
     const DEEPEST: usize = 12;
+    let ignores = crate::services::ignore::Ignores::read(root, "");
     const MOST_ENTRIES: usize = 50_000;
     let mut found = Vec::new();
     let mut seen = 0usize;
@@ -869,7 +874,8 @@ pub fn list(root: &Path) -> Vec<PathBuf> {
             let path = entry.path();
             if kind.is_dir() {
                 let skipped = (name.starts_with('.') && name != FOLDER)
-                    || matches!(name.as_str(), "target" | "node_modules" | "__pycache__");
+                    || matches!(name.as_str(), "target" | "node_modules" | "__pycache__")
+                    || ignores.ignores_path(root, &path, true);
                 if !skipped && depth < DEEPEST {
                     stack.push((path, depth + 1));
                 }
@@ -1685,6 +1691,18 @@ edge.00000003.to = 0000000a
         assert_eq!(copy, Path::new(".realm-files/plan copy.realm"));
         let copied = load(&project, &copy).expect("it opens");
         assert_ne!(copied.nodes[0].id, realm.nodes[0].id, "under new ids");
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn a_realm_in_a_folder_git_ignores_is_not_listed() {
+        let project = a_project("ignored");
+        let path = create(&project, "plan").expect("made");
+        std::fs::write(project.join(".gitignore"), "/_agent_output/\n").expect("written");
+        let copy = project.join("_agent_output/task-1/project/.realm-files");
+        std::fs::create_dir_all(&copy).expect("made");
+        std::fs::write(copy.join("main.realm"), "").expect("written");
+        assert_eq!(list(&project), vec![path]);
         let _ = std::fs::remove_dir_all(&project);
     }
 

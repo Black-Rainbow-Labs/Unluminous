@@ -310,6 +310,40 @@ pub fn command_line(provider: &Provider, ask: &Ask) -> Vec<String> {
                 out.push(picture.display().to_string());
             }
         }
+        // `opencode run` takes the prompt on standard input, like the other two, which matters for the
+        // same reason: on Windows npm installs it as `opencode.cmd`. Measured on OpenCode 1.18.32.
+        Wire::OpenCodeCli => {
+            out.push("run".to_owned());
+            out.push("--format".to_owned());
+            out.push("json".to_owned());
+            match ask.permission {
+                // Its own read-only agent, which is refused every edit and every write.
+                Permission::Read => {
+                    out.push("--agent".to_owned());
+                    out.push("plan".to_owned());
+                }
+                // Its own default agent, which edits and asks before anything its configuration has not
+                // already allowed. With `run` there is nobody to ask, so what it would ask about is refused.
+                Permission::Edit => {}
+                Permission::Full => out.push("--auto".to_owned()),
+            }
+            if !provider.model.trim().is_empty() {
+                out.push("--model".to_owned());
+                out.push(provider.model.trim().to_owned());
+            }
+            if !ask.session.trim().is_empty() {
+                out.push("--session".to_owned());
+                out.push(ask.session.trim().to_owned());
+            }
+            if let Some(folder) = &ask.folder {
+                out.push("--dir".to_owned());
+                out.push(folder.display().to_string());
+            }
+            for picture in &ask.pictures {
+                out.push("--file".to_owned());
+                out.push(picture.display().to_string());
+            }
+        }
         // Not a program. A caller that asks anyway gets an empty command line rather than a panic,
         // and `run` refuses it by name.
         Wire::OpenAi | Wire::Anthropic | Wire::Responses => {}
@@ -324,7 +358,7 @@ pub fn command_line(provider: &Provider, ask: &Ask) -> Vec<String> {
 /// they are named as attachments so the agent is not left guessing why a path is there. Codex has
 /// `--image`, so its paths are already on the command line and are not repeated here.
 pub fn prompt_for(provider: &Provider, ask: &Ask) -> String {
-    if ask.pictures.is_empty() || provider.wire == Wire::CodexCli {
+    if ask.pictures.is_empty() || matches!(provider.wire, Wire::CodexCli | Wire::OpenCodeCli) {
         return ask.prompt.clone();
     }
     let named: Vec<String> = ask.pictures.iter().map(|path| path.display().to_string()).collect();
@@ -557,6 +591,9 @@ pub struct Decoder {
     started: bool,
     /// How much context the last message of this turn started with, from its `message_start`.
     context: Option<u64>,
+    /// The tokens read and written by the OpenCode steps of this turn so far, which it reports a step at a
+    /// time rather than once for the turn.
+    used: (u64, u64),
 }
 
 impl Decoder {
@@ -569,6 +606,7 @@ impl Decoder {
             session: String::new(),
             started: false,
             context: None,
+            used: (0, 0),
         }
     }
 
@@ -584,6 +622,7 @@ impl Decoder {
         match self.wire {
             Wire::ClaudeCli => self.claude(&value),
             Wire::CodexCli => self.codex(&value),
+            Wire::OpenCodeCli => self.opencode(&value),
             _ => Vec::new(),
         }
     }
@@ -749,6 +788,91 @@ impl Decoder {
                     value["error"]["message"]
                         .as_str()
                         .or_else(|| value["message"].as_str())
+                        .unwrap_or("the agent stopped with an error.")
+                        .to_owned(),
+                ));
+            }
+            _ => {}
+        }
+        out
+    }
+
+    /// OpenCode's events, one line each: `step_start`, `text`, `reasoning`, `tool_use` and `step_finish`, each
+    /// carrying the session and a `part`.
+    ///
+    /// **A part arrives finished.** OpenCode 1.18 writes a text part once it is complete rather than as it
+    /// grows, and a tool call once it has run, with its input and its output in the one event. So a tool
+    /// call and its answer are reported together, and a text part goes through [`Self::rest_of`] so a part
+    /// that did arrive twice is shown once. A turn is several steps: a step that ends in `tool-calls` is
+    /// followed by another, and the step that ends any other way is the end of the turn.
+    fn opencode(&mut self, value: &serde_json::Value) -> Vec<Reply> {
+        let mut out = Vec::new();
+        if let Some(session) = value["sessionID"].as_str() {
+            if !session.is_empty() && session != self.session {
+                self.session = session.to_owned();
+                out.push(Reply::Session(session.to_owned()));
+            }
+        }
+        if !self.started {
+            self.started = true;
+            out.push(Reply::Started { model: String::new() });
+        }
+        let part = &value["part"];
+        let id = part["id"].as_str().unwrap_or_default().to_owned();
+        match value["type"].as_str().unwrap_or_default() {
+            "text" => {
+                let text = part["text"].as_str().unwrap_or_default();
+                out.extend(self.rest_of(&id, text).map(Reply::Text));
+            }
+            "reasoning" => {
+                let text = part["text"].as_str().unwrap_or_default();
+                out.extend(self.rest_of(&id, text).map(Reply::Thinking));
+            }
+            "tool_use" => {
+                let call = part["callID"].as_str().unwrap_or(id.as_str()).to_owned();
+                let state = &part["state"];
+                if self.first_time(&call) {
+                    out.push(Reply::ToolCall {
+                        id: call.clone(),
+                        name: part["tool"].as_str().unwrap_or("tool").to_owned(),
+                        arguments: state["input"].to_string(),
+                    });
+                }
+                match state["status"].as_str().unwrap_or_default() {
+                    "completed" => out.push(Reply::ToolAnswer {
+                        id: call,
+                        answer: text_of(&state["output"]),
+                        failed: false,
+                    }),
+                    "error" => out.push(Reply::ToolAnswer {
+                        id: call,
+                        answer: text_of(&state["error"]),
+                        failed: true,
+                    }),
+                    _ => {}
+                }
+            }
+            "step_finish" => {
+                let tokens = &part["tokens"];
+                self.used.0 += tokens["input"].as_u64().unwrap_or(0)
+                    + tokens["cache"]["read"].as_u64().unwrap_or(0);
+                self.used.1 += tokens["output"].as_u64().unwrap_or(0);
+                if part["reason"] != "tool-calls" {
+                    self.ended = true;
+                    out.push(Reply::Usage { input: self.used.0, output: self.used.1 });
+                    out.push(Reply::Finished {
+                        reason: part["reason"].as_str().unwrap_or("stop").to_owned(),
+                    });
+                }
+            }
+            "error" => {
+                self.ended = true;
+                let error = &value["error"];
+                out.push(Reply::Failed(
+                    error["data"]["message"]
+                        .as_str()
+                        .or_else(|| error["message"].as_str())
+                        .or_else(|| error["name"].as_str())
                         .unwrap_or("the agent stopped with an error.")
                         .to_owned(),
                 ));
@@ -977,6 +1101,33 @@ mod tests {
 
         // And an endpoint is not a program, so it has no command line at all.
         assert!(command_line(&provider(Wire::OpenAi), &ask).is_empty());
+    }
+
+    /// `task-2247`: OpenCode is asked in its own words, and the question goes down standard input because
+    /// npm installs it as `opencode.cmd` on Windows.
+    #[test]
+    fn opencode_is_asked_in_its_own_words() {
+        let mut ask = Ask {
+            prompt: "What does this do?\nAnd this?".to_owned(),
+            permission: Permission::Read,
+            folder: Some(std::path::PathBuf::from("project")),
+            ..Ask::default()
+        };
+        let mut row = provider(Wire::OpenCodeCli);
+        row.model = "llama-local/local".to_owned();
+        let read = command_line(&row, &ask);
+        assert_eq!(&read[..3], ["run", "--format", "json"]);
+        assert!(read.windows(2).any(|pair| pair == ["--agent", "plan"]), "{read:?}");
+        assert!(read.windows(2).any(|pair| pair == ["--model", "llama-local/local"]), "{read:?}");
+        assert!(read.windows(2).any(|pair| pair == ["--dir", "project"]), "{read:?}");
+        assert!(!read.iter().any(|word| word.contains("What does this do?")), "{read:?}");
+        ask.permission = Permission::Full;
+        ask.session = "ses_1".to_owned();
+        let full = command_line(&row, &ask);
+        assert!(full.contains(&"--auto".to_owned()), "{full:?}");
+        assert!(!full.contains(&"plan".to_owned()), "{full:?}");
+        assert!(full.windows(2).any(|pair| pair == ["--session", "ses_1"]), "{full:?}");
+        assert_eq!(prompt_for(&row, &ask), "What does this do?\nAnd this?");
     }
 
     #[test]

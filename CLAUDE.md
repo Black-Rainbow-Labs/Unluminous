@@ -573,6 +573,43 @@ runs inside a frame and a command that blocked would stop the window drawing for
 model's answer, which is the sentence `unluminous_git::Worker` exists for; `state` says when it has
 finished, which is the shape `run start` and `run output` already have.
 
+### The endpoints are one list, in `Settings -> AI Configuration` (`task-2247`)
+
+*"The goal is to have the configurations for keys, urls, cli, etc in one place, and then for Agent Chat, Agent
+Tasks, etc to have dropdowns to pick from the list."* `services::ai_endpoints` is that list, kept in
+`ai-endpoints.conf` in the settings folder, and `components::ai_page` is the page that edits it. Four rules:
+
+- **A pane keeps the name of an endpoint, never a copy of it.** The window hands the list to every open
+  provider through `UiProvider::endpoints` when its revision moves, and to a provider opened later through
+  `plugin_ui::Context::endpoints`. Chat nodes on the canvas are told too. The Agent-Chat file keeps `chosen`
+  and no rows; the first time the list is made, it is copied from the rows that file used to hold.
+- **`settings list`, `get` and `set` reach every field** as `ai.provider.<n>.<field>` and `ai.providers`,
+  the way a plugin's own file is reached as `plugins.<id>.<key>`.
+- **A ticket is given to an endpoint.** `Task::endpoint` is its name and `Task::assignee` is its kind
+  (`claude`, `codex`, `opencode` or `human`), which is what the board's own rules are about. The endpoint
+  supplies the program and the model where the ticket names none. There is no gateway and no key in the
+  board's settings: the agents it launches hold their own accounts.
+- **OpenCode is a wire**, `opencode-cli`: `opencode run --format json` for the chat, with the prompt on
+  standard input because npm installs it as `opencode.cmd`, and `opencode --auto` in a ticket's terminal.
+  Its parts arrive finished rather than as deltas. `tests/streams/opencode-cli*.jsonl` are real runs against
+  the local Qwen through llama.cpp.
+
+Board schema 3 rebuilds `task` and `task_comment` once, because a check constraint cannot be changed in place
+and theirs refused `opencode`. The files are copied into `board-before-schema-3/` first, every row and id is
+kept, and `sqlite_sequence` is written back by hand: after a rename the table has no row there, and the first
+insert would otherwise reuse the id of the last ticket deleted.
+
+### A modal's backdrop is a blurred photograph of the window (`task-2247`)
+
+egui cannot read back what is under a layer, so `modal::show` asks for a `ViewportCommand::Screenshot` the
+frame a modal opens, with the modal drawn at no opacity for that one frame, and draws the picture shrunk,
+blurred and stretched under the dark backdrop (`services::backdrop_blur`). It is taken again when the window
+changes size or the theme changes, and a window that never answers, which is a test's, gets the plain dark
+backdrop after a second. The request carries `backdrop_blur::Marker`, and `window screenshot` takes only an
+event without it. The backdrop is clipped to the window rather than to the layer's own rectangle, which a
+zoom below one shrank. The title bar still moves the window while a modal is open, read from the frame's
+input because a modal takes every press under it.
+
 ### The pane is the Agent-Chat design, drawn with `rux`'s chat parts (`task-2235`)
 
 The Claude Design canvas "Unluminous", page Agent-Chat (artboards ChatPane, ChatSettings and ChatParts),

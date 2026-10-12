@@ -5,7 +5,12 @@
 //! `task-1922` gave `plugins.rs`, and nothing about what any of it does changed in the move.
 //!
 //! [`Configuration`] is what `Settings -> Agent-Tasks` writes and what the board reads: the database
-//! file, which agents may be started and with what, and the lease a working agent renews.
+//! file, which endpoint a new ticket is given to and with what, and the lease a working agent renews.
+//!
+//! **There is no gateway and no key here any more** (`task-2247`). The board used to hand every agent the
+//! Iliad gateway's URL and a key from the keychain. The agents it launches are the command-line agents
+//! installed on this machine, which hold their own accounts, and which of them a ticket goes to is an
+//! endpoint chosen from `Settings -> AI Configuration`.
 
 use super::*;
 
@@ -67,26 +72,18 @@ pub struct Configuration {
     pub database: Option<PathBuf>,
     /// The project folder a ticket's agent is launched in when the ticket names none.
     pub project: Option<PathBuf>,
-    /// The agent a new ticket is assigned to.
+    /// The kind of agent a new ticket is assigned to, which is the kind of [`Self::endpoint`] when one is
+    /// named.
     pub agent: Assignee,
+    /// The AI endpoint a new ticket is given to, by name, and the one a ticket assigned to a person is
+    /// handed to when it is started (`task-2247`). `None` is the first endpoint of [`Self::agent`]'s kind.
+    pub endpoint: Option<String>,
     /// How long a lease is before the watchdog calls it expired.
     pub lease_minutes: i64,
     /// The model a new ticket is given, when it should not be the agent's own default.
     pub model: Option<String>,
     /// The effort a new ticket is given: `low`, `medium`, `high`, `xhigh` or `max`.
     pub effort: Option<String>,
-    /// Which gateway the agent talks to, when it is not the one the agent ships pointing at.
-    ///
-    /// Passed to the agent as an environment variable, which is how both of them take it. It is a URL rather
-    /// than a secret, so it lives in the file: somebody reading a settings file should be able to see which
-    /// gateway their agents are talking to.
-    ///
-    /// `task-28`: this is Iliad's URL on a configuration that has never been written, because that is the
-    /// gateway this machine uses and a field somebody has to paste a URL into before anything works is a
-    /// field that stops them. **Empty means the agent's own endpoint** — `api.anthropic.com` for Claude and
-    /// OpenAI's for Codex — which is what leaving both environment variables unset already does, and which
-    /// is the ticket's "default url for that model".
-    pub base_url: Option<String>,
     /// The command a Claude ticket is launched with, when Unluminous's own is not what is wanted.
     ///
     /// The program and the flags in front of it — `claude --dangerously-skip-permissions
@@ -105,38 +102,16 @@ pub struct Configuration {
     pub codex_command: Option<String>,
 }
 
-/// The gateway this machine's agents talk to, which a configuration that has never been written starts at.
-///
-/// The same URL `~/.zshrc` exports as `ANTHROPIC_BASE_URL`. It is a URL rather than a secret, so it is
-/// written here in the open, which is the same reason it is written to the settings file.
-pub const ILIAD_URL: &str = "https://iliad-emerging-api.abbvienet.com/api/llm";
-
-/// What the key is called in this machine's keychain, under the service `unluminous-agent-tasks`.
-///
-/// **A constant rather than a setting.** `task-28`: the page used to ask for a `Key name`, a `Key variable`
-/// and then the key, which is three values to describe one connection and two of them are Unluminous's own
-/// plumbing described to the person using it. There is one key, it is called this, and the variables it is
-/// handed to the agent in are [`KEY_VARIABLES`].
-pub const KEY_NAME: &str = "iliad";
-
-/// Which environment variables the key is handed to the agent in.
-///
-/// All of the names that matter, because a name nothing reads costs nothing and a name the agent needed and
-/// did not get is a board that cannot talk to the gateway. `~/.zshrc` sets `ANTHROPIC_API_KEY` and points
-/// `ILIAD_API_KEY` at the same value for the Codex command line, and `OPENAI_API_KEY` is what Codex reads
-/// when it is talking to an OpenAI compatible endpoint.
-pub const KEY_VARIABLES: &[&str] = &["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "ILIAD_API_KEY"];
-
 impl Default for Configuration {
     fn default() -> Self {
         Self {
             database: None,
             project: None,
             agent: Assignee::Claude,
+            endpoint: None,
             lease_minutes: watchdog::Thresholds::default().lease_minutes,
             model: None,
             effort: None,
-            base_url: Some(ILIAD_URL.to_owned()),
             claude_command: None,
             codex_command: None,
         }
@@ -179,14 +154,7 @@ impl Configuration {
                 .unwrap_or_else(|| watchdog::Thresholds::default().lease_minutes),
             model: said("model"),
             effort: said("effort").filter(|level| EFFORTS.contains(&level.as_str())),
-            // **Present and empty is not the same as absent.** A file with no `base-url` line has never been
-            // written by this version, so it gets Iliad's URL; a file whose line is empty is one somebody
-            // cleared on purpose, and clearing it means the agent's own endpoint. `write` always writes the
-            // line, so the difference is a real one rather than an accident of which keys happen to be there.
-            base_url: match values.text("base-url") {
-                Some(url) => Some(url.trim().to_owned()).filter(|url| !url.is_empty()),
-                None => Some(ILIAD_URL.to_owned()),
-            },
+            endpoint: said("endpoint"),
             claude_command: said("claude-command"),
             codex_command: said("codex-command"),
         }
@@ -208,9 +176,7 @@ impl Configuration {
         set("effort", self.effort.clone());
         set("claude-command", self.claude_command.clone());
         set("codex-command", self.codex_command.clone());
-        // Always written, even when it is empty, so that a person who cleared it gets the agent's own
-        // endpoint rather than Iliad's URL back again. See `read`.
-        values.set("base-url", self.base_url.clone().unwrap_or_default());
+        set("endpoint", self.endpoint.clone());
         values.set("agent", self.agent.name());
         values.set("lease", self.lease_minutes.to_string());
         std::fs::create_dir_all(folder)
@@ -219,68 +185,15 @@ impl Configuration {
             &folder.join(Self::FILE),
             values
                 .to_text_headed(
-                "The Agent-Tasks board. No secret is in here: the agent's authentication key lives in this \
-                 machine's keychain under `iliad`, and `base-url` is the gateway it is used against. An empty \
-                 `base-url` means whichever endpoint the agent itself is configured for. `claude-command` and \
-                 `codex-command` are the program and the flags in front of it a ticket's agent is launched with, \
-                 and the ticket's own model, effort and session flag are added after them; empty means the \
-                 command Unluminous builds itself.",
+                "The Agent-Tasks board. No secret is in here: the agents it launches hold their own accounts. \
+                 `endpoint` names the AI endpoint a new ticket is given to, from `ai-endpoints.conf` in the \
+                 settings folder. `claude-command` and `codex-command` are the program and the flags in front of \
+                 it a ticket's agent is launched with, and the ticket's own model, effort and session flag are \
+                 added after them; empty means the command Unluminous builds itself.",
                 )
                 .as_bytes(),
         )
         .map_err(|problem| format!("the settings could not be written: {problem}"))
-    }
-
-    /// The environment an agent is launched with, which is the base URL and the key.
-    ///
-    /// The key is read from the keychain at the moment of launch rather than held anywhere, so it is in this
-    /// process for as long as it takes to hand it to a child and never written down. A key that cannot be read
-    /// is left out rather than refused: both agents already know how to log in, and a board that would not
-    /// start anything because a keychain entry had been renamed would be worse than one that lets the agent
-    /// use its own credentials.
-    ///
-    /// ## Where the key ends up, said plainly
-    ///
-    /// In the agent process's own environment, and in the environment of everything that process starts. On
-    /// macOS and Linux that is readable by any program running as the same user, which is the same reach a
-    /// program would have to run `security find-generic-password` itself, so the keychain is not being
-    /// undermined here — it is protecting the key from a copied settings file and from other users, and it does
-    /// both. What it does not protect against is a program already running as you, and putting the key in an
-    /// environment variable does not change that.
-    ///
-    /// Both agents read their key from the environment and neither reads it from a file, so there is no
-    /// alternative to pass instead. Nothing Unluminous writes ever carries the value: the settings file holds the
-    /// **name** of the keychain entry, `SessionSettings` prints its variable names and not their values, and the
-    /// terminal's saved scrollback is what the program printed rather than what it was started with.
-    pub fn environment(&self) -> Vec<(String, String)> {
-        self.environment_given(the_key().as_deref())
-    }
-
-    /// The same, told what the key is rather than finding out.
-    ///
-    /// Split out so that what is built can be tested without a keychain and without touching the environment
-    /// of the process running the tests: reading either would make the answer depend on the machine, and
-    /// `std::env::set_var` in a test is a race against every other test in the binary. This is the shape
-    /// `agent::launch` already has, which is why every command line in that module is a test with no terminal.
-    pub fn environment_given(&self, key: Option<&str>) -> Vec<(String, String)> {
-        let mut environment = Vec::new();
-        if let Some(secret) = key {
-            for variable in KEY_VARIABLES {
-                environment.push(((*variable).to_owned(), secret.to_owned()));
-            }
-            // What the Iliad gateway itself wants, which is what `~/.zshrc` sets alongside the key. It carries
-            // the key, so it is built here at the moment of launch with the rest and is never written down.
-            environment
-                .push(("ANTHROPIC_CUSTOM_HEADERS".to_owned(), format!("x-api-key: {secret}")));
-        }
-        if let Some(url) = &self.base_url {
-            // Both agents read a base URL from the environment, and they read different names, so both are
-            // set: a value nothing reads costs nothing and a value the agent needed and did not get is a
-            // board that talks to the wrong gateway.
-            environment.push(("ANTHROPIC_BASE_URL".to_owned(), url.clone()));
-            environment.push(("OPENAI_BASE_URL".to_owned(), url.clone()));
-        }
-        environment
     }
 
     /// The launch command written down for one agent, if there is one.
@@ -292,7 +205,7 @@ impl Configuration {
         match agent {
             Assignee::Claude => self.claude_command.clone(),
             Assignee::Codex => self.codex_command.clone(),
-            Assignee::Human => None,
+            Assignee::OpenCode | Assignee::Human => None,
         }
     }
 

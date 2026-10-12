@@ -57,9 +57,10 @@ use super::model::{
 
 /// What this version of Unluminous writes. A file saying more than this is refused.
 ///
-/// Bumped when a column is added, which is the only kind of change [`migrate`] makes. Version 2 added
-/// `task.owner`, which [`migrate`] adds to a board that was written at version 1.
-pub const SCHEMA_VERSION: i64 = 2;
+/// Bumped when a column is added. Version 2 added `task.owner`, which [`migrate`] adds to a board that was
+/// written at version 1. Version 3 (`task-2247`) added `task.endpoint` and lets `assignee` and a comment's
+/// `author` be `opencode`, which [`Store::let_opencode_in`] does to a board written before it.
+pub const SCHEMA_VERSION: i64 = 3;
 
 /// The file name inside the plugin's own folder.
 pub const FILE: &str = "board.rdb";
@@ -139,7 +140,14 @@ impl Store {
         let store = Self { connection, path, _scratch: scratch };
         store.create()?;
         store.check_version()?;
+        // Before anything is changed, because the rebuild below is the one change this store makes that
+        // does more than add a column.
+        let rebuilding = store.tables_refusing_opencode()?;
+        if !rebuilding.is_empty() {
+            store.keep_a_copy_before("schema-3")?;
+        }
         migrate(&store.connection)?;
+        store.let_opencode_in(&rebuilding)?;
         store.put_the_newest_finished_work_first()?;
         // **After the migration, not before it.** The version says which columns the file has, so it can only be
         // written once they are there. Writing it in `check_version` meant a file made at version 1 stayed at
@@ -209,6 +217,140 @@ impl Store {
             )
             .map_err(|problem| format!("the board's version could not be written: {problem}"))?;
         Ok(())
+    }
+
+    /// The tables whose check constraint was written before `opencode` was a value they may hold.
+    ///
+    /// Read from what the file says it was created with, because that is the constraint that is enforced.
+    fn tables_refusing_opencode(&self) -> Result<Vec<&'static str>, String> {
+        let mut refusing = Vec::new();
+        for (table, check) in
+            [("task", "CHECK (assignee IN ("), ("task_comment", "CHECK (author IN (")]
+        {
+            let sql: Option<String> = self
+                .connection
+                .query_row(
+                    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                    params![table],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|problem| {
+                    format!("the board's {table} table could not be read: {problem}")
+                })?;
+            // Only a table whose check names the values it may hold and leaves `opencode` out. A table
+            // something else made with no check at all refuses nothing, and is left as it was.
+            if sql.is_some_and(|sql| sql.contains(check) && !sql.contains("'opencode'")) {
+                refusing.push(table);
+            }
+        }
+        Ok(refusing)
+    }
+
+    /// Copy the board's files into a folder beside it before a change that rewrites a table.
+    ///
+    /// The board is somebody's tickets, and a rebuild that went wrong half way through would otherwise have
+    /// nothing to go back to. A board in memory, which is a test's, has nothing worth keeping.
+    fn keep_a_copy_before(&self, change: &str) -> Result<(), String> {
+        if self._scratch.is_some() || self.path.as_os_str() == ":memory:" {
+            return Ok(());
+        }
+        let (Some(folder), Some(name)) = (self.path.parent(), self.path.file_name()) else {
+            return Ok(());
+        };
+        let name = name.to_string_lossy().into_owned();
+        let kept = folder.join(format!("board-before-{change}"));
+        if kept.exists() {
+            return Ok(());
+        }
+        std::fs::create_dir_all(&kept)
+            .map_err(|problem| format!("{} could not be made: {problem}", kept.display()))?;
+        let entries = std::fs::read_dir(folder)
+            .map_err(|problem| format!("{} could not be read: {problem}", folder.display()))?;
+        for entry in entries.flatten() {
+            let file = entry.file_name().to_string_lossy().into_owned();
+            if file.starts_with(&name) && entry.path().is_file() {
+                std::fs::copy(entry.path(), kept.join(&file)).map_err(|problem| {
+                    format!("{file} could not be copied into {}: {problem}", kept.display())
+                })?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Rebuild each of `tables` from `SCHEMA`, which lets `opencode` in, keeping every row and every id.
+    ///
+    /// **The one place this store recreates a table**, and it has to: a check constraint cannot be changed in
+    /// place. The rows are copied column by column, by name, into a table made from the schema below, the old
+    /// table is dropped and the new one takes its name. The table's place in `sqlite_sequence` is put back
+    /// where it was, so an id a deleted ticket once had is never handed out again, which `AUTOINCREMENT` is
+    /// there to promise. Measured on a copy of a real board before it was written.
+    fn let_opencode_in(&self, tables: &[&'static str]) -> Result<(), String> {
+        if tables.is_empty() {
+            return Ok(());
+        }
+        self.in_transaction(|| {
+            for table in tables {
+                let made = table_from_schema(table)
+                    .ok_or_else(|| format!("the schema has no {table} table"))?
+                    .replacen(
+                        &format!("CREATE TABLE IF NOT EXISTS {table} ("),
+                        &format!("CREATE TABLE {table}_rebuilt ("),
+                        1,
+                    );
+                let kept: Vec<String> = self
+                    .connection
+                    .query_map(
+                        &format!("SELECT name FROM pragma_table_info('{table}')"),
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(|problem| format!("{table} could not be inspected: {problem}"))?;
+                let sequence: Option<i64> = self
+                    .connection
+                    .query_row(
+                        "SELECT seq FROM sqlite_sequence WHERE name = ?1",
+                        params![table],
+                        |row| row.get(0),
+                    )
+                    .optional()
+                    .map_err(|problem| {
+                        format!("{table}'s sequence could not be read: {problem}")
+                    })?;
+                let columns = kept.join(", ");
+                for statement in [
+                    made,
+                    format!(
+                        "INSERT INTO {table}_rebuilt ({columns}) SELECT {columns} FROM {table}"
+                    ),
+                    format!("DROP TABLE {table}"),
+                    format!("ALTER TABLE {table}_rebuilt RENAME TO {table}"),
+                    format!("DELETE FROM sqlite_sequence WHERE name = '{table}_rebuilt'"),
+                    format!("DELETE FROM sqlite_sequence WHERE name = '{table}'"),
+                ] {
+                    self.connection.execute(&statement, []).map_err(|problem| {
+                        format!("{table} could not be rebuilt to let opencode in: {problem}")
+                    })?;
+                }
+                // Written rather than updated: after the rename the table has no row in `sqlite_sequence` until
+                // something is inserted, and the first insert would then start one past the highest id that is
+                // left, which is the id of the last ticket deleted.
+                self.connection
+                    .execute(
+                        &format!(
+                            "INSERT INTO sqlite_sequence (name, seq) VALUES (?1, \
+                             MAX(?2, COALESCE((SELECT MAX(id) FROM {table}), 0)))"
+                        ),
+                        params![table, sequence.unwrap_or(0)],
+                    )
+                    .map_err(|problem| {
+                        format!("{table}'s sequence could not be kept: {problem}")
+                    })?;
+            }
+            Ok(())
+        })?;
+        // The indexes went with the tables they were on.
+        self.create()
     }
 
     /// Order every Agent Done lane newest first, once.
@@ -438,8 +580,8 @@ impl Store {
         self.connection
             .execute(
                 "INSERT INTO task (task_key, title, description, priority, status, assignee, model, \
-                 effort, epic_id, sprint_id, position, project, source, created_at, updated_at) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14)",
+                 effort, epic_id, sprint_id, position, project, source, created_at, updated_at, endpoint) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14, ?15)",
                 params![
                     key,
                     draft.title,
@@ -455,6 +597,7 @@ impl Store {
                     draft.project,
                     Source::Local.name(),
                     now,
+                    draft.endpoint,
                 ],
             )
             .map_err(|problem| format!("the ticket could not be created: {problem}"))?;
@@ -495,7 +638,7 @@ impl Store {
             .execute(
                 "UPDATE task SET title = ?2, description = ?3, priority = ?4, assignee = ?5, \
                  model = ?6, effort = ?7, epic_id = ?8, project = ?9, jira_key = ?11, \
-                 updated_at = ?10 WHERE id = ?1",
+                 endpoint = ?12, updated_at = ?10 WHERE id = ?1",
                 params![
                     id,
                     edit.title.clone().unwrap_or(existing.title),
@@ -508,6 +651,7 @@ impl Store {
                     edit.project.clone().unwrap_or(existing.project),
                     now,
                     edit.jira_key.clone().unwrap_or(existing.jira_key),
+                    edit.endpoint.clone().unwrap_or(existing.endpoint),
                 ],
             )
             .map_err(|problem| format!("ticket {id} could not be changed: {problem}"))?;
@@ -1399,6 +1543,8 @@ pub struct NewTask {
     pub priority: Priority,
     pub status: Status,
     pub assignee: Assignee,
+    /// The AI endpoint it is given to, by name. See [`Task::endpoint`].
+    pub endpoint: Option<String>,
     pub model: Option<String>,
     pub effort: Option<String>,
     pub epic_id: Option<i64>,
@@ -1418,6 +1564,7 @@ impl Default for NewTask {
             priority: Priority::Medium,
             status: Status::New,
             assignee: Assignee::Claude,
+            endpoint: None,
             model: None,
             effort: None,
             epic_id: None,
@@ -1434,6 +1581,8 @@ pub struct TaskEdit {
     pub description: Option<String>,
     pub priority: Option<Priority>,
     pub assignee: Option<Assignee>,
+    /// The AI endpoint, which is changed with the assignee. See [`Task::endpoint`].
+    pub endpoint: Option<Option<String>>,
     pub model: Option<Option<String>>,
     pub effort: Option<Option<String>>,
     pub epic_id: Option<Option<i64>>,
@@ -1458,7 +1607,8 @@ const TASK_COLUMNS: &str =
      t.jira_issue_type, t.created_at, t.updated_at, \
      (SELECT COUNT(*) FROM task_todo d WHERE d.task_id = t.id), \
      (SELECT COUNT(*) FROM task_todo d WHERE d.task_id = t.id AND d.done = 1), \
-     (SELECT COUNT(*) FROM task_comment c WHERE c.task_id = t.id) \
+     (SELECT COUNT(*) FROM task_comment c WHERE c.task_id = t.id), \
+     t.endpoint \
      FROM task t";
 
 /// Refuse a word the board does not know, naming the column it came from.
@@ -1508,6 +1658,7 @@ fn read_task(row: &Row<'_>) -> Outcome<Task> {
         todo_count: row.get(26)?,
         todo_done_count: row.get(27)?,
         comment_count: row.get(28)?,
+        endpoint: row.get(29)?,
     })
 }
 
@@ -1536,6 +1687,8 @@ fn migrate(connection: &Db) -> Result<(), String> {
     const ADDITIONS: &[(&str, &str, &str)] = &[
         // Schema 2. Which window holds a card, as `pid:<number>`. See `agent_tasks::owner_is_gone`.
         ("task", "owner", "TEXT"),
+        // Schema 3. Which AI endpoint a ticket was given to. See `Task::endpoint`.
+        ("task", "endpoint", "TEXT"),
     ];
     for (table, column, definition) in ADDITIONS {
         if !has_column(connection, table, column)? {
@@ -1545,6 +1698,14 @@ fn migrate(connection: &Db) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// The `CREATE TABLE IF NOT EXISTS <table> (...);` statement for `table` in `SCHEMA`, without its semicolon.
+fn table_from_schema(table: &str) -> Option<String> {
+    let opening = format!("CREATE TABLE IF NOT EXISTS {table} (");
+    let start = SCHEMA.find(&opening)?;
+    let end = start + SCHEMA[start..].find("\n);")? + 2;
+    Some(SCHEMA[start..end].to_owned())
 }
 
 fn has_column(connection: &Db, table: &str, column: &str) -> Result<bool, String> {
@@ -1688,9 +1849,10 @@ CREATE TABLE IF NOT EXISTS task (
   jira_issue_type        TEXT,
   created_at             TEXT NOT NULL,
   updated_at             TEXT NOT NULL,
+  endpoint               TEXT,
   CONSTRAINT task_priority_check CHECK (priority IN ('low','medium','high')),
   CONSTRAINT task_status_check   CHECK (status IN ('new','in_progress','agent_done','qa_failed')),
-  CONSTRAINT task_assignee_check CHECK (assignee IN ('claude','codex','human'))
+  CONSTRAINT task_assignee_check CHECK (assignee IN ('claude','codex','opencode','human'))
 );
 CREATE INDEX IF NOT EXISTS task_status_idx ON task(status);
 CREATE INDEX IF NOT EXISTS task_sprint_idx ON task(sprint_id);
@@ -1709,7 +1871,7 @@ CREATE TABLE IF NOT EXISTS task_comment (
   author     TEXT NOT NULL DEFAULT 'claude',
   body       TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  CONSTRAINT task_comment_author_check CHECK (author IN ('human','claude','codex','system'))
+  CONSTRAINT task_comment_author_check CHECK (author IN ('human','claude','codex','opencode','system'))
 );
 CREATE INDEX IF NOT EXISTS task_comment_task_idx ON task_comment(task_id);
 CREATE TABLE IF NOT EXISTS task_schedule (
@@ -1888,6 +2050,110 @@ mod tests {
         // `CREATE TABLE IF NOT EXISTS` and an additive migration are for.
         let again = Store::open(&path).expect("the same board");
         assert_eq!(again.board().expect("the board").total(), 1);
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// `task-2247`: a board made before OpenCode refused `opencode` as an assignee and as an author, because a
+    /// check constraint said so, and a check constraint cannot be changed in place. Opening it rebuilds the two
+    /// tables, keeps every row and every id, keeps a copy of the files first, and goes on handing out ids past
+    /// the highest one any ticket ever had.
+    #[test]
+    fn a_board_made_before_opencode_lets_it_in_and_keeps_every_row_and_id() {
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-board-opencode-{}", std::process::id()));
+        let path = folder.join(FILE);
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("a folder");
+        let (kept, gone) = {
+            // The schema as it was written before this change: no `endpoint`, and no `opencode` in either check.
+            let old = SCHEMA
+                .replace("  endpoint               TEXT,\n", "")
+                .replace("'claude','codex','opencode','human'", "'claude','codex','human'")
+                .replace(
+                    "'human','claude','codex','opencode','system'",
+                    "'human','claude','codex','system'",
+                );
+            let db = Db::open(&path).expect("a file");
+            db.execute_batch(&old).expect("the old tables");
+            db.execute_batch("INSERT INTO meta (name, value) VALUES ('schema_version', 2);")
+                .expect("schema 2");
+            drop(db);
+            let store = Store::open(&path).expect("opened once to fill it");
+            store.connection.execute_batch(&old).ok();
+            let kept = store
+                .create_task(NewTask { title: "Kept".to_owned(), ..NewTask::default() }, NOW)
+                .expect("a ticket");
+            store.add_comment(kept.id, Author::Claude, "a comment", NOW).expect("a comment");
+            let gone = store
+                .create_task(NewTask { title: "Deleted".to_owned(), ..NewTask::default() }, NOW)
+                .expect("a ticket");
+            store
+                .connection
+                .execute("DELETE FROM task WHERE id = ?1", params![gone.id])
+                .expect("deleted");
+            (kept, gone)
+        };
+        // The file is at schema 3 already because it was opened once, so put back what a board written before
+        // this change really has: the old checks, and the version that says so.
+        {
+            let db = Db::open(&path).expect("the file");
+            let rows: Vec<(i64, String)> = db
+                .query_map("SELECT id, title FROM task", [], |row| Ok((row.get(0)?, row.get(1)?)))
+                .expect("rows");
+            let old = SCHEMA
+                .replace("'claude','codex','opencode','human'", "'claude','codex','human'")
+                .replace(
+                    "'human','claude','codex','opencode','system'",
+                    "'human','claude','codex','system'",
+                );
+            let old_task = old[old.find("CREATE TABLE IF NOT EXISTS task (").expect("task")..]
+                .split("\n);")
+                .next()
+                .expect("the table")
+                .replace("CREATE TABLE IF NOT EXISTS task (", "CREATE TABLE task_old (")
+                + "\n)";
+            db.execute_batch(&format!(
+                "{old_task};\n\
+                 INSERT INTO task_old SELECT * FROM task;\n\
+                 DROP TABLE task;\n\
+                 ALTER TABLE task_old RENAME TO task;\n\
+                 DELETE FROM sqlite_sequence WHERE name = 'task_old';\n\
+                 DELETE FROM sqlite_sequence WHERE name = 'task';\n\
+                 INSERT INTO sqlite_sequence (name, seq) VALUES ('task', {});\n\
+                 UPDATE meta SET value = 2 WHERE name = 'schema_version';",
+                gone.id
+            ))
+            .expect("a board from before opencode");
+            assert_eq!(rows.len(), 1, "{rows:?}");
+            let refused =
+                db.execute("UPDATE task SET assignee = 'opencode' WHERE id = ?1", params![kept.id]);
+            assert!(
+                refused.is_err(),
+                "the old check has to refuse it for this to be the reported fault"
+            );
+        }
+
+        let store = Store::open(&path).expect("the same board");
+        assert!(folder.join("board-before-schema-3").join(FILE).is_file(), "a copy is kept first");
+        let edit = TaskEdit {
+            assignee: Some(Assignee::OpenCode),
+            endpoint: Some(Some("local-agent".to_owned())),
+            ..TaskEdit::default()
+        };
+        store.edit_task(kept.id, &edit, NOW).expect("opencode is a value it may hold now");
+        let read = store.task(kept.id).expect("a read").expect("the ticket");
+        assert_eq!(read.title, "Kept");
+        assert_eq!(read.assignee, Assignee::OpenCode);
+        assert_eq!(read.endpoint.as_deref(), Some("local-agent"));
+        assert_eq!(store.comments(kept.id).expect("comments").len(), 1, "the comment was kept");
+        store
+            .add_comment(kept.id, Author::OpenCode, "from opencode", NOW)
+            .expect("an opencode comment");
+        let next = store
+            .create_task(NewTask { title: "Next".to_owned(), ..NewTask::default() }, NOW)
+            .expect("a ticket");
+        assert!(next.id > gone.id, "{} reuses the id of a deleted ticket, {}", next.id, gone.id);
+        drop(store);
         let _ = std::fs::remove_dir_all(&folder);
     }
 
@@ -2120,10 +2386,7 @@ mod tests {
                 .filter(|line| !line.trim_start().starts_with("CONSTRAINT"))
                 .collect::<Vec<&str>>()
                 .join("\n")
-                .replace(
-                    "updated_at             TEXT NOT NULL,",
-                    "updated_at             TEXT NOT NULL",
-                );
+                .replace("endpoint               TEXT,", "endpoint               TEXT");
             other.execute_batch(&loose).expect("a task table with no rules");
         }
         let store = Store::open(&path).expect("the board");

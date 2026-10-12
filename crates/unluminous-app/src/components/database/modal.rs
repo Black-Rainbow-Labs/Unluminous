@@ -241,9 +241,9 @@ fn source_modal(
     let testing = explorer.is_testing();
     let (needed, escaped) =
         modal::show_unframed(ctx, SOURCE_ID, SOURCE_WIDTH, height, |ui, area| {
-            kit::layer(ui, "database-source-surface", area, |rux| {
+            kit::layer_reaching(ui, "database-source-surface", area, modal::SHADOW_REACH, |rux| {
                 let chat = rux.theme().chat;
-                rux.chrome.surface(area, SOURCE_RADIUS, chat.ground, chat.floating());
+                rux.chrome.surface(area, SOURCE_RADIUS, chat.ground, modal::shadow());
             });
             let inner = Rect::from_min_max(
                 Pos2::new(area.left() + SOURCE_PAD_X, area.top() + SOURCE_PAD_Y),

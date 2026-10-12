@@ -78,6 +78,9 @@ pub enum Wire {
     ClaudeCli,
     /// The `codex exec --json` command line.
     CodexCli,
+    /// The `opencode run --format json` command line, which answers with whichever model its own
+    /// configuration names, a local one included (`task-2247`).
+    OpenCodeCli,
 }
 
 /// Every wire shape this version speaks, which is what a settings page offers and what a
@@ -87,7 +90,8 @@ pub enum Wire {
 /// debuggers, the UI providers and the chrome. A configuration naming a shape this version has not
 /// got is refused with the list rather than loading as an endpoint whose every request fails
 /// obscurely — the rule `language.renders` set and every one since has kept.
-pub const WIRES: &[&str] = &["claude-cli", "codex-cli", "openai", "anthropic", "responses"];
+pub const WIRES: &[&str] =
+    &["claude-cli", "codex-cli", "opencode-cli", "openai", "anthropic", "responses"];
 
 impl Wire {
     pub fn name(self) -> &'static str {
@@ -97,6 +101,7 @@ impl Wire {
             Self::Responses => "responses",
             Self::ClaudeCli => "claude-cli",
             Self::CodexCli => "codex-cli",
+            Self::OpenCodeCli => "opencode-cli",
         }
     }
 
@@ -107,6 +112,7 @@ impl Wire {
             "responses" => Some(Self::Responses),
             "claude-cli" => Some(Self::ClaudeCli),
             "codex-cli" => Some(Self::CodexCli),
+            "opencode-cli" => Some(Self::OpenCodeCli),
             _ => None,
         }
     }
@@ -117,7 +123,7 @@ impl Wire {
     /// catalogue from Unluminous, and its conversation is continued by its own session id rather than by
     /// sending the transcript again.
     pub fn is_a_program(self) -> bool {
-        matches!(self, Self::ClaudeCli | Self::CodexCli)
+        matches!(self, Self::ClaudeCli | Self::CodexCli | Self::OpenCodeCli)
     }
 
     /// Whether this shape carries a whole agent — its own tools, its own permissions, its own files.
@@ -138,6 +144,7 @@ impl Wire {
         match self {
             Self::ClaudeCli => Some("claude"),
             Self::CodexCli => Some("codex"),
+            Self::OpenCodeCli => Some("opencode"),
             Self::OpenAi | Self::Anthropic | Self::Responses => None,
         }
     }
@@ -231,6 +238,20 @@ impl Provider {
                 // configured at all.
                 url: "http://127.0.0.1:8080/v1/chat/completions".to_owned(),
                 model: "local".to_owned(),
+                key_env: String::new(),
+                key_entry: String::new(),
+                max_tokens: DEFAULT_MAX_TOKENS,
+            },
+            // **OpenCode, with whichever model its own configuration names** (`task-2247`). It is what
+            // drives a local model as an agent with tools: a provider in `opencode.json` pointed at
+            // llama.cpp is named here as `provider/model`, `llama-local/local` on the machine this was
+            // written on.
+            Provider {
+                name: "opencode".to_owned(),
+                wire: Wire::OpenCodeCli,
+                command: "opencode".to_owned(),
+                url: String::new(),
+                model: String::new(),
                 key_env: String::new(),
                 key_entry: String::new(),
                 max_tokens: DEFAULT_MAX_TOKENS,
@@ -371,7 +392,7 @@ impl Provider {
             }
             // A program is not sent headers at all, and asking for them is a caller's mistake
             // rather than something to answer with a guess.
-            Wire::ClaudeCli | Wire::CodexCli => {}
+            Wire::ClaudeCli | Wire::CodexCli | Wire::OpenCodeCli => {}
             Wire::Anthropic => {
                 if let Some(key) = self.key(environment) {
                     headers.push(("x-api-key".to_owned(), key));
@@ -519,7 +540,7 @@ mod tests {
         // the better half of the feature: there is nothing for Unluminous to store, read or redact.
         let defaults = Provider::defaults();
         let names: Vec<&str> = defaults.iter().map(|one| one.name.as_str()).collect();
-        assert_eq!(names, vec!["claude", "codex", "local"]);
+        assert_eq!(names, vec!["claude", "codex", "local", "opencode"]);
         assert_eq!(defaults[0].wire, Wire::ClaudeCli);
         assert_eq!(defaults[0].command, "claude");
         assert!(defaults[0].url.is_empty(), "a program has no address");
@@ -537,6 +558,13 @@ mod tests {
         assert!(!defaults[2].is_a_program());
         assert!(!defaults[2].wants_a_key());
         assert_eq!(defaults[2].why_not(&nothing()), None);
+        // The fourth is OpenCode, which runs a local model as an agent (`task-2247`): a program too, with
+        // no key and no model named, so it answers with the one its own configuration chose.
+        assert_eq!(defaults[3].wire, Wire::OpenCodeCli);
+        assert_eq!(defaults[3].command, "opencode");
+        assert!(defaults[3].is_a_program());
+        assert!(!defaults[3].wants_a_key());
+        assert!(defaults[3].model.is_empty());
     }
 
     #[test]

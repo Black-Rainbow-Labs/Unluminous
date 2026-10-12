@@ -54,6 +54,10 @@ const HELP_GAP: f32 = 7.0;
 const INLINE_GAP: f32 = 10.0;
 /// How far a card's shadow reaches past it, so the layer is made large enough to hold it.
 pub const CARD_REACH: f32 = 30.0;
+/// How tall a text area starts, and how short and how tall dragging its bottom edge can make it.
+const AREA_HEIGHT: f32 = 96.0;
+const AREA_SHORTEST: f32 = 56.0;
+const AREA_TALLEST: f32 = 480.0;
 
 /// The design's type: a card's title, a label, help, what is in a control, and code.
 pub fn title_style() -> Style {
@@ -90,6 +94,20 @@ pub fn layer<R>(
     let state = state(ui.ctx());
     let id = ui.id().with(("settings-kit-layer", salt));
     rux::layer(ui, &state, id, rect.expand(CARD_REACH), add)
+}
+
+/// [`layer`] with a canvas that reaches `reach` past the rectangle, for a surface whose shadow is longer
+/// than a card's, such as a dialog's own.
+pub fn layer_reaching<R>(
+    ui: &mut egui::Ui,
+    salt: impl Hash + std::fmt::Debug,
+    rect: Rect,
+    reach: f32,
+    add: impl FnOnce(&mut Rux<'_>) -> R,
+) -> R {
+    let state = state(ui.ctx());
+    let id = ui.id().with(("settings-kit-layer", salt));
+    rux::layer(ui, &state, id, rect.expand(reach), add)
 }
 
 /// A column of cards: where it is across, and how far down the next card starts.
@@ -242,6 +260,48 @@ impl<'r, 'u> Card<'r, 'u> {
         }
         self.pen = bottom;
         result
+    }
+
+    /// A text box several lines tall, with a label in the left column and the help under it, that is made
+    /// taller or shorter by dragging its bottom edge (`task-2247`). Answers whether the words changed.
+    ///
+    /// How tall it was dragged to is kept in egui's memory under the box's name, which is where a modal's
+    /// placement is kept: it is about how this window is being used rather than anything to write down.
+    pub fn text_area(
+        &mut self,
+        label: &str,
+        help: Option<&str>,
+        value: &mut String,
+        hint: &str,
+    ) -> bool {
+        self.open_row();
+        let theme = self.rux.theme();
+        let top = self.pen;
+        let galley = self.rux.text(label_style(), label, theme.ink.i500);
+        rux::text::draw_left_capitals(
+            self.rux.painter(),
+            Pos2::new(self.left, top + CONTROL / 2.0),
+            galley,
+            label_style(),
+            theme.ink.i500,
+        );
+        let left = self.controls_left();
+        let held = self.rux.ui.id().with(("settings-area-height", label));
+        let height =
+            self.rux.ui.memory(|memory| memory.data.get_temp::<f32>(held)).unwrap_or(AREA_HEIGHT);
+        let rect = Rect::from_min_size(Pos2::new(left, top), Vec2::new(self.right - left, height));
+        let changed = text_area(self.rux, rect, label, value, hint).changed();
+        if let Some(taller) = area_grip(self.rux, rect, label) {
+            let height = (height + taller).clamp(AREA_SHORTEST, AREA_TALLEST);
+            self.rux.ui.memory_mut(|memory| memory.data.insert_temp(held, height));
+        }
+        let mut bottom = rect.bottom();
+        if let Some(help) = help.filter(|help| !help.is_empty()) {
+            bottom =
+                paragraph(self.rux, Pos2::new(left, bottom + HELP_GAP), self.right - left, help);
+        }
+        self.pen = bottom;
+        changed
     }
 
     /// A switch with its label beside it and the help under the label.
@@ -645,6 +705,71 @@ pub fn text_well_styled(
     response
         .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, named.clone()));
     response
+}
+
+/// Several lines of words typed into a carved well. See [`Card::text_area`].
+pub fn text_area(
+    rux: &mut Rux<'_>,
+    rect: Rect,
+    name: &str,
+    value: &mut String,
+    hint: &str,
+) -> egui::Response {
+    let theme = rux.theme();
+    let chat = theme.chat;
+    rux.chrome.surface(rect, 16.0, chat.well, chat.carved_sm());
+    let font = value_style(false).font();
+    let id = rux.ui.id().with(("settings-area", name));
+    let inside = rect.shrink2(Vec2::new(14.0, 10.0));
+    let mut child = rux.ui.new_child(egui::UiBuilder::new().max_rect(inside));
+    child.set_clip_rect(child.clip_rect().intersect(inside));
+    let response = egui::ScrollArea::vertical()
+        .id_salt(id.with("scroll"))
+        .max_height(inside.height())
+        .auto_shrink([false, false])
+        .show(&mut child, |ui| {
+            ui.add(
+                egui::TextEdit::multiline(value)
+                    .id(id)
+                    .hint_text(controls::placeholder(hint, &font, theme.ink.i400))
+                    .font(font.clone())
+                    .frame(egui::Frame::NONE)
+                    .desired_width(inside.width())
+                    .desired_rows(1)
+                    .text_color(theme.ink.i900),
+            )
+        })
+        .inner;
+    let named = name.to_owned();
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, named.clone()));
+    response
+}
+
+/// The strip along a text area's bottom edge that is dragged to make it taller, with a small mark at its
+/// right hand corner. Answers how far it was dragged this frame.
+fn area_grip(rux: &mut Rux<'_>, rect: Rect, name: &str) -> Option<f32> {
+    let grip = Rect::from_min_max(
+        Pos2::new(rect.left() + 16.0, rect.bottom() - 5.0),
+        Pos2::new(rect.right(), rect.bottom() + 5.0),
+    );
+    let response =
+        rux.ui.interact(grip, rux.ui.id().with(("settings-area-grip", name)), Sense::drag());
+    let label = format!("Resize {name}");
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, label.clone()));
+    if response.hovered() || response.dragged() {
+        rux.ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+    }
+    let ink = rux.theme().ink.i400;
+    let corner = Pos2::new(rect.right() - 9.0, rect.bottom() - 9.0);
+    for step in [4.0, 8.0] {
+        rux.painter().line_segment(
+            [corner + Vec2::new(-step, 4.0), corner + Vec2::new(4.0, -step)],
+            egui::Stroke::new(1.2, ink),
+        );
+    }
+    response.dragged().then(|| response.drag_delta().y)
 }
 
 /// A value read rather than typed, in the code face, in a carved well.

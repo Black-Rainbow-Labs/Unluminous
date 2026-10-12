@@ -2,10 +2,10 @@
 //! to move.
 //!
 //! `task-1673` asks for one on every document: dark, thin, draggable, and quiet — "more subtle when
-//! not hovered over and when not scrolling, slightly more visible when hovering or scrolling". So
-//! the bar is always there and it is the **alpha** that changes: an idle thumb is a faint mark that
-//! says where you are without competing with the writing, and it comes up to full strength while the
-//! page is moving or the pointer is near it, then fades back a moment after the page settles.
+//! not hovered over and when not scrolling, slightly more visible when hovering or scrolling".
+//! `task-2247` took that further: the bar disappears a few seconds after the page last moved and comes
+//! back when it moves or the pointer reaches it, and it is one dark mark rather than a pale thumb on a
+//! darker track.
 //!
 //! ## Why it is two calls rather than one
 //!
@@ -33,7 +33,6 @@
 
 use egui::{CornerRadius, Pos2, Rect, Sense, Vec2};
 
-use crate::components::controls::mix;
 use crate::theme::color;
 
 /// How far in from the right edge the bar sits. See the note above about the window's resize grip.
@@ -47,10 +46,10 @@ const THIN: f32 = 5.0;
 const THICK: f32 = 8.0;
 /// The shortest a thumb may be drawn, so that a very long file still has something to take hold of.
 const SHORTEST: f32 = 28.0;
-/// How long the bar stays up after the page last moved, and how long it takes to settle back
-/// afterwards, in seconds.
-const LINGER: f64 = 0.9;
-const FADE: f64 = 0.45;
+/// How long the bar stays up after the page last moved, and how long it takes to fade out afterwards, in
+/// seconds. A page that has been still for two and a half seconds has no bar on it (`task-2247`).
+const LINGER: f64 = 2.0;
+const FADE: f64 = 0.5;
 
 /// Where the bar and its thumb are, worked out from the page and the view.
 ///
@@ -136,6 +135,8 @@ pub fn grab(ui: &mut egui::Ui, bar: &Bar, id: &str) -> Grab {
         egui::WidgetInfo::labeled(egui::WidgetType::Other, ui.is_enabled(), name.clone())
     });
     let mut outcome = Grab { scroll: None, active: response.hovered() || response.dragged() };
+    let hovered = ui.id().with(("scrollbar-hovered", id));
+    ui.memory_mut(|memory| memory.data.insert_temp(hovered, outcome.active));
     let held = ui.id().with(("scrollbar-held", id));
 
     if response.drag_started() {
@@ -177,28 +178,29 @@ pub fn grab(ui: &mut egui::Ui, bar: &Bar, id: &str) -> Grab {
 /// scrolling" means in the ask.
 pub fn paint(ui: &egui::Ui, bar: &Bar, id: &str, active: bool) {
     let strength = strength(ui, id, active);
-    let painter = ui.painter();
-    // The track behind the thumb, which fades in with it. Left there when the bar is quiet it would
-    // be a second line down the right hand edge of every document for no reason.
-    if strength > 0.01 {
-        painter.rect_filled(
-            bar.track.shrink2(Vec2::new((GRAB - THICK) / 2.0, 0.0)),
-            CornerRadius::same(4),
-            color::divider().gamma_multiply(strength * 0.6),
-        );
+    if strength <= 0.01 {
+        return;
     }
-    // Quiet, the thumb is a control's grey and as thin as a mark can be and still be seen; used, it
-    // is the colour of a heading in the explorer and a little wider. The two ends are palette
-    // colours rather than a shade of their own, and everything between them is the fade.
+    // **One mark, in the divider's colour, and nothing once the page has been still for a while**
+    // (`task-2247`). There used to be a pale thumb over a darker track: the pale one stood out against
+    // every surface, and the two were never quite the same length, so the track showed below the thumb.
+    // The dark one alone says where you are, and it fades out completely, so a page nobody is scrolling
+    // has no bar on it at all.
     let thumb = Rect::from_center_size(
         bar.thumb.center(),
-        Vec2::new(THIN + (THICK - THIN) * strength, bar.thumb.height()),
+        Vec2::new(THIN + (THICK - THIN) * hovered(ui, id), bar.thumb.height()),
     );
-    painter.rect_filled(
+    ui.painter().rect_filled(
         thumb,
         CornerRadius::same(4),
-        mix(color::control(), color::text_dim(), strength),
+        color::divider().gamma_multiply(strength),
     );
+}
+
+/// 1 while the pointer is on the bar, so the thumb widens under it the way a divider does.
+fn hovered(ui: &egui::Ui, id: &str) -> f32 {
+    let held = ui.id().with(("scrollbar-hovered", id));
+    ui.memory(|memory| memory.data.get_temp::<bool>(held).unwrap_or(false)) as u8 as f32
 }
 
 /// How far up the bar is: 1 while it is being used, 0 once it has settled, and on its way between

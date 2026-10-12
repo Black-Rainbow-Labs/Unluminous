@@ -802,6 +802,11 @@ pub struct UnluminousApp {
     /// The last project and open file every provider was told about, so it is told only when it
     /// changes. See `tell_the_plugins_what_is_showing`.
     told_the_plugins: Option<(Option<PathBuf>, Option<PathBuf>)>,
+    /// The AI endpoints `Settings -> AI Configuration` edits, which Agent Chat, a chat node and Agent Tasks
+    /// pick from. See `services::ai_endpoints`.
+    pub endpoints: crate::services::ai_endpoints::Endpoints,
+    /// Which revision of [`Self::endpoints`] the plugins were last told.
+    told_the_endpoints: u64,
     /// The Realm: the canvas, what is running on it, and what is being dragged.
     ///
     /// `task-1904`. Core rather than a plugin because three of its four node kinds need `OpenFiles`, a
@@ -1455,6 +1460,8 @@ impl UnluminousApp {
             plugin_ui: plugin_panes::PluginUi::default(),
             realm: realm::RealmState::default(),
             told_the_plugins: None,
+            endpoints: crate::services::ai_endpoints::Endpoints::default(),
+            told_the_endpoints: 0,
             canvases: crate::services::vello_canvas::Canvases::default(),
             files: OpenFiles::new(document),
             browser: BrowserHost::new(),
@@ -1728,6 +1735,8 @@ impl UnluminousApp {
         // window draws, lists, adds or removes goes through, so the folder the pictures are written
         // into is the folder they are drawn from. `task-2105`.
         let fresh = !store.settings_path().exists();
+        self.endpoints = crate::services::ai_endpoints::Endpoints::in_folder(store.folder());
+        self.told_the_endpoints = 0;
         let backgrounds = crate::services::backgrounds::folder_in(store.folder());
         crate::services::backgrounds::bundled::write_into(&backgrounds);
         self.backgrounds = Some(backgrounds.clone());

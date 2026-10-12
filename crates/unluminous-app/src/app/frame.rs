@@ -1877,6 +1877,7 @@ impl UnluminousApp {
             &mut self.settings_window,
             &mut self.settings,
             settings_context,
+            &mut self.endpoints,
             &mut |page_ui, slot, area| {
                 // The contributed page, drawn inside the modal. `plugin_ui` and `settings` are separate
                 // fields, so this can borrow one while the dialog holds the other.
@@ -1922,6 +1923,7 @@ impl UnluminousApp {
             // Over the Settings window rather than in place of it, which is what every modal opened
             // from another one does: closing the grid puts Appearance back where it was.
             settings_dialog::PageOutcome::OpenBackgrounds => self.background_grid = Some(None),
+            settings_dialog::PageOutcome::EndpointsChanged => self.the_endpoints_changed(),
             settings_dialog::PageOutcome::Nothing | settings_dialog::PageOutcome::Changed => {}
         }
         if page_changed || self.settings != before {

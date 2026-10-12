@@ -95,7 +95,9 @@ impl Priority {
 
 /// Who is working a ticket.
 ///
-/// Two agents and a person. `Human` is what the application being replaced calls `jason`, spelled here
+/// Three agents and a person. `OpenCode` is `task-2247`'s, which runs a model OpenCode's own configuration
+/// names, a local one through llama.cpp included. Which endpoint of a kind a ticket uses is
+/// [`Task::endpoint`]: two endpoints can both run `claude`, with different models. `Human` is what the application being replaced calls `jason`, spelled here
 /// as what it means rather than as whose machine this is, because a settings file is copied between
 /// machines and a name in an enum is not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -103,17 +105,41 @@ pub enum Assignee {
     #[default]
     Claude,
     Codex,
+    OpenCode,
     Human,
 }
 
 impl Assignee {
-    pub const ALL: [Assignee; 3] = [Assignee::Claude, Assignee::Codex, Assignee::Human];
+    pub const ALL: [Assignee; 4] =
+        [Assignee::Claude, Assignee::Codex, Assignee::OpenCode, Assignee::Human];
 
     pub fn name(self) -> &'static str {
         match self {
             Assignee::Claude => "claude",
             Assignee::Codex => "codex",
+            Assignee::OpenCode => "opencode",
             Assignee::Human => "human",
+        }
+    }
+
+    /// The kind of agent an AI endpoint runs, or `None` for an endpoint that sends to an address, which
+    /// cannot be launched in a terminal.
+    pub fn of_wire(wire: unluminous_chat::Wire) -> Option<Assignee> {
+        match wire {
+            unluminous_chat::Wire::ClaudeCli => Some(Assignee::Claude),
+            unluminous_chat::Wire::CodexCli => Some(Assignee::Codex),
+            unluminous_chat::Wire::OpenCodeCli => Some(Assignee::OpenCode),
+            _ => None,
+        }
+    }
+
+    /// The comment author an agent of this kind writes as.
+    pub fn author(self) -> Author {
+        match self {
+            Assignee::Claude => Author::Claude,
+            Assignee::Codex => Author::Codex,
+            Assignee::OpenCode => Author::OpenCode,
+            Assignee::Human => Author::Human,
         }
     }
 
@@ -137,18 +163,21 @@ pub enum Author {
     #[default]
     Claude,
     Codex,
+    OpenCode,
     /// The board itself: the watchdog's first strike, and a reclaim.
     System,
 }
 
 impl Author {
-    pub const ALL: [Author; 4] = [Author::Human, Author::Claude, Author::Codex, Author::System];
+    pub const ALL: [Author; 5] =
+        [Author::Human, Author::Claude, Author::Codex, Author::OpenCode, Author::System];
 
     pub fn name(self) -> &'static str {
         match self {
             Author::Human => "human",
             Author::Claude => "claude",
             Author::Codex => "codex",
+            Author::OpenCode => "opencode",
             Author::System => "system",
         }
     }
@@ -221,6 +250,12 @@ pub struct Task {
     pub priority: Priority,
     pub status: Status,
     pub assignee: Assignee,
+    /// The AI endpoint the ticket was given to, by name, when it was given to one (`task-2247`).
+    ///
+    /// [`Self::assignee`] is the kind of agent, which is what the board's own rules are about; this is which
+    /// of the endpoints in `Settings -> AI Configuration` it is, which decides the program and the model. A
+    /// ticket written before endpoints existed has none, and is launched the way its kind always was.
+    pub endpoint: Option<String>,
     /// The model the agent is launched with, when one was chosen.
     pub model: Option<String>,
     /// `low`, `medium`, `high`, `xhigh` or `max`. Passed to Claude as `--effort`.
@@ -272,6 +307,7 @@ impl Task {
             priority: Priority::Medium,
             status: Status::New,
             assignee: Assignee::Claude,
+            endpoint: None,
             model: None,
             effort: None,
             epic_id: None,

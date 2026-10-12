@@ -537,6 +537,10 @@ pub struct Context {
     /// and the alternative — asking for a frame on a timer — keeps the graphics card busy while an agent sits
     /// at its prompt. `unluminous_git::Worker` and the terminal tile already work this way.
     pub wake: Option<std::sync::Arc<dyn Fn() + Send + Sync>>,
+    /// The AI endpoints `Settings -> AI Configuration` holds, which a provider that talks to a model picks
+    /// from by name (`task-2247`). Empty in a test that gave none, which a provider reads as "the ones
+    /// Unluminous ships". [`UiProvider::endpoints`] is told when the list changes.
+    pub endpoints: Vec<unluminous_chat::Provider>,
 }
 
 impl std::fmt::Debug for Context {
@@ -748,6 +752,15 @@ pub trait UiProvider: std::fmt::Debug {
     /// whatever was on the screen is a pane nobody could use on anything confidential.
     fn showing(&mut self, project: Option<&std::path::Path>, file: Option<&std::path::Path>) {
         let _ = (project, file);
+    }
+
+    /// The AI endpoints changed in `Settings -> AI Configuration` (`task-2247`).
+    ///
+    /// The list rather than a change to it, because there is one list and a provider that talks to a model
+    /// keeps no copy of its own: it keeps the **name** of the one it uses. A provider that talks to nothing
+    /// ignores it, which is the default.
+    fn endpoints(&mut self, endpoints: &[unluminous_chat::Provider]) {
+        let _ = endpoints;
     }
 
     /// This provider as its own type, for a caller that has to reach past the trait.

@@ -990,7 +990,12 @@ fn split_line(line: &str) -> Vec<String> {
 fn screenshot_from(ctx: &egui::Context) -> Option<egui::ColorImage> {
     ctx.input(|input| {
         input.events.iter().find_map(|event| match event {
-            egui::Event::Screenshot { image, .. } => Some((**image).clone()),
+            // Not one a modal's backdrop asked for, which it blurs (`services::backdrop_blur`).
+            egui::Event::Screenshot { image, user_data, .. }
+                if !crate::services::backdrop_blur::is_ours(user_data) =>
+            {
+                Some((**image).clone())
+            }
             _ => None,
         })
     })

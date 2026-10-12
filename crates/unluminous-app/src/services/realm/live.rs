@@ -120,6 +120,14 @@ impl Live {
         self.chats.get_mut(&node)
     }
 
+    /// Hand every chat node the AI endpoints, which changed in `Settings -> AI Configuration`.
+    pub fn tell_the_chats_the_endpoints(&mut self, endpoints: &[unluminous_chat::Provider]) {
+        use crate::services::plugin_ui::UiProvider;
+        for chat in self.chats.values_mut() {
+            chat.endpoints(endpoints);
+        }
+    }
+
     /// Put an opened chat behind a node. Whatever was there is stopped first, which is what closing one is.
     pub fn put_a_chat(&mut self, node: NodeId, chat: crate::services::agent_chat::AgentChat) {
         self.stop_a_chat(node);

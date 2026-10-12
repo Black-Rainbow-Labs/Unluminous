@@ -1491,3 +1491,55 @@ fn a_side_is_filled_from_the_panel_menu_and_from_the_command_line() {
     did(&mut harness, "panel fill left off");
     assert!(!harness.state().panes.dock.fills(Side::Left));
 }
+
+/// `task-2247`: *"if File Panel, Realm, and Database are side by side in that order, and I resize Database by
+/// dragging left, it hits a stopping point and won't drag further. But I don't have that problem when
+/// resizing the File pane to the right, and Realms get shrunk down."*
+///
+/// The outer panel on a side has its divider against the panel inside it on the same side, and that panel
+/// gave nothing: the room came only from the facing side and the middle, and the explorer facing it was
+/// already near its smallest width. The terminal stands in for the Database here, docked outside the canvas
+/// on the right, with the editing area showing and hidden.
+#[test]
+fn the_outer_panel_on_a_side_grows_into_the_panel_beside_it() {
+    for editor in [false, true] {
+        let mut harness = harness("");
+        did(&mut harness, "realm show");
+        steady(&mut harness);
+        harness.state_mut().new_detached_terminal_tab(8, 60);
+        feed(&mut harness, b"$ ");
+        did(&mut harness, "terminal show");
+        steady(&mut harness);
+        did(&mut harness, "panel dock realm right --position 0");
+        steady(&mut harness);
+        did(&mut harness, "panel dock terminal right --position 1");
+        steady(&mut harness);
+        if !editor {
+            did(&mut harness, "action run toggle-editor");
+            steady(&mut harness);
+        }
+        let realm_before = harness.state().panel_area(Panel::Realm).width();
+        let (before, after) =
+            drag_a_divider(&mut harness, "Resize terminal", Panel::Terminal, false, -200.0);
+        let realm_after = harness.state().panel_area(Panel::Realm).width();
+        assert!(
+            after - before > 200.0 * FOLLOWED,
+            "the terminal should grow to the left, editor {editor}: {before} then {after}"
+        );
+        assert!(
+            realm_before - realm_after > 200.0 * FOLLOWED,
+            "and the canvas beside it should give the room, editor {editor}: {realm_before} then \
+             {realm_after}"
+        );
+
+        // And back: narrower, with the room going to the canvas beside it.
+        let (before, after) =
+            drag_a_divider(&mut harness, "Resize terminal", Panel::Terminal, false, 120.0);
+        let realm_back = harness.state().panel_area(Panel::Realm).width();
+        assert!(before - after > 120.0 * FOLLOWED, "editor {editor}: {before} then {after}");
+        assert!(
+            realm_back - realm_after > 120.0 * FOLLOWED,
+            "editor {editor}: {realm_after} then {realm_back}"
+        );
+    }
+}

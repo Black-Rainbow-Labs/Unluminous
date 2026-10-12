@@ -231,44 +231,52 @@ fn contents(
     let selects = &mut kit.selects;
     let order = &mut kit.tab_order;
     let main_id = ui.id().with("agent-tasks-ticket-rux");
-    let (requests, closed) = rux::layer(ui, state, main_id, area.expand(60.0), |rux| {
-        let chat = rux.theme().chat;
-        rux.chrome.surface(area, RADIUS, chat.ground, chat.floating());
-        let mut requests = Vec::new();
-        let inner = Rect::from_min_max(
-            Pos2::new(area.min.x + PAD_LEFT, area.min.y + PAD_TOP),
-            Pos2::new(area.max.x - PAD_RIGHT, area.max.y - PAD_BOTTOM),
-        );
-        let header = Rect::from_min_size(inner.min, Vec2::new(inner.width(), HEADER));
-        let (closed, said) = header_row(board, rux, order, header, task, new);
-        requests.extend(said);
-        let body = Rect::from_min_max(Pos2::new(inner.min.x, header.max.y + HEADER_GAP), inner.max);
-        if body.width() >= TWO_COLUMNS {
-            let aside = Rect::from_min_max(Pos2::new(body.max.x - ASIDE, body.min.y), body.max);
-            let main = Rect::from_min_max(body.min, Pos2::new(aside.min.x - GUTTER, body.max.y));
-            requests.extend(main_column(board, rux, order, main, look, task, new));
-            let (more, create) = fields(board, rux, selects, order, aside, task, new);
-            requests.extend(more);
-            (requests, closed || create)
-        } else {
-            // One column: the card of fields first and never more than half the height, scrolled inside it,
-            // then the rest, which is what the browser board's own narrow layout does.
-            let aside = Rect::from_min_max(
-                body.min,
-                Pos2::new(body.max.x, body.min.y + (body.height() * 0.45).min(330.0)),
+    let (requests, closed) = rux::layer(
+        ui,
+        state,
+        main_id,
+        area.expand(crate::components::modal::SHADOW_REACH),
+        |rux| {
+            let chat = rux.theme().chat;
+            rux.chrome.surface(area, RADIUS, chat.ground, crate::components::modal::shadow());
+            let mut requests = Vec::new();
+            let inner = Rect::from_min_max(
+                Pos2::new(area.min.x + PAD_LEFT, area.min.y + PAD_TOP),
+                Pos2::new(area.max.x - PAD_RIGHT, area.max.y - PAD_BOTTOM),
             );
-            let rest =
-                Rect::from_min_max(Pos2::new(body.min.x, aside.max.y + SECTION_GAP), body.max);
-            let mut column = Vec::new();
-            let (more, create) = fields(board, rux, selects, order, aside, task, new);
-            requests.extend(more);
-            if rest.height() > 120.0 {
-                requests.extend(main_column(board, rux, &mut column, rest, look, task, new));
+            let header = Rect::from_min_size(inner.min, Vec2::new(inner.width(), HEADER));
+            let (closed, said) = header_row(board, rux, order, header, task, new);
+            requests.extend(said);
+            let body =
+                Rect::from_min_max(Pos2::new(inner.min.x, header.max.y + HEADER_GAP), inner.max);
+            if body.width() >= TWO_COLUMNS {
+                let aside = Rect::from_min_max(Pos2::new(body.max.x - ASIDE, body.min.y), body.max);
+                let main =
+                    Rect::from_min_max(body.min, Pos2::new(aside.min.x - GUTTER, body.max.y));
+                requests.extend(main_column(board, rux, order, main, look, task, new));
+                let (more, create) = fields(board, rux, selects, order, aside, task, new);
+                requests.extend(more);
+                (requests, closed || create)
+            } else {
+                // One column: the card of fields first and never more than half the height, scrolled inside it,
+                // then the rest, which is what the browser board's own narrow layout does.
+                let aside = Rect::from_min_max(
+                    body.min,
+                    Pos2::new(body.max.x, body.min.y + (body.height() * 0.45).min(330.0)),
+                );
+                let rest =
+                    Rect::from_min_max(Pos2::new(body.min.x, aside.max.y + SECTION_GAP), body.max);
+                let mut column = Vec::new();
+                let (more, create) = fields(board, rux, selects, order, aside, task, new);
+                requests.extend(more);
+                if rest.height() > 120.0 {
+                    requests.extend(main_column(board, rux, &mut column, rest, look, task, new));
+                }
+                order.splice(0..0, column);
+                (requests, closed || create)
             }
-            order.splice(0..0, column);
-            (requests, closed || create)
-        }
-    });
+        },
+    );
     outcome.requests.extend(requests);
     outcome.closed |= closed;
     // **The command key with Enter closes it**, not Enter on its own: the description and the comment box are
@@ -947,26 +955,22 @@ fn field_column(
         }
     }
 
-    let options: Vec<(String, String)> = Assignee::ALL
-        .iter()
-        .map(|assignee| (assignee.name().to_owned(), assignee.name().to_owned()))
-        .collect();
+    // **The endpoints that run an agent, then a person** (`task-2247`): what a ticket is given to is one of
+    // the endpoints in `Settings -> AI Configuration`, by name. A ticket that names one no longer there keeps it
+    // in the list, so opening a ticket cannot quietly change who it belongs to.
+    let said = crate::services::agent_tasks::AgentTasks::assignee_said(task);
+    let mut names = board.assignee_choices();
+    if !names.contains(&said) {
+        names.insert(0, said.clone());
+    }
+    let options: Vec<(String, String)> =
+        names.into_iter().map(|name| (name.clone(), name)).collect();
     let who = match task.assignee {
         Assignee::Human => SelectLead::Mark(Icon::User, theme.ink.i400),
         _ => SelectLead::Mark(Icon::Spark, crate::theme::color::agent()),
     };
     if let Some(chosen) = choice(
-        rux,
-        selects,
-        &mut pen,
-        area.min.x,
-        width,
-        "Assignee",
-        who,
-        &options,
-        task.assignee.name(),
-        None,
-        gap,
+        rux, selects, &mut pen, area.min.x, width, "Assignee", who, &options, &said, None, gap,
     ) {
         requests.extend(write(board, task, Field::Assignee(chosen)));
     }

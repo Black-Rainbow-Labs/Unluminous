@@ -478,6 +478,7 @@ mod tests {
             priority: Priority::Medium,
             status: Status::InProgress,
             assignee,
+            endpoint: None,
             model: None,
             effort: None,
             epic_id: None,

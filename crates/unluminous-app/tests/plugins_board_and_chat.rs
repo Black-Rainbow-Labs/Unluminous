@@ -2900,7 +2900,7 @@ fn a_refusal_is_drawn_in_the_servers_own_words() {
     harness.snapshot(shot("agent_chat_failed").as_str());
 }
 
-/// A folder holding stand-ins for `claude` and `codex`, put at the front of this process's `PATH`.
+/// A folder holding stand-ins for `claude`, `codex` and `opencode`, put at the front of this process's `PATH`.
 ///
 /// **So that a page showing whether an agent is installed draws the same thing on every machine.**
 /// The rows that ship run a program, and whether one is found is exactly the sort of thing a
@@ -2913,7 +2913,7 @@ fn agents_on_the_path() {
     ONCE.get_or_init(|| {
         let folder = std::env::temp_dir().join("unluminous-screenshot-agents");
         std::fs::create_dir_all(&folder).expect("a folder for the stand-in agents");
-        for name in ["claude", "codex"] {
+        for name in ["claude", "codex", "opencode"] {
             let at = folder.join(match cfg!(windows) {
                 true => format!("{name}.exe"),
                 false => name.to_owned(),
@@ -2930,7 +2930,7 @@ fn agents_on_the_path() {
     });
 }
 
-/// The Endpoints list scrolls to its last row.
+/// The Endpoints list scrolls to its last row. Since `task-2247` the list is `Settings -> AI Configuration`.
 ///
 /// `task-1848` reported the page "not scrollable", with the list cut off mid-row and no way to reach the
 /// endpoint below the fold. The scrolling area was there; what was missing is that the page never said how
@@ -2946,20 +2946,17 @@ fn the_chats_settings_page_scrolls_to_its_last_row() {
     agents_on_the_path();
     let mut harness = harness("");
     did(&mut harness, "plugins pane agent-chat/chat --show");
-    did(&mut harness, "action run settings");
-    steady(&mut harness);
-    harness.get_all_by_label("Agent-Chat").last().expect("the Settings row").click();
+    did(&mut harness, "modal open settings --page ai");
     steady(&mut harness);
 
-    // The first endpoint's `Use` button, near the top of the scrolling area.
+    // The first endpoint's `Remove` button, near the top of the scrolling area.
     let where_it_is = |harness: &mut Harness<'_, UnluminousApp>| -> f32 {
-        harness.get_all_by_label("Use").next().expect("an endpoint row").rect().top()
+        harness.get_all_by_label("Remove").next().expect("an endpoint row").rect().top()
     };
     let before = where_it_is(&mut harness);
 
-    // A wheel with the pointer over that row: egui gives a wheel to the area the pointer is inside, so one
-    // sent with the pointer nowhere scrolls nothing.
-    let over = harness.get_all_by_label("Use").next().expect("an endpoint row").rect().center();
+    // A wheel with the pointer over that row: the page takes a wheel only while the pointer is inside it.
+    let over = harness.get_all_by_label("Remove").next().expect("an endpoint row").rect().center();
     harness.input_mut().events.push(egui::Event::PointerMoved(over));
     steady(&mut harness);
     harness.input_mut().events.push(egui::Event::MouseWheel {
@@ -3038,7 +3035,7 @@ fn the_chats_settings_page_keeps_its_labels_when_it_is_scrolled() {
     steady(&mut harness);
 
     // Far enough to reach the last section, with the pointer inside the page so egui gives it the wheel.
-    let over = harness.get_all_by_label("Use").next().expect("an endpoint row").rect().center();
+    let over = harness.get_by_label("Endpoint").rect().center();
     harness.input_mut().events.push(egui::Event::PointerMoved(over));
     steady(&mut harness);
     for _ in 0..8 {
@@ -3067,6 +3064,23 @@ fn the_chats_settings_page_lists_the_endpoints() {
     harness.snapshot(shot("agent_chat_settings").as_str());
 }
 
+/// `task-2247`: the endpoints are `Settings -> AI Configuration`, one card each, OpenCode among them, and the
+/// fields on a card are settings an agent can change by name.
+#[test]
+fn the_ai_configuration_page_lists_the_endpoints_and_an_agent_can_change_them() {
+    agents_on_the_path();
+    let mut harness = harness("");
+    did(&mut harness, "modal open settings --page ai");
+    steady(&mut harness);
+    assert_eq!(harness.get_all_by_label("Remove").count(), 4, "one card an endpoint");
+    harness.snapshot(shot("ai_configuration").as_str());
+
+    did(&mut harness, "settings set ai.provider.3.model llama-local/local");
+    let read = did(&mut harness, "settings get ai.provider.3.model");
+    assert_eq!(read["value"], "llama-local/local");
+    assert_eq!(harness.state().endpoints.providers[3].model, "llama-local/local");
+}
+
 /// Everything a person can do here an agent can do too, through the same code.
 #[test]
 fn the_chat_answers_the_command_line() {
@@ -3082,7 +3096,7 @@ fn the_chat_answers_the_command_line() {
     let providers = did(&mut harness, "plugins run agent-chat providers");
     let rows = providers["providers"].as_array().expect("the endpoints");
     let names: Vec<&str> = rows.iter().filter_map(|one| one["name"].as_str()).collect();
-    assert_eq!(names, ["claude", "codex", "local"]);
+    assert_eq!(names, ["claude", "codex", "local", "opencode"]);
     // **The two rows the ticket names run the command line, not the API.** *"connection to Claude
     // and codex etc through cli"* — so what a row holds is a program, and Unluminous holds no key for
     // either of them.

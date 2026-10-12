@@ -870,6 +870,7 @@ fn settings_page(name: &str) -> Option<crate::settings::Page> {
         "plugins" => Page::Plugins,
         "terminal" => Page::Terminal,
         "mcp" => Page::Mcp,
+        "ai" | "ai-configuration" | "endpoints" => Page::Ai,
         _ => return None,
     })
 }

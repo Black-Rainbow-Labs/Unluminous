@@ -20,7 +20,7 @@ unluminous-jupyter = { path = "crates/unluminous-jupyter" }
 # The code index is Atrius, its own product since task-2172: the engine, the index host and the wire
 # protocol. `unluminous-cli/src/search.rs` is the seam. `crates/unluminous-index` is the copy it was
 # made from and is no longer built.
-atrius-index = "0.2"
+atrius-index = "0.2.1"
 # The command catalogue and the wire format the CLI and the window share. It lives beside the client
 # it belongs to rather than under `crates`, because `unluminous-cli/` holds the CLI's documentation as
 # well as its code and the two are read together.

@@ -969,6 +969,24 @@ pub fn apply_scaled(ctx: &egui::Context, interface_scale: f32) {
         style.spacing.item_spacing = Vec2::new(8.0, 6.0);
         style.spacing.button_padding = Vec2::new(8.0, 4.0);
         style.spacing.menu_margin = egui::Margin::same(6);
+        // egui's own scroll areas match `components::scrollbar` (`task-2247`): a bar drawn over the content
+        // rather than beside it, five points wide and eight under the pointer, with no track behind the handle, and gone while
+        // the pointer is not on it.
+        style.spacing.scroll = egui::style::ScrollStyle {
+            // Five points thin and eight under the pointer, which is `components::scrollbar`'s `THIN` and
+            // `THICK`, so a plugin's page scrolls with the same bar as Unluminous's own pages.
+            floating_width: 5.0,
+            bar_width: 8.0,
+            handle_min_length: 28.0,
+            dormant_background_opacity: 0.0,
+            active_background_opacity: 0.0,
+            interact_background_opacity: 0.0,
+            dormant_handle_opacity: 0.0,
+            active_handle_opacity: 0.6,
+            interact_handle_opacity: 1.0,
+            foreground_color: false,
+            ..egui::style::ScrollStyle::floating()
+        };
 
         // The interface's own font size, which is the reference editor's Appearance -> Use custom font.
         //
