@@ -123,7 +123,12 @@ fn decode() -> Vec<[f32; 4]> {
         .pixels()
         .map(|pixel| {
             let a = pixel[3] as f32 / 255.0;
-            [pixel[0] as f32 / 255.0 * a, pixel[1] as f32 / 255.0 * a, pixel[2] as f32 / 255.0 * a, a]
+            [
+                pixel[0] as f32 / 255.0 * a,
+                pixel[1] as f32 / 255.0 * a,
+                pixel[2] as f32 / 255.0 * a,
+                a,
+            ]
         })
         .collect()
 }
@@ -151,8 +156,12 @@ fn shrink_into(strip: &[[f32; 4]], frame: usize, side: usize, out: &mut [Color32
             }
             let count = ((y1 - y0) * (x1 - x0)) as f32;
             let byte = |v: f32| (v / count * 255.0).round().clamp(0.0, 255.0) as u8;
-            out[y * FRAMES * side + frame * side + x] =
-                Color32::from_rgba_premultiplied(byte(sum[0]), byte(sum[1]), byte(sum[2]), byte(sum[3]));
+            out[y * FRAMES * side + frame * side + x] = Color32::from_rgba_premultiplied(
+                byte(sum[0]),
+                byte(sum[1]),
+                byte(sum[2]),
+                byte(sum[3]),
+            );
         }
     }
 }
@@ -196,7 +205,9 @@ pub fn paint(ui: &egui::Ui, rect: Rect, height: f32, motion: Motion, hovered: bo
     let opened = opened(ctx, now);
     let (frame, turning) = frame_at(motion, now, opened, hovered);
     if turning {
-        ctx.request_repaint_after(std::time::Duration::from_secs_f64(until_the_next_frame(now, opened)));
+        ctx.request_repaint_after(std::time::Duration::from_secs_f64(until_the_next_frame(
+            now, opened,
+        )));
     }
 
     // The mark is drawn one texel to one pixel, on whole pixels, so it is as sharp as the strip allows.
@@ -251,8 +262,9 @@ mod tests {
     #[test]
     fn one_turn_shows_every_picture_once_in_order() {
         let step = TURN / FRAMES as f64;
-        let seen: Vec<usize> =
-            (0..FRAMES).map(|i| frame_at(Motion::Always, 5.0 + step * (i as f64 + 0.5), 5.0, false).0).collect();
+        let seen: Vec<usize> = (0..FRAMES)
+            .map(|i| frame_at(Motion::Always, 5.0 + step * (i as f64 + 0.5), 5.0, false).0)
+            .collect();
         assert_eq!(seen, (0..FRAMES).collect::<Vec<_>>());
     }
 

@@ -90,7 +90,8 @@ pub fn show(
                 };
                 let painter = rux.ui.painter();
                 let label = painter.crisp_layout_no_wrap(menu.name.clone(), font.clone(), tint);
-                let top = crate::theme::crisp::top_centring_capitals(painter, &font, rect.center().y);
+                let top =
+                    crate::theme::crisp::top_centring_capitals(painter, &font, rect.center().y);
                 painter.crisp_galley(
                     Pos2::new(rect.center().x - label.size().x / 2.0, top),
                     label,

@@ -649,7 +649,9 @@ impl UnluminousApp {
             }
             "appearance.logo_motion" => {
                 let word = value.trim().to_ascii_lowercase();
-                if word.is_empty() || crate::components::logo::Motion::NAMES.contains(&word.as_str()) {
+                if word.is_empty()
+                    || crate::components::logo::Motion::NAMES.contains(&word.as_str())
+                {
                     settings.logo_motion = word;
                 } else {
                     return Err(format!(
