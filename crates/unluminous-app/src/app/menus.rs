@@ -638,6 +638,19 @@ impl UnluminousApp {
             return;
         }
         match action {
+            // **A browser tab's edits are the page's** (`task-2255`). The tab holds an empty document so it can
+            // live in the tab strip, and `Edit -> Paste` inserted the clipboard into that document: nothing on
+            // the screen changed, the tab grew an unsaved-changes dot, and the page's field got nothing.
+            Action::Undo
+            | Action::Redo
+            | Action::Cut
+            | Action::Copy
+            | Action::Paste
+            | Action::SelectAll
+                if self.focus == Focus::Editor && self.files.active().is_browser() =>
+            {
+                self.edit_in_the_page(action);
+            }
             Action::GoToDefinition => {
                 let offset = self.caret_offset();
                 self.go_to_definition(offset);
@@ -792,6 +805,21 @@ impl UnluminousApp {
             Action::ChangeFontSize { larger }
                 if self.the_zoom_keys_go_to_a_modal(Some(if larger { 1 } else { -1 })) => {}
             Action::ResetFontSize if self.the_zoom_keys_go_to_a_modal(None) => {}
+            // A browser tab's keys zoom its page. `task-2255`.
+            Action::ChangeFontSize { larger }
+                if self.the_pane_the_keys_zoom().is_none() && self.files.active().is_browser() =>
+            {
+                if let Some(id) = self.files.active().browser.as_ref().map(|tab| tab.id) {
+                    self.step_the_page_zoom(id, larger);
+                }
+            }
+            Action::ResetFontSize
+                if self.the_pane_the_keys_zoom().is_none() && self.files.active().is_browser() =>
+            {
+                if let Some(id) = self.files.active().browser.as_ref().map(|tab| tab.id) {
+                    self.reset_the_page_zoom(id);
+                }
+            }
             Action::ChangeFontSize { larger } => match self.the_pane_the_keys_zoom() {
                 Some(panel) => self.step_the_zoom_of(panel, if larger { 1 } else { -1 }, None),
                 // On a tab showing a picture the same keys zoom the picture. `task-1658` asks for

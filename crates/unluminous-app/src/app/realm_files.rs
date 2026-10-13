@@ -586,6 +586,7 @@ impl UnluminousApp {
             },
         );
         self.realm.tab_drawn = None;
+        self.show_the_editing_area_for_a_tab();
         self.focus = crate::app::Focus::Editor;
         Ok(())
     }

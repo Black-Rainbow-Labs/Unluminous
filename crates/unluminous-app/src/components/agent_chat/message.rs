@@ -1110,9 +1110,14 @@ fn chips_height(names: &[String], width: f32) -> f32 {
     chip_places(names, width).last().map_or(0.0, |last| last.bottom())
 }
 
-/// Whether one call's arguments and answer are showing.
+/// Whether one call's arguments and answer are showing: only once somebody has opened it.
+///
+/// `task-2255`: *"when a tool call is made, it temporarily shows as expanded, then collapses. I want it to remain
+/// collapsed unless I manually expand it."* A call used to be open for as long as it was running, so every call
+/// opened and then folded shut under the person reading, moving everything below it twice. The status well and
+/// the run's own line already say a call is running.
 fn tool_open(tool: &ToolCall, state: &PaneState) -> bool {
-    state.opened_tools.contains(&tool.id) || tool.is_running()
+    state.opened_tools.contains(&tool.id)
 }
 
 /// How tall a run's open body is, in unscaled points: the well and what is in it.

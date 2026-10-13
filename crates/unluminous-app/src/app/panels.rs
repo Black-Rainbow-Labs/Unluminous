@@ -333,6 +333,21 @@ impl UnluminousApp {
     /// `Escape`, a second double click on the header and `toggle-maximised-pane` all mean. The promise
     /// that there is always something to look at is kept where it was, at the end of
     /// [`Self::show_a_panel`].
+    /// Bring the editing area back because a tab was just opened or shown in it.
+    ///
+    /// `task-2255`: *"I create new design, name it, the file is created, then i try clicking it in the list of
+    /// designs and nothing happens."* The design opened, in a tab of an editing area that was hidden, so there
+    /// was nothing to see; an agent asked to open it opened it there too. A tab opened is a tab somebody wants
+    /// to look at, so every way a tab is opened ends here. A pane filling the window stops filling it, because
+    /// the editing area would otherwise come back underneath it.
+    pub(crate) fn show_the_editing_area_for_a_tab(&mut self) {
+        if self.editor_visible {
+            return;
+        }
+        self.leave_the_maximised_pane();
+        self.editor_visible = true;
+    }
+
     pub(crate) fn leave_the_maximised_pane(&mut self) {
         if !self.settling_the_maximise {
             self.maximised = Maximise::No;

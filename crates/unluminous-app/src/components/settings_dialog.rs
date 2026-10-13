@@ -1097,6 +1097,23 @@ fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Drawn 
             }
         }
     });
+    // `task-2255`: *"a browser agent header config in settings, that allows me to spoof being different
+    // browsers"*. Which browser a page is told it is talking to, from the `User-Agent` header.
+    kit::card(ui, &mut column, "Web pages", None, |card| {
+        let list = crate::settings::BrowserAgent::ALL;
+        let options: Vec<String> = list.iter().map(|agent| agent.label().to_owned()).collect();
+        let chosen = list.iter().position(|agent| *agent == settings.browser_agent);
+        card.row(
+            "Identify as",
+            Some("The browser a page is told it is talking to, sent as the User-Agent header with every request. Default is the engine Unluminous draws pages with: Edge's WebView2 on Windows and Safari's WebKit on macOS."),
+            |row| {
+                if let Some(index) = row.select("Identify as", &options, chosen, 160.0) {
+                    settings.browser_agent = list[index];
+                    changed = true;
+                }
+            },
+        );
+    });
     // `task-1804` §7.1. What a file is written back with, and what the index leaves out.
     kit::card(ui, &mut column, "Files", None, |card| {
         let list = [LineEndings::Keep, LineEndings::Lf, LineEndings::Crlf];

@@ -90,6 +90,7 @@ impl UnluminousApp {
             return Err("The Designer plugin is switched off.".to_owned());
         }
         let key = design_tab_key(design);
+        self.show_the_editing_area_for_a_tab();
         if let Some(index) = self.files.index_of_plugin_tab(&key) {
             self.show_tab(index);
             self.focus = Focus::Editor;

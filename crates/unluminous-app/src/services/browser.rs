@@ -113,7 +113,7 @@ impl BrowserLocation {
 /// Every rendered tab in a window shares one native view (see [`BrowserHost`]), so where a tab has
 /// been is remembered here rather than read back out of the engine: two tabs sharing one view would
 /// otherwise share one history, and `Back` on the second would land on the first one's page.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BrowserTab {
     pub id: u64,
     pub location: BrowserLocation,
@@ -125,6 +125,28 @@ pub struct BrowserTab {
     awaiting: Option<Awaited>,
     pub loading: bool,
     pub problem: Option<String>,
+    /// How large a tab in the editing area draws its page, which `Ctrl`/`Cmd` with the wheel or with plus and
+    /// minus changes (`task-2255`). Kept on the tab because one native view is shared by every tab, so the view
+    /// is given each tab's own zoom when it moves to that tab. A browser node's zoom is the canvas's.
+    pub zoom: f64,
+}
+
+/// The least and the most a page in a tab can be zoomed to, which are the engine's own limits.
+pub const PAGE_ZOOM_LEAST: f64 = 0.25;
+pub const PAGE_ZOOM_MOST: f64 = 5.0;
+
+/// The zoom one step up or down from `zoom`: the steps a browser takes, ten percent at a time near one.
+///
+/// @param zoom - the zoom now
+/// @param larger - which way
+pub fn step_page_zoom(zoom: f64, larger: bool) -> f64 {
+    const STEPS: [f64; 15] =
+        [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 3.0, 5.0];
+    let next = match larger {
+        true => STEPS.iter().copied().find(|step| *step > zoom + 0.001),
+        false => STEPS.iter().rev().copied().find(|step| *step < zoom - 0.001),
+    };
+    next.unwrap_or(zoom).clamp(PAGE_ZOOM_LEAST, PAGE_ZOOM_MOST)
 }
 
 /// An address a tab has asked the shared view for, and where arriving there leaves it.
@@ -155,6 +177,7 @@ impl BrowserTab {
             awaiting: None,
             loading: true,
             problem: None,
+            zoom: 1.0,
         }
     }
 
@@ -606,6 +629,8 @@ pub struct BrowserHost {
     receiver: std::sync::mpsc::Receiver<BrowserEvent>,
     native: native::NativeHost,
     last_resource_check: Instant,
+    /// Which browser pages are told they are talking to. See `settings::BrowserAgent`. `task-2255`.
+    agent: crate::settings::BrowserAgent,
 }
 
 impl BrowserHost {
@@ -632,7 +657,30 @@ impl BrowserHost {
             receiver,
             native: native::NativeHost::new(),
             last_resource_check: Instant::now(),
+            agent: crate::settings::BrowserAgent::Default,
         }
+    }
+
+    /// Say which browser pages are told they are talking to.
+    ///
+    /// The engine takes its `User-Agent` when the view is made, so a change drops the view, and the next frame
+    /// makes it again with the new one and puts the page that was showing back in it. Comparing the setting is
+    /// all a frame that changed nothing costs.
+    pub fn set_agent(&mut self, agent: crate::settings::BrowserAgent) {
+        if agent == self.agent {
+            return;
+        }
+        self.agent = agent;
+        self.native.set_user_agent(agent.header());
+        if self.native.has_view() {
+            self.native.forget();
+            self.showing.store(0, Ordering::Relaxed);
+        }
+    }
+
+    /// Which browser pages are told they are talking to.
+    pub fn agent(&self) -> crate::settings::BrowserAgent {
+        self.agent
     }
 
     /// Keep browser cookies and caches in Unluminous's per-user settings folder.
@@ -1763,6 +1811,8 @@ mod native {
         /// The zoom the page was last given, shared with the menu callback so a point it reports in the
         /// view's own units can be turned into the page's pixels. Stored as the bits of an `f64`.
         zoom: Arc<AtomicU64>,
+        /// The `User-Agent` a view is made with, or `None` for the engine's own.
+        user_agent: Option<String>,
     }
 
     impl NativeHost {
@@ -1773,7 +1823,13 @@ mod native {
                 view: None,
                 parent: None,
                 zoom: Arc::new(AtomicU64::new(1f64.to_bits())),
+                user_agent: None,
             }
+        }
+
+        /// The `User-Agent` the next view is made with.
+        pub fn set_user_agent(&mut self, agent: Option<String>) {
+            self.user_agent = agent;
         }
 
         /// Run a script in the page and hand its answer, as JSON, to `answer` when the engine has it.
@@ -1922,10 +1978,17 @@ mod native {
             // goes. Built with the address, the request starts inside `build` and the page arrives signed
             // out. `task-2203`.
             let first = super::engine_url(request.tab.current_url());
-            let webview = WebViewBuilder::new_with_web_context(context)
+            let mut builder = WebViewBuilder::new_with_web_context(context);
+            if let Some(agent) = &self.user_agent {
+                builder = builder.with_user_agent(agent);
+            }
+            let webview = builder
                 .with_id("unluminous-browser")
                 .with_visible(false)
                 .with_clipboard(true)
+                // `Ctrl`/`Cmd` with the wheel or with plus and minus zooms the page while the page has the
+                // keyboard, as in any browser. `wry` turns the engine's own zoom keys off unless asked. `task-2255`.
+                .with_hotkeys_zoom(true)
                 .with_background_throttling(wry::BackgroundThrottlingPolicy::Throttle)
                 .with_permission_handler(|_| PermissionResponse::Deny)
                 .with_download_started_handler(|_, _| false)
@@ -2649,6 +2712,8 @@ mod native {
         pub fn pointer_is_over_the_page(&self) -> bool {
             false
         }
+        /// There is no view to give a `User-Agent` to.
+        pub fn set_user_agent(&mut self, _agent: Option<String>) {}
         /// There is no child window to create, so the window's handle is not wanted.
         pub fn remember_window(&mut self, _frame: &eframe::Frame) {}
         /// There is nothing to drop.

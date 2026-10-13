@@ -653,14 +653,12 @@ impl UnluminousApp {
         (link.bytes.contains(&offset)).then(|| link.target.clone())
     }
 
-    /// Open the link under the pointer, if the modifier is held and there is one there.
+    /// Open the link under the pointer when it is clicked.
     ///
     /// `task-1848`: "Links in markdown should allow me to CMD/Ctrl+Click to open them in a new browser
-    /// window." Three decisions in it are rules rather than choices:
-    ///
-    /// **The modifier is Go to Definition's**, which `task-1696` set: `Ctrl/Cmd` held means "take me to
-    /// the thing this names". A plain click keeps the meaning it has in a preview, which is placing a
-    /// selection — so nothing a person could already do changes.
+    /// window." It asked for the modifier, and `task-2255` asked for a plain click to do it everywhere
+    /// links are drawn, so the modifier is no longer needed. Two decisions in it are rules rather than
+    /// choices:
     ///
     /// **The pointer says so before the click**, with the hand cursor an underlined address already
     /// implies. Without it, a link is indistinguishable from underlined text and the feature is one
@@ -676,10 +674,9 @@ impl UnluminousApp {
         response: &egui::Response,
         origin: Pos2,
     ) {
-        let held = ui.input(|input| input.modifiers.command);
-        if !held {
-            return;
-        }
+        // **A plain click opens it** since `task-2255` (*"Many of the spot where links are rendered ... should all
+        // be clickable"*). A preview is read rather than typed into, so a click on a link has nothing else to
+        // mean, and a drag across one still selects. `Ctrl`/`Cmd` with the click still works.
         let Some(target) = self.link_under_the_pointer(response, origin) else { return };
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         if response.clicked() {
@@ -698,7 +695,10 @@ impl UnluminousApp {
     /// scheme in it: a document must not be able to reach this machine because somebody clicked a word
     /// in it, and a `javascript:` address handed to a web view would run whatever the document said.
     pub(crate) fn settle_the_link_click(&mut self) {
-        let Some(target) = self.link_to_open.take() else { return };
+        // A click on a link in any Markdown a pane drew: the chat, a ticket, a note. `task-2255`.
+        let clicked =
+            self.context.as_ref().and_then(crate::components::markdown_text::take_the_clicked_link);
+        let Some(target) = self.link_to_open.take().or(clicked) else { return };
         match target.split_once(':') {
             Some(("http" | "https", _)) => match self.open_browser(&target) {
                 Ok(_) => {}

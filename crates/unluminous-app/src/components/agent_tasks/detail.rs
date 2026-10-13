@@ -385,6 +385,8 @@ pub(crate) fn comment_section(
             let mut view_change: Option<(i64, bool)> = None;
             let markdown = &mut board.markdown;
             for comment in comments.iter().rev() {
+                // What a person has selected in this comment's words, for the menu's `Copy`. `task-2255`.
+                let mut selected_words: Option<String> = None;
                 let mine = comment.author == crate::services::agent_tasks::model::Author::Human;
                 // The round chip saying who wrote it.
                 let disc = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::splat(30.0));
@@ -500,7 +502,16 @@ pub(crate) fn comment_section(
                             Pos2::new(words_left, pen),
                             Vec2::new(words_width, height),
                         );
-                        crate::components::markdown_text::show(ui, block, made, look.renderer, 0.0);
+                        // Selectable, as the chat's messages are. `task-2255`.
+                        selected_words = crate::components::markdown_text::show_selectable(
+                            ui,
+                            block,
+                            made,
+                            look.renderer,
+                            0.0,
+                            None,
+                            egui::Id::new(("agent-tasks-comment-words", comment.id)),
+                        );
                         height
                     }
                     false => {
@@ -531,14 +542,15 @@ pub(crate) fn comment_section(
                         Vec2::new(words_width, height),
                     );
                     let id = ui.id().with(("agent-tasks-comment-menu", comment.id));
-                    if crate::components::controls::read_only_menu(
+                    match crate::components::controls::read_only_menu(
                         ui,
                         block,
                         id,
-                        &[("Copy Comment", true)],
-                    ) == Some(0)
-                    {
-                        copy = Some(comment.body.clone());
+                        &[("Copy", selected_words.is_some()), ("Copy Comment", true)],
+                    ) {
+                        Some(0) => copy = selected_words.clone(),
+                        Some(_) => copy = Some(comment.body.clone()),
+                        None => {}
                     }
                 }
                 // A person's own comment can be sent to the agent on its own, and changed. Neither is offered on

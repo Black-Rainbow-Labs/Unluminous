@@ -540,6 +540,22 @@ Reload the rendered tab that is showing, including its linked local resources.
 unluminous-cli browser reload
 ```
 
+### browser zoom
+
+```
+unluminous-cli browser zoom [factor]
+```
+
+How large the rendered tab that is showing draws its page, which Ctrl or Cmd with the wheel or with plus and minus changes. A factor such as 1.25, `in`, `out` or `reset`; with nothing it says the zoom.
+
+- `factor` (optional) — A number from 0.25 to 5, or `in`, `out` or `reset`.
+
+```sh
+unluminous-cli browser zoom
+unluminous-cli browser zoom 1.5
+unluminous-cli browser zoom in
+```
+
 ## tab — the files that are open
 
 A tab holds a file. A relative path is resolved against the project folder, and every reply says which absolute path it used.
@@ -4069,9 +4085,9 @@ unluminous-cli plugins reload --json
 unluminous-cli plugins pane <pane> [--show] [--hide] [--side <side>]
 ```
 
-Show, hide or move a pane a plugin contributed: what its rail button and a drag on its header do.
+Show, hide or move a pane a plugin contributed: what its rail button and a drag on its header do. The panes are `agent-chat/chat`, `agent-tasks/board`, `database/explorer` and `designer/designs`, and a plugin with one pane is named by its id alone: `plugins pane designer --show`.
 
-- `pane` — The pane, as `<plugin id>/<pane id>` — `agent-tasks/board`.
+- `pane` — The pane, as `<plugin id>/<pane id>` — `agent-tasks/board` — or the plugin's id when it has one pane.
 
 - `--show` — Show it, building the plugin's own state the first time.
 - `--hide` — Put it away.
@@ -4079,6 +4095,7 @@ Show, hide or move a pane a plugin contributed: what its rail button and a drag 
 
 ```sh
 unluminous-cli plugins pane agent-tasks/board --show
+unluminous-cli plugins pane designer --show
 unluminous-cli plugins pane agent-tasks/board --side bottom
 ```
 
@@ -4120,6 +4137,8 @@ unluminous-cli plugins run database query select count(*) from member
 unluminous-cli plugins run database new-table public.shelf id:integer:pk title:text:notnull
 unluminous-cli plugins run database set 1 title Kind of Green
 unluminous-cli plugins run database submit
+unluminous-cli plugins run designer new Landing page
+unluminous-cli plugins run designer open Landing page
 ```
 
 ### plugins view

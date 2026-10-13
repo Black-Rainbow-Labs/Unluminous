@@ -1740,7 +1740,10 @@ impl UnluminousApp {
                 let file = self.files.at(*index);
                 crate::components::file_tabs::TabView {
                     name: file.name(),
-                    modified: file.document.is_modified(),
+                    // Only a tab holding a document can have unsaved changes: a browser, picture or plugin tab
+                    // holds an empty document nobody can save, and a dot on it read as a page with unsaved work
+                    // (`task-2255`).
+                    modified: file.is_a_document() && file.document.is_modified(),
                     transient: file.transient,
                     marker: file
                         .path()
@@ -2054,9 +2057,14 @@ impl UnluminousApp {
         // A canvas that had **no** choice written down keeps what the restore chose, which is what
         // gives a file written by a version before `View::chosen` somewhere for the first key to go.
         let chosen = self.realm.realm.chosen();
+        // Each its own phase of the frame trace, so a slow realm says which kind of node it was. `task-2255`.
+        crate::services::frame_trace::phase("realm-before");
         self.start_the_canvass_terminals();
+        crate::services::frame_trace::phase("realm-terminals");
         self.open_the_canvass_browsers();
+        crate::services::frame_trace::phase("realm-browsers");
         self.open_the_canvass_editors();
+        crate::services::frame_trace::phase("realm-editors");
         self.scroll_the_canvass_folders();
         if chosen.is_some() {
             self.realm.realm.choose(chosen);

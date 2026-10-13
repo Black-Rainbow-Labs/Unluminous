@@ -299,6 +299,30 @@ impl FieldEdit {
 pub struct FieldMenu {
     at: Pos2,
     selected: Option<egui::text::CCursorRange>,
+    /// The frame it was opened on, so [`close_every_menu`] can tell a menu opened before it was asked.
+    opened: u64,
+}
+
+fn menus_closed_at() -> egui::Id {
+    egui::Id::new("unluminous-menus-closed-at")
+}
+
+/// Close every field and text menu that is open, and every egui popup.
+///
+/// `task-2255`: *"The menu should dismiss if i click anywhere off the menu. it currently stays open if i switch
+/// between tabs."* A menu is kept in egui's memory under its field, and a field that is not drawn because its
+/// tab is not showing is never asked whether a click landed outside it, so the menu was still open when the
+/// tab came back. A click on a page is not seen by egui at all. The window calls this when the tab showing
+/// changes and when a page is clicked into.
+pub fn close_every_menu(ctx: &egui::Context) {
+    let frame = ctx.cumulative_frame_nr();
+    ctx.data_mut(|data| data.insert_temp(menus_closed_at(), frame));
+    egui::Popup::close_all(ctx);
+}
+
+/// Whether a menu opened on frame `opened` has been closed by [`close_every_menu`] since.
+fn closed_since(ctx: &egui::Context, opened: u64) -> bool {
+    ctx.data(|data| data.get_temp::<u64>(menus_closed_at())).is_some_and(|at| at >= opened)
 }
 
 /// Where a field records what its menu asked for, and which box asked, for the **next** frame.
@@ -340,13 +364,32 @@ pub fn field_menu(ui: &egui::Ui, field: Rect, id: egui::Id) {
         && pointer_in(ui).is_some_and(|at| field.contains(at));
     if opened {
         if let Some(at) = ui.ctx().pointer_interact_pos() {
-            ui.ctx().data_mut(|data| data.insert_temp(menu, FieldMenu { at, selected: before }));
+            let frame = ui.ctx().cumulative_frame_nr() + 1;
+            ui.ctx().data_mut(|data| {
+                data.insert_temp(menu, FieldMenu { at, selected: before, opened: frame })
+            });
+        }
+        // **The selection a person right clicked is put back** (`task-2255`: *"When I right click selected
+        // text, such as in the browser url, it shows the popup menu but then deselects the text."*). The
+        // press under a right click goes through the `TextEdit` like any press and collapses its selection a
+        // frame before the menu opens, so the words the menu is about stopped being selected. Written back
+        // before the box is drawn this frame, so it draws them selected again under the menu.
+        if let Some(range) = before {
+            if let Some(mut state) = egui::text_edit::TextEditState::load(ui.ctx(), id) {
+                state.cursor.set_char_range(Some(range));
+                state.store(ui.ctx(), id);
+            }
         }
     }
-    let Some(FieldMenu { at, selected }) = ui.ctx().data(|data| data.get_temp::<FieldMenu>(menu))
+    let Some(FieldMenu { at, selected, opened }) =
+        ui.ctx().data(|data| data.get_temp::<FieldMenu>(menu))
     else {
         return;
     };
+    if closed_since(ui.ctx(), opened) {
+        ui.ctx().data_mut(|data| data.remove::<FieldMenu>(menu));
+        return;
+    }
     // A row is dimmed rather than absent when there is nothing to act on, which is the style guide's
     // distinction: `Copy` with nothing selected is a control that will apply the moment something is.
     let selected = selected.filter(|range| !range.is_empty());
@@ -416,10 +459,15 @@ pub fn read_only_menu(
         && ui.clip_rect().intersects(area);
     if opened {
         if let Some(at) = ui.ctx().pointer_interact_pos() {
-            ui.ctx().data_mut(|data| data.insert_temp(menu, at));
+            let frame = ui.ctx().cumulative_frame_nr() + 1;
+            ui.ctx().data_mut(|data| data.insert_temp(menu, (at, frame)));
         }
     }
-    let at = ui.ctx().data(|data| data.get_temp::<Pos2>(menu))?;
+    let (at, opened) = ui.ctx().data(|data| data.get_temp::<(Pos2, u64)>(menu))?;
+    if closed_since(ui.ctx(), opened) {
+        ui.ctx().data_mut(|data| data.remove::<(Pos2, u64)>(menu));
+        return None;
+    }
     let mut chosen = None;
     let popup = egui::Popup::new(menu, ui.ctx().clone(), at, ui.layer_id())
         .kind(egui::PopupKind::Menu)
@@ -446,7 +494,7 @@ pub fn read_only_menu(
         close = true;
     }
     if close {
-        ui.ctx().data_mut(|data| data.remove::<Pos2>(menu));
+        ui.ctx().data_mut(|data| data.remove::<(Pos2, u64)>(menu));
     }
     chosen
 }

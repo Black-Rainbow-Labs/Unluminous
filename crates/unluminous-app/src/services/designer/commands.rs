@@ -73,7 +73,7 @@ fn parse(arguments: &[String]) -> Parsed<'_> {
 pub fn run(designer: &mut Designer, command: &str, arguments: &[String]) -> Result<Answer, String> {
     let parsed = parse(arguments);
     match command {
-        "open-pane" => Ok(Answer::nothing()),
+        "open-pane" => Ok(Answer::said("showing the Designs pane")),
         "designs" => Ok(list_the_designs(designer)),
         "new" => make_one(designer, &parsed),
         "open" => open_one(designer, &parsed),

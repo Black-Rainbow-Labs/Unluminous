@@ -807,6 +807,7 @@ impl UnluminousApp {
             self.message = Some(problem);
             return;
         }
+        self.show_the_editing_area_for_a_tab();
         if let Some(index) = self.files.index_of_plugin_tab(tab) {
             self.files.show(index);
             self.focus = Focus::Editor;

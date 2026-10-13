@@ -12,6 +12,82 @@ use crate::services::browser::{BrowserCommand, BrowserEvent, BrowserLocation, Br
 use crate::app::files;
 use crate::app::{a_modal_has_the_keyboard, Focus, UnluminousApp};
 
+/// How long a pane's size has to stand still before the live page is given it.
+const RESIZE_SETTLE: std::time::Duration = std::time::Duration::from_millis(150);
+
+/// How long the live page is left cut away at its new size before it is shown, so it is drawn at that size
+/// first. The canvas's own `PAGE_SETTLE`, for the same reason.
+const SHOW_SETTLE: std::time::Duration = std::time::Duration::from_millis(160);
+
+/// The longest a switched-to tab's picture stands in for its page while the page reloads.
+const SWITCH_LONGEST: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// What a browser tab in a pane shows while its live page is not worth showing (`task-2255`).
+///
+/// *"the resize is not smooth at all. it's very chunky"* and *"switching between tabs ... seems a bit slow and
+/// clunky"*. A window has one native view, so showing another browser tab reloads that tab's page into it, and
+/// for the length of the load the pane showed a blank page. And a page is laid out again by the engine on its own
+/// process after every change of size, so on every frame of a resize it was drawn at a size a few frames old.
+/// Both are answered the way the canvas answers a zoom (`task-2253`): a picture of the page, taken with
+/// `BrowserHost::photograph`, is drawn in the pane, the native view is cut away, and the live page comes back
+/// once the load has finished or the size has stood still.
+#[derive(Default)]
+pub struct PageStills {
+    /// The last picture taken of each tab's page.
+    pictures: std::collections::HashMap<u64, egui::TextureHandle>,
+    /// The page area each tab was last drawn in, so a frame can tell its pane is being resized.
+    areas: std::collections::HashMap<u64, Rect>,
+    /// The tab being held, and why.
+    held: Option<Held>,
+}
+
+/// One tab whose picture is standing in for its page.
+struct Held {
+    tab: u64,
+    /// When the pane last changed size, or when the tab was switched to.
+    since: std::time::Instant,
+    /// True while a reload after a switch is what is being waited for, rather than a resize.
+    switching: bool,
+    /// The area the native view is kept at while the size moves, so the engine lays nothing out.
+    area: Rect,
+    /// When the live page was given its new size, still cut away.
+    released: Option<std::time::Instant>,
+}
+
+impl PageStills {
+    /// Remember a picture of a tab's page.
+    pub fn keep(&mut self, tab: u64, picture: egui::TextureHandle) {
+        self.pictures.insert(tab, picture);
+    }
+
+    /// Forget a closed tab.
+    pub fn forget(&mut self, tab: u64) {
+        self.pictures.remove(&tab);
+        self.areas.remove(&tab);
+        if self.held.as_ref().is_some_and(|held| held.tab == tab) {
+            self.held = None;
+        }
+    }
+
+    /// Hold `tab`'s picture over it until its page has reloaded, because the view has just been sent to it.
+    pub fn switched_to(&mut self, tab: u64) {
+        if self.pictures.contains_key(&tab) {
+            self.held = Some(Held {
+                tab,
+                since: std::time::Instant::now(),
+                switching: true,
+                area: Rect::NOTHING,
+                released: None,
+            });
+        }
+    }
+
+    /// Whether a picture of `tab` is being drawn now, which a test and `browser status` can ask.
+    pub fn holding(&self, tab: u64) -> bool {
+        self.held.as_ref().is_some_and(|held| held.tab == tab)
+    }
+}
+
 impl UnluminousApp {
     /// Where each native browser view was asked to go last frame, in the window's own points.
     ///
@@ -50,7 +126,15 @@ impl UnluminousApp {
         );
         self.files.active_mut().typed_address = typed;
         self.files.active_mut().editing_address = editing;
-        if let Some(placement) = placement {
+        self.zoom_the_page_in_the_pane(ui, &tab);
+        if let Some(mut placement) = placement {
+            // The tab's own zoom, sent with the bounds as a node's is, so the view takes it when it moves to
+            // this tab. `task-2255`.
+            placement.zoom = Some(tab.zoom);
+            let placement = match showing {
+                true => self.hold_a_still_over_the_page(ui, &tab, placement),
+                false => placement,
+            };
             self.browser_placements.push(placement);
         }
         if let Some(command) = outcome.command {
@@ -62,6 +146,129 @@ impl UnluminousApp {
         outcome.took_focus
     }
 
+    /// `Ctrl`/`Cmd` with the wheel over a browser tab's toolbar zooms its page (`task-2255`). Over the page
+    /// itself the engine does it, because the page's window takes the wheel; the keys are the `View` menu's
+    /// `Increase Font Size` and `Decrease Font Size`, which reach [`Self::step_the_page_zoom`].
+    ///
+    /// @param ui - the pane's `Ui`
+    /// @param tab - the browser tab showing
+    fn zoom_the_page_in_the_pane(&mut self, ui: &egui::Ui, tab: &BrowserTab) {
+        let over = ui.ctx().pointer_hover_pos().is_some_and(|at| ui.max_rect().contains(at));
+        // Claimed the way a pane claims the gesture, so the editor's font does not move with it.
+        if !over || self.zoom == crate::app::ZoomClaim::Taken {
+            return;
+        }
+        let steps = ui.ctx().input(|input| {
+            let delta = input.zoom_delta();
+            match () {
+                _ if delta > 1.001 => 1,
+                _ if delta < 0.999 => -1,
+                _ => 0,
+            }
+        });
+        if steps != 0 {
+            self.zoom = crate::app::ZoomClaim::Taken;
+            self.step_the_page_zoom(tab.id, steps > 0);
+        }
+    }
+
+    /// Zoom a browser tab's page one step in or out.
+    ///
+    /// @param id - the browser tab
+    /// @param larger - which way
+    pub(crate) fn step_the_page_zoom(&mut self, id: u64, larger: bool) {
+        self.change_browser_tab(id, |tab| {
+            tab.zoom = crate::services::browser::step_page_zoom(tab.zoom, larger)
+        });
+    }
+
+    /// Put a browser tab's page back at its own size.
+    pub(crate) fn reset_the_page_zoom(&mut self, id: u64) {
+        self.change_browser_tab(id, |tab| tab.zoom = 1.0);
+    }
+
+    /// How large a browser tab draws its page.
+    pub fn browser_zoom_of(&self, id: u64) -> f64 {
+        self.browser_tab(id).map(|tab| tab.zoom).unwrap_or(1.0)
+    }
+
+    /// Draw a tab's picture in place of its page while its pane is resized or its page reloads after a switch,
+    /// and answer the placement the native view is to have. See [`PageStills`].
+    ///
+    /// @param ui - the pane's `Ui`
+    /// @param tab - the browser tab
+    /// @param placement - where the page would be placed with nothing held
+    fn hold_a_still_over_the_page(
+        &mut self,
+        ui: &egui::Ui,
+        tab: &BrowserTab,
+        placement: crate::services::browser::BrowserPlacement,
+    ) -> crate::services::browser::BrowserPlacement {
+        let now = std::time::Instant::now();
+        let area = placement.area;
+        let before = self.page_stills.areas.insert(tab.id, area);
+        let resized = before.is_some_and(|was| (was.size() - area.size()).length() > 0.5);
+        if resized {
+            match self.page_stills.held.as_mut().filter(|held| held.tab == tab.id) {
+                Some(held) => {
+                    held.since = now;
+                    held.switching = false;
+                    held.released = None;
+                }
+                None => {
+                    // The picture is taken from the page as it is, on the first frame of the resize.
+                    if let Some(picture) = self.browser.photograph(tab.id) {
+                        let texture = ui.ctx().load_texture(
+                            "pane-page-still",
+                            picture,
+                            egui::TextureOptions::LINEAR,
+                        );
+                        self.page_stills.keep(tab.id, texture);
+                    }
+                    if self.page_stills.pictures.contains_key(&tab.id) {
+                        self.page_stills.held = Some(Held {
+                            tab: tab.id,
+                            since: now,
+                            switching: false,
+                            area: before.unwrap_or(area),
+                            released: None,
+                        });
+                    }
+                }
+            }
+        }
+        let Some(held) = self.page_stills.held.as_mut().filter(|held| held.tab == tab.id) else {
+            return placement;
+        };
+        let Some(picture) = self.page_stills.pictures.get(&tab.id).cloned() else {
+            self.page_stills.held = None;
+            return placement;
+        };
+        // Whether whatever the picture is standing in for is over.
+        let done = match held.switching {
+            true => !tab.loading || now.duration_since(held.since) > SWITCH_LONGEST,
+            false => now.duration_since(held.since) > RESIZE_SETTLE,
+        };
+        let mut placed = placement.clone();
+        if !done {
+            if !held.switching && held.area.is_positive() {
+                placed.area = held.area;
+                placed.visible = held.area;
+            }
+        } else if held.released.is_none() {
+            held.released = Some(now);
+        } else if held.released.is_some_and(|at| now.duration_since(at) > SHOW_SETTLE) {
+            self.page_stills.held = None;
+            ui.ctx().request_repaint();
+            return placement;
+        }
+        let uv = Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0));
+        ui.painter().image(picture.id(), placement.visible, uv, egui::Color32::WHITE);
+        placed.over.push(placed.visible);
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(16));
+        placed
+    }
+
     /// Make the tab or node holding page `id` the one with the keyboard, because somebody clicked into the page.
     ///
     /// A click on a page goes to the page's own window, so nothing in egui saw it and nothing chose the tab or
@@ -70,8 +277,10 @@ impl UnluminousApp {
     ///
     /// @param id - the browser tab whose page was clicked
     pub(crate) fn give_the_keyboard_to_the_page(&mut self, id: u64) {
-        let index =
-            self.files.iter().position(|file| file.browser.as_ref().is_some_and(|tab| tab.id == id));
+        let index = self
+            .files
+            .iter()
+            .position(|file| file.browser.as_ref().is_some_and(|tab| tab.id == id));
         if let Some(index) = index {
             let pane = self.files.pane_of(index);
             self.files.focus_pane(pane);
@@ -81,6 +290,37 @@ impl UnluminousApp {
         if let Some(node) = self.realm.live.node_of_browser(id) {
             self.realm.realm.choose(Some(node));
             self.focus = Focus::Realm;
+        }
+    }
+
+    /// Carry one of the `Edit` menu's six entries to the page the active browser tab shows.
+    ///
+    /// The page's own `document.execCommand` does what the browser's own menu would: it acts on the field or
+    /// the selection that has the page's focus. A paste reads Unluminous's clipboard and inserts it as text,
+    /// because a script cannot read the clipboard without asking the person first. `task-2255`.
+    ///
+    /// @param action - which entry was chosen
+    pub(crate) fn edit_in_the_page(&mut self, action: crate::app::actions::Action) {
+        use crate::app::actions::Action;
+        let Some(id) = self.files.active().browser.as_ref().map(|tab| tab.id) else { return };
+        let script = match action {
+            Action::Undo => "document.execCommand('undo')".to_owned(),
+            Action::Redo => "document.execCommand('redo')".to_owned(),
+            Action::Cut => "document.execCommand('cut')".to_owned(),
+            Action::Copy => "document.execCommand('copy')".to_owned(),
+            Action::SelectAll => "document.execCommand('selectAll')".to_owned(),
+            Action::Paste => {
+                let Ok(text) = arboard::Clipboard::new().and_then(|mut board| board.get_text())
+                else {
+                    return;
+                };
+                let text = serde_json::to_string(&text).unwrap_or_default();
+                format!("document.execCommand('insertText', false, {text})")
+            }
+            _ => return,
+        };
+        if let Err(problem) = self.browser.evaluate(id, &script) {
+            self.message = Some(problem);
         }
     }
 
@@ -113,6 +353,7 @@ impl UnluminousApp {
         let tab = self.browser.open_tab(location);
         let id = tab.id;
         self.files.open_file(files::OpenFile::browser(tab), true);
+        self.show_the_editing_area_for_a_tab();
         self.focus = Focus::Editor;
         self.message = Some("Opened in a browser tab".to_owned());
         Ok(id)
@@ -302,6 +543,12 @@ impl UnluminousApp {
                     // address still names the last one until the load finishes, so it is held until then.
                     // `task-2203`: filed at once, the second page of a visit was written down with the first
                     // page's title.
+                    //
+                    // **And the tab keeps the name it had until the load finishes** (`task-2255`: *"The browser
+                    // tabs get renamed when I click on/off of them"*). A window has one native view, so showing a
+                    // tab sends the view to that tab's page, and on the way the engine names the page it is
+                    // leaving and then the bare address of the one it is loading. Taken at once, each of those
+                    // renamed the tab for a moment.
                     match self
                         .browser_tab(id)
                         .map(|tab| (tab.loading, tab.current_url().to_owned()))
@@ -309,10 +556,12 @@ impl UnluminousApp {
                         Some((true, _)) => {
                             self.titles_arriving.insert(id, title.clone());
                         }
-                        Some((false, url)) => self.visits.titled(&url, &title),
+                        Some((false, url)) => {
+                            self.visits.titled(&url, &title);
+                            self.change_browser_tab(id, |tab| tab.title = title);
+                        }
                         None => {}
                     }
-                    self.change_browser_tab(id, |tab| tab.title = title)
                 }
                 BrowserEvent::LoadStarted { id, .. } => {
                     self.titles_arriving.remove(&id);
@@ -326,6 +575,7 @@ impl UnluminousApp {
                         self.visits.visited(&now, crate::services::browser_session::now());
                         if let Some(title) = self.titles_arriving.remove(&id) {
                             self.visits.titled(&now, &title);
+                            self.change_browser_tab(id, |tab| tab.title = title);
                         }
                     }
                     // And a node showing one element of this page shows it again.

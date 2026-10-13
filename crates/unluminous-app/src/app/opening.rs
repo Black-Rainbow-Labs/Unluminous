@@ -144,6 +144,21 @@ impl UnluminousApp {
         permanent: bool,
         as_text: bool,
     ) -> Result<(), String> {
+        let opened = self.load_a_path_into_a_tab(path, permanent, as_text);
+        if opened.is_ok() {
+            self.show_the_editing_area_for_a_tab();
+        }
+        opened
+    }
+
+    /// The loading half of [`Self::open_path_in_tab_as`], which is everything but making sure the tab can be
+    /// seen.
+    fn load_a_path_into_a_tab(
+        &mut self,
+        path: &Path,
+        permanent: bool,
+        as_text: bool,
+    ) -> Result<(), String> {
         // **A file in the designs folder opens as a design tab**, when the Designer is on. `task-2254`.
         if !as_text {
             if let Some(design) = self.the_design_a_file_is(path) {
@@ -564,6 +579,7 @@ impl UnluminousApp {
             self.files.get(index).and_then(|file| file.browser.as_ref()).map(|tab| tab.id)
         {
             self.browser.close_tab(id);
+            self.page_stills.forget(id);
         }
         // Written down **before** it is closed, because afterwards there is no tab to ask where it
         // was. `task-1922` WP4.

@@ -443,6 +443,91 @@ impl LineEndings {
     }
 }
 
+/// Which browser a page is told it is talking to, through the `User-Agent` header. `task-2255`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BrowserAgent {
+    /// What the operating system's engine says it is: Edge's WebView2 on Windows, Safari's WebKit on macOS.
+    #[default]
+    Default,
+    Chrome,
+    Firefox,
+    Safari,
+    Edge,
+}
+
+impl BrowserAgent {
+    /// Every value, in the order the Settings page lists them.
+    pub const ALL: [BrowserAgent; 5] = [
+        BrowserAgent::Default,
+        BrowserAgent::Chrome,
+        BrowserAgent::Firefox,
+        BrowserAgent::Safari,
+        BrowserAgent::Edge,
+    ];
+
+    /// The newest stable versions when this was written (October 2026). Kept together so moving them is
+    /// one edit.
+    const CHROME: &'static str = "155.0.0.0";
+    const FIREFOX: &'static str = "157.0";
+    const SAFARI: &'static str = "27.0";
+
+    /// The word the settings file, the command line and a test spell it with.
+    pub fn name(self) -> &'static str {
+        match self {
+            BrowserAgent::Default => "default",
+            BrowserAgent::Chrome => "chrome",
+            BrowserAgent::Firefox => "firefox",
+            BrowserAgent::Safari => "safari",
+            BrowserAgent::Edge => "edge",
+        }
+    }
+
+    /// What the Settings page calls it.
+    pub fn label(self) -> &'static str {
+        match self {
+            BrowserAgent::Default => "Default",
+            BrowserAgent::Chrome => "Chrome",
+            BrowserAgent::Firefox => "Firefox",
+            BrowserAgent::Safari => "Safari",
+            BrowserAgent::Edge => "Edge",
+        }
+    }
+
+    /// Read a value, or nothing when the file holds something this version does not have.
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|agent| agent.name().eq_ignore_ascii_case(name.trim()))
+    }
+
+    /// The `User-Agent` header a page is asked for with, or `None` for the engine's own.
+    ///
+    /// `task-2255`: *"a browser agent header config in settings, that allows me to spoof being different
+    /// browsers"*. Chrome, Firefox and Edge name the platform Unluminous runs on, because a site that is told
+    /// it is talking to Chrome on Windows from a Mac sends the wrong downloads; Safari only runs on a Mac.
+    pub fn header(self) -> Option<String> {
+        let platform = match cfg!(target_os = "macos") {
+            true => "Macintosh; Intel Mac OS X 10_15_7",
+            false => "Windows NT 10.0; Win64; x64",
+        };
+        let chrome = format!(
+            "Mozilla/5.0 ({platform}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{} Safari/537.36",
+            Self::CHROME
+        );
+        match self {
+            BrowserAgent::Default => None,
+            BrowserAgent::Chrome => Some(chrome),
+            BrowserAgent::Edge => Some(format!("{chrome} Edg/{}", Self::CHROME)),
+            BrowserAgent::Firefox => Some(format!(
+                "Mozilla/5.0 ({platform}; rv:{v}) Gecko/20100101 Firefox/{v}",
+                v = Self::FIREFOX
+            )),
+            BrowserAgent::Safari => Some(format!(
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/{} Safari/605.1.15",
+                Self::SAFARI
+            )),
+        }
+    }
+}
+
 /// Whether the debugger's value tooltip appears without being asked for.
 ///
 /// The reference editor's `Show value tooltip`, in `Suggestions`' shape and for its reason: `manual` is already
@@ -1014,6 +1099,8 @@ settings! {
         update_check: UpdateCheck = UpdateCheck::Daily => "update.check", "off, start or daily";
         /// Whether the debugger's value tooltip arrives when the pointer rests on a name.
         value_tooltip: ValueTooltip = ValueTooltip::Automatic => "debug.value_tooltip", "automatic or manual";
+        /// Which browser a page is told it is talking to. See [`BrowserAgent`]. `task-2255`.
+        browser_agent: BrowserAgent = BrowserAgent::Default => "browser.user_agent", "default, chrome, firefox, safari or edge";
         /// How many tools the catalogue is cut into for an agent. See `unluminous_cli::mcp::tools`.
         mcp_tools: unluminous_cli::mcp::Shape = unluminous_cli::mcp::Shape::default() => "mcp.tools", "grouped or every";
     }
@@ -1597,6 +1684,7 @@ mod tests {
             "update.check",
             "update.skip",
             "debug.value_tooltip",
+            "browser.user_agent",
             "mcp.tools",
             "mcp.port",
             "appearance.background.image",
@@ -1641,6 +1729,22 @@ mod tests {
         assert!(Settings::new().auto_indent);
     }
 
+    /// `task-2255`: each browser a page can be told it is talking to reads back what it was written as, and
+    /// says so in its header.
+    #[test]
+    fn a_browser_agent_reads_back_and_names_its_browser() {
+        for agent in BrowserAgent::ALL {
+            assert_eq!(BrowserAgent::parse(agent.name()), Some(agent));
+        }
+        assert_eq!(BrowserAgent::parse("Opera"), None);
+        assert_eq!(BrowserAgent::Default.header(), None, "the engine's own header");
+        assert!(BrowserAgent::Chrome.header().unwrap().contains("Chrome/"));
+        assert!(BrowserAgent::Edge.header().unwrap().contains("Edg/"));
+        assert!(BrowserAgent::Firefox.header().unwrap().contains("Firefox/"));
+        let safari = BrowserAgent::Safari.header().unwrap();
+        assert!(safari.contains("Version/") && !safari.contains("Chrome/"));
+    }
+
     #[test]
     fn settings_survive_being_written_and_read_back() {
         let settings = Settings {
@@ -1662,6 +1766,7 @@ mod tests {
             update_skip: "0.99.0".to_owned(),
             exclude: "dist/, vendor/".to_owned(),
             value_tooltip: ValueTooltip::Manual,
+            browser_agent: BrowserAgent::Firefox,
             plugin_chrome: false,
             mcp_enabled: true,
             mcp_port: 9001,

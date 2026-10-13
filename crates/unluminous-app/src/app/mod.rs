@@ -835,6 +835,12 @@ pub struct UnluminousApp {
     backgrounds: Option<std::path::PathBuf>,
     /// Browser child rectangles reported by the panes in this frame.
     browser_placements: Vec<BrowserPlacement>,
+    /// The pictures that stand in for a browser tab's page while its pane is resized or while it reloads after
+    /// being switched to. See `app::browsing::PageStills`. `task-2255`.
+    pub(crate) page_stills: browsing::PageStills,
+    /// The tab and pane that were showing when the menus last looked, so a change of tab closes them.
+    /// See `controls::close_every_menu`. `task-2255`.
+    menus_were_for: Option<(usize, usize)>,
     /// The addresses visited in every project, offered under every address field. `task-2203`.
     ///
     /// In memory only until the window is given a settings folder, so a test writes nothing of the person's.
@@ -1476,6 +1482,8 @@ impl UnluminousApp {
             files: OpenFiles::new(document),
             browser: BrowserHost::new(),
             browser_placements: Vec::new(),
+            page_stills: browsing::PageStills::default(),
+            menus_were_for: None,
             visits: crate::services::browser_session::Visits::in_memory(),
             pick_when_showing: None,
             titles_arriving: std::collections::HashMap::new(),

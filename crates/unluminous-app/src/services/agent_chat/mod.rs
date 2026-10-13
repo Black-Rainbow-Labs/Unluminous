@@ -1349,6 +1349,10 @@ impl AgentChat {
         if let Some(showing) = &self.showing {
             lines.push(format!("The file they are looking at is {}.", showing.display()));
         }
+        // **How to act on the window**, which an agent cannot find out from the project: `task-2255` watched one
+        // make a dozen calls trying to show the Designs pane. `unluminous-cli` is on its `PATH` and already
+        // pointed at this window (`agent_tasks::how_to_reach_this_window`).
+        lines.push("To show or open something in this window, run `unluminous-cli`, which is on your PATH and already drives this window: `unluminous-cli action list` lists every menu entry, `unluminous-cli plugins pane designer --show` shows a pane (the panes are designer, agent-tasks, agent-chat and database), `unluminous-cli plugins run designer open <name>` opens a design, `unluminous-cli tab open <file>` opens a file, and `unluminous-cli --help` lists the rest.".to_owned());
         if !self.configuration.system.trim().is_empty() {
             lines.push(self.configuration.system.trim().to_owned());
         }

@@ -476,6 +476,12 @@ impl UnluminousApp {
     /// from the definition has no other meaning, and the pivot is what makes one gesture serve both
     /// directions of the question.
     pub(crate) fn go_to_definition(&mut self, offset: usize) {
+        // **A web address is followed rather than looked up** (`task-2255`): `Ctrl`/`Cmd` with a click on an
+        // address in a file, a README's or a comment's, opens it in a browser tab.
+        if let Some(address) = self.address_at_the_offset(offset) {
+            self.link_to_open = Some(address);
+            return;
+        }
         let index = self.files.active_index();
         let path = self.files.at(index).path().map(Path::to_path_buf);
         let Some(word) = self.tab_symbols(index).read.identifier_at(offset) else {

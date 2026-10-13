@@ -738,6 +738,24 @@ fn handle_input(
         (row.min(screen.rows.saturating_sub(1)), column.min(screen.columns.saturating_sub(1)))
     };
 
+    // **`Ctrl`/`Cmd` with a click on a web address opens it in a browser tab** (`task-2255`), which is what
+    // every terminal a person comes from does with an address a dev server prints. The pointer is a hand
+    // while the modifier is held over one, so the address says it can be followed before it is clicked.
+    if modifiers.command {
+        if let Some(position) = response.hover_pos() {
+            let (row, column) = cell_at(position);
+            if let Some(address) =
+                crate::services::links::address_in_column(&screen.row_text(row), column)
+            {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                if response.clicked() {
+                    crate::components::markdown_text::ask_to_open_a_link(ui.ctx(), &address);
+                    return;
+                }
+            }
+        }
+    }
+
     // The mouse. A program that asked to be told about clicks is told; otherwise a drag selects text, and
     // holding shift always selects, which is the only way to copy out of such a program.
     let mouse_mode = session.mouse_mode();

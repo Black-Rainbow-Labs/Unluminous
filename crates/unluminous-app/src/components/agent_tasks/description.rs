@@ -126,7 +126,16 @@ fn rendered_text(
         None,
     );
     let height = made.height();
-    markdown_text::show(ui, inside, made, look.renderer, scroll);
+    // Selectable, as the chat's messages are. `task-2255`.
+    markdown_text::show_selectable(
+        ui,
+        inside,
+        made,
+        look.renderer,
+        scroll,
+        None,
+        egui::Id::new("agent-tasks-description-words"),
+    );
     let over = crate::components::controls::pointer_in(ui).is_some_and(|at| well.contains(at));
     if over {
         let wheel = ui.ctx().input(|input| input.smooth_scroll_delta.y);

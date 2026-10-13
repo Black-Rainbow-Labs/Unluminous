@@ -41,6 +41,7 @@ pub mod ignore;
 pub mod imports;
 pub mod input;
 pub mod launcher;
+pub mod links;
 pub mod locators;
 pub mod login_shell;
 pub mod mcp;

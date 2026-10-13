@@ -39,15 +39,26 @@
 //! the right hand end, which opens the element picker in the page, and a second button while it shows one
 //! element, which shows the whole page again. A tab in the editing area has neither, because pinning is a
 //! node's feature and a control that can never apply is absent.
+//!
+//! ## Drawn in the language of the Agent-Tasks and Agent-Chat panes (`task-2255`)
+//!
+//! *"The browser tab buttons, refresh, and url bar need to be redesigned to match our new style."* The strip
+//! is the pane's own ground with the window's groove under it, `Back`, `Forward` and `Reload` are 32 point
+//! round chips raised out of it with `rux`'s line marks, and the address is a carved pill 34 points tall with
+//! a mark at its left, which is the board's search well. A button that cannot be used now is drawn flat with
+//! its mark in the faintest ink, rather than raised, so the difference is the surface and not only the colour.
 
 use egui::{Align2, CornerRadius, FontId, Pos2, Rect, Sense, Stroke, Vec2};
+use rux::icon::{Icon, Mark as RuxMark};
 
 use crate::services::browser::{BrowserCommand, BrowserPlacement, BrowserTab};
 use crate::theme::crisp::CrispPainter;
 use crate::theme::{color, size};
 
-const TOOLBAR_HEIGHT: f32 = 38.0;
-const BUTTON_SIZE: f32 = 26.0;
+const TOOLBAR_HEIGHT: f32 = 46.0;
+const BUTTON_SIZE: f32 = 32.0;
+/// How tall the address well is.
+const WELL_HEIGHT: f32 = 34.0;
 
 /// What the toolbar is drawn from: a tab when there is one, and what is being typed either way.
 pub struct Toolbar<'a> {
@@ -113,14 +124,14 @@ pub struct Outcome {
 /// The content and command of one compact navigation control.
 struct Button<'a> {
     name: &'a str,
-    mark: Mark<'a>,
+    mark: Mark,
     enabled: bool,
     command: BrowserCommand,
 }
 
-/// What is drawn on a button: a letter, or one of the drawn marks in `theme::icon`.
-enum Mark<'a> {
-    Glyph(&'a str),
+/// What is drawn on a button: one of `rux`'s line marks, or one of the drawn marks in `theme::icon`.
+enum Mark {
+    Line(Icon),
     Drawn(fn(&egui::Painter, Pos2, egui::Color32)),
 }
 
@@ -143,51 +154,42 @@ pub fn show(
 ) -> (Outcome, Option<BrowserPlacement>) {
     let strip = Rect::from_min_size(area.min, Vec2::new(area.width(), TOOLBAR_HEIGHT));
     let browser = Rect::from_min_max(Pos2::new(area.left(), strip.bottom()), area.max);
-    ui.painter().rect_filled(strip, CornerRadius::ZERO, color::toolbar());
-    ui.painter().line_segment(
-        [Pos2::new(strip.left(), strip.bottom()), strip.right_bottom()],
-        Stroke::new(1.0, color::divider()),
+    let chat = crate::components::chrome_kit::chat();
+    ui.painter().rect_filled(strip, CornerRadius::ZERO, chat.ground);
+    crate::components::chrome_kit::groove(
+        ui.painter(),
+        Pos2::new(strip.left(), strip.bottom() - 1.0),
+        Pos2::new(strip.right(), strip.bottom() - 1.0),
     );
     let mut outcome = Outcome::default();
-    let mut left = strip.left() + 6.0;
-    draw_button(
-        ui,
-        &mut left,
-        strip,
-        Button {
-            name: "Back",
-            mark: Mark::Glyph("‹"),
-            enabled: toolbar.can_go_back(),
-            command: BrowserCommand::Back,
-        },
-        &mut outcome,
-    );
-    draw_button(
-        ui,
-        &mut left,
-        strip,
-        Button {
-            name: "Forward",
-            mark: Mark::Glyph("›"),
-            enabled: toolbar.can_go_forward(),
-            command: BrowserCommand::Forward,
-        },
-        &mut outcome,
-    );
-    draw_button(
-        ui,
-        &mut left,
-        strip,
-        Button {
-            name: "Reload",
-            mark: Mark::Glyph("↻"),
-            enabled: toolbar.tab.is_some(),
-            command: BrowserCommand::Reload,
-        },
-        &mut outcome,
-    );
-    address_field(ui, &mut left, strip, &mut toolbar, &mut outcome);
-    picker_buttons(ui, strip, &toolbar, &mut outcome);
+    let salt = ("browser-toolbar", toolbar.id);
+    crate::components::chrome_kit::layer(ui, salt, strip, 12.0, |rux| {
+        let mut left = strip.left() + 8.0;
+        for button in [
+            Button {
+                name: "Back",
+                mark: Mark::Line(Icon::ChevLeft),
+                enabled: toolbar.can_go_back(),
+                command: BrowserCommand::Back,
+            },
+            Button {
+                name: "Forward",
+                mark: Mark::Line(Icon::ChevRight),
+                enabled: toolbar.can_go_forward(),
+                command: BrowserCommand::Forward,
+            },
+            Button {
+                name: "Reload",
+                mark: Mark::Line(Icon::Rerun),
+                enabled: toolbar.tab.is_some(),
+                command: BrowserCommand::Reload,
+            },
+        ] {
+            draw_button(rux, &mut left, strip, button, &mut outcome);
+        }
+        address_field(rux, &mut left, strip, &mut toolbar, &mut outcome);
+        picker_buttons(rux, strip, &toolbar, &mut outcome);
+    });
 
     // **No page and nothing to place.** A native child view is placed where a tab is drawn, and a node
     // with no tab has none to place — answering with a placement for a tab that does not exist would ask
@@ -237,23 +239,33 @@ const ADDRESS_FONT: FontId = FontId::proportional(ADDRESS_TEXT);
 /// what is being typed and a caller who typed while a page was loading would have had the word inserted
 /// into their own address.
 fn address_field(
-    ui: &mut egui::Ui,
+    rux: &mut rux::Rux<'_>,
     left: &mut f32,
     strip: Rect,
     toolbar: &mut Toolbar<'_>,
     outcome: &mut Outcome,
 ) {
+    let well = Rect::from_min_max(
+        Pos2::new(*left + 6.0, strip.center().y - WELL_HEIGHT / 2.0),
+        Pos2::new(
+            strip.right() - 10.0 - room_for_the_picker(toolbar),
+            strip.center().y + WELL_HEIGHT / 2.0,
+        ),
+    );
+    let chat = rux.theme().chat;
+    let ink = rux.theme().ink;
+    rux.chrome.surface(well, well.height() / 2.0, chat.well, chat.carved_sm());
+    rux.mark(
+        RuxMark::new(Icon::Search, 13.0),
+        Pos2::new(well.left() + 18.0, well.center().y),
+        ink.i400,
+    );
+    // The words start after the mark, and stop short of the round end.
     let field = Rect::from_min_max(
-        Pos2::new(*left + 6.0, strip.top() + 6.0),
-        Pos2::new(strip.right() - 8.0 - room_for_the_picker(toolbar), strip.bottom() - 6.0),
+        Pos2::new(well.left() + 30.0, well.top() + 4.0),
+        Pos2::new(well.right() - 12.0, well.bottom() - 4.0),
     );
-    ui.painter().rect(
-        field,
-        CornerRadius::same(size::CONTROL_CORNER),
-        color::field(),
-        Stroke::new(1.0, color::control_border()),
-        egui::StrokeKind::Inside,
-    );
+    let ui = &mut *rux.ui;
     // The whole rectangle claims the press and hands the keyboard over on the next frame, which is
     // `controls::field_takes_the_whole_rectangle`'s own rule and the fault `task-1795` fixed in the
     // nineteen fields that came before this one.
@@ -266,7 +278,7 @@ fn address_field(
     let text_rect = crate::components::controls::field_takes_the_whole_rectangle_at(
         ui,
         field,
-        9.0,
+        0.0,
         toolbar.id,
         "Address field",
         &ADDRESS_FONT,
@@ -305,7 +317,7 @@ fn address_field(
             .font(ADDRESS_FONT)
             .frame(egui::Frame::NONE)
             .desired_width(text_rect.width())
-            .text_color(color::text_control()),
+            .text_color(ink.i900),
     );
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Address"));
     // Typing in a node's address bar is using that node — see `draw_button` for why the focus has to follow.
@@ -337,7 +349,7 @@ fn address_field(
     }
     // A visited address chosen from the list, by `Enter` on the one chosen with the arrows or by a click.
     let clicked = match offered {
-        true => suggestions(ui, field, toolbar, chosen),
+        true => suggestions(ui, well, toolbar, chosen),
         false => None,
     };
     if let Some(at) = chose_by_key.or(clicked) {
@@ -374,15 +386,15 @@ fn address_field(
         *toolbar.typed = toolbar.address().to_owned();
     }
     if toolbar.loading() {
-        ui.painter().with_clip_rect(field).crisp_text(
-            Pos2::new(field.right() - 6.0, field.center().y),
+        ui.painter().with_clip_rect(well).crisp_text(
+            Pos2::new(well.right() - 14.0, well.center().y),
             Align2::RIGHT_CENTER,
             "Loading",
             FontId::proportional(10.5),
-            color::text_faint(),
+            ink.i400,
         );
     }
-    *left = field.right();
+    *left = well.right();
 }
 
 /// Whether the list of visited addresses is open under this field.
@@ -499,16 +511,24 @@ fn suggestions(
 
 /// The picker's buttons at the right hand end of a node's toolbar: the crosshair that opens the element
 /// picker, and while one element is shown alone, the button that shows the whole page again.
-fn picker_buttons(ui: &mut egui::Ui, strip: Rect, toolbar: &Toolbar<'_>, outcome: &mut Outcome) {
+fn picker_buttons(
+    rux: &mut rux::Rux<'_>,
+    strip: Rect,
+    toolbar: &Toolbar<'_>,
+    outcome: &mut Outcome,
+) {
     if !toolbar.pickable {
         return;
     }
-    let mut left = strip.right() - 4.0 - room_for_the_picker(toolbar);
+    let mut left = strip.right() - 6.0 - room_for_the_picker(toolbar);
     let has_a_page = toolbar.tab.is_some();
     let picking = toolbar.picking;
-    let area = Rect::from_min_size(Pos2::new(left, strip.top() + 6.0), Vec2::splat(BUTTON_SIZE));
+    let area = Rect::from_center_size(
+        Pos2::new(left + BUTTON_SIZE / 2.0, strip.center().y),
+        Vec2::splat(BUTTON_SIZE),
+    );
     draw_button(
-        ui,
+        rux,
         &mut left,
         strip,
         Button {
@@ -519,15 +539,15 @@ fn picker_buttons(ui: &mut egui::Ui, strip: Rect, toolbar: &Toolbar<'_>, outcome
         },
         outcome,
     );
-    // **Lit while the picker is open**, painted after the button so its hover fill does not cover the accent,
-    // and the mark drawn in the dark of the editor, or it disappears into the accent.
+    // **Lit while the picker is open**: carved in, with the mark in the sky colour.
     if picking {
-        ui.painter().rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), color::accent());
-        crate::theme::icon::crosshair(ui.painter(), area.center(), color::editor());
+        let chat = rux.theme().chat;
+        rux.chrome.surface(area, area.height() / 2.0, chat.well, chat.carved_sm());
+        crate::theme::icon::crosshair(rux.painter(), area.center(), chat.sky);
     }
     if toolbar.pinned {
         draw_button(
-            ui,
+            rux,
             &mut left,
             strip,
             Button {
@@ -541,34 +561,43 @@ fn picker_buttons(ui: &mut egui::Ui, strip: Rect, toolbar: &Toolbar<'_>, outcome
     }
 }
 
-/// Draw one compact navigation button and record a click when it is available.
+/// Draw one round navigation button and record a click when it is available.
+///
+/// Raised out of the strip while it can be used, carved in while it is held down, and flat with its mark in
+/// the faintest ink while it cannot be used. The mark is the sky colour under the pointer, which is
+/// `rux::components::ChipButton`'s own answer.
 fn draw_button(
-    ui: &mut egui::Ui,
+    rux: &mut rux::Rux<'_>,
     left: &mut f32,
     toolbar: Rect,
     button: Button<'_>,
     outcome: &mut Outcome,
 ) {
-    let area = Rect::from_min_size(Pos2::new(*left, toolbar.top() + 6.0), Vec2::splat(BUTTON_SIZE));
-    let response = ui.interact(area, ui.id().with(("browser", button.name)), Sense::click());
-    let fill = if response.hovered() && button.enabled {
-        color::control()
-    } else {
-        egui::Color32::TRANSPARENT
+    let area = Rect::from_center_size(
+        Pos2::new(*left + BUTTON_SIZE / 2.0, toolbar.center().y),
+        Vec2::splat(BUTTON_SIZE),
+    );
+    let response =
+        rux.ui.interact(area, rux.ui.id().with(("browser", button.name)), Sense::click());
+    let chat = rux.theme().chat;
+    let ink = rux.theme().ink;
+    let held = response.is_pointer_button_down_on();
+    match (button.enabled, held) {
+        (true, true) => rux.chrome.surface(area, area.height() / 2.0, chat.well, chat.carved_sm()),
+        (true, false) => rux::components::chip_disc(rux, area),
+        (false, _) => {}
+    }
+    if button.enabled && response.hovered() {
+        rux.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    let tint = match (button.enabled, response.hovered()) {
+        (false, _) => ink.i300,
+        (true, true) => chat.sky,
+        (true, false) => ink.i500,
     };
-    ui.painter().rect_filled(area, CornerRadius::same(size::CONTROL_CORNER), fill);
-    let text = if button.enabled { color::text_control() } else { color::text_faint() };
     match button.mark {
-        Mark::Glyph(glyph) => {
-            ui.painter().crisp_text(
-                area.center(),
-                Align2::CENTER_CENTER,
-                glyph,
-                FontId::proportional(19.0),
-                text,
-            );
-        }
-        Mark::Drawn(draw) => draw(ui.painter(), area.center(), text),
+        Mark::Line(icon) => rux.mark(RuxMark::new(icon, 13.0).stroke(1.8), area.center(), tint),
+        Mark::Drawn(draw) => draw(rux.painter(), area.center(), tint),
     }
     response.widget_info(|| {
         egui::WidgetInfo::labeled(egui::WidgetType::Button, button.enabled, button.name)
@@ -583,5 +612,5 @@ fn draw_button(
     if button.enabled && response.clicked() {
         outcome.command = Some(button.command);
     }
-    *left = area.right() + 2.0;
+    *left = area.right() + 6.0;
 }

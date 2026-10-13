@@ -335,6 +335,10 @@ impl UnluminousApp {
                     // draws — and nothing Unluminous photographs holds a page, so this is the only
                     // way to ask. `task-2009`.
                     "covered": self.page_is_covered,
+                    // Whether a picture of the page stands in for it, while its pane is resized or it
+                    // reloads after a switch. `task-2255`.
+                    "still": self.page_stills.holding(tab.id),
+                    "zoom": self.browser_zoom_of(tab.id),
                     "canGoBack": tab.can_go_back(),
                     "canGoForward": tab.can_go_forward(),
                     // Every address the tab has been at and which it is on, which a project now keeps
@@ -343,6 +347,40 @@ impl UnluminousApp {
                     "position": tab.history().1,
                     "problem": tab.problem,
                 }),
+            );
+        }
+        // How large the page is drawn, which `Ctrl`/`Cmd` with the wheel or plus and minus changes. `task-2255`.
+        if verb == "zoom" {
+            let id = tab.id;
+            match request.text("factor").as_deref() {
+                None | Some("") => {}
+                Some("in") => self.step_the_page_zoom(id, true),
+                Some("out") => self.step_the_page_zoom(id, false),
+                Some("reset") => self.reset_the_page_zoom(id),
+                Some(factor) => {
+                    match factor.parse::<f64>() {
+                        Ok(zoom) if zoom.is_finite() => {
+                            let zoom = zoom.clamp(
+                                crate::services::browser::PAGE_ZOOM_LEAST,
+                                crate::services::browser::PAGE_ZOOM_MOST,
+                            );
+                            self.change_browser_tab(id, |tab| tab.zoom = zoom);
+                        }
+                        _ => return no(
+                            request,
+                            code::USAGE,
+                            format!(
+                                "`{factor}` is not a zoom: give a number, `in`, `out` or `reset`"
+                            ),
+                        ),
+                    }
+                }
+            }
+            let zoom = self.browser_zoom_of(id);
+            return ok(
+                request,
+                format!("The page is drawn at {:.0}%", zoom * 100.0),
+                json!({ "zoom": zoom }),
             );
         }
         let command = match verb {

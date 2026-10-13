@@ -837,6 +837,15 @@ pub const COMMANDS: &[Command] = &[
         examples: &["unluminous-cli browser reload"],
         local: false,
     },
+    Command {
+        area: "browser",
+        verb: "zoom",
+        summary: "How large the rendered tab that is showing draws its page, which Ctrl or Cmd with the wheel or with plus and minus changes. A factor such as 1.25, `in`, `out` or `reset`; with nothing it says the zoom.",
+        arguments: &[argument("factor", false, "A number from 0.25 to 5, or `in`, `out` or `reset`.")],
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli browser zoom", "unluminous-cli browser zoom 1.5", "unluminous-cli browser zoom in"],
+        local: false,
+    },
     // --------------------------------------------------------------------------------- the tabs
     Command {
         area: "tab",
@@ -3463,8 +3472,8 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "plugins",
         verb: "pane",
-        summary: "Show, hide or move a pane a plugin contributed: what its rail button and a drag on its header do.",
-        arguments: &[argument("pane", true, "The pane, as `<plugin id>/<pane id>` — `agent-tasks/board`.")],
+        summary: "Show, hide or move a pane a plugin contributed: what its rail button and a drag on its header do. The panes are `agent-chat/chat`, `agent-tasks/board`, `database/explorer` and `designer/designs`, and a plugin with one pane is named by its id alone: `plugins pane designer --show`.",
+        arguments: &[argument("pane", true, "The pane, as `<plugin id>/<pane id>` — `agent-tasks/board` — or the plugin's id when it has one pane.")],
         flags: &[
             switch("show", "Show it, building the plugin's own state the first time."),
             switch("hide", "Put it away."),
@@ -3472,6 +3481,7 @@ pub const COMMANDS: &[Command] = &[
         ],
         examples: &[
             "unluminous-cli plugins pane agent-tasks/board --show",
+            "unluminous-cli plugins pane designer --show",
             "unluminous-cli plugins pane agent-tasks/board --side bottom",
         ],
         local: false,
@@ -3503,6 +3513,8 @@ pub const COMMANDS: &[Command] = &[
             "unluminous-cli plugins run database new-table public.shelf id:integer:pk title:text:notnull",
             "unluminous-cli plugins run database set 1 title Kind of Green",
             "unluminous-cli plugins run database submit",
+            "unluminous-cli plugins run designer new Landing page",
+            "unluminous-cli plugins run designer open Landing page",
         ],
         flags: NO_FLAGS,
         local: false,

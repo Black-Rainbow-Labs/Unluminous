@@ -192,16 +192,30 @@ impl UnluminousApp {
 
     /// `pane`. Split out of [`Self::cli_plugins`] by `task-1984` §3.6.
     fn cli_plugins_pane(&mut self, request: &Request) -> Outcome {
-        let Some(pane) = request.text("pane") else {
+        let Some(asked) = request.text("pane") else {
             return no(request, code::USAGE, "Say which pane, as <plugin id>/<pane id>.");
+        };
+        // **A plugin's own id names its pane** when it has one, which is the name an agent guesses: `task-2255`
+        // reports an agent making a dozen calls to find out how to show the Designs pane.
+        let keys = self.plugin_ui.pane_keys();
+        let pane = match asked.contains('/') {
+            true => asked.clone(),
+            false => {
+                let mine: Vec<&String> = keys
+                    .iter()
+                    .filter(|key| key.split('/').next() == Some(asked.as_str()))
+                    .collect();
+                match mine.as_slice() {
+                    [only] => (*only).clone(),
+                    _ => asked.clone(),
+                }
+            }
         };
         let Some(slot) = self.plugin_ui.slot_of(&pane) else {
             return no(
                 request,
                 code::NOT_FOUND,
-                format!(
-                    "There is no {pane} pane. `plugins list` says what each plugin contributes."
-                ),
+                format!("There is no {asked} pane. The panes are: {}.", keys.join(", ")),
             );
         };
         let panel = dock::Panel::Plugin(slot as u8);

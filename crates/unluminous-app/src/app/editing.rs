@@ -516,7 +516,10 @@ impl UnluminousApp {
                 let file = self.files.at(*index);
                 TabView {
                     name: file.name(),
-                    modified: file.document.is_modified(),
+                    // Only a tab holding a document can have unsaved changes: a browser, picture or plugin tab
+                    // holds an empty document nobody can save, and a dot on it read as a page with unsaved work
+                    // (`task-2255`).
+                    modified: file.is_a_document() && file.document.is_modified(),
                     transient: file.transient,
                     marker: file.path().map(theme::file_marker).unwrap_or(color::file_text()),
                     icon,
@@ -894,6 +897,19 @@ impl UnluminousApp {
         origin: Pos2,
     ) -> editor_view::SymbolPointer {
         let held = ui.input(|input| input.modifiers.command);
+        // **A web address answers in every file**, a Markdown file and a plain one included, which is what
+        // `task-2255` asks of every place an address is written. It is underlined like a name that resolves,
+        // and the click is a jump that `go_to_definition` turns into opening it.
+        if held {
+            if let Some(at) = response.hover_pos() {
+                let local = at - origin;
+                let offset = self.layout().offset_at(local.x, local.y);
+                if let Some((bytes, _)) = self.address_around(offset) {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    return editor_view::SymbolPointer { word: Some(bytes) };
+                }
+            }
+        }
         if !held || !self.definitions_apply_here() {
             self.forget_the_hover();
             return editor_view::SymbolPointer::default();
@@ -905,6 +921,25 @@ impl UnluminousApp {
         let offset = self.layout().offset_at(local.x, local.y);
         let hover = self.resolve_under_the_pointer(offset);
         editor_view::SymbolPointer { word: hover.map(|hover| hover.word) }
+    }
+
+    /// The web address in the showing file that covers byte `offset`, with the bytes it occupies.
+    ///
+    /// @param offset - a byte offset into the showing document
+    pub(crate) fn address_around(&self, offset: usize) -> Option<(std::ops::Range<usize>, String)> {
+        let text = self.document().text();
+        if offset > text.len_bytes() {
+            return None;
+        }
+        let line = text.line_range(text.byte_to_line(offset));
+        let words = text.byte_slice(line.clone());
+        let (bytes, address) = crate::services::links::address_at(&words, offset - line.start)?;
+        Some((line.start + bytes.start..line.start + bytes.end, address))
+    }
+
+    /// The web address at `offset`, if there is one. See [`Self::address_around`].
+    pub(crate) fn address_at_the_offset(&self, offset: usize) -> Option<String> {
+        self.address_around(offset).map(|(_, address)| address)
     }
 
     /// Everything an editing area's components are handed, read before any of them is drawn.

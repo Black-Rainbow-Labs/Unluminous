@@ -357,7 +357,9 @@ fn ticket_display(
         // How tall the ticket modal's description is, which a person sets by dragging the bottom edge of the
         // description. `task-2214`. A number of points, or `auto` for the height the modal chooses itself, and
         // with no argument it says which.
-        "description-height" => section_height(&mut tasks.description_height, "description", argument(0)),
+        "description-height" => {
+            section_height(&mut tasks.description_height, "description", argument(0))
+        }
         // The same for the agent's terminal and for the comments (`task-2255`: *"The comments, terminal should be
         // resizable, similar to the description."*), each set by dragging its own bottom edge.
         "terminal-height" => section_height(&mut tasks.terminal_height, "terminal", argument(0)),

@@ -530,7 +530,8 @@ fn main_column(
             theme.ink.i900,
         ));
         let grip = Grip { salt: "agent-tasks-description-grip", name: "Resize description" };
-        if let Some(height) = section_grip(rux, well, DESCRIPTION_LEAST, area.max.y - well.min.y, grip)
+        if let Some(height) =
+            section_grip(rux, well, DESCRIPTION_LEAST, area.max.y - well.min.y, grip)
         {
             board.description_height = height;
         }

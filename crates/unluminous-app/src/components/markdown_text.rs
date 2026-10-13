@@ -68,6 +68,8 @@ pub struct Rendered {
     /// The point size and family it was set in, for the same reason.
     size: f32,
     family: String,
+    /// Where the links are and where each goes, in order. See [`show_with`]. `task-2255`.
+    pub links: Vec<unluminous_core::markdown::PreviewLink>,
 }
 
 impl std::fmt::Debug for Rendered {
@@ -211,6 +213,7 @@ pub fn render(
         colors,
         size,
         family: family.to_owned(),
+        links: preview.links.clone(),
     }
 }
 
@@ -252,14 +255,175 @@ pub fn show_with(
     // whatever was above the scrolling area. Measured on a real window in `task-1767`, where a message
     // scrolled off the top was drawn across the pane's own header.
     clipped.set_clip_rect(area.intersect(ui.clip_rect()));
+    let origin = Pos2::new(area.left(), area.top() - scroll);
     crate::components::editor_view::paint_text(
         &clipped,
         renderer,
         &rendered.text,
         &rendered.layout,
-        Pos2::new(area.left(), area.top() - scroll),
+        origin,
     );
+    follow_a_link(&clipped, rendered, origin);
     rendered.height()
+}
+
+fn selected_block() -> egui::Id {
+    egui::Id::new("unluminous-markdown-selected-block")
+}
+
+/// Paint `rendered` as [`show_with`] does, with words a person can select: a drag selects, a double click
+/// selects a word and a triple click a line, `Ctrl`/`Cmd`+`C` copies, and the selected words are answered so a
+/// caller's right click menu can offer them.
+///
+/// `task-2255`: *"Many of our text inputs, areas, and other places we render text are hard to select."* A
+/// ticket's description and its comments were painted words with nothing behind them. This is the chat's own
+/// arrangement (`components::agent_chat::message`) moved here, so any caller has it: the selection is
+/// `editor_view::read_pointer`'s reading over the block's own layout, kept in egui's memory under `id`, and only
+/// one block in the window holds a selection at a time, so a copy has one answer.
+///
+/// @param id - what this block's selection is kept under, unique in the window
+pub fn show_selectable(
+    ui: &mut egui::Ui,
+    area: Rect,
+    rendered: &Rendered,
+    renderer: &TextRenderer,
+    scroll: f32,
+    code: Option<CodeColors>,
+    id: egui::Id,
+) -> Option<String> {
+    let origin = Pos2::new(area.left(), area.top() - scroll);
+    let sensed = area.intersect(ui.clip_rect());
+    let response = ui.interact(sensed, id.with("markdown-words"), egui::Sense::click_and_drag());
+    let held = ui.ctx().data(|data| data.get_temp::<egui::Id>(selected_block())) == Some(id);
+    let was: Option<unluminous_core::Selection> =
+        held.then(|| ui.ctx().data(|data| data.get_temp(id.with("markdown-selection")))).flatten();
+    let picked = crate::components::editor_view::read_pointer(
+        &response,
+        &rendered.layout,
+        &rendered.text,
+        origin,
+        was.unwrap_or_else(|| unluminous_core::Selection::caret(0)),
+    );
+    if let Some(selection) = picked {
+        ui.ctx().data_mut(|data| {
+            data.insert_temp(id.with("markdown-selection"), selection);
+            data.insert_temp(selected_block(), id);
+        });
+    }
+    let selection = picked.or(if held { was } else { None });
+    if let Some(selection) = selection {
+        crate::components::editor_view::paint_behind(
+            ui,
+            &rendered.layout,
+            origin,
+            selection.range(),
+            crate::theme::color::text_selection(),
+            2.0,
+        );
+    }
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
+    }
+    let height = show_with(ui, area, rendered, renderer, scroll, code);
+    let words = selection
+        .filter(|selection| !selection.range().is_empty())
+        .map(|selection| rendered.text.byte_slice(selection.range()));
+    // `Ctrl`/`Cmd`+`C` arrives as an `Event::Copy`, which a text box with the keyboard answers for itself.
+    if let Some(words) = &words {
+        if !crate::app::text_box_has_the_keyboard(ui.ctx()) {
+            let took = ui.input_mut(|input| {
+                let before = input.events.len();
+                input.events.retain(|event| !matches!(event, egui::Event::Copy));
+                before != input.events.len()
+            });
+            if took {
+                ui.ctx().copy_text(words.clone());
+            }
+        }
+    }
+    let _ = height;
+    words
+}
+
+/// Where the link under the pointer goes, measured in `ui`'s own points, or `None`.
+///
+/// The pointer has to be on the link's own words: `Layout::offset_at` answers with the nearest offset
+/// wherever the pointer is, so the rectangles the link's bytes cover are what decide.
+fn link_under_the_pointer<'a>(
+    ui: &egui::Ui,
+    rendered: &'a Rendered,
+    origin: Pos2,
+) -> Option<&'a str> {
+    if rendered.links.is_empty() {
+        return None;
+    }
+    let at = crate::components::controls::pointer_in(ui)?;
+    if !ui.clip_rect().contains(at) {
+        return None;
+    }
+    let local = at - origin;
+    let offset = rendered.layout.offset_at(local.x, local.y);
+    let first = rendered.links.partition_point(|link| link.bytes.end <= offset);
+    let link = rendered.links.get(first)?;
+    let near = link.bytes.start.saturating_sub(1)..link.bytes.end + 1;
+    if !near.contains(&offset) {
+        return None;
+    }
+    let on_it = rendered
+        .layout
+        .selection_rects(link.bytes.clone())
+        .iter()
+        .any(|rect| rect.contains(local.x, local.y));
+    on_it.then_some(link.target.as_str())
+}
+
+fn clicked_link() -> egui::Id {
+    egui::Id::new("unluminous-markdown-link-clicked")
+}
+
+/// A click on a link in any rendered Markdown opens it in a browser tab (`task-2255`: *"Many of the spot where
+/// links are rendered, in agent chat, in agent tasks, comments, etc, should all be clickable and open the link in
+/// a new unluminous browser tab."*).
+///
+/// **One place, so every caller has it**: the chat's messages, a ticket's description and comments, the
+/// Designer's notes and anything drawn with this module later. The pointer becomes a hand over a link, and a
+/// click that was not the end of a drag is recorded in egui's memory for the window to act on once the frame is
+/// drawn, through [`take_the_clicked_link`]. Opening a tab half way through drawing a pane would change what the
+/// rest of the pane is drawn from. A click while a menu is open is the click that closes the menu, so it opens
+/// nothing.
+fn follow_a_link(ui: &egui::Ui, rendered: &Rendered, origin: Pos2) {
+    let Some(target) = link_under_the_pointer(ui, rendered, origin) else { return };
+    let ctx = ui.ctx();
+    // Only from the layer in front at the pointer, so a link under a modal or a popup is not clicked through it.
+    if egui::Popup::is_any_open(ctx) {
+        return;
+    }
+    if let Some(top) = crate::components::modal::the_open_one(ctx) {
+        if ui.layer_id().id != top {
+            return;
+        }
+    }
+    ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+    let clicked = ctx.input(|input| {
+        input.pointer.primary_released()
+            && !input.pointer.is_decidedly_dragging()
+            && input.pointer.press_start_time().is_some_and(|at| input.time - at < 0.6)
+    });
+    if clicked {
+        ask_to_open_a_link(ctx, target);
+    }
+}
+
+/// Ask the window to open `target` in a browser tab once this frame has been drawn. What a click on a link in
+/// rendered Markdown does, and what `Ctrl`/`Cmd` with a click on an address in a terminal does.
+pub fn ask_to_open_a_link(ctx: &egui::Context, target: &str) {
+    let target = target.to_owned();
+    ctx.data_mut(|data| data.insert_temp(clicked_link(), target));
+}
+
+/// The link a click in rendered Markdown asked for this frame, taken so it is opened once.
+pub fn take_the_clicked_link(ctx: &egui::Context) -> Option<String> {
+    ctx.data_mut(|data| data.remove_temp::<String>(clicked_link()))
 }
 
 /// What a code background is painted in: a fenced block's panel and an inline span's chip.

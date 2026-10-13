@@ -171,6 +171,14 @@ impl UnluminousApp {
         crate::services::frame_trace::begin();
         self.receive_browser_events();
         self.browser_placements.clear();
+        // **A menu belongs to the tab it was opened over** (`task-2255`), so a change of tab closes it.
+        let showing = (self.files.active_index(), self.files.focused_pane());
+        if self.menus_were_for != Some(showing) {
+            if self.menus_were_for.is_some() {
+                crate::components::controls::close_every_menu(ui.ctx());
+            }
+            self.menus_were_for = Some(showing);
+        }
         // The dividers of the frame before, forgotten here beside the other frame locals and for the
         // same reason: the window's resize grips are cut against this frame's, and a stale rectangle
         // would leave a piece of the window's edge dead after the divider had moved away from it.
@@ -2323,6 +2331,8 @@ impl UnluminousApp {
             // Another step is waiting and nothing else will ask for the frame it needs.
             ctx.request_repaint();
         }
+        // Which browser pages are told they are talking to, before any view is made. `task-2255`.
+        self.browser.set_agent(self.settings.browser_agent);
         let on_the_canvas = self.realm.live.browsers().count();
         if self.files.iter().all(|file| file.browser.is_none())
             && on_the_canvas == 0
@@ -2367,6 +2377,8 @@ impl UnluminousApp {
             clicked_into = self.browser.showing();
         }
         if let Some(id) = clicked_into {
+            // egui never saw the click, so nothing it has open knows it was clicked outside of.
+            crate::components::controls::close_every_menu(ctx);
             for placement in &mut placements {
                 placement.focused = placement.id == id;
             }
@@ -2385,7 +2397,32 @@ impl UnluminousApp {
         if escape && self.browser.picking().is_some() {
             self.browser.cancel_picking();
         }
+        // **A picture of the page the view is about to leave**, taken before the view is sent anywhere else, so
+        // switching back to that tab shows its page at once while the page loads again. `task-2255`.
+        let leaving = self.browser.showing();
+        let going_to = placements
+            .iter()
+            .find(|placement| placement.focused)
+            .or(placements.last())
+            .map(|placement| placement.id);
+        if let (Some(leaving), Some(going_to)) = (leaving, going_to) {
+            if leaving != going_to
+                && self
+                    .files
+                    .iter()
+                    .any(|file| file.browser.as_ref().is_some_and(|tab| tab.id == leaving))
+            {
+                if let Some(picture) = self.browser.photograph(leaving) {
+                    let texture =
+                        ctx.load_texture("pane-page-still", picture, egui::TextureOptions::LINEAR);
+                    self.page_stills.keep(leaving, texture);
+                }
+            }
+        }
         let settled = self.browser.reconcile(&tabs, &placements, &occluders, ctx.clone());
+        if let Some(id) = settled.pointed_at {
+            self.page_stills.switched_to(id);
+        }
         // The picker's answer is asked for on a frame, so while it is open the window keeps drawing.
         // The same for a page the Designer keeps a script in: its answers are asked for on a frame. `task-2254`.
         if self.browser.picking().is_some()
