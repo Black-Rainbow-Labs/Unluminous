@@ -1691,6 +1691,8 @@ mod tests {
         //   28,190   `task-2220` adding the `notebook` area's thirteen verbs: running cells in a live
         //            Jupyter kernel and reading their outputs back, which no file tool can do. Each
         //            summary was cut to a sentence or two first. The ceiling moves to 29,000.
+        //   29,061   `task-2255` adding `browser zoom` and naming a plugin's pane by its id in
+        //            `plugins pane`, each cut to one sentence first. The ceiling moves to 30,000.
         //
         // **The number being hard to hold is itself `task-1804` §4.2's finding**, and what
         // changed with it is that there is now an answer: `mcp serve --areas` equips an agent with
@@ -1698,7 +1700,7 @@ mod tests {
         // `editor,git` rather than 18,511 for all of it. This ceiling goes on saying when the
         // *default* has grown, which is what it is for; it is no longer the only lever there is.
         assert!(
-            grouped.len() / 4 < 29_000,
+            grouped.len() / 4 < 30_000,
             "grouped MCP schema exceeded budget: {} bytes",
             grouped.len()
         );

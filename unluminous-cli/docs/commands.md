@@ -546,14 +546,12 @@ unluminous-cli browser reload
 unluminous-cli browser zoom [factor]
 ```
 
-How large the rendered tab that is showing draws its page, which Ctrl or Cmd with the wheel or with plus and minus changes. A factor such as 1.25, `in`, `out` or `reset`; with nothing it says the zoom.
+Zoom the page of the rendered tab that is showing, as Ctrl or Cmd with the wheel does. With nothing it says the zoom.
 
-- `factor` (optional) — A number from 0.25 to 5, or `in`, `out` or `reset`.
+- `factor` (optional) — 0.25 to 5, `in`, `out` or `reset`.
 
 ```sh
-unluminous-cli browser zoom
 unluminous-cli browser zoom 1.5
-unluminous-cli browser zoom in
 ```
 
 ## tab — the files that are open
@@ -4085,9 +4083,9 @@ unluminous-cli plugins reload --json
 unluminous-cli plugins pane <pane> [--show] [--hide] [--side <side>]
 ```
 
-Show, hide or move a pane a plugin contributed: what its rail button and a drag on its header do. The panes are `agent-chat/chat`, `agent-tasks/board`, `database/explorer` and `designer/designs`, and a plugin with one pane is named by its id alone: `plugins pane designer --show`.
+Show, hide or move a pane a plugin contributed: what its rail button and a drag on its header do. A plugin's id names its pane: `designer`, `agent-tasks`, `agent-chat`, `database`.
 
-- `pane` — The pane, as `<plugin id>/<pane id>` — `agent-tasks/board` — or the plugin's id when it has one pane.
+- `pane` — The plugin's id, or `<plugin id>/<pane id>`.
 
 - `--show` — Show it, building the plugin's own state the first time.
 - `--hide` — Put it away.
@@ -4137,7 +4135,6 @@ unluminous-cli plugins run database query select count(*) from member
 unluminous-cli plugins run database new-table public.shelf id:integer:pk title:text:notnull
 unluminous-cli plugins run database set 1 title Kind of Green
 unluminous-cli plugins run database submit
-unluminous-cli plugins run designer new Landing page
 unluminous-cli plugins run designer open Landing page
 ```
 
