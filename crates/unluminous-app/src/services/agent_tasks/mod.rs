@@ -497,6 +497,9 @@ pub struct AgentTasks {
     /// (`task-2255`). `None` is the height the modal gives each on its own, as for the description.
     pub terminal_height: Option<f32>,
     pub comments_height: Option<f32>,
+    /// How tall the ticket modal's comment box is, once somebody has dragged the mark in its corner (`task-2260`).
+    /// `None` is three lines.
+    pub comment_box_height: Option<f32>,
     /// True while the ticket modal is open.
     ///
     /// Separate from whether a ticket is open in the detail, because the pane shows a ticket in place and the

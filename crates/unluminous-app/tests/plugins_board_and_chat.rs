@@ -3847,15 +3847,16 @@ fn tab_walks_the_ticket_modals_text_boxes_in_order() {
         "the second Tab is the todo box: {todos:?}"
     );
 
-    // Enter in the todo box keeps the keyboard there, so the next Tab is the comment box.
+    // Enter in the todo box keeps the keyboard there, so the next Tab is the comment box. The comment box holds
+    // several lines, so Enter is a new line there and Ctrl or Cmd with Enter posts (`task-2260`).
     type_after_a_tab(&mut harness, "Said after a Tab");
-    harness.key_press(egui::Key::Enter);
+    harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::Enter);
     steady(&mut harness);
     let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
     let said = ticket["comments"].to_string();
     assert!(said.contains("Said after a Tab"), "the third Tab is the comment box: {said}");
 
-    // Enter in the comment box posts and lets go of the keyboard, so nothing in the modal has it, and Shift+Tab
+    // The chord in the comment box posts and lets go of the keyboard, so nothing in the modal has it, and Shift+Tab
     // from there goes the other way round to the last box, the JIRA key.
     harness.key_press_modifiers(Modifiers::SHIFT, egui::Key::Tab);
     steady(&mut harness);
@@ -3925,6 +3926,89 @@ fn the_comments_and_the_terminal_are_resized_like_the_description() {
     did(&mut harness, "plugins run agent-tasks terminal-height auto");
     assert!(did(&mut harness, "plugins run agent-tasks terminal-height")["height"].is_null());
     assert_eq!(refused(&mut harness, "plugins run agent-tasks comments-height tall"), "failed");
+}
+
+/// `task-2260`: *"The agent tasks task modal add comment need to be multi-line, with 3 lines by default. It's
+/// resize doesn't work, and the buttons aren't clickable because the resize icon. The "Comment & Send to Agent"
+/// should be a button, formatted similar to Comment button. Make resure the resize marks at the bottom right
+/// don't cover the button."*
+#[test]
+fn the_comment_box_holds_several_lines_resizes_and_leaves_its_buttons_pressable() {
+    use egui::accesskit::Role;
+    let mut harness = harness("");
+    harness.set_size(vec2(1500.0, 950.0));
+    a_ticket_open(&mut harness);
+    let draft = |harness: &mut Harness<'static, UnluminousApp>| {
+        let provider =
+            harness.state_mut().plugin_ui.provider("agent-tasks").expect("the board is open");
+        provider
+            .as_any_mut()
+            .and_then(|any| any.downcast_mut::<unluminous_app::services::agent_tasks::AgentTasks>())
+            .expect("the Agent-Tasks provider")
+            .detail()
+            .draft
+            .clone()
+    };
+    let comments = |harness: &mut Harness<'static, UnluminousApp>| {
+        did(harness, "plugins run agent-tasks task task-1")["comments"]
+            .as_array()
+            .expect("the comments")
+            .clone()
+    };
+
+    // Three lines tall to begin with, which at 17 points a line and ten above and below is 71 points.
+    let field = harness.get_by_label("Comment field").rect();
+    assert!((66.0..=76.0).contains(&field.height()), "three lines: {field:?}");
+
+    // Both buttons are buttons, in a row under the box, and neither resize grip is over either of them.
+    let post = harness.get_by_role_and_label(Role::Button, "Comment").rect();
+    let send = harness.get_by_role_and_label(Role::Button, "Comment & Send to Agent").rect();
+    assert!(post.top() >= field.bottom() && send.top() >= field.bottom(), "the buttons are under the box");
+    assert!((post.height() - send.height()).abs() < 0.5, "the two are the same kind of button");
+    for grip in ["Resize comments", "Resize comment box"] {
+        let at = harness.get_by_label(grip).rect();
+        assert!(!at.intersects(post), "`{grip}` {at:?} is over Comment {post:?}");
+        assert!(!at.intersects(send), "`{grip}` {at:?} is over Comment & Send to Agent {send:?}");
+    }
+
+    // Enter is a new line, and Ctrl or Cmd with Enter posts what was written.
+    harness.get_by_label("Comment field").click();
+    steady(&mut harness);
+    harness.input_mut().events.push(egui::Event::Text("First line".to_owned()));
+    steady(&mut harness);
+    harness.key_press(egui::Key::Enter);
+    steady(&mut harness);
+    harness.input_mut().events.push(egui::Event::Text("second line".to_owned()));
+    steady(&mut harness);
+    assert_eq!(draft(&mut harness), "First line\nsecond line");
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Enter);
+    steady(&mut harness);
+    let after = comments(&mut harness);
+    assert_eq!(after.len(), 2, "the chord posted the comment");
+    assert!(after.iter().any(|comment| comment["body"] == "First line\nsecond line"), "{after:?}");
+    assert_eq!(draft(&mut harness), "", "and the box is empty again");
+
+    // The Comment button takes a press.
+    harness.get_by_label("Comment field").click();
+    steady(&mut harness);
+    harness.input_mut().events.push(egui::Event::Text("Pressed the button".to_owned()));
+    steady(&mut harness);
+    harness.get_by_role_and_label(Role::Button, "Comment").click();
+    steady(&mut harness);
+    let after = comments(&mut harness);
+    assert_eq!(after.len(), 3, "the button posted the comment");
+
+    // The mark in the box's corner makes it taller, and the agent's half reads and sets the same number.
+    assert!(did(&mut harness, "plugins run agent-tasks comment-box-height")["height"].is_null());
+    let grip = harness.get_by_label("Resize comment box").rect();
+    drag(&mut harness, grip.center(), grip.center() + vec2(0.0, 40.0));
+    let taller = harness.get_by_label("Comment field").rect();
+    assert!(taller.height() > field.height() + 25.0, "{field:?} to {taller:?}");
+    assert!(did(&mut harness, "plugins run agent-tasks comment-box-height")["height"].is_number());
+    did(&mut harness, "plugins run agent-tasks comment-box-height auto");
+    steady(&mut harness);
+    let back = harness.get_by_label("Comment field").rect();
+    assert!((back.height() - field.height()).abs() < 0.5, "auto is three lines again");
 }
 
 /// `task-2214`: *"change the order of Agent Done so that the most recently completed is at the top."*

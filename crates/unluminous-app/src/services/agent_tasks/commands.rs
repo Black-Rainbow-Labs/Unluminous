@@ -81,6 +81,7 @@ pub const LIST: &[(&str, &str)] = &[
     ("description-height", "How tall the ticket modal's description is: `description-height 120`, or `auto` for the modal's own choice. Says which when asked with nothing."),
     ("terminal-height", "How tall the ticket modal's agent terminal is: `terminal-height 300`, or `auto` for the modal's own choice. Says which when asked with nothing."),
     ("comments-height", "How tall the ticket modal's comments are: `comments-height 200`, or `auto` for the modal's own choice. Says which when asked with nothing."),
+    ("comment-box-height", "How tall the box a comment is written in is: `comment-box-height 120`, or `auto` for three lines. Says which when asked with nothing."),
     ("sprint-assign", "Put a ticket in a sprint, or in the backlog: `sprint-assign task-1 backlog`."),
     ("sprint-activate", "Make one sprint the active one, which is the sprint the board shows."),
     ("sprint-complete", "Close a sprint. Anything in it that is not in Agent Done goes to the backlog."),
@@ -364,6 +365,10 @@ fn ticket_display(
         // resizable, similar to the description."*), each set by dragging its own bottom edge.
         "terminal-height" => section_height(&mut tasks.terminal_height, "terminal", argument(0)),
         "comments-height" => section_height(&mut tasks.comments_height, "comments", argument(0)),
+        // The comment box under them, three lines until its corner mark is dragged (`task-2260`).
+        "comment-box-height" => {
+            section_height(&mut tasks.comment_box_height, "comment box", argument(0))
+        }
         _ => return None,
     })
 }

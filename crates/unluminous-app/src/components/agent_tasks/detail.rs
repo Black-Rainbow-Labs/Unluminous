@@ -250,8 +250,41 @@ const VIEW_BUTTONS: f32 = 18.0 * 2.0 + 4.0 + 6.0;
 /// How far a comment's words are from the left: the 30 point disc and the 12 point gap after it.
 const BESIDE_THE_DISC: f32 = 42.0;
 
-/// How tall the pill a comment is written in is: `padding: 5px` round a 34 point button.
-const COMPOSER: f32 = 44.0;
+/// One line of the comment box, the room above and below its words, and the least and default number of lines.
+///
+/// `task-2260`: *"The agent tasks task modal add comment need to be multi-line, with 3 lines by default."* The box
+/// is a carved well holding a multi-line editor, and its height is kept on the provider once somebody drags the
+/// mark in its bottom right corner (`AgentTasks::comment_box_height`).
+const COMMENT_LINE: f32 = 17.0;
+const COMMENT_BOX_PAD: f32 = 10.0;
+const COMMENT_BOX_LINES: f32 = 3.0;
+const COMMENT_BOX_LEAST_LINES: f32 = 1.0;
+/// The most lines the box can be dragged to. It is the last section of a dialog that is usually full, so a box
+/// dragged taller takes its room from the sections above it, and this is what stops it taking all of it.
+const COMMENT_BOX_MOST_LINES: f32 = 12.0;
+/// The row of buttons under the box, and the gap between the box and the row.
+const COMPOSER_BUTTONS: f32 = 34.0;
+const COMPOSER_GAP: f32 = 8.0;
+/// The room at the right of the box that its resize mark sits in, kept clear of the words.
+const COMMENT_BOX_MARK: f32 = 26.0;
+
+/// How tall the comment box is for a number of lines.
+fn comment_box_for(lines: f32) -> f32 {
+    lines * COMMENT_LINE + COMMENT_BOX_PAD * 2.0
+}
+
+/// How tall the comment box is now: the height it was dragged to, or three lines.
+pub(crate) fn comment_box_height(board: &AgentTasks) -> f32 {
+    board
+        .comment_box_height
+        .unwrap_or_else(|| comment_box_for(COMMENT_BOX_LINES))
+        .max(comment_box_for(COMMENT_BOX_LEAST_LINES))
+}
+
+/// How tall the whole composer is: the box, the gap and the row of buttons under it.
+fn composer_height(board: &AgentTasks) -> f32 {
+    comment_box_height(board) + COMPOSER_GAP + COMPOSER_BUTTONS
+}
 
 /// How wide a comment's small button is for `label`: its word and a little room either side.
 fn comment_button_width(ui: &egui::Ui, look: &Look<'_>, label: &str) -> f32 {
@@ -308,21 +341,21 @@ fn comment_button(
     response.clicked()
 }
 
-/// The two buttons in the comment pill: `Comment & Send to Agent` with no surface, and `Comment` on a chip.
+/// The two buttons under the comment box: `Comment & Send to Agent` and `Comment`, the same chip either way.
 ///
 /// `task-2253`: *"for comment, the buttons should be "Comment & Send to Agent" and "Comment". Comment and send
 /// should both add the comment, as well as send it to the terminal. Comment should just add the comment."*
-/// They are the board's `comment-send` and `comment` commands, which already did exactly that.
+/// They are the board's `comment-send` and `comment` commands, which already did exactly that. `task-2260` made
+/// the first one a button like the second rather than words with no surface.
 fn composer_buttons() -> (rux::components::PillButton<'static>, rux::components::PillButton<'static>)
 {
     use rux::components::PillButton;
-    (PillButton::new("Comment"), PillButton::new("Comment & Send to Agent").ghost())
+    (PillButton::new("Comment"), PillButton::new("Comment & Send to Agent"))
 }
 
-/// How much of a comment section the pill that writes a comment takes, with the gap above it. The modal's
-/// budget reads this.
-pub(crate) fn composer_room(_rux: &rux::Rux<'_>, _width: f32) -> f32 {
-    COMPOSER + 12.0
+/// How much of a comment section the composer takes, with the gap above it. The modal's budget reads this.
+pub(crate) fn composer_room(board: &AgentTasks) -> f32 {
+    composer_height(board) + 12.0
 }
 
 /// The comments and the pill that posts one, for the modal.
@@ -344,10 +377,9 @@ pub(crate) fn comment_section(
     let theme = rux.theme();
     let chat = theme.chat;
     let (post, send) = composer_buttons();
-    let post_width = post.measure(rux).x;
-    let send_width = send.measure(rux).x;
     let comments = board.detail().comments.clone();
-    let room_for_comments = area.max.y - COMPOSER - 12.0;
+    let composer = composer_height(board);
+    let room_for_comments = area.max.y - composer - 12.0;
     let editing = board.detail().editing_comment;
     let mut edited = board.detail().comment_edit.clone();
     // Which comments are being read as their source, and the cache the rendered ones are drawn from. Taken out
@@ -622,7 +654,7 @@ pub(crate) fn comment_section(
         true => 12.0,
         false => 0.0,
     };
-    let box_top = (list.min.y + used + gap).min(area.max.y - COMPOSER).max(area.min.y);
+    let box_top = (list.min.y + used + gap).min(area.max.y - composer).max(area.min.y);
     let (resend, edit, save, cancel, typed, view_change, copy) = output.inner;
     if let Some(text) = copy {
         requests.push(Request::Copy(text));
@@ -653,59 +685,7 @@ pub(crate) fn comment_section(
             Err(problem) => requests.push(Request::Message(problem)),
         }
     }
-    // The pill: carved in, `padding: 5px 5px 5px 18px`, the box, then `Comment & Send to Agent` with no surface
-    // and `Comment` on a chip. Both are dimmed while the box is empty, because neither can do anything with no
-    // words.
-    let pill =
-        Rect::from_min_size(Pos2::new(area.min.x, box_top), Vec2::new(area.width(), COMPOSER));
-    rux.chrome.surface(pill, COMPOSER / 2.0, chat.well, chat.carved_sm());
-    let post_at = Rect::from_min_size(
-        Pos2::new(pill.max.x - 5.0 - post_width, pill.min.y + 5.0),
-        Vec2::new(post_width, COMPOSER - 10.0),
-    );
-    let send_at = Rect::from_min_size(
-        Pos2::new(post_at.min.x - 8.0 - send_width, pill.min.y + 5.0),
-        Vec2::new(send_width, COMPOSER - 10.0),
-    );
-    let font = egui::FontId::proportional(12.5);
-    let draft_id = rux.ui.id().with(("rux-text-input", egui::Id::new("agent-tasks-comment-draft")));
-    let field = Rect::from_min_max(
-        Pos2::new(pill.min.x + 18.0, pill.min.y),
-        Pos2::new(send_at.min.x - 8.0, pill.max.y),
-    );
-    let text = crate::components::controls::field_takes_the_whole_rectangle_at(
-        rux.ui,
-        field,
-        0.0,
-        draft_id,
-        "Comment field",
-        &font,
-    );
-    let mut draft = board.detail().draft.clone();
-    let mut child = rux.ui.new_child(egui::UiBuilder::new().max_rect(text));
-    let response = child.add(
-        egui::TextEdit::singleline(&mut draft)
-            .id(draft_id)
-            .frame(egui::Frame::NONE)
-            .hint_text(crate::components::controls::placeholder(
-                "Add a comment",
-                &font,
-                theme.ink.i400,
-            ))
-            .font(font.clone())
-            .desired_width(text.width())
-            .text_color(theme.ink.i900),
-    );
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Comment"));
-    order.push(draft_id);
-    if response.changed() {
-        board.detail_mut().draft = draft.clone();
-    }
-    // Enter posts, and is taken out of the frame so nothing drawn after the box takes it as its own.
-    let entered = super::enter_was_used_and_pressed(rux.ui, &response);
-    let written = !draft.trim().is_empty();
-    let posting = post.enabled(written).show(rux, post_at).clicked() || (entered && written);
-    let sending = send.enabled(written).show(rux, send_at).clicked();
+    let (posting, sending) = the_composer(board, rux, order, area, box_top, (post, send));
     if posting || sending {
         match board.post_the_comment(sending) {
             Ok(said) if !said.is_empty() => requests.push(Request::Message(said)),
@@ -714,4 +694,162 @@ pub(crate) fn comment_section(
         }
     }
     requests
+}
+
+/// The comment box and the row of buttons under it, answering whether `Comment` or `Comment & Send to Agent`
+/// was pressed.
+///
+/// `task-2260`. The box is a carved well with a multi-line editor in it, three lines tall until its corner mark
+/// is dragged. `Enter` is a new line, as it is in every box that holds more than one, and `Ctrl`/`Cmd` with
+/// `Enter` posts, which is the commit panel's chord for the same thing. The buttons are in a row of their own
+/// under the box, so nothing that resizes the box or the section is drawn over them. Both are dimmed while the
+/// box is empty, because neither can do anything with no words.
+fn the_composer(
+    board: &mut AgentTasks,
+    rux: &mut rux::Rux<'_>,
+    order: &mut Vec<egui::Id>,
+    area: Rect,
+    top: f32,
+    buttons: (rux::components::PillButton<'static>, rux::components::PillButton<'static>),
+) -> (bool, bool) {
+    let (post, send) = buttons;
+    let theme = rux.theme();
+    let chat = theme.chat;
+    let height = comment_box_height(board);
+    let well = Rect::from_min_size(Pos2::new(area.min.x, top), Vec2::new(area.width(), height));
+    rux.chrome.surface(well, 18.0, chat.well, chat.carved_sm());
+    let font = egui::FontId::proportional(12.5);
+    let draft_id = rux.ui.id().with(("rux-text-input", egui::Id::new("agent-tasks-comment-draft")));
+    let field = Rect::from_min_max(
+        Pos2::new(well.min.x + 16.0, well.min.y),
+        Pos2::new(well.max.x - COMMENT_BOX_MARK, well.max.y),
+    );
+    crate::components::controls::claim_the_field(rux.ui, field, draft_id, "Comment field");
+    let text = Rect::from_min_max(
+        Pos2::new(field.min.x, well.min.y + COMMENT_BOX_PAD),
+        Pos2::new(field.max.x, well.max.y - COMMENT_BOX_PAD),
+    );
+    // `Ctrl`/`Cmd` with `Enter` is taken before the box sees it, so it posts rather than also starting a line.
+    let focused = rux.ui.ctx().memory(|memory| memory.has_focus(draft_id));
+    let chord = focused
+        && rux
+            .ui
+            .ctx()
+            .input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::Enter));
+    let mut draft = board.detail().draft.clone();
+    let mut child = rux.ui.new_child(egui::UiBuilder::new().max_rect(text));
+    child.set_clip_rect(text.intersect(rux.ui.clip_rect()));
+    let rows = ((text.height() / COMMENT_LINE).floor() as usize).max(1);
+    let response = egui::ScrollArea::vertical()
+        .id_salt("agent-tasks-comment-draft-scroll")
+        .max_height(text.height().max(1.0))
+        .auto_shrink([false, false])
+        .show(&mut child, |ui| {
+            ui.add(
+                egui::TextEdit::multiline(&mut draft)
+                    .id(draft_id)
+                    .frame(egui::Frame::NONE)
+                    .margin(egui::Margin::ZERO)
+                    .hint_text(crate::components::controls::placeholder(
+                        "Add a comment",
+                        &font,
+                        theme.ink.i400,
+                    ))
+                    .font(font.clone())
+                    .desired_width(text.width())
+                    .desired_rows(rows)
+                    .text_color(theme.ink.i900),
+            )
+        })
+        .inner;
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Comment"));
+    order.push(draft_id);
+    if response.changed() {
+        board.detail_mut().draft = draft.clone();
+    }
+    // Not limited to the room below the box: the budget gives a taller box its room on the next frame.
+    let least = comment_box_for(COMMENT_BOX_LEAST_LINES);
+    let most = comment_box_for(COMMENT_BOX_MOST_LINES);
+    if let Some(dragged) = comment_box_grip(rux, well, least, most) {
+        board.comment_box_height = dragged;
+    }
+    // The buttons, right aligned in their own row under the box.
+    let row_top = well.max.y + COMPOSER_GAP;
+    let post_width = post.measure(rux).x;
+    let send_width = send.measure(rux).x;
+    let post_at = Rect::from_min_size(
+        Pos2::new(well.max.x - post_width, row_top),
+        Vec2::new(post_width, COMPOSER_BUTTONS),
+    );
+    let send_at = Rect::from_min_size(
+        Pos2::new(post_at.min.x - 8.0 - send_width, row_top),
+        Vec2::new(send_width, COMPOSER_BUTTONS),
+    );
+    let written = !draft.trim().is_empty();
+    let posting = post.enabled(written).show(rux, post_at).clicked() || (chord && written);
+    // The chord lets go of the keyboard once it has posted, as `Enter` did in the one line box this replaced, so
+    // the next `Tab` starts the modal's walk again.
+    if chord && written {
+        rux.ui.memory_mut(|memory| memory.surrender_focus(draft_id));
+    }
+    let sending = send.enabled(written).show(rux, send_at).clicked();
+    (posting, sending)
+}
+
+/// The mark in the comment box's bottom right corner that makes the box taller or shorter, answering the height
+/// to keep when it was dragged and `Some(None)` on a double click, which puts the box back to three lines.
+///
+/// Measured from where the press began, for the reason `ticket_modal::section_grip` is: egui reports a drag only
+/// once the pointer has moved past its threshold.
+fn comment_box_grip(
+    rux: &mut rux::Rux<'_>,
+    well: Rect,
+    least: f32,
+    most: f32,
+) -> Option<Option<f32>> {
+    let corner = Rect::from_min_max(well.max - Vec2::new(COMMENT_BOX_MARK, 22.0), well.max);
+    let response = rux.ui.interact(
+        corner,
+        rux.ui.id().with("agent-tasks-comment-box-grip"),
+        egui::Sense::click_and_drag(),
+    );
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Resize comment box")
+    });
+    let active = response.hovered() || response.dragged();
+    if active {
+        rux.ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+    }
+    let theme = rux.theme();
+    let tint = match active {
+        true => theme.chat.sky,
+        false => theme.ink.i400,
+    };
+    // The description's own mark, `M10.5 4.5l-6 6M10.5 8l-2.5 2.5` in a 12 point box.
+    let origin = Pos2::new(well.max.x - 10.0 - 12.0, well.max.y - 8.0 - 12.0);
+    let at = |x: f32, y: f32| origin + Vec2::new(x, y);
+    let stroke = egui::Stroke::new(1.5, tint);
+    rux.painter().line_segment([at(10.5, 4.5), at(4.5, 10.5)], stroke);
+    rux.painter().line_segment([at(10.5, 8.0), at(8.0, 10.5)], stroke);
+    if response.double_clicked() {
+        return Some(None);
+    }
+    let started = rux.ui.id().with(("agent-tasks-comment-box-grip", "start"));
+    if response.drag_started() {
+        rux.ui.ctx().data_mut(|data| data.insert_temp(started, well.height()));
+    }
+    if response.dragged() {
+        let from = rux.ui.ctx().data(|data| data.get_temp::<f32>(started)).unwrap_or(well.height());
+        let travelled = rux.ui.ctx().input(|input| {
+            match (input.pointer.press_origin(), input.pointer.interact_pos()) {
+                (Some(origin), Some(now)) => now.y - origin.y,
+                _ => 0.0,
+            }
+        });
+        let height = (from + travelled).clamp(least, most.max(least));
+        if (height - well.height()).abs() > 0.1 {
+            return Some(Some(height));
+        }
+    }
+    None
 }

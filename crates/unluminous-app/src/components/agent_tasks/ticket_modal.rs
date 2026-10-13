@@ -25,11 +25,14 @@
 //!
 //! The four sections on the left are laid out one under another. Each says what it **wants** and what it can be
 //! cut to, and the shortfall is taken from them in order: the terminal, then the description down to three
-//! lines, then the comments, and the todos last. The description, the comments and the todos all scroll.
+//! lines, then the comments, and the todos last. The description, the comments and the todos all scroll. A
+//! description somebody has dragged is cut last of all, so the drag is what decides its height (`task-2260`).
 //!
 //! The description, the terminal and the comments each have a grip along their bottom edge, and a height
 //! dragged there is what that section then wants (`task-2214`, `task-2255`). Comments given a height of their
-//! own leave whatever room is spare under them, so their bottom edge stays under the pointer.
+//! own leave whatever room is spare under them, so their bottom edge stays under the pointer. The comments' grip
+//! is the strip under the section and has no corner, because the `Comment` button is in that corner; the box a
+//! comment is written in has a corner mark of its own (`task-2260`).
 //!
 //! ## Every field writes through one function
 //!
@@ -398,7 +401,7 @@ struct Budget {
 
 /// Share the column's height out, taking the shortfall from the terminal, then the description down to three
 /// lines, then the comments, and the todos last, because the todos are the plan an agent is working through.
-fn budget(board: &AgentTasks, rux: &rux::Rux<'_>, area: Rect, task: &Task, new: bool) -> Budget {
+fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new: bool) -> Budget {
     let room = area.height();
     let todos_open = !board.todos_shut;
     let rows = board.detail().todos.len() as f32;
@@ -419,15 +422,20 @@ fn budget(board: &AgentTasks, rux: &rux::Rux<'_>, area: Rect, task: &Task, new: 
         ),
         (false, false, true) => (TERMINAL_EMPTY, TERMINAL_EMPTY),
     };
-    let composer = super::detail::composer_room(rux, area.width());
+    let composer = super::detail::composer_room(board) + DESCRIPTION_GRIP;
     let (comment_want, comment_least) = match new {
         true => (0.0, 0.0),
         false => {
             let used = board.detail().comments.len() as f32 * COMMENT_ROUGHLY + composer;
             let least = (composer + COMMENT_ROUGHLY).min(used);
+            // The comments always want room for the composer, so a comment box dragged taller takes its room from
+            // the sections above rather than from the comments list alone (`task-2260`).
             match board.comments_height {
-                Some(height) => (height.max(COMMENTS_LEAST), least.min(height.max(COMMENTS_LEAST))),
-                None => (COMMENTS.min(used), least),
+                Some(height) => {
+                    let want = height.max(COMMENTS_LEAST).max(composer);
+                    (want, least.min(want))
+                }
+                None => (COMMENTS.min(used).max(composer), least),
             }
         }
     };
@@ -449,8 +457,15 @@ fn budget(board: &AgentTasks, rux: &rux::Rux<'_>, area: Rect, task: &Task, new: 
         *short -= spare;
         want - spare
     };
+    // **A description somebody dragged is cut after the comments and the todos rather than before them**
+    // (`task-2260`). Cut second, a drag that made it taller in a dialog with no room to spare was taken straight
+    // back by this budget, so the edge did not move and the resize looked as though it did nothing.
+    let dragged = board.description_height.is_some();
     let terminal = give(terminal_want, terminal_least, &mut short);
-    let description = give(description_want, DESCRIPTION_LEAST, &mut short);
+    let description = match dragged {
+        true => description_want,
+        false => give(description_want, DESCRIPTION_LEAST, &mut short),
+    };
     // Spare room goes to the comments, unless somebody has given them a height of their own: then it stays under
     // them, so the edge they were dragged by is where the pointer let go of it.
     let spare = match board.comments_height {
@@ -464,6 +479,10 @@ fn budget(board: &AgentTasks, rux: &rux::Rux<'_>, area: Rect, task: &Task, new: 
     let terminal = give(terminal, 0.0, &mut short);
     let comments = give(comments, composer.min(comments), &mut short);
     let todos = give(todos, (TODO_ADD + TODO_PAD * 2.0).min(todos), &mut short);
+    let description = match dragged {
+        true => give(description, DESCRIPTION_LEAST, &mut short),
+        false => description,
+    };
     let description = (description - short).max(0.0);
     // **The todos are given whole rows**, and what a part of a row would have taken goes to the description,
     // which scrolls: a row cut through its middle reads as a drawing fault rather than as a list that scrolls.
@@ -529,7 +548,7 @@ fn main_column(
             look,
             theme.ink.i900,
         ));
-        let grip = Grip { salt: "agent-tasks-description-grip", name: "Resize description" };
+        let grip = Grip { salt: "agent-tasks-description-grip", name: "Resize description", corner: true };
         if let Some(height) =
             section_grip(rux, well, DESCRIPTION_LEAST, area.max.y - well.min.y, grip)
         {
@@ -648,7 +667,7 @@ fn main_column(
             false => requests.extend(no_terminal(board, rux, at, task)),
         }
         if live {
-            let grip = Grip { salt: "agent-tasks-terminal-grip", name: "Resize terminal" };
+            let grip = Grip { salt: "agent-tasks-terminal-grip", name: "Resize terminal", corner: true };
             let most = area.max.y - at.min.y - LABEL - 12.0 - SECTION_GAP;
             if let Some(height) = section_grip(rux, at, TERMINAL_LEAST, most, grip) {
                 board.terminal_height = height;
@@ -667,14 +686,16 @@ fn main_column(
         Pos2::new(area.max.x, (pen + budget.comments).min(area.max.y)),
     );
     if comments_at.height() > 20.0 {
-        requests.extend(super::detail::comment_section(board, rux, order, comments_at, look));
         // The grip sits inside the bottom of the section rather than under it, because the section usually ends
-        // at the dialog's own padding and a strip under it would be outside the room it was given.
+        // at the dialog's own padding and a strip under it would be outside the room it was given. The comments
+        // and the composer are laid out above that strip, so the strip is under the buttons rather than over
+        // them (`task-2260`: *"the buttons aren't clickable because the resize icon"*).
         let well = Rect::from_min_max(
             comments_at.min,
             Pos2::new(comments_at.max.x, comments_at.max.y - DESCRIPTION_GRIP),
         );
-        let grip = Grip { salt: "agent-tasks-comments-grip", name: "Resize comments" };
+        requests.extend(super::detail::comment_section(board, rux, order, well, look));
+        let grip = Grip { salt: "agent-tasks-comments-grip", name: "Resize comments", corner: false };
         let most = area.max.y - well.min.y - DESCRIPTION_GRIP;
         if let Some(height) = section_grip(rux, well, COMMENTS_LEAST, most, grip) {
             board.comments_height = height.map(|height| height + DESCRIPTION_GRIP);
@@ -765,6 +786,10 @@ fn terminal_mark(rux: &rux::Rux<'_>, centre: Pos2, colour: egui::Color32) {
 struct Grip {
     salt: &'static str,
     name: &'static str,
+    /// Whether the grip takes the well's bottom right corner and draws the diagonal mark there. The comments'
+    /// grip does not, because that corner is where the `Comment` button is: its grip is the strip under the
+    /// section and nothing else.
+    corner: bool,
 }
 
 /// The corner of a section's well that resizes it, answering the height to keep when it was dragged.
@@ -789,8 +814,12 @@ fn section_grip(
         Pos2::new(well.min.x, well.max.y),
         Vec2::new(well.width(), DESCRIPTION_GRIP),
     );
+    let grabbed = match grip.corner {
+        true => corner.union(strip),
+        false => strip,
+    };
     let response = rux.ui.interact(
-        corner.union(strip),
+        grabbed,
         rux.ui.id().with(grip.salt),
         egui::Sense::click_and_drag(),
     );
@@ -804,12 +833,26 @@ fn section_grip(
         true => theme.chat.sky,
         false => theme.ink.i400,
     };
-    // `M10.5 4.5l-6 6M10.5 8l-2.5 2.5` in a 12 point box, `right: 12px; bottom: 10px`.
-    let origin = Pos2::new(well.max.x - 12.0 - 12.0, well.max.y - 10.0 - 12.0);
-    let at = |x: f32, y: f32| origin + Vec2::new(x, y);
-    let stroke = egui::Stroke::new(1.5, tint);
-    rux.painter().line_segment([at(10.5, 4.5), at(4.5, 10.5)], stroke);
-    rux.painter().line_segment([at(10.5, 8.0), at(8.0, 10.5)], stroke);
+    // `M10.5 4.5l-6 6M10.5 8l-2.5 2.5` in a 12 point box, `right: 12px; bottom: 10px`. A grip with no corner
+    // shows a short bar in the middle of its strip instead, while the pointer is on it.
+    match grip.corner {
+        true => {
+            let origin = Pos2::new(well.max.x - 12.0 - 12.0, well.max.y - 10.0 - 12.0);
+            let at = |x: f32, y: f32| origin + Vec2::new(x, y);
+            let stroke = egui::Stroke::new(1.5, tint);
+            rux.painter().line_segment([at(10.5, 4.5), at(4.5, 10.5)], stroke);
+            rux.painter().line_segment([at(10.5, 8.0), at(8.0, 10.5)], stroke);
+        }
+        false if active => {
+            let middle = strip.center();
+            let stroke = egui::Stroke::new(2.0, tint);
+            rux.painter().line_segment(
+                [middle - Vec2::new(18.0, 0.0), middle + Vec2::new(18.0, 0.0)],
+                stroke,
+            );
+        }
+        false => {}
+    }
     if response.double_clicked() {
         return Some(None);
     }
