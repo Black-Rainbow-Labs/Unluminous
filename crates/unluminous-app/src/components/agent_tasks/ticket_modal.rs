@@ -484,6 +484,12 @@ fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new:
         false => description,
     };
     let description = (description - short).max(0.0);
+    // **The strip that says there is no terminal is whole or absent** (`task-2260`). Its words are two lines tall,
+    // so cut below its height they ran over its own edges; the room it would have had goes to the description.
+    let (terminal, description) = match !live && terminal > 0.0 && terminal < TERMINAL_EMPTY {
+        true => (0.0, description + terminal),
+        false => (terminal, description),
+    };
     // **The todos are given whole rows**, and what a part of a row would have taken goes to the description,
     // which scrolls: a row cut through its middle reads as a drawing fault rather than as a list that scrolls.
     let (todos, description) = match todos_open && rows > 0.0 && todos > 0.0 {

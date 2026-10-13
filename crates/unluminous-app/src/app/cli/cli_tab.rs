@@ -312,6 +312,16 @@ impl UnluminousApp {
         if let Err(reason) = opened {
             return no(request, code::FAILED, reason);
         }
+        // A design opens in a tab of the Designer pane rather than in the editing area (`task-2260`), so the answer
+        // names that tab rather than the editing area's.
+        if let Some(design) = self.the_design_a_file_is(&path) {
+            let tab = self.designer().ok().map(|designer| designer.active_tab());
+            return ok(
+                request,
+                format!("Opened {} in the Designer pane", path.display()),
+                json!({ "designerTab": tab, "design": design.to_string_lossy(), "path": path.to_string_lossy() }),
+            );
+        }
         ok(
             request,
             format!("Opened {} in tab {}", path.display(), self.files.active_index()),
