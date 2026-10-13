@@ -6,13 +6,14 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.80.0 — 2026-10-13
 
 - Idle CPU, window drag and resize behind a modal, resizable ticket sections, panes kept across a restart (`task-2255`)
 - Browser tabs, links, selection, menus, designs and tool calls (`task-2255`)
 - Tests and notes for the browser, link, design and ticket changes (`task-2255`)
 - Catalogue text cut to a sentence and the schema ceiling recorded (`task-2255`)
 - Window tests follow the new toolbar, folded tool calls and link clicks (`task-2255`)
+- The changelog written from the history (`task-2255`)
 
 ## 0.79.0 — 2026-10-12
 
