@@ -535,12 +535,15 @@ mod tests {
         let (mut plugins, problems) = Plugins::load(None);
         assert!(problems.is_empty(), "{problems:?}");
         let surfaces = plugins.surfaces();
-        // **All three contribute a pane and none contributes a tab**, which is `task-1848`: the board and
+        // **All four contribute a pane and none contributes a tab**, which is `task-1848`: the board and
         // the database's query console were both asked for as panes rather than as surfaces in the editing
         // area. A conversation is a column, a board is four lanes, and a database is a tree with its
         // consoles under it — and each of those is a shape a pane can be given by dragging it, which is
         // what `task-1697`'s docking bought and what makes this one manifest line rather than a rewrite.
-        assert_eq!(surfaces.panes.len(), 3, "every plugin that draws asks for a pane");
+        // The Designer is the fourth, `task-2254`: its pane lists the designs and the design itself is a tab the
+        // window draws, which is not a contributed tab because a design is a file and not one fixed surface.
+        assert_eq!(surfaces.panes.len(), 4, "every plugin that draws asks for a pane");
+        assert!(surfaces.pane("designer/designs").is_some());
         assert!(surfaces.pane("agent-chat/chat").is_some());
         assert!(surfaces.pane("database/explorer").is_some());
         assert!(surfaces.pane("agent-tasks/board").is_some());
@@ -548,18 +551,20 @@ mod tests {
         assert!(surfaces.tabs.is_empty(), "and nothing contributes a tab any more");
         assert!(surfaces.tab("agent-tasks/board").is_none());
         assert!(surfaces.tab("database/workspace").is_none());
-        assert_eq!(surfaces.menus.len(), 3);
-        assert_eq!(surfaces.pages.len(), 3);
+        assert_eq!(surfaces.menus.len(), 4);
+        assert_eq!(surfaces.pages.len(), 4);
         // Switching one off withdraws every contribution of that plugin at once, which is the rule
         // `Plugins::renders` already keeps for a Mermaid diagram: the window asks before it draws.
         plugins.set_enabled(None, "agent-tasks", false);
         plugins.set_enabled(None, "agent-chat", false);
         plugins.set_enabled(None, "database", false);
+        plugins.set_enabled(None, "designer", false);
         assert!(plugins.surfaces().is_empty(), "a plugin that is off contributes nothing");
         plugins.set_enabled(None, "agent-tasks", true);
         plugins.set_enabled(None, "agent-chat", true);
         plugins.set_enabled(None, "database", true);
-        assert_eq!(plugins.surfaces().panes.len(), 3, "and switching it back on is one frame too");
+        plugins.set_enabled(None, "designer", true);
+        assert_eq!(plugins.surfaces().panes.len(), 4, "and switching it back on is one frame too");
         assert!(plugins.surfaces().tabs.is_empty());
     }
 

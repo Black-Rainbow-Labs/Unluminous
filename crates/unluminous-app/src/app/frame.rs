@@ -158,6 +158,7 @@ impl UnluminousApp {
         crate::services::frame_trace::phase("action");
         // The title bar's and the rail's `rux` canvases that were not drawn this frame are given back.
         crate::components::chrome_kit::end_frame(ui.ctx());
+        crate::components::designer::kit::end_frame(ui.ctx());
         self.end_the_frame(ui);
     }
 
@@ -916,6 +917,8 @@ impl UnluminousApp {
         // panes for the same reason again: in the side-by-side view the source is drawn first and
         // would otherwise take the event and copy its own selection instead.
         self.route_the_preview_copy(ui);
+        // And a design tab's own, for the same reason. `task-2254`.
+        self.route_the_designers_keys(ui);
     }
 
     /// The panes: a strip of tabs and an editing area each, left to right. One pane is the ordinary
@@ -2323,6 +2326,7 @@ impl UnluminousApp {
         let on_the_canvas = self.realm.live.browsers().count();
         if self.files.iter().all(|file| file.browser.is_none())
             && on_the_canvas == 0
+            && self.design_tabs.is_empty()
             && !self.browser.has_views()
         {
             return;
@@ -2335,6 +2339,7 @@ impl UnluminousApp {
             .iter()
             .filter_map(|file| file.browser.clone())
             .chain(self.realm.live.browsers().cloned())
+            .chain(self.design_tabs.values().cloned())
             .collect();
         let occluders = self.occluding_rects(ctx);
         let mut placements = self.browser_placements.clone();
@@ -2364,7 +2369,11 @@ impl UnluminousApp {
         }
         let settled = self.browser.reconcile(&tabs, &placements, &occluders, ctx.clone());
         // The picker's answer is asked for on a frame, so while it is open the window keeps drawing.
-        if self.browser.picking().is_some() || self.pick_when_showing.is_some() {
+        // The same for a page the Designer keeps a script in: its answers are asked for on a frame. `task-2254`.
+        if self.browser.picking().is_some()
+            || self.pick_when_showing.is_some()
+            || self.browser.watching().is_some_and(|id| self.browser.showing() == Some(id))
+        {
             ctx.request_repaint_after(std::time::Duration::from_millis(150));
         }
         // **What a page's own command can be asked about.** A page is a native child view, so nothing

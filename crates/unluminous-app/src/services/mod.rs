@@ -26,6 +26,7 @@ pub mod crash_log;
 // The Database plugin: the data sources, the connections, the tree and the pages.
 pub mod database;
 pub mod debuggers;
+pub mod designer;
 pub mod file_clipboard;
 pub mod file_kind;
 pub mod file_marks;

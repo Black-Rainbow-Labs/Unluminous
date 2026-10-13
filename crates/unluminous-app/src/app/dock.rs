@@ -38,10 +38,11 @@ use crate::settings::Panes;
 ///
 /// A number rather than a growing list, so [`Layout`] and [`Regions`] stay `Copy` and allocate nothing:
 /// they are built and thrown away several times a frame, once for the real layout and again for each
-/// preview of a drop. Four is more panes than the plugins that exist ask for, and a fifth is refused
-/// with a message rather than silently dropped, which is the rule every registry in `services::plugins`
-/// keeps.
-pub const PLUGIN_PANES: usize = 4;
+/// preview of a drop. Five is one more than the plugins that exist ask for, which is the headroom there
+/// was when three of four slots were used: the Designer (`task-2254`) is the fourth plugin with a pane, and
+/// a sixth is refused with a message rather than silently dropped, which is the rule every registry in
+/// `services::plugins` keeps.
+pub const PLUGIN_PANES: usize = 5;
 
 /// How many slots [`Layout`] and [`Regions`] hold: Unluminous's own five, then the plugins'.
 pub const SLOTS: usize = 5 + PLUGIN_PANES;

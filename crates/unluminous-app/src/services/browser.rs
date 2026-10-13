@@ -479,6 +479,24 @@ pub enum BrowserEvent {
     PickCancelled {
         id: u64,
     },
+    /// A script the host is watching a page with had something to say, as the JSON it answered with.
+    /// `task-2254`: the Designer's overlay reports a click, a choice and where its pins are this way.
+    Reported {
+        id: u64,
+        json: String,
+    },
+}
+
+/// A script the host keeps in a page and asks for its answers, the way it asks the picker.
+///
+/// `install` is evaluated in the page whenever it finishes loading, and `take` is evaluated every
+/// [`PICK_POLL`] and answers the JSON of what happened since it was last asked. There is no bridge: the
+/// page is given nothing to call, so a page that wrote `window.__unluminousDesigner` itself could only
+/// change what the host reads, and the host reads only a shape. `task-2254` section 7.4.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Watch {
+    pub install: String,
+    pub take: String,
 }
 
 /// What the page's own right click menu offers, for the page that is showing. `task-2203`.
@@ -502,6 +520,9 @@ pub const PIN_SCRIPT: &str = include_str!("browser_pin.js");
 
 /// How often the host asks the picker for its answer while it is open.
 const PICK_POLL: Duration = Duration::from_millis(150);
+
+/// How long a question to a watched page is waited for before it is asked again.
+const WATCH_PATIENCE: Duration = Duration::from_secs(2);
 
 /// How often the session cookies are read while a page is open, and how soon after a page finishes loading.
 const COOKIES_EVERY: Duration = Duration::from_secs(30);
@@ -569,6 +590,13 @@ pub struct BrowserHost {
     /// Whether an answer has been asked for and not yet given, so two are never in flight.
     asking: Arc<std::sync::atomic::AtomicBool>,
     last_ask: Instant,
+    /// The tab a [`Watch`] is kept on, and the script. Only the tab the view is pointed at is asked.
+    watching: Option<(u64, Watch)>,
+    /// Whether the watch's script has to be put in the page again, because the page just loaded.
+    install_due: bool,
+    /// Whether the watch has asked a question and not had its answer, with when it asked.
+    watch_asking: Arc<std::sync::atomic::AtomicBool>,
+    watch_asked_at: Instant,
     /// What the page's own right click menu offers. See [`PageMenu`].
     menu: Arc<Mutex<PageMenu>>,
     resources: LocalResourceStore,
@@ -593,6 +621,10 @@ impl BrowserHost {
             picking: Arc::new(Mutex::new(None)),
             asking: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             last_ask: Instant::now(),
+            watching: None,
+            install_due: false,
+            watch_asking: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            watch_asked_at: Instant::now(),
             menu: Arc::new(Mutex::new(PageMenu::default())),
             resources: LocalResourceStore::new(),
             showing: Arc::new(AtomicU64::new(0)),
@@ -648,6 +680,73 @@ impl BrowserHost {
             *picking = None;
         }
         let _ = self.sender.send(BrowserEvent::PickCancelled { id });
+    }
+
+    /// Keep a script in the page of tab `id` and ask it for its answers, or put the watch away with `None`.
+    ///
+    /// Setting the watch it already has changes nothing, so the window can say it on every frame it
+    /// draws the tab. A different watch, or the first one, is put in the page at the next chance.
+    ///
+    /// @param id - the tab
+    /// @param watch - the scripts, or nothing to stop watching `id`
+    pub fn watch(&mut self, id: u64, watch: Option<Watch>) {
+        match watch {
+            Some(watch) => {
+                if self.watching.as_ref() != Some(&(id, watch.clone())) {
+                    self.watching = Some((id, watch));
+                    self.install_due = true;
+                }
+            }
+            None => {
+                if self.watching.as_ref().is_some_and(|(held, _)| *held == id) {
+                    self.watching = None;
+                }
+            }
+        }
+    }
+
+    /// The tab a watch is kept on, if there is one.
+    pub fn watching(&self) -> Option<u64> {
+        self.watching.as_ref().map(|(id, _)| *id)
+    }
+
+    /// Put the watch's script in the page when it has just loaded, and ask it what happened, at most once
+    /// every [`PICK_POLL`] and never twice at once.
+    ///
+    /// **Before the egui pass**, from [`Self::reconcile`], like the picker's question. An answer that never
+    /// arrives, because the page went away between the question and the answer, is given up on after two
+    /// seconds rather than silencing the watch for good.
+    fn ask_the_watch(&mut self) {
+        let Some(id) = self.watching() else { return };
+        if self.showing() != Some(id) || !self.native.has_view() {
+            return;
+        }
+        if self.install_due {
+            let install = self.watching.as_ref().map(|(_, watch)| watch.install.clone());
+            if let Some(install) = install {
+                if self.native.evaluate(&install).is_ok() {
+                    self.install_due = false;
+                }
+            }
+        }
+        let busy = self.watch_asking.load(Ordering::Relaxed)
+            && self.watch_asked_at.elapsed() < WATCH_PATIENCE;
+        if busy || self.watch_asked_at.elapsed() < PICK_POLL {
+            return;
+        }
+        self.watch_asking.store(true, Ordering::Relaxed);
+        self.watch_asked_at = Instant::now();
+        let take = self.watching.as_ref().map(|(_, watch)| watch.take.clone()).unwrap_or_default();
+        let (sender, asking) = (self.sender.clone(), self.watch_asking.clone());
+        let asked = self.native.evaluate_with_callback(&take, move |json| {
+            asking.store(false, Ordering::Relaxed);
+            if json.contains("\"kind\"") {
+                let _ = sender.send(BrowserEvent::Reported { id, json });
+            }
+        });
+        if asked.is_err() {
+            self.watch_asking.store(false, Ordering::Relaxed);
+        }
     }
 
     /// Show only the element `selector` finds, in the page tab `id` is showing.
@@ -784,6 +883,7 @@ impl BrowserHost {
     /// Release everything local that belonged to a closed tab, and the view once none are left.
     pub fn close_tab(&mut self, id: u64) {
         self.resources.unregister(id);
+        self.watch(id, None);
         if self.showing() == Some(id) {
             self.showing.store(0, Ordering::Relaxed);
         }
@@ -821,6 +921,7 @@ impl BrowserHost {
         let live: HashSet<u64> = tabs.iter().map(|tab| tab.id).collect();
         self.resources.retain(&live);
         self.ask_the_picker();
+        self.ask_the_watch();
         // Read once more just before the last view goes, because nothing will read them afterwards.
         self.keep_the_session(tabs.is_empty());
         if tabs.is_empty() {
@@ -918,6 +1019,13 @@ impl BrowserHost {
         let events: Vec<BrowserEvent> = self.receiver.try_iter().collect();
         if events.iter().any(|event| matches!(event, BrowserEvent::LoadFinished { .. })) {
             self.a_page_loaded();
+        }
+        // A page that finished loading is a new document, so a watch's script has to go in it again.
+        let watched = self.watching();
+        if events.iter().any(
+            |event| matches!(event, BrowserEvent::LoadFinished { id, .. } if Some(*id) == watched),
+        ) {
+            self.install_due = true;
         }
         events
     }
@@ -2561,6 +2669,39 @@ mod tests {
     /// `task-2203`: a node left on a local page wrote `unluminous://tab-3/page.html`, and the next run refused
     /// the scheme, so the node came back with no page. Both of the forms an engine reports are read as the
     /// file, and a path that climbs out of the origin stays inside it.
+    /// `task-2254`: the Designer keeps a script in a page and asks it what happened. The host keeps one watch, for
+    /// one tab; setting what it already has changes nothing, a new one is put in the page at the next chance, and
+    /// a page that finishes loading is a new document the script has to go into again.
+    #[test]
+    fn a_watch_is_kept_for_one_tab_and_put_in_again_when_its_page_loads() {
+        let mut host = BrowserHost::new();
+        let watch = Watch { install: "install();".to_owned(), take: "take()".to_owned() };
+        assert_eq!(host.watching(), None);
+        host.watch(3, Some(watch.clone()));
+        assert_eq!(host.watching(), Some(3));
+        assert!(host.install_due, "a watch that was just set has not been put in the page");
+        host.install_due = false;
+        host.watch(3, Some(watch.clone()));
+        assert!(!host.install_due, "the same watch said again changes nothing");
+        host.watch(3, Some(Watch { install: "another();".to_owned(), take: "take()".to_owned() }));
+        assert!(host.install_due, "a different script is put in");
+        host.install_due = false;
+
+        // Another page loading says nothing about this one, and this one loading starts it again.
+        host.sender.send(BrowserEvent::LoadFinished { id: 9, url: "u".to_owned() }).unwrap();
+        host.take_events();
+        assert!(!host.install_due);
+        host.sender.send(BrowserEvent::LoadFinished { id: 3, url: "u".to_owned() }).unwrap();
+        host.take_events();
+        assert!(host.install_due, "a new document needs the script again");
+
+        // Taking it away for another tab does nothing; for its own tab, or by closing the tab, it goes.
+        host.watch(4, None);
+        assert_eq!(host.watching(), Some(3));
+        host.close_tab(3);
+        assert_eq!(host.watching(), None);
+    }
+
     #[test]
     fn an_address_a_local_tab_wrote_down_is_read_as_its_file() {
         let project =

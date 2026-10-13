@@ -882,6 +882,7 @@ impl UnluminousApp {
         }
         self.tell_the_plugins_what_is_showing();
         self.tell_the_plugins_the_endpoints();
+        self.act_on_the_designer_wants();
         // The canvas, on exactly the same terms and for the same reason - `task-1904`. A terminal
         // node that printed while its node was scrolled off the canvas, or while the canvas was put
         // away, must not lose what it printed, and a pipe between two of them has to be read whether
@@ -901,7 +902,9 @@ impl UnluminousApp {
     fn tell_the_plugins_what_is_showing(&mut self) {
         // **Compared before anything is cloned**, which is the whole of the once-a-frame rule: the
         // comparison is two borrowed paths and a frame in which neither moved allocates nothing.
-        let showing = self.files.active().path();
+        // A design tab is a plugin tab with no path, and the Designer is told which design it is showing. `task-2254`.
+        let design = self.showing_design_path();
+        let showing = self.files.active().path().or(design.as_deref());
         let project = self.tree.root();
         let same = self.told_the_plugins.as_ref().is_some_and(|(before, was)| {
             before.as_deref() == Some(project) && was.as_deref() == showing
@@ -1025,7 +1028,8 @@ impl UnluminousApp {
         self.plugin_ui.refresh(&self.plugins);
         // The explorer's dot folders and the Realm panel both follow the plugins that are switched on.
         // `task-2202`: the Realm plugin is the switch for the panel, the way Agent-Tasks is for its pane.
-        self.tree.set_shows(self.plugins.explorer_shows());
+        let shows = self.dot_folders_the_explorer_shows();
+        self.tree.set_shows(shows);
         if !self.realm_is_on() && self.realm.visible {
             self.show_a_panel(crate::app::dock::Panel::Realm, false);
         }
@@ -1247,13 +1251,14 @@ impl UnluminousApp {
         // A realm tab is the realm plugin's own and contributes no surface, so it stays while that plugin
         // is on and goes when it is switched off. `task-2202`.
         let realm_on = self.realm_is_on();
+        // A design tab is the Designer's, and stays while that plugin is on. `task-2254`.
+        let designer_on = self.designer_is_on();
         let going: Vec<usize> = (0..self.files.len())
             .filter(|index| {
-                self.files.at(*index).plugin.as_ref().is_some_and(|tab| {
-                    match tab.plugin == "realm" {
-                        true => !realm_on,
-                        false => !contributed.contains(&tab.key),
-                    }
+                self.files.at(*index).plugin.as_ref().is_some_and(|tab| match tab.plugin.as_str() {
+                    "realm" => !realm_on,
+                    "designer" => !designer_on,
+                    _ => !contributed.contains(&tab.key),
                 })
             })
             .collect();
@@ -1337,7 +1342,7 @@ impl UnluminousApp {
     /// a renderer with `ui.chrome`, the provider says it draws decoration, and the person has not switched
     /// `plugins.chrome` off. Otherwise it is `Chrome::off`, which records nothing and costs nothing, and
     /// the board draws its flat form.
-    fn chrome_for(&mut self, plugin: &str) -> crate::services::vello_canvas::Chrome {
+    pub(crate) fn chrome_for(&mut self, plugin: &str) -> crate::services::vello_canvas::Chrome {
         // The renderer the manifest named, matched rather than merely counted: there is one today, and the
         // day there are two this is where the second one is chosen.
         let asked = matches!(self.plugin_ui.surfaces().chrome_for(plugin), Some("vello"));

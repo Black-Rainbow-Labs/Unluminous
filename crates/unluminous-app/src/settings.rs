@@ -1869,9 +1869,15 @@ mod tests {
         let panes = Panes {
             // Two contributed panes are named below, so only the first two slots are remembered; a
             // slot no plugin is in keeps its default, because there is no pane whose size to record.
-            plugin_widths: [420.0, 300.0, PLUGIN_PANE_WIDTH, PLUGIN_PANE_WIDTH],
-            plugin_heights: [280.0, 260.0, PLUGIN_PANE_HEIGHT, PLUGIN_PANE_HEIGHT],
-            plugin_zooms: [1.35, 0.85, DEFAULT_ZOOM, DEFAULT_ZOOM],
+            plugin_widths: [420.0, 300.0, PLUGIN_PANE_WIDTH, PLUGIN_PANE_WIDTH, PLUGIN_PANE_WIDTH],
+            plugin_heights: [
+                280.0,
+                260.0,
+                PLUGIN_PANE_HEIGHT,
+                PLUGIN_PANE_HEIGHT,
+                PLUGIN_PANE_HEIGHT,
+            ],
+            plugin_zooms: [1.35, 0.85, DEFAULT_ZOOM, DEFAULT_ZOOM, DEFAULT_ZOOM],
             explorer_zoom: 1.15,
             explorer_width: 320.0,
             explorer_height: 220.0,

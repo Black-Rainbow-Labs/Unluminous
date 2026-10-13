@@ -79,6 +79,7 @@ fn sheet() -> Vec<Mark> {
         ("board", icon::board),
         ("database", icon::database),
         ("table", icon::table),
+        ("design", icon::design),
         ("terminal", icon::terminal),
         ("run", icon::run),
         ("bug", icon::bug),

@@ -858,6 +858,7 @@ pub fn provider(name: &str) -> Option<Box<dyn UiProvider>> {
         "agent-tasks" => Some(Box::new(crate::services::agent_tasks::AgentTasks::new())),
         "agent-chat" => Some(Box::new(crate::services::agent_chat::AgentChat::new())),
         "database" => Some(Box::new(crate::services::database::DatabaseExplorer::new())),
+        "designer" => Some(Box::new(crate::services::designer::Designer::new())),
         // Drawn by the window itself — see `plugins::CORE_PROVIDERS`.
         "realm" => None,
         _ => None,

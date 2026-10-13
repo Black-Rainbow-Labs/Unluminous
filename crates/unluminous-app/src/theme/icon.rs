@@ -1988,6 +1988,42 @@ pub fn database(painter: &egui::Painter, centre: Pos2, color: Color32) {
     }
 }
 
+/// A design: a page frame with a pen nib across its lower right corner, which is the Designer's mark.
+///
+/// One colour, so it follows the window's colours the way every other mark on the rail does. The frame has a
+/// header rule, which is what tells a page from a window, and the nib is a filled triangle on a stroke so it
+/// is still a pen at fourteen points.
+pub fn design(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    let frame = Rect::from_center_size(
+        Pos2::new(centre.x - 1.0, centre.y - 1.0),
+        egui::Vec2::new(11.0, 9.0),
+    );
+    painter.rect_stroke(
+        frame,
+        CornerRadius::same(2),
+        Stroke::new(1.2, color),
+        egui::StrokeKind::Inside,
+    );
+    painter.line_segment(
+        [Pos2::new(frame.left(), frame.top() + 3.2), Pos2::new(frame.right(), frame.top() + 3.2)],
+        Stroke::new(1.0, color),
+    );
+    let tip = Pos2::new(centre.x + 1.0, centre.y + 6.2);
+    painter.line_segment(
+        [Pos2::new(centre.x + 6.2, centre.y + 0.6), Pos2::new(centre.x + 2.2, centre.y + 4.8)],
+        Stroke::new(2.0, color),
+    );
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            Pos2::new(centre.x + 3.6, centre.y + 3.6),
+            Pos2::new(centre.x + 0.4, centre.y + 4.4),
+            tip,
+        ],
+        color,
+        Stroke::NONE,
+    ));
+}
+
 /// A table: a grid with a heavier first row, which is what a header is.
 pub fn table(painter: &egui::Painter, centre: Pos2, color: Color32) {
     let rect = Rect::from_center_size(centre, egui::Vec2::new(13.0, 11.0));

@@ -40,6 +40,7 @@ pub mod cli;
 pub mod code_editing;
 pub mod completion;
 pub mod debug;
+pub mod designer;
 pub mod dock;
 mod drags;
 mod editing;
@@ -844,6 +845,12 @@ pub struct UnluminousApp {
     /// A title a page gave itself while it was still loading, by tab, filed against its address once the load
     /// finishes. See `act_on_browser_events`.
     pub(crate) titles_arriving: std::collections::HashMap<u64, String>,
+    /// The browser tab behind each open design tab, by the tab's key. Listed with every other browser tab so the
+    /// one native view is pointed at it by the same code. `task-2254`.
+    pub(crate) design_tabs: std::collections::HashMap<String, crate::services::browser::BrowserTab>,
+    /// The zoom each design's page was last told to undo for its overlay, by browser tab. See
+    /// `app::designer::keep_the_overlay_its_size`. `task-2254`.
+    pub(crate) design_zooms: std::collections::HashMap<u64, f64>,
     /// The last resize this window asked the window manager for, and nothing if it has asked for none.
     ///
     /// **`ViewportCommand::BeginResize` goes straight to the window manager**, so nothing inside this
@@ -1472,6 +1479,8 @@ impl UnluminousApp {
             visits: crate::services::browser_session::Visits::in_memory(),
             pick_when_showing: None,
             titles_arriving: std::collections::HashMap::new(),
+            design_tabs: std::collections::HashMap::new(),
+            design_zooms: std::collections::HashMap::new(),
             page_was_pressed: false,
             wallpaper: crate::services::backgrounds::Wallpaper::default(),
             backgrounds: None,
@@ -1853,6 +1862,9 @@ impl UnluminousApp {
             if let Some(realm) = realm_files::realm_of_a_tab_key(&key) {
                 // A realm tab is the realm plugin's, and its key names the realm it showed. `task-2202`.
                 let _ = self.open_a_realm_in_a_tab(&realm);
+            } else if let Some(design) = designer::design_of_a_tab_key(&key) {
+                // A design tab is the Designer's, and its key names the design it showed. `task-2254`.
+                let _ = self.open_a_design_in_a_tab(&design);
             } else if self.plugin_ui.surfaces().tab(&key).is_some() {
                 self.open_the_plugin_tab(&key);
             }

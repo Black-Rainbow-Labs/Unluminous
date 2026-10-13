@@ -3981,7 +3981,7 @@ unluminous-cli background remove nebula.jpg
 
 ## plugins — the languages Unluminous colours, and the panes it draws
 
-A plugin is a folder of data. A `language` one describes a language: its extensions, its keywords and a colour per kind of token. A `ui` one names code that shipped in the binary and says what it contributes — a pane, a tab, a menu, a Settings page — which is how the Agent-Tasks board, the Agent-Chat pane and the Database explorer are reached. Nothing in a plugin is executed and nothing is fetched over a network.
+A plugin is a folder of data. A `language` one describes a language: its extensions, its keywords and a colour per kind of token. A `ui` one names code that shipped in the binary and says what it contributes — a pane, a tab, a menu, a Settings page — which is how the Agent-Tasks board, the Agent-Chat pane, the Database explorer and the Designer are reached. Nothing in a plugin is executed and nothing is fetched over a network.
 
 ### plugins list
 

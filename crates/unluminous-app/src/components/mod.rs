@@ -35,6 +35,7 @@ pub mod controls;
 pub mod database;
 pub mod debug_dialogs;
 pub mod debug_panel;
+pub mod designer;
 pub mod diagram_view;
 pub mod dock;
 pub mod editor_view;

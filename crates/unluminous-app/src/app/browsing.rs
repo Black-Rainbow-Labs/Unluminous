@@ -198,6 +198,7 @@ impl UnluminousApp {
             .filter_map(|file| file.browser.as_ref())
             .find(|tab| tab.id == id)
             .or_else(|| self.realm.live.browsers().find(|tab| tab.id == id))
+            .or_else(|| self.design_tabs.values().find(|tab| tab.id == id))
     }
 
     /// Apply browser callbacks to ordinary tab state and open requested popup URLs as Unluminous tabs.
@@ -263,6 +264,10 @@ impl UnluminousApp {
                     }
                 }
                 BrowserEvent::PickCancelled { .. } => {}
+                // What a design's overlay script said, which the Designer reads. `task-2254`.
+                BrowserEvent::Reported { id, json } => {
+                    self.the_page_of_a_design_reported(id, &json)
+                }
                 BrowserEvent::Title { id, title } => {
                     // A video node's page says where it is in its title, which is how the position reaches
                     // the realm's sidecar with no script callback. `task-2202`.
@@ -325,6 +330,10 @@ impl UnluminousApp {
             if let Some(tab) = self.realm.live.browser_mut(node) {
                 change(tab);
             }
+            return;
+        }
+        if let Some(tab) = self.design_tabs.values_mut().find(|tab| tab.id == id) {
+            change(tab);
         }
     }
 

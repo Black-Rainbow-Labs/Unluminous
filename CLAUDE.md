@@ -5827,6 +5827,39 @@ A colour scheme **colours the tokens and not the editing area**. The window lett
 through is the whole character of the product, and a scheme that repaints the background opaque would
 trade that away to be a shade nearer a screenshot.
 
+## Designer: a design is an HTML file, and a note is a thread on one of its elements
+
+`task-2254` is the work and `tasks/task-2254-designer-plugin-prd.md` and `-tdd.md` are the design. The
+Designer is a `ui` plugin (`ui.provider = designer`, `ui.chrome = vello`) with a Designs pane docked at the
+left, a menu, a Settings page and `explorer.shows = .designs`. Five rules to keep:
+
+- **A design is a `*.html` file in the designs folder** (`.designs` unless `Settings -> Designer` says
+  otherwise), opened as a plugin tab with the key `designer:<path in the project>`. **The window draws the
+  tab**, in `app/designer.rs` and `components/designer/tab.rs`, and not the provider, because the window owns
+  the one native web view and a design's page has to be placed in it. A tab is one `BrowserTab` kept in
+  `UnluminousApp::design_tabs`; the page is a native child, so a screenshot of the tab shows the carved well
+  and not the page.
+- **Notes are in `<name>.comments.json` beside the design**, and a note is a thread of messages anchored to
+  an element by a CSS selector. A field this build does not know is kept and written back, and the file is
+  written only when a note changed. **History is in `.unluminous/designs/<path>/`**, one copy of the design
+  taken before each request to the agent, named by the time and the first words of the request.
+  `services/designer/history.rs` keeps the newest `history_kept` of them and `Restore` takes a copy of the
+  current file first. The device a design was last viewed at is in `.unluminous/designs.conf`.
+- **The page protocol is a polled script with no bridge.** `services/designer/designer.js` is evaluated in
+  the page after `browser_pin.js`, draws its overlay in a closed shadow root, and keeps what it saw in a
+  closure. `BrowserHost::watch` asks it for that every 150 ms and it arrives as `BrowserEvent::Reported`;
+  the host sends `setMode`, `setPins`, `select`, `focus`, `clear`, `parent` and `child` the same way. The page
+  is given nothing it can call, which is the rule `browser_pin.js` already keeps.
+- **A request goes to Agent-Chat through `plugins.run`.** `Designer::ask_note`, `ask_every_open_note` and
+  `ask_about_the_design` take the history copy and then queue two `Request::RunCommand` values, `plugins run
+  agent-chat open-pane` and `plugins run agent-chat send` with the words as one argument, so a request from a
+  button and the same request from `unluminous-cli plugins run designer ask` are the same call into `run_cli`.
+  The agent answers by running `plugins run designer reply <note> <text>` and `resolve <note>`.
+- **Every surface is `rux`, through `components/designer/kit.rs`**, with message bodies drawn by
+  `components::markdown_text`. The mocks the screenshot tests were compared with are in
+  `_agent_output/task-2254-designer/mocks/`. `designer_tab`, `designer_tab_phone`, `designer_composer`,
+  `designer_pane`, `designer_settings`, `designer_history` and `designer_tab_light` are the pictures.
+
 ## The documents
 
 - `README.md` — what Unluminous is and how to run it.

@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Northlight</title>
+<style>
+  :root {
+    --ink: #1d2330;
+    --ink-soft: #566074;
+    --ink-faint: #8a93a6;
+    --ground: #f6f7fb;
+    --card: #ffffff;
+    --line: #e3e7f0;
+    --accent: #4b6bfb;
+    --accent-ink: #ffffff;
+    --accent-soft: #e8edff;
+    --radius: 16px;
+    --shadow: 0 1px 2px rgba(29, 35, 48, 0.06), 0 8px 24px rgba(29, 35, 48, 0.08);
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--font);
+    font-size: 16px;
+    line-height: 1.55;
+  }
+
+  a { color: inherit; text-decoration: none; }
+
+  .wrap { width: min(1120px, 100% - 48px); margin-inline: auto; }
+
+  /* ---------------------------------------------------------------------------------- header */
+  .site-header { background: var(--card); border-bottom: 1px solid var(--line); }
+  .site-header .wrap { display: flex; align-items: center; justify-content: space-between; height: 68px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; letter-spacing: -0.01em; }
+  .brand-mark { width: 28px; height: 28px; border-radius: 9px; background: linear-gradient(135deg, #7c93ff, var(--accent)); }
+  .nav { display: flex; align-items: center; gap: 28px; color: var(--ink-soft); font-size: 15px; }
+  .nav a:hover { color: var(--ink); }
+
+  .button {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 44px; padding: 0 22px; border-radius: 999px;
+    font: inherit; font-weight: 600; border: 1px solid transparent; cursor: pointer;
+  }
+  .button-primary { background: var(--accent); color: var(--accent-ink); box-shadow: 0 6px 16px rgba(75, 107, 251, 0.35); }
+  .button-ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+  .button-small { height: 38px; padding: 0 16px; font-size: 14px; }
+
+  /* ------------------------------------------------------------------------------------ hero */
+  .hero { padding: 88px 0 72px; }
+  .hero .wrap { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 56px; align-items: center; }
+  .eyebrow {
+    display: inline-block; padding: 6px 12px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 600;
+  }
+  .hero-title { margin: 18px 0 16px; font-size: 56px; line-height: 1.05; letter-spacing: -0.03em; font-weight: 800; }
+  .hero-copy { margin: 0 0 32px; max-width: 520px; font-size: 19px; color: var(--ink-soft); }
+  .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+  .hero-panel {
+    background: var(--card); border-radius: 24px; box-shadow: var(--shadow); padding: 28px;
+    display: grid; gap: 16px;
+  }
+  .hero-panel .row { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; }
+  .hero-panel .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); }
+  .hero-panel .row:nth-child(2) .dot { background: #34c38f; }
+  .hero-panel .row:nth-child(3) .dot { background: #f6a23b; }
+  .hero-panel strong { display: block; font-size: 15px; }
+  .hero-panel span { color: var(--ink-faint); font-size: 13px; }
+
+  /* --------------------------------------------------------------------------------- features */
+  .section-title { margin: 0 0 12px; font-size: 34px; letter-spacing: -0.02em; text-align: center; }
+  .section-copy { margin: 0 auto 44px; max-width: 560px; text-align: center; color: var(--ink-soft); }
+  .features { padding: 40px 0 72px; }
+  .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .feature-card {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 28px; box-shadow: var(--shadow);
+  }
+  .feature-icon {
+    width: 44px; height: 44px; border-radius: 14px; margin-bottom: 18px;
+    background: var(--accent-soft); display: grid; place-items: center; color: var(--accent); font-weight: 800;
+  }
+  .feature-card h3 { margin: 0 0 8px; font-size: 20px; letter-spacing: -0.01em; }
+  .feature-card p { margin: 0; color: var(--ink-soft); }
+
+  /* ----------------------------------------------------------------------------------- pricing */
+  .pricing { padding: 24px 0 88px; }
+  .price-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; align-items: stretch; }
+  .price-card {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 32px 28px; display: flex; flex-direction: column; gap: 14px;
+  }
+  .price-card.featured { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow); }
+  .price-name { font-weight: 700; font-size: 18px; }
+  .price-amount { font-size: 44px; font-weight: 800; letter-spacing: -0.03em; }
+  .price-amount small { font-size: 15px; font-weight: 500; color: var(--ink-faint); letter-spacing: 0; }
+  .price-list { margin: 0 0 8px; padding: 0; list-style: none; color: var(--ink-soft); display: grid; gap: 8px; }
+  .price-list li::before { content: "\2713"; color: var(--accent); font-weight: 800; margin-right: 10px; }
+  .price-card .button { margin-top: auto; }
+
+  /* ------------------------------------------------------------------------------------ footer */
+  .site-footer { background: var(--card); border-top: 1px solid var(--line); padding: 36px 0; color: var(--ink-faint); font-size: 14px; }
+  .site-footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+  .footer-links { display: flex; gap: 22px; }
+
+  /* ------------------------------------------------------------------------------------ narrow */
+  @media (max-width: 860px) {
+    .hero { padding: 56px 0 40px; }
+    .hero .wrap { grid-template-columns: 1fr; gap: 36px; }
+    .hero-title { font-size: 40px; }
+    .feature-grid, .price-grid { grid-template-columns: 1fr; }
+    .nav a:not(.button) { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="#top"><span class="brand-mark"></span>Northlight</a>
+    <nav class="nav">
+      <a href="#features">Features</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#docs">Docs</a>
+      <a class="button button-primary button-small" href="#start">Get started</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="wrap">
+      <div>
+        <span class="eyebrow">New: shared dashboards</span>
+        <h1 class="hero-title">Know how your team is doing, without the meeting</h1>
+        <p class="hero-copy">Northlight gathers the work your team already does into one calm page, so everyone can see what moved today and what needs a hand.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" id="start" href="#start">Start for free</a>
+          <a class="button button-ghost" href="#features">See how it works</a>
+        </div>
+      </div>
+      <div class="hero-panel" aria-label="A sample of the dashboard">
+        <div class="row"><span class="dot"></span><div><strong>Checkout redesign</strong><span>On track, 3 days left</span></div></div>
+        <div class="row"><span class="dot"></span><div><strong>Mobile onboarding</strong><span>Shipped this morning</span></div></div>
+        <div class="row"><span class="dot"></span><div><strong>Billing migration</strong><span>Needs a reviewer</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="features" id="features">
+    <div class="wrap">
+      <h2 class="section-title">Everything in one place</h2>
+      <p class="section-copy">Three things people ask for in their first week, built so they work the same way on day one hundred.</p>
+      <div class="feature-grid">
+        <article class="feature-card">
+          <div class="feature-icon">1</div>
+          <h3>One timeline</h3>
+          <p>Every update from every tool lands in a single feed that reads like a conversation, not a report.</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-icon">2</div>
+          <h3>Quiet by default</h3>
+          <p>Northlight only speaks up when something is blocked or late. The rest stays out of your way.</p>
+        </article>
+        <article class="feature-card">
+          <div class="feature-icon">3</div>
+          <h3>Ready for a review</h3>
+          <p>Turn any week into a summary you can share, with the numbers and the people behind them.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="pricing" id="pricing">
+    <div class="wrap">
+      <h2 class="section-title">Simple pricing</h2>
+      <p class="section-copy">Start free and pay when your team grows. Every plan can be cancelled in one click.</p>
+      <div class="price-grid">
+        <article class="price-card">
+          <div class="price-name">Starter</div>
+          <div class="price-amount">$0 <small>a month</small></div>
+          <ul class="price-list"><li>Up to 5 people</li><li>30 days of history</li><li>Email support</li></ul>
+          <a class="button button-ghost" href="#start">Choose Starter</a>
+        </article>
+        <article class="price-card featured">
+          <div class="price-name">Team</div>
+          <div class="price-amount">$12 <small>a person a month</small></div>
+          <ul class="price-list"><li>Unlimited people</li><li>Unlimited history</li><li>Shared dashboards</li></ul>
+          <a class="button button-primary" href="#start">Choose Team</a>
+        </article>
+        <article class="price-card">
+          <div class="price-name">Company</div>
+          <div class="price-amount">$30 <small>a person a month</small></div>
+          <ul class="price-list"><li>Single sign on</li><li>Audit log</li><li>Priority support</li></ul>
+          <a class="button button-ghost" href="#start">Talk to us</a>
+        </article>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <span>&copy; 2026 Northlight</span>
+    <div class="footer-links"><a href="#docs">Docs</a><a href="#pricing">Pricing</a><a href="#start">Contact</a></div>
+  </div>
+</footer>
+
+</body>
+</html>

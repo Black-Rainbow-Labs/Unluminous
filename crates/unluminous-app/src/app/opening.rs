@@ -126,6 +126,30 @@ impl UnluminousApp {
     /// The message is still set, because the person at the window still needs it. What is added is
     /// that the reason is *returned* as well, so a caller can tell.
     pub(crate) fn open_path_in_tab(&mut self, path: &Path, permanent: bool) -> Result<(), String> {
+        self.open_path_in_tab_as(path, permanent, false)
+    }
+
+    /// Open a file as text, whatever else the window would have done with it.
+    ///
+    /// What `Open Source` on a design's toolbar is: a design opens as a design tab, and the person who wants
+    /// its HTML asks for it by this. `task-2254`.
+    pub(crate) fn open_a_file_as_text(&mut self, path: &Path) -> Result<(), String> {
+        self.open_path_in_tab_as(path, true, true)
+    }
+
+    /// [`Self::open_path_in_tab`], with a way to skip the one question that sends a design to its own tab.
+    fn open_path_in_tab_as(
+        &mut self,
+        path: &Path,
+        permanent: bool,
+        as_text: bool,
+    ) -> Result<(), String> {
+        // **A file in the designs folder opens as a design tab**, when the Designer is on. `task-2254`.
+        if !as_text {
+            if let Some(design) = self.the_design_a_file_is(path) {
+                return self.open_a_design_in_a_tab(&design);
+            }
+        }
         // **A file a ui plugin claims opens where that plugin draws it**, before it is asked whether it is
         // text. `task-2202`: a `.realm` file opens in the Realm panel, on that realm, rather than as the
         // `name = value` lines it is made of. `tab open`, a double click in the explorer, `Go to File` and a
@@ -535,6 +559,7 @@ impl UnluminousApp {
     /// This is the one place a tab is closed — the cross on the tab, `Ctrl+W`, the tab's own menu
     /// and `unluminous-cli tab close` all reach it — so it is one change in one function.
     pub fn close_tab(&mut self, index: usize) {
+        self.forget_a_design_tab(index);
         if let Some(id) =
             self.files.get(index).and_then(|file| file.browser.as_ref()).map(|tab| tab.id)
         {
@@ -645,6 +670,7 @@ impl UnluminousApp {
     /// Close a tab without writing it, which is what deleting its file means and what
     /// `unluminous-cli tab close --discard` asks for.
     pub fn close_tab_without_saving(&mut self, index: usize) {
+        self.forget_a_design_tab(index);
         if let Some(id) =
             self.files.get(index).and_then(|file| file.browser.as_ref()).map(|tab| tab.id)
         {

@@ -79,6 +79,10 @@
     return text.length > 60 ? text.slice(0, 57) + '...' : text;
   };
 
+  // The Designer (`designer.js`) names and finds elements the way the picker does, so the two agree.
+  window.__unluminousSelectorFor = selectorFor;
+  window.__unluminousDescribe = describe;
+
   // ------------------------------------------------------------------------------- the picker
 
   let picking = null;

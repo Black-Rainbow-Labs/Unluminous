@@ -54,6 +54,14 @@ pub const ALL: &[(&str, &str, Option<&[u8]>)] = &[
         include_str!("../../../plugins/sql/plugin.conf"),
         Some(include_bytes!("../../../plugins/sql/icon.png")),
     ),
+    // The Designer, `task-2254`. A `ui` plugin whose pane lists the designs in `.designs` and whose tab, drawn
+    // by the window because the page needs the window's one native web view, shows a design with notes pinned
+    // to its elements and the Agent-Chat pane as the one that changes it.
+    (
+        "designer",
+        include_str!("../../../plugins/designer/plugin.conf"),
+        Some(include_bytes!("../../../plugins/designer/icon.png")),
+    ),
     // The Realm, `task-2202`. A `ui` plugin whose provider is the window itself: it claims `.realm`, gives
     // those files this icon, shows `.realm-files/` in the explorer, and is the switch for the Realm panel.
     (

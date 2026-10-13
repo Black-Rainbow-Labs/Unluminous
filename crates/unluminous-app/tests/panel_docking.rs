@@ -23,6 +23,25 @@ use unluminous_app::app::dock::Panel;
 use unluminous_app::settings;
 use unluminous_app::UnluminousApp;
 
+/// The core panels docked on a side, in screen order.
+///
+/// **Without the panes plugins contribute.** The Designer's pane asks to be docked on the left (`task-2254`), and a
+/// pane that is not showing is still on a side, so a list of everything on the left now ends with it. These tests
+/// are about where the explorer and the terminal go in relation to each other, which is what is read here.
+fn core_panels_on(
+    harness: &Harness<'static, UnluminousApp>,
+    side: unluminous_app::app::dock::Side,
+) -> Vec<Panel> {
+    harness
+        .state()
+        .panes
+        .dock
+        .panels_on(side)
+        .into_iter()
+        .filter(|panel| !matches!(panel, Panel::Plugin(_)))
+        .collect()
+}
+
 // The panes, all of which are resized by dragging their edge.
 
 #[test]
@@ -485,7 +504,7 @@ fn dragging_the_terminal_to_the_left_puts_it_beside_the_file_panel_rather_than_o
 
     assert_eq!(side_of(&harness, Panel::Terminal), Side::Left);
     assert_eq!(
-        harness.state().panes.dock.panels_on(Side::Left),
+        core_panels_on(&harness, Side::Left),
         vec![Panel::Explorer, Panel::Terminal],
         "let go past the explorer's middle, so it lands after it"
     );
@@ -503,7 +522,7 @@ fn letting_go_before_the_file_panels_middle_puts_the_terminal_in_front_of_it() {
     let from = panel_handle(&harness, "Move Terminal tile");
     drag(&mut harness, from, egui::pos2(90.0, 400.0));
     assert_eq!(
-        harness.state().panes.dock.panels_on(Side::Left),
+        core_panels_on(&harness, Side::Left),
         vec![Panel::Terminal, Panel::Explorer],
         "let go before the explorer's middle, so it lands in front of it"
     );
@@ -715,15 +734,12 @@ fn the_command_line_says_where_in_a_side_a_panel_goes() {
     let mut harness = with_terminal("", 12, 80);
     did(&mut harness, "panel dock terminal left --position 0");
     assert_eq!(
-        harness.state().panes.dock.panels_on(Side::Left),
+        core_panels_on(&harness, Side::Left),
         vec![Panel::Terminal, Panel::Explorer],
         "position 0 is the outermost column"
     );
     did(&mut harness, "panel dock terminal left --position 1");
-    assert_eq!(
-        harness.state().panes.dock.panels_on(Side::Left),
-        vec![Panel::Explorer, Panel::Terminal]
-    );
+    assert_eq!(core_panels_on(&harness, Side::Left), vec![Panel::Explorer, Panel::Terminal]);
 }
 
 #[test]
