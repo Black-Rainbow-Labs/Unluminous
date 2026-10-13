@@ -554,7 +554,8 @@ fn main_column(
             look,
             theme.ink.i900,
         ));
-        let grip = Grip { salt: "agent-tasks-description-grip", name: "Resize description", corner: true };
+        let grip =
+            Grip { salt: "agent-tasks-description-grip", name: "Resize description", corner: true };
         if let Some(height) =
             section_grip(rux, well, DESCRIPTION_LEAST, area.max.y - well.min.y, grip)
         {
@@ -673,7 +674,8 @@ fn main_column(
             false => requests.extend(no_terminal(board, rux, at, task)),
         }
         if live {
-            let grip = Grip { salt: "agent-tasks-terminal-grip", name: "Resize terminal", corner: true };
+            let grip =
+                Grip { salt: "agent-tasks-terminal-grip", name: "Resize terminal", corner: true };
             let most = area.max.y - at.min.y - LABEL - 12.0 - SECTION_GAP;
             if let Some(height) = section_grip(rux, at, TERMINAL_LEAST, most, grip) {
                 board.terminal_height = height;
@@ -701,7 +703,8 @@ fn main_column(
             Pos2::new(comments_at.max.x, comments_at.max.y - DESCRIPTION_GRIP),
         );
         requests.extend(super::detail::comment_section(board, rux, order, well, look));
-        let grip = Grip { salt: "agent-tasks-comments-grip", name: "Resize comments", corner: false };
+        let grip =
+            Grip { salt: "agent-tasks-comments-grip", name: "Resize comments", corner: false };
         let most = area.max.y - well.min.y - DESCRIPTION_GRIP;
         if let Some(height) = section_grip(rux, well, COMMENTS_LEAST, most, grip) {
             board.comments_height = height.map(|height| height + DESCRIPTION_GRIP);
@@ -824,11 +827,8 @@ fn section_grip(
         true => corner.union(strip),
         false => strip,
     };
-    let response = rux.ui.interact(
-        grabbed,
-        rux.ui.id().with(grip.salt),
-        egui::Sense::click_and_drag(),
-    );
+    let response =
+        rux.ui.interact(grabbed, rux.ui.id().with(grip.salt), egui::Sense::click_and_drag());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, grip.name));
     let active = response.hovered() || response.dragged();
     if active {

@@ -404,7 +404,9 @@ fn the_explorer_lists_the_designs_folder_and_the_one_settings_names() {
     // And what opens as a design follows the folder: the old one is an ordinary page now.
     did(&mut harness, "tab open .designs/landing.html");
     assert!(harness.state().files.active().plugin.is_none(), "no longer a design");
-    assert!(the_tabs(&mut harness)["tabs"].as_array().is_some_and(|tabs| tabs.iter().all(|tab| tab.is_null())));
+    assert!(the_tabs(&mut harness)["tabs"]
+        .as_array()
+        .is_some_and(|tabs| tabs.iter().all(|tab| tab.is_null())));
     did(&mut harness, "tab open .mocks/home.html");
     steady(&mut harness);
     assert_eq!(the_tabs(&mut harness)["tabs"], serde_json::json!(["home.html"]));

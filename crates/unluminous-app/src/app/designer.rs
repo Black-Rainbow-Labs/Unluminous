@@ -202,8 +202,8 @@ impl UnluminousApp {
         }
         self.design_drawn = design.clone();
         self.take_the_keyboard_on_a_press(ui, body);
-        let focused =
-            self.focus == Focus::Plugin && self.plugin_with_the_keyboard.as_deref() == Some("designer");
+        let focused = self.focus == Focus::Plugin
+            && self.plugin_with_the_keyboard.as_deref() == Some("designer");
         let Some(drawn) = self.draw_the_pane(ui, body, panel, design.as_deref()) else { return };
         if let (Some(id), Some(design), Some(outcome)) = (page, &design, &drawn.design) {
             self.put_the_page_in_its_well(id, outcome, drawn.content, ui.clip_rect(), focused);

@@ -71,7 +71,10 @@ impl Designer {
     /// @param index - the tab, counted from 0 at the left
     pub fn show_tab(&mut self, index: usize) -> Result<(), String> {
         if index >= self.tabs.len() {
-            return Err(format!("there is no tab {index}: the Designer has {} open", self.tabs.len()));
+            return Err(format!(
+                "there is no tab {index}: the Designer has {} open",
+                self.tabs.len()
+            ));
         }
         self.active_tab = index;
         self.remember_tabs();
@@ -85,7 +88,10 @@ impl Designer {
     /// @param index - the tab, counted from 0 at the left
     pub fn close_tab(&mut self, index: usize) -> Result<(), String> {
         if index >= self.tabs.len() {
-            return Err(format!("there is no tab {index}: the Designer has {} open", self.tabs.len()));
+            return Err(format!(
+                "there is no tab {index}: the Designer has {} open",
+                self.tabs.len()
+            ));
         }
         let active = self.active_tab();
         let closed = self.tabs.remove(index);

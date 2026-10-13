@@ -3963,7 +3963,10 @@ fn the_comment_box_holds_several_lines_resizes_and_leaves_its_buttons_pressable(
     // Both buttons are buttons, in a row under the box, and neither resize grip is over either of them.
     let post = harness.get_by_role_and_label(Role::Button, "Comment").rect();
     let send = harness.get_by_role_and_label(Role::Button, "Comment & Send to Agent").rect();
-    assert!(post.top() >= field.bottom() && send.top() >= field.bottom(), "the buttons are under the box");
+    assert!(
+        post.top() >= field.bottom() && send.top() >= field.bottom(),
+        "the buttons are under the box"
+    );
     assert!((post.height() - send.height()).abs() < 0.5, "the two are the same kind of button");
     for grip in ["Resize comments", "Resize comment box"] {
         let at = harness.get_by_label(grip).rect();

@@ -97,7 +97,12 @@ fn the_strip(designer: &Designer, ui: &mut egui::Ui, scale: f32, strip: Rect) ->
             tabs.iter()
                 .map(|(index, title, icon)| {
                     let words = rux.measure(rux.zs(style), title).x.min(longest);
-                    Pill { index: *index, title: title.clone(), icon: *icon, width: furniture + words }
+                    Pill {
+                        index: *index,
+                        title: title.clone(),
+                        icon: *icon,
+                        width: furniture + words,
+                    }
                 })
                 .collect()
         };
@@ -132,8 +137,11 @@ fn the_strip(designer: &Designer, ui: &mut egui::Ui, scale: f32, strip: Rect) ->
             );
             x = rect.right() + PILL_GAP * scale;
             let on = pill.index == showing;
-            let response =
-                rux.ui.interact(rect, rux.ui.id().with(("designer-tab", pill.index)), Sense::click());
+            let response = rux.ui.interact(
+                rect,
+                rux.ui.id().with(("designer-tab", pill.index)),
+                Sense::click(),
+            );
             let hovered = response.hovered();
             if hovered {
                 rux.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);

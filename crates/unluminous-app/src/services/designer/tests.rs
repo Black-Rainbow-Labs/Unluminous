@@ -836,8 +836,10 @@ fn the_pane_starts_blank_and_a_design_takes_the_blank_tab_or_gets_its_own() {
 /// longer than the one written leaves nothing behind.
 #[test]
 fn the_tabs_are_written_down_and_read_back_without_the_designs_that_have_gone() {
-    let mut values = Values::parse("device.x = phone\ntabs.count = 5\ntabs.4 = .designs/old.html\n");
-    let tabs = vec![Some(PathBuf::from(".designs/a.html")), None, Some(PathBuf::from(".designs/b.html"))];
+    let mut values =
+        Values::parse("device.x = phone\ntabs.count = 5\ntabs.4 = .designs/old.html\n");
+    let tabs =
+        vec![Some(PathBuf::from(".designs/a.html")), None, Some(PathBuf::from(".designs/b.html"))];
     super::tabs::write_tabs(&mut values, &tabs, 2);
     assert_eq!(values.text("tabs.count"), Some("3"));
     assert_eq!(values.text("tabs.1"), Some("blank"));
