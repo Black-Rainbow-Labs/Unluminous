@@ -369,6 +369,39 @@ Three rules:
   hides everything and shows the element's subtree again, because that would show every closed menu
   inside it.
 
+### What `task-2255` changed about browser tabs
+
+- **A click into a page keeps the keyboard there.** A page is a native child window, so a click on it reaches
+  the page and never egui, and `the_page_was_the_last_thing_pressed` answered no on every frame: the frame the
+  page's own focus change woke gave the operating system's keyboard back to the window, and `Ctrl+V` in a
+  page's field went to Unluminous. `BrowserHost::the_page_was_clicked_into` asks the platform instead (the page
+  holds the focus and the pointer is over it) and `give_the_keyboard_to_the_page` makes its tab or node the
+  chosen one.
+- **The `Edit` menu's six entries act on the page** in a browser tab, through `document.execCommand`
+  (`edit_in_the_page`). They used to edit the tab's hidden document, which gave the tab an unsaved-changes
+  dot. A tab that is not a document never draws that dot (`OpenFile::is_a_document`).
+- **Each tab has its own page zoom** (`BrowserTab::zoom`, sent on the placement), changed by `Ctrl`/`Cmd`
+  with the wheel or plus and minus and by `browser zoom`. The engine's own zoom keys are on
+  (`with_hotkeys_zoom`) for when the page has the keyboard.
+- **`browser.user_agent`** (`settings::BrowserAgent`, `Settings -> Editor -> Web pages`) is the `User-Agent`
+  a view is made with. A change drops the view and the next frame makes it again.
+- **A tab keeps its name while its page loads**: a title that arrives while loading is held in
+  `titles_arriving` and given to the tab when the load finishes.
+- **A picture stands in for the page** while its pane is resized and while a switched-to tab reloads
+  (`app::browsing::PageStills`), the canvas's `PageStill` said about a pane. `browser status` says `still`.
+- **The toolbar is drawn in `rux`**: round chips for `Back`, `Forward` and `Reload` and a carved address well.
+
+### Links open on a click wherever they are drawn (`task-2255`)
+
+`markdown_text::show_with` follows a link itself, so the chat, a ticket's description and comments, the
+Designer's notes and the Markdown preview all open one on a plain click, in a browser tab, through
+`settle_the_link_click`. `Ctrl`/`Cmd` with a click opens a web address in a file (`UnluminousApp::address_around`)
+and in a terminal (`services::links`). Only `http` and `https` open. `markdown_text::show_selectable` is the
+selectable form, with drag, double click, triple click and `Ctrl`/`Cmd`+`C`, and the ticket's description and
+comments use it. A field's right click menu puts back the selection the right click's press collapsed, and
+`controls::close_every_menu` closes every field and text menu when the tab showing changes or a page is
+clicked into.
+
 ## The chat pane runs the agent you already have, and that is the whole of the design
 
 `task-1767` asks for "an agent chat plugin that opens as a right panel (left side toggle icon), can be
@@ -603,12 +636,16 @@ insert would otherwise reuse the id of the last ticket deleted.
 
 egui cannot read back what is under a layer, so `modal::show` asks for a `ViewportCommand::Screenshot` the
 frame a modal opens, with the modal drawn at no opacity for that one frame, and draws the picture shrunk,
-blurred and stretched under the dark backdrop (`services::backdrop_blur`). It is taken again when the window
-changes size or the theme changes, and a window that never answers, which is a test's, gets the plain dark
-backdrop after a second. The request carries `backdrop_blur::Marker`, and `window screenshot` takes only an
-event without it. The backdrop is clipped to the window rather than to the layer's own rectangle, which a
-zoom below one shrank. The title bar still moves the window while a modal is open, read from the frame's
-input because a modal takes every press under it.
+blurred and stretched under the dark backdrop (`services::backdrop_blur`). It is taken again when the theme
+changes, and **not when the window changes size**: taking it draws the modal at no opacity for a frame, so a
+resize flashed the modal on every frame of it (`task-2255`). A window that never answers, which is a test's,
+gets the plain dark backdrop after a second. The request carries `backdrop_blur::Marker`, and `window
+screenshot` takes only an event without it. The backdrop is clipped to the window rather than to the layer's
+own rectangle, which a zoom below one shrank. The title bar still moves the window while a modal is open,
+read from the frame's input because a modal takes every press under it. **Whether the press is on the dialog
+is asked of the dialog's own rectangle** (`modal::drawn_by_id`), never of `Context::layer_id_at`: egui's
+`Modal` puts a backdrop the size of the window in the modal's layer, so that question answered "the modal"
+everywhere and the window could not be moved at all.
 
 ### The pane is the Agent-Chat design, drawn with `rux`'s chat parts (`task-2235`)
 
@@ -822,6 +859,9 @@ drawn in the one code colour. Named, the JSON plugin tells its strings, its numb
 literal values apart, exactly as it does in a `.json` file. Anything that is not JSON is left exactly
 as it arrived: a shell command's output is not JSON and colouring it as though it were would colour it
 wrongly.
+
+A call is **folded until somebody opens it** (`task-2255`). It used to be open while it ran and fold when it
+finished, which moved everything under it twice.
 
 ### The model selector is `rux`'s `Select`, and zooming a file leaves the chat alone
 
@@ -1077,6 +1117,9 @@ arguments that names one, so `sprint-rename August 2nd Half September` needs no 
 - **On macOS the menu bar's `Cut`, `Copy`, `Paste` and `Select All` go to the text box with the keyboard**, not
   to the document behind it, through `give_the_clipboard_entry_to_a_text_box`. AppKit gives the chord to the menu
   and the window never sees the key.
+- **The description, the agent's terminal and the comments each resize by their bottom edge** (`task-2214`,
+  `task-2255`), and `plugins run agent-tasks description-height`, `terminal-height` and `comments-height` read
+  and set the same numbers.
 - **`Delete task` deletes on one press** (`task-2198`). It used to turn into `Keep it` and `Delete for good` and
   wait for a second press.
 - **Text in the modal that is read rather than typed has a right click menu** (`task-2198`): a comment and the
@@ -3559,6 +3602,18 @@ with the real fonts of the machine, colours it as the window colours it, and pri
 a frame costs. `tasks/task-1666-performance-tdd.md` has the before and after tables and the two
 designs that were rejected.
 
+### Nothing about a terminal node is asked of the process table on the window's thread (`task-2255`)
+
+*"Unluminous now eats up a lot of CPU."* Measured on 0.79.0 with the frame trace and `cdb`: 15 to 18
+processors for the first minutes after a window opened, which was ONNX Runtime embedding the code index on one
+thread a processor, and then a 130 to 230 ms stall of the window's thread once a second, which was the Realm
+asking each terminal node what it is running with a snapshot of every process on the machine, whether or not
+the Realm was showing. `unluminous_terminal::foreground` now reads one shared table on a thread of its own
+every two seconds while anybody asks, and `search::configure` sets `INILLUCENT_EMBED_THREADS` to 2 unless it or
+a recorded thread count says otherwise. An idle window went from about 150 ms of processor time a second to
+about 20. The frame trace names each plugin's catch up and tick (`catch-up-designer`, `tick-agent-tasks`) and
+each step of bringing a realm to life, so the next cost of this kind says where it is.
+
 ## An idle window costs nothing, and the way to find out why it does not is to ask it
 
 `task-1666` measured a frame while somebody was working. `task-1805` measured one while nobody was,
@@ -5152,6 +5207,11 @@ Two rules that a change here must keep.
 and by nothing else, exactly as `load_settings` is. A test must not touch a person's files, and a
 `.unluminous` written into a screenshot test's own sample project would change what the explorer draws in
 the middle of a test.
+
+**The panes a plugin draws come back too** (`task-2255`): `plugin.panes` in `workspace.conf` names them by
+`<plugin id>/<pane id>`, written from what was showing before a pane was maximised, the rule the panels keep.
+And **opening a tab brings a hidden editing area back** (`show_the_editing_area_for_a_tab`), because a design
+opened from the Designs pane with the editing area hidden opened into a tab nobody could see.
 
 **Terminals come back as fresh shells.** What a program was doing when the window closed cannot be
 brought back; what is restored is the same number of shells in the project's folder.

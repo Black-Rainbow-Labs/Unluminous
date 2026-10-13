@@ -248,6 +248,24 @@ fn open_source_opens_the_file_as_text_and_the_designs_pane_lists_the_design() {
     assert_eq!(shown["showing"], true);
 }
 
+/// `task-2255`: *"I create new design, name it, the file is created, then i try clicking it in the list of designs
+/// and nothing happens."* The editing area was hidden, so the design opened into a tab nobody could see. Opening a
+/// design brings the editing area back, and the Designs pane is named by its plugin's id alone.
+#[test]
+fn opening_a_design_with_the_editing_area_hidden_brings_it_back() {
+    let folder = a_project("unluminous-designer-hidden-editor");
+    let mut harness = harness_in(&folder);
+    let shown = did(&mut harness, "plugins pane designer --show");
+    assert_eq!(shown["pane"], "designer/designs", "the plugin's id names its one pane");
+    harness.state_mut().editor_visible = false;
+    steady(&mut harness);
+    did(&mut harness, "plugins run designer open landing");
+    steady(&mut harness);
+    assert!(harness.state().editor_visible, "the editing area is back, with the design in it");
+    let tab = harness.state().files.active().plugin.clone().expect("the design tab is showing");
+    assert_eq!(tab.key, "designer:.designs/landing.html");
+}
+
 #[test]
 fn the_provider_is_reachable_as_its_own_type_the_way_the_buttons_reach_it() {
     let (_, mut harness) = a_window_on_a_design("unluminous-designer-own-type");

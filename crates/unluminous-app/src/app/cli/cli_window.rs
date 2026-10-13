@@ -357,24 +357,24 @@ impl UnluminousApp {
                 Some("in") => self.step_the_page_zoom(id, true),
                 Some("out") => self.step_the_page_zoom(id, false),
                 Some("reset") => self.reset_the_page_zoom(id),
-                Some(factor) => {
-                    match factor.parse::<f64>() {
-                        Ok(zoom) if zoom.is_finite() => {
-                            let zoom = zoom.clamp(
-                                crate::services::browser::PAGE_ZOOM_LEAST,
-                                crate::services::browser::PAGE_ZOOM_MOST,
-                            );
-                            self.change_browser_tab(id, |tab| tab.zoom = zoom);
-                        }
-                        _ => return no(
+                Some(factor) => match factor.parse::<f64>() {
+                    Ok(zoom) if zoom.is_finite() => {
+                        let zoom = zoom.clamp(
+                            crate::services::browser::PAGE_ZOOM_LEAST,
+                            crate::services::browser::PAGE_ZOOM_MOST,
+                        );
+                        self.change_browser_tab(id, |tab| tab.zoom = zoom);
+                    }
+                    _ => {
+                        return no(
                             request,
                             code::USAGE,
                             format!(
                                 "`{factor}` is not a zoom: give a number, `in`, `out` or `reset`"
                             ),
-                        ),
+                        )
                     }
-                }
+                },
             }
             let zoom = self.browser_zoom_of(id);
             return ok(

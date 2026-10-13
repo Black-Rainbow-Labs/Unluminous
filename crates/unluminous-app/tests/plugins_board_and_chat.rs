@@ -3900,6 +3900,33 @@ fn the_description_is_resized_by_dragging_its_bottom_edge() {
     assert_eq!(refused(&mut harness, "plugins run agent-tasks description-height tall"), "failed");
 }
 
+/// `task-2255`: *"The comments, terminal should be resizable, similar to the description."* The comments have a
+/// grip along their bottom edge that keeps the height it is dragged to, and both heights are read and set by the
+/// agent's half too.
+#[test]
+fn the_comments_and_the_terminal_are_resized_like_the_description() {
+    let mut harness = harness("");
+    harness.set_size(vec2(1500.0, 950.0));
+    a_ticket_open(&mut harness);
+    assert!(did(&mut harness, "plugins run agent-tasks comments-height")["height"].is_null());
+    let grip = harness.get_by_label("Resize comments").rect();
+    drag(&mut harness, grip.center(), grip.center() - vec2(0.0, 80.0));
+    let height = did(&mut harness, "plugins run agent-tasks comments-height")["height"]
+        .as_f64()
+        .expect("a height once it was dragged");
+    let after = harness.get_by_label("Resize comments").rect();
+    assert!(
+        after.center().y < grip.center().y - 50.0,
+        "the edge followed the pointer up: {grip:?} to {after:?}"
+    );
+    assert!(height > 0.0);
+    did(&mut harness, "plugins run agent-tasks terminal-height 240");
+    assert_eq!(did(&mut harness, "plugins run agent-tasks terminal-height")["height"], 240.0);
+    did(&mut harness, "plugins run agent-tasks terminal-height auto");
+    assert!(did(&mut harness, "plugins run agent-tasks terminal-height")["height"].is_null());
+    assert_eq!(refused(&mut harness, "plugins run agent-tasks comments-height tall"), "failed");
+}
+
 /// `task-2214`: *"change the order of Agent Done so that the most recently completed is at the top."*
 #[test]
 fn the_ticket_finished_last_is_at_the_top_of_agent_done() {

@@ -46,8 +46,7 @@ pub fn address_at(line: &str, at: usize) -> Option<(Range<usize>, String)> {
     let scheme = word.find("https://").or_else(|| word.find("http://"))?;
     word = &word[scheme..];
     let begins = start + scheme;
-    loop {
-        let Some(last) = word.chars().last() else { break };
+    while let Some(last) = word.chars().last() {
         let opened = |open: char| word.matches(open).count() >= word.matches(last).count();
         let kept = match last {
             ')' => opened('('),

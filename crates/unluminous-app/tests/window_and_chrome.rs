@@ -5666,6 +5666,17 @@ fn a_fields_right_click_menu_cuts_copies_and_selects() {
             "{row} should be live over a selection"
         );
     }
+    // **And the words stay selected under the menu** (`task-2255`: *"When I right click selected text, such
+    // as in the browser url, it shows the popup menu but then deselects the text."*).
+    let under_the_menu =
+        egui::text_edit::TextEditState::load(&harness.ctx, egui::Id::new(("browser-address", id)))
+            .and_then(|state| state.cursor.char_range())
+            .expect("the box has a cursor");
+    assert_eq!(
+        under_the_menu.as_sorted_char_range().end.0 - under_the_menu.as_sorted_char_range().start.0,
+        address.chars().count(),
+        "the selection is still there while the menu is open"
+    );
     // `Cut` rather than `Copy`, because what it does is readable: the words it took are the words
     // that are gone. Both go the same way — the selection is put back and the `egui::Event` the
     // chord sends is pushed — so this is the whole path.
@@ -5674,6 +5685,61 @@ fn a_fields_right_click_menu_cuts_copies_and_selects() {
     assert!(
         harness.state().files.active().typed_address.is_empty(),
         "Cut took the whole address, which is what was selected"
+    );
+}
+
+// -------------------------------------------------------------------------------------- task-2255
+
+/// A browser tab zooms its own page, shows no unsaved-changes dot whatever reaches its document, and a menu opened
+/// over it closes when another tab is shown.
+#[test]
+fn a_browser_tab_zooms_its_page_and_is_never_modified() {
+    let folder = every_kind_of_tab_folder();
+    let mut harness = harness_in(&folder);
+    harness.state_mut().open_browser("nested/deep/page.html").expect("open the page");
+    steady(&mut harness);
+    assert_eq!(did(&mut harness, "browser zoom")["zoom"], 1.0);
+    assert_eq!(did(&mut harness, "browser zoom in")["zoom"], 1.1);
+    assert_eq!(did(&mut harness, "browser zoom 2")["zoom"], 2.0);
+    assert_eq!(did(&mut harness, "browser zoom reset")["zoom"], 1.0);
+    assert_eq!(refused(&mut harness, "browser zoom big"), "usage");
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_action(Action::ChangeFontSize { larger: true }, &ctx);
+    steady(&mut harness);
+    assert_eq!(did(&mut harness, "browser status")["zoom"], 1.1, "the zoom keys zoom the page");
+    // The page is placed at the tab's own zoom, so the one native view takes it when it moves to this tab.
+    let placed = harness.state().browser_placements();
+    assert_eq!(placed.first().and_then(|placement| placement.zoom), Some(1.1));
+
+    // Whatever reaches the hidden document, the tab draws no dot and closes at once.
+    harness.state_mut().document_mut().apply(Command::Insert("x".to_owned()));
+    steady(&mut harness);
+    assert!(harness.query_by_label_contains("unsaved").is_none());
+    let before = harness.state().files.len();
+    did(&mut harness, "tab close");
+    steady(&mut harness);
+    assert_eq!(harness.state().files.len(), before - 1, "the browser tab closed");
+}
+
+/// `task-2255`: *"The menu should dismiss if i click anywhere off the menu. it currently stays open if i switch
+/// between tabs."*
+#[test]
+fn a_fields_menu_closes_when_another_tab_is_shown() {
+    let folder = every_kind_of_tab_folder();
+    let mut harness = harness_in(&folder);
+    harness.state_mut().open_browser("nested/deep/page.html").expect("open the page");
+    steady(&mut harness);
+    let page = harness.state().files.active_index();
+    let field = harness.get_by_label("Address field").rect();
+    right_click_at(&mut harness, field.center());
+    harness.get_by_label("Select All");
+    did(&mut harness, "tab open nested/deep/page.html --permanent");
+    steady(&mut harness);
+    harness.state_mut().show_tab(page);
+    steady(&mut harness);
+    assert!(
+        harness.query_by_label("Select All").is_none(),
+        "the menu did not come back with the tab"
     );
 }
 
