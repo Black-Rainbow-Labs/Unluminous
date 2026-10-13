@@ -5611,8 +5611,9 @@ its own: measured at 216 ms of processor time a second against under one with th
 `appearance.logo_motion` is `hover` by default, which turns it while the pointer is over it and for 1.1
 seconds when a window opens; `always` and `off` are on `Settings -> Appearance`. A window drawn for a test
 holds it still (`UnluminousApp::logo_held_still`, set by `draw_deterministically`). The pill is still named
-`Unluminous`, so tests and `action list` find the menu as before. macOS has no menus in the bar and is
-unchanged.
+`Unluminous`, so tests and `action list` find the menu as before. On macOS, whose menus are in the bar along
+the top of the screen, the mark sits just after the traffic lights (`title_bar::mac_mark`): it turns on
+hover and does nothing when pressed, and the bar's drag area starts after it.
 
 ## Driving the real window must never steal the person's focus
 

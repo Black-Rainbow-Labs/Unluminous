@@ -218,6 +218,36 @@ fn the_application_menu_is_the_mark_rather_than_its_name() {
     harness.snapshot(shot("title_bar_mark"));
 }
 
+/// `task-2258`: on macOS the menus are in the bar along the top of the screen, so the mark is drawn in the
+/// window's own bar just after the traffic lights, at the top left, and the project's chip comes after it.
+/// Pressing it must not start a drag of the window, so the bar's drag area begins after it.
+#[test]
+fn on_macos_the_mark_sits_after_the_traffic_lights() {
+    let mut harness = harness("");
+    harness.state_mut().menu_placement = MenuPlacement::Native;
+    steady(&mut harness);
+    let mark = harness.get_by_label("Unluminous").rect();
+    assert_eq!((mark.width(), mark.height()), (30.0, 30.0), "the same size as the Windows pill: {mark:?}");
+    let lights = harness.get_by_label("Maximise").rect();
+    assert!(mark.left() > lights.right(), "after the traffic lights: {mark:?} {lights:?}");
+    assert!(mark.left() < 100.0, "at the top left of the bar: {mark:?}");
+    let drag = harness.get_by_label("Move window").rect();
+    assert!(drag.left() >= mark.right(), "nothing that moves the window is under it: {drag:?}");
+
+    let image = harness.render().expect("render the window");
+    let scale = image.width() as f32 / WINDOW[0];
+    let blue = image
+        .enumerate_pixels()
+        .filter(|(x, y, _)| mark.contains(egui::pos2(*x as f32 / scale, *y as f32 / scale)))
+        .filter(|(_, _, pixel)| {
+            let [r, g, b, _] = pixel.0.map(i32::from);
+            b > 180 && b - r > 120 && g > 90
+        })
+        .count();
+    assert!(blue > 20, "the letter is drawn in its blue, and {blue} pixels were");
+    harness.snapshot(shot("title_bar_mark_macos"));
+}
+
 /// Every window command this frame, as text, whatever kind it is.
 fn viewport_commands(harness: &Harness<'static, UnluminousApp>) -> Vec<String> {
     harness

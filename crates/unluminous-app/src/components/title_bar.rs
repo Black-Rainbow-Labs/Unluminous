@@ -13,7 +13,8 @@
 //! `tasks/improvements.md` asks for.
 //!
 //! **The project's name comes after the menus**, which is what `task-1658` asks for — after `Git`, the
-//! last of them, and after the window buttons on macOS where there are no menus here to follow.
+//! last of them, and on macOS after the window buttons and the Unluminous mark, where there are no menus here
+//! to follow (`task-2258`).
 //!
 //! **The open file's name is not here at all.** It used to be centred, with its folder after it and an
 //! amber dot for unsaved changes, and all three are now somewhere better: the file's name is on its tab,
@@ -48,6 +49,8 @@ const LIGHT: f32 = 12.0;
 const LIGHT_GAP: f32 = 8.0;
 /// Between the window buttons and whatever is beside them.
 const BUTTON_MARGIN: f32 = 10.0;
+/// The square the mark is centred in on macOS, the size of the Windows menu's round pill.
+const MARK_PILL: f32 = 30.0;
 
 /// Where this window's menus are.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -213,7 +216,10 @@ pub fn show(
             outcome.action = action;
             (right + 10.0, buttons[0].0.left() - BUTTON_MARGIN)
         }
-        MenuPlacement::Native => (buttons[2].0.right() + 14.0, area.right()),
+        MenuPlacement::Native => {
+            let right = mac_mark(ui, area, buttons[2].0.right() + 10.0, logo_motion);
+            (right + 8.0, area.right())
+        }
     };
 
     // Whichever of the run widget and the tools is furthest left is where the chip has to stop.
@@ -282,6 +288,27 @@ pub fn show(
     }
 
     outcome
+}
+
+/// The Unluminous mark at the left of the bar on macOS, just after the traffic lights (`task-2258`).
+///
+/// On Windows the mark is the application's own menu, in `menu_bar`. macOS keeps that menu in the bar along the
+/// top of the screen, so here the mark is the mark alone: it turns while the pointer is over it and does nothing
+/// when pressed. It is the same size as the Windows one, and it answers where it ended.
+fn mac_mark(
+    ui: &mut egui::Ui,
+    area: Rect,
+    left: f32,
+    motion: crate::components::logo::Motion,
+) -> f32 {
+    let rect = Rect::from_min_size(
+        Pos2::new(left, area.center().y - MARK_PILL / 2.0),
+        Vec2::splat(MARK_PILL),
+    );
+    let response = ui.interact(rect, ui.id().with("unluminous-mark"), Sense::hover());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Unluminous"));
+    crate::components::logo::paint(ui, rect, menu_bar::MARK, motion, response.hovered());
+    rect.right()
 }
 
 /// Whether the primary button went down inside `area` on this frame while a modal is open, somewhere the

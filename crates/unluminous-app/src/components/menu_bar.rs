@@ -29,7 +29,7 @@ const GAP: f32 = 2.0;
 const PILL: f32 = 30.0;
 const PAD: f32 = 11.0;
 /// How tall the mark is inside the application's round pill.
-const MARK: f32 = 20.0;
+pub const MARK: f32 = 20.0;
 
 /// Draw the bar into the left of `area`, and answer what was chosen and where the last pill ended.
 ///
