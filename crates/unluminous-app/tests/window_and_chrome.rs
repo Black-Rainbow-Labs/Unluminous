@@ -3669,18 +3669,21 @@ fn command_clicking_a_link_opens_a_browser_tab() {
     );
 }
 
-/// **A plain click keeps the meaning it already had**, which in a preview is placing a selection. A
-/// person reading a page has to be able to click in it without a browser opening.
+/// **A plain click opens it too**, since `task-2255`: *"Many of the spot where links are rendered ... should all
+/// be clickable and open the link in a new unluminous browser tab."* A drag across a link still selects.
 #[test]
-fn a_plain_click_on_a_link_only_moves_the_selection() {
+fn a_plain_click_on_a_link_opens_it() {
+    if !unluminous_app::services::browser::SUPPORTED {
+        return;
+    }
     let mut harness = harness(MARKDOWN);
     harness.get_by_label("Markdown preview").click();
     steady(&mut harness);
     let before = harness.state().files.len();
     let at = where_the_first_link_is(&mut harness);
     click_at(&mut harness, at);
-    assert_eq!(harness.state().files.len(), before, "no tab was opened");
-    assert!(harness.state().is_reading_the_preview(), "the click was the preview's");
+    assert_eq!(harness.state().files.len(), before + 1, "a tab was opened");
+    assert!(harness.state().files.active().browser.is_some(), "and it is a browser tab");
 }
 
 /// **A scheme that is not `http` or `https` is refused by name.** A document must not be able to reach
@@ -5715,10 +5718,12 @@ fn a_browser_tab_zooms_its_page_and_is_never_modified() {
     harness.state_mut().document_mut().apply(Command::Insert("x".to_owned()));
     steady(&mut harness);
     assert!(harness.query_by_label_contains("unsaved").is_none());
-    let before = harness.state().files.len();
     did(&mut harness, "tab close");
     steady(&mut harness);
-    assert_eq!(harness.state().files.len(), before - 1, "the browser tab closed");
+    assert!(
+        harness.state().files.iter().all(|file| file.browser.is_none()),
+        "the browser tab closed"
+    );
 }
 
 /// `task-2255`: *"The menu should dismiss if i click anywhere off the menu. it currently stays open if i switch

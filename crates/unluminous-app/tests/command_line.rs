@@ -1289,6 +1289,14 @@ fn browser_tabs_open_through_the_shared_cli_and_action_paths() {
 
     // One window renders one page at a time, so `browser back` on a tab the view is not pointed at
     // is refused rather than driving somebody else's page.
+    // The page's zoom is the tab's own, so it is set and read with no native view behind it. `task-2255`.
+    let zoomed =
+        over_the_wire(&mut harness, "browser.zoom", serde_json::json!({ "factor": "1.5" }));
+    assert!(zoomed.ok, "{:?}", zoomed.error);
+    assert_eq!(zoomed.result["zoom"], serde_json::json!(1.5));
+    let refused =
+        over_the_wire(&mut harness, "browser.zoom", serde_json::json!({ "factor": "big" }));
+    assert!(!refused.ok, "a zoom that is not a number is refused");
     let elsewhere = over_the_wire(&mut harness, "browser.status", serde_json::json!({}));
     assert_eq!(
         elsewhere.result["showing"],
@@ -1894,6 +1902,9 @@ fn drive_the_window_and_the_tabs(coverage: &mut Coverage) {
     // says nothing matches, which is still a success. `task-2203`.
     c.works(&mut harness, "browser history --json");
     c.works(&mut harness, "browser history example");
+    // The page's zoom is the tab's own, so it is set with no native view behind it. `task-2255`.
+    c.works(&mut harness, "browser zoom 1.5");
+    c.refuses(&mut harness, "browser zoom big");
     c.refuses(&mut harness, "browser open");
     c.sets_up(&mut harness, "tab open readme.md");
     c.refuses(&mut harness, "browser status --json");
