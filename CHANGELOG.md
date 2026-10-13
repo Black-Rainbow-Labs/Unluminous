@@ -10,6 +10,9 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 - The mark at the top left of the macOS bar too (`task-2258`)
 - Rustfmt the macOS mark test (`task-2258`)
+- The changelog written from the history (`task-2258`)
+- Two database pictures allow for the query's run time in their result line (`task-2258`)
+- Max_failed_pixels, the name egui_kittest gives it now (`task-2258`)
 
 ## 0.81.0 — 2026-10-13
 
