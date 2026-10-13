@@ -1194,7 +1194,7 @@ fn change_colour(theme: &rux::Theme, before: f64, now: f64) -> Color32 {
 }
 
 /// A chart from labels and named series, drawn as the design's charts: a ring with its legend for a
-/// donut, a dial for what was added, tracks with last time's mark for bars, and a smooth area chart in
+/// donut, a dial for what was added, tracks with the earlier value named for bars, and a smooth area chart in
 /// a well for a line or an area.
 #[allow(clippy::too_many_arguments)]
 fn chart_at(
@@ -1440,8 +1440,12 @@ fn dial_chart(
 }
 
 /// Bars, drawn as the design's tracks: a row for each label with its figure over a slider track filled
-/// to this series' value, and when there is an earlier series a quiet mark where it was and how much
-/// it changed.
+/// to this series' value, and when there is an earlier series what it was, by that series' name, and how
+/// much it changed.
+///
+/// **The earlier value is said in words, not marked on the track** (`task-2261`). A thin mark on the track
+/// for it, explained by a legend under the chart, read as a stray line; and `41 s \u{2192} 38 s` drew a box
+/// wherever the interface's face has no arrow. `last week 41 s` says both, in letters every face has.
 fn track_chart(
     kit: &mut Kit<'_, '_>,
     labels: &[String],
@@ -1486,7 +1490,8 @@ fn track_chart(
         kit.line(FIGURE, &figure, theme.ink.i900, right - wide, middle, wide + 1.0);
         right -= wide + kit.z(8.0);
         if let Some(earlier) = earlier {
-            let was = format!("{} \u{2192}", figure_of(earlier, unit));
+            let name = before.map(|(name, _)| name.as_str()).unwrap_or("before");
+            let was = format!("{name} {}", figure_of(earlier, unit));
             let wide = kit.width_of(SMALL, &was);
             kit.line(SMALL, &was, theme.ink.i400, right - wide, middle, wide + 1.0);
             right -= wide + kit.z(8.0);
@@ -1497,35 +1502,11 @@ fn track_chart(
                 Pos2::new(at.x, pen + line + kit.z(10.0)),
                 Vec2::new(width, track),
             );
-            let mut bar =
-                Track::new(*value as f32, scale as f32).label(format!("{label}: {figure}"));
-            if let Some(earlier) = earlier {
-                bar = bar.marker(earlier as f32);
-            }
-            bar.show(kit.rux, rect);
+            Track::new(*value as f32, scale as f32)
+                .label(format!("{label}: {figure}"))
+                .show(kit.rux, rect);
         }
         pen += line + kit.z(10.0) + track;
-    }
-    // `Last week` beside the mark that stands for it.
-    if let Some((name, _)) = before {
-        pen += kit.z(18.0);
-        let caption = kit.height_of(SMALL);
-        if kit.draw {
-            let mark = Rect::from_min_size(
-                Pos2::new(at.x, pen + caption / 2.0 - kit.z(6.0)),
-                Vec2::new(kit.z(2.0), kit.z(12.0)),
-            );
-            kit.rux.painter().rect_filled(mark, kit.z(1.0), theme.ink.i400.gamma_multiply(0.6));
-        }
-        kit.line(
-            SMALL,
-            name,
-            theme.ink.i400,
-            at.x + kit.z(10.0),
-            pen + caption / 2.0,
-            width - kit.z(10.0),
-        );
-        pen += caption;
     }
     pen - at.y
 }
@@ -1687,11 +1668,10 @@ fn table(
         );
         let response = kit.rux.ui.interact(hit, kit.id(key, ("head", index)), Sense::click());
         let sorted = sort.filter(|(by, _)| *by == index);
-        let label = match sorted {
-            Some((_, true)) => format!("{} \u{2193}", column.label),
-            Some((_, false)) => format!("{} \u{2191}", column.label),
-            None => column.label.clone(),
-        };
+        // **Which way it is ordered is a drawn chevron after the name** (`task-2261`), not an arrow letter,
+        // which drew a box in a face that has none. The name keeps room for it.
+        let label = column.label.clone();
+        let chevron = kit.z(12.0);
         let ink = match (response.hovered(), sorted.is_some()) {
             (true, _) => theme.chat.sky,
             (false, true) => theme.ink.i700,
@@ -1701,7 +1681,23 @@ fn table(
             kit.rux.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         }
         let (left, room) = place(kit, index, SMALL, &label);
-        kit.line(SMALL, &label, ink, left, head_middle, room);
+        let room = match sorted {
+            Some(_) => (room - chevron).max(0.0),
+            None => room,
+        };
+        let wide = kit.line(SMALL, &label, ink, left, head_middle, room);
+        if let (Some((_, descending)), true) = (sorted, kit.draw) {
+            let mark = rux::Mark::new(rux::Icon::ChevDown, kit.z(8.0)).stroke(1.8);
+            let mark = match descending {
+                true => mark,
+                false => mark.flipped(),
+            };
+            kit.rux.mark(
+                mark,
+                Pos2::new(left + wide + chevron / 2.0 + kit.z(2.0), head_middle),
+                ink,
+            );
+        }
         let name = format!("Order by {}", column.label);
         response.widget_info(|| {
             egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name.clone())

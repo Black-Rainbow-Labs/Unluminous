@@ -54,7 +54,6 @@ pub const GAP: f32 = 18.0;
 /// The gear above the prompt box, and the room above and below it: `padding: 4px 18px 14px`.
 pub const GEAR: f32 = 30.0;
 const ABOVE_GEAR: f32 = 4.0;
-const BELOW_GEAR: f32 = 14.0;
 
 /// What the drawing reported, applied by [`pane`] once everything has been drawn.
 #[derive(Debug, Clone, PartialEq)]
@@ -169,15 +168,31 @@ fn surface(mut parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
     let scale = look.scale();
     let mut acts = Vec::new();
     parts.state.speaker = parts.session.chat.provider.clone();
+    parts.state.mirrored = parts.mirror.is_some();
     let side = SIDE * scale;
     if area.width() < side * 2.0 + 40.0 {
         return acts;
     }
-    let header_rect = Rect::from_min_size(
-        area.min + Vec2::new(side, side),
-        Vec2::new(area.width() - side * 2.0, HEADER * scale),
-    );
-    acts.extend(header(&mut parts, ui, look, header_rect));
+    // **A mirror with no title has no header** (`task-2261`): inside a ticket the section's own heading already
+    // says whose conversation this is, and the room is the conversation's.
+    let headless = parts.mirror.is_some_and(|mirror| mirror.title.is_empty());
+    let header_rect = match headless {
+        true => Rect::from_min_size(
+            area.min + Vec2::new(side, 0.0),
+            Vec2::new(area.width() - side * 2.0, 0.0),
+        ),
+        false => Rect::from_min_size(
+            area.min + Vec2::new(side, side),
+            Vec2::new(area.width() - side * 2.0, HEADER * scale),
+        ),
+    };
+    if !headless {
+        acts.extend(header(&mut parts, ui, look, header_rect));
+    }
+    let under_header = match headless {
+        true => 0.0,
+        false => UNDER_HEADER * scale,
+    };
 
     let inner_width = area.width() - side * 2.0;
     let composer_height = composer::height(&parts, look, inner_width);
@@ -185,14 +200,18 @@ fn surface(mut parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
         Pos2::new(area.left() + side, area.bottom() - side - composer_height),
         Vec2::new(inner_width, composer_height),
     );
-    let gear_rect = Rect::from_center_size(
-        Pos2::new(area.center().x, composer_rect.top() - (BELOW_GEAR + GEAR / 2.0) * scale),
-        Vec2::splat(GEAR * scale),
+    // **The gear is in the header, before the conversations button** (`task-2261`: *"The settings icon above
+    // the agent chat prompt input should go to the top left, to the left of the conversation history."*), so
+    // the conversation runs down to the prompt box. A headless mirror has no gear at all: its Chat settings
+    // would only repeat which agent this is.
+    let gear_rect = Rect::from_min_size(
+        Pos2::new(area.center().x, composer_rect.top() - 6.0 * scale),
+        Vec2::ZERO,
     );
     // **The conversation is the pane's whole width**, and its rows are inset by [`SIDE`] inside it, so a
     // bubble's shadow at the right-hand edge is not cut by the scrolling area's clip.
     let body = Rect::from_min_max(
-        Pos2::new(area.left(), header_rect.bottom() + UNDER_HEADER * scale),
+        Pos2::new(area.left(), header_rect.bottom() + under_header),
         Pos2::new(area.right(), gear_rect.top() - ABOVE_GEAR * scale),
     );
     // Forgotten before it is drawn again, so a pane too short to hold a list does not go on answering a
@@ -213,29 +232,12 @@ fn surface(mut parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
     // decides is that the rows are read on the frame after the right click that opened it, which is
     // `controls::field_menu`'s own shape.
     acts.extend(message_menu(&mut parts, ui, look));
-    acts.extend(gear(&mut parts, ui, look, gear_rect));
     if parts.state.settings_open {
         acts.extend(settings(&mut parts, ui, look, area));
     }
     kit::end_frame(parts.state);
     acts.extend(composer::show(parts, ui, look, composer_rect));
     acts
-}
-
-/// The gear centred over the prompt box, which opens and closes the Chat settings dialog.
-fn gear(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, rect: Rect) -> Vec<Act> {
-    let open = parts.state.settings_open;
-    let pressed = kit::layer(parts.state, look, ui, "gear", rect, kit::SMALL_REACH, |rux| {
-        rux::components::RoundButton::mark(rux::Icon::Settings, 13.0, "Chat settings")
-            .size(rux::components::RoundSize::Small)
-            .on(open)
-            .show(rux, rect)
-            .clicked()
-    });
-    match pressed {
-        true => vec![Act::ShowSettings(!open)],
-        false => Vec::new(),
-    }
 }
 
 /// The Chat settings dialog: the model as a pill switch with one pill a provider, and how much of the
@@ -256,13 +258,16 @@ fn settings(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
         .and_then(|chosen| names.iter().position(|name| *name == chosen.name));
     let used = parts.session.chat.context_used;
     let window = parts.session.chat.context_window;
+    let mirrored = parts.mirror.map(|_| parts.session.chat.provider.clone());
     let side = SIDE * scale;
     let foot = settings_foot(parts, look, area);
     // `padding: 20px 20px 22px; gap: 22px`: the title row, the model and the context well.
     let height = (20.0 + 34.0 + 22.0 + 17.0 + 10.0 + 46.0 + 22.0 + 80.0 + 22.0) * scale;
+    // **Under the header, where the gear that opens it is** (`task-2261`), and never past the prompt box.
+    let top = area.top() + side + (HEADER + 12.0) * scale;
     let dialog = Rect::from_min_max(
-        Pos2::new(area.left() + side, (foot - height).max(area.top() + side)),
-        Pos2::new(area.right() - side, foot),
+        Pos2::new(area.left() + side, top),
+        Pos2::new(area.right() - side, (top + height).min(foot.max(top + 40.0))),
     );
     let id = ui.id().with("agent-chat-settings");
     let still = parts.state.still;
@@ -332,7 +337,15 @@ fn settings(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
                     Pos2::new(inner.left(), top),
                     Vec2::new(inner.width(), rux.z(46.0)),
                 );
-                if names.is_empty() {
+                if let Some(speaker) = mirrored.as_deref() {
+                    let said = rux.text(
+                        rux.zs(rux::Style::sans(12.0)),
+                        &format!("{speaker}, the agent working this ticket, answers here."),
+                        theme.ink.i700,
+                    );
+                    let at = Pos2::new(switch.left(), switch.center().y - said.size().y / 2.0);
+                    rux.painter().galley(at, said, theme.ink.i700);
+                } else if names.is_empty() {
                     let none = rux.text(
                         rux.zs(rux::Style::sans(12.0)),
                         "No agent is set up. Add one on Settings, Agent-Chat.",
@@ -360,12 +373,11 @@ fn settings(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
     acts
 }
 
-/// Where the Chat settings dialog's foot is: just above the gear, which is the design's `padding-bottom:
-/// 120px` measured from the pane's own gear rather than written as a number.
+/// The lowest the Chat settings dialog may reach: a little above the prompt box, so the box stays in view.
 fn settings_foot(parts: &Parts<'_>, look: &Look<'_>, area: Rect) -> f32 {
     let scale = look.scale();
     let composer = composer::height(parts, look, area.width() - SIDE * 2.0 * scale);
-    area.bottom() - SIDE * scale - composer - (BELOW_GEAR + GEAR + 12.0) * scale
+    area.bottom() - SIDE * scale - composer - 12.0 * scale
 }
 
 /// The well in the Chat settings that says how much of the model's context is used, with a ring.
@@ -542,13 +554,31 @@ fn message_menu(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>) -> Ve
 fn header(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> Vec<Act> {
     let scale = look.scale();
     let mut acts = Vec::new();
+    // **A mirror's header is its title and nothing else** (`task-2261`): its conversation is the one the program
+    // behind it is having, so there is no other to open and no new one to start.
+    if let Some(mirror) = parts.mirror {
+        let painter = ui.painter_at(area.intersect(ui.clip_rect()));
+        let style = rux::Style::sans(14.0 * scale).semibold();
+        let ink = crate::theme::rux_theme().ink.i900;
+        let galley = rux::text::elided(&painter, style, &mirror.title, ink, area.width());
+        let at = Pos2::new(area.center().x - galley.size().x / 2.0, area.center().y);
+        rux::text::draw_left_capitals(&painter, at, galley, style, ink);
+        return acts;
+    }
     let button = HEADER * scale;
-    let history = Rect::from_min_size(area.min, Vec2::splat(button));
+    let gear_at = Rect::from_min_size(area.min, Vec2::splat(button));
+    let history = gear_at.translate(Vec2::new(button + 8.0 * scale, 0.0));
     let new =
         Rect::from_min_size(Pos2::new(area.right() - button, area.top()), Vec2::splat(button));
     let open = parts.state.history_open;
-    let (history_pressed, new_pressed) =
+    let settings_open = parts.state.settings_open;
+    let (gear_pressed, history_pressed, new_pressed) =
         kit::layer(parts.state, look, ui, "header", area, kit::SMALL_REACH, |rux| {
+            let gear_pressed =
+                rux::components::RoundButton::mark(rux::Icon::Settings, 15.0, "Chat settings")
+                    .on(settings_open)
+                    .show(rux, gear_at)
+                    .clicked();
             let history_pressed =
                 rux::components::RoundButton::mark(rux::Icon::Clock, 20.0, "Conversations")
                     .on(open)
@@ -558,8 +588,11 @@ fn header(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
                 rux::components::RoundButton::mark(rux::Icon::Plus, 15.0, "New Conversation")
                     .show(rux, new)
                     .clicked();
-            (history_pressed, new_pressed)
+            (gear_pressed, history_pressed, new_pressed)
         });
+    if gear_pressed {
+        acts.push(Act::ShowSettings(!settings_open));
+    }
     if history_pressed {
         acts.push(Act::ShowHistory(!open));
     }
@@ -570,7 +603,7 @@ fn header(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect)
     // font-weight: 600; gap: 12px`.
     let room = Rect::from_min_max(
         Pos2::new(history.right() + 12.0 * scale, area.top()),
-        Pos2::new(new.left() - 12.0 * scale, area.bottom()),
+        Pos2::new(area.right() - (history.right() - area.left()) - 12.0 * scale, area.bottom()),
     );
     if room.width() > 8.0 {
         let painter = ui.painter_at(room.intersect(ui.clip_rect()));
@@ -599,6 +632,24 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
     if session.chat.messages.is_empty() && parts.queued.is_empty() {
         parts.state.scrolled = 0.0;
         parts.state.scrollable = 0.0;
+        // A mirror's welcome would list the side panel's own conversations, which are not this one.
+        if let Some(mirror) = parts.mirror {
+            let painter = ui.painter_at(area.intersect(ui.clip_rect()));
+            let ink = crate::theme::rux_theme().ink.i400;
+            let galley = rux::text::wrapped(
+                &painter,
+                rux::Style::sans(12.5 * look.scale()).leading(1.5),
+                &mirror.empty,
+                ink,
+                (area.width() - SIDE * 2.0 * look.scale()).max(40.0),
+            );
+            let at = Pos2::new(
+                area.center().x - galley.size().x / 2.0,
+                area.center().y - galley.size().y / 2.0,
+            );
+            painter.galley(at, galley, ink);
+            return Vec::new();
+        }
         return welcome::show(parts, ui, look, area);
     }
     let mut acts = Vec::new();
@@ -982,8 +1033,25 @@ fn history_list(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
 /// Do what the drawing reported, and answer what the window has to do.
 fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {
     let mut requests = Vec::new();
+    let mirror = chat.mirror.is_some();
     for act in acts {
         match act {
+            // **A mirror has one conversation and nothing to attach** (`task-2261`). The header draws no
+            // history and no new conversation button, so those cannot arrive from it; a picture can, by a drop or
+            // a paste, and a picture cannot be typed into a terminal.
+            Act::New
+            | Act::Open(_)
+            | Act::Remove(_)
+            | Act::Choose(_)
+            | Act::ShowHistory(_)
+            | Act::Rerun(_)
+                if mirror => {}
+            Act::Dropped(_) | Act::Paste if mirror => {
+                chat.problem = Some(
+                    "a picture cannot be typed into the agent's terminal, so only words are sent."
+                        .to_owned(),
+                );
+            }
             Act::Send => {
                 // **A notice rather than the status bar.** `task-1848` reported this as "nothing happens,
                 // no error": every reason `send` refuses — nothing typed, no endpoint configured, a

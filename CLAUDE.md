@@ -665,7 +665,7 @@ a provider) and the context ring in a Chat settings dialog that only its round c
   included. State is a `StatusWell`, an amount is a `Track`, a `Dial`, a `Ring` or an `AreaChart`, a
   headline number is a `Readout` with its sparkline, and pressing is a `PillButton` or a `PillSwitch`.
   `blocks.rs` draws every component from these: a donut is the ring and its `Legend`, `kind: dial` is
-  what was added, bars are tracks with last time's mark, a line or an area is the area chart in a
+  what was added, bars are tracks with the earlier value named in words, a line or an area is the area chart in a
   well, a table and a list of names and values are wells with hairlines, files are `FileChip`s and a
   diff is the `DiffCard`. Nothing in `components/agent_chat` uses `rux::components::instrument` now.
 - **Under a finished answer is copy, run again, and how long it took and what it wrote**
@@ -1131,6 +1131,33 @@ arguments that names one, so `sprint-rename August 2nd Half September` needs no 
   rendered description each copy their source, through `controls::read_only_menu`, which is `field_menu`'s shape
   for words a plugin draws. The Markdown preview's own menu, `Copy` and `Select All`, is the window's
   (`actions::preview_menu`, opened into `UnluminousApp::preview_menu`).
+
+### A ticket's agent is a chat first and a terminal second (`task-2261`)
+
+`tasks/task-2261-ticket-agent-chat-tdd.md` is the design. The ticket modal's `Agent` section has two tabs, `Chat`
+and `Terminal`, and Chat is the default for a Claude ticket. Four rules:
+
+- **The chat reads the agent's own transcript and never runs a second agent.** Claude Code writes the
+  conversation of `--session-id <id>` to `~/.claude/projects/<folder>/<id>.jsonl`;
+  `unluminous_chat::transcript` reads it into a `Conversation` and `services::agent_tasks::ticket_chat` follows
+  the file from where it last stopped, every 200 ms, from `catch_up`. `UNLUMINOUS_CLAUDE_HOME` names Claude
+  Code's folder for a test. Codex and OpenCode name their own sessions, so their tickets open on the terminal.
+- **The pane is the side panel's, in mirror mode** (`AgentChat::mirroring`): same drawing, same composer, same
+  configuration file. Sending puts the words on `Mirror::outgoing`, which the board types into the terminal
+  through `AgentTasks::send` (resuming a retired session first), and Stop is `Escape`, because `Ctrl+C` twice
+  makes Claude Code exit. A mirror draws no history, new conversation or Run again, and takes no picture.
+- **The card of fields folds** with the chevron beside the close button, `fields_shut`, `fold fields`.
+- **An agent cannot hand a ticket back with todos open**: `move-task <key> agent_done` is refused while the
+  ticket's agent is running and a todo is unticked, unless `anyway` is given. Every line typed into an agent
+  says to tick its todos as it goes (`agent::todo_rule`).
+
+`plugins run agent-tasks agent-tab`, `chat <key> [count]` and `session <key> <id>` are the agent's half.
+
+Three Agent-Chat faults fixed in the same ticket: **a click on a link in rendered Markdown is egui's
+`primary_clicked`** (it read `press_start_time`, which egui clears on the release frame, so no link ever opened);
+**no component writes an arrow character**, because a face without one draws a box, so the bar chart says
+`last week 41 s` and a table's sort order is a drawn chevron; and **the chat's settings gear is in the header**,
+before the conversations button, with the Chat settings dialog under the header.
 
 ### The supervisor, and a board other windows change (`task-2253`)
 

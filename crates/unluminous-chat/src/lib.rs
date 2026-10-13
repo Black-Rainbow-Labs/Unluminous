@@ -48,6 +48,7 @@ pub mod provider;
 pub mod rich;
 pub mod session;
 pub mod sse;
+pub mod transcript;
 pub mod wire;
 
 pub use agent::{Ask, Permission, PERMISSIONS};

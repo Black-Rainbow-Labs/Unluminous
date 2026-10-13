@@ -2220,3 +2220,15 @@ pub fn send(painter: &egui::Painter, centre: Pos2, color: Color32) {
     painter.add(egui::Shape::closed_line(outline, Stroke::new(1.3, color)));
     painter.line_segment([at(21.5, 2.5), at(10.6, 13.4)], Stroke::new(1.3, color));
 }
+
+/// A pencil: change what this says.
+///
+/// `task-2261`. The button that edits a comment on a ticket, beside the paper airplane that sends it to the
+/// agent. `rux`'s own `Icon::Edit` path, `M16 4l4 4-11 11H5v-4L16 4Z`, at half size round the centre and at
+/// the 1.3 point stroke [`send`] is drawn with, with the line across the body where the point is sharpened.
+pub fn pencil(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    let at = |x: f32, y: f32| Pos2::new(centre.x + (x - 12.0) * 0.5, centre.y + (y - 12.0) * 0.5);
+    let outline = vec![at(16.0, 4.0), at(20.0, 8.0), at(9.0, 19.0), at(5.0, 19.0), at(5.0, 15.0)];
+    painter.add(egui::Shape::closed_line(outline, Stroke::new(1.3, color)));
+    painter.line_segment([at(13.0, 7.0), at(17.0, 11.0)], Stroke::new(1.3, color));
+}

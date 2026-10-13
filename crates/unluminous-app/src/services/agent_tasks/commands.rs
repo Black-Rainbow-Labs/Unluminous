@@ -51,7 +51,11 @@ pub const LIST: &[(&str, &str)] = &[
         "Replace a ticket's description with the rest of the line, as markdown: `describe task-3 <text>`. \
          Line breaks inside the text are kept.",
     ),
-    ("move-task", "Move a ticket to a lane and a place in it."),
+    (
+        "move-task",
+        "Move a ticket to a lane and a place in it. Moving a ticket whose agent is running to agent_done is \
+         refused while it has todos that are not ticked; `move-task task-3 agent_done anyway` moves it regardless.",
+    ),
     ("delete-task", "Delete a ticket, its todos and its comments."),
     ("priority", "Set a ticket's priority to low, medium or high."),
     ("assign", "Assign a ticket to an AI endpoint that runs an agent, by its name, or to human."),
@@ -66,6 +70,10 @@ pub const LIST: &[(&str, &str)] = &[
     ("heartbeat", "Record that a ticket's agent is working, with a lease in minutes."),
     ("start", "Launch the ticket's agent and hand the ticket over."),
     ("resume", "Bring back a retired session without changing the ticket's lane."),
+    (
+        "session",
+        "Say which conversation a ticket's agent is having, by its session id, so `resume` and the Chat tab pick          that one up: `session task-3 <uuid>`. For a Claude Code conversation started by hand. Says the current          one when asked with no id.",
+    ),
     ("send", "Type a line into a ticket's agent."),
     (
         "terminal",
@@ -77,7 +85,9 @@ pub const LIST: &[(&str, &str)] = &[
     ("search", "Tickets whose key, title or description holds the query."),
     ("new-epic", "Create an epic. Names itself when no name is given, which is what the menu entry does."),
     ("new-sprint", "Create a sprint and make it the active one. Names itself when no name is given."),
-    ("fold", "Open or shut a ticket's todos or its terminal: `fold terminal shut`. Says both when asked with nothing."),
+    ("fold", "Open or shut a ticket's todos, its agent section or the card of fields down the right: `fold terminal shut`, `fold fields shut`. Says all three when asked with nothing."),
+    ("agent-tab", "Which tab the ticket modal's agent section shows: `agent-tab chat` or `agent-tab terminal`. Says which when asked with nothing."),
+    ("chat", "The last messages of a ticket's conversation, read from its agent's own transcript, which is what the ticket modal's Chat tab shows: `chat task-3 20`."),
     ("description-height", "How tall the ticket modal's description is: `description-height 120`, or `auto` for the modal's own choice. Says which when asked with nothing."),
     ("terminal-height", "How tall the ticket modal's agent terminal is: `terminal-height 300`, or `auto` for the modal's own choice. Says which when asked with nothing."),
     ("comments-height", "How tall the ticket modal's comments are: `comments-height 200`, or `auto` for the modal's own choice. Says which when asked with nothing."),
@@ -315,6 +325,19 @@ fn ticket_display(
             let task = tasks.by_key(argument(0))?;
             Ok(Answer::nothing().with(tasks.read_a_ticket(task.id)?))
         })(),
+        // What the ticket modal's Chat tab shows, read back as data (`task-2261`): the agent's own transcript,
+        // the newest `count` messages, twenty when no count is given.
+        "chat" => (|| {
+            let task = tasks.by_key(argument(0))?;
+            let count = argument(1).parse::<usize>().unwrap_or(20).max(1);
+            let read = tasks.chat_of(&task, count)?;
+            let said = format!(
+                "{} messages in {}'s conversation",
+                read["total"].as_u64().unwrap_or(0),
+                task.key
+            );
+            Ok(Answer::said(said).with(read))
+        })(),
         // Both of these are on the plugin's `New` submenu, and a menu entry passes no arguments — so with a
         // required name they were two controls that could only fail. They name themselves instead, from what
         // is already there, and the name can be changed afterwards like any other.
@@ -335,25 +358,48 @@ fn ticket_display(
             match which {
                 "" => {}
                 "todos" => tasks.todos_shut = shut.unwrap_or(tasks.todos_shut),
-                "terminal" => tasks.terminal_shut = shut.unwrap_or(tasks.terminal_shut),
+                "terminal" | "agent" => tasks.terminal_shut = shut.unwrap_or(tasks.terminal_shut),
+                "fields" => tasks.fields_shut = shut.unwrap_or(tasks.fields_shut),
                 other => {
                     return Err(format!(
-                        "`{other}` is not a section that folds: a ticket has `todos` and `terminal`"
+                        "`{other}` is not a section that folds: a ticket has `todos`, `terminal` and `fields`"
                     ));
                 }
             }
+            let said = |shut: bool| match shut {
+                true => "shut",
+                false => "open",
+            };
             Ok(Answer::said(format!(
-                "todos are {}, the terminal is {}",
-                match tasks.todos_shut {
-                    true => "shut",
-                    false => "open",
-                },
-                match tasks.terminal_shut {
-                    true => "shut",
-                    false => "open",
-                }
+                "todos are {}, the agent section is {}, the fields are {}",
+                said(tasks.todos_shut),
+                said(tasks.terminal_shut),
+                said(tasks.fields_shut)
             ))
-            .with(json!({"todos": !tasks.todos_shut, "terminal": !tasks.terminal_shut})))
+            .with(json!({
+                "todos": !tasks.todos_shut,
+                "terminal": !tasks.terminal_shut,
+                "fields": !tasks.fields_shut,
+            })))
+        })(),
+        // Which tab the agent section shows, which a person chooses with the pill switch on its heading
+        // (`task-2261`). With nothing it says which.
+        "agent-tab" => (|| {
+            if !argument(0).is_empty() {
+                let tab = super::ticket_chat::AgentTab::parse(argument(0)).ok_or_else(|| {
+                    format!(
+                        "`{}` is not a tab: the agent section has `chat` and `terminal`",
+                        argument(0)
+                    )
+                })?;
+                tasks.agent_tab = Some(tab);
+            }
+            let tab = match tasks.detail.task.as_ref() {
+                Some(task) => tasks.agent_tab_for(task),
+                None => tasks.agent_tab.unwrap_or(super::ticket_chat::AgentTab::Chat),
+            };
+            Ok(Answer::said(format!("the agent section shows its {}", tab.name()))
+                .with(json!({"tab": tab.name(), "chosen": tasks.agent_tab.map(|tab| tab.name())})))
         })(),
         // How tall the ticket modal's description is, which a person sets by dragging the bottom edge of the
         // description. `task-2214`. A number of points, or `auto` for the height the modal chooses itself, and
@@ -527,6 +573,18 @@ fn task_commands(
                 )
             })?;
             let position = argument(2).parse::<i64>().unwrap_or(i64::MAX);
+            // **An agent hands a ticket back with its todos ticked** (`task-2261`). Only while its agent is
+            // running, which is the case of an agent moving its own ticket: a person's drag goes through
+            // `move_card` and is not second guessed.
+            let anyway = arguments.iter().any(|word| word == "anyway" || word == "--force");
+            let running =
+                tasks.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());
+            if status == Status::AgentDone {
+                let todos = tasks.store()?.todos(task.id)?;
+                if let Some(refusal) = open_todos_refusal(&task.key, &todos, running, anyway) {
+                    return Err(refusal);
+                }
+            }
             // Through `move_card` rather than straight at the store, so the command line and a drag do the
             // same thing — including the one extra thing a move does, which is hand a ticket sent back from
             // Agent Done to its agent.
@@ -573,6 +631,49 @@ fn task_commands(
         })(),
         _ => return None,
     })
+}
+
+/// Why `move-task <key> agent_done` is refused, or `None` when it is not (`task-2261`).
+///
+/// *"agents aren't updating their todos as they go, and often I'll see a list of todos in a card thats agent
+/// done, but none of them are checked off."* Refused while the ticket's agent is running and a todo is not ticked,
+/// because that is an agent handing a ticket back without saying which of its steps it did. The refusal names
+/// each open todo with the number the todo commands take, and says the two ways to clear it and the word that
+/// moves it regardless.
+///
+/// @param key - the ticket's key
+/// @param todos - its todos, in order
+/// @param running - whether its agent's terminal is running
+/// @param anyway - whether `anyway` was given
+pub fn open_todos_refusal(
+    key: &str,
+    todos: &[super::model::Todo],
+    running: bool,
+    anyway: bool,
+) -> Option<String> {
+    if !running || anyway {
+        return None;
+    }
+    let open: Vec<String> = todos
+        .iter()
+        .enumerate()
+        .filter(|(_, todo)| !todo.done)
+        .map(|(at, todo)| format!("{}. {}", at + 1, todo.text))
+        .collect();
+    if open.is_empty() {
+        return None;
+    }
+    let plural = match open.len() {
+        1 => "",
+        _ => "s",
+    };
+    Some(format!(
+        "{key} still has {} todo{plural} not ticked: {}. Tick each one you finished with `todo-done {key} <n>`, \
+         remove one that no longer applies with `todo-remove {key} <n>`, then move it again. \
+         `move-task {key} agent_done anyway` moves it with them open.",
+        open.len(),
+        open.join("; ")
+    ))
 }
 
 /// A ticket's todos: adding one, ticking it, and taking it away.
@@ -742,6 +843,27 @@ fn agent_commands(
             })))
         })(),
         "start" => tasks.start(argument(0)),
+        // A conversation started by hand handed to a ticket (`task-2261`), so the ticket's Chat tab shows it and
+        // `resume` carries it on. An id is a file name to Claude Code, so one that could name another folder is
+        // refused.
+        "session" => (|| {
+            let task = tasks.by_key(argument(0))?;
+            let id = argument(1).trim();
+            if id.is_empty() {
+                return Ok(Answer::said(match task.session_id.as_deref() {
+                    Some(id) => format!("{} is conversation {id}", task.key),
+                    None => format!("{} has no conversation yet", task.key),
+                })
+                .with(json!({"task": task.key, "session": task.session_id})));
+            }
+            if !id.chars().all(|character| character.is_ascii_alphanumeric() || character == '-') {
+                return Err(format!("`{id}` is not a session id: letters, digits and dashes only"));
+            }
+            tasks.store()?.set_session(task.id, id, &now)?;
+            tasks.refresh()?;
+            Ok(Answer::said(format!("{} is conversation {id}", task.key))
+                .with(json!({"task": task.key, "session": id})))
+        })(),
         "resume" => tasks.resume(argument(0)),
         "send" => {
             let line = rest(1);
@@ -1161,5 +1283,50 @@ mod tests {
                 "{name}'s summary is a sentence and ends with a stop: {summary:?}"
             );
         }
+    }
+
+    /// `task-2261`: an agent moving its own ticket to Agent Done with todos open is told which ones, and nobody
+    /// else is refused.
+    #[test]
+    fn an_agent_is_refused_agent_done_while_its_todos_are_open() {
+        let todo = |text: &str, done: bool| crate::services::agent_tasks::model::Todo {
+            id: 0,
+            task_id: 1,
+            text: text.to_owned(),
+            done,
+            position: 0,
+            created_at: String::new(),
+        };
+        let todos = [todo("write it", true), todo("test it", false), todo("release it", false)];
+        let refusal = open_todos_refusal("task-9", &todos, true, false).expect("refused");
+        assert!(refusal.contains("2 todos not ticked"), "{refusal}");
+        assert!(refusal.contains("2. test it") && refusal.contains("3. release it"), "{refusal}");
+        assert!(
+            refusal.contains("todo-done task-9 <n>") && refusal.contains("anyway"),
+            "{refusal}"
+        );
+        assert!(open_todos_refusal("task-9", &todos, true, true).is_none(), "anyway moves it");
+        assert!(
+            open_todos_refusal("task-9", &todos, false, false).is_none(),
+            "nobody's agent is running"
+        );
+        assert!(open_todos_refusal("task-9", &[todo("done", true)], true, false).is_none());
+        assert!(open_todos_refusal("task-9", &[], true, false).is_none());
+    }
+
+    /// `task-2261`: the agent section's tab and the fields card have commands, as every control does.
+    #[test]
+    fn the_agent_tab_and_the_fields_card_are_set_by_commands() {
+        let mut board = board();
+        assert_eq!(did(&mut board, "agent-tab", &["terminal"]).value["tab"], "terminal");
+        assert_eq!(board.agent_tab, Some(super::super::ticket_chat::AgentTab::Terminal));
+        assert_eq!(did(&mut board, "agent-tab", &[]).value["tab"], "terminal");
+        assert!(run(&mut board, "agent-tab", &["both".to_owned()]).is_err());
+        assert_eq!(did(&mut board, "fold", &["fields", "shut"]).value["fields"], false);
+        assert!(board.fields_shut);
+        assert_eq!(did(&mut board, "fold", &["fields", "open"]).value["fields"], true);
+        let ticket = key(&did(&mut board, "new-task", &["no", "agent", "yet"]));
+        let problem = run(&mut board, "chat", &[ticket]).expect_err("no conversation yet");
+        assert!(problem.contains("no conversation"), "{problem}");
     }
 }

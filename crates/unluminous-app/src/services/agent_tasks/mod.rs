@@ -34,6 +34,7 @@ pub mod db;
 pub mod keychain;
 pub mod model;
 pub mod store;
+pub mod ticket_chat;
 pub mod watchdog;
 
 use std::path::PathBuf;
@@ -526,6 +527,15 @@ pub struct AgentTasks {
     /// looked at. See [`Self::notice_another_window`].
     files_read: Option<FilesStamp>,
     files_asked: Option<std::time::Instant>,
+    /// The open ticket's conversation, read from its agent's transcript for the modal's Chat tab (`task-2261`).
+    /// `None` while no ticket with a session is open.
+    pub ticket_chat: Option<ticket_chat::TicketChat>,
+    /// Which tab of the ticket modal's Agent section somebody chose. `None` until one is chosen, and then
+    /// [`ticket_chat::AgentTab::default_for`] the ticket's agent decides (`task-2261`).
+    pub agent_tab: Option<ticket_chat::AgentTab>,
+    /// Whether the card of fields down the right of the ticket modal has been put away, which gives the
+    /// description, the agent and the comments the whole width (`task-2261`).
+    pub fields_shut: bool,
     /// True while the supervisor's modal is open: its terminal, the box a message is typed into and `Send`.
     pub supervisor_open: bool,
     /// What is typed in the supervisor modal's message box.
@@ -2091,7 +2101,131 @@ impl AgentTasks {
         for terminal in &mut self.terminals {
             moved |= terminal.pump(&now);
         }
+        moved |= self.follow_the_ticket_chat();
         moved | self.notice_another_window()
+    }
+
+    /// The agent that works `task`: its own assignee, or for a ticket assigned to a person the endpoint the
+    /// board hands such a ticket to, which is what [`Self::start`] launches.
+    pub fn agent_of(&self, task: &Task) -> Assignee {
+        match task.assignee.is_an_agent() {
+            true => task.assignee,
+            false => self.default_assignee().0,
+        }
+    }
+
+    /// The tab of the ticket modal's Agent section that shows for `task`.
+    pub fn agent_tab_for(&self, task: &Task) -> ticket_chat::AgentTab {
+        self.agent_tab.unwrap_or_else(|| ticket_chat::AgentTab::default_for(self.agent_of(task)))
+    }
+
+    /// The Agent-Chat plugin's own folder, beside this one, so a ticket's chat looks the way the side panel does.
+    fn chat_folder(&self) -> Option<PathBuf> {
+        self.folder
+            .as_deref()
+            .and_then(std::path::Path::parent)
+            .map(|plugins| plugins.join("agent-chat"))
+            .filter(|folder| folder.is_dir())
+    }
+
+    /// A chat reading `task`'s transcript, or `None` when it has no session or its agent's transcript cannot be
+    /// read.
+    fn a_chat_for(&self, task: &Task) -> Option<ticket_chat::TicketChat> {
+        let session = task.session_id.clone()?;
+        let agent = self.agent_of(task);
+        if !ticket_chat::chat_is_readable(agent) {
+            return None;
+        }
+        let folder = self.working_folder(task).ok()?;
+        Some(ticket_chat::TicketChat::new(
+            task,
+            agent,
+            &session,
+            &folder,
+            self.chat_folder().as_deref(),
+        ))
+    }
+
+    /// Keep the open ticket's chat in step with its agent's transcript, and type what its composer asked for into
+    /// the agent's terminal (`task-2261`). Answers whether anything changed, so the window draws it.
+    ///
+    /// Words go through [`Self::send`], so a ticket whose agent has exited is resumed first, exactly as a comment
+    /// sent to the agent is. A stop is `Escape`, which is Claude Code's own key for interrupting a turn: `Ctrl+C`
+    /// twice in a row asks it to exit.
+    fn follow_the_ticket_chat(&mut self) -> bool {
+        let Some(task) = self.detail.task.clone() else {
+            self.ticket_chat = None;
+            return false;
+        };
+        let current = self.ticket_chat.as_ref().is_some_and(|chat| {
+            chat.task_id == task.id && Some(chat.session.as_str()) == task.session_id.as_deref()
+        });
+        if !current {
+            self.ticket_chat = self.a_chat_for(&task);
+        }
+        let Some(mut chat) = self.ticket_chat.take() else { return false };
+        let running =
+            self.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());
+        let now = std::time::Instant::now();
+        let mut changed = chat.follow(running, now);
+        for ask in chat.chat.take_what_the_mirror_asked() {
+            changed = true;
+            match ask {
+                crate::services::agent_chat::MirrorAsk::Say(words) => {
+                    match self.send(&task.key, &words) {
+                        Ok(_) => chat.typed(now),
+                        Err(problem) => {
+                            chat.chat.problem = Some(problem.clone());
+                            self.message = problem;
+                        }
+                    }
+                }
+                crate::services::agent_chat::MirrorAsk::Interrupt => {
+                    match self.terminal_for_mut(task.id) {
+                        Some(terminal) => terminal.session.send(vec![0x1b]),
+                        None => self.message = format!("{} has no agent running to stop", task.key),
+                    }
+                }
+            }
+        }
+        self.ticket_chat = Some(chat);
+        changed
+    }
+
+    /// The last `count` messages of a ticket's conversation, read from its agent's transcript: the open ticket's
+    /// chat when it is that one, and a fresh reading otherwise.
+    pub fn chat_of(&self, task: &Task, count: usize) -> Result<serde_json::Value, String> {
+        let agent = self.agent_of(task);
+        if !ticket_chat::chat_is_readable(agent) {
+            return Err(ticket_chat::why_the_chat_is_empty(agent));
+        }
+        if task.session_id.is_none() {
+            return Err(format!(
+                "{} has no conversation yet: `start` launches its agent",
+                task.key
+            ));
+        }
+        let open = self.ticket_chat.as_ref().filter(|chat| chat.task_id == task.id);
+        let mut fresh = None;
+        let chat = match open {
+            Some(chat) => chat,
+            None => {
+                let mut made = self.a_chat_for(task).ok_or_else(|| {
+                    format!("{} has no folder to find its transcript in", task.key)
+                })?;
+                made.follow(false, std::time::Instant::now());
+                &*fresh.insert(made)
+            }
+        };
+        let conversation = &chat.chat.session().chat;
+        Ok(json!({
+            "task": task.key,
+            "transcript": chat.path().map(|path| path.display().to_string()),
+            "busy": chat.chat.session().is_busy(),
+            "model": chat.model(),
+            "messages": ticket_chat::messages_json(conversation, count),
+            "total": conversation.messages.len(),
+        }))
     }
 
     /// Read the board again when another window has written it.
@@ -2522,6 +2656,7 @@ impl UiProvider for AgentTasks {
         // The sessions go with the provider, and each one's agent keeps its conversation, so closing the
         // board loses no work: `Resume session` brings any of them back on the id in the database.
         self.terminals.clear();
+        self.ticket_chat = None;
         self.store = None;
         self.board = Board::default();
         self.detail = Detail::default();
@@ -2564,6 +2699,14 @@ impl AgentTasks {
 
     fn detail_json(&self) -> serde_json::Value {
         json!({
+            "agentTab": self.detail.task.as_ref().map(|task| self.agent_tab_for(task).name()),
+            "fieldsShut": self.fields_shut,
+            "chat": self.ticket_chat.as_ref().map(|chat| json!({
+                "transcript": chat.path().map(|path| path.display().to_string()),
+                "messages": chat.chat.session().chat.messages.len(),
+                "queued": chat.chat.queued().len(),
+                "busy": chat.chat.session().is_busy(),
+            })),
             "task": self.detail.task.as_ref().map(card_json),
             "description": self.detail.task.as_ref().map(|task| task.description.clone()),
             "todos": self

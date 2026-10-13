@@ -1004,7 +1004,7 @@ impl Decoder {
 }
 
 /// A tool result's content, which is a string in the simple case and a list of blocks otherwise.
-fn text_of(value: &serde_json::Value) -> String {
+pub(crate) fn text_of(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::String(said) => said.clone(),
         serde_json::Value::Array(blocks) => {

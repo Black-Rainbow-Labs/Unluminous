@@ -700,6 +700,7 @@ fn answer_actions(
     let copy = Rect::from_min_size(rect.min, Vec2::splat(side));
     let again =
         Rect::from_min_size(Pos2::new(copy.right() + 4.0 * scale, rect.top()), Vec2::splat(side));
+    let mirrored = state.mirrored;
     let (copied, rerun) = kit::layer(
         state,
         look,
@@ -714,11 +715,14 @@ fn answer_actions(
                 .ghost()
                 .show(rux, copy)
                 .clicked();
-            let rerun = RoundButton::mark(rux::Icon::Rerun, 18.0, "Run again")
-                .size(RoundSize::Small)
-                .ghost()
-                .show(rux, again)
-                .clicked();
+            // Not in a mirror (`task-2261`): asking again would type the question into the agent's terminal a
+            // second time, and in a ticket the question before an answer is very often the board's own handoff.
+            let rerun = !mirrored
+                && RoundButton::mark(rux::Icon::Rerun, 18.0, "Run again")
+                    .size(RoundSize::Small)
+                    .ghost()
+                    .show(rux, again)
+                    .clicked();
             (copied, rerun)
         },
     );

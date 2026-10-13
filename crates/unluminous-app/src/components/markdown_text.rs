@@ -404,11 +404,11 @@ fn follow_a_link(ui: &egui::Ui, rendered: &Rendered, origin: Pos2) {
         }
     }
     ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
-    let clicked = ctx.input(|input| {
-        input.pointer.primary_released()
-            && !input.pointer.is_decidedly_dragging()
-            && input.pointer.press_start_time().is_some_and(|at| input.time - at < 0.6)
-    });
+    // **egui's own answer to "was that a click"** (`task-2261`). This asked for the press's start time on the
+    // frame the button came up, and egui clears it on that very frame, so no click on a link ever counted:
+    // *"the agent often replies with links in the message, but I can't click them."* `primary_clicked` is a
+    // release that was not a drag and came soon enough after the press.
+    let clicked = ctx.input(|input| input.pointer.primary_clicked());
     if clicked {
         ask_to_open_a_link(ctx, target);
     }

@@ -333,10 +333,27 @@ pub fn handoff(agent: Assignee, key: &str) -> String {
          run agent-tasks <command>`, where the commands are: `task {key}` to read the ticket with its \
          description, todos and comments; `heartbeat {key}` to say you are still working, which the board's \
          watchdog reads; `comment {key} --as {author} <text>` to report what you have done; \
-         `todo-add {key} <text>` and `move-task {key} <lane>`, where a lane is new, qa_failed, in_progress \
-         or agent_done. Start by running `task {key}` and doing what its description asks. When the work is \
-         done, comment saying what you did and move {key} to agent_done.",
-        author = agent.name()
+         `todo-add {key} <text>`, `todo-done {key} <n>` to tick its nth todo, `todo-remove {key} <n>`, and \
+         `move-task {key} <lane>`, where a lane is new, qa_failed, in_progress or agent_done. Start by \
+         running `task {key}`. {todos} Then do what its description asks. When the work is done, comment \
+         saying what you did and move {key} to agent_done.",
+        author = agent.name(),
+        todos = todo_rule(key),
+    )
+}
+
+/// What every line typed into a ticket's agent says about its todos (`task-2261`).
+///
+/// *"agents aren't updating their todos as they go, and often I'll see a list of todos in a card thats agent
+/// done, but none of them are checked off."* The handoff named `todo-add` and never `todo-done`, so an agent made
+/// a plan and had nothing telling it to say how far through it was. This sentence is in the handoff, the resumed
+/// line and the comment line, and `move-task <key> agent_done` refuses an agent whose todos are still open.
+pub fn todo_rule(key: &str) -> String {
+    format!(
+        "Keep the ticket's todos as your plan: if it has none, add one for each step with `todo-add {key} <text>` \
+         before you start; tick each one with `todo-done {key} <n>` the moment that step is finished, not all at \
+         the end; and remove one that no longer applies with `todo-remove {key} <n>`. Moving {key} to \
+         agent_done is refused while a todo is open."
     )
 }
 
@@ -395,15 +412,19 @@ pub fn resumed(agent: Assignee, key: &str) -> String {
         _ => format!(
             "This session has been resumed on {key}. Re-read the ticket with `${ENV_CLI} --instance \
              ${ENV_INSTANCE} --json plugins run agent-tasks task {key}` before doing anything, and take its newest \
-             human comments as the specification. Then finish the open todos, comment saying what you did, \
-             and move {key} to agent_done."
+             human comments as the specification. {todos} Then finish the open todos, comment saying what you \
+             did, and move {key} to agent_done.",
+            todos = todo_rule(key),
         ),
     }
 }
 
 /// The line typed into an agent when a comment is sent to it from the ticket.
 pub fn comment_handoff(key: &str, body: &str) -> String {
-    format!("A new comment was posted on {key}. It is the specification now. It says: {body}")
+    format!(
+        "A new comment was posted on {key}. It is the specification now. Add a todo for each step it asks for \
+         with `todo-add {key} <text>`, and tick each with `todo-done {key} <n>` as you finish it. It says: {body}"
+    )
 }
 
 #[cfg(test)]
@@ -666,6 +687,20 @@ mod tests {
         );
         assert!(handoff(Assignee::Codex, "task-27").contains("--as codex"));
         assert!(handoff(Assignee::Human, "task-27").is_empty());
+    }
+
+    /// `task-2261`: every line typed into an agent tells it to tick its todos as it goes.
+    #[test]
+    fn every_line_typed_into_an_agent_says_to_tick_its_todos_as_it_goes() {
+        for said in [
+            handoff(Assignee::Claude, "task-27"),
+            resumed(Assignee::Claude, "task-27"),
+            comment_handoff("task-27", "Also do this."),
+        ] {
+            assert!(said.contains("todo-done task-27 <n>"), "{said}");
+            assert!(said.contains("todo-add task-27"), "{said}");
+            assert!(!said.contains('\n'), "typed at a prompt, so one line: {said}");
+        }
     }
 
     #[test]

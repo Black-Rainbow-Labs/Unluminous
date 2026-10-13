@@ -1883,7 +1883,8 @@ fn the_ticket_modal_holds_every_section_the_browser_board_has() {
     for section in [
         "Description",
         "Todos",
-        "Agent terminal",
+        "Chat tab",
+        "Terminal tab",
         "Comments",
         "Comment & Send to Agent",
         "Assignee",
@@ -1912,8 +1913,7 @@ fn the_ticket_modal_holds_every_section_the_browser_board_has() {
     // The heading says which way it is. It is `rux`'s `SubGroup` since `task-2193`, which reports it as the
     // heading's toggled state rather than in its name.
     let open = |harness: &Harness<'static, UnluminousApp>| {
-        egui_kittest::kittest::NodeT::accesskit_node(&harness.get_by_label("Agent terminal"))
-            .toggled()
+        egui_kittest::kittest::NodeT::accesskit_node(&harness.get_by_label("Agent")).toggled()
             == Some(egui::accesskit::Toggled::True)
     };
     assert!(!open(&harness), "the heading says the section is shut");
@@ -2446,7 +2446,7 @@ fn the_history_lists_each_conversation_on_two_lines() {
 /// `task-2219`: *"When I switch themes, the font colours sometimes don't immediately update unless I
 /// resize."* The rendered markdown was cached by its source and its width, so the words kept the colours
 /// they were first set in until a resize changed the width. Measured on the pixels of the conversation,
-/// between the header and the gear: light words on the dark theme, dark words once the light theme is
+/// between the header and the prompt box: light words on the dark theme, dark words once the light theme is
 /// chosen. The band is found from the pane's own controls, because since `task-2235` a short
 /// conversation sits at the bottom of the pane rather than under the header.
 #[test]
@@ -2455,11 +2455,11 @@ fn a_change_of_theme_recolours_the_words_already_on_the_screen() {
         a_chat(&[(unluminous_chat::Role::User, "Why is the release build slower this week?")]);
     steady(&mut harness);
     let header = harness.get_by_label("New Conversation").rect();
-    let gear = harness.get_by_label("Chat settings").rect();
     let field = harness.get_by_label("Message").rect();
+    // Since `task-2261` the gear is in the header, so the conversation runs down to the prompt box.
     let band = egui::Rect::from_min_max(
         egui::pos2(field.left(), header.bottom() + 4.0),
-        egui::pos2(header.right(), gear.top() - 4.0),
+        egui::pos2(header.right(), field.top() - 12.0),
     );
     let darkest = |harness: &mut Harness<'static, UnluminousApp>| -> (u32, u32) {
         let scale = harness.ctx.pixels_per_point();
@@ -4063,4 +4063,172 @@ fn chat_with_supervisor_opens_a_modal_with_its_terminal_a_message_box_and_send()
     did(&mut harness, "plugins run agent-tasks supervisor open");
     steady(&mut harness);
     assert!(harness.query_all_by_label_contains("Start supervisor").count() > 0);
+}
+
+/// Where the Chat tab tests keep Claude Code's folder and the ticket's project: under the temporary folder,
+/// named once for the whole test binary, so no test reads the person's own `~/.claude`.
+fn a_ticket_with_a_transcript(harness: &mut Harness<'static, UnluminousApp>) -> std::path::PathBuf {
+    use unluminous_app::services::agent_tasks::ticket_chat::CLAUDE_HOME_VARIABLE;
+    let root = std::env::temp_dir().join(format!("unluminous-ticket-chat-{}", std::process::id()));
+    let home = root.join("claude");
+    let project = root.join("project");
+    std::fs::create_dir_all(&project).expect("the project folder");
+    let folder =
+        home.join("projects").join(unluminous_chat::transcript::claude_project_folder(&project));
+    std::fs::create_dir_all(&folder).expect("the transcript folder");
+    let session = "5b5c01aa-0000-4b7f-9f81-826b07131842";
+    let lines = [
+        r#"{"type":"user","origin":{"kind":"human"},"message":{"role":"user","content":"You are working task-1 on Unluminous's own Agent-Tasks board."}}"#,
+        r#"{"type":"assistant","message":{"model":"claude-opus-5-5","id":"msg_1","role":"assistant","content":[{"type":"text","text":"Reading the ticket first."}],"stop_reason":null}}"#,
+        r#"{"type":"assistant","message":{"model":"claude-opus-5-5","id":"msg_1","role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"unluminous-cli plugins run agent-tasks task task-1"}}],"stop_reason":"tool_use"}}"#,
+        r#"{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_1","type":"tool_result","content":"Zoom the ticket modal","is_error":false}]}}"#,
+        r##"{"type":"assistant","message":{"model":"claude-opus-5-5","id":"msg_2","role":"assistant","content":[{"type":"text","text":"The modal now zooms with the wheel and the keys.\n\n- `modal zoom 1.25` sets it\n- **Escape** closes it"}],"stop_reason":"end_turn"}}"##,
+        r#"{"type":"system","subtype":"turn_duration","durationMs":42000}"#,
+    ];
+    std::fs::write(folder.join(format!("{session}.jsonl")), lines.join("\n") + "\n")
+        .expect("the transcript");
+    // The same value from every test that sets it, so two tests setting it at once agree.
+    std::env::set_var(CLAUDE_HOME_VARIABLE, &home);
+    a_ticket_open(harness);
+    let board = harness.state_mut();
+    let tasks = board
+        .plugin_ui
+        .provider("agent-tasks")
+        .and_then(|provider| provider.as_any_mut())
+        .and_then(|any| any.downcast_mut::<unluminous_app::services::agent_tasks::AgentTasks>())
+        .expect("the Agent-Tasks provider");
+    let id = tasks.detail().task.as_ref().expect("the ticket").id;
+    tasks
+        .edit_field(
+            id,
+            unluminous_app::services::agent_tasks::Field::Project(project.display().to_string()),
+        )
+        .expect("the project");
+    did(harness, &format!("plugins run agent-tasks session task-1 {session}"));
+    for _ in 0..4 {
+        std::thread::sleep(std::time::Duration::from_millis(220));
+        steady(harness);
+    }
+    root
+}
+
+/// `task-2261`: *"Let's add a tabbed view of the terminal section, which has the first/default tab be an Agent
+/// Chat component, and the second tab be the terminal."* A ticket whose agent has a transcript opens on the Chat
+/// tab, which is the Agent-Chat pane showing what the agent said and the tools it ran; `chat` reads the same
+/// conversation back; `agent-tab terminal` switches to the terminal.
+#[test]
+fn a_tickets_agent_is_shown_as_a_chat_read_from_its_transcript() {
+    let mut harness = harness("");
+    harness.set_size(vec2(1500.0, 950.0));
+    a_ticket_with_a_transcript(&mut harness);
+    let chat_tab = harness.get_by_label("Chat tab");
+    assert_eq!(
+        egui_kittest::kittest::NodeT::accesskit_node(&chat_tab).toggled(),
+        Some(egui::accesskit::Toggled::True),
+        "a Claude ticket opens on the chat"
+    );
+    let read = did(&mut harness, "plugins run agent-tasks chat task-1");
+    let messages = read["messages"].as_array().expect("messages").clone();
+    assert_eq!(
+        messages.len(),
+        3,
+        "the prompt, and two answers with the tool call in the first: {read}"
+    );
+    assert_eq!(messages[1]["tools"][0]["name"], "Bash");
+    assert_eq!(messages[1]["tools"][0]["running"], false, "its result was read");
+    assert!(messages[2]["text"].as_str().unwrap_or_default().contains("zooms"), "{read}");
+    assert_eq!(read["busy"], false, "the turn ended");
+    let view = did(&mut harness, "plugins view agent-tasks");
+    assert_eq!(view["detail"]["agentTab"], "chat", "{}", view["detail"]);
+    assert!(harness.query_by_label("Message").is_some(), "the chat's own composer is in the modal");
+    harness.snapshot(shot("agent_tasks_ticket_chat").as_str());
+
+    did(&mut harness, "plugins run agent-tasks agent-tab terminal");
+    steady(&mut harness);
+    assert_eq!(
+        egui_kittest::kittest::NodeT::accesskit_node(&harness.get_by_label("Terminal tab"))
+            .toggled(),
+        Some(egui::accesskit::Toggled::True)
+    );
+    assert!(harness.query_by_label("Message").is_none(), "the terminal tab has no chat composer");
+    harness.get_by_label("Chat tab").click();
+    steady(&mut harness);
+    assert_eq!(did(&mut harness, "plugins run agent-tasks agent-tab")["tab"], "chat");
+}
+
+/// `task-2261`: *"the right side panel should be collapsable so i can maximize usage of the modal for
+/// description etc."* The chevron beside the close button puts the card of fields away and the description takes
+/// the width; `fold fields` is the same switch.
+#[test]
+fn the_card_of_fields_folds_away_and_the_description_takes_the_width() {
+    let mut harness = harness("");
+    harness.set_size(vec2(1500.0, 950.0));
+    a_ticket_open(&mut harness);
+    let narrow = harness.get_by_label("Resize description").rect();
+    assert!(harness.query_by_label("Start Work").is_some(), "the card is showing");
+    harness.get_by_label("Hide the fields").click();
+    steady(&mut harness);
+    assert!(harness.query_by_label("Start Work").is_none(), "the card is put away");
+    let wide = harness.get_by_label("Resize description").rect();
+    assert!(
+        wide.right() > narrow.right() + 200.0,
+        "the description is wider: {narrow:?} to {wide:?}"
+    );
+    assert_eq!(did(&mut harness, "plugins run agent-tasks fold")["fields"], false);
+    harness.snapshot(shot("agent_tasks_ticket_fields_shut").as_str());
+    harness.get_by_label("Show the fields").click();
+    steady(&mut harness);
+    assert!(harness.query_by_label("Start Work").is_some(), "and it comes back");
+    did(&mut harness, "plugins run agent-tasks fold fields shut");
+    steady(&mut harness);
+    assert!(harness.query_by_label("Show the fields").is_some());
+}
+
+/// `task-2261`: *"the edit and send to terminal buttons above each comment should be icon buttons (pencil and
+/// paper airplane)."* They keep their names, so the pencil still opens the comment for editing.
+#[test]
+fn a_comments_edit_and_send_buttons_are_a_pencil_and_a_paper_airplane() {
+    let mut harness = harness("");
+    harness.set_size(vec2(1500.0, 950.0));
+    a_ticket_open(&mut harness);
+    let pencil = harness.get_by_label_contains("Edit the comment by").rect();
+    let airplane = harness.get_by_label_contains("to the terminal").rect();
+    assert!(pencil.width() <= 19.0 && airplane.width() <= 19.0, "{pencil:?} {airplane:?}");
+    assert!(pencil.right() <= airplane.left(), "the pencil is before the airplane");
+    harness.snapshot(shot("agent_tasks_comment_icons").as_str());
+    harness.get_by_label_contains("Edit the comment by").click();
+    steady(&mut harness);
+    assert!(harness.query_by_label("Comment edit field").is_some(), "the pencil opens the comment");
+}
+
+/// `task-2261`: *"in agent chat, the agent often replies with links in the message, but I can't click them. I
+/// should be able to click to open in a new unluminous browser tab."* A bare address and a Markdown link in an
+/// answer each open in a browser tab on a plain click.
+#[test]
+fn a_link_in_an_answer_opens_in_a_browser_tab_on_a_click() {
+    let mut harness = a_chat(&[
+        (unluminous_chat::Role::User, "Where are the docs?"),
+        (unluminous_chat::Role::Assistant, "https://example.com/docs"),
+    ]);
+    harness.set_size(vec2(1400.0, 900.0));
+    with_the_chat(&mut harness, |chat| {
+        if let Some(last) = chat.session_mut().chat.last_mut() {
+            last.finish = Some("stop".to_owned());
+        }
+    });
+    steady(&mut harness);
+    // The answer's words start at the left of the row the copy button sits under, one line above it.
+    let copy = harness.get_by_label("Copy answer").rect();
+    let mut opened = false;
+    for dy in [14.0, 20.0, 26.0, 32.0, 38.0, 44.0] {
+        let at = egui::pos2(copy.left() + 40.0, copy.top() - dy);
+        click_at(&mut harness, at);
+        steady(&mut harness);
+        let tabs = did(&mut harness, "tab list");
+        if tabs.to_string().contains("example.com") {
+            opened = true;
+            break;
+        }
+    }
+    assert!(opened, "a click on the address opened it: {}", did(&mut harness, "tab list"));
 }

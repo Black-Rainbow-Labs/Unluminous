@@ -132,6 +132,25 @@ impl Session {
         self.asked.map(|(at, _)| at)
     }
 
+    /// Say whether the program whose conversation this is is working, for a conversation read from that
+    /// program's own transcript rather than streamed by this session (`task-2261`).
+    ///
+    /// Busy is `Streaming`, with the turn's clock started when it was not already running, so the pane's
+    /// thinking pill counts from the moment the work was noticed. Not busy is `Finished`.
+    pub fn follow(&mut self, busy: bool) {
+        match (busy, self.is_busy()) {
+            (true, false) => {
+                self.state = State::Streaming;
+                self.asked = Some((std::time::Instant::now(), self.chat.usage.output));
+            }
+            (false, true) => {
+                self.state = State::Finished { reason: "stop".to_owned() };
+                self.asked = None;
+            }
+            _ => {}
+        }
+    }
+
     /// A request has gone out, for this turn or for the round after a tool.
     pub fn begin(&mut self) {
         self.state = State::Sending;

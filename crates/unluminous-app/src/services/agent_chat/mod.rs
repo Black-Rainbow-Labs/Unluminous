@@ -538,6 +538,9 @@ pub struct PaneState {
     pub settings_open: bool,
     /// Who answers in this conversation, which is the name over each answer.
     pub speaker: String,
+    /// Whether the pane is showing another program's conversation, set by the drawing each frame from
+    /// [`Parts::mirror`] so the rows can leave out what a mirror cannot do, such as asking a question again.
+    pub mirrored: bool,
     /// How tall the conversation's rows came out last frame, without the room put above them. A
     /// conversation shorter than the pane sits at its bottom, next to the prompt, which is the design's
     /// `justify-content: flex-end`.
@@ -624,6 +627,8 @@ pub struct Parts<'a> {
     pub project: Option<&'a Path>,
     /// The file showing in the window, which the welcome names.
     pub showing: Option<&'a Path>,
+    /// Set when the pane shows another program's conversation. See [`Mirror`].
+    pub mirror: Option<&'a Mirror>,
 }
 
 impl PaneState {
@@ -664,8 +669,36 @@ impl std::fmt::Debug for PaneState {
     }
 }
 
+/// A conversation another program is having, shown in this pane (`task-2261`).
+///
+/// The ticket modal's Chat tab is the agent working the ticket: `claude` in the ticket's own terminal, whose
+/// transcript `services::agent_tasks::ticket_chat` reads into this pane's conversation. The pane is the same
+/// function, the same messages and the same composer as the side panel's, which is what the ticket asks for.
+/// What a mirror changes is where the composer's words go: not to a turn of this pane's own, but onto
+/// [`Mirror::outgoing`], which the board types into the terminal.
+#[derive(Debug, Clone, Default)]
+pub struct Mirror {
+    /// What the header says: the agent and the ticket.
+    pub title: String,
+    /// What an empty conversation says, which is why there is nothing yet.
+    pub empty: String,
+    /// What the composer asked for since the board last took it, oldest first.
+    pub outgoing: Vec<MirrorAsk>,
+}
+
+/// One thing a mirrored pane asks the program behind it for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MirrorAsk {
+    /// Type these words into it.
+    Say(String),
+    /// Stop the turn it is working on.
+    Interrupt,
+}
+
 /// The plugin.
 pub struct AgentChat {
+    /// Set when this pane shows a conversation another program is having. See [`Mirror`].
+    pub mirror: Option<Mirror>,
     open: bool,
     folder: Option<PathBuf>,
     project: Option<PathBuf>,
@@ -733,6 +766,7 @@ impl Default for AgentChat {
 impl AgentChat {
     pub fn new() -> Self {
         Self {
+            mirror: None,
             open: false,
             folder: None,
             project: None,
@@ -776,6 +810,59 @@ impl AgentChat {
             readiness: &self.readiness,
             project: self.project.as_deref(),
             showing: self.showing.as_deref(),
+            mirror: self.mirror.as_ref(),
+        }
+    }
+
+    /// A pane showing the conversation `speaker` is having somewhere else, titled `title` (`task-2261`).
+    ///
+    /// The Agent-Chat configuration is read from `folder` when there is one, so the pane looks the way the side
+    /// panel does; nothing is ever written there by a mirror.
+    pub fn mirroring(title: &str, speaker: &str, empty: &str, folder: Option<&Path>) -> Self {
+        let mut chat = Self::new();
+        if let Some(folder) = folder {
+            chat.configuration = Configuration::read(folder).0;
+        }
+        chat.mirror =
+            Some(Mirror { title: title.to_owned(), empty: empty.to_owned(), outgoing: Vec::new() });
+        chat.session.chat.provider = speaker.to_owned();
+        chat.session.chat.name = title.to_owned();
+        chat
+    }
+
+    /// What a mirrored pane's composer asked for since this was last called. Empty for an ordinary pane.
+    pub fn take_what_the_mirror_asked(&mut self) -> Vec<MirrorAsk> {
+        self.mirror.as_mut().map(|mirror| std::mem::take(&mut mirror.outgoing)).unwrap_or_default()
+    }
+
+    /// The conversation a mirror shows, to be written into by whatever reads the program's transcript, and
+    /// whether that program is working.
+    pub fn mirrored(&mut self) -> &mut Session {
+        &mut self.session
+    }
+
+    /// A line the program behind a mirror has recorded as said: the queued message with the same words is no
+    /// longer waiting, because it is in the conversation now. Answers whether one was.
+    pub fn the_mirror_heard(&mut self, said: &str) -> bool {
+        let said = said.trim();
+        match self.queued.iter().position(|one| one.text().trim() == said) {
+            Some(at) => {
+                self.queued.remove(at);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Forget the oldest queued message of a mirror, for words the program recorded differently from how they
+    /// were typed. Answers whether there was one.
+    pub fn the_mirror_heard_the_oldest(&mut self) -> bool {
+        match self.queued.is_empty() {
+            true => false,
+            false => {
+                self.queued.remove(0);
+                true
+            }
         }
     }
 
@@ -1064,6 +1151,9 @@ impl AgentChat {
         if self.draft.trim().is_empty() && self.attachments.is_empty() {
             return Err("there is nothing to send.".to_owned());
         }
+        if self.mirror.is_some() {
+            return self.send_to_the_mirror();
+        }
         let Some(provider) = self.provider().cloned() else {
             return Err(
                 "no endpoint is configured. Settings -> Agent-Chat is where they go.".to_owned()
@@ -1088,6 +1178,29 @@ impl AgentChat {
             return Ok(id);
         }
         self.begin_a_turn(message, &provider);
+        Ok(id)
+    }
+
+    /// What [`Self::send`] does in a mirror: the words go onto [`Mirror::outgoing`] for the board to type into
+    /// the agent's terminal, and are shown as queued until the agent's transcript records them.
+    ///
+    /// A picture cannot be typed into a terminal, so a draft with one attached is refused rather than sent
+    /// without it.
+    fn send_to_the_mirror(&mut self) -> Result<u64, String> {
+        if !self.attachments.is_empty() {
+            let why = "a picture cannot be typed into the agent's terminal, so take it off and send the words."
+                .to_owned();
+            self.problem = Some(why.clone());
+            return Err(why);
+        }
+        let said = std::mem::take(&mut self.draft).trim_end().to_owned();
+        let id = self.session.chat.next_id();
+        self.queued.push(Message::said(id, Role::User, said.clone()));
+        if let Some(mirror) = &mut self.mirror {
+            mirror.outgoing.push(MirrorAsk::Say(said));
+        }
+        self.ui.jump_to_bottom = true;
+        self.problem = None;
         Ok(id)
     }
 
@@ -1417,6 +1530,10 @@ impl AgentChat {
     /// the queue goes back into the composer, where nothing typed is lost and sending it again is one
     /// key press.
     pub fn stop(&mut self) {
+        if let Some(mirror) = &mut self.mirror {
+            mirror.outgoing.push(MirrorAsk::Interrupt);
+            return;
+        }
         self.client.stop();
         self.outstanding.clear();
         if self.session.is_busy() {
@@ -2921,5 +3038,46 @@ mod tests {
         // On by default since `task-1848`, and what the view reports is the setting rather than a constant.
         assert_eq!(view["tools"], true);
         assert!(view["provider"]["name"].is_string());
+    }
+}
+
+#[cfg(test)]
+mod tests_task_2261 {
+    use super::*;
+
+    /// A mirrored pane sends its words to the program behind it rather than starting a turn of its own, shows
+    /// them as waiting until that program records them, and asks for a stop rather than killing anything.
+    #[test]
+    fn a_mirror_sends_its_words_to_the_program_behind_it() {
+        let mut chat = AgentChat::mirroring("", "claude", "nothing yet", None);
+        chat.draft = "and push it".to_owned();
+        chat.send().expect("sent");
+        assert!(chat.draft.is_empty(), "the composer is cleared");
+        assert_eq!(chat.queued().len(), 1, "shown as waiting");
+        assert!(!chat.session().is_busy(), "no turn of the pane's own was started");
+        chat.stop();
+        assert_eq!(
+            chat.take_what_the_mirror_asked(),
+            [MirrorAsk::Say("and push it".to_owned()), MirrorAsk::Interrupt]
+        );
+        assert!(chat.take_what_the_mirror_asked().is_empty(), "taken once");
+        assert!(chat.the_mirror_heard("and push it "), "the transcript recorded it");
+        assert!(chat.queued().is_empty());
+        // A picture cannot be typed into a terminal.
+        chat.attach_bytes("p.png".to_owned(), "image/png".to_owned(), vec![1, 2, 3]);
+        chat.draft = "look".to_owned();
+        assert!(chat.send().is_err());
+        assert!(chat.take_what_the_mirror_asked().is_empty());
+    }
+
+    /// The program's own turn is what the pane says about whether it is busy.
+    #[test]
+    fn a_mirror_is_busy_while_the_program_behind_it_is() {
+        let mut chat = AgentChat::mirroring("", "claude", "nothing yet", None);
+        chat.mirrored().follow(true);
+        assert!(chat.session().is_busy());
+        assert!(chat.session().turn_started().is_some(), "the thinking pill counts from now");
+        chat.mirrored().follow(false);
+        assert!(!chat.session().is_busy());
     }
 }

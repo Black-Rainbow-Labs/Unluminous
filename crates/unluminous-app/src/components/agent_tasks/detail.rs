@@ -341,6 +341,58 @@ fn comment_button(
     response.clicked()
 }
 
+/// How big a comment's icon buttons are: the size of the view buttons beside them.
+const ICON_BUTTON: f32 = 18.0;
+
+/// Which mark a comment's icon button carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CommentMark {
+    /// Change the comment.
+    Pencil,
+    /// Send it to the agent.
+    Airplane,
+}
+
+/// One of a comment's two icon buttons, the pencil and the paper airplane (`task-2261`).
+///
+/// Drawn the way `raw_or_rendered` draws the view buttons on the same row: no ground until the pointer is on
+/// it, then the control colour, and the mark in the quieter ink until then. `announced` is its name, which is
+/// what a test finds it by and what the tooltip says. Answers whether it was pressed.
+fn comment_icon_button(
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    area: Rect,
+    mark: CommentMark,
+    announced: &str,
+    comment: i64,
+) -> bool {
+    let id = ui.id().with(("agent-tasks-comment-icon", comment, mark as u8));
+    let response = ui.interact(area, id, Sense::click());
+    let hovered = response.hovered();
+    if hovered {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        ui.painter().rect_filled(
+            area,
+            CornerRadius::same(look.corner_radius as u8),
+            look.palette.control,
+        );
+    }
+    let tint = match hovered {
+        true => look.palette.text_strong,
+        false => look.palette.text_dim,
+    };
+    match mark {
+        CommentMark::Pencil => crate::theme::icon::pencil(ui.painter(), area.center(), tint),
+        CommentMark::Airplane => crate::theme::icon::send(ui.painter(), area.center(), tint),
+    }
+    let named = announced.to_owned();
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), named.clone())
+    });
+    use crate::components::controls::WithHint;
+    response.clone().with_hint(announced.to_owned()).clicked()
+}
+
 /// The two buttons under the comment box: `Comment & Send to Agent` and `Comment`, the same chip either way.
 ///
 /// `task-2253`: *"for comment, the buttons should be "Comment & Send to Agent" and "Comment". Comment and send
@@ -612,27 +664,30 @@ pub(crate) fn comment_section(
                                 cancel = true;
                             }
                         }
+                        // **Two marks rather than two words** (`task-2261`): a pencil to change the comment and a
+                        // paper airplane to send it to the agent, the size of the view buttons beside them.
                         false => {
-                            let send_at = place("Send to terminal");
-                            let edit_at = place("Edit");
-                            if comment_button(
+                            let send_at = Rect::from_min_size(
+                                Pos2::new(right - ICON_BUTTON, row),
+                                Vec2::splat(ICON_BUTTON),
+                            );
+                            let edit_at = send_at.translate(Vec2::new(-(ICON_BUTTON + 4.0), 0.0));
+                            if comment_icon_button(
                                 ui,
                                 look,
                                 edit_at,
-                                "Edit",
+                                CommentMark::Pencil,
                                 &format!("Edit the comment by {author} {when}"),
-                                false,
                                 comment.id,
                             ) {
                                 edit = Some(comment.id);
                             }
-                            if comment_button(
+                            if comment_icon_button(
                                 ui,
                                 look,
                                 send_at,
-                                "Send to terminal",
+                                CommentMark::Airplane,
                                 &format!("Send the comment by {author} {when} to the terminal"),
-                                false,
                                 comment.id,
                             ) {
                                 resend = Some(comment.body.clone());

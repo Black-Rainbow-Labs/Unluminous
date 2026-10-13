@@ -118,6 +118,8 @@ fn hint(long_is: f32, width: f32, nothing_attached: bool) -> &'static str {
 const LONG_HINT: &str = "Ask about this workspace, or drop or paste a picture";
 /// The short form, for a field the long one would wrap in.
 const SHORT_HINT: &str = "Ask about this workspace";
+/// What a mirror's empty field says: its words are typed into the agent's own terminal (`task-2261`).
+const MIRROR_HINT: &str = "Message the agent working this ticket";
 
 /// How many lines the draft takes at roughly the width of the field.
 ///
@@ -342,9 +344,11 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
                         // the routes. A control removed with nothing said in its place is a feature nobody finds.
                         // It says it only while nothing is attached, so it is a hint rather than a label.
                         .hint_text(crate::components::controls::placeholder(
-                            match busy {
-                                true => answering.as_str(),
-                                false => {
+                            match (busy, parts.mirror.is_some()) {
+                                (true, _) => answering.as_str(),
+                                // A mirror's words go to an agent in a terminal, which takes no picture.
+                                (false, true) => MIRROR_HINT,
+                                (false, false) => {
                                     hint(measured, field.width(), parts.attachments.is_empty())
                                 }
                             },
