@@ -6,6 +6,14 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- The ticket modal's comment box holds three lines and its buttons can be pressed (`task-2260`)
+- The Designer pane has its own tabs, starting blank and remembered (`task-2260`)
+- A refused tab is checked by its code (`task-2260`)
+- Tab open names the Designer tab, and the empty terminal strip is whole or absent (`task-2260`)
+- The code formatted (`task-2260`)
+
 ## 0.81.1 — 2026-10-13
 
 - The mark at the top left of the macOS bar too (`task-2258`)
