@@ -6,10 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.81.0 — 2026-10-13
 
 - The Unluminous mark, animated in the title bar and still in the icons (`task-2258`)
 - Rustfmt the logo, the menu bar and the setting's command line arm (`task-2258`)
+- The changelog written from the history (`task-2258`)
 
 ## 0.80.0 — 2026-10-12
 
