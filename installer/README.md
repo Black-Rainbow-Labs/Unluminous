@@ -283,9 +283,19 @@ cargo run --release --manifest-path installer/icon/Cargo.toml
 ```
 
 Draws the mark once at 1024 points and writes `unluminous.ico`, `unluminous.icns` and `Unluminous.iconset/` beside
-itself. It is a workspace of its own, so `cargo build` on Unluminous does not build it, and its output is
-committed — `unluminous.ico` is a build input for `unluminous.exe`, so a fresh checkout has to have it already.
+itself, and the title bar's animation, `crates/unluminous-app/icons/logo/frames.png`, with a still
+`logo.png` on nothing beside it. It is a workspace of its own, so `cargo build` on Unluminous does not build
+it, and its output is committed — `unluminous.ico` is a build input for `unluminous.exe` and `frames.png`
+is built into the window, so a fresh checkout has to have both already.
 
-Change the drawing in `installer/icon/src/main.rs`, run it, and **look at the pictures** before
-committing them, the same rule the screenshot tests are held to. The colours are the ones in
-`theme::color`; a colour that is not in that list does not belong in the icon either.
+The mark is the one designed on the Claude Design canvas "unluminous — App Icon" (`task-2258`): a blue `U`
+with eight coloured pages turning round its bowl. `installer/icon/src/mark.rs` draws it from the numbers in
+that design's own script, and the colours are the design's rather than `theme::color`'s. Rendered beside
+Chrome drawing the design's SVG, the icon differs by 0.33 of a level a channel on average.
+
+An application icon cannot move on either platform, so both icons are the still version of the design,
+which is the turn stopped half way. macOS gets the design's plate exactly, 824 points of the 1024 with a
+shadow; Windows gets a plate 944 points across with no shadow, because a Windows icon fills its square.
+
+Change the drawing in `installer/icon/src/mark.rs` or `main.rs`, run it, and **look at the pictures**
+before committing them, the same rule the screenshot tests are held to.

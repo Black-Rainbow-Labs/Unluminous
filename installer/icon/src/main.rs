@@ -1,25 +1,38 @@
 //! Draws the Unluminous application icon, once, at 1024 points, and writes every size and both container
-//! formats the two installers ask for.
+//! formats the two installers ask for — and the animated mark the window draws in its title bar.
 //!
-//! Unluminous's rule is that icons are drawn rather than lettered, and the application's own icon is held
-//! to the same rule. It is two colours out of `theme::color` — the window's own darks behind, and
-//! `ACCENT` for the ink — so that the thing on the taskbar is recognisably the thing in the window.
+//! The mark is the one designed on the Claude Design canvas "unluminous — App Icon" (`task-2258`): a blue
+//! `U` with eight coloured pages turning round its bowl. `mark.rs` draws it, from the design's own numbers.
 //!
-//! It is drawn **once, large, and downsampled**. A 3 point stroke drawn at 16 points is a smear; the
-//! same stroke drawn at 1024 and averaged down is the soft legible mark that every other
+//! **An application icon cannot move**, on either platform: Windows reads one picture out of the
+//! executable, and macOS one out of the bundle. So both icons are the design's still version, which is
+//! the animation stopped half way through a turn. The animation lives in the window instead, where it is
+//! [`FRAMES`] pictures of the turn in one strip, `crates/unluminous-app/icons/logo/frames.png`, which the
+//! title bar plays.
+//!
+//! The two icons are not the same drawing. **macOS** gets the design exactly: the dark rounded plate is
+//! 824 points of the 1024 with a shadow under it, which is the grid every macOS icon since Big Sur is
+//! drawn on, so it sits in the Dock at the size of its neighbours. **Windows** draws an icon to the edge of
+//! its square, and the same plate there would be a small picture in a large empty square on the taskbar,
+//! so its plate is 944 points across with no shadow, and the letter is scaled with it.
+//!
+//! Everything is drawn **once, large, and downsampled**. A 6 point highlight drawn at 16 points is a
+//! smear; the same highlight drawn at 1024 and averaged down is the soft legible mark that every other
 //! application's small icon is.
 //!
 //! Run it with `cargo run --release --manifest-path installer/icon/Cargo.toml`. Its output is
-//! committed, because `unluminous.ico` is a build input for `unluminous.exe` itself and a checkout must build
-//! without running this first.
+//! committed, because `unluminous.ico` is a build input for `unluminous.exe` itself and the frames are
+//! built into the window, so a checkout must build without running this first.
+
+mod mark;
 
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use tiny_skia::{
-    Color, FillRule, LinearGradient, Paint, PathBuilder, Pixmap, Point, Shader, Stroke, StrokeDash,
-    Transform,
+    Color, FillRule, GradientStop, LinearGradient, Paint, PathBuilder, Pixmap, Point, Shader,
+    SpreadMode, Stroke, Transform,
 };
 
 /// The side of the drawing everything else is averaged down from.
@@ -32,9 +45,20 @@ const ICO_SIZES: [u32; 7] = [16, 24, 32, 48, 64, 128, 256];
 /// The sizes an `.iconset` folder holds, and so the sizes `unluminous.icns` is built from.
 const ICONSET_SIZES: [u32; 6] = [16, 32, 64, 128, 256, 512];
 
+/// How many pictures one turn of the animation is cut into. The design turns once every 0.55 seconds,
+/// so 32 is a picture every 17 milliseconds, which is one a frame at sixty a second.
+const FRAMES: u32 = 32;
+/// How many pixels square each picture of the animation is. The title bar draws the mark 20 points tall,
+/// so this is enough for a display at four and a half pixels a point; the window shrinks it to the
+/// display it is on.
+const FRAME_SIDE: u32 = 96;
+/// How many pictures go on one row of the strip.
+const FRAMES_ACROSS: u32 = 8;
+/// Each picture is drawn this many times larger and averaged down, for the reason the icon is.
+const FRAME_SUPERSAMPLE: u32 = 4;
+
 fn main() {
     let out = output_folder();
-    let master = draw(MASTER as f32);
 
     let mut sizes: Vec<u32> = ICO_SIZES.to_vec();
     sizes.extend(ICONSET_SIZES);
@@ -42,14 +66,24 @@ fn main() {
     sizes.sort_unstable();
     sizes.dedup();
 
-    // One resample per size, reused by all three outputs.
-    let images: Vec<(u32, Vec<u8>)> =
-        sizes.iter().map(|&size| (size, resample(&master, MASTER, size))).collect();
-    write_iconset(&out, &images);
-    write_ico(&out.join("unluminous.ico"), &images);
-    write_icns(&out.join("unluminous.icns"), &images);
+    let mac = icon(MASTER as f32, Plate::Mac);
+    let mac: Vec<(u32, Vec<u8>)> =
+        sizes.iter().map(|&size| (size, resample(&mac, MASTER, size))).collect();
+    write_iconset(&out, &mac);
+    write_icns(&out.join("unluminous.icns"), &mac);
 
-    println!("wrote {}", out.display());
+    let windows = icon(MASTER as f32, Plate::Windows);
+    let windows: Vec<(u32, Vec<u8>)> =
+        ICO_SIZES.iter().map(|&size| (size, resample(&windows, MASTER, size))).collect();
+    write_ico(&out.join("unluminous.ico"), &windows);
+
+    let logo = out.join("..").join("..").join("crates").join("unluminous-app").join("icons").join("logo");
+    fs::create_dir_all(&logo).expect("the logo folder");
+    write_frames(&logo.join("frames.png"));
+    let still = letter_alone(1024, mark::STILL);
+    fs::write(logo.join("logo.png"), png(&resample(&still, 1024, 512), 512)).expect("logo.png");
+
+    println!("wrote {} and {}", out.display(), logo.display());
 }
 
 /// The folder the files are written to: `installer/icon`, found from this program's own manifest so
@@ -62,147 +96,186 @@ fn output_folder() -> PathBuf {
 // The drawing
 // ---------------------------------------------------------------------------------------------
 
-/// `theme::color::EDITOR`, the dark behind the text, which is the bottom of the plate.
-const EDITOR: [u8; 3] = [0x1A, 0x1F, 0x26];
-/// `theme::color::TITLE_BAR`, the lighter bar along the top of the window, which is the top of it.
-const TITLE_BAR: [u8; 3] = [0x2A, 0x31, 0x3D];
-/// `theme::color::CONTROL_BORDER`, the line round a control, and here round the plate.
-const CONTROL_BORDER: [u8; 3] = [0x38, 0x3F, 0x4B];
-/// `theme::color::TEXT`, ordinary text in the editor, and the feather.
-const TEXT: [u8; 3] = [0xE8, 0xEB, 0xF1];
-/// `theme::color::TEXT_DIM`, which shades the underside of the feather so it is not a flat cut-out.
-const TEXT_DIM: [u8; 3] = [0x8B, 0x93, 0xA3];
-/// `theme::color::ACCENT`, which everything switched on is drawn in, and here the ink.
-const ACCENT: [u8; 3] = [0x48, 0x9F, 0xF8];
-
-/// One of the palette's colours, opaque. They are held as bytes because `Color` cannot be built in a
-/// constant.
-fn colour(rgb: [u8; 3]) -> Color {
-    Color::from_rgba8(rgb[0], rgb[1], rgb[2], 255)
+/// Which platform's plate the icon is drawn on.
+#[derive(Clone, Copy)]
+enum Plate {
+    /// The design's own: 824 points of the 1024, 185 round, with a shadow under it.
+    Mac,
+    /// 944 points of the 1024, scaled up from the design's, with no shadow.
+    Windows,
 }
 
-/// Draw the mark at `side` points square, and hand back the pixels.
-///
-/// Everything below is expressed against a 1024 point square and scaled, so the numbers can be read
-/// against each other rather than against whatever size is being asked for.
-fn draw(side: f32) -> Pixmap {
-    let mut pixmap = Pixmap::new(side as u32, side as u32).expect("a square pixmap");
-    let scale = side / 1024.0;
-    let t = Transform::from_scale(scale, scale);
+impl Plate {
+    /// How far in from the edge of the square the plate starts.
+    fn margin(self) -> f32 {
+        match self {
+            Plate::Mac => 100.0,
+            Plate::Windows => 40.0,
+        }
+    }
 
-    plate(&mut pixmap, t);
-    feather(&mut pixmap, t);
-    ink(&mut pixmap, t);
+    /// How much larger than the design's plate this one is.
+    fn scale(self) -> f32 {
+        (1024.0 - 2.0 * self.margin()) / 824.0
+    }
+}
+
+/// The icon at `side` pixels square: the plate, and the letter on it at the still phase.
+///
+/// On its plate the design draws the letter at 0.82 of its own size, about the centre.
+fn icon(side: f32, plate: Plate) -> Pixmap {
+    let mut pixmap = Pixmap::new(side as u32, side as u32).expect("a square pixmap");
+    let t = Transform::from_scale(side / 1024.0, side / 1024.0);
+    if let Plate::Mac = plate {
+        shadow(&mut pixmap, plate, t);
+    }
+    draw_plate(&mut pixmap, plate, t);
+    mark::draw(&mut pixmap, mark::STILL, mark::about_the_centre(side, 0.82 * plate.scale()));
     pixmap
 }
 
-/// The rounded square behind everything, in the window's own two darks, lighter at the top the way
-/// the window is, with a hairline round it so the shape survives a light wallpaper.
-fn plate(pixmap: &mut Pixmap, t: Transform) {
-    let plate = rounded_rect(40.0, 40.0, 984.0, 984.0, 196.0);
-
-    let mut paint = Paint::default();
-    paint.anti_alias = true;
-    paint.shader = LinearGradient::new(
-        Point::from_xy(512.0, 40.0),
-        Point::from_xy(512.0, 984.0),
-        vec![
-            tiny_skia::GradientStop::new(0.0, colour(TITLE_BAR)),
-            tiny_skia::GradientStop::new(1.0, colour(EDITOR)),
-        ],
-        tiny_skia::SpreadMode::Pad,
-        Transform::identity(),
-    )
-    .unwrap_or(Shader::SolidColor(colour(EDITOR)));
-    pixmap.fill_path(&plate, &paint, FillRule::Winding, t, None);
-
-    let mut edge = Paint::default();
-    edge.anti_alias = true;
-    edge.shader = Shader::SolidColor(colour(CONTROL_BORDER));
-    pixmap.stroke_path(&plate, &edge, &stroke(6.0), t, None);
+fn plate_path(plate: Plate) -> tiny_skia::Path {
+    let m = plate.margin();
+    rounded_rect(m, m, 1024.0 - m, 1024.0 - m, 185.0 * plate.scale())
 }
 
-/// The unluminous: a vane from the nib at the lower left up to the tip at the upper right, the barbs cut
-/// into its lower edge, and the shaft down the middle of it.
-fn feather(pixmap: &mut Pixmap, t: Transform) {
-    // The two ends of the feather. Everything else is placed between them.
-    let nib = Point::from_xy(286.0, 812.0);
-    let tip = Point::from_xy(818.0, 202.0);
-
-    // The vane: one edge up the back of the feather, the other back down its front.
-    let mut vane = PathBuilder::new();
-    vane.move_to(nib.x, nib.y);
-    vane.cubic_to(322.0, 520.0, 470.0, 268.0, tip.x, tip.y);
-    vane.cubic_to(706.0, 452.0, 566.0, 654.0, nib.x, nib.y);
-    vane.close();
-    let vane = vane.finish().expect("the vane is a closed path");
-
-    let mut paint = Paint::default();
-    paint.anti_alias = true;
-    paint.shader = Shader::SolidColor(colour(TEXT));
-    pixmap.fill_path(&vane, &paint, FillRule::Winding, t, None);
-
-    // The underside, shaded so the feather reads as a surface rather than a cut-out. It is the same
-    // front edge, filled back to the shaft.
-    let mut under = PathBuilder::new();
-    under.move_to(nib.x, nib.y);
-    under.cubic_to(566.0, 654.0, 706.0, 452.0, tip.x, tip.y);
-    under.cubic_to(660.0, 400.0, 480.0, 630.0, nib.x, nib.y);
-    under.close();
-    if let Some(under) = under.finish() {
-        let mut shade = Paint::default();
-        shade.anti_alias = true;
-        shade.shader = Shader::SolidColor(colour(TEXT_DIM));
-        pixmap.fill_path(&under, &shade, FillRule::Winding, t, None);
-    }
-
-    // The barbs: short cuts back towards the shaft, in the plate's own dark, so they read as the
-    // separations in a feather rather than as lines drawn on one. A dash along the front edge does
-    // it in one stroke and keeps them evenly spaced however long the edge is.
-    let mut edge = PathBuilder::new();
-    edge.move_to(tip.x, tip.y);
-    edge.cubic_to(706.0, 452.0, 566.0, 654.0, nib.x, nib.y);
-    if let Some(edge) = edge.finish() {
-        let mut cut = Paint::default();
-        cut.anti_alias = true;
-        cut.shader = Shader::SolidColor(colour(EDITOR));
-        let mut dashed = stroke(30.0);
-        dashed.dash = StrokeDash::new(vec![10.0, 62.0], 34.0);
-        dashed.line_cap = tiny_skia::LineCap::Butt;
-        pixmap.stroke_path(&edge, &cut, &dashed, t, None);
-    }
-
-    // The shaft down the middle, stopping short of the nib so the point stays solid.
-    let mut shaft = PathBuilder::new();
-    shaft.move_to(786.0, 246.0);
-    shaft.quad_to(560.0, 470.0, 352.0, 742.0);
-    if let Some(shaft) = shaft.finish() {
-        let mut line = Paint::default();
-        line.anti_alias = true;
-        line.shader = Shader::SolidColor(colour(EDITOR));
-        pixmap.stroke_path(&shaft, &line, &stroke(16.0), t, None);
-    }
-}
-
-/// The stroke of ink under the nib, in `ACCENT`, tapering away to the right the way a pen leaves it.
-fn ink(pixmap: &mut Pixmap, t: Transform) {
-    let mut path = PathBuilder::new();
-    path.move_to(284.0, 818.0);
-    path.quad_to(508.0, 930.0, 796.0, 846.0);
-    path.quad_to(528.0, 908.0, 272.0, 874.0);
-    path.close();
-    let Some(path) = path.finish() else { return };
-
-    let mut paint = Paint::default();
-    paint.anti_alias = true;
-    paint.shader = Shader::SolidColor(colour(ACCENT));
+/// The design's plate: `linear-gradient(180deg, #121218, #000000)` with a two point hairline of white at
+/// seven per cent inside its edge, so the shape survives a dark wallpaper.
+fn draw_plate(pixmap: &mut Pixmap, plate: Plate, t: Transform) {
+    let path = plate_path(plate);
+    let m = plate.margin();
+    let paint = Paint {
+        shader: LinearGradient::new(
+            Point::from_xy(512.0, m),
+            Point::from_xy(512.0, 1024.0 - m),
+            vec![
+                GradientStop::new(0.0, Color::from_rgba8(0x12, 0x12, 0x18, 255)),
+                GradientStop::new(1.0, Color::from_rgba8(0, 0, 0, 255)),
+            ],
+            SpreadMode::Pad,
+            Transform::identity(),
+        )
+        .unwrap_or(Shader::SolidColor(Color::BLACK)),
+        anti_alias: true,
+        ..Paint::default()
+    };
     pixmap.fill_path(&path, &paint, FillRule::Winding, t, None);
+
+    let radius = 185.0 * plate.scale() - 1.0;
+    let inset = rounded_rect(m + 1.0, m + 1.0, 1024.0 - m - 1.0, 1024.0 - m - 1.0, radius);
+    let hairline = Paint {
+        shader: Shader::SolidColor(Color::from_rgba8(255, 255, 255, 18)),
+        anti_alias: true,
+        ..Paint::default()
+    };
+    let stroke = Stroke { width: 2.0, ..Stroke::default() };
+    pixmap.stroke_path(&inset, &hairline, &stroke, t, None);
+}
+
+/// The design's `box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45)`: the plate's shape, moved 14 points down,
+/// blurred by a Gaussian of 20 points, in black at 45 per cent. Three box blurs make the Gaussian, which
+/// is what a browser does too.
+fn shadow(pixmap: &mut Pixmap, plate: Plate, t: Transform) {
+    let side = pixmap.width() as usize;
+    let mut shape = Pixmap::new(side as u32, side as u32).expect("a layer");
+    let paint = Paint { shader: Shader::SolidColor(Color::BLACK), anti_alias: true, ..Paint::default() };
+    shape.fill_path(&plate_path(plate), &paint, FillRule::Winding, t.pre_translate(0.0, 14.0), None);
+
+    let mut alpha: Vec<f32> = shape.pixels().iter().map(|p| p.alpha() as f32 / 255.0).collect();
+    let radius = (20.0 * side as f32 / 1024.0).round() as usize;
+    for _ in 0..3 {
+        box_blur(&mut alpha, side, radius, true);
+        box_blur(&mut alpha, side, radius, false);
+    }
+    let blurred: Vec<u8> = alpha
+        .iter()
+        .flat_map(|a| {
+            let a = (a * 0.45 * 255.0).round().clamp(0.0, 255.0) as u8;
+            [0, 0, 0, a]
+        })
+        .collect();
+    let size = tiny_skia::IntSize::from_wh(side as u32, side as u32).expect("a size");
+    let blurred = Pixmap::from_vec(blurred, size).expect("the shadow");
+    pixmap.draw_pixmap(
+        0,
+        0,
+        blurred.as_ref(),
+        &tiny_skia::PixmapPaint::default(),
+        Transform::identity(),
+        None,
+    );
+}
+
+/// One pass of a box blur `radius` either side, along the rows or down the columns.
+fn box_blur(values: &mut [f32], side: usize, radius: usize, rows: bool) {
+    let width = (2 * radius + 1) as f32;
+    let mut line = vec![0f32; side];
+    for a in 0..side {
+        let index = |b: usize| if rows { a * side + b } else { b * side + a };
+        let mut sum = 0f32;
+        for b in 0..=radius.min(side - 1) {
+            sum += values[index(b)];
+        }
+        for (b, slot) in line.iter_mut().enumerate() {
+            *slot = sum / width;
+            if b + radius + 1 < side {
+                sum += values[index(b + radius + 1)];
+            }
+            if b >= radius {
+                sum -= values[index(b - radius)];
+            }
+        }
+        for (b, value) in line.iter().enumerate() {
+            values[index(b)] = *value;
+        }
+    }
+}
+
+/// The letter alone on nothing at `side` pixels square, cropped to the square it fills, at `phase`.
+///
+/// The letter runs from 132 to 892 across and from 112 to 912 down, so the square from 112 to 912 both
+/// ways holds it with twenty points of air either side and none above or below.
+fn letter_alone(side: u32, phase: f32) -> Pixmap {
+    let mut pixmap = Pixmap::new(side, side).expect("a square pixmap");
+    let scale = side as f32 / 800.0;
+    mark::draw(&mut pixmap, phase, Transform::from_scale(scale, scale).pre_translate(-112.0, -112.0));
+    pixmap
+}
+
+/// Write the animation as one strip: [`FRAMES`] pictures, [`FRAMES_ACROSS`] to a row, the first at phase
+/// 0 and each a [`FRAMES`]th of a turn after the one before.
+fn write_frames(path: &Path) {
+    let across = FRAMES_ACROSS;
+    let down = FRAMES.div_ceil(across);
+    let (width, height) = (across * FRAME_SIDE, down * FRAME_SIDE);
+    let row = (FRAME_SIDE * 4) as usize;
+    let mut sheet = vec![0u8; (width * height * 4) as usize];
+    for frame in 0..FRAMES {
+        let big = FRAME_SIDE * FRAME_SUPERSAMPLE;
+        let picture = resample(&letter_alone(big, frame as f32 / FRAMES as f32), big, FRAME_SIDE);
+        let (left, top) = ((frame % across) * FRAME_SIDE, (frame / across) * FRAME_SIDE);
+        for y in 0..FRAME_SIDE {
+            let from = y as usize * row;
+            let to = (((top + y) * width + left) * 4) as usize;
+            sheet[to..to + row].copy_from_slice(&picture[from..from + row]);
+        }
+    }
+    let mut bytes = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut bytes, width, height);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder.set_compression(png::Compression::Best);
+        let mut writer = encoder.write_header().expect("a PNG header");
+        writer.write_image_data(&sheet).expect("PNG pixels");
+    }
+    fs::write(path, bytes).expect("frames.png");
 }
 
 /// A rounded rectangle, which `tiny_skia` has no constructor for.
 fn rounded_rect(left: f32, top: f32, right: f32, bottom: f32, radius: f32) -> tiny_skia::Path {
     let r = radius.min((right - left) / 2.0).min((bottom - top) / 2.0);
-    // The control point that turns a quadratic corner into something close to a quarter circle.
+    // The control point that turns a cubic corner into something close to a quarter circle.
     let k = r * 0.5523;
     let mut path = PathBuilder::new();
     path.move_to(left + r, top);
@@ -216,16 +289,6 @@ fn rounded_rect(left: f32, top: f32, right: f32, bottom: f32, radius: f32) -> ti
     path.cubic_to(left, top + r - k, left + r - k, top, left + r, top);
     path.close();
     path.finish().expect("a rounded rectangle is a closed path")
-}
-
-/// A round-ended stroke of the given width. Named because every stroke here wants the same defaults.
-fn stroke(width: f32) -> Stroke {
-    Stroke {
-        width,
-        line_cap: tiny_skia::LineCap::Round,
-        line_join: tiny_skia::LineJoin::Round,
-        ..Stroke::default()
-    }
 }
 
 // ---------------------------------------------------------------------------------------------

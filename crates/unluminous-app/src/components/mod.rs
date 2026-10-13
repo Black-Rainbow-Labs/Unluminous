@@ -47,6 +47,7 @@ pub mod git_dialogs;
 pub mod git_panel;
 pub mod go_to_file;
 pub mod gutter;
+pub mod logo;
 pub mod markdown_text;
 pub mod mcp_page;
 pub mod menu_bar;

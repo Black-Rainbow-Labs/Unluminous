@@ -5598,6 +5598,22 @@ every screenshot test each time the clock ticked. `components::about_dialog` is 
 and it takes them as text rather than reading them, because a picture that changes every build cannot
 be a screenshot test.
 
+## The mark in the title bar turns, and only when somebody is looking at it (`task-2258`)
+
+The application's own menu at the left of the bar is the Unluminous mark rather than the word: the blue `U`
+with eight coloured pages turning round its bowl, from the Claude Design canvas "unluminous — App Icon".
+`installer/icon` draws it from the design's own numbers and writes the turn as 32 pictures in one strip,
+`crates/unluminous-app/icons/logo/frames.png`, which `components::logo` shrinks to the display's pixels once
+and shows one rectangle of. The icons are the still version, because neither platform animates an icon.
+
+**A turning mark is the whole window drawn sixty times a second**, because egui cannot draw one rectangle on
+its own: measured at 216 ms of processor time a second against under one with the mark still. So
+`appearance.logo_motion` is `hover` by default, which turns it while the pointer is over it and for 1.1
+seconds when a window opens; `always` and `off` are on `Settings -> Appearance`. A window drawn for a test
+holds it still (`UnluminousApp::logo_held_still`, set by `draw_deterministically`). The pill is still named
+`Unluminous`, so tests and `action list` find the menu as before. macOS has no menus in the bar and is
+unchanged.
+
 ## Driving the real window must never steal the person's focus
 
 **Never activate an Unluminous window to drive it.** No `osascript … set frontmost`, no `open -a` without

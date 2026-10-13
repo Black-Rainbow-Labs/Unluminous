@@ -182,6 +182,7 @@ pub fn show(
     tools_width: f32,
     run_width: f32,
     branch_width: f32,
+    logo_motion: crate::components::logo::Motion,
 ) -> TitleBarOutcome {
     let mut outcome = TitleBarOutcome::default();
     let painter = ui.painter_at(area);
@@ -208,7 +209,7 @@ pub fn show(
     // The menus, when they are drawn here, then the project's chip after them.
     let (mut name_from, drag_to) = match placement {
         MenuPlacement::InWindow => {
-            let (action, right) = menu_bar::show(ui, area, menus);
+            let (action, right) = menu_bar::show(ui, area, menus, logo_motion);
             outcome.action = action;
             (right + 10.0, buttons[0].0.left() - BUTTON_MARGIN)
         }

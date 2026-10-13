@@ -819,6 +819,10 @@ pub struct UnluminousApp {
     /// frame a board changes and painted as one texture behind the pane's own widgets. Empty until a
     /// plugin asks for it, so a window with no such plugin carries no pixmap.
     pub canvases: crate::services::vello_canvas::Canvases,
+    /// Whether the mark in the title bar is held on its still picture whatever the setting says, which
+    /// `draw_deterministically` sets, because a screenshot of a turning picture is a different picture
+    /// on every run.
+    pub logo_held_still: bool,
     /// Native browser views and the shared WebView2 or WKWebView environment behind rendered tabs.
     pub browser: BrowserHost,
     /// Whether the last press in this window landed on a rendered page.
@@ -1479,6 +1483,7 @@ impl UnluminousApp {
             endpoints: crate::services::ai_endpoints::Endpoints::default(),
             told_the_endpoints: 0,
             canvases: crate::services::vello_canvas::Canvases::default(),
+            logo_held_still: false,
             files: OpenFiles::new(document),
             browser: BrowserHost::new(),
             browser_placements: Vec::new(),
@@ -1687,6 +1692,15 @@ impl UnluminousApp {
     /// call this and the released binary does not, because in the window the fastest is what is wanted.
     pub fn draw_deterministically(&mut self) {
         self.canvases = crate::services::vello_canvas::Canvases::deterministic();
+        self.logo_held_still = true;
+    }
+
+    /// When the mark in the title bar turns: the setting, unless the window is being drawn for a test.
+    pub fn logo_motion(&self) -> crate::components::logo::Motion {
+        match self.logo_held_still {
+            true => crate::components::logo::Motion::Off,
+            false => self.settings.logo_motion(),
+        }
     }
     /// Set the window's look up before the first frame is drawn.
     ///

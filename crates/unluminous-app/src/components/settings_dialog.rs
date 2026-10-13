@@ -774,6 +774,21 @@ fn appearance_page(
                 }
             },
         );
+        // `task-2258`: the mark at the left of the title bar, and when its pages turn.
+        use crate::components::logo::Motion;
+        let motions = [Motion::Hover, Motion::Always, Motion::Off];
+        let chosen = motions.iter().position(|one| *one == settings.logo_motion());
+        card.row(
+            "Logo",
+            Some("When the pages of the Unluminous mark at the top left turn. Always draws the whole window sixty times a second, which costs about a fifth of a processor core."),
+            |row| {
+                let words = ["On hover", "Always", "Off"];
+                if let Some(index) = row.segmented("Logo motion", &words, chosen, 64.0, false) {
+                    settings.logo_motion = motions[index].name().to_owned();
+                    changed = true;
+                }
+            },
+        );
     });
 
     kit::card(ui, &mut column, "Background", None, |card| {

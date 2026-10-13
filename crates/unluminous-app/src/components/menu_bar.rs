@@ -9,8 +9,12 @@
 //! to the right hand end of the bar, which is where Windows puts them, because the left is taken.
 //!
 //! **Each menu is a pill** (`task-2241`, the Editing code design): its word in the quieter ink with no surface,
-//! and while its list is open the pill is carved into the bar with the word in the strong ink. `Unluminous` is
-//! the application's own menu and its word is set in the stronger weight.
+//! and while its list is open the pill is carved into the bar with the word in the strong ink.
+//!
+//! **The application's own menu is the mark rather than its name** (`task-2258`): a round pill holding the
+//! Unluminous `U`, drawn by `components::logo`, which turns while the pointer is over it. It is still the
+//! `Unluminous` menu, and it is still named `Unluminous`, so a test, a screen reader and `action list` find it
+//! as they always did.
 
 use egui::{Pos2, Rect, Vec2};
 
@@ -24,25 +28,35 @@ const GAP: f32 = 2.0;
 /// `height: 30px; padding: 0 11px; font-size: 12.5px`.
 const PILL: f32 = 30.0;
 const PAD: f32 = 11.0;
+/// How tall the mark is inside the application's round pill.
+const MARK: f32 = 20.0;
 
 /// Draw the bar into the left of `area`, and answer what was chosen and where the last pill ended.
-pub fn show(ui: &mut egui::Ui, area: Rect, menus: &[Menu]) -> (Option<Action>, f32) {
+///
+/// `motion` is when the mark in the application's pill turns.
+pub fn show(
+    ui: &mut egui::Ui,
+    area: Rect,
+    menus: &[Menu],
+    motion: crate::components::logo::Motion,
+) -> (Option<Action>, f32) {
     let mut chosen = None;
     let mut pen = area.left() + LEFT;
     let font = egui::FontId::proportional(12.5);
-    let strong = egui::FontId::new(12.5, egui::FontFamily::Name(crate::theme::BOLD_FAMILY.into()));
     let ink = crate::theme::rux_theme().ink;
     let chat = crate::components::chrome_kit::chat();
     // Laid out first, so the decoration of the open pill can be recorded in one layer for the whole bar.
     let mut pills = Vec::with_capacity(menus.len());
     for menu in menus {
         let app = menu.name == "Unluminous";
-        let used = match app {
-            true => &strong,
-            false => &font,
+        let width = match app {
+            // Round, holding the mark.
+            true => PILL,
+            false => {
+                ui.painter().layout_no_wrap(menu.name.clone(), font.clone(), ink.i900).size().x
+                    + PAD * 2.0
+            }
         };
-        let width = ui.painter().layout_no_wrap(menu.name.clone(), used.clone(), ink.i900).size().x
-            + PAD * 2.0;
         let rect = Rect::from_min_size(
             Pos2::new(pen, area.center().y - PILL / 2.0),
             Vec2::new(width, PILL),
@@ -66,23 +80,23 @@ pub fn show(ui: &mut egui::Ui, area: Rect, menus: &[Menu]) -> (Option<Action>, f
             } else if response.hovered() {
                 rux.wash(*rect, PILL / 2.0, rux.theme().interaction.hover);
             }
-            let tint = match (open || *app, response.hovered()) {
-                (true, _) => ink.i900,
-                (false, true) => chat.sky,
-                (false, false) => ink.i500,
-            };
-            let used = match app {
-                true => &strong,
-                false => &font,
-            };
-            let painter = rux.ui.painter();
-            let label = painter.crisp_layout_no_wrap(menu.name.clone(), used.clone(), tint);
-            let top = crate::theme::crisp::top_centring_capitals(painter, used, rect.center().y);
-            painter.crisp_galley(
-                Pos2::new(rect.center().x - label.size().x / 2.0, top),
-                label,
-                tint,
-            );
+            if *app {
+                crate::components::logo::paint(rux.ui, *rect, MARK, motion, response.hovered());
+            } else {
+                let tint = match (open, response.hovered()) {
+                    (true, _) => ink.i900,
+                    (false, true) => chat.sky,
+                    (false, false) => ink.i500,
+                };
+                let painter = rux.ui.painter();
+                let label = painter.crisp_layout_no_wrap(menu.name.clone(), font.clone(), tint);
+                let top = crate::theme::crisp::top_centring_capitals(painter, &font, rect.center().y);
+                painter.crisp_galley(
+                    Pos2::new(rect.center().x - label.size().x / 2.0, top),
+                    label,
+                    tint,
+                );
+            }
             response.widget_info(|| {
                 egui::WidgetInfo::labeled(egui::WidgetType::Button, true, menu.name.clone())
             });

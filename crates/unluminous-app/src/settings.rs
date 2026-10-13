@@ -1028,6 +1028,9 @@ settings! {
         /// Which drawn icon set is used, from `plugins::ICON_SETS`. Empty means the theme's own choice,
         /// which is what `Follow the theme` is on the Theme page.
         icons = String::new() => "appearance.icons", "material, classic, or empty for whichever the theme names";
+        /// When the Unluminous mark in the title bar turns: `hover`, `always` or `off`. Empty means
+        /// `hover`. `components::logo::Motion` says what each costs.
+        logo_motion = String::new() => "appearance.logo_motion", "hover, always or off; empty is hover";
     }
 
     number {
@@ -1218,6 +1221,12 @@ impl Settings {
     /// the reason a window comes up with no icons.
     pub fn icon_set(&self) -> Option<crate::theme::IconSet> {
         crate::theme::IconSet::parse(&self.icons)
+    }
+
+    /// When the mark in the title bar turns. A word Unluminous does not know reads as the default, for
+    /// `icon_set`'s reason.
+    pub fn logo_motion(&self) -> crate::components::logo::Motion {
+        crate::components::logo::Motion::parse(&self.logo_motion)
     }
 
     /// The program a new terminal should run, or nothing when this machine's own default is wanted.
@@ -1666,6 +1675,7 @@ mod tests {
             "appearance.ui.font.family",
             "appearance.font.family",
             "appearance.icons",
+            "appearance.logo_motion",
             "appearance.font.size",
             "appearance.background.opacity",
             "terminal.font.size",
@@ -1775,6 +1785,7 @@ mod tests {
             theme: "themes-bundle-1/monokai-pro".to_owned(),
             accent: "#FF79C6".to_owned(),
             icons: "material".to_owned(),
+            logo_motion: "always".to_owned(),
             ui_font_family: "Segoe UI".to_owned(),
             ui_font_size: 14.0,
             background_image: "wallpaper.png".to_owned(),

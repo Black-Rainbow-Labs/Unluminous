@@ -181,6 +181,43 @@ fn the_title_bar_names_the_project_and_carries_the_window_buttons_and_the_text_t
     harness.snapshot(shot("title_bar"));
 }
 
+/// `task-2258`: the application's own menu is the Unluminous mark rather than its name. It is still the
+/// `Unluminous` menu, round, at the very left of the bar, and what is drawn in it is the blue letter with
+/// its warm pages, which a picture of the word could never be.
+#[test]
+fn the_application_menu_is_the_mark_rather_than_its_name() {
+    let mut harness = harness("");
+    harness.state_mut().menu_placement = MenuPlacement::InWindow;
+    steady(&mut harness);
+    let pill = harness.get_by_label("Unluminous").rect();
+    assert_eq!((pill.width(), pill.height()), (30.0, 30.0), "a round pill, not a word: {pill:?}");
+    assert!(pill.left() < 12.0, "the first thing in the bar: {pill:?}");
+    assert!(harness.get_by_label("File").rect().left() > pill.right(), "File comes after it");
+
+    let image = harness.render().expect("render the window");
+    let scale = image.width() as f32 / WINDOW[0];
+    let (mut blue, mut warm) = (0, 0);
+    for (x, y, pixel) in image.enumerate_pixels() {
+        if !pill.contains(egui::pos2(x as f32 / scale, y as f32 / scale)) {
+            continue;
+        }
+        let [r, g, b, _] = pixel.0.map(i32::from);
+        if b > 180 && b - r > 120 && g > 90 {
+            blue += 1;
+        }
+        if r > 150 && r - b > 80 {
+            warm += 1;
+        }
+    }
+    assert!(blue > 20, "the letter is drawn in its blue, and {blue} pixels were");
+    assert!(warm > 5, "the turning pages are drawn in their warm colours, and {warm} pixels were");
+
+    // A window drawn for a test holds the mark still, so the picture is the same on every run, and it
+    // asks for no frames of its own.
+    assert_eq!(harness.state().logo_motion(), unluminous_app::components::logo::Motion::Off);
+    harness.snapshot(shot("title_bar_mark"));
+}
+
 /// Every window command this frame, as text, whatever kind it is.
 fn viewport_commands(harness: &Harness<'static, UnluminousApp>) -> Vec<String> {
     harness
