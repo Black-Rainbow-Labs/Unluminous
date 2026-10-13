@@ -227,7 +227,11 @@ fn on_macos_the_mark_sits_after_the_traffic_lights() {
     harness.state_mut().menu_placement = MenuPlacement::Native;
     steady(&mut harness);
     let mark = harness.get_by_label("Unluminous").rect();
-    assert_eq!((mark.width(), mark.height()), (30.0, 30.0), "the same size as the Windows pill: {mark:?}");
+    assert_eq!(
+        (mark.width(), mark.height()),
+        (30.0, 30.0),
+        "the same size as the Windows pill: {mark:?}"
+    );
     let lights = harness.get_by_label("Maximise").rect();
     assert!(mark.left() > lights.right(), "after the traffic lights: {mark:?} {lights:?}");
     assert!(mark.left() < 100.0, "at the top left of the bar: {mark:?}");
