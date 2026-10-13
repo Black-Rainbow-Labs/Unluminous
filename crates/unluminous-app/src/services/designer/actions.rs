@@ -556,24 +556,31 @@ impl Designer {
 
     // ------------------------------------------------------------------------------------ designs
 
-    /// Make a design from the starter page and ask the window to open it.
+    /// Make a design from the starter page and open it in the Designer pane.
     ///
     /// @param name - what it is called
     pub fn make_a_design(&mut self, name: &str) -> Result<PathBuf, String> {
         let project = self.project.clone().ok_or_else(|| "No project is open.".to_owned())?;
         let made = library::make(&project, &self.config.folder, name, self.config.starter)?;
         self.refresh_designs();
-        self.outbox.push(Request::OpenFile(project.join(&made)));
+        self.open_a_design(&made)?;
         Ok(made)
     }
 
-    /// Ask the window to open a design in its tab.
+    /// Open a design in a tab of the Designer pane, and ask the window to put the pane on the screen.
+    ///
+    /// `task-2260`: a design opens in the pane's own tabs rather than in the editing area beside every other
+    /// open file. See [`super::tabs`].
     ///
     /// @param design - the design, relative to the project
     pub fn open_a_design(&mut self, design: &Path) -> Result<(), String> {
         let disk = self.absolute(design).ok_or_else(|| "No project is open.".to_owned())?;
+        if !disk.is_file() {
+            return Err(format!("{} is not there", self.name_of(design)));
+        }
         self.loaded(design)?;
-        self.outbox.push(Request::OpenFile(disk));
+        self.open_in_a_tab(design);
+        self.outbox.push(Request::ShowPane(true));
         Ok(())
     }
 
@@ -707,6 +714,12 @@ pub(super) fn view_value(designer: &Designer) -> Value {
         "problem": designer.problem,
         "designs": designs,
         "showing": designer.showing.as_ref().map(|path| designer.name_of(path)),
+        "tabs": designer
+            .tabs
+            .iter()
+            .map(|tab| tab.as_ref().map(|path| designer.name_of(path)))
+            .collect::<Vec<Option<String>>>(),
+        "activeTab": designer.active_tab(),
         "open": open,
     })
 }

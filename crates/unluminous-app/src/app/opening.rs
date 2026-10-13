@@ -159,10 +159,11 @@ impl UnluminousApp {
         permanent: bool,
         as_text: bool,
     ) -> Result<(), String> {
-        // **A file in the designs folder opens as a design tab**, when the Designer is on. `task-2254`.
+        // **A file in the designs folder opens in a tab of the Designer pane**, when the Designer is on.
+        // `task-2254`, `task-2260`.
         if !as_text {
             if let Some(design) = self.the_design_a_file_is(path) {
-                return self.open_a_design_in_a_tab(&design);
+                return self.open_a_design_in_the_pane(&design);
             }
         }
         // **A file a ui plugin claims opens where that plugin draws it**, before it is asked whether it is
@@ -574,7 +575,6 @@ impl UnluminousApp {
     /// This is the one place a tab is closed — the cross on the tab, `Ctrl+W`, the tab's own menu
     /// and `unluminous-cli tab close` all reach it — so it is one change in one function.
     pub fn close_tab(&mut self, index: usize) {
-        self.forget_a_design_tab(index);
         if let Some(id) =
             self.files.get(index).and_then(|file| file.browser.as_ref()).map(|tab| tab.id)
         {
@@ -686,7 +686,6 @@ impl UnluminousApp {
     /// Close a tab without writing it, which is what deleting its file means and what
     /// `unluminous-cli tab close --discard` asks for.
     pub fn close_tab_without_saving(&mut self, index: usize) {
-        self.forget_a_design_tab(index);
         if let Some(id) =
             self.files.get(index).and_then(|file| file.browser.as_ref()).map(|tab| tab.id)
         {

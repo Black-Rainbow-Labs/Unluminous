@@ -19,7 +19,11 @@ pub const LIST: &[(&str, &str)] = &[
     ("open-pane", "Show the Designs pane."),
     ("designs", "The designs in the folder, with their open and resolved note counts."),
     ("new", "Make a design from the starter page and open it: new <name>. With no name, asks for one."),
-    ("open", "Open a design in a design tab: open <name>."),
+    ("open", "Open a design in a tab of the Designer pane: open <name>."),
+    ("tabs", "The Designer pane's tabs, left to right, and which one is showing. A blank tab is null."),
+    ("new-tab", "Add a blank tab to the Designer pane and show it."),
+    ("show-tab", "Show one of the Designer pane's tabs: show-tab <number|name>, counted from 0."),
+    ("close-tab", "Close one of the Designer pane's tabs: close-tab [number|name]. With nothing, the one showing."),
     ("device", "Change the device of the showing design: device desktop|laptop|tablet|phone|fit."),
     ("mode", "Change the mode of the showing design: mode browse|select|comment."),
     ("mode-browse", "Let the page behave as a page."),
@@ -77,6 +81,7 @@ pub fn run(designer: &mut Designer, command: &str, arguments: &[String]) -> Resu
         "designs" => Ok(list_the_designs(designer)),
         "new" => make_one(designer, &parsed),
         "open" => open_one(designer, &parsed),
+        "tabs" | "new-tab" | "show-tab" | "close-tab" => about_the_tabs(designer, command, &parsed),
         "device" | "mode" | "mode-browse" | "mode-select" | "mode-comment" | "select" => {
             about_the_page(designer, command, &parsed)
         }
@@ -161,6 +166,45 @@ fn open_one(designer: &mut Designer, parsed: &Parsed<'_>) -> Result<Answer, Stri
     designer.open_a_design(&design)?;
     let shown = designer.name_of(&design);
     Ok(Answer::said(format!("Opening {shown}")).with(json!({ "design": shown })))
+}
+
+/// The verbs about the Designer pane's own tabs, each answering with the tabs as they are afterwards.
+fn about_the_tabs(
+    designer: &mut Designer,
+    command: &str,
+    parsed: &Parsed<'_>,
+) -> Result<Answer, String> {
+    let named = rest(parsed.words, 0);
+    match command {
+        "new-tab" => designer.new_tab(),
+        "show-tab" => {
+            if named.trim().is_empty() {
+                return Err("say which tab: show-tab <number|name>".to_owned());
+            }
+            let index = designer.tab_named(&named)?;
+            designer.show_tab(index)?;
+        }
+        "close-tab" => {
+            let index = match named.trim().is_empty() {
+                true => designer.active_tab(),
+                false => designer.tab_named(&named)?,
+            };
+            designer.close_tab(index)?;
+        }
+        _ => {}
+    }
+    let tabs: Vec<serde_json::Value> = designer
+        .tabs()
+        .iter()
+        .map(|tab| match tab {
+            Some(design) => json!(designer.name_of(design)),
+            None => serde_json::Value::Null,
+        })
+        .collect();
+    let active = designer.active_tab();
+    let titles: Vec<String> = designer.tabs().iter().map(|tab| designer.tab_title(tab)).collect();
+    Ok(Answer::said(format!("{} is showing, of {}", titles[active], counted(titles.len(), "tab")))
+        .with(json!({ "tabs": tabs, "active": active })))
 }
 
 /// The verbs that tell the page something.

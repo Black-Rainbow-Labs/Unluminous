@@ -1,4 +1,5 @@
-//! Drawing the Designer: the design tab, the Designs pane, the Settings page and the two dialogs.
+//! Drawing the Designer: the pane's tab strip, a design's tab, the list of designs a blank tab shows, the Settings
+//! page and the two dialogs.
 //!
 //! ## The drawing changes nothing
 //!
@@ -19,6 +20,7 @@ pub mod notes;
 pub mod pane;
 pub mod settings_page;
 pub mod tab;
+pub mod tabs;
 
 use std::path::PathBuf;
 
@@ -30,8 +32,12 @@ use crate::services::plugin_ui::Request;
 /// What the drawing reported.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Act {
-    /// Open a design in its tab.
+    /// Open a design in a tab of the Designer pane.
     OpenDesign(PathBuf),
+    /// Show, close or add one of the Designer pane's tabs (`task-2260`).
+    ShowTab(usize),
+    CloseTab(usize),
+    NewTab,
     /// The `New Design` button, which asks what to call it.
     NewDesign,
     /// Make a design with this name.
@@ -97,6 +103,12 @@ pub fn apply(designer: &mut Designer, acts: Vec<Act>) -> Vec<Request> {
 fn apply_one(designer: &mut Designer, act: Act) -> Result<(), String> {
     match act {
         Act::OpenDesign(design) => designer.open_a_design(&design),
+        Act::ShowTab(index) => designer.show_tab(index),
+        Act::CloseTab(index) => designer.close_tab(index),
+        Act::NewTab => {
+            designer.new_tab();
+            Ok(())
+        }
         Act::NewDesign => {
             designer.modal = Some(Modal::NewDesign { name: String::new() });
             Ok(())

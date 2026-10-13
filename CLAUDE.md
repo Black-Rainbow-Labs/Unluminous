@@ -1119,7 +1119,12 @@ arguments that names one, so `sprint-rename August 2nd Half September` needs no 
   and the window never sees the key.
 - **The description, the agent's terminal and the comments each resize by their bottom edge** (`task-2214`,
   `task-2255`), and `plugins run agent-tasks description-height`, `terminal-height` and `comments-height` read
-  and set the same numbers.
+  and set the same numbers. A description somebody dragged is the last section the modal's budget cuts, or a
+  drag in a full dialog is taken straight back (`task-2260`).
+- **The comment box holds three lines and has a corner mark of its own** (`task-2260`), read and set by
+  `comment-box-height`. `Enter` is a new line and `Ctrl`/`Cmd`+`Enter` posts. `Comment & Send to Agent` and
+  `Comment` are the same kind of button, in a row under the box, and the comments' grip is only the strip
+  under the section, so no resize mark is drawn over a button.
 - **`Delete task` deletes on one press** (`task-2198`). It used to turn into `Keep it` and `Delete for good` and
   wait for a second press.
 - **Text in the modal that is read rather than typed has a right click menu** (`task-2198`): a comment and the
@@ -5907,15 +5912,24 @@ trade that away to be a shade nearer a screenshot.
 ## Designer: a design is an HTML file, and a note is a thread on one of its elements
 
 `task-2254` is the work and `tasks/task-2254-designer-plugin-prd.md` and `-tdd.md` are the design. The
-Designer is a `ui` plugin (`ui.provider = designer`, `ui.chrome = vello`) with a Designs pane docked at the
-left, a menu, a Settings page and `explorer.shows = .designs`. Five rules to keep:
+Designer is a `ui` plugin (`ui.provider = designer`, `ui.chrome = vello`) with a Designer pane docked at the
+left, a menu, a Settings page and `explorer.shows = .designs`. Six rules to keep:
 
 - **A design is a `*.html` file in the designs folder** (`.designs` unless `Settings -> Designer` says
-  otherwise), opened as a plugin tab with the key `designer:<path in the project>`. **The window draws the
-  tab**, in `app/designer.rs` and `components/designer/tab.rs`, and not the provider, because the window owns
-  the one native web view and a design's page has to be placed in it. A tab is one `BrowserTab` kept in
-  `UnluminousApp::design_tabs`; the page is a native child, so a screenshot of the tab shows the carved well
-  and not the page.
+  otherwise), opened in a tab of the Designer pane. **The window draws the pane's body**, in
+  `app/designer.rs` and `components/designer/tab.rs`, and not the provider, because the window owns the one
+  native web view and a design's page has to be placed in it: `show_the_plugin_panes` skips the Designer and
+  calls `show_the_designer_pane_body` after its loop. Each open design has one `BrowserTab` kept in
+  `UnluminousApp::design_tabs`, keyed `designer:<path in the project>`; the page is a native child, so a
+  screenshot of the pane shows the carved well and not the page.
+- **The pane has tabs of its own, apart from the editing area** (`task-2260`). `services/designer/tabs.rs`
+  holds them: `None` is the blank tab, which lists the designs (`components/designer/pane.rs`), and there is
+  always at least one. A design opened from the blank tab takes it; one opened from a design's tab gets a tab
+  after it. `components/designer/tabs.rs` draws the strip. The tabs are `tabs.count`, `tabs.<n>` and
+  `tabs.active` in `.unluminous/designs.conf`, read when the provider learns the project, and a design whose
+  file has gone is left out. `UnluminousApp::let_go_of_closed_designs` drops the page of a tab that closed.
+  A `designer:` tab a project remembered in the editing area, from before `task-2260`, opens in the pane.
+  `plugins run designer tabs`, `new-tab`, `show-tab` and `close-tab` are the agent's half.
 - **Notes are in `<name>.comments.json` beside the design**, and a note is a thread of messages anchored to
   an element by a CSS selector. A field this build does not know is kept and written back, and the file is
   written only when a note changed. **History is in `.unluminous/designs/<path>/`**, one copy of the design

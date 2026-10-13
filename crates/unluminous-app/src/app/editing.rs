@@ -620,10 +620,6 @@ impl UnluminousApp {
             if tab.plugin == "realm" {
                 return self.show_a_realm_tab(ui, area, &tab);
             }
-            // A design tab draws the toolbar and the notes, and puts the page in its well. `task-2254`.
-            if tab.plugin == "designer" {
-                return self.show_a_design_tab(ui, area, &tab, focused);
-            }
             return self.show_plugin_tab(ui, area, &tab);
         }
         if self.files.active().is_browser() {

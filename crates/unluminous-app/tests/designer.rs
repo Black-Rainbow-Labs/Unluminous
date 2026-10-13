@@ -1,6 +1,7 @@
-//! The Designer in a real window: a file in the designs folder opens as a design tab, the page is placed at the
-//! width of a device, what the page reports reaches the notes, and handing a note to the agent writes the copy
-//! of the design and queues a message in Agent-Chat. `task-2254`.
+//! The Designer in a real window: a file in the designs folder opens in a tab of the Designer pane, the page is
+//! placed at the width of a device, what the page reports reaches the notes, and handing a note to the agent
+//! writes the copy of the design and queues a message in Agent-Chat. `task-2254`. The pane's own tabs, the blank
+//! tab and the tabs coming back after a restart are `task-2260`.
 //!
 //! **No page is drawn and none is needed.** A native web view is in no screenshot Unluminous takes, and the
 //! harness has no window for one to live in, so what these tests check is everything around it: the tab, the
@@ -32,10 +33,13 @@ fn a_project(name: &str) -> std::path::PathBuf {
     )
 }
 
-/// A window with the design open in its tab.
+/// A window with the design open in a tab of the Designer pane.
 fn a_window_on_a_design(name: &str) -> (std::path::PathBuf, Harness<'static, UnluminousApp>) {
     let folder = a_project(name);
     let mut harness = harness_in(&folder);
+    // Wide enough for the explorer, the Designer pane at its own width and the editing area beside them.
+    harness.set_size(egui::vec2(1700.0, 900.0));
+    steady(&mut harness);
     did(&mut harness, "tab open .designs/landing.html");
     steady(&mut harness);
     (folder, harness)
@@ -58,20 +62,31 @@ fn the_designer_says(harness: &mut Harness<'static, UnluminousApp>) -> serde_jso
     did(harness, "plugins view designer")
 }
 
-#[test]
-fn a_file_in_the_designs_folder_opens_as_a_design_tab_and_one_outside_it_does_not() {
-    let (folder, mut harness) = a_window_on_a_design("unluminous-designer-opens");
-    let tab = harness.state().files.active().plugin.clone().expect("a plugin tab is showing");
-    assert_eq!(tab.key, "designer:.designs/landing.html");
-    assert_eq!(tab.plugin, "designer");
-    assert_eq!(tab.label, "landing.html");
-    assert!(harness.state().files.active().path().is_none(), "a design tab holds no text");
-    assert_eq!(the_designer_says(&mut harness)["showing"], "landing.html");
+/// The Designer pane's tabs, as `plugins run designer tabs` answers them.
+fn the_tabs(harness: &mut Harness<'static, UnluminousApp>) -> serde_json::Value {
+    did(harness, "plugins run designer tabs")
+}
 
-    // Opening it again shows the tab rather than making a second one.
+#[test]
+fn a_file_in_the_designs_folder_opens_in_the_designer_pane_and_one_outside_it_does_not() {
+    let folder = a_project("unluminous-designer-opens");
+    let mut harness = harness_in(&folder);
     let before = harness.state().files.len();
     did(&mut harness, "tab open .designs/landing.html");
-    assert_eq!(harness.state().files.len(), before);
+    steady(&mut harness);
+    // `task-2260`: the design is a tab of the Designer pane, not a tab of the editing area.
+    assert_eq!(harness.state().files.len(), before, "no tab was added to the editing area");
+    assert!(harness.state().files.active().plugin.is_none());
+    let tabs = the_tabs(&mut harness);
+    assert_eq!(tabs["tabs"], serde_json::json!(["landing.html"]), "the blank tab took the design");
+    assert_eq!(tabs["active"], 0);
+    assert_eq!(the_designer_says(&mut harness)["showing"], "landing.html");
+    assert_eq!(did(&mut harness, "plugins pane designer --show")["showing"], true);
+
+    // Opening it again shows the tab rather than making a second one.
+    did(&mut harness, "tab open .designs/landing.html");
+    steady(&mut harness);
+    assert_eq!(the_tabs(&mut harness)["tabs"].as_array().map(Vec::len), Some(1));
 
     // An HTML file anywhere else opens as it always did.
     did(&mut harness, "tab open index.html");
@@ -80,13 +95,96 @@ fn a_file_in_the_designs_folder_opens_as_a_design_tab_and_one_outside_it_does_no
     assert_eq!(harness.state().files.active().path(), Some(folder.join("index.html").as_path()));
 }
 
+/// `task-2260`: *"It should have a blank tab showing by default, and remember which tabs/files are open between
+/// restarts."* The pane starts on a blank tab that lists the designs, `New tab`, a tab's pill and its cross are
+/// buttons, and a second window on the project opens the same tabs on the same one.
+#[test]
+fn the_designer_pane_has_its_own_tabs_starting_blank_and_remembered_between_windows() {
+    let folder = fixture(
+        "unluminous-designer-tabs",
+        &[
+            (".designs/landing.html", DESIGN),
+            (".designs/pricing.html", DESIGN),
+            ("readme.md", "# A project\n"),
+        ],
+    );
+    let mut harness = harness_in(&folder);
+    did(&mut harness, "plugins pane designer --show");
+    steady(&mut harness);
+    let tabs = the_tabs(&mut harness);
+    assert_eq!(tabs["tabs"], serde_json::json!([null]), "one blank tab to begin with");
+    assert!(harness.state().browser_placements().is_empty(), "a blank tab has no page");
+    harness.get_by_label("Tab: New tab");
+    // The blank tab is the list of designs, and a row opens its design in the same tab.
+    harness.get_by_label("landing.html").click();
+    steady(&mut harness);
+    steady(&mut harness);
+    assert_eq!(the_tabs(&mut harness)["tabs"], serde_json::json!(["landing.html"]));
+    assert_eq!(harness.state().browser_placements().len(), 1, "the design's page is placed");
+
+    // `New tab` adds a blank tab after the one showing, and a design opened from it takes that tab.
+    harness.get_by_label("New tab").click();
+    steady(&mut harness);
+    assert_eq!(the_tabs(&mut harness)["tabs"], serde_json::json!(["landing.html", null]));
+    assert!(harness.state().browser_placements().is_empty(), "the blank tab is showing");
+    harness.get_by_label("pricing.html").click();
+    steady(&mut harness);
+    steady(&mut harness);
+    let tabs = the_tabs(&mut harness);
+    assert_eq!(tabs["tabs"], serde_json::json!(["landing.html", "pricing.html"]));
+    assert_eq!(tabs["active"], 1);
+
+    // A tab's pill shows it, and the agent's half does the same.
+    harness.get_by_label("Tab: landing.html").click();
+    steady(&mut harness);
+    assert_eq!(the_tabs(&mut harness)["active"], 0);
+    assert_eq!(the_designer_says(&mut harness)["showing"], "landing.html");
+    did(&mut harness, "plugins run designer show-tab pricing");
+    steady(&mut harness);
+    assert_eq!(the_designer_says(&mut harness)["showing"], "pricing.html");
+
+    // The tabs are written down for the project, so the next window opens them again.
+    let written = std::fs::read_to_string(folder.join(".unluminous/designs.conf")).unwrap();
+    assert!(written.contains("tabs.1 = .designs/pricing.html"), "{written}");
+    let mut again = harness_in(&folder);
+    did(&mut again, "plugins pane designer --show");
+    steady(&mut again);
+    steady(&mut again);
+    let tabs = the_tabs(&mut again);
+    assert_eq!(tabs["tabs"], serde_json::json!(["landing.html", "pricing.html"]));
+    assert_eq!(tabs["active"], 1, "on the tab that was showing");
+    assert_eq!(again.state().browser_placements().len(), 1, "and its page is placed");
+
+    // Closing tabs by their cross: the last one closed leaves a blank tab, and the pages are let go of.
+    harness.get_by_label("Close tab: pricing.html").click();
+    steady(&mut harness);
+    assert_eq!(the_tabs(&mut harness)["tabs"], serde_json::json!(["landing.html"]));
+    did(&mut harness, "plugins run designer close-tab");
+    steady(&mut harness);
+    assert_eq!(the_tabs(&mut harness)["tabs"], serde_json::json!([null]));
+    assert!(harness.state().browser_placements().is_empty());
+    assert_eq!(the_designer_says(&mut harness)["open"].as_array().map(Vec::len), Some(0));
+    assert!(refused(&mut harness, "plugins run designer show-tab 4").len() > 0);
+
+    // A design that was deleted is not brought back as a tab.
+    std::fs::write(
+        folder.join(".unluminous/designs.conf"),
+        "tabs.count = 2\ntabs.active = 1\ntabs.0 = .designs/gone.html\ntabs.1 = .designs/landing.html\n",
+    )
+    .unwrap();
+    let mut third = harness_in(&folder);
+    let tabs = the_tabs(&mut third);
+    assert_eq!(tabs["tabs"], serde_json::json!(["landing.html"]));
+    assert_eq!(tabs["active"], 0);
+}
+
 #[test]
 fn the_page_is_placed_in_the_well_at_the_width_of_the_device() {
     let (_, mut harness) = a_window_on_a_design("unluminous-designer-placement");
     let placed = harness.state().browser_placements();
     assert_eq!(placed.len(), 1, "one page is placed for one design tab");
     assert_eq!(placed[0].zoom, Some(1.0), "Fit is not zoomed");
-    assert!(placed[0].area.width() > 400.0, "Fit is the width of the well: {:?}", placed[0].area);
+    assert!(placed[0].area.width() > 300.0, "Fit is the width of the well: {:?}", placed[0].area);
 
     did(&mut harness, "plugins run designer device phone");
     steady(&mut harness);
@@ -249,21 +347,24 @@ fn open_source_opens_the_file_as_text_and_the_designs_pane_lists_the_design() {
 }
 
 /// `task-2255`: *"I create new design, name it, the file is created, then i try clicking it in the list of designs
-/// and nothing happens."* The editing area was hidden, so the design opened into a tab nobody could see. Opening a
-/// design brings the editing area back, and the Designs pane is named by its plugin's id alone.
+/// and nothing happens."* Since `task-2260` a design opens in the Designer pane, so opening one puts the pane on
+/// the screen and leaves a hidden editing area hidden. The pane is named by its plugin's id alone.
 #[test]
-fn opening_a_design_with_the_editing_area_hidden_brings_it_back() {
+fn opening_a_design_puts_the_designer_pane_on_the_screen() {
     let folder = a_project("unluminous-designer-hidden-editor");
     let mut harness = harness_in(&folder);
     let shown = did(&mut harness, "plugins pane designer --show");
     assert_eq!(shown["pane"], "designer/designs", "the plugin's id names its one pane");
+    did(&mut harness, "plugins pane designer --hide");
     harness.state_mut().editor_visible = false;
     steady(&mut harness);
     did(&mut harness, "plugins run designer open landing");
     steady(&mut harness);
-    assert!(harness.state().editor_visible, "the editing area is back, with the design in it");
-    let tab = harness.state().files.active().plugin.clone().expect("the design tab is showing");
-    assert_eq!(tab.key, "designer:.designs/landing.html");
+    steady(&mut harness);
+    assert!(!harness.state().editor_visible, "the editing area is not needed for a design");
+    assert_eq!(did(&mut harness, "plugins pane designer --show")["showing"], true);
+    assert_eq!(the_tabs(&mut harness)["tabs"], serde_json::json!(["landing.html"]));
+    assert_eq!(harness.state().browser_placements().len(), 1);
 }
 
 #[test]
@@ -303,29 +404,30 @@ fn the_explorer_lists_the_designs_folder_and_the_one_settings_names() {
     // And what opens as a design follows the folder: the old one is an ordinary page now.
     did(&mut harness, "tab open .designs/landing.html");
     assert!(harness.state().files.active().plugin.is_none(), "no longer a design");
+    assert!(the_tabs(&mut harness)["tabs"].as_array().is_some_and(|tabs| tabs.iter().all(|tab| tab.is_null())));
     did(&mut harness, "tab open .mocks/home.html");
-    assert_eq!(
-        harness.state().files.active().plugin.as_ref().map(|tab| tab.key.as_str()),
-        Some("designer:.mocks/home.html")
-    );
+    steady(&mut harness);
+    assert_eq!(the_tabs(&mut harness)["tabs"], serde_json::json!(["home.html"]));
 }
 
 #[test]
 fn closing_a_design_tab_lets_go_of_its_page_and_switching_the_plugin_off_closes_it() {
     let (_, mut harness) = a_window_on_a_design("unluminous-designer-close");
     assert_eq!(harness.state().browser_placements().len(), 1);
-    let index = harness.state().files.active_index();
-    harness.state_mut().close_tab(index);
+    did(&mut harness, "plugins run designer close-tab landing");
     steady(&mut harness);
     assert!(harness.state().browser_placements().is_empty(), "no page is placed for a closed tab");
+    assert_eq!(harness.state().design_pages(), 0, "and the page is let go of");
     assert_eq!(the_designer_says(&mut harness)["open"].as_array().map(Vec::len), Some(0));
 
     did(&mut harness, "tab open .designs/landing.html");
     steady(&mut harness);
-    assert!(harness.state().files.active().plugin.is_some());
+    assert_eq!(harness.state().browser_placements().len(), 1);
     did(&mut harness, "plugins disable designer");
     steady(&mut harness);
-    assert!(harness.state().files.active().plugin.is_none(), "a design tab goes with its plugin");
+    steady(&mut harness);
+    assert!(harness.state().browser_placements().is_empty(), "a design goes with its plugin");
+    assert_eq!(harness.state().design_pages(), 0);
 }
 
 #[test]
@@ -340,8 +442,8 @@ fn the_toolbar_and_the_pane_are_controls_a_person_can_press() {
     steady(&mut harness);
     assert_eq!(harness.state().browser_placements()[0].area.width(), 390.0);
 
-    // The Designs pane makes the tab narrower, and the five device pills become one button that cycles.
-    did(&mut harness, "plugins pane designer/designs --show");
+    // A narrower pane makes the five device pills one button that cycles.
+    did(&mut harness, "panel size designer/designs --width 640");
     steady(&mut harness);
     harness.get_by_label("Phone").click();
     steady(&mut harness);
@@ -355,7 +457,10 @@ fn the_toolbar_and_the_pane_are_controls_a_person_can_press() {
     steady(&mut harness);
     assert!(harness.state_mut().designer().unwrap().modal.is_none());
 
-    // The Designs pane has a chip that asks for a name, and Create makes the design and opens its tab.
+    // A blank tab lists the designs with a chip that asks for a name, and Create makes the design and opens it in
+    // that tab.
+    harness.get_by_label("New tab").click();
+    steady(&mut harness);
     harness.get_by_label("New Design").click();
     steady(&mut harness);
     assert!(harness.state_mut().designer().unwrap().modal.is_some(), "a name is asked for");
@@ -367,16 +472,14 @@ fn the_toolbar_and_the_pane_are_controls_a_person_can_press() {
         steady(&mut harness);
     }
     assert!(folder.join(".designs/Pricing.html").is_file());
-    assert_eq!(
-        harness.state().files.active().plugin.as_ref().map(|tab| tab.key.as_str()),
-        Some("designer:.designs/Pricing.html")
-    );
+    assert_eq!(the_tabs(&mut harness)["tabs"], serde_json::json!(["landing.html", "Pricing.html"]));
 }
 
 #[test]
-fn a_design_tab_the_project_remembered_comes_back_on_its_design() {
-    // `plugin-tabs.txt` is what the released binary writes for every plugin tab, and a design tab's key names the
-    // design it showed, so a window opened on the project shows the design again with its page and its notes.
+fn a_design_tab_the_editing_area_remembered_comes_back_in_the_designer_pane() {
+    // `plugin-tabs.txt` is what the released binary wrote for every plugin tab, and a design tab in the editing area,
+    // from before the Designer pane had tabs of its own, names the design it showed. A window opened on the project
+    // shows the design again, in the pane (`task-2260`), with its page and its notes.
     let folder = a_project("unluminous-designer-session");
     std::fs::create_dir_all(folder.join(".unluminous")).expect("the project's own folder");
     std::fs::write(folder.join(".unluminous/plugin-tabs.txt"), "designer:.designs/landing.html\n")
@@ -384,8 +487,9 @@ fn a_design_tab_the_project_remembered_comes_back_on_its_design() {
     let mut harness = harness_in(&folder);
     harness.state_mut().restore_project();
     steady(&mut harness);
-    let tab = harness.state().files.active().plugin.clone().expect("the design tab came back");
-    assert_eq!(tab.key, "designer:.designs/landing.html");
+    steady(&mut harness);
+    assert!(harness.state().files.active().plugin.is_none(), "not a tab of the editing area");
+    assert_eq!(the_tabs(&mut harness)["tabs"], serde_json::json!(["landing.html"]));
     assert_eq!(harness.state().browser_placements().len(), 1, "and its page is placed");
     assert_eq!(the_designer_says(&mut harness)["showing"], "landing.html");
 
@@ -459,7 +563,7 @@ fn a_chosen_element() -> serde_json::Value {
         "styles": { "font-size": "62px", "font-weight": "800" }, "rect": { "x": 40, "y": 80, "w": 520, "h": 190 } })
 }
 
-/// The design open with its notes read, an element chosen and note 1 open in the sidebar.
+/// The design open in the Designer pane with its notes read, an element chosen and note 1 open in the sidebar.
 fn the_busy_tab(name: &str) -> Harness<'static, UnluminousApp> {
     let folder = a_busy_project(name);
     let mut harness = harness_in(&folder);
@@ -525,10 +629,11 @@ fn designer_composer() {
     harness.snapshot(shot("designer_composer").as_str());
 }
 
+/// The blank tab beside the design's tab: the list of designs the pane opens one from.
 #[test]
 fn designer_pane() {
     let mut harness = the_busy_tab("unluminous-designer-shot-pane");
-    did(&mut harness, "plugins pane designer/designs --show");
+    did(&mut harness, "plugins run designer new-tab");
     steady(&mut harness);
     harness.snapshot(shot("designer_pane").as_str());
 }

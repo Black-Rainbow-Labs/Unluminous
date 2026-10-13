@@ -40,7 +40,7 @@ fn with_a_design(name: &str) -> (Designer, PathBuf, PathBuf) {
     let (mut designer, project) = a_designer(name);
     let design = designer.make_a_design("landing").expect("made");
     designer.show(&design);
-    // Making it asked the window to open it, which is not what these tests are about.
+    // Making it opened it in a tab and asked the window for the pane, which is not what these tests are about.
     designer.asking();
     (designer, project, design)
 }
@@ -591,15 +591,18 @@ fn every_verb_the_provider_lists_is_answered() {
 }
 
 #[test]
-fn new_and_open_make_and_ask_the_window_to_open_a_design() {
+fn new_and_open_make_a_design_open_it_in_a_tab_and_ask_for_the_pane() {
     let (mut designer, project) = a_designer("commands-new");
     let made = designer.command("new", &words("Pricing Page")).unwrap();
     assert_eq!(made.value["design"], "Pricing Page.html");
     assert!(project.join(".designs/Pricing Page.html").is_file());
+    // `task-2260`: the design opens in a tab of the Designer pane, and the window is asked to show the pane.
     let asked = designer.asking();
-    assert_eq!(asked, vec![Request::OpenFile(project.join(".designs/Pricing Page.html"))]);
+    assert_eq!(asked, vec![Request::ShowPane(true)]);
+    assert_eq!(designer.tabs(), &[Some(PathBuf::from(".designs/Pricing Page.html"))]);
     designer.command("open", &words("Pricing Page")).unwrap();
     assert_eq!(designer.asking().len(), 1);
+    assert_eq!(designer.tabs().len(), 1, "opening it again shows the tab it is in");
     assert!(designer.command("new", &words("Pricing Page")).unwrap_err().contains("already"));
     let listed = designer.command("designs", &[]).unwrap();
     assert_eq!(listed.value["designs"][0]["name"], "Pricing Page.html");
@@ -790,4 +793,80 @@ fn a_copy_taken_this_evening_is_today_and_one_from_last_night_is_yesterday_on_th
     assert_eq!(copy("20261012-193000").friendly(now), "Today 19:30");
     assert_eq!(copy("20261011-233000").friendly(now), "Yesterday 23:30");
     assert_eq!(copy("20260105-143200").friendly(now), "5 Jan 14:32");
+}
+
+// ------------------------------------------------------------------------------------ the pane's own tabs
+
+/// `task-2260`: the Designer pane starts on a blank tab, a design opened from the blank tab takes it, one opened
+/// from a design's tab gets a tab of its own after it, and closing the last tab leaves a blank one.
+#[test]
+fn the_pane_starts_blank_and_a_design_takes_the_blank_tab_or_gets_its_own() {
+    let (mut designer, _project, design) = with_a_design("tabs-open");
+    // Making the design opened it, so its tab is closed first to begin from what a new window has.
+    assert_eq!(designer.tabs(), &[Some(design.clone())]);
+    designer.close_tab(0).unwrap();
+    assert_eq!(designer.tabs(), &[None], "one blank tab to begin with");
+    assert!(designer.active_design().is_none());
+    designer.open_in_a_tab(&design);
+    assert_eq!(designer.tabs(), &[Some(design.clone())], "the blank tab took it");
+    let other = PathBuf::from(".designs/other.html");
+    designer.open_in_a_tab(&other);
+    assert_eq!(designer.tabs(), &[Some(design.clone()), Some(other.clone())]);
+    assert_eq!(designer.active_tab(), 1);
+    designer.open_in_a_tab(&design);
+    assert_eq!(designer.active_tab(), 0, "an open design is shown, not opened twice");
+    designer.new_tab();
+    assert_eq!(designer.tabs(), &[Some(design.clone()), None, Some(other.clone())]);
+    assert_eq!(designer.active_tab(), 1, "a new tab goes after the one showing");
+
+    // Closing the tab showing shows the one that moves into its place; closing one to its left keeps the same
+    // tab showing; closing the last leaves a blank tab.
+    designer.close_tab(1).unwrap();
+    assert_eq!(designer.active_design(), Some(other.as_path()));
+    designer.close_tab(0).unwrap();
+    assert_eq!(designer.tabs(), &[Some(other.clone())]);
+    assert_eq!(designer.active_tab(), 0);
+    designer.close_tab(0).unwrap();
+    assert_eq!(designer.tabs(), &[None]);
+    assert!(designer.close_tab(3).is_err());
+    assert!(designer.show_tab(3).is_err());
+}
+
+/// The tabs go into `designs.conf` and come back, a design that has gone is left out, and a list that was
+/// longer than the one written leaves nothing behind.
+#[test]
+fn the_tabs_are_written_down_and_read_back_without_the_designs_that_have_gone() {
+    let mut values = Values::parse("device.x = phone\ntabs.count = 5\ntabs.4 = .designs/old.html\n");
+    let tabs = vec![Some(PathBuf::from(".designs/a.html")), None, Some(PathBuf::from(".designs/b.html"))];
+    super::tabs::write_tabs(&mut values, &tabs, 2);
+    assert_eq!(values.text("tabs.count"), Some("3"));
+    assert_eq!(values.text("tabs.1"), Some("blank"));
+    assert_eq!(values.text("tabs.4"), None, "the longer list is gone");
+    assert_eq!(values.text("device.x"), Some("phone"), "and what else the file held is kept");
+    let (read, active) = super::tabs::tabs_from(&values, |_| true);
+    assert_eq!(read, tabs);
+    assert_eq!(active, 2);
+    let (read, active) =
+        super::tabs::tabs_from(&values, |design| design != Path::new(".designs/a.html"));
+    assert_eq!(read, vec![None, Some(PathBuf::from(".designs/b.html"))]);
+    assert_eq!(active, 1, "still on b.html");
+    let (read, active) = super::tabs::tabs_from(&Values::new(), |_| true);
+    assert_eq!((read, active), (vec![None], 0), "nothing written is one blank tab");
+}
+
+/// A tab is named by its number or by its design's name, with or without `.html`.
+#[test]
+fn a_command_names_a_tab_by_its_number_or_its_design() {
+    let (mut designer, _project, design) = with_a_design("tabs-named");
+    designer.new_tab();
+    let name = designer.name_of(&design);
+    assert_eq!(designer.tab_named("1").unwrap(), 1);
+    assert_eq!(designer.tab_named(&name).unwrap(), 0);
+    assert_eq!(designer.tab_named(name.trim_end_matches(".html")).unwrap(), 0);
+    assert!(designer.tab_named("nothing").is_err());
+    let said = designer.command("tabs", &[]).unwrap();
+    assert_eq!(said.value["tabs"], serde_json::json!([name, null]));
+    assert_eq!(said.value["active"], 1);
+    designer.command("close-tab", &[]).unwrap();
+    assert_eq!(designer.tabs().len(), 1, "close-tab with nothing closes the one showing");
 }

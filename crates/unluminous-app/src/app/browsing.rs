@@ -290,6 +290,12 @@ impl UnluminousApp {
         if let Some(node) = self.realm.live.node_of_browser(id) {
             self.realm.realm.choose(Some(node));
             self.focus = Focus::Realm;
+            return;
+        }
+        // A design's page is in the Designer pane, so the pane holds the keyboard. `task-2260`.
+        if self.design_tabs.values().any(|tab| tab.id == id) {
+            self.focus = Focus::Plugin;
+            self.plugin_with_the_keyboard = Some("designer".to_owned());
         }
     }
 

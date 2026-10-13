@@ -1,12 +1,21 @@
-//! The window's side of the Designer: opening a design as a tab, drawing it, putting the page where it goes,
+//! The window's side of the Designer: drawing the Designer pane and its tabs, putting the page where it goes,
 //! and acting on what the page reports.
 //!
-//! `services::designer` holds the notes and every change to them, and `components::designer` draws the
-//! toolbar, the notes and the prompt box. What neither can do is the page, because a window has one native web
-//! view and only the window owns it (`services::browser` says why). So a design opens as a **design tab**: a
-//! plugin tab whose key is `designer:<path of the design relative to the project>`, drawn here the way a realm
-//! tab is, with a browser tab kept beside it in [`UnluminousApp::design_tabs`] and listed with every other
-//! browser tab, so the one native view is pointed at it by the same code that points it at the rest.
+//! `services::designer` holds the notes, the pane's tabs and every change to them, and `components::designer`
+//! draws the tab strip, the toolbar, the notes and the prompt box. What neither can do is the page, because a
+//! window has one native web view and only the window owns it (`services::browser` says why). So the window
+//! draws the Designer pane's body itself, rather than asking the provider for it the way it asks every other
+//! plugin pane, and keeps one browser tab for each design open in it in [`UnluminousApp::design_tabs`], keyed
+//! `designer:<path of the design relative to the project>`. They are listed with every other browser tab, so the
+//! one native view is pointed at the showing design by the same code that points it at the rest.
+//!
+//! ## The pane has its own tabs (`task-2260`)
+//!
+//! *"The designer pane should include it's own set of tabs for the rendered html, not require the file panel
+//! that's mixed with all the other files that are open. It should have a blank tab showing by default, and
+//! remember which tabs/files are open between restarts."* A design used to open as a plugin tab in the editing
+//! area. It opens in a tab of the Designer pane now, and the blank tab shows the list of designs. A project
+//! that remembered a `designer:` tab in the editing area brings it back in the pane instead.
 //!
 //! ## The page talks by being asked
 //!
@@ -19,7 +28,6 @@ use std::path::{Path, PathBuf};
 
 use egui::{Key, Modifiers, Rect};
 
-use crate::app::files::PluginTab;
 use crate::app::{Focus, UnluminousApp};
 use crate::services::browser::{BrowserLocation, BrowserPlacement, BrowserTab};
 use crate::services::designer::config::{slashed, Configuration};
@@ -82,30 +90,32 @@ impl UnluminousApp {
         designer.is_a_design(path).then(|| designer.key_of(path)).flatten()
     }
 
-    /// Open a design in a tab of the editing area, or show the tab already open on it.
+    /// Open a design in a tab of the Designer pane, and put the pane on the screen.
+    ///
+    /// What opening an HTML file in the designs folder does, from the explorer, `Go to File` or `tab open`, and
+    /// what a `designer:` tab a project remembered in the editing area becomes (`task-2260`).
     ///
     /// @param design - the design, relative to the project
-    pub(crate) fn open_a_design_in_a_tab(&mut self, design: &Path) -> Result<(), String> {
-        if !self.designer_is_on() {
-            return Err("The Designer plugin is switched off.".to_owned());
-        }
-        let key = design_tab_key(design);
-        self.show_the_editing_area_for_a_tab();
-        if let Some(index) = self.files.index_of_plugin_tab(&key) {
-            self.show_tab(index);
-            self.focus = Focus::Editor;
-            return Ok(());
-        }
-        let page = self.make_the_page_of(&key, design)?;
-        self.design_tabs.insert(key.clone(), page);
-        let label =
-            design.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
-        self.files.open_plugin_tab(
-            unluminous_core::Document::new(),
-            PluginTab { key, plugin: "designer".to_owned(), label },
-        );
-        self.focus = Focus::Editor;
+    pub(crate) fn open_a_design_in_the_pane(&mut self, design: &Path) -> Result<(), String> {
+        let designer = self.designer()?;
+        designer.loaded(design)?;
+        designer.open_in_a_tab(design);
+        self.show_the_designer_pane();
         Ok(())
+    }
+
+    /// Put the Designer pane on the screen.
+    fn show_the_designer_pane(&mut self) {
+        let key = self
+            .plugin_ui
+            .surfaces()
+            .panes
+            .iter()
+            .find(|surface| surface.plugin == "designer")
+            .map(|surface| surface.key(&surface.what.id));
+        if let Some(key) = key {
+            self.show_the_plugin_pane(&key, true);
+        }
     }
 
     /// The browser tab that loads a design's file, with the project as the root its links resolve under.
@@ -115,69 +125,121 @@ impl UnluminousApp {
         Ok(self.browser.open_tab(location))
     }
 
-    /// The design a showing design tab is on, as a path relative to the project.
+    /// How many design pages the window holds, one for each design open in a tab of the Designer pane that has been
+    /// drawn. A test reads it to see that a closed tab let go of its page.
+    pub fn design_pages(&self) -> usize {
+        self.design_tabs.len()
+    }
+
+    /// The design the Designer pane is showing, as a path relative to the project, while the pane is drawn.
     pub(crate) fn showing_design_path(&self) -> Option<PathBuf> {
-        let tab = self.files.active().plugin.as_ref()?;
-        match tab.plugin == "designer" {
-            true => design_of_a_tab_key(&tab.key),
-            false => None,
-        }
+        self.design_drawn.clone()
     }
 
-    /// Let go of the page behind a design tab that is closing.
-    ///
-    /// @param index - the tab about to close
-    pub(crate) fn forget_a_design_tab(&mut self, index: usize) {
-        let Some(key) =
-            self.files.get(index).and_then(|file| file.plugin.as_ref()).map(|tab| tab.key.clone())
-        else {
+    /// Let go of the page of every design that is no longer open in a tab of the Designer pane, and of every page
+    /// when the plugin is switched off. Asked once a frame, so a tab closed by its cross, by `close-tab` or by
+    /// switching the plugin off all let go of their page the same way.
+    pub(crate) fn let_go_of_closed_designs(&mut self) {
+        if self.design_tabs.is_empty() {
             return;
-        };
-        let Some(design) = design_of_a_tab_key(&key) else { return };
-        if let Some(page) = self.design_tabs.remove(&key) {
-            self.design_zooms.remove(&page.id);
-            self.browser.close_tab(page.id);
         }
-        if let Ok(designer) = self.designer() {
-            designer.forget(&design);
-        }
-    }
-
-    /// Draw a design tab into `area`: the toolbar, the well and the notes, and put the page in the well.
-    ///
-    /// @param ui - where to draw
-    /// @param area - the editing area
-    /// @param tab - the plugin tab
-    /// @param focused - whether the pane this tab is in has the keyboard
-    pub(crate) fn show_a_design_tab(
-        &mut self,
-        ui: &mut egui::Ui,
-        area: Rect,
-        tab: &PluginTab,
-        focused: bool,
-    ) -> bool {
-        let Some(design) = design_of_a_tab_key(&tab.key) else { return false };
-        if !self.design_tabs.contains_key(&tab.key) {
-            match self.make_the_page_of(&tab.key, &design) {
-                Ok(page) => {
-                    self.design_tabs.insert(tab.key.clone(), page);
+        let open: Vec<String> = match self.designer_is_on() && self.plugin_ui.is_open("designer") {
+            true => match self.designer() {
+                Ok(designer) => {
+                    designer.tabs().iter().flatten().map(|design| design_tab_key(design)).collect()
                 }
-                Err(problem) => return self.say_in_a_design_tab(ui, area, &problem),
+                Err(_) => Vec::new(),
+            },
+            false => Vec::new(),
+        };
+        let closed: Vec<String> =
+            self.design_tabs.keys().filter(|key| !open.contains(key)).cloned().collect();
+        for key in closed {
+            if let Some(page) = self.design_tabs.remove(&key) {
+                self.design_zooms.remove(&page.id);
+                self.browser.close_tab(page.id);
             }
         }
-        let Some(id) = self.design_tabs.get(&tab.key).map(|page| page.id) else { return false };
-        match self.designer() {
-            Ok(designer) => designer.show(&design),
-            Err(problem) => return self.say_in_a_design_tab(ui, area, &problem),
+    }
+
+    /// Draw the Designer pane's body: its tab strip, and under it the list of designs for a blank tab or the
+    /// design for a design's tab, with the page put in its well.
+    ///
+    /// The window draws it rather than the provider, because the page is the window's one native view.
+    ///
+    /// @param ui - where to draw
+    /// @param body - the pane under its header
+    /// @param panel - the pane's panel, whose zoom it is drawn at
+    pub(crate) fn show_the_designer_pane_body(
+        &mut self,
+        ui: &mut egui::Ui,
+        body: Rect,
+        panel: crate::app::dock::Panel,
+    ) {
+        self.design_drawn = None;
+        let design = match self.designer() {
+            Ok(designer) => designer.active_design().map(Path::to_path_buf),
+            Err(problem) => {
+                self.say_in_a_design_tab(ui, body, &problem);
+                return;
+            }
+        };
+        let page = match &design {
+            Some(design) => match self.the_page_of(design) {
+                Ok(id) => Some(id),
+                Err(problem) => {
+                    self.say_in_a_design_tab(ui, body, &problem);
+                    return;
+                }
+            },
+            None => None,
+        };
+        if let Ok(designer) = self.designer() {
+            match &design {
+                Some(design) => designer.show(design),
+                None => designer.show_nothing(),
+            }
         }
-        let outcome = self.draw_the_design(ui, area, &design, tab);
-        let Some(outcome) = outcome else { return false };
-        self.put_the_page_in_its_well(id, &outcome, area, ui.clip_rect(), focused);
-        self.talk_to_the_page(id, &design, outcome.zoom);
-        for request in outcome.requests {
+        self.design_drawn = design.clone();
+        self.take_the_keyboard_on_a_press(ui, body);
+        let focused =
+            self.focus == Focus::Plugin && self.plugin_with_the_keyboard.as_deref() == Some("designer");
+        let Some(drawn) = self.draw_the_pane(ui, body, panel, design.as_deref()) else { return };
+        if let (Some(id), Some(design), Some(outcome)) = (page, &design, &drawn.design) {
+            self.put_the_page_in_its_well(id, outcome, drawn.content, ui.clip_rect(), focused);
+            self.talk_to_the_page(id, design, outcome.zoom);
+        }
+        for request in drawn.requests {
             self.act_on_a_plugin_request("designer", request, ui.ctx());
         }
-        false
+    }
+
+    /// The browser tab a design's page is in, made the first time the design is drawn.
+    fn the_page_of(&mut self, design: &Path) -> Result<u64, String> {
+        let key = design_tab_key(design);
+        if !self.design_tabs.contains_key(&key) {
+            let page = self.make_the_page_of(&key, design)?;
+            self.design_tabs.insert(key.clone(), page);
+        }
+        self.design_tabs.get(&key).map(|page| page.id).ok_or_else(|| "The page went.".to_owned())
+    }
+
+    /// A press anywhere in the pane gives it the keyboard, so `C`, `V`, `B`, `[`, `]` and `Escape` reach the
+    /// design, which is what a press in the design tab did when it was in the editing area.
+    fn take_the_keyboard_on_a_press(&mut self, ui: &egui::Ui, body: Rect) {
+        let pressed = ui.input(|input| {
+            input.pointer.any_pressed()
+                && input.pointer.interact_pos().is_some_and(|at| body.contains(at))
+        });
+        let mine = self.focus == Focus::Plugin
+            && self.plugin_with_the_keyboard.as_deref() == Some("designer");
+        if pressed && !mine {
+            self.act_on_a_plugin_request(
+                "designer",
+                crate::services::plugin_ui::Request::TakeTheKeyboard(true),
+                ui.ctx(),
+            );
+        }
     }
 
     /// One sentence in the middle of a design tab that cannot be drawn.
@@ -187,34 +249,62 @@ impl UnluminousApp {
         false
     }
 
-    /// Draw the ground, the decoration and the provider's own surfaces, and rasterise what was recorded.
-    fn draw_the_design(
+    /// Draw the ground, the decoration, the tab strip and what the showing tab holds, and rasterise what was
+    /// recorded.
+    fn draw_the_pane(
         &mut self,
         ui: &mut egui::Ui,
-        area: Rect,
-        design: &Path,
-        tab: &PluginTab,
-    ) -> Option<crate::components::designer::tab::Outcome> {
+        body: Rect,
+        panel: crate::app::dock::Panel,
+        design: Option<&Path>,
+    ) -> Option<Drawn> {
         let ground = Look::of(&self.settings, &self.renderer);
-        ui.painter().rect_filled(area, 0, ground.ground(ground.palette.editor));
+        ui.painter().rect_filled(body, 0, ground.ground(ground.palette.editor));
         drop(ground);
         let slot = ui.painter().add(egui::Shape::Noop);
         let chrome = self.chrome_for("designer");
-        let outcome = {
+        let zoom = self.panes.zoom_of(panel);
+        let drawn = {
             let highlighter = crate::app::PluginHighlighter { plugins: &self.plugins };
             let look = Look::of(&self.settings, &self.renderer)
                 .following_the_editor_font(false)
-                .holding_the_keyboard(matches!(self.focus, Focus::Editor))
+                .zoomed_by(zoom)
+                .holding_the_keyboard(matches!(self.focus, Focus::Plugin))
                 .colouring_with(&highlighter)
                 .drawing_into(&chrome);
-            let mut tab_ui = ui.new_child(egui::UiBuilder::new().max_rect(area));
-            tab_ui.set_clip_rect(area.intersect(ui.clip_rect()));
+            let mut pane_ui = ui.new_child(egui::UiBuilder::new().max_rect(body));
+            pane_ui.set_clip_rect(body.intersect(ui.clip_rect()));
             let designer = self.plugin_ui.opened("designer", "designer").ok()?;
             let designer = designer.as_any_mut()?.downcast_mut::<Designer>()?;
-            crate::components::designer::tab::show(designer, &mut tab_ui, area, &look, design)
+            let (content, mut requests) =
+                crate::components::designer::tabs::show(designer, &mut pane_ui, &look, body);
+            let mut inside = pane_ui.new_child(egui::UiBuilder::new().max_rect(content));
+            inside.set_clip_rect(content.intersect(pane_ui.clip_rect()));
+            let outcome = match design {
+                Some(design) => {
+                    let outcome = crate::components::designer::tab::show(
+                        designer,
+                        &mut inside,
+                        content,
+                        &look,
+                        design,
+                    );
+                    requests.extend(outcome.requests.clone());
+                    Some(outcome)
+                }
+                None => {
+                    requests.extend(crate::components::designer::pane::show(
+                        designer,
+                        &mut inside,
+                        &look,
+                    ));
+                    None
+                }
+            };
+            Drawn { content, design: outcome, requests }
         };
-        self.paint_the_chrome(ui, slot, egui::Id::new(("designer-tab", &tab.key)), area, &chrome);
-        Some(outcome)
+        self.paint_the_chrome(ui, slot, egui::Id::new("designer-pane"), body, &chrome);
+        Some(drawn)
     }
 
     /// Say where this frame drew the page, so the one native view is put there.
@@ -304,6 +394,7 @@ impl UnluminousApp {
     /// Do what the provider asked of the window outside a draw: open a design as text, load a page again, and
     /// tell the explorer where the designs are when the folder changed.
     pub(crate) fn act_on_the_designer_wants(&mut self) {
+        self.let_go_of_closed_designs();
         if !self.designer_is_on() || !self.plugin_ui.is_open("designer") {
             return;
         }
@@ -366,7 +457,7 @@ impl UnluminousApp {
         shown
     }
 
-    /// The keys a design tab has while it holds the keyboard and no text box does.
+    /// The keys the Designer pane has while it holds the keyboard on a design and no text box does.
     ///
     /// `Escape` puts the choice away, `C`, `V` and `B` switch to comment, select and browse, and `[` and `]`
     /// move the choice to the parent and the first child. Read before the panes are drawn, which is the one
@@ -375,7 +466,8 @@ impl UnluminousApp {
     pub(crate) fn route_the_designers_keys(&mut self, ui: &mut egui::Ui) {
         let Some(design) = self.showing_design_path() else { return };
         let ctx = ui.ctx().clone();
-        if self.focus != Focus::Editor
+        if self.focus != Focus::Plugin
+            || self.plugin_with_the_keyboard.as_deref() != Some("designer")
             || crate::app::text_box_has_the_keyboard(&ctx)
             || crate::app::a_modal_has_the_keyboard(&ctx)
             || !ui.input(|input| input.modifiers.is_none())
@@ -409,6 +501,15 @@ impl UnluminousApp {
             self.message = Some(problem);
         }
     }
+}
+
+/// What drawing the Designer pane came to.
+struct Drawn {
+    /// The room under the tab strip.
+    content: Rect,
+    /// What the design's tab came to, when a design's tab is showing.
+    design: Option<crate::components::designer::tab::Outcome>,
+    requests: Vec<crate::services::plugin_ui::Request>,
 }
 
 /// The script that tells the page what a call from the provider means.

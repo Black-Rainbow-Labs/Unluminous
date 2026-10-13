@@ -413,6 +413,9 @@ impl UnluminousApp {
             egui::layers::ShapeIdx,
             crate::services::vello_canvas::Chrome,
         )> = Vec::new();
+        // The Designer pane's body, drawn by the window after the loop: its page is the window's one native view,
+        // which the loop's borrow of the renderer would not let it place. `task-2260`.
+        let mut designer_body: Option<(Rect, dock::Panel)> = None;
         for slot_number in 0..self.plugin_ui.pane_count() {
             let slot = slot_number;
             if !self.plugin_ui.is_visible(slot) {
@@ -456,6 +459,10 @@ impl UnluminousApp {
                 closing = self.plugin_ui.pane_key(slot);
             }
             let body = Rect::from_min_max(egui::Pos2::new(rect.min.x, header.max.y), rect.max);
+            if plugin == "designer" && problem.is_none() {
+                designer_body = Some((body, panel));
+                continue;
+            }
             let mut pane_ui = ui.new_child(egui::UiBuilder::new().max_rect(body));
             pane_ui.set_clip_rect(body);
             // The pane's ground first, then the slot the decoration goes in, then the provider's widgets.
@@ -532,6 +539,13 @@ impl UnluminousApp {
                 let uv = Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0));
                 painter.set(*shape, egui::Shape::image(texture, drawn, uv, egui::Color32::WHITE));
             }
+        }
+        if let Some((body, panel)) = designer_body {
+            let mut pane_ui = ui.new_child(egui::UiBuilder::new().max_rect(body));
+            pane_ui.set_clip_rect(body);
+            self.show_the_designer_pane_body(&mut pane_ui, body, panel);
+        } else {
+            self.design_drawn = None;
         }
         // After the loop, because closing a pane changes what the loop is walking and a grab changes the dock.
         for (panel, grab) in grabs {

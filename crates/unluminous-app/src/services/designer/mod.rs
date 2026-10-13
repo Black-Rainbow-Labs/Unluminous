@@ -29,6 +29,7 @@ pub mod prompt;
 
 mod actions;
 mod commands;
+mod tabs;
 
 #[cfg(test)]
 mod tests;
@@ -189,6 +190,11 @@ pub struct Designer {
     pub(super) designs: Vec<DesignSummary>,
     pub(super) views: BTreeMap<PathBuf, DesignView>,
     showing: Option<PathBuf>,
+    /// The Designer pane's own tabs, `None` being a blank tab, and which one is showing. See [`tabs`].
+    pub(super) tabs: Vec<Option<PathBuf>>,
+    pub(super) active_tab: usize,
+    /// The project whose remembered tabs have been read, so they are read once a project.
+    pub(super) tabs_read_for: Option<PathBuf>,
     pub modal: Option<Modal>,
     /// The last thing that went wrong while reading the settings, drawn on the Settings page.
     pub problem: Option<String>,
@@ -215,6 +221,9 @@ impl Designer {
             designs: Vec::new(),
             views: BTreeMap::new(),
             showing: None,
+            tabs: vec![None],
+            active_tab: 0,
+            tabs_read_for: None,
             modal: None,
             problem: None,
             outbox: Vec::new(),
@@ -237,7 +246,7 @@ impl Designer {
         &self.designs
     }
 
-    /// The design whose tab is showing.
+    /// The design whose tab is showing in the Designer pane.
     pub fn showing_design(&self) -> Option<&Path> {
         self.showing.as_deref()
     }
@@ -313,6 +322,11 @@ impl Designer {
         }
     }
 
+    /// Say no design is showing, which is what the blank tab is.
+    pub fn show_nothing(&mut self) {
+        self.showing = None;
+    }
+
     /// Say a design's tab has gone, and let go of what was known about it.
     ///
     /// @param design - the design, relative to the project
@@ -376,7 +390,7 @@ impl Designer {
         std::mem::take(&mut self.wants)
     }
 
-    fn device_file(&self) -> Option<PathBuf> {
+    pub(super) fn device_file(&self) -> Option<PathBuf> {
         Some(self.project.as_deref()?.join(".unluminous").join("designs.conf"))
     }
 
@@ -475,6 +489,7 @@ impl UiProvider for Designer {
         }
         self.open = true;
         self.refresh_designs();
+        self.read_tabs();
         Ok(())
     }
 
@@ -537,6 +552,7 @@ impl UiProvider for Designer {
                 self.project = Some(project.to_path_buf());
                 self.views.clear();
                 self.refresh_designs();
+                self.read_tabs();
             }
         }
     }
@@ -548,6 +564,7 @@ impl UiProvider for Designer {
     fn close(&mut self) {
         self.views.clear();
         self.showing = None;
+        self.tabs_read_for = None;
         self.open = false;
     }
 }

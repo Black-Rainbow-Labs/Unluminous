@@ -855,9 +855,12 @@ pub struct UnluminousApp {
     /// A title a page gave itself while it was still loading, by tab, filed against its address once the load
     /// finishes. See `act_on_browser_events`.
     pub(crate) titles_arriving: std::collections::HashMap<u64, String>,
-    /// The browser tab behind each open design tab, by the tab's key. Listed with every other browser tab so the
-    /// one native view is pointed at it by the same code. `task-2254`.
+    /// The browser tab behind each design open in the Designer pane, by the design's tab key. Listed with every
+    /// other browser tab so the one native view is pointed at it by the same code. `task-2254`, `task-2260`.
     pub(crate) design_tabs: std::collections::HashMap<String, crate::services::browser::BrowserTab>,
+    /// The design the Designer pane drew last frame, `None` when it drew the blank tab or was not drawn at all.
+    /// `task-2260`.
+    pub(crate) design_drawn: Option<std::path::PathBuf>,
     /// The zoom each design's page was last told to undo for its overlay, by browser tab. See
     /// `app::designer::keep_the_overlay_its_size`. `task-2254`.
     pub(crate) design_zooms: std::collections::HashMap<u64, f64>,
@@ -1493,6 +1496,7 @@ impl UnluminousApp {
             pick_when_showing: None,
             titles_arriving: std::collections::HashMap::new(),
             design_tabs: std::collections::HashMap::new(),
+            design_drawn: None,
             design_zooms: std::collections::HashMap::new(),
             page_was_pressed: false,
             wallpaper: crate::services::backgrounds::Wallpaper::default(),
@@ -1885,8 +1889,9 @@ impl UnluminousApp {
                 // A realm tab is the realm plugin's, and its key names the realm it showed. `task-2202`.
                 let _ = self.open_a_realm_in_a_tab(&realm);
             } else if let Some(design) = designer::design_of_a_tab_key(&key) {
-                // A design tab is the Designer's, and its key names the design it showed. `task-2254`.
-                let _ = self.open_a_design_in_a_tab(&design);
+                // A design tab in the editing area, from before the Designer pane had tabs of its own, comes back
+                // in the pane. `task-2254`, `task-2260`.
+                let _ = self.open_a_design_in_the_pane(&design);
             } else if self.plugin_ui.surfaces().tab(&key).is_some() {
                 self.open_the_plugin_tab(&key);
             }
