@@ -1146,7 +1146,7 @@ fn new_query_opens_a_console_whose_data_source_is_chosen_from_a_dropdown() {
     let result = did(&mut harness, "plugins run database result");
     assert_eq!(result["grid"]["rows"]["rows"][0][0], "4", "{result}");
 
-    harness.snapshot(shot("database_new_query").as_str());
+    snapshot_with_a_run_time(&mut harness, "database_new_query");
 }
 
 /// Every control the redesign added has an agent's half, and the two reach the same code.
@@ -1198,5 +1198,16 @@ fn the_database_pane_side_by_side() {
         "plugins run database query select title, year from album order by year",
     );
     until_the_database_settles(&mut harness);
-    harness.snapshot(shot("database_side_by_side").as_str());
+    snapshot_with_a_run_time(&mut harness, "database_side_by_side");
+}
+
+/// Photograph a pane that shows a console's result, allowing for the words that say how long the query took.
+///
+/// The result line reads `5 rows in 0 ms`, and the number is the query's real run time, so on a busy machine
+/// it is `10 ms` and the picture differs in the few pixels those digits take (`task-2258` measured about 230).
+/// Everything else in the pane still has to match exactly, so the allowance is a pixel count rather than a
+/// looser threshold for every pixel.
+fn snapshot_with_a_run_time(harness: &mut Harness<'static, UnluminousApp>, name: &str) {
+    let options = egui_kittest::SnapshotOptions::default().failed_pixel_count_threshold(400);
+    harness.snapshot_options(shot(name).as_str(), &options);
 }
