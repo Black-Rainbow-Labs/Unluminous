@@ -6,6 +6,10 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- The Designer plugin, for designing in HTML with Agent-Chat (`task-2254`)
+
 ## 0.78.0 — 2026-10-12
 
 - A console SELECT in the table grid, a smooth browser zoom, sessions, and Agent-Tasks fixes (`task-2253`)
