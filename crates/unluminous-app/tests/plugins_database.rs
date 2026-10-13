@@ -1208,6 +1208,6 @@ fn the_database_pane_side_by_side() {
 /// Everything else in the pane still has to match exactly, so the allowance is a pixel count rather than a
 /// looser threshold for every pixel.
 fn snapshot_with_a_run_time(harness: &mut Harness<'static, UnluminousApp>, name: &str) {
-    let options = egui_kittest::SnapshotOptions::default().failed_pixel_count_threshold(400);
+    let options = egui_kittest::SnapshotOptions::default().max_failed_pixels(400);
     harness.snapshot_options(shot(name).as_str(), &options);
 }
