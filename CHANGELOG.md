@@ -6,6 +6,10 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- The ticket's agent as a chat, a folding fields card, icon buttons on comments, todos ticked as agents go (`task-2261`)
+
 ## 0.82.0 — 2026-10-13
 
 - The ticket modal's comment box holds three lines and its buttons can be pressed (`task-2260`)
