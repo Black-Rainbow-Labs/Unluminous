@@ -1942,6 +1942,14 @@ impl UnluminousApp {
         // called from `main.rs` and by nothing else.
         self.restore_the_realm();
         self.realm.visible = state.realm_visible;
+        // The panes a plugin drew, after the panels, because a pane in a strip puts away the other tiles on
+        // that side and the panels have to be there for that rule to mean what it meant when they were
+        // written down. A pane whose plugin has gone since is simply not there. `task-2255`.
+        for key in &state.plugin_panes {
+            if let Some(slot) = self.plugin_ui.slot_of(key) {
+                let _ = self.plugin_ui.set_visible(slot, true);
+            }
+        }
         // **The keyboard goes to a surface that is on the screen.** `Focus::Editor` is what a window
         // starts on, and a project whose canvas fills the window has no editing area for the keys to
         // reach — so every key press went to a pane nobody could see, which `task-1914` reported as
@@ -2003,6 +2011,12 @@ impl UnluminousApp {
         ProjectState {
             open_files,
             plugin_tabs,
+            // What was showing before a pane was maximised, when one is, for the reason the panels below
+            // are written that way.
+            plugin_panes: match &self.maximised {
+                Maximise::Filling { plugin_panes, .. } => plugin_panes.clone(),
+                Maximise::No => self.plugin_ui.showing_keys(),
+            },
             browser_tabs,
             active_file: active.unwrap_or(0),
             file_panes,

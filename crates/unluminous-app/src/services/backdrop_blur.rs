@@ -5,8 +5,9 @@
 //! the window is photographed once when a modal opens, with the modal hidden for that one frame, and the
 //! picture is shrunk, blurred and uploaded as a texture the backdrop draws. A picture rather than the
 //! window means what is behind the dialog stands still while it is open, which is what a dialog that
-//! asks for attention wants anyway. It is taken again when the window changes size or the theme changes,
-//! because those are the two things a person can do from a dialog that change what is behind it.
+//! asks for attention wants anyway. It is taken again when the theme changes. It is not taken again when
+//! the window changes size, because taking it hides the modal for a frame and a resize is many frames
+//! (`task-2255`); the picture is stretched to the new size, and it is blurred past reading anyway.
 //!
 //! Shrinking first is what makes it cheap: a 2560 by 1440 window is a 640 by 360 picture by the time it
 //! is blurred, and the texture's linear filter smooths it back up to the window's size.

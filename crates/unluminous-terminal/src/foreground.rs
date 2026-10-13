@@ -439,7 +439,7 @@ fn argv_zero(pid: i32) -> Option<String> {
 /// terminal node on a clock.
 #[cfg(windows)]
 pub fn descendant_program(root: u32) -> Option<String> {
-    let table = process_table()?;
+    let table = shared_process_table()?;
     let mut at = root;
     // **The console's own child is a candidate, not a step to take.** A node given a command runs that command
     // *as* the pseudoconsole's child with no shell at all, so a walk that moved down before looking answered
@@ -506,6 +506,76 @@ struct Process {
     id: u32,
     parent: u32,
     name: String,
+}
+
+/// How often the shared process table is read again while somebody is asking.
+#[cfg(windows)]
+const TABLE_EVERY: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// How long the thread that reads it keeps going after the last question, before it stops.
+#[cfg(windows)]
+const TABLE_KEPT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The table every terminal's question is answered from, and when it was last asked for.
+#[cfg(windows)]
+struct SharedTable {
+    table: Option<std::sync::Arc<Vec<Process>>>,
+    asked: std::time::Instant,
+    reading: bool,
+}
+
+#[cfg(windows)]
+static SHARED: std::sync::Mutex<Option<SharedTable>> = std::sync::Mutex::new(None);
+
+/// The process table, read on a thread of its own rather than on the window's.
+///
+/// `task-2255`: *"Unluminous now eats up a lot of CPU."* The Realm asks every terminal node what it is
+/// running once a second, and each question took its own snapshot of every process on the machine. With four
+/// terminal nodes that was measured at 130 ms of the window's own thread once a second, which is a stall a
+/// person feels, on a canvas that was not even showing. So one thread reads the table every [`TABLE_EVERY`]
+/// while questions keep arriving and stops [`TABLE_KEPT`] after the last one, and a question reads whatever it
+/// last read. The very first question reads the table itself, so it is answered rather than told nothing.
+#[cfg(windows)]
+fn shared_process_table() -> Option<std::sync::Arc<Vec<Process>>> {
+    let mut held = SHARED.lock().ok()?;
+    let shared = held.get_or_insert_with(|| SharedTable {
+        table: None,
+        asked: std::time::Instant::now(),
+        reading: false,
+    });
+    shared.asked = std::time::Instant::now();
+    if shared.table.is_none() {
+        shared.table = process_table().map(std::sync::Arc::new);
+    }
+    if !shared.reading {
+        shared.reading = true;
+        let started = std::thread::Builder::new()
+            .name("unluminous-process-table".to_owned())
+            .spawn(keep_the_table_fresh);
+        if started.is_err() {
+            shared.reading = false;
+        }
+    }
+    shared.table.clone()
+}
+
+/// The thread behind [`shared_process_table`]: read the table again every [`TABLE_EVERY`] until nobody has
+/// asked for [`TABLE_KEPT`].
+#[cfg(windows)]
+fn keep_the_table_fresh() {
+    loop {
+        std::thread::sleep(TABLE_EVERY);
+        let fresh = process_table().map(std::sync::Arc::new);
+        let Ok(mut held) = SHARED.lock() else { return };
+        let Some(shared) = held.as_mut() else { return };
+        if shared.asked.elapsed() > TABLE_KEPT {
+            shared.reading = false;
+            return;
+        }
+        if fresh.is_some() {
+            shared.table = fresh;
+        }
+    }
 }
 
 /// Every process on the machine, read once.

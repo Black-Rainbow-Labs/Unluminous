@@ -194,6 +194,15 @@ pub fn drawn(ctx: &egui::Context, id: &str) -> Option<Rect> {
     ctx.data(|data| data.get_temp::<Rect>(drawn_id(id)))
 }
 
+/// The same, for the modal whose egui id is `modal`, which is what [`the_open_one`] answers with.
+///
+/// The dialog's own rectangle and not its layer's: egui's `Modal` puts a backdrop the size of the window in
+/// the same layer, so `Context::layer_id_at` answers with the modal's layer everywhere in the window, the
+/// title bar included (`task-2255`).
+pub fn drawn_by_id(ctx: &egui::Context, modal: egui::Id) -> Option<Rect> {
+    ctx.data(|data| data.get_temp::<Rect>(modal.with("drawn")))
+}
+
 fn remember_drawn(ctx: &egui::Context, id: &str, rect: Rect) {
     ctx.data_mut(|data| data.insert_temp(drawn_id(id), rect));
 }
@@ -351,8 +360,7 @@ fn show_framed<R>(
     // click outside the dialog that means "close".
     let pointer = ctx.input(|input| input.pointer.interact_pos());
     let on_the_title_bar = pointer.is_some_and(|at| {
-        at.y < size::TITLE_BAR
-            && ctx.layer_id_at(at).is_none_or(|layer| layer.id != egui::Id::new(id))
+        at.y < size::TITLE_BAR && drawn(ctx, id).is_none_or(|dialog| !dialog.contains(at))
     });
     let should_close = response.should_close() && !on_the_title_bar;
     let (inner, changed) = response.inner;
@@ -372,8 +380,14 @@ struct Backdrop {
 /// What [`blurred_backdrop`] keeps between frames.
 #[derive(Clone)]
 struct BlurState {
-    /// The window's size and the theme's colours when it was taken. Either changing takes it again.
-    key: (u32, u32, [u8; 12]),
+    /// The theme's colours when it was taken. A change of theme takes it again.
+    ///
+    /// **Not the window's size** (`task-2255`: *"When a modal is open and I resize, there are many flashes and
+    /// glitchiness of the modal content"*). Every frame of a resize changed the size, so every frame asked for
+    /// a new picture and drew the modal at no opacity while it was taken, and blurred a whole window on the
+    /// next. The picture is stretched to the window and is blurred past reading, so the one taken when the
+    /// modal opened serves at any size.
+    key: [u8; 12],
     /// When the modal was last drawn, in egui's seconds, so a modal opened again is photographed again.
     ///
     /// A time rather than a pass number: egui can run more than one pass in a frame, and a gap of two passes
@@ -401,12 +415,11 @@ fn blurred_backdrop(ctx: &egui::Context, modal: egui::Id) -> Backdrop {
     // drew themselves invisible on every frame.
     let slot = egui::Id::new("unluminous-modal-backdrop").with(modal);
     let now = ctx.input(|input| input.time);
-    let window = ctx.content_rect().size();
     let mut tones = [0u8; 12];
     for (at, colour) in [color::editor(), color::text(), color::accent()].iter().enumerate() {
         tones[at * 4..at * 4 + 4].copy_from_slice(&colour.to_array());
     }
-    let key = (window.x.round() as u32, window.y.round() as u32, tones);
+    let key = tones;
     let kept: Option<BlurState> = ctx.data(|data| data.get_temp(slot));
     let mut hide = false;
     let mut state = match kept {

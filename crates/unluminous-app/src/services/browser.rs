@@ -836,6 +836,12 @@ impl BrowserHost {
         self.native.page_holds_the_keyboard()
     }
 
+    /// Whether somebody has clicked into the page: it holds the operating system's keyboard and the pointer
+    /// is over it. See `UnluminousApp::settle_the_native_views_before_the_pass`. `task-2255`.
+    pub fn the_page_was_clicked_into(&self) -> bool {
+        self.native.page_holds_the_keyboard() && self.native.pointer_is_over_the_page()
+    }
+
     /// Whether the native view exists, which is what decides if there is anything to settle.
     pub fn has_views(&self) -> bool {
         self.native.has_view()
@@ -1822,6 +1828,12 @@ mod native {
             self.view.as_ref().is_some_and(page_has_it)
         }
 
+        /// Whether the pointer is over the page's own window now, asked of the platform because a page's
+        /// window takes the pointer's events and egui never hears of them.
+        pub fn pointer_is_over_the_page(&self) -> bool {
+            self.view.as_ref().is_some_and(|view| view.visible && pointer_over(view))
+        }
+
         /// Take the window's handle while the frame that has one is in scope.
         pub fn remember_window(&mut self, frame: &eframe::Frame) {
             if self.parent.is_none() {
@@ -2378,6 +2390,34 @@ mod native {
         false
     }
 
+    /// Whether the pointer is inside the container `wry` builds the engine in, in screen pixels.
+    #[cfg(windows)]
+    fn pointer_over(view: &NativeView) -> bool {
+        use windows_sys::Win32::Foundation::{HWND, POINT, RECT};
+        use windows_sys::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetWindowRect};
+        use wry::WebViewExtWindows as _;
+
+        let hwnd = view.webview.hwnd().0 as HWND;
+        if hwnd.is_null() {
+            return false;
+        }
+        let mut at = POINT { x: 0, y: 0 };
+        let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        // SAFETY: both take a pointer to a value on this stack, and the handle is a window in this process.
+        unsafe {
+            if GetCursorPos(&mut at) == 0 || GetWindowRect(hwnd, &mut rect) == 0 {
+                return false;
+            }
+        }
+        at.x >= rect.left && at.x < rect.right && at.y >= rect.top && at.y < rect.bottom
+    }
+
+    /// Nothing to ask on the other platforms, where the page's focus is not read back.
+    #[cfg(not(windows))]
+    fn pointer_over(_view: &NativeView) -> bool {
+        false
+    }
+
     /// Whether the page has the keyboard, by either of the two ways it can come to have it.
     fn page_has_it(view: &NativeView) -> bool {
         view.has_the_focus || the_page_really_has_the_keyboard(view)
@@ -2603,6 +2643,10 @@ mod native {
         }
         /// And so never holds the keyboard.
         pub fn page_holds_the_keyboard(&self) -> bool {
+            false
+        }
+        /// And has no page for the pointer to be over.
+        pub fn pointer_is_over_the_page(&self) -> bool {
             false
         }
         /// There is no child window to create, so the window's handle is not wanted.

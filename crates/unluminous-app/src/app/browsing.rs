@@ -62,6 +62,28 @@ impl UnluminousApp {
         outcome.took_focus
     }
 
+    /// Make the tab or node holding page `id` the one with the keyboard, because somebody clicked into the page.
+    ///
+    /// A click on a page goes to the page's own window, so nothing in egui saw it and nothing chose the tab or
+    /// the node it is in. Without this the next frame's placement said the page was not the chosen one and gave
+    /// the operating system's keyboard back to the window. `task-2255`.
+    ///
+    /// @param id - the browser tab whose page was clicked
+    pub(crate) fn give_the_keyboard_to_the_page(&mut self, id: u64) {
+        let index =
+            self.files.iter().position(|file| file.browser.as_ref().is_some_and(|tab| tab.id == id));
+        if let Some(index) = index {
+            let pane = self.files.pane_of(index);
+            self.files.focus_pane(pane);
+            self.focus = Focus::Editor;
+            return;
+        }
+        if let Some(node) = self.realm.live.node_of_browser(id) {
+            self.realm.realm.choose(Some(node));
+            self.focus = Focus::Realm;
+        }
+    }
+
     /// The visited addresses to offer under an address field holding `typed`. Nothing while the field is the
     /// page's rather than the person's, because a list that opens over a page nobody is typing at is in the way.
     pub(crate) fn suggestions_for(

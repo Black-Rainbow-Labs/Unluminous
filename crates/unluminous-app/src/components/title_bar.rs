@@ -286,17 +286,19 @@ pub fn show(
 /// Whether the primary button went down inside `area` on this frame while a modal is open, somewhere the
 /// modal's own dialog is not.
 fn pressed_past_a_modal(ctx: &egui::Context, area: Rect) -> bool {
-    if crate::components::modal::the_open_one(ctx).is_none() {
+    let Some(modal) = crate::components::modal::the_open_one(ctx) else {
         return false;
-    }
+    };
     let Some(at) = ctx.input(|input| {
         input.pointer.primary_pressed().then(|| input.pointer.press_origin()).flatten()
     }) else {
         return false;
     };
-    let over_the_dialog = ctx
-        .layer_id_at(at)
-        .is_some_and(|layer| Some(layer.id) == crate::components::modal::the_open_one(ctx));
+    // The dialog's own rectangle, not the layer under the pointer: egui's `Modal` covers the whole window
+    // with its backdrop in the modal's own layer, so asking which layer is under the pointer answered "the
+    // modal" everywhere and the window could not be moved at all (`task-2255`).
+    let over_the_dialog =
+        crate::components::modal::drawn_by_id(ctx, modal).is_some_and(|dialog| dialog.contains(at));
     area.contains(at) && !over_the_dialog
 }
 

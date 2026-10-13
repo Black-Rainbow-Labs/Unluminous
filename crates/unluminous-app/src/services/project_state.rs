@@ -122,6 +122,14 @@ pub struct ProjectState {
     /// with no document. A plugin tab has no scroll of its own to remember either: what it is showing is the
     /// plugin's own state, kept in the plugin's own file.
     pub plugin_tabs: Vec<String>,
+    /// The panes a plugin contributed that were showing, by their `<plugin id>/<pane id>`: Agent-Chat,
+    /// Agent-Tasks, the Database pane and the rest.
+    ///
+    /// `task-2255`: *"When I quit, then reopen unluminous, the panels I had open aren't visible."* The
+    /// explorer, the terminal, the run tile and the Realm were remembered and a plugin's pane was not, so
+    /// every pane a plugin drew came back put away. By name rather than by slot, for the reason
+    /// `app::plugin_panes` gives: a slot moves when a plugin is switched on or off.
+    pub plugin_panes: Vec<String>,
     /// Which of them was showing.
     pub active_file: usize,
     /// Which pane each of them was in, in the same order. All zeros for a state file written before
@@ -349,6 +357,14 @@ pub fn load(root: &Path) -> ProjectState {
     if let Some(name) = values.text("run.selected") {
         state.run_selected = name.trim().to_owned();
     }
+    if let Some(panes) = values.text("plugin.panes") {
+        state.plugin_panes = panes
+            .split(',')
+            .map(str::trim)
+            .filter(|key| !key.is_empty())
+            .map(str::to_owned)
+            .collect();
+    }
     if let Some(count) = values.number("terminal.tabs") {
         state.terminal_tabs = (count.max(0.0) as usize).min(16);
     }
@@ -428,6 +444,9 @@ pub fn save(root: &Path, state: &ProjectState) {
         values.set("realm.imported", "true");
     }
     values.set("terminal.tabs", state.terminal_tabs.to_string());
+    // Written even when empty, so a pane put away is put away next time too rather than falling back to
+    // whatever an older line said.
+    values.set("plugin.panes", state.plugin_panes.join(","));
 
     if let Some(place) = state.window.filter(WindowPlace::is_sensible) {
         values.set("window.x", format!("{:.0}", place.x));
@@ -876,6 +895,7 @@ mod tests {
         let root = project("unluminous-project-state-round-trip");
         let state = ProjectState {
             plugin_tabs: Vec::new(),
+            plugin_panes: vec!["agent-chat/chat".to_owned(), "agent-tasks/board".to_owned()],
             open_files: vec![root.join("readme.md"), root.join("chapters/one.md")],
             active_file: 1,
             file_panes: vec![0, 0],
@@ -1100,6 +1120,7 @@ mod tests {
         let root = project("unluminous-project-state-split");
         let state = ProjectState {
             plugin_tabs: Vec::new(),
+            plugin_panes: vec!["agent-chat/chat".to_owned(), "agent-tasks/board".to_owned()],
             open_files: vec![root.join("readme.md"), root.join("chapters/one.md")],
             active_file: 1,
             file_panes: vec![0, 1],

@@ -2354,6 +2354,24 @@ impl UnluminousApp {
             &placements,
             self.page_was_pressed,
         );
+        // **A press inside a page reaches the page and not egui**, because the page is a native child window
+        // the operating system gives the click to directly. So no press egui saw ever landed on a page, and
+        // the line above answered "not the page" on every frame: the frame that the page's own `SetFocus`
+        // woke handed the keyboard straight back to the window, and `Ctrl+V` in a field on the page went to
+        // Unluminous instead (`task-2255`: *"I can't seem to paste into fields in the browser tab."*). The
+        // platform is asked instead: the page holds the keyboard and the pointer is over it, so somebody
+        // clicked into it, and the tab or node it belongs to becomes the one with the keyboard.
+        let mut clicked_into = None;
+        if !self.page_was_pressed && self.browser.the_page_was_clicked_into() {
+            self.page_was_pressed = true;
+            clicked_into = self.browser.showing();
+        }
+        if let Some(id) = clicked_into {
+            for placement in &mut placements {
+                placement.focused = placement.id == id;
+            }
+            self.give_the_keyboard_to_the_page(id);
+        }
         if !self.page_was_pressed {
             for placement in &mut placements {
                 placement.focused = false;

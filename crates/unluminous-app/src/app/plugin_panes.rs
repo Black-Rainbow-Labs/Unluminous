@@ -190,6 +190,11 @@ impl PluginUi {
         self.surfaces.panes.get(slot).map(|surface| &surface.what)
     }
 
+    /// The keys of the contributed panes that are showing, in the order they were shown.
+    pub fn showing_keys(&self) -> Vec<String> {
+        self.showing.clone()
+    }
+
     pub fn is_visible(&self, slot: usize) -> bool {
         self.pane_key(slot).is_some_and(|key| self.showing.contains(&key))
     }
@@ -356,6 +361,30 @@ impl Panel {
     /// The pane a contributed slot holds, as a `Panel`, when there is one.
     pub fn plugin_pane(slot: usize) -> Option<Panel> {
         (slot < PLUGIN_PANES).then_some(Panel::Plugin(slot as u8))
+    }
+}
+
+/// The frame trace's name for one plugin's catch up, so a slow frame names the plugin (`task-2255`).
+fn catch_up_phase(plugin: &str) -> &'static str {
+    match plugin {
+        "agent-tasks" => "catch-up-agent-tasks",
+        "agent-chat" => "catch-up-agent-chat",
+        "database" => "catch-up-database",
+        "designer" => "catch-up-designer",
+        "realm" => "catch-up-realm",
+        _ => "catch-up-other",
+    }
+}
+
+/// The same for one plugin's tick.
+fn tick_phase(plugin: &str) -> &'static str {
+    match plugin {
+        "agent-tasks" => "tick-agent-tasks",
+        "agent-chat" => "tick-agent-chat",
+        "database" => "tick-database",
+        "designer" => "tick-designer",
+        "realm" => "tick-realm",
+        _ => "tick-other",
     }
 }
 
@@ -876,13 +905,19 @@ impl UnluminousApp {
                 asked
                     .extend(provider.asking().into_iter().map(|request| (plugin.clone(), request)));
             }
+            crate::services::frame_trace::phase(catch_up_phase(&plugin));
         }
+        // Each step its own phase of the frame trace (`task-2255`), so a slow frame says which part of the
+        // plugins' turn it was rather than the whole of it.
+        crate::services::frame_trace::phase("plugins-catch-up");
         for (plugin, request) in asked {
             self.act_on_a_plugin_request(&plugin, request, ctx);
         }
+        crate::services::frame_trace::phase("plugins-asked");
         self.tell_the_plugins_what_is_showing();
         self.tell_the_plugins_the_endpoints();
         self.act_on_the_designer_wants();
+        crate::services::frame_trace::phase("plugins-told");
         // The canvas, on exactly the same terms and for the same reason - `task-1904`. A terminal
         // node that printed while its node was scrolled off the canvas, or while the canvas was put
         // away, must not lose what it printed, and a pipe between two of them has to be read whether
@@ -891,6 +926,7 @@ impl UnluminousApp {
         if self.catch_the_realm_up(now, ctx) {
             ctx.request_repaint_after(std::time::Duration::from_millis(120));
         }
+        crate::services::frame_trace::phase("plugins-realm");
     }
 
     /// Tell every open provider which project is open and which file is showing.
@@ -982,6 +1018,7 @@ impl UnluminousApp {
             // `tick` is a command like any other, so it goes down the one path a change goes down and an
             // agent can ask for it by hand with `plugins run agent-tasks watchdog`.
             let _ = self.plugin_ui.run(&plugin, "tick", &[]);
+            crate::services::frame_trace::phase(tick_phase(&plugin));
         }
     }
 

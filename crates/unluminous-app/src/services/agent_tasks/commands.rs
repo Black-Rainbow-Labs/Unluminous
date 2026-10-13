@@ -79,6 +79,8 @@ pub const LIST: &[(&str, &str)] = &[
     ("new-sprint", "Create a sprint and make it the active one. Names itself when no name is given."),
     ("fold", "Open or shut a ticket's todos or its terminal: `fold terminal shut`. Says both when asked with nothing."),
     ("description-height", "How tall the ticket modal's description is: `description-height 120`, or `auto` for the modal's own choice. Says which when asked with nothing."),
+    ("terminal-height", "How tall the ticket modal's agent terminal is: `terminal-height 300`, or `auto` for the modal's own choice. Says which when asked with nothing."),
+    ("comments-height", "How tall the ticket modal's comments are: `comments-height 200`, or `auto` for the modal's own choice. Says which when asked with nothing."),
     ("sprint-assign", "Put a ticket in a sprint, or in the backlog: `sprint-assign task-1 backlog`."),
     ("sprint-activate", "Make one sprint the active one, which is the sprint the board shows."),
     ("sprint-complete", "Close a sprint. Anything in it that is not in Agent Done goes to the backlog."),
@@ -355,28 +357,45 @@ fn ticket_display(
         // How tall the ticket modal's description is, which a person sets by dragging the bottom edge of the
         // description. `task-2214`. A number of points, or `auto` for the height the modal chooses itself, and
         // with no argument it says which.
-        "description-height" => (|| {
-            match argument(0) {
-                "" => {}
-                "auto" | "reset" => tasks.description_height = None,
-                points => {
-                    let points: f32 = points.parse().map_err(|_| {
-                        format!("`{points}` is not a height: give a number of points, or `auto`")
-                    })?;
-                    if !points.is_finite() || points <= 0.0 {
-                        return Err(format!("`{points}` is not a height a description can have"));
-                    }
-                    tasks.description_height = Some(points);
-                }
-            }
-            Ok(match tasks.description_height {
-                Some(points) => Answer::said(format!("the description is {points} points tall"))
-                    .with(json!({"height": points})),
-                None => Answer::said("the description is the height the modal chooses".to_owned())
-                    .with(json!({"height": null})),
-            })
-        })(),
+        "description-height" => section_height(&mut tasks.description_height, "description", argument(0)),
+        // The same for the agent's terminal and for the comments (`task-2255`: *"The comments, terminal should be
+        // resizable, similar to the description."*), each set by dragging its own bottom edge.
+        "terminal-height" => section_height(&mut tasks.terminal_height, "terminal", argument(0)),
+        "comments-height" => section_height(&mut tasks.comments_height, "comments", argument(0)),
         _ => return None,
+    })
+}
+
+/// How tall one section of the ticket modal is, which a person sets by dragging the section's bottom edge.
+/// `task-2214` for the description, `task-2255` for the terminal and the comments. `said` is a number of
+/// points, or `auto` for the height the modal chooses itself, and with nothing it says which.
+///
+/// @param height - the section's height on the provider
+/// @param name - what the answer calls the section
+/// @param said - the command's argument
+fn section_height(height: &mut Option<f32>, name: &str, said: &str) -> Result<Answer, String> {
+    match said {
+        "" => {}
+        "auto" | "reset" => *height = None,
+        points => {
+            let points: f32 = points.parse().map_err(|_| {
+                format!("`{points}` is not a height: give a number of points, or `auto`")
+            })?;
+            if !points.is_finite() || points <= 0.0 {
+                return Err(format!("`{points}` is not a height the {name} can have"));
+            }
+            *height = Some(points);
+        }
+    }
+    let verb = match name {
+        "comments" => "are",
+        _ => "is",
+    };
+    Ok(match *height {
+        Some(points) => Answer::said(format!("the {name} {verb} {points} points tall"))
+            .with(json!({"height": points})),
+        None => Answer::said(format!("the {name} {verb} the height the modal chooses"))
+            .with(json!({"height": null})),
     })
 }
 

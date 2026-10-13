@@ -51,6 +51,7 @@ pub fn configure() {
             }
         }
         keep_the_model_briefly();
+        embed_on_few_threads();
         if let Some(cli) = cli_program() {
             atrius_index::host::set_server_command(cli, vec!["search".into(), "serve".into()]);
         }
@@ -75,15 +76,36 @@ pub const MODEL_IDLE: &str = "idle:60s";
 /// setup-embeddings` recorded, wins over this.
 fn keep_the_model_briefly() {
     const VARIABLE: &str = "INILLUCENT_EMBED_RESIDENCY";
-    if std::env::var_os(VARIABLE).is_some() || a_residency_was_recorded() {
+    if std::env::var_os(VARIABLE).is_some() || was_recorded("residency") {
         return;
     }
     std::env::set_var(VARIABLE, MODEL_IDLE);
 }
 
-/// Whether `inillucent setup-embeddings` wrote a residency into its install state, read from where
-/// Inillucent's `install::home` keeps it.
-fn a_residency_was_recorded() -> bool {
+/// How many processor threads the embedding model runs on in a process that did not say.
+///
+/// `task-2255`: *"Unluminous now eats up a lot of CPU."* ONNX Runtime gives a session one thread for each
+/// logical processor unless it is told otherwise, so a window embedding its project's passages ran 23
+/// `session-1-intra-op` threads and was measured at 15 to 18 processors for the first minutes after it
+/// opened, with every window of a restored session doing the same at once. Embedding is background work
+/// that nobody is waiting on, so it gets two threads; a search still finds lines and names at once, and a
+/// plain English question is answered from its words until the vectors are there.
+pub const EMBED_THREADS: &str = "2";
+
+/// Runs the embedding model on [`EMBED_THREADS`] threads, unless `INILLUCENT_EMBED_THREADS` or a thread count
+/// `inillucent setup-embeddings --threads` recorded says otherwise.
+fn embed_on_few_threads() {
+    const VARIABLE: &str = "INILLUCENT_EMBED_THREADS";
+    if std::env::var_os(VARIABLE).is_none() && !was_recorded("threads") {
+        std::env::set_var(VARIABLE, EMBED_THREADS);
+    }
+}
+
+/// Whether `inillucent setup-embeddings` wrote `key` (`residency` or `threads`) into its install state, read
+/// from where Inillucent's `install::home` keeps it.
+///
+/// @param key - the setting's name in `embeddings.json`
+fn was_recorded(key: &str) -> bool {
     let named = std::env::var_os("INILLUCENT_HOME").filter(|home| !home.is_empty());
     let home = if let Some(named) = named {
         Some(PathBuf::from(named))
@@ -102,7 +124,7 @@ fn a_residency_was_recorded() -> bool {
     };
     home.and_then(|home| std::fs::read(home.join("embeddings.json")).ok())
         .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
-        .is_some_and(|state| state.get("residency").is_some_and(|value| !value.is_null()))
+        .is_some_and(|state| state.get(key).is_some_and(|value| !value.is_null()))
 }
 
 /// The `unluminous-cli` program: this one when it is the CLI under any name that starts with its own

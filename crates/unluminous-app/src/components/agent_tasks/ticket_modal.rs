@@ -27,6 +27,10 @@
 //! cut to, and the shortfall is taken from them in order: the terminal, then the description down to three
 //! lines, then the comments, and the todos last. The description, the comments and the todos all scroll.
 //!
+//! The description, the terminal and the comments each have a grip along their bottom edge, and a height
+//! dragged there is what that section then wants (`task-2214`, `task-2255`). Comments given a height of their
+//! own leave whatever room is spare under them, so their bottom edge stays under the pointer.
+//!
 //! ## Every field writes through one function
 //!
 //! The controls down the right are calls to `AgentTasks::edit_field`, so there is one place a column is written.
@@ -110,6 +114,8 @@ const TERMINAL_SHARE: f32 = 0.34;
 const TERMINAL_SMALLEST: f32 = 150.0;
 const TERMINAL_LEAST: f32 = 64.0;
 const TERMINAL_LARGEST: f32 = 420.0;
+/// The least the comments can be dragged to: the box that writes one and a little of the first comment.
+const COMMENTS_LEAST: f32 = 90.0;
 /// What the comments want and the least they can be given: the box that writes one and about one comment.
 const COMMENTS: f32 = 260.0;
 const COMMENT_ROUGHLY: f32 = 56.0;
@@ -405,9 +411,12 @@ fn budget(board: &AgentTasks, rux: &rux::Rux<'_>, area: Rect, task: &Task, new: 
     let terminal_open = !board.terminal_shut;
     let (terminal_want, terminal_least) = match (new, live, terminal_open) {
         (true, _, _) | (false, _, false) => (0.0, 0.0),
-        (false, true, true) => {
-            ((room * TERMINAL_SHARE).clamp(TERMINAL_SMALLEST, TERMINAL_LARGEST), TERMINAL_LEAST)
-        }
+        (false, true, true) => (
+            board.terminal_height.map(|height| height.max(TERMINAL_LEAST)).unwrap_or_else(|| {
+                (room * TERMINAL_SHARE).clamp(TERMINAL_SMALLEST, TERMINAL_LARGEST)
+            }),
+            TERMINAL_LEAST,
+        ),
         (false, false, true) => (TERMINAL_EMPTY, TERMINAL_EMPTY),
     };
     let composer = super::detail::composer_room(rux, area.width());
@@ -415,7 +424,11 @@ fn budget(board: &AgentTasks, rux: &rux::Rux<'_>, area: Rect, task: &Task, new: 
         true => (0.0, 0.0),
         false => {
             let used = board.detail().comments.len() as f32 * COMMENT_ROUGHLY + composer;
-            (COMMENTS.min(used), (composer + COMMENT_ROUGHLY).min(used))
+            let least = (composer + COMMENT_ROUGHLY).min(used);
+            match board.comments_height {
+                Some(height) => (height.max(COMMENTS_LEAST), least.min(height.max(COMMENTS_LEAST))),
+                None => (COMMENTS.min(used), least),
+            }
         }
     };
     let headings = match new {
@@ -438,6 +451,12 @@ fn budget(board: &AgentTasks, rux: &rux::Rux<'_>, area: Rect, task: &Task, new: 
     };
     let terminal = give(terminal_want, terminal_least, &mut short);
     let description = give(description_want, DESCRIPTION_LEAST, &mut short);
+    // Spare room goes to the comments, unless somebody has given them a height of their own: then it stays under
+    // them, so the edge they were dragged by is where the pointer let go of it.
+    let spare = match board.comments_height {
+        Some(_) => 0.0,
+        None => spare,
+    };
     let comments = give(comment_want, comment_least, &mut short) + spare;
     let todos = give(todo_want, todo_least, &mut short);
     // When every section is at its least and the dialog is still short, the others go below theirs before the
@@ -510,7 +529,9 @@ fn main_column(
             look,
             theme.ink.i900,
         ));
-        if let Some(height) = description_grip(rux, well, area.max.y - well.min.y) {
+        let grip = Grip { salt: "agent-tasks-description-grip", name: "Resize description" };
+        if let Some(height) = section_grip(rux, well, DESCRIPTION_LEAST, area.max.y - well.min.y, grip)
+        {
             board.description_height = height;
         }
     }
@@ -625,6 +646,13 @@ fn main_column(
             }
             false => requests.extend(no_terminal(board, rux, at, task)),
         }
+        if live {
+            let grip = Grip { salt: "agent-tasks-terminal-grip", name: "Resize terminal" };
+            let most = area.max.y - at.min.y - LABEL - 12.0 - SECTION_GAP;
+            if let Some(height) = section_grip(rux, at, TERMINAL_LEAST, most, grip) {
+                board.terminal_height = height;
+            }
+        }
         pen = at.max.y;
     }
     pen += SECTION_GAP;
@@ -639,6 +667,17 @@ fn main_column(
     );
     if comments_at.height() > 20.0 {
         requests.extend(super::detail::comment_section(board, rux, order, comments_at, look));
+        // The grip sits inside the bottom of the section rather than under it, because the section usually ends
+        // at the dialog's own padding and a strip under it would be outside the room it was given.
+        let well = Rect::from_min_max(
+            comments_at.min,
+            Pos2::new(comments_at.max.x, comments_at.max.y - DESCRIPTION_GRIP),
+        );
+        let grip = Grip { salt: "agent-tasks-comments-grip", name: "Resize comments" };
+        let most = area.max.y - well.min.y - DESCRIPTION_GRIP;
+        if let Some(height) = section_grip(rux, well, COMMENTS_LEAST, most, grip) {
+            board.comments_height = height.map(|height| height + DESCRIPTION_GRIP);
+        }
     }
     requests
 }
@@ -720,13 +759,27 @@ fn terminal_mark(rux: &rux::Rux<'_>, centre: Pos2, colour: egui::Color32) {
     rux.painter().line_segment([at(8.5, 11.0), at(12.5, 11.0)], stroke);
 }
 
-/// The corner of the description's well that resizes it, answering the height to keep when it was dragged.
+/// Which section a [`section_grip`] resizes: the salt its id and its remembered start are made from, and the
+/// name a test and assistive technology find it by.
+struct Grip {
+    salt: &'static str,
+    name: &'static str,
+}
+
+/// The corner of a section's well that resizes it, answering the height to keep when it was dragged.
 ///
-/// `task-2214`. The design draws a small diagonal mark in the well's bottom right corner, which is where a
-/// browser puts a resizable box's handle; the strip under the well takes the drag as well, so the edge can be
-/// caught anywhere along it. A double click answers `Some(None)`, which puts the description back to the height
-/// the modal chooses. `most` is the furthest the well may reach.
-fn description_grip(rux: &mut rux::Rux<'_>, well: Rect, most: f32) -> Option<Option<f32>> {
+/// `task-2214` for the description, `task-2255` for the terminal and the comments. The design draws a small
+/// diagonal mark in the well's bottom right corner, which is where a browser puts a resizable box's handle; the
+/// strip under the well takes the drag as well, so the edge can be caught anywhere along it. A double click
+/// answers `Some(None)`, which puts the section back to the height the modal chooses. `least` is the least it
+/// may be made and `most` the furthest it may reach.
+fn section_grip(
+    rux: &mut rux::Rux<'_>,
+    well: Rect,
+    least: f32,
+    most: f32,
+    grip: Grip,
+) -> Option<Option<f32>> {
     let corner = Rect::from_min_max(
         well.max - Vec2::new(24.0, 22.0),
         well.max + Vec2::new(0.0, DESCRIPTION_GRIP),
@@ -737,12 +790,10 @@ fn description_grip(rux: &mut rux::Rux<'_>, well: Rect, most: f32) -> Option<Opt
     );
     let response = rux.ui.interact(
         corner.union(strip),
-        rux.ui.id().with("agent-tasks-description-grip"),
+        rux.ui.id().with(grip.salt),
         egui::Sense::click_and_drag(),
     );
-    response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Resize description")
-    });
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, grip.name));
     let active = response.hovered() || response.dragged();
     if active {
         rux.ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
@@ -763,7 +814,7 @@ fn description_grip(rux: &mut rux::Rux<'_>, well: Rect, most: f32) -> Option<Opt
     }
     // **Measured from where the press began**, against the height the well had then. egui reports a drag only
     // once the pointer has moved past its threshold, so adding up deltas lost the first few points of every drag.
-    let started = rux.ui.id().with("agent-tasks-description-grip-start");
+    let started = rux.ui.id().with((grip.salt, "start"));
     if response.drag_started() {
         rux.ui.ctx().data_mut(|data| data.insert_temp(started, well.height()));
     }
@@ -775,7 +826,7 @@ fn description_grip(rux: &mut rux::Rux<'_>, well: Rect, most: f32) -> Option<Opt
                 _ => 0.0,
             }
         });
-        let height = (from + travelled).clamp(DESCRIPTION_LEAST, most.max(DESCRIPTION_LEAST));
+        let height = (from + travelled).clamp(least, most.max(least));
         if (height - well.height()).abs() > 0.1 {
             return Some(Some(height));
         }

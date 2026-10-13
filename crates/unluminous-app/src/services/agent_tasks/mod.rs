@@ -493,6 +493,10 @@ pub struct AgentTasks {
     /// provider for the reason the two folds are: the drag and `plugins run agent-tasks description-height` are
     /// two ways of setting one number.
     pub description_height: Option<f32>,
+    /// How tall the agent's terminal and the comments are, once somebody has dragged their bottom edges
+    /// (`task-2255`). `None` is the height the modal gives each on its own, as for the description.
+    pub terminal_height: Option<f32>,
+    pub comments_height: Option<f32>,
     /// True while the ticket modal is open.
     ///
     /// Separate from whether a ticket is open in the detail, because the pane shows a ticket in place and the
