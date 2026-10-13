@@ -164,7 +164,7 @@ fn the_designer_pane_has_its_own_tabs_starting_blank_and_remembered_between_wind
     assert_eq!(the_tabs(&mut harness)["tabs"], serde_json::json!([null]));
     assert!(harness.state().browser_placements().is_empty());
     assert_eq!(the_designer_says(&mut harness)["open"].as_array().map(Vec::len), Some(0));
-    assert!(refused(&mut harness, "plugins run designer show-tab 4").len() > 0);
+    assert_eq!(refused(&mut harness, "plugins run designer show-tab 4"), "failed");
 
     // A design that was deleted is not brought back as a tab.
     std::fs::write(
