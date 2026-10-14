@@ -6,6 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- Comment & Send to Agent starts the agent on a ticket the watchdog moved back to New (`task-2268`)
+- The debugger's stopped line is centred on its letters, and its inline values sit on the code's baseline (`task-2268`)
+- A message echoed in a ticket's terminal is no longer read as a menu, and a menu's buttons wrap instead of overlapping (`task-2268`)
+- Inillucent 2.0.5, which keeps the ONNX Runtime environment alive to the end of the process (`task-2268`)
+
 ## 0.84.6 — 2026-10-14
 
 - A macOS build made on Windows is signed with its entitlements, and a release from a worktree publishes the site and the public source (`task-2268`)
