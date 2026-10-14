@@ -163,7 +163,7 @@ if [ "$dry_run" = 1 ]; then
     echo "  3. $image"
     echo "  4. commit \"Unluminous $next\", tag v$next, push $branch"
     [ "$skip_publish" = 1 ] || echo "  5. a GitHub release v$next with the image attached, on $slug"
-    [ "$skip_publish" = 1 ] || echo "  6. node tools/publish-open-source.mjs --push, then the same release on $public_slug"
+    [ "$skip_publish" = 1 ] || echo "  6. node tools/publish-open-source.mjs --push --ref v$next, then the same release on $public_slug"
     exit 0
 fi
 
@@ -398,8 +398,10 @@ page="$(publish_release "$slug")"
 # repository again: that one answers 404 to everybody who is not its owner, which is what made the
 # check impossible to succeed at for every person who installed Unluminous from the site.
 step "Publishing the source and the release on $public_slug"
-node "$repo/tools/publish-open-source.mjs" --push \
-    || die "The release v$next exists on $slug but the public source was not pushed. Run: node tools/publish-open-source.mjs --push"
+# The tag rather than origin/main: a release cut from a ticket worktree pushes the ticket's branch, so
+# origin/main can still be the version before. 0.84.5 published 0.84.4's source that way.
+node "$repo/tools/publish-open-source.mjs" --push --ref "v$next" \
+    || die "The release v$next exists on $slug but the public source was not pushed. Run: node tools/publish-open-source.mjs --push --ref v$next"
 public_page="$(publish_release "$public_slug")"
 
 echo

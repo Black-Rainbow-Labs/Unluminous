@@ -401,7 +401,7 @@ if ($WhatIf) {
     Write-Host "  4. commit `"Unluminous $next`", tag v$next, push $branch"
     if (-not $SkipPublish) {
         Write-Host "  5. gh release create v$next with the installer attached, on jasonmcaffee/unluminous"
-        Write-Host "  6. node tools\publish-open-source.mjs --push, then the same release on $PublicRepository"
+        Write-Host "  6. node tools\publish-open-source.mjs --push --ref v$next, then the same release on $PublicRepository"
         if (-not $SkipSite) {
             $lead = '  7.'
             foreach ($site in $SitePublishers) {
@@ -676,10 +676,14 @@ $url = (& $gh release view "v$next" --repo jasonmcaffee/unluminous --json url --
 # `tools/publish-open-source.mjs` is a pure function of the history — the same commits give the same
 # hashes every time — so this is an ordinary push that appends the new commits and the new tag, and
 # the release is then created against that tag.
+#
+# **It publishes the tag, not `origin/main`.** A release cut from a ticket worktree pushes the ticket's
+# branch, so `origin/main` can still be the version before; 0.84.5 was published to the public
+# repository with 0.84.4's source for that reason. The tag is this release whatever the branch.
 Write-Step "Publishing the source and the release on $PublicRepository"
-& node (Join-Path $Repo 'tools\publish-open-source.mjs') --push
+& node (Join-Path $Repo 'tools\publish-open-source.mjs') --push --ref "v$next"
 if ($LASTEXITCODE -ne 0) {
-    throw "The release v$next exists on the private repository but the public source was not pushed. Run: node tools\publish-open-source.mjs --push"
+    throw "The release v$next exists on the private repository but the public source was not pushed. Run: node tools\publish-open-source.mjs --push --ref v$next"
 }
 & $gh release create "v$next" @assets --repo $PublicRepository --title "Unluminous $next" --notes $body
 if ($LASTEXITCODE -ne 0) {
@@ -692,6 +696,12 @@ $publicUrl = (& $gh release view "v$next" --repo $PublicRepository --json url --
 # release did not reach answers `update check` with the version before this one, which is worse than
 # not answering at all, and the message says exactly what to run again.
 if (-not $SkipSite) {
+    # The product site takes its installers out of `releases/`, and it reads the main checkout's unless
+    # told otherwise. A release cut from a ticket worktree writes them into the worktree's own
+    # `releases/`, so 0.84.5 was published to GitHub and refused by the site with "has no installer".
+    # The folder this release wrote is the one to read, and the changelog it wrote likewise.
+    if (-not $env:UNLUMINOUS_RELEASES_DIR) { $env:UNLUMINOUS_RELEASES_DIR = Join-Path $Repo 'releases' }
+    if (-not $env:UNLUMINOUS_CHANGELOG) { $env:UNLUMINOUS_CHANGELOG = Join-Path $Repo 'CHANGELOG.md' }
     foreach ($site in $SitePublishers) {
         Write-Step "Publishing $($site.Name)"
         $arguments = @('-NoProfile', '-File', $site.Script)

@@ -478,7 +478,12 @@ function Invoke-BundleSigning {
 
     # Both are signed with `Unluminous.entitlements`, which lets them load the ONNX Runtime the code index
     # embeds with. The file says why; `build.sh` passes the same file.
-    $entitlements = Join-Path $PSScriptRoot 'Unluminous.entitlements'
+    #
+    # **The path is given as `@main:<path>`.** rcodesign reads `<scope>:<value>` and splits at the first
+    # colon, so a bare `C:\...` path is read as the scope `C` and the entitlements are applied to nothing,
+    # with no error. 0.84.5 shipped that way: both programs were signed and notarised with no entitlements
+    # at all. A bare `main:` does not work either, because rcodesign reads it as a path called `main`.
+    $entitlements = '@main:' + (Join-Path $PSScriptRoot 'Unluminous.entitlements')
     Invoke-Rcodesign -Quiet -Arguments (@('sign') + $Session.Arguments + @(
             '--binary-identifier', 'unluminous-cli', '--code-signature-flags', 'runtime',
             '--entitlements-xml-file', $entitlements,
@@ -496,6 +501,11 @@ function Invoke-BundleSigning {
     # names the file rather than the flag when it does.
     $runtime = ($info | Select-String -Pattern 'CodeSignatureFlags\(RUNTIME\)').Count
     if ($runtime -lt 4) { throw "only $runtime of the four signatures carry the hardened runtime flag" }
+    # And every one of the four carries the entitlement, because rcodesign says nothing when an
+    # entitlements file is applied to nothing. Each signature prints the key twice, once in the XML
+    # entitlements and once in the DER ones.
+    $entitled = ($info | Select-String -SimpleMatch 'com.apple.security.cs.disable-library-validation').Count
+    if ($entitled -lt 8) { throw "only $entitled of the eight entitlement entries the four signatures need are there" }
 
     # `rcodesign verify` reads a Mach-O and refuses a bundle path, so each
     # binary is verified rather than the directory holding them.
