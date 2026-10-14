@@ -6,6 +6,10 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- MacOS clippy is clean, and the odd length test runs on Windows (`task-2268`)
+
 ## 0.84.4 — 2026-10-14
 
 - The Arches U logo, still, in a light and a dark version (`task-2258`)
