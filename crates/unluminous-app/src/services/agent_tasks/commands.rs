@@ -98,7 +98,7 @@ pub const LIST: &[(&str, &str)] = &[
     ("search", "Tickets whose key, title or description holds the query."),
     ("new-epic", "Create an epic. Names itself when no name is given, which is what the menu entry does."),
     ("new-sprint", "Create a sprint and make it the active one. Names itself when no name is given."),
-    ("fold", "Open or shut a ticket's todos, its agent section or the card of fields down the right: `fold terminal shut`, `fold fields shut`. Says all three when asked with nothing."),
+    ("fold", "Open or shut a section of a ticket: its description, its agent section, its todos, its comments, or the card of fields down the right: `fold terminal shut`, `fold comments shut`. Says all five when asked with nothing."),
     ("agent-tab", "Which tab the ticket modal's agent section shows: `agent-tab chat` or `agent-tab terminal`. Says which when asked with nothing."),
     ("chat", "The last messages of a ticket's conversation, read from its agent's own transcript, which is what the ticket modal's Chat tab shows: `chat task-3 20`."),
     ("description-height", "How tall the ticket modal's description is: `description-height 120`, or `auto` for the modal's own choice. Says which when asked with nothing."),
@@ -375,9 +375,11 @@ fn ticket_display(
                 "todos" => tasks.todos_open = !shut.unwrap_or(!tasks.todos_open),
                 "terminal" | "agent" => tasks.terminal_shut = shut.unwrap_or(tasks.terminal_shut),
                 "fields" => tasks.fields_shut = shut.unwrap_or(tasks.fields_shut),
+                "description" => tasks.description_shut = shut.unwrap_or(tasks.description_shut),
+                "comments" => tasks.comments_shut = shut.unwrap_or(tasks.comments_shut),
                 other => {
                     return Err(format!(
-                        "`{other}` is not a section that folds: a ticket has `todos`, `terminal` and `fields`"
+                        "`{other}` is not a section that folds: a ticket has `description`, `terminal`, `todos`, `comments` and `fields`"
                     ));
                 }
             }
@@ -386,14 +388,18 @@ fn ticket_display(
                 false => "open",
             };
             Ok(Answer::said(format!(
-                "todos are {}, the agent section is {}, the fields are {}",
-                said(!tasks.todos_open),
+                "the description is {}, the agent section is {}, todos are {}, comments are {}, the fields are {}",
+                said(tasks.description_shut),
                 said(tasks.terminal_shut),
+                said(!tasks.todos_open),
+                said(tasks.comments_shut),
                 said(tasks.fields_shut)
             ))
             .with(json!({
-                "todos": tasks.todos_open,
+                "description": !tasks.description_shut,
                 "terminal": !tasks.terminal_shut,
+                "todos": tasks.todos_open,
+                "comments": !tasks.comments_shut,
                 "fields": !tasks.fields_shut,
             })))
         })(),

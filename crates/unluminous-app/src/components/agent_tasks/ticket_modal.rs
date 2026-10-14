@@ -555,7 +555,7 @@ fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new:
         (false, false, true) => (TERMINAL_EMPTY, TERMINAL_EMPTY),
     };
     let composer = super::detail::composer_room(board) + DESCRIPTION_GRIP;
-    let (comment_want, comment_least) = match new {
+    let (comment_want, comment_least) = match new || board.comments_shut {
         true => (0.0, 0.0),
         false => {
             let used = board.detail().comments.len() as f32 * COMMENT_ROUGHLY + composer;
@@ -571,15 +571,20 @@ fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new:
             }
         }
     };
+    // Every heading of a ticket that exists is a fold, as tall as its round chevron (`task-2269`).
     let headings = match new {
         true => LABEL + LABEL_GAP,
-        false => {
-            (LABEL + LABEL_GAP) * 2.0 + (TODO_HEAD + LABEL_GAP) * 2.0 + SECTION_GAP * 3.0 + 2.0
-        }
+        false => (TODO_HEAD + LABEL_GAP) * 4.0 + SECTION_GAP * 3.0 + 2.0,
     };
-    let description_want = match new {
-        true => (room - headings - todo_want).max(DESCRIPTION_LEAST),
-        false => board.description_height.unwrap_or(DESCRIPTION).max(DESCRIPTION_LEAST),
+    let description_shut = board.description_shut && !new;
+    let description_least = match description_shut {
+        true => 0.0,
+        false => DESCRIPTION_LEAST,
+    };
+    let description_want = match (new, description_shut) {
+        (true, _) => (room - headings - todo_want).max(DESCRIPTION_LEAST),
+        (false, true) => 0.0,
+        (false, false) => board.description_height.unwrap_or(DESCRIPTION).max(DESCRIPTION_LEAST),
     };
     let wanted = headings + description_want + todo_want + terminal_want + comment_want;
     let mut short = (wanted - room).max(0.0);
@@ -597,12 +602,12 @@ fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new:
     // terminal is cut first, as it always was; the chat is cut after the comments and the description.
     let comments_first = chatting.then(|| give(comment_want, comment_least, &mut short));
     let description_first =
-        (chatting && !dragged).then(|| give(description_want, DESCRIPTION_LEAST, &mut short));
+        (chatting && !dragged).then(|| give(description_want, description_least, &mut short));
     let terminal = give(terminal_want, terminal_least, &mut short);
     let description = match (dragged, description_first) {
         (true, _) => description_want,
         (false, Some(given)) => given,
-        (false, None) => give(description_want, DESCRIPTION_LEAST, &mut short),
+        (false, None) => give(description_want, description_least, &mut short),
     };
     // Spare room goes to the comments, unless somebody has given them a height of their own: then it stays under
     // them, so the edge they were dragged by is where the pointer let go of it.
@@ -631,7 +636,7 @@ fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new:
         }
     };
     let description = match dragged {
-        true => give(description, DESCRIPTION_LEAST, &mut short),
+        true => give(description, description_least, &mut short),
         false => description,
     };
     let description = (description - short).max(0.0);
@@ -651,7 +656,63 @@ fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new:
         }
         false => (todos, description),
     };
+    // **A shut section gives its room to the other of the two that take what is spare**, the comments or the
+    // description, so the dialog does not end in an empty band (`task-2269`).
+    let (description, comments) = match (description_shut, board.comments_shut && !new) {
+        (true, false) => (0.0, comments + description),
+        (false, true) => (description + comments, 0.0),
+        (true, true) => (0.0, 0.0),
+        (false, false) => (description, comments),
+    };
     Budget { description, todos, terminal, comments }
+}
+
+/// A section's heading that folds: the round chevron before it, named `name`, and `words` beside it. Answers
+/// whether the chevron was pressed, and where the words end so a control can go after them.
+///
+/// The Agent and Todos headings' own shape, for the description and the comments (`task-2269`). The words are
+/// a heading of their own when `labelled`, so a test can find them by what they say.
+fn fold_heading(
+    rux: &mut rux::Rux<'_>,
+    at: Pos2,
+    name: &str,
+    words: &str,
+    open: bool,
+    labelled: bool,
+) -> (bool, f32) {
+    let disc = Rect::from_min_size(at, Vec2::splat(TODO_HEAD));
+    let turn = match open {
+        true => std::f32::consts::PI,
+        false => 0.0,
+    };
+    let pressed = ChipButton::new(Icon::ChevDown, TODO_HEAD, name)
+        .mark(10.0, Some(1.6))
+        .turn(turn)
+        .folds(open)
+        .show(rux, disc)
+        .clicked();
+    let left = disc.max.x + 10.0;
+    let width = match labelled {
+        true => {
+            let top = disc.center().y - LABEL / 2.0 - 1.0;
+            label(rux, Pos2::new(left, top), words)
+        }
+        false => {
+            let theme = rux.theme();
+            let style = Style::sans(12.0).semibold();
+            let galley = rux.text(style, words, theme.ink.i500);
+            let width = galley.size().x;
+            rux::text::draw_left_capitals(
+                rux.painter(),
+                Pos2::new(left, disc.center().y),
+                galley,
+                style,
+                theme.ink.i500,
+            );
+            width
+        }
+    };
+    (pressed, left + width)
 }
 
 /// The description, the todos, the terminal and the comments.
@@ -671,23 +732,48 @@ fn main_column(
     let mut pen = area.min.y;
 
     // ------------------------------------------------------------------ the description
-    label(rux, Pos2::new(area.min.x, pen), "Description");
+    // A ticket that exists folds its description, as it folds its agent and its todos (`task-2269`). A new ticket
+    // is being written, so its description is always open.
+    let description_open = new || !board.description_shut;
+    let row = match new {
+        true => {
+            label(rux, Pos2::new(area.min.x, pen), "Description");
+            LABEL
+        }
+        false => {
+            let (pressed, _) =
+                fold_heading(rux, Pos2::new(area.min.x, pen), "Description", "Description", description_open, false);
+            if pressed {
+                board.description_shut = description_open;
+            }
+            TODO_HEAD
+        }
+    };
     // The two view buttons, on the heading's own row and right aligned, which is where a section's controls go.
-    if let Some(rendered) = super::raw_or_rendered(
-        rux.ui,
-        look,
-        Rect::from_min_size(Pos2::new(area.min.x, pen - 2.0), Vec2::new(area.width(), 18.0)),
-        "the description",
-        board.detail().description_rendered,
-    ) {
-        board.show_the_description_rendered(rendered);
+    let buttons_top = match new {
+        true => pen - 2.0,
+        false => pen + (TODO_HEAD - 18.0) / 2.0,
+    };
+    if description_open {
+        if let Some(rendered) = super::raw_or_rendered(
+            rux.ui,
+            look,
+            Rect::from_min_size(
+                Pos2::new(area.min.x, buttons_top),
+                Vec2::new(area.width(), 18.0),
+            ),
+            "the description",
+            board.detail().description_rendered,
+        ) {
+            board.show_the_description_rendered(rendered);
+        }
     }
-    pen += LABEL + LABEL_GAP;
+    pen += row + LABEL_GAP;
     let well = Rect::from_min_size(
         Pos2::new(area.min.x, pen),
         Vec2::new(area.width(), budget.description),
     );
-    if well.height() > 24.0 {
+    if description_open && well.height() > 24.0 {
         rux.chrome.surface(well, 20.0, chat.well, chat.carved_sm());
         if !board.detail().description_rendered {
             order.push(rux.ui.id().with("agent-tasks-description"));
@@ -888,13 +974,18 @@ fn main_column(
 
     // ------------------------------------------------------------------ the comments
     let title = format!("Comments \u{b7} {}", task.comment_count);
-    label(rux, Pos2::new(area.min.x, pen), &title);
-    pen += LABEL + 12.0;
+    let comments_open = !board.comments_shut;
+    let (pressed, _) =
+        fold_heading(rux, Pos2::new(area.min.x, pen), "Comments", &title, comments_open, true);
+    if pressed {
+        board.comments_shut = comments_open;
+    }
+    pen += TODO_HEAD + LABEL_GAP;
     let comments_at = Rect::from_min_max(
         Pos2::new(area.min.x, pen),
         Pos2::new(area.max.x, (pen + budget.comments).min(area.max.y)),
     );
-    if comments_at.height() > 20.0 {
+    if comments_open && comments_at.height() > 20.0 {
         // The grip sits inside the bottom of the section rather than under it, because the section usually ends
         // at the dialog's own padding and a strip under it would be outside the room it was given. The comments
         // and the composer are laid out above that strip, so the strip is under the buttons rather than over

@@ -4528,6 +4528,44 @@ fn the_todos_are_shut_under_the_agent_above_the_comments_with_no_field_to_add_on
     harness.snapshot(shot("agent_tasks_todos_under_the_agent").as_str());
 }
 
+/// `task-2269`: *"The description and comments of task modal in agent chat should have a collapse toggle similar to
+/// Agent chat and todos."* The chevron before each heading shuts its section, the room goes to what is still open,
+/// and `fold description` and `fold comments` are the same switches.
+#[test]
+fn the_description_and_the_comments_fold_as_the_agent_and_the_todos_do() {
+    let mut harness = harness("");
+    harness.set_size(vec2(1500.0, 950.0));
+    a_ticket_open(&mut harness);
+    let folds = did(&mut harness, "plugins run agent-tasks fold");
+    assert_eq!(folds["description"], true, "{folds}");
+    assert_eq!(folds["comments"], true, "{folds}");
+    assert!(harness.query_by_label("Resize description").is_some(), "the description starts open");
+    assert!(harness.query_by_label("Comment field").is_some(), "the comments start open");
+    let agent_before = harness.get_by_label("Agent").rect();
+
+    harness.get_by_label("Description").click();
+    steady(&mut harness);
+    assert!(harness.query_by_label("Resize description").is_none(), "the description is shut");
+    let agent_after = harness.get_by_label("Agent").rect();
+    assert!(
+        agent_after.top() < agent_before.top() - 40.0,
+        "the sections under it move up: {agent_before:?} then {agent_after:?}"
+    );
+    assert_eq!(did(&mut harness, "plugins run agent-tasks fold")["description"], false);
+
+    harness.get_by_label("Comments").click();
+    steady(&mut harness);
+    assert!(harness.query_by_label("Comment field").is_none(), "the comments are shut, box and all");
+    assert!(harness.query_by_label_contains("Comments \u{b7}").is_some(), "the heading stays");
+    harness.snapshot(shot("agent_tasks_description_and_comments_shut").as_str());
+
+    did(&mut harness, "plugins run agent-tasks fold description open");
+    did(&mut harness, "plugins run agent-tasks fold comments open");
+    steady(&mut harness);
+    assert!(harness.query_by_label("Resize description").is_some());
+    assert!(harness.query_by_label("Comment field").is_some());
+}
+
 /// `task-2263`: *"I should be able to right click any link and see options to open in Unluminous Browser, or in
 /// default system browser."* A right click on an address in an answer opens the link menu rather than the message's
 /// own menu, and its first row opens the address in a browser tab.

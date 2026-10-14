@@ -573,6 +573,18 @@ pub(crate) fn comment_section(
                         height
                     }
                 };
+                // **The comment being edited is kept on the screen, its header row too**, because `Save` and `Cancel`
+                // are on that row. The list opens at its end (`task-2269`), so a comment taller than the list had its
+                // header, and its buttons, above what was showing.
+                if being_edited {
+                    ui.scroll_to_rect(
+                        Rect::from_min_max(
+                            Pos2::new(area.min.x, pen - HEAD),
+                            Pos2::new(area.max.x, pen + height),
+                        ),
+                        None,
+                    );
+                }
                 // A comment that is being read rather than edited has a right click menu that copies it.
                 // `task-2198`.
                 // Not when the right click was on a link, which opened the link's own menu (`task-2263`).

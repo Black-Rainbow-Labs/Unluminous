@@ -498,6 +498,13 @@ pub struct AgentTasks {
     /// board does: a person who wanted more room for the description or the comments could not get it, and on a
     /// short window its fixed budget pushed the other sections past the bottom edge.
     pub terminal_shut: bool,
+    /// Whether the ticket's Description section has been shut, by the chevron before its heading (`task-2269`:
+    /// *"The description and comments of task modal in agent chat should have a collapse toggle similar to Agent
+    /// chat and todos."*). Open until somebody shuts it, as the Agent section is.
+    pub description_shut: bool,
+    /// Whether the ticket's Comments section, the list and the box a comment is written in, has been shut
+    /// (`task-2269`). Open until somebody shuts it.
+    pub comments_shut: bool,
     /// How tall the ticket's description well is, once somebody has dragged its bottom edge.
     ///
     /// `task-2214`: *"The description in the modal needs to be resizable so it can take less height."* `None` is
@@ -2894,6 +2901,8 @@ impl AgentTasks {
             })),
             "titleMissing": self.detail.title_missing,
             "fieldsShut": self.fields_shut,
+            "descriptionShut": self.description_shut,
+            "commentsShut": self.comments_shut,
             "chat": self.ticket_chat.as_ref().map(|chat| json!({
                 "reading": chat.is_reading(),
                 "transcript": chat.path().map(|path| path.display().to_string()),

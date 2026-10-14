@@ -1205,6 +1205,10 @@ before the conversations button, with the Chat settings dialog under the header.
 - **The chat transcript does not follow a streaming answer while words are being dragged over**
   (`PaneState::selecting`), because following it moved the words under the held pointer and the selection grew.
 - **A ticket's comments are oldest first**, and the list opens at the newest, scrolled per ticket.
+- **Every section of a ticket that exists folds**: Description, Agent, Todos and Comments each have the round
+  chevron before the heading (`description_shut`, `comments_shut`, `fold description|comments [open|shut]`). A shut
+  section gives its room to whichever of the description and the comments is still open, and a comment being
+  edited is scrolled into view so its `Save` row shows.
 - **Closing a tab leaves the tab shown next where it was scrolled.** `close_tab` used to call `forget_layout`,
   which set that tab's preview back to its top.
 
