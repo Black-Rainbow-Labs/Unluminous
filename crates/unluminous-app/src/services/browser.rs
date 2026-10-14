@@ -1172,6 +1172,25 @@ pub fn the_page_was_the_last_thing_pressed(
         .fold(before, |_, at| placements.iter().any(|placement| placement.visible.contains(at)))
 }
 
+/// The page a press this frame landed on, when egui saw the press: the last one drawn that holds the point, which is
+/// the one on top.
+///
+/// `task-2263`. A press egui sees inside a page is a press on a page the one native view is not showing, because
+/// the live page takes its own clicks. That page is the one the person wants, so it is the one the view goes to.
+/// Choosing by which pane had the keyboard instead sent the view to the browser tab when the Designer's page was
+/// clicked, because the tab's pane still held the keyboard from a click on its address field.
+pub fn the_page_pressed(events: &[egui::Event], placements: &[BrowserPlacement]) -> Option<u64> {
+    let at = events.iter().rev().find_map(|event| match event {
+        egui::Event::PointerButton { pos, pressed: true, .. } => Some(*pos),
+        _ => None,
+    })?;
+    placements
+        .iter()
+        .rev()
+        .find(|placement| placement.visible.contains(at))
+        .map(|placement| placement.id)
+}
+
 /// Which of [`TheFocus`]'s three, from what the view holds now and what this frame asked for.
 ///
 /// **Asked from a remembered flag rather than of the platform**, so the call into the window manager
@@ -3240,6 +3259,29 @@ mod tests {
             "an egui surface over the pane takes the view off the screen where it cannot be cut"
         );
         assert_eq!(choose(&[], &[], true, None), None);
+    }
+
+    /// `task-2263`: a press egui saw on a page names that page, the one on top where two overlap.
+    #[test]
+    fn the_page_pressed_is_the_one_under_the_press() {
+        let left = Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::splat(100.0));
+        let right = Rect::from_min_size(egui::pos2(120.0, 0.0), egui::Vec2::splat(100.0));
+        let panes =
+            [BrowserPlacement::whole(1, left, true), BrowserPlacement::whole(2, right, false)];
+        let press = |at: egui::Pos2| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::default(),
+        };
+        assert_eq!(the_page_pressed(&[press(egui::pos2(150.0, 50.0))], &panes), Some(2));
+        assert_eq!(the_page_pressed(&[press(egui::pos2(50.0, 50.0))], &panes), Some(1));
+        assert_eq!(
+            the_page_pressed(&[press(egui::pos2(110.0, 50.0))], &panes),
+            None,
+            "between them"
+        );
+        assert_eq!(the_page_pressed(&[], &panes), None);
     }
 
     /// `task-2263`: the Designer's page and a browser tab side by side, and a press on the tab's address field,

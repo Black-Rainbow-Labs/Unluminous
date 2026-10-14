@@ -1908,7 +1908,10 @@ fn the_ticket_modal_holds_every_section_the_browser_board_has() {
     // the agent's half of the same thing, and it reaches the same two flags.
     let folded = did(&mut harness, "plugins run agent-tasks fold terminal shut");
     assert_eq!(folded["terminal"], false);
-    assert_eq!(folded["todos"], true, "shutting one leaves the other alone");
+    assert_eq!(
+        folded["todos"], false,
+        "shutting one leaves the other alone, and the todos start shut"
+    );
     steady(&mut harness);
     // The heading says which way it is. It is `rux`'s `SubGroup` since `task-2193`, which reports it as the
     // heading's toggled state rather than in its name.
@@ -3814,8 +3817,8 @@ fn a_real_answer_from_claude_code_draws_its_table_with_every_column_readable() {
 // -------------------------------------------------------------------------------------- task-2214
 
 /// `task-2214`: *"Tab press should navigate fields/inputs."* With nothing focused `Tab` goes to the first text
-/// box, the description, and each press after that goes to the next box: the todo box, then the comment box,
-/// then the JIRA key. What is typed after each press lands in that box, which is what makes the walk real rather
+/// box, the description, and each press after that goes to the next box: the comment box, then the JIRA key. The
+/// todos have had no box since `task-2263`. What is typed after each press lands in that box, which is what makes the walk real rather
 /// than a focus that moves somewhere nobody can see.
 #[test]
 fn tab_walks_the_ticket_modals_text_boxes_in_order() {
@@ -3832,29 +3835,14 @@ fn tab_walks_the_ticket_modals_text_boxes_in_order() {
     let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
     assert_eq!(ticket["description"], "Written after one Tab", "the first Tab is the description");
 
-    type_after_a_tab(&mut harness, "A second todo");
-    harness.key_press(egui::Key::Enter);
-    steady(&mut harness);
-    let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
-    let todos: Vec<String> = ticket["todos"]
-        .as_array()
-        .expect("todos")
-        .iter()
-        .map(|todo| todo["text"].as_str().unwrap_or_default().to_owned())
-        .collect();
-    assert!(
-        todos.contains(&"A second todo".to_owned()),
-        "the second Tab is the todo box: {todos:?}"
-    );
-
-    // Enter in the todo box keeps the keyboard there, so the next Tab is the comment box. The comment box holds
-    // several lines, so Enter is a new line there and Ctrl or Cmd with Enter posts (`task-2260`).
+    // The todos have no box to type into (`task-2263`), so the second Tab is the comment box. The comment box
+    // holds several lines, so Enter is a new line there and Ctrl or Cmd with Enter posts (`task-2260`).
     type_after_a_tab(&mut harness, "Said after a Tab");
     harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::Enter);
     steady(&mut harness);
     let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
     let said = ticket["comments"].to_string();
-    assert!(said.contains("Said after a Tab"), "the third Tab is the comment box: {said}");
+    assert!(said.contains("Said after a Tab"), "the second Tab is the comment box: {said}");
 
     // The chord in the comment box posts and lets go of the keyboard, so nothing in the modal has it, and Shift+Tab
     // from there goes the other way round to the last box, the JIRA key.

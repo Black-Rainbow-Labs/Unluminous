@@ -402,6 +402,36 @@ comments use it. A field's right click menu puts back the selection the right cl
 `controls::close_every_menu` closes every field and text menu when the tab showing changes or a page is
 clicked into.
 
+### What `task-2263` changed about links and the one native view
+
+- **A link's right click menu** is drawn by `markdown_text::show_the_link_menu`, once a frame, for every place
+  `markdown_text` draws a link: `Open in Unluminous Browser`, `Open in Default Browser` and `Copy Link Address`. A
+  caller with a right click menu of its own asks `the_link_menu_opened_this_frame` first, so one right click opens
+  one menu. `services::links::open_in_the_default_browser` is `ShellExecuteW` on Windows and `open` on macOS, for
+  `http` and `https` only. `browser open --system <address>` is the agent's half.
+- **A link click is refused only by the layer under the pointer**, never by `Popup::is_any_open`. That answer is
+  one for the whole window, so a dropdown left open anywhere made every link in the chat do nothing.
+- **A plugin's modal steps aside for the tab a link in it opened** (`UiProvider::put_the_modal_away`). The ticket's
+  Chat tab opened its tab behind the ticket, and nothing on the screen changed.
+- **With no page focused, the one native view stays on the page it shows** (`services::browser::going_to`), and a
+  press egui saw on a page gives the view to that page (`the_page_pressed`). A press on a tab's address field
+  clears every placement's `focused`, and the view used to go to whichever page was drawn last, which swapped the
+  Designer's page and a browser tab's on every click. The page that is not live draws its last picture
+  (`paint_a_page_not_showing`).
+
+### A ticket's agent starts in a folder it already trusts (`task-2263`)
+
+Claude Code and Codex ask whether to trust a folder the first time they meet one, `--dangerously-skip-permissions`
+does not answer that, and every ticket worktree is a folder they have not met. `services::agent_tasks::folder_trust`
+records `hasTrustDialogAccepted` in `.claude.json` and `trust_level = "trusted"` in Codex's `config.toml` before the
+spawn, and changes nothing when the folder is already trusted. A unit test never names the person's own files:
+`UNLUMINOUS_CLAUDE_CONFIG_FILE` and `UNLUMINOUS_CODEX_CONFIG_FILE` are the seams.
+
+Any other menu an agent stops on is read off the terminal's last screenful by `screen_choice::read` (two or more
+option lines in one column with one `❯`, and never the input box between its two rules). The ticket's Chat tab
+draws it as a card with a button per option, `plugins run agent-tasks choice <task> [n]` is the agent's half, and
+the handoff line is never typed while a menu is showing, because its return chose `No, exit`.
+
 ## The chat pane runs the agent you already have, and that is the whole of the design
 
 `task-1767` asks for "an agent chat plugin that opens as a right panel (left side toggle icon), can be

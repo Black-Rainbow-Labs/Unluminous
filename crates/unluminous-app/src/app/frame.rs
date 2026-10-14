@@ -2398,6 +2398,14 @@ impl UnluminousApp {
                 placement.focused = false;
             }
         }
+        // **A press egui saw on a page gives the view to that page** (`task-2263`), whichever pane held the keyboard
+        // before it. The live page takes its own clicks, so this is a press on a page showing its picture.
+        if let Some(id) = crate::services::browser::the_page_pressed(&raw_input.events, &placements)
+        {
+            for placement in &mut placements {
+                placement.focused = placement.id == id;
+            }
+        }
         // **`Escape` puts the element picker away** when the keys are Unluminous's rather than the page's, which
         // they are when the picker was opened from the toolbar's button. `task-2203`.
         let escape = raw_input.events.iter().any(|event| {
