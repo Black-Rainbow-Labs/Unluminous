@@ -461,7 +461,8 @@ mod tests {
     /// rather than a line at a time off the front of what was read.
     #[test]
     fn a_transcript_is_read_on_a_thread_and_then_followed_as_it_grows() {
-        let root = std::env::temp_dir().join(format!("unluminous-ticket-chat-unit-{}", std::process::id()));
+        let root = std::env::temp_dir()
+            .join(format!("unluminous-ticket-chat-unit-{}", std::process::id()));
         let home = root.join("claude");
         let project = root.join("project");
         std::fs::create_dir_all(&project).unwrap();
@@ -474,7 +475,8 @@ mod tests {
         let first: Vec<String> = (1..=3).map(an_answer).collect();
         std::fs::write(&file, first.join("\n") + "\n").unwrap();
 
-        let mut chat = TicketChat::reading(7, "task-7", "claude", "claude", session, &project, None);
+        let mut chat =
+            TicketChat::reading(7, "task-7", "claude", "claude", session, &project, None);
         assert!(chat.is_reading(), "nothing is read until it is followed");
         read_it(&mut chat);
         assert_eq!(chat.chat.session().chat.messages.len(), 3);

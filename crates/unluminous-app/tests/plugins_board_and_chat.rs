@@ -2085,7 +2085,10 @@ fn the_ticket_modals_comments_are_whole_and_scroll() {
     );
     // The list opens at its end, so the newest comment is the one on the screen.
     let comment_box = harness.get_by_label("Comment field").rect();
-    assert!(fourth < comment_box.top(), "the newest comment is above the box: {fourth} {comment_box:?}");
+    assert!(
+        fourth < comment_box.top(),
+        "the newest comment is above the box: {fourth} {comment_box:?}"
+    );
     // The wheel over the list, just above the comment box, scrolls it back up towards the older comments.
     let over = egui::pos2(comment_box.center().x, comment_box.top() - 40.0);
     harness.input_mut().events.push(egui::Event::PointerMoved(over));
@@ -3431,8 +3434,11 @@ fn words_selected_while_an_answer_streams_in_are_only_the_words_dragged_over() {
     with_the_chat(&mut harness, |chat| {
         target = chat.chat().messages.last().expect("the answer").id;
         let id = chat.session_mut().chat.next_id();
-        chat.session_mut()
-            .ask(unluminous_chat::Message::said(id, unluminous_chat::Role::User, "And again."));
+        chat.session_mut().ask(unluminous_chat::Message::said(
+            id,
+            unluminous_chat::Role::User,
+            "And again.",
+        ));
         chat.session_mut().reply(unluminous_chat::Reply::Text("Here it comes. ".to_owned()));
     });
     steady(&mut harness);
@@ -4351,7 +4357,11 @@ fn to_side_pane_shows_the_tickets_chat_in_the_agent_chat_pane_and_closes_the_mod
     harness.set_size(vec2(1500.0, 950.0));
     a_ticket_with_a_transcript(&mut harness);
     let view = did(&mut harness, "plugins view agent-tasks");
-    assert_eq!(view["detail"]["chat"]["reading"], false, "the transcript was read: {}", view["detail"]);
+    assert_eq!(
+        view["detail"]["chat"]["reading"], false,
+        "the transcript was read: {}",
+        view["detail"]
+    );
     assert_eq!(view["detail"]["chat"]["messages"], 3, "{}", view["detail"]);
     harness.get_by_label("To Side Pane").click();
     for _ in 0..4 {
@@ -4359,7 +4369,10 @@ fn to_side_pane_shows_the_tickets_chat_in_the_agent_chat_pane_and_closes_the_mod
         steady(&mut harness);
     }
     assert!(harness.query_by_label("Chat tab").is_none(), "the ticket modal closed");
-    assert!(harness.state().plugin_pane_area_for("agent-chat/chat").is_some(), "the chat pane is showing");
+    assert!(
+        harness.state().plugin_pane_area_for("agent-chat/chat").is_some(),
+        "the chat pane is showing"
+    );
     let chat = did(&mut harness, "plugins view agent-chat");
     assert_eq!(chat["ticket"]["key"], "task-1", "{chat}");
     assert_eq!(chat["ticket"]["reading"], false, "{chat}");
@@ -4555,7 +4568,10 @@ fn the_description_and_the_comments_fold_as_the_agent_and_the_todos_do() {
 
     harness.get_by_label("Comments").click();
     steady(&mut harness);
-    assert!(harness.query_by_label("Comment field").is_none(), "the comments are shut, box and all");
+    assert!(
+        harness.query_by_label("Comment field").is_none(),
+        "the comments are shut, box and all"
+    );
     assert!(harness.query_by_label_contains("Comments \u{b7}").is_some(), "the heading stays");
     harness.snapshot(shot("agent_tasks_description_and_comments_shut").as_str());
 

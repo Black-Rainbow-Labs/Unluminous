@@ -3193,7 +3193,8 @@ fn closing_a_browser_tab_leaves_the_markdown_it_came_from_where_it_was_scrolled(
     let folder = std::env::temp_dir()
         .join(format!("unluminous-scroll-after-a-close-{}", std::process::id()));
     std::fs::create_dir_all(&folder).expect("the folder");
-    let mut long = String::from("# A long document\n\nSee [the example](https://example.com/).\n\n");
+    let mut long =
+        String::from("# A long document\n\nSee [the example](https://example.com/).\n\n");
     for line in 1..=200 {
         long.push_str(&format!("Paragraph {line} of a document long enough to scroll.\n\n"));
     }

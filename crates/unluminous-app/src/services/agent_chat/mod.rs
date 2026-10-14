@@ -875,18 +875,18 @@ impl AgentChat {
             let had = self.ticket.take().map(|ticket| ticket.key);
             self.ui.jump_to_bottom = true;
             return Ok(match had {
-                Some(key) => Answer::said(format!("back to this pane's own conversation from {key}")),
+                Some(key) => {
+                    Answer::said(format!("back to this pane's own conversation from {key}"))
+                }
                 None => Answer::said("the pane is showing its own conversation"),
             });
         }
         let said: serde_json::Value = serde_json::from_str(words).map_err(|_| {
-            "`ticket` takes what `plugins run agent-tasks to-side-pane <key>` sends, or `off`".to_owned()
+            "`ticket` takes what `plugins run agent-tasks to-side-pane <key>` sends, or `off`"
+                .to_owned()
         })?;
         let text = |name: &str| {
-            said[name]
-                .as_str()
-                .map(str::to_owned)
-                .ok_or_else(|| format!("`ticket` needs `{name}`"))
+            said[name].as_str().map(str::to_owned).ok_or_else(|| format!("`ticket` needs `{name}`"))
         };
         let key = text("key")?;
         let session = text("session")?;
@@ -895,7 +895,11 @@ impl AgentChat {
         let speaker = text("speaker").unwrap_or_else(|_| agent.clone());
         let task = said["task"].as_i64().unwrap_or_default();
         // The same ticket and session already showing is kept, with what has been read of it.
-        if self.ticket.as_ref().is_some_and(|ticket| ticket.key == key && ticket.chat.session == session) {
+        if self
+            .ticket
+            .as_ref()
+            .is_some_and(|ticket| ticket.key == key && ticket.chat.session == session)
+        {
             return Ok(Answer::said(format!("{key}'s conversation is in the pane")));
         }
         let chat = crate::services::agent_tasks::ticket_chat::TicketChat::reading(

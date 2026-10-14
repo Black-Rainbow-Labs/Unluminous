@@ -741,8 +741,14 @@ fn main_column(
             LABEL
         }
         false => {
-            let (pressed, _) =
-                fold_heading(rux, Pos2::new(area.min.x, pen), "Description", "Description", description_open, false);
+            let (pressed, _) = fold_heading(
+                rux,
+                Pos2::new(area.min.x, pen),
+                "Description",
+                "Description",
+                description_open,
+                false,
+            );
             if pressed {
                 board.description_shut = description_open;
             }
@@ -758,10 +764,7 @@ fn main_column(
         if let Some(rendered) = super::raw_or_rendered(
             rux.ui,
             look,
-            Rect::from_min_size(
-                Pos2::new(area.min.x, buttons_top),
-                Vec2::new(area.width(), 18.0),
-            ),
+            Rect::from_min_size(Pos2::new(area.min.x, buttons_top), Vec2::new(area.width(), 18.0)),
             "the description",
             board.detail().description_rendered,
         ) {

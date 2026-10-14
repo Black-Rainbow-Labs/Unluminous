@@ -141,11 +141,12 @@ pub fn ticket_pane(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> 
         Vec2::new((area.width() - SIDE * 2.0 * scale).max(0.0), HEADER * scale),
     );
     let back = Rect::from_min_size(strip.min, Vec2::splat(strip.height()));
-    let pressed = kit::layer(&mut chat.ui, look, ui, "ticket-strip", strip, kit::SMALL_REACH, |rux| {
-        rux::components::RoundButton::mark(rux::Icon::ChevLeft, 15.0, "Back to My Chat")
-            .show(rux, back)
-            .clicked()
-    });
+    let pressed =
+        kit::layer(&mut chat.ui, look, ui, "ticket-strip", strip, kit::SMALL_REACH, |rux| {
+            rux::components::RoundButton::mark(rux::Icon::ChevLeft, 15.0, "Back to My Chat")
+                .show(rux, back)
+                .clicked()
+        });
     let words = Rect::from_min_max(Pos2::new(back.right() + 12.0 * scale, strip.top()), strip.max);
     if words.width() > 8.0 {
         let painter = ui.painter_at(words.intersect(ui.clip_rect()));
@@ -153,11 +154,19 @@ pub fn ticket_pane(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> 
         let ink = crate::theme::rux_theme().ink.i900;
         let title = format!("{} \u{b7} {}", ticket.key, ticket.agent);
         let galley = rux::text::elided(&painter, style, &title, ink, words.width());
-        rux::text::draw_left_capitals(&painter, Pos2::new(words.left(), words.center().y), galley, style, ink);
+        rux::text::draw_left_capitals(
+            &painter,
+            Pos2::new(words.left(), words.center().y),
+            galley,
+            style,
+            ink,
+        );
     }
     let below = Rect::from_min_max(Pos2::new(area.left(), strip.bottom()), area.max);
     let mut child = ui.new_child(
-        egui::UiBuilder::new().max_rect(below).id_salt(("agent-chat-side-pane-ticket", ticket.chat.task_id)),
+        egui::UiBuilder::new()
+            .max_rect(below)
+            .id_salt(("agent-chat-side-pane-ticket", ticket.chat.task_id)),
     );
     child.set_clip_rect(below.intersect(ui.clip_rect()));
     let requests = pane(&mut ticket.chat.chat, &mut child, look);
