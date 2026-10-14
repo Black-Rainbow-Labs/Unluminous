@@ -6,9 +6,10 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.84.6 — 2026-10-14
 
 - A macOS build made on Windows is signed with its entitlements, and a release from a worktree publishes the site and the public source (`task-2268`)
+- The changelog written from the history (`task-2268`)
 
 ## 0.84.5 — 2026-10-14
 
