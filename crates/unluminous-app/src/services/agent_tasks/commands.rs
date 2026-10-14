@@ -70,7 +70,7 @@ pub const LIST: &[(&str, &str)] = &[
     ("comment", "Post a comment on a ticket."),
     ("jira-key", "Record which JIRA issue a ticket is about. Nothing is fetched."),
     ("comment-edit", "Change what a comment says. A person's own comments only."),
-    ("comment-send", "Post a comment and type it into the ticket's agent."),
+    ("comment-send", "Post a comment and type it into the ticket's agent, starting the agent when none is running."),
     ("heartbeat", "Record that a ticket's agent is working, with a lease in minutes."),
     ("start", "Launch the ticket's agent and hand the ticket over."),
     ("resume", "Bring back a retired session without changing the ticket's lane."),
@@ -78,7 +78,7 @@ pub const LIST: &[(&str, &str)] = &[
         "session",
         "Say which conversation a ticket's agent is having, by its session id, so `resume` and the Chat tab pick          that one up: `session task-3 <uuid>`. For a Claude Code conversation started by hand. Says the current          one when asked with no id.",
     ),
-    ("send", "Type a line into a ticket's agent."),
+    ("send", "Type a line into a ticket's agent, starting the agent when none is running."),
     (
         "terminal",
         "What a ticket's agent has written, with whether a line is still queued for its prompt. \

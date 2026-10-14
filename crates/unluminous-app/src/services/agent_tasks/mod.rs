@@ -1310,10 +1310,16 @@ impl AgentTasks {
         })))
     }
 
-    /// Type a line into a ticket's agent, resuming a retired session first.
+    /// Type a line into a ticket's agent, starting one first when none is running.
     ///
-    /// Resuming first is the rule the board being replaced keeps, and the reason is exact: typing at a
-    /// process that has exited writes to nothing, and the comment would look sent.
+    /// Typing at a process that has exited writes to nothing, and the comment would look sent, so an agent is
+    /// brought up first. A Claude ticket that still has its session is resumed, which keeps its lane, as
+    /// `Resume session` does. Any other ticket is started: one the watchdog moved back to New for inactivity
+    /// has had its session cleared, and a Codex or OpenCode ticket cannot be resumed at all.
+    ///
+    /// `task-2268`: *"a task got moved back to new due to inactivity. I then added a comment and sent to
+    /// terminal ... It should wake/start the agent."* It used to call `resume` only, so that send was refused
+    /// with "has never had a session" and the comment was not posted.
     pub fn send(&mut self, key: &str, line: &str) -> Result<Answer, String> {
         let task = self.by_key(key)?;
         // **Running**, not merely present. Typing at a session that has exited wrote into a closed pipe and
@@ -1321,9 +1327,13 @@ impl AgentTasks {
         let alive =
             self.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());
         if !alive {
-            // Resuming first is the rule, and for a Codex ticket resuming is refused, so the refusal says
-            // what to press instead rather than typing at a process that is not there.
-            self.resume(key)?;
+            let resumable = task.session_id.is_some()
+                && task.assignee.is_an_agent()
+                && agent::can_resume(task.assignee);
+            match resumable {
+                true => self.resume(key)?,
+                false => self.start(key)?,
+            };
         }
         let terminal = self
             .terminals

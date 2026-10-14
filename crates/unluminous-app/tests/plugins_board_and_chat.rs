@@ -1410,6 +1410,46 @@ fn a_ticket_cannot_be_started_twice_and_a_failed_start_gives_the_claim_back() {
 }
 
 #[test]
+fn a_comment_sent_to_a_ticket_with_no_session_starts_its_agent() {
+    // `task-2268`: a ticket the watchdog moved back to New for inactivity has had its session cleared, and
+    // `Comment & Send to Agent` on it was refused with "has never had a session", posting nothing. A ticket that
+    // was never started is in exactly that state, so it stands in for one. Driven with `step` for the reason the
+    // start test above gives: a started agent prints, and a printing terminal asks for frames.
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-tasks/board --show");
+    did(&mut harness, "plugins run agent-tasks new-task Something to wake");
+    let ctx = harness.ctx.clone();
+    let reply = harness
+        .state_mut()
+        .run_command_line("plugins run agent-tasks comment-send task-1 Please carry on", &ctx)
+        .expect("the send was answered on the frame it was asked");
+    harness.step();
+    assert!(
+        !reply.message.contains("never had a session"),
+        "a ticket with no session is started rather than refused: {}",
+        reply.message
+    );
+    let ticket = did_while_waiting(&mut harness, "plugins run agent-tasks task task-1");
+    let board = did_while_waiting(&mut harness, "plugins view agent-tasks");
+    let lanes = board["lanes"].as_array().expect("the lanes").clone();
+    let comments = ticket["comments"].as_array().cloned().unwrap_or_default();
+    if reply.ok {
+        // The machine has an agent to launch: the ticket was claimed and the comment was written down.
+        assert_eq!(lanes[2]["count"], 1, "it is in progress: {}", reply.message);
+        assert!(
+            comments.iter().any(|comment| comment.to_string().contains("Please carry on")),
+            "the comment was posted: {ticket}"
+        );
+        did_while_waiting(&mut harness, "plugins run agent-tasks stop task-1");
+    } else {
+        // No agent could be started here, so the refusal is the start's, the claim was given back, and the
+        // comment was not posted, so nothing reads as sent that was not.
+        assert_eq!(lanes[0]["count"], 1, "the ticket is still in New: {}", reply.message);
+        assert!(comments.is_empty(), "nothing was posted: {ticket}");
+    }
+}
+
+#[test]
 fn sending_a_ticket_back_from_agent_done_to_qa_failed_asks_its_agent_to_come_back() {
     // The board being replaced resumes the session on this transition, because a person rejecting finished work
     // wants to tell the agent why. A resume that cannot happen says so in the status bar rather than failing
