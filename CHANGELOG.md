@@ -6,7 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 0.84.0 — 2026-10-14
+## Unreleased
+
+- A click on the Designer's page keeps the view there, and a page's picture is taken only once it has loaded (`task-2263`)
+
+## 0.84.0 — 2026-10-13
 
 - Trusted ticket folders, menu buttons in the ticket chat, a title that is required, todos under the agent, link menus, and the browser view that stays put (`task-2263`)
 - A press on a page gives the view to that page, the tests and pictures for the new ticket layout, and the rules in CLAUDE.md (`task-2263`)
