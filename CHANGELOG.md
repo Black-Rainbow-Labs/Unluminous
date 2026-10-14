@@ -6,7 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 0.84.1 — 2026-10-14
+## Unreleased
+
+- A page's picture keeps its shape, and the notice for a ticket that was not created has a test and a picture (`task-2263`)
+
+## 0.84.1 — 2026-10-13
 
 - A click on the Designer's page keeps the view there, and a page's picture is taken only once it has loaded (`task-2263`)
 - The changelog written from the history (`task-2263`)
