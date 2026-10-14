@@ -6,9 +6,10 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.84.4 — 2026-10-14
 
 - The Arches U logo, still, in a light and a dark version (`task-2258`)
+- The changelog written from the history (`task-2258`)
 
 ## 0.84.3 — 2026-10-13
 
