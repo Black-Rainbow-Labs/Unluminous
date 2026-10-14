@@ -100,6 +100,11 @@ impl UnluminousApp {
     /// Draw Unluminous's browser toolbar and reserve the rest of the pane for its native child view.
     pub(crate) fn show_browser(&mut self, ui: &mut egui::Ui, area: Rect, focused: bool) -> bool {
         let Some(tab) = self.files.active().browser.clone() else { return false };
+        // **The pane with the keyboard, and the keyboard in the editing area** (`task-2263`). `focused` says only
+        // that this is the focused one of the editing panes, which stays true while the Designer holds the
+        // keyboard, so the tab and the Designer's page were both focused placements and the tab, drawn first,
+        // took the one native view back on the frame after a click on the Designer.
+        let focused = focused && matches!(self.focus, Focus::Editor);
         let showing = self.browser.showing().is_none_or(|id| id == tab.id);
         // Taken off the tab, handed over, and put back — the same borrow a browser node does, and for the
         // same reason: a tab that is not showing is not drawn.

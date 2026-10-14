@@ -417,7 +417,9 @@ clicked into.
   press egui saw on a page gives the view to that page (`the_page_pressed`). A press on a tab's address field
   clears every placement's `focused`, and the view used to go to whichever page was drawn last, which swapped the
   Designer's page and a browser tab's on every click. The page that is not live draws its last picture
-  (`paint_a_page_not_showing`).
+  (`paint_a_page_not_showing`), taken only of a page that had finished loading. A browser tab's placement is
+  focused only while the keyboard is in the editing area (`show_browser`): "the focused editing pane" stays true
+  while the Designer holds the keyboard, and two focused placements gave the view to the one drawn first.
 
 ### A ticket's agent starts in a folder it already trusts (`task-2263`)
 

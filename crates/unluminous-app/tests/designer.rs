@@ -666,3 +666,51 @@ fn designer_tab_light() {
     steady(&mut harness);
     harness.snapshot(shot("designer_tab_light").as_str());
 }
+
+/// `task-2263`: *"when i have Designer and files open, and click the url of the browser tab, suddenly the page
+/// content disappears and the content in Designer appears, and vice versa."* With the Designer holding the keyboard,
+/// a browser tab in the editing area is not a focused placement as well, so the one native view has one page to
+/// go to. Both were focused before, and the tab, drawn first, took the view back on the frame after a click on the
+/// Designer's page.
+#[test]
+fn a_browser_tab_beside_the_designer_does_not_claim_the_view_while_the_designer_has_the_keyboard() {
+    let (_folder, mut harness) = a_window_on_a_design("beside-a-browser-tab");
+    did(&mut harness, "browser open https://example.com/");
+    steady(&mut harness);
+    let designer = harness
+        .state()
+        .browser_placements()
+        .into_iter()
+        .map(|placement| placement.id)
+        .collect::<Vec<_>>();
+    assert_eq!(designer.len(), 2, "the design's page and the tab's are both placed: {designer:?}");
+    // Pressing the Designer's page area gives the Designer the keyboard.
+    let page = harness
+        .state()
+        .browser_placements()
+        .into_iter()
+        .find(|placement| placement.visible.left() < 900.0)
+        .expect("the design's page, on the left")
+        .visible;
+    let at = page.center();
+    harness.input_mut().events.push(egui::Event::PointerMoved(at));
+    harness.step();
+    for pressed in [true, false] {
+        harness.input_mut().events.push(egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        });
+        harness.step();
+    }
+    steady(&mut harness);
+    let focused: Vec<u64> = harness
+        .state()
+        .browser_placements()
+        .into_iter()
+        .filter(|placement| placement.focused)
+        .map(|placement| placement.id)
+        .collect();
+    assert!(focused.len() <= 1, "at most one page is the focused one: {focused:?}");
+}

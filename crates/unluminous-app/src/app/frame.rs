@@ -2399,12 +2399,15 @@ impl UnluminousApp {
             }
         }
         // **A press egui saw on a page gives the view to that page** (`task-2263`), whichever pane held the keyboard
-        // before it. The live page takes its own clicks, so this is a press on a page showing its picture.
+        // before it. The live page takes its own clicks, so this is a press on a page showing its picture. The page is
+        // given the keyboard too, as a click into a live page is, so on the next frame its pane is the focused one and
+        // the view does not go back to the pane that held the keyboard before.
         if let Some(id) = crate::services::browser::the_page_pressed(&raw_input.events, &placements)
         {
             for placement in &mut placements {
                 placement.focused = placement.id == id;
             }
+            self.give_the_keyboard_to_the_page(id);
         }
         // **`Escape` puts the element picker away** when the keys are Unluminous's rather than the page's, which
         // they are when the picker was opened from the toolbar's button. `task-2203`.
@@ -2420,8 +2423,12 @@ impl UnluminousApp {
         let going_to =
             crate::services::browser::going_to(&placements, leaving).map(|placement| placement.id);
         if let (Some(leaving), Some(going_to)) = (leaving, going_to) {
-            // A design's page as well as a tab's, so the pane it leaves can show its picture. `task-2263`.
+            // A design's page as well as a tab's, so the pane it leaves can show its picture. `task-2263`. **Only a
+            // page that has finished loading**: while the view is still loading a page it shows the one before, and
+            // a picture of that, kept under this page's id, put another page's content in the Designer's well.
+            let settled = tabs.iter().any(|tab| tab.id == leaving && !tab.loading);
             if leaving != going_to
+                && settled
                 && (self
                     .files
                     .iter()
