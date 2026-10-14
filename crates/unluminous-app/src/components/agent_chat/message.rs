@@ -520,6 +520,9 @@ fn words(
     if let Some(selection) = picked {
         state.selection = Some(Selected { message: message.id, segment, range: selection });
     }
+    if response.is_pointer_button_down_on() || response.dragged() {
+        state.selecting = true;
+    }
     // The text cursor over the words, **except over a link**, where `show_with` has just set the hand: setting the
     // text cursor afterwards took the hand away, so nothing said a link could be clicked (`task-2263`).
     let over_a_link =

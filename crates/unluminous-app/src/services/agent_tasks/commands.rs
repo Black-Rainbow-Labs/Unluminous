@@ -89,6 +89,11 @@ pub const LIST: &[(&str, &str)] = &[
         "The menu a ticket's agent is waiting on in its terminal, such as Claude Code's folder trust question, with          its options numbered from 1: `choice task-1`. `choice task-1 2` presses option 2, which is what its          button in the Chat tab does.",
     ),
     ("interrupt", "Send Ctrl+C to a ticket's agent."),
+    ("escape", "Press Escape in a ticket's agent, which stops the turn it is on without asking it to exit."),
+    (
+        "to-side-pane",
+        "Show a ticket's conversation in the Agent-Chat side pane and close the ticket modal: `to-side-pane <key>`.",
+    ),
     ("stop", "Close a ticket's terminal."),
     ("search", "Tickets whose key, title or description holds the query."),
     ("new-epic", "Create an epic. Names itself when no name is given, which is what the menu entry does."),
@@ -881,6 +886,8 @@ fn agent_commands(
             let line = rest(1);
             tasks.send(argument(0), &line)
         }
+        "escape" => tasks.escape(argument(0)),
+        "to-side-pane" => tasks.to_the_side_pane(argument(0)),
         "interrupt" => (|| {
             let task = tasks.by_key(argument(0))?;
             let terminal = tasks

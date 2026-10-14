@@ -2073,24 +2073,26 @@ fn the_ticket_modals_comments_are_whole_and_scroll() {
     for _ in 0..3 {
         steady(&mut harness);
     }
-    // Newest first, so comment 4 is at the top and comment 3 is under it.
+    // Oldest first and the newest at the bottom (`task-2269`), so comment 3 is above comment 4.
     let top = |harness: &Harness<'static, UnluminousApp>, id: u32| {
         harness.get_by_label(&format!("Read comment {id} as markdown")).rect().top()
     };
     let fourth = top(&harness, 4);
     let third = top(&harness, 3);
     assert!(
-        third - fourth > 120.0,
-        "a long comment takes its whole height, not sixty points: {fourth} then {third}"
+        fourth - third > 120.0,
+        "a long comment takes its whole height, not sixty points: {third} then {fourth}"
     );
-    // The wheel over the list scrolls it.
-    let over = harness.get_by_label("Read comment 4 as markdown").rect().center()
-        - egui::vec2(200.0, -30.0);
+    // The list opens at its end, so the newest comment is the one on the screen.
+    let comment_box = harness.get_by_label("Comment field").rect();
+    assert!(fourth < comment_box.top(), "the newest comment is above the box: {fourth} {comment_box:?}");
+    // The wheel over the list, just above the comment box, scrolls it back up towards the older comments.
+    let over = egui::pos2(comment_box.center().x, comment_box.top() - 40.0);
     harness.input_mut().events.push(egui::Event::PointerMoved(over));
     steady(&mut harness);
     harness.input_mut().events.push(egui::Event::MouseWheel {
         unit: egui::MouseWheelUnit::Point,
-        delta: egui::vec2(0.0, -120.0),
+        delta: egui::vec2(0.0, 120.0),
         phase: egui::TouchPhase::Move,
         modifiers: egui::Modifiers::default(),
     });
@@ -2098,7 +2100,7 @@ fn the_ticket_modals_comments_are_whole_and_scroll() {
         steady(&mut harness);
     }
     let moved = top(&harness, 4);
-    assert!(moved < fourth - 20.0, "the list scrolled: {fourth} then {moved}");
+    assert!(moved > fourth + 20.0, "the list scrolled: {fourth} then {moved}");
 }
 
 #[test]
@@ -3310,6 +3312,161 @@ fn selecting_a_whole_message_answers_with_the_words_as_they_are_drawn() {
     assert!(!selected.contains('#'), "the words as they are drawn, not the markdown: {selected}");
 }
 
+/// Drag the primary button from `from` to `to`, a few points at a time, the way a hand does.
+fn drag_from(harness: &mut Harness<'static, UnluminousApp>, from: egui::Pos2, to: egui::Pos2) {
+    drag_while(harness, from, to, |_| {});
+}
+
+/// [`drag_from`], with `each` run between the steps of the drag, while the button is held.
+fn drag_while(
+    harness: &mut Harness<'static, UnluminousApp>,
+    from: egui::Pos2,
+    to: egui::Pos2,
+    mut each: impl FnMut(&mut Harness<'static, UnluminousApp>),
+) {
+    let modifiers = egui::Modifiers::default();
+    harness.input_mut().events.push(egui::Event::PointerMoved(from));
+    harness.step();
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: from,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers,
+    });
+    harness.step();
+    for step in 1..=8 {
+        let at = from + (to - from) * (step as f32 / 8.0);
+        harness.input_mut().events.push(egui::Event::PointerMoved(at));
+        harness.step();
+        each(harness);
+    }
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: to,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers,
+    });
+    harness.step();
+    harness.step();
+}
+
+/// What is selected in the chat pane, as the words a copy would take.
+fn chat_selection(harness: &mut Harness<'static, UnluminousApp>) -> Option<String> {
+    let mut selected = None;
+    with_the_chat(harness, |chat| selected = chat.selected_text());
+    selected
+}
+
+/// `task-2269`: *"It's challenging selecting text in agent chat. e.g. if I try to highlight part of a
+/// message, more text than what i've clicked and dragged on is selected."*
+///
+/// A short drag along one line of an answer selects a few letters, and a drag that starts in the
+/// middle of the answer selects nothing before the point it started at.
+#[test]
+fn a_drag_over_an_answer_selects_only_the_words_it_crossed() {
+    let words = "alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike \
+                 november oscar papa quebec romeo sierra tango uniform victor whiskey xray yankee \
+                 zulu alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima";
+    let mut harness = a_chat(&[
+        (unluminous_chat::Role::User, "Read me the alphabet."),
+        (unluminous_chat::Role::Assistant, words),
+    ]);
+    steady(&mut harness);
+    let pane = harness.state().plugin_pane_area_for("agent-chat/chat").expect("the chat pane");
+    // Find a point on the answer's first line: a click there puts a caret in the answer. Below the header,
+    // whose buttons open dialogs.
+    let mut start = None;
+    let mut y = pane.top() + 120.0;
+    while y < pane.bottom() - 120.0 && start.is_none() {
+        let at = egui::pos2(pane.left() + 40.0, y);
+        click_at(&mut harness, at);
+        let mut landed = false;
+        with_the_chat(&mut harness, |chat| {
+            let answer = chat.chat().messages.last().expect("the answer").id;
+            landed = chat.ui.selection.is_some_and(|selected| selected.message == answer);
+        });
+        if landed {
+            start = Some(at);
+        }
+        y += 4.0;
+    }
+    let start = start.expect("a point over the answer's words");
+    // Three points further down is the same line, and a little way along it.
+    let start = start + egui::vec2(0.0, 4.0);
+    drag_from(&mut harness, start, start + egui::vec2(60.0, 0.0));
+    let short = chat_selection(&mut harness).unwrap_or_default();
+    assert!(
+        !short.is_empty() && short.len() <= 16,
+        "a 60 point drag along a line selects a word or two, not {short:?}"
+    );
+    assert!(words.contains(short.as_str()), "{short:?}");
+    // Down two lines from a point after the start of the answer: nothing before the press is taken.
+    let middle = start + egui::vec2(80.0, 0.0);
+    drag_from(&mut harness, middle, middle + egui::vec2(0.0, 40.0));
+    let down = chat_selection(&mut harness).unwrap_or_default();
+    assert!(!down.is_empty(), "a drag down selects something");
+    assert!(!down.starts_with("alpha bravo"), "the selection starts where the press was: {down:?}");
+    assert!(down.len() < words.len() / 2, "two lines, not the whole answer: {down:?}");
+}
+
+/// `task-2269`, the case the report was about: words selected in an answer while the agent is still writing the
+/// next one. The conversation follows a streaming answer by staying at the bottom, so every frame of the drag moved
+/// the words up under the pointer and the selection grew past what was dragged over. While a drag is selecting,
+/// the conversation stays where it is.
+#[test]
+fn words_selected_while_an_answer_streams_in_are_only_the_words_dragged_over() {
+    let words = "alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike \
+                 november oscar papa quebec romeo sierra tango uniform victor whiskey xray yankee zulu";
+    let long = format!("{words}\n\n{words}\n\n{words}");
+    let mut harness = a_chat(&[
+        (unluminous_chat::Role::User, "Read me the alphabet."),
+        (unluminous_chat::Role::Assistant, long.as_str()),
+        (unluminous_chat::Role::User, "Again."),
+        (unluminous_chat::Role::Assistant, long.as_str()),
+        (unluminous_chat::Role::User, "Once more, slowly."),
+        (unluminous_chat::Role::Assistant, words),
+    ]);
+    steady(&mut harness);
+    let mut target = 0;
+    with_the_chat(&mut harness, |chat| {
+        target = chat.chat().messages.last().expect("the answer").id;
+        let id = chat.session_mut().chat.next_id();
+        chat.session_mut()
+            .ask(unluminous_chat::Message::said(id, unluminous_chat::Role::User, "And again."));
+        chat.session_mut().reply(unluminous_chat::Reply::Text("Here it comes. ".to_owned()));
+    });
+    steady(&mut harness);
+    let pane = harness.state().plugin_pane_area_for("agent-chat/chat").expect("the chat pane");
+    // A point on the last finished answer, found the way a click finds one.
+    let mut start = None;
+    let mut y = pane.top() + 120.0;
+    while y < pane.bottom() - 120.0 && start.is_none() {
+        let at = egui::pos2(pane.left() + 40.0, y);
+        click_at(&mut harness, at);
+        let mut landed = false;
+        with_the_chat(&mut harness, |chat| {
+            landed = chat.ui.selection.is_some_and(|selected| selected.message == target);
+        });
+        if landed {
+            start = Some(at + egui::vec2(0.0, 3.0));
+        }
+        y += 4.0;
+    }
+    let start = start.expect("a point over the finished answer's words");
+    drag_while(&mut harness, start, start + egui::vec2(60.0, 0.0), |harness| {
+        with_the_chat(harness, |chat| {
+            chat.session_mut().reply(unluminous_chat::Reply::Text(
+                "and a further line of the answer still arriving.\n\n".to_owned(),
+            ));
+        });
+    });
+    let selected = chat_selection(&mut harness).unwrap_or_default();
+    assert!(
+        !selected.is_empty() && selected.len() <= 16,
+        "a 60 point drag along a line selects a word or two while an answer arrives, not {selected:?}"
+    );
+}
+
 /// Enter sends what has been typed, and Shift+Enter does not.
 ///
 /// Driven through the real field rather than by calling `send`, because what this is about is the key
@@ -4182,6 +4339,52 @@ fn a_tickets_agent_is_shown_as_a_chat_read_from_its_transcript() {
     harness.get_by_label("Chat tab").click();
     steady(&mut harness);
     assert_eq!(did(&mut harness, "plugins run agent-tasks agent-tab")["tab"], "chat");
+}
+
+/// `task-2269`: *"In agent task modal, in agent chat section, add a "To Side Pane" button with a arrow right icon,
+/// when clicked, opens the agent chat for the task in the Agent Chat side pane and closes the modal."* The side
+/// pane then shows the same conversation, read from the same transcript, and `Back to My Chat` returns it to its
+/// own.
+#[test]
+fn to_side_pane_shows_the_tickets_chat_in_the_agent_chat_pane_and_closes_the_modal() {
+    let mut harness = harness("");
+    harness.set_size(vec2(1500.0, 950.0));
+    a_ticket_with_a_transcript(&mut harness);
+    let view = did(&mut harness, "plugins view agent-tasks");
+    assert_eq!(view["detail"]["chat"]["reading"], false, "the transcript was read: {}", view["detail"]);
+    assert_eq!(view["detail"]["chat"]["messages"], 3, "{}", view["detail"]);
+    harness.get_by_label("To Side Pane").click();
+    for _ in 0..4 {
+        std::thread::sleep(std::time::Duration::from_millis(220));
+        steady(&mut harness);
+    }
+    assert!(harness.query_by_label("Chat tab").is_none(), "the ticket modal closed");
+    assert!(harness.state().plugin_pane_area_for("agent-chat/chat").is_some(), "the chat pane is showing");
+    let chat = did(&mut harness, "plugins view agent-chat");
+    assert_eq!(chat["ticket"]["key"], "task-1", "{chat}");
+    assert_eq!(chat["ticket"]["reading"], false, "{chat}");
+    assert_eq!(chat["ticket"]["messages"], 3, "the same conversation the modal showed: {chat}");
+    assert!(harness.query_by_label("Back to My Chat").is_some());
+    harness.snapshot(shot("agent_chat_side_pane_ticket").as_str());
+
+    harness.get_by_label("Back to My Chat").click();
+    steady(&mut harness);
+    let chat = did(&mut harness, "plugins view agent-chat");
+    assert!(chat["ticket"].is_null(), "the pane is back on its own conversation: {chat}");
+    assert!(harness.query_by_label("Back to My Chat").is_none());
+
+    // The agent's half is the same path.
+    did(&mut harness, "plugins run agent-tasks open task-1");
+    steady(&mut harness);
+    did(&mut harness, "plugins run agent-tasks to-side-pane task-1");
+    for _ in 0..4 {
+        std::thread::sleep(std::time::Duration::from_millis(220));
+        steady(&mut harness);
+    }
+    assert_eq!(did(&mut harness, "plugins view agent-chat")["ticket"]["key"], "task-1");
+    did(&mut harness, "plugins run agent-chat ticket off");
+    steady(&mut harness);
+    assert!(did(&mut harness, "plugins view agent-chat")["ticket"].is_null());
 }
 
 /// `task-2261`: *"the right side panel should be collapsable so i can maximize usage of the modal for

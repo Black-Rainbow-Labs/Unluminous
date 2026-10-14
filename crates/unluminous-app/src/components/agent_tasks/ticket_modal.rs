@@ -758,10 +758,29 @@ fn main_column(
         theme.ink.i500,
     );
     // The two tabs, at the right hand end of the heading row, which is where a section's controls go.
-    if let Some(chosen) = agent_tabs(rux, Pos2::new(area.max.x, disc.center().y), tab) {
+    let (chosen, tabs_left) = agent_tabs(rux, Pos2::new(area.max.x, disc.center().y), tab);
+    if let Some(chosen) = chosen {
         board.agent_tab = Some(chosen);
     }
     let tab = board.agent_tab_for(task);
+    // `To Side Pane`, before the tabs while the Chat tab shows a conversation (`task-2269`): the same agent and the
+    // same conversation in the Agent-Chat side pane, with the modal closed so the files can be seen beside it.
+    if tab == AgentTab::Chat && board.ticket_chat.is_some() {
+        let pill = rux::components::PillButton::new(TO_SIDE_PANE).mark(Icon::ArrowRight);
+        let width = pill.measure(rux).x;
+        let at = Rect::from_center_size(
+            Pos2::new(tabs_left - 10.0 - width / 2.0, disc.center().y),
+            Vec2::new(width, TAB_HEIGHT + 8.0),
+        );
+        let words_end = disc.max.x + 10.0 + rux.measure(style, &title).x;
+        if at.left() > words_end + 8.0 && pill.show(rux, at).clicked() {
+            let key = task.key.clone();
+            match board.to_the_side_pane(&key) {
+                Ok(said) => requests.push(Request::Message(said.message)),
+                Err(problem) => requests.push(Request::Message(problem)),
+            }
+        }
+    }
     pen += TODO_HEAD + LABEL_GAP;
     let chatting = tab == AgentTab::Chat && board.ticket_chat.is_some();
     let shown = live || chatting;
@@ -895,12 +914,15 @@ fn main_column(
     requests
 }
 
+/// The words on the button that moves a ticket's chat to the Agent-Chat side pane (`task-2269`).
+const TO_SIDE_PANE: &str = "To Side Pane";
+
 /// The Agent section's two tabs, a carved track with the chosen tab raised out of it, ending at `right` and
-/// centred on its `y`. Answers a new choice.
+/// centred on its `y`. Answers a new choice, and where the track starts so a control can go before it.
 ///
 /// The look of `settings_kit::segmented`, at the height of a section's heading, and named `Chat tab` and
 /// `Terminal tab` so that neither shares a name with another control in the window.
-fn agent_tabs(rux: &mut rux::Rux<'_>, right: Pos2, chosen: AgentTab) -> Option<AgentTab> {
+fn agent_tabs(rux: &mut rux::Rux<'_>, right: Pos2, chosen: AgentTab) -> (Option<AgentTab>, f32) {
     let theme = rux.theme();
     let chat = theme.chat;
     let style = Style::sans(11.0);
@@ -951,7 +973,7 @@ fn agent_tabs(rux: &mut rux::Rux<'_>, right: Pos2, chosen: AgentTab) -> Option<A
         }
         x = pill.right() + 3.0;
     }
-    picked
+    (picked, track.left())
 }
 
 /// The ticket's conversation in the Agent-Chat pane, inside the section's well (`task-2261`).

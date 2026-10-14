@@ -594,7 +594,10 @@ impl UnluminousApp {
             return;
         }
         self.files.close(index);
-        self.forget_layout();
+        // **The tab shown next keeps what was laid out for it and where it was scrolled** (`task-2269`: *"When I
+        // have a .md file open, then click a link on it, it opens a browser tab. if i close that browser tab and end
+        // back up on the md, it scrolls be to the top of the md."*). Each tab keeps its own layout and scroll, so a
+        // close has nothing of the next tab's to forget, and `forget_layout` set its preview back to the top.
     }
 
     /// Write every tab that has unsaved changes, and answer with the ones that could not be written.
@@ -695,7 +698,10 @@ impl UnluminousApp {
         // means is reading the file again — which is what it would have meant either way.
         self.remember_a_closed_tab(index);
         self.files.close(index);
-        self.forget_layout();
+        // **The tab shown next keeps what was laid out for it and where it was scrolled** (`task-2269`: *"When I
+        // have a .md file open, then click a link on it, it opens a browser tab. if i close that browser tab and end
+        // back up on the md, it scrolls be to the top of the md."*). Each tab keeps its own layout and scroll, so a
+        // close has nothing of the next tab's to forget, and `forget_layout` set its preview back to the top.
     }
 
     /// The name shown in the title bar and the status bar.

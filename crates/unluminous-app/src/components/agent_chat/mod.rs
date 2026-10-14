@@ -125,6 +125,50 @@ pub fn pane(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Req
     apply(chat, acts)
 }
 
+/// The pane while it shows a ticket's conversation in place of its own (`task-2269`).
+///
+/// A strip along the top with `Back to My Chat` and the ticket's name, and under it the ticket's chat drawn by
+/// [`pane`] itself, the drawing the ticket modal's Chat tab uses. The ticket's chat is a mirror with no title,
+/// so it draws no header of its own and the strip is the only one.
+pub fn ticket_pane(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request> {
+    let area = ui.available_rect_before_wrap();
+    let scale = look.scale();
+    let Some(mut ticket) = chat.ticket.take() else {
+        return Vec::new();
+    };
+    let strip = Rect::from_min_size(
+        area.min + Vec2::new(SIDE * scale, SIDE * scale),
+        Vec2::new((area.width() - SIDE * 2.0 * scale).max(0.0), HEADER * scale),
+    );
+    let back = Rect::from_min_size(strip.min, Vec2::splat(strip.height()));
+    let pressed = kit::layer(&mut chat.ui, look, ui, "ticket-strip", strip, kit::SMALL_REACH, |rux| {
+        rux::components::RoundButton::mark(rux::Icon::ChevLeft, 15.0, "Back to My Chat")
+            .show(rux, back)
+            .clicked()
+    });
+    let words = Rect::from_min_max(Pos2::new(back.right() + 12.0 * scale, strip.top()), strip.max);
+    if words.width() > 8.0 {
+        let painter = ui.painter_at(words.intersect(ui.clip_rect()));
+        let style = rux::Style::sans(14.0 * scale).semibold();
+        let ink = crate::theme::rux_theme().ink.i900;
+        let title = format!("{} \u{b7} {}", ticket.key, ticket.agent);
+        let galley = rux::text::elided(&painter, style, &title, ink, words.width());
+        rux::text::draw_left_capitals(&painter, Pos2::new(words.left(), words.center().y), galley, style, ink);
+    }
+    let below = Rect::from_min_max(Pos2::new(area.left(), strip.bottom()), area.max);
+    let mut child = ui.new_child(
+        egui::UiBuilder::new().max_rect(below).id_salt(("agent-chat-side-pane-ticket", ticket.chat.task_id)),
+    );
+    child.set_clip_rect(below.intersect(ui.clip_rect()));
+    let requests = pane(&mut ticket.chat.chat, &mut child, look);
+    kit::end_frame(&chat.ui);
+    match pressed {
+        true => chat.ui.jump_to_bottom = true,
+        false => chat.ticket = Some(ticket),
+    }
+    requests
+}
+
 /// Whether the primary button went down this frame somewhere that is not this pane.
 ///
 /// The pointer through [`controls::pointer_in`], because a chat node on the canvas is drawn into a
@@ -626,6 +670,9 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
     // Asked for once and then cleared, which is what `reveal_caret` does: a jump that ran on every
     // frame would make the conversation impossible to scroll at all.
     let jump = std::mem::take(&mut parts.state.jump_to_bottom);
+    // A selection being dragged out holds the conversation still, which the words of each message set again
+    // while the button is down on them.
+    let selecting = std::mem::take(&mut parts.state.selecting);
     // Where the list a wheel belongs to is, for the reason `PaneState::list_rect` gives.
     parts.state.list_rect = Some(area);
     let wheel = parts.state.wheel.take();
@@ -670,13 +717,19 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
         // **Stuck to the bottom while an answer is arriving, and unstuck the moment somebody scrolls
         // up** — which is `ChatPage.tsx`'s own `shouldAutoScroll` rule. egui's own stickiness does
         // exactly that: it follows while the view is already at the bottom and stops when it is not.
-        .stick_to_bottom(true)
+        //
+        // **Not while words are being selected** (`task-2269`: *"if I try to highlight part of a message, more
+        // text than what i've clicked and dragged on is selected."*). Following an answer as it arrives moved the
+        // words up under the held pointer on every frame of the drag, so the selection grew by every line the
+        // answer added. Held still, the drag selects what it crosses. The answer goes on arriving below, and the
+        // conversation follows it again once somebody scrolls back to the bottom.
+        .stick_to_bottom(!selecting)
         // Nothing is done about dragging the contents to scroll them, and that is deliberate:
         // `ScrollSource::drag` is `OnTouch` by default, so a drag with a pointer already selects
         // words rather than scrolling — which is what `task-2060` asks for — and forcing it off
         // would take scrolling away from a touch screen to fix something that is not broken there.
         .auto_shrink([false, false]);
-    if jump {
+    if jump && !selecting {
         // What stickiness will not do is go *back* to the bottom once somebody has scrolled away, and
         // sending, opening a conversation and starting a new one all have to.
         //

@@ -1191,6 +1191,23 @@ Three Agent-Chat faults fixed in the same ticket: **a click on a link in rendere
 `last week 41 s` and a table's sort order is a drawn chevron; and **the chat's settings gear is in the header**,
 before the conversations button, with the Chat settings dialog under the header.
 
+### What `task-2269` changed about a ticket's chat and the side pane
+
+- **A ticket's transcript is read on a thread the first time** (`TicketChat::follow`), and then followed a few
+  lines at a time. Every finished line is read in one pass: taking lines one at a time off the front of the
+  string read so far is quadratic, and 0.84.7 stopped the window for 43.7 seconds opening a ticket whose
+  transcript was 116 MB. `TicketChat::read_now` is the synchronous read, for `plugins run agent-tasks chat`.
+- **`To Side Pane`** in the Agent heading (and `plugins run agent-tasks to-side-pane <key>`) closes the modal and
+  sends Agent-Chat `ticket <json>` and `open-pane`. The side pane then holds its own `TicketChat`
+  (`AgentChat::ticket`), drawn by `components::agent_chat::ticket_pane` under a strip with `Back to My Chat`
+  (`ticket off`). What is typed there goes to `plugins run agent-tasks send <key>`, and Stop to `escape <key>`, so
+  it is the same agent in the same terminal, not a second agent resuming the session.
+- **The chat transcript does not follow a streaming answer while words are being dragged over**
+  (`PaneState::selecting`), because following it moved the words under the held pointer and the selection grew.
+- **A ticket's comments are oldest first**, and the list opens at the newest, scrolled per ticket.
+- **Closing a tab leaves the tab shown next where it was scrolled.** `close_tab` used to call `forget_layout`,
+  which set that tab's preview back to its top.
+
 ### The supervisor, and a board other windows change (`task-2253`)
 
 `Chat with supervisor`, the round button in front of `Add Task`, opens `components::agent_tasks::supervisor_modal`:

@@ -3184,3 +3184,41 @@ fn every_search_verb_answers_from_the_window() {
     }
     refused(&mut harness, "search find --mode sideways a + b");
 }
+
+/// `task-2269`: *"When I have a .md file open, then click a link on it, it opens a browser tab. if i close that
+/// browser tab and end back up on the md, it scrolls be to the top of the md."* Closing a tab set the preview of
+/// the tab shown next back to its top. It stays where it was read to now, in both views.
+#[test]
+fn closing_a_browser_tab_leaves_the_markdown_it_came_from_where_it_was_scrolled() {
+    let folder = std::env::temp_dir()
+        .join(format!("unluminous-scroll-after-a-close-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).expect("the folder");
+    let mut long = String::from("# A long document\n\nSee [the example](https://example.com/).\n\n");
+    for line in 1..=200 {
+        long.push_str(&format!("Paragraph {line} of a document long enough to scroll.\n\n"));
+    }
+    std::fs::write(folder.join("long.md"), long).expect("the document");
+    let mut harness = harness_in(&folder);
+    did(&mut harness, "tab open long.md --permanent");
+    did(&mut harness, "editor view preview");
+    steady(&mut harness);
+    let scrolled = did(&mut harness, "editor scroll --preview --to 1500")["preview"]["scroll"]
+        .as_f64()
+        .expect("the preview's scroll");
+    assert!(scrolled > 1000.0, "the preview scrolled: {scrolled}");
+    did(&mut harness, "editor view raw");
+    steady(&mut harness);
+    let source = did(&mut harness, "editor scroll --to 900")["source"]["scroll"].as_f64().unwrap();
+    did(&mut harness, "editor view preview");
+    steady(&mut harness);
+
+    did(&mut harness, "browser open https://example.com/");
+    steady(&mut harness);
+    did(&mut harness, "tab close");
+    steady(&mut harness);
+
+    let after = did(&mut harness, "editor scroll --preview");
+    assert_eq!(after["name"], "long.md", "{after}");
+    assert_eq!(after["preview"]["scroll"].as_f64(), Some(scrolled), "the preview stayed: {after}");
+    assert_eq!(after["source"]["scroll"].as_f64(), Some(source), "the source stayed: {after}");
+}

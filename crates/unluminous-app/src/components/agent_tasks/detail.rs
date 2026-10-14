@@ -389,8 +389,12 @@ pub(crate) fn comment_section(
     let raw_comments = board.detail().comments_raw.clone();
     let now = clock::now();
     let agent = look.palette.agent;
-    // **Newest first, and scrolled**: on a ticket with a real conversation on it the newest comment is the one
-    // somebody opened the ticket to read.
+    // **Oldest first, newest at the bottom, and the list opens scrolled to the bottom** (`task-2269`: *"Comments in
+    // task modal should show the latest comment at the bottom."*). A ticket's comments are a conversation, read
+    // top to bottom the way the chat is, and the newest is the one somebody opened the ticket to read, so the list
+    // starts at the end of it. Each ticket has its own scroll position, so a ticket scrolled up does not open the
+    // next one part of the way down.
+    let ticket = board.detail().task.as_ref().map(|task| task.id).unwrap_or_default();
     let list = Rect::from_min_max(area.min, Pos2::new(area.max.x, room_for_comments));
     let words_left = area.min.x + BESIDE_THE_DISC;
     let words_width = (area.width() - BESIDE_THE_DISC).max(40.0);
@@ -404,7 +408,8 @@ pub(crate) fn comment_section(
     // comment over the box under it.
     inside.set_clip_rect(list.intersect(ui.clip_rect()));
     let output = egui::ScrollArea::vertical()
-        .id_salt("agent-tasks-comments")
+        .id_salt(("agent-tasks-comments", ticket))
+        .stick_to_bottom(true)
         .max_height(list.height().max(0.0))
         .show(&mut inside, |ui| {
             let painter = ui.painter().clone();
@@ -418,7 +423,7 @@ pub(crate) fn comment_section(
             let mut copy: Option<String> = None;
             let mut view_change: Option<(i64, bool)> = None;
             let markdown = &mut board.markdown;
-            for comment in comments.iter().rev() {
+            for comment in comments.iter() {
                 // What a person has selected in this comment's words, for the menu's `Copy`. `task-2255`.
                 let mut selected_words: Option<String> = None;
                 let mine = comment.author == crate::services::agent_tasks::model::Author::Human;

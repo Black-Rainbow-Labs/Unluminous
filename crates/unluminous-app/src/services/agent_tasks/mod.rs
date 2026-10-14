@@ -544,6 +544,9 @@ pub struct AgentTasks {
     /// Which tab of the ticket modal's Agent section somebody chose. `None` until one is chosen, and then
     /// [`ticket_chat::AgentTab::default_for`] the ticket's agent decides (`task-2261`).
     pub agent_tab: Option<ticket_chat::AgentTab>,
+    /// What the board asked the window to run while nobody was looking, drained by [`UiProvider::asking`]. The
+    /// `To Side Pane` button's two commands to Agent-Chat go this way (`task-2269`).
+    asking: Vec<Request>,
     /// Whether the card of fields down the right of the ticket modal has been put away, which gives the
     /// description, the agent and the comments the whole width (`task-2261`).
     pub fields_shut: bool,
@@ -2296,6 +2299,66 @@ impl AgentTasks {
         changed
     }
 
+    /// Show `key`'s conversation in the Agent-Chat side pane and close the ticket modal (`task-2269`).
+    ///
+    /// *"In agent task modal, in agent chat section, add a "To Side Pane" button ... when clicked, opens the agent
+    /// chat for the task in the Agent Chat side pane and closes the modal. That way I can continue talking with
+    /// the same agent/task, while files/etc are shown."* The side pane follows the same transcript the modal's
+    /// Chat tab does and types into the same terminal through [`Self::send`], so it is the same agent and the
+    /// same conversation, not a second agent resuming the session. Two commands go to the window: Agent-Chat's
+    /// `ticket`, with everything it needs to find the transcript, and its `open-pane`.
+    pub fn to_the_side_pane(&mut self, key: &str) -> Result<Answer, String> {
+        let task = self.by_key(key)?;
+        let agent = self.agent_of(&task);
+        if !ticket_chat::chat_is_readable(agent) {
+            return Err(ticket_chat::why_the_chat_is_empty(agent));
+        }
+        let session = task.session_id.clone().ok_or_else(|| {
+            format!("{} has no conversation yet: `start` launches its agent", task.key)
+        })?;
+        let folder = self.working_folder(&task)?;
+        let speaker = task.endpoint.clone().unwrap_or_else(|| agent.name().to_owned());
+        let ticket = json!({
+            "key": task.key,
+            "task": task.id,
+            "session": session,
+            "folder": folder.display().to_string(),
+            "speaker": speaker,
+            "agent": agent.name(),
+        });
+        let run = |command: &str, words: Option<String>| {
+            let mut arguments = serde_json::Map::new();
+            arguments.insert("id".to_owned(), json!("agent-chat"));
+            arguments.insert("command".to_owned(), json!(command));
+            if let Some(words) = words {
+                arguments.insert("arguments".to_owned(), json!(words));
+            }
+            Request::RunCommand {
+                id: format!("to-side-pane-{command}"),
+                command: "plugins.run".to_owned(),
+                arguments,
+            }
+        };
+        self.asking.push(run("ticket", Some(ticket.to_string())));
+        self.asking.push(run("open-pane", None));
+        self.modal_open = false;
+        self.detail.is_new = false;
+        Ok(Answer::said(format!("{}'s conversation is in the Agent-Chat pane", task.key))
+            .with(json!({"task": task.key, "session": ticket["session"]})))
+    }
+
+    /// Press `Escape` in a ticket's agent, which is how Claude Code is told to stop the turn it is on. The
+    /// side pane's Stop button, through `plugins run agent-tasks escape` (`task-2269`), and the same byte the
+    /// modal's Chat tab sends.
+    pub fn escape(&mut self, key: &str) -> Result<Answer, String> {
+        let task = self.by_key(key)?;
+        let terminal = self
+            .terminal_for_mut(task.id)
+            .ok_or_else(|| format!("{} has no agent running to stop", task.key))?;
+        terminal.session.send(vec![0x1b]);
+        Ok(Answer::said(format!("pressed Escape in {}", task.key)))
+    }
+
     /// The last `count` messages of a ticket's conversation, read from its agent's transcript: the open ticket's
     /// chat when it is that one, and a fresh reading otherwise.
     pub fn chat_of(&self, task: &Task, count: usize) -> Result<serde_json::Value, String> {
@@ -2309,7 +2372,10 @@ impl AgentTasks {
                 task.key
             ));
         }
-        let open = self.ticket_chat.as_ref().filter(|chat| chat.task_id == task.id);
+        // The open ticket's chat while its first read is still on its thread holds nothing yet, so a fresh reading
+        // answers instead.
+        let open =
+            self.ticket_chat.as_ref().filter(|chat| chat.task_id == task.id && !chat.is_reading());
         let mut fresh = None;
         let chat = match open {
             Some(chat) => chat,
@@ -2317,6 +2383,7 @@ impl AgentTasks {
                 let mut made = self.a_chat_for(task).ok_or_else(|| {
                     format!("{} has no folder to find its transcript in", task.key)
                 })?;
+                made.read_now();
                 made.follow(false, std::time::Instant::now());
                 &*fresh.insert(made)
             }
@@ -2760,6 +2827,10 @@ impl UiProvider for AgentTasks {
         }
     }
 
+    fn asking(&mut self) -> Vec<Request> {
+        std::mem::take(&mut self.asking)
+    }
+
     fn catch_up(&mut self) -> bool {
         // Answers whether something is still **moving**, not whether something is running. A terminal that is
         // alive and quiet needs no frame: its own waker asks for one when it prints. Answering yes for a live
@@ -2824,6 +2895,7 @@ impl AgentTasks {
             "titleMissing": self.detail.title_missing,
             "fieldsShut": self.fields_shut,
             "chat": self.ticket_chat.as_ref().map(|chat| json!({
+                "reading": chat.is_reading(),
                 "transcript": chat.path().map(|path| path.display().to_string()),
                 "messages": chat.chat.session().chat.messages.len(),
                 "queued": chat.chat.queued().len(),

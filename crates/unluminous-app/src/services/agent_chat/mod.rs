@@ -499,6 +499,10 @@ pub struct PaneState {
     /// with nothing to say how the gap between them reads. Dragging inside another message replaces
     /// it, which is what every list of separately selectable blocks does. `task-2060`.
     pub selection: Option<Selected>,
+    /// Whether the primary button was held down on a message's words on the frame just drawn, which is a
+    /// selection being dragged out. The conversation does not follow a streaming answer while it is, so the
+    /// words stay under the pointer (`task-2269`). Set by the drawing of the words and read by the next frame.
+    pub selecting: bool,
     /// Which message's copy button is up, and when the pointer was last on it or on its message.
     ///
     /// `task-2060`: *"I can't actually select copy of a message because it goes away as soon as i
@@ -695,6 +699,23 @@ pub enum MirrorAsk {
     Interrupt,
 }
 
+/// A ticket's conversation shown in the side pane, which is what the ticket modal's `To Side Pane` does
+/// (`task-2269`).
+///
+/// The side pane reads the same transcript the modal's Chat tab reads, through the same
+/// `services::agent_tasks::ticket_chat::TicketChat`, and what is typed into it goes to the ticket's terminal
+/// through the board's own `send`, so it is one agent and one conversation shown in a second place.
+pub struct SidePaneTicket {
+    /// The ticket, `task-N`, which is what the board's commands take.
+    pub key: String,
+    /// The agent's name, for the strip above the conversation.
+    pub agent: String,
+    pub chat: crate::services::agent_tasks::ticket_chat::TicketChat,
+}
+
+/// The id a request sent on behalf of a ticket in the side pane carries, so its answer is not taken for a tool's.
+const FOR_A_TICKET: &str = "side-pane-ticket-";
+
 /// The plugin.
 pub struct AgentChat {
     /// Set when this pane shows a conversation another program is having. See [`Mirror`].
@@ -742,6 +763,10 @@ pub struct AgentChat {
     /// Which wire shapes a row could be switched to here. See [`AgentChat::shapes_available`].
     shapes: Vec<&'static str>,
     shapes_taken: Option<std::time::Instant>,
+    /// A ticket's conversation this pane is showing in place of its own. See [`SidePaneTicket`].
+    pub ticket: Option<Box<SidePaneTicket>>,
+    /// How many requests have been sent for the ticket, so each has an id of its own.
+    ticket_requests: u64,
 }
 
 impl std::fmt::Debug for AgentChat {
@@ -788,6 +813,8 @@ impl AgentChat {
             dirty: false,
             readiness: Vec::new(),
             readiness_taken: None,
+            ticket: None,
+            ticket_requests: 0,
             shapes: Vec::new(),
             shapes_taken: None,
         }
@@ -828,6 +855,93 @@ impl AgentChat {
         chat.session.chat.provider = speaker.to_owned();
         chat.session.chat.name = title.to_owned();
         chat
+    }
+
+    /// Change what a mirrored pane says while its conversation is empty. Nothing for an ordinary pane.
+    pub fn say_while_empty(&mut self, words: &str) {
+        if let Some(mirror) = self.mirror.as_mut() {
+            mirror.empty = words.to_owned();
+        }
+    }
+
+    /// Show a ticket's conversation in place of this pane's own, or go back to it with `off` (`task-2269`).
+    ///
+    /// `words` is the object `plugins run agent-tasks to-side-pane` sends: the ticket's key and id, its agent's
+    /// session, the folder the agent runs in, and the names to show. Asked by the board rather than typed, which
+    /// is why it is one object rather than words: the folder can have spaces in it.
+    pub fn show_a_ticket(&mut self, words: &str) -> Result<Answer, String> {
+        let words = words.trim();
+        if words.is_empty() || words == "off" {
+            let had = self.ticket.take().map(|ticket| ticket.key);
+            self.ui.jump_to_bottom = true;
+            return Ok(match had {
+                Some(key) => Answer::said(format!("back to this pane's own conversation from {key}")),
+                None => Answer::said("the pane is showing its own conversation"),
+            });
+        }
+        let said: serde_json::Value = serde_json::from_str(words).map_err(|_| {
+            "`ticket` takes what `plugins run agent-tasks to-side-pane <key>` sends, or `off`".to_owned()
+        })?;
+        let text = |name: &str| {
+            said[name]
+                .as_str()
+                .map(str::to_owned)
+                .ok_or_else(|| format!("`ticket` needs `{name}`"))
+        };
+        let key = text("key")?;
+        let session = text("session")?;
+        let folder = PathBuf::from(text("folder")?);
+        let agent = text("agent").unwrap_or_else(|_| "claude".to_owned());
+        let speaker = text("speaker").unwrap_or_else(|_| agent.clone());
+        let task = said["task"].as_i64().unwrap_or_default();
+        // The same ticket and session already showing is kept, with what has been read of it.
+        if self.ticket.as_ref().is_some_and(|ticket| ticket.key == key && ticket.chat.session == session) {
+            return Ok(Answer::said(format!("{key}'s conversation is in the pane")));
+        }
+        let chat = crate::services::agent_tasks::ticket_chat::TicketChat::reading(
+            task,
+            &key,
+            &agent,
+            &speaker,
+            &session,
+            &folder,
+            self.folder.as_deref(),
+        );
+        self.ticket = Some(Box::new(SidePaneTicket { key: key.clone(), agent, chat }));
+        Ok(Answer::said(format!("{key}'s conversation is in the pane"))
+            .with(serde_json::json!({ "ticket": key })))
+    }
+
+    /// Keep a ticket shown in the pane in step with its transcript, and send what its composer asked for to the
+    /// board as commands. Answers whether anything changed.
+    ///
+    /// `running` is taken to be true: whether the ticket's terminal is alive is the board's to know, and the
+    /// transcript already says whether a turn is open.
+    fn follow_the_ticket(&mut self) -> bool {
+        let Some(ticket) = self.ticket.as_mut() else { return false };
+        let now = std::time::Instant::now();
+        let mut changed = ticket.chat.follow(true, now);
+        for ask in ticket.chat.chat.take_what_the_mirror_asked() {
+            changed = true;
+            let (command, words) = match ask {
+                MirrorAsk::Say(words) => {
+                    ticket.chat.typed(now);
+                    ("send", format!("{} {words}", ticket.key))
+                }
+                MirrorAsk::Interrupt => ("escape", ticket.key.clone()),
+            };
+            self.ticket_requests += 1;
+            let mut arguments = serde_json::Map::new();
+            arguments.insert("id".to_owned(), serde_json::json!("agent-tasks"));
+            arguments.insert("command".to_owned(), serde_json::json!(command));
+            arguments.insert("arguments".to_owned(), serde_json::json!(words));
+            self.asking.push(Request::RunCommand {
+                id: format!("{FOR_A_TICKET}{}", self.ticket_requests),
+                command: "plugins.run".to_owned(),
+                arguments,
+            });
+        }
+        changed
     }
 
     /// What a mirrored pane's composer asked for since this was last called. Empty for an ordinary pane.
@@ -1762,6 +1876,13 @@ impl AgentChat {
 
     fn view_value(&self) -> serde_json::Value {
         serde_json::json!({
+            // The ticket whose conversation the pane is showing in place of its own (`task-2269`).
+            "ticket": self.ticket.as_ref().map(|ticket| serde_json::json!({
+                "key": ticket.key,
+                "reading": ticket.chat.is_reading(),
+                "messages": ticket.chat.chat.session().chat.messages.len(),
+                "busy": ticket.chat.chat.session().is_busy(),
+            })),
             "provider": self.provider().map(|one| serde_json::json!({
                 "name": one.name,
                 "wire": one.wire.name(),
@@ -1975,6 +2096,9 @@ impl UiProvider for AgentChat {
     }
 
     fn pane(&mut self, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request> {
+        if self.ticket.is_some() {
+            return crate::components::agent_chat::ticket_pane(self, ui, look);
+        }
         crate::components::agent_chat::pane(self, ui, look)
     }
 
@@ -1992,6 +2116,7 @@ impl UiProvider for AgentChat {
             // The window's own name for "put this pane on the screen", which `run_plugin_command`
             // acts on: the menu entry, the rail button and the command line are one path.
             "open-pane" => Ok(Answer::said("the chat")),
+            "ticket" => self.show_a_ticket(&rest),
             "new" => {
                 self.new_conversation();
                 Ok(
@@ -2249,6 +2374,10 @@ impl UiProvider for AgentChat {
                 "Set a calculator input or a form field: `set <message id or last> <name> <value>`.",
             ),
             ("tab", "Choose a tab: `tab <message id or last> <label or number>`."),
+            (
+                "ticket",
+                "Show a ticket's conversation in place of the pane's own, which `plugins run agent-tasks to-side-pane` asks for, or go back with `ticket off`.",
+            ),
         ]
     }
 
@@ -2257,7 +2386,8 @@ impl UiProvider for AgentChat {
     }
 
     fn catch_up(&mut self) -> bool {
-        self.take_the_replies()
+        let ticket = self.follow_the_ticket();
+        self.take_the_replies() | ticket
     }
 
     fn asking(&mut self) -> Vec<Request> {
@@ -2265,6 +2395,14 @@ impl UiProvider for AgentChat {
     }
 
     fn answered(&mut self, id: &str, answer: Result<serde_json::Value, String>) {
+        // What the board said about words typed for a ticket in this pane. A refusal is shown where the person
+        // typed, as the modal's own Chat tab shows one.
+        if id.starts_with(FOR_A_TICKET) {
+            if let (Err(problem), Some(ticket)) = (answer, self.ticket.as_mut()) {
+                ticket.chat.chat.problem = Some(problem);
+            }
+            return;
+        }
         // A file a component opened. A failure is the window's to report; nothing waits on it here.
         if id.starts_with(OPENING) {
             if let Err(problem) = answer {
