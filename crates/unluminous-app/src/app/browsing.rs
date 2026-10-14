@@ -88,6 +88,25 @@ impl PageStills {
     }
 }
 
+/// Where to draw a picture of a page in `area`, and which part of the picture, keeping the picture's own shape.
+///
+/// As wide as the area, cut off at the bottom when it is taller than the area and ending above the bottom when it
+/// is shorter. A page is read from the top, and a picture stretched to a pane whose height changed after it was
+/// taken squashed every line of text on it (`task-2263`).
+pub fn a_picture_at_its_own_shape(picture: egui::Vec2, area: Rect) -> (Rect, Rect) {
+    let whole = Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+    if picture.x <= 0.0 || picture.y <= 0.0 || area.width() <= 0.0 {
+        return (area, whole);
+    }
+    let tall = area.width() * picture.y / picture.x;
+    match tall > area.height() {
+        true => {
+            (area, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, area.height() / tall)))
+        }
+        false => (Rect::from_min_size(area.min, egui::vec2(area.width(), tall)), whole),
+    }
+}
+
 impl UnluminousApp {
     /// Where each native browser view was asked to go last frame, in the window's own points.
     ///
@@ -165,8 +184,8 @@ impl UnluminousApp {
             return false;
         }
         let Some(picture) = self.page_stills.pictures.get(&tab) else { return false };
-        let whole = Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
-        ui.painter().image(picture.id(), area, whole, egui::Color32::WHITE);
+        let (place, part) = a_picture_at_its_own_shape(picture.size_vec2(), area);
+        ui.painter().image(picture.id(), place, part, egui::Color32::WHITE);
         true
     }
 
@@ -673,5 +692,25 @@ impl UnluminousApp {
                 .filter(|rect| rect.is_positive())
                 .collect()
         })
+    }
+}
+
+#[cfg(test)]
+mod pictures {
+    use super::*;
+
+    /// `task-2263`: a picture keeps its shape in a pane whose height changed after it was taken.
+    #[test]
+    fn a_picture_keeps_its_shape_in_a_shorter_or_taller_area() {
+        let area = Rect::from_min_size(egui::pos2(10.0, 20.0), egui::vec2(300.0, 200.0));
+        let (place, part) = a_picture_at_its_own_shape(egui::vec2(300.0, 400.0), area);
+        assert_eq!(place, area, "a taller picture fills the area");
+        assert!((part.max.y - 0.5).abs() < 1e-4, "and is cut at the bottom: {part:?}");
+        let (place, part) = a_picture_at_its_own_shape(egui::vec2(600.0, 200.0), area);
+        assert!(
+            (place.height() - 100.0).abs() < 1e-4,
+            "a wider picture ends above the bottom: {place:?}"
+        );
+        assert_eq!(part.max, egui::pos2(1.0, 1.0));
     }
 }

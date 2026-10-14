@@ -4410,3 +4410,29 @@ fn a_link_in_a_tickets_chat_opens_a_tab_and_the_ticket_steps_aside() {
     assert!(opened, "a click on the address opened it: {}", did(&mut harness, "tab list"));
     assert!(harness.query_by_label("Chat tab").is_none(), "the ticket stepped aside for the tab");
 }
+
+/// `task-2263`: *"If a task fails to be created, there should be a toast message that is displayed that indicates
+/// what the error was, and it should have a close x button, and auto dismiss after 3 seconds."* The notice the ticket
+/// modal raises is drawn as the chat design's card with a cross, and is the kind that goes after three seconds.
+#[test]
+fn a_ticket_that_was_not_created_says_why_in_a_notice_that_goes_by_itself() {
+    use unluminous_app::components::toast::{Kind, BRIEF_LIFE};
+    let mut harness = harness("");
+    harness.set_size(vec2(1300.0, 800.0));
+    let request = unluminous_app::components::agent_tasks::ticket_modal::not_created(
+        "the board file is read only",
+    );
+    let unluminous_app::services::plugin_ui::Request::Notice { text, kind } = request else {
+        panic!("a notice")
+    };
+    assert_eq!(kind, Kind::Brief);
+    assert!(text.contains("the board file is read only"), "{text}");
+    harness.state_mut().toasts.say(text, kind);
+    steady(&mut harness);
+    assert_eq!(harness.get_all_by_label("Dismiss notice 1").count(), 1, "it has a cross");
+    assert_eq!(BRIEF_LIFE, std::time::Duration::from_secs(3));
+    harness.snapshot(shot("toast_ticket_not_created").as_str());
+    harness.get_by_label("Dismiss notice 1").click();
+    steady(&mut harness);
+    assert!(harness.state().toasts.is_empty(), "the cross dismissed it");
+}
