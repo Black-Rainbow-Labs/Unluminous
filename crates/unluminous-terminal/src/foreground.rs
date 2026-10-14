@@ -230,7 +230,9 @@ fn folder_of(pid: u32) -> Option<std::path::PathBuf> {
 /// not this.
 ///
 /// A function of its own rather than a condition, because the condition is the thing worth testing
-/// and everything around it needs a live process handle.
+/// and everything around it needs a live process handle. Only Windows reads one, and the test runs
+/// on every platform, so off Windows it is compiled for the test alone.
+#[cfg(any(windows, test))]
 fn characters_to_read(length: usize, longest: usize) -> Option<usize> {
     match length == 0 || length > longest || length % 2 != 0 {
         true => None,
@@ -655,6 +657,24 @@ fn started_at(pid: u32) -> u64 {
 mod tests {
     use super::*;
 
+    /// A `UNICODE_STRING` whose length is odd is not read at all.
+    ///
+    /// `task-1984` P1. The length is read out of another process's memory, so nothing here decides
+    /// it, and `vec![0u16; length / 2]` was one byte short of what `ReadProcessMemory` was then told
+    /// to write into it -- a heap write past the end of an allocation in `unsafe` code. The guard
+    /// checked zero and too large and not odd.
+    #[test]
+    fn a_unicode_string_of_an_odd_length_is_refused() {
+        let longest = 1024;
+        assert_eq!(characters_to_read(9, longest), None, "odd");
+        assert_eq!(characters_to_read(1, longest), None, "odd, and the smallest one");
+        assert_eq!(characters_to_read(longest - 1, longest), None, "odd, and the largest one");
+        assert_eq!(characters_to_read(0, longest), None, "nothing to read");
+        assert_eq!(characters_to_read(longest + 1, longest), None, "past what a path may be");
+        assert_eq!(characters_to_read(8, longest), Some(4), "four sixteen bit characters");
+        assert_eq!(characters_to_read(longest, longest), Some(longest / 2), "the largest one");
+    }
+
     /// A session with no pseudoterminal answers with nothing rather than guessing.
     ///
     /// This is the whole of what can be tested without a real shell, and it is the case that matters most:
@@ -829,23 +849,5 @@ mod argv_tests {
     #[test]
     fn a_process_that_is_not_there_answers_with_nothing() {
         assert_eq!(argv_zero(0x7fff_fff0), None);
-    }
-
-    /// A `UNICODE_STRING` whose length is odd is not read at all.
-    ///
-    /// `task-1984` P1. The length is read out of another process's memory, so nothing here decides
-    /// it, and `vec![0u16; length / 2]` was one byte short of what `ReadProcessMemory` was then told
-    /// to write into it -- a heap write past the end of an allocation in `unsafe` code. The guard
-    /// checked zero and too large and not odd.
-    #[test]
-    fn a_unicode_string_of_an_odd_length_is_refused() {
-        let longest = 1024;
-        assert_eq!(characters_to_read(9, longest), None, "odd");
-        assert_eq!(characters_to_read(1, longest), None, "odd, and the smallest one");
-        assert_eq!(characters_to_read(longest - 1, longest), None, "odd, and the largest one");
-        assert_eq!(characters_to_read(0, longest), None, "nothing to read");
-        assert_eq!(characters_to_read(longest + 1, longest), None, "past what a path may be");
-        assert_eq!(characters_to_read(8, longest), Some(4), "four sixteen bit characters");
-        assert_eq!(characters_to_read(longest, longest), Some(longest / 2), "the largest one");
     }
 }

@@ -281,8 +281,7 @@ mod platform {
             if urls.is_empty() {
                 return false;
             }
-            let pointers: Vec<*const AnyObject> =
-                urls.iter().map(|url| Retained::as_ptr(url)).collect();
+            let pointers: Vec<*const AnyObject> = urls.iter().map(Retained::as_ptr).collect();
             let array: Option<Retained<AnyObject>> = msg_send![
                 class!(NSArray),
                 arrayWithObjects: pointers.as_ptr(),
