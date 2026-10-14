@@ -1,28 +1,25 @@
 //! Draws the Unluminous application icon, once, at 1024 points, and writes every size and both container
-//! formats the two installers ask for — and the animated mark the window draws in its title bar.
+//! formats the two installers ask for, and the two pictures of the mark the window draws in its title bar.
 //!
-//! The mark is the one designed on the Claude Design canvas "unluminous — App Icon" (`task-2258`): a blue
-//! `U` with eight coloured pages turning round its bowl. `mark.rs` draws it, from the design's own numbers.
+//! The mark is the one designed on the Claude Design canvas "unluminous — App Icon", page "Arches U"
+//! (`task-2258`): six nested outlined channels making a `U`. `mark.rs` draws it from the design's own numbers.
 //!
-//! **An application icon cannot move**, on either platform: Windows reads one picture out of the
-//! executable, and macOS one out of the bundle. So both icons are the design's still version, which is
-//! the animation stopped half way through a turn. The animation lives in the window instead, where it is
-//! [`FRAMES`] pictures of the turn in one strip, `crates/unluminous-app/icons/logo/frames.png`, which the
-//! title bar plays.
+//! **The icons use the design's dark board**, light channels on near black, because an application icon is
+//! one picture whatever theme the window is in, and Unluminous starts in its dark theme. **The window's mark
+//! follows the theme**: `crates/unluminous-app/icons/logo/logo-dark.png` is the dark board's channels and
+//! `logo-light.png` the light board's, each on nothing, with the line along each channel cut out.
 //!
-//! The two icons are not the same drawing. **macOS** gets the design exactly: the dark rounded plate is
-//! 824 points of the 1024 with a shadow under it, which is the grid every macOS icon since Big Sur is
-//! drawn on, so it sits in the Dock at the size of its neighbours. **Windows** draws an icon to the edge of
-//! its square, and the same plate there would be a small picture in a large empty square on the taskbar,
-//! so its plate is 944 points across with no shadow, and the letter is scaled with it.
+//! The two icons are not the same drawing. **macOS** puts the board on the grid every macOS icon since Big Sur
+//! is drawn on: a rounded plate 824 points of the 1024 with a shadow under it, so it sits in the Dock at the
+//! size of its neighbours. **Windows** draws an icon to the edge of its square, so its plate is 944 points
+//! across with no shadow, and the mark is scaled with it.
 //!
-//! Everything is drawn **once, large, and downsampled**. A 6 point highlight drawn at 16 points is a
-//! smear; the same highlight drawn at 1024 and averaged down is the soft legible mark that every other
-//! application's small icon is.
+//! Everything is drawn **once, large, and downsampled**, because a 29 point line drawn at 16 points is a
+//! smear and the same line drawn at 1024 and averaged down is legible.
 //!
-//! Run it with `cargo run --release --manifest-path installer/icon/Cargo.toml`. Its output is
-//! committed, because `unluminous.ico` is a build input for `unluminous.exe` itself and the frames are
-//! built into the window, so a checkout must build without running this first.
+//! Run it with `cargo run --release --manifest-path installer/icon/Cargo.toml`. Its output is committed,
+//! because `unluminous.ico` is a build input for `unluminous.exe` itself and the two logo pictures are built
+//! into the window, so a checkout must build without running this first.
 
 mod mark;
 
@@ -30,10 +27,8 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use tiny_skia::{
-    Color, FillRule, GradientStop, LinearGradient, Paint, PathBuilder, Pixmap, Point, Shader,
-    SpreadMode, Stroke, Transform,
-};
+use mark::Board;
+use tiny_skia::{Color, FillRule, Paint, PathBuilder, Pixmap, Shader, Stroke, Transform};
 
 /// The side of the drawing everything else is averaged down from.
 const MASTER: u32 = 1024;
@@ -45,17 +40,12 @@ const ICO_SIZES: [u32; 7] = [16, 24, 32, 48, 64, 128, 256];
 /// The sizes an `.iconset` folder holds, and so the sizes `unluminous.icns` is built from.
 const ICONSET_SIZES: [u32; 6] = [16, 32, 64, 128, 256, 512];
 
-/// How many pictures one turn of the animation is cut into. The design turns once every 0.55 seconds,
-/// so 32 is a picture every 17 milliseconds, which is one a frame at sixty a second.
-const FRAMES: u32 = 32;
-/// How many pixels square each picture of the animation is. The title bar draws the mark 20 points tall,
-/// so this is enough for a display at four and a half pixels a point; the window shrinks it to the
-/// display it is on.
-const FRAME_SIDE: u32 = 96;
-/// How many pictures go on one row of the strip.
-const FRAMES_ACROSS: u32 = 8;
-/// Each picture is drawn this many times larger and averaged down, for the reason the icon is.
-const FRAME_SUPERSAMPLE: u32 = 4;
+/// How many pixels square each logo picture the window carries is. The title bar draws the mark 20 points
+/// tall and shrinks the picture to the display it is on, so this covers any display there is.
+const LOGO_SIDE: u32 = 256;
+
+/// How much of the plate the mark takes, across.
+const MARK_ON_PLATE: f32 = 0.78;
 
 fn main() {
     let out = output_folder();
@@ -79,9 +69,10 @@ fn main() {
 
     let logo = out.join("..").join("..").join("crates").join("unluminous-app").join("icons").join("logo");
     fs::create_dir_all(&logo).expect("the logo folder");
-    write_frames(&logo.join("frames.png"));
-    let still = letter_alone(1024, mark::STILL);
-    fs::write(logo.join("logo.png"), png(&resample(&still, 1024, 512), 512)).expect("logo.png");
+    for (board, name) in [(Board::Dark, "logo-dark.png"), (Board::Light, "logo-light.png")] {
+        let alone = mark_alone(MASTER, board);
+        fs::write(logo.join(name), png(&resample(&alone, MASTER, LOGO_SIDE), LOGO_SIDE)).expect("a logo");
+    }
 
     println!("wrote {} and {}", out.display(), logo.display());
 }
@@ -99,9 +90,9 @@ fn output_folder() -> PathBuf {
 /// Which platform's plate the icon is drawn on.
 #[derive(Clone, Copy)]
 enum Plate {
-    /// The design's own: 824 points of the 1024, 185 round, with a shadow under it.
+    /// 824 points of the 1024, 185 round, with a shadow under it.
     Mac,
-    /// 944 points of the 1024, scaled up from the design's, with no shadow.
+    /// 944 points of the 1024, scaled up from the Mac's, with no shadow.
     Windows,
 }
 
@@ -114,15 +105,17 @@ impl Plate {
         }
     }
 
-    /// How much larger than the design's plate this one is.
+    fn side(self) -> f32 {
+        1024.0 - 2.0 * self.margin()
+    }
+
+    /// How much larger than the Mac's plate this one is, which is what its corners are scaled by.
     fn scale(self) -> f32 {
-        (1024.0 - 2.0 * self.margin()) / 824.0
+        self.side() / 824.0
     }
 }
 
-/// The icon at `side` pixels square: the plate, and the letter on it at the still phase.
-///
-/// On its plate the design draws the letter at 0.82 of its own size, about the centre.
+/// The icon at `side` pixels square: the dark board as a rounded plate, and the mark on it.
 fn icon(side: f32, plate: Plate) -> Pixmap {
     let mut pixmap = Pixmap::new(side as u32, side as u32).expect("a square pixmap");
     let t = Transform::from_scale(side / 1024.0, side / 1024.0);
@@ -130,7 +123,9 @@ fn icon(side: f32, plate: Plate) -> Pixmap {
         shadow(&mut pixmap, plate, t);
     }
     draw_plate(&mut pixmap, plate, t);
-    mark::draw(&mut pixmap, mark::STILL, mark::about_the_centre(side, 0.82 * plate.scale()));
+    // The mark spans the 944 points of `mark::BOUNDS`; on the plate it takes `MARK_ON_PLATE` of the plate.
+    let scale = MARK_ON_PLATE * plate.side() / (mark::BOUNDS.1 - mark::BOUNDS.0);
+    mark::draw(&mut pixmap, Board::Dark, true, mark::about_the_centre(side, scale));
     pixmap
 }
 
@@ -139,28 +134,18 @@ fn plate_path(plate: Plate) -> tiny_skia::Path {
     rounded_rect(m, m, 1024.0 - m, 1024.0 - m, 185.0 * plate.scale())
 }
 
-/// The design's plate: `linear-gradient(180deg, #121218, #000000)` with a two point hairline of white at
-/// seven per cent inside its edge, so the shape survives a dark wallpaper.
+/// The dark board's ground, with a two point hairline of white at seven per cent inside its edge, so the
+/// shape survives a dark wallpaper.
 fn draw_plate(pixmap: &mut Pixmap, plate: Plate, t: Transform) {
-    let path = plate_path(plate);
-    let m = plate.margin();
+    let [r, g, b] = Board::Dark.ground();
     let paint = Paint {
-        shader: LinearGradient::new(
-            Point::from_xy(512.0, m),
-            Point::from_xy(512.0, 1024.0 - m),
-            vec![
-                GradientStop::new(0.0, Color::from_rgba8(0x12, 0x12, 0x18, 255)),
-                GradientStop::new(1.0, Color::from_rgba8(0, 0, 0, 255)),
-            ],
-            SpreadMode::Pad,
-            Transform::identity(),
-        )
-        .unwrap_or(Shader::SolidColor(Color::BLACK)),
+        shader: Shader::SolidColor(Color::from_rgba8(r, g, b, 255)),
         anti_alias: true,
         ..Paint::default()
     };
-    pixmap.fill_path(&path, &paint, FillRule::Winding, t, None);
+    pixmap.fill_path(&plate_path(plate), &paint, FillRule::Winding, t, None);
 
+    let m = plate.margin();
     let radius = 185.0 * plate.scale() - 1.0;
     let inset = rounded_rect(m + 1.0, m + 1.0, 1024.0 - m - 1.0, 1024.0 - m - 1.0, radius);
     let hairline = Paint {
@@ -172,9 +157,8 @@ fn draw_plate(pixmap: &mut Pixmap, plate: Plate, t: Transform) {
     pixmap.stroke_path(&inset, &hairline, &stroke, t, None);
 }
 
-/// The design's `box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45)`: the plate's shape, moved 14 points down,
-/// blurred by a Gaussian of 20 points, in black at 45 per cent. Three box blurs make the Gaussian, which
-/// is what a browser does too.
+/// `box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45)` under the plate: its shape moved 14 points down, blurred by
+/// a Gaussian of 20 points, in black at 45 per cent. Three box blurs make the Gaussian, as a browser does.
 fn shadow(pixmap: &mut Pixmap, plate: Plate, t: Transform) {
     let side = pixmap.width() as usize;
     let mut shape = Pixmap::new(side as u32, side as u32).expect("a layer");
@@ -231,45 +215,13 @@ fn box_blur(values: &mut [f32], side: usize, radius: usize, rows: bool) {
     }
 }
 
-/// The letter alone on nothing at `side` pixels square, cropped to the square it fills, at `phase`.
-///
-/// The letter runs from 132 to 892 across and from 112 to 912 down, so the square from 112 to 912 both
-/// ways holds it with twenty points of air either side and none above or below.
-fn letter_alone(side: u32, phase: f32) -> Pixmap {
+/// The mark alone on nothing, `side` pixels square, cropped to `mark::BOUNDS`, in `board`'s ink.
+fn mark_alone(side: u32, board: Board) -> Pixmap {
     let mut pixmap = Pixmap::new(side, side).expect("a square pixmap");
-    let scale = side as f32 / 800.0;
-    mark::draw(&mut pixmap, phase, Transform::from_scale(scale, scale).pre_translate(-112.0, -112.0));
+    let (from, to) = mark::BOUNDS;
+    let scale = side as f32 / (to - from);
+    mark::draw(&mut pixmap, board, false, Transform::from_scale(scale, scale).pre_translate(-from, -from));
     pixmap
-}
-
-/// Write the animation as one strip: [`FRAMES`] pictures, [`FRAMES_ACROSS`] to a row, the first at phase
-/// 0 and each a [`FRAMES`]th of a turn after the one before.
-fn write_frames(path: &Path) {
-    let across = FRAMES_ACROSS;
-    let down = FRAMES.div_ceil(across);
-    let (width, height) = (across * FRAME_SIDE, down * FRAME_SIDE);
-    let row = (FRAME_SIDE * 4) as usize;
-    let mut sheet = vec![0u8; (width * height * 4) as usize];
-    for frame in 0..FRAMES {
-        let big = FRAME_SIDE * FRAME_SUPERSAMPLE;
-        let picture = resample(&letter_alone(big, frame as f32 / FRAMES as f32), big, FRAME_SIDE);
-        let (left, top) = ((frame % across) * FRAME_SIDE, (frame / across) * FRAME_SIDE);
-        for y in 0..FRAME_SIDE {
-            let from = y as usize * row;
-            let to = (((top + y) * width + left) * 4) as usize;
-            sheet[to..to + row].copy_from_slice(&picture[from..from + row]);
-        }
-    }
-    let mut bytes = Vec::new();
-    {
-        let mut encoder = png::Encoder::new(&mut bytes, width, height);
-        encoder.set_color(png::ColorType::Rgba);
-        encoder.set_depth(png::BitDepth::Eight);
-        encoder.set_compression(png::Compression::Best);
-        let mut writer = encoder.write_header().expect("a PNG header");
-        writer.write_image_data(&sheet).expect("PNG pixels");
-    }
-    fs::write(path, bytes).expect("frames.png");
 }
 
 /// A rounded rectangle, which `tiny_skia` has no constructor for.

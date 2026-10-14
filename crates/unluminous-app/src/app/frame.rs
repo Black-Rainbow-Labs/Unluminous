@@ -484,7 +484,6 @@ impl UnluminousApp {
             tools_width,
             run_width,
             branch_width,
-            self.logo_motion(),
         );
         if outcome.close {
             // Every modified tab is written first, and the window does not go when one of them could

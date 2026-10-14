@@ -5662,22 +5662,18 @@ every screenshot test each time the clock ticked. `components::about_dialog` is 
 and it takes them as text rather than reading them, because a picture that changes every build cannot
 be a screenshot test.
 
-## The mark in the title bar turns, and only when somebody is looking at it (`task-2258`)
+## The mark in the title bar is the Unluminous logo, and it follows the theme (`task-2258`)
 
-The application's own menu at the left of the bar is the Unluminous mark rather than the word: the blue `U`
-with eight coloured pages turning round its bowl, from the Claude Design canvas "unluminous — App Icon".
-`installer/icon` draws it from the design's own numbers and writes the turn as 32 pictures in one strip,
-`crates/unluminous-app/icons/logo/frames.png`, which `components::logo` shrinks to the display's pixels once
-and shows one rectangle of. The icons are the still version, because neither platform animates an icon.
-
-**A turning mark is the whole window drawn sixty times a second**, because egui cannot draw one rectangle on
-its own: measured at 216 ms of processor time a second against under one with the mark still. So
-`appearance.logo_motion` is `hover` by default, which turns it while the pointer is over it and for 1.1
-seconds when a window opens; `always` and `off` are on `Settings -> Appearance`. A window drawn for a test
-holds it still (`UnluminousApp::logo_held_still`, set by `draw_deterministically`). The pill is still named
-`Unluminous`, so tests and `action list` find the menu as before. On macOS, whose menus are in the bar along
-the top of the screen, the mark sits just after the traffic lights (`title_bar::mac_mark`): it turns on
-hover and does nothing when pressed, and the bar's drag area starts after it.
+The application's own menu at the left of the bar is the Unluminous mark rather than the word: six nested
+outlined channels making a `U`, from the Claude Design canvas "unluminous — App Icon", page "Arches U".
+`installer/icon` draws it from the design's own numbers and writes it twice on nothing,
+`crates/unluminous-app/icons/logo/logo-dark.png` (light channels, for a dark theme) and `logo-light.png` (dark
+channels, for a light theme). `components::logo` draws the one `theme::is_dark` asks for, shrunk to the
+display's pixels once. **It does not move**: an animated version was built and taken out at Jason's request,
+and there is no setting for it. The application icons use the dark board on a rounded plate. The pill is still
+named `Unluminous`, so tests and `action list` find the menu as before. On macOS, whose menus are in the bar
+along the top of the screen, the mark sits just after the traffic lights (`title_bar::mac_mark`), does nothing
+when pressed, and the bar's drag area starts after it.
 
 ## Driving the real window must never steal the person's focus
 

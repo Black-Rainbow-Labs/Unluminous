@@ -525,7 +525,6 @@ impl UnluminousApp {
             "appearance.theme" => self.settings.theme.clone(),
             "appearance.accent" => self.settings.accent.clone(),
             "appearance.icons" => self.settings.icons.clone(),
-            "appearance.logo_motion" => self.settings.logo_motion().name().to_owned(),
             "appearance.ui.font.family" => self.settings.ui_font_family.clone(),
             "appearance.ui.font.size" => format!("{:.1}", self.settings.ui_font_size),
             "terminal.font.size" => format!("{:.0}", self.settings.terminal_font_size),
@@ -644,19 +643,6 @@ impl UnluminousApp {
                 } else {
                     return Err(format!(
                         "{value} is not a colour. Write one as #RRGGBB, or leave it empty for the theme's own."
-                    ));
-                }
-            }
-            "appearance.logo_motion" => {
-                let word = value.trim().to_ascii_lowercase();
-                if word.is_empty()
-                    || crate::components::logo::Motion::NAMES.contains(&word.as_str())
-                {
-                    settings.logo_motion = word;
-                } else {
-                    return Err(format!(
-                        "appearance.logo_motion is one of {}, and empty is hover.",
-                        crate::components::logo::Motion::NAMES.join(", ")
                     ));
                 }
             }
@@ -1228,10 +1214,6 @@ const SETTINGS: &[SettingKey] = &[
         help: "Which drawn marks the rail buttons and the explorer's folder arrow use.",
     },
     SettingKey {
-        name: "appearance.logo_motion",
-        help: "When the pages of the Unluminous mark in the title bar turn: hover, always or off.",
-    },
-    SettingKey {
         name: "appearance.ui.font.family",
         help: "The family the window's own text is set in: the menus, the rail and the status bar.",
     },
@@ -1355,7 +1337,6 @@ fn fresh_value(name: &str, fresh: &crate::settings::Settings) -> String {
         "appearance.theme" => fresh.theme.clone(),
         "appearance.accent" => fresh.accent.clone(),
         "appearance.icons" => fresh.icons.clone(),
-        "appearance.logo_motion" => fresh.logo_motion().name().to_owned(),
         "appearance.ui.font.family" => fresh.ui_font_family.clone(),
         "appearance.ui.font.size" => format!("{:.1}", fresh.ui_font_size),
         "terminal.font.size" => format!("{:.0}", fresh.terminal_font_size),

@@ -185,7 +185,6 @@ pub fn show(
     tools_width: f32,
     run_width: f32,
     branch_width: f32,
-    logo_motion: crate::components::logo::Motion,
 ) -> TitleBarOutcome {
     let mut outcome = TitleBarOutcome::default();
     let painter = ui.painter_at(area);
@@ -212,12 +211,12 @@ pub fn show(
     // The menus, when they are drawn here, then the project's chip after them.
     let (mut name_from, drag_to) = match placement {
         MenuPlacement::InWindow => {
-            let (action, right) = menu_bar::show(ui, area, menus, logo_motion);
+            let (action, right) = menu_bar::show(ui, area, menus);
             outcome.action = action;
             (right + 10.0, buttons[0].0.left() - BUTTON_MARGIN)
         }
         MenuPlacement::Native => {
-            let right = mac_mark(ui, area, buttons[2].0.right() + 10.0, logo_motion);
+            let right = mac_mark(ui, area, buttons[2].0.right() + 10.0);
             (right + 8.0, area.right())
         }
     };
@@ -293,21 +292,16 @@ pub fn show(
 /// The Unluminous mark at the left of the bar on macOS, just after the traffic lights (`task-2258`).
 ///
 /// On Windows the mark is the application's own menu, in `menu_bar`. macOS keeps that menu in the bar along the
-/// top of the screen, so here the mark is the mark alone: it turns while the pointer is over it and does nothing
-/// when pressed. It is the same size as the Windows one, and it answers where it ended.
-fn mac_mark(
-    ui: &mut egui::Ui,
-    area: Rect,
-    left: f32,
-    motion: crate::components::logo::Motion,
-) -> f32 {
+/// top of the screen, so here the mark is the mark alone and does nothing when pressed. It is the same size as
+/// the Windows one, and it answers where it ended.
+fn mac_mark(ui: &mut egui::Ui, area: Rect, left: f32) -> f32 {
     let rect = Rect::from_min_size(
         Pos2::new(left, area.center().y - MARK_PILL / 2.0),
         Vec2::splat(MARK_PILL),
     );
     let response = ui.interact(rect, ui.id().with("unluminous-mark"), Sense::hover());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Unluminous"));
-    crate::components::logo::paint(ui, rect, menu_bar::MARK, motion, response.hovered());
+    crate::components::logo::paint(ui, rect, menu_bar::MARK);
     rect.right()
 }
 

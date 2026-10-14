@@ -12,7 +12,7 @@
 //! and while its list is open the pill is carved into the bar with the word in the strong ink.
 //!
 //! **The application's own menu is the mark rather than its name** (`task-2258`): a round pill holding the
-//! Unluminous `U`, drawn by `components::logo`, which turns while the pointer is over it. It is still the
+//! Unluminous mark, drawn by `components::logo` in the version for the theme the window is in. It is still the
 //! `Unluminous` menu, and it is still named `Unluminous`, so a test, a screen reader and `action list` find it
 //! as they always did.
 
@@ -33,13 +33,7 @@ pub const MARK: f32 = 20.0;
 
 /// Draw the bar into the left of `area`, and answer what was chosen and where the last pill ended.
 ///
-/// `motion` is when the mark in the application's pill turns.
-pub fn show(
-    ui: &mut egui::Ui,
-    area: Rect,
-    menus: &[Menu],
-    motion: crate::components::logo::Motion,
-) -> (Option<Action>, f32) {
+pub fn show(ui: &mut egui::Ui, area: Rect, menus: &[Menu]) -> (Option<Action>, f32) {
     let mut chosen = None;
     let mut pen = area.left() + LEFT;
     let font = egui::FontId::proportional(12.5);
@@ -81,7 +75,7 @@ pub fn show(
                 rux.wash(*rect, PILL / 2.0, rux.theme().interaction.hover);
             }
             if *app {
-                crate::components::logo::paint(rux.ui, *rect, MARK, motion, response.hovered());
+                crate::components::logo::paint(rux.ui, *rect, MARK);
             } else {
                 let tint = match (open, response.hovered()) {
                     (true, _) => ink.i900,

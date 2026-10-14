@@ -946,7 +946,6 @@ const SETTINGS_HELP: &[&str] = &[
     "What every colour in the window is. A theme that names the nine token colours also colours code, in every language at once.",
     "One colour for everything the accent means: the caret, the open tab, an open folder.",
     "Which drawn marks the rail buttons and the explorer's folder arrow use.",
-    "When the pages of the Unluminous mark in the title bar turn: hover, always or off.",
     "The family the window's own text is set in: the menus, the rail and the status bar.",
     "The point size the window's own text is set in. The editing area keeps its own.",
     "The point size the terminal sets its grid in.",
