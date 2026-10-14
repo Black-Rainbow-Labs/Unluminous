@@ -211,13 +211,17 @@ pub fn show(
     // nothing to draw here. It says so rather than showing an empty rectangle.
     if !showing {
         ui.painter().rect_filled(browser, CornerRadius::ZERO, color::editor());
-        ui.painter().crisp_text(
-            browser.center(),
-            Align2::CENTER_CENTER,
-            "Click to show this page here. A window shows one live page at a time.",
+        // Wrapped to the pane and clipped to it, because a split pane can be narrower than the sentence and the
+        // words ran into the pane beside it (`task-2263`).
+        let painter = ui.painter_at(browser);
+        let words = painter.layout(
+            "Click to show this page here. A window shows one live page at a time.".to_owned(),
             FontId::proportional(13.0),
             color::text_faint(),
+            (browser.width() - 24.0).max(40.0),
         );
+        let at = browser.center() - words.size() / 2.0;
+        painter.galley(at, words, color::text_faint());
     }
     // **A page in a pane fills its pane, so nothing of it is cut.** A node's own placement is cropped by
     // `show_a_browser_node`, which is where the canvas is and where the pane's edge is known.
