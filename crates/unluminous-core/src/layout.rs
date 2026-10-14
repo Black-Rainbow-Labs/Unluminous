@@ -187,6 +187,17 @@ impl PlacedLine {
         (self.height - self.above - self.below).max(0.0)
     }
 
+    /// The top of a band [`Self::text_height`] tall, centred on the letters.
+    ///
+    /// A line puts its baseline `ascent` from its top and adds all of its extra leading below the
+    /// letters, so a band laid from [`Self::text_top`] has all that air under the words. This is the
+    /// same height moved up by half the leading, so it has equal room above and below the letters.
+    /// The selection and the debugger's stopped line both use it (`task-2198`, `task-2268`).
+    pub fn centred_band_top(&self) -> f32 {
+        let letters = self.baseline - self.ascent + (self.ascent + self.descent) / 2.0;
+        self.y + letters - self.text_height() / 2.0
+    }
+
     /// Move a line that did not itself change to where it now sits.
     ///
     /// An edit above a paragraph moves it down or up the page, moves every byte it covers along, and
@@ -1348,10 +1359,8 @@ impl Layout {
             if right > left {
                 // The line's own band, without the room a notebook leaves above a cell or below its
                 // outputs, or a selection would be painted over the outputs. `task-2220`.
-                let band = line.text_height();
-                let letters = line.baseline - line.ascent + (line.ascent + line.descent) / 2.0;
-                let y = line.y + letters - band / 2.0;
-                rects.push(Rect { x: left, y, width: right - left, height: band });
+                let y = line.centred_band_top();
+                rects.push(Rect { x: left, y, width: right - left, height: line.text_height() });
             }
         }
         rects
@@ -2461,6 +2470,34 @@ mod tests {
             (rects[0].y + rects[0].height - rects[1].y).abs() < 0.001,
             "two lines of a selection still meet with no gap between them"
         );
+    }
+
+    /// `task-2268`: the band behind the line a debugger stopped on started at the top of the letters and
+    /// ran a whole line down, so every point of leading was below the words. The band has equal room
+    /// above and below the letters, and is the same rectangle a selection of the line is.
+    #[test]
+    fn the_centred_band_has_as_much_room_above_the_letters_as_below_them() {
+        let (rope, spans, mut paragraphs) = fixture("one\ntwo");
+        paragraphs.set(0..7, |p| p.line_spacing = 2.0);
+        let result = layout(&rope, &spans, &paragraphs, &ScaledMetrics, 500.0);
+        let selected = result.selection_rects(0..7);
+        for (line, selection) in result.lines.iter().zip(&selected) {
+            let top = line.centred_band_top();
+            let bottom = top + line.text_height();
+            let letters_top = line.y + line.baseline - line.ascent;
+            let letters_bottom = line.y + line.baseline + line.descent;
+            assert!(
+                letters_top > top && letters_bottom < bottom,
+                "the letters are inside the band"
+            );
+            assert!(
+                ((letters_top - top) - (bottom - letters_bottom)).abs() < 0.001,
+                "as much room above the letters ({}) as below them ({})",
+                letters_top - top,
+                bottom - letters_bottom
+            );
+            assert_eq!(selection.y, top, "and it is where a selection of the line is");
+        }
     }
 
     #[test]

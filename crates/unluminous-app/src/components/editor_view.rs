@@ -525,7 +525,9 @@ fn paint_execution_point(
         }
         ui.painter().rect_filled(
             Rect::from_min_size(
-                Pos2::new(clip.left(), text_origin.y + line.text_top()),
+                // Centred on the letters, as a selection is: from `text_top` the band had all of the
+                // line's leading below the words and none above them. `task-2268`.
+                Pos2::new(clip.left(), text_origin.y + line.centred_band_top()),
                 Vec2::new(clip.width(), line.text_height()),
             ),
             0.0,
@@ -566,13 +568,17 @@ fn paint_inline_values(
         if x > right - 24.0 {
             continue;
         }
+        let font = egui::FontId::monospace(INLINE_SIZE);
         let galley = painter.crisp_layout_no_wrap(
             values[at].1.clone(),
-            egui::FontId::monospace(INLINE_SIZE),
+            font.clone(),
             crate::theme::color::inline_value(),
         );
+        // On the code's own baseline. Centred on the line's box, the value sat low, because a line puts all
+        // of its leading below the letters. `task-2268`.
+        let baseline = text_origin.y + line.y + line.baseline;
         painter.crisp_galley(
-            Pos2::new(x, text_origin.y + line.y + (line.height - galley.size().y) / 2.0),
+            Pos2::new(x, crate::theme::crisp::top_on_baseline(painter, &font, baseline)),
             galley,
             crate::theme::color::inline_value(),
         );

@@ -107,6 +107,20 @@ pub fn top_centring_capitals(painter: &Painter, font: &FontId, centre_y: f32) ->
     }
 }
 
+/// Where to put the top of a line of `font` so that its baseline is at `baseline_y`.
+///
+/// For words set beside text in another size, where sharing the baseline is what makes the two read as one
+/// line. `task-2268`: the debugger's inline values were centred on the code line's whole box, and a line puts
+/// all of its leading below the letters, so every value sat lower than the code it was about. Measured off the
+/// font from an `H`, as [`top_centring_capitals`] is.
+pub fn top_on_baseline(painter: &Painter, font: &FontId, baseline_y: f32) -> f32 {
+    let probe = painter.layout_no_wrap("H".to_owned(), font.clone(), Color32::WHITE);
+    match capital_band(&probe) {
+        Some((_, baseline)) => baseline_y - baseline,
+        None => baseline_y - probe.size().y,
+    }
+}
+
 /// From the top of a galley, where its first glyph's ink starts and where its baseline is.
 ///
 /// `Glyph::pos` is the baseline relative to its row, and `uv_rect.offset` is where the ink starts relative
@@ -334,6 +348,23 @@ mod tests {
             let capitals_middle = top + (cap + baseline) / 2.0;
             assert!((capitals_middle - row_middle).abs() < 0.01, "at {size}: {capitals_middle}");
             assert!(baseline - cap > size * 0.5, "an H is most of a line tall at {size}");
+        }
+    }
+
+    /// Words of any size placed with `top_on_baseline` have their baseline where they were asked to.
+    /// `task-2268`: the debugger's inline values, set smaller than the code, sat below its baseline.
+    #[test]
+    fn words_of_any_size_land_on_the_baseline_they_are_given() {
+        let context = egui::Context::default();
+        let mut output = context.run_ui(egui::RawInput::default(), |_| {});
+        output.textures_delta.clear();
+        let painter = Painter::new(context.clone(), egui::LayerId::background(), Rect::EVERYTHING);
+        for font in [FontId::monospace(11.0), FontId::monospace(16.0), FontId::proportional(24.0)] {
+            let galley = painter.layout_no_wrap("x = 42".to_owned(), font.clone(), Color32::WHITE);
+            let row = galley.rows.first().expect("a row");
+            let own_baseline = row.pos.y + row.row.glyphs.first().expect("a glyph").pos.y;
+            let top = top_on_baseline(&painter, &font, 200.0);
+            assert!((top + own_baseline - 200.0).abs() < 0.01, "{font:?}: {}", top + own_baseline);
         }
     }
 
