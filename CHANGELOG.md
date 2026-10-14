@@ -6,6 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- Chat selection, a ticket's long chat, comment order, To Side Pane, scroll after a tab closes (`task-2269`)
+- The ticket modal's Description and Comments fold, as Agent and Todos do (`task-2269`)
+- Rustfmt (`task-2269`)
+
 ## 0.84.7 — 2026-10-14
 
 - Comment & Send to Agent starts the agent on a ticket the watchdog moved back to New (`task-2268`)
