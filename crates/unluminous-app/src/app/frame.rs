@@ -137,6 +137,8 @@ impl UnluminousApp {
         self.show_the_settings_window(ui);
         crate::services::frame_trace::phase("modals");
 
+        // The right click menu a link opened, over every pane and modal that could have drawn the link.
+        self.show_the_link_menu(ui.ctx());
         self.show_the_notices(ui, &places);
         self.show_the_resize_grips(ui, &places);
         crate::services::frame_trace::phase("notices");
@@ -2013,9 +2015,15 @@ impl UnluminousApp {
         // that is drawing is a window somebody is looking at. A `Problem` is never dropped by this — only
         // a person takes one of those away, which is `components::toast`'s whole point.
         self.toasts.forget_the_stale_ones();
-        if let Some(dismissed) =
-            crate::components::toast::show(ui, full, &self.toasts, self.settings.font_size)
-        {
+        let state = self
+            .toast_rux
+            .take()
+            .unwrap_or_else(|| rux::RuxState::deterministic(crate::theme::rux_theme()));
+        let pressed =
+            crate::components::toast::show(ui, full, &self.toasts, self.settings.font_size, &state);
+        state.end_frame();
+        self.toast_rux = Some(state);
+        if let Some(dismissed) = pressed {
             match dismissed {
                 crate::components::toast::Pressed::Dismissed(index) => self.toasts.dismiss(index),
                 crate::components::toast::Pressed::Acted(index, act) => {
@@ -2401,17 +2409,16 @@ impl UnluminousApp {
         // **A picture of the page the view is about to leave**, taken before the view is sent anywhere else, so
         // switching back to that tab shows its page at once while the page loads again. `task-2255`.
         let leaving = self.browser.showing();
-        let going_to = placements
-            .iter()
-            .find(|placement| placement.focused)
-            .or(placements.last())
-            .map(|placement| placement.id);
+        let going_to =
+            crate::services::browser::going_to(&placements, leaving).map(|placement| placement.id);
         if let (Some(leaving), Some(going_to)) = (leaving, going_to) {
+            // A design's page as well as a tab's, so the pane it leaves can show its picture. `task-2263`.
             if leaving != going_to
-                && self
+                && (self
                     .files
                     .iter()
                     .any(|file| file.browser.as_ref().is_some_and(|tab| tab.id == leaving))
+                    || self.design_tabs.values().any(|tab| tab.id == leaving))
             {
                 if let Some(picture) = self.browser.photograph(leaving) {
                     let texture =

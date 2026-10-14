@@ -465,16 +465,19 @@ Rendered tabs use the operating system browser engine. Local HTML is served from
 ### browser open
 
 ```
-unluminous-cli browser open <address>
+unluminous-cli browser open <address> [--system]
 ```
 
-Render an HTTP address or local HTML file in a new Unluminous tab.
+Render an HTTP address or local HTML file in a new Unluminous tab, or with `--system` open an HTTP address in the person's default browser outside Unluminous, which is what `Open in Default Browser` on a link's right click menu does.
 
 - `address` — An HTTP or HTTPS address, or an HTML path relative to the project folder. Everything after it on the line belongs to it.
+
+- `--system` — Open the address in the default browser of the operating system instead. Only http and https addresses.
 
 ```sh
 unluminous-cli browser open https://example.com
 unluminous-cli browser open examples/site/index.html
+unluminous-cli browser open --system https://example.com
 ```
 
 ### browser status

@@ -31,8 +31,10 @@ pub mod board;
 pub mod clock;
 pub mod commands;
 pub mod db;
+pub mod folder_trust;
 pub mod keychain;
 pub mod model;
+pub mod screen_choice;
 pub mod store;
 pub mod ticket_chat;
 pub mod watchdog;
@@ -44,6 +46,9 @@ use serde_json::json;
 use crate::services::plugin_ui::{Answer, Context, Look, Request, UiProvider};
 use model::{Assignee, Author, Board, Epic, Priority, Sprint, SprintStatus, Status, Task};
 use store::{Store, TaskEdit};
+
+/// What `Create task` says when the ticket has no title. The modal shows it under the title field.
+pub const TITLE_MISSING: &str = "A ticket needs a title. Type one in the field outlined in red.";
 
 impl AgentTasks {
     /// Read the open ticket's description as markdown, or as its source.
@@ -254,6 +259,12 @@ pub struct Detail {
     /// Held beside the ticket rather than read from it, because the field is what somebody is typing and the
     /// row is what has been saved. Reading the row into the field every frame would fight the keyboard.
     pub title_draft: String,
+    /// True after `Create task` was pressed on a new ticket with no title, until a title is typed.
+    ///
+    /// `task-2263`: *"When I create a task with no title, it just dissappears. there should be a validation
+    /// message that highlights the required input in red."* The modal draws the title field outlined in the
+    /// design's failed colour with a sentence under it while this is set.
+    pub title_missing: bool,
     /// True while the description is being read as markdown rather than written as its source.
     ///
     /// `task-28`. **Raw is the default**, because the description is the field somebody writes in and a
@@ -476,16 +487,16 @@ pub struct AgentTasks {
     /// is, where an id that no longer exists would leave the keyboard on nothing. `None` until an arrow key is
     /// pressed, so a board nobody has touched with the keyboard draws no ring.
     pub chosen: Option<(Status, usize)>,
-    /// Whether the ticket's Todos and Terminal sections have been shut.
+    /// Whether the ticket's Todos section has been opened.
     ///
-    /// **Both open until somebody shuts one**, which is what the browser board does. The specification calls both
-    /// collapsible and neither was: a person who wanted more room for the description or the comments could not
-    /// get it, and on a short window the fixed budgets for these two were what pushed the other sections past the
-    /// bottom edge. Held on the provider rather than in egui's memory because the pane and the modal are two
-    /// places showing one ticket and they have to agree about it.
-    /// Named for what shut means rather than for what open means, so that the default — `false`, which
-    /// `#[derive(Default)]` gives every field on this provider — is both of them open.
-    pub todos_shut: bool,
+    /// **Shut until somebody opens it** (`task-2263`: *"The todos are for agents. Todos should be collapsed by
+    /// default."*). Named for what open means so that the default, `false`, which `#[derive(Default)]` gives every
+    /// field on this provider, is shut. Held on the provider rather than in egui's memory because the pane and the
+    /// modal are two places showing one ticket and they have to agree about it.
+    pub todos_open: bool,
+    /// Whether the ticket's Agent section has been shut. Open until somebody shuts it, which is what the browser
+    /// board does: a person who wanted more room for the description or the comments could not get it, and on a
+    /// short window its fixed budget pushed the other sections past the bottom edge.
     pub terminal_shut: bool,
     /// How tall the ticket's description well is, once somebody has dragged its bottom edge.
     ///
@@ -947,6 +958,7 @@ impl AgentTasks {
             false => task.as_ref().map(|read| read.title.clone()).unwrap_or_default(),
         };
         let is_new = self.detail.is_new && same;
+        let title_missing = self.detail.title_missing && same;
         // A comment being edited survives a refresh of the same ticket and is dropped when a different one is
         // opened, on the same terms as the title field: a refresh happens every time anything on the board
         // changes, and one of those must not throw away what somebody has typed.
@@ -980,6 +992,7 @@ impl AgentTasks {
             todo_draft,
             title_draft,
             is_new,
+            title_missing,
             editing_comment,
             comment_edit,
             description_rendered,
@@ -1209,6 +1222,45 @@ impl AgentTasks {
         Ok(answer.message)
     }
 
+    /// The menu the agent in a ticket's terminal is waiting on, when it is waiting on one.
+    pub fn choice_for(&self, task_id: i64) -> Option<screen_choice::Choice> {
+        self.terminal_for(task_id)?.choice()
+    }
+
+    /// Say the menu a ticket's agent is waiting on, or press option `option` of it, counted from 1.
+    ///
+    /// What the buttons the Chat tab draws over a waiting menu do, and the `choice` command (`task-2263`).
+    pub fn answer_a_choice(&mut self, key: &str, option: &str) -> Result<Answer, String> {
+        let task = self.by_key(key)?;
+        let terminal = self
+            .terminals
+            .iter_mut()
+            .find(|terminal| terminal.task_id == task.id && terminal.session.is_running())
+            .ok_or_else(|| format!("{key} has no agent running"))?;
+        let described = |choice: &screen_choice::Choice| json!({"task": task.key, "question": choice.question, "options": choice.options, "cursor": choice.cursor + 1});
+        if option.trim().is_empty() {
+            return Ok(match terminal.choice() {
+                Some(choice) => Answer::said(format!(
+                    "{key} is waiting on: {} ({})",
+                    choice.question,
+                    choice.options.join(" / ")
+                ))
+                .with(described(&choice)),
+                None => Answer::said(format!("{key} is not waiting on a menu"))
+                    .with(json!({"task": task.key, "options": []})),
+            });
+        }
+        let number = option
+            .trim()
+            .parse::<usize>()
+            .ok()
+            .filter(|number| *number > 0)
+            .ok_or_else(|| format!("`{option}` is not an option number: they start at 1"))?;
+        let choice = terminal.choose(number - 1)?;
+        self.message = format!("{key}: chose {}", choice.options[number - 1]);
+        Ok(Answer::said(self.message.clone()).with(described(&choice)))
+    }
+
     /// Bring back a session that has been retired, without changing which lane the ticket is in.
     ///
     /// This is what `Resume session` means: a ticket in Agent Done whose session is resumed stays in
@@ -1318,6 +1370,20 @@ impl AgentTasks {
         // the person really has, and `required` is what says which program is missing and where it
         // was looked for rather than leaving `No such file or directory` as the whole answer.
         let program = crate::services::login_shell::required(&launch.program)?;
+        // **The folder is trusted before the agent sees it** (`task-2263`). Both agents ask whether to trust a
+        // folder the first time they meet one, and every ticket worktree is a folder they have never met: the
+        // question sat in the terminal, and the handoff typed a few seconds later went into it. The program's own
+        // stem decides which agent's file is written, so a wrapper named in the configuration is left alone.
+        let stem = program
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        if let Err(problem) = folder_trust::trust(&stem, folder) {
+            eprintln!(
+                "agent-tasks: could not record that {} is trusted: {problem}",
+                folder.display()
+            );
+        }
         let settings = unluminous_terminal::SessionSettings {
             shell: Some(program.display().to_string()),
             args: launch.arguments.clone(),
@@ -1395,6 +1461,8 @@ impl AgentTasks {
             written: 0,
             has_printed: false,
             quiet_since: None,
+            keys: Vec::new(),
+            next_key_at: None,
         });
         Ok(())
     }
@@ -1525,10 +1593,36 @@ impl AgentTasks {
             return Ok(());
         };
         let title = self.detail.title_draft.clone();
+        if !title.trim().is_empty() {
+            self.detail.title_missing = false;
+        }
         let edit = TaskEdit { title: Some(title.clone()), ..TaskEdit::default() };
         self.store()?.edit_task(id, &edit, &clock::now())?;
         // The board is read again so the card's title follows the field, and the open ticket keeps the field.
         self.refresh()
+    }
+
+    /// Finish creating the new ticket that is open, which is what `Create task` and the `create` command do.
+    ///
+    /// A ticket with no title is refused and stays open with its title field marked (`task-2263`): it used to be
+    /// closed and thrown away in one press, so the ticket somebody had just filled in disappeared with nothing said.
+    /// The title is saved once more before the modal closes, so a failure to write it is reported rather than lost.
+    pub fn create_the_new_ticket(&mut self) -> Result<Answer, String> {
+        let Some(task) = self.detail.task.clone() else {
+            return Err("there is no new ticket open to create".to_owned());
+        };
+        if !self.detail.is_new {
+            return Ok(Answer::said(format!("{} was already created", task.key)));
+        }
+        if self.detail.title_draft.trim().is_empty() {
+            self.detail.title_missing = true;
+            return Err(TITLE_MISSING.to_owned());
+        }
+        self.save_the_title()?;
+        self.detail.is_new = false;
+        self.modal_open = false;
+        self.message = format!("{} was created", task.key);
+        Ok(Answer::said(self.message.clone()).with(json!({ "task": task.key })))
     }
 
     /// Remove one todo.
@@ -2630,6 +2724,17 @@ impl UiProvider for AgentTasks {
         self.modal_canvas.take()
     }
 
+    /// The ticket and the supervisor step aside for a browser tab a link in them opened (`task-2263`). A new
+    /// ticket that has a title is kept, as closing it any other way keeps it.
+    fn put_the_modal_away(&mut self) {
+        if self.modal_open && self.detail.is_new && self.detail.title_draft.trim().is_empty() {
+            return;
+        }
+        self.modal_open = false;
+        self.detail.is_new = false;
+        self.supervisor_open = false;
+    }
+
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
     }
@@ -2700,6 +2805,13 @@ impl AgentTasks {
     fn detail_json(&self) -> serde_json::Value {
         json!({
             "agentTab": self.detail.task.as_ref().map(|task| self.agent_tab_for(task).name()),
+            "isNew": self.detail.is_new,
+            "choice": self.detail.task.as_ref().and_then(|task| self.choice_for(task.id)).map(|choice| json!({
+                "question": choice.question,
+                "options": choice.options,
+                "cursor": choice.cursor + 1,
+            })),
+            "titleMissing": self.detail.title_missing,
             "fieldsShut": self.fields_shut,
             "chat": self.ticket_chat.as_ref().map(|chat| json!({
                 "transcript": chat.path().map(|path| path.display().to_string()),

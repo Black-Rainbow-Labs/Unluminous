@@ -394,9 +394,15 @@ fn clicked_link() -> egui::Id {
 fn follow_a_link(ui: &egui::Ui, rendered: &Rendered, origin: Pos2) {
     let Some(target) = link_under_the_pointer(ui, rendered, origin) else { return };
     let ctx = ui.ctx();
-    // Only from the layer in front at the pointer, so a link under a modal or a popup is not clicked through it.
-    if egui::Popup::is_any_open(ctx) {
-        return;
+    // **Only from the layer in front at the pointer**, so a link under a modal or a popup is not clicked through
+    // it. Asked of the layer under the pointer rather than of whether any popup is open anywhere (`task-2263`):
+    // `Popup::is_any_open` is one answer for the whole window, so a dropdown or a menu left open in another pane, or
+    // one whose owner had stopped drawing it, made every link in the chat do nothing while the pointer was a hand.
+    let pointer = ctx.pointer_interact_pos().or_else(|| ctx.pointer_hover_pos());
+    if let Some(top) = pointer.and_then(|at| ctx.layer_id_at(at)) {
+        if top != ui.layer_id() {
+            return;
+        }
     }
     if let Some(top) = crate::components::modal::the_open_one(ctx) {
         if ui.layer_id().id != top {
@@ -412,6 +418,109 @@ fn follow_a_link(ui: &egui::Ui, rendered: &Rendered, origin: Pos2) {
     if clicked {
         ask_to_open_a_link(ctx, target);
     }
+    // **A right click offers where to open it** (`task-2263`): *"I should be able to right click any link and see
+    // options to open in Unluminous Browser, or in default system browser."*
+    if ctx.input(|input| input.pointer.secondary_clicked()) {
+        if let Some(at) = ctx.pointer_interact_pos() {
+            let menu =
+                LinkMenu { at, target: target.to_owned(), opened: ctx.cumulative_frame_nr() };
+            ctx.data_mut(|data| data.insert_temp(link_menu(), menu));
+        }
+    }
+}
+
+/// The right click menu on a link: where it was opened, the address, and the frame it was opened on.
+#[derive(Debug, Clone, PartialEq, Default)]
+struct LinkMenu {
+    at: Pos2,
+    target: String,
+    opened: u64,
+}
+
+fn link_menu() -> egui::Id {
+    egui::Id::new("unluminous-markdown-link-menu")
+}
+
+/// Whether a right click on a link opened the link menu this frame, so a caller with a right click menu of its
+/// own, such as a chat message's, does not open that one on top of it.
+pub fn the_link_menu_opened_this_frame(ctx: &egui::Context) -> bool {
+    ctx.data(|data| data.get_temp::<LinkMenu>(link_menu()))
+        .is_some_and(|menu| menu.opened == ctx.cumulative_frame_nr())
+}
+
+/// What a row of the link menu asked for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LinkChoice {
+    /// Open it in a browser tab in Unluminous.
+    InUnluminous(String),
+    /// Open it in the person's own default browser.
+    InTheDefaultBrowser(String),
+    /// Put the address on the clipboard.
+    Copy(String),
+}
+
+/// How wide the link menu is: three short rows.
+const LINK_MENU_WIDTH: f32 = 240.0;
+
+/// Draw the link menu when one is open, and answer the row that was chosen.
+///
+/// Drawn by the window once a frame after every pane, for the reason `components::toast` is: a menu has to sit
+/// above whatever drew the link. The rows are `controls::menu_row`, so it looks like every other menu.
+pub fn show_the_link_menu(ctx: &egui::Context) -> Option<LinkChoice> {
+    let menu = ctx.data(|data| data.get_temp::<LinkMenu>(link_menu()))?;
+    let mut chosen = None;
+    let mut close = false;
+    let style = ctx.global_style();
+    let popup = egui::Popup::new(
+        egui::Id::new("unluminous-link-menu"),
+        ctx.clone(),
+        menu.at,
+        egui::LayerId::new(egui::Order::Foreground, egui::Id::new("unluminous-link-menu-layer")),
+    )
+    .kind(egui::PopupKind::Menu)
+    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+    .layout(egui::Layout::top_down_justified(egui::Align::Min))
+    .frame(
+        egui::Frame::popup(&style)
+            .fill(crate::theme::color::menu())
+            .stroke(egui::Stroke::new(1.0, crate::theme::color::control_border()))
+            .inner_margin(6),
+    )
+    .width(LINK_MENU_WIDTH);
+    let target = menu.target.clone();
+    if let Some(response) = popup.show(|ui| {
+        let rows = [
+            ("Open in Unluminous Browser", LinkChoice::InUnluminous(target.clone())),
+            ("Open in Default Browser", LinkChoice::InTheDefaultBrowser(target.clone())),
+            ("Copy Link Address", LinkChoice::Copy(target.clone())),
+        ];
+        for (label, choice) in rows {
+            if crate::components::controls::menu_row(ui, label, "", true, false, 0.0) {
+                chosen = Some(choice);
+            }
+        }
+    }) {
+        // The frame it opened on is the frame of the right click, which counts as a click outside a popup that did
+        // not exist yet. Closing on it would close the menu the moment it opened.
+        close |= response.response.should_close() && menu.opened != ctx.cumulative_frame_nr();
+    }
+    close |= chosen.is_some() || ctx.input(|input| input.key_pressed(egui::Key::Escape));
+    if close {
+        ctx.data_mut(|data| data.remove_temp::<LinkMenu>(link_menu()));
+    }
+    chosen
+}
+
+/// Open the link menu on `target` at `at`, which is what a right click on a link does. For a test and the window's
+/// own command line, which cannot press the right mouse button on a word.
+pub fn open_the_link_menu(ctx: &egui::Context, at: Pos2, target: &str) {
+    let menu = LinkMenu { at, target: target.to_owned(), opened: ctx.cumulative_frame_nr() };
+    ctx.data_mut(|data| data.insert_temp(link_menu(), menu));
+}
+
+/// The address the link menu is open on, when it is open.
+pub fn the_link_menu_target(ctx: &egui::Context) -> Option<String> {
+    ctx.data(|data| data.get_temp::<LinkMenu>(link_menu())).map(|menu| menu.target)
 }
 
 /// Ask the window to open `target` in a browser tab once this frame has been drawn. What a click on a link in

@@ -958,7 +958,9 @@ impl BrowserHost {
     /// page the view already shows.
     pub fn follow(&mut self, placements: &[BrowserPlacement], occluders: &[egui::Rect]) {
         let Some(showing) = self.showing() else { return };
-        let Some(chosen) = choose(placements, occluders, CAN_CUT_A_PAGE) else { return };
+        let Some(chosen) = choose(placements, occluders, CAN_CUT_A_PAGE, Some(showing)) else {
+            return;
+        };
         if chosen.id == showing {
             self.native.follow(chosen, occluders);
         }
@@ -983,7 +985,7 @@ impl BrowserHost {
             self.showing.store(0, Ordering::Relaxed);
             return Settled::default();
         }
-        let chosen = choose(placements, occluders, CAN_CUT_A_PAGE);
+        let chosen = choose(placements, occluders, CAN_CUT_A_PAGE, self.showing());
         let Some(placement) = chosen else {
             self.native.hide();
             // **A page that is there and is not being drawn**, which is what `browser status` reports
@@ -1199,6 +1201,7 @@ fn choose<'a>(
     placements: &'a [BrowserPlacement],
     occluders: &[egui::Rect],
     can_cut_the_page_around_them: bool,
+    showing: Option<u64>,
 ) -> Option<&'a BrowserPlacement> {
     // **The last rather than the first when nothing is focused.** A placement is pushed as its owner is
     // drawn, and both the pane loop and the canvas's node loop draw **back to front** — so the first is the
@@ -1208,11 +1211,7 @@ fn choose<'a>(
     //
     // **A playing video comes before the last one drawn**, so clicking the canvas's empty ground, or a node
     // that is not a page, does not take the view away from a video somebody is watching. `task-2207`.
-    let chosen = placements
-        .iter()
-        .find(|placement| placement.focused)
-        .or_else(|| placements.iter().rev().find(|placement| placement.playing))
-        .or_else(|| placements.last())?;
+    let chosen = going_to(placements, showing)?;
     // **A page is hidden only where there is no way to cut it around what is over it.** It used to be
     // hidden whenever any popup was open anywhere: `egui::Popup::is_any_open` is one answer for the
     // menu bar, every dropdown and every flyout, and it was read as "take the view off the screen".
@@ -1234,6 +1233,38 @@ fn choose<'a>(
         return None;
     }
     Some(chosen)
+}
+
+/// The placement the one native view is pointed at this frame, before anything is asked about what covers it.
+///
+/// The focused one, then a playing video, then **the page the view already shows**, and only then the last one
+/// drawn. The third rule is `task-2263`: *"when i have Designer and files open, and click the url of the browser
+/// tab, suddenly the page content disappears and the content in Designer appears, and vice versa."* A press on a
+/// browser tab's own toolbar, its address field included, lands on none of the pages, so the frame clears every
+/// placement's `focused`, and the view went to whichever page was pushed last that frame: the Designer's well when
+/// it is drawn after the editing pane, or the tab when it is drawn after the Designer. Nothing about the press
+/// asked for the other page. So with nothing focused the view stays where it is, unless a page drawn after it
+/// overlaps it, which is the overlapping canvas node case the last one drawn exists for.
+pub fn going_to(
+    placements: &[BrowserPlacement],
+    showing: Option<u64>,
+) -> Option<&BrowserPlacement> {
+    if let Some(focused) = placements.iter().find(|placement| placement.focused) {
+        return Some(focused);
+    }
+    if let Some(playing) = placements.iter().rev().find(|placement| placement.playing) {
+        return Some(playing);
+    }
+    let staying = showing.and_then(|id| placements.iter().position(|placement| placement.id == id));
+    if let Some(at) = staying {
+        let page = placements[at].visible;
+        let covered_by_a_later_one =
+            placements[at + 1..].iter().any(|later| later.visible.intersect(page).area() > 0.0);
+        if !covered_by_a_later_one {
+            return Some(&placements[at]);
+        }
+    }
+    placements.last()
 }
 
 /// Whether any of `occluders` is really over `page`, shadow and all.
@@ -2969,20 +3000,20 @@ mod tests {
         };
         // Back to front: 1 was drawn first and 2 is on top.
         let both = [placed(1, false), placed(2, false)];
-        assert_eq!(choose(&both, &[], true).map(|one| one.id), Some(2), "the one on top");
+        assert_eq!(choose(&both, &[], true, None).map(|one| one.id), Some(2), "the one on top");
         // A focused placement still wins, wherever it is in the order: that is somebody's own choice.
         let focused_behind = [placed(1, true), placed(2, false)];
-        assert_eq!(choose(&focused_behind, &[], true).map(|one| one.id), Some(1));
+        assert_eq!(choose(&focused_behind, &[], true, None).map(|one| one.id), Some(1));
         // A menu over it takes it off the screen **only** where there is no way to cut it around one,
         // which since `task-2207` is neither platform with a web view; the answer is kept for a third.
         let over = egui::Rect::from_min_size(egui::pos2(10.0, 10.0), egui::vec2(20.0, 20.0));
-        assert!(choose(&both, &[over], false).is_none(), "nothing to cut it with");
+        assert!(choose(&both, &[over], false, None).is_none(), "nothing to cut it with");
         assert_eq!(
-            choose(&both, &[over], true).map(|one| one.id),
+            choose(&both, &[over], true, None).map(|one| one.id),
             Some(2),
             "and where there is, the page stays and the child is cut around the menu"
         );
-        assert!(choose(&[], &[], true).is_none());
+        assert!(choose(&[], &[], true, None).is_none());
     }
 
     /// `task-2207`: a video that is playing keeps the one view when the keyboard is elsewhere, so clicking
@@ -2994,9 +3025,9 @@ mod tests {
         video.playing = true;
         let page = BrowserPlacement::whole(2, area, false);
         let drawn = [video.clone(), page.clone()];
-        assert_eq!(choose(&drawn, &[], true).map(|one| one.id), Some(1), "the playing video");
+        assert_eq!(choose(&drawn, &[], true, None).map(|one| one.id), Some(1), "the playing video");
         let chosen_page = BrowserPlacement::whole(2, area, true);
-        assert_eq!(choose(&[video, chosen_page], &[], true).map(|one| one.id), Some(2));
+        assert_eq!(choose(&[video, chosen_page], &[], true, None).map(|one| one.id), Some(2));
     }
 
     /// `task-2207`: what is left of a page once what is over it is taken out, as rectangles that do not
@@ -3194,21 +3225,54 @@ mod tests {
         let panes =
             [BrowserPlacement::whole(1, area, false), BrowserPlacement::whole(2, area, true)];
         assert_eq!(
-            choose(&panes, &[], true).map(|placement| placement.id),
+            choose(&panes, &[], true, None).map(|placement| placement.id),
             Some(2),
             "the focused pane holds the view"
         );
         assert_eq!(
-            choose(&panes[..1], &[], true).map(|placement| placement.id),
+            choose(&panes[..1], &[], true, None).map(|placement| placement.id),
             Some(1),
             "with no focus, the first drawn"
         );
         assert_eq!(
-            choose(&panes, &[area], false),
+            choose(&panes, &[area], false, None),
             None,
             "an egui surface over the pane takes the view off the screen where it cannot be cut"
         );
-        assert_eq!(choose(&[], &[], true), None);
+        assert_eq!(choose(&[], &[], true, None), None);
+    }
+
+    /// `task-2263`: the Designer's page and a browser tab side by side, and a press on the tab's address field,
+    /// which lands on neither page. The view stays on the page it shows rather than moving to the one drawn last.
+    #[test]
+    fn a_press_on_no_page_leaves_the_view_where_it_is() {
+        let left = Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::splat(100.0));
+        let right = Rect::from_min_size(egui::pos2(120.0, 0.0), egui::Vec2::splat(100.0));
+        let tab = BrowserPlacement::whole(1, left, false);
+        let designer = BrowserPlacement::whole(2, right, false);
+        let both = [tab.clone(), designer];
+        assert_eq!(
+            choose(&both, &[], true, Some(1)).map(|one| one.id),
+            Some(1),
+            "the tab keeps it"
+        );
+        assert_eq!(
+            choose(&both, &[], true, Some(2)).map(|one| one.id),
+            Some(2),
+            "the Designer keeps it"
+        );
+        assert_eq!(
+            choose(&both, &[], true, None).map(|one| one.id),
+            Some(2),
+            "nothing shown yet: the last"
+        );
+        // A focused page still takes the view, which is what clicking into the other page does.
+        let focused = [tab, BrowserPlacement::whole(2, right, true)];
+        assert_eq!(choose(&focused, &[], true, Some(1)).map(|one| one.id), Some(2));
+        // Overlapping nodes on the canvas keep the rule they had: the one on top is drawn last and wins.
+        let overlapping =
+            [BrowserPlacement::whole(1, left, false), BrowserPlacement::whole(2, left, false)];
+        assert_eq!(choose(&overlapping, &[], true, Some(1)).map(|one| one.id), Some(2));
     }
 
     /// `task-1756`: a tab switched to ignores the page the shared view is leaving.

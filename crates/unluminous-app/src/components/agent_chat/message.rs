@@ -520,13 +520,19 @@ fn words(
     if let Some(selection) = picked {
         state.selection = Some(Selected { message: message.id, segment, range: selection });
     }
-    if response.hovered() {
+    // The text cursor over the words, **except over a link**, where `show_with` has just set the hand: setting the
+    // text cursor afterwards took the hand away, so nothing said a link could be clicked (`task-2263`).
+    let over_a_link =
+        ui.ctx().output(|output| output.cursor_icon == egui::CursorIcon::PointingHand);
+    if response.hovered() && !over_a_link {
         ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
     }
     // The right click menu: copy what is selected, copy the whole message, select all of it. Opened
     // here and drawn by `components::agent_chat::message_menu` once everything else has been, because
-    // a popup is a layer of its own and this one is opened from inside a scrolling area.
-    if response.secondary_clicked() {
+    // a popup is a layer of its own and this one is opened from inside a scrolling area. **Not over a link**,
+    // where the right click opened the link's own menu (`task-2263`).
+    let link_menu = crate::components::markdown_text::the_link_menu_opened_this_frame(ui.ctx());
+    if response.secondary_clicked() && !link_menu {
         // **The window's own points, not the layer's.** A popup is an `egui::Area` and is placed in
         // screen space, so where it opens is asked of the context rather than of this `Ui` — which is
         // exactly the split `controls::field_menu` keeps, and the reason a menu opened inside a chat

@@ -57,7 +57,16 @@ pub struct TicketTerminal {
     pub(super) has_printed: bool,
     /// When the session last stopped changing, or `None` while it is still printing.
     pub(super) quiet_since: Option<std::time::Instant>,
+    /// Keys still to be pressed to answer a menu, oldest first, and when the next may go (`task-2263`).
+    ///
+    /// One write per key, [`KEY_EVERY`] apart, for the reason [`TicketTerminal::type_line`] gives: keys that
+    /// arrive in one read are a paste to a terminal user interface, not keystrokes.
+    pub(super) keys: Vec<Vec<u8>>,
+    pub(super) next_key_at: Option<std::time::Instant>,
 }
+
+/// How far apart the keys that answer a menu are pressed.
+const KEY_EVERY: std::time::Duration = std::time::Duration::from_millis(120);
 
 /// How long a started agent has to be quiet before its prompt is taken to be ready.
 ///
@@ -139,13 +148,59 @@ impl TicketTerminal {
             self.submit_at = None;
             self.session.send(b"\r".to_vec());
         }
-        // Then **one** line, not all of them, because each needs its own return after it.
+        // The keys answering a menu go before any line, one at a time.
+        if self.press_the_next_key() {
+            return true;
+        }
+        // Then **one** line, not all of them, because each needs its own return after it. **Never into a menu**
+        // (`task-2263`): a handoff typed into the folder trust question was ignored up to its return, and the
+        // return chose the option the cursor was on, `No, exit`, so the agent quit before it began. The line waits
+        // until somebody has answered the menu, however long that is.
         let waiting = !self.pending.is_empty() || self.submit_at.is_some();
-        if self.submit_at.is_none() && !self.pending.is_empty() && self.the_prompt_is_ready() {
+        if self.submit_at.is_none()
+            && !self.pending.is_empty()
+            && self.the_prompt_is_ready()
+            && self.choice().is_none()
+        {
             let line = self.pending.remove(0);
             self.type_line(&line);
         }
         printed || waiting
+    }
+
+    /// The menu the agent is waiting on, read off its last screenful, or `None` when it is not on one.
+    pub fn choice(&self) -> Option<super::screen_choice::Choice> {
+        if !self.session.is_running() {
+            return None;
+        }
+        super::screen_choice::read(
+            &self.session.written_text(Some(super::screen_choice::LOOK_BACK)),
+        )
+    }
+
+    /// Answer the menu on the screen with the option at `option`, counted from nought.
+    ///
+    /// The menu is read again here rather than trusted from whatever drew the button, because the cursor may have
+    /// moved since: the arrow keys are counted from where it is now.
+    pub fn choose(&mut self, option: usize) -> Result<super::screen_choice::Choice, String> {
+        let choice = self.choice().ok_or("the agent is not waiting on a menu")?;
+        self.keys = super::screen_choice::keys_for(&choice, option)?;
+        self.next_key_at = Some(std::time::Instant::now());
+        Ok(choice)
+    }
+
+    /// Press one waiting key when its time has come, and answer whether any are still waiting.
+    fn press_the_next_key(&mut self) -> bool {
+        if self.keys.is_empty() {
+            return false;
+        }
+        let now = std::time::Instant::now();
+        if self.next_key_at.is_none_or(|due| now >= due) {
+            let key = self.keys.remove(0);
+            self.session.send(key);
+            self.next_key_at = Some(now + KEY_EVERY);
+        }
+        true
     }
 
     /// Whether a line is still waiting for the agent's prompt, which is what `terminal` reports.

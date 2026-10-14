@@ -78,19 +78,20 @@ pub(crate) fn terminal(
     requests
 }
 
-/// The todo rows and the row that adds one, for the modal, which lays its sections out itself.
+/// The todo rows, for the modal, which lays its sections out itself.
 ///
 /// `task-2241`, the Agent-Tasks design: inside the carved well the modal has drawn, one row 36 points tall a
 /// todo with a round tick box, raised while it is open and carved in with a tick once it is done, and the words
-/// beside it, dimmed once it is done. The whole row ticks it. Under them a raised pill on the pane's own ground
-/// holds the box a todo is typed into and a round `+` that adds it.
+/// beside it, dimmed once it is done. The whole row ticks it.
+///
+/// **There is no row that adds one** (`task-2263`: *"Get rid of the add a todo field. The todos are for
+/// agents."*). An agent writes its plan with `todo-add` and ticks it as it goes.
 pub(crate) fn todo_rows(
     board: &mut AgentTasks,
     rux: &mut rux::Rux<'_>,
     area: Rect,
     _look: &Look<'_>,
 ) -> Vec<Request> {
-    use rux::components::ChipButton;
     use rux::icon::{Icon, Mark};
     use rux::text::Style;
     let mut requests = Vec::new();
@@ -99,8 +100,7 @@ pub(crate) fn todo_rows(
     let todos = board.detail().todos.clone();
     const ROW: f32 = 36.0;
     const GAP: f32 = 4.0;
-    const ADD: f32 = 38.0;
-    let rows = Rect::from_min_max(area.min, Pos2::new(area.max.x, area.max.y - ADD - 2.0 - GAP));
+    let rows = area;
     // How far the list is scrolled, before it is drawn: the wheel over this section moves the todos rather than
     // the lane behind them.
     let content = todos.len() as f32 * (ROW + GAP);
@@ -189,56 +189,6 @@ pub(crate) fn todo_rows(
         if let Err(problem) = board.remove_the_todo(id) {
             requests.push(Request::Message(problem));
         }
-    }
-    // The pill that adds one, at the foot of the well: `padding: 4px 4px 4px 14px` on the pane's own ground.
-    let pill =
-        Rect::from_min_size(Pos2::new(area.min.x, area.max.y - ADD), Vec2::new(area.width(), ADD));
-    rux.chrome.surface(pill, ADD / 2.0, chat.ground, chat.raised_chip());
-    let add = Rect::from_center_size(
-        Pos2::new(pill.max.x - 4.0 - 15.0, pill.center().y),
-        Vec2::splat(30.0),
-    );
-    let font = egui::FontId::new(12.5, egui::FontFamily::Proportional);
-    let todo_id = rux.ui.id().with("agent-tasks-todo-draft");
-    let field = Rect::from_min_max(
-        Pos2::new(pill.min.x + 14.0, pill.min.y),
-        Pos2::new(add.min.x - 10.0, pill.max.y),
-    );
-    let text = crate::components::controls::field_takes_the_whole_rectangle_at(
-        rux.ui,
-        field,
-        0.0,
-        todo_id,
-        "Todo field",
-        &font,
-    );
-    let mut draft = board.detail().todo_draft.clone();
-    let mut child = rux.ui.new_child(egui::UiBuilder::new().max_rect(text));
-    let response = child.add(
-        egui::TextEdit::singleline(&mut draft)
-            .id(todo_id)
-            .frame(egui::Frame::NONE)
-            .hint_text(crate::components::controls::placeholder(
-                "Add a todo",
-                &font,
-                theme.ink.i400,
-            ))
-            .font(font.clone())
-            .desired_width(text.width())
-            .text_color(theme.ink.i900),
-    );
-    if response.changed() {
-        board.detail_mut().todo_draft = draft;
-    }
-    let pressed = ChipButton::new(Icon::Plus, 30.0, "Add todo")
-        .mark(12.0, Some(1.8))
-        .show(rux, add)
-        .clicked();
-    if super::enter_was_used_and_pressed(rux.ui, &response) || pressed {
-        if let Err(problem) = board.post_the_todo() {
-            requests.push(Request::Message(problem));
-        }
-        response.request_focus();
     }
     requests
 }
@@ -620,7 +570,10 @@ pub(crate) fn comment_section(
                 };
                 // A comment that is being read rather than edited has a right click menu that copies it.
                 // `task-2198`.
-                if !being_edited {
+                // Not when the right click was on a link, which opened the link's own menu (`task-2263`).
+                let link_menu =
+                    crate::components::markdown_text::the_link_menu_opened_this_frame(ui.ctx());
+                if !being_edited && !link_menu {
                     let block = Rect::from_min_size(
                         Pos2::new(words_left, pen),
                         Vec2::new(words_width, height),

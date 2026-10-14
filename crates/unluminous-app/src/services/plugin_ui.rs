@@ -626,6 +626,13 @@ pub trait UiProvider: std::fmt::Debug {
         (Vec::new(), false)
     }
 
+    /// Put away whatever modal this plugin has open, because something the person did in it has opened a tab the
+    /// modal would otherwise cover.
+    ///
+    /// `task-2263`: a link clicked in a ticket's Chat tab opened its browser tab behind the ticket, so nothing on
+    /// the screen changed and the link looked as though it could not be clicked. The default has no modal.
+    fn put_the_modal_away(&mut self) {}
+
     /// Where the modal just drawn left room for its decoration, if it draws any.
     ///
     /// **A modal is on a layer of its own, and that is the whole reason this exists.** A pane's decoration is

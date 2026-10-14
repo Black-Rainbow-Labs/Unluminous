@@ -467,8 +467,9 @@ fn header_row(
         }
     }
     if adding {
+        // A ticket that could not be made says why in a notice, not only in the status bar. `task-2263`.
         if let Err(problem) = board.command_now("new-task", &[]).map(|_| ()) {
-            requests.push(Request::Message(problem));
+            requests.push(ticket_modal::not_created(&problem));
         }
     }
     (requests, picked.and_then(|index| View::ALL.get(index).copied()), spare)

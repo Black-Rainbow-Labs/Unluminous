@@ -701,13 +701,13 @@ impl UnluminousApp {
         let Some(target) = self.link_to_open.take().or(clicked) else { return };
         match target.split_once(':') {
             Some(("http" | "https", _)) => match self.open_browser(&target) {
-                Ok(_) => {}
+                Ok(_) => self.the_modals_step_aside(),
                 Err(said) => self.message = Some(said),
             },
             // A bare address the document wrote without a scheme — `example.com/a` in angle brackets, or
             // a relative path. `https` is what a browser assumes, and it is the safe half of the two.
             None => match self.open_browser(&format!("https://{target}")) {
-                Ok(_) => {}
+                Ok(_) => self.the_modals_step_aside(),
                 Err(said) => self.message = Some(said),
             },
             Some((scheme, _)) => {
@@ -715,6 +715,45 @@ impl UnluminousApp {
                     "{scheme}: links are not opened from a preview. Only http and https are."
                 ));
             }
+        }
+    }
+
+    /// Put away every plugin's modal, so a browser tab a link in one of them opened is seen (`task-2263`).
+    fn the_modals_step_aside(&mut self) {
+        for plugin in self.plugin_ui.surfaces().plugins() {
+            if !self.plugin_ui.is_open(&plugin) {
+                continue;
+            }
+            if let Some(provider) = self.plugin_ui.provider(&plugin) {
+                provider.put_the_modal_away();
+            }
+        }
+    }
+
+    /// Draw the right click menu a link opened, and do what its chosen row asks (`task-2263`).
+    ///
+    /// `Open in Unluminous Browser` goes through [`Self::settle_the_link_click`]'s own rules by asking for the link the
+    /// way a click does, so both open exactly the same addresses. `Open in Default Browser` hands the address to the
+    /// operating system, and only an `http` or `https` one.
+    pub(crate) fn show_the_link_menu(&mut self, ctx: &egui::Context) {
+        use crate::components::markdown_text::{self, LinkChoice};
+        match markdown_text::show_the_link_menu(ctx) {
+            Some(LinkChoice::InUnluminous(target)) => {
+                markdown_text::ask_to_open_a_link(ctx, &target);
+                self.settle_the_link_click();
+            }
+            Some(LinkChoice::InTheDefaultBrowser(target)) => {
+                self.message =
+                    Some(match crate::services::links::open_in_the_default_browser(&target) {
+                        Ok(()) => format!("{target} opened in the default browser"),
+                        Err(problem) => problem,
+                    });
+            }
+            Some(LinkChoice::Copy(target)) => {
+                ctx.copy_text(target.clone());
+                self.message = Some(format!("copied {target}"));
+            }
+            None => {}
         }
     }
 

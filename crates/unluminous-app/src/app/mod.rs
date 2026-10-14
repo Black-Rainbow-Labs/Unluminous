@@ -941,6 +941,8 @@ pub struct UnluminousApp {
     /// Beside `message` rather than inside a plugin, because every provider reports through the same
     /// `Request` and a notice has to outlive the pane that raised it. `components::toast` says why.
     pub toasts: crate::components::toast::Toasts,
+    /// The `rux` state the notices are drawn with, made the first time one is shown. `task-2263`.
+    pub(crate) toast_rux: Option<rux::RuxState>,
     /// Set when the window has been asked to close, which a test can check instead of the window going.
     pub closing: bool,
     /// Set when a person closed the window: its close button, `Close Window`, `Quit` or `unluminous-cli quit`.
@@ -1533,6 +1535,7 @@ impl UnluminousApp {
             focus: Focus::Editor,
             message: None,
             toasts: crate::components::toast::Toasts::default(),
+            toast_rux: None,
             closing: false,
             closed_by_hand: false,
             store: None,

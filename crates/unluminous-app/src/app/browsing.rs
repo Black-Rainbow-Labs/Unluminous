@@ -133,7 +133,10 @@ impl UnluminousApp {
             placement.zoom = Some(tab.zoom);
             let placement = match showing {
                 true => self.hold_a_still_over_the_page(ui, &tab, placement),
-                false => placement,
+                false => {
+                    self.paint_a_page_not_showing(ui, tab.id, placement.visible);
+                    placement
+                }
             };
             self.browser_placements.push(placement);
         }
@@ -144,6 +147,22 @@ impl UnluminousApp {
             self.focus = Focus::Editor;
         }
         outcome.took_focus
+    }
+
+    /// Draw the last picture of a page the one native view is not showing, and answer whether there was one.
+    ///
+    /// `task-2263`: *"I should be able to have the design html showing as well as a browser tab in file pane."* A
+    /// window has one native view (see `services::browser`), so two pages side by side cannot both be live. The
+    /// page that is not live shows the picture taken of it as the view left it, and pressing it moves the live
+    /// view there, so both panes show their page and the one being used is the live one.
+    pub(crate) fn paint_a_page_not_showing(&self, ui: &egui::Ui, tab: u64, area: Rect) -> bool {
+        if self.browser.showing().is_none_or(|id| id == tab) {
+            return false;
+        }
+        let Some(picture) = self.page_stills.pictures.get(&tab) else { return false };
+        let whole = Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+        ui.painter().image(picture.id(), area, whole, egui::Color32::WHITE);
+        true
     }
 
     /// `Ctrl`/`Cmd` with the wheel over a browser tab's toolbar zooms its page (`task-2255`). Over the page

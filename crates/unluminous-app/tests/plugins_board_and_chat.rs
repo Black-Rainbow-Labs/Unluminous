@@ -4232,3 +4232,193 @@ fn a_link_in_an_answer_opens_in_a_browser_tab_on_a_click() {
     }
     assert!(opened, "a click on the address opened it: {}", did(&mut harness, "tab list"));
 }
+
+/// `task-2263`: *"When I create a task with no title, it just dissappears. there should be a validation message that
+/// highlights the required input in red."* `Create task` on a ticket with no title keeps the dialog open, outlines the
+/// title field and says why; typing a title takes the message away and `Create task` then closes the dialog with the
+/// ticket kept.
+#[test]
+fn create_task_with_no_title_keeps_the_ticket_and_says_the_title_is_needed() {
+    let mut harness = harness("");
+    harness.set_size(vec2(1500.0, 950.0));
+    did(&mut harness, "plugins pane agent-tasks/board --show");
+    did(&mut harness, "plugins run agent-tasks new-sprint Current Sprint");
+    did(&mut harness, "plugins run agent-tasks new-task");
+    steady(&mut harness);
+    harness.get_by_label("Create task").click();
+    steady(&mut harness);
+    let missing = unluminous_app::services::agent_tasks::TITLE_MISSING;
+    assert!(
+        harness.query_by_label(missing).is_some(),
+        "the sentence under the title field is drawn"
+    );
+    assert!(harness.query_by_label("Ticket title").is_some(), "the dialog is still open");
+    harness.snapshot(shot("agent_tasks_title_missing").as_str());
+
+    // The agent's half is refused the same way, and leaves the dialog open.
+    refused(&mut harness, "plugins run agent-tasks create");
+    steady(&mut harness);
+    assert!(harness.query_by_label(missing).is_some(), "still marked after the refusal");
+
+    harness.get_by_label("Ticket title").click();
+    steady(&mut harness);
+    harness.input_mut().events.push(egui::Event::Text("Named at last".to_owned()));
+    steady(&mut harness);
+    assert!(harness.query_by_label(missing).is_none(), "typing a title takes the message away");
+    harness.get_by_label("Create task").click();
+    steady(&mut harness);
+    assert!(harness.query_by_label("Ticket title").is_none(), "the dialog closed");
+    let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
+    assert_eq!(ticket["task"]["title"], "Named at last");
+}
+
+/// `task-2263`: *"Get rid of the add a todo field. The todos are for agents. Todos should be collapsed by default.
+/// Move them under the agent chat/terminal, above the comments."*
+#[test]
+fn the_todos_are_shut_under_the_agent_above_the_comments_with_no_field_to_add_one() {
+    let mut harness = harness("");
+    harness.set_size(vec2(1500.0, 950.0));
+    a_ticket_open(&mut harness);
+    assert!(harness.query_by_label("Todo field").is_none(), "no field to add a todo");
+    assert!(harness.query_by_label("Add todo").is_none(), "no button to add a todo");
+    assert!(harness.query_by_label("Draw it larger").is_none(), "the todos start shut");
+    assert_eq!(did(&mut harness, "plugins run agent-tasks fold")["todos"], false);
+    let agent = harness.get_by_label("Agent").rect();
+    let todos = harness.get_by_label("Todos").rect();
+    let comments = harness.get_by_label_contains("Comments \u{b7}").rect();
+    assert!(agent.top() < todos.top(), "the todos are under the agent: {agent:?} {todos:?}");
+    assert!(todos.top() < comments.top(), "and above the comments: {todos:?} {comments:?}");
+    harness.get_by_label("Todos").click();
+    steady(&mut harness);
+    assert!(
+        harness.query_by_label("Draw it larger").is_some(),
+        "opened, the todo is there to tick"
+    );
+    harness.snapshot(shot("agent_tasks_todos_under_the_agent").as_str());
+}
+
+/// `task-2263`: *"I should be able to right click any link and see options to open in Unluminous Browser, or in
+/// default system browser."* A right click on an address in an answer opens the link menu rather than the message's
+/// own menu, and its first row opens the address in a browser tab.
+#[test]
+fn a_right_click_on_a_link_offers_where_to_open_it() {
+    let mut harness = a_chat(&[
+        (unluminous_chat::Role::User, "Where are the docs?"),
+        (unluminous_chat::Role::Assistant, "https://example.com/docs"),
+    ]);
+    harness.set_size(vec2(1400.0, 900.0));
+    with_the_chat(&mut harness, |chat| {
+        if let Some(last) = chat.session_mut().chat.last_mut() {
+            last.finish = Some("stop".to_owned());
+        }
+    });
+    steady(&mut harness);
+    let copy = harness.get_by_label("Copy answer").rect();
+    let mut opened = false;
+    for dy in [14.0, 20.0, 26.0, 32.0, 38.0, 44.0] {
+        right_click_at(&mut harness, egui::pos2(copy.left() + 40.0, copy.top() - dy));
+        steady(&mut harness);
+        if harness.query_by_label("Open in Unluminous Browser").is_some() {
+            opened = true;
+            break;
+        }
+    }
+    assert!(opened, "a right click on the address opened the link menu");
+    assert!(harness.query_by_label("Open in Default Browser").is_some());
+    assert!(harness.query_by_label("Copy Link Address").is_some());
+    assert!(harness.query_by_label("Copy Message").is_none(), "not the message's own menu as well");
+    harness.snapshot(shot("agent_chat_link_menu").as_str());
+    harness.get_by_label("Open in Unluminous Browser").click();
+    steady(&mut harness);
+    let tabs = did(&mut harness, "tab list");
+    assert!(tabs.to_string().contains("example.com"), "it opened in a browser tab: {tabs}");
+    assert!(harness.query_by_label("Open in Default Browser").is_none(), "and the menu closed");
+}
+
+/// `task-2263`: the agent's half of `Open in Default Browser` refuses anything that is not a web address.
+#[test]
+fn browser_open_system_refuses_an_address_that_is_not_http() {
+    let mut harness = harness("");
+    refused(&mut harness, "browser open --system javascript:alert(1)");
+    refused(&mut harness, "browser open --system file:///C:/Windows/win.ini");
+}
+
+/// `task-2263`: a ticket with no agent running is not waiting on a menu, and `choice` says so rather than typing
+/// keys into nothing.
+#[test]
+fn choice_on_a_ticket_with_no_agent_is_refused() {
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-tasks/board --show");
+    did(&mut harness, "plugins run agent-tasks new-sprint Current Sprint");
+    did(&mut harness, "plugins run agent-tasks new-task A ticket with no agent");
+    refused(&mut harness, "plugins run agent-tasks choice task-1");
+    refused(&mut harness, "plugins run agent-tasks choice task-1 2");
+}
+
+/// `task-2263`: *"I'm still unable to click links in Agent Chat messages. They should open a new unluminous browser
+/// tab."* A link in a ticket's Chat tab opened its tab behind the ticket, so nothing on the screen changed. The
+/// ticket now steps aside, and the tab it opened is the one showing.
+#[test]
+fn a_link_in_a_tickets_chat_opens_a_tab_and_the_ticket_steps_aside() {
+    use unluminous_app::services::agent_tasks::ticket_chat::CLAUDE_HOME_VARIABLE;
+    let mut harness = harness("");
+    harness.set_size(vec2(1500.0, 950.0));
+    // The same folders `a_ticket_with_a_transcript` uses, because the variable naming Claude Code's folder is one
+    // for the whole test binary, and a conversation of its own so the two tests never read each other's lines.
+    let root = std::env::temp_dir().join(format!("unluminous-ticket-chat-{}", std::process::id()));
+    let home = root.join("claude");
+    let project = root.join("project");
+    std::fs::create_dir_all(&project).expect("the project folder");
+    let folder =
+        home.join("projects").join(unluminous_chat::transcript::claude_project_folder(&project));
+    std::fs::create_dir_all(&folder).expect("the transcript folder");
+    let session = "7c7c02bb-0000-4b7f-9f81-826b07131842";
+    let lines = [
+        r#"{"type":"user","origin":{"kind":"human"},"message":{"role":"user","content":"Where are the docs?"}}"#,
+        r#"{"type":"assistant","message":{"model":"claude-opus-5-5","id":"msg_1","role":"assistant","content":[{"type":"text","text":"https://example.com/ticket-docs"}],"stop_reason":"end_turn"}}"#,
+        r#"{"type":"system","subtype":"turn_duration","durationMs":1200}"#,
+    ];
+    std::fs::write(
+        folder.join(format!("{session}.jsonl")),
+        lines.join(
+            "
+",
+        ) + "
+",
+    )
+    .expect("the transcript");
+    std::env::set_var(CLAUDE_HOME_VARIABLE, &home);
+    a_ticket_open(&mut harness);
+    did(&mut harness, &format!("plugins run agent-tasks session task-1 {session}"));
+    let tasks = harness
+        .state_mut()
+        .plugin_ui
+        .provider("agent-tasks")
+        .and_then(|provider| provider.as_any_mut())
+        .and_then(|any| any.downcast_mut::<unluminous_app::services::agent_tasks::AgentTasks>())
+        .expect("the Agent-Tasks provider");
+    let id = tasks.detail().task.as_ref().expect("the ticket").id;
+    tasks
+        .edit_field(
+            id,
+            unluminous_app::services::agent_tasks::Field::Project(project.display().to_string()),
+        )
+        .expect("the project");
+    for _ in 0..4 {
+        std::thread::sleep(std::time::Duration::from_millis(220));
+        steady(&mut harness);
+    }
+    // The answer's one line of words is just above its copy button.
+    let copy = harness.get_by_label("Copy answer").rect();
+    let mut opened = false;
+    for dy in [14.0, 18.0, 22.0, 26.0, 32.0] {
+        click_at(&mut harness, egui::pos2(copy.left() + 30.0, copy.top() - dy));
+        steady(&mut harness);
+        if did(&mut harness, "tab list").to_string().contains("example.com") {
+            opened = true;
+            break;
+        }
+    }
+    assert!(opened, "a click on the address opened it: {}", did(&mut harness, "tab list"));
+    assert!(harness.query_by_label("Chat tab").is_none(), "the ticket stepped aside for the tab");
+}

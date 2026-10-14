@@ -304,6 +304,17 @@ impl UnluminousApp {
             let Some(address) = request.text("address") else {
                 return no(request, code::USAGE, "Give an HTTP address or HTML path.");
             };
+            // The default browser outside Unluminous, which a link's right click menu offers. `task-2263`.
+            if request.switch("system") {
+                return match crate::services::links::open_in_the_default_browser(&address) {
+                    Ok(()) => ok(
+                        request,
+                        format!("Opened {} in the default browser", address.trim()),
+                        json!({ "address": address.trim(), "system": true }),
+                    ),
+                    Err(problem) => no(request, code::FAILED, problem),
+                };
+            }
             return match self.open_browser(&address) {
                 Ok(id) => ok(
                     request,

@@ -207,6 +207,9 @@ impl UnluminousApp {
         let Some(drawn) = self.draw_the_pane(ui, body, panel, design.as_deref()) else { return };
         if let (Some(id), Some(design), Some(outcome)) = (page, &design, &drawn.design) {
             self.put_the_page_in_its_well(id, outcome, drawn.content, ui.clip_rect(), focused);
+            // The design's page while the view shows a browser tab beside it: its last picture. `task-2263`.
+            let well = outcome.page.intersect(drawn.content.intersect(ui.clip_rect()));
+            self.paint_a_page_not_showing(ui, id, well);
             self.talk_to_the_page(id, design, outcome.zoom);
         }
         for request in drawn.requests {

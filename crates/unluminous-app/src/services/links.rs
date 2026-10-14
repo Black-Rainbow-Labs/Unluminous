@@ -73,9 +73,81 @@ pub fn address_in_column(row: &str, column: usize) -> Option<String> {
     address_at(row, at).map(|(_, address)| address)
 }
 
+/// Whether `address` may be opened from a click: only `http` and `https`.
+///
+/// The rule the Markdown preview keeps, for its reason: a document must not be able to reach this machine because
+/// somebody clicked a word in it, and a `javascript:` address handed to a browser runs whatever the document said.
+pub fn may_be_opened(address: &str) -> bool {
+    let lower = address.trim().to_ascii_lowercase();
+    lower.starts_with("http://") || lower.starts_with("https://")
+}
+
+/// Open `address` in the person's own default browser, outside Unluminous (`task-2263`).
+///
+/// *"I should be able to right click any link and see options to open in Unluminous Browser, or in default system
+/// browser."* On Windows this is `ShellExecuteW` with the `open` verb, which is what Explorer does with an address,
+/// so the browser the person chose in Windows' settings opens it. On macOS it is `open`, and elsewhere `xdg-open`.
+/// Only `http` and `https`, by [`may_be_opened`].
+pub fn open_in_the_default_browser(address: &str) -> Result<(), String> {
+    let address = address.trim();
+    if !may_be_opened(address) {
+        return Err(format!("{address} is not an http or https address, so it is not opened"));
+    }
+    open_with_the_system(address)
+}
+
+#[cfg(windows)]
+fn open_with_the_system(address: &str) -> Result<(), String> {
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    let wide = |text: &str| text.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+    let verb = wide("open");
+    let file = wide(address);
+    // Safe: every pointer is null or into a buffer that outlives the call, and the shell copies what it keeps.
+    let result = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            file.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    // The function answers a number above 32 when it worked, and an error code at or below it when it did not.
+    match result as isize > 32 {
+        true => Ok(()),
+        false => Err(format!("Windows could not open {address} (error {})", result as isize)),
+    }
+}
+
+#[cfg(not(windows))]
+fn open_with_the_system(address: &str) -> Result<(), String> {
+    let program = match cfg!(target_os = "macos") {
+        true => "open",
+        false => "xdg-open",
+    };
+    std::process::Command::new(program)
+        .arg(address)
+        .spawn()
+        .map(|_| ())
+        .map_err(|problem| format!("{program} could not open {address}: {problem}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_web_addresses_may_be_opened_in_the_default_browser() {
+        assert!(may_be_opened("https://example.com/docs"));
+        assert!(may_be_opened(" HTTP://example.com "));
+        for refused in ["javascript:alert(1)", "file:///C:/Windows", "mailto:a@b.c", "example.com"]
+        {
+            assert!(!may_be_opened(refused), "{refused}");
+            assert!(open_in_the_default_browser(refused).is_err(), "{refused}");
+        }
+    }
 
     #[test]
     fn an_address_is_found_wherever_in_it_the_pointer_is() {

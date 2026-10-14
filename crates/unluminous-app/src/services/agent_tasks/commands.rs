@@ -24,6 +24,10 @@ pub const LIST: &[(&str, &str)] = &[
     ("back", "Close the ticket that is open and show the lanes."),
     ("open", "Open a ticket in the modal, with its description, its terminal and all of its fields."),
     ("close", "Close the ticket modal."),
+    (
+        "create",
+        "Press `Create task` on the new ticket that is open. Refused while it has no title, and the title field          is then outlined in red; `isNew` and `titleMissing` in the ticket's JSON say which.",
+    ),
     ("reload", "Read the board again from its file."),
     (
         "clear",
@@ -79,6 +83,10 @@ pub const LIST: &[(&str, &str)] = &[
         "terminal",
         "What a ticket's agent has written, with whether a line is still queued for its prompt. \
          `terminal task-1 40` for the last forty lines.",
+    ),
+    (
+        "choice",
+        "The menu a ticket's agent is waiting on in its terminal, such as Claude Code's folder trust question, with          its options numbered from 1: `choice task-1`. `choice task-1 2` presses option 2, which is what its          button in the Chat tab does.",
     ),
     ("interrupt", "Send Ctrl+C to a ticket's agent."),
     ("stop", "Close a ticket's terminal."),
@@ -313,6 +321,8 @@ fn ticket_display(
             tasks.detail.is_new = false;
             Ok(Answer::said("the ticket is closed"))
         }
+        // `Create task`, by the same function the button calls. `task-2263`.
+        "create" => tasks.create_the_new_ticket(),
         // `task-28`: the same change the two buttons on a description and on each comment make, reached the
         // same way by an agent — one function behind both, which is Unluminous's own rule about a control.
         "show" => show(tasks, argument(0), argument(1), argument(2)),
@@ -357,7 +367,7 @@ fn ticket_display(
             };
             match which {
                 "" => {}
-                "todos" => tasks.todos_shut = shut.unwrap_or(tasks.todos_shut),
+                "todos" => tasks.todos_open = !shut.unwrap_or(!tasks.todos_open),
                 "terminal" | "agent" => tasks.terminal_shut = shut.unwrap_or(tasks.terminal_shut),
                 "fields" => tasks.fields_shut = shut.unwrap_or(tasks.fields_shut),
                 other => {
@@ -372,12 +382,12 @@ fn ticket_display(
             };
             Ok(Answer::said(format!(
                 "todos are {}, the agent section is {}, the fields are {}",
-                said(tasks.todos_shut),
+                said(!tasks.todos_open),
                 said(tasks.terminal_shut),
                 said(tasks.fields_shut)
             ))
             .with(json!({
-                "todos": !tasks.todos_shut,
+                "todos": tasks.todos_open,
                 "terminal": !tasks.terminal_shut,
                 "fields": !tasks.fields_shut,
             })))
@@ -842,6 +852,8 @@ fn agent_commands(
                 "text": text,
             })))
         })(),
+        // The menu the agent's terminal is waiting on, and pressing one of its options (`task-2263`).
+        "choice" => tasks.answer_a_choice(argument(0), argument(1)),
         "start" => tasks.start(argument(0)),
         // A conversation started by hand handed to a ticket (`task-2261`), so the ticket's Chat tab shows it and
         // `resume` carries it on. An id is a file name to Claude Code, so one that could name another folder is

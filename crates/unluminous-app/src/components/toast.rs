@@ -24,22 +24,28 @@
 //!
 //! **An offer is the third kind** (`task-2063`), a notice with buttons on it: *"Unluminous 0.55.0 is
 //! available"* with `Install & Restart` and `Don't Ask Again`. It stays until it is answered or
-//! dismissed, for a problem's reason: it is waiting on a person. Its edge is the accent, because it is
-//! neither a failure nor a confirmation but a question. A button is reported to the window as an
+//! dismissed, for a problem's reason: it is waiting on a person. Its mark is the action colour, because it
+//! is neither a failure nor a confirmation but a question. A button is reported to the window as an
 //! [`Act`], and the window does it; this file only draws the card and says which button was pressed.
 //!
-//! **No new colour.** The palette is closed. A problem's edge is `color::close`, the red the window's own
-//! close button is drawn in, and a confirmation's is `color::git_added`, the green a new file is counted
-//! in — both already sampled from the design.
+//! **A brief problem is the fourth kind** (`task-2263`): a failure said where the person is already looking,
+//! such as a ticket that could not be created while its dialog is open. It goes after [`BRIEF_LIFE`].
+//!
+//! **No new colour.** Each card is the Agent-Chat design's card drawn with `rux` (`task-2263`), and the mark
+//! in its well is in that design's own failed, done and action colours (`rux::theme::Chat::slower`,
+//! `faster` and `sky`).
 
-use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Sense, Stroke, Vec2};
+use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Sense, Vec2};
 
-use crate::theme::{color, icon};
+use crate::theme::color;
 
 /// How long a confirmation stays before it fades.
 ///
 /// Long enough to read a sentence twice. A problem has no life at all: see the module comment.
 pub const LIFE: std::time::Duration = std::time::Duration::from_secs(6);
+
+/// How long a [`Kind::Brief`] problem stays before it goes by itself (`task-2263`).
+pub const BRIEF_LIFE: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// How many are drawn at once, oldest first to go.
 ///
@@ -52,11 +58,9 @@ pub const LIMIT: usize = 2;
 /// How wide one is, and how far in from the window's edge the stack sits.
 const WIDTH: f32 = 320.0;
 const MARGIN: f32 = 12.0;
-/// The coloured edge down the left of a card.
+/// What a card keeps clear on its left before its offer buttons are measured, which was the coloured edge.
 const EDGE: f32 = 3.0;
 const PAD: f32 = 10.0;
-/// The cross, and the room kept clear for it so a long sentence does not run under it.
-const CROSS: f32 = 16.0;
 
 /// What kind of notice this is, which decides its colour and whether it fades.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,6 +71,11 @@ pub enum Kind {
     Done,
     /// A question with buttons on it. Stays until it is answered or dismissed.
     Offer,
+    /// Something did not happen, said where a person is already looking at what they asked for, so it goes
+    /// by itself after [`BRIEF_LIFE`] and can be dismissed sooner. `task-2263`: *"If a task fails to be
+    /// created, there should be a toast message that is displayed that indicates what the error was, and it
+    /// should have a close x button, and auto dismiss after 3 seconds."*
+    Brief,
 }
 
 /// What a button on an offer asks the window to do.
@@ -96,6 +105,7 @@ impl Kind {
             Kind::Problem => "problem",
             Kind::Done => "done",
             Kind::Offer => "offer",
+            Kind::Brief => "brief",
         }
     }
 
@@ -104,21 +114,36 @@ impl Kind {
             "problem" | "error" | "failed" => Some(Kind::Problem),
             "done" | "ok" | "success" => Some(Kind::Done),
             "offer" => Some(Kind::Offer),
+            "brief" => Some(Kind::Brief),
             _ => None,
         }
     }
 
-    fn edge(self) -> Color32 {
+    /// The colour of the mark in the card's well: the design's failed, done and action colours.
+    fn colour(self, chat: &rux::theme::Chat) -> Color32 {
         match self {
-            Kind::Problem => color::close(),
-            Kind::Done => color::git_added(),
-            Kind::Offer => color::accent(),
+            Kind::Problem | Kind::Brief => chat.slower,
+            Kind::Done => chat.faster,
+            Kind::Offer => chat.sky,
         }
     }
 
-    /// Whether a notice of this kind goes away on its own.
-    fn fades(self) -> bool {
-        matches!(self, Kind::Done)
+    /// The mark in the card's well.
+    fn mark(self) -> rux::Icon {
+        match self {
+            Kind::Problem | Kind::Brief => rux::Icon::X,
+            Kind::Done => rux::Icon::Tick,
+            Kind::Offer => rux::Icon::Download,
+        }
+    }
+
+    /// How long a notice of this kind stays before it goes by itself, or `None` when only a person takes it away.
+    pub fn life(self) -> Option<std::time::Duration> {
+        match self {
+            Kind::Done => Some(LIFE),
+            Kind::Brief => Some(BRIEF_LIFE),
+            Kind::Problem | Kind::Offer => None,
+        }
     }
 }
 
@@ -218,8 +243,8 @@ impl Toasts {
     /// to acknowledge rather than something they may have missed.
     pub fn forget_the_stale_ones(&mut self) {
         let now = std::time::Instant::now();
-        self.notices.retain(|notice| match (notice.kind.fades(), notice.at) {
-            (true, Some(at)) => now.duration_since(at) < LIFE,
+        self.notices.retain(|notice| match (notice.kind.life(), notice.at) {
+            (Some(life), Some(at)) => now.duration_since(at) < life,
             // A notice with no instant is a test's, and time does not pass for it.
             _ => true,
         });
@@ -259,98 +284,140 @@ impl Toasts {
 /// Added to the `Ui` **after every pane**, for the reason the module comment gives. The stack grows
 /// upwards from just above the status bar, so a new notice appears nearest the place a person is looking
 /// and the older ones move away.
-pub fn show(ui: &mut egui::Ui, area: Rect, toasts: &Toasts, look_font: f32) -> Option<Pressed> {
+///
+/// **Each card is the Agent-Chat design's own card** (`task-2263`): `rux`'s raised card gradient with the
+/// floating shadow, a carved round well on the left holding the kind's mark in the kind's colour, the words
+/// in the design's ink, and the board's round chip button with a cross to dismiss it. `state` is the window's
+/// `rux` state for the notices, which the caller ends the frame on.
+pub fn show(
+    ui: &mut egui::Ui,
+    area: Rect,
+    toasts: &Toasts,
+    look_font: f32,
+    state: &rux::RuxState,
+) -> Option<Pressed> {
     if toasts.is_empty() {
         return None;
     }
-    let mut dismissed = None;
+    crate::theme::in_step(state);
+    ask_for_the_frame_a_notice_fades_on(ui.ctx(), toasts);
+    let mut pressed = None;
     // Bottom upwards, so `notices` in order oldest first ends up with the newest at the bottom of the
     // stack, nearest the status bar.
     let mut bottom = area.bottom() - MARGIN;
     for (index, notice) in toasts.notices().iter().enumerate().rev() {
-        let painter = ui.painter().clone();
-        // Measured before it is placed, because a two line sentence makes a taller card and the one
-        // above it has to move up by that much. `layout` is the same wrapping the painter will do.
-        // `× 3` after the sentence when it has happened more than once — see [`Toasts::say`].
-        let said = match notice.count {
-            0 | 1 => notice.text.clone(),
-            many => format!("{}  × {many}", notice.text),
-        };
-        // An offer is as wide as its row of buttons needs, and never narrower than any other notice:
-        // at a large font the two buttons are wider than the card, and they ran out of both sides of
-        // it (`task-2063`).
-        let font = FontId::proportional(look_font - 1.0);
-        let row = button_row(&painter, notice, &font);
-        let width = WIDTH.max(row.width + PAD * 2.0 + EDGE).min(area.width() - MARGIN * 2.0);
-        let wrapped = painter.layout(
-            said,
-            font.clone(),
-            color::text(),
-            width - PAD * 2.0 - EDGE - CROSS - 6.0,
-        );
-        // An offer has a row of buttons under its sentence.
-        let buttons = match notice.actions.is_empty() {
-            true => 0.0,
-            false => row.height + PAD,
-        };
-        let height = (wrapped.size().y + PAD * 2.0 + buttons).max(36.0);
-        let card = Rect::from_min_size(
-            Pos2::new(area.right() - MARGIN - width, bottom - height),
-            Vec2::new(width, height),
-        );
-        // Off the top of the window rather than drawn over the tabs: with the limit at four this only
-        // happens in a window shorter than about two hundred points.
-        if card.top() < area.top() {
+        let Some(card) = one_card(ui, area, bottom, notice, index, look_font, state, &mut pressed)
+        else {
             break;
-        }
-
-        painter.rect(
-            card,
-            CornerRadius::same(crate::theme::size::CONTROL_CORNER),
-            color::field(),
-            Stroke::new(1.0, color::control_border()),
-            egui::StrokeKind::Inside,
-        );
-        // The coloured edge, inside the card's own corner radius so it does not square off the corners.
-        painter.rect_filled(
-            Rect::from_min_size(
-                Pos2::new(card.left() + 1.0, card.top() + 1.0),
-                Vec2::new(EDGE, card.height() - 2.0),
-            ),
-            CornerRadius::same(1),
-            notice.kind.edge(),
-        );
-        painter.galley(
-            Pos2::new(card.left() + EDGE + PAD, card.top() + PAD),
-            wrapped,
-            color::text(),
-        );
-
-        // The cross, named so a test can press it and so the name says which notice it belongs to.
-        let cross_at = Rect::from_center_size(
-            Pos2::new(card.right() - PAD - CROSS / 2.0, card.top() + PAD + CROSS / 2.0),
-            Vec2::splat(CROSS),
-        );
-        let name = format!("Dismiss notice {}", index + 1);
-        let response = ui.interact(cross_at, ui.id().with(("toast", index)), Sense::click());
-        let tint = match response.hovered() {
-            true => color::text_strong(),
-            false => color::text_dim(),
         };
-        icon::cross(&painter, cross_at.center(), tint);
-        response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name.clone())
-        });
-        if response.clicked() {
-            dismissed = Some(Pressed::Dismissed(index));
-        }
-        if let Some(act) = offer_buttons(ui, card, notice, index, look_font) {
-            dismissed = Some(Pressed::Acted(index, act));
-        }
-
         bottom = card.top() - 8.0;
     }
-    dismissed
+    pressed
+}
+
+/// Ask for a frame at the moment the soonest fading notice is due to go, so it goes on time with nothing else
+/// moving in the window.
+fn ask_for_the_frame_a_notice_fades_on(ctx: &egui::Context, toasts: &Toasts) {
+    let now = std::time::Instant::now();
+    let soonest = toasts
+        .notices()
+        .iter()
+        .filter_map(|notice| Some(notice.at? + notice.kind.life()?))
+        .map(|due| due.saturating_duration_since(now))
+        .min();
+    if let Some(wait) = soonest {
+        ctx.request_repaint_after(wait + std::time::Duration::from_millis(16));
+    }
+}
+
+/// How far the floating shadow under a card reaches past it.
+const SHADOW_REACH: f32 = 72.0;
+/// How round a card is, and how big the well holding its mark is.
+const CARD_RADIUS: f32 = 18.0;
+const MARK_WELL: f32 = 28.0;
+/// The round button that dismisses a card.
+const CLOSE: f32 = 26.0;
+
+/// Draw one card with its bottom edge at `bottom`, and answer where it went, or `None` when it would not fit.
+#[allow(clippy::too_many_arguments)]
+fn one_card(
+    ui: &mut egui::Ui,
+    area: Rect,
+    bottom: f32,
+    notice: &Notice,
+    index: usize,
+    look_font: f32,
+    state: &rux::RuxState,
+    pressed: &mut Option<Pressed>,
+) -> Option<Rect> {
+    let painter = ui.painter().clone();
+    // `× 3` after the sentence when it has happened more than once — see [`Toasts::say`].
+    let said = match notice.count {
+        0 | 1 => notice.text.clone(),
+        many => format!("{}  × {many}", notice.text),
+    };
+    // An offer is as wide as its row of buttons needs, and never narrower than any other notice: at a large
+    // font the two buttons are wider than the card, and they ran out of both sides of it (`task-2063`).
+    let font = FontId::proportional(look_font - 1.0);
+    let row = button_row(&painter, notice, &font);
+    let width = WIDTH.max(row.width + PAD * 2.0 + EDGE).min(area.width() - MARGIN * 2.0);
+    let ink = crate::theme::rux_theme().ink.i900;
+    let words_left = PAD + MARK_WELL + PAD;
+    let words_width = width - words_left - PAD - CLOSE - 6.0;
+    // Measured before it is placed, because a two line sentence makes a taller card and the one above it has
+    // to move up by that much.
+    let wrapped = painter.layout(said, font.clone(), ink, words_width);
+    let buttons = match notice.actions.is_empty() {
+        true => 0.0,
+        false => row.height + PAD,
+    };
+    let height = (wrapped.size().y + PAD * 2.0 + buttons).max(MARK_WELL + PAD * 2.0);
+    let card = Rect::from_min_size(
+        Pos2::new(area.right() - MARGIN - width, bottom - height),
+        Vec2::new(width, height),
+    );
+    // Off the top of the window rather than drawn over the tabs.
+    if card.top() < area.top() {
+        return None;
+    }
+    let well =
+        Rect::from_min_size(Pos2::new(card.left() + PAD, card.top() + PAD), Vec2::splat(MARK_WELL));
+    let cross_at = Rect::from_center_size(
+        Pos2::new(card.right() - PAD - CLOSE / 2.0, card.top() + PAD + CLOSE / 2.0 - 2.0),
+        Vec2::splat(CLOSE),
+    );
+    let name = format!("Dismiss notice {}", index + 1);
+    let id = ui.id().with(("toast", index));
+    let dismissed = rux::layer(ui, state, id, card.expand(SHADOW_REACH), |rux| {
+        let chat = rux.theme().chat;
+        rux.chrome.surface(
+            card,
+            CARD_RADIUS,
+            rux::Fill::gradient(chat.card, card),
+            chat.floating(),
+        );
+        rux.chrome.surface(well, MARK_WELL / 2.0, chat.well, chat.carved_sm());
+        let colour = notice.kind.colour(&chat);
+        rux.mark(rux::Mark::new(notice.kind.mark(), 12.0).stroke(1.9), well.center(), colour);
+        rux::components::ChipButton::new(rux::Icon::X, CLOSE, &name)
+            .mark(10.0, Some(1.8))
+            .show(rux, cross_at)
+            .clicked()
+    });
+    if dismissed {
+        *pressed = Some(Pressed::Dismissed(index));
+    }
+    let words_at = Pos2::new(
+        card.left() + words_left,
+        card.top()
+            + PAD
+            + ((MARK_WELL - wrapped.rows.first().map_or(0.0, |row| row.height())) / 2.0).max(0.0),
+    );
+    painter.galley(words_at, wrapped, ink);
+    if let Some(act) = offer_buttons(ui, card, notice, index, look_font) {
+        *pressed = Some(Pressed::Acted(index, act));
+    }
+    Some(card)
 }
 
 /// How much wider and taller a button on an offer is than its words.
@@ -569,7 +636,7 @@ mod tests {
 
     #[test]
     fn the_two_kinds_are_named_and_read_back() {
-        for kind in [Kind::Problem, Kind::Done, Kind::Offer] {
+        for kind in [Kind::Problem, Kind::Done, Kind::Offer, Kind::Brief] {
             assert_eq!(Kind::parse(kind.name()), Some(kind));
         }
         // The spellings a command line caller might use.
@@ -579,9 +646,32 @@ mod tests {
     }
 
     #[test]
-    fn the_two_kinds_are_told_apart_by_colour_and_by_whether_they_fade() {
-        assert_ne!(Kind::Problem.edge(), Kind::Done.edge());
-        assert!(!Kind::Problem.fades(), "a failure nobody read is the fault this exists to fix");
-        assert!(Kind::Done.fades());
+    fn the_kinds_are_told_apart_by_colour_and_by_whether_they_fade() {
+        let chat = crate::theme::rux_theme().chat;
+        assert_ne!(Kind::Problem.colour(&chat), Kind::Done.colour(&chat));
+        assert_eq!(
+            Kind::Problem.life(),
+            None,
+            "a failure nobody read is the fault this exists to fix"
+        );
+        assert_eq!(Kind::Done.life(), Some(LIFE));
+        assert_eq!(Kind::Brief.life(), Some(BRIEF_LIFE));
+        assert_eq!(BRIEF_LIFE, std::time::Duration::from_secs(3));
+    }
+
+    /// `task-2263`: a ticket that was not created says so, and the notice goes by itself after three seconds.
+    #[test]
+    fn a_brief_problem_goes_after_three_seconds_and_a_problem_does_not() {
+        let mut toasts = Toasts::default();
+        let past =
+            Some(std::time::Instant::now() - BRIEF_LIFE - std::time::Duration::from_millis(10));
+        toasts
+            .notices
+            .push(Notice { at: past, ..timeless("the ticket was not created", Kind::Brief) });
+        toasts.notices.push(Notice { at: past, ..timeless("could not send", Kind::Problem) });
+        toasts.say("the ticket was not created either", Kind::Brief);
+        toasts.forget_the_stale_ones();
+        let left: Vec<&str> = toasts.notices().iter().map(|notice| notice.text.as_str()).collect();
+        assert_eq!(left, ["could not send", "the ticket was not created either"]);
     }
 }

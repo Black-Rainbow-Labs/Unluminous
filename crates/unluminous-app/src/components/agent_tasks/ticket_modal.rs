@@ -5,8 +5,8 @@
 //! The Claude Design canvas "Unluminous", page Agent-Tasks, artboards "Edit task" and "New task"
 //! (`TaskModal.dc.html`). One surface thirty points round on the pane's own ground, with a long soft shadow
 //! under it and no title bar or footer: a header row of the ticket's key in a carved chip, the title as a field
-//! and a round close button; then two columns. On the left the description in a carved well, the todos with a
-//! track of how many are done, the agent's terminal and the comments, each under a small heading. On the right
+//! and a round close button; then two columns. On the left the description in a carved well, the agent, the
+//! todos with a track of how many are done, and the comments, each under a small heading. On the right
 //! a raised card holding `Start Work` and the fields that say what the ticket is, each a chip with a mark and a
 //! chevron, and the priority as a small pill switch. A new ticket's card ends in `Create task`.
 //!
@@ -36,7 +36,9 @@
 //!
 //! ## The agent is a chat first and a terminal second (`task-2261`)
 //!
-//! The section under the todos is `Agent`, with two tabs on its heading row. `Chat` is the side panel's own
+//! The section under the description is `Agent`, with two tabs on its heading row. The todos are under it and
+//! above the comments, shut until somebody opens them, and have no field to add one: they are the plan the agent
+//! writes (`task-2263`). `Chat` is the side panel's own
 //! Agent-Chat pane showing the conversation the agent in the ticket's terminal is having, read from Claude
 //! Code's transcript by `services::agent_tasks::ticket_chat`; what is typed there is typed into the terminal.
 //! `Terminal` is the terminal itself. A ticket whose agent's transcript cannot be read opens on the terminal.
@@ -111,11 +113,10 @@ const LABEL_GAP: f32 = 10.0;
 const LABEL: f32 = 15.0;
 /// The todos' heading row, which holds the 24 point fold disc.
 const TODO_HEAD: f32 = 24.0;
-/// One todo row, the gap between two, the list's padding, and the row that adds one.
+/// One todo row, the gap between two, and the list's padding.
 const TODO_ROW: f32 = 36.0;
 const TODO_GAP: f32 = 4.0;
 const TODO_PAD: f32 = 8.0;
-const TODO_ADD: f32 = 38.0;
 /// The description's well when nobody has dragged its edge, and the least it can be made.
 const DESCRIPTION: f32 = 92.0;
 const DESCRIPTION_LEAST: f32 = 76.0;
@@ -286,21 +287,23 @@ fn contents(
                 };
                 let main = Rect::from_min_max(body.min, Pos2::new(body.max.x, body.max.y - foot));
                 requests.extend(main_column(board, rux, order, main, look, task, new));
-                let create = new && {
+                let pressed = new && {
                     let at = Rect::from_min_size(
                         Pos2::new(body.max.x - ASIDE, body.max.y - 44.0),
                         Vec2::new(ASIDE, 44.0),
                     );
                     action_pill(rux, at, "Create task", Icon::Plus, true).clicked()
                 };
+                let create = pressed && press_create(board, rux.ui, &mut requests);
                 (requests, closed || create)
             } else if body.width() >= TWO_COLUMNS {
                 let aside = Rect::from_min_max(Pos2::new(body.max.x - ASIDE, body.min.y), body.max);
                 let main =
                     Rect::from_min_max(body.min, Pos2::new(aside.min.x - GUTTER, body.max.y));
                 requests.extend(main_column(board, rux, order, main, look, task, new));
-                let (more, create) = fields(board, rux, selects, order, aside, task, new);
+                let (more, pressed) = fields(board, rux, selects, order, aside, task, new);
                 requests.extend(more);
+                let create = pressed && press_create(board, rux.ui, &mut requests);
                 (requests, closed || create)
             } else {
                 // One column: the card of fields first and never more than half the height, scrolled inside it,
@@ -312,8 +315,9 @@ fn contents(
                 let rest =
                     Rect::from_min_max(Pos2::new(body.min.x, aside.max.y + SECTION_GAP), body.max);
                 let mut column = Vec::new();
-                let (more, create) = fields(board, rux, selects, order, aside, task, new);
+                let (more, pressed) = fields(board, rux, selects, order, aside, task, new);
                 requests.extend(more);
+                let create = pressed && press_create(board, rux.ui, &mut requests);
                 if rest.height() > 120.0 {
                     requests.extend(main_column(board, rux, &mut column, rest, look, task, new));
                 }
@@ -331,6 +335,35 @@ fn contents(
         outcome.closed = true;
     }
     outcome
+}
+
+/// What `Create task` does, and whether the modal closes because of it.
+///
+/// `task-2263`. A ticket with no title stays open with its title field outlined in red and the keyboard put in
+/// it; any other failure is a notice that goes by itself after three seconds, because the person is looking at
+/// the dialog they pressed the button in.
+fn press_create(board: &mut AgentTasks, ui: &egui::Ui, requests: &mut Vec<Request>) -> bool {
+    match board.create_the_new_ticket() {
+        Ok(_) => true,
+        Err(_) if board.detail().title_missing => {
+            ui.ctx().memory_mut(|memory| {
+                memory.request_focus(ui.id().with("agent-tasks-ticket-title"));
+            });
+            false
+        }
+        Err(problem) => {
+            requests.push(not_created(&problem));
+            false
+        }
+    }
+}
+
+/// The notice for a ticket that could not be created: red, with a cross, gone after three seconds.
+pub fn not_created(problem: &str) -> Request {
+    Request::Notice {
+        text: format!("The ticket was not created: {problem}"),
+        kind: crate::components::toast::Kind::Brief,
+    }
 }
 
 /// The key in a carved chip, the title as a field, and the round close button. Answers whether it was closed.
@@ -423,11 +456,43 @@ fn header_row(
     if response.changed() {
         board.detail_mut().title_draft = title;
         if let Err(problem) = board.save_the_title() {
-            requests.push(Request::Message(problem));
+            requests.push(match new {
+                true => not_created(&problem),
+                false => Request::Message(problem),
+            });
         }
     }
     super::enter_was_used(rux.ui, &response);
+    if board.detail().title_missing {
+        title_is_missing(rux, field);
+    }
     (closed, requests)
+}
+
+/// The title field outlined in the design's failed colour, with the sentence that says why under it.
+///
+/// `task-2263`. The outline is a 1.5 point round rectangle a little outside the field, and the sentence sits in
+/// the gap between the header row and the columns, so nothing moves when it appears.
+fn title_is_missing(rux: &mut rux::Rux<'_>, field: Rect) {
+    let red = rux.theme().chat.slower;
+    let ring = field.expand2(Vec2::new(8.0, 2.0));
+    rux.painter().rect_stroke(
+        ring,
+        ring.height() / 2.0,
+        egui::Stroke::new(1.5, red),
+        egui::StrokeKind::Outside,
+    );
+    let said = crate::services::agent_tasks::TITLE_MISSING;
+    let galley = rux.text(Style::sans(11.5), said, red);
+    let at = Pos2::new(ring.min.x + 12.0, ring.max.y + 4.0);
+    let size = galley.size();
+    rux.painter().galley(at, galley, red);
+    let response = rux.ui.interact(
+        Rect::from_min_size(at, size),
+        rux.ui.id().with("agent-tasks-title-missing"),
+        egui::Sense::hover(),
+    );
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, said));
 }
 
 /// A section's heading: the design's 12 point semibold words in the quieter ink, named so a test finds it.
@@ -460,10 +525,11 @@ struct Budget {
 /// lines, then the comments, and the todos last, because the todos are the plan an agent is working through.
 fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new: bool) -> Budget {
     let room = area.height();
-    let todos_open = !board.todos_shut;
+    // A new ticket has no todos to show: they are written by the agent working it (`task-2263`).
+    let todos_open = board.todos_open && !new;
     let rows = board.detail().todos.len() as f32;
-    let list = |rows: f32| TODO_PAD * 2.0 + rows * (TODO_ROW + TODO_GAP) + TODO_ADD + 2.0;
-    let (todo_want, todo_least) = match todos_open {
+    let list = |rows: f32| TODO_PAD * 2.0 + rows * (TODO_ROW + TODO_GAP) + 2.0;
+    let (todo_want, todo_least) = match todos_open && rows > 0.0 {
         true => (list(rows.min(5.0)), list(rows.min(1.0))),
         false => (0.0, 0.0),
     };
@@ -506,7 +572,7 @@ fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new:
         }
     };
     let headings = match new {
-        true => (LABEL + LABEL_GAP) + (TODO_HEAD + LABEL_GAP) + SECTION_GAP,
+        true => LABEL + LABEL_GAP,
         false => {
             (LABEL + LABEL_GAP) * 2.0 + (TODO_HEAD + LABEL_GAP) * 2.0 + SECTION_GAP * 3.0 + 2.0
         }
@@ -561,7 +627,7 @@ fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new:
         false => {
             let terminal = give(terminal, 0.0, &mut short);
             let comments = give(comments, composer.min(comments), &mut short);
-            (terminal, comments, give(todos, (TODO_ADD + TODO_PAD * 2.0).min(todos), &mut short))
+            (terminal, comments, give(todos, list(1.0).min(todos), &mut short))
         }
     };
     let description = match dragged {
@@ -649,63 +715,11 @@ fn main_column(
     }
     pen = well.max.y + SECTION_GAP;
 
-    // ------------------------------------------------------------------ the todos
-    let open = !board.todos_shut;
-    let head = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(area.width(), TODO_HEAD));
-    let disc = Rect::from_min_size(head.min, Vec2::splat(TODO_HEAD));
-    let turn = match open {
-        true => std::f32::consts::PI,
-        false => 0.0,
-    };
-    let fold = ChipButton::new(Icon::ChevDown, TODO_HEAD, "Todos")
-        .mark(10.0, Some(1.6))
-        .turn(turn)
-        .folds(open)
-        .show(rux, disc);
-    if fold.clicked() {
-        board.todos_shut = open;
-    }
-    let words = rux.text(Style::sans(12.0).semibold(), "Todos", theme.ink.i500);
-    let words_width = words.size().x;
-    rux::text::draw_left_capitals(
-        rux.painter(),
-        Pos2::new(disc.max.x + 10.0, head.center().y),
-        words,
-        Style::sans(12.0).semibold(),
-        theme.ink.i500,
-    );
-    if task.todo_count > 0 {
-        let count = format!("{}/{}", task.todo_done_count, task.todo_count);
-        let count_galley = rux.text(Style::sans(11.0), &count, theme.ink.i400);
-        let left = disc.max.x + 10.0 + words_width + 12.0;
-        let track = Rect::from_min_size(
-            Pos2::new(left, head.center().y - 4.0),
-            Vec2::new((area.max.x - left - count_galley.size().x - 10.0).clamp(0.0, 180.0), 8.0),
-        );
-        if track.width() > 16.0 {
-            todo_track(rux, track, task);
-        }
-        rux::text::draw_left_capitals(
-            rux.painter(),
-            Pos2::new(track.max.x + 10.0, head.center().y),
-            count_galley,
-            Style::sans(11.0),
-            theme.ink.i400,
-        );
-    }
-    pen = head.max.y + LABEL_GAP;
-    if open && budget.todos > 0.0 {
-        let at =
-            Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(area.width(), budget.todos));
-        rux.chrome.surface(at, 20.0, chat.well, chat.carved_sm());
-        requests.extend(super::detail::todo_rows(board, rux, at.shrink(TODO_PAD), look));
-        order.push(rux.ui.id().with("agent-tasks-todo-draft"));
-        pen = at.max.y;
-    }
+    // A new ticket is its title, its description and its fields. Its todos are written by the agent that works
+    // it, and the agent and the comments come once it exists (`task-2263`).
     if new {
         return requests;
     }
-    pen += SECTION_GAP;
 
     // ------------------------------------------------------------------ the agent: its chat and its terminal
     let tab = board.agent_tab_for(task);
@@ -778,6 +792,13 @@ fn main_column(
             }
             _ => requests.extend(no_terminal(board, rux, at, task)),
         }
+        // A menu the agent's terminal is waiting on is never in the transcript, so the Chat tab draws it over the
+        // conversation with a button for each option (`task-2263`).
+        if tab == AgentTab::Chat {
+            if let Some(choice) = board.choice_for(task.id) {
+                requests.extend(choice_card(board, rux, at, task, &choice));
+            }
+        }
         if shown {
             let grip =
                 Grip { salt: "agent-tasks-terminal-grip", name: "Resize agent", corner: true };
@@ -786,6 +807,62 @@ fn main_column(
                 board.terminal_height = height;
             }
         }
+        pen = at.max.y;
+    }
+    pen += SECTION_GAP;
+
+    // ------------------------------------------------------------------ the todos
+    // Under the agent and above the comments, shut until somebody opens them, and with no field to add one: the
+    // todos are the plan the agent writes and ticks as it goes (`task-2263`).
+    let open = board.todos_open;
+    let head = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(area.width(), TODO_HEAD));
+    let disc = Rect::from_min_size(head.min, Vec2::splat(TODO_HEAD));
+    let turn = match open {
+        true => std::f32::consts::PI,
+        false => 0.0,
+    };
+    let fold = ChipButton::new(Icon::ChevDown, TODO_HEAD, "Todos")
+        .mark(10.0, Some(1.6))
+        .turn(turn)
+        .folds(open)
+        .show(rux, disc);
+    if fold.clicked() {
+        board.todos_open = !open;
+    }
+    let words = rux.text(Style::sans(12.0).semibold(), "Todos", theme.ink.i500);
+    let words_width = words.size().x;
+    rux::text::draw_left_capitals(
+        rux.painter(),
+        Pos2::new(disc.max.x + 10.0, head.center().y),
+        words,
+        Style::sans(12.0).semibold(),
+        theme.ink.i500,
+    );
+    if task.todo_count > 0 {
+        let count = format!("{}/{}", task.todo_done_count, task.todo_count);
+        let count_galley = rux.text(Style::sans(11.0), &count, theme.ink.i400);
+        let left = disc.max.x + 10.0 + words_width + 12.0;
+        let track = Rect::from_min_size(
+            Pos2::new(left, head.center().y - 4.0),
+            Vec2::new((area.max.x - left - count_galley.size().x - 10.0).clamp(0.0, 180.0), 8.0),
+        );
+        if track.width() > 16.0 {
+            todo_track(rux, track, task);
+        }
+        rux::text::draw_left_capitals(
+            rux.painter(),
+            Pos2::new(track.max.x + 10.0, head.center().y),
+            count_galley,
+            Style::sans(11.0),
+            theme.ink.i400,
+        );
+    }
+    pen = head.max.y + LABEL_GAP;
+    if open && budget.todos > 0.0 {
+        let at =
+            Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(area.width(), budget.todos));
+        rux.chrome.surface(at, 20.0, chat.well, chat.carved_sm());
+        requests.extend(super::detail::todo_rows(board, rux, at.shrink(TODO_PAD), look));
         pen = at.max.y;
     }
     pen += SECTION_GAP;
@@ -899,6 +976,70 @@ fn agent_chat(
     board.ticket_chat = Some(chat);
     requests
 }
+
+/// A raised card along the bottom of the Chat tab: the question the agent's terminal is waiting on, and a pill
+/// button for each option, the last of them filled in the action's gradient. Pressing one types the arrow keys and
+/// Enter that choose it, through the same `choice` command an agent uses.
+///
+/// Drawn in a `rux` layer of its own, opened after the chat, so it sits over the conversation rather than under it.
+fn choice_card(
+    board: &mut AgentTasks,
+    rux: &mut rux::Rux<'_>,
+    at: Rect,
+    task: &Task,
+    choice: &crate::services::agent_tasks::screen_choice::Choice,
+) -> Vec<Request> {
+    let state = rux.state;
+    let card = Rect::from_min_max(
+        Pos2::new(at.min.x + 12.0, (at.max.y - 12.0 - CHOICE_HEIGHT).max(at.min.y + 8.0)),
+        Pos2::new(at.max.x - 12.0, at.max.y - 12.0),
+    );
+    let id = rux.ui.id().with(("agent-tasks-choice", task.id));
+    let pressed = rux::layer(rux.ui, state, id, card.expand(40.0), |rux| {
+        let chat = rux.theme().chat;
+        let theme = rux.theme();
+        rux.chrome.surface(card, 22.0, rux::Fill::gradient(chat.card, card), chat.raised());
+        let asked = match choice.question.is_empty() {
+            true => "The agent is waiting for an answer in its terminal.".to_owned(),
+            false => format!("The agent is asking: {}", choice.question),
+        };
+        let words =
+            rux.elided(Style::sans(12.5).semibold(), &asked, theme.ink.i900, card.width() - 36.0);
+        rux.painter().galley(
+            Pos2::new(card.min.x + 18.0, card.min.y + 14.0),
+            words,
+            theme.ink.i900,
+        );
+        let mut right = card.max.x - 14.0;
+        let mut pressed = None;
+        for (index, option) in choice.options.iter().enumerate().rev() {
+            let mut button = rux::components::PillButton::new(option);
+            if index + 1 == choice.options.len() {
+                button = button.primary();
+            }
+            let width = (rux.measure(Style::sans(12.0), option).x + 36.0).min(card.width() - 28.0);
+            let place = Rect::from_min_max(
+                Pos2::new((right - width).max(card.min.x + 14.0), card.max.y - 14.0 - 34.0),
+                Pos2::new(right, card.max.y - 14.0),
+            );
+            if button.show(rux, place).clicked() {
+                pressed = Some(index);
+            }
+            right = place.min.x - 8.0;
+        }
+        pressed
+    });
+    match pressed {
+        Some(index) => match board.answer_a_choice(&task.key, &(index + 1).to_string()) {
+            Ok(answer) => vec![Request::Message(answer.message)],
+            Err(problem) => vec![Request::Message(problem)],
+        },
+        None => Vec::new(),
+    }
+}
+
+/// How tall the card holding a waiting menu is: its question and a row of buttons.
+const CHOICE_HEIGHT: f32 = 92.0;
 
 /// One sentence in the middle of the section's well, for a tab with nothing to show.
 fn note_in_a_well(rux: &mut rux::Rux<'_>, at: Rect, said: &str) {

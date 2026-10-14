@@ -214,7 +214,7 @@ pub fn show(
         ui.painter().crisp_text(
             browser.center(),
             Align2::CENTER_CENTER,
-            "This page is showing in the other pane.",
+            "Click to show this page here. A window shows one live page at a time.",
             FontId::proportional(13.0),
             color::text_faint(),
         );

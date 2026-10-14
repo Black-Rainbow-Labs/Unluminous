@@ -786,10 +786,10 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "browser",
         verb: "open",
-        summary: "Render an HTTP address or local HTML file in a new Unluminous tab.",
+        summary: "Render an HTTP address or local HTML file in a new Unluminous tab, or with `--system` open an HTTP address in the person's default browser outside Unluminous, which is what `Open in Default Browser` on a link's right click menu does.",
         arguments: &[rest("address", true, "An HTTP or HTTPS address, or an HTML path relative to the project folder.")],
-        flags: NO_FLAGS,
-        examples: &["unluminous-cli browser open https://example.com", "unluminous-cli browser open examples/site/index.html"],
+        flags: &[switch("system", "Open the address in the default browser of the operating system instead. Only http and https addresses.")],
+        examples: &["unluminous-cli browser open https://example.com", "unluminous-cli browser open examples/site/index.html", "unluminous-cli browser open --system https://example.com"],
         local: false,
     },
     Command {
