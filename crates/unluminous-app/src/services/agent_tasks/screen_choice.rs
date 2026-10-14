@@ -57,6 +57,13 @@ pub fn read(screen: &str) -> Option<Choice> {
     if ruled(first.checked_sub(1)) || ruled(Some(last + 1)) {
         return None;
     }
+    // **And the input box is not drawn while Claude Code waits on a menu**, so a cursor line with the input box
+    // anywhere below it is not a menu either. It is a message somebody typed, which Claude Code echoes with `❯`
+    // in front and its wrapped lines indented under it, exactly like a list of options. `task-2268` drew such an
+    // echo as a menu: the "Brewed for 12s" line above it as the question, and each wrapped line as a button.
+    if lines[last + 1..].iter().any(|line| is_a_plain_rule(line)) {
+        return None;
+    }
     let options: Vec<String> =
         (first..=last).map(|at| without_a_number(option_text(&lines[at], column))).collect();
     if options.iter().any(|option| option.is_empty()) {
@@ -192,6 +199,20 @@ mod tests {
         let empty =
             "────────────────────────────────────\n❯ \n────────────────────────────────────\n";
         assert_eq!(read(empty), None);
+    }
+
+    /// `task-2268`: a long message typed into the agent is echoed with `❯` in front and its wrapped lines
+    /// indented under it, above the input box. It was read as a menu whose question was Claude Code's status line
+    /// and whose options were the wrapped lines.
+    #[test]
+    fn a_message_echoed_above_the_input_box_is_not_a_menu() {
+        let screen = "● task-29 has nothing left to do.\n\n✻ Brewed for 12s · done 11:57 AM\n\n❯ Read the ticket, its todos and its newest comments, and work out whether\n  anything is left. Post a comment saying what you found and what the operator\n  has to decide or provide, then set the status to agent_done.\n\n────────────────────────────────────────────\n❯ \n────────────────────────────────────────────\n  ⏵⏵ bypass permissions on\n";
+        assert_eq!(read(screen), None);
+        // And a real menu, which Claude Code draws in place of the input box, is still read.
+        let menu = "✻ Brewed for 12s\n\n Do you want to make this edit?\n ❯ 1. Yes\n   2. Yes, and don't ask again\n   3. No, and tell Claude\n\n Esc to cancel\n";
+        let choice = read(menu).expect("a menu");
+        assert_eq!(choice.options.len(), 3);
+        assert_eq!(choice.question, "Do you want to make this edit?");
     }
 
     #[test]

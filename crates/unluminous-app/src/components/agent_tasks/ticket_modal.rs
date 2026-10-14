@@ -990,8 +990,24 @@ fn choice_card(
     choice: &crate::services::agent_tasks::screen_choice::Choice,
 ) -> Vec<Request> {
     let state = rux.state;
+    // The buttons' row is the card's width less its padding. A label wider than that is shortened, and the
+    // buttons wrap onto as many rows as they need: laid in one row, every button past the first full row was
+    // pushed to the card's left edge and drawn over the others (`task-2268`).
+    let room = (at.width() - 24.0 - 28.0).max(40.0);
+    let labels: Vec<String> = choice
+        .options
+        .iter()
+        .map(|option| label_that_fits(rux, option, room - BUTTON_PADDING))
+        .collect();
+    let widths: Vec<f32> = labels
+        .iter()
+        .map(|label| (rux.measure(Style::sans(12.0), label).x + BUTTON_PADDING).min(room))
+        .collect();
+    let placed = lay_the_buttons_out(&widths, room);
+    let rows = placed.iter().map(|button| button.row + 1).max().unwrap_or(1);
+    let height = CHOICE_HEIGHT + (rows - 1) as f32 * (BUTTON_HEIGHT + BUTTON_GAP);
     let card = Rect::from_min_max(
-        Pos2::new(at.min.x + 12.0, (at.max.y - 12.0 - CHOICE_HEIGHT).max(at.min.y + 8.0)),
+        Pos2::new(at.min.x + 12.0, (at.max.y - 12.0 - height).max(at.min.y + 8.0)),
         Pos2::new(at.max.x - 12.0, at.max.y - 12.0),
     );
     let id = rux.ui.id().with(("agent-tasks-choice", task.id));
@@ -1010,22 +1026,23 @@ fn choice_card(
             words,
             theme.ink.i900,
         );
-        let mut right = card.max.x - 14.0;
+        let first_row =
+            card.max.y - 14.0 - rows as f32 * BUTTON_HEIGHT - (rows - 1) as f32 * BUTTON_GAP;
         let mut pressed = None;
-        for (index, option) in choice.options.iter().enumerate().rev() {
-            let mut button = rux::components::PillButton::new(option);
+        for (index, (label, button_at)) in labels.iter().zip(&placed).enumerate() {
+            let mut button = rux::components::PillButton::new(label);
             if index + 1 == choice.options.len() {
                 button = button.primary();
             }
-            let width = (rux.measure(Style::sans(12.0), option).x + 36.0).min(card.width() - 28.0);
-            let place = Rect::from_min_max(
-                Pos2::new((right - width).max(card.min.x + 14.0), card.max.y - 14.0 - 34.0),
-                Pos2::new(right, card.max.y - 14.0),
+            let top = first_row + button_at.row as f32 * (BUTTON_HEIGHT + BUTTON_GAP);
+            let left = card.min.x + 14.0 + button_at.left;
+            let place = Rect::from_min_size(
+                Pos2::new(left, top),
+                Vec2::new(button_at.width, BUTTON_HEIGHT),
             );
             if button.show(rux, place).clicked() {
                 pressed = Some(index);
             }
-            right = place.min.x - 8.0;
         }
         pressed
     });
@@ -1038,8 +1055,77 @@ fn choice_card(
     }
 }
 
-/// How tall the card holding a waiting menu is: its question and a row of buttons.
+/// How tall the card holding a waiting menu is: its question and one row of buttons. Each further row adds a
+/// button's height and the gap between rows.
 const CHOICE_HEIGHT: f32 = 92.0;
+
+/// How tall an option's button is.
+const BUTTON_HEIGHT: f32 = 34.0;
+
+/// The space between two buttons, across a row and between rows.
+const BUTTON_GAP: f32 = 8.0;
+
+/// What a button adds round its label.
+const BUTTON_PADDING: f32 = 36.0;
+
+/// Where one option's button goes: its row, counted from the top, and how far from the left of the buttons' room
+/// it starts.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ButtonPlace {
+    row: usize,
+    left: f32,
+    width: f32,
+}
+
+/// Put buttons `widths` wide into rows `room` wide, in order, each row against the right edge so the last option
+/// is at the bottom right, where the action is.
+///
+/// A button wider than the room is given the whole row. No two buttons overlap, which is what one row with no
+/// limit did once the options were wider than the card.
+fn lay_the_buttons_out(widths: &[f32], room: f32) -> Vec<ButtonPlace> {
+    let mut rows: Vec<Vec<usize>> = vec![Vec::new()];
+    let mut used = 0.0;
+    for (index, width) in widths.iter().enumerate() {
+        let width = width.min(room);
+        let row = rows.last_mut().expect("there is always a row");
+        let needed = match row.is_empty() {
+            true => width,
+            false => used + BUTTON_GAP + width,
+        };
+        if !row.is_empty() && needed > room {
+            rows.push(vec![index]);
+            used = width;
+        } else {
+            row.push(index);
+            used = needed;
+        }
+    }
+    let mut placed = vec![ButtonPlace { row: 0, left: 0.0, width: 0.0 }; widths.len()];
+    for (row_index, row) in rows.iter().enumerate() {
+        let mut right = room;
+        for &index in row.iter().rev() {
+            let width = widths[index].min(room);
+            placed[index] = ButtonPlace { row: row_index, left: right - width, width };
+            right -= width + BUTTON_GAP;
+        }
+    }
+    placed
+}
+
+/// `option`, shortened with three dots when it is wider than `room` at the buttons' size.
+fn label_that_fits(rux: &mut rux::Rux<'_>, option: &str, room: f32) -> String {
+    if rux.measure(Style::sans(12.0), option).x <= room {
+        return option.to_owned();
+    }
+    let mut kept: Vec<char> = option.chars().collect();
+    while kept.pop().is_some() {
+        let shortened = format!("{}...", kept.iter().collect::<String>().trim_end());
+        if rux.measure(Style::sans(12.0), &shortened).x <= room {
+            return shortened;
+        }
+    }
+    "...".to_owned()
+}
 
 /// One sentence in the middle of the section's well, for a tab with nothing to show.
 fn note_in_a_well(rux: &mut rux::Rux<'_>, at: Rect, said: &str) {
@@ -1777,5 +1863,45 @@ mod tests {
         let look = Look::of(&settings, &renderer).at_a_fixed_size(BODY);
         assert_eq!(look.font_size, BODY);
         assert_eq!(look.scale(), 1.0, "nothing in the dialog is scaled up with the editor");
+    }
+
+    /// `task-2268`: the options of a menu read off the screen were laid in one row, and once the row was full
+    /// every later button was pushed to the card's left edge and drawn over the others. They wrap onto rows now,
+    /// and no two overlap whatever their widths.
+    #[test]
+    fn the_buttons_of_a_waiting_menu_wrap_onto_rows_and_never_overlap() {
+        let room = 400.0;
+        for widths in [
+            vec![90.0, 120.0],
+            vec![300.0, 300.0, 300.0],
+            vec![900.0, 80.0, 700.0, 60.0],
+            vec![150.0; 7],
+        ] {
+            let placed = lay_the_buttons_out(&widths, room);
+            assert_eq!(placed.len(), widths.len());
+            for (index, button) in placed.iter().enumerate() {
+                assert!(
+                    button.left >= -0.001,
+                    "{widths:?}: button {index} starts left of the room"
+                );
+                assert!(
+                    button.left + button.width <= room + 0.001,
+                    "{widths:?}: {index} ends past it"
+                );
+                for other in &placed[index + 1..] {
+                    let apart = other.row != button.row
+                        || other.left >= button.left + button.width
+                        || button.left >= other.left + other.width;
+                    assert!(apart, "{widths:?}: {button:?} overlaps {other:?}");
+                }
+            }
+            let last = placed.last().expect("a button");
+            assert!(
+                (last.left + last.width - room).abs() < 0.001,
+                "the last option is at the right"
+            );
+        }
+        let one_row = lay_the_buttons_out(&[90.0, 120.0], room);
+        assert!(one_row.iter().all(|button| button.row == 0), "two short options share a row");
     }
 }
