@@ -844,19 +844,23 @@ impl BrowserHost {
 
     /// Read the session cookies and write them down when they changed. `task-2203`.
     ///
-    /// **Before the egui pass**, from [`Self::reconcile`], because reading them waits on the engine with a
-    /// nested message pump, and `task-1756` measured what a nested pump inside the pass does.
+    /// **Asked on one call and taken on a later one.** On Windows the answer is there at once, because
+    /// `WebView::cookies` waits on the engine with a nested message pump, and that is why this is called
+    /// before the egui pass, from [`Self::reconcile`]: `task-1756` measured what a nested pump inside the
+    /// pass does. On macOS WebKit answers on a later turn of the run loop and nothing waits for it, because
+    /// `wry`'s wait runs the run loop by hand, and a redraw that arrives during it reaches `winit` while it is
+    /// still handling this frame: `winit` panics and the process aborts. An answer is taken whether or not
+    /// there is still a view, so the read asked for just before the last view goes is still written down.
     fn keep_the_session(&mut self, now_or_never: bool) {
         let Some(session) = &self.session else { return };
-        if !self.native.has_view() {
-            return;
+        if self.native.has_view() {
+            let now = Instant::now();
+            if now_or_never || self.cookies_due.is_none_or(|due| now >= due) {
+                self.cookies_due = Some(now + COOKIES_EVERY);
+                self.native.ask_for_session_cookies();
+            }
         }
-        let now = Instant::now();
-        if !now_or_never && self.cookies_due.is_some_and(|due| now < due) {
-            return;
-        }
-        self.cookies_due = Some(now + COOKIES_EVERY);
-        let Some(cookies) = self.native.session_cookies() else { return };
+        let Some(cookies) = self.native.take_session_cookies() else { return };
         if self.cookies_written.as_ref() == Some(&cookies) {
             return;
         }
@@ -1863,6 +1867,16 @@ mod native {
         zoom: Arc<AtomicU64>,
         /// The `User-Agent` a view is made with, or `None` for the engine's own.
         user_agent: Option<String>,
+        /// The session cookies read by [`Self::ask_for_session_cookies`], until they are taken.
+        #[cfg(windows)]
+        answered: Option<Vec<KeptCookie>>,
+        /// The address a new view goes to once WebKit has stored the session cookies it was given.
+        /// Behind a lock because [`Self::navigate`] takes `&self` and a newer address replaces it.
+        #[cfg(target_os = "macos")]
+        first_page: std::sync::Mutex<Option<cookies::FirstPage>>,
+        /// The read of the session cookies WebKit answers on a later turn of the run loop.
+        #[cfg(target_os = "macos")]
+        reading: cookies::Reading,
     }
 
     impl NativeHost {
@@ -1874,6 +1888,12 @@ mod native {
                 parent: None,
                 zoom: Arc::new(AtomicU64::new(1f64.to_bits())),
                 user_agent: None,
+                #[cfg(windows)]
+                answered: None,
+                #[cfg(target_os = "macos")]
+                first_page: std::sync::Mutex::new(None),
+                #[cfg(target_os = "macos")]
+                reading: cookies::Reading::default(),
             }
         }
 
@@ -1895,29 +1915,48 @@ mod native {
                 .map_err(|problem| format!("The page could not be asked: {problem}"))
         }
 
-        /// The cookies with no expiry the engine holds now, or `None` when it could not be asked.
+        /// Ask the engine for the cookies with no expiry it holds now. The answer is
+        /// [`Self::take_session_cookies`].
         ///
-        /// **Waits on the engine with a nested message pump**, so it is called from before the egui pass
-        /// and nowhere else. See `BrowserHost::keep_the_session`.
-        pub fn session_cookies(&self) -> Option<Vec<KeptCookie>> {
-            let view = self.view.as_ref()?;
-            let cookies = view.webview.cookies().ok()?;
-            let mut kept: Vec<KeptCookie> = cookies
-                .iter()
-                .filter(|cookie| cookie.expires_datetime().is_none())
-                .map(|cookie| KeptCookie {
-                    name: cookie.name().to_owned(),
-                    value: cookie.value().to_owned(),
-                    domain: cookie.domain().unwrap_or_default().to_owned(),
-                    path: cookie.path().unwrap_or("/").to_owned(),
-                    secure: cookie.secure().unwrap_or(false),
-                    http_only: cookie.http_only().unwrap_or(false),
-                    same_site: cookie.same_site().map(|same| same.to_string()).unwrap_or_default(),
-                })
-                .filter(|cookie| !cookie.name.is_empty() && !cookie.domain.is_empty())
-                .collect();
-            kept.sort_by(|a, b| (&a.domain, &a.path, &a.name).cmp(&(&b.domain, &b.path, &b.name)));
-            Some(kept)
+        /// **On Windows this waits on the engine with a nested message pump**, so it is called from before
+        /// the egui pass and nowhere else. See `BrowserHost::keep_the_session`.
+        #[cfg(windows)]
+        pub fn ask_for_session_cookies(&mut self) {
+            let Some(view) = self.view.as_ref() else { return };
+            let Ok(cookies) = view.webview.cookies() else { return };
+            self.answered = Some(session_only(
+                cookies.iter().filter(|cookie| cookie.expires_datetime().is_none()).map(|cookie| {
+                    KeptCookie {
+                        name: cookie.name().to_owned(),
+                        value: cookie.value().to_owned(),
+                        domain: cookie.domain().unwrap_or_default().to_owned(),
+                        path: cookie.path().unwrap_or("/").to_owned(),
+                        secure: cookie.secure().unwrap_or(false),
+                        http_only: cookie.http_only().unwrap_or(false),
+                        same_site: cookie
+                            .same_site()
+                            .map(|same| same.to_string())
+                            .unwrap_or_default(),
+                    }
+                }),
+            ));
+        }
+
+        /// Ask WebKit for the cookies with no expiry it holds now. WebKit answers on a later turn of the
+        /// run loop and nothing waits for it. See [`cookies`].
+        #[cfg(target_os = "macos")]
+        pub fn ask_for_session_cookies(&mut self) {
+            if let Some(view) = self.view.as_ref() {
+                self.reading.ask(&view.webview);
+            }
+        }
+
+        /// The cookies asked for by [`Self::ask_for_session_cookies`], once, when the engine has answered.
+        pub fn take_session_cookies(&mut self) -> Option<Vec<KeptCookie>> {
+            #[cfg(windows)]
+            return self.answered.take();
+            #[cfg(target_os = "macos")]
+            return self.reading.take();
         }
 
         /// Whether the native view exists.
@@ -1958,6 +1997,8 @@ mod native {
                 give_the_focus_back(view);
             }
             self.view = None;
+            #[cfg(target_os = "macos")]
+            cookies::replace(&self.first_page, None);
         }
 
         /// Take the view off the screen and lower its memory target, keeping it ready.
@@ -1979,12 +2020,18 @@ mod native {
             } else if request.showing.load(Ordering::Relaxed) != id {
                 // The tab that is showing changed, so the one view follows it to that tab's address.
                 request.showing.store(id, Ordering::Relaxed);
+                #[cfg(target_os = "macos")]
+                cookies::replace(&self.first_page, None);
                 if let Some(view) = &mut self.view {
                     let _ = view.webview.load_url(&super::engine_url(request.tab.current_url()));
                     // The zoom belongs to the tab, so what was sent for the last one says nothing about
                     // this one and the next placement has to be believed.
                     view.zoom = None;
                 }
+            }
+            #[cfg(target_os = "macos")]
+            if let Some(view) = &self.view {
+                cookies::load_the_first_page_when_due(&self.first_page, &view.webview);
             }
             if let Some(view) = &mut self.view {
                 place(view, request.placement, request.occluders);
@@ -2067,6 +2114,7 @@ mod native {
                 })
                 .build_as_child(parent)
                 .map_err(|problem| format!("Unluminous could not start the browser: {problem}"))?;
+            #[cfg(windows)]
             for cookie in request.cookies {
                 let _ = webview.set_cookie(&engine_cookie(cookie));
             }
@@ -2083,7 +2131,17 @@ mod native {
             // way in there. See the design, §3.2.
             #[cfg(not(windows))]
             let _ = (&request.menu, &self.zoom);
+            #[cfg(windows)]
             let _ = webview.load_url(&first);
+            // **On macOS the first page waits for WebKit to store the cookies**, which it says on a later turn
+            // of the run loop. `settle` sends it when every cookie is stored, or after
+            // [`cookies::FIRST_PAGE_WAITS`] if WebKit never says.
+            #[cfg(target_os = "macos")]
+            {
+                self.reading.repaint = Some(request.repaint.clone());
+                let page = cookies::give(&webview, request.cookies, first, request.repaint.clone());
+                cookies::replace(&self.first_page, Some(page));
+            }
             self.view = Some(NativeView {
                 webview,
                 bounds: None,
@@ -2099,6 +2157,8 @@ mod native {
         pub fn navigate(&self, url: &str) -> Result<(), String> {
             let view =
                 self.view.as_ref().ok_or_else(|| "The browser tab is not ready yet.".to_owned())?;
+            #[cfg(target_os = "macos")]
+            cookies::replace(&self.first_page, None);
             view.webview
                 .load_url(&super::engine_url(url))
                 .map_err(|problem| format!("The browser could not navigate: {problem}"))
@@ -2228,6 +2288,7 @@ mod native {
     }
 
     /// A kept cookie in the form the engine takes, with no expiry, which is what makes it a session cookie.
+    #[cfg(windows)]
     fn engine_cookie(kept: &KeptCookie) -> wry::cookie::Cookie<'static> {
         let mut cookie = wry::cookie::Cookie::new(kept.name.clone(), kept.value.clone());
         cookie.set_domain(kept.domain.clone());
@@ -2242,6 +2303,213 @@ mod native {
         };
         cookie.set_same_site(same_site);
         cookie
+    }
+
+    /// The session cookies worth keeping, in the order the file is written in, so two reads of the same
+    /// cookies compare equal.
+    fn session_only(cookies: impl Iterator<Item = KeptCookie>) -> Vec<KeptCookie> {
+        let mut kept: Vec<KeptCookie> =
+            cookies.filter(|cookie| !cookie.name.is_empty() && !cookie.domain.is_empty()).collect();
+        kept.sort_by(|a, b| (&a.domain, &a.path, &a.name).cmp(&(&b.domain, &b.path, &b.name)));
+        kept
+    }
+
+    /// The session cookies on macOS, given to WebKit's cookie store and read back from it without waiting.
+    ///
+    /// **`wry`'s `set_cookie` and `cookies` must not be called on macOS.** Each one waits up to a second for
+    /// WebKit's completion block by running the main run loop by hand (`wait_for_blocking_operation`). They
+    /// are called from `BrowserHost::reconcile`, which runs inside `winit`'s handling of a redraw, and a
+    /// redraw that arrives while the run loop is being run by hand reaches `winit` a second time. `winit`
+    /// answers that with "tried to handle event while another event is currently being handled", inside an
+    /// Objective C block where a panic cannot unwind, so the process aborts. That is the crash 0.84.4 had on
+    /// every start with fifteen cookies in `browser/session-cookies`, and 0.78.0 once before it.
+    ///
+    /// So the store is reached directly, the completion blocks only count and ask for a frame, and nothing
+    /// here runs the run loop. A completion block must never panic, for the same reason.
+    #[cfg(target_os = "macos")]
+    mod cookies {
+        use std::ptr::NonNull;
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        use std::sync::{Arc, Mutex};
+        use std::time::{Duration, Instant};
+
+        use block2::RcBlock;
+        use objc2::rc::Retained;
+        use objc2::runtime::AnyObject;
+        use objc2_foundation::{
+            ns_string, NSArray, NSHTTPCookie, NSHTTPCookieDomain, NSHTTPCookieName,
+            NSHTTPCookiePath, NSHTTPCookiePropertyKey, NSHTTPCookieSecure, NSHTTPCookieValue,
+            NSMutableDictionary, NSString,
+        };
+        use objc2_web_kit::WKHTTPCookieStore;
+        use wry::{WebView, WebViewExtMacOS as _};
+
+        use crate::services::browser_session::KeptCookie;
+
+        /// How long a new view's first page waits for WebKit to say the cookies are stored. Storing fifteen
+        /// takes a few milliseconds; a WebKit that never answers costs a page that loads signed out.
+        pub const FIRST_PAGE_WAITS: Duration = Duration::from_secs(2);
+
+        /// The address a new view goes to, and how many of its cookies WebKit has not yet stored.
+        pub struct FirstPage {
+            url: String,
+            left: Arc<AtomicUsize>,
+            since: Instant,
+        }
+
+        /// Set or clear the address a new view is waiting to go to.
+        pub fn replace(slot: &Mutex<Option<FirstPage>>, page: Option<FirstPage>) {
+            if let Ok(mut slot) = slot.lock() {
+                *slot = page;
+            }
+        }
+
+        /// Send the view to its first page once every cookie is stored, or once it has waited long enough.
+        pub fn load_the_first_page_when_due(slot: &Mutex<Option<FirstPage>>, webview: &WebView) {
+            let Ok(mut slot) = slot.lock() else { return };
+            let due = slot.as_ref().is_some_and(|page| {
+                page.left.load(Ordering::Acquire) == 0 || page.since.elapsed() >= FIRST_PAGE_WAITS
+            });
+            if due {
+                if let Some(page) = slot.take() {
+                    let _ = webview.load_url(&page.url);
+                }
+            }
+        }
+
+        /// The cookie store of the data store the view was built with, which is the one `wry` would use.
+        fn store(webview: &WebView) -> Retained<WKHTTPCookieStore> {
+            let view = webview.webview();
+            // SAFETY: called on the main thread, where the view was built and is used.
+            unsafe { view.configuration().websiteDataStore().httpCookieStore() }
+        }
+
+        /// Give WebKit every kept cookie, and answer the address to go to once they are stored.
+        pub fn give(
+            webview: &WebView,
+            cookies: &[KeptCookie],
+            url: String,
+            repaint: egui::Context,
+        ) -> FirstPage {
+            let left = Arc::new(AtomicUsize::new(cookies.len()));
+            let store = store(webview);
+            for kept in cookies {
+                let Some(cookie) = engine_cookie(kept) else {
+                    left.fetch_sub(1, Ordering::AcqRel);
+                    continue;
+                };
+                let counted = left.clone();
+                let repaint = repaint.clone();
+                let stored = RcBlock::new(move || {
+                    counted.fetch_sub(1, Ordering::AcqRel);
+                    repaint.request_repaint();
+                });
+                // SAFETY: the cookie and the block are retained by the call for as long as WebKit needs them.
+                unsafe { store.setCookie_completionHandler(&cookie, Some(&stored)) };
+            }
+            FirstPage { url, left, since: Instant::now() }
+        }
+
+        /// A read of the cookies WebKit holds, asked for on one frame and answered on a later one.
+        #[derive(Default)]
+        pub struct Reading {
+            asking: Arc<AtomicBool>,
+            answer: Arc<Mutex<Option<Vec<KeptCookie>>>>,
+            /// Asked for a frame when the answer arrives, so it is written down without waiting for one.
+            pub repaint: Option<egui::Context>,
+        }
+
+        impl Reading {
+            /// Ask for the cookies, unless a read is still unanswered.
+            pub fn ask(&self, webview: &WebView) {
+                if self.asking.swap(true, Ordering::AcqRel) {
+                    return;
+                }
+                let asking = self.asking.clone();
+                let answer = self.answer.clone();
+                let repaint = self.repaint.clone();
+                let answered = RcBlock::new(move |cookies: NonNull<NSArray<NSHTTPCookie>>| {
+                    // SAFETY: WebKit hands the block a valid array for the length of the call.
+                    let cookies = unsafe { cookies.as_ref() };
+                    let kept = super::session_only(
+                        cookies.to_vec().iter().filter_map(|cookie| kept_cookie(cookie)),
+                    );
+                    if let Ok(mut slot) = answer.lock() {
+                        *slot = Some(kept);
+                    }
+                    asking.store(false, Ordering::Release);
+                    if let Some(repaint) = &repaint {
+                        repaint.request_repaint();
+                    }
+                });
+                // SAFETY: called on the main thread; the block is retained by the call.
+                unsafe { store(webview).getAllCookies(&answered) };
+            }
+
+            /// The answer to the last read, once.
+            pub fn take(&self) -> Option<Vec<KeptCookie>> {
+                self.answer.lock().ok()?.take()
+            }
+        }
+
+        /// A cookie WebKit holds, if it is a session cookie, which is one with no expiry.
+        fn kept_cookie(cookie: &NSHTTPCookie) -> Option<KeptCookie> {
+            if cookie.expiresDate().is_some() {
+                return None;
+            }
+            // Compared as text, as `wry` does, because of https://github.com/tauri-apps/wry/issues/1616.
+            let policy =
+                cookie.sameSitePolicy().map(|policy| policy.to_string().to_ascii_lowercase());
+            let same_site = match policy.as_deref() {
+                Some("lax") => "Lax",
+                Some("strict") => "Strict",
+                _ => "None",
+            };
+            Some(KeptCookie {
+                name: cookie.name().to_string(),
+                value: cookie.value().to_string(),
+                domain: cookie.domain().to_string(),
+                path: cookie.path().to_string(),
+                secure: cookie.isSecure(),
+                http_only: cookie.isHTTPOnly(),
+                same_site: same_site.to_owned(),
+            })
+        }
+
+        /// A kept cookie as WebKit takes it, with no expiry, which is what makes it a session cookie. These
+        /// are the properties `wry`'s own conversion sets.
+        fn engine_cookie(kept: &KeptCookie) -> Option<Retained<NSHTTPCookie>> {
+            let name = NSString::from_str(&kept.name);
+            let value = NSString::from_str(&kept.value);
+            let domain = NSString::from_str(&kept.domain);
+            let path = NSString::from_str(&kept.path);
+            // SAFETY: the keys are the constant strings Foundation defines for a cookie's properties, and
+            // every value is a string, which is what `cookieWithProperties` reads each of them as.
+            unsafe {
+                let properties: Retained<NSMutableDictionary<NSHTTPCookiePropertyKey, AnyObject>> =
+                    NSMutableDictionary::from_slices(
+                        &[
+                            NSHTTPCookieName,
+                            NSHTTPCookieValue,
+                            NSHTTPCookieDomain,
+                            NSHTTPCookiePath,
+                        ],
+                        &[&*name, &*value, &*domain, &*path],
+                    );
+                if kept.secure {
+                    properties.insert(NSHTTPCookieSecure, ns_string!("TRUE"));
+                }
+                if kept.http_only {
+                    properties.insert(ns_string!("HttpOnly"), ns_string!("TRUE"));
+                }
+                match kept.same_site.to_ascii_lowercase().as_str() {
+                    "lax" => properties.insert(ns_string!("SameSite"), ns_string!("lax")),
+                    "strict" => properties.insert(ns_string!("SameSite"), ns_string!("strict")),
+                    _ => {}
+                }
+                NSHTTPCookie::cookieWithProperties(&properties)
+            }
+        }
     }
 
     /// `Select Element` and `Show Whole Page` on WebView2's own right click menu. `task-2203`.
@@ -2807,7 +3075,9 @@ mod native {
             Err(UNSUPPORTED.to_owned())
         }
         /// There is no engine to hold any cookies.
-        pub fn session_cookies(&self) -> Option<Vec<KeptCookie>> {
+        pub fn ask_for_session_cookies(&mut self) {}
+        /// And so no answer to take.
+        pub fn take_session_cookies(&mut self) -> Option<Vec<KeptCookie>> {
             None
         }
         /// And zooming, which is the engine's own number.

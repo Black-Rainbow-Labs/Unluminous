@@ -287,11 +287,15 @@ signed_properly=0
 # nested binary as something that must carry its own signature: sealing it as though it were a
 # resource is what makes `codesign --verify --deep --strict` fail on a bundle that looked signed.
 # So it is signed first, and then the bundle round it.
+#
+# Both are signed with `Unluminous.entitlements`, which lets them load the ONNX Runtime the code index
+# embeds with. The file says why; without it a Developer ID build cannot load that library at all.
+entitlements="$here/Unluminous.entitlements"
 sign_the_cli() {
     if [ "$1" = "-" ]; then
-        codesign --force --options runtime --sign - "$app/Contents/MacOS/unluminous-cli"
+        codesign --force --options runtime --entitlements "$entitlements" --sign - "$app/Contents/MacOS/unluminous-cli"
     else
-        codesign --force --options runtime --timestamp --sign "$1" "$app/Contents/MacOS/unluminous-cli"
+        codesign --force --options runtime --entitlements "$entitlements" --timestamp --sign "$1" "$app/Contents/MacOS/unluminous-cli"
     fi
 }
 if [ "$identity" = "-" ]; then
@@ -300,7 +304,7 @@ if [ "$identity" = "-" ]; then
     # find that out rather than the first signed build.
     echo "  ad-hoc, with the hardened runtime (set CODESIGN_IDENTITY for a Developer ID signature)"
     sign_the_cli -
-    codesign --force --options runtime --sign - "$app"
+    codesign --force --options runtime --entitlements "$entitlements" --sign - "$app"
 else
     if ! security find-identity -v -p codesigning | grep -qF "$identity"; then
         echo "CODESIGN_IDENTITY is set to \"$identity\", and no identity of that name is in the keychain." >&2
@@ -310,7 +314,7 @@ else
     fi
     echo "  $identity"
     sign_the_cli "$identity"
-    codesign --force --options runtime --timestamp --sign "$identity" "$app"
+    codesign --force --options runtime --entitlements "$entitlements" --timestamp --sign "$identity" "$app"
     signed_properly=1
 fi
 codesign --verify --deep --strict --verbose=1 "$app"

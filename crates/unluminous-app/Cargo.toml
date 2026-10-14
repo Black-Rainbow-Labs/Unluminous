@@ -74,7 +74,8 @@ libc.workspace = true
 # the process name to `Unluminous` is what makes the menu bar read `Unluminous  File  Edit  View` rather than starting
 # with a lower case q. Nothing else here needs Objective C.
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2-foundation.workspace = true
+# `NSArray`, `NSDate`, `NSDictionary` and `NSHTTPCookie` are for a browser node's session cookies, see below.
+objc2-foundation = { workspace = true, features = ["NSArray", "NSDate", "NSDictionary", "NSHTTPCookie"] }
 objc2.workspace = true
 wry.workspace = true
 # A browser node's page is cropped to its part of the canvas with a mask on the web view's own layer,
@@ -83,6 +84,13 @@ objc2-app-kit = { version = "0.3", default-features = false, features = ["std", 
 objc2-quartz-core = { version = "0.3", default-features = false, features = ["std", "CALayer", "objc2-core-graphics", "objc2-core-foundation"] }
 objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGColor"] }
 objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes"] }
+# A browser node's session cookies are given to and read from WebKit's cookie store directly, with a
+# completion block and no waiting. `wry`'s `set_cookie` and `cookies` wait by running the main run loop
+# by hand, and a redraw that comes in while they wait reaches `winit` while it is still handling the
+# frame that asked, which `winit` answers with a panic and the process aborts. All three are already
+# in the build through `wry`.
+objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "block2", "objc2-app-kit", "WKWebView", "WKWebViewConfiguration", "WKWebsiteDataStore", "WKHTTPCookieStore"] }
+block2 = { version = "0.6", default-features = false, features = ["std"] }
 # Posting a block to the main dispatch queue, which is how a run loop that has stopped answering
 # repaint requests is woken. See `services/wake.rs`.
 dispatch2.workspace = true

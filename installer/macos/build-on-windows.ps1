@@ -476,11 +476,15 @@ function Invoke-BundleSigning {
     #>
     param([object] $Session)
 
+    # Both are signed with `Unluminous.entitlements`, which lets them load the ONNX Runtime the code index
+    # embeds with. The file says why; `build.sh` passes the same file.
+    $entitlements = Join-Path $PSScriptRoot 'Unluminous.entitlements'
     Invoke-Rcodesign -Quiet -Arguments (@('sign') + $Session.Arguments + @(
             '--binary-identifier', 'unluminous-cli', '--code-signature-flags', 'runtime',
+            '--entitlements-xml-file', $entitlements,
             (Join-Path $app 'Contents/MacOS/unluminous-cli')))
     Invoke-Rcodesign -Quiet -Arguments (@('sign') + $Session.Arguments + @(
-            '--code-signature-flags', 'runtime', $app))
+            '--code-signature-flags', 'runtime', '--entitlements-xml-file', $entitlements, $app))
 
     $info = & $rcodesign print-signature-info $app 2>&1
     if ($LASTEXITCODE -ne 0) { throw 'the signed bundle has no readable signature' }
