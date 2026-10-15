@@ -10,20 +10,34 @@ commands with an agent's tool-calling machinery in front of it.
 
 ## The quickest way in
 
-`Unluminous -> Edit -> Settings -> Tools -> MCP`, and press **Install for Claude Code** or **Install for
-Codex**. Restart the agent. In Claude Code, `/mcp` will list Unluminous.
-
-The same thing from a terminal:
+The installers already did it. The Windows installer runs `unluminous-cli setup`, and on macOS the
+window runs it the first time it starts. `setup` connects every coding agent it finds on the machine,
+Claude Code, Codex and OpenCode, and leaves alone an entry that already points at another Unluminous.
+Run it yourself at any time; running it again changes nothing:
 
 ```sh
-unluminous-cli mcp install both
+unluminous-cli setup                 # connect every agent found
+unluminous-cli setup --check --json  # say what is connected, and change nothing
+unluminous-cli setup --remove        # take Unluminous out of every agent again
+```
+
+Restart an agent after it is connected. In Claude Code, `/mcp` will list Unluminous; `claude mcp list`,
+`codex mcp list` and `opencode mcp list` each say whether it connected.
+
+One agent at a time: `Unluminous -> Edit -> Settings -> Tools -> MCP`, and press **Install for Claude
+Code**, **Install for Codex** or **Install for OpenCode**. The same thing from a terminal:
+
+```sh
+unluminous-cli mcp install all
 unluminous-cli mcp install claude --scope project   # this folder only, in .mcp.json
 unluminous-cli mcp install codex --remove           # take it out again
 ```
 
 It writes through the agent's own command — `claude mcp add-json`, `codex mcp add` — when that is on
-the path, and edits the file directly when it is not. The direct edit takes a copy first, keeps
-everything else in the file, and leaves the comments in Codex's TOML alone.
+the path, and edits the file directly when it is not. OpenCode is always the file
+(`~/.config/opencode/opencode.json`, its `mcp` block), because `opencode mcp add` only asks its
+questions interactively. The direct edit takes a copy first, keeps everything else in the file in the
+order it was in, and leaves the comments in Codex's TOML alone.
 
 `codex mcp add` rewrites the whole of `config.toml` as it goes: the keys inside a table come back in
 a different order, arrays are reflowed and `120` is written back as `120.0`. That is Codex doing what

@@ -61,7 +61,13 @@ impl Default for Endpoints {
 impl Endpoints {
     /// The endpoints in the settings folder `folder`. See [`load`].
     pub fn in_folder(folder: &Path) -> Self {
-        let (providers, problems) = load(folder);
+        Self::in_folder_with(folder, &|_| false)
+    }
+
+    /// The same, with `has_key` saying which API keys are set, for a list made for the first time. See
+    /// [`load_with`].
+    pub fn in_folder_with(folder: &Path, has_key: &dyn Fn(&str) -> bool) -> Self {
+        let (providers, problems) = load_with(folder, has_key);
         Self { providers, problems, ..Self::default() }
     }
 
@@ -72,11 +78,18 @@ impl Endpoints {
     }
 }
 
+/// The endpoints in `folder`, and a sentence for each row that could not be read. See [`load_with`].
+pub fn load(folder: &Path) -> (Vec<Provider>, Vec<String>) {
+    load_with(folder, &|_| false)
+}
+
 /// The endpoints in `folder`, and a sentence for each row that could not be read.
 ///
 /// `folder` is the settings folder. With no file there, the list is what Agent-Chat's own settings named,
-/// and it is written out so the next start reads it from here.
-pub fn load(folder: &Path) -> (Vec<Provider>, Vec<String>) {
+/// plus an API endpoint for each key `has_key` says is set ([`api_endpoints`]), and it is written out so the
+/// next start reads it from here. `has_key` is asked only then, so a window whose list already exists never
+/// waits for the login shell to answer it.
+pub fn load_with(folder: &Path, has_key: &dyn Fn(&str) -> bool) -> (Vec<Provider>, Vec<String>) {
     if let Ok(text) = std::fs::read_to_string(folder.join(FILE)) {
         let (rows, refused) = read_rows(&Values::parse(&text));
         return (rows_or_defaults(rows), refused);
@@ -91,8 +104,46 @@ pub fn load(folder: &Path) -> (Vec<Provider>, Vec<String>) {
             rows.push(shipped);
         }
     }
+    for api in api_endpoints() {
+        if has_key(&api.key_env) && !rows.iter().any(|row| row.name == api.name) {
+            rows.push(api);
+        }
+    }
     let _ = write(folder, &rows);
     (rows, refused)
+}
+
+/// The two hosted APIs a fresh list offers when their key is set (`task-2278`): Anthropic's Messages API
+/// and OpenAI's Responses API. Each names the variable its key is read from and never the key, which is the
+/// rule this file keeps. Added once, when the list is first made: a list that already exists is somebody's,
+/// and a row they took out stays out. `Add endpoint` makes either one later.
+pub fn api_endpoints() -> Vec<Provider> {
+    let api = |name: &str, wire: Wire, url: &str, model: &str, key_env: &str| Provider {
+        name: name.to_owned(),
+        wire,
+        command: String::new(),
+        url: url.to_owned(),
+        model: model.to_owned(),
+        key_env: key_env.to_owned(),
+        key_entry: String::new(),
+        max_tokens: unluminous_chat::provider::DEFAULT_MAX_TOKENS,
+    };
+    vec![
+        api(
+            "anthropic",
+            Wire::Anthropic,
+            "https://api.anthropic.com/v1/messages",
+            "claude-sonnet-5-5",
+            "ANTHROPIC_API_KEY",
+        ),
+        api(
+            "openai",
+            Wire::Responses,
+            "https://api.openai.com/v1/responses",
+            "gpt-5",
+            "OPENAI_API_KEY",
+        ),
+    ]
 }
 
 /// Every row a file holds, or the endpoints Unluminous ships when it holds none.
@@ -347,6 +398,26 @@ mod tests {
         // Read from the file the second time, and the same list comes back.
         let (again, _) = load(&folder);
         assert_eq!(again, rows);
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// `task-2278`. A key that is set adds its API to a list made for the first time, the row names the
+    /// variable and never a key, and a list that already exists is not changed by a key set later.
+    #[test]
+    fn a_key_that_is_set_adds_its_api_to_a_new_list_and_never_to_an_existing_one() {
+        let folder = a_folder("api-keys");
+        let (rows, _) = load_with(&folder, &|name| name == "ANTHROPIC_API_KEY");
+        let names: Vec<&str> = rows.iter().map(|row| row.name.as_str()).collect();
+        assert_eq!(names, ["claude", "codex", "local", "opencode", "anthropic"]);
+        let anthropic = rows.last().expect("a row");
+        assert_eq!(anthropic.wire, Wire::Anthropic);
+        assert_eq!(anthropic.key_env, "ANTHROPIC_API_KEY");
+        assert!(anthropic.key_entry.is_empty());
+        let written = std::fs::read_to_string(folder.join(FILE)).expect("written");
+        assert!(written.contains("key-env = ANTHROPIC_API_KEY"), "{written}");
+
+        let (again, _) = load_with(&folder, &|_| true);
+        assert_eq!(again, rows, "a list that exists is somebody's and is read as it is");
         let _ = std::fs::remove_dir_all(&folder);
     }
 

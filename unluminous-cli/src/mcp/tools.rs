@@ -184,7 +184,7 @@ impl Areas {
     }
 }
 
-/// Two commands are held back, and each says why here rather than in the generator, so a test can
+/// Three commands are held back, and each says why here rather than in the generator, so a test can
 /// assert the list is exactly this long.
 ///
 /// **`mcp serve`** starts an MCP server. Calling it from inside one would either hang the tool call
@@ -198,10 +198,14 @@ impl Areas {
 /// the reason `serve` is held back, said about a file instead of a port. `mcp config` is offered and
 /// answers with exactly what `install` would write, so an agent can still say what to paste.
 ///
+/// **`setup`** writes `mcp install`'s entries into every agent on the machine at once and can put a
+/// line in a login profile (`task-2278`), so it is held back for the same reason. An agent is told to
+/// run it in a terminal, where the person can see what it changed.
+///
 /// Everything else is offered, including `quit` and `launch`, which really are things an agent may
 /// reasonably want.
 pub fn offered(command: &Command) -> bool {
-    !matches!(command.wire().as_str(), "mcp.serve" | "mcp.install")
+    !matches!(command.wire().as_str(), "mcp.serve" | "mcp.install" | "setup")
 }
 
 /// Every command that is offered as a tool.
@@ -970,13 +974,13 @@ mod tests {
         given
     }
 
-    /// Two commands are held back and the list is exactly those two.
+    /// Three commands are held back and the list is exactly those three.
     ///
-    /// `task-1984` L4 added the second. An exclusion nobody argued about is how "everything is
+    /// `task-1984` L4 added the second and `task-2278` the third. An exclusion nobody argued about is how "everything is
     /// reachable" quietly stops being true, so the list is asserted rather than trusted, and the
     /// reason for each is beside `offered` itself.
     #[test]
-    fn exactly_two_commands_are_held_back_and_each_says_why() {
+    fn exactly_three_commands_are_held_back_and_each_says_why() {
         let held: Vec<String> = catalogue::COMMANDS
             .iter()
             .filter(|command| !offered(command))
@@ -984,7 +988,7 @@ mod tests {
             .collect();
         assert_eq!(
             held,
-            vec!["mcp serve".to_owned(), "mcp install".to_owned()],
+            vec!["setup".to_owned(), "mcp serve".to_owned(), "mcp install".to_owned()],
             "the exclusion list has changed"
         );
     }

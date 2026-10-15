@@ -49,6 +49,7 @@ pub mod base64;
 pub mod driver;
 pub mod http;
 pub mod install;
+pub mod ordered_json;
 pub mod server;
 pub mod stdio;
 pub mod tools;

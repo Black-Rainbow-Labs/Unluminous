@@ -48,6 +48,7 @@ pub struct McpState {
     /// Whether each client already has Unluminous, read when the page opens and after every click.
     pub claude_installed: bool,
     pub codex_installed: bool,
+    pub opencode_installed: bool,
     /// Whether it has been read at all yet.
     pub read: bool,
     /// What the last button did, for the line under it.
@@ -62,6 +63,7 @@ impl McpState {
         let wanted = wanted_from(settings, program);
         self.claude_installed = install::installed(Client::Claude, &wanted).is_some();
         self.codex_installed = install::installed(Client::Codex, &wanted).is_some();
+        self.opencode_installed = install::installed(Client::OpenCode, &wanted).is_some();
         self.read = true;
         if self.port.is_empty() {
             self.port = settings.mcp_port.to_string();
@@ -100,7 +102,7 @@ pub fn show(
     outcome
 }
 
-/// The two buttons, and what the last one did.
+/// One button an agent, and what the last one did.
 fn install_card(
     ui: &mut egui::Ui,
     column: &mut Column,
@@ -123,9 +125,11 @@ fn install_card(
         ),
         |card| {
             card.row("", Some(&help), |row| {
-                for (client, installed) in
-                    [(Client::Claude, state.claude_installed), (Client::Codex, state.codex_installed)]
-                {
+                for (client, installed) in [
+                    (Client::Claude, state.claude_installed),
+                    (Client::Codex, state.codex_installed),
+                    (Client::OpenCode, state.opencode_installed),
+                ] {
                     let name = match installed {
                         true => format!("Remove from {}", client.title()),
                         false => format!("Install for {}", client.title()),

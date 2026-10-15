@@ -350,7 +350,7 @@ if ($Install) {
         '/SUPPRESSMSGBOXES',
         '/NORESTART',
         '/SP-',
-        '/TASKS=desktopicon,addtopath,contextfile,contextfolder,associate'
+        '/TASKS=desktopicon,addtopath,contextfile,contextfolder,associate,connectagents'
     )
     if ($AllUsers) { $arguments += '/ALLUSERS' } else { $arguments += '/CURRENTUSER' }
 

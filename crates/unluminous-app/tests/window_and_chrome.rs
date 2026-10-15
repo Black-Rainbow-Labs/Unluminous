@@ -1460,9 +1460,13 @@ fn the_mcp_page_holds_the_install_buttons_the_server_and_the_configuration_to_co
     // `task-1679` asks for all four, and this is where a person finds each of them.
     harness.get_by_label("Install for Claude Code");
     harness.get_by_label("Install for Codex");
+    // `task-2278`: OpenCode is the third agent.
+    harness.get_by_label("Install for OpenCode");
     harness.get_by_label("MCP port");
     harness.get_by_label("MCP tool shape");
     harness.get_by_label("Claude Code configuration");
+    // The Install card with its three buttons, which the picture at the end is scrolled past.
+    harness.snapshot(shot("settings_mcp_install"));
     // One block at a time, and the other client's is a click away. The Configuration card is at the bottom of
     // the page, below what the dialog shows at first, so the page is scrolled to it the way a person would.
     harness.state_mut().settings_window.scroll = 10_000.0;
@@ -1470,6 +1474,9 @@ fn the_mcp_page_holds_the_install_buttons_the_server_and_the_configuration_to_co
     harness.get_by_label("Codex").click();
     steady(&mut harness);
     harness.get_by_label("Codex configuration");
+    harness.get_by_label("OpenCode").click();
+    steady(&mut harness);
+    harness.get_by_label("OpenCode configuration");
     harness.get_by_label("Claude Code").click();
     steady(&mut harness);
     harness.get_by_label("Copy");

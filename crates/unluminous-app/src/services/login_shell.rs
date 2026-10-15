@@ -148,6 +148,12 @@ fn begin_a_read(retrying: bool) {
     });
 }
 
+/// Whether the released binary asked for the login shell to be read, which is what tells the window it may
+/// read the person's environment at all. A test's window never asks (`task-2278`).
+pub fn was_started() -> bool {
+    STARTED.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 /// Why the last read of the login shell failed, or `None` when it has not failed.
 pub fn problem() -> Option<String> {
     match &*LOGIN.lock().unwrap_or_else(std::sync::PoisonError::into_inner) {

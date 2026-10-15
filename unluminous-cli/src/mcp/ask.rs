@@ -84,12 +84,18 @@ pub fn wanted_from(arguments: &Map<String, Value>) -> Result<Wanted, String> {
     Ok(wanted)
 }
 
-/// Which agents a caller named, or both of them.
+/// Which agents a caller named, or all of them.
+///
+/// `both` keeps meaning Claude Code and Codex, which is what it meant before OpenCode was added
+/// (`task-2278`), so a script written against it does the same thing it did.
 pub fn clients_from(named: Option<&str>) -> Result<Vec<Client>, String> {
     match named.map(str::trim) {
-        None | Some("") | Some("both") | Some("all") => Ok(Client::ALL.to_vec()),
+        None | Some("") | Some("all") => Ok(Client::ALL.to_vec()),
+        Some("both") => Ok(vec![Client::Claude, Client::Codex]),
         Some(name) => Client::parse(name).map(|client| vec![client]).ok_or_else(|| {
-            format!("`{name}` is not a client Unluminous can write to. It is `claude`, `codex`, or `both`.")
+            format!(
+                "`{name}` is not a client Unluminous can write to. It is `claude`, `codex`, `opencode`, `both` or `all`."
+            )
         }),
     }
 }
@@ -123,12 +129,7 @@ pub fn configurations(clients: &[Client], wanted: &Wanted) -> Vec<Value> {
             json!({
                 "client": client.name(),
                 "title": client.title(),
-                "file": match client {
-                    Client::Claude => {
-                        super::install::claude_file(wanted).to_string_lossy().into_owned()
-                    }
-                    Client::Codex => super::install::codex_file().to_string_lossy().into_owned(),
-                },
+                "file": client.file(wanted).to_string_lossy().into_owned(),
                 "configuration": wanted.example(*client),
             })
         })

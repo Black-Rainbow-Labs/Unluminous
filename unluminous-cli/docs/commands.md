@@ -337,6 +337,31 @@ unluminous-cli launch . --timeout 40000
 
 Answered by the CLI itself; no Unluminous needs to be running.
 
+### setup
+
+```
+unluminous-cli setup [--check] [--remove] [--force] [--agents <list>] [--path] [--no-path] [--installer]
+```
+
+Finish setting Unluminous up on this machine: put `unluminous-cli` on the path, connect every coding agent found (Claude Code, Codex, OpenCode) to Unluminous's MCP server, say which API keys are set, and check that the server answers. The installers run it; running it again changes nothing. An entry an agent already has that points at another Unluminous is left alone. Restart an agent to see the tools it was given.
+
+- `--check` — Say what is and is not set up, and change nothing.
+- `--remove` — Take out every `unluminous` entry that starts this program, and the path entry `setup` made. Entries pointing at another program are left.
+- `--force` — Replace an agent's `unluminous` entry, or a link, that points at another program.
+- `--agents <list>` — Only these agents, separated by commas: `claude`, `codex`, `opencode`. All of them by default.
+- `--path` — Put `unluminous-cli` on the path even when this is a build rather than an installed copy.
+- `--no-path` — Leave the path alone.
+- `--installer` — Also write the report to `setup.log` in Unluminous's settings folder. The Windows installer passes it, because nothing reads the output of a program it runs hidden.
+
+```sh
+unluminous-cli setup
+unluminous-cli setup --check --json
+unluminous-cli setup --agents claude
+unluminous-cli setup --remove
+```
+
+Answered by the CLI itself; no Unluminous needs to be running.
+
 ### quit
 
 ```
@@ -4489,12 +4514,12 @@ unluminous-cli mcp status --json
 ### mcp install
 
 ```
-unluminous-cli mcp install <claude|codex|both> [--transport <stdio|http>] [--port <number>] [--scope <user|project>] [--name <name>] [--remove]
+unluminous-cli mcp install <claude|codex|opencode|both|all> [--transport <stdio|http>] [--port <number>] [--scope <user|project>] [--name <name>] [--remove]
 ```
 
 Write Unluminous's MCP server into an agent's own configuration, so it is there next time the agent starts.
 
-- `client` — `claude`, `codex`, or `both`.
+- `client` — `claude`, `codex`, `opencode`, `both` (Claude Code and Codex) or `all`.
 
 - `--transport <stdio|http>` — Which way the agent should talk to it. `stdio` by default, which needs no port.
 - `--port <number>` — The port to point at, for `--transport http`.
@@ -4503,7 +4528,8 @@ Write Unluminous's MCP server into an agent's own configuration, so it is there 
 - `--remove` — Take it out again rather than putting it in.
 
 ```sh
-unluminous-cli mcp install both
+unluminous-cli mcp install all
+unluminous-cli mcp install opencode
 unluminous-cli mcp install claude --scope project
 ```
 
@@ -4512,12 +4538,12 @@ Answered by the CLI itself; no Unluminous needs to be running.
 ### mcp config
 
 ```
-unluminous-cli mcp config [claude|codex] [--transport <stdio|http>] [--port <number>] [--name <name>]
+unluminous-cli mcp config [claude|codex|opencode] [--transport <stdio|http>] [--port <number>] [--name <name>]
 ```
 
-Print the configuration to paste into an agent that has no button of its own: the JSON an `mcpServers` block wants, and the TOML Codex wants.
+Print the configuration to paste into an agent that has no button of its own: the JSON an `mcpServers` block wants, the TOML Codex wants, and the `mcp` entry OpenCode wants.
 
-- `client` (optional) — `claude` or `codex`. Both when it is left out.
+- `client` (optional) — `claude`, `codex` or `opencode`. All of them when it is left out.
 
 - `--transport <stdio|http>` — Which way to describe. `stdio` by default.
 - `--port <number>` — The port to name, for `--transport http`.

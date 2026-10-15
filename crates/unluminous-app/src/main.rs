@@ -326,6 +326,10 @@ fn main() -> eframe::Result {
             app.index_on_disk();
             // And it may start rust-analyzer and tsserver, which a test's window does not.
             app.allow_language_servers();
+            // The first start on a Mac or a Linux machine finishes setting Unluminous up, which the
+            // Windows installer does on Windows: the command line tool on the path and the coding
+            // agents connected. A test never calls this. `task-2278`.
+            app.set_up_on_the_first_start();
             unluminous_app::services::frame_trace::mark("settings");
             // What was left open in this project last time. After the settings, because it opens files
             // and they have to be set in the font the settings name; before the file argument, so a file

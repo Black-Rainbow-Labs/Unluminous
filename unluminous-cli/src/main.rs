@@ -276,6 +276,7 @@ fn locally(command: &'static Command, typed: &Typed) -> i32 {
         }
         "mcp.serve" => serve(typed),
         "mcp.install" => install(typed),
+        "setup" => setup(typed),
         "mcp.config" => configuration(typed),
         "mcp.tools" => mcp_tools(typed),
         other => {
@@ -411,6 +412,74 @@ fn install(typed: &Typed) -> i32 {
     worst
 }
 
+/// Finish setting Unluminous up on this machine, or say what is set up (`task-2278`).
+///
+/// `unluminous_cli::setup` does the work and this only reads the flags and prints. The exit code is
+/// 1 when a step that was attempted failed; an agent that is not installed is not a failure.
+fn setup(typed: &Typed) -> i32 {
+    use unluminous_cli::setup::{Options, PathChoice};
+    let flag = |name: &str| typed.arguments.contains_key(name);
+    let agents = match typed.arguments.get("agents").and_then(Value::as_str) {
+        None => mcp::install::Client::ALL.to_vec(),
+        Some(named) => {
+            let mut agents = Vec::new();
+            for name in named.split(',').map(str::trim).filter(|name| !name.is_empty()) {
+                match mcp::install::Client::parse(name) {
+                    Some(client) => agents.push(client),
+                    None => {
+                        complain(
+                            &format!(
+                                "`{name}` is not an agent. It is `claude`, `codex` or `opencode`."
+                            ),
+                            &typed.global,
+                        );
+                        return USAGE;
+                    }
+                }
+            }
+            agents
+        }
+    };
+    if flag("path") && flag("no-path") {
+        complain("`--path` and `--no-path` cannot both be given.", &typed.global);
+        return USAGE;
+    }
+    let options = Options {
+        check: flag("check"),
+        remove: flag("remove"),
+        force: flag("force"),
+        agents,
+        path: match (flag("path"), flag("no-path")) {
+            (true, _) => PathChoice::Yes,
+            (_, true) => PathChoice::No,
+            _ => PathChoice::Auto,
+        },
+        ask_the_server: true,
+    };
+    let machine = unluminous_cli::setup::Machine::this_one();
+    let report = unluminous_cli::setup::run(&options, &machine);
+    let log = match flag("installer") {
+        true => unluminous_cli::setup::write_the_log(&report, &machine),
+        false => None,
+    };
+    if typed.global.json {
+        let mut result = report.to_json(&machine);
+        if let Some(log) = &log {
+            result["log"] = json!(log.to_string_lossy());
+        }
+        say(&json!({ "ok": report.worked(), "command": "setup", "result": result }));
+    } else if !typed.global.quiet {
+        print!("{}", report.to_text());
+        if !options.check && !options.remove && !report.connected().is_empty() {
+            println!("Restart each agent that was connected so it starts Unluminous's MCP server.");
+        }
+    }
+    match report.worked() {
+        true => OK,
+        false => REFUSED,
+    }
+}
+
 /// Print the configuration to paste into a client that has no button of its own.
 fn configuration(typed: &Typed) -> i32 {
     let clients = match clients_from(typed.arguments.get("client").and_then(Value::as_str)) {
@@ -440,15 +509,7 @@ fn configuration(typed: &Typed) -> i32 {
         return OK;
     }
     for client in clients {
-        println!(
-            "# {} \u{2014} {}",
-            client.title(),
-            match client {
-                mcp::install::Client::Claude =>
-                    mcp::install::claude_file(&wanted).display().to_string(),
-                mcp::install::Client::Codex => mcp::install::codex_file().display().to_string(),
-            }
-        );
+        println!("# {} \u{2014} {}", client.title(), client.file(&wanted).display());
         println!("{}", wanted.example(client));
         println!();
     }

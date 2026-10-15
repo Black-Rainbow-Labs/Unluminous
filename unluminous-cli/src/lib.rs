@@ -21,6 +21,7 @@ pub mod parse;
 pub mod protocol;
 pub mod restore;
 pub mod search;
+pub mod setup;
 
 /// The version both halves report, which is the workspace's version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

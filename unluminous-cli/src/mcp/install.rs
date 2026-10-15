@@ -1,7 +1,10 @@
 //! Writing Unluminous into an agent's own configuration.
 //!
-//! Two clients on this machine, two formats, and one rule that applies to both: **use the client's
-//! own command when it is on the path, and edit the file only when it is not.** Both files are
+//! Three clients, three files, and one rule for all of them: **use the client's own command when it
+//! is on the path and asks nothing, and edit the file only when it does not.** OpenCode is always the
+//! file, because its `opencode mcp add` asks its questions interactively (`task-2278`).
+//!
+//! For Claude Code and Codex: Both files are
 //! written by a program that may be running right now — `~/.claude.json` is rewritten by every
 //! Claude Code session and is over a hundred kilobytes of somebody's settings — so an edit
 //! underneath one is how somebody loses their configuration. `claude mcp add-json` and
@@ -40,6 +43,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 
+use crate::mcp::ordered_json::Node;
 use crate::mcp::{endpoint, Transport, DEFAULT_PORT};
 
 /// What a server is called in an agent's configuration unless somebody chose another name.
@@ -50,18 +54,22 @@ pub const DEFAULT_NAME: &str = "unluminous";
 pub enum Client {
     /// Claude Code: `~/.claude.json`, or `.mcp.json` at a project root.
     Claude,
-    /// Codex: `~/.codex/config.toml`.
+    /// Codex: `~/.codex/config.toml`, or `$CODEX_HOME/config.toml`.
     Codex,
+    /// OpenCode: `~/.config/opencode/opencode.json` on every platform (`task-2278`).
+    OpenCode,
 }
 
 impl Client {
-    pub const ALL: [Client; 2] = [Client::Claude, Client::Codex];
+    pub const ALL: [Client; 3] = [Client::Claude, Client::Codex, Client::OpenCode];
 
-    /// The word the command line and the settings page spell it with.
+    /// The word the command line and the settings page spell it with, which is also the name of the
+    /// program the agent is started with.
     pub fn name(self) -> &'static str {
         match self {
             Client::Claude => "claude",
             Client::Codex => "codex",
+            Client::OpenCode => "opencode",
         }
     }
 
@@ -70,6 +78,7 @@ impl Client {
         match self {
             Client::Claude => "Claude Code",
             Client::Codex => "Codex",
+            Client::OpenCode => "OpenCode",
         }
     }
 
@@ -77,7 +86,17 @@ impl Client {
         match name.trim().to_lowercase().as_str() {
             "claude" | "claude-code" | "claude code" => Some(Client::Claude),
             "codex" => Some(Client::Codex),
+            "opencode" | "open-code" | "open code" => Some(Client::OpenCode),
             _ => None,
+        }
+    }
+
+    /// The file this client keeps its servers in, for the scope `wanted` names.
+    pub fn file(self, wanted: &Wanted) -> PathBuf {
+        match self {
+            Client::Claude => claude_file(wanted),
+            Client::Codex => codex_file(),
+            Client::OpenCode => opencode_file(),
         }
     }
 }
@@ -120,6 +139,8 @@ pub struct Wanted {
     pub program: PathBuf,
     /// The folder a project-scoped install is for.
     pub folder: PathBuf,
+    /// Which of the agent's own programs to run, if any (`task-2278`).
+    pub agent: Agent,
 }
 
 impl Default for Wanted {
@@ -131,8 +152,23 @@ impl Default for Wanted {
             scope: Scope::default(),
             program: unluminous_cli_program(),
             folder: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            agent: Agent::ByName,
         }
     }
+}
+
+/// How the agent's own command is found, for the agents that have one.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Agent {
+    /// Looked up by name on this process's `PATH`. What `mcp install` does.
+    #[default]
+    ByName,
+    /// This program, which a caller has already found. `unluminous-cli setup` passes it, because the
+    /// window runs `setup` on macOS with the `PATH` launchd gave it, where `claude` in `~/.local/bin`
+    /// cannot be found by name.
+    At(PathBuf),
+    /// No program: edit the file. `setup` passes it for an agent it found only by its folder.
+    Nothing,
 }
 
 impl Wanted {
@@ -149,6 +185,35 @@ impl Wanted {
             // A `url` with no `type` is read as a stdio server and skipped, which is a mistake
             // worth not making for somebody who copies this block.
             Transport::Http => json!({ "type": "http", "url": endpoint(self.port) }),
+        }
+    }
+
+    /// The entry OpenCode's `mcp` block holds. A local server is one array, the program and then its
+    /// arguments; a remote one is a `url`.
+    pub fn opencode_entry(&self) -> Value {
+        match self.transport {
+            Transport::Stdio => json!({
+                "type": "local",
+                "command": [self.program.to_string_lossy(), "mcp", "serve"],
+                "enabled": true,
+            }),
+            Transport::Http => {
+                json!({ "type": "remote", "url": endpoint(self.port), "enabled": true })
+            }
+        }
+    }
+
+    /// The agent's program to run, or `None` to edit the file.
+    ///
+    /// **Never a real agent under a test's home.** A test that left this to the name ran the machine's
+    /// own `codex mcp add`, which wrote into the real `~/.codex/config.toml` of the person running the
+    /// tests, because the real Codex knows nothing of `UNLUMINOUS_HOME` (`task-2278`).
+    fn agent_program(&self, client: Client) -> Option<String> {
+        match &self.agent {
+            Agent::At(found) => Some(found.to_string_lossy().into_owned()),
+            Agent::Nothing => None,
+            Agent::ByName if std::env::var_os("UNLUMINOUS_HOME").is_some() => None,
+            Agent::ByName => Some(program_named(client.name())),
         }
     }
 
@@ -204,6 +269,11 @@ impl Wanted {
                 )
             }
             Client::Codex => self.toml_table(),
+            Client::OpenCode => {
+                let entry = entry_node(&self.opencode_entry(), OPENCODE_ORDER);
+                let block = Node::Object(vec![(self.name.clone(), entry)]);
+                Node::Object(vec![("mcp".to_owned(), block)]).to_text().trim_end().to_owned()
+            }
         }
     }
 }
@@ -224,6 +294,7 @@ pub fn install(client: Client, wanted: &Wanted) -> Result<Done, String> {
     match client {
         Client::Claude => claude_install(wanted),
         Client::Codex => codex_install(wanted),
+        Client::OpenCode => opencode_install(wanted),
     }
 }
 
@@ -232,6 +303,7 @@ pub fn remove(client: Client, wanted: &Wanted) -> Result<Done, String> {
     match client {
         Client::Claude => claude_remove(wanted),
         Client::Codex => codex_remove(wanted),
+        Client::OpenCode => opencode_remove(wanted),
     }
 }
 
@@ -251,15 +323,86 @@ pub fn installed(client: Client, wanted: &Wanted) -> Option<Value> {
             let table = table_of(&text, &format!("mcp_servers.{}", wanted.name))?;
             Some(json!({ "toml": table }))
         }
+        Client::OpenCode => {
+            let value: Value =
+                serde_json::from_str(&std::fs::read_to_string(opencode_file()).ok()?).ok()?;
+            value.get("mcp")?.get(&wanted.name).cloned()
+        }
     }
+}
+
+/// What an installed entry starts or dials.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Pointing {
+    /// A program, started over stdio.
+    Program(PathBuf),
+    /// An address, over HTTP.
+    Address(String),
+    /// An entry whose target this module cannot read.
+    Unknown,
+}
+
+/// What the entry called `wanted.name` points at in a client's configuration, or `None` when there
+/// is no such entry (`task-2278`).
+///
+/// `setup` asks this before it writes anything, because an entry that points at another program
+/// somebody chose, such as a build in a checkout, is theirs and is left alone.
+pub fn points_at(client: Client, wanted: &Wanted) -> Option<Pointing> {
+    let entry = installed(client, wanted)?;
+    Some(match client {
+        Client::Claude => match (entry.get("command"), entry.get("url")) {
+            (Some(Value::String(program)), _) => Pointing::Program(PathBuf::from(program)),
+            (_, Some(Value::String(url))) => Pointing::Address(url.clone()),
+            _ => Pointing::Unknown,
+        },
+        Client::Codex => {
+            let table = entry["toml"].as_str().unwrap_or_default();
+            match (toml_value(table, "command"), toml_value(table, "url")) {
+                (Some(program), _) => Pointing::Program(PathBuf::from(program)),
+                (_, Some(url)) => Pointing::Address(url),
+                _ => Pointing::Unknown,
+            }
+        }
+        Client::OpenCode => match (entry.get("command"), entry.get("url")) {
+            (Some(Value::Array(command)), _) => match command.first() {
+                Some(Value::String(program)) => Pointing::Program(PathBuf::from(program)),
+                _ => Pointing::Unknown,
+            },
+            (_, Some(Value::String(url))) => Pointing::Address(url.clone()),
+            _ => Pointing::Unknown,
+        },
+    })
+}
+
+/// The value of `key = "..."` in a TOML table's text, with the two escapes [`toml_string`] writes
+/// taken out again. A literal string in single quotes is read as it is. That is enough to read back
+/// what this module or `codex mcp add` wrote.
+fn toml_value(table: &str, key: &str) -> Option<String> {
+    table.lines().find_map(|line| {
+        let (name, value) = line.split_once('=')?;
+        if name.trim() != key {
+            return None;
+        }
+        let value = value.trim();
+        if let Some(literal) = value.strip_prefix('\'').and_then(|rest| rest.strip_suffix('\'')) {
+            return Some(literal.to_owned());
+        }
+        let inner = value.strip_prefix('"')?.strip_suffix('"')?;
+        Some(inner.replace("\\\"", "\"").replace("\\\\", "\\"))
+    })
 }
 
 // ------------------------------------------------------------------------------------ Claude Code
 
 /// Where Claude Code keeps this scope's servers.
+///
+/// `CLAUDE_CONFIG_DIR` moves Claude Code's user settings into that folder, `.claude.json` included.
 pub fn claude_file(wanted: &Wanted) -> PathBuf {
     match wanted.scope {
-        Scope::User => home().join(".claude.json"),
+        Scope::User => match variable("CLAUDE_CONFIG_DIR") {
+            Some(folder) => PathBuf::from(folder).join(".claude.json"),
+            None => home().join(".claude.json"),
+        },
         Scope::Project => wanted.folder.join(".mcp.json"),
     }
 }
@@ -290,15 +433,11 @@ fn through_claude_cli(wanted: &Wanted, entry: &Value, file: &Path) -> Option<Don
     };
     // Removed first, so installing twice is a change rather than a refusal. A name that is not
     // there is not an error worth reporting, which is why the outcome is ignored.
-    run(
-        &program_named("claude"),
-        &["mcp", "remove", &wanted.name, "--scope", scope],
-        &wanted.folder,
-    );
-    let added = run(
-        &program_named("claude"),
+    run_agent(wanted, Client::Claude, &["mcp", "remove", &wanted.name, "--scope", scope]);
+    let added = run_agent(
+        wanted,
+        Client::Claude,
         &["mcp", "add-json", &wanted.name, &entry.to_string(), "--scope", scope],
-        &wanted.folder,
     )?;
     added.then(|| Done {
         message: format!(
@@ -316,11 +455,8 @@ fn claude_remove(wanted: &Wanted) -> Result<Done, String> {
         Scope::User => "user",
         Scope::Project => "project",
     };
-    if run(
-        &program_named("claude"),
-        &["mcp", "remove", &wanted.name, "--scope", scope],
-        &wanted.folder,
-    ) == Some(true)
+    if run_agent(wanted, Client::Claude, &["mcp", "remove", &wanted.name, "--scope", scope])
+        == Some(true)
     {
         return Ok(Done {
             message: format!("`claude mcp remove {}` took it out.", wanted.name),
@@ -337,54 +473,163 @@ fn claude_remove(wanted: &Wanted) -> Result<Done, String> {
 }
 
 /// Set or clear one server in a file holding an `mcpServers` object.
-///
-/// Everything else in the file is read, kept and written back, because for user scope that file is
-/// the whole of somebody's Claude Code settings. A copy is taken first, and the copy is what makes
-/// this recoverable if anything about the file was not what was expected.
 fn write_json_server(file: &Path, name: &str, entry: Option<&Value>) -> Result<(), String> {
+    write_json_entry(file, "mcpServers", name, entry.map(|entry| entry_node(entry, CLAUDE_ORDER)))
+}
+
+/// The order Claude Code writes an entry's keys in, which is the order this program writes them in.
+const CLAUDE_ORDER: &[&str] = &["type", "command", "args", "env", "url"];
+
+/// The order OpenCode's documentation writes an entry's keys in.
+const OPENCODE_ORDER: &[&str] = &["type", "command", "url", "environment", "enabled"];
+
+/// An entry as a node with its keys in `order`, then any others.
+fn entry_node(entry: &Value, order: &[&str]) -> Node {
+    let Some(map) = entry.as_object() else {
+        return Node::from_value(entry);
+    };
+    let mut pairs: Vec<(String, Node)> = order
+        .iter()
+        .filter_map(|key| map.get(*key).map(|value| ((*key).to_owned(), Node::from_value(value))))
+        .collect();
+    for (key, value) in map {
+        if !order.contains(&key.as_str()) {
+            pairs.push((key.clone(), Node::from_value(value)));
+        }
+    }
+    Node::Object(pairs)
+}
+
+/// Set or clear one server in the object called `block` in a JSON file.
+///
+/// Everything else in the file is read, kept and written back in the order it was in, because for
+/// Claude Code's user scope that file is the whole of somebody's settings and OpenCode's is one a
+/// person wrote by hand (`ordered_json` says why `serde_json::Value` cannot do that here). A copy is
+/// taken first, and the copy is what makes this recoverable if anything about the file was not what
+/// was expected.
+fn write_json_entry(
+    file: &Path,
+    block: &str,
+    name: &str,
+    entry: Option<Node>,
+) -> Result<(), String> {
     let existing = std::fs::read_to_string(file).unwrap_or_default();
-    let mut value: Value = if existing.trim().is_empty() {
-        json!({})
+    let mut document = if existing.trim().is_empty() {
+        Node::Object(Vec::new())
     } else {
-        serde_json::from_str(&existing)
+        Node::parse(&existing)
             .map_err(|problem| format!("{} is not readable as JSON: {problem}", file.display()))?
     };
-    if !value.is_object() {
+    if !matches!(document, Node::Object(_)) {
         return Err(format!("{} does not hold a JSON object.", file.display()));
     }
     if !existing.is_empty() {
-        let backup = file.with_extension("unluminous-backup");
-        std::fs::write(&backup, &existing)
-            .map_err(|problem| format!("could not write {}: {problem}", backup.display()))?;
+        let mut backup = file.as_os_str().to_owned();
+        backup.push(".unluminous-backup");
+        std::fs::write(&backup, &existing).map_err(|problem| {
+            format!("could not write {}: {problem}", PathBuf::from(&backup).display())
+        })?;
     }
-    let servers =
-        value.as_object_mut().expect("an object").entry("mcpServers").or_insert_with(|| json!({}));
-    if !servers.is_object() {
-        *servers = json!({});
-    }
-    let servers = servers.as_object_mut().expect("an object");
-    match entry {
-        Some(entry) => {
-            servers.insert(name.to_owned(), entry.clone());
-        }
-        None => {
-            servers.remove(name);
-        }
+    if let Some(servers) = document.object_member(block) {
+        servers.set(name, entry);
     }
     if let Some(folder) = file.parent() {
         std::fs::create_dir_all(folder).ok();
     }
-    let written = serde_json::to_string_pretty(&value)
-        .map_err(|problem| format!("could not lay the file out: {problem}"))?;
-    std::fs::write(file, written)
+    std::fs::write(file, document.to_text())
         .map_err(|problem| format!("could not write {}: {problem}", file.display()))
+}
+
+// --------------------------------------------------------------------------------------- OpenCode
+
+/// Claude Code's own folder: `CLAUDE_CONFIG_DIR`, or `~/.claude`.
+pub fn claude_folder() -> PathBuf {
+    match variable("CLAUDE_CONFIG_DIR") {
+        Some(folder) => PathBuf::from(folder),
+        None => home().join(".claude"),
+    }
+}
+
+/// Where OpenCode reads its own settings from (`task-2278`).
+///
+/// `OPENCODE_CONFIG` names a file and wins. Otherwise the folder is `$XDG_CONFIG_HOME/opencode`, or
+/// `~/.config/opencode` on every platform including Windows (measured on OpenCode 1.18 on Windows),
+/// and the file in it is `opencode.json`, or `opencode.jsonc` when only that one exists.
+pub fn opencode_file() -> PathBuf {
+    if let Some(named) = variable("OPENCODE_CONFIG") {
+        return PathBuf::from(named);
+    }
+    let folder = opencode_folder();
+    let json = folder.join("opencode.json");
+    let jsonc = folder.join("opencode.jsonc");
+    if !json.exists() && jsonc.exists() {
+        jsonc
+    } else {
+        json
+    }
+}
+
+/// OpenCode's settings folder.
+pub fn opencode_folder() -> PathBuf {
+    match variable("XDG_CONFIG_HOME") {
+        Some(base) => PathBuf::from(base).join("opencode"),
+        None => home().join(".config").join("opencode"),
+    }
+}
+
+fn opencode_install(wanted: &Wanted) -> Result<Done, String> {
+    let file = opencode_file();
+    write_json_entry(
+        &file,
+        "mcp",
+        &wanted.name,
+        Some(entry_node(&wanted.opencode_entry(), OPENCODE_ORDER)),
+    )
+    .map_err(|problem| {
+        format!("{problem}. Add this to it by hand instead:\n{}", wanted.example(Client::OpenCode))
+    })?;
+    Ok(Done {
+        message: format!(
+            "Wrote `{}` into the `mcp` block of {}. Restart OpenCode and `opencode mcp list` will show it.",
+            wanted.name,
+            file.display()
+        ),
+        file,
+        through_the_cli: false,
+    })
+}
+
+fn opencode_remove(wanted: &Wanted) -> Result<Done, String> {
+    let file = opencode_file();
+    if installed(Client::OpenCode, wanted).is_none() {
+        return Ok(Done {
+            message: format!("{} has no `{}` to take out.", file.display(), wanted.name),
+            file,
+            through_the_cli: false,
+        });
+    }
+    write_json_entry(&file, "mcp", &wanted.name, None)?;
+    Ok(Done {
+        message: format!("Took `{}` out of {}.", wanted.name, file.display()),
+        file,
+        through_the_cli: false,
+    })
 }
 
 // ------------------------------------------------------------------------------------------ Codex
 
-/// Where Codex keeps its configuration. It has one file for everything.
+/// Where Codex keeps its configuration. It has one file for everything, in `$CODEX_HOME` when that
+/// is set and in `~/.codex` otherwise.
 pub fn codex_file() -> PathBuf {
-    home().join(".codex").join("config.toml")
+    codex_folder().join("config.toml")
+}
+
+/// Codex's own folder.
+pub fn codex_folder() -> PathBuf {
+    match variable("CODEX_HOME") {
+        Some(named) => PathBuf::from(named),
+        None => home().join(".codex"),
+    }
 }
 
 fn codex_install(wanted: &Wanted) -> Result<Done, String> {
@@ -406,7 +651,7 @@ fn codex_install(wanted: &Wanted) -> Result<Done, String> {
 
 fn through_codex_cli(wanted: &Wanted, file: &Path) -> Option<Done> {
     // Removed first, so installing twice is a change rather than a refusal.
-    run(&program_named("codex"), &["mcp", "remove", &wanted.name], &wanted.folder);
+    run_agent(wanted, Client::Codex, &["mcp", "remove", &wanted.name]);
     let program = wanted.program.to_string_lossy().into_owned();
     let url = endpoint(wanted.port);
     // Codex names an HTTP server by its url and a stdio one by the command after `--`, which is the
@@ -416,7 +661,7 @@ fn through_codex_cli(wanted: &Wanted, file: &Path) -> Option<Done> {
         Transport::Stdio => vec!["mcp", "add", &wanted.name, "--", &program, "mcp", "serve"],
         Transport::Http => vec!["mcp", "add", &wanted.name, "--url", &url],
     };
-    let added = run(&program_named("codex"), &arguments, &wanted.folder)?;
+    let added = run_agent(wanted, Client::Codex, &arguments)?;
     added.then(|| Done {
         message: format!(
             "`codex mcp add {}` wrote it. Restart Codex and it will be there.",
@@ -429,8 +674,7 @@ fn through_codex_cli(wanted: &Wanted, file: &Path) -> Option<Done> {
 
 fn codex_remove(wanted: &Wanted) -> Result<Done, String> {
     let file = codex_file();
-    if run(&program_named("codex"), &["mcp", "remove", &wanted.name], &wanted.folder) == Some(true)
-    {
+    if run_agent(wanted, Client::Codex, &["mcp", "remove", &wanted.name]) == Some(true) {
         return Ok(Done {
             message: format!("`codex mcp remove {}` took it out.", wanted.name),
             file,
@@ -587,6 +831,12 @@ fn program_named(name: &str) -> String {
 /// can run it themselves and answer whatever it asked.
 const LONGEST_INSTALL: std::time::Duration = std::time::Duration::from_secs(60);
 
+/// Run `client`'s own command for `wanted`, or answer `None` when there is no program to run, which
+/// sends the caller to the file.
+fn run_agent(wanted: &Wanted, client: Client, arguments: &[&str]) -> Option<bool> {
+    run(&wanted.agent_program(client)?, arguments, &wanted.folder)
+}
+
 /// Run an agent's own command. `None` when the program is not there at all, which is the case the
 /// fallback is for; `Some(false)` when it ran and would not do it.
 fn run(program: &str, arguments: &[&str], folder: &Path) -> Option<bool> {
@@ -647,9 +897,20 @@ fn within(mut child: std::process::Child, program: &str, longest: std::time::Dur
     }
 }
 
+/// An environment variable that moves an agent's folder, such as `CODEX_HOME`.
+///
+/// Ignored while `UNLUMINOUS_HOME` is set, which is a test's home: a test has to land in the folder it
+/// made whatever the machine running it has set.
+fn variable(name: &str) -> Option<std::ffi::OsString> {
+    if std::env::var_os("UNLUMINOUS_HOME").is_some() {
+        return None;
+    }
+    std::env::var_os(name).filter(|value| !value.is_empty())
+}
+
 /// The person's home folder. `HOME` first, then Windows's own pair, which is the order every other
 /// program on both platforms reads them in.
-fn home() -> PathBuf {
+pub fn home() -> PathBuf {
     if let Some(home) = std::env::var_os("UNLUMINOUS_HOME") {
         // Named so a test can install into a folder of its own rather than into the real settings
         // of the person running it — the rule `Store::at` already keeps for Unluminous's own settings.
@@ -668,7 +929,7 @@ fn home() -> PathBuf {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// **An agent's own command is given a deadline.** `task-1922` B12.
@@ -717,7 +978,7 @@ mod tests {
     /// One test at a time, in a home of its own. Where the configuration goes is named by an
     /// environment variable, which belongs to the whole process rather than to one test — the same
     /// reason `services::control`'s tests take turns.
-    static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    pub(crate) static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     struct Home {
         folder: PathBuf,
@@ -810,7 +1071,7 @@ mod tests {
         assert_eq!(back["mcpServers"]["ghidra"]["command"], json!("python"));
         assert_eq!(back["mcpServers"]["unluminous"]["args"], json!(["mcp", "serve"]));
         assert!(
-            file.with_extension("unluminous-backup").is_file(),
+            PathBuf::from(format!("{}.unluminous-backup", file.display())).is_file(),
             "a copy is taken before somebody's settings are rewritten"
         );
     }

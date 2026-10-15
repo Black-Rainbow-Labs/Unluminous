@@ -1530,6 +1530,10 @@ impl UnluminousApp {
         if self.take_the_install_progress() {
             ui.ctx().request_repaint();
         }
+        // What the first start's `setup` connected, on macOS and Linux. `task-2278`.
+        if self.take_the_first_setup() {
+            ui.ctx().request_repaint();
+        }
     }
 
     /// The text prompt, drawn before the Settings window because a prompt opened from a menu belongs

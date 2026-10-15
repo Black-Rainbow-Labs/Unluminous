@@ -5721,6 +5721,27 @@ place now, through `note_a_jump`, and a place a few lines from the last one repl
 **And the Markdown preview claims the zoom gesture** over itself, anchored at the pointer, and a press in
 it gives the editing area the keyboard so the zoom keys reach it.
 
+## An install ends with `unluminous-cli setup` (`task-2278`)
+
+`tasks/task-2278-installers-tdd.md` is the design. `unluminous_cli::setup` puts `unluminous-cli` on the path,
+connects Claude Code, Codex and OpenCode to the MCP server through `mcp::install`, names the API keys that are
+set, and starts `mcp serve` to check it answers. The Windows installer runs it as the `connectagents` task, on
+by default, and the uninstaller runs `setup --remove`; on macOS and Linux the window runs it on the first start
+(`app::first_start`). The agent instructions on unluminous.com run it too. Five rules:
+
+- **An entry that points at another program that exists is left alone**, unless `--force`. Running it twice
+  changes nothing.
+- **A test never starts a real agent.** `install::Agent::ByName` is `None` under `UNLUMINOUS_HOME`. A test once
+  ran the machine's own `codex mcp add` and wrote into the real `~/.codex/config.toml`.
+- **A JSON file is edited through `mcp::ordered_json`**, which keeps the keys in the order the file had them.
+- **The program Inno Setup starts cannot traverse a junction an ordinary user made** (RedirectionGuard, error
+  448), whatever the documentation says about child processes. `setup::traversable` reads where the link points
+  instead, which is how `codex.cmd` behind nvm's `C:\nvm4w\nodejs` is found.
+- **`pwsh tools/test-fresh-install.ps1` is how an installer is tested.** It installs into a scratch profile,
+  checks the real agents list Unluminous as connected, has Claude Code call a tool on the fresh window,
+  uninstalls, and puts back and byte compares every registry key, the PATH and the shortcuts the installer
+  touches. Run it after any change to the installer or to `setup`.
+
 ## Shipping it is a folder of its own
 
 `installer/` turns the built binary into something a person can install, and it does not reach into the

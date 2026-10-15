@@ -7,7 +7,8 @@
 ;
 ; The short version of the defaults: a plain double click installs into %LOCALAPPDATA%\Programs\Unluminous
 ; with no elevation prompt at all, and the dialog offers all users for anybody who wants Program
-; Files. Unluminous offers itself for text and Markdown files without taking the default association for
+; Files. It ends by running `unluminous-cli setup`, which connects the coding agents on the machine
+; to Unluminous (`task-2278`). Unluminous offers itself for text and Markdown files without taking the default association for
 ; any of them. Uninstalling removes everything it wrote and leaves %APPDATA%\Unluminous — the settings,
 ; the pane sizes, the recent projects and any installed plugins — alone.
 
@@ -114,6 +115,11 @@ Name: "addtopath"; Description: "Add Unluminous to the PATH, so that ""unluminou
 Name: "contextfile"; Description: "Add ""Open with Unluminous"" to the right click menu of a file"; GroupDescription: "Other:"
 Name: "contextfolder"; Description: "Add ""Open with Unluminous"" to the right click menu of a folder"; GroupDescription: "Other:"
 Name: "associate"; Description: "Offer Unluminous in ""Open with"" for text, Markdown and source files"; GroupDescription: "Other:"
+; `task-2278`. Runs `unluminous-cli setup`, which connects every coding agent it finds (Claude Code, Codex,
+; OpenCode) to Unluminous's MCP server and leaves alone an entry that already points at another
+; Unluminous. On by default, so a silent install with no /TASKS does it too. An upgrade from a version
+; without this task selects it, because Inno selects a task it has no record of by its default.
+Name: "connectagents"; Description: "Connect the coding agents on this machine (Claude Code, Codex, OpenCode) to Unluminous"; GroupDescription: "Other:"
 
 [Files]
 Source: "{#BinaryDir}\{#ExeName}"; DestDir: "{app}"; Flags: ignoreversion
@@ -181,7 +187,19 @@ Root: HKA; Subkey: "Software\Classes\.yml\OpenWithProgids"; ValueType: string; V
 Root: HKA; Subkey: "Software\Classes\.yaml\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
 
 [Run]
+; `task-2278`. Hidden, waited for, and run as the person who started setup rather than elevated, because
+; the files it edits are that person's. `--no-path` because the `addtopath` task above decides the PATH.
+; `--installer` writes what it did to %APPDATA%\Unluminous\setup.log, since a hidden program's output
+; goes nowhere. It never fails the install: a step that did not work is in the log, and setup's exit
+; code is not checked.
+Filename: "{app}\{#CliName}"; Parameters: "setup --installer --no-path"; StatusMsg: "Connecting the coding agents on this machine to Unluminous..."; Flags: runhidden waituntilterminated runasoriginaluser; Tasks: connectagents
 Filename: "{app}\{#ExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+
+[UninstallRun]
+; Take Unluminous out of every agent `setup` connected, so no agent is left starting a program that is
+; not there. Only an entry that starts this install's `unluminous-cli` is taken out. It runs before the
+; files go, because it is that program that does it.
+Filename: "{app}\{#CliName}"; Parameters: "setup --remove --no-path"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveAgentEntries"
 
 [Code]
 { The PATH entry.

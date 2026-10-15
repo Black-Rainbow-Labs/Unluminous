@@ -67,6 +67,7 @@ pub mod report;
 pub mod servers;
 pub mod signature;
 // The window's side of the UI plugins: which providers are open, and which of their panes are showing.
+mod first_start;
 pub mod plugin_panes;
 mod preview;
 pub mod realm;
@@ -1270,6 +1271,11 @@ pub struct UnluminousApp {
     pub(crate) update_looked_at: f64,
     /// A newer version being downloaded and checked, when `Install & Restart` was pressed.
     pub(crate) install: Option<crate::services::update_install::Install>,
+    /// Whether the settings folder had no settings file when this window was given its store, which is
+    /// what a first start on a machine looks like (`task-2278`).
+    pub(crate) fresh_install: bool,
+    /// The answer of `unluminous-cli setup` run on the first start, while it is being worked out.
+    pub(crate) first_setup: Option<std::sync::mpsc::Receiver<unluminous_cli::setup::Report>>,
     /// The Find bar over the file that is showing, when it is open. `task-1804` §3.1.
     ///
     /// A bar rather than a modal, and it holds no thread: the file being searched is already in
@@ -1620,6 +1626,8 @@ impl UnluminousApp {
             update_asked_by_a_person: false,
             update_looked_at: 0.0,
             install: None,
+            fresh_install: false,
+            first_setup: None,
             find: None,
             find_in_files: None,
             references: None,
@@ -1794,7 +1802,17 @@ impl UnluminousApp {
         // window draws, lists, adds or removes goes through, so the folder the pictures are written
         // into is the folder they are drawn from. `task-2105`.
         let fresh = !store.settings_path().exists();
-        self.endpoints = crate::services::ai_endpoints::Endpoints::in_folder(store.folder());
+        self.fresh_install = fresh;
+        // A list made for the first time offers the Anthropic and OpenAI APIs when their keys are set
+        // (`task-2278`). Read from the login shell, and only by the released binary: a test's window must
+        // not depend on the keys of the machine running it.
+        let has_key = |name: &str| {
+            crate::services::login_shell::was_started()
+                && crate::services::login_shell::variable(name)
+                    .is_some_and(|value| !value.trim().is_empty())
+        };
+        self.endpoints =
+            crate::services::ai_endpoints::Endpoints::in_folder_with(store.folder(), &has_key);
         self.told_the_endpoints = 0;
         let backgrounds = crate::services::backgrounds::folder_in(store.folder());
         crate::services::backgrounds::bundled::write_into(&backgrounds);
