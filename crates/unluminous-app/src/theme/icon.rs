@@ -2243,16 +2243,27 @@ pub fn pencil(painter: &egui::Painter, centre: Pos2, color: Color32) {
 /// points tall and centred on `centre`.
 pub fn flag(painter: &egui::Painter, centre: Pos2, color: Color32) {
     let scale = 13.0 / 416.0;
-    let at = |x: f32, y: f32| Pos2::new(centre.x + (x - 256.0) * scale, centre.y + (y - 256.0) * scale);
+    let at =
+        |x: f32, y: f32| Pos2::new(centre.x + (x - 256.0) * scale, centre.y + (y - 256.0) * scale);
     let stroke = Stroke::new(1.35, color);
     painter.line_segment([at(80.0, 464.0), at(80.0, 68.0)], stroke);
     let mut points = vec![at(80.0, 68.0)];
-    let curve = |points: &mut Vec<Pos2>, from: (f32, f32), one: (f32, f32), two: (f32, f32), to: (f32, f32)| {
+    let curve = |points: &mut Vec<Pos2>,
+                 from: (f32, f32),
+                 one: (f32, f32),
+                 two: (f32, f32),
+                 to: (f32, f32)| {
         for step in 1..=10 {
             let t = step as f32 / 10.0;
             let u = 1.0 - t;
-            let x = u * u * u * from.0 + 3.0 * u * u * t * one.0 + 3.0 * u * t * t * two.0 + t * t * t * to.0;
-            let y = u * u * u * from.1 + 3.0 * u * u * t * one.1 + 3.0 * u * t * t * two.1 + t * t * t * to.1;
+            let x = u * u * u * from.0
+                + 3.0 * u * u * t * one.0
+                + 3.0 * u * t * t * two.0
+                + t * t * t * to.0;
+            let y = u * u * u * from.1
+                + 3.0 * u * u * t * one.1
+                + 3.0 * u * t * t * two.1
+                + t * t * t * to.1;
             points.push(at(x, y));
         }
     };

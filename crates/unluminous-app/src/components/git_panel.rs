@@ -352,7 +352,11 @@ fn group_row(
                 Pos2::new(x + 12.0, row.center().y - 9.0),
                 Vec2::new(galley.size().x + 14.0, 18.0),
             );
-            painter.rect_filled(chip, egui::CornerRadius::same(9), crate::theme::rux_theme().chat.chip.from);
+            painter.rect_filled(
+                chip,
+                egui::CornerRadius::same(9),
+                crate::theme::rux_theme().chat.chip.from,
+            );
             painter.galley(
                 Pos2::new(chip.left() + 7.0, chip.center().y - galley.size().y / 2.0),
                 galley,

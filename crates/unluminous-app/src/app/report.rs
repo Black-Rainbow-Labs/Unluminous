@@ -152,19 +152,16 @@ impl UnluminousApp {
             return;
         }
         let dropped: Vec<PathBuf> = ctx.input_mut(|input| {
-            let paths = input
-                .raw
-                .dropped_files
-                .iter()
-                .map(|file| file.path().to_path_buf())
-                .collect();
+            let paths =
+                input.raw.dropped_files.iter().map(|file| file.path().to_path_buf()).collect();
             input.raw.dropped_files.clear();
             paths
         });
         for path in dropped {
             draft.attach(&path);
         }
-        let pasted = ctx.input(|input| crate::components::agent_chat::is_a_paste_chord(&input.events));
+        let pasted =
+            ctx.input(|input| crate::components::agent_chat::is_a_paste_chord(&input.events));
         if pasted && !crate::app::text_box_has_the_keyboard(ctx) && self.report_reaches_out {
             match issue_report::picture_from_the_clipboard(&draft.folder) {
                 Ok(Some(path)) => draft.attach(&path),
@@ -188,7 +185,9 @@ impl UnluminousApp {
         if draft.shot_wanted {
             draft.shot_wanted = false;
             draft.shot_asked = Some(now);
-            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::new(ReportShot)));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::new(
+                ReportShot,
+            )));
             ctx.request_repaint();
             return;
         }
@@ -196,12 +195,12 @@ impl UnluminousApp {
         let system = self.report_system();
         let logs = issue_report::logs(self.settings_folder().as_deref(), issue_report::LOG_LINES);
         let logs_line = logs.as_ref().map(|logs| {
-            format!(
-                "The last {} lines of the crash log go in the issue.",
-                logs.lines().count()
-            )
+            format!("The last {} lines of the crash log go in the issue.", logs.lines().count())
         });
-        let system_line = format!("{}. Written into the issue as a table, with the theme and the plugins.", system.line());
+        let system_line = format!(
+            "{}. Written into the issue as a table, with the theme and the plugins.",
+            system.line()
+        );
         let Some(draft) = self.report.as_mut() else { return };
         let sent = draft.sent.as_ref().map(|sent| Sent {
             address: &sent.issue.address,
@@ -321,8 +320,12 @@ impl UnluminousApp {
         let issue = issue_report::issue(&draft.report, system.as_ref(), logs.as_deref());
         // Gathered into a folder of their own inside the report's, so a file attached from elsewhere can never
         // be copied over a picture the window took, which lives in the report's folder itself.
-        let files =
-            issue_report::prepare(&draft.report, &issue, logs.as_deref(), &draft.folder.join("issue"))?;
+        let files = issue_report::prepare(
+            &draft.report,
+            &issue,
+            logs.as_deref(),
+            &draft.folder.join("issue"),
+        )?;
         let on_the_clipboard = reaches_out
             && !files.is_empty()
             && crate::services::system_files::put_files_on_the_clipboard(&files);
@@ -441,7 +444,9 @@ impl UnluminousApp {
                 let name = request.text("name").unwrap_or_default();
                 match self.report.as_mut().is_some_and(|draft| draft.report.detach(&name)) {
                     true => ok(request, format!("Took {name} off."), self.report_status()),
-                    false => no(request, code::NOT_FOUND, format!("No attachment is called {name}.")),
+                    false => {
+                        no(request, code::NOT_FOUND, format!("No attachment is called {name}."))
+                    }
                 }
             }
             "screenshot" => {
@@ -465,7 +470,8 @@ impl UnluminousApp {
                 match self.send_the_report(open) {
                     Ok(()) => {
                         let status = self.report_status();
-                        let address = status["sent"]["address"].as_str().unwrap_or_default().to_owned();
+                        let address =
+                            status["sent"]["address"].as_str().unwrap_or_default().to_owned();
                         ok(request, format!("The issue is ready at {address}"), status)
                     }
                     Err(refusal) => no(request, code::NOT_APPLICABLE, refusal),
@@ -480,7 +486,11 @@ impl UnluminousApp {
     }
 
     /// The answer to a held `report screenshot`, once the picture is attached.
-    pub(crate) fn report_shot_answer(&self, request: &Request, count: usize) -> Option<unluminous_cli::protocol::Reply> {
+    pub(crate) fn report_shot_answer(
+        &self,
+        request: &Request,
+        count: usize,
+    ) -> Option<unluminous_cli::protocol::Reply> {
         let draft = self.report.as_ref()?;
         (draft.shots > count).then(|| {
             unluminous_cli::protocol::Reply::done(
@@ -495,8 +505,9 @@ impl UnluminousApp {
     fn set_the_report_from(&mut self, request: &Request) -> Result<(), String> {
         let Some(draft) = self.report.as_mut() else { return Ok(()) };
         if let Some(said) = request.text("kind") {
-            draft.report.kind = Kind::parse(&said)
-                .ok_or_else(|| format!("{said} is not a kind of report: bug, feature or question."))?;
+            draft.report.kind = Kind::parse(&said).ok_or_else(|| {
+                format!("{said} is not a kind of report: bug, feature or question.")
+            })?;
         }
         if let Some(title) = request.text("title") {
             draft.report.title = title;
@@ -504,7 +515,9 @@ impl UnluminousApp {
         if let Some(description) = request.text("description") {
             draft.report.description = description;
         }
-        for (name, value) in [("logs", &mut draft.report.include_logs), ("system", &mut draft.report.include_system)] {
+        for (name, value) in
+            [("logs", &mut draft.report.include_logs), ("system", &mut draft.report.include_system)]
+        {
             if let Some(said) = request.text(name) {
                 *value = match said.trim().to_ascii_lowercase().as_str() {
                     "on" | "true" | "yes" => true,

@@ -718,8 +718,10 @@ pub fn header_of(ui: &mut egui::Ui, area: Rect, key: Option<&str>, title: &str) 
             );
             pen += width + 12.0;
         }
-        let galley = rux.elided(heading_style(), title, ink.i900, (close.left() - 16.0 - pen).max(40.0));
-        title_rect = Rect::from_min_size(Pos2::new(pen, middle - 9.0), Vec2::new(galley.size().x, 18.0));
+        let galley =
+            rux.elided(heading_style(), title, ink.i900, (close.left() - 16.0 - pen).max(40.0));
+        title_rect =
+            Rect::from_min_size(Pos2::new(pen, middle - 9.0), Vec2::new(galley.size().x, 18.0));
         rux::text::draw_left_capitals(
             rux.painter(),
             Pos2::new(pen, middle),
@@ -872,7 +874,8 @@ pub fn button(ui: &mut egui::Ui, area: Rect, name: &str, enabled: bool, primary:
 /// the right edge, which is how the ticket modal names its sections.
 pub fn section(ui: &mut egui::Ui, area: Rect, top: f32, name: &str) -> f32 {
     let y = top + 8.0;
-    let line = Rect::from_min_max(Pos2::new(area.left(), y - 8.0), Pos2::new(area.right(), y + 8.0));
+    let line =
+        Rect::from_min_max(Pos2::new(area.left(), y - 8.0), Pos2::new(area.right(), y + 8.0));
     let clip = down_the_page(ui, area);
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(line));
     child.set_clip_rect(clip);
@@ -881,7 +884,13 @@ pub fn section(ui: &mut egui::Ui, area: Rect, top: f32, name: &str) -> f32 {
         let style = section_style();
         let galley = rux.text(style, &name.to_uppercase(), ink.i500);
         let width = galley.size().x;
-        rux::text::draw_left_capitals(rux.painter(), Pos2::new(area.left(), y), galley, style, ink.i500);
+        rux::text::draw_left_capitals(
+            rux.painter(),
+            Pos2::new(area.left(), y),
+            galley,
+            style,
+            ink.i500,
+        );
         let chat = rux.theme().chat;
         let painter = rux.painter().clone();
         let from = area.left() + width + 12.0;
@@ -901,7 +910,8 @@ pub fn section(ui: &mut egui::Ui, area: Rect, top: f32, name: &str) -> f32 {
 pub fn note(ui: &mut egui::Ui, area: Rect, top: f32, text: &str) -> f32 {
     let painter = ui.painter_at(down_the_page(ui, area));
     let ink = crate::theme::rux_theme().ink.i400;
-    let galley = rux::text::wrapped(&painter, Style::sans(11.5).leading(1.55), text, ink, area.width());
+    let galley =
+        rux::text::wrapped(&painter, Style::sans(11.5).leading(1.55), text, ink, area.width());
     let height = galley.size().y;
     painter.galley(Pos2::new(area.left(), top), galley, ink);
     top + height + 8.0
@@ -1034,12 +1044,28 @@ pub fn well(ui: &mut egui::Ui, area: Rect) {
 
 /// A row of tabs: a carved track with the chosen one raised out of it, the Settings window's segmented
 /// control. Answers the index pressed, when it is not the one already chosen.
-pub fn tabs(ui: &mut egui::Ui, at: Pos2, name: &str, words: &[&str], chosen: usize) -> (Option<usize>, Rect) {
+pub fn tabs(
+    ui: &mut egui::Ui,
+    at: Pos2,
+    name: &str,
+    words: &[&str],
+    chosen: usize,
+) -> (Option<usize>, Rect) {
     decorate(ui, ("tabs", name), Rect::from_min_size(at, Vec2::new(400.0, 38.0)), |rux| {
         let width = crate::components::settings_kit::segmented_width(rux, words, 86.0, false, 14.0);
-        let track = Rect::from_min_size(at, Vec2::new(width, crate::components::settings_kit::SEGMENT_TRACK));
-        let picked =
-            crate::components::settings_kit::segmented(rux, track, name, words, Some(chosen), 86.0, false);
+        let track = Rect::from_min_size(
+            at,
+            Vec2::new(width, crate::components::settings_kit::SEGMENT_TRACK),
+        );
+        let picked = crate::components::settings_kit::segmented(
+            rux,
+            track,
+            name,
+            words,
+            Some(chosen),
+            86.0,
+            false,
+        );
         (picked, track)
     })
 }

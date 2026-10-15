@@ -847,7 +847,11 @@ fn show_preview(ui: &mut egui::Ui, area: Rect, state: &mut References) {
     // The path along the top of the pane, on a line of its own.
     let heading = Rect::from_min_size(inner.min, Vec2::new(inner.width(), 22.0));
     let painter = ui.painter_at(heading);
-    painter.rect_filled(heading, egui::CornerRadius::same(9), crate::theme::rux_theme().chat.chip.from);
+    painter.rect_filled(
+        heading,
+        egui::CornerRadius::same(9),
+        crate::theme::rux_theme().chat.chip.from,
+    );
     modal::label(
         &painter,
         heading,

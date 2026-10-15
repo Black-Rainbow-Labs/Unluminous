@@ -5913,7 +5913,8 @@ fn a_selection_over_prose_sits_on_the_letters() {
 
 /// A small picture in a folder of its own, to attach to a report the way a person attaches a screenshot.
 fn a_picture_to_attach(name: &str) -> std::path::PathBuf {
-    let folder = std::env::temp_dir().join(format!("unluminous-report-fixture-{name}-{}", std::process::id()));
+    let folder = std::env::temp_dir()
+        .join(format!("unluminous-report-fixture-{name}-{}", std::process::id()));
     std::fs::create_dir_all(&folder).expect("make the folder");
     let path = folder.join(format!("{name}.png"));
     let picture = image::RgbaImage::from_fn(160, 100, |x, y| {
@@ -5998,7 +5999,10 @@ fn a_report_needs_a_title_and_command_enter_sends_it() {
     harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::Enter);
     steady(&mut harness);
     let sent = the_report(&harness).sent.as_ref().expect("the report was sent");
-    assert!(sent.issue.address.starts_with("https://github.com/Black-Rainbow-Labs/Unluminous/issues/new?"));
+    assert!(sent
+        .issue
+        .address
+        .starts_with("https://github.com/Black-Rainbow-Labs/Unluminous/issues/new?"));
     assert!(sent.issue.title.starts_with("[Bug] The flag works"));
     assert!(!sent.opened, "a window a test built opens no browser");
     assert!(!sent.on_the_clipboard, "and does not touch the clipboard");
@@ -6028,7 +6032,10 @@ fn closing_the_report_keeps_the_draft_and_discard_throws_it_away() {
     }
     assert!(the_report(&harness).showing);
     assert_eq!(the_report(&harness).report.title, "Keep me", "the flag brings the draft back");
-    assert_eq!(the_report(&harness).report.kind, unluminous_app::services::issue_report::Kind::Feature);
+    assert_eq!(
+        the_report(&harness).report.kind,
+        unluminous_app::services::issue_report::Kind::Feature
+    );
 
     harness.get_by_label("Discard").click();
     steady(&mut harness);

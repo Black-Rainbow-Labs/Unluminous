@@ -21,9 +21,9 @@ use rux::components::ChipButton;
 use rux::icon::{Icon, Mark};
 use rux::{Rux, Style};
 
+use crate::components::modal;
 use crate::components::realm::dialog;
 use crate::components::settings_kit::{self as kit, Column};
-use crate::components::modal;
 use crate::services::issue_report::{Attachment, Kind, Report};
 
 /// The modal's id, which is what `modal move`, `modal size` and `modal zoom` name it by.
@@ -157,7 +157,12 @@ fn form(
     let can_send = report.can_be_sent();
     let footer = Rect::from_min_max(Pos2::new(inner.left(), foot), inner.max);
     let pressed = kit::layer(ui, "report-footer", footer, |rux| {
-        dialog::footer(rux, inner, &[("Discard", false), ("Cancel", true)], ("Open on GitHub", can_send))
+        dialog::footer(
+            rux,
+            inner,
+            &[("Discard", false), ("Cancel", true)],
+            ("Open on GitHub", can_send),
+        )
     });
     match pressed {
         Some(0) => outcome.discard = true,
@@ -189,7 +194,8 @@ fn cards(
         }
         let title = card.row("Title", None, |row| {
             let width = row.right - row.x;
-            let rect = Rect::from_min_size(Pos2::new(row.x, row.top), Vec2::new(width, kit::CONTROL));
+            let rect =
+                Rect::from_min_size(Pos2::new(row.x, row.top), Vec2::new(width, kit::CONTROL));
             kit::text_well(
                 row.rux,
                 rect,
@@ -211,8 +217,10 @@ fn cards(
             let mut x = rect.left();
             for (label, act) in [("Take screenshot", 0), ("Add files...", 1)] {
                 let width = kit::button_width(rux, label, false);
-                let button =
-                    Rect::from_min_size(Pos2::new(x, rect.top() + 2.0), Vec2::new(width, kit::BUTTON));
+                let button = Rect::from_min_size(
+                    Pos2::new(x, rect.top() + 2.0),
+                    Vec2::new(width, kit::BUTTON),
+                );
                 if kit::button(rux, button, label, kit::Kind::Chip) {
                     match act {
                         0 => outcome.screenshot = true,
@@ -322,7 +330,8 @@ fn attachments(
             true => picture_chip(rux, chip, attachment, thumbnails.get(&attachment.path)),
             false => file_chip(rux, chip, attachment),
         }
-        let cross = Rect::from_center_size(chip.right_top() + Vec2::new(-12.0, 12.0), Vec2::splat(20.0));
+        let cross =
+            Rect::from_center_size(chip.right_top() + Vec2::new(-12.0, 12.0), Vec2::splat(20.0));
         let label = format!("Remove {}", attachment.name);
         if ChipButton::new(Icon::X, 20.0, &label).mark(8.0, Some(1.6)).show(rux, cross).clicked() {
             outcome.detach = Some(attachment.name.clone());
@@ -333,14 +342,24 @@ fn attachments(
             egui::Sense::hover(),
         );
         let named = format!("Attachment: {}", attachment.name);
-        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, named.clone()));
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Other, true, named.clone())
+        });
     }
 }
 
 /// A picture's thumbnail, fitted into the chip above its name.
-fn picture_chip(rux: &mut Rux<'_>, chip: Rect, attachment: &Attachment, texture: Option<&egui::TextureHandle>) {
+fn picture_chip(
+    rux: &mut Rux<'_>,
+    chip: Rect,
+    attachment: &Attachment,
+    texture: Option<&egui::TextureHandle>,
+) {
     let theme = rux.theme();
-    let frame = Rect::from_min_max(chip.min + Vec2::splat(6.0), Pos2::new(chip.right() - 6.0, chip.bottom() - 24.0));
+    let frame = Rect::from_min_max(
+        chip.min + Vec2::splat(6.0),
+        Pos2::new(chip.right() - 6.0, chip.bottom() - 24.0),
+    );
     match texture {
         Some(texture) => {
             let size = texture.size_vec2();
@@ -369,7 +388,11 @@ fn picture_chip(rux: &mut Rux<'_>, chip: Rect, attachment: &Attachment, texture:
 /// A file's mark, its name and its size.
 fn file_chip(rux: &mut Rux<'_>, chip: Rect, attachment: &Attachment) {
     let theme = rux.theme();
-    rux.mark(Mark::new(Icon::File, 15.0), Pos2::new(chip.left() + 18.0, chip.center().y), theme.ink.i500);
+    rux.mark(
+        Mark::new(Icon::File, 15.0),
+        Pos2::new(chip.left() + 18.0, chip.center().y),
+        theme.ink.i500,
+    );
     let style = Style::sans(12.0).medium();
     let galley = rux.elided(style, &attachment.name, theme.ink.i900, chip.width() - 34.0 - 30.0);
     rux::text::draw_left_capitals(
@@ -407,8 +430,12 @@ fn second_step(
     let files = sent.files.len();
     let mut steps: Vec<String> = Vec::new();
     steps.push(match sent.opened {
-        true => format!("Your browser has \u{201C}{}\u{201D} open on GitHub, already written.", report.full_title()),
-        false => "The issue is ready to open. Press Open the issue below to open it on GitHub.".to_owned(),
+        true => format!(
+            "Your browser has \u{201C}{}\u{201D} open on GitHub, already written.",
+            report.full_title()
+        ),
+        false => "The issue is ready to open. Press Open the issue below to open it on GitHub."
+            .to_owned(),
     });
     if files > 0 {
         let what = match files {
@@ -429,23 +456,50 @@ fn second_step(
     if files > 0 {
         kit::card(ui, &mut column, "Files to attach", None, |card| {
             for file in sent.files {
-                let name = file.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
-                let size = std::fs::metadata(file).map(|metadata| metadata.len()).unwrap_or_default();
+                let name = file
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let size =
+                    std::fs::metadata(file).map(|metadata| metadata.len()).unwrap_or_default();
                 card.custom(24.0, |rux, rect| {
                     let theme = rux.theme();
-                    rux.mark(Mark::new(Icon::File, 13.0), Pos2::new(rect.left() + 8.0, rect.center().y), theme.ink.i500);
+                    rux.mark(
+                        Mark::new(Icon::File, 13.0),
+                        Pos2::new(rect.left() + 8.0, rect.center().y),
+                        theme.ink.i500,
+                    );
                     let style = Style::sans(12.5);
                     let galley = rux.text(style, &name, theme.ink.i900);
                     let width = galley.size().x;
-                    rux::text::draw_left_capitals(rux.painter(), Pos2::new(rect.left() + 24.0, rect.center().y), galley, style, theme.ink.i900);
+                    rux::text::draw_left_capitals(
+                        rux.painter(),
+                        Pos2::new(rect.left() + 24.0, rect.center().y),
+                        galley,
+                        style,
+                        theme.ink.i900,
+                    );
                     let small = Style::sans(11.5);
-                    let galley = rux.text(small, &crate::services::issue_report::size_of(size), theme.ink.i400);
-                    rux::text::draw_left_capitals(rux.painter(), Pos2::new(rect.left() + 36.0 + width, rect.center().y), galley, small, theme.ink.i400);
+                    let galley = rux.text(
+                        small,
+                        &crate::services::issue_report::size_of(size),
+                        theme.ink.i400,
+                    );
+                    rux::text::draw_left_capitals(
+                        rux.painter(),
+                        Pos2::new(rect.left() + 36.0 + width, rect.center().y),
+                        galley,
+                        small,
+                        theme.ink.i400,
+                    );
                 });
             }
         });
     }
-    let row = Rect::from_min_size(Pos2::new(inner.left(), column.pen), Vec2::new(inner.width(), kit::BUTTON));
+    let row = Rect::from_min_size(
+        Pos2::new(inner.left(), column.pen),
+        Vec2::new(inner.width(), kit::BUTTON),
+    );
     kit::layer(ui, "report-sent-buttons", row, |rux| {
         let mut x = row.left();
         let open = match sent.opened {
@@ -459,7 +513,8 @@ fn second_step(
         }
         for (label, act) in labels {
             let width = kit::button_width(rux, label, false);
-            let button = Rect::from_min_size(Pos2::new(x, row.top()), Vec2::new(width, kit::BUTTON));
+            let button =
+                Rect::from_min_size(Pos2::new(x, row.top()), Vec2::new(width, kit::BUTTON));
             if kit::button(rux, button, label, kit::Kind::Chip) {
                 match act {
                     0 => outcome.copy_again = true,
@@ -478,9 +533,12 @@ fn second_step(
         Pos2::new(inner.right(), foot - 12.0),
     );
     if said.height() > 60.0 {
-        let text = format!("{}
+        let text = format!(
+            "{}
 
-{}", sent.title, sent.body);
+{}",
+            sent.title, sent.body
+        );
         modal::monospaced(ui, said, "report-issue-text", &text);
     }
     let footer = Rect::from_min_max(Pos2::new(inner.left(), foot), inner.max);
@@ -496,13 +554,15 @@ fn second_step(
 fn numbered(rux: &mut Rux<'_>, rect: Rect, number: usize, said: &str) {
     let theme = rux.theme();
     let chat = theme.chat;
-    let disc = Rect::from_center_size(Pos2::new(rect.left() + 13.0, rect.center().y), Vec2::splat(26.0));
+    let disc =
+        Rect::from_center_size(Pos2::new(rect.left() + 13.0, rect.center().y), Vec2::splat(26.0));
     rux.chrome.surface(disc, 13.0, rux::Fill::gradient(chat.action, disc), chat.raised_chip());
     let style = Style::sans(12.0).semibold();
     let galley = rux.text(style, &number.to_string(), egui::Color32::WHITE); // any ground: on the action's colour
     rux::text::draw_centred(rux.painter(), disc, galley, egui::Color32::WHITE); // any ground: on the action's colour
     let style = Style::sans(13.0).leading(1.4);
-    let galley = rux::text::wrapped(rux.painter(), style, said, theme.ink.i900, rect.width() - 40.0);
+    let galley =
+        rux::text::wrapped(rux.painter(), style, said, theme.ink.i900, rect.width() - 40.0);
     let at = Pos2::new(rect.left() + 40.0, rect.center().y - galley.size().y / 2.0);
     rux.painter().galley(at, galley, theme.ink.i900);
 }

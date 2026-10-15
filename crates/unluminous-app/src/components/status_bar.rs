@@ -180,7 +180,11 @@ fn flag(ui: &egui::Ui, painter: &egui::Painter, area: Rect) -> bool {
     };
     crate::theme::icon::flag(painter, centre, tint);
     response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Report an issue or request a feature")
+        egui::WidgetInfo::labeled(
+            egui::WidgetType::Button,
+            true,
+            "Report an issue or request a feature",
+        )
     });
     response.clicked()
 }

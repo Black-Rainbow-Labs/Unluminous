@@ -67,7 +67,9 @@ impl Kind {
     pub fn parse(said: &str) -> Option<Kind> {
         match said.trim().to_ascii_lowercase().as_str() {
             "bug" => Some(Kind::Bug),
-            "feature" | "feature-request" | "feature request" | "enhancement" => Some(Kind::Feature),
+            "feature" | "feature-request" | "feature request" | "enhancement" => {
+                Some(Kind::Feature)
+            }
             "question" => Some(Kind::Question),
             _ => None,
         }
@@ -95,8 +97,12 @@ impl Kind {
     /// What the description box says before anything is typed into it.
     pub fn hint(self) -> &'static str {
         match self {
-            Kind::Bug => "What happened, what you expected instead, and the steps that make it happen.",
-            Kind::Feature => "What you would like Unluminous to do, and what it would help you with.",
+            Kind::Bug => {
+                "What happened, what you expected instead, and the steps that make it happen."
+            }
+            Kind::Feature => {
+                "What you would like Unluminous to do, and what it would help you with."
+            }
             Kind::Question => "What you would like to know.",
         }
     }
@@ -305,7 +311,9 @@ mod platform {
     }
 
     fn read(value: &str) -> Option<String> {
-        use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
+        use windows_sys::Win32::System::Registry::{
+            RegGetValueW, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ,
+        };
         let wide = |text: &str| text.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
         let key = wide("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion");
         let name = wide(value);
@@ -350,7 +358,8 @@ mod platform {
             .ok()
             .and_then(|text| {
                 text.lines().find_map(|line| {
-                    line.strip_prefix("PRETTY_NAME=").map(|value| value.trim_matches('"').to_owned())
+                    line.strip_prefix("PRETTY_NAME=")
+                        .map(|value| value.trim_matches('"').to_owned())
                 })
             })
             .unwrap_or_else(|| std::env::consts::OS.to_owned())
@@ -380,7 +389,9 @@ pub fn encode(text: &str) -> String {
     let mut out = String::with_capacity(text.len() * 3);
     for byte in text.bytes() {
         match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => out.push(byte as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                out.push(byte as char)
+            }
             _ => out.push_str(&format!("%{byte:02X}")),
         }
     }
@@ -511,7 +522,9 @@ fn body(
             true => format!("Log (the newest lines; all of it is in `{LOG_FILE}`)"),
             false => "Log".to_owned(),
         };
-        out.push_str(&format!("\n<details><summary>{said}</summary>\n\n```\n{logs}\n```\n\n</details>\n"));
+        out.push_str(&format!(
+            "\n<details><summary>{said}</summary>\n\n```\n{logs}\n```\n\n</details>\n"
+        ));
     } else if logs_cut && report.include_logs {
         out.push_str(&format!("\n_The log is in `{LOG_FILE}`._\n"));
     }
@@ -562,8 +575,9 @@ pub fn prepare(
     if issue.logs_cut {
         if let Some(logs) = logs {
             let target = folder.join(LOG_FILE);
-            std::fs::write(&target, logs)
-                .map_err(|problem| format!("{} could not be written: {problem}", target.display()))?;
+            std::fs::write(&target, logs).map_err(|problem| {
+                format!("{} could not be written: {problem}", target.display())
+            })?;
             files.push(target);
         }
     }
@@ -601,7 +615,9 @@ pub fn write_picture(image: &egui::ColorImage, path: &Path) -> Result<(), String
     }
     let buffer = image::RgbaImage::from_raw(image.size[0] as u32, image.size[1] as u32, bytes)
         .ok_or_else(|| "the picture was the wrong size".to_owned())?;
-    buffer.save(path).map_err(|problem| format!("{} could not be written: {problem}", path.display()))
+    buffer
+        .save(path)
+        .map_err(|problem| format!("{} could not be written: {problem}", path.display()))
 }
 
 /// The picture on the clipboard, written into `folder` as `pasted.png`. `None` when the clipboard holds no
@@ -612,7 +628,9 @@ pub fn picture_from_the_clipboard(folder: &Path) -> Result<Option<PathBuf>, Stri
     let held = match clipboard.get_image() {
         Ok(held) => held,
         Err(arboard::Error::ContentNotAvailable) => return Ok(None),
-        Err(problem) => return Err(format!("the picture on the clipboard could not be read: {problem}")),
+        Err(problem) => {
+            return Err(format!("the picture on the clipboard could not be read: {problem}"))
+        }
     };
     let buffer =
         image::RgbaImage::from_raw(held.width as u32, held.height as u32, held.bytes.into_owned())
@@ -620,7 +638,9 @@ pub fn picture_from_the_clipboard(folder: &Path) -> Result<Option<PathBuf>, Stri
     std::fs::create_dir_all(folder)
         .map_err(|problem| format!("{} could not be made: {problem}", folder.display()))?;
     let path = free_name(folder, "pasted");
-    buffer.save(&path).map_err(|problem| format!("{} could not be written: {problem}", path.display()))?;
+    buffer
+        .save(&path)
+        .map_err(|problem| format!("{} could not be written: {problem}", path.display()))?;
     Ok(Some(path))
 }
 
@@ -776,7 +796,8 @@ mod tests {
 
     #[test]
     fn attaching_the_same_file_twice_is_one_attachment_and_detaching_is_by_name() {
-        let folder = std::env::temp_dir().join(format!("unluminous-report-test-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-report-test-{}", std::process::id()));
         std::fs::create_dir_all(&folder).unwrap();
         let file = folder.join("notes.txt");
         std::fs::write(&file, "hello").unwrap();
@@ -806,7 +827,8 @@ mod tests {
     fn preparing_copies_the_attachments_and_writes_what_was_cut() {
         let source =
             std::env::temp_dir().join(format!("unluminous-report-source-{}", std::process::id()));
-        let folder = std::env::temp_dir().join(format!("unluminous-report-out-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-report-out-{}", std::process::id()));
         std::fs::create_dir_all(&source).unwrap();
         let file = source.join("trace.txt");
         std::fs::write(&file, "trace").unwrap();

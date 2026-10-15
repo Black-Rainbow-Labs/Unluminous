@@ -62,8 +62,8 @@ pub mod notebook_files;
 pub mod notebook_frame;
 pub mod notebook_kernel;
 mod opening;
-pub mod report;
 mod panels;
+pub mod report;
 pub mod servers;
 pub mod signature;
 // The window's side of the UI plugins: which providers are open, and which of their panes are showing.
