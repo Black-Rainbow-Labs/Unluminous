@@ -36,7 +36,12 @@ pub const HISTORY_LIMIT: usize = 200;
 /// because only git knows that and only by reading the file. So while somebody is looking at the window
 /// it asks this often. Not while the window is in the background: an idle window must cost nothing, and
 /// the moment it is brought back to the front it asks at once.
-pub const READ_WHILE_FOCUSED: std::time::Duration = std::time::Duration::from_secs(5);
+///
+/// Ten seconds because a read is not free. Measured on this repository, `git status` alone is about
+/// 65 ms and a whole read runs four more commands for the branches, the stashes, the remotes and
+/// whether a merge is unfinished. Every other change has a trigger of its own, so this one only has to
+/// catch the case nothing else can see.
+pub const READ_WHILE_FOCUSED: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// Everything the window knows about the repository it is in.
 pub struct GitState {
