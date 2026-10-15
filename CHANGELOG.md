@@ -6,6 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- An install finishes setting Unluminous up with unluminous-cli setup (`task-2278`)
+- The installer README says what setup does and how a fresh install is tested (`task-2278`)
+- Setup is answered by the client, like mcp install, so the window walk lists why it never succeeds there (`task-2278`)
+
 ## 0.87.2 — 2026-10-15
 
 - A long chat no longer stops the ticket modal, and eight smaller fixes (`task-2277`)
