@@ -6,6 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- Report an issue from the window, and every modal in the redesign (`task-2276`)
+- The report's temporary log and description are allowed plain writes (`task-2276`)
+- The git walk reads the repository's history rather than racing the open file's (`task-2276`)
+- Rustfmt's layout for the report and the restyled modals (`task-2276`)
+
 ## 0.86.1 — 2026-10-15
 
 - The telemetry tests remove their scratch folders when they end (`task-2271`)
