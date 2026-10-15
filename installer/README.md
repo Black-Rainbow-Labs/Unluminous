@@ -64,8 +64,8 @@ it is the person's — so a `cargo build` typed by hand in that shell still fail
 build` is what to type instead.
 
 **What the installer does.** A plain double click installs into `%LOCALAPPDATA%\Programs\Unluminous` with
-no elevation prompt; the first page offers all users, which puts it in `Program Files` instead. Five
-optional things, all on one page and all remembered by the uninstaller:
+no elevation prompt; the first page offers all users, which puts it in `Program Files` instead. Six
+optional things, all on one page, all on by default and all remembered by the uninstaller:
 
 | | |
 |---|---|
@@ -74,8 +74,13 @@ optional things, all on one page and all remembered by the uninstaller:
 | Right click a file | *Open with Unluminous* |
 | Right click a folder | *Open with Unluminous*, on the folder and on the empty space inside it |
 | Open with | Unluminous is offered for `.md .markdown .txt .rs .js .ts .json .toml .yml .yaml` — offered, never taken as the default |
+| Connect agents | runs `unluminous-cli setup`, which connects Claude Code, Codex and OpenCode to Unluminous's MCP server and writes what it did to `%APPDATA%\Unluminous\setup.log` (`task-2278`) |
 
-**Uninstalling** removes the files, the shortcuts, the `PATH` entry and every registry key, and leaves
+A silent install with no `/TASKS` takes all six. `/TASKS` replaces the defaults rather than adding to them,
+so a script that names only some of them turns the rest off; `/MERGETASKS` adds.
+
+**Uninstalling** runs `unluminous-cli setup --remove`, which takes Unluminous out of every agent it was
+connected to, then removes the files, the shortcuts, the `PATH` entry and every registry key, and leaves
 every other `PATH` entry exactly as it was. It deliberately does **not** touch `%APPDATA%\Unluminous` —
 the settings, the pane sizes, the recent projects and any installed plugins — because uninstalling to
 install a newer version must not throw those away.
@@ -83,6 +88,12 @@ install a newer version must not throw those away.
 **Installing over a running Unluminous.** Unluminous does not answer the Restart Manager's request to shut down,
 so setup cannot close it by itself: a person is shown the list and closes Unluminous, and `build.ps1
 -Install` closes it for you, with the window's own close rather than a kill. See section 4 of the TDD.
+
+**Testing a fresh install.** `pwsh tools/test-fresh-install.ps1` installs the newest installer in
+`installer/dist` into a scratch profile, checks that the real agents list Unluminous as connected, has
+Claude Code call a tool on the freshly installed window, uninstalls it, and puts back and compares every
+registry key, the `PATH` and the shortcuts the installer touches, so the Unluminous installed on the machine
+is left exactly as it was. `-NoAgentCall` skips the Claude Code call.
 
 ---
 
@@ -105,6 +116,10 @@ rustup target add aarch64-apple-darwin x86_64-apple-darwin
 ```
 
 With only one installed it builds that one and says so.
+
+There is no installer to run anything on macOS, so the window runs `unluminous-cli setup` itself the first
+time it starts on a Mac: `unluminous-cli` is linked into `/usr/local/bin`, `/opt/homebrew/bin` or
+`~/.local/bin`, and the coding agents found are connected.
 
 The image goes to `releases/unluminous-<version>.dmg`. `installer/dist/` is the working area and is
 rewritten on every run.
