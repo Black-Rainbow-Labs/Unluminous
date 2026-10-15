@@ -182,8 +182,8 @@ fn the_title_bar_names_the_project_and_carries_the_window_buttons_and_the_text_t
 }
 
 /// `task-2258`: the application's own menu is the Unluminous mark rather than its name. It is still the
-/// `Unluminous` menu, round, at the very left of the bar, and what is drawn in it is the mark's channels: light
-/// ones in a dark theme and dark ones in a light theme.
+/// `Unluminous` menu, round, at the very left of the bar, and what is drawn in it is the blue `U`, the same in a
+/// dark theme and a light one (`task-2271` put the blue mark back).
 #[test]
 fn the_application_menu_is_the_mark_rather_than_its_name() {
     let mut harness = harness("");
@@ -194,14 +194,14 @@ fn the_application_menu_is_the_mark_rather_than_its_name() {
     assert!(pill.left() < 12.0, "the first thing in the bar: {pill:?}");
     assert!(harness.get_by_label("File").rect().left() > pill.right(), "File comes after it");
 
-    let (light, _) = ink_in(&mut harness, pill);
-    assert!(light > 20, "the dark theme draws light channels, and {light} pixels were light");
+    let blue = blue_in(&mut harness, pill);
+    assert!(blue > 40, "the dark theme draws the blue U, and {blue} pixels were blue");
 
     let ctx = harness.ctx.clone();
     harness.state_mut().run_command_line("theme set \"Unluminous Light\"", &ctx);
     steady(&mut harness);
-    let (_, dark) = ink_in(&mut harness, pill);
-    assert!(dark > 20, "the light theme draws dark channels, and {dark} pixels were dark");
+    let blue = blue_in(&mut harness, pill);
+    assert!(blue > 40, "the light theme draws the same blue U, and {blue} pixels were blue");
     harness.snapshot(shot("title_bar_mark_light"));
     let ctx = harness.ctx.clone();
     harness.state_mut().run_command_line("theme set \"Unluminous Dark\"", &ctx);
@@ -209,26 +209,19 @@ fn the_application_menu_is_the_mark_rather_than_its_name() {
     harness.snapshot(shot("title_bar_mark"));
 }
 
-/// How many pixels inside `rect` are clearly light and how many clearly dark. The mark is 20 points tall, so
-/// its channels are under two pixels wide and come out as mid tones; the dark bar is darker than the light
-/// count's floor and the light bar lighter than the dark count's ceiling, so each count is the channels.
-fn ink_in(harness: &mut Harness<'static, UnluminousApp>, rect: egui::Rect) -> (usize, usize) {
+/// How many pixels inside `rect` are the mark's blue: clearly blue, and bluer than they are red by a margin
+/// neither theme's bar has.
+fn blue_in(harness: &mut Harness<'static, UnluminousApp>, rect: egui::Rect) -> usize {
     let image = harness.render().expect("render the window");
     let scale = image.width() as f32 / WINDOW[0];
-    let (mut light, mut dark) = (0, 0);
-    for (x, y, pixel) in image.enumerate_pixels() {
-        if !rect.contains(egui::pos2(x as f32 / scale, y as f32 / scale)) {
-            continue;
-        }
-        let [r, g, b, _] = pixel.0;
-        if r > 110 && g > 110 && b > 110 {
-            light += 1;
-        }
-        if r < 130 && g < 130 && b < 130 {
-            dark += 1;
-        }
-    }
-    (light, dark)
+    image
+        .enumerate_pixels()
+        .filter(|(x, y, _)| rect.contains(egui::pos2(*x as f32 / scale, *y as f32 / scale)))
+        .filter(|(_, _, pixel)| {
+            let [r, _, b, _] = pixel.0;
+            b > 150 && b as i32 > r as i32 + 60
+        })
+        .count()
 }
 
 /// `task-2258`: on macOS the menus are in the bar along the top of the screen, so the mark is drawn in the
@@ -251,8 +244,8 @@ fn on_macos_the_mark_sits_after_the_traffic_lights() {
     let drag = harness.get_by_label("Move window").rect();
     assert!(drag.left() >= mark.right(), "nothing that moves the window is under it: {drag:?}");
 
-    let (light, _) = ink_in(&mut harness, mark);
-    assert!(light > 20, "the mark's channels are drawn, and {light} pixels were light");
+    let blue = blue_in(&mut harness, mark);
+    assert!(blue > 40, "the blue U is drawn, and {blue} pixels were blue");
     harness.snapshot(shot("title_bar_mark_macos"));
 }
 

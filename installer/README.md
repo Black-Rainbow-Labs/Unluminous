@@ -283,19 +283,20 @@ cargo run --release --manifest-path installer/icon/Cargo.toml
 ```
 
 Draws the mark once at 1024 points and writes `unluminous.ico`, `unluminous.icns` and `Unluminous.iconset/` beside
-itself, and the two pictures of the mark the title bar draws, `crates/unluminous-app/icons/logo/logo-dark.png`
-and `logo-light.png`. It is a workspace of its own, so `cargo build` on Unluminous does not build it, and its
-output is committed: `unluminous.ico` is a build input for `unluminous.exe` and the two logo pictures are built
-into the window, so a fresh checkout has to have them already.
+itself, and the still mark the title bar draws, `crates/unluminous-app/icons/logo/logo.png`, on nothing. It is
+a workspace of its own, so `cargo build` on Unluminous does not build it, and its output is committed:
+`unluminous.ico` is a build input for `unluminous.exe` and `logo.png` is built into the window, so a fresh
+checkout has to have them already.
 
-The mark is the one designed on the Claude Design canvas "unluminous — App Icon", page "Arches U" (`task-2258`):
-six nested outlined channels making a `U`. `installer/icon/src/mark.rs` draws it from the numbers in that
-design's SVG, and the colours are the design's two boards rather than `theme::color`'s. Against Chrome drawing
-the design's SVG, the logo pictures differ by about one level in 255 on average.
+The mark is the one designed on the Claude Design canvas "unluminous — App Icon" (`task-2258`): a blue `U`
+with eight coloured pages turning round its bowl. `installer/icon/src/mark.rs` draws it from the numbers in
+that design's own script, and the colours are the design's rather than `theme::color`'s. Rendered beside
+Chrome drawing the design's SVG, the icon differs by 0.33 of a level a channel on average. Nothing moves: the
+icons and `logo.png` are the turn stopped half way. `task-2271` put this mark back after a black and white
+"Arches U" had replaced it.
 
-The icons are the dark board, light channels on near black, because an application icon is one picture
-whatever theme the window is in. macOS gets a rounded plate 824 points of the 1024 with a shadow; Windows gets
-a plate 944 points across with no shadow, because a Windows icon fills its square.
+macOS gets the design's plate exactly, 824 points of the 1024 with a shadow; Windows gets a plate 944 points
+across with no shadow, because a Windows icon fills its square.
 
 Change the drawing in `installer/icon/src/mark.rs` or `main.rs`, run it, and **look at the pictures**
 before committing them, the same rule the screenshot tests are held to.

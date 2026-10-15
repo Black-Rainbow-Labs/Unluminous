@@ -1,28 +1,29 @@
 //! The Unluminous mark in the title bar, which is where the word `Unluminous` used to be (`task-2258`).
 //!
-//! The mark is six nested outlined channels making a `U`, from the Claude Design canvas "unluminous — App
-//! Icon", page "Arches U". `installer/icon` draws it from the design's own numbers and writes it twice, on
-//! nothing: `icons/logo/logo-dark.png` is the dark board's light channels and `logo-light.png` the light
-//! board's dark ones. The mark drawn is the one for the theme the window is in, and it never moves.
+//! The mark is the blue `U` with eight coloured pages turning round its bowl, from the Claude Design canvas
+//! "unluminous — App Icon", stopped half way through its turn. `installer/icon` draws it from the design's
+//! own numbers and writes it on nothing as `icons/logo/logo.png`. It is the same picture in a light and a
+//! dark theme, and it never moves.
+//!
+//! `task-2271` put this mark back. A black and white "Arches U" replaced it for a day and Jason asked for the
+//! blue one again; the animation it first had stays out.
 //!
 //! **What it costs.** The picture is decoded once, the first time the mark is drawn, and shrunk to the size the
 //! mark takes on this display, in pixels, so it is one texel to one pixel rather than a large picture filtered
 //! down. After that it is one textured rectangle a frame. A new texture is made only when the display's
-//! density or the darkness of the theme changes.
+//! density changes.
 
 use std::sync::{Arc, Mutex};
 
 use egui::{Color32, Pos2, Rect, TextureHandle, TextureOptions, Vec2};
 
-/// The mark for a dark theme and for a light one, each `SIDE` pixels square.
-const DARK: &[u8] = include_bytes!("../../icons/logo/logo-dark.png");
-const LIGHT: &[u8] = include_bytes!("../../icons/logo/logo-light.png");
-const SIDE: usize = 256;
+/// The mark, `SIDE` pixels square.
+const LOGO: &[u8] = include_bytes!("../../icons/logo/logo.png");
+const SIDE: usize = 512;
 
-/// The mark shrunk to one display's pixels, for one darkness of theme.
+/// The mark shrunk to one display's pixels.
 struct Shrunk {
     side: usize,
-    dark: bool,
     texture: TextureHandle,
 }
 
@@ -30,7 +31,7 @@ fn kept_id() -> egui::Id {
     egui::Id::new("unluminous-logo")
 }
 
-/// Decode one of the two pictures into premultiplied colours from 0 to 1, which is what averaging has to be
+/// Decode the picture into premultiplied colours from 0 to 1, which is what averaging has to be
 /// done on so the colour of the transparent pixels round each channel does not bleed into it.
 fn decode(bytes: &[u8]) -> Vec<[f32; 4]> {
     let image = image::load_from_memory(bytes).expect("the logo is a PNG").to_rgba8();
@@ -80,26 +81,24 @@ fn shrink(picture: &[[f32; 4]], side: usize) -> Vec<Color32> {
     out
 }
 
-/// The texture for the mark `side` pixels square, made the first time it is asked for at that size and
-/// darkness.
-fn texture(ctx: &egui::Context, side: usize, dark: bool) -> Arc<Shrunk> {
+/// The texture for the mark `side` pixels square, made the first time it is asked for at that size.
+fn texture(ctx: &egui::Context, side: usize) -> Arc<Shrunk> {
     let kept = ctx.data_mut(|data| {
         data.get_temp_mut_or_default::<Arc<Mutex<Option<Arc<Shrunk>>>>>(kept_id()).clone()
     });
     let mut kept = kept.lock().expect("the logo's texture");
-    if let Some(shrunk) = kept.as_ref().filter(|shrunk| shrunk.side == side && shrunk.dark == dark)
-    {
+    if let Some(shrunk) = kept.as_ref().filter(|shrunk| shrunk.side == side) {
         return shrunk.clone();
     }
-    let picture = decode(if dark { DARK } else { LIGHT });
+    let picture = decode(LOGO);
     let image = egui::ColorImage::new([side, side], shrink(&picture, side));
     let texture = ctx.load_texture("unluminous-logo", image, TextureOptions::LINEAR);
-    let shrunk = Arc::new(Shrunk { side, dark, texture });
+    let shrunk = Arc::new(Shrunk { side, texture });
     *kept = Some(shrunk.clone());
     shrunk
 }
 
-/// Draw the mark `height` points tall, centred in `rect`, in the version for the theme the window is in.
+/// Draw the mark `height` points tall, centred in `rect`.
 pub fn paint(ui: &egui::Ui, rect: Rect, height: f32) {
     let ctx = ui.ctx();
     // On whole pixels, one texel to one pixel, so it is as sharp as the picture allows.
@@ -111,7 +110,7 @@ pub fn paint(ui: &egui::Ui, rect: Rect, height: f32) {
         ((centre.x - shown / 2.0) * ppp).round() / ppp,
         ((centre.y - shown / 2.0) * ppp).round() / ppp,
     );
-    let shrunk = texture(ctx, side, crate::theme::is_dark());
+    let shrunk = texture(ctx, side);
     let rect = Rect::from_min_size(min, Vec2::splat(shown));
     let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
     // any ground: white is the tint that leaves a picture's own colours alone.
@@ -123,29 +122,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn both_pictures_are_the_size_the_icon_tool_writes() {
-        for bytes in [DARK, LIGHT] {
-            let image = image::load_from_memory(bytes).expect("a PNG").to_rgba8();
-            assert_eq!((image.width() as usize, image.height() as usize), (SIDE, SIDE));
-        }
+    fn the_picture_is_the_size_the_icon_tool_writes() {
+        let image = image::load_from_memory(LOGO).expect("a PNG").to_rgba8();
+        assert_eq!((image.width() as usize, image.height() as usize), (SIDE, SIDE));
     }
 
     #[test]
-    fn the_dark_themes_mark_is_light_and_the_light_themes_is_dark() {
-        // The most opaque pixel of each picture is in a channel, so its colour is the ink.
-        let ink = |bytes: &[u8]| {
-            let image = image::load_from_memory(bytes).expect("a PNG").to_rgba8();
-            let pixel = image.pixels().max_by_key(|pixel| pixel[3]).expect("pixels");
-            pixel[0]
-        };
-        assert!(ink(DARK) > 200, "light channels for a dark window");
-        assert!(ink(LIGHT) < 60, "dark channels for a light window");
+    fn the_mark_is_the_blue_u() {
+        // The top of the right arm is the letter's own blue, above every page.
+        let image = image::load_from_memory(LOGO).expect("a PNG").to_rgba8();
+        let pixel = image.get_pixel(SIDE as u32 * 3 / 4, SIDE as u32 / 10);
+        assert_eq!(pixel[3], 255, "the right arm is solid");
+        assert!(pixel[2] > 200 && pixel[2] > pixel[0] + 100, "and blue: {pixel:?}");
     }
 
     #[test]
     fn a_shrunk_mark_keeps_its_corners_clear_and_its_bowl_solid() {
         let side = 20;
-        let out = shrink(&decode(DARK), side);
+        let out = shrink(&decode(LOGO), side);
         let at = |x: usize, y: usize| out[y * side + x];
         assert_eq!(at(0, side - 1).a(), 0, "the bottom corners are outside the round of the bowl");
         assert_eq!(at(side - 1, side - 1).a(), 0);

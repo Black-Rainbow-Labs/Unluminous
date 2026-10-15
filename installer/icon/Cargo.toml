@@ -3,7 +3,7 @@
 # repository still holds four crates and no more.
 [package]
 name = "unluminous-icon"
-description = "Draws the Unluminous mark and writes unluminous.ico, unluminous.icns, an iconset and the title bar's two logo pictures."
+description = "Draws the Unluminous mark and writes unluminous.ico, unluminous.icns, an iconset and the title bar's still logo."
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"
