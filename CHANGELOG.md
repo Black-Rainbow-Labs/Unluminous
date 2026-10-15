@@ -6,12 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.87.2 — 2026-10-15
 
 - A long chat no longer stops the ticket modal, and eight smaller fixes (`task-2277`)
 - The tab name test clears the texture changes its frame made (`task-2277`)
 - A status chosen in a zoomed ticket modal is the status, and a row left as space keeps its spacing (`task-2277`)
 - Rustfmt's layout for the chat, the ticket modal, the tabs and the sequence diagram (`task-2277`)
+- The changelog written from the history (`task-2277`)
 
 ## 0.87.1 — 2026-10-15
 
