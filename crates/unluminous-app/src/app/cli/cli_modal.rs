@@ -57,6 +57,9 @@ impl UnluminousApp {
         if self.about.is_some() {
             return Some("about".to_owned());
         }
+        if self.report.as_ref().is_some_and(|report| report.showing) {
+            return Some("report".to_owned());
+        }
         if let Some(prompt) = &self.prompt {
             return Some(prompt_name(prompt).to_owned());
         }
@@ -220,6 +223,10 @@ impl UnluminousApp {
                 });
                 self.about = Some(about);
                 ok(request, "About Unluminous is open", answer)
+            }
+            "report" => {
+                self.open_the_report();
+                ok(request, "Report an Issue is open", json!({ "open": "report" }))
             }
             "new-file" | "rename" => self.cli_modal_open_prompt(request, &name, &query),
             // **The dialog, not the making.** `explorer new-project` is how a project is made with no
@@ -720,6 +727,10 @@ impl UnluminousApp {
         self.go_to_file = None;
         self.find_in_files = None;
         self.about = None;
+        // The report's draft is kept; only its modal is put away. `task-2276`.
+        if let Some(report) = self.report.as_mut() {
+            report.showing = false;
+        }
         self.settings_window.open = false;
         self.prompt = None;
         self.new_project = None;
@@ -823,6 +834,7 @@ const MODALS: &[(&str, &str)] = &[
         "Edit -> Settings: the font, the background, the gutter, the plugins, the terminal.",
     ),
     ("about", "Who wrote Unluminous, what version this is and when it was built."),
+    ("report", "Report an issue or ask for a feature on GitHub. The `report` commands drive it in full."),
     ("new-file", "Make an empty file in a folder. Takes --path."),
     (
         "background",
@@ -843,6 +855,7 @@ fn modal_id(name: &str) -> Option<&'static str> {
         "find-in-files" => "unluminous-find-in-files",
         "settings" => "unluminous-settings",
         "about" => "unluminous-about",
+        "report" => crate::components::report_dialog::ID,
         "new-file" | "rename" | "prompt" => "unluminous-prompt",
         "create-project" => "unluminous-new-project",
         "background" => "unluminous-background",

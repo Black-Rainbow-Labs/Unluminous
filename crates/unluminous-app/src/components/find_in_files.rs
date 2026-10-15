@@ -18,7 +18,7 @@ use egui::{Pos2, Rect, Vec2};
 
 use crate::components::{controls, modal, splitter};
 use crate::services::text_search::{self, Hit, Query, Searcher};
-use crate::theme::{color, size};
+use crate::theme::color;
 
 /// How large the modal is before anything has been dragged.
 const WIDTH: f32 = 980.0;
@@ -372,7 +372,7 @@ pub fn show(ctx: &egui::Context, state: &mut FindInFiles, split: f32) -> FindOut
             color::text_faint(),
             11.0,
         );
-        if modal::footer(ui, area, &[("OPEN", state.chosen_hit().is_some())]) == Some(0) {
+        if modal::footer(ui, area, &[("Open", state.chosen_hit().is_some())]) == Some(0) {
             outcome.open = state.chosen_hit().map(|hit| (hit.path.clone(), hit.offset.clone()));
         }
     });
@@ -544,14 +544,8 @@ fn scroll_to_line(line: usize, pitch: f32, height: f32) -> f32 {
 }
 
 /// The frame round one of the two panes, drawn the way every sunken box in Unluminous is.
-fn frame(ui: &egui::Ui, area: Rect) {
-    ui.painter().rect(
-        area,
-        egui::CornerRadius::same(size::CONTROL_CORNER),
-        color::editor(),
-        egui::Stroke::new(1.0, color::divider()),
-        egui::StrokeKind::Inside,
-    );
+fn frame(ui: &mut egui::Ui, area: Rect) {
+    modal::well(ui, area);
 }
 
 /// A matching line trimmed of the indent in front of it, and where the match is in what is left.

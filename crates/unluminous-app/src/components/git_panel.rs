@@ -19,7 +19,7 @@ use unluminous_git::status::Entry;
 use unluminous_git::Status;
 
 use crate::components::controls::WithHint as _;
-use crate::components::{controls, modal};
+use crate::components::modal;
 use crate::theme::{color, icon, size};
 
 const WIDTH: f32 = 780.0;
@@ -123,38 +123,20 @@ pub fn show(
 }
 
 /// The `Commit` / `Stashes` strip, and the small toolbar under it.
+///
+/// A carved track with the tab that is showing raised out of it, the Settings window's segmented control.
 fn tabs(ui: &mut egui::Ui, body: Rect, panel: &mut CommitPanel) -> f32 {
-    let mut pen = body.left();
-    for (tab, name) in [(Tab::Commit, "Commit"), (Tab::Stashes, "Stashes")] {
-        let width = (name.chars().count() as f32 * 7.5 + 24.0).max(70.0);
-        let rect = Rect::from_min_size(Pos2::new(pen, body.top()), Vec2::new(width, 26.0));
-        let response = ui.interact(rect, ui.id().with(("commit-tab", name)), Sense::click());
-        let chosen = panel.tab == tab;
-        if chosen {
-            controls::pill_with_stroke(
-                ui.painter(),
-                rect,
-                size::CONTROL_CORNER,
-                egui::Stroke::new(1.0, color::accent()),
-            );
-        } else if response.hovered() {
-            ui.painter().rect_filled(
-                rect,
-                egui::CornerRadius::same(size::CONTROL_CORNER),
-                color::control(),
-            );
-        }
-        let tint = if chosen { color::text_strong() } else { color::text_control() };
-        modal::label(ui.painter(), rect, rect.left() + 12.0, name, tint, 12.5);
-        response.widget_info(|| {
-            egui::WidgetInfo::selected(egui::WidgetType::Button, true, chosen, name)
-        });
-        if response.clicked() {
-            panel.tab = tab;
-        }
-        pen += width + 6.0;
+    let chosen = match panel.tab {
+        Tab::Commit => 0,
+        Tab::Stashes => 1,
+    };
+    let (picked, track) = modal::tabs(ui, body.min, "Commit tabs", &["Commit", "Stashes"], chosen);
+    match picked {
+        Some(0) => panel.tab = Tab::Commit,
+        Some(1) => panel.tab = Tab::Stashes,
+        _ => {}
     }
-    body.top() + 38.0
+    track.bottom() + 12.0
 }
 
 /// What `commit_tab` needs to draw itself, apart from the panel's own state and where the outcome
@@ -186,10 +168,6 @@ fn commit_tab(
         Pos2::new(rest.left(), list.bottom() + 8.0),
         Vec2::new(rest.width(), 24.0),
     );
-    ui.painter().line_segment(
-        [Pos2::new(counts.left(), counts.top()), Pos2::new(counts.right(), counts.top())],
-        egui::Stroke::new(1.0, color::divider()),
-    );
     let amend_row = Rect::from_min_size(counts.min + Vec2::new(0.0, 4.0), Vec2::new(200.0, 20.0));
     modal::check(ui, amend_row, "Amend", &mut panel.amend);
     let summary =
@@ -210,15 +188,9 @@ fn commit_tab(
         Pos2::new(rest.left(), counts.bottom() + 8.0),
         Vec2::new(rest.width(), MESSAGE),
     );
-    ui.painter().rect(
-        message,
-        egui::CornerRadius::same(size::CONTROL_CORNER),
-        color::field(),
-        egui::Stroke::new(1.0, color::accent().gamma_multiply(0.5)),
-        egui::StrokeKind::Inside,
-    );
+    modal::well(ui, message);
     let message_id = ui.id().with("git-commit-message");
-    let text_rect = message.shrink(8.0);
+    let text_rect = message.shrink2(Vec2::new(14.0, 10.0));
     // The eight points of margin round the box are part of the control, so a press in them hands it
     // the keyboard rather than leaving the pane behind holding the keys — `task-1795`.
     crate::components::controls::claim_the_field(ui, message, message_id, "Message field");
@@ -244,7 +216,7 @@ fn commit_tab(
     match modal::footer_confirmed_by(
         ui,
         area,
-        &[("COMMIT AND PUSH...", can_commit), ("COMMIT", can_commit)],
+        &[("Commit and Push...", can_commit), ("Commit Changes", can_commit)],
         modal::Confirm::CommandEnter,
     ) {
         Some(0) => outcome.commit = Some(true),
@@ -309,16 +281,10 @@ fn changes_tree(
     repository: &str,
     outcome: &mut CommitOutcome,
 ) {
-    ui.painter().rect(
-        area,
-        egui::CornerRadius::same(size::CONTROL_CORNER),
-        color::explorer_footer(),
-        egui::Stroke::new(1.0, color::divider()),
-        egui::StrokeKind::Inside,
-    );
+    modal::well(ui, area);
     let tracked: Vec<&Entry> = status.entries.iter().filter(|entry| !entry.untracked()).collect();
     let untracked: Vec<&Entry> = status.entries.iter().filter(|entry| entry.untracked()).collect();
-    let inner = area.shrink(4.0);
+    let inner = area.shrink(6.0);
     let mut list = ui.new_child(egui::UiBuilder::new().max_rect(inner));
     list.set_clip_rect(inner);
     egui::ScrollArea::vertical().id_salt("commit-changes").show(&mut list, |ui| {
@@ -386,7 +352,7 @@ fn group_row(
                 Pos2::new(x + 12.0, row.center().y - 9.0),
                 Vec2::new(galley.size().x + 14.0, 18.0),
             );
-            painter.rect_filled(chip, egui::CornerRadius::same(4), color::control());
+            painter.rect_filled(chip, egui::CornerRadius::same(9), crate::theme::rux_theme().chat.chip.from);
             painter.galley(
                 Pos2::new(chip.left() + 7.0, chip.center().y - galley.size().y / 2.0),
                 galley,
@@ -455,18 +421,28 @@ fn file_row(
     }
 }
 
-/// A tick box, drawn small enough to sit in a list row.
+/// A tick box, drawn small enough to sit in a list row, in the tick box's colours: the action's colour with a
+/// white tick when it is ticked, and the well with a quiet edge when it is not.
+///
+/// Flat rather than a `rux` surface, because a row is drawn with a painter and a list holds a canvas only for
+/// the row that is chosen and the one under the pointer.
 fn tick(painter: &egui::Painter, centre: Pos2, on: bool) {
     let rect = Rect::from_center_size(centre, Vec2::splat(15.0));
-    painter.rect(
-        rect,
-        egui::CornerRadius::same(3),
-        if on { color::accent() } else { color::field() },
-        egui::Stroke::new(1.0, if on { color::accent() } else { color::control_border() }),
-        egui::StrokeKind::Inside,
-    );
-    if on {
-        icon::tick(painter, centre, color::on_accent());
+    let theme = crate::theme::rux_theme();
+    match on {
+        true => {
+            painter.rect_filled(rect, egui::CornerRadius::same(5), theme.chat.action.to);
+            icon::tick(painter, centre, egui::Color32::WHITE); // any ground: the tick is on the action's colour
+        }
+        false => {
+            painter.rect(
+                rect,
+                egui::CornerRadius::same(5),
+                theme.chat.well,
+                egui::Stroke::new(1.0, theme.ink.i400.gamma_multiply(0.6)),
+                egui::StrokeKind::Inside,
+            );
+        }
     }
 }
 
@@ -479,14 +455,8 @@ fn stashes_tab(
     outcome: &mut CommitOutcome,
 ) {
     let list = Rect::from_min_size(rest.min, Vec2::new(rest.width(), rest.height() - 8.0));
-    ui.painter().rect(
-        list,
-        egui::CornerRadius::same(size::CONTROL_CORNER),
-        color::explorer_footer(),
-        egui::Stroke::new(1.0, color::divider()),
-        egui::StrokeKind::Inside,
-    );
-    let inner = list.shrink(4.0);
+    modal::well(ui, list);
+    let inner = list.shrink(6.0);
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
     child.set_clip_rect(inner);
     let mut chosen: Option<String> = None;
@@ -526,7 +496,7 @@ fn stashes_tab(
     match modal::footer_confirmed_by(
         ui,
         area,
-        &[("DROP", any), ("APPLY", any), ("POP", any)],
+        &[("Drop", any), ("Apply", any), ("Pop", any)],
         modal::Confirm::CommandEnter,
     ) {
         Some(0) => outcome.drop_stash = target,

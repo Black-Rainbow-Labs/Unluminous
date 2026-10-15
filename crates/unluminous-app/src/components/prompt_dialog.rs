@@ -11,10 +11,9 @@
 
 use std::path::PathBuf;
 
-use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
+use egui::{Pos2, Rect, Vec2};
 
 use crate::components::modal;
-use crate::theme::{color, size};
 
 const WIDTH: f32 = 460.0;
 const HEIGHT: f32 = 190.0;
@@ -118,31 +117,7 @@ pub fn show(ctx: &egui::Context, prompt: &mut Prompt) -> PromptOutcome {
             Pos2::new(body.left(), body.top() + 40.0),
             Vec2::new(body.width(), 30.0),
         );
-        ui.painter().rect(
-            field,
-            CornerRadius::same(size::CONTROL_CORNER),
-            color::field(),
-            Stroke::new(1.0, color::control_border()),
-            egui::StrokeKind::Inside,
-        );
-        let entry_id = ui.id().with("prompt-dialog-value");
-        let inside = crate::components::controls::field_takes_the_whole_rectangle(
-            ui,
-            field,
-            8.0,
-            entry_id,
-            "Entry field",
-        );
-        let mut edit = ui.new_child(egui::UiBuilder::new().max_rect(inside.rect));
-        let entry = edit.add(
-            egui::TextEdit::singleline(&mut prompt.value)
-                .id(entry_id)
-                .frame(egui::Frame::NONE)
-                .font(inside.font.clone())
-                .desired_width(inside.rect.width())
-                .text_color(color::text_control()),
-        );
-        entry.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Name"));
+        let entry = modal::field(ui, field, "Name", &mut prompt.value);
         // The field has the keyboard as soon as the prompt opens, because a prompt that has to be
         // clicked before it can be typed into is a prompt that gets typed past.
         if !entry.has_focus() {
@@ -199,22 +174,18 @@ fn modal(id: &str, ctx: &egui::Context, contents: impl FnOnce(&mut egui::Ui, Rec
 
 fn body_rect(area: Rect) -> Rect {
     Rect::from_min_max(
-        Pos2::new(area.left() + 20.0, area.top() + HEADER + 16.0),
-        Pos2::new(area.right() - 20.0, area.bottom() - FOOTER),
+        Pos2::new(area.left() + 24.0, area.top() + HEADER + 14.0),
+        Pos2::new(area.right() - 24.0, area.bottom() - FOOTER),
     )
 }
 
 fn note(ui: &mut egui::Ui, body: Rect, text: &str) {
-    let painter = ui.painter_at(body.expand(40.0));
-    let galley = painter.layout(
-        text.to_owned(),
-        egui::FontId::proportional(11.5),
-        color::text_faint(),
-        body.width(),
-    );
-    painter.galley(body.left_top(), galley, color::text_faint());
+    modal::note(ui, body, body.top(), text);
 }
 
+/// `Cancel` and the button that does the thing, which are the shared footer's: Enter presses the second,
+/// which is what answers the **confirmation**, which has no field to lose focus and so had no other way of
+/// being answered from the keyboard at all.
 fn buttons(
     ui: &mut egui::Ui,
     area: Rect,
@@ -222,57 +193,9 @@ fn buttons(
     enabled: bool,
     outcome: &mut PromptOutcome,
 ) {
-    let footer = Rect::from_min_max(Pos2::new(area.left(), area.bottom() - FOOTER), area.max);
-    ui.painter_at(area).line_segment(
-        [Pos2::new(footer.left(), footer.top()), Pos2::new(footer.right(), footer.top())],
-        Stroke::new(1.0, color::divider()),
-    );
-    let ok = Rect::from_min_size(
-        Pos2::new(footer.right() - 20.0 - 104.0, footer.center().y - 14.0),
-        Vec2::new(104.0, 28.0),
-    );
-    let cancel = Rect::from_min_size(
-        Pos2::new(ok.left() - 8.0 - 96.0, footer.center().y - 14.0),
-        Vec2::new(96.0, 28.0),
-    );
-    if button(ui, cancel, "Cancel", true, false) {
-        outcome.cancelled = true;
+    match modal::footer(ui, area, &[("Cancel", true), (confirm, enabled)]) {
+        Some(0) => outcome.cancelled = true,
+        Some(_) => outcome.confirmed = true,
+        None => {}
     }
-    // Enter presses the button that does the thing, which is what `components::modal::footer` does
-    // for every other modal and is asked here through the same function so the two cannot drift.
-    // It is what answers the **confirmation**, which has no field to lose focus and so had no way
-    // of being answered from the keyboard at all.
-    if button(ui, ok, confirm, enabled, true) || (enabled && modal::Confirm::Enter.pressed(ui)) {
-        outcome.confirmed = true;
-    }
-}
-
-/// A button with a word in it. The one that does the thing is filled in the accent colour, so the
-/// two answers to a question do not look the same.
-fn button(ui: &mut egui::Ui, area: Rect, name: &str, enabled: bool, primary: bool) -> bool {
-    let sense = if enabled { Sense::click() } else { Sense::hover() };
-    let response = ui.interact(area, ui.id().with(("prompt-button", name)), sense);
-    let fill = match (enabled, primary, response.hovered()) {
-        (false, _, _) => color::control().gamma_multiply(0.6),
-        (true, true, _) => color::accent(),
-        (true, false, true) => color::control_hover(),
-        (true, false, false) => color::control(),
-    };
-    let painter = ui.painter();
-    painter.rect(
-        area,
-        CornerRadius::same(size::CONTROL_CORNER),
-        fill,
-        Stroke::new(1.0, if primary { color::accent() } else { color::control_border() }),
-        egui::StrokeKind::Inside,
-    );
-    let tint = match (enabled, primary) {
-        (false, _) => color::text_faint(),
-        (true, true) => color::on_accent(),
-        (true, false) => color::text_strong(),
-    };
-    let galley = painter.layout_no_wrap(name.to_owned(), egui::FontId::proportional(12.5), tint);
-    painter.galley(area.center() - galley.size() / 2.0, galley, tint);
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, name));
-    response.clicked()
 }

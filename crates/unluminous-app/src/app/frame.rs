@@ -71,6 +71,9 @@ impl UnluminousApp {
         // first thing in the title bar.
         hold_the_keyboard(ui);
         self.route_the_escape_key(ui);
+        // Before anything else reads the frame's input, so a file dropped while the Report an Issue modal is
+        // open is attached rather than copied into the folder pane behind it. `task-2276`.
+        self.take_the_report_input(ui.ctx());
         self.ask_for_the_next_frame_and_let_the_plugins_catch_up(ui);
 
         let places = self.lay_the_frame_out(ui);
@@ -132,6 +135,7 @@ impl UnluminousApp {
         // The references, the candidate list and the rename, which are one modal wearing three faces.
         self.show_the_references(ui);
         self.show_the_about_box(ui);
+        self.show_the_report(ui);
         // The two debug modals, beside the other project-wide dialogs and for the same reason: only
         // one is ever open, so where they are drawn among the others decides nothing.
         self.show_the_debug_modals(ui.ctx());
@@ -1476,7 +1480,7 @@ impl UnluminousApp {
             None => kind.to_owned(),
         };
         let kind = kind.as_str();
-        status_bar::show(
+        let report = status_bar::show(
             ui,
             status_rect,
             &status_bar::Status {
@@ -1500,6 +1504,10 @@ impl UnluminousApp {
             Pos2::new(status_rect.left(), status_rect.top()),
             Pos2::new(status_rect.right(), status_rect.top()),
         );
+        // The flag is the menu entry's twin, so it goes through `run_action` like a press of the entry.
+        if report {
+            self.run_action(Action::ReportIssue, ui.ctx());
+        }
     }
 
     /// Anything git and the update check have answered since the last frame.
@@ -1814,7 +1822,7 @@ impl UnluminousApp {
                 self.confirmation = Some(Confirmation {
                     title: "Remove".to_owned(),
                     note: format!("{name} is running. Removing it stops the program first."),
-                    button: "REMOVE".to_owned(),
+                    button: "Remove".to_owned(),
                     answer: Answer::RemoveRun(name),
                 });
             }

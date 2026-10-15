@@ -148,7 +148,7 @@ pub fn show(ctx: &egui::Context, state: &mut GoToFile) -> GoToFileOutcome {
             color::text_faint(),
             11.0,
         );
-        if modal::footer(ui, area, &[("OPEN", state.chosen_path().is_some())]) == Some(0) {
+        if modal::footer(ui, area, &[("Open", state.chosen_path().is_some())]) == Some(0) {
             outcome.open = state.chosen_path();
         }
     });

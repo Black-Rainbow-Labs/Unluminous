@@ -217,6 +217,7 @@ impl Command {
                 | ("terminal", "read")
                 | ("run", "output")
                 | ("update", "check")
+                | ("report", "screenshot")
                 | (
                     "debug",
                     "start"
@@ -557,6 +558,7 @@ pub fn area_title(area: &'static str) -> &'static str {
         "pane" => "pane — the editing area split into panes",
         "editor" => "editor — safely rename symbols everywhere, find every use and definitions",
         "update" => "update — whether a newer Unluminous has been released, and installing it",
+        "report" => "report — telling the people who make Unluminous about a bug, or asking for a feature",
         "highlight" => "highlight — the passages marked in the project's files",
         "fold" => "fold — the blocks collapsed in the tab that is showing",
         "notebook" => "notebook — Jupyter notebooks: run cells in a live kernel and read what they output",
@@ -591,6 +593,7 @@ pub fn area_note(area: &'static str) -> &'static str {
         "pane" => "The editing area can be split into panes side by side, each with its own tabs, which is the reference editor's split view. `pane split` moves the tab that is showing into a new pane on the right — it moves rather than copies, because two tabs on one file would be two documents over one path. A pane holding only that tab keeps it and the new pane opens empty, ready for the next file: opening a file always lands in the pane that has the keyboard.",
         "editor" => "Use this tool first for project-symbol work. If asked to find every place a name is used, call `references` with `name`; if asked where a name is defined, call `definition`; if asked to rename it everywhere, call `rename` with `name`, `new-name` and `apply: true`. Do not begin those jobs with grep, file search, reads or file edits. Unluminous's native answers combine unsaved live open tabs with the project index, distinguish code from comments and strings, and apply a role-aware project rename as one undo step per open file while safely rewriting closed files. Lines and columns count from 1.",
         "update" => "One request to unluminous.com, which is where the installer is, and to the public GitHub releases only if the site does not answer. The window asks once a day on its own unless the `update.check` setting is `off`, and offers a newer version in a notice with Install & Restart and Don't Ask Again. `update install` is that button: the installer is checked against the size and SHA-256 unluminous.com publishes before anything is run.",
+        "report" => "The flag at the bottom right. `report send` opens a GitHub issue on Black-Rainbow-Labs/Unluminous, already written, and puts the attachments on the clipboard; the person submits it there.",
         "fold" => "A block that can be collapsed is a function, an `if`, a bracket that spans lines, a run of comments, an indented section, or a Markdown heading — worked out from the file itself, so nothing has to be written into it. Collapsing one hides its lines; the line numbers of everything still showing are unchanged, so `fold list` and `editor caret --line` speak the same language whatever is folded. `fold others` is the one to notice: it collapses everything that does not hold a marked passage, which is how to leave only the four places you care about on the screen.",
         "notebook" => "Use this for any .ipynb file instead of editing its JSON or running Python in a shell. A notebook tab's text is its cells, one after another behind marker lines, so `editor text` reads every cell and `editor replace` edits one exactly as it does a file; these commands are for what text cannot do. `notebook run --wait` runs cells in a real Jupyter kernel started from the project's own Python and answers with what they printed, returned, raised and drew, and `notebook cell` reads one cell's outputs back, writing a plot to a PNG you can look at. Cells are numbered from 1 or named by `--id`. Saving writes the .ipynb, outputs included, which Jupyter, VS Code and PyCharm open.",
         "realm" => "If `UNLUMINOUS_REALM_NODE` is set in your environment you are running inside a node on this canvas, and `realm here` is the first thing to run: it says which node you are, which nodes you are wired to, and the command that drives each of them. `unluminous-cli` is on your PATH inside a node and already knows which window to drive, so `unluminous-cli realm here` is the whole command - no path and no `--instance`. (`$UNLUMINOUS_CLI` and `$UNLUMINOUS_INSTANCE` are set too, for a program that wants them.) You may act on the nodes you are wired to and no others, so every command you send carries `--from <your node>`. The Realm is a canvas you put nodes on: a terminal running a real shell, a web page, a folder tree, or a file editor with the editing area's own gutter, folding and find. A node is wired to another by connecting its output to that node's input, and a connection is what lets an agent running in a terminal node act on the node it is wired to - `realm browser`, `realm folder`, `realm editor` and `realm send` all take `--from` and are refused when there is no wire. The window's own agent passes no `--from` and may drive every node. Read `realm view --json` first: everything here names a node by the id it prints. Places and sizes are in canvas points, which are screen points at a zoom of 1.",
@@ -1408,6 +1411,89 @@ pub const COMMANDS: &[Command] = &[
         arguments: NO_ARGUMENTS,
         flags: NO_FLAGS,
         examples: &["unluminous-cli update status --json"],
+        local: false,
+    },
+    // ------------------------------------------------------------------ reporting an issue
+    Command {
+        area: "report",
+        verb: "open",
+        summary: "Open the Report an Issue modal, photographing the window and filling in what is named.",
+        arguments: NO_ARGUMENTS,
+        flags: &[
+            option("kind", "bug|feature|question", "A bug when left out."),
+            option("title", "text", "One line."),
+            option("description", "text", "What happened."),
+        ],
+        examples: &["unluminous-cli report open --title \"Ctrl+D does nothing in a terminal\""],
+        local: false,
+    },
+    Command {
+        area: "report",
+        verb: "status",
+        summary: "The draft as data, and the issue address once it is sent.",
+        arguments: NO_ARGUMENTS,
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli report status --json"],
+        local: false,
+    },
+    Command {
+        area: "report",
+        verb: "set",
+        summary: "Change the draft.",
+        arguments: NO_ARGUMENTS,
+        flags: &[
+            option("kind", "bug|feature|question", "The kind."),
+            option("title", "text", "One line."),
+            option("description", "text", "What happened."),
+            option("logs", "on|off", "Include the crash log."),
+            option("system", "on|off", "Include the version and system."),
+        ],
+        examples: &["unluminous-cli report set --kind feature --logs off"],
+        local: false,
+    },
+    Command {
+        area: "report",
+        verb: "attach",
+        summary: "Attach a file.",
+        arguments: &[argument("path", true, "The file to attach.")],
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli report attach notes/repro.txt"],
+        local: false,
+    },
+    Command {
+        area: "report",
+        verb: "detach",
+        summary: "Take an attachment off by its name.",
+        arguments: &[argument("name", true, "Such as window.png.")],
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli report detach window.png"],
+        local: false,
+    },
+    Command {
+        area: "report",
+        verb: "screenshot",
+        summary: "Photograph the window without the modal and attach it.",
+        arguments: NO_ARGUMENTS,
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli report screenshot"],
+        local: false,
+    },
+    Command {
+        area: "report",
+        verb: "send",
+        summary: "Open the issue, already written, in the browser, with the attachments on the clipboard. Needs a title.",
+        arguments: NO_ARGUMENTS,
+        flags: &[switch("no-browser", "Answer the address and open nothing.")],
+        examples: &["unluminous-cli report send --json", "unluminous-cli report send --no-browser --json"],
+        local: false,
+    },
+    Command {
+        area: "report",
+        verb: "close",
+        summary: "Close the modal, keeping the draft.",
+        arguments: NO_ARGUMENTS,
+        flags: &[switch("discard", "Throw the draft away.")],
+        examples: &["unluminous-cli report close", "unluminous-cli report close --discard"],
         local: false,
     },
     // ------------------------------------------------------------------ the marked passages

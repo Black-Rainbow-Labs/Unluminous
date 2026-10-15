@@ -254,7 +254,7 @@ impl UnluminousApp {
         self.confirmation = Some(Confirmation {
             title: "Delete".to_owned(),
             note: format!("{what} {}", recycle::destination().reassurance()),
-            button: "DELETE".to_owned(),
+            button: "Delete".to_owned(),
             answer: Answer::Delete(path.to_path_buf()),
         });
     }

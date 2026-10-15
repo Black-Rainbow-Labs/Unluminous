@@ -40,6 +40,7 @@ pub mod icons;
 pub mod ignore;
 pub mod imports;
 pub mod input;
+pub mod issue_report;
 pub mod launcher;
 pub mod links;
 pub mod locators;

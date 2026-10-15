@@ -162,5 +162,9 @@
  "expect":"Uses `editor complete --after .` to list what a value offers without typing the dot into the file, `editor signature` to read the parameters of the call the caret is inside, and `status --section servers` to say whether rust-analyzer is ready, rather than reading the source of `shapes.rs` or running rust-analyzer itself. The document is unchanged at the end.",
  "prompts":["In src/main.rs, put the caret just after the word `rects` on the line that calls total_area, and tell me what I could write after a dot there. Do not change the file.",
             "Put the caret inside the brackets of the call to area_of and tell me what it takes.",
-            "Is the language server for this project ready yet?"]}
+            "Is the language server for this project ready yet?"]},
+{"id":"s35-report-an-issue","area":"report","name":"Report a bug to the people who make Unluminous",
+ "after":{"report":["report","status","--json"]},
+ "expect":"Uses `report open` with a title and the kind, `report attach` for the file it is told about, and `report send --no-browser` to write the issue, then says the address it would open and that the files are on the clipboard for one paste. It does not write the issue by hand, call the GitHub API itself, or ask for a token. `report status` at the end shows a sent report whose title starts with [Bug].",
+ "prompts":["Ctrl+D in the terminal closes the tab instead of ending the shell. Report that as a bug to the Unluminous developers, and attach src/main.rs so they can see the project. Do not open my browser, just get it ready and tell me what it will say."]}
 ]

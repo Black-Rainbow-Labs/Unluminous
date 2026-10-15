@@ -255,12 +255,20 @@ separator is a groove. A row that cannot be used is drawn faint and takes no cli
 bar's, the explorer's context menu, the gutter's — goes through `controls::menu_rows`, so they cannot
 drift apart, and every flyout uses the same frame.
 
-**A modal.** `components::modal::show`, always — never `egui::Modal` directly. Filled `EXPLORER`
-over a `from_black_alpha(120)` backdrop, a one point `CONTROL_BORDER` stroke, corner radius 10. A 46
-point header filled `TITLE_BAR` with the title at the left in `TEXT_STRONG` and a close cross at the
-right. A 52 point footer with a `DIVIDER` line along its top and the buttons at its right. The
-Settings window is the reference; the commit panel, the git dialogs, the prompt, the confirmation,
-`Go to File` and `Find in Files` are all built the same way.
+**A modal.** `components::modal::show` or `show_unframed`, always — never `egui::Modal` directly. Since
+`task-2276` every modal is the redesign's object: the pane's own ground (`rux`'s `chat.ground`), 28
+points round (`modal::RADIUS`), with the one long soft shadow `modal::shadow` casts, over the blurred
+photograph of the window. The title is at the top left in the design's semibold 16 point, with a round
+30 point close chip at the top right and no band behind either. The buttons are at the bottom right with
+no line above them: the one that does the thing on the action's gradient, the others raised pills.
+Fields are carved wells with round ends, a list sits in a carved well sixteen points round with the
+chosen row raised out of it, a tick box is carved and fills with the action's gradient, a section is
+named in small spaced capitals over a groove, and tabs are a carved track with the chosen one raised.
+All of it is `components::modal`'s furniture, so the commit panel, the git dialogs, the prompt, the
+confirmation, `Go to File`, `Find in Files` and the rest change together, and a dialog written later is
+right without anybody remembering. A dialog that wants cards, as the Settings window, the New Data
+Source dialog and the Report an Issue modal do, uses `show_unframed` with `components::realm::dialog`
+and `components::settings_kit`. Button words are in the case a person reads: `Push`, not `PUSH`.
 
 **A modal is dragged by its header and resized from any of its edges**, and neither is a dialog's
 business: both are in `modal::show`, so a dialog written later has them without asking. A double

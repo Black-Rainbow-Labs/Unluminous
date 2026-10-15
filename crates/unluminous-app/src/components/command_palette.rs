@@ -251,7 +251,7 @@ pub fn show(ctx: &egui::Context, state: &mut CommandPalette) -> PaletteOutcome {
             color::text_faint(),
             11.0,
         );
-        if modal::footer(ui, area, &[("RUN", state.chosen_command().is_some())]) == Some(0) {
+        if modal::footer(ui, area, &[("Run", state.chosen_command().is_some())]) == Some(0) {
             if let Some(command) = state.chosen_command().cloned() {
                 match command.enabled {
                     true => outcome.run = Some(command),

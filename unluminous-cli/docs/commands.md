@@ -1332,6 +1332,126 @@ The last check's answer, an install's progress, the declined version, and the of
 unluminous-cli update status --json
 ```
 
+## report — telling the people who make Unluminous about a bug, or asking for a feature
+
+The flag at the bottom right. `report send` opens a GitHub issue on Black-Rainbow-Labs/Unluminous, already written, and puts the attachments on the clipboard; the person submits it there.
+
+### report open
+
+```
+unluminous-cli report open [--kind <bug|feature|question>] [--title <text>] [--description <text>]
+```
+
+Open the Report an Issue modal, photographing the window and filling in what is named.
+
+- `--kind <bug|feature|question>` — A bug when left out.
+- `--title <text>` — One line.
+- `--description <text>` — What happened.
+
+```sh
+unluminous-cli report open --title "Ctrl+D does nothing in a terminal"
+```
+
+### report status
+
+```
+unluminous-cli report status
+```
+
+The draft as data, and the issue address once it is sent.
+
+```sh
+unluminous-cli report status --json
+```
+
+### report set
+
+```
+unluminous-cli report set [--kind <bug|feature|question>] [--title <text>] [--description <text>] [--logs <on|off>] [--system <on|off>]
+```
+
+Change the draft.
+
+- `--kind <bug|feature|question>` — The kind.
+- `--title <text>` — One line.
+- `--description <text>` — What happened.
+- `--logs <on|off>` — Include the crash log.
+- `--system <on|off>` — Include the version and system.
+
+```sh
+unluminous-cli report set --kind feature --logs off
+```
+
+### report attach
+
+```
+unluminous-cli report attach <path>
+```
+
+Attach a file.
+
+- `path` — The file to attach.
+
+```sh
+unluminous-cli report attach notes/repro.txt
+```
+
+### report detach
+
+```
+unluminous-cli report detach <name>
+```
+
+Take an attachment off by its name.
+
+- `name` — Such as window.png.
+
+```sh
+unluminous-cli report detach window.png
+```
+
+### report screenshot
+
+```
+unluminous-cli report screenshot
+```
+
+Photograph the window without the modal and attach it.
+
+```sh
+unluminous-cli report screenshot
+```
+
+### report send
+
+```
+unluminous-cli report send [--no-browser]
+```
+
+Open the issue, already written, in the browser, with the attachments on the clipboard. Needs a title.
+
+- `--no-browser` — Answer the address and open nothing.
+
+```sh
+unluminous-cli report send --json
+unluminous-cli report send --no-browser --json
+```
+
+### report close
+
+```
+unluminous-cli report close [--discard]
+```
+
+Close the modal, keeping the draft.
+
+- `--discard` — Throw the draft away.
+
+```sh
+unluminous-cli report close
+unluminous-cli report close --discard
+```
+
 ## highlight — the passages marked in the project's files
 
 A highlight is a colour behind a passage of text. It stays there until it is cleared, in this file and next time the project is opened, and it moves with the text as the file is edited. These work on a file whether it is open or not, so `highlight apply` can mark twenty passages across twenty files in one call.

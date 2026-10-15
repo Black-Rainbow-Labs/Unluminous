@@ -294,7 +294,9 @@ impl UnluminousApp {
             | Action::DeletePath(_)
             | Action::RevealPath(_)
             | Action::ReloadPath(_) => self.an_explorer_entry(action, ctx),
-            Action::About | Action::CheckForUpdates => self.an_unluminous_entry(action),
+            Action::About | Action::CheckForUpdates | Action::ReportIssue => {
+                self.an_unluminous_entry(action)
+            }
             // The Git menu is `run_git`, which was already the one place a git action turns into
             // a command.
             Action::Git(what) => self.run_git(what),
@@ -1036,6 +1038,7 @@ impl UnluminousApp {
                 self.about = Some(About::current());
             }
             Action::CheckForUpdates => self.check_for_updates(),
+            Action::ReportIssue => self.open_the_report(),
             other => unreachable!("{other:?} is not handled by an_unluminous_entry"),
         }
     }

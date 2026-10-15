@@ -778,7 +778,7 @@ impl UnluminousApp {
                 note: format!(
                     "Throw {name} away. What is in it is nowhere else, so this cannot be undone."
                 ),
-                button: "DROP".to_owned(),
+                button: "Drop".to_owned(),
                 answer: Answer::Git(Request::DropStash(name)),
             });
             return action;
@@ -818,7 +818,7 @@ impl UnluminousApp {
                     note: format!(
                         "Move the branch to {revision} and throw away everything after it, including changes that were never committed. This cannot be undone."
                     ),
-                    button: "RESET".to_owned(),
+                    button: "Reset".to_owned(),
                     answer: Answer::Git(Request::Reset { revision, mode }),
                 });
                 return action;
@@ -835,7 +835,7 @@ impl UnluminousApp {
                 note: format!(
                     "Delete {name}. Git refuses if it holds commits that are nowhere else."
                 ),
-                button: "DELETE".to_owned(),
+                button: "Delete".to_owned(),
                 answer: Answer::Git(Request::DeleteBranch { name, force: false }),
             });
             self.git.as_mut()?.dialogs.close();

@@ -4093,6 +4093,7 @@ const EVERY_VARIANT: &[&str] = &[
     "ClearHighlights",
     "Fold",
     "About",
+    "ReportIssue",
     "Quit",
     "PluginPane",
     "PluginCommand",
@@ -4200,6 +4201,7 @@ fn variant_name(action: &Action) -> &'static str {
         Action::ClearHighlights => "ClearHighlights",
         Action::Fold(_) => "Fold",
         Action::About => "About",
+        Action::ReportIssue => "ReportIssue",
         Action::Quit => "Quit",
         Action::PluginPane { .. } => "PluginPane",
         Action::PluginCommand { .. } => "PluginCommand",
@@ -4937,6 +4939,7 @@ fn every_step() -> Vec<Step> {
         ]),
         Step::new(Action::ClearHighlights).after(&["highlight add --from-line 3 --to-line 3"]),
         Step::new(Action::About),
+        Step::new(Action::ReportIssue),
         Step::new(Action::PluginPane { pane: "agent-tasks/board".to_owned() }),
         // A plugin command that changes the window rather than one that answers with data: this is
         // the half of the plugin contract Unluminous owns, and it is what puts a pane on the screen.
@@ -5904,4 +5907,168 @@ fn a_selection_over_prose_sits_on_the_letters() {
         rects[0]
     );
     harness.snapshot(shot("selection_centred_on_the_letters"));
+}
+
+// ------------------------------------------------------------------ reporting an issue (`task-2276`)
+
+/// A small picture in a folder of its own, to attach to a report the way a person attaches a screenshot.
+fn a_picture_to_attach(name: &str) -> std::path::PathBuf {
+    let folder = std::env::temp_dir().join(format!("unluminous-report-fixture-{name}-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).expect("make the folder");
+    let path = folder.join(format!("{name}.png"));
+    let picture = image::RgbaImage::from_fn(160, 100, |x, y| {
+        image::Rgba([(x * 255 / 160) as u8, (y * 255 / 100) as u8, 180, 255])
+    });
+    picture.save(&path).expect("write the picture");
+    path
+}
+
+/// The report modal's draft, which a test reads back.
+fn the_report<'a>(
+    harness: &'a Harness<'static, UnluminousApp>,
+) -> &'a unluminous_app::app::report::ReportDraft {
+    harness.state().report.as_ref().expect("there is a report")
+}
+
+#[test]
+fn the_flag_at_the_bottom_right_opens_the_report_modal() {
+    let mut harness = harness("Text behind the report.");
+    steady(&mut harness);
+    assert!(harness.state().report.is_none());
+    harness.get_by_label("Report an issue or request a feature").click();
+    harness.step();
+    harness.step();
+    let draft = the_report(&harness);
+    assert!(draft.showing, "the flag opens the modal");
+    assert!(
+        draft.shot_wanted || draft.shot_asked.is_some() || draft.shots > 0,
+        "and asks for a picture of the window"
+    );
+    // A window a test builds never answers a screenshot, so the wait for it runs out and the modal is drawn.
+    for _ in 0..12 {
+        pump(&mut harness);
+    }
+    harness.get_by_label("Kind");
+    harness.get_by_label("Title");
+    harness.get_by_label("Open on GitHub");
+    assert!(the_report(&harness).sent.is_none());
+}
+
+#[test]
+fn the_report_modal_draws_in_the_redesign() {
+    let mut harness = harness("Text behind the report.");
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_action(Action::ReportIssue, &ctx);
+    let picture = a_picture_to_attach("window");
+    let notes = picture.with_file_name("steps.txt");
+    std::fs::write(&notes, "1. Open a terminal\n2. Press Ctrl+D\n").expect("write the notes");
+    for line in [
+        "report set --title \"Ctrl+D closes the terminal tab instead of the shell\"".to_owned(),
+        "report set --description \"I expected the shell to exit and the tab to stay.\"".to_owned(),
+        format!("report attach \"{}\"", picture.display()),
+        format!("report attach \"{}\"", notes.display()),
+    ] {
+        let answer = harness.state_mut().run_command_line(&line, &ctx).expect("an answer");
+        assert!(answer.ok, "{line}: {}", answer.message);
+    }
+    for _ in 0..12 {
+        pump(&mut harness);
+    }
+    steady(&mut harness);
+    harness.get_by_label("Attachment: window.png");
+    harness.get_by_label("Attachment: steps.txt");
+    harness.snapshot(shot("report_issue_form"));
+    std::fs::remove_dir_all(picture.parent().unwrap()).ok();
+}
+
+#[test]
+fn a_report_needs_a_title_and_command_enter_sends_it() {
+    let mut harness = harness("");
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_action(Action::ReportIssue, &ctx);
+    for _ in 0..12 {
+        pump(&mut harness);
+    }
+    harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::Enter);
+    steady(&mut harness);
+    assert!(the_report(&harness).sent.is_none(), "nothing is sent without a title");
+
+    harness.state_mut().report.as_mut().unwrap().report.title = "The flag works".to_owned();
+    steady(&mut harness);
+    harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::Enter);
+    steady(&mut harness);
+    let sent = the_report(&harness).sent.as_ref().expect("the report was sent");
+    assert!(sent.issue.address.starts_with("https://github.com/Black-Rainbow-Labs/Unluminous/issues/new?"));
+    assert!(sent.issue.title.starts_with("[Bug] The flag works"));
+    assert!(!sent.opened, "a window a test built opens no browser");
+    assert!(!sent.on_the_clipboard, "and does not touch the clipboard");
+    harness.get_by_label("Almost there");
+    harness.snapshot(shot("report_issue_sent"));
+    harness.get_by_label("Done").click();
+    steady(&mut harness);
+    assert!(harness.state().report.is_none(), "Done throws the sent draft away");
+}
+
+#[test]
+fn closing_the_report_keeps_the_draft_and_discard_throws_it_away() {
+    let mut harness = harness("");
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_command_line("report open --kind feature --title \"Keep me\"", &ctx);
+    for _ in 0..12 {
+        pump(&mut harness);
+    }
+    harness.get_by_label("Cancel").click();
+    steady(&mut harness);
+    assert!(!the_report(&harness).showing, "Cancel puts the modal away");
+    assert_eq!(the_report(&harness).report.title, "Keep me", "and keeps what was typed");
+
+    harness.get_by_label("Report an issue or request a feature").click();
+    for _ in 0..12 {
+        pump(&mut harness);
+    }
+    assert!(the_report(&harness).showing);
+    assert_eq!(the_report(&harness).report.title, "Keep me", "the flag brings the draft back");
+    assert_eq!(the_report(&harness).report.kind, unluminous_app::services::issue_report::Kind::Feature);
+
+    harness.get_by_label("Discard").click();
+    steady(&mut harness);
+    assert!(harness.state().report.is_none(), "Discard throws it away");
+}
+
+#[test]
+fn the_report_commands_write_the_same_issue_the_modal_sends() {
+    let mut harness = harness("");
+    let ctx = harness.ctx.clone();
+    let run = |harness: &mut Harness<'static, UnluminousApp>, line: &str| {
+        harness.state_mut().run_command_line(line, &ctx).expect("an answer")
+    };
+    let refused = run(&mut harness, "report send --no-browser");
+    assert!(!refused.ok, "there is no report yet");
+    assert!(run(&mut harness, "report open --title \"From an agent\" --kind question").ok);
+    let picture = a_picture_to_attach("agent");
+    assert!(run(&mut harness, &format!("report attach \"{}\"", picture.display())).ok);
+    let missing = run(&mut harness, "report attach no-such-file.png");
+    assert!(!missing.ok);
+    assert!(run(&mut harness, "report set --logs off --system off").ok);
+    let status = run(&mut harness, "report status");
+    assert_eq!(status.result["kind"], "question");
+    assert_eq!(status.result["attachments"][0]["name"], "agent.png");
+    assert_eq!(status.result["includeSystem"], false);
+    assert!(run(&mut harness, "report detach agent.png").ok);
+    assert!(run(&mut harness, &format!("report attach \"{}\"", picture.display())).ok);
+
+    let sent = run(&mut harness, "report send --no-browser");
+    assert!(sent.ok, "{}", sent.message);
+    let address = sent.result["sent"]["address"].as_str().unwrap();
+    assert!(address.contains("labels=question"), "{address}");
+    let body = sent.result["sent"]["body"].as_str().unwrap();
+    assert!(!body.contains("### System"), "the system was switched off");
+    assert!(body.contains("`agent.png`"), "the attachment is named in the body");
+    let files = sent.result["sent"]["files"].as_array().unwrap();
+    assert_eq!(files.len(), 1);
+    assert!(std::path::Path::new(files[0].as_str().unwrap()).is_file(), "the picture was gathered");
+
+    assert!(run(&mut harness, "report close --discard").ok);
+    assert!(harness.state().report.is_none());
+    std::fs::remove_dir_all(picture.parent().unwrap()).ok();
 }

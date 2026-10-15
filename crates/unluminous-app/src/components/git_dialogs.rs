@@ -9,7 +9,7 @@
 use egui::{Pos2, Rect, Vec2};
 use unluminous_git::{Branch, Commit, PullStrategy, PushTarget, Remote, ResetMode, Status};
 
-use crate::components::{controls, modal};
+use crate::components::modal;
 use crate::theme::color;
 
 /// Which dialog is open. Only one can be, because they are all modal.
@@ -128,7 +128,7 @@ pub fn show(
             Dialog::Remotes => remote_list(ui, area, body, dialogs, remotes, &mut outcome),
             Dialog::Text { body: text, .. } => {
                 modal::monospaced(ui, body, "git-text", text);
-                if modal::footer(ui, area, &[("CLOSE", true)]).is_some() {
+                if modal::footer(ui, area, &[("Close", true)]).is_some() {
                     outcome.close = true;
                 }
             }
@@ -171,7 +171,7 @@ fn push(
     modal::check(ui, row_at(body, pen + 26.0), "Push tags", &mut dialogs.tags);
 
     let ready = !dialogs.remote.trim().is_empty() && !dialogs.branch.trim().is_empty();
-    match modal::footer(ui, area, &[("CANCEL", true), ("PUSH", ready)]) {
+    match modal::footer(ui, area, &[("Cancel", true), ("Push", ready)]) {
         Some(0) => outcome.close = true,
         Some(1) => {
             outcome.push = Some(PushTarget {
@@ -210,7 +210,7 @@ fn pull(
     modal::check(ui, row_at(body, pen), "Rebase instead of merging", &mut dialogs.rebase_on_pull);
 
     let ready = !dialogs.remote.trim().is_empty() && !dialogs.branch.trim().is_empty();
-    match modal::footer(ui, area, &[("CANCEL", true), ("PULL", ready)]) {
+    match modal::footer(ui, area, &[("Cancel", true), ("Pull", ready)]) {
         Some(0) => outcome.close = true,
         Some(1) => {
             outcome.pull = Some((
@@ -261,8 +261,8 @@ fn merge(
     }
 
     let ready = !dialogs.target.trim().is_empty();
-    let word = if rebase { "REBASE" } else { "MERGE" };
-    match modal::footer(ui, area, &[("CANCEL", true), (word, ready)]) {
+    let word = if rebase { "Rebase" } else { "Merge" };
+    match modal::footer(ui, area, &[("Cancel", true), (word, ready)]) {
         Some(0) => outcome.close = true,
         Some(1) if rebase => outcome.rebase = Some(dialogs.target.clone()),
         Some(1) => {
@@ -297,7 +297,9 @@ fn reset(
         let chosen = dialogs.reset_mode == index;
         let response = ui.interact(row, ui.id().with(("reset-mode", index)), egui::Sense::click());
         if chosen {
-            controls::pill(ui.painter(), row.shrink2(Vec2::new(0.0, 1.0)), 5);
+            modal::raised(ui, ("reset-mode", index), row.shrink2(Vec2::new(0.0, 1.0)));
+        } else if response.hovered() {
+            modal::washed(ui, ("reset-mode", index), row.shrink2(Vec2::new(0.0, 1.0)));
         }
         let tint = if chosen { color::text_strong() } else { color::text_control() };
         let x = modal::label(ui.painter(), row, row.left() + 10.0, mode.name(), tint, 12.5);
@@ -319,7 +321,7 @@ fn reset(
     modal::note(ui, body, pen + 4.0, &recent.join("\n"));
 
     let ready = !dialogs.target.trim().is_empty();
-    match modal::footer(ui, area, &[("CANCEL", true), ("RESET", ready)]) {
+    match modal::footer(ui, area, &[("Cancel", true), ("Reset", ready)]) {
         Some(0) => outcome.close = true,
         Some(1) => {
             outcome.reset =
@@ -340,7 +342,8 @@ fn branch_list(
     let list = Rect::from_min_max(body.min, Pos2::new(body.right(), body.bottom()));
     let mut chosen: Option<String> = None;
     let mut current = String::new();
-    let inner = list.shrink(2.0);
+    modal::well(ui, list);
+    let inner = list.shrink(6.0);
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
     child.set_clip_rect(inner);
     egui::ScrollArea::vertical().id_salt("branch-list").show(&mut child, |ui| {
@@ -377,7 +380,7 @@ fn branch_list(
     });
     let picked = chosen.clone().unwrap_or_default();
     let can_act = !picked.is_empty() && picked != current;
-    match modal::footer(ui, area, &[("DELETE", can_act), ("CHECK OUT", can_act)]) {
+    match modal::footer(ui, area, &[("Delete", can_act), ("Check Out", can_act)]) {
         Some(0) => outcome.delete_branch = chosen,
         Some(1) => outcome.switch = chosen,
         _ => {}
@@ -392,7 +395,8 @@ fn history_list(
     history: &[Commit],
     outcome: &mut DialogOutcome,
 ) {
-    let inner = body.shrink(2.0);
+    modal::well(ui, body);
+    let inner = body.shrink(6.0);
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
     child.set_clip_rect(inner);
     egui::ScrollArea::vertical().id_salt("git-history").show(&mut child, |ui| {
@@ -423,7 +427,7 @@ fn history_list(
             );
         }
     });
-    if modal::footer(ui, area, &[("CLOSE", true)]).is_some() {
+    if modal::footer(ui, area, &[("Close", true)]).is_some() {
         outcome.close = true;
     }
 }
@@ -439,8 +443,10 @@ fn remote_list(
 ) {
     let list = Rect::from_min_max(body.min, Pos2::new(body.right(), body.top() + 160.0));
     let mut chosen: Option<String> = None;
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(list));
-    child.set_clip_rect(list);
+    modal::well(ui, list);
+    let inner = list.shrink(6.0);
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
+    child.set_clip_rect(inner);
     egui::ScrollArea::vertical().id_salt("remote-list").show(&mut child, |ui| {
         for remote in remotes {
             let name = remote.name.clone();
@@ -470,7 +476,7 @@ fn remote_list(
     named_field(ui, body, pen, "Address", &mut dialogs.remote_url);
 
     let can_add = !dialogs.remote_name.trim().is_empty() && !dialogs.remote_url.trim().is_empty();
-    match modal::footer(ui, area, &[("REMOVE", chosen.is_some()), ("ADD", can_add)]) {
+    match modal::footer(ui, area, &[("Remove", chosen.is_some()), ("Add", can_add)]) {
         Some(0) => outcome.remove_remote = chosen,
         Some(1) => {
             outcome.add_remote =
@@ -482,14 +488,8 @@ fn remote_list(
 
 /// A list of branches to choose one from, which merge and rebase both need.
 fn chooser(ui: &mut egui::Ui, area: Rect, id: &str, branches: &[Branch], target: &mut String) {
-    ui.painter().rect(
-        area,
-        egui::CornerRadius::same(6),
-        color::explorer_footer(),
-        egui::Stroke::new(1.0, color::divider()),
-        egui::StrokeKind::Inside,
-    );
-    let inner = area.shrink(4.0);
+    modal::well(ui, area);
+    let inner = area.shrink(6.0);
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
     child.set_clip_rect(inner);
     egui::ScrollArea::vertical().id_salt(id).show(&mut child, |ui| {
@@ -512,8 +512,8 @@ fn named_field(ui: &mut egui::Ui, body: Rect, top: f32, name: &str, value: &mut 
     let row = row_at(body, top);
     modal::label(ui.painter(), row, row.left(), name, color::text_control(), 12.5);
     let field = Rect::from_min_size(
-        Pos2::new(row.left() + 110.0, row.top()),
-        Vec2::new((row.width() - 110.0).max(120.0), 26.0),
+        Pos2::new(row.left() + 110.0, row.top() - 3.0),
+        Vec2::new((row.width() - 110.0).max(120.0), 32.0),
     );
     modal::field(ui, field, name, value);
     top + 36.0

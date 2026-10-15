@@ -62,6 +62,7 @@ pub mod notebook_files;
 pub mod notebook_frame;
 pub mod notebook_kernel;
 mod opening;
+pub mod report;
 mod panels;
 pub mod servers;
 pub mod signature;
@@ -1310,6 +1311,12 @@ pub struct UnluminousApp {
     /// reading them when it draws, so that a screenshot test can fix them; `About::current` is what
     /// `Action::About` puts here.
     pub about: Option<About>,
+    /// The report being written in the Report an Issue modal, whether or not the modal is showing. See
+    /// `app::report`. `task-2276`.
+    pub report: Option<crate::app::report::ReportDraft>,
+    /// Whether sending a report may open the browser and write to the system clipboard, which only the
+    /// released binary may: `use_the_system_clipboard` sets it, and a test never calls that.
+    pub(crate) report_reaches_out: bool,
     /// Set when something outside the editing area moved the caret — opening a `Find in Files`
     /// result is the only one — so the next frame scrolls the file to show it.
     reveal_caret: bool,
@@ -1616,6 +1623,8 @@ impl UnluminousApp {
             back: Vec::new(),
             forward: Vec::new(),
             about: None,
+            report: None,
+            report_reaches_out: false,
             reveal_caret: false,
             gutter_menu: None,
             preview_menu: None,

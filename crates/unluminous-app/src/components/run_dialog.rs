@@ -153,8 +153,8 @@ fn show_list(
     configurations: &RunConfigurations,
     running: &[String],
 ) {
-    ui.painter().rect_filled(area, egui::CornerRadius::same(6), color::explorer_footer());
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(area.shrink(4.0)));
+    modal::well(ui, area);
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(area.shrink(6.0)));
     child.set_clip_rect(area);
     let mut chosen: Option<String> = None;
     egui::ScrollArea::vertical().id_salt("run-configuration-list").show(&mut child, |ui| {

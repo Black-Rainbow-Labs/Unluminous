@@ -7,6 +7,10 @@
 //! column are absent, and the right hand end says how big the picture is and how far it is zoomed
 //! instead. One field each rather than a second kind of status bar, because it is the same bar saying
 //! what it can about whatever is open.
+//!
+//! The flag at the far right opens the Report an Issue modal (`task-2276`): the bottom right corner is
+//! where the ticket asked for it, and a control that is always in the same place is a control a person
+//! finds again without looking for it.
 
 use egui::{CornerRadius, Pos2, Rect};
 
@@ -60,8 +64,12 @@ pub struct Status<'a> {
     pub git: Option<&'a str>,
 }
 
-/// Draw the status bar into `area`.
-pub fn show(ui: &egui::Ui, area: Rect, status: &Status<'_>, opacity: f32) {
+/// How far in from the right edge the flag sits, and how large the round place it is pressed in is.
+const FLAG_INSET: f32 = 22.0;
+const FLAG_HIT: f32 = 22.0;
+
+/// Draw the status bar into `area`. Answers whether the flag that reports an issue was pressed.
+pub fn show(ui: &egui::Ui, area: Rect, status: &Status<'_>, opacity: f32) -> bool {
     let Status { name, unsaved, kind, encoding, position, detail, message, git } = *status;
     let painter = ui.painter_at(area);
     // The bottom two corners are rounded to match the window.
@@ -115,8 +123,9 @@ pub fn show(ui: &egui::Ui, area: Rect, status: &Status<'_>, opacity: f32) {
     // The font, or the picture's size, sits against the right edge, and the branch sits before it,
     // which is where every editor with a status bar puts it. Worked out before the message is drawn,
     // because where they end is what says how much room the message has.
+    let reported = flag(ui, &painter, area);
     let galley = painter.layout_no_wrap(detail.to_owned(), font.clone(), color::text_dim());
-    let mut right = area.right() - 16.0 - galley.size().x;
+    let mut right = area.right() - FLAG_INSET - FLAG_HIT / 2.0 - 12.0 - galley.size().x;
     painter.galley(Pos2::new(right, middle - galley.size().y / 2.0), galley, color::text_dim());
     if let Some(git) = git {
         let galley = painter.layout_no_wrap(git.to_owned(), font.clone(), color::text_control());
@@ -149,6 +158,31 @@ pub fn show(ui: &egui::Ui, area: Rect, status: &Status<'_>, opacity: f32) {
             );
         }
     }
+    reported
+}
+
+/// The flag at the far right: the Report an Issue modal's way in. A round place under the pointer and
+/// the accent colour say it can be pressed.
+fn flag(ui: &egui::Ui, painter: &egui::Painter, area: Rect) -> bool {
+    use crate::components::controls::WithHint as _;
+    let centre = Pos2::new(area.right() - FLAG_INSET, area.center().y);
+    let hit = Rect::from_center_size(centre, egui::Vec2::splat(FLAG_HIT));
+    let response = ui
+        .interact(hit, ui.id().with("status-bar-report"), egui::Sense::click())
+        .with_hint("Report an issue or request a feature");
+    let tint = match response.hovered() {
+        true => {
+            painter.circle_filled(centre, FLAG_HIT / 2.0, color::control_hover());
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            color::accent()
+        }
+        false => color::text_dim(),
+    };
+    crate::theme::icon::flag(painter, centre, tint);
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Report an issue or request a feature")
+    });
+    response.clicked()
 }
 
 /// `message` laid out in one line, cut short with an ellipsis when it will not fit in `room`.

@@ -81,8 +81,8 @@ fn the_commit_panel_shows_the_changes_and_the_unversioned_files() {
         git.panel.message = "task-1649: the commit panel".to_owned();
     }
     steady(&mut harness);
-    harness.get_by_label("COMMIT");
-    harness.get_by_label("COMMIT AND PUSH...");
+    harness.get_by_label("Commit Changes");
+    harness.get_by_label("Commit and Push...");
     harness.snapshot(shot("git_commit_panel"));
 }
 
@@ -172,7 +172,7 @@ fn every_git_operation_can_be_driven_from_the_window() {
         state.panel.message = "task-1649: driven from the window".to_owned();
     }
     nudge(&mut harness);
-    harness.get_by_label("COMMIT").click();
+    harness.get_by_label("Commit Changes").click();
     settle(&mut harness, "the commit", |app| {
         app.git.as_ref().is_some_and(|git| git.snapshot.status.entry("version.ts").is_none())
     });
@@ -217,7 +217,7 @@ fn every_git_operation_can_be_driven_from_the_window() {
     // Unstashing is the `Stashes` tab of the commit panel, and its POP button.
     harness.state_mut().run_action(git(GitAction::Unstash), &ctx);
     nudge(&mut harness);
-    harness.get_by_label("POP").click();
+    harness.get_by_label("Pop").click();
     settle(&mut harness, "the stash to come back", |app| {
         app.git.as_ref().is_some_and(|git| git.snapshot.stashes.is_empty())
     });
@@ -254,7 +254,7 @@ fn every_git_operation_can_be_driven_from_the_window() {
         state.dialogs.target = "from-unluminous".to_owned();
     }
     nudge(&mut harness);
-    harness.get_by_label("MERGE").click();
+    harness.get_by_label("Merge").click();
     // Asked of git rather than of the window: the merge is finished when main really holds the
     // branch's commit, which is the only thing that matters about it.
     let merged = root.clone();

@@ -283,6 +283,9 @@ pub enum Action {
     Fold(FoldAction),
     /// Unluminous's own about box, which is a line in the status bar rather than a window.
     About,
+    /// Open the Report an Issue modal, which the flag at the bottom right of the window also opens.
+    /// `task-2276`.
+    ReportIssue,
     Quit,
     /// Show or hide a pane a plugin contributed, named `<plugin id>/<pane id>`.
     ///
@@ -1640,6 +1643,8 @@ fn unluminous_menu() -> Menu {
             // own behalf. `update.check` is off until somebody turns it on, and this entry works
             // either way. See `services::update`. `task-1804` §6.
             Entry::item("Check for Updates", Action::CheckForUpdates),
+            // The flag at the bottom right of the window is the same entry. `task-2276`.
+            Entry::item("Report an Issue...", Action::ReportIssue),
             Entry::Separator,
             Entry::item("Settings", Action::Settings),
             Entry::Separator,

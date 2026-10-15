@@ -258,8 +258,12 @@ impl UnluminousApp {
 
     /// Let a cut, a copy and a paste in the explorer reach the operating system's clipboard. The
     /// released binary calls this and a test does not.
+    ///
+    /// A report sent from the Report an Issue modal reaches the clipboard and the browser by the same switch,
+    /// for the same reason (`task-2276`).
     pub fn use_the_system_clipboard(&mut self) {
         self.system_clipboard = true;
+        self.report_reaches_out = true;
     }
 
     /// Whether a paste has anything to paste, here or on the system clipboard.

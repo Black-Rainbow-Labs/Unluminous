@@ -170,6 +170,9 @@ pub enum Waiting {
     /// it exists for. The id is what the session labelled the question with, so an answer that lands
     /// after another was asked cannot be mistaken for this one.
     DebugEvaluate { expression: String, id: u64, until: Instant },
+    /// `report screenshot`: the picture of the window, attached to the report. `count` is how many
+    /// pictures the report had when it was asked, so the answer is for this picture and not an older one.
+    ReportShot { count: usize, until: Instant },
     /// `debug hover` waiting for the tree the value tooltip shows. `task-1696`.
     ///
     /// Its own kind rather than [`Waiting::DebugEvaluate`], because what it waits for is not the
@@ -239,6 +242,7 @@ impl Waiting {
             | Waiting::References { until, .. }
             | Waiting::Git { until, .. }
             | Waiting::UpdateCheck { until }
+            | Waiting::ReportShot { until, .. }
             | Waiting::NotebookRun { until, .. }
             | Waiting::NotebookVariables { until, .. }
             | Waiting::NotebookPythons { until }
@@ -570,6 +574,7 @@ impl UnluminousApp {
                 let python = python.clone();
                 self.notebook_kernels_answer(request, &python)
             }
+            Waiting::ReportShot { count, .. } => self.report_shot_answer(request, *count),
             Waiting::UpdateCheck { .. } => {
                 let check = self.update.as_ref()?;
                 // `take_the_update_answer` is what reads the channel, once a frame, beside the git
@@ -714,6 +719,10 @@ impl UnluminousApp {
             Waiting::ModalResults { .. } => {
                 ("modal.results", "The search was still running when the time ran out.".to_owned())
             }
+            Waiting::ReportShot { .. } => (
+                "report.screenshot",
+                "The window had not been photographed when the time ran out.".to_owned(),
+            ),
             Waiting::UpdateCheck { .. } => (
                 "update.check",
                 "The releases page had not answered when the time ran out.".to_owned(),
@@ -954,6 +963,7 @@ impl UnluminousApp {
             "project" => self.cli_project(request, verb),
             "mcp" => self.cli_mcp(request, verb),
             "update" => self.cli_update(request, verb),
+            "report" => self.cli_report(request, verb),
             "search" => self.cli_search(request, verb),
             _ => no(
                 request,
@@ -964,7 +974,7 @@ impl UnluminousApp {
     }
 
     /// A relative path is relative to the project. See the note at the top of this file.
-    fn cli_path(&self, text: &str) -> PathBuf {
+    pub(crate) fn cli_path(&self, text: &str) -> PathBuf {
         let path = PathBuf::from(text);
         // `project_state::absolute`'s reason, at the other door a relative path comes in by: a
         // caller writes `src/report.rs`, and on Windows joining that gives a path with both
@@ -1029,7 +1039,8 @@ fn screenshot_from(ctx: &egui::Context) -> Option<egui::ColorImage> {
         input.events.iter().find_map(|event| match event {
             // Not one a modal's backdrop asked for, which it blurs (`services::backdrop_blur`).
             egui::Event::Screenshot { image, user_data, .. }
-                if !crate::services::backdrop_blur::is_ours(user_data) =>
+                if !crate::services::backdrop_blur::is_ours(user_data)
+                    && !crate::app::report::is_a_report_shot(user_data) =>
             {
                 Some((**image).clone())
             }

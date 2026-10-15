@@ -47,8 +47,11 @@
 use egui::emath::TSTransform;
 use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
-use crate::components::controls;
-use crate::theme::{color, icon, size};
+use rux::components::{ChipButton, PillButton};
+use rux::icon::{Icon, Mark};
+use rux::{Rux, Style};
+
+use crate::theme::{color, size};
 
 pub const HEADER: f32 = 46.0;
 pub const FOOTER: f32 = 52.0;
@@ -315,29 +318,34 @@ fn show_framed<R>(
             // Clipped to the window rather than to the area, whose clip is the window measured in the
             // layer's own points: at a zoom below one that left the top and the left of the window uncovered.
             covering.rect_filled(window, CornerRadius::ZERO, color::scrim());
-            let frame_at = ui.painter().add(egui::Shape::Noop);
             let (area, _) = ui.allocate_exact_size(laid_out, Sense::hover());
+            let window_clip = ui.clip_rect();
+            // **The surface is the redesign's** (`task-2276`): the pane's own ground, thirty points round, with
+            // the one long shadow a layer over the window casts, which is what the dialogs that paint their own
+            // surface already draw. Reserved before the contents, so everything a dialog draws is over it.
             if framed {
-                ui.painter().set(
-                    frame_at,
-                    egui::Shape::Rect(egui::epaint::RectShape::new(
-                        area.expand(1.0),
-                        CornerRadius::same(10),
-                        color::explorer(),
-                        Stroke::new(1.0, color::control_border()),
-                        egui::StrokeKind::Inside,
-                    )),
+                ui.set_clip_rect(area.expand(SHADOW_REACH).intersect(window_clip));
+                crate::components::settings_kit::layer_reaching(
+                    ui,
+                    ("modal-surface", id),
+                    area,
+                    SHADOW_REACH,
+                    |rux| {
+                        let ground = rux.theme().chat.ground;
+                        rux.chrome.surface(area, RADIUS, ground, shadow());
+                    },
                 );
             }
             // **Nothing a dialog draws reaches past its own frame.** The area's clip was the whole window, so a
             // section that ran out of room painted over the backdrop under the modal, which a zoom makes easy to
             // reach: a modal zoomed in has less room in its own points. `task-2198`. A dialog with no frame
-            // keeps room round it for the shadow it paints.
+            // keeps room round it for the shadow it paints; a framed one keeps room for the shadow of a chip or a
+            // well at its edge.
             let reach = match framed {
-                true => 1.0,
+                true => 12.0,
                 false => SHADOW_REACH,
             };
-            ui.set_clip_rect(area.expand(reach).intersect(ui.clip_rect()));
+            ui.set_clip_rect(area.expand(reach).intersect(window_clip));
             // Before the contents, so the close cross the header draws sits over the strip.
             let moved = drag_strip(ui, area, id, &mut placement, zoom);
             let inner = contents(ui, area);
@@ -640,12 +648,39 @@ fn edges_and_corners(area: Rect) -> [(&'static str, (i32, i32), Rect, egui::Curs
     ]
 }
 
-/// The bar across the top: the title at the left, a close cross at the right. Returns true when the
-/// cross was pressed.
+/// How round a dialog is, and the round close chip at its top right.
 ///
-/// The bar is also what the modal is dragged by, and a grip is drawn at its right hand end so that
-/// it looks like something that can be moved. Neither is added here: [`show`] adds the drag strip
-/// before the contents so that this function's close cross sits over it.
+/// `task-2276` drew every dialog built from this furniture in the redesign: the surface is the New Data
+/// Source dialog's and the realm manager's, the pane's own ground thirty points round with one long soft
+/// shadow under it, and the parts inside it are the Settings window's.
+pub const RADIUS: f32 = 28.0;
+const CLOSE: f32 = 30.0;
+
+/// The design's words: a heading, a button, a label, a note and a section's name.
+fn heading_style() -> Style {
+    Style::sans(16.0).semibold().tracking(-0.01)
+}
+
+fn section_style() -> Style {
+    Style::sans(10.5).semibold().tracking(0.08)
+}
+
+/// Draw with `rux` over `rect`, with the window's state. Every part of a dialog that has depth goes
+/// through here, so a dialog that is not a `rux` dialog still gets the same surfaces.
+fn decorate<R>(
+    ui: &mut egui::Ui,
+    salt: impl std::hash::Hash + std::fmt::Debug,
+    rect: Rect,
+    add: impl FnOnce(&mut Rux<'_>) -> R,
+) -> R {
+    crate::components::settings_kit::layer(ui, ("modal-furniture", salt), rect, add)
+}
+
+/// The top of a dialog: the title at the left and the round close chip at the right. Returns true when
+/// the chip was pressed.
+///
+/// The top is also what the modal is dragged by. That is not added here: [`show`] adds the drag strip
+/// before the contents so that this function's close chip sits over it.
 pub fn header(ui: &mut egui::Ui, area: Rect, title: &str) -> bool {
     header_of(ui, area, None, title)
 }
@@ -654,67 +689,61 @@ pub fn header(ui: &mut egui::Ui, area: Rect, title: &str) -> bool {
 ///
 /// `task-1771` asks for the ticket modal to read like the page it is modelled on, and that page's header is
 /// `task-1766` in a dim monospaced face and then the ticket's title beside it. Everything else about a
-/// modal's header — the ground, the cross, the drag handle, the name a test finds it by — is unchanged, so
-/// this is one dialog carrying one extra word rather than a second kind of header.
+/// modal's header — the cross, the drag handle, the name a test finds it by — is unchanged, so this is one
+/// dialog carrying one extra word rather than a second kind of header.
 pub fn header_of(ui: &mut egui::Ui, area: Rect, key: Option<&str>, title: &str) -> bool {
     let bar = Rect::from_min_size(area.min, Vec2::new(area.width(), HEADER));
-    let painter = ui.painter_at(area);
-    painter.rect_filled(bar, CornerRadius { nw: 10, ne: 10, sw: 0, se: 0 }, color::title_bar());
-    let mut pen = area.left() + 20.0;
-    if let Some(key) = key {
-        let said = painter.layout_no_wrap(
-            key.to_owned(),
-            egui::FontId::monospace(12.0),
-            color::text_dim(),
+    // The title and the chip sit a little below the middle of the 46 points, because the surface's corner is
+    // thirty points round and words centred in the band look pushed into it.
+    let middle = bar.center().y + 4.0;
+    let close = Rect::from_center_size(Pos2::new(area.right() - 30.0, middle), Vec2::splat(CLOSE));
+    let mut title_rect = Rect::NOTHING;
+    let pressed = decorate(ui, ("header", title), bar, |rux| {
+        let pressed = ChipButton::new(Icon::X, CLOSE, "Close")
+            .mark(11.0, Some(1.8))
+            .show(rux, close)
+            .clicked();
+        let ink = rux.theme().ink;
+        let mut pen = area.left() + 26.0;
+        if let Some(key) = key {
+            let style = Style::mono(12.0);
+            let galley = rux.text(style, key, ink.i400);
+            let width = galley.size().x;
+            rux::text::draw_left_capitals(
+                rux.painter(),
+                Pos2::new(pen, middle),
+                galley,
+                style,
+                ink.i400,
+            );
+            pen += width + 12.0;
+        }
+        let galley = rux.elided(heading_style(), title, ink.i900, (close.left() - 16.0 - pen).max(40.0));
+        title_rect = Rect::from_min_size(Pos2::new(pen, middle - 9.0), Vec2::new(galley.size().x, 18.0));
+        rux::text::draw_left_capitals(
+            rux.painter(),
+            Pos2::new(pen, middle),
+            galley,
+            heading_style(),
+            ink.i900,
         );
-        painter.galley(
-            Pos2::new(pen, bar.center().y - said.size().y / 2.0),
-            said.clone(),
-            color::text_dim(),
-        );
-        pen += said.size().x + 14.0;
-    }
-    // **Bold only when there is a key in front of it.** A dialog's title is one short phrase and has always
-    // been set in the regular face; a ticket's is the ticket's own name, sitting after its key, and there the
-    // weight is what separates the two. So the ten dialogs are unchanged and the one that asked for this gets
-    // what it asked for.
-    let face = match key.is_some() {
-        true => egui::FontId::new(13.0, egui::FontFamily::Name(crate::theme::BOLD_FAMILY.into())),
-        false => egui::FontId::proportional(13.0),
-    };
-    let galley = painter.layout_no_wrap(title.to_owned(), face, color::text_strong());
-    let width = galley.size().x;
-    painter.galley(
-        Pos2::new(pen, bar.center().y - galley.size().y / 2.0),
-        galley,
-        color::text_strong(),
-    );
-    let title_at = pen;
+        pressed
+    });
     // The title is **named** as well as drawn, so a test and assistive technology can say which modal is open.
     // Every control in Unluminous has a plain name and a test finds one by it; a modal's title is what says which of
-    // the ten it is, and painted text alone is invisible to both. The drag handle is added after this and takes
+    // the dialogs it is, and painted text alone is invisible to both. The drag handle is under this and takes
     // the presses, so naming it costs the header nothing.
-    let named = ui.interact(
-        Rect::from_min_size(Pos2::new(title_at, bar.center().y - 8.0), Vec2::new(width, 16.0)),
-        ui.id().with(("modal-title", title)),
-        Sense::hover(),
-    );
+    let named = ui.interact(title_rect, ui.id().with(("modal-title", title)), Sense::hover());
     let name = title.to_owned();
     named.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, name.clone()));
-    painter.line_segment(
-        [Pos2::new(bar.left(), bar.bottom()), Pos2::new(bar.right(), bar.bottom())],
-        Stroke::new(1.0, color::divider()),
-    );
-    let close =
-        Rect::from_center_size(Pos2::new(area.right() - 24.0, bar.center().y), Vec2::splat(22.0));
-    controls::icon_button(ui, close, "Close", icon::cross)
+    pressed
 }
 
 /// The rectangle between the header and the footer, inset by the usual margin.
 pub fn body(area: Rect) -> Rect {
     Rect::from_min_max(
-        Pos2::new(area.left() + 20.0, area.top() + HEADER + 14.0),
-        Pos2::new(area.right() - 20.0, area.bottom() - FOOTER - 8.0),
+        Pos2::new(area.left() + 24.0, area.top() + HEADER + 14.0),
+        Pos2::new(area.right() - 24.0, area.bottom() - FOOTER - 8.0),
     )
 }
 
@@ -770,10 +799,10 @@ impl Confirm {
     }
 }
 
-/// The bar across the bottom, with its buttons at the right.
+/// The foot of the dialog, with its buttons at the right.
 ///
 /// `buttons` is given in the order they read, left to right; the last one is the one that does the
-/// thing and is filled in the accent colour. Returns which one was pressed — by the pointer, or by
+/// thing and is drawn on the action's gradient. Returns which one was pressed — by the pointer, or by
 /// Enter, which presses that last button when it is enabled.
 pub fn footer(ui: &mut egui::Ui, area: Rect, buttons: &[(&str, bool)]) -> Option<usize> {
     footer_confirmed_by(ui, area, buttons, Confirm::Enter)
@@ -787,23 +816,25 @@ pub fn footer_confirmed_by(
     confirm: Confirm,
 ) -> Option<usize> {
     let bar = Rect::from_min_max(Pos2::new(area.left(), area.bottom() - FOOTER), area.max);
-    ui.painter_at(area).line_segment(
-        [Pos2::new(bar.left(), bar.top()), Pos2::new(bar.right(), bar.top())],
-        Stroke::new(1.0, color::divider()),
-    );
-    let mut pressed = None;
-    let mut right = bar.right() - 20.0;
-    for (index, (name, enabled)) in buttons.iter().enumerate().rev() {
-        let width = (name.chars().count() as f32 * 7.5 + 36.0).max(90.0);
-        let rect = Rect::from_min_size(
-            Pos2::new(right - width, bar.center().y - 14.0),
-            Vec2::new(width, 28.0),
-        );
-        if button(ui, rect, name, *enabled, index + 1 == buttons.len()) {
-            pressed = Some(index);
+    let mut pressed = decorate(ui, "footer", bar, |rux| {
+        let mut pressed = None;
+        let mut right = bar.right() - 22.0;
+        let middle = bar.center().y - 4.0;
+        for (index, (name, enabled)) in buttons.iter().enumerate().rev() {
+            let primary = index + 1 == buttons.len();
+            let pill = pill(name, *enabled, primary);
+            let width = pill.measure(rux).x.max(84.0);
+            let rect = Rect::from_min_size(
+                Pos2::new(right - width, middle - BUTTON / 2.0),
+                Vec2::new(width, BUTTON),
+            );
+            if pill.show(rux, rect).clicked() && *enabled {
+                pressed = Some(index);
+            }
+            right = rect.left() - 10.0;
         }
-        right = rect.left() - 8.0;
-    }
+        pressed
+    });
     // The keyboard presses the last button, which is the one that does the thing. A footer whose
     // last button is dimmed — no name typed, nothing chosen — is a modal there is nothing to
     // confirm, so the key press is left alone rather than doing nothing loudly.
@@ -816,71 +847,63 @@ pub fn footer_confirmed_by(
     pressed
 }
 
-/// A button with a word in it. The one that does the thing is filled in the accent colour, so the
-/// answers to a question do not all look the same.
-pub fn button(ui: &mut egui::Ui, area: Rect, name: &str, enabled: bool, primary: bool) -> bool {
-    let sense = if enabled { Sense::click() } else { Sense::hover() };
-    let response = ui.interact(area, ui.id().with(("modal-button", name)), sense);
-    let fill = match (enabled, primary, response.hovered()) {
-        (false, _, _) => color::control().gamma_multiply(0.6),
-        (true, true, _) => color::accent(),
-        (true, false, true) => color::control_hover(),
-        (true, false, false) => color::control(),
-    };
-    let painter = ui.painter();
-    painter.rect(
-        area,
-        CornerRadius::same(size::CONTROL_CORNER),
-        fill,
-        Stroke::new(
-            1.0,
-            if primary && enabled { color::accent() } else { color::control_border() },
-        ),
-        egui::StrokeKind::Inside,
-    );
-    let tint = match (enabled, primary) {
-        (false, _) => color::text_faint(),
-        (true, true) => color::on_accent(),
-        (true, false) => color::text_strong(),
-    };
-    let galley = painter.layout_no_wrap(name.to_owned(), egui::FontId::proportional(12.5), tint);
-    painter.galley(area.center() - galley.size() / 2.0, galley, tint);
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, name));
-    response.clicked()
+/// How tall a button is: the Settings window's 34 points.
+pub const BUTTON: f32 = 34.0;
+
+/// A button of the design: the action's gradient for the one that does the thing, a raised card pill
+/// for the others.
+fn pill(name: &str, enabled: bool, primary: bool) -> PillButton<'_> {
+    let pill = PillButton::new(name).enabled(enabled);
+    match primary {
+        true => pill.primary(),
+        false => pill,
+    }
 }
 
-/// A heading inside a page, with a rule running to the right edge, as the reference editor draws one.
+/// A button with a word in it, anywhere in a dialog. The one that does the thing is on the action's
+/// gradient, so the answers to a question do not all look the same.
+pub fn button(ui: &mut egui::Ui, area: Rect, name: &str, enabled: bool, primary: bool) -> bool {
+    decorate(ui, ("button", name), area, |rux| {
+        pill(name, enabled, primary).show(rux, area).clicked() && enabled
+    })
+}
+
+/// A heading inside a page: its name in small spaced capitals in the quiet ink, and a groove running to
+/// the right edge, which is how the ticket modal names its sections.
 pub fn section(ui: &mut egui::Ui, area: Rect, top: f32, name: &str) -> f32 {
-    let painter = ui.painter_at(down_the_page(ui, area));
-    let galley = painter.layout_no_wrap(
-        name.to_owned(),
-        egui::FontId::proportional(12.5),
-        color::text_strong(),
-    );
     let y = top + 8.0;
-    painter.galley(
-        Pos2::new(area.left(), y - galley.size().y / 2.0),
-        galley.clone(),
-        color::text_strong(),
-    );
-    painter.line_segment(
-        [Pos2::new(area.left() + galley.size().x + 12.0, y), Pos2::new(area.right(), y)],
-        Stroke::new(1.0, color::divider()),
-    );
+    let line = Rect::from_min_max(Pos2::new(area.left(), y - 8.0), Pos2::new(area.right(), y + 8.0));
+    let clip = down_the_page(ui, area);
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(line));
+    child.set_clip_rect(clip);
+    decorate(&mut child, ("section", name), line, |rux| {
+        let ink = rux.theme().ink;
+        let style = section_style();
+        let galley = rux.text(style, &name.to_uppercase(), ink.i500);
+        let width = galley.size().x;
+        rux::text::draw_left_capitals(rux.painter(), Pos2::new(area.left(), y), galley, style, ink.i500);
+        let chat = rux.theme().chat;
+        let painter = rux.painter().clone();
+        let from = area.left() + width + 12.0;
+        painter.line_segment(
+            [Pos2::new(from, y), Pos2::new(area.right(), y)],
+            Stroke::new(1.0, chat.dark.gamma_multiply(0.6)),
+        );
+        painter.line_segment(
+            [Pos2::new(from, y + 1.0), Pos2::new(area.right(), y + 1.0)],
+            Stroke::new(1.0, chat.light.gamma_multiply(0.5)),
+        );
+    });
     y + 18.0
 }
 
-/// A line of explanation, in the faintest colour. Returns the y below it.
+/// A line of explanation, in the quiet ink. Returns the y below it.
 pub fn note(ui: &mut egui::Ui, area: Rect, top: f32, text: &str) -> f32 {
     let painter = ui.painter_at(down_the_page(ui, area));
-    let galley = painter.layout(
-        text.to_owned(),
-        egui::FontId::proportional(11.5),
-        color::text_faint(),
-        area.width(),
-    );
+    let ink = crate::theme::rux_theme().ink.i400;
+    let galley = rux::text::wrapped(&painter, Style::sans(11.5).leading(1.55), text, ink, area.width());
     let height = galley.size().y;
-    painter.galley(Pos2::new(area.left(), top), galley, color::text_faint());
+    painter.galley(Pos2::new(area.left(), top), galley, ink);
     top + height + 8.0
 }
 
@@ -919,31 +942,26 @@ pub fn check_named(
     value: &mut bool,
 ) -> bool {
     let box_rect =
-        Rect::from_min_size(Pos2::new(row.left(), row.center().y - 8.0), Vec2::splat(16.0));
+        Rect::from_min_size(Pos2::new(row.left(), row.center().y - 9.0), Vec2::splat(18.0));
     let response = ui.interact(row, ui.id().with(("modal-check", name)), Sense::click());
-    let painter = ui.painter();
-    painter.rect(
-        box_rect,
-        CornerRadius::same(3),
-        if *value { color::accent() } else { color::field() },
-        Stroke::new(1.0, if *value { color::accent() } else { color::control_border() }),
-        egui::StrokeKind::Inside,
-    );
-    if *value {
-        icon::tick(painter, box_rect.center(), color::on_accent());
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
-    let galley = painter.layout_no_wrap(
-        drawn.to_owned(),
-        egui::FontId::proportional(12.5),
-        color::text_control(),
-    );
-    painter.galley(
+    let on = *value;
+    decorate(ui, ("check", name), box_rect, |rux| tick_box(rux, box_rect, on));
+    let ink = crate::theme::rux_theme().ink;
+    let tint = match response.hovered() {
+        true => ink.i900,
+        false => ink.i700,
+    };
+    let galley = ui.painter().layout_no_wrap(drawn.to_owned(), Style::sans(12.5).font(), tint);
+    ui.painter().galley(
         Pos2::new(box_rect.right() + 10.0, row.center().y - galley.size().y / 2.0),
         galley,
-        color::text_control(),
+        tint,
     );
     response.widget_info(|| {
-        egui::WidgetInfo::selected(egui::WidgetType::Checkbox, ui.is_enabled(), *value, name)
+        egui::WidgetInfo::selected(egui::WidgetType::Checkbox, ui.is_enabled(), on, name)
     });
     if response.clicked() {
         *value = !*value;
@@ -952,40 +970,107 @@ pub fn check_named(
     false
 }
 
-/// A field to type into, drawn the way every other one in Unluminous is.
+/// A square tick box in the design: a raised chip while it is not ticked, and the action's gradient with
+/// a white tick once it is.
+pub fn tick_box(rux: &mut Rux<'_>, rect: Rect, on: bool) {
+    let chat = rux.theme().chat;
+    match on {
+        true => {
+            rux.chrome.surface(
+                rect,
+                6.0,
+                rux::Fill::gradient(chat.action, rect),
+                rux::Elevation::of([rux::Shadow::outer(0.0, 1.0, 3.0, chat.dark)]),
+            );
+            rux.mark(
+                Mark::new(Icon::Tick, 11.0).stroke(1.9),
+                rect.center(),
+                Color32::WHITE, // any ground: the tick is on the action's gradient, which is the same on both
+            );
+        }
+        false => rux.chrome.surface(rect, 6.0, chat.well, chat.carved_sm()),
+    }
+}
+
+/// A field to type into: a carved well with round ends, as every field in the Settings window is.
 pub fn field(ui: &mut egui::Ui, area: Rect, name: &str, value: &mut String) -> egui::Response {
-    ui.painter().rect(
-        area,
-        CornerRadius::same(size::CONTROL_CORNER),
-        color::field(),
-        Stroke::new(1.0, color::control_border()),
-        egui::StrokeKind::Inside,
-    );
     let id = ui.id().with(("modal-field", name));
-    let inside = crate::components::controls::field_takes_the_whole_rectangle(
+    let font = Style::sans(12.5).font();
+    let ink = crate::theme::rux_theme().ink;
+    decorate(ui, ("field", name), area, |rux| {
+        let chat = rux.theme().chat;
+        rux.chrome.surface(area, area.height() / 2.0, chat.well, chat.carved_sm());
+    });
+    let inset = (area.height() * 0.45).min(14.0);
+    let text = crate::components::controls::field_takes_the_whole_rectangle_at(
         ui,
         area,
-        8.0,
+        inset,
         id,
         "Modal text field",
+        &font,
     );
-    let mut edit = ui.new_child(egui::UiBuilder::new().max_rect(inside.rect));
+    let text = Rect::from_min_max(text.min, Pos2::new(area.right() - inset, text.max.y));
+    let mut edit = ui.new_child(egui::UiBuilder::new().max_rect(text));
     let response = edit.add(
         egui::TextEdit::singleline(value)
             .id(id)
             .frame(egui::Frame::NONE)
-            .font(inside.font.clone())
-            .desired_width(inside.rect.width())
-            .text_color(color::text_control()),
+            .font(font)
+            .desired_width(text.width())
+            .text_color(ink.i900),
     );
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, name));
     response
 }
 
-/// One row of a list: the pill when it is chosen or hovered, and whatever `draw` puts in it.
+/// A carved well a list or a block of text sits in, sixteen points round.
+pub fn well(ui: &mut egui::Ui, area: Rect) {
+    decorate(ui, ("well", area.min.x.to_bits(), area.min.y.to_bits()), area, |rux| {
+        let chat = rux.theme().chat;
+        rux.chrome.surface(area, 16.0, chat.well, chat.carved_sm());
+    });
+}
+
+/// A row of tabs: a carved track with the chosen one raised out of it, the Settings window's segmented
+/// control. Answers the index pressed, when it is not the one already chosen.
+pub fn tabs(ui: &mut egui::Ui, at: Pos2, name: &str, words: &[&str], chosen: usize) -> (Option<usize>, Rect) {
+    decorate(ui, ("tabs", name), Rect::from_min_size(at, Vec2::new(400.0, 38.0)), |rux| {
+        let width = crate::components::settings_kit::segmented_width(rux, words, 86.0, false, 14.0);
+        let track = Rect::from_min_size(at, Vec2::new(width, crate::components::settings_kit::SEGMENT_TRACK));
+        let picked =
+            crate::components::settings_kit::segmented(rux, track, name, words, Some(chosen), 86.0, false);
+        (picked, track)
+    })
+}
+
+/// A chip raised out of whatever it is on, which is how a chosen row is drawn. For a row a dialog lays
+/// out itself rather than through [`row`].
+pub fn raised(ui: &mut egui::Ui, salt: impl std::hash::Hash + std::fmt::Debug, rect: Rect) {
+    decorate(ui, ("raised", salt), rect, |rux| {
+        let chat = rux.theme().chat;
+        rux.chrome.surface(
+            rect,
+            (rect.height() / 2.0).min(16.0),
+            rux::Fill::gradient(chat.chip, rect),
+            chat.raised_chip(),
+        );
+    });
+}
+
+/// The wash under the pointer on a row a dialog lays out itself.
+pub fn washed(ui: &mut egui::Ui, salt: impl std::hash::Hash + std::fmt::Debug, rect: Rect) {
+    decorate(ui, ("washed", salt), rect, |rux| {
+        let wash = rux.theme().ink.i900.gamma_multiply(0.05);
+        rux.wash(rect, (rect.height() / 2.0).min(16.0), wash);
+    });
+}
+
+/// One row of a list: raised out of the list when it is chosen, washed under the pointer, and whatever
+/// `draw` puts in it.
 ///
-/// The pill is the one `design/style-guide.md` describes, so a row in the branches list is drawn
-/// exactly like the open file in the explorer.
+/// A list can hold a thousand rows, so the decoration is drawn only for the row that is chosen and the row
+/// under the pointer: a `rux` layer is a canvas, and a canvas a row would be a thousand of them.
 pub fn row(
     ui: &mut egui::Ui,
     id: impl std::hash::Hash + std::fmt::Debug,
@@ -994,13 +1079,27 @@ pub fn row(
     draw: impl FnOnce(&egui::Painter, Rect),
 ) -> egui::Response {
     let width = ui.available_width();
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, size::ROW), Sense::hover());
-    let response = ui.interact(rect, ui.id().with(("modal-row", id)), Sense::click());
-    let pill = rect.shrink2(Vec2::new(8.0, 1.0));
-    if chosen {
-        controls::pill(ui.painter(), pill, 5);
-    } else if response.hovered() {
-        ui.painter().rect_filled(pill, CornerRadius::same(5), color::control());
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, size::ROW + 2.0), Sense::hover());
+    let response = ui.interact(rect, ui.id().with(("modal-row", &id)), Sense::click());
+    let pill = rect.shrink2(Vec2::new(4.0, 1.0));
+    if chosen || response.hovered() {
+        let hovered = response.hovered();
+        decorate(ui, ("row", id), pill, |rux| {
+            let chat = rux.theme().chat;
+            match chosen {
+                true => rux.chrome.surface(
+                    pill,
+                    pill.height() / 2.0,
+                    rux::Fill::gradient(chat.chip, pill),
+                    chat.raised_chip(),
+                ),
+                false if hovered => {
+                    let wash = rux.theme().ink.i900.gamma_multiply(0.05);
+                    rux.wash(pill, pill.height() / 2.0, wash);
+                }
+                false => {}
+            }
+        });
     }
     draw(ui.painter(), rect);
     response.widget_info(|| {
@@ -1023,7 +1122,7 @@ pub fn label(
     x + galley.size().x
 }
 
-/// A monospaced block of text that scrolls, which is what a diff and a commit are shown in.
+/// A monospaced block of text that scrolls, in a carved well, which is what a diff and a commit are shown in.
 ///
 /// **What it is showing is not reachable from outside the window**, and that is worth knowing before
 /// trying: the lines are plain labels inside a scrolling area, and a `widget_info` carrying the whole
@@ -1031,14 +1130,8 @@ pub fn label(
 /// these — the DDL, the pending statements, the New Table dialog — reports that text through its own
 /// plugin `view` as well, which is where an agent reads it and what a test asserts on. `task-1795`.
 pub fn monospaced(ui: &mut egui::Ui, area: Rect, id: &str, text: &str) {
-    ui.painter().rect(
-        area,
-        CornerRadius::same(size::CONTROL_CORNER),
-        color::editor(),
-        Stroke::new(1.0, color::divider()),
-        egui::StrokeKind::Inside,
-    );
-    let inner = area.shrink(8.0);
+    well(ui, area);
+    let inner = area.shrink2(Vec2::new(14.0, 10.0));
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
     child.set_clip_rect(inner);
     egui::ScrollArea::both().id_salt(id).show(&mut child, |ui| {

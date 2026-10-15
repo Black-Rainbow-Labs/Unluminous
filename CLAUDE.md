@@ -5553,6 +5553,40 @@ painted its first frame, so the fill lands before Windows has allocated the surf
 `tasks/unluminous-technical-design-document.md` records how each was measured and what was rejected;
 `design/verification/live-window-over-desktop-windows.png` is what it should look like.
 
+## Reporting an issue opens a written GitHub issue, and the files go on the clipboard (`task-2276`)
+
+`tasks/task-2276-report-an-issue-tdd.md` is the design. The flag at the far right of the status bar
+(`theme::icon::flag`, from Ionicons' `flag-outline`) and `Unluminous -> Report an Issue...` open
+`components::report_dialog`. Five rules:
+
+- **Unluminous never posts the issue.** `services::issue_report` writes the title and the body into a
+  `github.com/Black-Rainbow-Labs/Unluminous/issues/new?title=&labels=&body=` address, which is opencode's
+  approach, and the person presses GitHub's own Submit while signed in. A token in the binary would be a
+  credential anybody could take out of it. No issue template is added to the repository: an address with
+  a body opens the blank form already filled, and a template would make GitHub show its chooser instead.
+- **The address stays under `ADDRESS_LIMIT` (8,000 bytes).** The log is cut first, from its oldest end,
+  then the description, and whatever is cut is attached whole as `unluminous-log.txt` or
+  `description.txt`, with a line in the body saying so.
+- **The files go on the system clipboard as files** (`system_files::put_files_on_the_clipboard`), so one
+  `Ctrl`/`Cmd`+`V` in the issue attaches them all. They are gathered into `<temp>/unluminous-report-<ms>/issue/`;
+  pictures the window takes live one folder up, so a file attached from elsewhere can never be copied over
+  one. A second file with a name already attached is attached as `name-2.ext`.
+- **The window is photographed on opening**, with a `ReportShot` marker in the screenshot's `UserData` and
+  the modal left out of that one frame. `app::cli::screenshot_from` and the modal backdrop both ignore it.
+- **Only the released binary reaches out.** `report_reaches_out` is set by `use_the_system_clipboard`, so
+  a test's window writes the issue and gathers the files but opens no browser and leaves the clipboard
+  alone. The draft outlives the modal: `Cancel` and Escape keep it, `Discard` and `Done` throw it away.
+
+`unluminous-cli report open | status | set | attach | detach | screenshot | send | close` is the agent's
+half, and `report send --no-browser` answers the address and the files without opening anything.
+
+**Every other modal was redrawn in the redesign in the same ticket**, by changing the furniture in
+`components::modal` rather than twenty dialogs: the surface, the header's title and round close chip, the
+footer's pills, carved fields and lists, the tick box, the section heading, and `modal::tabs`,
+`modal::well`, `modal::raised` and `modal::washed` for a dialog that lays a list out itself. A list opens a
+`rux` layer only for the chosen row and the row under the pointer. `design/style-guide.md` says what a
+modal is now.
+
 ## Usage statistics go to Google Analytics, and only names from closed lists are sent (`task-2271`)
 
 `tasks/task-2271-telemetry-tdd.md` is the design. The window posts GA4 Measurement Protocol bodies to the

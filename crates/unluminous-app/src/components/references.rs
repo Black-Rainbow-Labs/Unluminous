@@ -40,7 +40,7 @@ use unluminous_core::symbols::Role;
 use crate::components::{controls, modal, splitter};
 use crate::services::plugins::Grammars;
 use crate::services::text_search::{self, Hit, Query, Searcher};
-use crate::theme::{color, size};
+use crate::theme::color;
 
 /// How large the modal is before anything has been dragged.
 const WIDTH: f32 = 980.0;
@@ -576,8 +576,8 @@ pub fn show(ctx: &egui::Context, state: &mut References, split: f32) -> Outcome 
             11.0,
         );
         let buttons: Vec<(&str, bool)> = match state.purpose {
-            Purpose::Rename => vec![("RENAME", state.can_rename())],
-            _ => vec![("OPEN", state.chosen_hit().is_some())],
+            Purpose::Rename => vec![("Rename", state.can_rename())],
+            _ => vec![("Open", state.chosen_hit().is_some())],
         };
         if modal::footer(ui, area, &buttons) == Some(0) {
             match state.purpose {
@@ -847,7 +847,7 @@ fn show_preview(ui: &mut egui::Ui, area: Rect, state: &mut References) {
     // The path along the top of the pane, on a line of its own.
     let heading = Rect::from_min_size(inner.min, Vec2::new(inner.width(), 22.0));
     let painter = ui.painter_at(heading);
-    painter.rect_filled(heading, egui::CornerRadius::same(3), color::control());
+    painter.rect_filled(heading, egui::CornerRadius::same(9), crate::theme::rux_theme().chat.chip.from);
     modal::label(
         &painter,
         heading,
@@ -920,14 +920,8 @@ fn scroll_to_line(line: usize, pitch: f32, height: f32) -> f32 {
 }
 
 /// The frame round one of the two panes, drawn the way every sunken box in Unluminous is.
-fn frame(ui: &egui::Ui, area: Rect) {
-    ui.painter().rect(
-        area,
-        egui::CornerRadius::same(size::CONTROL_CORNER),
-        color::editor(),
-        egui::Stroke::new(1.0, color::divider()),
-        egui::StrokeKind::Inside,
-    );
+fn frame(ui: &mut egui::Ui, area: Rect) {
+    modal::well(ui, area);
 }
 
 /// A path as a heading shows it: the last two parts of it, which is enough to tell two files of the

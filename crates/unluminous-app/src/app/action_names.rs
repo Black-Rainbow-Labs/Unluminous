@@ -137,6 +137,7 @@ impl Action {
             Action::ClearHighlights => "clear-highlights".to_owned(),
             Action::Fold(what) => format!("fold-{}", what.name()),
             Action::About => "about".to_owned(),
+            Action::ReportIssue => "report-issue".to_owned(),
             Action::Quit => "quit".to_owned(),
         }
     }
@@ -292,6 +293,7 @@ impl Action {
             "clear-highlight" => Action::ClearHighlight,
             "clear-highlights" => Action::ClearHighlights,
             "about" => Action::About,
+            "report-issue" => Action::ReportIssue,
             "quit" => Action::Quit,
             _ => return None,
         })

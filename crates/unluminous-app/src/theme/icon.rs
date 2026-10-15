@@ -2232,3 +2232,37 @@ pub fn pencil(painter: &egui::Painter, centre: Pos2, color: Color32) {
     painter.add(egui::Shape::closed_line(outline, Stroke::new(1.3, color)));
     painter.line_segment([at(13.0, 7.0), at(17.0, 11.0)], Stroke::new(1.3, color));
 }
+
+/// A flag on a pole, outlined: report an issue (`task-2276`).
+///
+/// Drawn from Ionicons 5's `flag-outline`, which is react-icons' `IoFlagOutline`, the mark the ticket names.
+/// Its path is on a 512 unit grid: a pole from (80, 464) up to (80, 68), and a flag whose top edge rises to
+/// (160, 48), waves down to (352, 96) and up to (429, 80), runs straight down the right to (432, 304), and
+/// whose bottom edge waves back through (352, 320) and (160, 288) to meet the pole at (80, 304). The curves
+/// here are that path's own Bezier control points, sampled into a polyline, scaled so the mark is thirteen
+/// points tall and centred on `centre`.
+pub fn flag(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    let scale = 13.0 / 416.0;
+    let at = |x: f32, y: f32| Pos2::new(centre.x + (x - 256.0) * scale, centre.y + (y - 256.0) * scale);
+    let stroke = Stroke::new(1.35, color);
+    painter.line_segment([at(80.0, 464.0), at(80.0, 68.0)], stroke);
+    let mut points = vec![at(80.0, 68.0)];
+    let curve = |points: &mut Vec<Pos2>, from: (f32, f32), one: (f32, f32), two: (f32, f32), to: (f32, f32)| {
+        for step in 1..=10 {
+            let t = step as f32 / 10.0;
+            let u = 1.0 - t;
+            let x = u * u * u * from.0 + 3.0 * u * u * t * one.0 + 3.0 * u * t * t * two.0 + t * t * t * to.0;
+            let y = u * u * u * from.1 + 3.0 * u * u * t * one.1 + 3.0 * u * t * t * two.1 + t * t * t * to.1;
+            points.push(at(x, y));
+        }
+    };
+    curve(&mut points, (80.0, 68.0), (92.0, 56.0), (113.0, 48.0), (160.0, 48.0));
+    curve(&mut points, (160.0, 48.0), (224.0, 48.0), (305.0, 96.0), (352.0, 96.0));
+    curve(&mut points, (352.0, 96.0), (379.0, 96.0), (405.0, 90.0), (429.0, 80.0));
+    points.push(at(432.0, 82.0));
+    points.push(at(432.0, 301.0));
+    curve(&mut points, (430.0, 304.0), (421.0, 309.0), (392.0, 320.0), (352.0, 320.0));
+    curve(&mut points, (352.0, 320.0), (304.0, 320.0), (224.0, 288.0), (160.0, 288.0));
+    curve(&mut points, (160.0, 288.0), (96.0, 288.0), (80.0, 304.0), (80.0, 304.0));
+    painter.add(egui::Shape::line(points, stroke));
+}

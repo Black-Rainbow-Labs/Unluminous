@@ -1262,7 +1262,7 @@ fn pasting(ui: &egui::Ui, in_the_composer: bool) -> bool {
 ///
 /// Its own function so a test can hold the two event shapes side by side: the one that was being
 /// watched for and never arrives, and the one that does.
-fn is_a_paste_chord(events: &[egui::Event]) -> bool {
+pub(crate) fn is_a_paste_chord(events: &[egui::Event]) -> bool {
     events.iter().any(|event| {
         matches!(
             event,

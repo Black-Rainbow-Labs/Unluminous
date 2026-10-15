@@ -2127,6 +2127,23 @@ fn drive_the_modals_and_the_settings(coverage: &mut Coverage) {
     c.refuses(&mut harness, "modal accept 0");
     c.works(&mut harness, "modal cancel");
 
+    // The Report an Issue modal. `report send --no-browser` writes the issue and gathers the files, and a
+    // window a test built never opens a browser either way. `task-2276`.
+    c.refuses(&mut harness, "report send --no-browser");
+    c.refuses(&mut harness, "report detach window.png");
+    c.refuses(&mut harness, "report screenshot");
+    c.works(&mut harness, "report open --title \"From the walk\"");
+    c.refuses(&mut harness, "report open --kind sideways");
+    c.works(&mut harness, "report status --json");
+    c.works(&mut harness, "report set --kind feature --logs off");
+    c.refuses(&mut harness, "report set --system maybe");
+    c.works(&mut harness, "report attach notes.txt");
+    c.refuses(&mut harness, "report attach no-such-file.txt");
+    c.works(&mut harness, "report detach notes.txt");
+    c.works(&mut harness, "report screenshot");
+    c.works(&mut harness, "report send --no-browser");
+    c.works(&mut harness, "report close --discard");
+
     c.works(&mut harness, "settings list --json");
     c.works(&mut harness, "settings get appearance.font.size");
     c.refuses(&mut harness, "settings get no.such.key");
