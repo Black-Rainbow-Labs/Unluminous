@@ -948,6 +948,10 @@ theme.comment = #6272A4
             ),
             ("app/modals.rs", "the New File dialog, the same empty file"),
             (
+                "services/issue_report.rs",
+                "a new copy of a log or a description, written into a report's own temporary folder for one paste",
+            ),
+            (
                 "services/telemetry/tests.rs",
                 "fixtures the telemetry tests write into a temporary folder",
             ),
