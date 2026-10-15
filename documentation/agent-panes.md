@@ -129,7 +129,7 @@ movement at all, so gating the drop on the pointer threw the picture away silent
 ### Nothing is fetched that was not asked for
 
 One turn goes out when somebody presses send — a program they named in a Settings page, or an address
-they typed into one. There is no discovery, no model list, no telemetry and nothing at startup, and a
+they typed into one. The pane does no discovery, fetches no model list and starts nothing at startup, and a
 Markdown image inside an answer still shows its alt text rather than being fetched.
 
 ### From the command line

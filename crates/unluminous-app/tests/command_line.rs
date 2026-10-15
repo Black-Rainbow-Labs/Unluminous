@@ -2141,6 +2141,9 @@ fn drive_the_modals_and_the_settings(coverage: &mut Coverage) {
     c.works(&mut harness, "settings reset appearance.font.size");
     c.refuses(&mut harness, "settings reset no.such.key");
     c.works(&mut harness, "settings fonts --json");
+    // A test's window never lets telemetry run, so this answers why it is off and sends nothing.
+    c.works(&mut harness, "settings telemetry --json");
+    c.works(&mut harness, "settings telemetry --flush");
 
     // The backgrounds, which are files in Unluminous's own folder rather than a setting on its own.
     // Added from a picture this walk writes, so nothing depends on what is on the machine.
@@ -3222,4 +3225,91 @@ fn closing_a_browser_tab_leaves_the_markdown_it_came_from_where_it_was_scrolled(
     assert_eq!(after["name"], "long.md", "{after}");
     assert_eq!(after["preview"]["scroll"].as_f64(), Some(scrolled), "the preview stayed: {after}");
     assert_eq!(after["source"]["scroll"].as_f64(), Some(source), "the source stayed: {after}");
+}
+
+/// **`task-2271`.** A window that is allowed to send usage statistics posts `app_open` and the actions
+/// it ran to the endpoint, and from the frame `telemetry.enabled` is turned off it counts and sends
+/// nothing at all.
+///
+/// The endpoint is a scripted server on loopback through `UNLUMINOUS_TELEMETRY_URL`, the seam
+/// `UNLUMINOUS_RELEASES` set for the update check. A test's window is never allowed to send unless it
+/// asks with `allow_telemetry`, which is what the released binary calls.
+#[test]
+fn a_window_sends_usage_statistics_while_the_setting_is_on_and_nothing_once_it_is_off() {
+    let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|held| held.into_inner());
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+    let port = listener.local_addr().expect("the address").port();
+    let (bodies, received) = std::sync::mpsc::channel::<String>();
+    std::thread::spawn(move || {
+        use std::io::{BufRead, Read, Write};
+        for stream in listener.incoming().flatten() {
+            let mut reader = std::io::BufReader::new(stream.try_clone().expect("a stream"));
+            let mut length = 0usize;
+            loop {
+                let mut line = String::new();
+                if reader.read_line(&mut line).unwrap_or(0) == 0 || line.trim().is_empty() {
+                    break;
+                }
+                if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                    length = value.trim().parse().unwrap_or(0);
+                }
+            }
+            let mut body = vec![0u8; length];
+            let _ = reader.read_exact(&mut body);
+            let _ = bodies.send(String::from_utf8_lossy(&body).into_owned());
+            let mut stream = stream;
+            let _ = stream.write_all(
+                b"HTTP/1.1 204 No Content\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+            );
+        }
+    });
+    std::env::set_var("UNLUMINOUS_TELEMETRY_URL", format!("http://127.0.0.1:{port}/mp/collect"));
+    let settings =
+        std::env::temp_dir().join(format!("unluminous-telemetry-window-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&settings);
+    std::fs::create_dir_all(&settings).expect("make the settings folder");
+
+    let mut harness = harness("# a file\n");
+    harness.state_mut().use_store(unluminous_app::services::store::Store::at(&settings));
+    harness.state_mut().allow_telemetry(false, true);
+    pump(&mut harness);
+    let status = did(&mut harness, "settings telemetry --json");
+    assert_eq!(status["running"], true, "allowed and on, so it runs: {status}");
+
+    did(&mut harness, "action run toggle-terminal");
+    did(&mut harness, "settings telemetry --flush");
+    let raw = received.recv_timeout(std::time::Duration::from_secs(15)).expect("a request arrived");
+    let body: serde_json::Value = serde_json::from_str(&raw).unwrap_or_else(|problem| {
+        let status = did(&mut harness, "settings telemetry --json");
+        panic!("not a JSON body ({problem}): {raw:?}; telemetry says {status}")
+    });
+    let events = body["events"].as_array().expect("events");
+    assert_eq!(events[0]["name"], "app_open", "the first request opens the session: {body}");
+    assert_eq!(events[0]["params"]["launch"], "desktop");
+    assert!(
+        events.iter().any(|event| event["name"] == "feature"
+            && event["params"]["feature"] == "toggle-terminal"
+            && event["params"]["category"] == "action"),
+        "the action that ran is counted by its name: {body}"
+    );
+    let sent = body.to_string();
+    assert!(!sent.contains(&*settings.to_string_lossy()), "no path is ever sent");
+    assert!(
+        settings.join("telemetry").join("id.txt").exists(),
+        "the client id is kept in the settings folder"
+    );
+
+    did(&mut harness, "settings set telemetry.enabled false");
+    pump(&mut harness);
+    let status = did(&mut harness, "settings telemetry --json");
+    assert_eq!(status["running"], false, "turned off, so it stopped: {status}");
+    did(&mut harness, "action run toggle-terminal");
+    did(&mut harness, "settings telemetry --flush");
+    assert!(
+        received.recv_timeout(std::time::Duration::from_secs(2)).is_err(),
+        "nothing is sent once the setting is off"
+    );
+
+    std::env::remove_var("UNLUMINOUS_TELEMETRY_URL");
+    let _ = std::fs::remove_dir_all(&settings);
 }

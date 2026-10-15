@@ -1379,6 +1379,11 @@ impl AgentTasks {
             "opencode" => Assignee::OpenCode,
             _ => Assignee::Claude,
         };
+        // Which kind of agent a ticket started, and nothing about the ticket. `task-2271`.
+        crate::services::telemetry::note(
+            crate::services::telemetry::Category::AgentTask,
+            agent_kind.name(),
+        );
         // **The agent is started by its full path, not by its name.** `claude` installs itself into
         // `~/.local/bin` and `codex` into a package manager's folder, and neither is on the `PATH` a
         // Unluminous started from the Finder or the Dock has — launchd gives it `/usr/bin:/bin:/usr/sbin:

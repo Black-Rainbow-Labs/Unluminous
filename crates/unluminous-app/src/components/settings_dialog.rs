@@ -1156,6 +1156,16 @@ fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Drawn 
             changed = true;
         }
     });
+    // `task-2271`: on by default, and this is how it stops. See `services::telemetry`.
+    kit::card(ui, &mut column, "Usage statistics", None, |card| {
+        if card.switch(
+            "Send anonymous usage statistics",
+            Some("When a window is open and for how long, which panels and kinds of tab are showing, and how often each menu entry and command is used, sent to Google Analytics about once every twenty minutes while you work. Never a path, a file name, a project name or anything you type. Off, nothing is counted or sent."),
+            &mut settings.telemetry_enabled,
+        ) {
+            changed = true;
+        }
+    });
     drawn(area.top(), &column, changed)
 }
 

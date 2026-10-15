@@ -29,7 +29,7 @@ wallpaper rather than a shade somebody chose.*
 | **28 MCP tools, 27,011 tokens** | one tool an area rather than one a command, measured against 58,579 for the other shape | [For AI agents](documentation/for-ai-agents.md) |
 | **Eight crates, and only one may mention a window** | which is why most of Unluminous is tested with no window, no graphics card and no fonts | [Architecture](documentation/architecture.md) |
 | **16 plugins, and nothing in one is executed** | twelve languages, three panes, and a bundle carrying five themes. A plugin is a folder, so installing one is copying it | [How plugins work](documentation/plugins.md) |
-| **Nothing is ever fetched** | not a plugin, not a debug adapter, not a picture in a Markdown file, not telemetry, nothing at startup | [Not included](documentation/not-included.md) |
+| **Nothing is fetched that you did not ask for** | not a plugin, not a debug adapter, not a picture in a Markdown file. What goes out is the daily update check and anonymous usage statistics, and Settings turns off both | [Not included](documentation/not-included.md) |
 
 ---
 

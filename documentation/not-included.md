@@ -136,7 +136,8 @@ rather than written down, so the day the engine grows a cancel the button appear
 
 **A three way merge editor**, **a marketplace that fetches a plugin over the network**, and
 **anything that is fetched at all**. Nothing is downloaded: not a plugin, not a debug adapter, not a
-picture named in a Markdown file with a scheme in front of it, not telemetry, and nothing at startup.
+picture named in a Markdown file with a scheme in front of it. What goes out on its own is the update
+check and anonymous usage statistics, and `Settings -> Editor` turns off each of them.
 A package manager somebody pressed a button for is not the editor reaching out, and neither is an
 agent they pressed send on.
 

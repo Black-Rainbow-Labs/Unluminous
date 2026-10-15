@@ -3332,6 +3332,15 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         area: "settings",
+        verb: "telemetry",
+        summary: "Whether this window sends anonymous usage statistics, why not when it does not, and what it has sent: the client id, the requests posted and failed, and how many counted names are waiting. Turn it off with `settings set telemetry.enabled false`.",
+        arguments: NO_ARGUMENTS,
+        flags: &[switch("flush", "Send what is waiting now rather than at the next request, about every twenty minutes.")],
+        examples: &["unluminous-cli settings telemetry --json", "unluminous-cli settings telemetry --flush"],
+        local: false,
+    },
+    Command {
+        area: "settings",
         verb: "fonts",
         summary: "The font families this machine has that the editor can be set to.",
         arguments: NO_ARGUMENTS,

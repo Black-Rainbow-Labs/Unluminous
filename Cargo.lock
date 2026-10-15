@@ -6007,6 +6007,7 @@ dependencies = [
  "egui",
  "egui_kittest",
  "fontdb",
+ "getrandom 0.3.4",
  "image",
  "inillucent-driver",
  "libc",

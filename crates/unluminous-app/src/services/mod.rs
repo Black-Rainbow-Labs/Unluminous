@@ -63,6 +63,7 @@ pub mod shell_integration;
 pub mod stats;
 pub mod store;
 pub mod system_files;
+pub mod telemetry;
 pub mod terminal_colours;
 pub mod text_renderer;
 pub mod text_search;

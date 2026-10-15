@@ -74,9 +74,12 @@ process, and both are shut by default.
 
 Named so a reporter knows what has been looked at rather than having to find out:
 
-- **Nothing is fetched that was not asked for.** No telemetry, no crash upload, no model list, no
-  debugger download, and a Markdown preview shows an image's alt text rather than fetching it. The update
-  check is off until you turn it on.
+- **Nothing is fetched that was not asked for.** No crash upload, no model list, no debugger download,
+  and a Markdown preview shows an image's alt text rather than fetching it. Two things are sent unless
+  they are turned off in Settings: the update check, one request to unluminous.com a day, and anonymous
+  usage statistics (`telemetry.enabled`), which go to Google Analytics about every twenty minutes while
+  the window is used and carry names from closed lists, never a path, a file name, a project name or
+  anything typed. `tasks/task-2271-telemetry-tdd.md` lists every event and parameter.
 - **The TLS a request uses is the machine's own** — schannel on Windows, Security.framework on macOS — so
   the certificates Unluminous trusts are the certificates you trust.
 - **A server's own words are quoted verbatim in a refusal, with the key redacted out of them first**, so

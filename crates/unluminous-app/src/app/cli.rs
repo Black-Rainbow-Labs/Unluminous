@@ -395,6 +395,10 @@ impl UnluminousApp {
             if pending.was_abandoned() {
                 continue;
             }
+            crate::services::telemetry::note_command(
+                crate::services::telemetry::Category::Command,
+                &pending.request.command,
+            );
             let outcome = self.run_cli(&pending.request, ctx);
             self.settle(pending, outcome);
         }
@@ -844,6 +848,10 @@ impl UnluminousApp {
         request: Request,
         ctx: &egui::Context,
     ) {
+        crate::services::telemetry::note_command(
+            crate::services::telemetry::Category::AgentTool,
+            &request.command,
+        );
         match self.run_cli(&request, ctx) {
             Outcome::Reply(reply) => self.answer_a_tool_call(&caller, &id, reply),
             Outcome::Hold(waiting) => {

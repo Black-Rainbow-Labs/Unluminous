@@ -170,6 +170,10 @@ impl UnluminousApp {
     /// answering "not mine" would have cost. Each helper is reached only from here, so the last
     /// arm of its own match cannot happen and says so.
     pub fn run_action(&mut self, action: Action, ctx: &egui::Context) {
+        // Counted here because this is the one place every menu entry, chord and palette row arrives.
+        crate::services::telemetry::note_with(crate::services::telemetry::Category::Action, || {
+            action.name()
+        });
         match action {
             Action::PluginPane { .. } | Action::PluginTab { .. } | Action::PluginCommand { .. } => {
                 self.a_plugin_entry(action)

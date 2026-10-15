@@ -5553,6 +5553,36 @@ painted its first frame, so the fill lands before Windows has allocated the surf
 `tasks/unluminous-technical-design-document.md` records how each was measured and what was rejected;
 `design/verification/live-window-over-desktop-windows.png` is what it should look like.
 
+## Usage statistics go to Google Analytics, and only names from closed lists are sent (`task-2271`)
+
+`tasks/task-2271-telemetry-tdd.md` is the design. The window posts GA4 Measurement Protocol bodies to the
+`Unluminous App` property (`G-WHZDTZ5JK1`) from the `unluminous-telemetry` thread: `app_open` ten seconds
+in, one request about every twenty minutes while somebody is using the window, nothing while it is idle,
+and `app_close` on the way out. `telemetry.enabled` is on by default and the `Usage statistics` card on
+`Settings -> Editor` turns it off. Five rules:
+
+- **Count at the funnels.** `services::telemetry::note` is called in `run_action`, in `pump_control` and
+  `run_cli_for_a_plugin` (through `note_command`, which only counts a command the catalogue has), when a
+  file opens, when an Agent-Chat turn begins and when a ticket's agent starts. A new feature that has a
+  menu entry or a command is counted with no change here.
+- **Never send a value somebody chose.** A name is an `Action` name, a catalogue wire name,
+  `file_kind::kind_name`, a wire shape or a panel name. `clean_name` drops anything else, and a plugin
+  that is not in `plugins::bundled::ALL` is sent as `other`. Never a path, a file name, a project name,
+  an address or anything typed.
+- **Nothing waits on the network.** Counting is an atomic load when it is off; the panels are looked at
+  once a second; a request goes through a channel to the thread. Closing writes the last request to
+  `<settings>/telemetry/spool-<pid>.jsonl` first and waits at most 600 ms for it to be posted; the next
+  window sends what is left.
+- **Only the released binary sends.** `main.rs` calls `allow_telemetry`. A test's window never does, a
+  `--background` window does not unless `UNLUMINOUS_TELEMETRY=on`, and `UNLUMINOUS_TELEMETRY=off` stops it.
+  `UNLUMINOUS_TELEMETRY=debug` adds GA4's `debug_mode` and writes every body to `telemetry/sent.jsonl`.
+- **A new event parameter needs a custom definition in GA4** (Admin, Custom definitions) or it does not
+  show in reports. GA4 drops a body that breaks its limits without saying so; `payload` keeps them.
+
+`unluminous-cli settings telemetry [--flush]` says whether it runs, why not, and what it has sent.
+unluminous.com reports into the separate `Unluminous Web` property (`G-G75FZL7PF3`), from
+`sites/unluminous/src/client/analytics.ts` in black-rainbow-labs-sites.
+
 ## A newer version is offered once a day, and installed by a helper that outlives the window
 
 `task-2063`: *"Check for updates should provide me an option to install & restart … We should check for

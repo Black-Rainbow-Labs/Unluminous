@@ -292,6 +292,22 @@ impl UnluminousApp {
                 }
             }
             "set" => self.cli_settings_set(request),
+            "telemetry" => {
+                // `task-2271`. `--flush` sends what is waiting now, which is how a check of the whole
+                // path is driven without waiting twenty minutes for the next request.
+                let flushed = request.switch("flush") && self.flush_the_telemetry();
+                let status = self.telemetry_status();
+                let sentence = match (status["running"].as_bool(), self.settings.telemetry_enabled) {
+                    (Some(true), _) if flushed => "Usage statistics are on, and what was waiting has been handed to the sender.".to_owned(),
+                    (Some(true), _) => "Usage statistics are on.".to_owned(),
+                    (_, false) => "Usage statistics are off: telemetry.enabled is false.".to_owned(),
+                    _ => format!(
+                        "Usage statistics are off in this window: {}.",
+                        self.telemetry.permission.name()
+                    ),
+                };
+                ok(request, sentence, status)
+            }
             "reset" => self.cli_settings_reset(request),
             "fonts" => {
                 let limit = request.whole("limit").unwrap_or(100);
@@ -543,6 +559,7 @@ impl UnluminousApp {
             "debug.value_tooltip" => self.settings.value_tooltip.name().to_owned(),
             "plugins.chrome" => self.settings.plugin_chrome.to_string(),
             "mcp.enabled" => self.settings.mcp_enabled.to_string(),
+            "telemetry.enabled" => self.settings.telemetry_enabled.to_string(),
             "mcp.port" => self.settings.mcp_port.to_string(),
             "mcp.tools" => self.settings.mcp_tools.name().to_owned(),
             "mcp.areas" => self.settings.mcp_areas.clone(),
@@ -1266,6 +1283,10 @@ const SETTINGS: &[SettingKey] = &[
         help: "Whether Unluminous asks unluminous.com for a newer version on its own: `daily`, the default, asks at most once a day across every window; `start` asks whenever a window opens; `off` asks nothing until somebody presses Check for Updates or runs `update check`. A newer version is offered in a notice with Install & Restart and Don't Ask Again, and nothing is installed until that is pressed.",
     },
     SettingKey {
+        name: "telemetry.enabled",
+        help: "Whether Unluminous sends anonymous usage statistics to Google Analytics: when a window is open and for how long, which panels and kinds of tab are showing, and how often each menu entry and command is used. Never a path, a file name, a project name or anything typed. `true` by default; `false` stops counting and sending at once. `settings telemetry` says what it has sent.",
+    },
+    SettingKey {
         name: "update.skip",
         help: "The one version Don't Ask Again declined, which the daily check does not offer. A later version is offered again. Empty offers every version.",
     },
@@ -1355,6 +1376,7 @@ fn fresh_value(name: &str, fresh: &crate::settings::Settings) -> String {
         "debug.value_tooltip" => fresh.value_tooltip.name().to_owned(),
         "plugins.chrome" => fresh.plugin_chrome.to_string(),
         "mcp.enabled" => fresh.mcp_enabled.to_string(),
+        "telemetry.enabled" => fresh.telemetry_enabled.to_string(),
         "mcp.port" => fresh.mcp_port.to_string(),
         "mcp.tools" => fresh.mcp_tools.name().to_owned(),
         "mcp.areas" => fresh.mcp_areas.clone(),

@@ -1084,6 +1084,11 @@ settings! {
         /// Off, every output is drawn at its full height, which is the reference editor's setting of
         /// the same name.
         notebook_scroll_outputs = true => "notebook.scroll_outputs";
+        /// Whether Unluminous sends anonymous usage statistics to Google Analytics. See `services::telemetry`.
+        ///
+        /// **On**, which `task-2271` asks for: *"add telemetry to Unluminous. add a setting to turn it off in
+        /// Settings."* Off, nothing is counted and nothing is sent from that frame on.
+        telemetry_enabled = true => "telemetry.enabled";
     }
 
     coded {
@@ -1677,6 +1682,7 @@ mod tests {
             "editor.auto_indent",
             "editor.trim",
             "notebook.scroll_outputs",
+            "telemetry.enabled",
             "editor.suggestions",
             "editor.servers",
             "editor.indent",
@@ -1759,6 +1765,7 @@ mod tests {
             auto_indent: false,
             trim_on_save: true,
             notebook_scroll_outputs: false,
+            telemetry_enabled: false,
             suggestions: Suggestions::Manual,
             servers: Servers::Off,
             line_endings: LineEndings::Crlf,

@@ -74,6 +74,7 @@ pub mod realm_nodes;
 mod running;
 mod settings_changes;
 pub mod symbols;
+pub mod telemetry;
 mod terminals;
 mod updating;
 mod zooming;
@@ -1273,6 +1274,8 @@ pub struct UnluminousApp {
     pub(crate) index_on_disk: bool,
     /// What a person chose from the completion list before. `task-2231` §6.3.
     pub(crate) completion_stats: crate::services::stats::CompletionStats,
+    /// Usage statistics, which only the released binary lets run. `task-2271`; see `app::telemetry`.
+    pub(crate) telemetry: telemetry::TelemetryState,
     /// The completion row that is chosen and since when, so its documentation is shown once it has
     /// rested for a heartbeat.
     pub(crate) completion_rest: Option<(String, f64)>,
@@ -1599,6 +1602,7 @@ impl UnluminousApp {
             project_symbols: None,
             index_on_disk: false,
             completion_stats: Default::default(),
+            telemetry: Default::default(),
             completion_rest: None,
             completion_clock: std::time::Instant::now(),
             servers: Default::default(),
@@ -2586,6 +2590,8 @@ impl eframe::App for UnluminousApp {
         self.note_the_live_state_into_the_nodes(realm::Reading::OnTheWayOut);
         // The completion list's statistics, whether or not the window has settled.
         self.completion_stats.write_when_settled(f64::INFINITY, 0.0);
+        // The closing usage statistics, already on disk before the short wait for them to be posted.
+        self.close_the_telemetry();
         // The language servers are told to shut down and are not waited for past their own grace.
         self.servers.stop_everything();
         // **Before the sessions are killed**, because a screen is read out of a live terminal and a killed one

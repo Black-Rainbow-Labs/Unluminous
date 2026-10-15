@@ -61,8 +61,9 @@ heuristic is marked as one all the way to the screen.
 [Not included](not-included.md) is the whole list of what is deliberately absent, with the reason for
 each.
 
-It fetches nothing, ever. Not a plugin, not a debug adapter, not a picture named in a Markdown file
-with a scheme in front of it, not telemetry. A package manager somebody pressed a button for is not
+It fetches nothing you did not ask for. Not a plugin, not a debug adapter, not a picture named in a
+Markdown file with a scheme in front of it. It sends two things on its own, the daily update check and
+anonymous usage statistics, and `Settings -> Editor` turns off each of them. A package manager somebody pressed a button for is not
 the editor reaching out, and neither is an agent they pressed send on; everything else is off.
 
 ## Where to go next

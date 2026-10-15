@@ -46,6 +46,9 @@ serde_json.workspace = true
 # The SHA-256 an update's installer is checked against before it is run. Already in the tree through
 # `wry` and `unluminous-db`. See `services/update_install.rs`.
 sha2.workspace = true
+# The client id telemetry sends, made once from the operating system's random source. Already in the tree
+# through `unluminous-db`. See `services/telemetry`.
+getrandom.workspace = true
 url.workspace = true
 percent-encoding.workspace = true
 mime_guess.workspace = true

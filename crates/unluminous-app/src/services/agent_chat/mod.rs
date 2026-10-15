@@ -1327,6 +1327,11 @@ impl AgentChat {
     /// The one place a turn begins, so the bounds a turn carries — the rounds, the calls outstanding
     /// — start again wherever the question came from: the composer, the command line, or the queue.
     fn begin_a_turn(&mut self, message: Message, provider: &Provider) {
+        // Which kind of agent was asked, by its wire shape, and nothing about the question. `task-2271`.
+        crate::services::telemetry::note(
+            crate::services::telemetry::Category::AgentChat,
+            provider.wire.name(),
+        );
         self.session.ask_keeping_the_id(message);
         // A new turn, so the bounds start again.
         self.calls = 0;

@@ -317,6 +317,10 @@ fn main() -> eframe::Result {
             // The operating system's clipboard is the person's, so the binary switches it on and a
             // test, which does not, never overwrites what they copied.
             app.use_the_system_clipboard();
+            // Usage statistics, while `telemetry.enabled` is on. A test never calls this, so a window a
+            // test builds sends nothing; a `--background` window sends nothing unless the environment
+            // asks. See `app::telemetry`.
+            app.allow_telemetry(arguments.background, arguments.path.is_none());
             // The code index's file is in the person's own cache, so the binary lets the window be the
             // project's index host and a test, which does not, holds its index in memory.
             app.index_on_disk();

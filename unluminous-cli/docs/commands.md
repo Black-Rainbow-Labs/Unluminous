@@ -3869,6 +3869,21 @@ unluminous-cli settings reset appearance.font.size
 unluminous-cli settings reset
 ```
 
+### settings telemetry
+
+```
+unluminous-cli settings telemetry [--flush]
+```
+
+Whether this window sends anonymous usage statistics, why not when it does not, and what it has sent: the client id, the requests posted and failed, and how many counted names are waiting. Turn it off with `settings set telemetry.enabled false`.
+
+- `--flush` — Send what is waiting now rather than at the next request, about every twenty minutes.
+
+```sh
+unluminous-cli settings telemetry --json
+unluminous-cli settings telemetry --flush
+```
+
 ### settings fonts
 
 ```

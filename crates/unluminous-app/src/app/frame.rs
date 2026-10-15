@@ -64,6 +64,8 @@ impl UnluminousApp {
         // is dragged to a screen of another density. `task-2216`.
         self.renderer.follow_the_display(ui.ctx().pixels_per_point());
         self.begin_the_frame(ui);
+        // Usage statistics: two comparisons on a frame where nothing is due. `task-2271`.
+        self.keep_the_telemetry(ui.ctx());
         self.take_what_the_threads_answered(ui);
         // Before any button is drawn, so that on the very first frame the focus is here and not on the
         // first thing in the title bar.
