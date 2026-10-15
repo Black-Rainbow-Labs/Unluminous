@@ -269,7 +269,9 @@ fn every_git_operation_can_be_driven_from_the_window() {
     );
 
     // ---- and the history the window read is the history git has ---------------------------------
-    harness.state_mut().run_action(git(GitAction::ShowHistory(None)), &ctx);
+    // The repository's history rather than the open file's: with no path, Show History reads the history of
+    // the file that is showing, and whether a log of the whole repository arrives after it is a race.
+    harness.state_mut().run_action(git(GitAction::ShowHistory(Some(root.clone()))), &ctx);
     settle(&mut harness, "the history", |app| {
         app.git.as_ref().is_some_and(|git| git.history.len() >= 3)
     });
