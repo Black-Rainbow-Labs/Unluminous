@@ -6,11 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.86.0 — 2026-10-15
 
 - Anonymous usage statistics sent to Google Analytics, with a switch in Settings (`task-2271`)
 - Telemetry writes its files through store::write_atomically, and a clippy fix (`task-2271`)
 - The title bar and the application icons are the blue U again, still (`task-2271`)
+- The changelog written from the history (`task-2271`)
 
 ## 0.85.0 — 2026-10-14
 
