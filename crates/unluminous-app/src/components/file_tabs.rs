@@ -420,12 +420,13 @@ mod tests {
         let font = egui::FontId::proportional(12.0);
         let long = "Rust Programming Language Documentation and Every Chapter of the Book, Online";
         let mut shown = (String::new(), String::new(), 0.0);
-        let _ = context.run_ui(egui::RawInput::default(), |ui| {
+        let mut output = context.run_ui(egui::RawInput::default(), |ui| {
             let painter = ui.painter();
             let cut = name_on_the_tab(painter, long, &font);
             let width = painter.layout_no_wrap(cut.clone(), font.clone(), Color32::WHITE).size().x;
             shown = (cut, name_on_the_tab(painter, "main.rs", &font), width);
         });
+        output.textures_delta.clear();
         let (cut, short, width) = shown;
         assert!(cut.ends_with('\u{2026}'), "{cut}");
         assert!(long.starts_with(cut.trim_end_matches('\u{2026}')), "{cut}");
