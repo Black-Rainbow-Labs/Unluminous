@@ -6,6 +6,10 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- A report draft that goes away unsent takes its folder with it (`task-2276`)
+
 ## 0.87.0 — 2026-10-15
 
 - Report an issue from the window, and every modal in the redesign (`task-2276`)
