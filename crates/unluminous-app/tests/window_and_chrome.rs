@@ -6008,9 +6008,12 @@ fn a_report_needs_a_title_and_command_enter_sends_it() {
     assert!(!sent.on_the_clipboard, "and does not touch the clipboard");
     harness.get_by_label("Almost there");
     harness.snapshot(shot("report_issue_sent"));
+    // A sent draft leaves its folder for the paste; this test made it, so it removes it.
+    let folder = the_report(&harness).folder.clone();
     harness.get_by_label("Done").click();
     steady(&mut harness);
     assert!(harness.state().report.is_none(), "Done throws the sent draft away");
+    std::fs::remove_dir_all(&folder).ok();
 }
 
 #[test]
@@ -6075,7 +6078,25 @@ fn the_report_commands_write_the_same_issue_the_modal_sends() {
     assert_eq!(files.len(), 1);
     assert!(std::path::Path::new(files[0].as_str().unwrap()).is_file(), "the picture was gathered");
 
+    let folder = harness.state().report.as_ref().unwrap().folder.clone();
     assert!(run(&mut harness, "report close --discard").ok);
     assert!(harness.state().report.is_none());
+    std::fs::remove_dir_all(&folder).ok();
+    std::fs::remove_dir_all(picture.parent().unwrap()).ok();
+}
+
+#[test]
+fn a_draft_that_goes_away_unsent_takes_its_pictures_with_it() {
+    let mut harness = harness("");
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_command_line("report open --title \"Gone\"", &ctx);
+    let picture = a_picture_to_attach("dropped");
+    let copy = the_report(&harness).folder.join("window.png");
+    std::fs::create_dir_all(copy.parent().unwrap()).unwrap();
+    std::fs::copy(&picture, &copy).unwrap();
+    let folder = the_report(&harness).folder.clone();
+    assert!(folder.is_dir());
+    harness.state_mut().run_command_line("report close --discard", &ctx);
+    assert!(!folder.exists(), "the draft's folder went with it");
     std::fs::remove_dir_all(picture.parent().unwrap()).ok();
 }

@@ -5575,7 +5575,9 @@ painted its first frame, so the fill lands before Windows has allocated the surf
   the modal left out of that one frame. `app::cli::screenshot_from` and the modal backdrop both ignore it.
 - **Only the released binary reaches out.** `report_reaches_out` is set by `use_the_system_clipboard`, so
   a test's window writes the issue and gathers the files but opens no browser and leaves the clipboard
-  alone. The draft outlives the modal: `Cancel` and Escape keep it, `Discard` and `Done` throw it away.
+  alone. The draft outlives the modal: `Cancel` and Escape keep it, `Discard` and `Done` throw it away. A draft's
+  folder goes with it unless it was sent (`impl Drop for ReportDraft`): a sent one's files may still be
+  waiting to be pasted.
 
 `unluminous-cli report open | status | set | attach | detach | screenshot | send | close` is the agent's
 half, and `report send --no-browser` answers the address and the files without opening anything.

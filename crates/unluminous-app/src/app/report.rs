@@ -99,6 +99,17 @@ impl ReportDraft {
     }
 }
 
+/// **A draft that goes away unsent takes its folder with it.** The window's pictures of itself are written
+/// there, and nothing else will ever read them once the draft is gone: discarded, or dropped with the window.
+/// A sent draft's folder is left, because the files on the clipboard name it and may not have been pasted.
+impl Drop for ReportDraft {
+    fn drop(&mut self) {
+        if self.sent.is_none() && self.folder.starts_with(std::env::temp_dir()) {
+            let _ = std::fs::remove_dir_all(&self.folder);
+        }
+    }
+}
+
 impl UnluminousApp {
     /// Open the modal, starting a draft when there is none and photographing the window when the draft has
     /// no picture of it yet. Every other modal is closed first, which is what opening any of them does.
@@ -117,12 +128,7 @@ impl UnluminousApp {
         let Some(draft) = self.report.as_mut() else { return };
         draft.showing = false;
         if discard {
-            // Nothing was sent, so nothing points at the files gathered for it: they were this window's to
-            // write and are this window's to remove. A sent report's files are left, because what was put on
-            // the clipboard names them and may not have been pasted yet.
-            if draft.sent.is_none() && draft.folder.starts_with(std::env::temp_dir()) {
-                let _ = std::fs::remove_dir_all(&draft.folder);
-            }
+            // Dropping the draft removes its folder unless it was sent. See `ReportDraft`'s `Drop`.
             self.report = None;
         }
     }
