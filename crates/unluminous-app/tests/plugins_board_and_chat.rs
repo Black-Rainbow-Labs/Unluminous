@@ -3631,6 +3631,35 @@ fn the_ticket_modal_zooms_with_the_wheel_the_keys_and_the_command_line() {
     assert!((read["zoom"].as_f64().expect("a number") - 1.0).abs() < 0.001);
 }
 
+/// `task-2277`: *"In the task modal, i click status, and try to click agent done in the drop down, but the menu just
+/// closes without updating the status."* In a zoomed modal the dropdown's menu asked where the pointer was in the
+/// window's points and compared it with its own rectangle, which is in the modal's, so a press on its lower rows was
+/// taken for a press outside and closed the menu before the row was chosen. Clicked here with a real press and
+/// release at the row's place on the screen.
+#[test]
+fn a_status_chosen_in_a_zoomed_ticket_modal_is_the_status() {
+    let mut harness = harness("");
+    a_ticket_open(&mut harness);
+    did(&mut harness, "modal zoom 1.25");
+    steady(&mut harness);
+    // A control in a zoomed modal reports where it is in the modal's own points, and the modal is scaled about its
+    // top left corner, so the place on the screen is that corner plus the zoom times the distance from it.
+    let corner = unluminous_app::components::modal::drawn(
+        &harness.ctx,
+        unluminous_app::components::agent_tasks::ticket_modal::MODAL_ID,
+    )
+    .expect("the modal was drawn")
+    .min;
+    let on_the_screen = |at: egui::Pos2| corner + (at - corner) * 1.25;
+    let trigger = harness.get_by_label("Status").rect().center();
+    click_at(&mut harness, on_the_screen(trigger));
+    let row = harness.get_by_label("Agent done").rect().center();
+    click_at(&mut harness, on_the_screen(row));
+    let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
+    assert_eq!(ticket["task"]["status"], "agent_done", "the row pressed is the status the ticket has");
+    did(&mut harness, "modal zoom reset");
+}
+
 /// The Settings window zoomed, so the same thing is seen on a modal Unluminous draws with its own controls.
 #[test]
 fn the_settings_modal_zoomed() {

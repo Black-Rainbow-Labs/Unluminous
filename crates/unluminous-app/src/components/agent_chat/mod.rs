@@ -817,8 +817,10 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
                             continue;
                         }
                         // Space rather than a widget: a widget is bookkeeping egui does on every frame, and
-                        // twenty thousand of them cost more than the frame is allowed.
-                        ui.add_space(height + GAP * look.scale());
+                        // twenty thousand of them cost more than the frame is allowed. A widget is followed by
+                        // the layout's item spacing and space is not, so that is added too, or every row left
+                        // as space would move the rows after it up by that much.
+                        ui.add_space(height + ui.spacing().item_spacing.y + GAP * look.scale());
                         continue;
                     }
                     // Worked out once and handed to the drawing, because the height has to be known
@@ -858,7 +860,8 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
                     let room = room_without_measuring(kept, signature, guess, top, near, width, started);
                     if let Some((height, still_to_measure)) = room {
                         stale |= still_to_measure;
-                        ui.add_space(height + GAP * look.scale());
+                        // Space and the item spacing a widget would have had, as for a message's row.
+                        ui.add_space(height + ui.spacing().item_spacing.y + GAP * look.scale());
                         continue;
                     }
                     let height = message::run_height(&tools, parts.state, look, width);
