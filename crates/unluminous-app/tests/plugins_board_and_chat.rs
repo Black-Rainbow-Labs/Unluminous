@@ -3656,7 +3656,10 @@ fn a_status_chosen_in_a_zoomed_ticket_modal_is_the_status() {
     let row = harness.get_by_label("Agent done").rect().center();
     click_at(&mut harness, on_the_screen(row));
     let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
-    assert_eq!(ticket["task"]["status"], "agent_done", "the row pressed is the status the ticket has");
+    assert_eq!(
+        ticket["task"]["status"], "agent_done",
+        "the row pressed is the status the ticket has"
+    );
     did(&mut harness, "modal zoom reset");
 }
 

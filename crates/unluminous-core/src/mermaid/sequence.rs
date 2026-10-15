@@ -541,10 +541,8 @@ fn measure_frame(
     // **Every box is as tall as the tallest name needs** (`task-2277`): a name that wraps, or has a line
     // break in it, ran out of a box one line tall. One height for every box, so their bottoms line up
     // and the lifelines all start together.
-    let head = heads
-        .iter()
-        .map(|label| label.height + parts::PADDING_Y * 2.0)
-        .fold(HEAD_HEIGHT, f32::max);
+    let head =
+        heads.iter().map(|label| label.height + parts::PADDING_Y * 2.0).fold(HEAD_HEIGHT, f32::max);
     let heads: Vec<Rect> = columns
         .iter()
         .zip(&widths)

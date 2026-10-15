@@ -681,7 +681,12 @@ fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new:
         (true, true) => (0.0, 0.0),
         (false, false) if dragged => (description, comments + left_over),
         (false, true) if dragged && live && terminal > 0.0 => {
-            return Budget { description, todos, terminal: terminal + comments + left_over, comments: 0.0 };
+            return Budget {
+                description,
+                todos,
+                terminal: terminal + comments + left_over,
+                comments: 0.0,
+            };
         }
         (false, true) if dragged => (description, 0.0),
         (false, true) => (description + comments + left_over, 0.0),

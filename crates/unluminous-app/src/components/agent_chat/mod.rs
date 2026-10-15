@@ -810,7 +810,8 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
                     let kept = parts.state.row_heights.get(&one.id).copied();
                     let guess = || guess_said_height(one, width, look);
                     let top = ui.cursor().top();
-                    let room = room_without_measuring(kept, signature, guess, top, near, width, started);
+                    let room =
+                        room_without_measuring(kept, signature, guess, top, near, width, started);
                     if let Some((height, still_to_measure)) = room {
                         stale |= still_to_measure;
                         if height <= 0.0 {
@@ -857,7 +858,8 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
                     let kept = parts.state.run_heights.get(&key).copied();
                     let guess = || RUN_GUESS * look.scale();
                     let top = ui.cursor().top();
-                    let room = room_without_measuring(kept, signature, guess, top, near, width, started);
+                    let room =
+                        room_without_measuring(kept, signature, guess, top, near, width, started);
                     if let Some((height, still_to_measure)) = room {
                         stale |= still_to_measure;
                         // Space and the item spacing a widget would have had, as for a message's row.
@@ -965,7 +967,8 @@ fn room_without_measuring(
     if top < near.bottom() && top + height.max(1.0) > near.top() {
         return None;
     }
-    let current = kept.filter(|kept| kept.signature == signature && (kept.width - width).abs() < 0.5);
+    let current =
+        kept.filter(|kept| kept.signature == signature && (kept.width - width).abs() < 0.5);
     if let Some(kept) = current {
         return Some((kept.height, false));
     }

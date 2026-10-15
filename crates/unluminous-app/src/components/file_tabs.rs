@@ -137,7 +137,8 @@ pub const NAME_MOST: f32 = 180.0;
 /// The tab's own name, the one its tooltip shows and a test or the command line finds it by, is always the
 /// whole name. Only the drawing is cut.
 pub fn name_on_the_tab(painter: &egui::Painter, name: &str, font: &egui::FontId) -> String {
-    let width = |text: String| painter.layout_no_wrap(text, font.clone(), color::text_control()).size().x;
+    let width =
+        |text: String| painter.layout_no_wrap(text, font.clone(), color::text_control()).size().x;
     if width(name.to_owned()) <= NAME_MOST {
         return name.to_owned();
     }
