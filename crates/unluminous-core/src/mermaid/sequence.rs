@@ -388,6 +388,9 @@ struct Frame {
     top: f32,
     bottom: f32,
     width: f32,
+    /// How tall a participant's box is: [`HEAD_HEIGHT`], or taller when a name runs to more lines than
+    /// that holds (`task-2277`).
+    head: f32,
 }
 
 fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
@@ -396,7 +399,9 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
         parts::finish(&mut scene);
         return scene;
     }
-    let style = options.style(0.95, false);
+    // **Measured in the weight it is drawn in**, which is bold (`task-2277`). Measured in the regular
+    // weight, a name was measured narrower than it is drawn.
+    let style = options.style(0.95, true);
     let heads: Vec<Label> = diagram
         .participants
         .iter()
@@ -433,7 +438,7 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
     draw_events(&mut scene, diagram, &messages, &frame, options);
     // Room at the bottom for the second row of heads and, when there is an actor, for its figure
     // under them.
-    let below = HEAD_HEIGHT * if has_actor { 2.0 } else { 1.0 };
+    let below = frame.head + if has_actor { HEAD_HEIGHT } else { 0.0 };
     scene.claim(Rect::new(0.0, 0.0, frame.width, frame.bottom + below + parts::MARGIN));
     parts::finish(&mut scene);
     scene
@@ -533,14 +538,21 @@ fn measure_frame(
     }
     let width = at + parts::MARGIN;
     let top = title + parts::MARGIN;
+    // **Every box is as tall as the tallest name needs** (`task-2277`): a name that wraps, or has a line
+    // break in it, ran out of a box one line tall. One height for every box, so their bottoms line up
+    // and the lifelines all start together.
+    let head = heads
+        .iter()
+        .map(|label| label.height + parts::PADDING_Y * 2.0)
+        .fold(HEAD_HEIGHT, f32::max);
     let heads: Vec<Rect> = columns
         .iter()
         .zip(&widths)
-        .map(|(centre, width)| Rect::new(centre - width / 2.0, top, *width, HEAD_HEIGHT))
+        .map(|(centre, width)| Rect::new(centre - width / 2.0, top, *width, head))
         .collect();
 
     let mut rows = Vec::with_capacity(diagram.events.len());
-    let mut y = top + HEAD_HEIGHT + 18.0;
+    let mut y = top + head + 18.0;
     for (index, event) in diagram.events.iter().enumerate() {
         let label = &messages[index];
         // **A message's arrow sits under its words**, not in the middle of its row (`task-2063`). The
@@ -561,7 +573,7 @@ fn measure_frame(
         rows.push(y);
         y += height / 2.0;
     }
-    Frame { columns, heads, rows, top, bottom: y + 12.0, width }
+    Frame { columns, heads, rows, top, bottom: y + 12.0, width, head }
 }
 
 /// How tall the row for one event is.
@@ -589,7 +601,7 @@ fn draw_bands(scene: &mut Scene, diagram: &Diagram, frame: &Frame, options: &Opt
             frame.heads[first].left() - 8.0,
             frame.top - 22.0,
             frame.heads[last].right() - frame.heads[first].left() + 16.0,
-            frame.bottom - frame.top + 22.0 + HEAD_HEIGHT + 8.0,
+            frame.bottom - frame.top + 22.0 + frame.head + 8.0,
         );
         scene.add(Item::Rect {
             rect,
@@ -616,7 +628,7 @@ fn draw_lifelines(scene: &mut Scene, diagram: &Diagram, frame: &Frame, options: 
     for column in &frame.columns {
         scene.add(Item::Line {
             points: vec![
-                Point::new(*column, frame.top + HEAD_HEIGHT),
+                Point::new(*column, frame.top + frame.head),
                 Point::new(*column, frame.bottom + 6.0),
             ],
             stroke,
@@ -678,7 +690,7 @@ fn draw_heads(
     for (index, who) in diagram.participants.iter().enumerate() {
         for (at_the_top, top) in [(true, frame.top), (false, frame.bottom + 6.0)] {
             let rect =
-                Rect::new(frame.heads[index].left(), top, frame.heads[index].width, HEAD_HEIGHT);
+                Rect::new(frame.heads[index].left(), top, frame.heads[index].width, frame.head);
             if who.is_actor {
                 // The figure goes above the name at the top of the diagram and below it at the
                 // bottom, so it is always on the outside and never lands inside the last block frame.
@@ -1172,6 +1184,43 @@ mod tests {
             ],
         );
         assert!(scene.size.height > scene.size.width / 2.0, "a sequence diagram runs downwards");
+    }
+
+    /// `task-2277`: *"the boxes that contain text allow the text to escape, especially if the text has a
+    /// line break."* A participant's name on two lines, and one long enough to wrap, are each wholly inside
+    /// a box at the top and at the bottom of the diagram.
+    #[test]
+    fn a_participants_name_on_several_lines_stays_inside_its_box() {
+        let text = "sequenceDiagram\n participant E as Experience<br/>BFE\n\
+            participant V as alle-offers v2 endpoints and the read path behind them\n\
+            E ->> V: go\n";
+        let scene = check::drawn(text, &options(), &["Experience", "BFE"]);
+        let boxes: Vec<Rect> = scene
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Rect { rect, .. } => Some(*rect),
+                _ => None,
+            })
+            .collect();
+        let names: Vec<(Point, f32)> = scene
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Text { at, text, style, .. } if text != "go" => Some((*at, style.size)),
+                _ => None,
+            })
+            .collect();
+        assert!(names.len() >= 6, "both names, on more than one line each, twice: {names:?}");
+        for (at, size) in names {
+            let inside = boxes.iter().any(|rect| {
+                rect.left() <= at.x
+                    && at.x <= rect.right()
+                    && rect.top() <= at.y
+                    && at.y + size <= rect.bottom()
+            });
+            assert!(inside, "a line of a name at {at:?} is outside every box: {boxes:?}");
+        }
     }
 
     #[test]

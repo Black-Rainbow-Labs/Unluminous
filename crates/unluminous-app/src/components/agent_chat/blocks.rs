@@ -166,13 +166,41 @@ impl Kit<'_, '_> {
     /// Markdown, through the same renderer the answers use. Answers its height.
     fn markdown(&mut self, key: &str, text: &str, at: Pos2, width: f32) -> f32 {
         let look = self.look;
+        let (size, colours) = (look.font_size * 0.86, super::message::colours(look));
+        self.markdown_in(key, text, at, width, size, colours)
+    }
+
+    /// Markdown in the quiet small words a component's rows use under their titles, so a row's title stays
+    /// the brighter and larger of the two (`task-2277`).
+    fn markdown_quiet(&mut self, key: &str, text: &str, at: Pos2, width: f32) -> f32 {
+        let look = self.look;
+        let colours = crate::components::markdown_text::Colors {
+            text: look.palette.text_dim,
+            strong: look.palette.text,
+            ..super::message::colours(look)
+        };
+        let size = self.z(QUIET_MARKDOWN);
+        self.markdown_in(key, text, at, width, size, colours)
+    }
+
+    /// Markdown at `size` in `colours`, drawn when drawing. Answers its height.
+    fn markdown_in(
+        &mut self,
+        key: &str,
+        text: &str,
+        at: Pos2,
+        width: f32,
+        size: f32,
+        colours: crate::components::markdown_text::Colors,
+    ) -> f32 {
+        let look = self.look;
         let made = self.rendered.rendered(
             key,
             text,
             look.renderer,
             &look.font_family,
-            look.font_size * 0.86,
-            super::message::colours(look),
+            size,
+            colours,
             width.max(24.0),
             look.highlighter,
         );
@@ -388,7 +416,7 @@ fn leaf_untitled(
     let title = component.title.as_str();
     match &component.kind {
         Kind::Callout { tone, text } => callout(kit, key, title, *tone, text, at, width),
-        Kind::Steps { items, timeline } => steps(kit, items, *timeline, at, width),
+        Kind::Steps { items, timeline } => steps(kit, key, items, *timeline, at, width),
         Kind::KeyValue { items } => keyvalue(kit, items, at, width),
         Kind::Badges { items } => {
             let items: Vec<(String, Tone)> =
@@ -810,8 +838,13 @@ fn callout(
 }
 
 /// Steps and timelines: a status well for each item, its title and words beside it, and its time.
+///
+/// **An item's words are Markdown**, as a callout's are (`task-2277`): an agent writes a link as `[Thread](…)`
+/// and expects it to be a link, and drawn as plain words it was the whole address. And there is room between
+/// the title and the words under it, which were set one point apart.
 fn steps(
     kit: &mut Kit<'_, '_>,
+    key: &str,
     items: &[rich::component::Step],
     timeline: bool,
     at: Pos2,
@@ -840,21 +873,18 @@ fn steps(
         };
         let room = width - indent;
         let title = plain(&step.title);
-        let text = plain(&step.text);
+        let text = step.text.trim();
         let title_height = kit.height_of(Style::sans(12.5));
+        let gap = kit.z(STEP_GAP);
+        let text_key = format!("{key}#step{index}");
+        // Measured where it is drawn, so the two passes agree: `Kit::markdown` draws only while drawing.
+        let measuring = kit.draw;
+        kit.draw = false;
         let text_height = match text.is_empty() {
             true => 0.0,
-            false => {
-                let galley = rux::text::wrapped(
-                    kit.rux.painter(),
-                    kit.style(SMALL),
-                    &text,
-                    theme.ink.i400,
-                    room.max(1.0),
-                );
-                galley.size().y + kit.z(1.0)
-            }
+            false => kit.markdown_quiet(&text_key, text, Pos2::new(at.x + indent, pen), room) + gap,
         };
+        kit.draw = measuring;
         let block = title_height + text_height;
         let height = block.max(side);
         let top = pen + (height - block) / 2.0;
@@ -888,19 +918,21 @@ fn steps(
                 );
             }
             if !text.is_empty() {
-                kit.words(
-                    SMALL,
-                    &text,
-                    theme.ink.i400,
-                    Pos2::new(at.x + indent, top + title_height + kit.z(1.0)),
-                    room,
-                );
+                let below = Pos2::new(at.x + indent, top + title_height + gap);
+                kit.markdown_quiet(&text_key, text, below, room);
             }
         }
         pen += height;
     }
     pen - at.y
 }
+
+/// How large the Markdown under a row's title is set, in points before the pane's zoom: a little under the
+/// title's 12.5.
+const QUIET_MARKDOWN: f32 = 11.5;
+
+/// The room between a step's title and its words, in points before the pane's zoom.
+const STEP_GAP: f32 = 5.0;
 
 /// Rows of a name and a value in a well, a hairline between each.
 fn keyvalue(kit: &mut Kit<'_, '_>, items: &[(String, String)], at: Pos2, width: f32) -> f32 {

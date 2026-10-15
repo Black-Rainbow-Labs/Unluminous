@@ -375,7 +375,11 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
             response.request_focus();
         }
         // Recorded so the paste knows whose key press it is reading — see `PaneState::prompt_focused`.
-        parts.state.prompt_focused = response.has_focus();
+        //
+        // Asked of egui's memory rather than of `Response::has_focus`, which also asks whether the operating
+        // system has given this window the keyboard. A paste that reaches this pane is already in this window,
+        // and a window driven from the command line in the background is still pasted into (`task-2277`).
+        parts.state.prompt_focused = ui.memory(|memory| memory.has_focus(prompt_id));
         // **Enter sends and Shift+Enter is a new line**, which is what the page this copies does and
         // what everybody expects of a chat.
         //

@@ -549,6 +549,27 @@ pub struct PaneState {
     /// conversation shorter than the pane sits at its bottom, next to the prompt, which is the design's
     /// `justify-content: flex-end`.
     pub rows_height: f32,
+    /// How tall each message's row was when it was last measured, by message id. See [`RowHeight`].
+    pub row_heights: std::collections::HashMap<u64, RowHeight>,
+    /// How tall each run of tool calls was when it was last measured, by its first call's id.
+    pub run_heights: std::collections::HashMap<u64, RowHeight>,
+}
+
+/// One message's row as it was last measured: what it held, how wide it was, and how tall it came out.
+///
+/// `task-2277`: *"when I have agent chat open, and it has a long message history and claude is replying, the
+/// prompt input becomes unresponsive"*. Every row was measured on every frame, which lays the message's words
+/// out again whenever the width moves, so dragging the ticket dialog larger laid out every message in the
+/// history on every frame of the drag. A row out of view uses its remembered height instead, and after a change
+/// of width the rows out of view are measured again a few at a time. A row in view is always measured.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RowHeight {
+    /// A summary of what the row is made of, so a row whose content changed is measured again at once.
+    pub signature: u64,
+    /// The width it was measured at.
+    pub width: f32,
+    /// How tall it came out.
+    pub height: f32,
 }
 
 /// The model selector: `rux`'s `Select` and what it keeps between frames.
@@ -653,6 +674,8 @@ impl PaneState {
         self.blocks.clear();
         self.parsed.clear();
         self.heights.clear();
+        self.row_heights.clear();
+        self.run_heights.clear();
     }
 }
 

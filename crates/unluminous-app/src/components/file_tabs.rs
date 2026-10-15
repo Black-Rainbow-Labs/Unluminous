@@ -126,13 +126,43 @@ impl Strip {
     }
 }
 
-/// How wide one tab is. Measured rather than guessed, because a name can be any length.
+/// The widest a tab's name is drawn, in points. `task-2277`: a web page's title can be a whole sentence,
+/// and a tab as wide as the sentence pushed every other tab off the strip. About thirty characters of the
+/// interface font, which is roughly what a browser shows of a page title before it cuts one short.
+pub const NAME_MOST: f32 = 180.0;
+
+/// The name as it is drawn on the tab: whole when it fits in [`NAME_MOST`], and otherwise cut at the last
+/// character that leaves room for an ellipsis after it.
+///
+/// The tab's own name, the one its tooltip shows and a test or the command line finds it by, is always the
+/// whole name. Only the drawing is cut.
+pub fn name_on_the_tab(painter: &egui::Painter, name: &str, font: &egui::FontId) -> String {
+    let width = |text: String| painter.layout_no_wrap(text, font.clone(), color::text_control()).size().x;
+    if width(name.to_owned()) <= NAME_MOST {
+        return name.to_owned();
+    }
+    let cut = |characters: usize| {
+        let end = name.char_indices().nth(characters).map_or(name.len(), |(at, _)| at);
+        format!("{}\u{2026}", name[..end].trim_end())
+    };
+    // The longest start of the name that fits with the ellipsis after it, found by halving.
+    let (mut fits, mut too_long) = (0usize, name.chars().count());
+    while fits < too_long {
+        let middle = (fits + too_long).div_ceil(2);
+        match width(cut(middle)) <= NAME_MOST {
+            true => fits = middle,
+            false => too_long = middle - 1,
+        }
+    }
+    cut(fits)
+}
+
+/// How wide one tab is. Measured rather than guessed, because a name can be any length, and never wider
+/// than [`NAME_MOST`] allows for the name.
 fn tab_width(ui: &egui::Ui, tab: &TabView) -> f32 {
-    let galley = ui.painter().crisp_layout_no_wrap(
-        tab.name.clone(),
-        egui::FontId::proportional(12.0),
-        color::text_control(),
-    );
+    let font = egui::FontId::proportional(12.0);
+    let shown = name_on_the_tab(ui.painter(), &tab.name, &font);
+    let galley = ui.painter().crisp_layout_no_wrap(shown, font, color::text_control());
     // The marker, the gap after it, the name, the gap before the cross, and the cross.
     PADDING + 8.0 + 8.0 + galley.size().x + 8.0 + 14.0 + PADDING
 }
@@ -304,7 +334,8 @@ fn draw_tab(
     // By its capitals, so the name lines up with the icon in front of it — `crisp::top_centring_capitals`.
     let font = egui::FontId::proportional(12.0);
     let top = crate::theme::crisp::top_centring_capitals(painter, &font, rect.center().y);
-    let galley = painter.crisp_layout_no_wrap(tab.name.clone(), font, tint);
+    let shown = name_on_the_tab(painter, &tab.name, &font);
+    let galley = painter.crisp_layout_no_wrap(shown, font, tint);
     painter.crisp_galley(Pos2::new(rect.left() + PADDING + 16.0, top), galley, tint);
 
     // The cross, or the amber dot when there are unsaved changes and the pointer is elsewhere.
@@ -380,6 +411,28 @@ pub fn insertion_mark(painter: &egui::Painter, strip: &Strip, position: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `task-2277`: a page title as long as a sentence is cut to [`NAME_MOST`] with an ellipsis after it,
+    /// and a short name is drawn whole.
+    #[test]
+    fn a_long_name_is_cut_short_and_a_short_one_is_left_alone() {
+        let context = egui::Context::default();
+        let font = egui::FontId::proportional(12.0);
+        let long = "Rust Programming Language Documentation and Every Chapter of the Book, Online";
+        let mut shown = (String::new(), String::new(), 0.0);
+        let _ = context.run_ui(egui::RawInput::default(), |ui| {
+            let painter = ui.painter();
+            let cut = name_on_the_tab(painter, long, &font);
+            let width = painter.layout_no_wrap(cut.clone(), font.clone(), Color32::WHITE).size().x;
+            shown = (cut, name_on_the_tab(painter, "main.rs", &font), width);
+        });
+        let (cut, short, width) = shown;
+        assert!(cut.ends_with('\u{2026}'), "{cut}");
+        assert!(long.starts_with(cut.trim_end_matches('\u{2026}')), "{cut}");
+        assert!(width <= NAME_MOST, "{width}");
+        assert!(cut.chars().count() > 10, "cut far too short: {cut}");
+        assert_eq!(short, "main.rs");
+    }
 
     /// Three 100 point tabs starting at zero, which is what the strip lays out.
     fn strip_of_three() -> Strip {

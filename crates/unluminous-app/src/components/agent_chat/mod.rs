@@ -125,6 +125,9 @@ pub fn pane(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Req
     apply(chat, acts)
 }
 
+/// How far the shadow under `Back to My Chat` reaches below its strip, which the conversation is kept clear of.
+const STRIP_SHADOW: f32 = 12.0;
+
 /// The pane while it shows a ticket's conversation in place of its own (`task-2269`).
 ///
 /// A strip along the top with `Back to My Chat` and the ticket's name, and under it the ticket's chat drawn by
@@ -162,7 +165,13 @@ pub fn ticket_pane(chat: &mut AgentChat, ui: &mut egui::Ui, look: &Look<'_>) -> 
             ink,
         );
     }
-    let below = Rect::from_min_max(Pos2::new(area.left(), strip.bottom()), area.max);
+    // **The conversation starts below the round button's shadow**, not at the strip's edge (`task-2277`): the
+    // conversation is drawn after the strip and over it, so it cut the bottom off `Back to My Chat` along a
+    // straight line.
+    let below = Rect::from_min_max(
+        Pos2::new(area.left(), (strip.bottom() + STRIP_SHADOW * scale).min(area.bottom())),
+        area.max,
+    );
     let mut child = ui.new_child(
         egui::UiBuilder::new()
             .max_rect(below)
@@ -774,6 +783,11 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
         // of the bubbles and cards are not cut at the list's edge (`task-2235`).
         let side = SIDE * look.scale();
         let width = (area.width() - side * 2.0).max(40.0);
+        // What counts as in view: the conversation's own rectangle and a screenful either side, so a row
+        // scrolled into view has already been measured exactly.
+        let near = ui.clip_rect().expand2(Vec2::new(0.0, area.height()));
+        let started = std::time::Instant::now();
+        let mut stale = false;
         // **A conversation shorter than the pane sits at its bottom**, next to the prompt, which is the
         // design's `justify-content: flex-end`. Measured from last frame's rows, so the room put above
         // them is never part of what it is worked out from.
@@ -789,11 +803,37 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
         for row in rows_of(messages) {
             match row {
                 Row::Said(one, waiting) => {
+                    // **A row out of view is room of the height it was last measured at** (`task-2277`), so
+                    // a frame costs the rows on the screen rather than the whole history. See
+                    // `RowHeight` for the report this answers.
+                    let signature = said_signature(one, waiting, parts.state, look);
+                    let kept = parts.state.row_heights.get(&one.id).copied();
+                    let guess = || guess_said_height(one, width, look);
+                    let top = ui.cursor().top();
+                    let room = room_without_measuring(kept, signature, guess, top, near, width, started);
+                    if let Some((height, still_to_measure)) = room {
+                        stale |= still_to_measure;
+                        if height <= 0.0 {
+                            continue;
+                        }
+                        // Space rather than a widget: a widget is bookkeeping egui does on every frame, and
+                        // twenty thousand of them cost more than the frame is allowed.
+                        ui.add_space(height + GAP * look.scale());
+                        continue;
+                    }
                     // Worked out once and handed to the drawing, because the height has to be known
                     // before the rectangle can be allocated and running it twice built the message's
                     // text twice. See `message::Shape`.
                     let shape =
                         message::shape(one, parts.state, look, width, waiting, false, Some(ui));
+                    parts.state.row_heights.insert(
+                        one.id,
+                        crate::services::agent_chat::RowHeight {
+                            signature,
+                            width,
+                            height: shape.height,
+                        },
+                    );
                     if shape.height <= 0.0 {
                         continue;
                     }
@@ -810,7 +850,22 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
                     }
                 }
                 Row::Tools(tools) => {
+                    // Remembered the same way as a message's row, under its first call's id.
+                    let (key, signature) = message::run_signature(&tools, parts.state, look);
+                    let kept = parts.state.run_heights.get(&key).copied();
+                    let guess = || RUN_GUESS * look.scale();
+                    let top = ui.cursor().top();
+                    let room = room_without_measuring(kept, signature, guess, top, near, width, started);
+                    if let Some((height, still_to_measure)) = room {
+                        stale |= still_to_measure;
+                        ui.add_space(height + GAP * look.scale());
+                        continue;
+                    }
                     let height = message::run_height(&tools, parts.state, look, width);
+                    parts.state.run_heights.insert(
+                        key,
+                        crate::services::agent_chat::RowHeight { signature, width, height },
+                    );
                     let (slot, _) = ui
                         .allocate_exact_size(Vec2::new(area.width(), height), egui::Sense::hover());
                     let rect = slot.shrink2(Vec2::new(side, 0.0));
@@ -846,9 +901,26 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
             ui.ctx().request_repaint_after(std::time::Duration::from_millis(250));
             ui.add_space(GAP * look.scale());
         }
+        // Rows still measured at an old width are measured on the next frame, a budget's worth at a time.
+        if stale {
+            ui.ctx().request_repaint();
+        }
         ui.cursor().top() - rows_top
     });
     parts.state.rows_height = scrolled.inner;
+    // **A jump that did not reach the bottom is asked for again on the next frame** (`task-2277`: *"when agent
+    // chat loads for the first time, it should be scrolled down to the bottom so the last message is right above
+    // the prompt input."*). The offset a jump asks for is worked out from how far the conversation could be
+    // scrolled on the previous frame, and on the first frame a conversation is drawn there was no previous
+    // frame: it was measured as nothing, so the jump went one pane down and stopped there. This frame measured
+    // it, so the next one lands. A conversation still growing is followed by `stick_to_bottom` once there. Asked
+    // again only when this frame measured more than the last one did, so it can never repeat for ever.
+    let bottom = (scrolled.content_size.y - area.height()).max(0.0);
+    let measured_more = parts.state.scrollable < bottom - 1.0;
+    if jump && !selecting && measured_more && scrolled.state.offset.y < bottom - 1.0 {
+        parts.state.jump_to_bottom = true;
+        ui.ctx().request_repaint();
+    }
     // The canvases of components that were not drawn this frame are given back. Once a frame, after
     // every row has had its turn, which is what `rux::RuxState::end_frame` asks for.
     if let Some(kept) = &parts.state.blocks_rux {
@@ -861,6 +933,128 @@ fn conversation(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area:
     parts.state.scrollable = (scrolled.content_size.y - area.height()).max(0.0);
     look.chrome.unclip();
     acts
+}
+
+/// Whether a row out of view can be left as room this frame, and how tall that room is. `None` is a row to
+/// measure now: one in view, or one whose turn it is while this frame's budget lasts.
+///
+/// The second half of the answer says the room is not the row's measured height at this width, so the
+/// conversation asks for another frame to measure it. `kept` is how the row was last measured, whatever it held
+/// then; `guess` is how tall a row never measured is taken to be until it is.
+///
+/// @param kept - the row as it was last measured, if it has been
+/// @param signature - what the row holds now
+/// @param guess - a rough height for a row never measured
+/// @param top - where the row starts
+/// @param near - the part of the conversation counted as in view
+/// @param width - the width rows are measured at this frame
+/// @param started - when this frame started measuring rows
+fn room_without_measuring(
+    kept: Option<crate::services::agent_chat::RowHeight>,
+    signature: u64,
+    guess: impl FnOnce() -> f32,
+    top: f32,
+    near: Rect,
+    width: f32,
+    started: std::time::Instant,
+) -> Option<(f32, bool)> {
+    let height = kept.map_or_else(guess, |kept| kept.height);
+    if top < near.bottom() && top + height.max(1.0) > near.top() {
+        return None;
+    }
+    let current = kept.filter(|kept| kept.signature == signature && (kept.width - width).abs() < 0.5);
+    if let Some(kept) = current {
+        return Some((kept.height, false));
+    }
+    match started.elapsed() > REMEASURE_BUDGET {
+        true => Some((height, true)),
+        false => None,
+    }
+}
+
+/// How tall a message's row is taken to be before it has been measured: its lines at the width of the row, in
+/// the size the words are set at, and the room round them. Only ever stands in for a row out of view, until the
+/// budget reaches it.
+fn guess_said_height(one: &unluminous_chat::Message, width: f32, look: &Look<'_>) -> f32 {
+    let size = look.font_size * 0.9;
+    let per_line = (width / (size * 0.55)).max(10.0);
+    let lines: f32 = one
+        .parts
+        .iter()
+        .flat_map(|part| part.text().lines())
+        .map(|line| (line.chars().count() as f32 / per_line).ceil().max(1.0))
+        .sum();
+    lines * size * 1.5 + 56.0 * look.scale()
+}
+
+/// How tall a run of tool calls is taken to be before it has been measured: a folded card.
+const RUN_GUESS: f32 = 56.0;
+
+/// How long one frame may spend measuring rows out of view again after the conversation changed width.
+///
+/// A row in view is always measured, whatever this says. Four milliseconds is a quarter of a frame at
+/// sixty a second, so a resize of a long conversation stays responsive and the rows above and below catch
+/// up over the frames after it.
+const REMEASURE_BUDGET: std::time::Duration = std::time::Duration::from_millis(4);
+
+/// A summary of what decides a message row's height, other than its width.
+///
+/// Lengths rather than the words, so it costs nothing to work out: a transcript only grows, so a message
+/// whose words changed is a message whose length changed. What a person can open or close in a row, the
+/// thinking and the components in it, can only change while the row is in view, where it is measured anyway.
+fn said_signature(
+    one: &unluminous_chat::Message,
+    waiting: bool,
+    state: &crate::services::agent_chat::PaneState,
+    look: &Look<'_>,
+) -> u64 {
+    let mut signature = Signature::default();
+    signature.add(one.id);
+    signature.add(u64::from(waiting));
+    signature.add(one.parts.len() as u64);
+    signature.add(one.thinking.len() as u64);
+    signature.add(one.tools.len() as u64);
+    for part in &one.parts {
+        match part {
+            unluminous_chat::model::Part::Text(words) => signature.add(words.len() as u64),
+            // A picture's height is known once it has been decoded, which happens as the row is measured.
+            unluminous_chat::model::Part::Picture { bytes, .. } => {
+                signature.add(bytes.len() as u64 ^ (state.picture_sizes.len() as u64) << 40)
+            }
+        }
+    }
+    signature.add(u64::from(one.finish.is_some()));
+    signature.add(one.failure.as_ref().map_or(u64::MAX, |failure| failure.len() as u64));
+    signature.add(one.compacted.unwrap_or(u64::MAX));
+    signature.add(u64::from(state.opened_thinking.contains(&one.id)));
+    signature.add(u64::from(look.scale().to_bits()) << 32 | u64::from(look.font_size.to_bits()));
+    signature.finish()
+}
+
+/// A small running hash of a few numbers, which is all a row's signature is made of.
+///
+/// FNV-1a over whole numbers rather than `DefaultHasher`, whose SipHash is built to resist an attacker and
+/// costs several times as much. The conversation works out one of these for every row on every frame, so the
+/// difference is milliseconds a frame in a long one.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Signature(u64);
+
+impl Default for Signature {
+    fn default() -> Self {
+        Self(0xcbf2_9ce4_8422_2325)
+    }
+}
+
+impl Signature {
+    /// Fold one more number in.
+    pub(crate) fn add(&mut self, value: u64) {
+        self.0 = (self.0 ^ value).wrapping_mul(0x0000_0100_0000_01b3);
+    }
+
+    /// The signature so far.
+    pub(crate) fn finish(self) -> u64 {
+        self.0
+    }
 }
 
 /// When the turn that is on started, while nothing it says is arriving: the last message is the
@@ -914,7 +1108,9 @@ fn rows_of<'a>(
         }
         let says_something = waiting
             || one.role != Role::Assistant
-            || !one.text().trim().is_empty()
+            // Asked of the parts one at a time, which is the same answer as asking the joined text and
+            // allocates nothing: this runs for every message on every frame (`task-2277`).
+            || one.parts.iter().any(|part| !part.text().trim().is_empty())
             || !one.thinking.is_empty()
             || one.failure.is_some()
             || one.compacted.is_some()

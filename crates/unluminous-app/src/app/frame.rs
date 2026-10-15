@@ -161,6 +161,8 @@ impl UnluminousApp {
         // **The page follows the node it was drawn in, in the same frame.** See `BrowserHost::follow`.
         if !self.browser_placements.is_empty() {
             let occluders = self.occluding_rects(ui.ctx());
+            // Before `follow` cuts a new popup out of the page, so the picture is of the whole page. `task-2277`.
+            self.stand_a_picture_under_what_covers_the_page(ui.ctx(), &occluders);
             self.browser.follow(&self.browser_placements, &occluders);
         }
         crate::services::frame_trace::phase("action");

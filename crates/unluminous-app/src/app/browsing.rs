@@ -39,6 +39,9 @@ pub struct PageStills {
     areas: std::collections::HashMap<u64, Rect>,
     /// The tab being held, and why.
     held: Option<Held>,
+    /// The page a popup is over, with the picture taken of it just before the popup was cut out of it.
+    /// See [`UnluminousApp::stand_a_picture_under_what_covers_the_page`].
+    covered: Option<(u64, egui::TextureHandle)>,
 }
 
 /// One tab whose picture is standing in for its page.
@@ -60,8 +63,16 @@ impl PageStills {
         self.pictures.insert(tab, picture);
     }
 
+    /// Whether a picture is standing under a popup over `tab`'s page, which a test can ask.
+    pub fn under_a_popup(&self, tab: u64) -> bool {
+        self.covered.as_ref().is_some_and(|(covered, _)| *covered == tab)
+    }
+
     /// Forget a closed tab.
     pub fn forget(&mut self, tab: u64) {
+        if self.under_a_popup(tab) {
+            self.covered = None;
+        }
         self.pictures.remove(&tab);
         self.areas.remove(&tab);
         if self.held.as_ref().is_some_and(|held| held.tab == tab) {
@@ -310,6 +321,55 @@ impl UnluminousApp {
         placed.over.push(placed.visible);
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(16));
         placed
+    }
+
+    /// Paint a picture of the page under a popup that is over it, so the popup's shadow lands on the page.
+    ///
+    /// `task-2277`: *"When I right click the tab over a opened web page, theres an odd underlay for the popup
+    /// that shows. It should not have that ugly black box underlay."* A page is a native child window, so a popup
+    /// over it is cut out of it, grown by `OCCLUDER_SHADOW` so the popup's shadow is not hidden under the page.
+    /// Nothing egui drew was under that hole, so the menu sat in a square of the window's own dark ground,
+    /// eighteen points larger than the menu on every side.
+    ///
+    /// So on the frame a popup first lands on the page, the page is photographed while it is still whole, which
+    /// is before `BrowserHost::follow` cuts the popup out of it, and the picture is painted where the page is for
+    /// as long as anything is over it. The hole then shows the page as it was, with the popup's shadow on it. The
+    /// picture is painted on the background layer at the end of the frame, over the pane and under every popup.
+    /// It is taken again the next time a popup arrives, so it is never older than the popup over it.
+    ///
+    /// Where the platform cannot photograph a page (macOS, `photograph` answers `None`) nothing changes.
+    ///
+    /// @param ctx - the frame's context
+    /// @param occluders - what egui is drawing over the native views this frame
+    pub(crate) fn stand_a_picture_under_what_covers_the_page(
+        &mut self,
+        ctx: &egui::Context,
+        occluders: &[Rect],
+    ) {
+        let showing = self.browser.showing();
+        let page = self.browser_placements.iter().find(|placement| Some(placement.id) == showing);
+        let Some(page) = page.filter(|page| {
+            crate::services::browser::covers_any_of(occluders, page.visible)
+                && !self.page_stills.holding(page.id)
+        }) else {
+            self.page_stills.covered = None;
+            return;
+        };
+        let (id, visible) = (page.id, page.visible);
+        if !self.page_stills.under_a_popup(id) {
+            let Some(picture) = self.browser.photograph(id) else { return };
+            let texture =
+                ctx.load_texture("covered-page-still", picture, egui::TextureOptions::LINEAR);
+            self.page_stills.covered = Some((id, texture));
+        }
+        let Some((_, picture)) = self.page_stills.covered.as_ref() else { return };
+        let (place, part) = a_picture_at_its_own_shape(picture.size_vec2(), visible);
+        ctx.layer_painter(egui::LayerId::background()).with_clip_rect(visible).image(
+            picture.id(),
+            place,
+            part,
+            egui::Color32::WHITE,
+        );
     }
 
     /// Make the tab or node holding page `id` the one with the keyboard, because somebody clicked into the page.

@@ -1159,6 +1159,27 @@ fn run_open(tools: &[&ToolCall], state: &PaneState) -> bool {
     }
 }
 
+/// A summary of what decides a run of tool calls' height, other than its width, and the id the run is
+/// remembered under: its first call's. `task-2277`, the same as `agent_chat::said_signature` for a message.
+pub fn run_signature(tools: &[&ToolCall], state: &PaneState, look: &Look<'_>) -> (u64, u64) {
+    use std::hash::{Hash, Hasher};
+    // The key is hashed from the first call's id, which is a string and is hashed once.
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    tools.first().map(|tool| tool.id.as_str()).hash(&mut hasher);
+    let key = hasher.finish();
+    let mut signature = super::Signature::default();
+    signature.add(key);
+    signature.add(tools.len() as u64);
+    for tool in tools {
+        signature.add(tool.arguments.len() as u64);
+        signature.add(tool.answer.as_ref().map_or(u64::MAX, |answer| answer.len() as u64));
+        signature.add(u64::from(tool.failed) << 1 | u64::from(tool.took.is_some()));
+    }
+    signature.add(u64::from(run_open(tools, state)));
+    signature.add(u64::from(look.scale().to_bits()) << 32 | u64::from(look.font_size.to_bits()));
+    (key, signature.finish())
+}
+
 /// How tall a run of tool calls is, in points at the size the window is set to.
 ///
 /// `task-2193`: the calls between two things said are one row, so the words an agent said are not pushed

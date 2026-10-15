@@ -724,10 +724,27 @@ fn apply_what_a_fields_menu_asked_for(ui: &mut egui::Ui) {
         // Nothing on the clipboard is not a failure: it is what a paste into an empty clipboard does
         // everywhere, and a message about it would be a message about nothing.
         FieldEdit::Paste => {
-            match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.get_text()) {
-                Ok(text) => egui::Event::Paste(text),
-                Err(_) => return,
-            }
+            // **And the paste chord's key going back up, which is how a picture is pasted.** `task-2277`: *"In
+            // agent chat, I can't CMD+V to paste an image into the prompt input."* On macOS `Cmd+V` is the menu
+            // bar's key equivalent, so AppKit gives it to the menu and the window sees no key at all, while the
+            // chat composer and the report dialog take a picture off the clipboard when they see `V` released
+            // with the command key held (see `agent_chat::is_a_paste_chord`). So the menu's paste carries that
+            // release too. A clipboard holding only a picture has no text, and the release is all there is.
+            let released = egui::Event::Key {
+                key: egui::Key::V,
+                physical_key: None,
+                pressed: false,
+                repeat: false,
+                modifiers: egui::Modifiers::COMMAND,
+            };
+            let text = arboard::Clipboard::new().and_then(|mut clipboard| clipboard.get_text());
+            ui.ctx().input_mut(|input| {
+                if let Ok(text) = text {
+                    input.events.push(egui::Event::Paste(text));
+                }
+                input.events.push(released);
+            });
+            return;
         }
     };
     ui.ctx().input_mut(|input| input.events.push(event));

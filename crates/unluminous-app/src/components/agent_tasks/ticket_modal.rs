@@ -120,6 +120,10 @@ const TODO_PAD: f32 = 8.0;
 /// The description's well when nobody has dragged its edge, and the least it can be made.
 const DESCRIPTION: f32 = 92.0;
 const DESCRIPTION_LEAST: f32 = 76.0;
+/// The smallest a description can be dragged to: one line of words and the well's own padding. `task-2277`: *"I
+/// should be able to resize it to be 1-2 lines tall, if I so desire."* [`DESCRIPTION_LEAST`] stays what the budget
+/// cuts an undragged description to.
+pub const DESCRIPTION_SMALLEST: f32 = 46.0;
 /// How tall the strip under the description that resizes it is.
 const DESCRIPTION_GRIP: f32 = 8.0;
 /// The terminal: the strip that says there is none, and the room a live one wants.
@@ -577,14 +581,18 @@ fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new:
         false => (TODO_HEAD + LABEL_GAP) * 4.0 + SECTION_GAP * 3.0 + 2.0,
     };
     let description_shut = board.description_shut && !new;
-    let description_least = match description_shut {
-        true => 0.0,
-        false => DESCRIPTION_LEAST,
+    let description_least = match (description_shut, board.description_height) {
+        (true, _) => 0.0,
+        (false, Some(dragged)) => DESCRIPTION_LEAST.min(dragged.max(DESCRIPTION_SMALLEST)),
+        (false, None) => DESCRIPTION_LEAST,
     };
     let description_want = match (new, description_shut) {
         (true, _) => (room - headings - todo_want).max(DESCRIPTION_LEAST),
         (false, true) => 0.0,
-        (false, false) => board.description_height.unwrap_or(DESCRIPTION).max(DESCRIPTION_LEAST),
+        (false, false) => match board.description_height {
+            Some(dragged) => dragged.max(DESCRIPTION_SMALLEST),
+            None => DESCRIPTION.max(DESCRIPTION_LEAST),
+        },
     };
     let wanted = headings + description_want + todo_want + terminal_want + comment_want;
     let mut short = (wanted - room).max(0.0);
@@ -640,29 +648,44 @@ fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new:
         false => description,
     };
     let description = (description - short).max(0.0);
+    // Room left over by the two rules below. It goes to the description, which scrolls, unless somebody dragged
+    // the description to a height of its own: then the description stays where the pointer let go of it and the
+    // room goes to the comments, or to the agent's section when the comments are folded (`task-2277`). Given to
+    // the description, a drag smaller was handed straight back, so it stopped well short of one or two lines.
+    let mut left_over = 0.0;
     // **The strip that says there is no terminal is whole or absent** (`task-2260`). Its words are two lines tall,
-    // so cut below its height they ran over its own edges; the room it would have had goes to the description.
-    let (terminal, description) = match !live && terminal > 0.0 && terminal < TERMINAL_EMPTY {
-        true => (0.0, description + terminal),
-        false => (terminal, description),
+    // so cut below its height they ran over its own edges.
+    let terminal = match !live && terminal > 0.0 && terminal < TERMINAL_EMPTY {
+        true => {
+            left_over += terminal;
+            0.0
+        }
+        false => terminal,
     };
-    // **The todos are given whole rows**, and what a part of a row would have taken goes to the description,
-    // which scrolls: a row cut through its middle reads as a drawing fault rather than as a list that scrolls.
-    let (todos, description) = match todos_open && rows > 0.0 && todos > 0.0 {
+    // **The todos are given whole rows**: a row cut through its middle reads as a drawing fault rather than as a
+    // list that scrolls.
+    let todos = match todos_open && rows > 0.0 && todos > 0.0 {
         true => {
             let fit = ((todos - list(0.0)) / (TODO_ROW + TODO_GAP)).floor().clamp(0.0, rows);
             let whole = list(fit).min(todos);
-            (whole, description + (todos - whole))
+            left_over += todos - whole;
+            whole
         }
-        false => (todos, description),
+        false => todos,
     };
     // **A shut section gives its room to the other of the two that take what is spare**, the comments or the
     // description, so the dialog does not end in an empty band (`task-2269`).
-    let (description, comments) = match (description_shut, board.comments_shut && !new) {
-        (true, false) => (0.0, comments + description),
-        (false, true) => (description + comments, 0.0),
+    let comments_shut = board.comments_shut && !new;
+    let (description, comments) = match (description_shut, comments_shut) {
+        (true, false) => (0.0, comments + description + left_over),
         (true, true) => (0.0, 0.0),
-        (false, false) => (description, comments),
+        (false, false) if dragged => (description, comments + left_over),
+        (false, true) if dragged && live && terminal > 0.0 => {
+            return Budget { description, todos, terminal: terminal + comments + left_over, comments: 0.0 };
+        }
+        (false, true) if dragged => (description, 0.0),
+        (false, true) => (description + comments + left_over, 0.0),
+        (false, false) => (description + left_over, comments),
     };
     Budget { description, todos, terminal, comments }
 }
@@ -797,7 +820,7 @@ fn main_column(
         let grip =
             Grip { salt: "agent-tasks-description-grip", name: "Resize description", corner: true };
         if let Some(height) =
-            section_grip(rux, well, DESCRIPTION_LEAST, area.max.y - well.min.y, grip)
+            section_grip(rux, well, DESCRIPTION_SMALLEST, area.max.y - well.min.y, grip)
         {
             board.description_height = height;
         }
