@@ -34,6 +34,7 @@ pub mod diff;
 pub mod log;
 pub mod ops;
 pub mod status;
+pub mod watch;
 pub mod worker;
 
 use std::path::{Path, PathBuf};
@@ -45,6 +46,7 @@ pub use diff::LineChange;
 pub use log::Commit;
 pub use ops::{PullStrategy, PushTarget, Remote, ResetMode, Stash};
 pub use status::{Entry, State, Status};
+pub use watch::Watch;
 pub use worker::{Reply, Request, Worker};
 
 /// A path with every symlink in it resolved, which still answers for a file that is no longer there.

@@ -7,8 +7,16 @@ impl UnluminousApp {
     pub(crate) fn cli_git(&mut self, request: &Request, verb: &str) -> Outcome {
         match verb {
             "status" => {
-                let changed = self.refresh_repository();
-                if changed && self.git.as_ref().is_some_and(|git| git.is_busy()) {
+                // **Read at the moment of use** (`task-2274`). The window reads git again whenever it
+                // sees the repository move, but a tracked file edited by another program with nothing
+                // else moving is only known to git, so a question about the status asks git first and
+                // answers when it has. It also means the first answer after a window opens is never
+                // given before the first read has come back, which said `detached`.
+                self.refresh_repository();
+                if let Some(git) = self.git.as_mut() {
+                    git.read_again();
+                }
+                if self.git.as_ref().is_some_and(|git| git.is_busy()) {
                     Outcome::Hold(Waiting::Git {
                         until: waits_for(request, "wait", DEFAULT_WAIT),
                         answer: GitAnswer::GitStatus,

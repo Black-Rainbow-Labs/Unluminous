@@ -89,13 +89,22 @@ impl UnluminousApp {
                 .map(Path::to_path_buf)
                 .ok_or_else(|| std::io::Error::other("this document has no file to save to"))?,
         };
-        match file.notebook.as_deref() {
+        let written = match file.notebook.as_deref() {
             Some(tab) => {
                 let json = tab.serialize(&file.document.text().to_string());
                 file.document.save_bytes_as(&target, json.as_bytes())
             }
             None => file.document.save_as(&target),
+        };
+        // Writing a file changes what git says about it, and nothing git keeps moves when a file is
+        // written, so git is asked again here: the one place a tab is written. `task-2274`.
+        if written.is_ok() {
+            file.git_asked = false;
+            if let Some(git) = self.git.as_mut() {
+                git.read_again();
+            }
         }
+        written
     }
 
     /// Read a notebook tab's file again, keeping what has run by cell id. Answers whether it was

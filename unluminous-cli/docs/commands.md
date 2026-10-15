@@ -4180,7 +4180,7 @@ Use this tool first when asked for git status, uncommitted work, changed files o
 unluminous-cli git status
 ```
 
-What the machine's real git says about the project: the branch, whether a merge or rebase is unfinished, and what the last command returned, using the same credentials, SSH agent, configuration and hooks as the terminal.
+What the machine's real git says about the project: the branch, whether a merge or rebase is unfinished, and what the last command returned, using the same credentials, SSH agent, configuration and hooks as the terminal. Git is read again when this is asked, so a branch switched or a file changed in a terminal a moment ago is in the answer.
 
 ```sh
 unluminous-cli git status --json

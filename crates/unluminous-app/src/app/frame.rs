@@ -266,7 +266,8 @@ impl UnluminousApp {
         crate::services::frame_trace::phase("index");
         // Before the explorer is drawn, so a file another program has just made is in the tree on
         // this frame rather than the next one.
-        self.notice_what_changed_on_disk();
+        let focused = ui.ctx().input(|input| input.viewport().focused.unwrap_or(false));
+        self.notice_what_changed_on_disk(focused);
         crate::services::frame_trace::phase("watch");
         // Where the window is, so the project can be opened here again next time — `task-1693`.
         self.note_where_the_window_is(ui.ctx());

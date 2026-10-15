@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use unluminous_git::worker::{Reply, Request, Snapshot};
-use unluminous_git::{Commit, Repository, Worker};
+use unluminous_git::{Commit, Repository, Watch, Worker};
 
 use crate::app::files::OpenFiles;
 use crate::components::git_dialogs::GitDialogs;
@@ -28,6 +28,15 @@ use crate::app::{Answer, Confirmation, UnluminousApp};
 /// How many commits the history window reads. A repository can hold a hundred thousand; a window
 /// shows a few dozen and scrolling past two hundred is not how anyone looks for a commit.
 pub const HISTORY_LIMIT: usize = 200;
+
+/// How often git is asked again while the window has the focus and nothing else has asked.
+///
+/// `task-2274`. [`Watch`] sees everything that moves the repository, and the file tree sees a file made
+/// or removed, but neither can see a tracked file whose contents an agent in the terminal tile changed,
+/// because only git knows that and only by reading the file. So while somebody is looking at the window
+/// it asks this often. Not while the window is in the background: an idle window must cost nothing, and
+/// the moment it is brought back to the front it asks at once.
+pub const READ_WHILE_FOCUSED: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Everything the window knows about the repository it is in.
 pub struct GitState {
@@ -63,6 +72,17 @@ pub struct GitState {
     pub working: bool,
     /// Set once the first read has come back.
     read: bool,
+    /// The files git rewrites when the repository moves, so a change made outside Unluminous is seen.
+    watch: Watch,
+    /// A read has been asked for and has not come back.
+    read_owed: bool,
+    /// Something changed while a read was already running, so another is owed when it comes back:
+    /// the running one may have looked before the change.
+    read_again: bool,
+    /// When a read was last asked for, for [`READ_WHILE_FOCUSED`].
+    last_asked: std::time::Instant,
+    /// Whether the window had the focus last time [`GitState::notice_outside_changes`] was asked.
+    was_focused: bool,
 }
 
 impl GitState {
@@ -83,6 +103,8 @@ impl GitState {
     ) -> Option<Self> {
         let mut worker = Worker::start(repository.clone(), waker).ok()?;
         worker.send(Request::Refresh);
+        // Taken before anything else can happen, so a change made from here on is a change.
+        let watch = Watch::of(repository.root());
         Some(Self {
             repository,
             worker,
@@ -95,7 +117,55 @@ impl GitState {
             message: None,
             read: false,
             working: false,
+            watch,
+            read_owed: true,
+            read_again: false,
+            last_asked: std::time::Instant::now(),
+            was_focused: false,
         })
+    }
+
+    /// Ask the thread to read the repository again, without saying anything in the status bar.
+    ///
+    /// `task-2274`. A read nobody asked for by hand must not put `Refreshing...` in the status bar every
+    /// few seconds, so this does not go through [`GitState::send`]. A read already running is not
+    /// doubled: another is owed when it comes back instead.
+    pub fn read_again(&mut self) {
+        if self.read_owed {
+            self.read_again = true;
+            return;
+        }
+        self.read_owed = true;
+        self.last_asked = std::time::Instant::now();
+        self.worker.send(Request::Refresh);
+    }
+
+    /// Read git again when something outside Unluminous may have changed what it says.
+    ///
+    /// `task-2274`: a branch switched in a terminal, a commit made by an agent and a file made by a build
+    /// never reached the status bar, the commit panel or the explorer's tint until the window was
+    /// started again, in a worktree and in an ordinary checkout alike. Asked on the window's watch timer.
+    /// It reads git again when
+    ///
+    /// * the repository moved, which [`Watch`] answers from a dozen `metadata` calls;
+    /// * `files_changed`, which the caller sets when the file tree saw a file made or removed, or a tab
+    ///   that is showing had its file changed underneath it;
+    /// * the window has just been brought to the front, which is when somebody who changed something
+    ///   elsewhere comes back to look;
+    /// * the window has the focus and [`READ_WHILE_FOCUSED`] has passed, for the one change none of the
+    ///   above can see: a tracked file edited by another program with nothing else moving.
+    pub fn notice_outside_changes(&mut self, files_changed: bool, focused: bool) {
+        let mut read = self.watch.changed() || files_changed;
+        if focused && !self.was_focused {
+            read = true;
+        }
+        self.was_focused = focused;
+        if focused && !self.worker.is_busy() && self.last_asked.elapsed() >= READ_WHILE_FOCUSED {
+            read = true;
+        }
+        if read {
+            self.read_again();
+        }
     }
 
     /// Ask the thread for something.
@@ -141,9 +211,19 @@ impl GitState {
         for reply in self.worker.poll() {
             match reply {
                 Reply::Snapshot(snapshot) => {
+                    // The tint and the decorations are keyed on `reads`, so a read that came back with
+                    // what was already there is not counted: re-reading every few seconds must not make
+                    // the explorer work its colours out again for nothing.
+                    if *snapshot != self.snapshot || !self.read {
+                        self.reads += 1;
+                    }
                     self.snapshot = *snapshot;
-                    self.reads += 1;
                     self.read = true;
+                    self.read_owed = false;
+                    if self.read_again {
+                        self.read_again = false;
+                        self.read_again();
+                    }
                     // A commit that has just been made is not in the panel's message any more.
                     if let Some(label) = self.snapshot.in_progress {
                         self.message = Some(format!(
@@ -248,7 +328,11 @@ impl GitState {
                         format!("{label} failed: {said}")
                     });
                     self.working = false;
-                    self.worker.send(Request::Refresh);
+                    // What this action did to git's own files is not news, so the watch takes them as
+                    // they are now rather than asking for a second read on the next tick.
+                    self.watch.changed();
+                    self.read_owed = false;
+                    self.read_again();
                     self.worker.send(Request::Log { path: None, limit: HISTORY_LIMIT });
                     // What git says about a file has changed, so anything annotated is annotated
                     // against a version that has gone.
@@ -473,6 +557,9 @@ impl UnluminousApp {
                     git.panel.open = false;
                 } else {
                     git.panel.open();
+                    // What the panel lists is what git says now, not what it said when the window
+                    // last looked: a file made in a terminal a moment ago belongs in it. `task-2274`.
+                    git.read_again();
                     git.send(Request::Log { path: None, limit: git::HISTORY_LIMIT });
                 }
             }
@@ -820,5 +907,126 @@ mod tests {
         // A commit with an address where a name should be, which a robot often makes.
         assert_eq!(shorten("bot@example.com"), "bot");
         assert_eq!(shorten(""), "");
+    }
+}
+
+#[cfg(test)]
+mod tests_task_2274 {
+    use std::path::{Path, PathBuf};
+    use std::time::{Duration, Instant};
+
+    use crate::app::UnluminousApp;
+
+    fn git(folder: &Path, arguments: &[&str]) {
+        let outcome = unluminous_git::command::run(folder, arguments);
+        assert!(outcome.ok, "git {arguments:?}: {}", outcome.message());
+    }
+
+    /// A repository with one commit, and a detached worktree of it, which is what an agent's ticket
+    /// works in. Answers the main checkout and the worktree.
+    fn a_repository_and_a_worktree(name: &str) -> (PathBuf, PathBuf) {
+        let base =
+            std::env::temp_dir().join(format!("unluminous-2274-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let main = base.join("main");
+        std::fs::create_dir_all(&main).expect("make the folder");
+        git(&main, &["init", "-q", "-b", "main"]);
+        for (key, value) in [
+            ("user.name", "Unluminous Test"),
+            ("user.email", "test@unluminous.invalid"),
+            ("commit.gpgsign", "false"),
+            ("core.autocrlf", "false"),
+        ] {
+            git(&main, &["config", key, value]);
+        }
+        std::fs::write(main.join("a.txt"), "one\n").expect("write a.txt");
+        git(&main, &["add", "a.txt"]);
+        git(&main, &["commit", "-q", "-m", "first"]);
+        let tree = base.join("tree");
+        git(&main, &["worktree", "add", "-q", "--detach", tree.to_str().expect("a path"), "main"]);
+        (main, tree)
+    }
+
+    /// What the status bar says about git, or nothing before the first read.
+    fn label(app: &UnluminousApp) -> String {
+        app.git.as_ref().and_then(|git| git.status_label()).unwrap_or_default()
+    }
+
+    /// Run the window's watch and take git's answers until `done` says yes, or fail after ten seconds.
+    ///
+    /// The watch runs on its own clock, `WATCH_INTERVAL`, so this waits it out rather than reaching
+    /// in: what is exercised is the gate a frame goes through. The window is never focused here, so
+    /// nothing is answered by the timer that reads git while somebody is looking at the window.
+    fn wait_for(app: &mut UnluminousApp, what: &str, done: impl Fn(&UnluminousApp) -> bool) {
+        let started = Instant::now();
+        loop {
+            std::thread::sleep(crate::app::WATCH_INTERVAL + Duration::from_millis(50));
+            app.notice_what_changed_on_disk(false);
+            for _ in 0..40 {
+                if let Some(git) = app.git.as_mut() {
+                    git.take_replies(&mut app.files);
+                }
+                if done(app) {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(10),
+                "the window never saw {what}; it says {:?}",
+                label(app)
+            );
+        }
+    }
+
+    /// **What is done to a repository outside Unluminous reaches the window without anybody asking.**
+    ///
+    /// `task-2274`: a branch switched in a terminal and a file made beside it never reached the status
+    /// bar, the commit panel or the explorer's tint, in a worktree or in an ordinary checkout, because
+    /// git was read when the window opened and after its own Git menu actions and at no other time.
+    /// Each step here is done with the machine's own `git` or by writing a file, never through the
+    /// window.
+    #[test]
+    fn a_branch_switch_a_new_file_and_a_commit_made_outside_reach_the_window() {
+        let (main, tree) = a_repository_and_a_worktree("outside");
+        for (folder, first) in [(&tree, "detached"), (&main, "main")] {
+            let mut app = UnluminousApp::new(folder);
+            app.open_repository();
+            wait_for(&mut app, "the first read", |app| !label(app).is_empty());
+            assert!(label(&app).starts_with(first), "{}", label(&app));
+
+            let branch = format!("feature/{}", folder.file_name().unwrap().to_string_lossy());
+            git(folder, &["switch", "-q", "-c", &branch]);
+            wait_for(&mut app, "the switch", |app| label(app).starts_with(&branch));
+
+            std::fs::write(folder.join("new.txt"), "new\n").expect("write new.txt");
+            wait_for(&mut app, "the new file", |app| label(app).ends_with("1 changed"));
+            // The explorer's tint is `state_of`, read from the same snapshot.
+            let new = folder.join("new.txt");
+            assert!(app.git.as_ref().and_then(|git| git.state_of(&new)).is_some());
+
+            git(folder, &["add", "-A"]);
+            git(folder, &["commit", "-q", "-m", "second"]);
+            wait_for(&mut app, "the commit", |app| label(app) == branch);
+        }
+        let _ = std::fs::remove_dir_all(main.parent().expect("the base folder"));
+    }
+
+    /// **A read that comes back with what was already there does not count as a change**, because the
+    /// explorer works its colours out again whenever `reads` moves, and git is now read every few
+    /// seconds while the window has the focus.
+    #[test]
+    fn reading_git_again_with_nothing_changed_leaves_the_reads_alone() {
+        let (main, _tree) = a_repository_and_a_worktree("quiet");
+        let mut app = UnluminousApp::new(&main);
+        app.open_repository();
+        wait_for(&mut app, "the first read", |app| !label(app).is_empty());
+        let reads = app.git.as_ref().expect("a repository").reads();
+        app.git.as_mut().expect("a repository").read_again();
+        wait_for(&mut app, "the second read", |app| {
+            app.git.as_ref().is_some_and(|git| !git.is_busy())
+        });
+        assert_eq!(app.git.as_ref().expect("a repository").reads(), reads);
+        let _ = std::fs::remove_dir_all(main.parent().expect("the base folder"));
     }
 }

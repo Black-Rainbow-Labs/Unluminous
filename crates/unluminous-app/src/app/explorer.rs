@@ -448,7 +448,10 @@ impl UnluminousApp {
     /// **Not while a row is being carried.** Reloading rebuilds the entries under the drag, and a
     /// drop that landed on a folder which had just been replaced would be a move somebody did not
     /// ask for.
-    pub(crate) fn notice_what_changed_on_disk(&mut self) {
+    ///
+    /// `focused` is whether the window has the focus, which decides how often git is read again; see
+    /// `GitState::notice_outside_changes`.
+    pub(crate) fn notice_what_changed_on_disk(&mut self, focused: bool) {
         let now = std::time::Instant::now();
         if now.duration_since(self.last_watched) < WATCH_INTERVAL {
             return;
@@ -457,8 +460,10 @@ impl UnluminousApp {
         if self.dragging_a_row {
             return;
         }
+        let mut files_changed = false;
         if self.tree.changed_on_disk() {
             self.tree.reload();
+            files_changed = true;
         }
         // And the tabs that are showing, on the same timer and for the same reason. `task-2062`: an agent
         // changed a Markdown file and the window went on drawing what it had — the tab is owned by its
@@ -467,7 +472,17 @@ impl UnluminousApp {
         // paths alone, so a caller that asked `editor text` was handed the new words and the person
         // looking at the window was not. One `metadata` call per pane, beside the handful the tree above
         // already makes.
-        self.reread_the_showing_tabs_that_changed();
+        if self.reread_the_showing_tabs_that_changed() {
+            files_changed = true;
+        }
+        // And what git says, on the same timer. `task-2274`: a branch switched in a terminal, a commit
+        // an agent made and a file a build wrote never reached the status bar, the commit panel or the
+        // tint above, because git was read when the window opened and after its own Git menu actions
+        // and at no other time. A file made or removed, or a showing file changed underneath, is a
+        // reason too, since git's own files do not move for either.
+        if let Some(git) = self.git.as_mut() {
+            git.notice_outside_changes(files_changed, focused);
+        }
         // And the project's own state, on the same timer and for the same reason. `task-1794`: a
         // `git checkout` under a running window put `.unluminous/breakpoints.conf` back and the window
         // went on holding what it had. One `metadata` call, beside the handful the tree already
@@ -499,7 +514,10 @@ impl UnluminousApp {
     ///
     /// **A tab with unsaved changes is never touched**, which is `the_file_changed_underneath`'s own
     /// answer rather than a second rule here: those belong to the person and losing them has no undo.
-    pub(crate) fn reread_the_showing_tabs_that_changed(&mut self) {
+    ///
+    /// Answers whether any tab was read again, because a file that changed underneath is a reason to
+    /// ask git again too.
+    pub(crate) fn reread_the_showing_tabs_that_changed(&mut self) -> bool {
         // The homes there are, asked of the files rather than of the panes, so a File Editor node on the
         // canvas is covered by the same walk. Collected first because reading a file changes the list.
         let mut homes: Vec<crate::app::files::Home> = Vec::new();
@@ -519,6 +537,7 @@ impl UnluminousApp {
                 file.document.path().map(Path::to_path_buf).map(|at| (at, file.scroll))
             })
             .collect();
+        let mut reread = false;
         for (path, scroll) in showing {
             // Through the one function that reads a file into a tab, so a reload from the timer, from
             // the explorer's own menu and from `tab reload` are the same thing. It never discards.
@@ -532,6 +551,7 @@ impl UnluminousApp {
             if !self.reread_the_tab_only(&path) {
                 continue;
             }
+            reread = true;
             // **But the reading position is given back, which an explicit reload does not do.** The two
             // are different gestures: somebody who chose `Reload from Disk` asked to start again at the
             // top, and nobody asked for this one at all — so a person reading the end of a document an
@@ -541,9 +561,12 @@ impl UnluminousApp {
             if let Some(index) = self.files.index_of(&path) {
                 if let Some(file) = self.files.get_mut(index) {
                     file.scroll = scroll;
+                    // The change bars were read against the words that have just been replaced.
+                    file.git_asked = false;
                 }
             }
         }
+        reread
     }
 }
 
@@ -568,7 +591,7 @@ mod tests_task_2062 {
     /// the real gate a frame goes through.
     fn let_the_watch_run(app: &mut UnluminousApp) {
         std::thread::sleep(crate::app::WATCH_INTERVAL + std::time::Duration::from_millis(50));
-        app.notice_what_changed_on_disk();
+        app.notice_what_changed_on_disk(false);
     }
 
     /// **The window draws what is in the file, not what it read when the tab was opened.**

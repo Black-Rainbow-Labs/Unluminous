@@ -3540,7 +3540,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "git",
         verb: "status",
-        summary: "What the machine's real git says about the project: the branch, whether a merge or rebase is unfinished, and what the last command returned, using the same credentials, SSH agent, configuration and hooks as the terminal.",
+        summary: "What the machine's real git says about the project: the branch, whether a merge or rebase is unfinished, and what the last command returned, using the same credentials, SSH agent, configuration and hooks as the terminal. Git is read again when this is asked, so a branch switched or a file changed in a terminal a moment ago is in the answer.",
         arguments: NO_ARGUMENTS,
         flags: NO_FLAGS,
         examples: &["unluminous-cli git status --json"],

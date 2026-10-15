@@ -133,9 +133,24 @@ pub struct Status {
 
 impl Status {
     /// Read the working tree.
+    ///
+    /// **`--no-optional-locks`**, because the window reads the status by itself now whenever the
+    /// repository moves (`task-2274`). A plain `git status` refreshes the index's record of file times
+    /// and takes `index.lock` to write it, so a read in the background could make the person's own
+    /// `git add` in a terminal fail with "index.lock exists". It also means a read never rewrites the
+    /// index, which the window watches, so a read cannot be the cause of the next one.
     pub fn read(folder: &Path) -> Result<Self, Outcome> {
-        let outcome =
-            run(folder, &["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"]);
+        let outcome = run(
+            folder,
+            &[
+                "--no-optional-locks",
+                "status",
+                "--porcelain=v2",
+                "-z",
+                "--branch",
+                "--untracked-files=all",
+            ],
+        );
         if !outcome.ok {
             return Err(outcome);
         }
