@@ -6,12 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.86.1 — 2026-10-15
 
 - The telemetry tests remove their scratch folders when they end (`task-2271`)
 - The window reads git again when the repository changes outside it (`task-2274`)
 - Git is read every 10 s while the window has the focus, not every 5 s (`task-2274`)
 - A test asking git status through run_command_line waits for the read (`task-2274`)
+- The changelog written from the history (`task-2274`)
 
 ## 0.86.0 — 2026-10-14
 
