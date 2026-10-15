@@ -212,7 +212,8 @@ pub fn claim_the_leftovers(folder: &Path, pid: u32) -> Vec<PathBuf> {
             .and_then(|rest| rest.strip_suffix(".jsonl"))
             .and_then(|pid| pid.parse::<u32>().ok())
             .is_some_and(unluminous_cli::instances::is_running);
-        if !(leftover && !spool_of_a_running_window) && !abandoned {
+        let left_by_a_window_that_has_gone = leftover && !spool_of_a_running_window;
+        if !left_by_a_window_that_has_gone && !abandoned {
             continue;
         }
         let base = name.trim_start_matches("sending-").to_owned();
@@ -287,12 +288,9 @@ fn append(file: &Path, lines: &[String]) {
     }
 }
 
-/// Write a file whole, through a temporary file renamed over it, so a window that dies part way through
-/// leaves the old file rather than half of the new one.
+/// Write a file whole through `store::write_atomically`, so a window that dies part way through leaves
+/// the old file rather than half of the new one.
 fn replace(file: &Path, lines: &[String]) {
-    let temporary = file.with_extension("tmp");
     let text: String = lines.iter().map(|line| format!("{line}\n")).collect();
-    if std::fs::write(&temporary, text).is_ok() {
-        let _ = std::fs::rename(&temporary, file);
-    }
+    let _ = crate::services::store::write_atomically(file, text.as_bytes());
 }

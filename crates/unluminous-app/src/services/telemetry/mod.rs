@@ -307,7 +307,7 @@ pub fn client_id(folder: &Path) -> (String, bool) {
     }
     let id: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
     let _ = std::fs::create_dir_all(folder);
-    let _ = std::fs::write(&file, &id);
+    let _ = crate::services::store::write_atomically(&file, id.as_bytes());
     (id, true)
 }
 
@@ -323,7 +323,7 @@ pub fn crashed_since_last_start(settings: &Path, folder: &Path) -> bool {
     let before =
         std::fs::read_to_string(&file).ok().and_then(|text| text.trim().parse::<u64>().ok());
     let _ = std::fs::create_dir_all(folder);
-    let _ = std::fs::write(&file, now.to_string());
+    let _ = crate::services::store::write_atomically(&file, now.to_string().as_bytes());
     // A log that rolled over to `crash.log.old` is shorter than it was, which is a crash too.
     before.is_some_and(|before| now != before && now > 0)
 }

@@ -948,6 +948,10 @@ theme.comment = #6272A4
             ),
             ("app/modals.rs", "the New File dialog, the same empty file"),
             (
+                "services/telemetry/tests.rs",
+                "fixtures the telemetry tests write into a temporary folder",
+            ),
+            (
                 "app/git.rs",
                 "the commit message git itself is about to read and delete, in a folder git owns",
             ),
