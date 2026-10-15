@@ -1644,6 +1644,7 @@ const CANNOT_BE_MADE_TO_SUCCEED: &[(&str, &str)] = &[
     ("version", "the client answers it, out of its own build information"),
     ("mcp.serve", "the client answers it, by becoming a Model Context Protocol server"),
     ("mcp.install", "the client answers it, by rewriting an agent's own configuration on this machine"),
+    ("setup", "the client answers it, by connecting every agent on this machine; `unluminous-cli`'s own tests and tools/test-fresh-install.ps1 drive it"),
     ("mcp.config", "the client answers it, out of the catalogue and this machine's paths"),
     ("mcp.tools", "the client answers it, out of the catalogue it already holds"),
     // And the four that do reach the window and must not be allowed to finish.
