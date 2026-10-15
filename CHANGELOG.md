@@ -6,7 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 0.85.0 — 2026-10-15
+## Unreleased
+
+- Anonymous usage statistics sent to Google Analytics, with a switch in Settings (`task-2271`)
+- Telemetry writes its files through store::write_atomically, and a clippy fix (`task-2271`)
+- The title bar and the application icons are the blue U again, still (`task-2271`)
+
+## 0.85.0 — 2026-10-14
 
 - Chat selection, a ticket's long chat, comment order, To Side Pane, scroll after a tab closes (`task-2269`)
 - The ticket modal's Description and Comments fold, as Agent and Todos do (`task-2269`)
