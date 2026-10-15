@@ -77,16 +77,9 @@ fn git_status_rediscovers_a_repository_created_after_the_window_opened() {
     assert!(initialized.ok, "initialize the project: {}", initialized.message());
     std::fs::write(project.join("after.txt"), "after repository creation\n")
         .expect("write after.txt");
-    let ctx = harness.ctx.clone();
-    assert!(harness.state_mut().run_command_line("git status --json", &ctx).is_none());
-    settle(&mut harness, "the project repository", |app| {
-        app.git.as_ref().is_some_and(|git| {
-            !git.is_busy()
-                && unluminous_app::app::git::root_relation(git.repository.root(), &project)
-                    == unluminous_app::app::git::RootRelation::Project
-        })
-    });
-
+    // `git status` reads git at the moment it is asked and answers once the read is back
+    // (`task-2274`), so the question that finds the new repository is also the one that answers
+    // about it.
     let after = did(&mut harness, "git status --json");
     assert_eq!(after["rootRelation"], "project");
     assert_eq!(after["branch"], "master");

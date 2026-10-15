@@ -811,7 +811,36 @@ impl UnluminousApp {
         let request = Request::new("", &command.wire(), typed.arguments);
         match self.run_cli(&request, ctx) {
             Outcome::Reply(reply) => Some(reply),
-            Outcome::Hold(_) => None,
+            Outcome::Hold(waiting) => self.answer_git_status_now(&request, waiting, ctx),
+        }
+    }
+
+    /// Wait for the read a held `git status` is waiting on, and answer it, for a test's caller.
+    ///
+    /// `task-2274` made `git status` read git at the moment it is asked and hold its answer until the
+    /// read is back, so every test that asked it through [`Self::run_command_line`] was handed `None`.
+    /// That read is waiting on the git thread's channel and on nothing a frame does, so it can be waited
+    /// for here, up to the request's own deadline. Every other held command still answers `None`.
+    fn answer_git_status_now(
+        &mut self,
+        request: &Request,
+        mut waiting: Waiting,
+        ctx: &egui::Context,
+    ) -> Option<Reply> {
+        if !matches!(waiting, Waiting::Git { answer: GitAnswer::GitStatus, .. }) {
+            return None;
+        }
+        loop {
+            if let Some(git) = self.git.as_mut() {
+                git.take_replies(&mut self.files);
+            }
+            if let Some(reply) = self.ready(request, &mut waiting, ctx, None) {
+                return Some(reply);
+            }
+            if Instant::now() >= waiting.until() {
+                return Some(self.timed_out(&waiting));
+            }
+            std::thread::sleep(Duration::from_millis(10));
         }
     }
 
