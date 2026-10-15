@@ -20,12 +20,32 @@ fn turn() -> MutexGuard<'static, ()> {
     TURN.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-fn scratch(name: &str) -> std::path::PathBuf {
+/// A folder of a test's own in the temporary folder, removed when the test ends, passed or failed.
+struct Scratch(std::path::PathBuf);
+
+impl std::ops::Deref for Scratch {
+    type Target = std::path::PathBuf;
+
+    fn deref(&self) -> &std::path::PathBuf {
+        &self.0
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// A new empty folder for one test.
+///
+/// @param name - what the test is, so two tests never share a folder
+fn scratch(name: &str) -> Scratch {
     let folder =
         std::env::temp_dir().join(format!("unluminous-telemetry-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&folder);
     std::fs::create_dir_all(&folder).unwrap();
-    folder
+    Scratch(folder)
 }
 
 /// A server on loopback that answers 204 to every request and hands each body back through a channel.
