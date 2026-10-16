@@ -326,7 +326,12 @@ pub fn folder(root: &Path) -> PathBuf {
 }
 
 /// Read what was left open in `root`.
+///
+/// Waits first for any state this process gave [`save_later`], so a read in the same process always sees
+/// what was saved: a window opened again on the same project, and a test that reads the state back
+/// after a frame (`task-2279`).
 pub fn load(root: &Path) -> ProjectState {
+    wait_for_the_writes();
     let folder = folder(root);
     let values = match std::fs::read_to_string(folder.join(WORKSPACE_FILE)) {
         Ok(text) => Values::parse(&text),
@@ -429,10 +434,12 @@ enum WriterJob {
     Flush(std::sync::mpsc::SyncSender<()>),
 }
 
+/// The writer thread's queue, once something has been written.
+static WRITER: std::sync::OnceLock<std::sync::Mutex<std::sync::mpsc::Sender<WriterJob>>> =
+    std::sync::OnceLock::new();
+
 /// The writer thread's queue, started the first time something is written.
 fn writer() -> &'static std::sync::Mutex<std::sync::mpsc::Sender<WriterJob>> {
-    static WRITER: std::sync::OnceLock<std::sync::Mutex<std::sync::mpsc::Sender<WriterJob>>> =
-        std::sync::OnceLock::new();
     WRITER.get_or_init(|| {
         let (tx, rx) = std::sync::mpsc::channel::<WriterJob>();
         let _ = std::thread::Builder::new().name("unluminous-project-state".into()).spawn(move || {
@@ -478,10 +485,12 @@ pub fn save_later(root: &Path, state: &ProjectState) {
     }
 }
 
-/// Waits until every state given to [`save_later`] is on the disk, for up to two seconds.
+/// Waits until every state given to [`save_later`] is on the disk, for up to two seconds. Nothing to wait
+/// for, and no thread started, when nothing has been written.
 pub fn wait_for_the_writes() {
+    let Some(writer) = WRITER.get() else { return };
     let (done, finished) = std::sync::mpsc::sync_channel(1);
-    let sent = writer().lock().ok().map(|tx| tx.send(WriterJob::Flush(done)));
+    let sent = writer.lock().ok().map(|tx| tx.send(WriterJob::Flush(done)));
     if matches!(sent, Some(Ok(()))) {
         let _ = finished.recv_timeout(std::time::Duration::from_secs(2));
     }

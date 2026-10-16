@@ -2171,6 +2171,8 @@ impl UnluminousApp {
     /// `at` is the time this frame was drawn, and `None` means *this is the last chance* — which is
     /// what `on_exit` passes, so a geometry that has not settled is still written before the window
     /// goes. See [`Self::window_still_since`] for why the geometry waits at all.
+    ///
+    /// The files are written on a thread (`project_state::save_later`), and a last chance waits for them.
     fn remember_the_project(&mut self, at: Option<f64>) {
         if self.written_project.is_none() {
             return;
@@ -2192,6 +2194,11 @@ impl UnluminousApp {
         }
         project_state::save_later(self.tree.root(), &state);
         self.written_project = Some(state);
+        // `None` is a last chance, the window closing or another project or an update taking its place, so
+        // what was just handed to the writer has to be on the disk before anything goes on (`task-2279`).
+        if at.is_none() {
+            project_state::wait_for_the_writes();
+        }
     }
 
     /// Whether the window, the scrolls and the carets have been where they are for long enough to be
@@ -2674,7 +2681,6 @@ impl eframe::App for UnluminousApp {
         // `None`, so a geometry that has not settled is still written: this is the last chance there
         // is, and the wait exists for a window that is still moving.
         self.remember_the_project(None);
-        project_state::wait_for_the_writes();
         crate::services::frame_trace::mark("exit-written");
         // **A window a person closed leaves the session**, unless it was the only one open (`task-2253`). A
         // window the operating system closed keeps its line, so a restart of the machine brings it back.
