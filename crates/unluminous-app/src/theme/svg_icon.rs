@@ -178,7 +178,7 @@ fn flatten(d: &str) -> Vec<Line> {
         match command.to_ascii_uppercase() {
             'M' | 'L' => {
                 next = [base[0] + number(&mut index), base[1] + number(&mut index)];
-                if command.to_ascii_uppercase() == 'M' {
+                if command.eq_ignore_ascii_case(&'M') {
                     start = next;
                     lines.push(Line { points: vec![next], nodes: vec![next], closed: false });
                     command = if relative { 'l' } else { 'L' };
