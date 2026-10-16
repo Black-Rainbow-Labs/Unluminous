@@ -195,12 +195,15 @@ pub fn show(
         CornerRadius { nw: size::WINDOW_CORNER, ne: size::WINDOW_CORNER, sw: 0, se: 0 },
         crate::theme::pane_ground(color::title_bar(), opacity),
     );
-    // The groove under the bar: a dark line and a lit one under it.
-    crate::components::chrome_kit::groove(
-        &painter,
-        Pos2::new(area.left(), area.bottom() - 2.0),
-        Pos2::new(area.right(), area.bottom() - 2.0),
-    );
+    // The groove under the bar: a dark line and a lit one under it. Under glass the bar is a panel of its
+    // own and the gap below it is the separation (`task-2281`).
+    if !crate::theme::is_glass() {
+        crate::components::chrome_kit::groove(
+            &painter,
+            Pos2::new(area.left(), area.bottom() - 2.0),
+            Pos2::new(area.right(), area.bottom() - 2.0),
+        );
+    }
 
     let buttons = window_buttons(area, placement);
     match placement {

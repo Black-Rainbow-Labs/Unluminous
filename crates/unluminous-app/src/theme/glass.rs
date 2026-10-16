@@ -41,7 +41,7 @@ pub fn paint_glass(painter: &egui::Painter, rect: egui::Rect, radius: f32) -> bo
     paint_glass_over(painter, rect, radius, backdrop)
 }
 
-/// [`paint_glass`] bending a picture of the caller's choosing: the frosted one, for a pane.
+/// [`paint_glass`] bending a given picture.
 ///
 /// @param painter - what to paint with
 /// @param rect - the surface, in the painter's layer's points
@@ -70,35 +70,13 @@ fn paint_glass_over(
     painted
 }
 
-/// How far a pane's glass stands in from the room the pane is given, on every side: so two panes side by
+/// How far a panel's glass stands in from the room it is given, on every side: so two panels side by
 /// side have a gap of twice this between them, which is the window's glass showing.
 pub const PANE_GAP: f32 = 4.0;
 
-/// How round a pane's glass is: the window's own corner less the gap, so a pane in a corner of the
+/// How round a panel's glass is: the window's own corner less the gap, so a panel in a corner of the
 /// window sits in it concentrically, which is Apple's rule for glass inside glass.
 pub const PANE_RADIUS: f32 = 10.0;
-
-fn frost_slot() -> egui::Id {
-    egui::Id::new("unluminous-frosted-backdrop")
-}
-
-/// Say which frosted picture the panes bend this frame, or none.
-///
-/// @param ctx - the window's context
-/// @param backdrop - the frosted copy of the picture behind the window, where it is drawn
-pub fn set_frost(ctx: &egui::Context, backdrop: Option<rux::render::Backdrop>) {
-    ctx.data_mut(|data| match backdrop {
-        Some(backdrop) => {
-            let same = data
-                .get_temp::<std::sync::Arc<rux::render::Backdrop>>(frost_slot())
-                .is_some_and(|kept| *kept == backdrop);
-            if !same {
-                data.insert_temp(frost_slot(), std::sync::Arc::new(backdrop));
-            }
-        }
-        None => data.remove::<std::sync::Arc<rux::render::Backdrop>>(frost_slot()),
-    });
-}
 
 /// The window itself as one sheet of glass (`task-2281`): the picture behind it bent at the window's
 /// rounded edge, under the window's own smoke. Nothing unless the theme is glass and there is a picture.
@@ -110,63 +88,37 @@ pub fn paint_the_window(painter: &egui::Painter, full: egui::Rect, radius: f32) 
     paint_glass(painter, full, radius)
 }
 
-/// A pane as a floating panel of frosted glass (`task-2281`): Apple's sidebar, "a pane of glass that
-/// floats above the window's content".
+/// A pane or a bar as a panel of glass floating on the window (`task-2281`), drawn the way a card is.
 ///
-/// Stood in from its room by [`PANE_GAP`], with a soft shadow under it, the frosted picture bent through
-/// it, a dark tint so the words on it read, and a faint rim and top glow so its edge is seen without a
-/// white line along it. A card or a button on the pane bends the sharp picture, so it reads as a clearer
-/// lens on the frosted pane. With no picture to bend the panel is the tint and its edges.
+/// Apple's sidebar is "a pane of glass that floats above the window's content", and Jason asked for the
+/// folder pane, the title bar, the status bar and the Agent-Chat pane to be glass like a card. So the
+/// panel is a `rux` card surface: the card's tint over the picture bent through it, the card's shadow
+/// and its soft light from the top, with no line along any edge. It stands in from `room` by
+/// [`PANE_GAP`] on every side. A card or a button on the panel is glass on glass: its own tint and
+/// shadow make it read as a second, nearer sheet.
 ///
-/// @param painter - the window's background painter, before the pane is drawn
-/// @param room - the rectangle the pane was given
-pub fn paint_a_pane(painter: &egui::Painter, room: egui::Rect) {
+/// @param ui - the window's `Ui`, before anything in the panel is drawn
+/// @param salt - which panel, for its `rux` canvas
+/// @param room - the rectangle the pane or bar was given
+pub fn paint_a_panel(
+    ui: &mut egui::Ui,
+    salt: impl std::hash::Hash + std::fmt::Debug,
+    room: egui::Rect,
+) {
     if room.width() < PANE_GAP * 4.0 || room.height() < PANE_GAP * 4.0 {
         return;
     }
     let panel = room.shrink(PANE_GAP);
-    let corner = egui::CornerRadius::same(PANE_RADIUS as u8);
-    painter.add(
-        egui::epaint::Shadow {
-            offset: [0, 6],
-            blur: 22,
-            spread: 0,
-            color: Color32::from_black_alpha(70), // any ground: a shadow is black on every picture
-        }
-        .as_shape(panel, corner),
-    );
-    let frost = painter
-        .ctx()
-        .data(|data| data.get_temp::<std::sync::Arc<rux::render::Backdrop>>(frost_slot()));
-    if let Some(frost) = frost {
-        paint_glass_over(painter, panel, PANE_RADIUS, frost);
-    }
-    let chat = super::rux_theme().chat;
-    painter.rect_filled(panel, corner, PANE_TINT);
-    painter.rect_stroke(
-        panel,
-        corner,
-        egui::Stroke::new(1.0, chat.chip_edge),
-        egui::StrokeKind::Inside,
-    );
-    // The top glow: a band a few points deep fading downwards, rather than a one point line.
-    let glow = egui::Rect::from_min_size(panel.min, egui::vec2(panel.width(), 10.0));
-    let mut mesh = egui::Mesh::default();
-    let top = chat.chip_top.gamma_multiply(0.6);
-    mesh.colored_vertex(glow.left_top(), top);
-    mesh.colored_vertex(glow.right_top(), top);
-    mesh.colored_vertex(glow.right_bottom(), Color32::TRANSPARENT);
-    mesh.colored_vertex(glow.left_bottom(), Color32::TRANSPARENT);
-    mesh.add_triangle(0, 1, 2);
-    mesh.add_triangle(0, 2, 3);
-    painter
-        .with_clip_rect(glow.shrink2(egui::vec2(PANE_RADIUS, 0.0)).intersect(painter.clip_rect()))
-        .add(Shape::mesh(mesh));
+    crate::components::chrome_kit::layer(ui, ("glass-panel", salt), panel, 48.0, |rux| {
+        let chat = rux.theme().chat;
+        rux.chrome.surface(
+            panel,
+            PANE_RADIUS,
+            rux::Fill::gradient(chat.card, panel),
+            chat.raised(),
+        );
+    });
 }
-
-/// The tint over a pane's frosted glass: the design's smoke, a little deeper than a card's so the pane
-/// reads as the surface and a card on it as a lens.
-const PANE_TINT: Color32 = Color32::from_rgba_premultiplied(6, 7, 11, 112);
 
 /// What one surface's glass was built from.
 #[derive(Clone, PartialEq)]

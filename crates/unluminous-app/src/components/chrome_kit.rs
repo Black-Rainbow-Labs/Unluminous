@@ -92,5 +92,8 @@ pub fn groove(painter: &egui::Painter, from: egui::Pos2, to: egui::Pos2) {
         false => egui::Vec2::X,
     };
     painter.line_segment([from, to], egui::Stroke::new(1.0, chat.dark));
-    painter.line_segment([from + across, to + across], egui::Stroke::new(1.0, chat.light));
+    // Under glass the lit half is left out: over the picture it read as a white line (`task-2281`).
+    if !crate::theme::is_glass() {
+        painter.line_segment([from + across, to + across], egui::Stroke::new(1.0, chat.light));
+    }
 }

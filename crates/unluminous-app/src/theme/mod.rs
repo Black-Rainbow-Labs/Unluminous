@@ -664,7 +664,9 @@ impl Theme {
         palette.control = Color32::from_rgb(0x22, 0x27, 0x33);
         palette.field = Color32::from_rgb(0x0B, 0x0D, 0x14);
         palette.control_border = Color32::from_rgb(0x34, 0x3A, 0x48);
-        palette.divider = Color32::from_rgb(0x2A, 0x2F, 0x3B);
+        // A seam rather than a line: black at a quarter, so over the glass it is a faint dark line on a
+        // bright part of the picture and on a dark part alike, where an opaque grey read as a light line.
+        palette.divider = Color32::from_black_alpha(64);
         palette.menu = Color32::from_rgb(0x15, 0x18, 0x21);
         palette.accent = Color32::from_rgb(0x5C, 0xB6, 0xFF);
         palette.folder_open = Color32::from_rgb(0x5C, 0xB6, 0xFF);
@@ -1019,11 +1021,12 @@ pub fn apply_scaled(ctx: &egui::Context, interface_scale: f32) {
         visuals.faint_bg_color = color::explorer_footer();
         visuals.window_corner_radius = CornerRadius::same(size::CONTROL_CORNER);
         visuals.window_stroke = Stroke::new(1.0, color::control_border());
-        // Under glass a popup egui frames itself is filled in the glass card's tint with the design's
-        // hairline rim, and `glass::glaze_the_popups` puts the bent picture under it (`task-2281`).
+        // Under glass a popup egui frames itself is filled in the glass card's tint, and
+        // `glass::glaze_the_popups` puts the bent picture under it (`task-2281`). It has no outline: a
+        // light one read as a white line round every tooltip and menu.
         if is_glass() {
             visuals.window_fill = glass::popup_fill();
-            visuals.window_stroke = Stroke::new(1.0, Color32::WHITE.gamma_multiply(0.14));
+            visuals.window_stroke = Stroke::NONE;
         }
         // A selection in a text box is painted under the words, which keep their own colour. On a dark
         // ground the accent is dark enough for light words to be read on it; on a light ground it is not,

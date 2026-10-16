@@ -451,13 +451,18 @@ impl UnluminousApp {
             dock::regions_with(panes, &self.panes.dock, showing, &self.panes, self.editor_visible);
         self.panes_area = panes;
         self.panel_rects = placed;
-        // **Under glass every pane is a floating panel of frosted glass** (`task-2281`), painted here, on
-        // the window's ground and before any pane draws, so each pane is drawn on its own panel.
+        // **Under glass every pane and both bars are panels of glass floating on the window** (`task-2281`),
+        // drawn the way a card is, here, before any of them draws, so each is drawn on its own panel.
         if theme::is_glass() {
-            for room in
-                placed.panels.iter().filter(|room| room.width() > 0.0 && room.height() > 0.0)
-            {
-                theme::glass::paint_a_pane(ui.painter(), *room);
+            theme::glass::paint_a_panel(ui, "title-bar", title_rect);
+            theme::glass::paint_a_panel(ui, "status-bar", status_rect);
+            for (index, room) in placed.panels.iter().enumerate() {
+                if room.width() > 0.0 && room.height() > 0.0 {
+                    theme::glass::paint_a_panel(ui, ("pane", index), *room);
+                }
+            }
+            if self.editor_visible && placed.editor.is_positive() {
+                theme::glass::paint_a_panel(ui, "editing-area", placed.editor);
             }
         }
         let explorer_rect = placed.of(dock::Panel::Explorer);
@@ -1549,11 +1554,14 @@ impl UnluminousApp {
             },
             self.settings.opacity,
         );
-        title_bar::divider(
-            ui.painter(),
-            Pos2::new(status_rect.left(), status_rect.top()),
-            Pos2::new(status_rect.right(), status_rect.top()),
-        );
+        // Under glass the status bar is a panel of its own (`task-2281`), so it needs no line above it.
+        if !theme::is_glass() {
+            title_bar::divider(
+                ui.painter(),
+                Pos2::new(status_rect.left(), status_rect.top()),
+                Pos2::new(status_rect.right(), status_rect.top()),
+            );
+        }
         // The flag is the menu entry's twin, so it goes through `run_action` like a press of the entry.
         if report {
             self.run_action(Action::ReportIssue, ui.ctx());
@@ -2092,7 +2100,6 @@ impl UnluminousApp {
             &self.settings.background_image,
         ) else {
             rux::render::set_backdrop(&ctx, rux::render::Plane::Page, None);
-            theme::glass::set_frost(&ctx, None);
             return;
         };
         let taken = crate::services::backgrounds::cover(picture.size_vec2(), full.size());
@@ -2107,11 +2114,6 @@ impl UnluminousApp {
             false => None,
         };
         rux::render::set_backdrop(&ctx, rux::render::Plane::Page, backdrop);
-        // The frosted copy, which the panes bend: one texture of the whole picture, drawn where the
-        // picture is.
-        let frost = crate::theme::is_glass()
-            .then(|| rux::render::Backdrop::single(picture.frosted(), full, taken, 1.0));
-        theme::glass::set_frost(&ctx, frost);
     }
 
     /// The notices, over every pane and under a modal.

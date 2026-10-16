@@ -105,7 +105,11 @@ pub fn show(ui: &mut egui::Ui, line: Rect, id: &str, axis: Axis) -> Drag {
     } else {
         line
     };
-    ui.painter().rect_filled(drawn, CornerRadius::ZERO, colour);
+    // Under glass the gap between two panels is the divider, so the line is only drawn while it is pointed
+    // at (`task-2281`).
+    if active || !crate::theme::is_glass() {
+        ui.painter().rect_filled(drawn, CornerRadius::ZERO, colour);
+    }
 
     let delta = if response.dragged() {
         match axis {
