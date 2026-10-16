@@ -739,7 +739,8 @@ impl UnluminousApp {
             // **And with the interface's zoom taken back out** (`task-2280`), the way the text renderer takes it
             // out of the letters, so the numbers stay the size of the text beside them whatever
             // `appearance.ui.font.size` is.
-            font_size: file.sized_at.unwrap_or(self.settings.font_size) / self.settings.interface_scale(),
+            font_size: file.sized_at.unwrap_or(self.settings.font_size)
+                / self.settings.interface_scale(),
         }
     }
 

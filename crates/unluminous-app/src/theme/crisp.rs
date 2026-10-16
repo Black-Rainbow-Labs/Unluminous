@@ -260,7 +260,11 @@ fn sharpen(ctx: &egui::Context, shape: &mut egui::Shape, scale: f32) {
 /// A row that carries a selection has exactly the four vertices of its rectangle more than the same row laid
 /// out afresh. Those four are measured in the row's own points, so they are scaled and added to the larger
 /// row the way egui adds them, and every glyph vertex takes the colour it was painted in.
-fn carry_the_selection(original: &egui::Galley, larger: &mut std::sync::Arc<egui::Galley>, scale: f32) {
+fn carry_the_selection(
+    original: &egui::Galley,
+    larger: &mut std::sync::Arc<egui::Galley>,
+    scale: f32,
+) {
     if original.rows.len() != larger.rows.len() || !has_a_selection(original, larger) {
         return;
     }
@@ -281,7 +285,8 @@ fn carry_the_selection(original: &egui::Galley, larger: &mut std::sync::Arc<egui
         let corners = &from.mesh.vertices[from.mesh.vertices.len() - 4..];
         let left = corners.iter().map(|corner| corner.pos.x).fold(f32::INFINITY, f32::min);
         let right = corners.iter().map(|corner| corner.pos.x).fold(f32::NEG_INFINITY, f32::max);
-        let rect = Rect::from_min_max(Pos2::new(left * scale, 0.0), Pos2::new(right * scale, height));
+        let rect =
+            Rect::from_min_max(Pos2::new(left * scale, 0.0), Pos2::new(right * scale, height));
         let before = to.mesh.indices.len();
         to.mesh.add_colored_rect(rect, corners[0].color);
         // Behind the glyphs, which is where egui puts it: the six new indices moved to the start of the glyphs.
@@ -293,11 +298,9 @@ fn carry_the_selection(original: &egui::Galley, larger: &mut std::sync::Arc<egui
 
 /// Whether any row of `original` carries the four extra vertices a selection adds.
 fn has_a_selection(original: &egui::Galley, larger: &egui::Galley) -> bool {
-    original
-        .rows
-        .iter()
-        .zip(larger.rows.iter())
-        .any(|(was, now)| was.row.visuals.mesh.vertices.len() == now.row.visuals.mesh.vertices.len() + 4)
+    original.rows.iter().zip(larger.rows.iter()).any(|(was, now)| {
+        was.row.visuals.mesh.vertices.len() == now.row.visuals.mesh.vertices.len() + 4
+    })
 }
 
 /// `Painter::galley`.
@@ -548,12 +551,20 @@ mod tests {
         let mut output = context.run_ui(egui::RawInput::default(), |_| {});
         output.textures_delta.clear();
         let painter = Painter::new(context.clone(), egui::LayerId::background(), Rect::EVERYTHING);
-        let plain = painter.layout_no_wrap("alpha bravo".to_owned(), FontId::proportional(13.0), Color32::WHITE);
+        let plain = painter.layout_no_wrap(
+            "alpha bravo".to_owned(),
+            FontId::proportional(13.0),
+            Color32::WHITE,
+        );
         let mut selected = plain.clone();
         let range = CCursorRange::two(CCursor::new(6), CCursor::new(11));
         let visuals = egui::Visuals::dark();
         egui::text_selection::visuals::paint_text_selection(&mut selected, &visuals, &range, None);
-        let mut shape = egui::Shape::Text(TextShape::new(Pos2::new(10.0, 10.0), selected.clone(), Color32::WHITE));
+        let mut shape = egui::Shape::Text(TextShape::new(
+            Pos2::new(10.0, 10.0),
+            selected.clone(),
+            Color32::WHITE,
+        ));
         sharpen(&context, &mut shape, 2.0);
         let egui::Shape::Text(sharp) = shape else { panic!("still text") };
         let row = &sharp.galley.rows[0].row.visuals;
@@ -568,9 +579,13 @@ mod tests {
             "the selection's rectangle was carried over"
         );
         let highlight = visuals.selection.bg_fill;
-        assert!(row.mesh.vertices.iter().any(|vertex| vertex.color == highlight), "in the selection colour");
+        assert!(
+            row.mesh.vertices.iter().any(|vertex| vertex.color == highlight),
+            "in the selection colour"
+        );
         let unselected = plain.clone();
-        let mut shape = egui::Shape::Text(TextShape::new(Pos2::new(10.0, 10.0), unselected, Color32::WHITE));
+        let mut shape =
+            egui::Shape::Text(TextShape::new(Pos2::new(10.0, 10.0), unselected, Color32::WHITE));
         sharpen(&context, &mut shape, 2.0);
         let egui::Shape::Text(sharp) = shape else { panic!("still text") };
         assert_eq!(

@@ -17,7 +17,11 @@ use crate::app::{Focus, UnluminousApp};
 /// Where pane `from`, let go at `at`, would go: how many panes along the row, counting the panes as they are
 /// now, and the half of the pane it is over that would be lit. `None` over no pane, over its own pane, or
 /// where it would land exactly where it already is.
-pub fn where_a_pane_would_land(pane_rects: &[Rect], from: usize, at: Pos2) -> Option<(usize, Rect)> {
+pub fn where_a_pane_would_land(
+    pane_rects: &[Rect],
+    from: usize,
+    at: Pos2,
+) -> Option<(usize, Rect)> {
     let over = pane_rects.iter().position(|rect| rect.contains(at))?;
     if over == from {
         return None;

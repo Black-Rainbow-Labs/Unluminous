@@ -51,10 +51,10 @@
 use egui::{Align2, CornerRadius, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 use rux::icon::{Icon, Mark as RuxMark};
 
+use crate::components::controls::TextBoxes;
 use crate::services::browser::{BrowserCommand, BrowserPlacement, BrowserTab};
 use crate::theme::crisp::CrispPainter;
 use crate::theme::{color, size};
-use crate::components::controls::TextBoxes;
 
 const TOOLBAR_HEIGHT: f32 = 46.0;
 const BUTTON_SIZE: f32 = 32.0;

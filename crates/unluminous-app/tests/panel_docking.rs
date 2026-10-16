@@ -1579,7 +1579,10 @@ fn a_strip_between_two_whole_columns_is_dragged_to_run_the_whole_bottom() {
     steady(&mut harness);
     let before = harness.state().panel_area(Panel::Terminal);
     let explorer = harness.state().panel_area(Panel::Explorer);
-    assert!(before.left() >= explorer.right() - 1.0, "the strip starts between the columns: {before:?}");
+    assert!(
+        before.left() >= explorer.right() - 1.0,
+        "the strip starts between the columns: {before:?}"
+    );
     let zones = harness.state().drop_zones();
     let bottom = zones.iter().find(|zone| zone.side == Side::Bottom).expect("a bottom band");
     let middle = egui::pos2(bottom.whole.center().x, bottom.whole.bottom() - 6.0);
@@ -1609,10 +1612,8 @@ fn the_outer_part_of_a_band_fills_its_side_all_the_way_along_and_the_inner_part_
         let mut harness = with_terminal("", 12, 80);
         let zones = harness.state().drop_zones();
         let right = zones.iter().find(|zone| zone.side == Side::Right).expect("a right band");
-        let at = egui::pos2(
-            right.whole.center().x,
-            right.whole.top() + right.whole.height() * place,
-        );
+        let at =
+            egui::pos2(right.whole.center().x, right.whole.top() + right.whole.height() * place);
         let from = panel_handle(&harness, "Move Project");
         drag(&mut harness, from, at);
         assert_eq!(side_of(&harness, Panel::Explorer), Side::Right, "at {place}");
@@ -1642,10 +1643,8 @@ fn a_pane_is_dragged_by_the_empty_part_of_its_tab_strip() {
     assert_eq!(listed["count"], 3);
     // By the tabs it holds, because all three show an untitled document.
     let first_holds = listed["panes"][0]["tabs"].clone();
-    let strips: Vec<egui::Rect> = harness
-        .get_all_by_label("Tab strip empty part")
-        .map(|node| node.rect())
-        .collect();
+    let strips: Vec<egui::Rect> =
+        harness.get_all_by_label("Tab strip empty part").map(|node| node.rect()).collect();
     assert_eq!(strips.len(), 3, "one strip a pane");
     let from = egui::pos2(strips[0].right() - 12.0, strips[0].center().y);
     let last = harness.state().editor_area();

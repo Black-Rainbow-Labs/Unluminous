@@ -41,9 +41,9 @@ use crate::services::vello_canvas::{Fill, Lift};
 use crate::theme::icon;
 
 use super::{kit, Act};
+use crate::components::controls::TextBoxes;
 use crate::services::agent_chat::Parts;
 use crate::services::plugin_ui::Look;
-use crate::components::controls::TextBoxes;
 
 /// A thumbnail of an attached picture, and the row it sits in.
 const THUMB: f32 = 38.0;

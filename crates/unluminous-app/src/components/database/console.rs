@@ -19,11 +19,11 @@ use egui::{Pos2, Rect, Vec2};
 use rux::icon::Icon;
 use rux::Style;
 
+use crate::components::controls::TextBoxes;
 use crate::components::database::{code, kit, well, Act};
 use crate::services::database::{DatabaseExplorer, Page, Sheet};
 use crate::services::plugin_ui::Look;
 use crate::theme::color;
-use crate::components::controls::TextBoxes;
 
 /// How tall the results area is, as a share of the page.
 const RESULTS: f32 = 0.45;

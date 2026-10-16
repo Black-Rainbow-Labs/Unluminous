@@ -2230,7 +2230,10 @@ fn drive_the_terminal_and_the_runs(coverage: &mut Coverage) {
     c.works(&mut harness, "run add echoing cmd /c echo hello");
     c.refuses(&mut harness, "run add echoing cmd /c echo hello");
     c.works(&mut harness, "run set echoing --set-env PORT=4000");
-    c.works(&mut harness, "run set echoing --set-env DEBUG=1 --unset-env PORT --command \"cmd /c echo hello\"");
+    c.works(
+        &mut harness,
+        "run set echoing --set-env DEBUG=1 --unset-env PORT --command \"cmd /c echo hello\"",
+    );
     c.refuses(&mut harness, "run set no-such-run --set-env A=1");
     c.refuses(&mut harness, "run set echoing --set-env NOEQUALS");
     c.works(&mut harness, "run select echoing");

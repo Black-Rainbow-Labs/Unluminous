@@ -14,7 +14,8 @@ pub fn system_interval() -> f64 {
     #[cfg(windows)]
     {
         // SAFETY: no arguments, no pointers, and it cannot fail.
-        let milliseconds = unsafe { windows_sys::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime() };
+        let milliseconds =
+            unsafe { windows_sys::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime() };
         if milliseconds > 0 {
             return f64::from(milliseconds) / 1000.0;
         }

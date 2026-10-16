@@ -362,7 +362,8 @@ fn text_row(
         outcome.changed = true;
     }
     if browse {
-        let button = Rect::from_min_size(Pos2::new(field.right() + 6.0, row.top()), Vec2::splat(26.0));
+        let button =
+            Rect::from_min_size(Pos2::new(field.right() + 6.0, row.top()), Vec2::splat(26.0));
         let draw = crate::theme::icon::folder;
         if crate::components::controls::icon_button(ui, button, CHOOSE_DIRECTORY, draw) {
             outcome.browse_directory = true;
@@ -393,7 +394,8 @@ fn draw_environment(
     for index in 0..dialog.env_rows.len() {
         let line = Rect::from_min_max(Pos2::new(left, pen), Pos2::new(column.right(), pen + 26.0));
         let focus = dialog.focus_row == Some(index);
-        let (edited, deleted) = environment_row(ui, line, index, &mut dialog.env_rows[index], focus);
+        let (edited, deleted) =
+            environment_row(ui, line, index, &mut dialog.env_rows[index], focus);
         changed |= edited;
         if deleted {
             delete = Some(index);
@@ -431,12 +433,14 @@ fn environment_row(
     let split = line.left() + (line.width() - DELETE_WIDTH) * 0.4;
     let key = Rect::from_min_max(line.min, Pos2::new(split, line.bottom()));
     let value_min = Pos2::new(split + 6.0, line.top());
-    let value = Rect::from_min_max(value_min, Pos2::new(line.right() - DELETE_WIDTH, line.bottom()));
+    let value =
+        Rect::from_min_max(value_min, Pos2::new(line.right() - DELETE_WIDTH, line.bottom()));
     let key_response = modal::field(ui, key, &format!("Environment key {number}"), &mut row.0);
     if focus {
         key_response.request_focus();
     }
-    let value_response = modal::field(ui, value, &format!("Environment value {number}"), &mut row.1);
+    let value_response =
+        modal::field(ui, value, &format!("Environment value {number}"), &mut row.1);
     let button = Rect::from_min_size(Pos2::new(line.right() - 26.0, line.top()), Vec2::splat(26.0));
     let name = format!("Delete environment variable {number}");
     let deleted =

@@ -142,9 +142,15 @@ fn fill_target(painter: &egui::Painter, zone: &Zone, aimed: bool) {
         target.left_top(),
     ];
     for pair in corners.windows(2) {
-        painter.extend(egui::Shape::dashed_line(&[pair[0], pair[1]], Stroke::new(1.0, color::accent()), 6.0, 4.0));
+        painter.extend(egui::Shape::dashed_line(
+            &[pair[0], pair[1]],
+            Stroke::new(1.0, color::accent()),
+            6.0,
+            4.0,
+        ));
     }
-    let label = painter.layout_no_wrap(fill_label(zone.side), egui::FontId::proportional(12.0), ink);
+    let label =
+        painter.layout_no_wrap(fill_label(zone.side), egui::FontId::proportional(12.0), ink);
     let size = label.size();
     let upright = zone.side.is_a_column();
     let (room, across) = match upright {
@@ -175,7 +181,13 @@ pub fn fill_label(side: Side) -> String {
 
 /// The strong rectangle a panel would land in, with a plate in the middle saying what is about to happen:
 /// `Terminal · bottom`, or `Terminal · whole bottom` when the side would fill.
-fn landing_plate(painter: &egui::Painter, landing: Rect, carrying: Panel, side: Side, filling: bool) {
+fn landing_plate(
+    painter: &egui::Painter,
+    landing: Rect,
+    carrying: Panel,
+    side: Side,
+    filling: bool,
+) {
     painter.rect_filled(landing, CornerRadius::ZERO, fade(LANDING_FILL));
     painter.rect_stroke(
         landing.shrink(1.0),

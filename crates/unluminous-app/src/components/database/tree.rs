@@ -19,11 +19,11 @@ use rux::Fill;
 
 use unluminous_db::catalog::Kind;
 
+use crate::components::controls::TextBoxes;
 use crate::components::database::{kit, text, waiting, Act};
 use crate::services::database::{Aimed, DatabaseExplorer};
 use crate::services::plugin_ui::Look;
 use crate::theme::{color, icon};
-use crate::components::controls::TextBoxes;
 
 /// One row of the tree, worked out before anything is drawn.
 ///

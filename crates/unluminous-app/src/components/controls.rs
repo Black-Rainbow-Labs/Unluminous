@@ -632,7 +632,10 @@ impl TextBoxes for egui::Ui {
 /// The character under the pointer is the one whose box holds it, not the nearest gap between two, for the
 /// reason `Layout::character_at` gives. Stored back into the box's state, so it is what the next frame shows
 /// and what a copy takes.
-pub fn a_double_click_takes_the_run_under_it(ctx: &egui::Context, output: &egui::text_edit::TextEditOutput) {
+pub fn a_double_click_takes_the_run_under_it(
+    ctx: &egui::Context,
+    output: &egui::text_edit::TextEditOutput,
+) {
     if !output.response.response.double_clicked() {
         return;
     }
@@ -652,7 +655,10 @@ pub fn a_double_click_takes_the_run_under_it(ctx: &egui::Context, output: &egui:
     }
     let (start, end) = run_of_characters(text, under);
     let mut state = output.state.clone();
-    let range = egui::text::CCursorRange::two(egui::text::CCursor::new(start), egui::text::CCursor::new(end));
+    let range = egui::text::CCursorRange::two(
+        egui::text::CCursor::new(start),
+        egui::text::CCursor::new(end),
+    );
     state.cursor.set_char_range(Some(range));
     state.store(ctx, output.response.response.id);
 }

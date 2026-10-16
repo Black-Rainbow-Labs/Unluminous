@@ -88,13 +88,23 @@ pub fn paint(painter: &egui::Painter, centre: Pos2, size: f32, mark: &SvgMark, c
 }
 
 /// One stroked subpath: the line itself and a round dot on every node, which gives round caps and joins.
-fn paint_line(painter: &egui::Painter, line: &Line, to_screen: &impl Fn([f32; 2]) -> Pos2, width: f32, color: Color32) {
+fn paint_line(
+    painter: &egui::Painter,
+    line: &Line,
+    to_screen: &impl Fn([f32; 2]) -> Pos2,
+    width: f32,
+    color: Color32,
+) {
     let mut points: Vec<Pos2> = line.points.iter().map(|p| to_screen(*p)).collect();
     if line.closed && points.len() > 1 && points.first() == points.last() {
         points.pop();
     }
     let stroke = Stroke::new(width, color);
-    painter.add(if line.closed { Shape::closed_line(points, stroke) } else { Shape::line(points, stroke) });
+    painter.add(if line.closed {
+        Shape::closed_line(points, stroke)
+    } else {
+        Shape::line(points, stroke)
+    });
     for node in &line.nodes {
         painter.circle_filled(to_screen(*node), width / 2.0, color);
     }
@@ -228,7 +238,10 @@ fn cubic(p0: [f32; 2], p1: [f32; 2], p2: [f32; 2], p3: [f32; 2]) -> Vec<[f32; 2]
             let t = i as f32 / 12.0;
             let u = 1.0 - t;
             let at = |k: usize| {
-                u * u * u * p0[k] + 3.0 * u * u * t * p1[k] + 3.0 * u * t * t * p2[k] + t * t * t * p3[k]
+                u * u * u * p0[k]
+                    + 3.0 * u * u * t * p1[k]
+                    + 3.0 * u * t * t * p2[k]
+                    + t * t * t * p3[k]
             };
             [at(0), at(1)]
         })
@@ -237,7 +250,15 @@ fn cubic(p0: [f32; 2], p1: [f32; 2], p2: [f32; 2], p3: [f32; 2]) -> Vec<[f32; 2]
 
 /// An SVG elliptical arc (the specification's endpoint to centre conversion, F.6.5) cut into segments,
 /// not including its first point.
-fn arc(from: [f32; 2], rx: f32, ry: f32, degrees: f32, large: bool, sweep: bool, to: [f32; 2]) -> Vec<[f32; 2]> {
+fn arc(
+    from: [f32; 2],
+    rx: f32,
+    ry: f32,
+    degrees: f32,
+    large: bool,
+    sweep: bool,
+    to: [f32; 2],
+) -> Vec<[f32; 2]> {
     if from == to || rx == 0.0 || ry == 0.0 {
         return vec![to];
     }
@@ -303,7 +324,10 @@ mod tests {
                 let lines = flatten(&d);
                 assert!(!lines.is_empty(), "{d}");
                 for p in lines.iter().flat_map(|l| &l.points) {
-                    assert!(p[0] >= 0.0 && p[0] <= mark.view && p[1] >= 0.0 && p[1] <= mark.view, "{d}: {p:?}");
+                    assert!(
+                        p[0] >= 0.0 && p[0] <= mark.view && p[1] >= 0.0 && p[1] <= mark.view,
+                        "{d}: {p:?}"
+                    );
                 }
             }
         }

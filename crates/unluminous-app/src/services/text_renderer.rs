@@ -785,7 +785,8 @@ impl TextRenderer {
     ///
     /// True when the zoom moved, because every layout made at the old one is now the wrong size.
     pub fn follow_the_interface(&self, zoom: f32) -> bool {
-        let moved = zoom.is_finite() && zoom > 0.0 && (zoom - self.interface_zoom.get()).abs() > 0.0001;
+        let moved =
+            zoom.is_finite() && zoom > 0.0 && (zoom - self.interface_zoom.get()).abs() > 0.0001;
         if moved {
             self.interface_zoom.set(zoom);
         }

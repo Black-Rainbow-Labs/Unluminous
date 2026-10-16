@@ -193,7 +193,13 @@ pub fn show(ui: &mut egui::Ui, area: Rect, state: &WidgetState) -> Option<Action
         // a play triangle with a bug on it rather than a bare insect, so the two buttons read as one
         // start and the same start watched. The bare insect stays on the rail's Debug tile button,
         // which is about the debugger rather than about starting anything.
-        if chip_button(ui, debug, name, Mark::Svg(&crate::theme::svg_icon::DEBUG_CONTINUE, 14.5), false) {
+        if chip_button(
+            ui,
+            debug,
+            name,
+            Mark::Svg(&crate::theme::svg_icon::DEBUG_CONTINUE, 14.5),
+            false,
+        ) {
             chosen = Some(match state.selected {
                 Some(_) => Action::Debug(DebugAction::Start(None)),
                 None => Action::Run(RunAction::Edit),

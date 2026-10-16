@@ -1130,8 +1130,10 @@ mod tests {
     /// `task-2280`: a double click selects the run of one kind of character around the one it was on.
     #[test]
     fn a_double_click_takes_the_run_of_characters_like_the_one_under_it() {
-        let text = Rope::from_str("let a = foo.bar_baz(x) -> y;  end
-next");
+        let text = Rope::from_str(
+            "let a = foo.bar_baz(x) -> y;  end
+next",
+        );
         let at = |needle: &str| text.to_string().find(needle).expect("in the text");
         let picked = |offset: usize| {
             let range = word_at(&text, offset);

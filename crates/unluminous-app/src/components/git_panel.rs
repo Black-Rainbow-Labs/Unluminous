@@ -18,10 +18,10 @@ use egui::{Pos2, Rect, Sense, Vec2};
 use unluminous_git::status::Entry;
 use unluminous_git::Status;
 
+use crate::components::controls::TextBoxes;
 use crate::components::controls::WithHint as _;
 use crate::components::modal;
 use crate::theme::{color, icon, size};
-use crate::components::controls::TextBoxes;
 
 const WIDTH: f32 = 780.0;
 const HEIGHT: f32 = 620.0;

@@ -1647,7 +1647,10 @@ mod tests {
         layout.fill(Side::Right, true);
         let showing = only(&[Panel::Explorer, Panel::Terminal, Panel::Run]);
         let before = regions_with(body(), &layout, showing, &sizes, true);
-        assert!(before.of(Panel::Run).left() > body().left(), "the strip starts between the columns");
+        assert!(
+            before.of(Panel::Run).left() > body().left(),
+            "the strip starts between the columns"
+        );
         let geometry =
             DockGeometry { body: body(), layout: &layout, showing, sizes: &sizes, editor: true };
         let bands = zones(body(), &layout, showing, &sizes, true);
@@ -1662,7 +1665,11 @@ mod tests {
         after.dock(Panel::Run, Side::Bottom, None);
         after.fill(Side::Bottom, true);
         let placed = regions_with(body(), &after, showing, &sizes, true);
-        assert_eq!(placed.of(Panel::Run).left(), body().left(), "the strip now reaches both corners");
+        assert_eq!(
+            placed.of(Panel::Run).left(),
+            body().left(),
+            "the strip now reaches both corners"
+        );
         assert_eq!(placed.of(Panel::Run).right(), body().right());
     }
 

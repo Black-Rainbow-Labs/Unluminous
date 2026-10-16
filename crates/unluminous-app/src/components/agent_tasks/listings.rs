@@ -39,12 +39,12 @@ use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
 use super::{clipped_in, darken, lighten, text, PAD};
 use crate::components::controls;
+use crate::components::controls::TextBoxes;
 use crate::services::agent_tasks::model::{Priority, Sprint, SprintStatus, Status, Task};
 use crate::services::agent_tasks::{AgentTasks, Group, View, SWATCHES};
 use crate::services::plugin_ui::{Look, Request};
 use crate::theme::crisp::CrispPainter;
 use crate::theme::icon;
-use crate::components::controls::TextBoxes;
 
 /// What a listing draws its surfaces with: the board's `rux` decoration, in the Agent-Tasks design's values.
 ///

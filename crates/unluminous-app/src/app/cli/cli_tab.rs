@@ -212,7 +212,11 @@ impl UnluminousApp {
                     );
                 }
                 if !self.files.move_pane(pane, position) {
-                    return no(request, code::NOT_APPLICABLE, format!("Pane {pane} is already there."));
+                    return no(
+                        request,
+                        code::NOT_APPLICABLE,
+                        format!("Pane {pane} is already there."),
+                    );
                 }
                 let now = if position > pane { position - 1 } else { position };
                 ok(request, format!("Pane {pane} is now pane {now}"), self.panes_value())

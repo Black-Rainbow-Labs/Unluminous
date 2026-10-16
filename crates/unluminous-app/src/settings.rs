@@ -2020,29 +2020,44 @@ mod tests {
     /// `off` somebody chose since is kept.
     #[test]
     fn an_update_check_nobody_chose_to_turn_off_is_on() {
-        let old = Values::parse("update.check = off
-");
+        let old = Values::parse(
+            "update.check = off
+",
+        );
         let read = with_the_update_check_migrated(Settings::read_from(&old), &old);
         assert_eq!(read.update_check, UpdateCheck::Daily, "the old default is not a choice");
-        let chosen = Values::parse("update.check = off
+        let chosen = Values::parse(
+            "update.check = off
 update.check.chosen = true
-");
+",
+        );
         let read = with_the_update_check_migrated(Settings::read_from(&chosen), &chosen);
         assert_eq!(read.update_check, UpdateCheck::Off, "a choice is kept");
-        let start = Values::parse("update.check = start
-");
+        let start = Values::parse(
+            "update.check = start
+",
+        );
         let read = with_the_update_check_migrated(Settings::read_from(&start), &start);
         assert_eq!(read.update_check, UpdateCheck::Start, "and anything but off is left alone");
 
-        let folder = std::env::temp_dir().join(format!("unluminous-update-check-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-update-check-{}", std::process::id()));
         let store = Store::at(&folder);
         let mut settings = Settings::new();
         settings.update_check = UpdateCheck::Off;
         save(&store, &settings, &Panes::new());
-        assert_eq!(load(&store).0.update_check, UpdateCheck::Off, "turned off and saved, it stays off");
+        assert_eq!(
+            load(&store).0.update_check,
+            UpdateCheck::Off,
+            "turned off and saved, it stays off"
+        );
         settings.update_check = UpdateCheck::Daily;
         save(&store, &settings, &Panes::new());
-        assert_eq!(store.read_values().flag(UPDATE_CHECK_CHOSEN), None, "and the mark goes when it is on again");
+        assert_eq!(
+            store.read_values().flag(UPDATE_CHECK_CHOSEN),
+            None,
+            "and the mark goes when it is on again"
+        );
         let _ = std::fs::remove_dir_all(&folder);
     }
 
@@ -2175,7 +2190,10 @@ update.check.chosen = true
         assert!(Page::Appearance.matches("behavior"));
         assert!(Page::Appearance.matches("background"), "a section inside the page counts");
         assert!(Page::Terminal.matches("font"), "both pages have a Font section");
-        assert!(Page::Editor.matches("font"), "the editor's font is on the Editor page (`task-2280`)");
+        assert!(
+            Page::Editor.matches("font"),
+            "the editor's font is on the Editor page (`task-2280`)"
+        );
         assert!(Page::Appearance.matches("font"), "and the interface's on Appearance");
         assert!(!Page::Terminal.matches("background"));
     }

@@ -127,7 +127,11 @@ impl UnluminousApp {
     }
 
     /// The command and environment flags of `run set`, applied to the configuration called `name`.
-    fn set_run_command_and_environment(&mut self, name: &str, request: &Request) -> Result<(), String> {
+    fn set_run_command_and_environment(
+        &mut self,
+        name: &str,
+        request: &Request,
+    ) -> Result<(), String> {
         let Some(configuration) = self.run_configurations.find_mut(name) else {
             return Ok(());
         };

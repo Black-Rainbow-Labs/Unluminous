@@ -22,11 +22,11 @@ use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
 use crate::app::debug::{DebugState, Row, Watch};
 use crate::components::controls;
+use crate::components::controls::TextBoxes;
 use crate::components::controls::WithHint as _;
 use crate::components::splitter;
 use crate::components::terminal_panel;
 use crate::theme::{color, icon, size};
-use crate::components::controls::TextBoxes;
 
 /// How tall the strip holding the buttons is. The run tile's, because they are siblings.
 pub const HEADER: f32 = terminal_panel::HEADER;

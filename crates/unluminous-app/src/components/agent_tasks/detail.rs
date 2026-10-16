@@ -6,10 +6,10 @@
 
 use egui::{CornerRadius, Pos2, Rect, Sense, Vec2};
 
+use crate::components::controls::TextBoxes;
 use crate::services::agent_tasks::{clock, AgentTasks};
 use crate::services::plugin_ui::{Look, Request};
 use crate::theme::crisp::CrispPainter;
-use crate::components::controls::TextBoxes;
 
 // **The in-place ticket is gone.** This file used to draw a whole ticket inside the board's own rectangle —
 // the pane's narrow column, and the right hand half of the tab — and `task-1771` asked for that to stop: a

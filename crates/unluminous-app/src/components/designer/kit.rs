@@ -26,10 +26,10 @@ use std::cell::RefCell;
 use std::hash::Hash;
 use std::rc::Rc;
 
+use crate::components::controls::TextBoxes;
 use egui::{Pos2, Rect, Vec2};
 use rux::icon::{Icon, Mark};
 use rux::{Fill, Rux, Style};
-use crate::components::controls::TextBoxes;
 
 thread_local! {
     static STATE: RefCell<Option<(u64, Rc<rux::RuxState>)>> = const { RefCell::new(None) };

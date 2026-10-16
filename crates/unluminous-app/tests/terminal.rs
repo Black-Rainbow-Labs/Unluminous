@@ -911,7 +911,6 @@ fn the_run_configurations_dialog_lists_them_on_the_left_and_edits_one_on_the_rig
     assert!(!harness.state().run_dialog.open);
 }
 
-
 #[test]
 fn the_environment_table_adds_edits_and_deletes_variables_and_stores_only_those_with_a_key() {
     let mut harness = harness("");

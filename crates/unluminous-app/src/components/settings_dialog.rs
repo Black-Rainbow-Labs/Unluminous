@@ -31,6 +31,7 @@ use rux::components::ChipButton;
 use rux::icon::{Icon, Mark};
 use rux::{Fill, Style};
 
+use crate::components::controls::TextBoxes;
 use crate::components::mcp_page::{self, McpState};
 use crate::components::modal;
 use crate::components::plugins_page::{self, PluginsState};
@@ -41,7 +42,6 @@ use crate::settings::{
     Indent, LineEndings, Page, Settings, Suggestions, UpdateCheck, ValueTooltip, FONT_SIZES,
     MIN_OPACITY, TERMINAL_FONT_SIZES, UI_FONT_SIZES,
 };
-use crate::components::controls::TextBoxes;
 
 /// How large the window is, before `modal::fit` shrinks it to a small Unluminous window: the design's
 /// `width: 1000px; height: 700px`.
@@ -967,7 +967,12 @@ fn indent_name(indent: Indent) -> String {
 }
 
 /// `Editor > Editor`: the gutter, notebooks, suggestions, indentation, the debugger, files and updates.
-fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings, families: &[String]) -> Drawn {
+fn editor_page(
+    ui: &mut egui::Ui,
+    area: Rect,
+    settings: &mut Settings,
+    families: &[String],
+) -> Drawn {
     let mut changed = false;
     let mut column = Column::new(area.left(), area.right(), area.top());
 
@@ -1001,7 +1006,6 @@ fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings, families:
             },
         );
     });
-
 
     kit::card(ui, &mut column, "Gutter", None, |card| {
         changed |= card.switch(

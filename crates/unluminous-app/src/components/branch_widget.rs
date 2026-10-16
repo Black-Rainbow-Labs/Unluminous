@@ -36,8 +36,8 @@ use egui::{Pos2, Rect, Vec2};
 
 use crate::app::actions::{Action, GitAction};
 use crate::components::controls;
-use crate::theme::{color, icon};
 use crate::components::controls::TextBoxes;
+use crate::theme::{color, icon};
 
 /// How wide the flyout is. Wider than the run widget's, because a branch name is longer than a run
 /// configuration's name more often than not.

@@ -25,11 +25,11 @@ pub mod ticket_modal;
 
 use egui::{Pos2, Rect, Vec2};
 
+use crate::components::controls::TextBoxes;
 use crate::components::controls::WithHint as _;
 use crate::services::agent_tasks::{AgentTasks, View};
 use crate::services::plugin_ui::{Look, Request};
 use crate::theme::crisp::CrispPainter;
-use crate::components::controls::TextBoxes;
 
 /// How tall the strip across the top of the board is: the views, the sprint, the search and `Add Task`.
 ///

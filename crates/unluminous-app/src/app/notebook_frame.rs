@@ -28,10 +28,10 @@ use crate::app::actions::Action;
 use crate::app::notebook::{self, Mode, NotebookTab};
 use crate::app::notebook_actions::NotebookAction;
 use crate::app::UnluminousApp;
+use crate::components::controls::TextBoxes;
 use crate::components::notebook_view::{self, CellButton, DrawnKey, Metrics};
 use crate::services::text_renderer::TextRenderer;
 use crate::theme::color;
-use crate::components::controls::TextBoxes;
 
 /// A Markdown cell rendered, at one width and size, kept between frames by cell id.
 pub struct Rendered {

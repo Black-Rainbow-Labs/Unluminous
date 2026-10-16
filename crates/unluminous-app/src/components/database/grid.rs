@@ -23,11 +23,11 @@ use egui::{Pos2, Rect, Sense, Vec2};
 use unluminous_db::rows::Rows;
 use unluminous_db::value::Value;
 
+use crate::components::controls::TextBoxes;
 use crate::components::database::{along, code, kit, text, well, Act};
 use crate::services::database::{why_not, DatabaseExplorer};
 use crate::services::plugin_ui::Look;
 use crate::theme::{color, icon};
-use crate::components::controls::TextBoxes;
 
 /// The gutter the row numbers are drawn in.
 const GUTTER: f32 = 44.0;

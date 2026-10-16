@@ -11,8 +11,8 @@ use rux::components::ChipButton;
 use rux::icon::Icon;
 use rux::{Rux, Style};
 
-use crate::components::{controls, modal, settings_kit as kit};
 use crate::components::controls::TextBoxes;
+use crate::components::{controls, modal, settings_kit as kit};
 
 /// The dialog's padding and corner.
 pub const PAD_X: f32 = 24.0;

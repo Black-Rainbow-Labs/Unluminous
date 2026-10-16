@@ -65,12 +65,12 @@ use std::path::{Path, PathBuf};
 
 use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
+use crate::components::controls::TextBoxes;
 use crate::components::controls::WithHint as _;
 use crate::services::file_kind::Refusal;
 use crate::services::file_tree::FileTree;
 use crate::theme::crisp::CrispPainter;
 use crate::theme::{color, file_marker, icon, size};
-use crate::components::controls::TextBoxes;
 
 /// What a row shows besides its name: the colour git wants it in, and the icon its plugin gives it.
 ///

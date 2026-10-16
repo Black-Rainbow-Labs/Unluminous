@@ -12,9 +12,9 @@
 use egui::{Pos2, Rect, Sense, Vec2};
 use rux::{Fill, Style};
 
+use crate::components::controls::TextBoxes;
 use crate::components::scrollbar;
 use crate::components::settings_kit::{self as kit, Kind as ButtonKind};
-use crate::components::controls::TextBoxes;
 
 /// What the list's scrollbar is called.
 const LIST_SCROLLBAR: &str = "plugins list";

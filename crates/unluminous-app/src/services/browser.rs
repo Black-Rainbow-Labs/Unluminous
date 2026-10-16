@@ -413,7 +413,8 @@ impl BrowserPlacement {
 ///
 /// `task-2280`. A native child is placed in the window's logical points, which are egui's points times
 /// egui's zoom factor, and the views are placed from code that has no `egui::Context` to ask.
-static INTERFACE_ZOOM: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3F80_0000);
+static INTERFACE_ZOOM: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(0x3F80_0000);
 
 /// Tell the native views the interface zoom. Called once a frame by the window.
 pub fn follow_the_interface(zoom: f32) {

@@ -60,8 +60,8 @@ use rux::components::{ChipButton, PillButton};
 use rux::icon::{Icon, Mark};
 use rux::{Rux, Style};
 
-use crate::theme::{color, size};
 use crate::components::controls::TextBoxes;
+use crate::theme::{color, size};
 
 pub const HEADER: f32 = 46.0;
 pub const FOOTER: f32 = 52.0;
@@ -644,7 +644,13 @@ fn blurred_backdrop(ctx: &egui::Context, modal: egui::Id) -> Backdrop {
 ///
 /// Split from [`show`] so that the placement it settles on can be read back by a caller, and so the
 /// clamping is one function rather than four numbers repeated inside the closure.
-pub fn place(ctx: &egui::Context, id: &str, width: f32, height: f32, placement: &mut Placement) -> (Pos2, Vec2) {
+pub fn place(
+    ctx: &egui::Context,
+    id: &str,
+    width: f32,
+    height: f32,
+    placement: &mut Placement,
+) -> (Pos2, Vec2) {
     let available = ctx.content_rect();
     let asked = starting_size(available.size(), id, Vec2::new(width, height));
     let (size, offset) = fit(available.size(), asked, placement.grown, placement.offset);
@@ -1359,7 +1365,11 @@ mod tests {
     fn a_modal_is_never_larger_than_the_window_it_is_in() {
         let (size, _) =
             fit(Vec2::new(600.0, 400.0), Vec2::new(900.0, 560.0), Vec2::ZERO, Vec2::ZERO);
-        assert_eq!(size, Vec2::new(600.0 * 0.94, 400.0 * 0.94), "three percent of margin either side");
+        assert_eq!(
+            size,
+            Vec2::new(600.0 * 0.94, 400.0 * 0.94),
+            "three percent of margin either side"
+        );
     }
 
     #[test]
@@ -1403,7 +1413,10 @@ mod tests {
         assert_eq!(picker, Vec2::new(720.0, 480.0), "the searched lists keep their size");
         let (size, offset) = fit(WINDOW, filled, Vec2::ZERO, Vec2::new(500.0, 500.0));
         assert!((size - filled).length() < 0.01, "{size:?}");
-        assert!(offset.length() < 0.01, "a modal that fills the window stays in the middle: {offset:?}");
+        assert!(
+            offset.length() < 0.01,
+            "a modal that fills the window stays in the middle: {offset:?}"
+        );
     }
 
     /// `task-2280`: a modal's place and zoom are written as one line of `modals.conf` and read back the same.
@@ -1419,13 +1432,19 @@ mod tests {
         assert!(read_kept("= 1 2 3 4 1").is_none(), "no id");
 
         let ctx = egui::Context::default();
-        restore_kept(&ctx, "agent-tasks-ticket = 0 0 -50 -20 1.5
+        restore_kept(
+            &ctx,
+            "agent-tasks-ticket = 0 0 -50 -20 1.5
 not a line
-");
+",
+        );
         assert_eq!(placement(&ctx, "agent-tasks-ticket").grown, Vec2::new(-50.0, -20.0));
         assert_eq!(zoom_of(&ctx, egui::Id::new("agent-tasks-ticket")), 1.5);
-        assert_eq!(kept_text(&ctx), "agent-tasks-ticket = 0 0 -50 -20 1.5
-");
+        assert_eq!(
+            kept_text(&ctx),
+            "agent-tasks-ticket = 0 0 -50 -20 1.5
+"
+        );
         let before = kept_changes(&ctx);
         set_placement(&ctx, "agent-tasks-ticket", Placement::default());
         assert_eq!(kept_changes(&ctx), before + 1, "a change is counted so the window writes it");

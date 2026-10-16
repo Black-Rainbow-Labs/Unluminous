@@ -56,12 +56,12 @@ use rux::components::{ChipButton, PillSwitch, Select, SelectLead};
 use rux::icon::{Icon, Mark};
 use rux::text::Style;
 
+use crate::components::controls::TextBoxes;
 use crate::components::modal;
 use crate::services::agent_tasks::model::{Assignee, Priority, Status, Task};
 use crate::services::agent_tasks::ticket_chat::{self, AgentTab};
 use crate::services::agent_tasks::{clock, AgentTasks, Field, TicketKit, EFFORTS};
 use crate::services::plugin_ui::{Look, Request};
-use crate::components::controls::TextBoxes;
 
 /// The id the modal is drawn under, which is what its place and its zoom are kept against.
 pub const MODAL_ID: &str = "agent-tasks-ticket";
@@ -704,7 +704,8 @@ fn description_fits(rux: &rux::Rux<'_>, board: &AgentTasks, width: f32) -> f32 {
     let text = board.description_text();
     let wrap = (width - 18.0 - 32.0).max(1.0);
     let font = egui::FontId::proportional(BODY);
-    let words = rux.ui.ctx().fonts_mut(|fonts| fonts.layout(text, font, egui::Color32::WHITE, wrap)); // any ground: only measured, never drawn
+    let words =
+        rux.ui.ctx().fonts_mut(|fonts| fonts.layout(text, font, egui::Color32::WHITE, wrap)); // any ground: only measured, never drawn
     words.size().y + 28.0 + DESCRIPTION_GRIP
 }
 
