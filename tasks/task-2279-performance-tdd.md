@@ -201,3 +201,8 @@ About 42 MB is the NVIDIA device itself: 21 MB of it is created when the adapter
 by the device, so there is nothing to give back. In the heap, the index is about 23 MB on this repository
 (the trigram posting lists and the symbol table), a restored terminal's scrollback is about 5 MB, and the
 fonts egui parses are about 3 MB. Each is data the window uses.
+
+### 6.5 The release build
+
+The release build, measured the same way in two rounds: 140.9 MB and 148.1 MB with this repository open,
+86.8 MB in an empty folder.
