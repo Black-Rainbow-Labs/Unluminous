@@ -104,11 +104,18 @@ impl Servers {
         out
     }
 
-    /// Shuts every server down and waits for each to stop.
+    /// Asks every server to leave and returns at once: each worker shuts its program down on its own
+    /// thread. Used when `editor.servers` is switched off, so the memory comes back on the next frame,
+    /// and when the window closes, which no longer waits up to two seconds a server (`task-2279`).
     pub fn stop_everything(&mut self) {
         for (_, running) in self.running.drain() {
-            running.server.stop();
+            running.server.stop_without_waiting();
         }
+    }
+
+    /// True when no server is running or recorded as absent.
+    pub fn is_empty(&self) -> bool {
+        self.running.is_empty()
     }
 }
 
@@ -216,6 +223,9 @@ impl UnluminousApp {
     /// @param args - its arguments
     pub fn use_this_language_server(&mut self, program: PathBuf, args: Vec<String>) {
         self.servers.allowed = true;
+        // `editor.servers` is `off` by default (`task-2279`), and a test that runs a scripted server is
+        // asking for servers.
+        self.settings.servers = crate::settings::Servers::Automatic;
         self.servers.program = Some((program, args));
     }
 
@@ -234,6 +244,12 @@ impl UnluminousApp {
     /// Starts the server for the file that is showing when it is not running, tells it the file's text
     /// when the text has moved, and takes every reply waiting. Called once a frame from the second on.
     pub(crate) fn keep_the_servers_running(&mut self) {
+        // **Off means off, now** (`task-2279`). `server_for` stops a new server starting; this stops the one
+        // already running, which went on holding rust-analyzer's gigabytes after the switch was turned off.
+        if !self.settings.servers.is_automatic() && !self.servers.is_empty() {
+            self.servers.stop_everything();
+            return;
+        }
         self.take_the_server_replies();
         let Some(path) = self.files.active().path().map(Path::to_path_buf) else { return };
         let Some(key) = self.server_for(&path) else { return };

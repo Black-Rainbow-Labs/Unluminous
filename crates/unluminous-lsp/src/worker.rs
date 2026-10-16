@@ -32,7 +32,11 @@ const TICK: Duration = Duration::from_millis(25);
 /// The span in which [`RESTARTS_AN_HOUR`] restarts are counted.
 const RESTART_WINDOW: Duration = Duration::from_secs(3600);
 /// How long `stop` waits for the child to leave on its own before killing it.
-const GRACE: Duration = Duration::from_secs(2);
+///
+/// Half a second since `task-2279`. Neither rust-analyzer nor tsserver keeps anything on the disk that a
+/// kill could leave half written, and switching `editor.servers` off is meant to give the memory back at
+/// once: with two seconds, rust-analyzer busy reading a workspace took 3.4 s to go.
+const GRACE: Duration = Duration::from_millis(500);
 /// The most standard error text kept for a failure's reason.
 const STDERR_KEPT: usize = 2000;
 

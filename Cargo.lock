@@ -456,9 +456,9 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "atrius-index"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c188e49c9d0f89c9b2b5470516ac56e37311da1a87ff0d5faca24535a634ea01"
+checksum = "c8d3e1755118efa956e8cfff537caf990249425432840ceadcde171cf42c74c2"
 dependencies = [
  "blake3",
  "crossbeam-channel",

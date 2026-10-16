@@ -387,8 +387,19 @@ impl UnluminousApp {
         // What was laid out last time is handed over rather than thrown away: `relayout` keeps every
         // paragraph whose text and formatting are unchanged, so typing a letter costs the paragraph
         // it was typed into instead of the file.
-        let previous = std::mem::take(&mut self.files.active_mut().cached.layout);
+        let mut previous = std::mem::take(&mut self.files.active_mut().cached.layout);
         let first_layout = previous.lines.is_empty();
+        // **A new width that moves nothing keeps the layout** (`task-2279`). Showing the explorer,
+        // dragging a divider or resizing the window changes the width, and laid the whole file out again:
+        // 4.3 ms a frame on `app/mod.rs`. When no line wrapped and every line fits the new width, every
+        // glyph would land where it is, so only the width is changed.
+        let width_moved = (width - cached_width).abs() >= 0.5;
+        let kept_at_width = width_moved
+            && notebook.is_none()
+            && previous.fits_unchanged_at(width, self.document().paragraphs());
+        if kept_at_width {
+            previous.keep_at_width(width);
+        }
         // **Which paragraphs changed, asked of the document rather than worked out by reading the
         // file** (`task-1984` C7). `relayout` used to fingerprint every paragraph and compare each
         // against the previous layout's, which is 17.2 ms of a 21.7 ms keystroke on a 2 MB file. The
@@ -399,7 +410,7 @@ impl UnluminousApp {
         // any edit having happened, so both say `whole` and read the document, which is what every
         // relayout did before this.
         let touched = match folded == cached_folds
-            && (width - cached_width).abs() < 0.5
+            && (!width_moved || kept_at_width)
             && notebook.is_none()
         {
             true => self.document().touched_since(cached_revision),

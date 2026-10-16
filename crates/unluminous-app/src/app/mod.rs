@@ -1296,6 +1296,9 @@ pub struct UnluminousApp {
     /// released binary asks for (`UnluminousApp::index_on_disk`). A window a test builds holds its index
     /// in memory, because a test must not write into the person's own cache.
     pub(crate) index_on_disk: bool,
+    /// The value of `search.embeddings` last given to the code index, so the switch is set once a change
+    /// rather than once a frame. `app::symbols::follow_the_embedding_switch`.
+    pub(crate) embedding_applied: Option<bool>,
     /// What a person chose from the completion list before. `task-2231` §6.3.
     pub(crate) completion_stats: crate::services::stats::CompletionStats,
     /// Usage statistics, which only the released binary lets run. `task-2271`; see `app::telemetry`.
@@ -1633,6 +1636,7 @@ impl UnluminousApp {
             references: None,
             project_symbols: None,
             index_on_disk: false,
+            embedding_applied: None,
             completion_stats: Default::default(),
             telemetry: Default::default(),
             completion_rest: None,
@@ -2186,7 +2190,7 @@ impl UnluminousApp {
                 return;
             }
         }
-        project_state::save(self.tree.root(), &state);
+        project_state::save_later(self.tree.root(), &state);
         self.written_project = Some(state);
     }
 
@@ -2631,23 +2635,29 @@ impl eframe::App for UnluminousApp {
         // pseudoterminal, the native view and the chat's own thread, all three of which answer nothing once
         // they have been stopped. `realm::Reading::OnTheWayOut` says which of the six values this moment can
         // answer for and why the other two are left out.
+        crate::services::frame_trace::mark("exit-begin");
         self.note_the_live_state_into_the_nodes(realm::Reading::OnTheWayOut);
         // The completion list's statistics, whether or not the window has settled.
         self.completion_stats.write_when_settled(f64::INFINITY, 0.0);
         // The closing usage statistics, already on disk before the short wait for them to be posted.
         self.close_the_telemetry();
+        crate::services::frame_trace::mark("exit-telemetry");
         // The language servers are told to shut down and are not waited for past their own grace.
         self.servers.stop_everything();
+        crate::services::frame_trace::mark("exit-servers");
         // **Before the sessions are killed**, because a screen is read out of a live terminal and a killed one
         // has nothing to read. `task-1908` for the canvas's terminals, `task-1945` for the tile's.
         self.write_the_screens_down();
         self.write_the_tab_screens_down();
+        crate::services::frame_trace::mark("exit-screens");
         self.run.kill_everything();
         // Every notebook's kernel, waited for, because dropping one only starts stopping it.
         self.stop_every_kernel();
+        crate::services::frame_trace::mark("exit-kernels");
         // Every program a node started, killed rather than dropped - `Live::forget`'s own note, and
         // `task-1769`'s 119 orphaned shells.
         self.realm.live.stop_everything();
+        crate::services::frame_trace::mark("exit-realm");
         // **Every modified tab, as a last resort** (`task-1984` A2). The two ways a person closes the
         // window ask `may_the_window_close` and stay open when a save failed, so by the time this runs
         // there is usually nothing left to write. What reaches here is the operating system closing
@@ -2664,6 +2674,8 @@ impl eframe::App for UnluminousApp {
         // `None`, so a geometry that has not settled is still written: this is the last chance there
         // is, and the wait exists for a window that is still moving.
         self.remember_the_project(None);
+        project_state::wait_for_the_writes();
+        crate::services::frame_trace::mark("exit-written");
         // **A window a person closed leaves the session**, unless it was the only one open (`task-2253`). A
         // window the operating system closed keeps its line, so a restart of the machine brings it back.
         if self.closed_by_hand && crate::services::store::this_window_joins_the_session() {

@@ -171,6 +171,7 @@ impl UnluminousApp {
     /// Public because the measuring instruments drive a real window with no frames in it, and a
     /// window whose index has never been asked for would measure a project with nothing in it.
     pub fn keep_the_symbol_index_fresh(&mut self) {
+        self.follow_the_embedding_switch();
         let root = atrius_index::host::canonical(self.tree.root());
         let open_here = self.project_symbols.as_ref().is_some_and(|symbols| symbols.root() == root);
         if open_here {
@@ -179,6 +180,23 @@ impl UnluminousApp {
         // The code index reads and watches the project on threads of its own (`task-2231` §5.2), so
         // opening it is all a frame does, once, and a project opened later opens its own.
         self.project_symbols = Some(ProjectSymbols::open(&root, self.index_on_disk));
+    }
+
+    /// Puts `search.embeddings` into effect in the code index this window hosts, before the index opens
+    /// and on the frame after the setting changes (`task-2279`).
+    ///
+    /// Off, the index never runs the embedding model: not to embed, not to probe whether one is
+    /// installed, and not to rank a question, and an index already embedding stops before its next
+    /// batch, with the model's memory returned [`unluminous_cli::search::MODEL_IDLE`] after its last use.
+    /// The switch belongs to the process, so only a window that hosts the index on disk sets it; a window
+    /// a test builds holds its index in memory, which never embeds.
+    pub(crate) fn follow_the_embedding_switch(&mut self) {
+        let wanted = self.settings.search_embeddings;
+        if !self.index_on_disk || self.embedding_applied == Some(wanted) {
+            return;
+        }
+        atrius_index::index::set_embedding(wanted);
+        self.embedding_applied = Some(wanted);
     }
 
     /// Say that a file on the disk has changed. Nothing to do: the code index watches the project

@@ -242,12 +242,17 @@ impl Suggestions {
 ///
 /// `off` is the switch for somebody who wants the editor to run nothing: no rust-analyzer and no
 /// tsserver is ever started, and completion answers from the project's structure alone.
+///
+/// **`off` is the default since `task-2279`.** rust-analyzer held 3.9 GB on this repository and started 19
+/// rustc processes holding another 3.7 GB while it read the workspace, which is most of what the report
+/// of 1.8 GB and 18% of the processor at rest was. A person who wants its answers turns it on, and the
+/// switch says what it costs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Servers {
     /// A Rust or TypeScript file starts the server its plugin names, when one is found.
-    #[default]
     Automatic,
-    /// No language server is started.
+    /// No language server is started, and one already running is stopped.
+    #[default]
     Off,
 }
 
@@ -1089,13 +1094,21 @@ settings! {
         /// **On**, which `task-2271` asks for: *"add telemetry to Unluminous. add a setting to turn it off in
         /// Settings."* Off, nothing is counted and nothing is sent from that frame on.
         telemetry_enabled = true => "telemetry.enabled";
+        /// Whether the code index embeds the project's passages with the embedding model, so a plain
+        /// English search is ranked by meaning as well as by its words.
+        ///
+        /// **Off by default** (`task-2279`). While the model is loaded it is about 1.1 GB of the window,
+        /// the first open of a project embeds every passage on two processors for many minutes, and the
+        /// index probed it at every open by running it. Completion, Go to Definition, references and
+        /// text and regex searches never use it. `app::code_index` puts the switch into effect.
+        search_embeddings = false => "search.embeddings";
     }
 
     coded {
         /// Whether the completion popup arrives while you type, or waits to be asked.
         suggestions: Suggestions = Suggestions::Automatic => "editor.suggestions", "automatic or manual";
         /// Whether completion asks a language server. See [`Servers`].
-        servers: Servers = Servers::Automatic => "editor.servers", "automatic or off";
+        servers: Servers = Servers::Off => "editor.servers", "automatic or off";
         /// What one indent is made of. See [`Indent`], whose default is what `Tab` already typed.
         indent: Indent = Indent::Tab => "editor.indent", "tabs or spaces:N, N from 2 to 8";
         /// What line breaks a file is written back with. See [`LineEndings`].
@@ -1683,6 +1696,7 @@ mod tests {
             "editor.trim",
             "notebook.scroll_outputs",
             "telemetry.enabled",
+            "search.embeddings",
             "editor.suggestions",
             "editor.servers",
             "editor.indent",
@@ -1766,8 +1780,9 @@ mod tests {
             trim_on_save: true,
             notebook_scroll_outputs: false,
             telemetry_enabled: false,
+            search_embeddings: true,
             suggestions: Suggestions::Manual,
-            servers: Servers::Off,
+            servers: Servers::Automatic,
             line_endings: LineEndings::Crlf,
             update_check: UpdateCheck::Start,
             update_skip: "0.99.0".to_owned(),

@@ -1029,7 +1029,7 @@ fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Drawn 
         let mut servers = settings.servers.is_automatic();
         if card.switch(
             "Ask language servers (rust-analyzer, tsserver)",
-            Some("Rust and TypeScript files ask the language server the project already has for the members of a value, the import a name needs and a call's parameters. Off, no server is started and the structural answers stand alone."),
+            Some("Rust and TypeScript files ask the language server the project already has for the members of a value, the import a name needs and a call's parameters. It costs memory and processor time: rust-analyzer typically holds 1 to 4 GB for a workspace like Unluminous's and runs cargo and rustc for a minute or more while it reads it; tsserver holds a few hundred MB. Off, the default, stops a running server at once and the structural answers stand alone."),
             &mut servers,
         ) {
             settings.servers = match servers {
@@ -1038,6 +1038,14 @@ fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Drawn 
             };
             changed = true;
         }
+    });
+    // `task-2279`. The one switch that loads a model into the window, with what it costs said beside it.
+    kit::card(ui, &mut column, "Code index", None, |card| {
+        changed |= card.switch(
+            "Rank plain English searches by meaning",
+            Some("The code index embeds every passage of the project with an embedding model, so a question in plain English finds code that answers it in other words. It costs memory and processor time: the model holds about 1.1 GB while it is loaded, and the first time a project is opened every passage is embedded on two processors, which takes several minutes for a project the size of Unluminous. Off, the default, stops embedding at once, returns the model's memory ten seconds later, and plain English searches are ranked by their words. Completion, Go to Definition, references and text searches never use it."),
+            &mut settings.search_embeddings,
+        );
     });
     // `task-1922` WP4. What a key types, which is the one thing on this page a person changes because of how
     // they were taught to write code rather than because of what Unluminous does.

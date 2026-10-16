@@ -341,4 +341,13 @@ impl Server {
     pub fn stop(self) {
         self.inner.stop()
     }
+
+    /// Asks the server to leave and returns at once. The worker sends `shutdown` and `exit`, waits its
+    /// grace and kills the program on its own thread, so the caller is never kept waiting for a server
+    /// that is busy reading a workspace (`task-2279`: closing the window waited the whole two second grace
+    /// for rust-analyzer). On Windows the process's job object ends the program with the window if the
+    /// window goes first; elsewhere the program reads the end of its standard input and leaves.
+    pub fn stop_without_waiting(self) {
+        drop(self.inner)
+    }
 }

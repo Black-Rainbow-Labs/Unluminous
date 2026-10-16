@@ -1098,6 +1098,40 @@ fn is_blank(cluster: &PlacedCluster) -> bool {
 }
 
 impl Layout {
+    /// True when laying the same text out at `width` would place every glyph exactly where it is now, so
+    /// the layout can be kept and only its width changed (`task-2279`).
+    ///
+    /// That holds when no paragraph wrapped (every line is the last of its paragraph), every line fits
+    /// the new width with its trailing spaces counted, which is how [`break_into_lines`] measures, and no
+    /// paragraph is placed against the width: centred and right aligned lines move, and a picture or a
+    /// notebook's replaced paragraph is drawn at the width. Code nearly always passes, which is what makes
+    /// showing the explorer, dragging a divider and resizing the window cost no layout at all on a long
+    /// source file, where they used to lay all of it out again.
+    ///
+    /// @param width - the width the text would be laid out at
+    /// @param paragraphs - the paragraph styles the layout was made from
+    pub fn fits_unchanged_at(&self, width: f32, paragraphs: &ParagraphStyles) -> bool {
+        let width = width.max(1.0);
+        if self.lines.is_empty() || self.starts.len() != self.fingerprints.len() + 1 {
+            return false;
+        }
+        self.lines.iter().all(|line| {
+            let style = paragraphs.get(line.paragraph);
+            line.last_in_paragraph
+                && matches!(style.align, Align::Left | Align::Justify)
+                && !style.replaced
+                && style.min_height <= 0.0
+                && line.clusters.last().map_or(0.0, PlacedCluster::right) <= width
+        })
+    }
+
+    /// Changes the width a layout was made for, when [`Layout::fits_unchanged_at`] says nothing moves.
+    ///
+    /// @param width - the new width
+    pub fn keep_at_width(&mut self, width: f32) {
+        self.width = width.max(1.0);
+    }
+
     /// Releases growth headroom when a completed layout crosses into a cold cache entry.
     pub fn compact_capacity(&mut self) {
         for line in &mut self.lines {
@@ -2664,6 +2698,32 @@ mod tests {
             assert_eq!(incremental, full, "change {step}");
             previous = incremental;
         }
+    }
+
+    /// `task-2279`: a layout kept at a new width is the layout a full pass makes there, and a layout
+    /// where a line would move is not kept.
+    #[test]
+    fn a_layout_that_fits_a_new_width_is_the_full_layout_at_that_width() {
+        let text = "fn main() {
+    let x = 1;
+}
+
+last line";
+        let (rope, spans, mut paragraphs) = fixture(text);
+        let metrics = FixedMetrics::default();
+        let hidden = Hidden::default();
+        let mut wide = layout(&rope, &spans, &paragraphs, &metrics, 400.0);
+        // The longest line is `    let x = 1;`, fourteen clusters of ten points.
+        assert!(wide.fits_unchanged_at(140.0, &paragraphs), "140 holds every line");
+        assert!(!wide.fits_unchanged_at(139.0, &paragraphs), "139 wraps the longest");
+        wide.keep_at_width(300.0);
+        assert_eq!(wide, layout_with(&rope, &spans, &paragraphs, &metrics, 300.0, &hidden));
+        // Narrow enough to wrap, it never fits; and a centred line moves with the width.
+        let narrow = layout(&rope, &spans, &paragraphs, &metrics, 60.0);
+        assert!(!narrow.fits_unchanged_at(400.0, &paragraphs), "a wrapped paragraph unwraps");
+        paragraphs.set(4..5, |style| style.align = Align::Center);
+        let centred = layout(&rope, &spans, &paragraphs, &metrics, 400.0);
+        assert!(!centred.fits_unchanged_at(300.0, &paragraphs), "a centred line moves");
     }
 
     #[test]

@@ -52,6 +52,7 @@ pub fn configure() {
         }
         keep_the_model_briefly();
         embed_on_few_threads();
+        embed_only_when_asked();
         if let Some(cli) = cli_program() {
             atrius_index::host::set_server_command(cli, vec!["search".into(), "serve".into()]);
         }
@@ -63,7 +64,12 @@ pub fn configure() {
 }
 
 /// How long an index host in this process keeps the embedding model once nothing is asking for it.
-pub const MODEL_IDLE: &str = "idle:60s";
+///
+/// Ten seconds since `task-2279`, where the window was 1.5 GB a minute after a reopen with nothing
+/// embedding. A batch of passages follows the one before it with no gap, so this costs nothing while a
+/// project is being embedded, and it is how quickly the memory comes back once `search.embeddings` is
+/// switched off.
+pub const MODEL_IDLE: &str = "idle:10s";
 
 /// Releases the embedding model a minute after its last use, unless somebody has chosen otherwise.
 ///
@@ -80,6 +86,34 @@ fn keep_the_model_briefly() {
         return;
     }
     std::env::set_var(VARIABLE, MODEL_IDLE);
+}
+
+/// Turns embedding off in this process unless the settings file says `search.embeddings = true` or
+/// `ATRIUS_EMBED` was set by hand.
+///
+/// `task-2279` made embedding a setting that is off by default. The window puts its own setting into
+/// effect through `atrius_index::index::set_embedding`; this is for an index host the command line starts,
+/// `search serve` or `mcp serve`, which has no window and reads the same line of the same file, so the
+/// model is never loaded by a process the person did not ask to load it.
+fn embed_only_when_asked() {
+    if std::env::var_os("ATRIUS_EMBED").is_some() {
+        return;
+    }
+    let file = crate::instances::settings_folder().join("settings.conf");
+    if !embeddings_are_on(&std::fs::read_to_string(file).unwrap_or_default()) {
+        std::env::set_var("ATRIUS_EMBED", "off");
+    }
+}
+
+/// Whether a settings file's text says `search.embeddings = true`.
+///
+/// @param text - the settings file
+pub fn embeddings_are_on(text: &str) -> bool {
+    text.lines().any(|line| {
+        line.split_once('=').is_some_and(|(key, value)| {
+            key.trim() == "search.embeddings" && value.trim().eq_ignore_ascii_case("true")
+        })
+    })
 }
 
 /// How many processor threads the embedding model runs on in a process that did not say.
@@ -201,10 +235,23 @@ mod tests {
     /// `idle:<duration>`, and ignores anything else with one line on standard error. `60s` alone was
     /// ignored that way, so the model stayed for Inillucent's five minutes (`task-2247`).
     #[test]
-    fn the_model_is_kept_for_a_minute_in_the_form_inillucent_reads() {
+    fn the_model_is_kept_for_ten_seconds_in_the_form_inillucent_reads() {
         let after = MODEL_IDLE.strip_prefix("idle:").expect("written as idle:<duration>");
         let seconds: u64 =
             after.strip_suffix('s').and_then(|n| n.parse().ok()).expect("a number of seconds");
-        assert_eq!(seconds, 60);
+        assert_eq!(seconds, 10);
+    }
+
+    /// `task-2279`: embedding is off unless the settings file turns it on.
+    #[test]
+    fn embedding_is_on_only_when_the_settings_file_says_so() {
+        assert!(!embeddings_are_on(""));
+        assert!(!embeddings_are_on("search.embeddings = false
+"));
+        assert!(!embeddings_are_on("telemetry.enabled = true
+"));
+        assert!(embeddings_are_on("editor.servers = off
+search.embeddings = true
+"));
     }
 }

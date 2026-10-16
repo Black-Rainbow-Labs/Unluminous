@@ -4948,12 +4948,18 @@ downloaded. Four rules came out of measuring it, and each is a constant with its
 - **The processor embeds at most `PROCESSOR_CHUNK_LIMIT` chunks** (100,000). Past that a repository is
   searched by its words unless `INILLUCENT_EMBED_DEVICE` names a card. `UNLUMINOUS_EMBED=off` stops
   embedding, which a speed run sets.
-- **The model is let go a minute after its last use** (`search::MODEL_IDLE`, `task-2247`). While ONNX
-  Runtime and `nomic-embed-text` are loaded they are about 1 GB of the process: a window on a folder
-  of one file measured 1,208 MB of working set with the model and 175 MB without it. Inillucent keeps
-  it five minutes by default. `search::configure` sets `INILLUCENT_EMBED_RESIDENCY=idle:60s` unless
-  that variable or a recorded residency says otherwise, and `ProjectSymbols::open` calls it, because
-  the window starts its host there and not through `search::ask`.
+- **The model is let go ten seconds after its last use** (`search::MODEL_IDLE`, `task-2247`, shortened
+  by `task-2279`). While ONNX Runtime and `nomic-embed-text` are loaded they are about 1 GB of the
+  process: a window on a folder of one file measured 1,208 MB of working set with the model and 175 MB
+  without it. Inillucent keeps it five minutes by default. `search::configure` sets
+  `INILLUCENT_EMBED_RESIDENCY=idle:10s` unless that variable or a recorded residency says otherwise, and
+  `ProjectSymbols::open` calls it, because the window starts its host there and not through `search::ask`.
+- **Embedding is a setting, `search.embeddings`, and it is off by default** (`task-2279`). Off, the model
+  is never loaded, not even to probe whether one is installed, and a plain English search is ranked by its
+  words. The window puts the setting into effect with `atrius_index::index::set_embedding`, which a running
+  index reads on every pass, so switching it off stops embedding before the next batch.
+  `app::symbols::follow_the_embedding_switch` is the window's half; a host the command line starts reads
+  the same line of the settings file (`search::embed_only_when_asked`).
 
 **An answer an agent reads is short and saves it a turn.** Every answer is cut to a token budget and
 says what was left out. A small `find`, a `def` with one definition and a plain English answer carry
@@ -4971,6 +4977,28 @@ helps; one that only trims an answer does not move the total. Accuracy is ripgre
 121 held out tasks Sonnet succeeded 0.689 of the time with the index and 0.678 with ripgrep, and one
 plain English search from a ticket's words finds the right file less often than the Grep calls an
 agent writes after reading the code. That search is the part of this design with the most room left.
+
+## What runs beside the window is a setting, and off takes effect at once (`task-2279`)
+
+`tasks/task-2279-performance-tdd.md` is the measurement. On 0.88.0 a window on this repository was a
+process tree of 8.9 GB 90 seconds after opening a Rust file and used two processors at rest: rust-analyzer
+held 3.9 GB and started nineteen rustc processes holding 3.7 GB, and the window itself held the 1.1 GB
+embedding model while it embedded every passage. Three rules came out of it:
+
+- **`editor.servers` is `off` by default, and `off` stops a running server.** `keep_the_servers_running`
+  stops every server on the frame the setting is off; it used to stop only new ones starting.
+  `Server::stop_without_waiting` is how a server is stopped, here and when the window closes: the worker
+  asks it to leave, waits `GRACE` (500 ms) and kills it on its own thread, so closing no longer waits two
+  seconds for rust-analyzer.
+- **`search.embeddings` is `off` by default.** See the index section below.
+- **A switch that loads something says what it costs** beside it in Settings, in megabytes and processors.
+
+`tools/perf-session.mjs` is the instrument: a release window on a copy of a real project, with every counter
+summed over the window's process tree, through a cold open, rest, panel toggles, divider drags, window
+resizes, typing, closing and a warm reopen. `tools/perf-switches.mjs` checks that both switches take effect
+while a window runs. Two smaller rules from the same ticket: a change of the editing area's width keeps the
+layout when no glyph would move (`Layout::fits_unchanged_at`), and what a project remembers is written on a
+thread of its own (`project_state::save_later`), which closing waits for.
 
 ## Git runs the `git` program, on a thread
 

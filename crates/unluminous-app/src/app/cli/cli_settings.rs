@@ -560,6 +560,7 @@ impl UnluminousApp {
             "plugins.chrome" => self.settings.plugin_chrome.to_string(),
             "mcp.enabled" => self.settings.mcp_enabled.to_string(),
             "telemetry.enabled" => self.settings.telemetry_enabled.to_string(),
+            "search.embeddings" => self.settings.search_embeddings.to_string(),
             "mcp.port" => self.settings.mcp_port.to_string(),
             "mcp.tools" => self.settings.mcp_tools.name().to_owned(),
             "mcp.areas" => self.settings.mcp_areas.clone(),
@@ -1272,7 +1273,7 @@ const SETTINGS: &[SettingKey] = &[
     },
     SettingKey {
         name: "editor.servers",
-        help: "Whether completion asks a language server: `automatic` starts rust-analyzer for Rust and tsserver for TypeScript and JavaScript when one is found; `off` starts nothing and completion answers from the project's own structure.",
+        help: "Whether completion asks a language server: `automatic` starts rust-analyzer for Rust and tsserver for TypeScript and JavaScript when one is found; `off`, the default, starts nothing, stops a server that is running, and completion answers from the project's own structure. rust-analyzer typically holds 1 to 4 GB on a project like this one and runs cargo and rustc while it reads the workspace.",
     },
     SettingKey {
         name: "editor.line_ending",
@@ -1285,6 +1286,10 @@ const SETTINGS: &[SettingKey] = &[
     SettingKey {
         name: "telemetry.enabled",
         help: "Whether Unluminous sends anonymous usage statistics to Google Analytics: when a window is open and for how long, which panels and kinds of tab are showing, and how often each menu entry and command is used. Never a path, a file name, a project name or anything typed. `true` by default; `false` stops counting and sending at once. `settings telemetry` says what it has sent.",
+    },
+    SettingKey {
+        name: "search.embeddings",
+        help: "Whether the code index embeds the project's passages with the embedding model, so a plain English `search find` is ranked by meaning as well as by its words. `false` by default. On, the model holds about 1.1 GB while it is loaded and the first open of a project embeds every passage on two processors for several minutes; vectors already made are reused. `false` stops embedding at once and the model's memory is returned ten seconds after its last use. Completion, Go to Definition, references and text and regex searches never use it.",
     },
     SettingKey {
         name: "update.skip",
@@ -1377,6 +1382,7 @@ fn fresh_value(name: &str, fresh: &crate::settings::Settings) -> String {
         "plugins.chrome" => fresh.plugin_chrome.to_string(),
         "mcp.enabled" => fresh.mcp_enabled.to_string(),
         "telemetry.enabled" => fresh.telemetry_enabled.to_string(),
+        "search.embeddings" => fresh.search_embeddings.to_string(),
         "mcp.port" => fresh.mcp_port.to_string(),
         "mcp.tools" => fresh.mcp_tools.name().to_owned(),
         "mcp.areas" => fresh.mcp_areas.clone(),

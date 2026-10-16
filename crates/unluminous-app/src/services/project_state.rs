@@ -421,6 +421,72 @@ pub fn load(root: &Path) -> ProjectState {
     state
 }
 
+/// What the writer thread is asked to do.
+enum WriterJob {
+    /// Write a project's state.
+    Write(std::path::PathBuf, ProjectState),
+    /// Answer once every write sent before this one is on the disk.
+    Flush(std::sync::mpsc::SyncSender<()>),
+}
+
+/// The writer thread's queue, started the first time something is written.
+fn writer() -> &'static std::sync::Mutex<std::sync::mpsc::Sender<WriterJob>> {
+    static WRITER: std::sync::OnceLock<std::sync::Mutex<std::sync::mpsc::Sender<WriterJob>>> =
+        std::sync::OnceLock::new();
+    WRITER.get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::channel::<WriterJob>();
+        let _ = std::thread::Builder::new().name("unluminous-project-state".into()).spawn(move || {
+            while let Ok(job) = rx.recv() {
+                // Only the newest state of a burst is written: the ones before it are already out of date.
+                let mut jobs = vec![job];
+                jobs.extend(rx.try_iter());
+                let mut newest: Vec<(std::path::PathBuf, ProjectState)> = Vec::new();
+                let mut flushes = Vec::new();
+                for job in jobs {
+                    match job {
+                        WriterJob::Write(root, state) => {
+                            newest.retain(|(r, _)| *r != root);
+                            newest.push((root, state));
+                        }
+                        WriterJob::Flush(done) => flushes.push(done),
+                    }
+                }
+                for (root, state) in &newest {
+                    save(root, state);
+                }
+                for done in flushes {
+                    let _ = done.send(());
+                }
+            }
+        });
+        std::sync::Mutex::new(tx)
+    })
+}
+
+/// Writes a project's state on a thread of its own, in the order it was asked for (`task-2279`).
+///
+/// Writing is three files flushed to the disk, 3.7 ms on the window's thread every time a panel was shown
+/// or put away. The state is worked out on the window's thread, which is what decides whether anything
+/// changed, and only the writing is moved. [`wait_for_the_writes`] is what closing the window calls.
+///
+/// @param root - the project folder
+/// @param state - what to write
+pub fn save_later(root: &Path, state: &ProjectState) {
+    let sent = writer().lock().ok().map(|tx| tx.send(WriterJob::Write(root.to_path_buf(), state.clone())));
+    if !matches!(sent, Some(Ok(()))) {
+        save(root, state);
+    }
+}
+
+/// Waits until every state given to [`save_later`] is on the disk, for up to two seconds.
+pub fn wait_for_the_writes() {
+    let (done, finished) = std::sync::mpsc::sync_channel(1);
+    let sent = writer().lock().ok().map(|tx| tx.send(WriterJob::Flush(done)));
+    if matches!(sent, Some(Ok(()))) {
+        let _ = finished.recv_timeout(std::time::Duration::from_secs(2));
+    }
+}
+
 /// Write what is open in `root` now.
 ///
 /// A failure is reported on the error output and otherwise ignored, for the reason the settings file
