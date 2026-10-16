@@ -6,6 +6,17 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- Modals fill the window and remember where they were, the interface size works, selection draws when zoomed (`task-2280`)
+- Every text box selects the run under a double click; tests follow the editor font to the Editor page (`task-2280`)
+- The double click interval is given to egui on the first frame; snapshots for the filled modals, the moved font settings and the labelled drop targets (`task-2280`)
+- The glass pictures at the design's interface size, with the Settings modal filling the window (`task-2280`)
+- Svg_icon compares a path command with eq_ignore_ascii_case, which clippy asks for (`task-2280`)
+- Run set cut to one sentence and one example so the MCP schema stays under its ceiling (`task-2280`)
+- Rustfmt over the files this ticket changed, which the release's format check asks for (`task-2280`)
+- The project state test waits for the shared writer; repo-plan says to run cargo fmt before committing (`task-2280`)
+
 ## 0.90.0 — 2026-10-16
 
 - Unluminous Glass, a theme whose surfaces bend the picture behind the window (`task-2281`)
