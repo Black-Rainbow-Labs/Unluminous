@@ -2757,20 +2757,18 @@ unluminous-cli run add serve npm run dev --env "PORT=3000; DEBUG=app:*"
 unluminous-cli run set <name> [--command <text>] [--directory <path>] [--env <pairs>] [--set-env <NAME=value>] [--unset-env <NAME>]
 ```
 
-Change a kept run configuration: its command, folder or environment, which are the Run Configurations window's fields. `--set-env` adds or changes one variable, `--unset-env` removes one, `--env` replaces them all.
+Change a run configuration's command, folder or environment variables.
 
 - `name` — The configuration, as `run list` gives it.
 
 - `--command <text>` — The new command line.
 - `--directory <path>` — The folder it runs in. Empty means the project itself.
-- `--env <pairs>` — NAME=value pairs separated by semicolons, replacing every variable.
-- `--set-env <NAME=value>` — Add this variable, or change its value.
-- `--unset-env <NAME>` — Remove this variable.
+- `--env <pairs>` — NAME=value pairs split by semicolons, replacing all of them.
+- `--set-env <NAME=value>` — Add or change one variable.
+- `--unset-env <NAME>` — Remove one variable.
 
 ```sh
 unluminous-cli run set "Dev server" --set-env PORT=4000
-unluminous-cli run set "Dev server" --unset-env DEBUG
-unluminous-cli run set build --directory crates/unluminous-app
 ```
 
 ### run remove

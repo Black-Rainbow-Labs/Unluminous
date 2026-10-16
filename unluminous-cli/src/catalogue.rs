@@ -2499,19 +2499,17 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "run",
         verb: "set",
-        summary: "Change a kept run configuration: its command, folder or environment, which are the Run Configurations window's fields. `--set-env` adds or changes one variable, `--unset-env` removes one, `--env` replaces them all.",
+        summary: "Change a run configuration's command, folder or environment variables.",
         arguments: &[argument("name", true, "The configuration, as `run list` gives it.")],
         flags: &[
             option("command", "text", "The new command line."),
             option("directory", "path", "The folder it runs in. Empty means the project itself."),
-            option("env", "pairs", "NAME=value pairs separated by semicolons, replacing every variable."),
-            option("set-env", "NAME=value", "Add this variable, or change its value."),
-            option("unset-env", "NAME", "Remove this variable."),
+            option("env", "pairs", "NAME=value pairs split by semicolons, replacing all of them."),
+            option("set-env", "NAME=value", "Add or change one variable."),
+            option("unset-env", "NAME", "Remove one variable."),
         ],
         examples: &[
             "unluminous-cli run set \"Dev server\" --set-env PORT=4000",
-            "unluminous-cli run set \"Dev server\" --unset-env DEBUG",
-            "unluminous-cli run set build --directory crates/unluminous-app",
         ],
         local: false,
     },

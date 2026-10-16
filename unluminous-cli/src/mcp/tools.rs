@@ -1699,6 +1699,8 @@ mod tests {
         //            `plugins pane`, each cut to one sentence first. The ceiling moves to 30,000.
         //   29,824   `task-2276` adding the `report` area's eight verbs, the Report an Issue modal, each
         //            summary cut to a few words first. Under the ceiling, with 176 tokens to spare.
+        //            `task-2280` added `run set` and `pane place`, each cut to one short sentence and one
+        //            example, which keeps it under.
         //
         // **The number being hard to hold is itself `task-1804` §4.2's finding**, and what
         // changed with it is that there is now an answer: `mcp serve --areas` equips an agent with
