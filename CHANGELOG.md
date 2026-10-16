@@ -6,7 +6,7 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.93.0 — 2026-10-16
 
 - The bars sit on the window's glass with no panel, panes use rux's capped Chrome::panel, and rux draws glass edges at the display's resolution and cuts glass to its clips (`task-2281`)
 - The glass pictures with the bars on the window's glass and the edges at full resolution (`task-2281`)
@@ -14,6 +14,7 @@ bumps the release script makes are left out, because they are the boundaries rat
 - No dark ground in the editing area under glass, a popup fading in is glazed as it fades, and the board's sideways bar can be dragged (`task-2281`)
 - Under glass, pane headers, the tiles and the file tabs sit inside their panel, and the open file's tab is glass (`task-2281`)
 - The glass pictures with no editor ground, the glass file tab and the lower pane headers (`task-2281`)
+- The changelog written from the history (`task-2281`)
 
 ## 0.92.0 — 2026-10-16
 
