@@ -22,10 +22,13 @@ pub fn system_interval() -> f64 {
     0.5
 }
 
-/// Give egui the system's interval, kept between a fifth of a second and a second and a half so a setting
-/// out of that range cannot make every click a double click or none of them one.
-pub fn follow_the_system(ctx: &egui::Context) {
-    let interval = system_interval().clamp(0.2, 1.5);
+/// egui's own interval, which a window a test builds keeps so a test means the same thing on every machine.
+pub const EGUI_INTERVAL: f64 = 0.3;
+
+/// Give egui `interval`, kept between a fifth of a second and a second and a half so a setting out of that
+/// range cannot make every click a double click or none of them one.
+pub fn use_interval(ctx: &egui::Context, interval: f64) {
+    let interval = interval.clamp(0.2, 1.5);
     ctx.options_mut(|options| options.input_options.max_double_click_delay = interval);
 }
 

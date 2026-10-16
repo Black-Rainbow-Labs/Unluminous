@@ -977,6 +977,9 @@ pub struct UnluminousApp {
     /// Whether `modals.conf` has been read into this window yet, and the count of modal changes it was
     /// last written at. `task-2280`; see `components::modal::kept_text`.
     modal_places_read: bool,
+    /// The double click interval to give egui on the first frame: the system's, or egui's own in a test
+    /// window, and `None` once it has been given. `task-2280`; see `services::double_click`.
+    double_click_interval: Option<f64>,
     modal_places_written: u64,
     /// What Windows last said about this window's foreground and keyboard, when it has an answer.
     ///
@@ -1584,6 +1587,7 @@ impl UnluminousApp {
             store: None,
             unsaved_settings: false,
             modal_places_read: false,
+            double_click_interval: Some(crate::services::double_click::system_interval()),
             modal_places_written: 0,
             os_focus: None,
             page_is_covered: false,
@@ -1757,10 +1761,8 @@ impl UnluminousApp {
         // it. A test about the interface's size sets one, the way a person does.
         self.settings.ui_font_size = settings::DESIGN_UI_FONT_SIZE;
         // And egui's own double click interval rather than this machine's mouse setting, so a test that
-        // clicks once and then twice means the same thing on every machine.
-        if let Some(context) = &self.context {
-            context.options_mut(|options| options.input_options.max_double_click_delay = 0.3);
-        }
+        // clicks once and then twice means the same thing on every machine. Given to egui on the first frame.
+        self.double_click_interval = Some(crate::services::double_click::EGUI_INTERVAL);
     }
 
     /// Set the window's look up before the first frame is drawn.
@@ -1776,8 +1778,6 @@ impl UnluminousApp {
         theme::activate(theme::when_nothing_is_chosen());
         crate::services::terminal_colours::follow_the_theme();
         theme::apply(ctx);
-        // A double click at the pace the system's mouse settings accept. `task-2280`.
-        crate::services::double_click::follow_the_system(ctx);
         self.themed = true;
         // What the plugins contribute, read from their manifests. Here rather than only in
         // `load_settings`, because a window a test builds has no settings folder and still has to draw

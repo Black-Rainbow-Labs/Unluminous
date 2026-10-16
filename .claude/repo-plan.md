@@ -57,7 +57,10 @@ refused the connection, which also fails `every_catalogue_command_is_driven_both
 `a_canvas_with_one_node_of_each_kind` and `the_chat_pane_with_nothing_said_in_it` (snapshot
 differences), `the_file_menu_holds_new_window_open_save_and_recent_projects` and
 `the_mcp_page_holds_the_install_buttons_the_server_and_the_configuration_to_copy`. Run the failing
-binary again on its own before looking for a cause in your change.
+binary again on its own before looking for a cause in your change. `task-2280` adds
+`what_was_open_in_a_project_comes_back_when_it_is_opened_again` (*"the project's state should be beside the
+project"*), which failed three times and passed twice on identical code while another worktree's suite was
+running beside it.
 
 ## Window test binaries from every checkout take turns
 

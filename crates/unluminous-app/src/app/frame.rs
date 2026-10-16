@@ -77,6 +77,10 @@ impl UnluminousApp {
         self.begin_the_frame(ui);
         // Usage statistics: two comparisons on a frame where nothing is due. `task-2271`.
         self.keep_the_telemetry(ui.ctx());
+        // A double click at the pace the system's mouse settings accept, given once. `task-2280`.
+        if let Some(interval) = self.double_click_interval.take() {
+            crate::services::double_click::use_interval(ui.ctx(), interval);
+        }
         // Where every modal was left, read back once and written when a drag ends. `task-2280`.
         self.keep_the_modal_places(ui.ctx());
         self.take_what_the_threads_answered(ui);
