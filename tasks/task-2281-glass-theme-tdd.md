@@ -238,6 +238,39 @@ through Windows' move loop (`drag.ps1` sends `WM_ENTERSIZEMOVE`, sixty `SetWindo
   rux keeps a canvas not drawn for twenty seconds. The first opening takes one frame, and a second opening
   draws from what was kept.
 
+## Fourth pass: the edges at the display's resolution, panels with a capped bend, and clipped glass
+
+Jason's review of 0.92.0: white outlines still showed on his machine though not in the screenshots, edges
+looked pixelated on glass and non glass buttons alike, the picture under the glass was pixelated, scrolled
+Agent-Tasks cards escaped the top of their lane, and the title bar and status bar should sit at the rail's
+level with no panel.
+
+**Why the screenshots missed it.** They were taken over a dark picture at about one pixel a point. Over
+`desert-1.jpg` at 1.5 pixels a point, 0.92.0's title bar chips measured +20.6 all round and +18.7 along the
+top. Every glass check is now made that way.
+
+**The rings and the pixelated edges had one main cause:** the third pass's speed work rasterised a
+surface's tint and inner glow at half a pixel a point and every glass canvas at one pixel a point at most.
+Those are cut at the outline, so the outline smeared a pixel or two outward. Only a run of nothing but outer
+shadows is now drawn below the display's resolution, at two pixels to its smallest deviation. Two smaller
+causes went too: the glass elevations' inner white glows lit every edge, and the glass faded only outside
+its outline while the tint is antialiased across it, so the outline pixel had a full share of picture under
+a part tint. The feather is now centred on the outline. After all three: +0.9 all round and +2.8 along the
+top.
+
+**The pixelated picture** was the same canvas, and also the lens: a card's bevel and strength on a pane half
+the window wide magnify the picture inside it. `Chrome::panel` caps both (`Glass::PANEL_BEVEL` 12,
+`PANEL_STRENGTH` 8), and `paint_a_panel` uses it.
+
+**The escaping cards.** `rux::render::glazed` cuts each glass mesh to the clips open round it
+(`glass::clip_to_rect`, Sutherland and Hodgman on the mesh's triangles).
+
+**The bars** lost their panels and sit on the window's glass like the rail.
+
+**Speed** stays where the third pass left it. The frosted backdrop for modals, the kept canvases and the
+drag that draws no frames are unchanged. Settings opens in one frame, 34 to 38 ms the first time and 6 ms
+after, and a step of a drag through the move loop costs under a millisecond.
+
 ## What it costs
 
 The budget is that a still frame costs nothing new, and a frame that moves glass costs less than a

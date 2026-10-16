@@ -451,11 +451,10 @@ impl UnluminousApp {
             dock::regions_with(panes, &self.panes.dock, showing, &self.panes, self.editor_visible);
         self.panes_area = panes;
         self.panel_rects = placed;
-        // **Under glass every pane and both bars are panels of glass floating on the window** (`task-2281`),
-        // drawn the way a card is, here, before any of them draws, so each is drawn on its own panel.
+        // **Under glass every pane is a panel of glass floating on the window** (`task-2281`), drawn the way a
+        // card is, here, before any of them draws, so each is drawn on its own panel. The title bar, the
+        // status bar and the rail sit on the window's own glass with no panel of their own.
         if theme::is_glass() {
-            theme::glass::paint_a_panel(ui, "title-bar", title_rect);
-            theme::glass::paint_a_panel(ui, "status-bar", status_rect);
             for (index, room) in placed.panels.iter().enumerate() {
                 if room.width() > 0.0 && room.height() > 0.0 {
                     theme::glass::paint_a_panel(ui, ("pane", index), *room);

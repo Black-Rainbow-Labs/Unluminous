@@ -1999,15 +1999,21 @@ tint is painted over it. The rules:
 - **The grounds are a light smoke.** `theme::faded` multiplies the opacity setting by `theme::veil()`,
   which is `GLASS_VEIL` under glass and one otherwise, and the editing area is painted a second time so
   code over a bright picture stays readable.
-- **The window is one sheet of glass, and every pane, the editing area and both bars are glass panels on
-  it drawn the way a card is** (second and third passes, after Apple's Liquid Glass sidebars).
-  `theme::glass::paint_the_window` bends the whole picture under the window, and `paint_a_panel` draws each
-  room, inset by `PANE_GAP`, as a `rux` card surface. Under glass their own grounds are clear
+- **The window is one sheet of glass, and every pane and the editing area is a glass panel on it**
+  (second, third and fourth passes, after Apple's Liquid Glass sidebars). `theme::glass::paint_the_window`
+  bends the whole picture under the window, and `paint_a_panel` draws each room, inset by `PANE_GAP`, with
+  `rux`'s `Chrome::panel`: a card's surface with its bend capped, because a card's lens strength on a pane
+  half the window wide magnified the picture until its pixels showed. The title bar, the status bar and the
+  rail sit on the window's glass with no panel of their own. Under glass the panes' own grounds are clear
   (`theme::pane_ground`, `Look::ground`), the divider is a translucent dark seam, a splitter is drawn only
   while pointed at, a groove has no lit half, and popups have no outline.
-- **No light line along any edge.** `tools/glass-rims.py` reads a screenshot and fails while
-  a round control's rim is brighter than both sides; run it after changing anything about glass. The two
-  causes it found are in `rux/docs/glass.md`.
+- **No light line along any edge, and nothing with an edge drawn below the display's resolution.**
+  `tools/glass-rims.py` reads a screenshot and fails while a round control's rim is brighter than both sides.
+  Run it after changing anything about glass, **on a bright picture (`desert-1.jpg`) with the interface at
+  18.75 points**, which is 1.5 pixels a point: 0.92.0 passed it on a dark picture at one pixel a point and
+  shipped a ring round every chip. The causes it found are in `rux/docs/glass.md`.
+- **Glass is cut to the clips round it.** Glass is an egui mesh beside the rasterised decoration, so a list's
+  clip reached the decoration and not the glass: scrolled Agent-Tasks cards drew above their lane.
 - **A drag of the window draws no frames.** Inside Windows' move loop `services::windows_resize` hands winit a
   move as `SWP_NOMOVE`, so egui is not asked for a frame per step, and hands on the final place when the loop
   ends.

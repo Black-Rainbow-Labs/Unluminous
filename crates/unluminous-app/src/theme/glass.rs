@@ -114,18 +114,20 @@ pub fn paint_the_window(painter: &egui::Painter, full: egui::Rect, radius: f32) 
     paint_glass(painter, full, radius)
 }
 
-/// A pane or a bar as a panel of glass floating on the window (`task-2281`), drawn the way a card is.
+/// A pane as a panel of glass floating on the window (`task-2281`), drawn the way a card is.
 ///
 /// Apple's sidebar is "a pane of glass that floats above the window's content", and Jason asked for the
-/// folder pane, the title bar, the status bar and the Agent-Chat pane to be glass like a card. So the
-/// panel is a `rux` card surface: the card's tint over the picture bent through it, the card's shadow
-/// and its soft light from the top, with no line along any edge. It stands in from `room` by
+/// folder pane and the Agent-Chat pane to be glass like a card. The title bar, the status bar and the rail
+/// have no panel: they sit on the window's own glass, which is what he chose after seeing both. So the
+/// panel is `rux`'s `Chrome::panel`: the card's tint over the picture bent through it and the card's
+/// shadow, with no line along any edge, and the bend capped so a pane half the window wide does not
+/// magnify the picture until its pixels show. It stands in from `room` by
 /// [`PANE_GAP`] on every side. A card or a button on the panel is glass on glass: its own tint and
 /// shadow make it read as a second, nearer sheet.
 ///
 /// @param ui - the window's `Ui`, before anything in the panel is drawn
 /// @param salt - which panel, for its `rux` canvas
-/// @param room - the rectangle the pane or bar was given
+/// @param room - the rectangle the pane was given
 pub fn paint_a_panel(
     ui: &mut egui::Ui,
     salt: impl std::hash::Hash + std::fmt::Debug,
@@ -137,12 +139,7 @@ pub fn paint_a_panel(
     let panel = room.shrink(PANE_GAP);
     crate::components::chrome_kit::layer(ui, ("glass-panel", salt), panel, 48.0, |rux| {
         let chat = rux.theme().chat;
-        rux.chrome.surface(
-            panel,
-            PANE_RADIUS,
-            rux::Fill::gradient(chat.card, panel),
-            chat.raised(),
-        );
+        rux.chrome.panel(panel, PANE_RADIUS, rux::Fill::gradient(chat.card, panel), chat.raised());
     });
 }
 

@@ -84,7 +84,7 @@ inillucent-driver = { version = "2.0.2", features = ["embed"] }
 # second copy: the Agent-Chat model selector is its `Select` (`task-2096`). It is built on the same egui
 # 0.36 and the same `vello_cpu` with the same features, so it adds no second renderer. Pinned to a commit
 # for the reason `inillucent-driver` is.
-rux = { git = "https://github.com/Black-Rainbow-Labs/black-rainbow-labs-rux.git", rev = "6622454db50dfad0324c6aeefd195a32fa7f13ea" }
+rux = { git = "https://github.com/Black-Rainbow-Labs/black-rainbow-labs-rux.git", rev = "6c4143e0c99623ad86e335e53ae3e78015c988ad" }
 url = "2.5"
 percent-encoding = "2.3"
 mime_guess = "2.0"
