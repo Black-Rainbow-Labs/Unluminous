@@ -297,6 +297,8 @@ pub struct Picture {
     /// Its size in pixels.
     size: egui::Vec2,
     strips: Vec<Strip>,
+    /// The same picture shrunk and blurred, which a modal is drawn over under glass (`task-2281`).
+    frosted: egui::TextureHandle,
 }
 
 /// One strip of a [`Picture`]: the rows it is drawn for, and the rows its texture holds, which are one
@@ -321,6 +323,12 @@ impl Picture {
     /// How many strips it was uploaded as.
     pub fn strips(&self) -> usize {
         self.strips.len()
+    }
+
+    /// The frosted copy of the picture: shrunk an eighth and blurred, one small texture. See
+    /// `backdrop_blur::frosted`.
+    pub fn frosted(&self) -> egui::TextureId {
+        self.frosted.id()
     }
 
     /// The strips as the bands glass bends (`task-2281`): each strip's texture, the rows it is drawn for
@@ -535,7 +543,13 @@ impl Wallpaper {
         }
         if let Some((image, _, strips)) = self.arriving.take() {
             let size = egui::vec2(image.size[0] as f32, image.size[1] as f32);
-            self.picture = Some(Picture { size, strips });
+            // A small texture, uploaded in one piece: well under the two megabytes the driver lets go of.
+            let frosted = ctx.load_texture(
+                format!("unluminous-background-{}-frosted", self.name),
+                crate::services::backdrop_blur::frosted(&image),
+                egui::TextureOptions::LINEAR,
+            );
+            self.picture = Some(Picture { size, strips, frosted });
             note_a_change(ctx);
         }
     }

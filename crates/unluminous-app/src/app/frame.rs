@@ -2100,6 +2100,7 @@ impl UnluminousApp {
             &self.settings.background_image,
         ) else {
             rux::render::set_backdrop(&ctx, rux::render::Plane::Page, None);
+            theme::glass::set_frosted(&ctx, None);
             return;
         };
         let taken = crate::services::backgrounds::cover(picture.size_vec2(), full.size());
@@ -2114,6 +2115,10 @@ impl UnluminousApp {
             false => None,
         };
         rux::render::set_backdrop(&ctx, rux::render::Plane::Page, backdrop);
+        theme::glass::set_frosted(
+            &ctx,
+            crate::theme::is_glass().then(|| (picture.frosted(), taken)),
+        );
     }
 
     /// The notices, over every pane and under a modal.

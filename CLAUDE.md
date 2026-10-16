@@ -1977,7 +1977,7 @@ light theme. Some tests fail in that run because they assert a dark colour; the 
 `tasks/task-2281-glass-theme-tdd.md` is the design, after the Claude Design canvas "Unluminous", page
 "Agent-Chat 2". `unluminous/glass` is a dark theme whose raised surfaces are glass: the background picture
 behind each one is bent the way a lens bends it, with a faint colour split at the edge, and the design's
-tint and lit edges are painted over it. Five rules:
+tint is painted over it. The rules:
 
 - **The bending is `rux`'s.** `theme::rux_theme` answers `Theme::glazed` under glass, and `rux::Chrome`
   makes every raised translucent surface glass, so the chat, the board, the Settings window, every modal,
@@ -1985,10 +1985,13 @@ tint and lit edges are painted over it. Five rules:
   `rux/docs/glass.md` says how it is drawn: an `egui` mesh per surface whose texture coordinates are where
   the bent sample lands, so it works in the screenshot tests too.
 - **Glass bends a picture it is handed, never the frame.** `paint_the_background` hands `rux` the
-  wallpaper's strips every frame, and `modal::show` hands it the modal's blurred photograph of the window,
-  which is what a dialog's glass bends. With no picture chosen there is nothing to bend and glass is tint
-  only, so choosing the theme while no picture is chosen chooses `glass-spheres.jpg`
+  wallpaper's strips every frame, and `Picture::frosted` (the picture shrunk and blurred once, when it is
+  chosen) through `theme::glass::set_frosted`. With no picture chosen there is nothing to bend and glass is
+  tint only, so choosing the theme while no picture is chosen chooses `glass-spheres.jpg`
   (`give_glass_something_to_bend`), which `tools/glass-spheres.py` draws.
+- **Under glass a modal is drawn over the frosted picture, not a photograph of the window** (third pass).
+  The photograph cost a frame with the modal invisible, a screenshot read back (about 60 ms) and a second
+  appearance once it arrived, which was the modal "chunking" open. Every other theme still photographs.
 - **What egui frames itself is glazed after the frame is drawn.** A menu, a dropdown, a context menu and a
   tooltip are filled in `theme::glass::popup_fill`, and `theme::glass::glaze_the_popups` puts the bent
   picture under every rectangle of that colour. A canvas node's card is `theme::glass::paint_glass` at
@@ -1996,15 +1999,24 @@ tint and lit edges are painted over it. Five rules:
 - **The grounds are a light smoke.** `theme::faded` multiplies the opacity setting by `theme::veil()`,
   which is `GLASS_VEIL` under glass and one otherwise, and the editing area is painted a second time so
   code over a bright picture stays readable.
-- **The window is one sheet of glass and every docked panel floats on it as a frosted pane** (second
-  pass of `task-2281`, after Apple's Liquid Glass sidebars). `theme::glass::paint_the_window` bends the
-  whole picture under the window, and `paint_a_pane` draws each panel's room, inset by `PANE_GAP`, as glass
-  over `Picture::frosted`, a shrunk and blurred copy of the wallpaper. A card in a pane bends the sharp
-  picture, so it reads as a clearer lens laid on frosted glass. Under glass a pane's, a bar's and the rail's
-  own grounds are clear (`theme::pane_ground`, `Look::ground`), and the editing area keeps its smoke.
+- **The window is one sheet of glass, and every pane, the editing area and both bars are glass panels on
+  it drawn the way a card is** (second and third passes, after Apple's Liquid Glass sidebars).
+  `theme::glass::paint_the_window` bends the whole picture under the window, and `paint_a_panel` draws each
+  room, inset by `PANE_GAP`, as a `rux` card surface. Under glass their own grounds are clear
+  (`theme::pane_ground`, `Look::ground`), the divider is a translucent dark seam, a splitter is drawn only
+  while pointed at, a groove has no lit half, and popups have no outline.
+- **No light line along any edge.** `tools/glass-rims.py` reads a screenshot and fails while
+  a round control's rim is brighter than both sides; run it after changing anything about glass. The two
+  causes it found are in `rux/docs/glass.md`.
+- **A drag of the window draws no frames.** Inside Windows' move loop `services::windows_resize` hands winit a
+  move as `SWP_NOMOVE`, so egui is not asked for a frame per step, and hands on the final place when the loop
+  ends.
 - **It costs about 0.4 ms of egui's time a frame** while the chat is scrolled, against Unluminous Dark,
   measured with `UNLUMINOUS_FRAME_TRACE`. A still frame builds no glass: `rux` keeps each surface's shapes
-  until the surface, the picture or the layer's transform moves.
+  until the surface, the picture or the layer's transform moves. The frame trace's `rux-raster`,
+  `rux-raster-mpx` and `rux-glass` say what `rux` rasterised and built, and `modal-opened` and
+  `modal-complete` mark a modal's opening. `tools/glass-bench/` is the speed bench
+  (`bench.mjs`, `drag.ps1`); the record of the climb is in `_agent_output/task-2281-glass/hillclimb/`.
 
 ### `task-1949` redrew ten marks, and the reason none of them could be checked before is a rule now
 

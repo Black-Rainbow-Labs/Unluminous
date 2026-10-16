@@ -70,6 +70,32 @@ fn paint_glass_over(
     painted
 }
 
+fn frosted_slot() -> egui::Id {
+    egui::Id::new("unluminous-frosted-picture")
+}
+
+/// Say where the frosted copy of the picture behind the window is this frame, or that there is none.
+///
+/// @param ctx - the window's context
+/// @param frosted - the frosted picture's texture and the part of it the window shows
+pub fn set_frosted(ctx: &egui::Context, frosted: Option<(egui::TextureId, egui::Rect)>) {
+    ctx.data_mut(|data| match frosted {
+        Some(frosted) => {
+            data.insert_temp(frosted_slot(), frosted);
+        }
+        None => data.remove::<(egui::TextureId, egui::Rect)>(frosted_slot()),
+    });
+}
+
+/// The frosted copy of the picture behind the window and the part of it the window shows, under glass
+/// with a picture chosen. A modal is drawn over it rather than over a photograph of the window.
+pub fn frosted(ctx: &egui::Context) -> Option<(egui::TextureId, egui::Rect)> {
+    if !super::is_glass() {
+        return None;
+    }
+    ctx.data(|data| data.get_temp::<(egui::TextureId, egui::Rect)>(frosted_slot()))
+}
+
 /// How far a panel's glass stands in from the room it is given, on every side: so two panels side by
 /// side have a gap of twice this between them, which is the window's glass showing.
 pub const PANE_GAP: f32 = 4.0;

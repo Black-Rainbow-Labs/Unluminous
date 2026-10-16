@@ -203,6 +203,41 @@ content area itself is not glass. Unluminous follows that:
   paint no ground of their own (`theme::pane_ground`, and `Look::ground` for a plugin), because a ground
   would be a second smoke over the glass. The editing area keeps its smoke so code stays readable.
 
+## Third pass: no white edges, card glass panels, and speed
+
+Jason's review of the second pass: the white edges were still there, the folder pane, the title bar, the
+status bar and Agent-Chat should be glass like a card rather than a darker background, a drag of the window
+jumped, and a modal opened in slow chunks. He asked for the white edges to be detected before they were
+fixed, and for a hill climb on speed.
+
+**The white edges.** `tools/glass-rims.py` finds each round control in a screenshot and measures its rim
+against the glass inside and the picture outside. On his screenshot the title bar chips measured 29 to 40
+brightness levels above both sides, and 44 along the top. Two causes, both in `rux`: the cover under the
+colour passes was an `egui` rectangle whose feather sits on the edge while the passes fade outside it, so the
+picture was added over a cover already partly gone; and the glass elevations had a hairline rim and a lit
+line along the top. The cover is now the passes' own mesh and the elevations have only a soft light from the
+top. After: +2 all round and +4 along the top. Popups lost egui's 14% white outline, grooves their lit half,
+and the dividers between panes became a translucent dark seam.
+
+**The panels.** The frosted panes of the second pass are gone. Each pane, the editing area and both bars is
+a `rux` card surface, `theme::glass::paint_a_panel`, so its glass, tint and shadow are a card's.
+
+**Speed**, measured by `tools/glass-bench/bench.mjs` (the record is
+`_agent_output/task-2281-glass/hillclimb/`): an idle window, the window moved from the command line, a drag
+through Windows' move loop (`drag.ps1` sends `WM_ENTERSIZEMOVE`, sixty `SetWindowPos` steps and
+`WM_EXITSIZEMOVE`, without the pointer or the focus), and three openings of the Settings window.
+
+- **A drag drew a frame for every step** (62 for 60 steps), because winit sends `Moved` for each
+  `WM_WINDOWPOSCHANGED` and egui-winit repaints on every `Moved`, inside the move loop. The frame itself cost
+  4 ms in both themes. Inside the loop `services::windows_resize` now hands winit a pure move as
+  `SWP_NOMOVE` and hands on the final place when the loop ends: 6 frames, the heartbeat's.
+- **A modal opened in four frames over 166 ms**: drawn invisible for a photograph while rux rasterised 6.6
+  million pixels (104 ms), the photograph read back (about 60 ms), shown with no glass, then shown again with
+  the photograph. Under glass a modal is now drawn over `Picture::frosted`, the picture shrunk and blurred
+  once; a canvas in a glass layer is rasterised at no more than one pixel a point and 250,000 pixels; and
+  rux keeps a canvas not drawn for twenty seconds. The first opening takes one frame, and a second opening
+  draws from what was kept.
+
 ## What it costs
 
 The budget is that a still frame costs nothing new, and a frame that moves glass costs less than a

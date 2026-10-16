@@ -87,6 +87,43 @@ fn shrink(image: &egui::ColorImage, factor: usize) -> egui::ColorImage {
     }
 }
 
+/// The picture behind the window, frosted: what a modal is drawn over under the glass theme (`task-2281`).
+///
+/// Shrunk by [`FROST_SHRINK`] and blurred three times at [`FROST_RADIUS`], which on a 1920 by 1088
+/// picture is 240 by 136 pixels, 130 KB, uploaded once in one piece when the picture is. Under glass
+/// nearly everything behind a modal is this picture seen through glass, so a frosted copy of it stands
+/// in for [`blurred`]'s photograph of the window, and the modal needs no photograph: no screenshot read
+/// back, no frame drawn with the modal invisible, and no second frame when the photograph arrives.
+///
+/// @param image - the picture, in pixels, with premultiplied colours
+pub fn frosted(image: &egui::ColorImage) -> egui::ColorImage {
+    let small = shrink(image, FROST_SHRINK);
+    let mut pixels: Vec<[f32; 4]> = small
+        .pixels
+        .iter()
+        .map(|p| [p.r() as f32, p.g() as f32, p.b() as f32, p.a() as f32])
+        .collect();
+    let [width, height] = small.size;
+    for _ in 0..3 {
+        box_blur(&mut pixels, width, height, FROST_RADIUS);
+    }
+    let out = pixels
+        .iter()
+        .map(|p| {
+            let [r, g, b, a] = p.map(|v| v.round().clamp(0.0, 255.0) as u8);
+            egui::Color32::from_rgba_premultiplied(r, g, b, a)
+        })
+        .collect();
+    egui::ColorImage { size: [width, height], source_size: small.source_size, pixels: out }
+}
+
+/// How many pixels of the picture become one pixel of the frosted copy, along each side.
+pub const FROST_SHRINK: usize = 8;
+
+/// The radius of each of the frosted copy's three box blurs, in its own pixels: about twenty four pixels
+/// of the picture, which is a frost and not a smear.
+pub const FROST_RADIUS: usize = 3;
+
 /// One box blur across and one down, each the mean of the `2 * radius + 1` pixels around a pixel, with
 /// the edge pixel repeated past the edge.
 fn box_blur(pixels: &mut [[f32; 4]], width: usize, height: usize, radius: usize) {
@@ -158,6 +195,14 @@ mod tests {
         assert!(row[9] > 0 && row[9] < 255, "the edge was not softened: {row:?}");
         assert!(row[10] > 0 && row[10] < 255, "the edge was not softened: {row:?}");
         assert!(row.windows(2).all(|pair| pair[0] >= pair[1]), "{row:?}");
+    }
+
+    #[test]
+    fn the_frosted_copy_is_an_eighth_of_the_size_and_keeps_a_flat_colour() {
+        let grey = Color32::from_rgba_premultiplied(40, 50, 60, 255);
+        let out = frosted(&picture(160, 80, |_, _| grey));
+        assert_eq!(out.size, [20, 10]);
+        assert!(out.pixels.iter().all(|p| *p == grey));
     }
 
     #[test]

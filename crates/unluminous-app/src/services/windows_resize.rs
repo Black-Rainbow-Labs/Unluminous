@@ -169,13 +169,23 @@ impl Unlatch {
 mod platform {
     use super::{hit_for, pixels, Edge};
     use eframe::wgpu::rwh::{HasWindowHandle, RawWindowHandle};
+    use std::sync::atomic::{AtomicBool, Ordering};
     use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
     use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
     use windows_sys::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GetWindowRect, IsZoomed, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCLIENT, HTLEFT, HTRIGHT,
-        HTTOP, HTTOPLEFT, HTTOPRIGHT, WM_NCDESTROY, WM_NCHITTEST,
+        HTTOP, HTTOPLEFT, HTTOPRIGHT, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+        WINDOWPOS, WM_ENTERSIZEMOVE, WM_EXITSIZEMOVE, WM_NCDESTROY, WM_NCHITTEST,
+        WM_WINDOWPOSCHANGED,
     };
+
+    /// Whether the window is inside Windows' move or size loop, between `WM_ENTERSIZEMOVE` and
+    /// `WM_EXITSIZEMOVE`.
+    static IN_THE_LOOP: AtomicBool = AtomicBool::new(false);
+    /// Whether a move inside the loop was kept from `winit`, so the window's final place is handed on
+    /// once the loop ends.
+    static HELD_A_MOVE: AtomicBool = AtomicBool::new(false);
 
     /// The number the subclass is registered under. Any value, as long as it is this one each time.
     const SUBCLASS: usize = 0x2063;
@@ -214,12 +224,77 @@ mod platform {
                     None => answer,
                 }
             }
+            WM_ENTERSIZEMOVE => {
+                IN_THE_LOOP.store(true, Ordering::Relaxed);
+                unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
+            }
+            WM_WINDOWPOSCHANGED if IN_THE_LOOP.load(Ordering::Relaxed) => unsafe {
+                moved_inside_the_loop(hwnd, wparam, lparam)
+            },
+            WM_EXITSIZEMOVE => {
+                let answer = unsafe { DefSubclassProc(hwnd, message, wparam, lparam) };
+                IN_THE_LOOP.store(false, Ordering::Relaxed);
+                if HELD_A_MOVE.swap(false, Ordering::Relaxed) {
+                    unsafe { hand_on_where_the_window_is(hwnd) };
+                }
+                answer
+            }
             WM_NCDESTROY => {
                 unsafe { RemoveWindowSubclass(hwnd, Some(procedure), SUBCLASS) };
                 unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
             }
             _ => unsafe { DefSubclassProc(hwnd, message, wparam, lparam) },
         }
+    }
+
+    /// A move of the window inside Windows' move loop, which is a drag by the title bar (`task-2281`).
+    ///
+    /// `winit` turns every `WM_WINDOWPOSCHANGED` that moves the window into `Moved`, and `egui-winit` asks for a
+    /// repaint on every `Moved`. So a drag drew one whole frame for every step of the pointer, inside the move
+    /// loop, which then waited for each frame to be presented before it moved the window again: the drag
+    /// went at the frame rate and jumped whenever a frame took longer than one refresh. Nothing in the window
+    /// changes when it moves, because the picture behind it moves with it. So a move that does not also
+    /// change the size is handed to `winit` marked `SWP_NOMOVE`, and `winit` sends nothing; the operating
+    /// system moves the picture already on the screen. A resize still goes through, because a resize does
+    /// change what is drawn.
+    unsafe fn moved_inside_the_loop(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+        let position = lparam as *const WINDOWPOS;
+        if position.is_null() {
+            return unsafe { DefSubclassProc(hwnd, WM_WINDOWPOSCHANGED, wparam, lparam) };
+        }
+        // SAFETY: `WM_WINDOWPOSCHANGED` carries a pointer to a `WINDOWPOS` that lives for the call.
+        let mut copy = unsafe { *position };
+        let moves = copy.flags & SWP_NOMOVE == 0;
+        let resizes = copy.flags & SWP_NOSIZE == 0;
+        if !moves || resizes {
+            return unsafe { DefSubclassProc(hwnd, WM_WINDOWPOSCHANGED, wparam, lparam) };
+        }
+        HELD_A_MOVE.store(true, Ordering::Relaxed);
+        copy.flags |= SWP_NOMOVE;
+        unsafe {
+            DefSubclassProc(hwnd, WM_WINDOWPOSCHANGED, wparam, &copy as *const WINDOWPOS as LPARAM)
+        }
+    }
+
+    /// Hand `winit` the window's place once a drag has ended, as the one `WM_WINDOWPOSCHANGED` it was kept
+    /// from, so what remembers where the window is (`UnluminousApp::note_where_the_window_is`) sees it.
+    unsafe fn hand_on_where_the_window_is(hwnd: HWND) {
+        let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        if unsafe { GetWindowRect(hwnd, &mut rect) } == 0 {
+            return;
+        }
+        let position = WINDOWPOS {
+            hwnd,
+            hwndInsertAfter: std::ptr::null_mut(),
+            x: rect.left,
+            y: rect.top,
+            cx: rect.right - rect.left,
+            cy: rect.bottom - rect.top,
+            flags: SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+        };
+        unsafe {
+            DefSubclassProc(hwnd, WM_WINDOWPOSCHANGED, 0, &position as *const WINDOWPOS as LPARAM)
+        };
     }
 
     /// The edge a hit test's point is on. The point arrives in screen coordinates, two signed words.

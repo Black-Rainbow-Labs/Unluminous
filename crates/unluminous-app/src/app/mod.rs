@@ -2656,6 +2656,16 @@ impl eframe::App for UnluminousApp {
         if let Some(seconds) = _frame.info().cpu_usage {
             crate::services::frame_trace::value("egui-cpu", f64::from(seconds) * 1000.0);
         }
+        // What `rux` rasterised and built this frame, which is inside whichever phase drew it (`task-2281`).
+        let drawn = rux::render::cost::take();
+        if drawn.canvases > 0 || drawn.glasses > 0 {
+            crate::services::frame_trace::value("rux-raster", drawn.raster_ms);
+            crate::services::frame_trace::value(
+                "rux-raster-mpx",
+                drawn.pixels as f64 / 1_000_000.0,
+            );
+            crate::services::frame_trace::value("rux-glass", drawn.glass_ms);
+        }
         // The Rust heap's live bytes, in a build made with `diagnostic-allocations` (`task-2279`). A normal
         // build reads zero and writes nothing.
         let live = crate::services::allocation_trace::snapshot().live;

@@ -4983,7 +4983,7 @@ checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 [[package]]
 name = "rux"
 version = "0.1.0"
-source = "git+https://github.com/Black-Rainbow-Labs/black-rainbow-labs-rux.git?rev=23b4dc5382d319ac2595a791648539d417d33741#23b4dc5382d319ac2595a791648539d417d33741"
+source = "git+https://github.com/Black-Rainbow-Labs/black-rainbow-labs-rux.git?rev=6622454db50dfad0324c6aeefd195a32fa7f13ea#6622454db50dfad0324c6aeefd195a32fa7f13ea"
 dependencies = [
  "egui",
  "kurbo 0.11.3",

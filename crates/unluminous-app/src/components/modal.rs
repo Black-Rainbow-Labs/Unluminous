@@ -422,20 +422,24 @@ fn show_framed<R>(
     let laid_out = size / zoom;
     // The whole window, in the layer's own points, which is what the backdrop has to cover.
     let window = to_screen.inverse().mul_rect(ctx.content_rect());
-    let backdrop = blurred_backdrop(ctx, egui::Id::new(id));
-    // Glass in the dialog bends the photograph of the window behind it (`task-2281`), which is the
-    // design's frosted modal: the blur is already in the picture, and what bends is the window's own
-    // contents rather than the picture behind them.
-    if let Some(texture) = backdrop.texture.as_ref().filter(|_| crate::theme::is_glass()) {
+    note_the_opening(ctx, egui::Id::new(id));
+    // **Under glass the modal is drawn over the frosted picture, not a photograph** (`task-2281`): see
+    // `backdrop_blur::frosted`. The modal is complete on the frame it opens. Without a picture, and in every
+    // other theme, it is drawn over the blurred photograph of the window as before.
+    let backdrop = match crate::theme::glass::frosted(ctx) {
+        Some((texture, uv)) => Backdrop { image: Some((texture, uv)), hide: false },
+        None => blurred_backdrop(ctx, egui::Id::new(id)),
+    };
+    if backdrop.image.is_some() && !backdrop.hide {
+        note_complete(ctx, egui::Id::new(id));
+    }
+    // Glass in the dialog bends the picture under the modal (`task-2281`), which is the design's frosted
+    // modal: the blur is already in the picture.
+    if let Some((texture, uv)) = backdrop.image.filter(|_| crate::theme::is_glass()) {
         rux::render::set_backdrop(
             ctx,
             rux::render::Plane::Above,
-            Some(rux::render::Backdrop::single(
-                texture.id(),
-                ctx.content_rect(),
-                Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-                1.0,
-            )),
+            Some(rux::render::Backdrop::single(texture, ctx.content_rect(), uv, 1.0)),
         );
     }
 
@@ -472,11 +476,11 @@ fn show_framed<R>(
             // layer's points is larger than that, so the intersection left the edges of the window uncovered.
             let mut covering = ui.painter().clone();
             covering.set_clip_rect(window);
-            if let Some(texture) = &backdrop.texture {
+            if let Some((texture, uv)) = backdrop.image {
                 covering.image(
-                    texture.id(),
+                    texture,
                     window,
-                    Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                    uv,
                     Color32::WHITE, // any ground: a white tint draws the picture in its own colours
                 );
             }
@@ -543,11 +547,49 @@ fn show_framed<R>(
     (inner, should_close || escaped)
 }
 
-/// What a modal's backdrop draws on this frame: the blurred picture of the window once there is one, and
-/// whether this is the frame the picture is being taken in.
+/// What a modal's backdrop draws on this frame: a picture once there is one, as a texture and the part of it
+/// the window covers, and whether this is the frame the window is being photographed in.
 struct Backdrop {
-    texture: Option<egui::TextureHandle>,
+    image: Option<(egui::TextureId, Rect)>,
     hide: bool,
+}
+
+/// When a modal was last drawn and whether its opening has been noted complete, for the frame trace.
+#[derive(Clone, Copy)]
+struct Opening {
+    drawn: f64,
+    complete: bool,
+}
+
+fn opening_slot(modal: egui::Id) -> egui::Id {
+    egui::Id::new("unluminous-modal-opening").with(modal)
+}
+
+/// Mark `modal-opened` in the frame trace on the first frame of a modal's opening.
+fn note_the_opening(ctx: &egui::Context, modal: egui::Id) {
+    let now = ctx.input(|input| input.time);
+    let slot = opening_slot(modal);
+    let kept: Option<Opening> = ctx.data(|data| data.get_temp(slot));
+    let opening = match kept {
+        Some(kept) if now - kept.drawn <= GAP => Opening { drawn: now, ..kept },
+        _ => {
+            crate::services::frame_trace::mark("modal-opened");
+            Opening { drawn: now, complete: false }
+        }
+    };
+    ctx.data_mut(|data| data.insert_temp(slot, opening));
+}
+
+/// Mark `modal-complete` in the frame trace on the first frame a modal is drawn with its backdrop.
+fn note_complete(ctx: &egui::Context, modal: egui::Id) {
+    let slot = opening_slot(modal);
+    if let Some(mut opening) = ctx.data(|data| data.get_temp::<Opening>(slot)) {
+        if !opening.complete {
+            opening.complete = true;
+            crate::services::frame_trace::mark("modal-complete");
+            ctx.data_mut(|data| data.insert_temp(slot, opening));
+        }
+    }
 }
 
 /// What [`blurred_backdrop`] keeps between frames.
@@ -573,6 +615,8 @@ struct BlurState {
     /// When the picture was asked for, in egui's seconds; `None` once it has arrived or been given up on.
     asked: Option<f64>,
     texture: Option<egui::TextureHandle>,
+    /// Whether a frame has drawn the picture yet, so the frame trace can say when the modal was finished.
+    shown: bool,
 }
 
 /// How long a screenshot is waited for before the backdrop settles for the plain dark one. A test's window
@@ -606,7 +650,8 @@ fn blurred_backdrop(ctx: &egui::Context, modal: egui::Id) -> Backdrop {
             )));
             ctx.request_repaint();
             hide = true;
-            BlurState { key, drawn: now, asked: Some(now), texture: None }
+            crate::services::frame_trace::mark("modal-photo-asked");
+            BlurState { key, drawn: now, asked: Some(now), texture: None, shown: false }
         }
     };
     state.drawn = now;
@@ -622,12 +667,14 @@ fn blurred_backdrop(ctx: &egui::Context, modal: egui::Id) -> Backdrop {
             })
         });
         if let Some(picture) = picture {
+            crate::services::frame_trace::mark("modal-photo-arrived");
             let blurred = crate::services::backdrop_blur::blurred(&picture);
             state.texture = Some(ctx.load_texture(
                 "unluminous-modal-backdrop",
                 blurred,
                 egui::TextureOptions::LINEAR,
             ));
+            crate::services::frame_trace::mark("modal-photo-blurred");
             state.asked = None;
         } else if now - asked > BLUR_WAIT {
             state.asked = None;
@@ -635,9 +682,16 @@ fn blurred_backdrop(ctx: &egui::Context, modal: egui::Id) -> Backdrop {
             ctx.request_repaint();
         }
     }
-    let texture = state.texture.clone();
+    if state.texture.is_some() && !state.shown {
+        state.shown = true;
+        crate::services::frame_trace::mark("modal-photo-shown");
+    }
+    let image = state
+        .texture
+        .as_ref()
+        .map(|texture| (texture.id(), Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0))));
     ctx.data_mut(|data| data.insert_temp(slot, state));
-    Backdrop { texture, hide }
+    Backdrop { image, hide }
 }
 
 /// Where a modal of this size sits, and how big it really comes out.
