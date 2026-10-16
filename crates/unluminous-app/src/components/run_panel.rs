@@ -476,7 +476,11 @@ pub fn show(
 ) -> RunOutcome {
     let mut outcome = RunOutcome::default();
     let painter = ui.painter_at(area);
-    painter.rect_filled(area, CornerRadius::ZERO, crate::theme::pane_ground(color::toolbar(), opacity));
+    painter.rect_filled(
+        area,
+        CornerRadius::ZERO,
+        crate::theme::pane_ground(color::toolbar(), opacity),
+    );
 
     let header = Rect::from_min_size(
         Pos2::new(area.left(), area.top() + 1.0),

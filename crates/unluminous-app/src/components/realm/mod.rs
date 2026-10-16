@@ -117,7 +117,11 @@ pub fn view_bar(
     let painter = ui.painter_at(area);
     // The bar is the canvas's own ground with a groove under it, rather than a strip of a second colour: the
     // pills and the chips are what say it is a bar.
-    painter.rect_filled(area, CornerRadius::ZERO, crate::theme::pane_ground(look.page, look.opacity));
+    painter.rect_filled(
+        area,
+        CornerRadius::ZERO,
+        crate::theme::pane_ground(look.page, look.opacity),
+    );
     crate::components::chrome_kit::groove(
         &painter,
         Pos2::new(area.left(), area.bottom() - 1.5),
@@ -388,7 +392,11 @@ pub struct Look<'a> {
 /// which is what makes a zoom legible.
 pub fn ground(ui: &egui::Ui, area: Rect, camera: &Camera, look: Look<'_>) {
     let painter = ui.painter_at(area);
-    painter.rect_filled(area, CornerRadius::ZERO, crate::theme::pane_ground(look.page, look.opacity));
+    painter.rect_filled(
+        area,
+        CornerRadius::ZERO,
+        crate::theme::pane_ground(look.page, look.opacity),
+    );
     if camera.zoom < GRID_FADES_AT {
         return;
     }

@@ -159,7 +159,8 @@ pub fn paint_a_pane(painter: &egui::Painter, room: egui::Rect) {
     mesh.colored_vertex(glow.left_bottom(), Color32::TRANSPARENT);
     mesh.add_triangle(0, 1, 2);
     mesh.add_triangle(0, 2, 3);
-    painter.with_clip_rect(glow.shrink2(egui::vec2(PANE_RADIUS, 0.0)).intersect(painter.clip_rect()))
+    painter
+        .with_clip_rect(glow.shrink2(egui::vec2(PANE_RADIUS, 0.0)).intersect(painter.clip_rect()))
         .add(Shape::mesh(mesh));
 }
 

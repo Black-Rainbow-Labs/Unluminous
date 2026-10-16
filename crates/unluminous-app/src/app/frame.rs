@@ -454,7 +454,9 @@ impl UnluminousApp {
         // **Under glass every pane is a floating panel of frosted glass** (`task-2281`), painted here, on
         // the window's ground and before any pane draws, so each pane is drawn on its own panel.
         if theme::is_glass() {
-            for room in placed.panels.iter().filter(|room| room.width() > 0.0 && room.height() > 0.0) {
+            for room in
+                placed.panels.iter().filter(|room| room.width() > 0.0 && room.height() > 0.0)
+            {
                 theme::glass::paint_a_pane(ui.painter(), *room);
             }
         }
