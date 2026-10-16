@@ -6,6 +6,15 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- Language servers and the embedding model are off by default and stop the moment they are switched off (`task-2279`)
+- A last-chance save and a read of the project state wait for the writer thread (`task-2279`)
+- The writer's job boxes the state it carries, and rustfmt over the three files this ticket wrote (`task-2279`)
+- The window holds 149 MB with this repository open, down from 259 (`task-2279`)
+- The modal backdrop is taken again when the background picture arrives or changes (`task-2279`)
+- The release build's memory, measured (`task-2279`)
+
 ## 0.88.0 — 2026-10-15
 
 - An install finishes setting Unluminous up with unluminous-cli setup (`task-2278`)
