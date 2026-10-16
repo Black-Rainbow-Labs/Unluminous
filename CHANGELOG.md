@@ -6,7 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 0.89.0 — 2026-10-16
+## Unreleased
+
+- Unluminous Glass, a theme whose surfaces bend the picture behind the window (`task-2281`)
+- The glass pictures with the editing area's second ground (`task-2281`)
+
+## 0.89.0 — 2026-10-15
 
 - Language servers and the embedding model are off by default and stop the moment they are switched off (`task-2279`)
 - A last-chance save and a read of the project state wait for the writer thread (`task-2279`)
