@@ -6,6 +6,14 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- The window is one sheet of glass, every docked panel is a frosted glass pane on it, and the glass edges are faint (`task-2281`)
+- Rustfmt over the files the second glass pass changed (`task-2281`)
+- Every pane, the editing area and both bars are glass panels drawn the way a card is, with no light line along any edge (`task-2281`)
+- A drag draws no frames and a modal opens complete in one frame under glass; the rim detector and the speed bench are in tools (`task-2281`)
+- The glass pictures with the panes and bars as glass panels and Settings over the frosted picture (`task-2281`)
+
 ## 0.91.0 — 2026-10-16
 
 - Modals fill the window and remember where they were, the interface size works, selection draws when zoomed (`task-2280`)
