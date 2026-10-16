@@ -6,7 +6,7 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.89.0 — 2026-10-16
 
 - Language servers and the embedding model are off by default and stop the moment they are switched off (`task-2279`)
 - A last-chance save and a read of the project state wait for the writer thread (`task-2279`)
@@ -14,6 +14,7 @@ bumps the release script makes are left out, because they are the boundaries rat
 - The window holds 149 MB with this repository open, down from 259 (`task-2279`)
 - The modal backdrop is taken again when the background picture arrives or changes (`task-2279`)
 - The release build's memory, measured (`task-2279`)
+- The changelog written from the history (`task-2279`)
 
 ## 0.88.0 — 2026-10-15
 
