@@ -395,7 +395,10 @@ struct BlurState {
     /// a new picture and drew the modal at no opacity while it was taken, and blurred a whole window on the
     /// next. The picture is stretched to the window and is blurred past reading, so the one taken when the
     /// modal opened serves at any size.
-    key: [u8; 12],
+    ///
+    /// And which background picture the window was drawn on, from `backgrounds::changes`, so a picture that
+    /// arrives or is chosen while a modal is open is in the backdrop too (`task-2279`).
+    key: ([u8; 12], u64),
     /// When the modal was last drawn, in egui's seconds, so a modal opened again is photographed again.
     ///
     /// A time rather than a pass number: egui can run more than one pass in a frame, and a gap of two passes
@@ -427,7 +430,7 @@ fn blurred_backdrop(ctx: &egui::Context, modal: egui::Id) -> Backdrop {
     for (at, colour) in [color::editor(), color::text(), color::accent()].iter().enumerate() {
         tones[at * 4..at * 4 + 4].copy_from_slice(&colour.to_array());
     }
-    let key = tones;
+    let key = (tones, crate::services::backgrounds::changes(ctx));
     let kept: Option<BlurState> = ctx.data(|data| data.get_temp(slot));
     let mut hide = false;
     let mut state = match kept {

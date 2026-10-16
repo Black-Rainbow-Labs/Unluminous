@@ -269,6 +269,29 @@ pub struct Wallpaper {
     looked: Option<std::time::Instant>,
 }
 
+/// Where the count of background picture changes is kept in a window's `egui` memory.
+fn changes_slot() -> egui::Id {
+    egui::Id::new("unluminous-background-changes")
+}
+
+/// How many times the picture the window is drawn on has changed: arrived, been replaced or been taken
+/// away. The modal backdrop is a photograph of the window, and takes a new one when this moves.
+///
+/// @param ctx - the window's context
+pub fn changes(ctx: &egui::Context) -> u64 {
+    ctx.data(|data| data.get_temp(changes_slot())).unwrap_or(0)
+}
+
+/// Count one change of the picture the window is drawn on.
+///
+/// @param ctx - the window's context
+fn note_a_change(ctx: &egui::Context) {
+    ctx.data_mut(|data| {
+        let count: &mut u64 = data.get_temp_mut_or_default(changes_slot());
+        *count += 1;
+    });
+}
+
 /// A picture on the graphics card, as strips one above another.
 pub struct Picture {
     /// Its size in pixels.
@@ -425,6 +448,9 @@ impl Wallpaper {
         name: &str,
     ) -> Option<&Picture> {
         let Some(folder) = folder.filter(|_| !name.trim().is_empty()) else {
+            if self.picture.is_some() {
+                note_a_change(ctx);
+            }
             self.forget();
             return None;
         };
@@ -459,8 +485,10 @@ impl Wallpaper {
                     Some((crate::services::picture::shrink_to_fit(image, limit), 0, Vec::new()));
             }
             Err(_) => {
+                if self.picture.take().is_some() {
+                    note_a_change(ctx);
+                }
                 self.arriving = None;
-                self.picture = None;
             }
         }
     }
@@ -493,6 +521,7 @@ impl Wallpaper {
         if let Some((image, _, strips)) = self.arriving.take() {
             let size = egui::vec2(image.size[0] as f32, image.size[1] as f32);
             self.picture = Some(Picture { size, strips });
+            note_a_change(ctx);
         }
     }
 
