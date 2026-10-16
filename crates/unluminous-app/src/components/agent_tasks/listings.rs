@@ -44,6 +44,7 @@ use crate::services::agent_tasks::{AgentTasks, Group, View, SWATCHES};
 use crate::services::plugin_ui::{Look, Request};
 use crate::theme::crisp::CrispPainter;
 use crate::theme::icon;
+use crate::components::controls::TextBoxes;
 
 /// What a listing draws its surfaces with: the board's `rux` decoration, in the Agent-Tasks design's values.
 ///
@@ -1136,7 +1137,7 @@ fn plain_field(
     );
     let response = ui
         .push_id(name, |ui| {
-            ui.put(
+            ui.text_box_at(
                 inner,
                 egui::TextEdit::singleline(value)
                     .id(field_id)

@@ -61,6 +61,7 @@ use rux::icon::{Icon, Mark};
 use rux::{Rux, Style};
 
 use crate::theme::{color, size};
+use crate::components::controls::TextBoxes;
 
 pub const HEADER: f32 = 46.0;
 pub const FOOTER: f32 = 52.0;
@@ -1186,7 +1187,7 @@ pub fn field(ui: &mut egui::Ui, area: Rect, name: &str, value: &mut String) -> e
     );
     let text = Rect::from_min_max(text.min, Pos2::new(area.right() - inset, text.max.y));
     let mut edit = ui.new_child(egui::UiBuilder::new().max_rect(text));
-    let response = edit.add(
+    let response = edit.text_box(
         egui::TextEdit::singleline(value)
             .id(id)
             .frame(egui::Frame::NONE)

@@ -574,6 +574,8 @@ fn choosing_a_font_size_in_the_settings_sets_it_for_the_whole_document() {
     let mut harness = harness("Two lines of writing\nso that both change together");
     let undo_before = harness.state().document().can_undo();
     open_settings(&mut harness);
+    // On the Editor page since `task-2280`.
+    did(&mut harness, "modal open settings --page editor");
     harness.get_by_label("Editor font size").click();
     steady(&mut harness);
     harness.get_by_label("24").click();

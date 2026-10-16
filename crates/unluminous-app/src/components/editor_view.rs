@@ -851,6 +851,17 @@ pub fn read_pointer(
     None
 }
 
+/// Which of the three kinds a double click selects runs of a character is: a word character (a letter, a digit
+/// or the underscore), a space or a tab, or anything else. Shared with every text box's double click,
+/// `controls::run_of_characters`. `task-2280`.
+pub fn character_kind(c: char) -> u8 {
+    match c {
+        c if c.is_alphanumeric() || c == '_' => 0,
+        ' ' | '\t' => 1,
+        _ => 2,
+    }
+}
+
 /// What a double click on the character starting at `offset` selects.
 ///
 /// `offset` is the start of the character **under the pointer**, which is `Layout::character_at`, not the
@@ -878,11 +889,7 @@ pub fn word_at(text: &Rope, offset: usize) -> std::ops::Range<usize> {
     if at == content.len() {
         at = content.char_indices().next_back().map_or(0, |(index, _)| index);
     }
-    let kind = |c: char| match c {
-        c if c.is_alphanumeric() || c == '_' => 0,
-        ' ' | '\t' => 1,
-        _ => 2,
-    };
+    let kind = character_kind;
     let under = content[at..].chars().next().map_or(0, kind);
     let start = content[..at]
         .char_indices()

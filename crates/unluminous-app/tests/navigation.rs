@@ -1318,6 +1318,9 @@ fn the_editor_page_holds_the_gutter_and_the_suggestions() {
     steady(&mut harness);
     harness.get_by_label("Show line numbers");
     harness.get_by_label("Suggest completions as you type");
+    // The editor's font is first on this page since `task-2280`.
+    harness.get_by_label("Editor font family");
+    harness.get_by_label("Editor font size");
     assert!(harness.state().settings.suggestions.is_automatic(), "on in a fresh Unluminous");
     harness.snapshot(shot("settings_editor"));
 

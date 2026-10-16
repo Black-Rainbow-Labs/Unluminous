@@ -31,6 +31,7 @@ use crate::app::UnluminousApp;
 use crate::components::notebook_view::{self, CellButton, DrawnKey, Metrics};
 use crate::services::text_renderer::TextRenderer;
 use crate::theme::color;
+use crate::components::controls::TextBoxes;
 
 /// A Markdown cell rendered, at one width and size, kept between frames by cell id.
 pub struct Rendered {
@@ -1186,7 +1187,7 @@ fn edit_the_tags(
         ))
         .desired_width(rect.width())
         .font(metrics.output_font());
-    let response = child.add(edit);
+    let response = child.text_box(edit);
     if !response.has_focus() && !response.lost_focus() {
         response.request_focus();
     }
@@ -1500,7 +1501,7 @@ fn paint_the_input_field(
         .password(waiting.password)
         .desired_width(rect.width())
         .font(metrics.output_font());
-    let response = child.add(edit);
+    let response = child.text_box(edit);
     if !response.has_focus() && !response.lost_focus() {
         response.request_focus();
     }

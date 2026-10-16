@@ -29,6 +29,7 @@ use std::rc::Rc;
 use egui::{Pos2, Rect, Vec2};
 use rux::icon::{Icon, Mark};
 use rux::{Fill, Rux, Style};
+use crate::components::controls::TextBoxes;
 
 thread_local! {
     static STATE: RefCell<Option<(u64, Rc<rux::RuxState>)>> = const { RefCell::new(None) };
@@ -240,7 +241,7 @@ pub fn carved_field(
         true => egui::TextEdit::multiline(text).desired_rows(1),
         false => egui::TextEdit::singleline(text),
     };
-    let response = rux.ui.put(
+    let response = rux.ui.text_box_at(
         body,
         edit.id(id)
             .frame(egui::Frame::NONE)

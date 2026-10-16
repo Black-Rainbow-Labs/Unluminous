@@ -1555,7 +1555,8 @@ mod tests {
         };
         // egui takes a new zoom at the start of the next pass.
         let pass = |context: &egui::Context| {
-            let _ = context.run_ui(egui::RawInput::default(), |_| {});
+            let mut output = context.run_ui(egui::RawInput::default(), |_| {});
+            output.textures_delta.clear();
         };
         apply(&context);
         pass(&context);

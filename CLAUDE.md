@@ -5037,6 +5037,13 @@ whose box holds the point, and `editor_view::word_at` takes the run of the same 
 of spaces, or a run of punctuation such as `->`. egui waited 0.3 seconds for the second click and Windows
 starts at 0.5, so `services::double_click` gives egui the system's own interval.
 
+**Every egui text box is shown with `ui.text_box(edit)`, never `ui.add(edit)`** (and `ui.text_box_at(rect,
+edit)` where egui has `put`). egui picks a word by Unicode's word breaking, which keeps `example.com` and
+`bravo.charlie` together and splits at a dot on one side of the click only, so a double click on `com` in a
+browser node's address took the whole host name. `controls::TextBoxes` lets egui handle the click and then
+puts `controls::run_of_characters` in the selection: the same three kinds the editor uses, never past the end
+of a line. A text box added with `ui.add` still works, and its double click is egui's.
+
 **`appearance.ui.font.size` is egui's zoom factor.** It used to scale egui's text styles, which almost nothing
 in the window is set in, so the setting did nothing a person could see. Now every menu, row, icon and dialog
 grows together, from `DESIGN_UI_FONT_SIZE` (12.5) up; the default is 14 and the most is 40. Three things

@@ -583,7 +583,7 @@ pub fn search_field_over(
     let id = ui.id().with(("search-field", name));
     let inside = field_takes_the_whole_rectangle(ui, area, 28.0, id, &format!("{name} field"));
     let mut field = ui.new_child(egui::UiBuilder::new().max_rect(inside.rect));
-    let response = field.add(
+    let response = field.text_box(
         egui::TextEdit::singleline(value)
             .id(id)
             .hint_text(placeholder(hint, &inside.font, color::text_faint()))
@@ -594,6 +594,96 @@ pub fn search_field_over(
     );
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, name));
     response
+}
+
+/// Draw an egui text box the way every text box in the window is drawn: `ui.text_box(edit)` where egui has
+/// `ui.add(edit)`.
+///
+/// `task-2280`: *"Double clicking for text/word selection still feels off ... i can't double click to select
+/// parts/words of the url."* egui selects a word by Unicode's word breaking, which keeps `example.com` and
+/// `bravo.charlie` together, and splits at a dot only on one side of the click. So a double click on `com`
+/// took the whole host name. Every text box goes through here, and a double click selects the same run the
+/// editor's double click does: see [`run_of_characters`].
+pub trait TextBoxes {
+    /// Show `edit` and answer its response, with a double click putting the run under the pointer in it.
+    fn text_box(&mut self, edit: egui::TextEdit<'_>) -> egui::Response;
+    /// The same at a rectangle of its own, which is egui's `put`.
+    fn text_box_at(&mut self, rect: Rect, edit: egui::TextEdit<'_>) -> egui::Response;
+}
+
+impl TextBoxes for egui::Ui {
+    fn text_box(&mut self, edit: egui::TextEdit<'_>) -> egui::Response {
+        let output = edit.show(self);
+        a_double_click_takes_the_run_under_it(self.ctx(), &output);
+        output.response.response
+    }
+
+    fn text_box_at(&mut self, rect: Rect, edit: egui::TextEdit<'_>) -> egui::Response {
+        let builder = egui::UiBuilder::new()
+            .max_rect(rect)
+            .layout(egui::Layout::centered_and_justified(egui::Direction::TopDown));
+        self.scope_builder(builder, |ui| ui.text_box(edit)).inner
+    }
+}
+
+/// After egui has handled a double click in a text box, put the run of characters under the pointer in the
+/// selection instead of egui's word.
+///
+/// The character under the pointer is the one whose box holds it, not the nearest gap between two, for the
+/// reason `Layout::character_at` gives. Stored back into the box's state, so it is what the next frame shows
+/// and what a copy takes.
+pub fn a_double_click_takes_the_run_under_it(ctx: &egui::Context, output: &egui::text_edit::TextEditOutput) {
+    if !output.response.response.double_clicked() {
+        return;
+    }
+    let Some(pointer) = output.response.response.interact_pointer_pos() else {
+        return;
+    };
+    let text = output.galley.text();
+    if text.is_empty() {
+        return;
+    }
+    let local = pointer - output.galley_pos;
+    let gap = output.galley.cursor_from_pos(local);
+    let gap_x = output.galley.pos_from_cursor(gap).min.x;
+    let mut under = gap.index.0;
+    if local.x < gap_x && under > 0 {
+        under -= 1;
+    }
+    let (start, end) = run_of_characters(text, under);
+    let mut state = output.state.clone();
+    let range = egui::text::CCursorRange::two(egui::text::CCursor::new(start), egui::text::CCursor::new(end));
+    state.cursor.set_char_range(Some(range));
+    state.store(ctx, output.response.response.id);
+}
+
+/// The run of characters of one kind around the character at `index`, as character positions: letters,
+/// digits and the underscore; spaces and tabs; or anything else, such as `.`, `/`, `->` or `::`. Never past
+/// the end of the line it is on. The same three kinds the editor's double click uses.
+pub fn run_of_characters(text: &str, index: usize) -> (usize, usize) {
+    let characters: Vec<char> = text.chars().collect();
+    if characters.is_empty() {
+        return (0, 0);
+    }
+    let mut index = index.min(characters.len() - 1);
+    // Past the end of a line is the end of that line, so a double click after the words takes the last of them.
+    if characters[index] == '\n' && index > 0 && characters[index - 1] != '\n' {
+        index -= 1;
+    }
+    if characters[index] == '\n' {
+        return (index, index);
+    }
+    let kind = crate::components::editor_view::character_kind;
+    let under = kind(characters[index]);
+    let mut start = index;
+    while start > 0 && characters[start - 1] != '\n' && kind(characters[start - 1]) == under {
+        start -= 1;
+    }
+    let mut end = index + 1;
+    while end < characters.len() && characters[end] != '\n' && kind(characters[end]) == under {
+        end += 1;
+    }
+    (start, end)
 }
 
 /// Text with some of its characters picked out in the accent colour, which is how a search result
@@ -1574,7 +1664,7 @@ mod field_sizing {
         for _ in 0..2 {
             let mut output = context.run_ui(egui::RawInput::default(), |ui| {
                 let mut empty = String::new();
-                ui.add(
+                ui.text_box(
                     egui::TextEdit::singleline(&mut empty)
                         .id_salt("through placeholder")
                         .hint_text(placeholder("Add a todo", &font, color::text_faint()))
@@ -1756,6 +1846,25 @@ mod tests {
     /// reported from, a row of 28. So the field was handed a strip taller than itself, `egui` laid the 12
     /// point text out at the **top** of it, and the address sat above centre with its top cut off by the
     /// field's own border.
+    /// `task-2280`: a double click in a text box takes the run of one kind of character under it.
+    #[test]
+    fn a_double_click_in_a_text_box_takes_the_run_under_it() {
+        let run = |text: &str, at: usize| {
+            let (start, end) = run_of_characters(text, at);
+            text.chars().skip(start).take(end - start).collect::<String>()
+        };
+        let url = "https://example.com/some-path?q=1";
+        assert_eq!(run(url, url.find("com").unwrap() + 1), "com", "not the whole host name");
+        assert_eq!(run(url, url.find("example").unwrap()), "example");
+        assert_eq!(run(url, url.find("some").unwrap()), "some");
+        assert_eq!(run(url, url.find("://").unwrap()), "://");
+        assert_eq!(run("alpha-bravo.charlie", 13), "charlie");
+        assert_eq!(run("one two", 3), " ");
+        assert_eq!(run("first\nsecond", 5), "first", "the end of a line takes its last word");
+        assert_eq!(run("first\nsecond", 7), "second");
+        assert_eq!(run("", 0), "");
+    }
+
     #[test]
     fn a_fields_text_row_is_measured_at_the_size_the_text_will_be_set_in() {
         let field = Rect::from_min_max(Pos2::new(100.0, 200.0), Pos2::new(400.0, 222.0));

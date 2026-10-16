@@ -43,6 +43,7 @@ use crate::theme::icon;
 use super::{kit, Act};
 use crate::services::agent_chat::Parts;
 use crate::services::plugin_ui::Look;
+use crate::components::controls::TextBoxes;
 
 /// A thumbnail of an attached picture, and the row it sits in.
 const THUMB: f32 = 38.0;
@@ -335,7 +336,7 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
             .max_height(words.height())
             .auto_shrink([false, true])
             .show(&mut inside, |inside| {
-                inside.add(
+                inside.text_box(
                     egui::TextEdit::multiline(parts.draft)
                         .id(prompt_id)
                         .frame(egui::Frame::NONE)

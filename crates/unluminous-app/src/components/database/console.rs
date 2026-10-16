@@ -23,6 +23,7 @@ use crate::components::database::{code, kit, well, Act};
 use crate::services::database::{DatabaseExplorer, Page, Sheet};
 use crate::services::plugin_ui::Look;
 use crate::theme::color;
+use crate::components::controls::TextBoxes;
 
 /// How tall the results area is, as a share of the page.
 const RESULTS: f32 = 0.45;
@@ -202,7 +203,7 @@ fn sql_editor(
         job.wrap.max_width = width;
         ui.fonts_mut(|fonts| fonts.layout_job(job))
     };
-    let response = child.add(
+    let response = child.text_box(
         egui::TextEdit::multiline(&mut console.text)
             .id(sql_id)
             .frame(egui::Frame::NONE)

@@ -12,6 +12,7 @@ use rux::icon::Icon;
 use rux::{Rux, Style};
 
 use crate::components::{controls, modal, settings_kit as kit};
+use crate::components::controls::TextBoxes;
 
 /// The dialog's padding and corner.
 pub const PAD_X: f32 = 24.0;
@@ -80,7 +81,7 @@ pub fn search(
     let text = Rect::from_min_max(text.min, Pos2::new(inside.right(), text.max.y));
     let ink = rux.theme().ink;
     let mut child = rux.ui.new_child(egui::UiBuilder::new().max_rect(text));
-    let response = child.add(
+    let response = child.text_box(
         egui::TextEdit::singleline(value)
             .id(id)
             .hint_text(controls::placeholder(hint, &font, ink.i400))

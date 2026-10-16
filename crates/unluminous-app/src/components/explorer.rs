@@ -70,6 +70,7 @@ use crate::services::file_kind::Refusal;
 use crate::services::file_tree::FileTree;
 use crate::theme::crisp::CrispPainter;
 use crate::theme::{color, file_marker, icon, size};
+use crate::components::controls::TextBoxes;
 
 /// What a row shows besides its name: the colour git wants it in, and the icon its plugin gives it.
 ///
@@ -420,7 +421,7 @@ pub fn show(
     // `controls::field_font_size` is a fraction of the field's own height, and the field is
     // `view.at(24.0)` - so it is `view.at(12.5)` at every zoom, which is exactly the rows.
     let mut field = ui.new_child(egui::UiBuilder::new().max_rect(inside.rect));
-    let response = field.add(
+    let response = field.text_box(
         egui::TextEdit::singleline(filter)
             .id(filter_id)
             .hint_text(crate::components::controls::placeholder(

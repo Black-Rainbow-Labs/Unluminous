@@ -37,6 +37,7 @@ use egui::{Pos2, Rect, Vec2};
 use crate::app::actions::{Action, GitAction};
 use crate::components::controls;
 use crate::theme::{color, icon};
+use crate::components::controls::TextBoxes;
 
 /// How wide the flyout is. Wider than the run widget's, because a branch name is longer than a run
 /// configuration's name more often than not.
@@ -160,7 +161,7 @@ fn rows(ui: &mut egui::Ui, state: &BranchState) -> Option<Action> {
         // for as well as the strip, so the box and the caret are the same size as each other —
         // `task-2004`.
         let inside = controls::field_text(ui, field, 6.0);
-        ui.put(
+        ui.text_box_at(
             inside.rect,
             egui::TextEdit::singleline(&mut editing)
                 .frame(egui::Frame::NONE)

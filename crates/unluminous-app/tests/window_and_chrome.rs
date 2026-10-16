@@ -1396,9 +1396,10 @@ fn the_settings_window_opens_from_the_edit_menu_and_holds_the_font_and_the_backg
     open_settings(&mut harness);
     assert!(harness.state().settings_window.open, "Edit then Settings should open it");
 
-    // The two sections `tasks/improvements.md` asks for, and the page list on the left.
-    harness.get_by_label("Editor font family");
-    harness.get_by_label("Editor font size");
+    // The two sections `tasks/improvements.md` asks for, and the page list on the left. The editor's font
+    // is on the Editor page since `task-2280`, and the interface's is here.
+    harness.get_by_label("Interface font family");
+    harness.get_by_label("Interface font size");
     harness.get_by_label("Background opacity");
     harness.get_by_label("Appearance");
     harness.get_by_label("Terminal");

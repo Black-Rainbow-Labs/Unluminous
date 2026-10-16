@@ -14,6 +14,7 @@ use rux::{Fill, Style};
 
 use crate::components::scrollbar;
 use crate::components::settings_kit::{self as kit, Kind as ButtonKind};
+use crate::components::controls::TextBoxes;
 
 /// What the list's scrollbar is called.
 const LIST_SCROLLBAR: &str = "plugins list";
@@ -187,7 +188,7 @@ fn tabs_and_search(ui: &mut egui::Ui, bar: Rect, state: &mut PluginsState, plugi
             &font,
         );
         let mut child = rux.ui.new_child(egui::UiBuilder::new().max_rect(text));
-        let response = child.add(
+        let response = child.text_box(
             egui::TextEdit::singleline(&mut state.search)
                 .id(id)
                 .hint_text(crate::components::controls::placeholder(

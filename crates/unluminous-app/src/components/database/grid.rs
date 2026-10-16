@@ -27,6 +27,7 @@ use crate::components::database::{along, code, kit, text, well, Act};
 use crate::services::database::{why_not, DatabaseExplorer};
 use crate::services::plugin_ui::Look;
 use crate::theme::{color, icon};
+use crate::components::controls::TextBoxes;
 
 /// The gutter the row numbers are drawn in.
 const GUTTER: f32 = 44.0;
@@ -268,7 +269,7 @@ fn fragment_field(
     let text_rect = Rect::from_min_max(row.min, Pos2::new(area.right() - 14.0 * scale, row.max.y));
     let mut edit = ui
         .new_child(egui::UiBuilder::new().max_rect(text_rect).id_salt(("database-fragment", name)));
-    let response = edit.add(
+    let response = edit.text_box(
         egui::TextEdit::singleline(value)
             .id(fragment_id)
             .frame(egui::Frame::NONE)
@@ -594,7 +595,7 @@ fn cell_editor(
         Pos2::new(cell.right() - 4.0 * scale, cell.bottom() - 2.0 * scale),
     );
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).id_salt(box_id));
-    let response = child.add(
+    let response = child.text_box(
         egui::TextEdit::singleline(&mut typed)
             .id(box_id)
             .frame(egui::Frame::NONE)

@@ -1756,6 +1756,11 @@ impl UnluminousApp {
         // Unluminous easier to read, and every picture the suite has taken would otherwise have moved with
         // it. A test about the interface's size sets one, the way a person does.
         self.settings.ui_font_size = settings::DESIGN_UI_FONT_SIZE;
+        // And egui's own double click interval rather than this machine's mouse setting, so a test that
+        // clicks once and then twice means the same thing on every machine.
+        if let Some(context) = &self.context {
+            context.options_mut(|options| options.input_options.max_double_click_delay = 0.3);
+        }
     }
 
     /// Set the window's look up before the first frame is drawn.

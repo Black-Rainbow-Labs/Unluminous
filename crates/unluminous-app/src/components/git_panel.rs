@@ -21,6 +21,7 @@ use unluminous_git::Status;
 use crate::components::controls::WithHint as _;
 use crate::components::modal;
 use crate::theme::{color, icon, size};
+use crate::components::controls::TextBoxes;
 
 const WIDTH: f32 = 780.0;
 const HEIGHT: f32 = 620.0;
@@ -195,7 +196,7 @@ fn commit_tab(
     // the keyboard rather than leaving the pane behind holding the keys — `task-1795`.
     crate::components::controls::claim_the_field(ui, message, message_id, "Message field");
     let mut edit = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
-    let response = edit.add(
+    let response = edit.text_box(
         egui::TextEdit::multiline(&mut panel.message)
             .id(message_id)
             .frame(egui::Frame::NONE)

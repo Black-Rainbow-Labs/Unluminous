@@ -54,6 +54,7 @@ use rux::icon::{Icon, Mark as RuxMark};
 use crate::services::browser::{BrowserCommand, BrowserPlacement, BrowserTab};
 use crate::theme::crisp::CrispPainter;
 use crate::theme::{color, size};
+use crate::components::controls::TextBoxes;
 
 const TOOLBAR_HEIGHT: f32 = 46.0;
 const BUTTON_SIZE: f32 = 32.0;
@@ -310,7 +311,7 @@ fn address_field(
         chosen = None;
     }
     let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
-    let response = inner.add(
+    let response = inner.text_box(
         egui::TextEdit::singleline(toolbar.typed)
             .id(toolbar.id)
             .hint_text(crate::components::controls::placeholder(

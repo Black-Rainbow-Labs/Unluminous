@@ -1879,6 +1879,11 @@ fn drive_the_window_and_the_tabs(coverage: &mut Coverage) {
     c.refuses(&mut harness, "pane focus 9");
     c.works(&mut harness, "pane width 0 0.35");
     c.refuses(&mut harness, "pane width 9 0.35");
+    // Two panes: the first moved after the second, then a move to where it already is. `task-2280`.
+    c.works(&mut harness, "pane place 0 2");
+    c.refuses(&mut harness, "pane place 0 0");
+    // And back, so the pane with the keyboard is on the right again for `pane move left` below.
+    c.sets_up(&mut harness, "pane place 1 0");
     c.works(&mut harness, "pane move left");
     c.refuses(&mut harness, "pane move sideways");
     // `pane move left` takes the tab out of the pane it was in, and a pane with nothing in it is

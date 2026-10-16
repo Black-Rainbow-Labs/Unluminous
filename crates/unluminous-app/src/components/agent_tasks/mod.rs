@@ -29,6 +29,7 @@ use crate::components::controls::WithHint as _;
 use crate::services::agent_tasks::{AgentTasks, View};
 use crate::services::plugin_ui::{Look, Request};
 use crate::theme::crisp::CrispPainter;
+use crate::components::controls::TextBoxes;
 
 /// How tall the strip across the top of the board is: the views, the sprint, the search and `Add Task`.
 ///
@@ -492,7 +493,7 @@ fn search_box(ui: &mut egui::Ui, inside: Rect, query: &mut String, scale: f32) -
         &font,
     );
     let mut field = ui.new_child(egui::UiBuilder::new().max_rect(text));
-    let response = field.add(
+    let response = field.text_box(
         egui::TextEdit::singleline(query)
             .id(id)
             .hint_text(crate::components::controls::placeholder(

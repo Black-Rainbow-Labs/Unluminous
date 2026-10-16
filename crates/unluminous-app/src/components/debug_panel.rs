@@ -26,6 +26,7 @@ use crate::components::controls::WithHint as _;
 use crate::components::splitter;
 use crate::components::terminal_panel;
 use crate::theme::{color, icon, size};
+use crate::components::controls::TextBoxes;
 
 /// How tall the strip holding the buttons is. The run tile's, because they are siblings.
 pub const HEADER: f32 = terminal_panel::HEADER;
@@ -647,7 +648,7 @@ pub fn show_row(ui: &mut egui::Ui, draw: RowDraw<'_>, outcome: &mut RowOutcome) 
                 "Value field",
                 &egui::FontId::monospace(11.5),
             );
-            let editor = ui.put(
+            let editor = ui.text_box_at(
                 inner,
                 egui::TextEdit::singleline(typed)
                     .id(value_id)

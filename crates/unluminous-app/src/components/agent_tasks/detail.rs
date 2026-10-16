@@ -9,6 +9,7 @@ use egui::{CornerRadius, Pos2, Rect, Sense, Vec2};
 use crate::services::agent_tasks::{clock, AgentTasks};
 use crate::services::plugin_ui::{Look, Request};
 use crate::theme::crisp::CrispPainter;
+use crate::components::controls::TextBoxes;
 
 // **The in-place ticket is gone.** This file used to draw a whole ticket inside the board's own rectangle —
 // the pane's narrow column, and the right hand half of the tab — and `task-1771` asked for that to stop: a
@@ -494,7 +495,7 @@ pub(crate) fn comment_section(
                         );
                         painter.rect_filled(at, CornerRadius::same(12), chat.well);
                         let edit_id = ui.id().with("agent-tasks-comment-edit");
-                        let response = ui.put(
+                        let response = ui.text_box_at(
                             crate::components::controls::field_takes_the_whole_rectangle_at(
                                 ui,
                                 at,
@@ -770,7 +771,7 @@ fn the_composer(
         .max_height(text.height().max(1.0))
         .auto_shrink([false, false])
         .show(&mut child, |ui| {
-            ui.add(
+            ui.text_box(
                 egui::TextEdit::multiline(&mut draft)
                     .id(draft_id)
                     .frame(egui::Frame::NONE)

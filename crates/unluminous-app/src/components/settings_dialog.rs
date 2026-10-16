@@ -41,6 +41,7 @@ use crate::settings::{
     Indent, LineEndings, Page, Settings, Suggestions, UpdateCheck, ValueTooltip, FONT_SIZES,
     MIN_OPACITY, TERMINAL_FONT_SIZES, UI_FONT_SIZES,
 };
+use crate::components::controls::TextBoxes;
 
 /// How large the window is, before `modal::fit` shrinks it to a small Unluminous window: the design's
 /// `width: 1000px; height: 700px`.
@@ -523,7 +524,7 @@ fn show_list(ui: &mut egui::Ui, area: Rect, state: &mut SettingsWindow, context:
             &font,
         );
         let mut child = rux.ui.new_child(egui::UiBuilder::new().max_rect(text));
-        let response = child.add(
+        let response = child.text_box(
             egui::TextEdit::singleline(&mut state.search)
                 .id(search_id)
                 .hint_text(crate::components::controls::placeholder(

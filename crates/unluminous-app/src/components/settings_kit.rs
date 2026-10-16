@@ -31,6 +31,7 @@ use rux::icon::{Icon, Mark};
 use rux::{Elevation, Fill, Rux, Shadow, Style};
 
 use crate::components::controls;
+use crate::components::controls::TextBoxes;
 
 /// The room between two cards.
 pub const CARD_GAP: f32 = 18.0;
@@ -691,7 +692,7 @@ pub fn text_well_styled(
     );
     let text = Rect::from_min_max(text.min, Pos2::new(rect.right() - inset, text.max.y));
     let mut child = rux.ui.new_child(egui::UiBuilder::new().max_rect(text));
-    let response = child.add(
+    let response = child.text_box(
         egui::TextEdit::singleline(value)
             .id(id)
             .hint_text(controls::placeholder(hint, &font, theme.ink.i400))
@@ -728,7 +729,7 @@ pub fn text_area(
         .max_height(inside.height())
         .auto_shrink([false, false])
         .show(&mut child, |ui| {
-            ui.add(
+            ui.text_box(
                 egui::TextEdit::multiline(value)
                     .id(id)
                     .hint_text(controls::placeholder(hint, &font, theme.ink.i400))

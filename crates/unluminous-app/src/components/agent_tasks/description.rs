@@ -15,6 +15,7 @@ use egui::Rect;
 
 use crate::services::agent_tasks::AgentTasks;
 use crate::services::plugin_ui::{Look, Request};
+use crate::components::controls::TextBoxes;
 
 /// The description inside a well the caller has already drawn, as either view, scrolled inside `inside`.
 ///
@@ -57,7 +58,7 @@ pub fn in_a_well(
         .auto_shrink([false, false])
         .max_height(inside.height())
         .show(&mut child, |ui| {
-            let response = ui.add(
+            let response = ui.text_box(
                 egui::TextEdit::multiline(&mut text)
                     .id(description_id)
                     .frame(egui::Frame::NONE)

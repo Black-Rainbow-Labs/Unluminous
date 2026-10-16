@@ -61,6 +61,7 @@ use crate::services::agent_tasks::model::{Assignee, Priority, Status, Task};
 use crate::services::agent_tasks::ticket_chat::{self, AgentTab};
 use crate::services::agent_tasks::{clock, AgentTasks, Field, TicketKit, EFFORTS};
 use crate::services::plugin_ui::{Look, Request};
+use crate::components::controls::TextBoxes;
 
 /// The id the modal is drawn under, which is what its place and its zoom are kept against.
 pub const MODAL_ID: &str = "agent-tasks-ticket";
@@ -427,7 +428,7 @@ fn header_row(
     );
     let mut title = board.detail().title_draft.clone();
     let mut child = rux.ui.new_child(egui::UiBuilder::new().max_rect(text));
-    let response = child.add(
+    let response = child.text_box(
         egui::TextEdit::singleline(&mut title)
             .id(id)
             .hint_text(crate::components::controls::placeholder(
@@ -1787,7 +1788,7 @@ fn field_column(
         &font,
     );
     let mut child = rux.ui.new_child(egui::UiBuilder::new().max_rect(text));
-    let response = child.add(
+    let response = child.text_box(
         egui::TextEdit::singleline(&mut key)
             .id(id)
             .hint_text(crate::components::controls::placeholder("No issue", &font, theme.ink.i400))

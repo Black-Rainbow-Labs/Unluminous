@@ -23,6 +23,7 @@ use crate::components::database::{kit, text, waiting, Act};
 use crate::services::database::{Aimed, DatabaseExplorer};
 use crate::services::plugin_ui::Look;
 use crate::theme::{color, icon};
+use crate::components::controls::TextBoxes;
 
 /// One row of the tree, worked out before anything is drawn.
 ///
@@ -344,7 +345,7 @@ fn filter_box(
     );
     let text_rect = Rect::from_min_max(text_rect.min, Pos2::new(inside.right(), text_rect.max.y));
     let mut field = ui.new_child(egui::UiBuilder::new().max_rect(text_rect));
-    let response = field.add(
+    let response = field.text_box(
         egui::TextEdit::singleline(filter)
             .id(id)
             .hint_text(crate::components::controls::placeholder(
