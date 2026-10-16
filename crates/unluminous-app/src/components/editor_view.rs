@@ -324,7 +324,7 @@ pub fn handle_pointer(
             return outcome;
         }
         if response.double_clicked() {
-            let offset = layout.offset_at(local.x, local.y);
+            let offset = layout.character_at(local.x, local.y);
             let word = word_at(document.text(), offset);
             document.apply(Command::PlaceCaret { offset: word.start, extend: false });
             outcome.changed =
@@ -831,7 +831,7 @@ pub fn read_pointer(
         return Some(Selection::new(line.start, line.end.min(text.len_bytes())));
     }
     if response.double_clicked() {
-        let word = word_at(text, offset);
+        let word = word_at(text, layout.character_at(local.x, local.y));
         return Some(Selection::new(word.start, word.end));
     }
     if response.drag_started() {
@@ -851,29 +851,49 @@ pub fn read_pointer(
     None
 }
 
-/// The word `offset` falls in, for a double click.
+/// What a double click on the character starting at `offset` selects.
 ///
-/// Word characters are letters, digits and the underscore, which is the same rule the editing area's
-/// own word movement follows. The search is inside the line rather than the whole rope, because a
-/// preview is one long rope and a line is the most a word can span.
+/// `offset` is the start of the character **under the pointer**, which is `Layout::character_at`, not the
+/// nearest gap between two characters (`task-2280`: *"Double clicking for text/word selection still feels
+/// off."* A click on the right half of a space took the word after it, and one on the right half of a dot
+/// in `foo.bar` took `bar`).
+///
+/// The run of characters of the same kind around it, the way VS Code and a browser do it: a word is
+/// letters, digits and the underscore, which is the rule the editing area's own word movement follows;
+/// spaces and tabs are a run of their own; and anything else, such as `::`, `->` or `===`, is a run of
+/// punctuation. A click past the end of a line takes what is at the end of it. The search is inside the
+/// line rather than the whole rope, because a preview is one long rope and a line is the most a word can
+/// span.
 pub fn word_at(text: &Rope, offset: usize) -> std::ops::Range<usize> {
     let line = text.line_range(text.byte_to_line(offset));
     let body = text.byte_slice(line.clone());
-    let at = offset.saturating_sub(line.start).min(body.len());
-    let is_word = |c: char| c.is_alphanumeric() || c == '_';
-    let start = body[..at].char_indices().rev().take_while(|(_, c)| is_word(*c)).last();
-    let start = start.map(|(index, _)| index).unwrap_or(at);
-    let end = body[at..]
-        .char_indices()
-        .find(|(_, c)| !is_word(*c))
-        .map(|(index, _)| at + index)
-        .unwrap_or(body.len());
-    // A click on something that is not a word — a space, a table's rule — selects that one
-    // character, so a drag from it still has somewhere to start.
-    if start == end {
-        let next = body[at..].chars().next().map(char::len_utf8).unwrap_or(0);
-        return line.start + start..line.start + end + next;
+    let content = body.trim_end_matches(['\r', '\n']);
+    if content.is_empty() {
+        return line.start..line.start;
     }
+    let mut at = offset.saturating_sub(line.start).min(content.len());
+    while !content.is_char_boundary(at) {
+        at -= 1;
+    }
+    if at == content.len() {
+        at = content.char_indices().next_back().map_or(0, |(index, _)| index);
+    }
+    let kind = |c: char| match c {
+        c if c.is_alphanumeric() || c == '_' => 0,
+        ' ' | '\t' => 1,
+        _ => 2,
+    };
+    let under = content[at..].chars().next().map_or(0, kind);
+    let start = content[..at]
+        .char_indices()
+        .rev()
+        .take_while(|(_, c)| kind(*c) == under)
+        .last()
+        .map_or(at, |(index, _)| index);
+    let end = content[at..]
+        .char_indices()
+        .find(|(_, c)| kind(*c) != under)
+        .map_or(content.len(), |(index, _)| at + index);
     line.start + start..line.start + end
 }
 
@@ -1098,5 +1118,25 @@ mod tests {
         let (rope, laid) = a_long_document(200);
         let window = Rect::from_min_size(Pos2::new(0.0, 0.0), Vec2::new(900.0, 700.0));
         assert_eq!(painted(window, &rope, &laid, Pos2::new(0.0, -1_000_000.0)), 0);
+    }
+
+    /// `task-2280`: a double click selects the run of one kind of character around the one it was on.
+    #[test]
+    fn a_double_click_takes_the_run_of_characters_like_the_one_under_it() {
+        let text = Rope::from_str("let a = foo.bar_baz(x) -> y;  end
+next");
+        let at = |needle: &str| text.to_string().find(needle).expect("in the text");
+        let picked = |offset: usize| {
+            let range = word_at(&text, offset);
+            text.byte_slice(range)
+        };
+        assert_eq!(picked(at("foo")), "foo");
+        assert_eq!(picked(at("foo") + 2), "foo", "the last letter of a word");
+        assert_eq!(picked(at(".bar")), ".", "a dot is its own run");
+        assert_eq!(picked(at("bar_baz") + 4), "bar_baz", "the underscore is part of a word");
+        assert_eq!(picked(at("->")), "->", "punctuation together");
+        assert_eq!(picked(at("  end")), "  ", "a run of spaces");
+        assert_eq!(picked(at("end") + 3), "end", "the end of a line takes what is at its end");
+        assert_eq!(picked(at("next") + 1), "next", "a line after the first");
     }
 }

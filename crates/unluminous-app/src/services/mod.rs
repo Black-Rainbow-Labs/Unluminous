@@ -29,6 +29,7 @@ pub mod crash_log;
 pub mod database;
 pub mod debuggers;
 pub mod designer;
+pub mod double_click;
 pub mod file_clipboard;
 pub mod file_kind;
 pub mod file_marks;

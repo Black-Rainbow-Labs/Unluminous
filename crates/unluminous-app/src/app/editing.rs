@@ -554,6 +554,9 @@ impl UnluminousApp {
                 self.tab_drag = Drag::carrying(file, pointer, outcome.dropped);
             }
         }
+        if let Some(pointer) = outcome.pane_dragging {
+            self.pane_drag = Drag::carrying(pane, pointer, outcome.pane_dropped);
+        }
         if let Some(index) = outcome.show.and_then(at) {
             self.show_tab(index);
             self.focus = Focus::Editor;
@@ -732,7 +735,11 @@ impl UnluminousApp {
             // gutter reading the setting drew eleven point numbers beside twenty point letters — which is
             // `task-1907`'s report. `None` is every tab in a pane, which is the setting, so nothing outside the
             // canvas changes by a pixel. Every other field here already reads `file`.
-            font_size: file.sized_at.unwrap_or(self.settings.font_size),
+            //
+            // **And with the interface's zoom taken back out** (`task-2280`), the way the text renderer takes it
+            // out of the letters, so the numbers stay the size of the text beside them whatever
+            // `appearance.ui.font.size` is.
+            font_size: file.sized_at.unwrap_or(self.settings.font_size) / self.settings.interface_scale(),
         }
     }
 

@@ -14,6 +14,27 @@ use crate::components::file_tabs::{self};
 
 use crate::app::{Focus, UnluminousApp};
 
+/// Where pane `from`, let go at `at`, would go: how many panes along the row, counting the panes as they are
+/// now, and the half of the pane it is over that would be lit. `None` over no pane, over its own pane, or
+/// where it would land exactly where it already is.
+pub fn where_a_pane_would_land(pane_rects: &[Rect], from: usize, at: Pos2) -> Option<(usize, Rect)> {
+    let over = pane_rects.iter().position(|rect| rect.contains(at))?;
+    if over == from {
+        return None;
+    }
+    let rect = pane_rects[over];
+    let left = at.x < rect.center().x;
+    let before = if left { over } else { over + 1 };
+    if before == from || before == from + 1 {
+        return None;
+    }
+    let half = match left {
+        true => Rect::from_min_max(rect.min, Pos2::new(rect.center().x, rect.bottom())),
+        false => Rect::from_min_max(Pos2::new(rect.center().x, rect.top()), rect.max),
+    };
+    Some((before, half))
+}
+
 impl UnluminousApp {
     /// Work out where the tab being carried would land, draw the mark that says so, and move it when
     /// it is let go.
@@ -85,6 +106,31 @@ impl UnluminousApp {
         // rather than the pane's: the pane was drawn already and a mark added to it would be under
         // the strip it is meant to be over.
         file_tabs::insertion_mark(ui.painter(), strip, position);
+    }
+
+    /// Where a whole pane carried by the empty part of its tab strip would land, and where it did.
+    ///
+    /// `task-2280`: *"I'm unable to drag the file pane around. I should be able to click in the empty space to
+    /// the right of a tab and drag and place it."* A pane lands beside another pane: let go over the left half
+    /// of one and it goes before it, over the right half and it goes after it. The half it would land beside is
+    /// lit while it is carried. Let go over its own pane, or anywhere outside the editing area, and nothing
+    /// moves, which is the promise every other drag in the window makes.
+    pub(crate) fn settle_the_pane_drag(&mut self, ui: &mut egui::Ui, pane_rects: &[Rect]) {
+        let Some((from, at, dropped)) = self.pane_drag.in_the_air() else {
+            return;
+        };
+        let Some((before, half)) = where_a_pane_would_land(pane_rects, from, at) else {
+            return;
+        };
+        if dropped {
+            if self.files.move_pane(from, before) {
+                self.focus = Focus::Editor;
+                let now = if before > from { before - 1 } else { before };
+                self.message = Some(format!("Pane {from} is now pane {now}"));
+            }
+            return;
+        }
+        crate::components::realm::landing_mark(ui.painter(), half);
     }
 
     /// Whether a thing let go at `at` would land on the empty canvas.
@@ -210,5 +256,31 @@ impl UnluminousApp {
             .map(|(_, rect, _)| *rect);
         let mark = over.unwrap_or_else(|| self.where_a_fresh_node_would_be(at));
         crate::components::realm::landing_mark(ui.painter(), mark);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `task-2280`: a pane let go over the left half of another goes before it, and over the right half after
+    /// it; over itself, or beside itself, it does not move.
+    #[test]
+    fn a_pane_lands_before_or_after_the_pane_it_is_let_go_over() {
+        let rects: Vec<Rect> = (0..3)
+            .map(|pane| {
+                let left = pane as f32 * 300.0;
+                Rect::from_min_max(Pos2::new(left, 0.0), Pos2::new(left + 300.0, 500.0))
+            })
+            .collect();
+        let at = |x: f32| Pos2::new(x, 200.0);
+        assert_eq!(where_a_pane_would_land(&rects, 0, at(850.0)).map(|(at, _)| at), Some(3));
+        assert_eq!(where_a_pane_would_land(&rects, 0, at(650.0)).map(|(at, _)| at), Some(2));
+        assert_eq!(where_a_pane_would_land(&rects, 2, at(50.0)).map(|(at, _)| at), Some(0));
+        assert_eq!(where_a_pane_would_land(&rects, 0, at(100.0)), None, "over itself");
+        assert_eq!(where_a_pane_would_land(&rects, 0, at(350.0)), None, "where it already is");
+        assert_eq!(where_a_pane_would_land(&rects, 0, at(5000.0)), None, "outside every pane");
+        let (_, half) = where_a_pane_would_land(&rects, 0, at(850.0)).expect("a landing");
+        assert_eq!(half, Rect::from_min_max(Pos2::new(750.0, 0.0), Pos2::new(900.0, 500.0)));
     }
 }

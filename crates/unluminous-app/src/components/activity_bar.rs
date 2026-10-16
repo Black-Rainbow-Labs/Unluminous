@@ -42,7 +42,7 @@ use egui::{CornerRadius, Pos2, Rect, Sense, Vec2};
 
 use crate::app::actions::{Action, GitAction};
 use crate::components::controls::WithHint as _;
-use crate::theme::{color, icon, size};
+use crate::theme::{color, icon, size, svg_icon};
 
 /// How big one button in the rail is, and how far apart two of them are: round buttons 34 points across
 /// with four between them, which is the Editing code design (`task-2241`).
@@ -53,12 +53,17 @@ const MARGIN: f32 = 8.0;
 /// How large a mark is drawn in a button: `width="19"` on a 24 unit view box.
 const MARK: f32 = 19.0;
 
+/// The Debug button's mark, the codicon `debug-continue`, on the rail and in the run widget. `task-2280`.
+const DEBUG_MARK: IconDrawer = IconDrawer::Svg(&svg_icon::DEBUG_CONTINUE, 17.0);
+
 /// The icon a rail button draws: one of the design's line marks, or a drawing of Unluminous's own for a plugin
 /// that names a mark the design has no line version of.
 #[derive(Clone, Copy)]
 enum IconDrawer {
     Line(rux::Icon),
     Drawn(fn(&egui::Painter, Pos2, egui::Color32)),
+    /// A mark taken from another icon set as SVG path data, and the points it is drawn across. `task-2280`.
+    Svg(&'static crate::theme::svg_icon::SvgMark, f32),
 }
 
 /// One row of the panes that live at the side of the rail: its name, its icon, whether it is
@@ -278,7 +283,7 @@ fn buttons(
         ),
         (
             "Debug tile",
-            IconDrawer::Line(rux::Icon::Bug),
+            DEBUG_MARK,
             state.debug_visible,
             Action::ToggleDebugTile,
             crate::app::dock::Panel::Debug,
@@ -368,11 +373,12 @@ pub fn pane_icon(name: &str) -> fn(&egui::Painter, Pos2, egui::Color32) {
 /// drawing for the rest.
 fn rail_mark(name: &str) -> IconDrawer {
     match name {
-        "board" => IconDrawer::Line(rux::Icon::Board),
+        "board" => IconDrawer::Svg(&svg_icon::LIST_TODO, MARK),
+        "design" => IconDrawer::Svg(&svg_icon::PAINTBRUSH_VERTICAL, MARK),
         "folder" => IconDrawer::Line(rux::Icon::Project),
         "terminal" => IconDrawer::Line(rux::Icon::Terminal),
         "run" => IconDrawer::Line(rux::Icon::RunTile),
-        "bug" => IconDrawer::Line(rux::Icon::Bug),
+        "bug" => DEBUG_MARK,
         "branch" => IconDrawer::Line(rux::Icon::Git),
         "chat" => IconDrawer::Line(rux::Icon::Bubble),
         "database" => IconDrawer::Line(rux::Icon::Database),
@@ -422,6 +428,7 @@ fn rail_button(
     match draw {
         IconDrawer::Line(mark) => rux.mark(rux::Mark::new(mark, MARK), centre, tint),
         IconDrawer::Drawn(paint) => icon::crisp(rux.ui.painter(), centre, tint, 1.2, paint),
+        IconDrawer::Svg(mark, size) => svg_icon::paint(rux.ui.painter(), centre, size, mark, tint),
     }
     response
         .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, enabled, on, name));

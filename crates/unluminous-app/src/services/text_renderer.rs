@@ -32,6 +32,25 @@ const CANDIDATE_FAMILIES: &[&str] = &[
     "Segoe UI",
 ];
 
+/// The families offered for the editor and the interface: the usual ones this system has first, in
+/// [`CANDIDATE_FAMILIES`]' order, then every other family installed, alphabetically.
+///
+/// `task-2280`: *"The interface needs more font selections."* Only the ten candidates were offered, so a font
+/// a person had installed could not be chosen anywhere in the window. A face's first name is the one used,
+/// which is its English name, and the vertical writing faces Windows lists with a leading `@` are left out:
+/// they are the same family turned on its side.
+fn with_every_other_family(usual: Vec<String>, database: &fontdb::Database) -> Vec<String> {
+    let mut others: Vec<String> = database
+        .faces()
+        .filter_map(|face| face.families.first().map(|(name, _)| name.clone()))
+        .filter(|name| !name.starts_with('@') && !name.trim().is_empty())
+        .filter(|name| !usual.contains(name))
+        .collect();
+    others.sort_by_key(|name| name.to_lowercase());
+    others.dedup();
+    usual.into_iter().chain(others).collect()
+}
+
 /// Families to look in for a character the chosen family has no shape for.
 ///
 /// A terminal needs this more than a document does. `claude` and `codex` draw with box drawing characters,
@@ -560,6 +579,9 @@ pub struct TextRenderer {
     /// [`TextRenderer::follow_the_display`]. One until the window says otherwise, which is what every test
     /// draws at.
     pixels_per_point: std::cell::Cell<f32>,
+    /// The window's interface zoom, `Settings::interface_scale`, which every size this renderer is asked for
+    /// is divided by. See [`TextRenderer::follow_the_interface`].
+    interface_zoom: std::cell::Cell<f32>,
 }
 
 impl TextRenderer {
@@ -578,9 +600,10 @@ impl TextRenderer {
             })
             .map(|family| (*family).to_owned())
             .collect();
+        let families = with_every_other_family(installed, &database);
         Self {
             database,
-            families: installed,
+            families,
             faces: RefCell::new(HashMap::new()),
             fallbacks: RefCell::new(HashMap::new()),
             ids: RefCell::new(HashMap::new()),
@@ -590,6 +613,7 @@ impl TextRenderer {
             atlas: RefCell::new(Atlas::new()),
             compositing: RefCell::new(Compositing::DIRECT),
             pixels_per_point: std::cell::Cell::new(1.0),
+            interface_zoom: std::cell::Cell::new(1.0),
         }
     }
 
@@ -750,6 +774,33 @@ impl TextRenderer {
         }
     }
 
+    /// Set the text this renderer draws at its own size whatever the interface is zoomed to.
+    ///
+    /// `task-2280`. `appearance.ui.font.size` is egui's zoom factor, so a point is `zoom` times larger on the
+    /// screen than it was. The editor, the terminal, the Markdown preview and the chat set their words in
+    /// the sizes their own settings name, and those settings are about the letters a person reads rather than
+    /// about the interface round them. So every size asked of this renderer is divided by the zoom before it
+    /// is measured or rasterised: sixteen points in the editor is sixteen points on the screen at any
+    /// interface size, while the gutter, the tabs and everything else round it grow with the interface.
+    ///
+    /// True when the zoom moved, because every layout made at the old one is now the wrong size.
+    pub fn follow_the_interface(&self, zoom: f32) -> bool {
+        let moved = zoom.is_finite() && zoom > 0.0 && (zoom - self.interface_zoom.get()).abs() > 0.0001;
+        if moved {
+            self.interface_zoom.set(zoom);
+        }
+        moved
+    }
+
+    /// `style` at the size it is laid out at once the interface zoom is taken back out of it.
+    fn unzoomed<'a>(&self, style: &'a CharStyle) -> std::borrow::Cow<'a, CharStyle> {
+        let zoom = self.interface_zoom.get();
+        if (zoom - 1.0).abs() < 0.0001 {
+            return std::borrow::Cow::Borrowed(style);
+        }
+        std::borrow::Cow::Owned(CharStyle { size: style.size / zoom, ..style.clone() })
+    }
+
     /// How many pixels a point is worth for whatever is being drawn now, and where those pixels are.
     pub fn crispness(&self) -> Crispness {
         Crispness::through(*self.compositing.borrow(), self.pixels_per_point.get())
@@ -763,6 +814,7 @@ impl TextRenderer {
     /// needs this at all. `Crispness::EXACT` is every caller outside a node, and takes the same path
     /// [`Self::glyph`] always did.
     pub fn glyph(&self, character: char, style: &CharStyle) -> Option<AtlasGlyph> {
+        let style = &*self.unzoomed(style);
         let crispness = self.crispness();
         if crispness.is_exact() {
             return self.glyph_exactly(character, style);
@@ -899,15 +951,20 @@ impl TextRenderer {
     ///
     /// Both are rounded to whole points, so that a column lands on a whole pixel and the grid stays sharp.
     pub fn cell_metrics(&self, size: f32) -> CellMetrics {
+        // In the interface's own points, and whole in the points the screen was designed in, so a column
+        // still lands on a whole pixel when the interface is zoomed. See [`Self::follow_the_interface`].
+        let zoom = self.interface_zoom.get();
+        let size = size / zoom;
+        let whole = |points: f32| (points * zoom).round().max(1.0) / zoom;
         let style = self.terminal_style(size, false, false);
         let Some(face) = self.face_for(&style) else {
             return CellMetrics { width: size * 0.6, height: size * 1.25, ascent: size };
         };
         let scaled = face.as_scaled(PxScale::from(size));
         // `M` is the widest ordinary letter, and in a monospaced family every letter is that wide.
-        let width = scaled.h_advance(face.glyph_id('M')).round().max(1.0);
+        let width = whole(scaled.h_advance(face.glyph_id('M')));
         let ascent = scaled.ascent();
-        let height = (ascent - scaled.descent() + scaled.line_gap()).round().max(1.0);
+        let height = whole(ascent - scaled.descent() + scaled.line_gap());
         CellMetrics { width, height, ascent }
     }
 
@@ -1006,6 +1063,7 @@ impl Rasterised {
 
 impl FontMetrics for TextRenderer {
     fn advance(&self, cluster: &str, style: &CharStyle) -> f32 {
+        let style = &*self.unzoomed(style);
         // One ASCII character is answered out of the table for its face and size. See `AdvanceTables`.
         if let [byte] = cluster.as_bytes() {
             if byte.is_ascii() {
@@ -1019,10 +1077,11 @@ impl FontMetrics for TextRenderer {
     }
 
     fn ascii_advances(&self, style: &CharStyle) -> Option<Arc<[f32; 128]>> {
-        Some(self.ascii_table(style))
+        Some(self.ascii_table(&self.unzoomed(style)))
     }
 
     fn line_metrics(&self, style: &CharStyle) -> LineMetrics {
+        let style = &*self.unzoomed(style);
         let id = self.resolve_id(style);
         if let Some((face, size, metrics)) = self.last_metrics.get() {
             if face == id && size == style.size.to_bits() {

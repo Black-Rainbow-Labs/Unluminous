@@ -399,4 +399,38 @@ impl UnluminousApp {
             },
         }
     }
+
+    /// Read where every modal was left from `modals.conf` the first time there is a settings folder, and
+    /// write it back once something has moved and no button is held.
+    ///
+    /// `task-2280`. A window a test builds has no settings folder, so it reads nothing and writes nothing,
+    /// the rule `store` keeps for the settings themselves. Written on the frame a drag ends rather than on
+    /// every frame of it, for the reason `ProjectState::differs_only_in_the_window` records about the
+    /// window's own geometry.
+    pub(crate) fn keep_the_modal_places(&mut self, ctx: &egui::Context) {
+        let Some(path) = self.store.as_ref().map(|store| store.folder().join(MODAL_PLACES)) else {
+            return;
+        };
+        if !self.modal_places_read {
+            self.modal_places_read = true;
+            if let Ok(text) = std::fs::read_to_string(&path) {
+                crate::components::modal::restore_kept(ctx, &text);
+            }
+            self.modal_places_written = crate::components::modal::kept_changes(ctx);
+            return;
+        }
+        let changes = crate::components::modal::kept_changes(ctx);
+        let held = ctx.input(|input| input.pointer.any_down());
+        if changes == self.modal_places_written || held {
+            return;
+        }
+        self.modal_places_written = changes;
+        let text = crate::components::modal::kept_text(ctx);
+        if let Err(problem) = crate::services::store::write_atomically(&path, text.as_bytes()) {
+            eprintln!("unluminous: could not write {}: {problem}", path.display());
+        }
+    }
 }
+
+/// The file in the settings folder that holds where every modal was left. `task-2280`.
+pub(crate) const MODAL_PLACES: &str = "modals.conf";

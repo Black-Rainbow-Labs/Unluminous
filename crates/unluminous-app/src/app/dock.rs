@@ -875,9 +875,15 @@ pub const ZONE: f32 = 72.0;
 /// The most of the window one band may take, so the middle always exists.
 const ZONE_SHARE: f32 = 0.4;
 
-/// How thick a band's `Fill whole side` target is, and the most of the band's length it takes.
-pub const WHOLE_THICKNESS: f32 = 26.0;
-pub const WHOLE_LENGTH: f32 = 132.0;
+/// How much of a band's depth its `Fill whole side` target takes, measured from the window's edge, and the
+/// least it takes however shallow the band is.
+///
+/// `task-2280`: *"to get agent chat to be the full right side, i have to start dragging and release in a small
+/// area at the bottom right."* The target was a pill 26 points by 132 most of the way down the band. It is now
+/// the outer part of the band along its whole length, so the half of a band nearest the window's edge means
+/// "the whole side" and the half nearest the document means "this side", and both are large.
+pub const WHOLE_SHARE: f32 = 0.45;
+pub const WHOLE_LEAST: f32 = 28.0;
 
 /// One place a panel can be let go.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -886,10 +892,9 @@ pub struct Zone {
     /// Where the pointer has to be for this side to be the answer.
     pub band: Rect,
     /// The `Fill whole side` target inside the band: let go here and the panel lands on this side, and the
-    /// side runs the whole length of its edge. Against the window's own edge and most of the way along the
-    /// band, towards the bottom or the right. **Not half way along**, because the middle of an edge is where a
-    /// person lets a panel go when they only mean "this side", and a target there filled the side every time.
-    /// `task-2198`.
+    /// side runs the whole length of its edge. `task-2198` put it in a small pill; since `task-2280` it is the
+    /// part of the band nearest the window's edge, [`WHOLE_SHARE`] of its depth along its whole length, and the
+    /// rest of the band, nearest the document, puts the panel on the side without changing the corners.
     pub whole: Rect,
 }
 
@@ -953,65 +958,37 @@ pub fn zones(
     })
 }
 
-/// How far along its band the `Fill whole side` target's middle is, from the top or the left.
-const WHOLE_ALONG: f32 = 0.85;
-
-/// The `Fill whole side` target in `band`: against the window's edge, [`WHOLE_ALONG`] of the way along.
+/// The `Fill whole side` target in `band`: the part of it nearest the window's edge, along its whole length.
 fn whole_target(side: Side, band: Rect) -> Rect {
-    let inset = 6.0;
-    let along = match side.is_a_column() {
-        true => band.height(),
-        false => band.width(),
+    let depth = match side.is_a_column() {
+        true => band.width(),
+        false => band.height(),
     };
-    let length = WHOLE_LENGTH.min((along - inset * 2.0).max(0.0));
-    let thick = WHOLE_THICKNESS
-        .min((if side.is_a_column() { band.width() } else { band.height() }) - inset * 2.0)
-        .max(0.0);
-    // Kept inside the band at both ends however short the band is.
-    let down = (band.top() + band.height() * WHOLE_ALONG)
-        .min(band.bottom() - inset - length / 2.0)
-        .max(band.top() + inset + length / 2.0);
-    let across = (band.left() + band.width() * WHOLE_ALONG)
-        .min(band.right() - inset - length / 2.0)
-        .max(band.left() + inset + length / 2.0);
+    let thick = (depth * WHOLE_SHARE).max(WHOLE_LEAST).min(depth);
     match side {
-        Side::Left => Rect::from_center_size(
-            Pos2::new(band.left() + inset + thick / 2.0, down),
-            egui::Vec2::new(thick, length),
-        ),
-        Side::Right => Rect::from_center_size(
-            Pos2::new(band.right() - inset - thick / 2.0, down),
-            egui::Vec2::new(thick, length),
-        ),
-        Side::Top => Rect::from_center_size(
-            Pos2::new(across, band.top() + inset + thick / 2.0),
-            egui::Vec2::new(length, thick),
-        ),
-        Side::Bottom => Rect::from_center_size(
-            Pos2::new(across, band.bottom() - inset - thick / 2.0),
-            egui::Vec2::new(length, thick),
-        ),
+        Side::Left => Rect::from_min_max(band.min, Pos2::new(band.left() + thick, band.bottom())),
+        Side::Right => Rect::from_min_max(Pos2::new(band.right() - thick, band.top()), band.max),
+        Side::Top => Rect::from_min_max(band.min, Pos2::new(band.right(), band.top() + thick)),
+        Side::Bottom => Rect::from_min_max(Pos2::new(band.left(), band.bottom() - thick), band.max),
     }
 }
 
 /// Where a panel let go at `pointer` would land, including whether its side would fill.
 ///
-/// The `Fill whole side` targets are asked first, because each sits inside its own band; anywhere else the
-/// answer is [`target`]'s, which leaves who owns the corners exactly as it was. A panel put on a side the
-/// ordinary way does not change whether that side fills.
+/// The side is [`target`]'s, so a corner where two bands meet goes to the edge the pointer is nearest whichever
+/// part of either band it is in. The panel fills that side when the pointer is in the side's `Fill whole side`
+/// target, its outer part; in the inner part it lands on the side and who owns the corners stays as it was,
+/// so a panel put on a side the ordinary way does not change whether that side fills.
 pub fn aim(
     geometry: &DockGeometry,
     zones: &[Zone; 4],
     carrying: Panel,
     pointer: Pos2,
 ) -> Option<Aim> {
-    if let Some(zone) = zones.iter().find(|zone| zone.whole.contains(pointer)) {
-        let position = position_in(geometry, zone.side, carrying, pointer.x);
-        return Some(Aim { side: zone.side, position, fill: true });
-    }
     let &DockGeometry { body, layout, showing, sizes, editor } = geometry;
     let (side, position) = target(body, layout, showing, sizes, carrying, pointer, editor)?;
-    Some(Aim { side, position, fill: false })
+    let fill = zones.iter().any(|zone| zone.side == side && zone.whole.contains(pointer));
+    Some(Aim { side, position, fill })
 }
 
 /// Which side the pointer is aiming at, and where in that side the panel would land.
@@ -1653,6 +1630,57 @@ mod tests {
         let beside = right.band.center();
         let off = aim(&geometry, &bands, Panel::Run, beside).expect("an aim");
         assert_eq!((off.side, off.fill), (Side::Right, false));
+    }
+
+    /// `task-2280`: *"When Agent Tasks is in the middle bottom, and folder explorer is full left, and agent chat
+    /// is full right, there's no way for me to drag agent tasks so that it's full bottom."* The bottom band's
+    /// outer half runs the whole width of the window, under both full columns, and a drop anywhere along it
+    /// fills the bottom.
+    #[test]
+    fn a_strip_between_two_full_columns_can_be_made_to_fill_the_bottom() {
+        let sizes = Panes::new();
+        let mut layout = Layout::new();
+        layout.dock(Panel::Explorer, Side::Left, None);
+        layout.dock(Panel::Terminal, Side::Right, None);
+        layout.dock(Panel::Run, Side::Bottom, None);
+        layout.fill(Side::Left, true);
+        layout.fill(Side::Right, true);
+        let showing = only(&[Panel::Explorer, Panel::Terminal, Panel::Run]);
+        let before = regions_with(body(), &layout, showing, &sizes, true);
+        assert!(before.of(Panel::Run).left() > body().left(), "the strip starts between the columns");
+        let geometry =
+            DockGeometry { body: body(), layout: &layout, showing, sizes: &sizes, editor: true };
+        let bands = zones(body(), &layout, showing, &sizes, true);
+        let bottom = bands.iter().find(|zone| zone.side == Side::Bottom).expect("a bottom band");
+        assert_eq!(bottom.whole.width(), body().width(), "the fill target runs the whole width");
+        for x in [body().width() * 0.3, body().width() * 0.5, body().width() * 0.7] {
+            let near_the_edge = Pos2::new(x, body().bottom() - 6.0);
+            let aimed = aim(&geometry, &bands, Panel::Run, near_the_edge).expect("an aim");
+            assert_eq!((aimed.side, aimed.fill), (Side::Bottom, true), "at {x}");
+        }
+        let mut after = layout;
+        after.dock(Panel::Run, Side::Bottom, None);
+        after.fill(Side::Bottom, true);
+        let placed = regions_with(body(), &after, showing, &sizes, true);
+        assert_eq!(placed.of(Panel::Run).left(), body().left(), "the strip now reaches both corners");
+        assert_eq!(placed.of(Panel::Run).right(), body().right());
+    }
+
+    /// The fill target is the outer part of every band, so it is never a small thing to hit.
+    #[test]
+    fn every_fill_target_is_the_outer_part_of_its_band_along_its_whole_length() {
+        let sizes = Panes::new();
+        let layout = Layout::new();
+        let showing = all_showing();
+        for zone in zones(body(), &layout, showing, &sizes, true) {
+            assert!(zone.band.contains_rect(zone.whole), "{:?}", zone.side);
+            let (length, band_length, depth) = match zone.side.is_a_column() {
+                true => (zone.whole.height(), zone.band.height(), zone.whole.width()),
+                false => (zone.whole.width(), zone.band.width(), zone.whole.height()),
+            };
+            assert_eq!(length, band_length, "{:?} runs the whole band", zone.side);
+            assert!(depth >= WHOLE_LEAST, "{:?} is {depth} deep", zone.side);
+        }
     }
 
     /// `regions` is `regions_with` with the editing area showing, which is what every existing caller and every

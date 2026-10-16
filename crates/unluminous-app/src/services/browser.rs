@@ -409,6 +409,25 @@ impl BrowserPlacement {
     }
 }
 
+/// The interface zoom the window is drawn at, as bits of an `f32`, for the native views to read.
+///
+/// `task-2280`. A native child is placed in the window's logical points, which are egui's points times
+/// egui's zoom factor, and the views are placed from code that has no `egui::Context` to ask.
+static INTERFACE_ZOOM: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3F80_0000);
+
+/// Tell the native views the interface zoom. Called once a frame by the window.
+pub fn follow_the_interface(zoom: f32) {
+    if zoom.is_finite() && zoom > 0.0 {
+        INTERFACE_ZOOM.store(zoom.to_bits(), std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+/// A rectangle in egui's points as the window's logical points, which is what a native view is placed in.
+pub fn to_logical_points(rect: Rect) -> Rect {
+    let zoom = f32::from_bits(INTERFACE_ZOOM.load(std::sync::atomic::Ordering::Relaxed));
+    Rect::from_min_max((rect.min.to_vec2() * zoom).to_pos2(), (rect.max.to_vec2() * zoom).to_pos2())
+}
+
 /// The part of `visible` left once every rectangle in `over` is taken out of it, as rectangles that do
 /// not overlap.
 ///
@@ -2677,7 +2696,12 @@ mod native {
     /// whether it is showing and not where the keyboard is, so it is safe at the end of a frame as well as
     /// before one. See [`NativeHost::follow`].
     fn move_to(view: &mut NativeView, placement: &BrowserPlacement, occluders: &[egui::Rect]) {
-        let bounds = browser_rect(placement.area);
+        // **In the window's own logical points, which egui's are not once the interface is zoomed**
+        // (`task-2280`): `wry` and the window region both measure from the system's scale alone, so every
+        // rectangle egui reports is multiplied by the zoom before it reaches them.
+        let logical = super::to_logical_points;
+        let (area, visible) = (logical(placement.area), logical(placement.visible));
+        let bounds = browser_rect(area);
         if view.bounds != Some(bounds) && view.webview.set_bounds(bounds).is_ok() {
             view.bounds = Some(bounds);
         }
@@ -2710,16 +2734,15 @@ mod native {
             .iter()
             .map(|rect| rect.expand(super::OCCLUDER_SHADOW))
             .chain(placement.over.iter().copied())
-            .filter(|rect| rect.intersect(placement.visible).is_positive())
+            .map(logical)
+            .filter(|rect| rect.intersect(visible).is_positive())
             .collect();
-        let wanted = match placement.visible.contains_rect(placement.area) && over.is_empty() {
+        let wanted = match visible.contains_rect(area) && over.is_empty() {
             true => None,
-            false => {
-                Some(Clip { area: placement.area, visible: placement.visible, over: over.clone() })
-            }
+            false => Some(Clip { area, visible, over: over.clone() }),
         };
         if view.clip != wanted {
-            clip_to_the_visible_part(view, placement.area, placement.visible, &over);
+            clip_to_the_visible_part(view, area, visible, &over);
             view.clip = wanted;
         }
     }

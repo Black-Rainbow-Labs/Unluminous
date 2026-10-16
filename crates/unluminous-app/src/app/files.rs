@@ -853,6 +853,48 @@ impl OpenFiles {
         self.tidy();
     }
 
+    /// Move the whole pane `from`, with its tabs and its width, so it sits `before` panes along the row.
+    ///
+    /// `task-2280`: *"I should be able to click in the empty space to the right of a tab and drag and place
+    /// it."* Dragging the empty part of a pane's strip onto another pane calls this, and so does
+    /// `unluminous-cli pane place`. `before` counts the panes **as they are on the screen now**, the moving one
+    /// included, which is what a person dragging it is looking at: `0` is the far left and `pane_count()` the
+    /// far right. `false` when either number is out of range or the pane would land where it already is.
+    ///
+    /// A pane's number is written on its tabs (`Home::Pane`), so this renumbers every tab, the keyboard and the
+    /// widths through one table from old number to new rather than shuffling the tabs themselves.
+    pub fn move_pane(&mut self, from: usize, before: usize) -> bool {
+        if from >= self.panes || before > self.panes {
+            return false;
+        }
+        let to = if before > from { before - 1 } else { before };
+        if to == from {
+            return false;
+        }
+        let mut order: Vec<usize> = (0..self.panes).collect();
+        let moved = order.remove(from);
+        order.insert(to, moved);
+        let mut renumbered = vec![0; self.panes];
+        for (new, old) in order.iter().enumerate() {
+            renumbered[*old] = new;
+        }
+        for file in &mut self.files {
+            if let Home::Pane(pane) = file.home {
+                file.home = Home::Pane(renumbered.get(pane).copied().unwrap_or(pane));
+            }
+        }
+        if let Home::Pane(pane) = self.focus {
+            self.focus = Home::Pane(renumbered.get(pane).copied().unwrap_or(pane));
+        }
+        self.last_pane = renumbered.get(self.last_pane).copied().unwrap_or(self.last_pane);
+        if self.widths.len() == self.panes {
+            let widths = self.widths.clone();
+            self.widths = order.iter().map(|old| widths[*old]).collect();
+        }
+        self.tidy();
+        true
+    }
+
     /// Move the tab that is showing into the pane beside it. `false` when there is no pane that way.
     pub fn move_tab(&mut self, right: bool) -> bool {
         let pane = self.last_pane;
@@ -1621,6 +1663,32 @@ mod tests {
         assert_eq!(names_in(&files, 0), vec!["one.md"]);
         assert_eq!(names_in(&files, 1), vec!["two.md"]);
         assert_eq!(files.active().name(), "two.md");
+        invariants(&files);
+    }
+
+    /// `task-2280`: a whole pane moves along the row with its tabs, its width and the keyboard.
+    #[test]
+    fn a_pane_moves_along_the_row_with_its_tabs_and_its_width() {
+        let mut files = OpenFiles::new(Document::new());
+        for name in ["one.md", "two.md", "three.md"] {
+            files.open(document(name), true);
+        }
+        files.split_right();
+        files.split_right();
+        assert_eq!(files.pane_count(), 3);
+        let first = names_in(&files, 0);
+        files.set_pane_width(0, 0.5);
+        let half = files.pane_widths()[0];
+        files.focus_pane(0);
+        assert!(files.move_pane(0, 3), "the first pane to the far right");
+        assert_eq!(names_in(&files, 2), first, "its tabs went with it");
+        assert_eq!(files.pane_widths()[2], half, "and its width");
+        assert_eq!(files.focused_pane(), 2, "and the keyboard");
+        assert!(files.move_pane(2, 0), "and back to the far left");
+        assert_eq!(names_in(&files, 0), first);
+        assert!(!files.move_pane(0, 1), "a pane put where it already is does not move");
+        assert!(!files.move_pane(0, 4), "nor one put past the end");
+        assert!(!files.move_pane(5, 0), "nor a pane that is not there");
         invariants(&files);
     }
 

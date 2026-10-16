@@ -1247,6 +1247,27 @@ impl Layout {
         first..last
     }
 
+    /// Where the character under a point starts, which is what a double click needs.
+    ///
+    /// [`Self::offset_at`] answers with the nearest gap between two characters, so a point on the right
+    /// half of a space answers with the start of the word after it. A double click is about the character
+    /// the pointer is on, so this answers with the start of the cluster whose box holds `x`: the line's
+    /// start when the point is left of everything, and the end of the last cluster when it is right of
+    /// everything. `task-2280`.
+    pub fn character_at(&self, x: f32, y: f32) -> usize {
+        let Some(line) = self.lines.get(self.line_at_y(y)) else {
+            return 0;
+        };
+        let mut last = line.bytes.start;
+        for cluster in line.clusters() {
+            if x < cluster.right() {
+                return cluster.start as usize;
+            }
+            last = cluster.start as usize;
+        }
+        last
+    }
+
     /// The document offset closest to a point, which is what a mouse click needs.
     ///
     /// Clicking in the right half of a character puts the caret after it, which is what every editor
@@ -2395,6 +2416,19 @@ mod tests {
         assert_eq!(result.offset_at(7.0, 10.0), 1, "right of the middle of 'a'");
         assert_eq!(result.offset_at(14.0, 10.0), 1);
         assert_eq!(result.offset_at(1000.0, 10.0), 3, "past the end of the line");
+    }
+
+    /// `task-2280`: a double click is about the character under the pointer, whichever half of it the pointer
+    /// is on, where a single click is about the nearest gap.
+    #[test]
+    fn the_character_under_a_point_is_the_one_whose_box_holds_it() {
+        let (rope, spans, paragraphs) = fixture("ab cd");
+        let result = layout(&rope, &spans, &paragraphs, &FixedMetrics::default(), 500.0);
+        assert_eq!(result.character_at(3.0, 10.0), 0, "left half of 'a'");
+        assert_eq!(result.character_at(7.0, 10.0), 0, "right half of 'a' is still 'a'");
+        assert_eq!(result.character_at(27.0, 10.0), 2, "right half of the space is the space");
+        assert_eq!(result.offset_at(27.0, 10.0), 3, "where a single click goes after it");
+        assert_eq!(result.character_at(1000.0, 10.0), 4, "past the end is the last character");
     }
 
     #[test]

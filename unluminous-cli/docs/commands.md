@@ -786,6 +786,21 @@ unluminous-cli pane move right
 unluminous-cli pane move left
 ```
 
+### pane place
+
+```
+unluminous-cli pane place <pane> <position>
+```
+
+Move a whole pane and its tabs along the row, as dragging its strip's empty part does.
+
+- `pane` — Which pane, from 0.
+- `position` — Panes before it once moved, counted as now: 0 is far left.
+
+```sh
+unluminous-cli pane place 0 2
+```
+
 ### pane focus
 
 ```
@@ -2734,6 +2749,28 @@ Keep a new run configuration in the project. The command is one line: the first 
 unluminous-cli run add "Dev server" node server.js --port 3000
 unluminous-cli run add build cargo build --release --directory crates/unluminous-app
 unluminous-cli run add serve npm run dev --env "PORT=3000; DEBUG=app:*"
+```
+
+### run set
+
+```
+unluminous-cli run set <name> [--command <text>] [--directory <path>] [--env <pairs>] [--set-env <NAME=value>] [--unset-env <NAME>]
+```
+
+Change a kept run configuration: its command, folder or environment, which are the Run Configurations window's fields. `--set-env` adds or changes one variable, `--unset-env` removes one, `--env` replaces them all.
+
+- `name` — The configuration, as `run list` gives it.
+
+- `--command <text>` — The new command line.
+- `--directory <path>` — The folder it runs in. Empty means the project itself.
+- `--env <pairs>` — NAME=value pairs separated by semicolons, replacing every variable.
+- `--set-env <NAME=value>` — Add this variable, or change its value.
+- `--unset-env <NAME>` — Remove this variable.
+
+```sh
+unluminous-cli run set "Dev server" --set-env PORT=4000
+unluminous-cli run set "Dev server" --unset-env DEBUG
+unluminous-cli run set build --directory crates/unluminous-app
 ```
 
 ### run remove

@@ -24,6 +24,7 @@ impl UnluminousApp {
         match verb {
             "list" => self.cli_run_list(request),
             "add" => self.cli_run_add(request),
+            "set" => self.cli_run_set(request),
             "remove" => self.cli_run_remove(request),
             "start" => self.cli_run_do(request, RunAction::Start),
             "stop" => self.cli_run_do(request, RunAction::Stop),
@@ -99,6 +100,59 @@ impl UnluminousApp {
         self.run_selected = Some(name.clone());
         self.unsaved_run_configurations = true;
         ok(request, said, self.run_value())
+    }
+
+    /// `run set`: change a kept configuration's command, folder or environment. The environment
+    /// flags edit the same variables the Run Configurations window's table shows.
+    fn cli_run_set(&mut self, request: &Request) -> Outcome {
+        let Some(name) = request.text("name") else {
+            return no(request, code::USAGE, "Say which configuration.");
+        };
+        if self.run_configurations.find(&name).is_none() {
+            return no(
+                request,
+                code::NOT_FOUND,
+                format!("There is no run configuration called {name}."),
+            );
+        }
+        if let Some(text) = request.text("directory") {
+            let root = self.tree.root().to_path_buf();
+            self.set_run_directory(&name, &run_configurations::resolve_directory(&root, &text));
+        }
+        if let Err(problem) = self.set_run_command_and_environment(&name, request) {
+            return no(request, code::USAGE, problem);
+        }
+        self.unsaved_run_configurations = true;
+        ok(request, format!("Changed {name}"), self.run_value())
+    }
+
+    /// The command and environment flags of `run set`, applied to the configuration called `name`.
+    fn set_run_command_and_environment(&mut self, name: &str, request: &Request) -> Result<(), String> {
+        let Some(configuration) = self.run_configurations.find_mut(name) else {
+            return Ok(());
+        };
+        if let Some(command) = request.text("command") {
+            configuration.command = command;
+        }
+        if let Some(pairs) = request.text("env") {
+            configuration.env = pairs;
+        }
+        let mut variables = run_configurations::parse_env(&configuration.env);
+        if let Some(pair) = request.text("set-env") {
+            let Some((key, value)) = pair.split_once('=') else {
+                return Err("--set-env takes NAME=value.".to_owned());
+            };
+            let (key, value) = (key.trim().to_owned(), value.trim().to_owned());
+            match variables.iter_mut().find(|(existing, _)| *existing == key) {
+                Some(found) => found.1 = value,
+                None => variables.push((key, value)),
+            }
+        }
+        if let Some(key) = request.text("unset-env") {
+            variables.retain(|(existing, _)| *existing != key.trim());
+        }
+        configuration.env = run_configurations::format_env(&variables);
+        Ok(())
     }
 
     fn cli_run_remove(&mut self, request: &Request) -> Outcome {

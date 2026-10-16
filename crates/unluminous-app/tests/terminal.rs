@@ -17,7 +17,7 @@ mod common;
 use common::*;
 
 use egui::{vec2, Modifiers};
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 use egui_kittest::{Harness, SnapshotResults};
 use unluminous_app::app::actions::DebugAction;
 use unluminous_app::app::actions::{Action, RunAction};
@@ -890,7 +890,10 @@ fn the_run_configurations_dialog_lists_them_on_the_left_and_edits_one_on_the_rig
     harness.get_by_label("Run configuration name");
     harness.get_by_label("Run configuration command");
     harness.get_by_label("Run configuration directory");
-    harness.get_by_label("Run configuration environment");
+    harness.get_by_label("Choose directory");
+    harness.get_by_label("Add variable");
+    harness.get_by_label("Environment key 1");
+    harness.get_by_label("Environment value 2");
     harness.get_by_label("Add");
     harness.get_by_label("Remove");
     harness.get_by_label("Done");
@@ -908,6 +911,87 @@ fn the_run_configurations_dialog_lists_them_on_the_left_and_edits_one_on_the_rig
     assert!(!harness.state().run_dialog.open);
 }
 
+
+#[test]
+fn the_environment_table_adds_edits_and_deletes_variables_and_stores_only_those_with_a_key() {
+    let mut harness = harness("");
+    harness.state_mut().run_configurations.add_permanent(configuration("serve", "node server.js"));
+    harness.state_mut().run_selected = Some("serve".to_owned());
+    choose(&mut harness, Action::Run(RunAction::Edit));
+    let env = |harness: &Harness<'static, UnluminousApp>| {
+        harness.state().run_configurations.find("serve").expect("serve").1.env.clone()
+    };
+
+    // Two rows, the first typed into, the second left with a value and no key.
+    harness.get_by_label("Add variable").click();
+    steady(&mut harness);
+    harness.get_by_label("Add variable").click();
+    steady(&mut harness);
+    type_into(&mut harness, "Environment key 1", "PORT");
+    steady(&mut harness);
+    type_into(&mut harness, "Environment value 1", "3000");
+    steady(&mut harness);
+    type_into(&mut harness, "Environment value 2", "orphan");
+    steady(&mut harness);
+    assert_eq!(env(&harness), "PORT=3000", "a row with no key is not stored");
+    type_into(&mut harness, "Environment key 2", "DEBUG");
+    steady(&mut harness);
+    assert_eq!(env(&harness), "PORT=3000; DEBUG=orphan");
+    harness.snapshot(shot("run_dialog_environment_table"));
+
+    // Deleting the first row leaves the second, and the dialog keeps showing it.
+    harness.get_by_label("Delete environment variable 1").click();
+    steady(&mut harness);
+    assert_eq!(env(&harness), "DEBUG=orphan");
+    harness.get_by_label("Environment key 1");
+
+    // Closing the dialog writes down what the table held, in the format old files already use.
+    harness.get_by_label("Done").click();
+    steady(&mut harness);
+    let configuration = harness.state().run_configurations.find("serve").expect("serve").1.clone();
+    assert_eq!(configuration.environment(), vec![("DEBUG".to_owned(), "orphan".to_owned())]);
+}
+
+#[test]
+fn an_older_configuration_file_fills_the_table_and_a_new_key_field_takes_focus() {
+    let mut harness = harness("");
+    harness.state_mut().run_configurations.add_permanent(Configuration {
+        name: "serve".to_owned(),
+        command: "node server.js".to_owned(),
+        directory: String::new(),
+        env: "PORT=3000; DEBUG=app:*".to_owned(),
+    });
+    harness.state_mut().run_selected = Some("serve".to_owned());
+    choose(&mut harness, Action::Run(RunAction::Edit));
+    harness.get_by_label("Environment key 1");
+    harness.get_by_label("Environment key 2");
+    harness.get_by_label("Add variable").click();
+    steady(&mut harness);
+    assert!(
+        harness.get_by_label("Environment key 3").accesskit_node().is_focused(),
+        "the new row's key field is the one being typed into"
+    );
+}
+
+#[test]
+fn the_folder_button_asks_the_picker_and_stores_a_folder_inside_the_project_relatively() {
+    let mut harness = harness("");
+    harness.state_mut().run_configurations.add_permanent(configuration("serve", "node server.js"));
+    harness.state_mut().run_selected = Some("serve".to_owned());
+    // The native dialog cannot be driven from a test, so the window's picker is replaced.
+    harness.state_mut().folder_picker = |_title, start| Some(start.join("backend"));
+    choose(&mut harness, Action::Run(RunAction::Edit));
+    harness.get_by_label("Choose directory").click();
+    steady(&mut harness);
+    let held = harness.state().run_configurations.find("serve").expect("serve").1.directory.clone();
+    assert_eq!(held, "backend");
+
+    // A folder outside the project is stored as the absolute path it is.
+    let elsewhere = std::env::temp_dir().join("unluminous-run-directory-outside");
+    harness.state_mut().set_run_directory("serve", &elsewhere);
+    let held = harness.state().run_configurations.find("serve").expect("serve").1.directory.clone();
+    assert_eq!(held, elsewhere.display().to_string());
+}
 #[test]
 fn the_dialog_asks_before_removing_a_configuration_whose_program_is_still_running() {
     // Silently killing a server somebody is watching is worse than one extra click.
@@ -1176,4 +1260,36 @@ fn every_run_command_reaches_the_window() {
             "`run {verb}` is in the catalogue and the window does not know it"
         );
     }
+}
+
+#[test]
+fn run_set_changes_the_same_variables_and_directory_the_dialog_edits() {
+    let mut harness = harness("");
+    harness.state_mut().run_configurations.add_permanent(Configuration {
+        name: "serve".to_owned(),
+        command: "node server.js".to_owned(),
+        directory: String::new(),
+        env: "PORT=3000; DEBUG=1".to_owned(),
+    });
+    let ctx = harness.ctx.clone();
+    let run = |harness: &mut Harness<'static, UnluminousApp>, line: &str| {
+        let reply = harness.state_mut().run_command_line(line, &ctx).expect("a reply");
+        assert!(reply.ok, "`{line}` was refused: {}", reply.message);
+    };
+    run(&mut harness, "run set serve --set-env PORT=4000 --unset-env DEBUG");
+    run(&mut harness, "run set serve --directory backend/api");
+    let held = harness.state().run_configurations.find("serve").expect("serve").1.clone();
+    assert_eq!(held.env, "PORT=4000");
+    assert_eq!(held.directory, "backend/api");
+    run(&mut harness, "run set serve --env \"A=1; B=2\"");
+    let held = harness.state().run_configurations.find("serve").expect("serve").1.clone();
+    assert_eq!(held.environment(), vec![("A".into(), "1".into()), ("B".into(), "2".into())]);
+}
+
+/// Click the field called `name`, so it has the keyboard, and type `text` into it.
+fn type_into(harness: &mut Harness<'static, UnluminousApp>, name: &str, text: &str) {
+    harness.get_by_label(name).click();
+    steady(harness);
+    harness.get_by_label(name).type_text(text);
+    steady(harness);
 }

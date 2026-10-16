@@ -1559,3 +1559,128 @@ fn the_outer_panel_on_a_side_grows_into_the_panel_beside_it() {
         );
     }
 }
+
+// -------------------------------------------------------------------------------------- task-2280
+//
+// *"When Agent Tasks is in the middle bottom, and folder explorer is full left, and agent chat is full right,
+// there's no way for me to drag agent tasks so that it's full bottom."* And: *"to get agent chat to be the full
+// right side, i have to start dragging and release in a small area at the bottom right."*
+
+/// The arrangement in the report: the file panel down the whole left, the chat down the whole right, and a
+/// strip along the bottom between them. The strip is dragged by its header and let go against the bottom
+/// edge in the middle of the window, and it runs the whole width.
+#[test]
+fn a_strip_between_two_whole_columns_is_dragged_to_run_the_whole_bottom() {
+    use unluminous_app::app::dock::Side;
+    let mut harness = with_terminal("The strip between the columns.", 12, 80);
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    did(&mut harness, "panel fill left");
+    did(&mut harness, "panel fill right");
+    steady(&mut harness);
+    let before = harness.state().panel_area(Panel::Terminal);
+    let explorer = harness.state().panel_area(Panel::Explorer);
+    assert!(before.left() >= explorer.right() - 1.0, "the strip starts between the columns: {before:?}");
+    let zones = harness.state().drop_zones();
+    let bottom = zones.iter().find(|zone| zone.side == Side::Bottom).expect("a bottom band");
+    let middle = egui::pos2(bottom.whole.center().x, bottom.whole.bottom() - 6.0);
+    assert!(bottom.whole.width() > before.width(), "the fill target runs under the columns too");
+    let from = panel_handle(&harness, "Move Terminal tile");
+    carry(&mut harness, from, middle);
+    harness.snapshot(shot("panel_fill_whole_bottom_between_columns"));
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: middle,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::default(),
+    });
+    steady(&mut harness);
+    assert!(harness.state().panes.dock.fills(Side::Bottom), "the bottom fills");
+    let after = harness.state().panel_area(Panel::Terminal);
+    assert!(after.left() <= explorer.left() + 1.0, "from the left edge: {after:?}");
+    assert!(after.width() > before.width() + 100.0, "and across the whole window: {after:?}");
+}
+
+/// A panel let go anywhere along the outer part of a band fills that side, at the middle of the edge as well
+/// as near its end, and let go in the inner part it only moves.
+#[test]
+fn the_outer_part_of_a_band_fills_its_side_all_the_way_along_and_the_inner_part_does_not() {
+    use unluminous_app::app::dock::Side;
+    for (place, fills) in [(0.15, true), (0.5, true), (0.85, true)] {
+        let mut harness = with_terminal("", 12, 80);
+        let zones = harness.state().drop_zones();
+        let right = zones.iter().find(|zone| zone.side == Side::Right).expect("a right band");
+        let at = egui::pos2(
+            right.whole.center().x,
+            right.whole.top() + right.whole.height() * place,
+        );
+        let from = panel_handle(&harness, "Move Project");
+        drag(&mut harness, from, at);
+        assert_eq!(side_of(&harness, Panel::Explorer), Side::Right, "at {place}");
+        assert_eq!(harness.state().panes.dock.fills(Side::Right), fills, "at {place}");
+    }
+    let mut harness = with_terminal("", 12, 80);
+    let zones = harness.state().drop_zones();
+    let right = zones.iter().find(|zone| zone.side == Side::Right).expect("a right band");
+    let inner = egui::pos2(right.band.left() + 6.0, right.band.center().y);
+    assert!(!right.whole.contains(inner));
+    let from = panel_handle(&harness, "Move Project");
+    drag(&mut harness, from, inner);
+    assert_eq!(side_of(&harness, Panel::Explorer), Side::Right);
+    assert!(!harness.state().panes.dock.fills(Side::Right), "the inner part only moves it");
+}
+
+/// *"I'm unable to drag the file pane around. I should be able to click in the empty space to the right of a
+/// tab and drag and place it."* The empty part of a pane's tab strip carries the whole pane, and it lands
+/// before or after the pane it is let go over.
+#[test]
+fn a_pane_is_dragged_by_the_empty_part_of_its_tab_strip() {
+    let mut harness = harness("the first pane");
+    did(&mut harness, "pane split");
+    did(&mut harness, "pane split");
+    steady(&mut harness);
+    let listed = did(&mut harness, "pane list");
+    assert_eq!(listed["count"], 3);
+    // By the tabs it holds, because all three show an untitled document.
+    let first_holds = listed["panes"][0]["tabs"].clone();
+    let strips: Vec<egui::Rect> = harness
+        .get_all_by_label("Tab strip empty part")
+        .map(|node| node.rect())
+        .collect();
+    assert_eq!(strips.len(), 3, "one strip a pane");
+    let from = egui::pos2(strips[0].right() - 12.0, strips[0].center().y);
+    let last = harness.state().editor_area();
+    let onto = egui::pos2(last.right() - 20.0, last.center().y);
+    carry_a_pane(&mut harness, from, onto);
+    harness.snapshot(shot("pane_carried_by_its_strip"));
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: onto,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::default(),
+    });
+    steady(&mut harness);
+    let listed = did(&mut harness, "pane list");
+    assert_eq!(listed["panes"][2]["tabs"], first_holds, "the first pane is now the last");
+
+    let moved = did(&mut harness, "pane place 2 0");
+    assert_eq!(moved["panes"][0]["tabs"], first_holds, "and the command puts it back");
+}
+
+/// Press on the empty part of a strip and move away, without letting go.
+fn carry_a_pane(harness: &mut Harness<'static, UnluminousApp>, from: egui::Pos2, to: egui::Pos2) {
+    harness.input_mut().events.push(egui::Event::PointerMoved(from));
+    steady(harness);
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: from,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: Modifiers::default(),
+    });
+    steady(harness);
+    for step in 1..=6 {
+        let at = from + (to - from) * (step as f32 / 6.0);
+        harness.input_mut().events.push(egui::Event::PointerMoved(at));
+        harness.step();
+    }
+    steady(harness);
+}

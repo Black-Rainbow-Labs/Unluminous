@@ -87,6 +87,14 @@ pub struct TabsOutcome {
     /// Unluminous has a header to press; the editing area has this strip, and the part of it no tab wanted is
     /// exactly what a panel's own drag handle is left with. See `components::dock::handle`.
     pub twice_on_the_empty_part: bool,
+    /// The empty part of the strip is being dragged, which carries the whole pane: where the pointer is.
+    ///
+    /// `task-2280`: *"I should be able to click in the empty space to the right of a tab and drag and place
+    /// it."* Reported every frame the drag is held and again with [`Self::pane_dropped`] set on the frame it is
+    /// let go; where it lands is the window's to decide, for the reason [`Self::dragging`] gives.
+    pub pane_dragging: Option<Pos2>,
+    /// The pane drag ended on this frame.
+    pub pane_dropped: bool,
     /// Where this strip drew itself and each of its tabs, so the window can say which strip a
     /// pointer is over and where between two tabs it fell.
     pub strip: Strip,
@@ -199,11 +207,20 @@ pub fn show(
     // reason a panel's own header can be both a handle and a row of buttons. Two presses here fill the
     // window with the editing area: `task-1771` asks for that at the top of every pane, and this strip is
     // what the editing area has instead of a header.
-    let empty = ui.interact(area, ui.id().with(("tab-strip-empty", pane)), Sense::CLICK);
+    //
+    // **And it is the handle the whole pane is carried by** (`task-2280`), which is what a panel's header is.
+    // `Sense::CLICK | Sense::DRAG` rather than `click_and_drag()`, for the reason `components::dock::handle`
+    // gives: a widget this large must not be able to take the keyboard focus.
+    let empty =
+        ui.interact(area, ui.id().with(("tab-strip-empty", pane)), Sense::CLICK | Sense::DRAG);
     empty.widget_info(|| {
         egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Tab strip empty part")
     });
     outcome.twice_on_the_empty_part = empty.double_clicked();
+    if empty.dragged() || empty.drag_stopped() {
+        outcome.pane_dragging = empty.interact_pointer_pos();
+        outcome.pane_dropped = empty.drag_stopped();
+    }
 
     let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(area));
     inner.set_clip_rect(ui.painter().clip_rect().intersect(area));

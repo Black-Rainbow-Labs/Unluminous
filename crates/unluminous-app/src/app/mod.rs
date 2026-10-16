@@ -936,6 +936,10 @@ pub struct UnluminousApp {
     pub run_selected: Option<String>,
     /// The `Run Configurations` modal.
     pub run_dialog: RunDialog,
+    /// Opens the platform's folder picker at a folder and answers the one chosen, or nothing when it
+    /// was cancelled. The `Run Configurations` modal's folder button goes through it, and a test
+    /// replaces it, because a native dialog cannot be driven from a test.
+    pub folder_picker: fn(&str, &std::path::Path) -> Option<std::path::PathBuf>,
     /// Set when a configuration was added, edited or removed and the file has not been written yet.
     /// Written on the same terms as the settings: once the pointer is up.
     unsaved_run_configurations: bool,
@@ -970,6 +974,10 @@ pub struct UnluminousApp {
     store: Option<Store>,
     /// Set when a setting or a pane size changed and has not been written yet.
     unsaved_settings: bool,
+    /// Whether `modals.conf` has been read into this window yet, and the count of modal changes it was
+    /// last written at. `task-2280`; see `components::modal::kept_text`.
+    modal_places_read: bool,
+    modal_places_written: u64,
     /// What Windows last said about this window's foreground and keyboard, when it has an answer.
     ///
     /// Reported by `unluminous-cli status --section window` beside `focused`, which is `winit`'s own
@@ -1399,6 +1407,9 @@ pub struct UnluminousApp {
     /// every frame it is held and the window settles it once every pane has drawn, because a tab
     /// picked up in one pane is very often dropped on another and no one strip can see them all.
     tab_drag: Drag<usize>,
+    /// A whole editing **pane** being carried by the empty part of its tab strip, while one is, by its number.
+    /// `task-2280`. Frame local, and settled beside the tab drag for the same reason.
+    pane_drag: Drag<usize>,
     /// The **panel** being carried to another edge of the window, while one is — `task-1697`.
     ///
     /// Frame local for the same reason the tab drag is: each panel's header reports that it is in
@@ -1551,6 +1562,7 @@ impl UnluminousApp {
             run_configurations: RunConfigurations::new(),
             run_selected: None,
             run_dialog: RunDialog::default(),
+            folder_picker: native_folder_picker,
             unsaved_run_configurations: false,
             debug_panel: DebugPanel::new(),
             debug: None,
@@ -1571,6 +1583,8 @@ impl UnluminousApp {
             closed_by_hand: false,
             store: None,
             unsaved_settings: false,
+            modal_places_read: false,
+            modal_places_written: 0,
             os_focus: None,
             page_is_covered: false,
             written_project: None,
@@ -1671,6 +1685,7 @@ impl UnluminousApp {
             kernelspec_answers: Vec::new(),
             terminal_menu: None,
             tab_drag: Drag::Nothing,
+            pane_drag: Drag::Nothing,
             tab_strips: Vec::new(),
             node_tab_strips: Vec::new(),
             file_drag: Drag::Nothing,
@@ -1728,7 +1743,7 @@ impl UnluminousApp {
         self.reconcile_mcp();
     }
 
-    /// Draw a plugin's decoration the same way on every machine.
+    /// Draw a plugin's decoration the same way on every machine, and the interface at its design size.
     ///
     /// `vello_cpu` picks the widest SIMD the processor has, and whether two levels are bit-identical is not
     /// something it promises — so a board screenshot accepted on the machine that took it could fail on a
@@ -1736,6 +1751,11 @@ impl UnluminousApp {
     /// call this and the released binary does not, because in the window the fastest is what is wanted.
     pub fn draw_deterministically(&mut self) {
         self.canvases = crate::services::vello_canvas::Canvases::deterministic();
+        // **At the design's own interface size**, so an accepted picture is a picture of the design rather
+        // than of whatever the default is this year. `task-2280` raised the default to make a fresh
+        // Unluminous easier to read, and every picture the suite has taken would otherwise have moved with
+        // it. A test about the interface's size sets one, the way a person does.
+        self.settings.ui_font_size = settings::DESIGN_UI_FONT_SIZE;
     }
 
     /// Set the window's look up before the first frame is drawn.
@@ -1751,6 +1771,8 @@ impl UnluminousApp {
         theme::activate(theme::when_nothing_is_chosen());
         crate::services::terminal_colours::follow_the_theme();
         theme::apply(ctx);
+        // A double click at the pace the system's mouse settings accept. `task-2280`.
+        crate::services::double_click::follow_the_system(ctx);
         self.themed = true;
         // What the plugins contribute, read from their manifests. Here rather than only in
         // `load_settings`, because a window a test builds has no settings folder and still has to draw
@@ -2773,6 +2795,11 @@ impl unluminous_core::CodeHighlighter for PluginHighlighter<'_> {
         spans.sort_by_key(|(range, _)| range.start);
         spans
     }
+}
+
+/// The platform's own folder picker, started at `start`. The default for `UnluminousApp::folder_picker`.
+pub fn native_folder_picker(title: &str, start: &std::path::Path) -> Option<std::path::PathBuf> {
+    rfd::FileDialog::new().set_title(title).set_directory(start).pick_folder()
 }
 
 #[cfg(test)]

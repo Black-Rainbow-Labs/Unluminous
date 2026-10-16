@@ -68,29 +68,20 @@ pub const MODAL_ID: &str = "agent-tasks-ticket";
 /// The type size the description and the comments are set in: the design's 13 points.
 pub const BODY: f32 = 13.0;
 
-/// The most room the modal asks for, however large the window is: the design's 1000 wide, and taller than its
-/// 690 so a ticket shows its agent's conversation and its comments together (`task-2261`).
-pub const LARGEST: Vec2 = Vec2::new(1000.0, 860.0);
-
-/// How much of the window it may take before [`LARGEST`] stops it: nine tenths of its width, and a little more
-/// of its height, because the dialog's four sections stack and the design's 690 points is most of a small window.
-const WINDOW_SHARE: f32 = 0.9;
-const WINDOW_SHARE_TALL: f32 = 0.94;
-
 /// The smallest it will ask for, whatever the window is.
 const SMALLEST_WIDTH: f32 = 720.0;
 const SMALLEST_HEIGHT: f32 = 520.0;
 
-/// How big the modal asks to be in this window: nine tenths of it, and never more than [`LARGEST`].
+/// How big the modal asks to be in this window: the window less `modal::MARGIN_SHARE` of it on every side.
+///
+/// `task-2280`: *"The default modal size is too small ... It should fill most of the screen. Use margin of 3%."*
+/// It was nine tenths of the window and never more than 1000 by 860 points, so on a large screen a ticket
+/// was a dialog in the middle of a mostly empty window. It is now the size every working dialog opens at,
+/// `modal::starting_size`, and the description takes the room it gains.
 pub fn size(ctx: &egui::Context, _look: &Look<'_>) -> (f32, f32) {
     let window = ctx.content_rect().size();
-    let side = |window: f32, share: f32, largest: f32, smallest: f32| {
-        (window * share).min(largest).max(smallest.min(window))
-    };
-    (
-        side(window.x, WINDOW_SHARE, LARGEST.x, SMALLEST_WIDTH),
-        side(window.y, WINDOW_SHARE_TALL, LARGEST.y, SMALLEST_HEIGHT),
-    )
+    let size = modal::starting_size(window, MODAL_ID, Vec2::new(SMALLEST_WIDTH, SMALLEST_HEIGHT));
+    (size.x, size.y)
 }
 
 /// `padding: 22px 24px 24px 28px` round the dialog, and the header row's height and the gap under it.
@@ -617,6 +608,17 @@ fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new:
         (false, Some(given)) => given,
         (false, None) => give(description_want, description_least, &mut short),
     };
+    // **Spare room goes to the description first, up to the height of what is written in it** (`task-2280`: *"The
+    // contents of the modal should fill the space when possible. e.g. the description of task in agent task
+    // should grow to help the contents fit."*). A modal that fills the window has room to show a long
+    // description whole, and the comments have only their composer to show until somebody comments.
+    let grows = !dragged && !description_shut && !new;
+    let to_description = match grows {
+        true => (description_fits(_rux, board, area.width()) - description).clamp(0.0, spare),
+        false => 0.0,
+    };
+    let description = description + to_description;
+    let spare = spare - to_description;
     // Spare room goes to the comments, unless somebody has given them a height of their own: then it stays under
     // them, so the edge they were dragged by is where the pointer let go of it.
     let spare = match board.comments_height {
@@ -693,6 +695,16 @@ fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new:
         (false, false) => (description + left_over, comments),
     };
     Budget { description, todos, terminal, comments }
+}
+
+/// How tall the description's well has to be to show all of its words without scrolling: the words laid out at
+/// the width the well gives them, and the well's own padding above and below.
+fn description_fits(rux: &rux::Rux<'_>, board: &AgentTasks, width: f32) -> f32 {
+    let text = board.description_text();
+    let wrap = (width - 18.0 - 32.0).max(1.0);
+    let font = egui::FontId::proportional(BODY);
+    let words = rux.ui.ctx().fonts_mut(|fonts| fonts.layout(text, font, egui::Color32::WHITE, wrap)); // any ground: only measured, never drawn
+    words.size().y + 28.0 + DESCRIPTION_GRIP
 }
 
 /// A section's heading that folds: the round chevron before it, named `name`, and `words` beside it. Answers
@@ -1960,14 +1972,14 @@ mod tests {
         context
     }
 
-    /// `task-2193`: on a large display the ticket filled the window. Nine tenths of a small window, and never
-    /// more than [`LARGEST`] of a large one.
+    /// `task-2280`: a ticket fills the window less three percent of it on every side, however large the window.
     #[test]
-    fn a_large_window_gets_a_dialog_rather_than_a_ticket_that_fills_it() {
+    fn a_ticket_fills_the_window_less_its_margin() {
         let renderer = TextRenderer::new();
         let look = Look::of(&Settings::new(), &renderer);
-        assert_eq!(size(&a_context(2560.0, 1440.0), &look), (LARGEST.x, LARGEST.y));
-        assert_eq!(size(&a_context(1000.0, 800.0), &look), (900.0, 800.0 * 0.94));
+        let (width, height) = size(&a_context(2560.0, 1440.0), &look);
+        assert!((width - 2560.0 * 0.94).abs() < 0.01, "{width}");
+        assert!((height - 1440.0 * 0.94).abs() < 0.01, "{height}");
     }
 
     #[test]

@@ -597,6 +597,20 @@ pub fn for_file(template: &str, root: &Path, file: &Path) -> Configuration {
     Configuration::new(name, template.replace(FILE_PLACEHOLDER, &written))
 }
 
+/// The text for the `directory` field when somebody has chosen `chosen` in a folder picker.
+///
+/// A folder inside the project is stored relative to it, with forward slashes and nothing at all
+/// for the project itself, which is the convention [`resolve_directory`] reads and what lets the
+/// project move. A folder outside the project is stored as the absolute path it is.
+pub fn directory_for_choice(root: &Path, chosen: &Path) -> String {
+    let chosen = unluminous_terminal::paths::plain(chosen);
+    let root = unluminous_terminal::paths::plain(root);
+    match chosen.strip_prefix(&root) {
+        Ok(inside) => inside.to_string_lossy().replace('\\', "/"),
+        Err(_) => chosen.display().to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -606,6 +620,19 @@ mod tests {
         std::fs::remove_dir_all(&root).ok();
         std::fs::create_dir_all(&root).expect("make the project");
         root
+    }
+
+    #[test]
+    fn a_chosen_folder_inside_the_project_is_stored_relative_and_outside_it_is_absolute() {
+        let root = project("unluminous-run-directory-choice");
+        let inside = root.join("backend").join("api");
+        assert_eq!(directory_for_choice(&root, &inside), "backend/api");
+        assert_eq!(directory_for_choice(&root, &root), "");
+        let outside = std::env::temp_dir().join("unluminous-run-directory-elsewhere");
+        assert_eq!(directory_for_choice(&root, &outside), outside.display().to_string());
+        // What was stored resolves back to the folder that was chosen.
+        assert_eq!(resolve_directory(&root, &directory_for_choice(&root, &inside)), inside);
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]

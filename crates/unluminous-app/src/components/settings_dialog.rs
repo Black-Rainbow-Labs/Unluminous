@@ -367,7 +367,7 @@ fn draw_the_page(
             (changed(page), page.height)
         }
         Page::Editor => {
-            let page = editor_page(ui, area, settings);
+            let page = editor_page(ui, area, settings, context.families);
             (changed(page), page.height)
         }
         Page::Terminal => {
@@ -700,7 +700,10 @@ fn options_with(list: Vec<String>, current: &str) -> (Vec<String>, Option<usize>
     (list, Some(at))
 }
 
-/// `Appearance & Behavior > Appearance`: the editor's font, the interface's, and the window's background.
+/// `Appearance & Behavior > Appearance`: the interface's font and size, and the window's background.
+///
+/// The editor's font is on the Editor page since `task-2280`: *"The font size for the Editor should be in the
+/// Editor section of Settings."*
 fn appearance_page(
     ui: &mut egui::Ui,
     area: Rect,
@@ -711,39 +714,9 @@ fn appearance_page(
     let mut backgrounds = false;
     let mut column = Column::new(area.left(), area.right(), area.top());
 
-    kit::card(ui, &mut column, "Font", None, |card| {
-        let shown = match settings.font_family.is_empty() {
-            true => "System default".to_owned(),
-            false => settings.font_family.clone(),
-        };
-        let (options, chosen) = options_with(families.to_vec(), &shown);
-        card.row("Family", None, |row| {
-            if let Some(index) = row.select("Editor font family", &options, chosen, 260.0) {
-                if let Some(family) = families.iter().find(|family| **family == options[index]) {
-                    settings.font_family = family.clone();
-                    changed = true;
-                }
-            }
-        });
-        let sizes: Vec<String> = FONT_SIZES.iter().map(|size| format!("{size:.0}")).collect();
-        let (sizes, chosen) = options_with(sizes, &format!("{:.0}", settings.font_size));
-        card.row(
-            "Size",
-            Some("The font the editor sets every open file in. Bold, italic and colour stay as they were, and the size is also on the keyboard at Ctrl with plus and minus."),
-            |row| {
-                if let Some(index) = row.select("Editor font size", &sizes, chosen, 110.0) {
-                    if let Ok(size) = sizes[index].parse::<f32>() {
-                        settings.font_size = size;
-                        changed = true;
-                    }
-                }
-            },
-        );
-    });
-
     // The reference editor's `Appearance -> Use custom font`: the window's own text was the editor's family at
     // egui's own size, so a large editor meant large menus.
-    kit::card(ui, &mut column, "Interface", None, |card| {
+    kit::card(ui, &mut column, "Interface font", None, |card| {
         let shown = match settings.ui_font_family.is_empty() {
             true => "The editor's".to_owned(),
             false => settings.ui_font_family.clone(),
@@ -764,7 +737,7 @@ fn appearance_page(
         let (sizes, chosen) = options_with(sizes, &format!("{:.1}", settings.ui_font_size));
         card.row(
             "Size",
-            Some("The menus, the rail, the explorer and the status bar. The editing area keeps its own font above."),
+            Some("Everything in the window grows with it: the menus, the rail, the explorer, the tabs, the status bar and the dialogs. The editor and the terminal keep their own font sizes, set on their own pages."),
             |row| {
                 if let Some(index) = row.select("Interface font size", &sizes, chosen, 110.0) {
                     if let Ok(size) = sizes[index].parse::<f32>() {
@@ -993,9 +966,41 @@ fn indent_name(indent: Indent) -> String {
 }
 
 /// `Editor > Editor`: the gutter, notebooks, suggestions, indentation, the debugger, files and updates.
-fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings) -> Drawn {
+fn editor_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings, families: &[String]) -> Drawn {
     let mut changed = false;
     let mut column = Column::new(area.left(), area.right(), area.top());
+
+    // First on the page, because it is the setting about the editor that is changed most (`task-2280`).
+    kit::card(ui, &mut column, "Font", None, |card| {
+        let shown = match settings.font_family.is_empty() {
+            true => "System default".to_owned(),
+            false => settings.font_family.clone(),
+        };
+        let (options, chosen) = options_with(families.to_vec(), &shown);
+        card.row("Family", None, |row| {
+            if let Some(index) = row.select("Editor font family", &options, chosen, 260.0) {
+                if let Some(family) = families.iter().find(|family| **family == options[index]) {
+                    settings.font_family = family.clone();
+                    changed = true;
+                }
+            }
+        });
+        let sizes: Vec<String> = FONT_SIZES.iter().map(|size| format!("{size:.0}")).collect();
+        let (sizes, chosen) = options_with(sizes, &format!("{:.0}", settings.font_size));
+        card.row(
+            "Size",
+            Some("The font the editor sets every open file in. Bold, italic and colour stay as they were, and the size is also on the keyboard at Ctrl with plus and minus."),
+            |row| {
+                if let Some(index) = row.select("Editor font size", &sizes, chosen, 110.0) {
+                    if let Ok(size) = sizes[index].parse::<f32>() {
+                        settings.font_size = size;
+                        changed = true;
+                    }
+                }
+            },
+        );
+    });
+
 
     kit::card(ui, &mut column, "Gutter", None, |card| {
         changed |= card.switch(

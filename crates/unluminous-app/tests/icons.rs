@@ -192,3 +192,36 @@ fn every_completion_kind_glyph_on_one_sheet() {
     harness.run();
     harness.snapshot(shot("icons_completion_kinds").as_str());
 }
+
+/// The marks taken from other icon sets as SVG path data (`task-2280`): Lucide's `paintbrush-vertical` for the
+/// Designer, Lucide's `list-todo` for Agent Tasks and the codicon `debug-continue` for Debug, each at the
+/// size its rail button draws it.
+#[test]
+fn every_mark_drawn_from_svg_path_data_on_one_sheet() {
+    use unluminous_app::theme::svg_icon;
+    let marks: [(&svg_icon::SvgMark, f32); 3] = [
+        (&svg_icon::PAINTBRUSH_VERTICAL, 19.0),
+        (&svg_icon::LIST_TODO, 19.0),
+        (&svg_icon::DEBUG_CONTINUE, 17.0),
+    ];
+    let margin = 24.0;
+    let size = Vec2::new(CELL * marks.len() as f32 + margin, CELL + margin);
+    let mut harness = builder().with_pixels_per_point(ZOOM).with_size(size).build_ui(move |ui| {
+        let area = ui.max_rect();
+        let painter = ui.painter_at(area);
+        painter.rect_filled(area, egui::CornerRadius::ZERO, color::editor());
+        for (index, (mark, points)) in marks.into_iter().enumerate() {
+            let centre =
+                Pos2::new(area.left() + CELL * index as f32 + CELL / 2.0, area.top() + CELL / 2.0);
+            painter.rect_stroke(
+                Rect::from_center_size(centre, Vec2::splat(CELL)),
+                egui::CornerRadius::ZERO,
+                egui::Stroke::new(0.2, color::divider()),
+                egui::StrokeKind::Inside,
+            );
+            svg_icon::paint(&painter, centre, points, mark, color::icon());
+        }
+    });
+    harness.run();
+    harness.snapshot(shot("icons_svg_marks").as_str());
+}

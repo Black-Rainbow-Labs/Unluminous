@@ -5007,6 +5007,78 @@ helps; one that only trims an answer does not move the total. Accuracy is ripgre
 plain English search from a ticket's words finds the right file less often than the Grep calls an
 agent writes after reading the code. That search is the part of this design with the most room left.
 
+## Modals, the interface size, selection, docking and the pane row (`task-2280`)
+
+Eight complaints in one ticket. What each one turned out to be, so the next change does not undo it.
+
+**A working dialog fills the window less 3% of it on every side.** `modal::starting_size` gives every dialog
+that asks for 600 points of width or more the window's size less `MARGIN_SHARE` round it; a question with a
+field or two in it, `Go to File` and the command palette keep the size they ask for. The same margin is the
+most a modal can be resized to and the room it can be dragged in. The ticket's description takes the room
+this gains: its column budget gives spare height to the description up to the height of what is written in
+it (`description_fits`) before the comments get any.
+
+**Where every modal was left survives a restart.** The placement and the zoom were already kept in egui's
+memory per modal; `modal::Kepts` gathers them under one id so they can be listed, and
+`UnluminousApp::keep_the_modal_places` writes them to `modals.conf` in the settings folder on the frame a
+drag ends and reads them back the first frame there is a settings folder. A test window has no settings
+folder and reads and writes nothing.
+
+**A drag in a zoomed modal or a zoomed canvas node did select, and nothing drew it.** egui paints a text
+box's selection into the galley: a rectangle added to each selected row's mesh and the selected glyphs
+recoloured. `crisp::sharpen_the_text_in` lays every text shape in a zoomed layer out again at the zoom, from
+the job, which has none of that. `crisp::carry_the_selection` copies the rectangle and the colours across.
+Unzoomed, nothing is relaid and nothing was ever wrong, which is why every test passed and the ticket modal,
+which Jason zooms, was where it was seen.
+
+**A double click is about the character under the pointer.** `Layout::offset_at` answers with the nearest
+gap, so the right half of a space took the next word. `Layout::character_at` answers with the character
+whose box holds the point, and `editor_view::word_at` takes the run of the same kind round it: a word, a run
+of spaces, or a run of punctuation such as `->`. egui waited 0.3 seconds for the second click and Windows
+starts at 0.5, so `services::double_click` gives egui the system's own interval.
+
+**`appearance.ui.font.size` is egui's zoom factor.** It used to scale egui's text styles, which almost nothing
+in the window is set in, so the setting did nothing a person could see. Now every menu, row, icon and dialog
+grows together, from `DESIGN_UI_FONT_SIZE` (12.5) up; the default is 14 and the most is 40. Three things
+follow, and each has its own line in the code:
+
+- **The text renderer divides every size it is asked for by the zoom** (`TextRenderer::follow_the_interface`),
+  so the editor, the terminal, the preview and the chat keep the point sizes their own settings name. When
+  the zoom moves every file's layout is thrown away, not marked stale: a relayout keeps every paragraph whose
+  text and formatting did not change, and the old advances were kept with them. The gutter's numbers are
+  divided the same way.
+- **The window's saved geometry is in the system's logical points**, egui's points times the zoom, because the
+  window is built before any zoom is set and would otherwise open smaller by the zoom on every start.
+- **A native browser view is placed in logical points too** (`browser::to_logical_points`).
+
+A test window is drawn at the design size whatever the default is (`draw_deterministically`), so the
+accepted pictures do not move with the default.
+
+**The daily update check reaches people who installed before it was the default.** A settings file is written
+whole, so every Unluminous run before `task-2063` has `update.check = off` in its file. An `off` with no
+`update.check.chosen = true` beside it is read as the default; turning it off writes that mark.
+
+**The `Fill whole side` target is the outer part of the band, along its whole length.** It was a 26 by 132 point
+pill most of the way along the band, which is the *"small area at the bottom right"* in the report, and with
+both columns filling there was nowhere along the bottom to aim at. The half of a band nearest the window's
+edge fills the side and the half nearest the document only moves the panel; both parts say so in words, and
+the landing plate says `Terminal tile · whole bottom`.
+
+**The empty part of a pane's tab strip carries the whole pane.** Let go over the left half of another pane and
+it goes before it, over the right half after it. `OpenFiles::move_pane` renumbers the tabs, the widths and the
+keyboard through one table, and `unluminous-cli pane place` is the agent's half.
+
+**The editor's font is on the Editor page, and every installed family is offered** for the editor and the
+interface, the usual ten first and the rest alphabetically.
+
+**The run configuration dialog has a folder button and an environment table.** The button opens the system's
+folder picker through `UnluminousApp::folder_picker`, which a test replaces, and a folder inside the project is
+stored relative to it. The table is one row a variable with Add and a Delete on each row; it is still stored as
+the `A=1; B=2` string, so older files load into it. `unluminous-cli run set` edits the same fields.
+
+**The Designer, Agent Tasks and Debug marks are Lucide's `paintbrush-vertical` and `list-todo` and the codicon
+`debug-continue`**, kept as their own SVG path data in `theme::svg_icon` because `rux::Icon` is a closed list.
+
 ## What runs beside the window is a setting, and off takes effect at once (`task-2279`)
 
 `tasks/task-2279-performance-tdd.md` is the measurement. On 0.88.0 a window on this repository was a

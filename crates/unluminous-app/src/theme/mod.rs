@@ -44,6 +44,7 @@ use egui::{Color32, CornerRadius, Stroke, Vec2};
 pub mod crisp;
 pub mod glass;
 pub mod icon;
+pub mod svg_icon;
 
 /// Generate the palette from one list.
 ///
@@ -986,7 +987,10 @@ pub fn apply_scaled(ctx: &egui::Context, interface_scale: f32) {
     // command and plus changes the size the *document* is set in and leaves the window alone. With
     // egui's own left on, one press would do both.
     ctx.options_mut(|options| options.zoom_with_keyboard = false);
-    let scale = interface_scale.clamp(0.6, 2.0);
+    let scale = interface_scale.clamp(
+        crate::settings::MIN_UI_FONT_SIZE / crate::settings::DESIGN_UI_FONT_SIZE,
+        crate::settings::MAX_UI_FONT_SIZE / crate::settings::DESIGN_UI_FONT_SIZE,
+    );
     let dark = is_dark();
     // egui keeps a dark style and a light style and picks one by `Context::theme`, which follows the
     // operating system unless it is told. Both are written below, and the window says which to use, so a
@@ -1089,20 +1093,27 @@ pub fn apply_scaled(ctx: &egui::Context, interface_scale: f32) {
             ..egui::style::ScrollStyle::floating()
         };
 
-        // The interface's own font size, which is the reference editor's Appearance -> Use custom font.
+        // egui's own text sizes, which the interface's size no longer touches: it is the zoom below.
         //
-        // **Set from egui's own defaults rather than multiplied in place**, because this function is
-        // called again every time the theme changes: scaling what is already there would compound, so
-        // choosing 16 points twice would land on 20. Reading the defaults each time makes it absolute,
-        // and at a scale of one it writes back exactly what egui had, so an Unluminous that names no size in
-        // its settings file is drawn exactly as it always was.
+        // **Set from egui's own defaults rather than left as they are**, because this function is called
+        // again every time the theme changes and a style that something else had scaled would carry on
+        // being scaled.
         let defaults = egui::Style::default();
         for (kind, font) in style.text_styles.iter_mut() {
             if let Some(default) = defaults.text_styles.get(kind) {
-                font.size = (default.size * scale).round();
+                font.size = default.size;
             }
         }
     });
+    // **The interface's size is egui's zoom factor** (`task-2280`: *"The size doesn't change anything."*).
+    // Scaling egui's text styles reached egui's own labels and nothing else, because the menus, the rail, the
+    // explorer, the tabs and the status bar are drawn at the style guide's own sizes. A zoom reaches every one
+    // of them, and their icons, rows and gaps with them, so the interface grows as one piece. The text
+    // renderer takes it back out of the editor's and the terminal's sizes; see
+    // `TextRenderer::follow_the_interface`. Set only when it moves, because egui repaints on every change.
+    if (ctx.zoom_factor() - scale).abs() > 0.0001 {
+        ctx.set_zoom_factor(scale);
+    }
 }
 
 /// Put egui back on the style that matches the active theme, if something has moved it.
@@ -1527,31 +1538,41 @@ mod tests {
         );
     }
 
-    /// The interface size is set from egui's defaults rather than multiplied into what is there.
+    /// The interface size is egui's zoom factor, and it is absolute rather than compounding.
     ///
-    /// `apply_scaled` runs again on every theme change, so a scale applied in place would compound:
-    /// choosing sixteen points and then choosing a theme would land on twenty.
+    /// `apply_scaled` runs again on every theme change, so a scale applied to what was already there would
+    /// compound: choosing a size and then choosing a theme would make it larger again. `task-2280` moved it
+    /// from egui's text styles, which almost nothing in the window is set in, to the zoom factor.
     #[test]
-    fn the_interface_size_is_absolute_rather_than_compounding() {
+    fn the_interface_size_is_the_zoom_and_absolute_rather_than_compounding() {
         let context = egui::Context::default();
-        let size_of = |context: &egui::Context| {
+        let body = |context: &egui::Context| {
             context
                 .style_of(egui::Theme::Dark)
                 .text_styles
                 .get(&egui::TextStyle::Body)
                 .map(|font| font.size)
         };
+        // egui takes a new zoom at the start of the next pass.
+        let pass = |context: &egui::Context| {
+            let _ = context.run_ui(egui::RawInput::default(), |_| {});
+        };
         apply(&context);
-        let plain = size_of(&context).expect("egui has a body style");
+        pass(&context);
+        let plain = body(&context).expect("egui has a body style");
+        assert_eq!(context.zoom_factor(), 1.0);
 
         apply_scaled(&context, 1.6);
-        let once = size_of(&context).expect("still there");
-        assert!(once > plain, "asking for a larger interface makes it larger");
+        pass(&context);
+        assert_eq!(context.zoom_factor(), 1.6, "asking for a larger interface zooms it");
+        assert_eq!(body(&context), Some(plain), "and leaves egui's own sizes alone");
         apply_scaled(&context, 1.6);
-        assert_eq!(size_of(&context), Some(once), "and asking twice is asking once");
+        pass(&context);
+        assert_eq!(context.zoom_factor(), 1.6, "and asking twice is asking once");
 
         apply_scaled(&context, 1.0);
-        assert_eq!(size_of(&context), Some(plain), "and one is exactly what egui had");
+        pass(&context);
+        assert_eq!(context.zoom_factor(), 1.0, "and one is no zoom at all");
     }
 
     #[test]

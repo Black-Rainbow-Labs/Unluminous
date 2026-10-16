@@ -19,8 +19,17 @@
 //!
 //! Where it has been dragged to and how much bigger it has been made are kept in egui's own memory
 //! under the modal's id rather than in `UnluminousApp`. A modal's geometry belongs to the modal: the
-//! window has no decision to make about it, nothing is written to disk, and a dialog closed and
-//! opened again is where it was left, which is what every other application does.
+//! window has no decision to make about it, and a dialog closed and opened again is where it was left,
+//! which is what every other application does. Since `task-2280` it is also where it was left after a
+//! restart: every place and zoom is gathered in [`kept_text`], which the window writes to `modals.conf`
+//! in the settings folder once a drag ends, and [`restore_kept`] reads back when the window opens.
+//!
+//! ## A working dialog fills the window
+//!
+//! `task-2280` again: a dialog that asks for [`FILLS_FROM`] points of width or more opens at the window's
+//! size less [`MARGIN_SHARE`] of it on every side, and lays itself out in that rectangle the way it lays
+//! itself out in any other. A question with a field or two in it keeps the size it asked for. See
+//! [`starting_size`].
 //!
 //! ## Every modal zooms
 //!
@@ -63,6 +72,41 @@ pub const FOOTER: f32 = 52.0;
 /// cannot be read in.
 pub const MIN_WIDTH: f32 = 320.0;
 pub const MIN_HEIGHT: f32 = 220.0;
+
+/// How much of the window is left round a modal on each side: three percent of its width at the left and
+/// the right, and three percent of its height at the top and the bottom.
+///
+/// `task-2280`: *"The default modal size is too small, and leaves too much room/margin on the top/sides. It
+/// should fill most of the screen. Use margin of 3%."* It is also the most a modal can be resized to.
+pub const MARGIN_SHARE: f32 = 0.03;
+
+/// A dialog that asks for at least this much width is a working dialog, and opens filling the window less
+/// [`MARGIN_SHARE`] on each side.
+///
+/// A dialog that asks for less is a question with a field or two in it, such as the text prompt, the
+/// confirmation, the About box or the breakpoint condition, and keeps the size it asked for: a
+/// confirmation stretched across the whole window has nothing to put in the room.
+pub const FILLS_FROM: f32 = 600.0;
+
+/// The working dialogs that keep the size they asked for: the two lists that are searched by typing and
+/// closed by choosing a row, which are a search box with a list under it the way they are in every
+/// other editor.
+const KEEP_THEIR_SIZE: &[&str] = &["unluminous-command-palette", "unluminous-go-to-file"];
+
+/// The size a modal starts at in a window this big: the window less [`MARGIN_SHARE`] round it for a
+/// working dialog, and what it asked for otherwise.
+pub fn starting_size(window: Vec2, id: &str, asked: Vec2) -> Vec2 {
+    if asked.x < FILLS_FROM || KEEP_THEIR_SIZE.contains(&id) {
+        return asked;
+    }
+    largest(window)
+}
+
+/// The largest a modal can be in a window this big.
+fn largest(window: Vec2) -> Vec2 {
+    let keep = 1.0 - 2.0 * MARGIN_SHARE;
+    Vec2::new((window.x * keep).max(120.0), (window.y * keep).max(120.0))
+}
 
 /// How far in from a modal's edge it can be grabbed, and how far along each edge a corner reaches.
 ///
@@ -124,10 +168,114 @@ pub fn placement(ctx: &egui::Context, id: &str) -> Placement {
 /// header does.
 pub fn reset_placement(ctx: &egui::Context, id: &str) {
     ctx.data_mut(|data| data.remove::<Placement>(placement_id(id)));
+    keep(ctx, id, |kept| kept.placement = Placement::default());
 }
 
 fn remember_placement(ctx: &egui::Context, id: &str, placement: Placement) {
     ctx.data_mut(|data| data.insert_temp(placement_id(id), placement));
+    keep(ctx, id, |kept| kept.placement = placement);
+}
+
+/// What is kept about one modal between one run of Unluminous and the next.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Kept {
+    pub placement: Placement,
+    pub zoom: f32,
+}
+
+impl Default for Kept {
+    fn default() -> Self {
+        Self { placement: Placement::default(), zoom: crate::settings::DEFAULT_ZOOM }
+    }
+}
+
+/// Every modal's [`Kept`], by its id, and a count of the changes made to them.
+///
+/// `task-2280`: *"Modal sizes and placement should be remembered/saved, reloaded on restart."* The placement
+/// and the zoom are still each kept under the modal's own id, which is what everything that draws a modal
+/// reads; this is the same values gathered under one id, because egui's memory cannot be walked to find
+/// them, and the window writes them to `modals.conf` from here.
+#[derive(Debug, Clone, Default)]
+struct Kepts {
+    by_id: std::collections::BTreeMap<String, Kept>,
+    changes: u64,
+}
+
+fn kepts_id() -> egui::Id {
+    egui::Id::new("unluminous-modals-kept")
+}
+
+/// Change what is kept about the modal `id`, counting it as a change only when something moved.
+fn keep(ctx: &egui::Context, id: &str, change: impl FnOnce(&mut Kept)) {
+    ctx.data_mut(|data| {
+        let kepts = data.get_temp_mut_or_default::<Kepts>(kepts_id());
+        let was = kepts.by_id.get(id).copied().unwrap_or_default();
+        let mut now = was;
+        change(&mut now);
+        if now == was {
+            return;
+        }
+        match now == Kept::default() {
+            true => kepts.by_id.remove(id),
+            false => kepts.by_id.insert(id.to_owned(), now),
+        };
+        kepts.changes += 1;
+    });
+}
+
+/// How many changes have been made to the modals' places and zooms since the window opened.
+///
+/// The window writes `modals.conf` when this differs from the count it last wrote at, and only once no
+/// button is held, so a drag across the window is written once when it ends rather than on every frame.
+pub fn kept_changes(ctx: &egui::Context) -> u64 {
+    ctx.data(|data| data.get_temp::<Kepts>(kepts_id())).map_or(0, |kepts| kepts.changes)
+}
+
+/// Every modal's place and zoom, as the lines of `modals.conf`.
+///
+/// One line a modal that has been moved, resized or zoomed: its id, then how far it was dragged from the
+/// middle, how much it was resized by and its zoom, in window points.
+/// `unluminous-settings = 0 0 -120 -40 1.25`. A modal nobody touched has no line.
+pub fn kept_text(ctx: &egui::Context) -> String {
+    let kepts = ctx.data(|data| data.get_temp::<Kepts>(kepts_id())).unwrap_or_default();
+    kepts
+        .by_id
+        .iter()
+        .map(|(id, kept)| {
+            let (offset, grown) = (kept.placement.offset, kept.placement.grown);
+            format!("{id} = {} {} {} {} {}\n", offset.x, offset.y, grown.x, grown.y, kept.zoom)
+        })
+        .collect()
+}
+
+/// Read the lines [`kept_text`] wrote, and put every modal back where they say.
+///
+/// A line that cannot be read is passed over, which is how every other file Unluminous keeps is read: a hand
+/// edit that went wrong costs that one modal its place, not the window its start.
+pub fn restore_kept(ctx: &egui::Context, text: &str) {
+    for (id, kept) in text.lines().filter_map(read_kept) {
+        ctx.data_mut(|data| data.insert_temp(placement_id(&id), kept.placement));
+        if (kept.zoom - crate::settings::DEFAULT_ZOOM).abs() > 0.001 {
+            set_zoom(ctx, egui::Id::new(&id), kept.zoom);
+        }
+        ctx.data_mut(|data| {
+            data.get_temp_mut_or_default::<Kepts>(kepts_id()).by_id.insert(id, kept);
+        });
+    }
+}
+
+/// One line of `modals.conf`, or `None` when it is not one.
+fn read_kept(line: &str) -> Option<(String, Kept)> {
+    let (id, numbers) = line.split_once('=')?;
+    let numbers: Vec<f32> =
+        numbers.split_whitespace().map(str::parse).collect::<Result<_, _>>().ok()?;
+    let [ox, oy, gx, gy, zoom] = numbers[..] else { return None };
+    let finite = numbers.iter().all(|number| number.is_finite());
+    let id = id.trim();
+    (finite && !id.is_empty()).then(|| {
+        let placement = Placement { offset: Vec2::new(ox, oy), grown: Vec2::new(gx, gy) };
+        (id.to_owned(), Kept { placement, zoom })
+    })
 }
 
 /// Put the modal with this id where a caller says, which is what `unluminous-cli modal move` and
@@ -260,12 +408,13 @@ fn show_framed<R>(
     contents: impl FnOnce(&mut egui::Ui, Rect) -> R,
 ) -> (R, bool) {
     let mut placement = placement(ctx, id);
-    let (position, size) = place(ctx, width, height, &mut placement);
+    let (position, size) = place(ctx, id, width, height, &mut placement);
     remember_drawn(ctx, id, Rect::from_min_size(position, size));
     // **Zoomed the way a canvas node is**: through a transform on the modal's own layer, with the dialog laid
     // out in a rectangle `zoom` times smaller so it fills the same place on the screen. egui leaves a layer
     // with the identity transform alone, so a modal nobody has zoomed is drawn exactly as it always was.
     let zoom = zoom_of(ctx, egui::Id::new(id));
+    keep(ctx, id, |kept| kept.zoom = zoom);
     let layer = egui::LayerId::new(egui::Order::Foreground, egui::Id::new(id));
     let to_screen = zoomed_about(position, zoom);
     ctx.set_transform_layer(layer, to_screen);
@@ -494,14 +643,9 @@ fn blurred_backdrop(ctx: &egui::Context, modal: egui::Id) -> Backdrop {
 ///
 /// Split from [`show`] so that the placement it settles on can be read back by a caller, and so the
 /// clamping is one function rather than four numbers repeated inside the closure.
-pub fn place(
-    ctx: &egui::Context,
-    width: f32,
-    height: f32,
-    placement: &mut Placement,
-) -> (Pos2, Vec2) {
+pub fn place(ctx: &egui::Context, id: &str, width: f32, height: f32, placement: &mut Placement) -> (Pos2, Vec2) {
     let available = ctx.content_rect();
-    let asked = Vec2::new(width, height);
+    let asked = starting_size(available.size(), id, Vec2::new(width, height));
     let (size, offset) = fit(available.size(), asked, placement.grown, placement.offset);
     placement.grown = size - asked;
     placement.offset = offset;
@@ -515,8 +659,7 @@ pub fn place(
 /// larger than the room there is, never smaller than [`MIN_WIDTH`] by [`MIN_HEIGHT`], and never
 /// dragged so far that any of it leaves the window.
 pub fn fit(window: Vec2, asked: Vec2, grown: Vec2, offset: Vec2) -> (Vec2, Vec2) {
-    let widest = (window.x - 40.0).max(120.0);
-    let tallest = (window.y - 40.0).max(120.0);
+    let Vec2 { x: widest, y: tallest } = largest(window);
     // A dialog that asks for less than the floor still gets what it asked for; the floor is about how
     // far a modal can be dragged *down* to. The text prompt is 190 points tall on purpose, and the
     // smallest useful size for a dialog with a list in it is not a reason to make it taller.
@@ -525,9 +668,12 @@ pub fn fit(window: Vec2, asked: Vec2, grown: Vec2, offset: Vec2) -> (Vec2, Vec2)
         (asked.x + grown.x).clamp(floor.x, widest),
         (asked.y + grown.y).clamp(floor.y, tallest),
     );
+    // Dragged as far as the margin and no further, so a modal that fills the window cannot be moved at all
+    // and one that does not can be put anywhere that leaves the margin clear.
+    let margin = window * MARGIN_SHARE;
     let room = Vec2::new(
-        ((window.x - size.x) / 2.0 - 8.0).max(0.0),
-        ((window.y - size.y) / 2.0 - 8.0).max(0.0),
+        ((window.x - size.x) / 2.0 - margin.x).max(0.0),
+        ((window.y - size.y) / 2.0 - margin.y).max(0.0),
     );
     let offset = Vec2::new(offset.x.clamp(-room.x, room.x), offset.y.clamp(-room.y, room.y));
     (size, offset)
@@ -1212,7 +1358,7 @@ mod tests {
     fn a_modal_is_never_larger_than_the_window_it_is_in() {
         let (size, _) =
             fit(Vec2::new(600.0, 400.0), Vec2::new(900.0, 560.0), Vec2::ZERO, Vec2::ZERO);
-        assert_eq!(size, Vec2::new(560.0, 360.0), "twenty points of margin either side");
+        assert_eq!(size, Vec2::new(600.0 * 0.94, 400.0 * 0.94), "three percent of margin either side");
     }
 
     #[test]
@@ -1225,9 +1371,9 @@ mod tests {
     fn a_modal_cannot_be_dragged_out_of_the_window() {
         let asked = Vec2::new(560.0, 420.0);
         let (_, offset) = fit(WINDOW, asked, Vec2::ZERO, Vec2::new(4000.0, -4000.0));
-        // Half the room either side, less the eight points that keep it off the window's own edge.
-        assert_eq!(offset.x, (WINDOW.x - asked.x) / 2.0 - 8.0);
-        assert_eq!(offset.y, -((WINDOW.y - asked.y) / 2.0 - 8.0));
+        // Half the room either side, less the margin that keeps it off the window's own edge.
+        assert_eq!(offset.x, (WINDOW.x - asked.x) / 2.0 - WINDOW.x * MARGIN_SHARE);
+        assert_eq!(offset.y, -((WINDOW.y - asked.y) / 2.0 - WINDOW.y * MARGIN_SHARE));
     }
 
     #[test]
@@ -1242,6 +1388,46 @@ mod tests {
         placement.offset += Vec2::new(side.0 as f32 * grown.x, side.1 as f32 * grown.y) / 2.0;
         assert_eq!(placement.grown, Vec2::new(100.0, 0.0));
         assert_eq!(placement.offset, Vec2::new(50.0, 0.0));
+    }
+
+    /// `task-2280`: a working dialog opens filling the window less three percent of it on every side, and a
+    /// question keeps the size it asked for.
+    #[test]
+    fn a_working_dialog_fills_the_window_and_a_question_does_not() {
+        let filled = starting_size(WINDOW, "unluminous-settings", Vec2::new(1000.0, 700.0));
+        assert_eq!(filled, WINDOW * (1.0 - 2.0 * MARGIN_SHARE));
+        let question = starting_size(WINDOW, "unluminous-prompt", Vec2::new(460.0, 190.0));
+        assert_eq!(question, Vec2::new(460.0, 190.0));
+        let picker = starting_size(WINDOW, "unluminous-go-to-file", Vec2::new(720.0, 480.0));
+        assert_eq!(picker, Vec2::new(720.0, 480.0), "the searched lists keep their size");
+        let (size, offset) = fit(WINDOW, filled, Vec2::ZERO, Vec2::new(500.0, 500.0));
+        assert!((size - filled).length() < 0.01, "{size:?}");
+        assert!(offset.length() < 0.01, "a modal that fills the window stays in the middle: {offset:?}");
+    }
+
+    /// `task-2280`: a modal's place and zoom are written as one line of `modals.conf` and read back the same.
+    #[test]
+    fn a_kept_place_reads_back_as_it_was_written() {
+        let read = read_kept("unluminous-settings = 12 -8 -100 -40.5 1.25").expect("a line");
+        assert_eq!(read.0, "unluminous-settings");
+        assert_eq!(read.1.placement.offset, Vec2::new(12.0, -8.0));
+        assert_eq!(read.1.placement.grown, Vec2::new(-100.0, -40.5));
+        assert_eq!(read.1.zoom, 1.25);
+        assert!(read_kept("unluminous-settings = 1 2 3").is_none(), "too few numbers");
+        assert!(read_kept("unluminous-settings = 1 2 3 4 NaN").is_none(), "not a number");
+        assert!(read_kept("= 1 2 3 4 1").is_none(), "no id");
+
+        let ctx = egui::Context::default();
+        restore_kept(&ctx, "agent-tasks-ticket = 0 0 -50 -20 1.5
+not a line
+");
+        assert_eq!(placement(&ctx, "agent-tasks-ticket").grown, Vec2::new(-50.0, -20.0));
+        assert_eq!(zoom_of(&ctx, egui::Id::new("agent-tasks-ticket")), 1.5);
+        assert_eq!(kept_text(&ctx), "agent-tasks-ticket = 0 0 -50 -20 1.5
+");
+        let before = kept_changes(&ctx);
+        set_placement(&ctx, "agent-tasks-ticket", Placement::default());
+        assert_eq!(kept_changes(&ctx), before + 1, "a change is counted so the window writes it");
     }
 
     #[test]

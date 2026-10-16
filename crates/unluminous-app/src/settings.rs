@@ -122,19 +122,30 @@ pub const MAX_FONT_SIZE: f32 = 144.0;
 /// The sizes the terminal font size control offers.
 pub const TERMINAL_FONT_SIZES: &[f32] = &[10.0, 11.0, 12.0, 13.0, 14.0, 16.0, 18.0, 20.0];
 
-/// The point size egui sets a body of text in, which is what the window's own text has always been.
+/// The point size the window's own text is designed at: egui's body text, and every size the style guide
+/// gives the menus, the rail, the explorer and the status bar.
 ///
-/// The default of `appearance.ui.font.size`, so an Unluminous that names no size in its settings file is drawn
-/// exactly as it was before `task-1776` — `theme::apply_scaled` does nothing at all at a scale of one.
-pub const DEFAULT_UI_FONT_SIZE: f32 = 12.5;
-/// The sizes the interface font size control offers, which is the reference editor's own list around its default.
-pub const UI_FONT_SIZES: &[f32] = &[10.0, 11.0, 12.5, 14.0, 16.0, 18.0, 20.0];
+/// `appearance.ui.font.size` is read against it. At this size the interface is drawn exactly as the design
+/// has it, and at twice this size every part of the interface is twice as large. See
+/// [`Settings::interface_scale`].
+pub const DESIGN_UI_FONT_SIZE: f32 = 12.5;
+/// The default of `appearance.ui.font.size`.
+///
+/// `task-2280`: *"The font size is a bit too small and hard to read."* It was the design size, 12.5; a fresh
+/// Unluminous now opens with the interface a little larger. A window a test builds is still drawn at the design
+/// size (`UnluminousApp::draw_deterministically`), so the accepted pictures do not move with this.
+pub const DEFAULT_UI_FONT_SIZE: f32 = 14.0;
+/// The sizes the interface font size control offers.
+///
+/// `task-2280`: *"doesn't go up high enough (stops at 20)."* The list now goes to 32.
+pub const UI_FONT_SIZES: &[f32] =
+    &[10.0, 11.0, 12.5, 14.0, 15.0, 16.0, 18.0, 20.0, 22.0, 24.0, 28.0, 32.0];
 /// The smallest and largest the interface may be set to, whether from the dialog or a hand edited file.
 ///
 /// Bounded harder than the editor's font, because this one moves the menus, the rail and the status bar:
 /// a window whose furniture is set in six points cannot be used to put it back.
 pub const MIN_UI_FONT_SIZE: f32 = 8.0;
-pub const MAX_UI_FONT_SIZE: f32 = 24.0;
+pub const MAX_UI_FONT_SIZE: f32 = 40.0;
 
 /// The next size up or down the list the Settings window offers.
 ///
@@ -680,9 +691,9 @@ impl Page {
     /// The headings inside the page. They are what the search box matches on as well as being drawn.
     pub fn sections(self) -> &'static [&'static str] {
         match self {
-            Page::Appearance => &["Font", "Interface", "Background"],
+            Page::Appearance => &["Interface font", "Background"],
             Page::Theme => &["Theme", "Accent", "Icons"],
-            Page::Editor => &["Gutter", "Suggestions", "Debugger"],
+            Page::Editor => &["Font", "Gutter", "Suggestions", "Debugger", "Updates"],
             Page::Plugins => &["Marketplace", "Installed", "Colour Scheme", "Syntax"],
             Page::Terminal => &["Font", "Shell"],
             Page::Mcp => &["Install", "Server", "Configuration"],
@@ -1214,13 +1225,22 @@ impl Settings {
         self.debug_adapters.iter().find(|(known, _)| known == name).map(|(_, path)| path.as_str())
     }
 
-    /// How much larger or smaller than egui's own the window's text is set.
+    /// How much larger or smaller than its design the whole interface is drawn: `appearance.ui.font.size`
+    /// over [`DESIGN_UI_FONT_SIZE`].
+    ///
+    /// It is egui's zoom factor (`theme::apply_scaled`), so every menu, row, icon and label in the window
+    /// grows together. `task-2280`: *"The size doesn't change anything."* It used to scale egui's text
+    /// styles, which almost nothing in the window is set in: the menus, the rail, the explorer and the
+    /// status bar are drawn at the style guide's own sizes. The editor and the terminal keep the sizes
+    /// they are set to, because the text renderer is told the zoom and takes it back out.
     ///
     /// One function rather than the division written wherever the interface is laid out, so the size in
     /// the dialog and the scale egui is given can never come to disagree — the rule [`Settings::shell`]
     /// keeps for the shell.
     pub fn interface_scale(&self) -> f32 {
-        (self.ui_font_size / DEFAULT_UI_FONT_SIZE).clamp(0.6, 2.0)
+        let (least, most) =
+            (MIN_UI_FONT_SIZE / DESIGN_UI_FONT_SIZE, MAX_UI_FONT_SIZE / DESIGN_UI_FONT_SIZE);
+        (self.ui_font_size / DESIGN_UI_FONT_SIZE).clamp(least, most)
     }
 
     /// The accent this settings file asks for, or nothing when it asks for the theme's own.
@@ -1647,7 +1667,26 @@ pub fn load(store: &Store) -> (Settings, Panes) {
 /// is nothing recorded about it yet.
 pub fn load_with(store: &Store, plugin_panes: &[String]) -> (Settings, Panes) {
     let values = store.read_values();
-    (Settings::read_from(&values), Panes::read_from_with(&values, plugin_panes))
+    let settings = with_the_update_check_migrated(Settings::read_from(&values), &values);
+    (settings, Panes::read_from_with(&values, plugin_panes))
+}
+
+/// Written beside `update.check = off` when somebody turns the daily check off, so the window can tell that
+/// choice apart from an `off` nobody chose. `task-2280`.
+pub const UPDATE_CHECK_CHOSEN: &str = "update.check.chosen";
+
+/// The daily update check, for a settings file whose `off` was the old default rather than a choice.
+///
+/// `task-2280`: *"Updates check should be enabled by default."* It has been, since `task-2063`. Before that the
+/// default was off, and a settings file is written whole, so every Unluminous installed before then had
+/// `update.check = off` in its file and kept it: the new default never reached anybody who had already run
+/// the old one. An `off` written since this change carries [`UPDATE_CHECK_CHOSEN`] beside it and is kept; one
+/// without it is the old default, and is read as the new one.
+pub fn with_the_update_check_migrated(mut settings: Settings, values: &Values) -> Settings {
+    if settings.update_check == UpdateCheck::Off && values.flag(UPDATE_CHECK_CHOSEN) != Some(true) {
+        settings.update_check = UpdateCheck::Daily;
+    }
+    settings
 }
 
 /// Write both to the store in one go, keeping any value in the file that neither of them owns.
@@ -1660,6 +1699,12 @@ pub fn save(store: &Store, settings: &Settings, panes: &Panes) {
 pub fn save_with(store: &Store, settings: &Settings, panes: &Panes, plugin_panes: &[String]) {
     let mut values = store.read_values();
     settings.write_into(&mut values);
+    // An `off` that reaches the file was chosen: the only `off` this window holds is one somebody set, since
+    // the one nobody chose is read as the default. See [`with_the_update_check_migrated`].
+    match settings.update_check == UpdateCheck::Off {
+        true => values.set(UPDATE_CHECK_CHOSEN, "true"),
+        false => values.remove(UPDATE_CHECK_CHOSEN),
+    }
     panes.write_into_with(&mut values, plugin_panes);
     store.write_values(&values);
 }
@@ -1971,6 +2016,36 @@ mod tests {
         assert_eq!(settings.terminal_font_size, 6.0);
     }
 
+    /// `task-2280`: an `off` written before the daily check was the default is read as the default, and an
+    /// `off` somebody chose since is kept.
+    #[test]
+    fn an_update_check_nobody_chose_to_turn_off_is_on() {
+        let old = Values::parse("update.check = off
+");
+        let read = with_the_update_check_migrated(Settings::read_from(&old), &old);
+        assert_eq!(read.update_check, UpdateCheck::Daily, "the old default is not a choice");
+        let chosen = Values::parse("update.check = off
+update.check.chosen = true
+");
+        let read = with_the_update_check_migrated(Settings::read_from(&chosen), &chosen);
+        assert_eq!(read.update_check, UpdateCheck::Off, "a choice is kept");
+        let start = Values::parse("update.check = start
+");
+        let read = with_the_update_check_migrated(Settings::read_from(&start), &start);
+        assert_eq!(read.update_check, UpdateCheck::Start, "and anything but off is left alone");
+
+        let folder = std::env::temp_dir().join(format!("unluminous-update-check-{}", std::process::id()));
+        let store = Store::at(&folder);
+        let mut settings = Settings::new();
+        settings.update_check = UpdateCheck::Off;
+        save(&store, &settings, &Panes::new());
+        assert_eq!(load(&store).0.update_check, UpdateCheck::Off, "turned off and saved, it stays off");
+        settings.update_check = UpdateCheck::Daily;
+        save(&store, &settings, &Panes::new());
+        assert_eq!(store.read_values().flag(UPDATE_CHECK_CHOSEN), None, "and the mark goes when it is on again");
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
     #[test]
     fn stepping_the_font_size_walks_the_sizes_the_dialog_offers() {
         assert_eq!(step_font_size(16.0, true), 20.0);
@@ -2100,6 +2175,8 @@ mod tests {
         assert!(Page::Appearance.matches("behavior"));
         assert!(Page::Appearance.matches("background"), "a section inside the page counts");
         assert!(Page::Terminal.matches("font"), "both pages have a Font section");
+        assert!(Page::Editor.matches("font"), "the editor's font is on the Editor page (`task-2280`)");
+        assert!(Page::Appearance.matches("font"), "and the interface's on Appearance");
         assert!(!Page::Terminal.matches("background"));
     }
 }

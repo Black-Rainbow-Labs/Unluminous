@@ -193,7 +193,7 @@ pub fn show(ui: &mut egui::Ui, area: Rect, state: &WidgetState) -> Option<Action
         // a play triangle with a bug on it rather than a bare insect, so the two buttons read as one
         // start and the same start watched. The bare insect stays on the rail's Debug tile button,
         // which is about the debugger rather than about starting anything.
-        if chip_button(ui, debug, name, Mark::Line(rux::Icon::Bug), false) {
+        if chip_button(ui, debug, name, Mark::Svg(&crate::theme::svg_icon::DEBUG_CONTINUE, 14.5), false) {
             chosen = Some(match state.selected {
                 Some(_) => Action::Debug(DebugAction::Start(None)),
                 None => Action::Run(RunAction::Edit),
@@ -219,6 +219,8 @@ pub fn show(ui: &mut egui::Ui, area: Rect, state: &WidgetState) -> Option<Action
 enum Mark {
     Line(rux::Icon),
     Drawn(fn(&egui::Painter, Pos2, egui::Color32)),
+    /// A mark taken from another icon set as SVG path data. `task-2280`.
+    Svg(&'static crate::theme::svg_icon::SvgMark, f32),
 }
 
 /// One of the widget's buttons: a round chip raised out of the bar with a mark in it, and a plain name.
@@ -249,6 +251,9 @@ fn chip_button(ui: &mut egui::Ui, area: Rect, name: &str, mark: Mark, green: boo
             ),
             Mark::Line(icon) => rux.mark(rux::Mark::new(icon, 17.0), area.center(), tint),
             Mark::Drawn(paint) => icon::crisp(rux.ui.painter(), area.center(), tint, 1.0, paint),
+            Mark::Svg(svg, size) => {
+                crate::theme::svg_icon::paint(rux.ui.painter(), area.center(), size, svg, tint)
+            }
         }
         response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name));
         response.clicked()

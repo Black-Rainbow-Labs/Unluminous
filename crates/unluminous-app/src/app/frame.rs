@@ -63,9 +63,22 @@ impl UnluminousApp {
         // Unluminous's own glyphs are rasterised for the display the window is on, which moves when the window
         // is dragged to a screen of another density. `task-2216`.
         self.renderer.follow_the_display(ui.ctx().pixels_per_point());
+        // And the interface's zoom taken back out of the editor's and the terminal's sizes, with every file
+        // laid out again from nothing when it moves. `task-2280`. From nothing, because a relayout keeps every
+        // paragraph whose text and formatting did not change, and a zoom changes neither: the old advances
+        // were kept and the letters drawn on top of each other.
+        if self.renderer.follow_the_interface(ui.ctx().zoom_factor()) {
+            for file in self.files.iter_mut() {
+                file.cached.layout = Default::default();
+            }
+            self.set_the_font_everywhere();
+        }
+        crate::services::browser::follow_the_interface(ui.ctx().zoom_factor());
         self.begin_the_frame(ui);
         // Usage statistics: two comparisons on a frame where nothing is due. `task-2271`.
         self.keep_the_telemetry(ui.ctx());
+        // Where every modal was left, read back once and written when a drag ends. `task-2280`.
+        self.keep_the_modal_places(ui.ctx());
         self.take_what_the_threads_answered(ui);
         // Before any button is drawn, so that on the very first frame the focus is here and not on the
         // first thing in the title bar.
@@ -961,6 +974,7 @@ impl UnluminousApp {
         self.tab_strips.clear();
         self.node_tab_strips.clear();
         self.tab_drag = Drag::Nothing;
+        self.pane_drag = Drag::Nothing;
         // Rebuilt by the pane that has the keyboard, which is the only thing that can know it.
         self.completion_anchor = None;
         // A close can remove a pane and renumber the ones after it, so it is done once the loop has
@@ -1216,6 +1230,8 @@ impl UnluminousApp {
         // target, and a drag reported *by* a node was cleared before the next frame could act on it. The
         // Codex Sol review of `task-1905` found it.
         self.settle_the_tab_drag(ui, pane_rects);
+        // And a whole pane carried by its strip, which can only land among the other panes. `task-2280`.
+        self.settle_the_pane_drag(ui, pane_rects);
         // And where a **file** being carried out of a list would land, which is the same question about the
         // same canvas and is settled in the same place. `task-1914`.
         self.settle_the_file_drag(ui);
@@ -1826,6 +1842,9 @@ impl UnluminousApp {
             let outcome =
                 run_dialog::show(ui.ctx(), &mut dialog, &mut self.run_configurations, &running);
             self.run_dialog = dialog;
+            if outcome.browse_directory {
+                self.choose_a_run_directory();
+            }
             if outcome.changed {
                 self.unsaved_run_configurations = true;
             }
@@ -1849,6 +1868,35 @@ impl UnluminousApp {
             if outcome.closed {
                 self.unsaved_run_configurations = true;
             }
+        }
+    }
+
+    /// Open the folder picker for the chosen run configuration's `Directory`, starting at the folder
+    /// the field names now (or the project when that is not a folder), and write the answer into it.
+    fn choose_a_run_directory(&mut self) {
+        let Some(name) = self.run_dialog.chosen.clone() else {
+            return;
+        };
+        let root = self.tree.root().to_path_buf();
+        let current = self
+            .run_configurations
+            .find(&name)
+            .map(|(_, configuration)| configuration.working_directory(&root))
+            .filter(|folder| folder.is_dir())
+            .unwrap_or_else(|| root.clone());
+        if let Some(chosen) = (self.folder_picker)("Run configuration directory", &current) {
+            self.set_run_directory(&name, &chosen);
+        }
+    }
+
+    /// Point a run configuration's `Directory` at a chosen folder, stored the way the field always
+    /// is: relative to the project when the folder is inside it. The one place that happens, so the
+    /// folder button and `run set --directory` cannot come apart.
+    pub fn set_run_directory(&mut self, name: &str, chosen: &std::path::Path) {
+        let text = services::run_configurations::directory_for_choice(self.tree.root(), chosen);
+        if let Some(configuration) = self.run_configurations.find_mut(name) {
+            configuration.directory = text;
+            self.unsaved_run_configurations = true;
         }
     }
 
@@ -2332,15 +2380,20 @@ impl UnluminousApp {
     /// as it is, so that a window restored from maximised is the size it was before — but it is the
     /// `maximised` flag that decides how it opens.
     fn note_where_the_window_is(&mut self, ctx: &egui::Context) {
+        // **In the system's logical points rather than egui's** (`task-2280`). egui's points are those times
+        // the interface zoom, and the window is built before any zoom is set, so a geometry kept in egui's
+        // points would open the window smaller by the zoom on every start. Asked before `input` rather than
+        // inside it, because both take the context's lock.
+        let zoom = ctx.zoom_factor();
         let place = ctx.input(|input| {
             let viewport = input.viewport();
             let outer = viewport.outer_rect?;
             let inner = viewport.inner_rect.unwrap_or(outer);
             Some(project_state::WindowPlace {
-                x: outer.min.x,
-                y: outer.min.y,
-                width: inner.width(),
-                height: inner.height(),
+                x: outer.min.x * zoom,
+                y: outer.min.y * zoom,
+                width: inner.width() * zoom,
+                height: inner.height() * zoom,
                 maximised: viewport.maximized.unwrap_or(false),
             })
         });

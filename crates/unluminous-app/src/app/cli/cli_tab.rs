@@ -195,6 +195,28 @@ impl UnluminousApp {
                     self.panes_value(),
                 )
             }
+            // `task-2280`: what dragging the empty part of a pane's strip onto another pane does.
+            "place" => {
+                let (Some(pane), Some(position)) =
+                    (request.number("pane"), request.number("position"))
+                else {
+                    return no(request, code::USAGE, "Say which pane and where along the row.");
+                };
+                let (pane, position) = (pane.max(0.0) as usize, position.max(0.0) as usize);
+                let count = self.files.pane_count();
+                if pane >= count || position > count {
+                    return no(
+                        request,
+                        code::NOT_FOUND,
+                        format!("There are {count} panes, so a pane is 0 to {} and a place 0 to {count}.", count.saturating_sub(1)),
+                    );
+                }
+                if !self.files.move_pane(pane, position) {
+                    return no(request, code::NOT_APPLICABLE, format!("Pane {pane} is already there."));
+                }
+                let now = if position > pane { position - 1 } else { position };
+                ok(request, format!("Pane {pane} is now pane {now}"), self.panes_value())
+            }
             "focus" => {
                 let Some(pane) = request.number("pane") else {
                     return no(request, code::USAGE, "Say which pane, counting from 0.");
