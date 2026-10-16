@@ -1760,8 +1760,8 @@ impl UnluminousApp {
         self.refresh_the_plugins();
         self.context = Some(ctx.clone());
         let family = self.renderer.default_family();
-        let regular = self.renderer.face_bytes(&family, false);
-        let bold = self.renderer.face_bytes(&family, true);
+        let regular = self.renderer.face_data(&family, false);
+        let bold = self.renderer.face_data(&family, true);
         let has_bold = bold.is_some();
         theme::install_fonts(ctx, &family, regular, bold);
         if has_bold {
@@ -2629,6 +2629,12 @@ impl eframe::App for UnluminousApp {
         if let Some(seconds) = _frame.info().cpu_usage {
             crate::services::frame_trace::value("egui-cpu", f64::from(seconds) * 1000.0);
         }
+        // The Rust heap's live bytes, in a build made with `diagnostic-allocations` (`task-2279`). A normal
+        // build reads zero and writes nothing.
+        let live = crate::services::allocation_trace::snapshot().live;
+        if live > 0 {
+            crate::services::frame_trace::value("heap-live-mb", live as f64 / 1_048_576.0);
+        }
     }
 
     /// Write the settings, the pane sizes and what was open in the project before the window goes,
@@ -2682,6 +2688,8 @@ impl eframe::App for UnluminousApp {
         // is, and the wait exists for a window that is still moving.
         self.remember_the_project(None);
         crate::services::frame_trace::mark("exit-written");
+        #[cfg(feature = "diagnostic-allocations")]
+        crate::services::allocation_profile::write_the_report();
         // **A window a person closed leaves the session**, unless it was the only one open (`task-2253`). A
         // window the operating system closed keeps its line, so a restart of the machine brings it back.
         if self.closed_by_hand && crate::services::store::this_window_joins_the_session() {
@@ -2850,8 +2858,16 @@ mod tests_task_2063 {
 
         let ctx = egui::Context::default();
         let given = app.backgrounds_folder().map(|folder| folder.to_owned());
-        let drawn = app.wallpaper.texture(&ctx, given.as_deref(), "forest-1.jpg");
-        assert!(drawn.is_some(), "the store's own copy of the picture was not drawn");
+        // A strip a frame, so a picture this size takes a few frames to arrive (`task-2279`).
+        let mut strips = None;
+        for _ in 0..64 {
+            if let Some(picture) = app.wallpaper.texture(&ctx, given.as_deref(), "forest-1.jpg") {
+                strips = Some(picture.strips());
+                break;
+            }
+        }
+        let strips = strips.expect("the store's own copy of the picture was not drawn");
+        assert!(strips > 1, "a 1920 by 1088 picture was uploaded in {strips} piece");
 
         std::fs::remove_file(folder.join("forest-1.jpg"))
             .expect("take the picture out of the store");

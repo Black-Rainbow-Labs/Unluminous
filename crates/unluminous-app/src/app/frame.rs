@@ -1992,28 +1992,22 @@ impl UnluminousApp {
     /// **Scaled to cover and clipped to the corners.** A picture that fitted would leave bands of
     /// nothing down two sides, and the window is drawn on a transparent ground so there is no colour to
     /// put there — see `services::backgrounds::cover`. The corners are cut by painting it as a rounded
-    /// rectangle with the picture as its brush, which is one shape rather than a clip layer.
+    /// rectangle with the picture as its brush, cut at the seams between the strips the picture was
+    /// uploaded in (`services::backgrounds::Wallpaper`).
     ///
     /// Nothing at all when no picture is chosen, or when the one named is not there: the desktop shows
     /// through, which is what `appearance.background.image` says by being empty and what a picture
     /// somebody deleted by hand should fall back to.
     fn paint_the_background(&mut self, ui: &mut egui::Ui, full: Rect) {
-        let Some(texture) = self.wallpaper.texture(
+        let Some(picture) = self.wallpaper.texture(
             ui.ctx(),
             self.backgrounds.as_deref(),
             &self.settings.background_image,
         ) else {
             return;
         };
-        let taken = crate::services::backgrounds::cover(texture.size_vec2(), full.size());
-        ui.painter().add(egui::Shape::Rect(
-            egui::epaint::RectShape::filled(
-                full,
-                CornerRadius::same(size::WINDOW_CORNER),
-                egui::Color32::WHITE,
-            )
-            .with_texture(texture.id(), taken),
-        ));
+        let taken = crate::services::backgrounds::cover(picture.size_vec2(), full.size());
+        picture.paint(ui.painter(), full, CornerRadius::same(size::WINDOW_CORNER), taken);
     }
 
     /// The notices, over every pane and under a modal.

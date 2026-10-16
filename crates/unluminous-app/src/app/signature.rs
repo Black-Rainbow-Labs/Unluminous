@@ -235,7 +235,6 @@ impl UnluminousApp {
             .read(|table| {
                 table
                     .named(&lower)
-                    .iter()
                     .find(|d| d.definition.name == name && d.definition.symbol_kind.is_callable())
                     .map(|d| d.definition.clone())
             })

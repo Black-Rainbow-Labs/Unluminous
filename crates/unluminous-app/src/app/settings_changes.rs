@@ -161,8 +161,8 @@ impl UnluminousApp {
             true => self.renderer.default_family(),
             false => family,
         };
-        let regular = self.renderer.face_bytes(&family, false);
-        let bold = self.renderer.face_bytes(&family, true);
+        let regular = self.renderer.face_data(&family, false);
+        let bold = self.renderer.face_data(&family, true);
         let has_bold = bold.is_some();
         theme::install_fonts(&context, &family, regular, bold);
         if has_bold {

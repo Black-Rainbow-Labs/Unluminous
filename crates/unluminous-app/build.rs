@@ -156,6 +156,25 @@ fn civil_from_days(days: i64) -> (i64, i64, i64) {
     (year, month, day)
 }
 
+/// The application manifest, which asks Windows for the segment heap (`task-2279`).
+///
+/// The process heap Windows gives a program by default keeps a header beside every allocation and holds
+/// on to memory a burst of allocation used. The window holds about 250,000 small allocations once a
+/// project's index is loaded, and with the segment heap it measured 13 to 21 MB less private memory on
+/// this repository. Chromium and Edge ask for it for the same reason. Nothing else is set here: the
+/// window's DPI awareness is set by `winit` at run time, and a manifest that named it as well could
+/// disagree with it.
+#[cfg(windows)]
+const MANIFEST: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <heapType xmlns="http://schemas.microsoft.com/SMI/2020/WindowsSettings">SegmentHeap</heapType>
+    </windowsSettings>
+  </application>
+</assembly>
+"#;
+
 #[cfg(windows)]
 fn embed_windows_resources() {
     // From `crates/unluminous-app` up to the repository, then down to the drawn icon.
@@ -175,7 +194,8 @@ fn embed_windows_resources() {
         .set("CompanyName", "Jason McAffee")
         .set("LegalCopyright", "Licensed under MIT or Apache-2.0")
         .set("InternalName", "unluminous.exe")
-        .set("OriginalFilename", "unluminous.exe");
+        .set("OriginalFilename", "unluminous.exe")
+        .set_manifest(MANIFEST);
 
     if let Err(problem) = resources.compile() {
         println!("cargo:warning=unluminous.exe has no icon or version block: {problem}");

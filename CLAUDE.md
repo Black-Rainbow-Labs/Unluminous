@@ -5000,6 +5000,34 @@ while a window runs. Two smaller rules from the same ticket: a change of the edi
 layout when no glyph would move (`Layout::fits_unchanged_at`), and what a project remembers is written on a
 thread of its own (`project_state::save_later`), which closing waits for.
 
+### What the window itself holds at rest, and the four rules that keep it small (`task-2279`)
+
+With both switches off, a window on this repository with `app/mod.rs` open held **259 MB** in Task Manager's
+Memory column (the private working set) at the start of the memory work and holds **about 149 MB** now. An
+empty window holds about 87 MB. `pwsh tools/perf-memory.ps1` measures it: each case is opened twice and
+measured the second time, so the index is loaded rather than built, and it writes what the memory is made of
+through `tools/memory-map.ps1`. A build made with `--features diagnostic-allocations` and run with
+`UNLUMINOUS_HEAP_PROFILE=<file>` writes the live heap by call site when it closes
+(`services::allocation_profile`); build it with `CARGO_PROFILE_RELEASE_DEBUG=line-tables-only` so the call
+sites have names.
+
+- **No single texture upload is larger than about 2 MB.** On DX12 the driver keeps the staging memory of a
+  large upload for the rest of the process: an 8 MB upload left 8 MB of private memory behind, and the same
+  bytes sent as strips of a megabyte, each in a frame of its own, left about one. Strips sent in one frame are
+  one submission and are kept together. The background picture is uploaded that way
+  (`backgrounds::Wallpaper`), and drawn by cutting the tessellated rounded rectangle at each seam.
+- **Nothing the operating system can map is copied into the heap.** Font files are memory mapped
+  (`text_renderer::Face`), which moves their bytes from private memory to pages of the file.
+- **The code index lets go of what it can read again.** File contents are read from disk when a search
+  verifies a block, the page cache is small once the index is built, and the search index a plain English
+  question builds is dropped 20 seconds after the last question. The Atrius 0.3.0 changelog has the numbers.
+- **The graphics device asks for no more than the window uses.** `graphics_memory` asks for 16,384 bindings,
+  because wgpu's default of a million is a 30.6 MB descriptor heap, and the manifest asks Windows for the
+  segment heap (`build.rs`).
+
+About 42 MB of the rest is the NVIDIA device itself and cannot be reduced from here. The largest items left
+in the heap are the index (about 23 MB on this repository) and a restored terminal's scrollback.
+
 ## Git runs the `git` program, on a thread
 
 `unluminous-git` shells out to `git` rather than using a library, and the reason is what the machine's own

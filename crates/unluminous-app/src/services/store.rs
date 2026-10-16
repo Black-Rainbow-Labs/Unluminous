@@ -948,6 +948,10 @@ theme.comment = #6272A4
             ),
             ("app/modals.rs", "the New File dialog, the same empty file"),
             (
+                "services/allocation_profile.rs",
+                "a diagnostic build's heap report, written once at exit to the file a variable names",
+            ),
+            (
                 "services/issue_report.rs",
                 "a new copy of a log or a description, written into a report's own temporary folder for one paste",
             ),

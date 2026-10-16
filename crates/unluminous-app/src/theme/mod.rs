@@ -1032,23 +1032,17 @@ pub const BOLD_FAMILY: &str = "unluminous-bold";
 pub fn install_fonts(
     ctx: &egui::Context,
     family: &str,
-    regular: Option<Vec<u8>>,
-    bold: Option<Vec<u8>>,
+    regular: Option<egui::FontData>,
+    bold: Option<egui::FontData>,
 ) {
     let mut fonts = egui::FontDefinitions::default();
     let mut bold_stack = Vec::new();
     if let Some(bytes) = bold {
-        fonts.font_data.insert(
-            "unluminous-ui-bold".to_owned(),
-            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
-        );
+        fonts.font_data.insert("unluminous-ui-bold".to_owned(), std::sync::Arc::new(bytes));
         bold_stack.push("unluminous-ui-bold".to_owned());
     }
     if let Some(bytes) = regular {
-        fonts.font_data.insert(
-            "unluminous-ui".to_owned(),
-            std::sync::Arc::new(egui::FontData::from_owned(bytes)),
-        );
+        fonts.font_data.insert("unluminous-ui".to_owned(), std::sync::Arc::new(bytes));
         if let Some(list) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
             list.insert(0, "unluminous-ui".to_owned());
         }

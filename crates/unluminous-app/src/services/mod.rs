@@ -10,6 +10,8 @@ pub mod ai_endpoints;
 pub mod agent_tasks;
 // Allocation counters, compiled in only by the `diagnostic-allocations` feature. A release build
 // keeps the system allocator and reads zeroes, which is what makes it safe to ask from a frame.
+#[cfg(feature = "diagnostic-allocations")]
+pub mod allocation_profile;
 pub mod allocation_trace;
 pub mod backdrop_blur;
 pub mod backgrounds;

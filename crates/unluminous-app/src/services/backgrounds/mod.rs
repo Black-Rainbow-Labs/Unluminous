@@ -250,61 +250,250 @@ mod tests {
 /// and one nobody has touched costs a `metadata` call — and that call is made at most every
 /// [`Wallpaper::CHECK`] rather than once a frame, which is `task-1805`'s rule about a number on the
 /// screen not being a reason to ask the disk.
+///
+/// **It is put on the graphics card in strips, one a frame** (`task-2279`). The graphics driver keeps the
+/// staging memory of a large upload for the rest of the process: one 8 MB picture sent in one piece left
+/// 8 MB of private memory behind, measured on DX12, and the same picture sent as strips of about a
+/// megabyte, each in a frame of its own, left about one. Strips sent in the same frame are one submission
+/// and are kept together, which is why it is one a frame. The picture showing stays until the new one is
+/// complete.
 #[derive(Default)]
 pub struct Wallpaper {
     name: String,
     /// The file the texture was decoded from, so a window given a different store reads again.
     path: PathBuf,
     stamp: Option<std::time::SystemTime>,
-    texture: Option<egui::TextureHandle>,
+    picture: Option<Picture>,
+    /// A picture still being uploaded, the row its next strip starts at, and the strips already sent.
+    arriving: Option<(egui::ColorImage, usize, Vec<Strip>)>,
     looked: Option<std::time::Instant>,
+}
+
+/// A picture on the graphics card, as strips one above another.
+pub struct Picture {
+    /// Its size in pixels.
+    size: egui::Vec2,
+    strips: Vec<Strip>,
+}
+
+/// One strip of a [`Picture`]: the rows it is drawn for, and the rows its texture holds, which are one
+/// more above and below so a linear filter at a seam reads the neighbouring row rather than repeating
+/// its own.
+struct Strip {
+    texture: egui::TextureHandle,
+    drawn: std::ops::Range<usize>,
+    held: std::ops::Range<usize>,
+}
+
+/// How many bytes one strip holds at most. Uploads of 2 MB or less left nothing behind in the
+/// measurement, so a megabyte has room to spare.
+const STRIP_BYTES: usize = 1 << 20;
+
+impl Picture {
+    /// Its size in pixels.
+    pub fn size_vec2(&self) -> egui::Vec2 {
+        self.size
+    }
+
+    /// How many strips it was uploaded as.
+    pub fn strips(&self) -> usize {
+        self.strips.len()
+    }
+
+    /// Paint the part `uv` of the picture over `rect`, with its corners rounded by `corners`.
+    ///
+    /// The rounded rectangle is tessellated once, as egui would tessellate it with the picture as its
+    /// brush, and its triangles are then cut at each seam between strips, so the corners and their
+    /// feathered edge come out exactly as they did when the picture was one texture.
+    ///
+    /// @param painter - what to paint with
+    /// @param rect - where the picture goes on the screen
+    /// @param corners - how round the corners are
+    /// @param uv - which part of the picture, from 0 to 1 across the whole of it
+    pub fn paint(
+        &self,
+        painter: &egui::Painter,
+        rect: egui::Rect,
+        corners: egui::CornerRadius,
+        uv: egui::Rect,
+    ) {
+        let shape = egui::epaint::RectShape::filled(rect, corners, egui::Color32::WHITE)
+            .with_texture(egui::TextureId::default(), uv);
+        let mut whole = egui::Mesh::default();
+        let mut tessellator = egui::epaint::Tessellator::new(
+            painter.ctx().pixels_per_point(),
+            egui::epaint::TessellationOptions::default(),
+            [1, 1],
+            Vec::new(),
+        );
+        tessellator.tessellate_rect(&shape, &mut whole);
+        let rows = self.size.y.max(1.0);
+        for strip in &self.strips {
+            let (top, bottom) = (strip.drawn.start as f32 / rows, strip.drawn.end as f32 / rows);
+            if bottom <= uv.min.y || top >= uv.max.y {
+                continue;
+            }
+            let mut piece = cut_between(&whole, top, bottom);
+            let (from, span) =
+                (strip.held.start as f32, (strip.held.end - strip.held.start) as f32);
+            for vertex in &mut piece.vertices {
+                vertex.uv.y = (vertex.uv.y * rows - from) / span;
+            }
+            piece.texture_id = strip.texture.id();
+            painter.add(egui::Shape::mesh(piece));
+        }
+    }
+}
+
+/// The triangles of `mesh` cut to the band of texture rows between `top` and `bottom`, as fractions of
+/// the whole picture.
+///
+/// Each triangle is clipped against the two lines and what is left is a polygon of up to five corners,
+/// fanned back into triangles. Position, texture coordinate and colour all change in a straight line
+/// across a triangle, so the point where an edge meets a line is found by the same fraction for all
+/// three.
+///
+/// @param mesh - the whole rounded rectangle
+/// @param top - the band's top, as a fraction of the picture's height
+/// @param bottom - the band's bottom
+fn cut_between(mesh: &egui::Mesh, top: f32, bottom: f32) -> egui::Mesh {
+    let mut out = egui::Mesh::default();
+    for triangle in mesh.indices.chunks_exact(3) {
+        let corners: Vec<egui::epaint::Vertex> =
+            triangle.iter().map(|&i| mesh.vertices[i as usize]).collect();
+        let kept = clip(&clip(&corners, top, true), bottom, false);
+        if kept.len() < 3 {
+            continue;
+        }
+        let first = out.vertices.len() as u32;
+        out.vertices.extend(kept.iter().copied());
+        for next in 1..kept.len() as u32 - 1 {
+            out.indices.extend([first, first + next, first + next + 1]);
+        }
+    }
+    out
+}
+
+/// One step of Sutherland and Hodgman's clipping: the polygon on one side of the line where the texture
+/// coordinate's `y` is `at`.
+///
+/// @param polygon - the corners, in order
+/// @param at - where the line is
+/// @param below - true to keep what is below the line (larger `y`), false to keep what is above it
+fn clip(polygon: &[egui::epaint::Vertex], at: f32, below: bool) -> Vec<egui::epaint::Vertex> {
+    let inside = |v: &egui::epaint::Vertex| if below { v.uv.y >= at } else { v.uv.y <= at };
+    let mut out = Vec::with_capacity(polygon.len() + 2);
+    for (i, current) in polygon.iter().enumerate() {
+        let previous = &polygon[(i + polygon.len() - 1) % polygon.len()];
+        if inside(current) != inside(previous) {
+            let t = (at - previous.uv.y) / (current.uv.y - previous.uv.y);
+            out.push(egui::epaint::Vertex {
+                pos: previous.pos + (current.pos - previous.pos) * t,
+                uv: previous.uv + (current.uv - previous.uv) * t,
+                color: previous.color.lerp_to_gamma(current.color, t),
+            });
+        }
+        if inside(current) {
+            out.push(*current);
+        }
+    }
+    out
 }
 
 impl Wallpaper {
     /// How often the file behind the picture is asked whether it has changed.
     const CHECK: std::time::Duration = std::time::Duration::from_millis(1500);
 
-    /// The texture for `name` in `folder`, decoding it when the name or the file has changed.
+    /// The picture for `name` in `folder`, decoding it when the name or the file has changed.
     ///
     /// An empty name is no picture, which is the setting saying the desktop shows through. A name that
     /// is not there, or a file that will not decode, is also no picture — a window drawn on nothing at
     /// all would be worse than the desktop, and it is what a picture somebody deleted by hand should do.
     /// **No folder is no picture too**: a window nobody has given a store to has no settings folder, and
     /// reaching for the person's own one instead is the fault `task-2105` removed.
+    ///
+    /// A picture taller than one strip is uploaded a strip a call, and the window is asked to draw again
+    /// until the last one is there.
+    ///
+    /// @param ctx - the window's context, which the strips are uploaded through
+    /// @param folder - the backgrounds folder, if the window has one
+    /// @param name - the picture the setting names
     pub fn texture(
         &mut self,
         ctx: &egui::Context,
         folder: Option<&Path>,
         name: &str,
-    ) -> Option<egui::TextureHandle> {
+    ) -> Option<&Picture> {
         let Some(folder) = folder.filter(|_| !name.trim().is_empty()) else {
             self.forget();
             return None;
         };
+        self.look_again(ctx, folder, name);
+        self.send_a_strip(ctx);
+        self.picture.as_ref()
+    }
+
+    /// Decode the picture again when its name, its folder or its file has changed.
+    ///
+    /// @param ctx - the window's context, for the largest texture the card takes
+    /// @param folder - the backgrounds folder
+    /// @param name - the picture the setting names
+    fn look_again(&mut self, ctx: &egui::Context, folder: &Path, name: &str) {
         let due = self.looked.is_none_or(|at| at.elapsed() >= Self::CHECK);
         let path = folder.join(name);
         if name == self.name && self.path == path && !due {
-            return self.texture.clone();
+            return;
         }
         let stamp = std::fs::metadata(&path).ok().and_then(|found| found.modified().ok());
         self.looked = Some(std::time::Instant::now());
         if name == self.name && stamp == self.stamp && self.path == path {
-            return self.texture.clone();
+            return;
         }
         self.name = name.to_owned();
         self.path = path.clone();
         self.stamp = stamp;
-        self.texture = crate::services::picture::decode(&path).ok().map(|image| {
-            crate::services::picture::upload(
-                ctx,
-                format!("unluminous-background-{name}"),
-                image,
-                // Linear, because a wallpaper is almost always drawn at a size other than its own and
-                // nearest neighbour would make every edge in it ragged.
-                egui::TextureOptions::LINEAR,
-            )
-        });
-        self.texture.clone()
+        let limit = ctx.input(|input| input.max_texture_side);
+        match crate::services::picture::decode(&path) {
+            Ok(image) => {
+                self.arriving =
+                    Some((crate::services::picture::shrink_to_fit(image, limit), 0, Vec::new()));
+            }
+            Err(_) => {
+                self.arriving = None;
+                self.picture = None;
+            }
+        }
+    }
+
+    /// Upload the next strip of a picture that is arriving, and show the picture once the last one is
+    /// there.
+    ///
+    /// @param ctx - the window's context
+    fn send_a_strip(&mut self, ctx: &egui::Context) {
+        let Some((image, next, strips)) = self.arriving.as_mut() else { return };
+        let [width, height] = image.size;
+        let rows = (STRIP_BYTES / (width.max(1) * 4)).max(1);
+        let drawn = *next..(*next + rows).min(height);
+        let held = drawn.start.saturating_sub(1)..(drawn.end + 1).min(height);
+        let pixels = image.pixels[held.start * width..held.end * width].to_vec();
+        let piece = egui::ColorImage::new([width, held.end - held.start], pixels);
+        // Linear, because a wallpaper is almost always drawn at a size other than its own and nearest
+        // neighbour would make every edge in it ragged.
+        let texture = ctx.load_texture(
+            format!("unluminous-background-{}-{}", self.name, drawn.start),
+            piece,
+            egui::TextureOptions::LINEAR,
+        );
+        *next = drawn.end;
+        strips.push(Strip { texture, drawn, held });
+        if *next < height {
+            ctx.request_repaint();
+            return;
+        }
+        if let Some((image, _, strips)) = self.arriving.take() {
+            let size = egui::vec2(image.size[0] as f32, image.size[1] as f32);
+            self.picture = Some(Picture { size, strips });
+        }
     }
 
     /// Drop what is held, which is what choosing the desktop means.
@@ -312,7 +501,8 @@ impl Wallpaper {
         self.name.clear();
         self.path = PathBuf::new();
         self.stamp = None;
-        self.texture = None;
+        self.picture = None;
+        self.arriving = None;
         self.looked = None;
     }
 }
@@ -343,6 +533,52 @@ pub fn cover(picture: egui::Vec2, area: egui::Vec2) -> egui::Rect {
 #[cfg(test)]
 mod covering {
     use super::*;
+
+    /// The area of a mesh's triangles, which is how much of the screen it paints.
+    fn area(mesh: &egui::Mesh) -> f32 {
+        mesh.indices
+            .chunks_exact(3)
+            .map(|t| {
+                let [a, b, c] = [0, 1, 2].map(|i| mesh.vertices[t[i] as usize].pos);
+                ((b - a).x * (c - a).y - (b - a).y * (c - a).x).abs() / 2.0
+            })
+            .sum()
+    }
+
+    /// **The strips together paint exactly what the one rectangle painted** (`task-2279`): the rounded
+    /// rectangle is cut at every seam, and the pieces add up to the whole with nothing lost or painted
+    /// twice, and every piece stays inside its own band of the picture.
+    #[test]
+    fn the_pieces_cut_at_the_seams_add_up_to_the_whole_rounded_rectangle() {
+        let rect = egui::Rect::from_min_size(egui::pos2(10.0, 20.0), egui::vec2(400.0, 300.0));
+        let shape = egui::epaint::RectShape::filled(
+            rect,
+            egui::CornerRadius::same(14),
+            egui::Color32::WHITE,
+        )
+        .with_texture(
+            egui::TextureId::default(),
+            egui::Rect::from_min_max(egui::pos2(0.1, 0.05), egui::pos2(0.9, 0.95)),
+        );
+        let mut whole = egui::Mesh::default();
+        egui::epaint::Tessellator::new(1.0, Default::default(), [1, 1], Vec::new())
+            .tessellate_rect(&shape, &mut whole);
+        let seams = [0.0, 0.03, 0.2, 0.5, 0.51, 0.97, 1.0];
+        let mut total = 0.0;
+        for band in seams.windows(2) {
+            let piece = cut_between(&whole, band[0], band[1]);
+            assert!(piece
+                .vertices
+                .iter()
+                .all(|v| v.uv.y >= band[0] - 1e-5 && v.uv.y <= band[1] + 1e-5));
+            total += area(&piece);
+        }
+        assert!(
+            (total - area(&whole)).abs() < area(&whole) * 1e-5,
+            "pieces {total} against the whole {}",
+            area(&whole)
+        );
+    }
 
     #[test]
     fn a_picture_wider_than_the_window_is_cut_down_its_sides_and_evenly() {

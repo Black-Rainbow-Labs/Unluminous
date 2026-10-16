@@ -113,6 +113,9 @@ fn print_menus() {
 fn main() -> eframe::Result {
     let arguments = settings_or_stop();
     unluminous_app::services::frame_trace::mark("arguments");
+    // The heap by call site, in a diagnostic build run with `UNLUMINOUS_HEAP_PROFILE` (`task-2279`).
+    #[cfg(feature = "diagnostic-allocations")]
+    unluminous_app::services::allocation_profile::start();
 
     if arguments.print_menus {
         console::attach_to_the_calling_terminal();
@@ -249,7 +252,12 @@ fn main() -> eframe::Result {
         .with_inner_size([1100.0, 720.0])
         // One number, shared with `unluminous-cli window size` and with the resize grips, so that a
         // size the window refuses to open at cannot be asked for from anywhere else.
-        .with_min_inner_size(unluminous_app::app::SMALLEST_WINDOW);
+        .with_min_inner_size(unluminous_app::app::SMALLEST_WINDOW)
+        // An empty icon, which eframe reads as "set none" (`task-2279`). Without one it decodes egui's own
+        // logo, keeps the 1 MB of pixels for the life of the window, and on Windows sets that logo over the
+        // icon `build.rs` compiles into `unluminous.exe`. The operating system takes the program's own icon
+        // from the executable on Windows and from the bundle on macOS.
+        .with_icon(std::sync::Arc::new(egui::IconData::default()));
     if let Some(place) = place.filter(|place| place.is_sensible()) {
         viewport = viewport
             .with_position([place.x, place.y])

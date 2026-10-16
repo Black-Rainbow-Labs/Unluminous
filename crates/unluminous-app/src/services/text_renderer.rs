@@ -13,7 +13,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use ab_glyph::{Font as _, FontVec, Glyph, PxScale, ScaleFont as _};
+use ab_glyph::{Font as _, FontRef, Glyph, PxScale, ScaleFont as _};
 use egui::{Color32, ColorImage, TextureHandle, TextureOptions};
 use unluminous_core::{CharStyle, FontMetrics, LineMetrics};
 
@@ -323,7 +323,7 @@ struct FaceId(u32);
 
 /// The last face resolved: which style it answers to, its small id, and the loaded face itself, if
 /// the system has one.
-type FaceMemo = Option<(FaceKey, FaceId, Option<Arc<FontVec>>)>;
+type FaceMemo = Option<(FaceKey, FaceId, Option<Arc<Face>>)>;
 
 /// How wide each of the 128 ASCII characters is, for one face at one size. `NaN` is not measured yet.
 type AsciiAdvances = [f32; 128];
@@ -376,7 +376,10 @@ impl AdvanceTables {
 }
 
 struct Atlas {
-    image: ColorImage,
+    /// Each pixel's coverage, one byte a pixel, row after row. The texture holds white pixels with this
+    /// as their alpha, and those are made only for the part being uploaded: held as white pixels, the
+    /// atlas was four bytes a pixel and four megabytes for the life of the window (`task-2279`).
+    coverage: Vec<u8>,
     texture: Option<TextureHandle>,
     entries: HashMap<GlyphKey, Option<AtlasGlyph>>,
     /// Where the next glyph goes.
@@ -400,7 +403,7 @@ struct Atlas {
 impl Atlas {
     fn new() -> Self {
         Self {
-            image: ColorImage::filled([ATLAS_SIDE, ATLAS_SIDE], Color32::TRANSPARENT),
+            coverage: vec![0; ATLAS_SIDE * ATLAS_SIDE],
             texture: None,
             entries: HashMap::new(),
             pen_x: 0,
@@ -410,6 +413,26 @@ impl Atlas {
             dirty: None,
             generation: 0,
         }
+    }
+
+    /// A rectangle of the atlas as white pixels whose alpha is the coverage, which is what the texture
+    /// holds.
+    ///
+    /// @param left - the rectangle's left edge, in pixels
+    /// @param top - its top edge
+    /// @param width - how wide it is
+    /// @param height - how tall it is
+    fn region(&self, left: usize, top: usize, width: usize, height: usize) -> ColorImage {
+        let mut pixels = Vec::with_capacity(width * height);
+        for row in top..top + height {
+            let start = row * ATLAS_SIDE + left;
+            pixels.extend(
+                self.coverage[start..start + width]
+                    .iter()
+                    .map(|&alpha| Color32::from_white_alpha(alpha)),
+            );
+        }
+        ColorImage::new([width, height], pixels)
     }
 
     /// Note that a rectangle of the image has been written, for the next upload to send.
@@ -449,7 +472,7 @@ impl Atlas {
     }
 
     fn clear(&mut self) {
-        self.image = ColorImage::filled([ATLAS_SIDE, ATLAS_SIDE], Color32::TRANSPARENT);
+        self.coverage.iter_mut().for_each(|alpha| *alpha = 0);
         self.entries.clear();
         self.pen_x = 0;
         self.pen_y = 0;
@@ -460,6 +483,41 @@ impl Atlas {
     }
 }
 
+/// The bytes of a font file, mapped or held, shared by every face read from it.
+type FaceBytes = Arc<dyn AsRef<[u8]> + Send + Sync>;
+
+/// A parsed face and the bytes it was parsed from.
+///
+/// `ab_glyph`'s `FontRef` borrows its bytes, and the bytes here are a memory map that has to live as
+/// long as the face, so the two are kept together. The face is declared first so it is dropped first.
+pub(crate) struct Face {
+    font: FontRef<'static>,
+    _bytes: FaceBytes,
+}
+
+impl Face {
+    /// Parse the face at `index` in `bytes`.
+    ///
+    /// @param bytes - the font file's bytes
+    /// @param index - which face of a collection
+    fn new(bytes: FaceBytes, index: u32) -> Option<Self> {
+        // SAFETY: the slice points into `bytes`, which is kept beside the face and dropped after it, and
+        // neither a map nor an `Arc`'s contents move.
+        let data: &'static [u8] =
+            unsafe { std::mem::transmute::<&[u8], &'static [u8]>((*bytes).as_ref()) };
+        let font = FontRef::try_from_slice_and_index(data, index).ok()?;
+        Some(Self { font, _bytes: bytes })
+    }
+}
+
+impl std::ops::Deref for Face {
+    type Target = FontRef<'static>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.font
+    }
+}
+
 /// Fonts, measurements and rasterised glyphs.
 pub struct TextRenderer {
     database: fontdb::Database,
@@ -467,7 +525,7 @@ pub struct TextRenderer {
     families: Vec<String>,
     /// Faces already read from disk. An entry holding `None` is a face this system does not have, kept
     /// so that we do not search the database for it again on every frame.
-    faces: RefCell<HashMap<FaceKey, Option<Arc<FontVec>>>>,
+    faces: RefCell<HashMap<FaceKey, Option<Arc<Face>>>>,
     /// Which family a character was found in when the chosen one had no shape for it, so the search runs
     /// once for each character rather than on every measurement.
     fallbacks: RefCell<HashMap<(char, bool, bool), Option<String>>>,
@@ -564,7 +622,7 @@ impl TextRenderer {
     /// Bold and italic pick a real face of the family rather than slanting or thickening the regular
     /// one. Helvetica on macOS ships regular, bold, oblique and bold oblique in one collection file, so
     /// the real faces are there to be used.
-    fn face(&self, key: &FaceKey) -> Option<Arc<FontVec>> {
+    fn face(&self, key: &FaceKey) -> Option<Arc<Face>> {
         if let Some(found) = self.faces.borrow().get(key) {
             return found.clone();
         }
@@ -578,11 +636,9 @@ impl TextRenderer {
             .database
             .query(&query)
             .and_then(|id| {
-                self.database.with_face_data(id, |data, index| {
-                    FontVec::try_from_vec_and_index(data.to_vec(), index).ok()
-                })
+                let (bytes, index) = self.shared_bytes(id)?;
+                Face::new(bytes, index)
             })
-            .flatten()
             .map(Arc::new);
         self.faces.borrow_mut().insert(key.clone(), loaded.clone());
         loaded
@@ -590,12 +646,12 @@ impl TextRenderer {
 
     /// The face to use for a style, falling back through the italic and bold variants to the regular
     /// one, and then to any family this system has. A missing font must not stop text appearing.
-    fn face_for(&self, style: &CharStyle) -> Option<Arc<FontVec>> {
+    fn face_for(&self, style: &CharStyle) -> Option<Arc<Face>> {
         self.resolve(style).1
     }
 
     /// The face for a style and the number it answers to, remembering the last one asked for.
-    fn resolve(&self, style: &CharStyle) -> (FaceId, Option<Arc<FontVec>>) {
+    fn resolve(&self, style: &CharStyle) -> (FaceId, Option<Arc<Face>>) {
         if let Some((key, id, face)) = self.memo.borrow().as_ref() {
             if key.is(style) {
                 return (*id, face.clone());
@@ -611,7 +667,7 @@ impl TextRenderer {
 
     /// Find the face for a style, falling back as [`Self::face_for`] describes. Called once per style
     /// rather than once per letter, because [`Self::resolve`] remembers the answer.
-    fn search(&self, key: &FaceKey) -> Option<Arc<FontVec>> {
+    fn search(&self, key: &FaceKey) -> Option<Arc<Face>> {
         let key = key.clone();
         if let Some(face) = self.face(&key) {
             return Some(face);
@@ -634,7 +690,7 @@ impl TextRenderer {
     ///
     /// Glyph zero is the empty box a font uses for a character it has no shape for, so asking for a
     /// character and being given glyph zero is how a missing character is found.
-    fn face_for_character(&self, character: char, style: &CharStyle) -> Option<Arc<FontVec>> {
+    fn face_for_character(&self, character: char, style: &CharStyle) -> Option<Arc<Face>> {
         let chosen = self.face_for(style)?;
         if chosen.glyph_id(character).0 != 0 || character.is_whitespace() {
             return Some(chosen);
@@ -767,7 +823,7 @@ impl TextRenderer {
             let py = y + dy as usize;
             if px < ATLAS_SIDE && py < ATLAS_SIDE {
                 let alpha = (coverage.clamp(0.0, 1.0) * 255.0).round() as u8;
-                atlas.image[(px, py)] = Color32::from_white_alpha(alpha);
+                atlas.coverage[py * ATLAS_SIDE + px] = alpha;
             }
         });
         atlas.mark(x, y, width, height);
@@ -782,9 +838,12 @@ impl TextRenderer {
         })
     }
 
-    /// The bytes of a face, for handing to egui so that the interface itself is set in a real font rather
-    /// than egui's built in one. egui needs the file contents; it does its own parsing.
-    pub fn face_bytes(&self, family: &str, bold: bool) -> Option<Vec<u8>> {
+    /// A face for egui, so that the interface itself is set in a real font rather than egui's built in
+    /// one. egui needs the file contents and does its own parsing; they are the mapped file, not a copy.
+    ///
+    /// @param family - the family to set the interface in
+    /// @param bold - whether the bold face is wanted
+    pub fn face_data(&self, family: &str, bold: bool) -> Option<egui::FontData> {
         let query = fontdb::Query {
             families: &[fontdb::Family::Name(family)],
             weight: if bold { fontdb::Weight::BOLD } else { fontdb::Weight::NORMAL },
@@ -792,7 +851,42 @@ impl TextRenderer {
             stretch: fontdb::Stretch::Normal,
         };
         let id = self.database.query(&query)?;
-        self.database.with_face_data(id, |data, _index| data.to_vec())
+        let (bytes, index) = self.shared_bytes(id)?;
+        // egui holds a font's bytes as `'static`, and a face it was given is kept until the fonts are
+        // replaced, which this window does when the interface font changes. So the mapping is kept for the
+        // life of the process: a mapping is address space backed by the font file, not private memory, and
+        // the same file mapped again shares its pages with this one.
+        // SAFETY: the bytes are never unmapped, because the `Arc` that owns them is forgotten.
+        let data: &'static [u8] =
+            unsafe { std::mem::transmute::<&[u8], &'static [u8]>((*bytes).as_ref()) };
+        std::mem::forget(bytes);
+        let mut font = egui::FontData::from_static(data);
+        font.index = index;
+        Some(font)
+    }
+
+    /// A face's bytes, mapped from its file rather than copied into the heap (`task-2279`).
+    ///
+    /// Copied, the faces the editor and the interface use were 3.4 MB of private memory in a window on
+    /// this repository. Mapped, they are pages of the font file, which Windows counts as shared and
+    /// which every other program with the same font open shares. A face that was loaded from memory
+    /// rather than from a file is handed over as it is.
+    ///
+    /// @param id - the face in the database
+    fn shared_bytes(&self, id: fontdb::ID) -> Option<(FaceBytes, u32)> {
+        let face = self.database.face(id)?;
+        let bytes: FaceBytes = match &face.source {
+            fontdb::Source::Binary(data) => data.clone(),
+            fontdb::Source::SharedFile(_, data) => data.clone(),
+            fontdb::Source::File(path) => {
+                let file = std::fs::File::open(path).ok()?;
+                // SAFETY: the mapping is read only. A font file changed by another program while it is
+                // mapped is what fontdb itself accepts for every face it reads; Windows refuses to let
+                // a mapped file be written or deleted.
+                Arc::new(unsafe { memmap2::Mmap::map(&file) }.ok()?)
+            }
+        };
+        Some((bytes, face.index))
     }
 
     /// The size of one cell of the terminal grid, at `size` points.
@@ -835,7 +929,7 @@ impl TextRenderer {
 
     /// The atlas as an image, which a test uses to look at the pixels of one glyph.
     pub fn atlas_image(&self) -> egui::ColorImage {
-        self.atlas.borrow().image.clone()
+        self.atlas.borrow().region(0, 0, ATLAS_SIDE, ATLAS_SIDE)
     }
 
     /// How many times the atlas has been cleared. A caller that collected glyph positions and then sees
@@ -858,18 +952,18 @@ impl TextRenderer {
     pub fn texture(&self, ctx: &egui::Context) -> egui::TextureId {
         let mut atlas = self.atlas.borrow_mut();
         if atlas.texture.is_none() {
-            let image = atlas.image.clone();
+            let image = atlas.region(0, 0, ATLAS_SIDE, ATLAS_SIDE);
             atlas.texture =
                 Some(ctx.load_texture("unluminous-glyphs", image, TextureOptions::LINEAR));
             atlas.changed = false;
             atlas.dirty = None;
         } else if atlas.changed {
-            let image = atlas.image.clone();
+            let image = atlas.region(0, 0, ATLAS_SIDE, ATLAS_SIDE);
             atlas.texture.as_mut().expect("just checked").set(image, TextureOptions::LINEAR);
             atlas.changed = false;
             atlas.dirty = None;
         } else if let Some([left, top, right, bottom]) = atlas.dirty.take() {
-            let part = atlas.image.region_by_pixels([left, top], [right - left, bottom - top]);
+            let part = atlas.region(left, top, right - left, bottom - top);
             atlas.texture.as_mut().expect("just checked").set_partial(
                 [left, top],
                 part,

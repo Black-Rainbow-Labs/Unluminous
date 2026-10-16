@@ -8,7 +8,9 @@ license.workspace = true
 default-run = "unluminous"
 
 [features]
-diagnostic-allocations = []
+# A counting allocator behind the frame trace, and with `UNLUMINOUS_HEAP_PROFILE` the live heap by call site
+# (`services::allocation_profile`, `task-2279`).
+diagnostic-allocations = ["dep:backtrace"]
 
 [lib]
 name = "unluminous_app"
@@ -19,6 +21,8 @@ name = "unluminous"
 path = "src/main.rs"
 
 [dependencies]
+# Only in a build made with `diagnostic-allocations`, for the heap profile's call sites.
+backtrace = { version = "0.3", optional = true }
 unluminous-core.workspace = true
 unluminous-dap.workspace = true
 unluminous-lsp.workspace = true
@@ -56,6 +60,9 @@ egui.workspace = true
 eframe.workspace = true
 vello_cpu.workspace = true
 fontdb.workspace = true
+# Font files are mapped rather than copied into the heap (`services::text_renderer::Face`). Already in the
+# build through `fontdb`.
+memmap2 = "0.9"
 ab_glyph.workspace = true
 unicode-segmentation.workspace = true
 rfd.workspace = true

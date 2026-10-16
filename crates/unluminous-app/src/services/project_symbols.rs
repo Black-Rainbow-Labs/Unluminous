@@ -54,6 +54,10 @@ impl ProjectSymbols {
         // Before the host starts, so the settings the command line's host is given reach this one too:
         // the older `UNLUMINOUS_*` names and how long the embedding model is kept (`task-2247`).
         unluminous_cli::search::configure();
+        // The window's index keeps file content on the disk rather than in memory (`task-2279`): 11.4 MB
+        // of a 2,000 file project, and a search reads a candidate file the way ripgrep would, after the
+        // gate has brought the index up to date. Completion and definitions never read content.
+        atrius_index::exact::set_holding_content(false);
         let canonical = atrius_index::host::canonical(root);
         let host = match on_disk {
             true => atrius_index::host::in_process(&canonical),

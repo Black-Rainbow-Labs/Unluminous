@@ -337,14 +337,13 @@ impl UnluminousApp {
             .read(|table| {
                 table
                     .named(&name.to_lowercase())
-                    .iter()
                     .filter(|d| {
-                        d.definition.name == name && !d.definition.member && symbols.offers(&d.path)
+                        d.definition.name == name && !d.definition.member && symbols.offers(d.path)
                     })
                     .map(|d| {
                         let kind =
                             SymbolKind::parse(d.definition.kind).unwrap_or(SymbolKind::Variable);
-                        (d.path.clone(), d.definition.range.clone(), kind, d.definition.likely)
+                        (d.path.to_owned(), d.definition.range.clone(), kind, d.definition.likely)
                     })
                     .collect()
             })

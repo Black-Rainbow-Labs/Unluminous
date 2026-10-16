@@ -150,3 +150,54 @@ Each is kept only if the benchmark shows it, and the frame phases say where the 
   memory inside a program Unluminous does not own, and a person who wants rust-analyzer wants its
   answers.
 - The graphics driver's share of the window, which `task-1805` measured at 55% of an idle window.
+
+## 6. The window's own memory
+
+Once rust-analyzer and the embedding model were off, the window process itself was what was left. Jason
+asked for it to come back to about 150 MB in Task Manager's Memory column, which is the private working set.
+At the start of this part a window on this repository with `app/mod.rs` open held 259 MB there.
+
+### 6.1 The instrument
+
+`tools/perf-memory.ps1` opens a release window with `--background` on a fresh settings folder, once to build
+the index and once more to measure, so the index is loaded rather than built. It records the working set,
+the private bytes and the private working set, and `tools/memory-map.ps1` splits the memory by kind (private,
+image, mapped) and by module. A build made with `--features diagnostic-allocations` also writes the Rust
+heap's live bytes into the frame trace, and with `UNLUMINOUS_HEAP_PROFILE=<file>` it writes the live heap by
+call site at exit. Builds are measured interleaved, two rounds each.
+
+Two probes outside the window answered questions the window could not:
+`_agent_output/task-2279-perf/index-probe` opens the code index alone and reports its heap by call site, and
+`_agent_output/task-2279-perf/gpu-probe` creates a DX12 device alone and uploads textures.
+
+### 6.2 What the memory was
+
+| Part | What it was | What was done |
+|---|---|---|
+| The code index | 140 MB private in the probe: every file's contents held, a 32 MiB page cache, the search index a plain English question builds (115 MB) held until the next file change, and a `String` for every place a path was named | Atrius 0.3.0: contents read from disk, 128 pages at rest, the question's index let go of after 20 s, paths shared. 51 MB in the probe |
+| The graphics device | wgpu's default of a million bindings is a 30.6 MB descriptor heap | 16,384 bindings (`graphics_memory::BINDINGS`) |
+| The process heap | Windows' default heap keeps freed memory | the segment heap, asked for in the manifest: 13 to 21 MB less private |
+| The background picture | one 8 MB upload, and the driver keeps an upload's staging memory | uploaded as 1 MB strips, one a frame: 16 MB less in the project window |
+| The glyph atlas | 4 MB of white pixels | one byte a pixel: 3 MB less |
+| Fonts | each face's file copied into the heap, 3.4 MB | the files are memory mapped |
+| eframe's default icon | 1 MB decoded and kept | an empty icon, which eframe reads as none |
+
+The gpu probe is where the upload rule came from. Uploading a 16 MB texture left 17 MB of private memory
+behind. Sent as 16 strips with a submission each, it left 1.5 MB. Uploads of 2 MB or less left nothing, and
+strips sent in one submission were kept together.
+
+### 6.3 Result
+
+| Window | Start of this part | Now |
+|---|---:|---:|
+| This repository, `app/mod.rs` open | 259 MB | 148.5 MB |
+| An empty folder | | 86.5 MB |
+
+Measured in the diagnostic build. The release build is measured again in 6.5.
+
+### 6.4 What is left
+
+About 42 MB is the NVIDIA device itself: 21 MB of it is created when the adapter is chosen and then reused
+by the device, so there is nothing to give back. In the heap, the index is about 23 MB on this repository
+(the trigram posting lists and the symbol table), a restored terminal's scrollback is about 5 MB, and the
+fonts egui parses are about 3 MB. Each is data the window uses.

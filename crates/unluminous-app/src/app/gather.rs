@@ -552,8 +552,7 @@ impl UnluminousApp {
                     .flat_map(|name| {
                         table
                             .named(name)
-                            .iter()
-                            .filter(|d| symbols.offers(&d.path))
+                            .filter(|d| symbols.offers(d.path))
                             .map(|d| d.definition.clone())
                             .collect::<Vec<_>>()
                     })
@@ -591,13 +590,11 @@ impl UnluminousApp {
             .read(|table| {
                 let mut out = Vec::new();
                 for name in names_reached(table, &lower, index_cap(stem)) {
-                    let chosen = table.named(name).iter().find(|d| {
-                        !is_member(&d.definition)
-                            && symbols.offers(&d.path)
-                            && !open.contains(&d.path)
+                    let chosen = table.named(name).find(|d| {
+                        !is_member(d.definition) && symbols.offers(d.path) && !open.contains(d.path)
                     });
                     if let Some(d) = chosen {
-                        out.push((d.path.clone(), d.definition.clone()));
+                        out.push((d.path.to_owned(), d.definition.clone()));
                     }
                 }
                 out

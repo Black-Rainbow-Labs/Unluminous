@@ -203,7 +203,7 @@ pub fn upload(
 /// Averaging rather than taking every nth pixel: a screenshot of text reduced by dropping rows and
 /// columns comes back as a mess of speckles, and the whole point of showing a picture in a preview is
 /// that it can be recognised.
-fn shrink_to_fit(image: egui::ColorImage, limit: usize) -> egui::ColorImage {
+pub(crate) fn shrink_to_fit(image: egui::ColorImage, limit: usize) -> egui::ColorImage {
     let [width, height] = image.size;
     let longest = width.max(height);
     if longest <= limit || limit == 0 || width == 0 || height == 0 {
