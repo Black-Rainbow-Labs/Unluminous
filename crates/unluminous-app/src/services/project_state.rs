@@ -429,7 +429,7 @@ pub fn load(root: &Path) -> ProjectState {
 /// What the writer thread is asked to do.
 enum WriterJob {
     /// Write a project's state.
-    Write(std::path::PathBuf, ProjectState),
+    Write(std::path::PathBuf, Box<ProjectState>),
     /// Answer once every write sent before this one is on the disk.
     Flush(std::sync::mpsc::SyncSender<()>),
 }
@@ -442,30 +442,31 @@ static WRITER: std::sync::OnceLock<std::sync::Mutex<std::sync::mpsc::Sender<Writ
 fn writer() -> &'static std::sync::Mutex<std::sync::mpsc::Sender<WriterJob>> {
     WRITER.get_or_init(|| {
         let (tx, rx) = std::sync::mpsc::channel::<WriterJob>();
-        let _ = std::thread::Builder::new().name("unluminous-project-state".into()).spawn(move || {
-            while let Ok(job) = rx.recv() {
-                // Only the newest state of a burst is written: the ones before it are already out of date.
-                let mut jobs = vec![job];
-                jobs.extend(rx.try_iter());
-                let mut newest: Vec<(std::path::PathBuf, ProjectState)> = Vec::new();
-                let mut flushes = Vec::new();
-                for job in jobs {
-                    match job {
-                        WriterJob::Write(root, state) => {
-                            newest.retain(|(r, _)| *r != root);
-                            newest.push((root, state));
+        let _ =
+            std::thread::Builder::new().name("unluminous-project-state".into()).spawn(move || {
+                while let Ok(job) = rx.recv() {
+                    // Only the newest state of a burst is written: the ones before it are already out of date.
+                    let mut jobs = vec![job];
+                    jobs.extend(rx.try_iter());
+                    let mut newest: Vec<(std::path::PathBuf, Box<ProjectState>)> = Vec::new();
+                    let mut flushes = Vec::new();
+                    for job in jobs {
+                        match job {
+                            WriterJob::Write(root, state) => {
+                                newest.retain(|(r, _)| *r != root);
+                                newest.push((root, state));
+                            }
+                            WriterJob::Flush(done) => flushes.push(done),
                         }
-                        WriterJob::Flush(done) => flushes.push(done),
+                    }
+                    for (root, state) in &newest {
+                        save(root, state);
+                    }
+                    for done in flushes {
+                        let _ = done.send(());
                     }
                 }
-                for (root, state) in &newest {
-                    save(root, state);
-                }
-                for done in flushes {
-                    let _ = done.send(());
-                }
-            }
-        });
+            });
         std::sync::Mutex::new(tx)
     })
 }
@@ -479,8 +480,9 @@ fn writer() -> &'static std::sync::Mutex<std::sync::mpsc::Sender<WriterJob>> {
 /// @param root - the project folder
 /// @param state - what to write
 pub fn save_later(root: &Path, state: &ProjectState) {
-    let sent = writer().lock().ok().map(|tx| tx.send(WriterJob::Write(root.to_path_buf(), state.clone())));
-    if !matches!(sent, Some(Ok(()))) {
+    let job = WriterJob::Write(root.to_path_buf(), Box::new(state.clone()));
+    let sent = writer().lock().ok().map(|tx| tx.send(job).is_ok());
+    if sent != Some(true) {
         save(root, state);
     }
 }
@@ -490,8 +492,8 @@ pub fn save_later(root: &Path, state: &ProjectState) {
 pub fn wait_for_the_writes() {
     let Some(writer) = WRITER.get() else { return };
     let (done, finished) = std::sync::mpsc::sync_channel(1);
-    let sent = writer.lock().ok().map(|tx| tx.send(WriterJob::Flush(done)));
-    if matches!(sent, Some(Ok(()))) {
+    let sent = writer.lock().ok().map(|tx| tx.send(WriterJob::Flush(done)).is_ok());
+    if sent == Some(true) {
         let _ = finished.recv_timeout(std::time::Duration::from_secs(2));
     }
 }

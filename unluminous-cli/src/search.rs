@@ -246,12 +246,18 @@ mod tests {
     #[test]
     fn embedding_is_on_only_when_the_settings_file_says_so() {
         assert!(!embeddings_are_on(""));
-        assert!(!embeddings_are_on("search.embeddings = false
-"));
-        assert!(!embeddings_are_on("telemetry.enabled = true
-"));
-        assert!(embeddings_are_on("editor.servers = off
+        assert!(!embeddings_are_on(
+            "search.embeddings = false
+"
+        ));
+        assert!(!embeddings_are_on(
+            "telemetry.enabled = true
+"
+        ));
+        assert!(embeddings_are_on(
+            "editor.servers = off
 search.embeddings = true
-"));
+"
+        ));
     }
 }

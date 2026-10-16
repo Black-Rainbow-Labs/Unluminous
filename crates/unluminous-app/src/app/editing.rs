@@ -409,13 +409,11 @@ impl UnluminousApp {
         // The hint is only about the **text**. A fold or a change of width alters the layout without
         // any edit having happened, so both say `whole` and read the document, which is what every
         // relayout did before this.
-        let touched = match folded == cached_folds
-            && (!width_moved || kept_at_width)
-            && notebook.is_none()
-        {
-            true => self.document().touched_since(cached_revision),
-            false => Touched::whole(),
-        };
+        let touched =
+            match folded == cached_folds && (!width_moved || kept_at_width) && notebook.is_none() {
+                true => self.document().touched_since(cached_revision),
+                false => Touched::whole(),
+            };
         // A notebook is laid out against its own copy of the paragraph styles, carrying the room round
         // each cell, and hides its marker lines as well as what the folds hide. `task-2220`.
         let (styles, hidden) = match notebook {
