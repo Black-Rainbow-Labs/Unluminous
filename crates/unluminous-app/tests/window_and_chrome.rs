@@ -6119,6 +6119,8 @@ fn the_glass_theme_bends_the_picture_behind_its_surfaces() {
     let mut harness = harness_in(&folder);
     harness.state_mut().use_store(unluminous_app::services::store::Store::at(&settings));
     steady(&mut harness);
+    // A fresh settings folder holds the default interface size; the pictures are of the design's own.
+    did(&mut harness, "settings set appearance.ui.font.size 12.5");
     did(&mut harness, "background use glass-spheres.jpg");
     did(&mut harness, "theme set \"Unluminous Glass\"");
     did(&mut harness, "plugins pane agent-chat/chat --show");
