@@ -2892,6 +2892,33 @@ mod tests_task_2063 {
         std::fs::remove_dir_all(&root).ok();
     }
 
+    /// `task-2281`. Choosing the glass theme over the desktop chooses the glass picture, because glass
+    /// over the desktop has nothing to bend; choosing it over a picture keeps that picture.
+    #[test]
+    fn choosing_glass_over_the_desktop_chooses_the_glass_picture() {
+        let (root, settings, mut app) = a_window("glass-picture");
+        app.use_store(Store::at(&settings));
+        assert!(app.background_names().contains(&backgrounds::bundled::GLASS.to_owned()));
+
+        app.settings.background_image = String::new();
+        let before = app.settings.clone();
+        app.settings.theme = crate::theme::GLASS_KEY.to_owned();
+        app.apply_settings(&before);
+        assert_eq!(app.settings.background_image, backgrounds::bundled::GLASS);
+
+        let before = app.settings.clone();
+        app.settings.theme = "unluminous/dark".to_owned();
+        app.apply_settings(&before);
+        app.settings.background_image = "moab.jpg".to_owned();
+        let before = app.settings.clone();
+        app.settings.theme = crate::theme::GLASS_KEY.to_owned();
+        app.apply_settings(&before);
+        assert_eq!(app.settings.background_image, "moab.jpg", "a chosen picture is kept");
+
+        crate::theme::activate(crate::theme::Theme::unluminous_dark());
+        std::fs::remove_dir_all(&root).ok();
+    }
+
     /// And a settings file that names a different picture keeps that one.
     #[test]
     fn a_settings_file_that_named_a_picture_keeps_it() {

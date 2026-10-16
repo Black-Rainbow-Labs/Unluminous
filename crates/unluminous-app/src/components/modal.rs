@@ -273,6 +273,21 @@ fn show_framed<R>(
     // The whole window, in the layer's own points, which is what the backdrop has to cover.
     let window = to_screen.inverse().mul_rect(ctx.content_rect());
     let backdrop = blurred_backdrop(ctx, egui::Id::new(id));
+    // Glass in the dialog bends the photograph of the window behind it (`task-2281`), which is the
+    // design's frosted modal: the blur is already in the picture, and what bends is the window's own
+    // contents rather than the picture behind them.
+    if let Some(texture) = backdrop.texture.as_ref().filter(|_| crate::theme::is_glass()) {
+        rux::render::set_backdrop(
+            ctx,
+            rux::render::Plane::Above,
+            Some(rux::render::Backdrop::single(
+                texture.id(),
+                ctx.content_rect(),
+                Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                1.0,
+            )),
+        );
+    }
 
     let response = egui::Modal::new(egui::Id::new(id))
         .area(

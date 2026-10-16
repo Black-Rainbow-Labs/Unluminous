@@ -197,8 +197,8 @@ impl Plugins {
         self.installed.iter().filter(|plugin| plugin.kind == Kind::Ui).collect()
     }
 
-    /// Every theme that can be chosen: Unluminous's own two, dark then light, then each theme plugin that is
-    /// switched on.
+    /// Every theme that can be chosen: Unluminous's own three, dark, light and glass, then each theme
+    /// plugin that is switched on.
     ///
     /// Worked out from the manifests each time rather than remembered, which is what `surfaces` does and
     /// for the same reason: switching a theme plugin off has to withdraw its themes in the same frame it
@@ -668,10 +668,10 @@ mod tests {
     fn switching_a_theme_plugin_off_withdraws_its_themes() {
         let (mut plugins, _) = Plugins::load(None);
         assert!(plugins.theme("Monokai Pro").is_some(), "it is there to begin with");
-        assert_eq!(plugins.themes().len(), 7, "Unluminous's own two, then the bundle's five");
+        assert_eq!(plugins.themes().len(), 8, "Unluminous's own three, then the bundle's five");
         plugins.set_enabled(None, "themes-bundle-1", false);
         assert!(plugins.theme("Monokai Pro").is_none(), "and gone when the plugin is off");
-        assert_eq!(plugins.themes().len(), 2, "leaving only Unluminous's own two");
+        assert_eq!(plugins.themes().len(), 3, "leaving only Unluminous's own three");
     }
 
     /// A theme is found by its key or by the name that is on the screen, which is `split_off_a_name`'s

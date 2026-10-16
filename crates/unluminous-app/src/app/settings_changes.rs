@@ -54,6 +54,7 @@ impl UnluminousApp {
         // of the four moved, for the reason `reconcile_mcp` records beside itself: a list of the settings
         // that have to remember to say so is a list whose next entry is the one that forgot.
         self.apply_the_theme();
+        self.give_glass_something_to_bend(before);
         // The interface's own family is bound into egui rather than read at drawing time, so it is
         // installed again when it moves — and only then, because `set_fonts` throws away the glyph atlas.
         // The editor's family counts as a move, because an empty `ui_font_family` means "the editor's":
@@ -73,6 +74,25 @@ impl UnluminousApp {
         // `FileTree::set_exclude` compares before it walks. `task-1804` §7.3.
         self.tree.set_exclude(&self.settings.exclude);
         self.unsaved_settings = true;
+    }
+
+    /// Choose the glass picture when a glass theme is chosen over the desktop (`task-2281`).
+    ///
+    /// Glass bends the picture behind the window, and the desktop is not a picture the window can read, so
+    /// a glass theme over the desktop would be tint and edges and nothing bent. Only on the change of
+    /// theme, and only while no picture is chosen: a person who picks the desktop afterwards keeps it.
+    ///
+    /// @param before - the settings before this change
+    fn give_glass_something_to_bend(&mut self, before: &Settings) {
+        let chose_glass = self.settings.theme != before.theme && theme::is_glass();
+        if !chose_glass || !self.settings.background_image.trim().is_empty() {
+            return;
+        }
+        let Some(folder) = self.backgrounds_folder() else { return };
+        let picture = crate::services::backgrounds::bundled::GLASS;
+        if folder.join(picture).is_file() {
+            self.settings.background_image = picture.to_owned();
+        }
     }
 
     /// Paint this window in the theme the settings name, and tell egui about it.

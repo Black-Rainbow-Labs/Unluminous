@@ -1971,6 +1971,35 @@ With `UPDATE_SNAPSHOTS=1` and `--no-fail-fast` it photographs every surface the 
 light theme. Some tests fail in that run because they assert a dark colour; the pictures are the point.
 `design/style-guide.md` has the rules a new control keeps.
 
+
+### Unluminous Glass bends the picture behind the window (`task-2281`)
+
+`tasks/task-2281-glass-theme-tdd.md` is the design, after the Claude Design canvas "Unluminous", page
+"Agent-Chat 2". `unluminous/glass` is a dark theme whose raised surfaces are glass: the background picture
+behind each one is bent the way a lens bends it, with a faint colour split at the edge, and the design's
+tint and lit edges are painted over it. Five rules:
+
+- **The bending is `rux`'s.** `theme::rux_theme` answers `Theme::glazed` under glass, and `rux::Chrome`
+  makes every raised translucent surface glass, so the chat, the board, the Settings window, every modal,
+  the title bar, the rail, the realm bar, the database pane and the designer needed no change.
+  `rux/docs/glass.md` says how it is drawn: an `egui` mesh per surface whose texture coordinates are where
+  the bent sample lands, so it works in the screenshot tests too.
+- **Glass bends a picture it is handed, never the frame.** `paint_the_background` hands `rux` the
+  wallpaper's strips every frame, and `modal::show` hands it the modal's blurred photograph of the window,
+  which is what a dialog's glass bends. With no picture chosen there is nothing to bend and glass is tint
+  only, so choosing the theme while no picture is chosen chooses `glass-spheres.jpg`
+  (`give_glass_something_to_bend`), which `tools/glass-spheres.py` draws.
+- **What egui frames itself is glazed after the frame is drawn.** A menu, a dropdown, a context menu and a
+  tooltip are filled in `theme::glass::popup_fill`, and `theme::glass::glaze_the_popups` puts the bent
+  picture under every rectangle of that colour. A canvas node's card is `theme::glass::paint_glass` at
+  full strength, which is what still hides the nodes behind it.
+- **The grounds are a light smoke.** `theme::faded` multiplies the opacity setting by `theme::veil()`,
+  which is `GLASS_VEIL` under glass and one otherwise, and the editing area is painted a second time so
+  code over a bright picture stays readable.
+- **It costs about 0.4 ms of egui's time a frame** while the chat is scrolled, against Unluminous Dark,
+  measured with `UNLUMINOUS_FRAME_TRACE`. A still frame builds no glass: `rux` keeps each surface's shapes
+  until the surface, the picture or the layer's transform moves.
+
 ### `task-1949` redrew ten marks, and the reason none of them could be checked before is a rule now
 
 The ticket names a published icon for each mark it wants — Circum's file and folder, Ionicons' git

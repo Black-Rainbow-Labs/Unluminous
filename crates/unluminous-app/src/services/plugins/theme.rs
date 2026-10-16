@@ -157,14 +157,14 @@ fn one_theme(values: &Values, plugin: &str, id: &str) -> Result<crate::theme::Th
     // silently — the rule `no_orphans` already keeps for `pane.`, `tab.`, `menu.` and `settings.`. It is
     // last so the messages above, which say what is wrong with a key that *is* recognised, come first.
     for (leaf, _) in values.starting_with(&format!("theme.{id}.")) {
-        let known = matches!(leaf.as_str(), "name" | "dark" | "icons")
+        let known = matches!(leaf.as_str(), "name" | "dark" | "icons" | "glass")
             || leaf.strip_prefix("ui.").is_some()
             || leaf
                 .strip_prefix("syntax.")
                 .is_some_and(|token| Token::ALL.iter().any(|known| known.name() == token));
         if !known {
             return Err(format!(
-                "theme.{id}.{leaf} is not a key a theme has. It reads name, dark, icons, ui.<colour> and syntax.<token>, where a token is one of {}",
+                "theme.{id}.{leaf} is not a key a theme has. It reads name, dark, icons, glass, ui.<colour> and syntax.<token>, where a token is one of {}",
                 Token::ALL.map(Token::name).join(", ")
             ));
         }
@@ -178,6 +178,8 @@ fn one_theme(values: &Values, plugin: &str, id: &str) -> Result<crate::theme::Th
         palette,
         syntax,
         icons,
+        // `task-2281`: glass is drawn over a dark ground only, so a light theme cannot ask for it.
+        glass: dark && values.flag(&format!("theme.{id}.glass")).unwrap_or(false),
     })
 }
 

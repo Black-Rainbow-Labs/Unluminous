@@ -168,6 +168,8 @@ impl UnluminousApp {
         crate::services::frame_trace::phase("action");
         // The title bar's and the rail's `rux` canvases that were not drawn this frame are given back.
         crate::components::chrome_kit::end_frame(ui.ctx());
+        // Last, once every popup has been drawn: glass under the ones egui framed itself (`task-2281`).
+        crate::theme::glass::glaze_the_popups(ui.ctx());
         crate::components::designer::kit::end_frame(ui.ctx());
         self.end_the_frame(ui);
     }
@@ -968,6 +970,18 @@ impl UnluminousApp {
         // still register a tab strip, a gutter and an editing surface per pane in the widget tree, all of them
         // nowhere, and one of them would still be taking the keyboard.
         if self.editor_visible {
+            // **The editing area keeps more of its ground under glass** (`task-2281`). Every ground under
+            // glass is a light smoke so the picture is seen, and a line of code over a bright sphere is
+            // the one place that is too light: the window's ground is painted over the editing area a
+            // second time, which at the default opacity covers the picture there by about three fifths
+            // and keeps the code readable.
+            if theme::is_glass() {
+                ui.painter().rect_filled(
+                    editing_area,
+                    CornerRadius::ZERO,
+                    theme::faded(color::editor(), self.settings.opacity),
+                );
+            }
             for (pane, rect) in pane_rects.iter().copied().enumerate() {
                 self.files.focus_pane(pane);
                 if self.show_pane(ui, pane, pane == had_the_keyboard, rect, &mut close) {
@@ -1998,16 +2012,34 @@ impl UnluminousApp {
     /// Nothing at all when no picture is chosen, or when the one named is not there: the desktop shows
     /// through, which is what `appearance.background.image` says by being empty and what a picture
     /// somebody deleted by hand should fall back to.
+    ///
+    /// **And it is what glass bends** (`task-2281`): the picture's strips and where they are drawn are
+    /// handed to `rux` for the page, every frame, so a raised surface in a glass theme samples the
+    /// picture exactly where it is behind it. Whatever floats above the page starts each frame with
+    /// nothing of its own; a modal hands over its photograph of the window when it is drawn.
     fn paint_the_background(&mut self, ui: &mut egui::Ui, full: Rect) {
+        let ctx = ui.ctx().clone();
+        rux::render::set_backdrop(&ctx, rux::render::Plane::Above, None);
         let Some(picture) = self.wallpaper.texture(
-            ui.ctx(),
+            &ctx,
             self.backgrounds.as_deref(),
             &self.settings.background_image,
         ) else {
+            rux::render::set_backdrop(&ctx, rux::render::Plane::Page, None);
             return;
         };
         let taken = crate::services::backgrounds::cover(picture.size_vec2(), full.size());
         picture.paint(ui.painter(), full, CornerRadius::same(size::WINDOW_CORNER), taken);
+        let backdrop = match crate::theme::is_glass() {
+            true => Some(rux::render::Backdrop {
+                bands: picture.bands(),
+                rect: full,
+                uv: taken,
+                opacity: 1.0,
+            }),
+            false => None,
+        };
+        rux::render::set_backdrop(&ctx, rux::render::Plane::Page, backdrop);
     }
 
     /// The notices, over every pane and under a modal.

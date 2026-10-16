@@ -6107,3 +6107,48 @@ fn a_draft_that_goes_away_unsent_takes_its_pictures_with_it() {
     assert!(!folder.exists(), "the draft's folder went with it");
     std::fs::remove_dir_all(picture.parent().unwrap()).ok();
 }
+
+/// `task-2281`: under Unluminous Glass every raised surface bends the picture behind the window, and a
+/// modal's glass bends the modal's photograph of the window. The pictures are the evidence: the chat's
+/// cards, bubbles and buttons over `glass-spheres.jpg`, and the Settings window over the frosted window.
+#[test]
+fn the_glass_theme_bends_the_picture_behind_its_surfaces() {
+    let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-glass-theme");
+    let settings = folder.join(".unluminous-settings");
+    let mut harness = harness_in(&folder);
+    harness.state_mut().use_store(unluminous_app::services::store::Store::at(&settings));
+    steady(&mut harness);
+    did(&mut harness, "background use glass-spheres.jpg");
+    did(&mut harness, "theme set \"Unluminous Glass\"");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    did(&mut harness, "plugins run agent-chat motion off");
+    did(&mut harness, "plugins run agent-chat gallery");
+    // The picture is put on the graphics card a strip a frame (`task-2279`).
+    for _ in 0..24 {
+        pump(&mut harness);
+    }
+    steady(&mut harness);
+    let ctx = harness.ctx.clone();
+    let page = rux::render::backdrop_for(&ctx, egui::LayerId::background())
+        .expect("the picture behind the window is what glass bends");
+    assert!(page.bands.len() > 1, "and it is handed over in its strips");
+    assert!(unluminous_app::theme::rux_theme().glass.is_some(), "the rux theme is glazed");
+    harness.snapshot(shot("glass_chat"));
+
+    open_settings(&mut harness);
+    for _ in 0..8 {
+        pump(&mut harness);
+    }
+    steady(&mut harness);
+    harness.snapshot(shot("glass_settings"));
+    harness.key_press(egui::Key::Escape);
+    steady(&mut harness);
+
+    did(&mut harness, "theme set \"Unluminous Dark\"");
+    steady(&mut harness);
+    assert!(
+        rux::render::backdrop_for(&ctx, egui::LayerId::background()).is_none(),
+        "nothing is bent in a theme that is not glass"
+    );
+    std::fs::remove_dir_all(&folder).ok();
+}

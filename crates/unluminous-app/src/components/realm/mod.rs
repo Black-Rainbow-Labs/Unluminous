@@ -518,11 +518,22 @@ pub struct Parts {
 /// whose surface lived only there covered nothing a node behind it drew into its own layer: the text of a
 /// File Editor node sent behind another node showed through it. The same two colours the canvas paints,
 /// flat and opaque, so where nothing overlaps the picture is exactly what it was. Painted in world points,
-/// because the layer carries the camera.
+/// because the layer carries the camera. Under glass the colours are translucent and the bent picture is
+/// painted under them, which is what covers (`task-2281`).
 pub fn cover(ui: &egui::Ui, node: &Node, look: Look<'_>) {
     let _ = look;
     let parts = parts_of(node);
     let chat = crate::components::chrome_kit::chat();
+    // Under glass the card's tint is translucent, so the bent picture goes under it at full strength:
+    // that is what still hides the nodes behind (`task-2281`). With no picture to bend, an opaque
+    // ground under the tint does the hiding instead.
+    if crate::theme::is_glass() {
+        let bent = crate::theme::glass::paint_glass(ui.painter(), node.rect(), NODE_RADIUS);
+        if !bent {
+            let round = CornerRadius::same(NODE_RADIUS as u8);
+            ui.painter().rect_filled(node.rect(), round, color::editor());
+        }
+    }
     gradient_card(ui.painter(), node.rect(), NODE_RADIUS, chat.card);
     // The groove under the header, which is what says where the header ends now that the header is the
     // card's own surface rather than a band of a second colour (`task-2250`).

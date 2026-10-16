@@ -1246,9 +1246,15 @@ pub fn menu_rows(ui: &mut egui::Ui, entries: &[Entry], indent: f32) -> Option<Ac
 /// shadow under it, which is the Editing code design's dropdown (`task-2241`).
 pub fn menu_frame(ui: &egui::Ui) -> egui::Frame {
     let chat = crate::theme::rux_theme().chat;
+    // Under glass the frame keeps the design's hairline rim, and `theme::glass` puts the bent picture under
+    // the fill once the frame is drawn (`task-2281`).
+    let rim = match crate::theme::is_glass() {
+        true => Stroke::new(1.0, chat.chip_edge),
+        false => Stroke::NONE,
+    };
     egui::Frame::popup(ui.style())
         .fill(chat.card.from)
-        .stroke(Stroke::NONE)
+        .stroke(rim)
         .corner_radius(CornerRadius::same(18))
         .inner_margin(8)
         .shadow(egui::Shadow {

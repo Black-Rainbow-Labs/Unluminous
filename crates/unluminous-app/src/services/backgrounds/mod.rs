@@ -323,6 +323,21 @@ impl Picture {
         self.strips.len()
     }
 
+    /// The strips as the bands glass bends (`task-2281`): each strip's texture, the rows it is drawn for
+    /// and the rows it holds, as fractions of the whole picture's height.
+    pub fn bands(&self) -> Vec<rux::render::Band> {
+        let rows = self.size.y.max(1.0);
+        let share = |row: usize| row as f32 / rows;
+        self.strips
+            .iter()
+            .map(|strip| rux::render::Band {
+                texture: strip.texture.id(),
+                drawn: (share(strip.drawn.start), share(strip.drawn.end)),
+                held: (share(strip.held.start), share(strip.held.end)),
+            })
+            .collect()
+    }
+
     /// Paint the part `uv` of the picture over `rect`, with its corners rounded by `corners`.
     ///
     /// The rounded rectangle is tessellated once, as egui would tessellate it with the picture as its

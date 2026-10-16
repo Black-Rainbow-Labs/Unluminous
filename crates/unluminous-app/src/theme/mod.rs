@@ -42,6 +42,7 @@ use std::cell::RefCell;
 use egui::{Color32, CornerRadius, Stroke, Vec2};
 
 pub mod crisp;
+pub mod glass;
 pub mod icon;
 
 /// Generate the palette from one list.
@@ -583,6 +584,9 @@ pub struct Theme {
     /// every plugin that shipped before `task-1776` carries.
     pub syntax: Option<crate::services::plugins::SyntaxTheme>,
     pub icons: IconSet,
+    /// Whether its raised surfaces are glass that bends the picture behind the window (`task-2281`).
+    /// [`Theme::unluminous_glass`] is, and a theme plugin can say `theme.<id>.glass = true`.
+    pub glass: bool,
 }
 
 impl Theme {
@@ -601,6 +605,7 @@ impl Theme {
             palette: Palette::UNLUMINOUS_DARK,
             syntax: None,
             icons: IconSet::default(),
+            glass: false,
         }
     }
 
@@ -636,12 +641,58 @@ impl Theme {
             palette: Palette::UNLUMINOUS_LIGHT,
             syntax: Some(crate::services::plugins::SyntaxTheme::of("Unluminous Light", scheme)),
             icons: IconSet::default(),
+            glass: false,
         }
     }
 
-    /// Both themes Unluminous carries, dark first, which is the order the Settings list shows them in.
-    pub fn built_in() -> [Theme; 2] {
-        [Theme::unluminous_dark(), Theme::unluminous_light()]
+    /// Unluminous's glass theme (`task-2281`): the Claude Design canvas "Unluminous", page "Agent-Chat 2".
+    ///
+    /// Dark, and made to be drawn over a sharp picture: every raised surface drawn through `rux` is glass
+    /// that bends the picture behind the window ([`rux_theme`] glazes the `rux` theme), and the panes'
+    /// grounds are a light smoke over it ([`veil`]). The palette is the design's near black page
+    /// (`#0b0d14`) and its sky blue accent (`--sky: #5cb6ff`); every other role is Unluminous Dark's,
+    /// which the code colours keep too.
+    pub fn unluminous_glass() -> Theme {
+        let mut palette = Palette::UNLUMINOUS_DARK;
+        palette.editor = Color32::from_rgb(0x0B, 0x0D, 0x14);
+        palette.title_bar = Color32::from_rgb(0x0C, 0x0E, 0x14);
+        palette.toolbar = Color32::from_rgb(0x0C, 0x0E, 0x15);
+        palette.explorer = Color32::from_rgb(0x0A, 0x0C, 0x12);
+        palette.explorer_footer = Color32::from_rgb(0x09, 0x0B, 0x10);
+        palette.status_bar = Color32::from_rgb(0x08, 0x0A, 0x0F);
+        palette.control = Color32::from_rgb(0x22, 0x27, 0x33);
+        palette.field = Color32::from_rgb(0x0B, 0x0D, 0x14);
+        palette.control_border = Color32::from_rgb(0x34, 0x3A, 0x48);
+        palette.divider = Color32::from_rgb(0x2A, 0x2F, 0x3B);
+        palette.menu = Color32::from_rgb(0x15, 0x18, 0x21);
+        palette.accent = Color32::from_rgb(0x5C, 0xB6, 0xFF);
+        palette.folder_open = Color32::from_rgb(0x5C, 0xB6, 0xFF);
+        palette.selected_row = Color32::from_rgb(0x1E, 0x35, 0x52);
+        palette.text_selection = Color32::from_rgb(0x24, 0x40, 0x68);
+        palette.code_panel = Color32::from_rgb(0x10, 0x13, 0x1B);
+        palette.code_chip = Color32::from_rgb(0x16, 0x1A, 0x24);
+        palette.text = Color32::from_rgb(0xED, 0xF0, 0xF5);
+        palette.text_control = Color32::from_rgb(0xD3, 0xD9, 0xE3);
+        palette.text_dim = Color32::from_rgb(0xA0, 0xA9, 0xB8);
+        palette.text_faint = Color32::from_rgb(0x86, 0x8F, 0x9E);
+        palette.icon = Color32::from_rgb(0xA0, 0xA9, 0xB8);
+        palette.folder = Color32::from_rgb(0xA0, 0xA9, 0xB8);
+        Theme {
+            key: GLASS_KEY.to_owned(),
+            name: "Unluminous Glass".to_owned(),
+            plugin: "unluminous".to_owned(),
+            dark: true,
+            palette,
+            syntax: None,
+            icons: IconSet::default(),
+            glass: true,
+        }
+    }
+
+    /// The themes Unluminous carries, dark first, then light, then glass, which is the order the Settings
+    /// list shows them in.
+    pub fn built_in() -> [Theme; 3] {
+        [Theme::unluminous_dark(), Theme::unluminous_light(), Theme::unluminous_glass()]
     }
 
     /// The built-in theme a theme plugin's manifest inherits the colours it does not name from.
@@ -712,6 +763,30 @@ pub fn when_nothing_is_chosen() -> Theme {
 /// The key `appearance.theme` holds for [`Theme::unluminous_light`].
 pub const LIGHT_KEY: &str = "unluminous/light";
 
+/// The key `appearance.theme` holds for [`Theme::unluminous_glass`].
+pub const GLASS_KEY: &str = "unluminous/glass";
+
+/// Whether the active theme is glass (`task-2281`).
+pub fn is_glass() -> bool {
+    ACTIVE.with_borrow(|theme| theme.glass)
+}
+
+/// How much of a pane's ground is painted over the picture behind the window, as a share of what the
+/// opacity setting asks for.
+///
+/// One in every theme but glass, so nothing else moves. Under glass the design's panes are a light smoke
+/// over a sharp picture, so the grounds are painted at a share of the opacity setting; the slider still
+/// decides how much, and at full opacity a pane under glass still lets most of the picture through.
+pub fn veil() -> f32 {
+    match is_glass() {
+        true => GLASS_VEIL,
+        false => 1.0,
+    }
+}
+
+/// [`veil`] under glass.
+pub const GLASS_VEIL: f32 = 0.42;
+
 /// Whether the active theme is a dark one.
 ///
 /// Asked by the few things whose *recipe* differs between a dark ground and a light one rather than only
@@ -734,6 +809,9 @@ pub fn is_dark() -> bool {
 /// `&'static Theme` and `in_step` compares by address. A person switches theme a handful of times in a
 /// session, so the few that are kept cost nothing worth counting.
 pub fn rux_theme() -> &'static rux::Theme {
+    if is_glass() {
+        return glazed_rux();
+    }
     thread_local! {
         static MADE: RefCell<Vec<(Palette, bool, &'static rux::Theme)>> = const { RefCell::new(Vec::new()) };
     }
@@ -745,6 +823,23 @@ pub fn rux_theme() -> &'static rux::Theme {
         }
         let theme: &'static rux::Theme = Box::leak(Box::new(retoned_rux(&palette, dark)));
         made.push((palette, dark, theme));
+        theme
+    })
+}
+
+/// The `rux` theme of a glass theme: the retoned one, glazed.
+fn glazed_rux() -> &'static rux::Theme {
+    thread_local! {
+        static MADE: RefCell<Vec<(Palette, &'static rux::Theme)>> = const { RefCell::new(Vec::new()) };
+    }
+    let palette = palette();
+    MADE.with_borrow_mut(|made| {
+        if let Some((_, theme)) = made.iter().find(|(p, _)| *p == palette) {
+            return *theme;
+        }
+        let glazed = retoned_rux(&palette, true).glazed("unluminous-glass", palette.editor);
+        let theme: &'static rux::Theme = Box::leak(Box::new(glazed));
+        made.push((palette, theme));
         theme
     })
 }
@@ -920,6 +1015,12 @@ pub fn apply_scaled(ctx: &egui::Context, interface_scale: f32) {
         visuals.faint_bg_color = color::explorer_footer();
         visuals.window_corner_radius = CornerRadius::same(size::CONTROL_CORNER);
         visuals.window_stroke = Stroke::new(1.0, color::control_border());
+        // Under glass a popup egui frames itself is filled in the glass card's tint with the design's
+        // hairline rim, and `glass::glaze_the_popups` puts the bent picture under it (`task-2281`).
+        if is_glass() {
+            visuals.window_fill = glass::popup_fill();
+            visuals.window_stroke = Stroke::new(1.0, Color32::WHITE.gamma_multiply(0.14));
+        }
         // A selection in a text box is painted under the words, which keep their own colour. On a dark
         // ground the accent is dark enough for light words to be read on it; on a light ground it is not,
         // so a light theme selects in the same pale blue the editor selects in.
@@ -1111,12 +1212,15 @@ pub fn ink(colour: unluminous_core::Color) -> Color32 {
 ///
 /// Only backgrounds go through this. Text, icons and the caret are always drawn at full alpha, which is
 /// what lets the desktop show through the window without making the writing hard to read.
+///
+/// Under glass the opacity is multiplied by [`veil`], so the picture behind the window shows through
+/// every ground at once (`task-2281`).
 pub fn faded(base: Color32, opacity: f32) -> Color32 {
     Color32::from_rgba_unmultiplied(
         base.r(),
         base.g(),
         base.b(),
-        (opacity.clamp(0.0, 1.0) * 255.0).round() as u8,
+        (opacity.clamp(0.0, 1.0) * veil() * 255.0).round() as u8,
     )
 }
 
@@ -1286,17 +1390,58 @@ mod tests {
         activate(Theme::unluminous_dark());
     }
 
-    /// Both built-in themes, dark first, and when nothing is chosen the window is the dark one.
+    /// The built-in themes, dark first, then light, then glass, and when nothing is chosen the window is
+    /// the dark one.
     #[test]
-    fn unluminous_carries_a_dark_theme_and_a_light_one() {
-        let [dark, light] = Theme::built_in();
+    fn unluminous_carries_a_dark_theme_a_light_one_and_a_glass_one() {
+        let [dark, light, glass] = Theme::built_in();
         assert_eq!(dark.key, "unluminous/dark");
         assert!(dark.dark);
         assert_eq!(light.key, LIGHT_KEY);
         assert!(!light.dark);
         assert_eq!(light.name, "Unluminous Light");
+        assert_eq!(glass.key, GLASS_KEY);
+        assert!(glass.dark && glass.glass, "glass is a dark theme made of glass");
+        assert!(!dark.glass && !light.glass, "and only glass is");
         if std::env::var("UNLUMINOUS_SURVEY_THEME").is_err() {
             assert_eq!(when_nothing_is_chosen(), dark, "a settings file that says nothing is dark");
+        }
+    }
+
+    /// `task-2281`. Under glass the grounds are painted at a share of the opacity setting, so the picture
+    /// behind the window shows; in every other theme `faded` is exactly what it was.
+    #[test]
+    fn only_glass_lets_the_picture_through_its_grounds() {
+        activate(Theme::unluminous_dark());
+        assert_eq!(faded(color::editor(), 0.86).a(), 219);
+        assert_eq!(rux_theme().glass, None);
+        activate(Theme::unluminous_glass());
+        assert_eq!(faded(color::editor(), 0.86).a(), (0.86 * GLASS_VEIL * 255.0f32).round() as u8);
+        assert!(rux_theme().glass.is_some(), "the rux theme is glazed");
+        assert!(
+            rux_theme().chat.card.from.a() < 255,
+            "and its cards are translucent, which is what makes them glass"
+        );
+        activate(Theme::unluminous_dark());
+    }
+
+    /// The glass theme's words are readable on the ground they are drawn on, over the darkest and the
+    /// brightest picture the ground can sit on: the ground composited over black and over white.
+    #[test]
+    fn glass_text_is_readable_on_its_grounds() {
+        let glass = Theme::unluminous_glass().palette;
+        let over = |ground: Color32, behind: u8, share: f32| {
+            let mix =
+                |c: u8| (f32::from(c) * share + f32::from(behind) * (1.0 - share)).round() as u8;
+            Color32::from_rgb(mix(ground.r()), mix(ground.g()), mix(ground.b()))
+        };
+        for ground in [glass.editor, glass.explorer, glass.menu, glass.title_bar] {
+            for (text, least) in
+                [(glass.text, 4.5), (glass.text_control, 4.5), (glass.text_dim, 3.0)]
+            {
+                let worst = over(ground, 0, 1.0);
+                assert!(contrast(text, worst) >= least, "{text:?} on {worst:?}");
+            }
         }
     }
 

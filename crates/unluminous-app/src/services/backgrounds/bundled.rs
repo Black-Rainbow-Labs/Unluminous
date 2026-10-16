@@ -24,6 +24,8 @@ pub const ALL: &[(&str, &[u8])] = &[
     ("abstract-1.jpg", include_bytes!("../../../backgrounds/abstract-1.jpg")),
     ("desert-1.jpg", include_bytes!("../../../backgrounds/desert-1.jpg")),
     ("forest-1.jpg", include_bytes!("../../../backgrounds/forest-1.jpg")),
+    // The Unluminous Glass theme's own picture (`task-2281`), drawn by `tools/glass-spheres.py`.
+    ("glass-spheres.jpg", include_bytes!("../../../backgrounds/glass-spheres.jpg")),
     ("moab.jpg", include_bytes!("../../../backgrounds/moab.jpg")),
     ("mountain-aurora.jpg", include_bytes!("../../../backgrounds/mountain-aurora.jpg")),
 ];
@@ -36,6 +38,10 @@ pub const ALL: &[(&str, &[u8])] = &[
 /// `Settings::background_image` for the pair of settings this needs and why a fresh install and somebody
 /// who chose the desktop have to stay tellable apart.
 pub const DEFAULT: &str = "forest-1.jpg";
+
+/// The picture the Unluminous Glass theme is shown over (`task-2281`): sharp and busy, because glass
+/// bends what is behind it and a flat colour shows nothing bent.
+pub const GLASS: &str = "glass-spheres.jpg";
 
 /// How opaque the window is over [`DEFAULT`].
 ///
