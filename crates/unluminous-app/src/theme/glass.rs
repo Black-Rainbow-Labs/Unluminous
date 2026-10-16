@@ -264,16 +264,25 @@ pub fn glaze_the_popups(ctx: &egui::Context) {
 ///
 /// A frame with a shadow is a group of shapes, the shadow first, so a group is looked inside. The glass
 /// goes after the shadow and before the fill, which is where a backdrop filter draws in a browser.
+///
+/// **A popup fading in is glazed too, faded by the same amount.** egui fades a popup in over its first
+/// frames by multiplying every colour in it, so for those frames the fill is `marker` scaled down and was
+/// not recognised: the frame's dark shadow showed through a fill with no glass under it, and Jason saw the
+/// application menu open black and then turn to glass (`task-2281`, fifth pass).
 fn under(
     shape: &mut Shape,
     marker: Color32,
     glaze: &dyn Fn(&egui::epaint::RectShape) -> Vec<Shape>,
 ) -> bool {
     match shape {
-        Shape::Rect(rect) if rect.fill == marker && rect.rect.is_positive() => {
+        Shape::Rect(rect) if rect.rect.is_positive() && faded_by(rect.fill, marker).is_some() => {
+            let opacity = faded_by(rect.fill, marker).unwrap_or(1.0);
             let mut glass = glaze(rect);
             if glass.is_empty() {
                 return false;
+            }
+            if opacity < 1.0 {
+                glass.iter_mut().for_each(|shape| fade(shape, opacity));
             }
             glass.push(Shape::Rect(rect.clone()));
             let group = glass;
@@ -288,5 +297,52 @@ fn under(
             any
         }
         _ => false,
+    }
+}
+
+/// How much `fill` is `marker` faded, when it is: `marker` with every channel multiplied by one factor, the
+/// way egui fades a popup in. `None` for any other colour.
+fn faded_by(fill: Color32, marker: Color32) -> Option<f32> {
+    if fill == marker {
+        return Some(1.0);
+    }
+    if marker.a() == 0 || fill.a() == 0 || fill.a() > marker.a() {
+        return None;
+    }
+    let opacity = f32::from(fill.a()) / f32::from(marker.a());
+    let close = |faded: u8, whole: u8| (f32::from(faded) - f32::from(whole) * opacity).abs() <= 2.0;
+    let same =
+        close(fill.r(), marker.r()) && close(fill.g(), marker.g()) && close(fill.b(), marker.b());
+    same.then_some(opacity)
+}
+
+/// Multiply every colour in `shape` by `opacity`, which is what egui does to a popup's own shapes as it fades.
+fn fade(shape: &mut Shape, opacity: f32) {
+    match shape {
+        Shape::Mesh(mesh) => {
+            let mesh = std::sync::Arc::make_mut(mesh);
+            mesh.vertices
+                .iter_mut()
+                .for_each(|vertex| vertex.color = vertex.color.gamma_multiply(opacity));
+        }
+        Shape::Vec(shapes) => shapes.iter_mut().for_each(|inner| fade(inner, opacity)),
+        Shape::Rect(rect) => rect.fill = rect.fill.gamma_multiply(opacity),
+        _ => {}
+    }
+}
+
+#[cfg(test)]
+mod fading_tests {
+    use super::*;
+
+    #[test]
+    fn a_popup_fading_in_is_recognised_by_how_much_it_has_faded() {
+        let marker = Color32::from_rgba_premultiplied(60, 64, 72, 120);
+        assert_eq!(faded_by(marker, marker), Some(1.0));
+        let half = marker.gamma_multiply(0.5);
+        let opacity = faded_by(half, marker).expect("a half faded frame is still the frame");
+        assert!((opacity - 0.5).abs() < 0.02);
+        assert_eq!(faded_by(Color32::from_rgba_premultiplied(10, 64, 72, 120), marker), None);
+        assert_eq!(faded_by(Color32::TRANSPARENT, marker), None);
     }
 }

@@ -1005,19 +1005,9 @@ impl UnluminousApp {
         // **Nothing is drawn when the editing area is hidden.** `task-28`. Drawing it into `Rect::ZERO` would
         // still register a tab strip, a gutter and an editing surface per pane in the widget tree, all of them
         // nowhere, and one of them would still be taking the keyboard.
+        // Under glass the editing area has no ground of its own beyond its glass panel (`task-2281`): a
+        // second fill here was a dark square inside the rounded panel, and Jason asked for it to go.
         if self.editor_visible {
-            // **The editing area keeps more of its ground under glass** (`task-2281`). Every ground under
-            // glass is a light smoke so the picture is seen, and a line of code over a bright sphere is
-            // the one place that is too light: the window's ground is painted over the editing area a
-            // second time, which at the default opacity covers the picture there by about three fifths
-            // and keeps the code readable.
-            if theme::is_glass() {
-                ui.painter().rect_filled(
-                    editing_area,
-                    CornerRadius::ZERO,
-                    theme::faded(color::editor(), self.settings.opacity),
-                );
-            }
             for (pane, rect) in pane_rects.iter().copied().enumerate() {
                 self.files.focus_pane(pane);
                 if self.show_pane(ui, pane, pane == had_the_keyboard, rect, &mut close) {

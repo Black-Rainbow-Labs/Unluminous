@@ -421,18 +421,7 @@ pub fn show(
     // How far there is left to scroll, as a thin bar along the bottom when there is any, which is the only
     // thing that says the lanes go on past the edge.
     if content > room {
-        let track = Rect::from_min_max(
-            Pos2::new(area.min.x + side, area.max.y - 12.0 * scale),
-            Pos2::new(area.max.x - side, area.max.y - 7.0 * scale),
-        );
-        let share = (room / content).clamp(0.1, 1.0);
-        let at = scroll / (content - room);
-        let thumb = Rect::from_min_size(
-            Pos2::new(track.min.x + (track.width() - track.width() * share) * at, track.min.y),
-            Vec2::new(track.width() * share, track.height()),
-        );
-        ui.painter().rect_filled(track, 2.0, look.palette.divider);
-        ui.painter().rect_filled(thumb, 2.0, look.palette.text_dim);
+        scroll_bar(board, ui, look, area, side, scroll, content - room, room / content);
     }
     if let Some((status, position)) = dropped {
         let moved = board.dragging.take();
@@ -463,6 +452,73 @@ pub fn show(
         }
     }
     requests
+}
+
+/// The bar along the bottom of a board whose lanes run past the edge: drawn, and dragged to scroll them
+/// (`task-2281`). It was only drawn, so a mouse with no sideways wheel could not reach the lanes past the
+/// edge at all. A press on the track away from the thumb moves the thumb's middle there.
+///
+/// @param board - the board, whose lane offset the drag changes
+/// @param ui - the pane's `Ui`
+/// @param look - the pane's colours and scale
+/// @param area - the board's rectangle
+/// @param side - the board's margin at each side
+/// @param scroll - how far the lanes are scrolled now
+/// @param most - how far they can be scrolled
+/// @param share - the part of the row of lanes the pane shows
+#[allow(clippy::too_many_arguments)]
+fn scroll_bar(
+    board: &mut AgentTasks,
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    area: Rect,
+    side: f32,
+    scroll: f32,
+    most: f32,
+    share: f32,
+) {
+    let scale = look.scale();
+    let track = Rect::from_min_max(
+        Pos2::new(area.min.x + side, area.max.y - 12.0 * scale),
+        Pos2::new(area.max.x - side, area.max.y - 7.0 * scale),
+    );
+    let width = track.width() * share.clamp(0.1, 1.0);
+    let travel = (track.width() - width).max(1.0);
+    let thumb_at = |offset: f32| {
+        Rect::from_min_size(
+            Pos2::new(track.min.x + travel * (offset / most).clamp(0.0, 1.0), track.min.y),
+            Vec2::new(width, track.height()),
+        )
+    };
+    let hit = ui.interact(
+        track.expand2(Vec2::new(0.0, 6.0 * scale)),
+        ui.id().with("agent-tasks-lanes-bar"),
+        egui::Sense::click_and_drag(),
+    );
+    hit.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Slider, ui.is_enabled(), "Scroll the lanes")
+    });
+    let mut offset = scroll;
+    if let Some(at) = hit.interact_pointer_pos().filter(|_| hit.drag_started() || hit.clicked()) {
+        if !thumb_at(scroll).x_range().contains(at.x) {
+            offset = (at.x - track.min.x - width / 2.0) / travel * most;
+        }
+    }
+    if hit.dragged() {
+        offset += hit.drag_delta().x / travel * most;
+    }
+    if offset != scroll {
+        board.put_the_lanes_at(offset, most);
+        ui.ctx().request_repaint();
+    }
+    let thumb = thumb_at(offset.clamp(0.0, most));
+    let lit = hit.hovered() || hit.dragged();
+    ui.painter().rect_filled(track, 2.0, look.palette.divider);
+    ui.painter().rect_filled(
+        thumb,
+        2.0,
+        if lit { look.palette.text } else { look.palette.text_dim },
+    );
 }
 
 #[cfg(test)]

@@ -1996,9 +1996,10 @@ tint is painted over it. The rules:
   tooltip are filled in `theme::glass::popup_fill`, and `theme::glass::glaze_the_popups` puts the bent
   picture under every rectangle of that colour. A canvas node's card is `theme::glass::paint_glass` at
   full strength, which is what still hides the nodes behind it.
+  A popup fading in is glazed at the opacity it has reached, or its shadow shows black through it.
 - **The grounds are a light smoke.** `theme::faded` multiplies the opacity setting by `theme::veil()`,
-  which is `GLASS_VEIL` under glass and one otherwise, and the editing area is painted a second time so
-  code over a bright picture stays readable.
+  which is `GLASS_VEIL` under glass and one otherwise. The editing area has no ground beyond its glass panel;
+  a second fill there was a dark square inside the panel, and Jason asked for it to go.
 - **The window is one sheet of glass, and every pane and the editing area is a glass panel on it**
   (second, third and fourth passes, after Apple's Liquid Glass sidebars). `theme::glass::paint_the_window`
   bends the whole picture under the window, and `paint_a_panel` draws each room, inset by `PANE_GAP`, with
@@ -2011,7 +2012,9 @@ tint is painted over it. The rules:
   `tools/glass-rims.py` reads a screenshot and fails while a round control's rim is brighter than both sides.
   Run it after changing anything about glass, **on a bright picture (`desert-1.jpg`) with the interface at
   18.75 points**, which is 1.5 pixels a point: 0.92.0 passed it on a dark picture at one pixel a point and
-  shipped a ring round every chip. The causes it found are in `rux/docs/glass.md`.
+  shipped a ring round every chip. Look at a round control magnified as well: the check does not see a
+  polygon, and the fourth pass shipped chips whose corners were five straight segments. The causes are in
+  `rux/docs/glass.md`.
 - **Glass is cut to the clips round it.** Glass is an egui mesh beside the rasterised decoration, so a list's
   clip reached the decoration and not the glass: scrolled Agent-Tasks cards drew above their lane.
 - **A drag of the window draws no frames.** Inside Windows' move loop `services::windows_resize` hands winit a

@@ -2110,6 +2110,15 @@ impl AgentTasks {
         self.lane_scroll
     }
 
+    /// Scroll the row of lanes to `offset` points from the left, kept between none and `most`, which is what
+    /// dragging the bar along the bottom of the board does (`task-2281`).
+    ///
+    /// @param offset - how far the lanes are scrolled, in the board's points
+    /// @param most - how far they can be scrolled
+    pub fn put_the_lanes_at(&mut self, offset: f32, most: f32) {
+        self.lane_scroll = offset.clamp(0.0, most.max(0.0));
+    }
+
     /// Bring a lane into view sideways, which is what an arrow key crossing to an off screen lane needs.
     ///
     /// The board is a row of four lanes and a pane 420 points wide holds one and a half of them, so the ring

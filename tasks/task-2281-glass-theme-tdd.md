@@ -271,6 +271,31 @@ the window wide magnify the picture inside it. `Chrome::panel` caps both (`Glass
 drag that draws no frames are unchanged. Settings opens in one frame, 34 to 38 ms the first time and 6 ms
 after, and a step of a drag through the move loop costs under a millisecond.
 
+## Fifth pass: round controls that are round
+
+Jason, on the fourth pass build: the edges were still jagged. Magnified, every round glass control was a
+polygon. `glass::segments` cut a corner into one segment every four points and at most eight, so a 17 point
+chip had five a quarter, and at 1.5 pixels a point each flat strayed a third of a pixel inside the tint's true
+curve. A corner is now cut by its radius in physical pixels, so no flat strays more than a twentieth of a pixel
+(`CURVE_TOLERANCE`), with a test that measures the flats at four densities.
+
+With the outline a true curve, the rim check found a faint light line at 2 pixels a point (+4.6), which the
+flats had hidden by ending the glass a little inside the tint. The glass now fades just inside its edge: the
+faded ring on the outline and the first whole ring one pixel in. On the bright desert picture: +0.4 and +1.3 at
+one pixel a point, +0.3 and +0.5 at 1.5, +2.3 and +3.1 at 2.
+
+Jason, on the fifth pass build, with the jagged lines fixed: three more things, each fixed in the same pass.
+
+- **The editing area had a dark square inside its rounded panel.** The window's ground was painted over the
+  editing area a second time to keep code readable over a bright picture. It is gone; the editing area is its
+  glass panel and nothing else.
+- **The application menu opened black and then turned to glass.** egui fades a popup in by multiplying its
+  colours, so for those frames the frame's fill was not the colour `glaze_the_popups` looks for, and the
+  frame's dark shadow showed through a fill with no glass under it. A fill that is the glass colour faded by
+  some factor is now glazed with the glass faded by the same factor.
+- **The board's bar along the bottom could not be dragged.** It was only drawn. `lanes::scroll_bar` makes it a
+  control: a drag moves the lanes, and a press on the track away from the thumb moves the thumb there.
+
 ## What it costs
 
 The budget is that a still frame costs nothing new, and a frame that moves glass costs less than a
