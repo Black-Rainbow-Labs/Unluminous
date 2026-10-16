@@ -42,6 +42,11 @@ node tools/window-suite.mjs --check
 Running the suite before the commit leaves a receipt at the previous commit, and the release then
 tells you every file that has changed since it.
 
+**Run `cargo fmt --all` before that first commit.** The release checks `cargo fmt --all -- --check` before
+anything else, and neither `tools/test.mjs` nor the window suite does. On `task-2280` it failed at that step
+after a passing suite, and formatting changes files a window is built from, so the whole suite had to run
+again for its receipts.
+
 **Since `task-2240` both kinds of receipt are written into the main checkout's `_agent_output/`**,
 from whichever checkout ran them, so the suite and the tests run once, in the worktree, and the
 release after a fast forward merge finds them passed. A rebase makes new commits, so after a rebase
@@ -59,8 +64,8 @@ differences), `the_file_menu_holds_new_window_open_save_and_recent_projects` and
 `the_mcp_page_holds_the_install_buttons_the_server_and_the_configuration_to_copy`. Run the failing
 binary again on its own before looking for a cause in your change. `task-2280` adds
 `what_was_open_in_a_project_comes_back_when_it_is_opened_again` (*"the project's state should be beside the
-project"*), which failed three times and passed twice on identical code while another worktree's suite was
-running beside it.
+project"*), which failed on identical code while another worktree's suite was running beside it. The cause
+was the shared project state writer thread's two second wait on close; the test now waits for the file.
 
 ## Window test binaries from every checkout take turns
 

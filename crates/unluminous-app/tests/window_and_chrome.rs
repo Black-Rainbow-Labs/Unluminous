@@ -2717,10 +2717,17 @@ fn what_was_open_in_a_project_comes_back_when_it_is_opened_again() {
         let ctx = harness.ctx.clone();
         harness.state_mut().run_action(Action::CloseWindow, &ctx);
     }
-    assert!(
-        root.join(".unluminous/open-files.txt").is_file(),
-        "the project's state should be beside the project"
-    );
+    // **Waited for rather than looked for at once.** The state is written by one writer thread that every
+    // window in this process shares, and a closing window waits two seconds for it. With the whole binary's
+    // windows writing at the same time on a loaded machine the queue took longer than that, and this failed
+    // on code that was not wrong. `task-2280` measured three failures in five runs while another worktree's
+    // suite ran beside it. One window to a process, which is the released binary, never has the queue.
+    let written = root.join(".unluminous/open-files.txt");
+    let began = std::time::Instant::now();
+    while !written.is_file() && began.elapsed() < std::time::Duration::from_secs(30) {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(written.is_file(), "the project's state should be beside the project");
 
     let mut second = harness_in(&root);
     second.state_mut().restore_project();
