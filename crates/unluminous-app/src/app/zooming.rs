@@ -271,7 +271,9 @@ impl UnluminousApp {
                 self.explorer_scroll_to = Some(put.max(0.0));
             }
             dock::Panel::Plugin(slot) => {
-                let above = (above - crate::components::agent_tasks::PANE_HEADER).max(0.0);
+                let header = crate::components::agent_tasks::PANE_HEADER
+                    + crate::theme::glass::header_drop();
+                let above = (above - header).max(0.0);
                 if let Some(plugin) = self.plugin_ui.plugin_of(slot as usize) {
                     if let Some(provider) = self.plugin_ui.provider(&plugin) {
                         provider.zoomed(ratio, above);

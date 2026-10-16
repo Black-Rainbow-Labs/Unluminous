@@ -2015,6 +2015,10 @@ tint is painted over it. The rules:
   shipped a ring round every chip. Look at a round control magnified as well: the check does not see a
   polygon, and the fourth pass shipped chips whose corners were five straight segments. The causes are in
   `rux/docs/glass.md`.
+- **Nothing in a panel is against its glass edge.** Under glass a pane's header strip and the file tab
+  strip are taller by `theme::glass::header_drop`, their contents go inside `header_inside` or the tab row,
+  and the three tiles are drawn in `tile_room`, which `panel_area` also answers with so a tile's grid is
+  sized from the room it is drawn in. The open file's tab is a rounded piece of glass (`file_tabs::glass_tab`).
 - **Glass is cut to the clips round it.** Glass is an egui mesh beside the rasterised decoration, so a list's
   clip reached the decoration and not the glass: scrolled Agent-Tasks cards drew above their lane.
 - **A drag of the window draws no frames.** Inside Windows' move loop `services::windows_resize` hands winit a

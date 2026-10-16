@@ -465,9 +465,9 @@ impl UnluminousApp {
             }
         }
         let explorer_rect = placed.of(dock::Panel::Explorer);
-        let terminal_rect = placed.of(dock::Panel::Terminal);
-        let run_rect_tile = placed.of(dock::Panel::Run);
-        let debug_rect = placed.of(dock::Panel::Debug);
+        let terminal_rect = theme::glass::tile_room(placed.of(dock::Panel::Terminal));
+        let run_rect_tile = theme::glass::tile_room(placed.of(dock::Panel::Run));
+        let debug_rect = theme::glass::tile_room(placed.of(dock::Panel::Debug));
         let editing_area = placed.editor;
 
         // Where the run and debug tiles are, recorded **whether they are showing or not**, so that a

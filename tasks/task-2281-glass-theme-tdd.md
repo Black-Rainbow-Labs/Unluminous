@@ -296,6 +296,17 @@ Jason, on the fifth pass build, with the jagged lines fixed: three more things, 
 - **The board's bar along the bottom could not be dragged.** It was only drawn. `lanes::scroll_bar` makes it a
   control: a drag moves the lanes, and a press on the track away from the thumb moves the thumb there.
 
+Two more from the same review:
+
+- **Headers were against the top of their panel.** Under glass a pane's header strip is taller by
+  `theme::glass::header_drop` (the panel's gap and five points), and `header_inside` lays the name, the count,
+  the cross and the line under them inside the panel's glass. The terminal, run and debug tiles are drawn in
+  `theme::glass::tile_room`, their room less the same drop, and `panel_area` answers with that room too, so a
+  pseudoconsole is still opened at the size it is drawn at.
+- **The open file's tab was a square dark block that ran into the panel's rounded corner.** Under glass the
+  tab strip is taller by the same drop and its tabs are a row inside the panel's edges; the open tab is a
+  rounded piece of glass with the card's tint and its accent line inside it (`file_tabs::glass_tab`).
+
 ## What it costs
 
 The budget is that a still frame costs nothing new, and a frame that moves glass costs less than a

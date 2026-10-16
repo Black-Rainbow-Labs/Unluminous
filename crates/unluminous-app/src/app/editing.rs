@@ -496,7 +496,9 @@ impl UnluminousApp {
         // here rather than at each of the places a tab can leave a node, which is `follow_the_open_file`'s
         // rule. `sized_at` is `None` for every tab nothing resized, so this costs one comparison.
         self.put_a_panes_tabs_back_to_the_windows_font(pane);
-        let tabs_rect = Rect::from_min_size(area.min, Vec2::new(area.width(), file_tabs::HEIGHT));
+        // Under glass the strip is taller by a header's drop, so the tabs sit inside the panel's glass (`task-2281`).
+        let strip_height = file_tabs::HEIGHT + theme::glass::header_drop();
+        let tabs_rect = Rect::from_min_size(area.min, Vec2::new(area.width(), strip_height));
         let editor_rect = Rect::from_min_max(Pos2::new(area.left(), tabs_rect.bottom()), area.max);
         let mut took_the_keyboard = false;
         // Everything in the pane is drawn into a `Ui` of its own, carrying the pane's number as its

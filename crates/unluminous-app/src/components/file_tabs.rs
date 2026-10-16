@@ -197,13 +197,26 @@ pub fn show(
         CornerRadius::ZERO,
         crate::theme::pane_ground(color::toolbar(), opacity),
     );
+    // **Under glass the tabs are a row inside the panel's glass** (`task-2281`): clear of its rounded edges at
+    // the sides, and in the bottom `HEIGHT` of a strip that the editing area makes taller by a header's drop.
+    // A canvas node's strip is `HEIGHT` tall, so it gets the side inset and no drop.
+    let row = match crate::theme::is_glass() {
+        true => {
+            let side = crate::theme::glass::PANE_GAP + 4.0;
+            Rect::from_min_max(
+                Pos2::new(area.left() + side, (area.bottom() - HEIGHT).max(area.top())),
+                Pos2::new(area.right() - side, area.bottom()),
+            )
+        }
+        false => area,
+    };
     painter.line_segment(
-        [Pos2::new(area.left(), area.bottom()), Pos2::new(area.right(), area.bottom())],
+        [Pos2::new(row.left(), row.bottom()), Pos2::new(row.right(), row.bottom())],
         Stroke::new(1.0, color::divider()),
     );
 
     let widths: Vec<f32> = tabs.iter().map(|tab| tab_width(ui, tab)).collect();
-    let offset = shift(&widths, active, area.width());
+    let offset = shift(&widths, active, row.width());
 
     // **Over the whole strip, and added first, so it is left with exactly the part no tab wanted.** egui
     // gives a pointer to the *last* widget that asked for it, so a widget added before the tabs is one the
@@ -226,19 +239,17 @@ pub fn show(
         outcome.pane_dropped = empty.drag_stopped();
     }
 
-    let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(area));
-    inner.set_clip_rect(ui.painter().clip_rect().intersect(area));
+    let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(row));
+    inner.set_clip_rect(ui.painter().clip_rect().intersect(row));
 
     outcome.strip.area = area;
-    let mut pen = area.left() - offset;
+    let mut pen = row.left() - offset;
     for (index, tab) in tabs.iter().enumerate() {
-        let rect = Rect::from_min_size(
-            Pos2::new(pen, area.top()),
-            Vec2::new(widths[index], area.height()),
-        );
+        let rect =
+            Rect::from_min_size(Pos2::new(pen, row.top()), Vec2::new(widths[index], row.height()));
         pen += widths[index] + GAP;
         outcome.strip.tabs.push(rect);
-        if rect.right() < area.left() || rect.left() > area.right() {
+        if rect.right() < row.left() || rect.left() > row.right() {
             continue;
         }
         draw_tab(
@@ -251,6 +262,42 @@ pub fn show(
         );
     }
     outcome
+}
+
+/// A tab under glass (`task-2281`): the open tab is a rounded piece of glass with the card's tint and its
+/// accent line inside it, and any other tab is clear until the pointer is on it. Jason found the square dark
+/// block of the other themes stood out against the glass and ran into the panel's rounded corner.
+///
+/// @param painter - the strip's painter
+/// @param rect - the tab
+/// @param active - whether it is the tab that is showing
+/// @param focused - whether its pane has the keyboard, which makes the accent line full strength
+/// @param pointed - whether the pointer is on it or it is being carried
+fn glass_tab(painter: &egui::Painter, rect: Rect, active: bool, focused: bool, pointed: bool) {
+    let chip = Rect::from_min_max(
+        Pos2::new(rect.left(), rect.top() + 3.0),
+        Pos2::new(rect.right(), rect.bottom() - 4.0),
+    );
+    const RADIUS: f32 = 9.0;
+    if active {
+        crate::theme::glass::paint_glass(painter, chip, RADIUS);
+        painter.rect_filled(
+            chip,
+            CornerRadius::same(RADIUS as u8),
+            crate::theme::glass::popup_fill(),
+        );
+        let line = if focused { color::accent() } else { color::accent().gamma_multiply(0.35) };
+        painter.rect_filled(
+            Rect::from_min_size(
+                Pos2::new(chip.left() + RADIUS, chip.bottom() - UNDERLINE - 2.0),
+                Vec2::new((chip.width() - RADIUS * 2.0).max(0.0), UNDERLINE),
+            ),
+            CornerRadius::same(1),
+            line,
+        );
+    } else if pointed {
+        painter.rect_filled(chip, CornerRadius::same(RADIUS as u8), controls::hover_fill());
+    }
 }
 
 /// How far the strip is shifted left so that the tab that is showing is on screen.
@@ -302,7 +349,9 @@ fn draw_tab(
         ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
     }
     let painter = ui.painter();
-    if active {
+    if crate::theme::is_glass() {
+        glass_tab(painter, rect, active, at.focused, response.hovered() || response.dragged());
+    } else if active {
         controls::pill(painter, rect, 0);
         // The accent line, quiet in a pane that has not got the keyboard, so which pane is being
         // typed into can be seen at a glance.
@@ -321,7 +370,7 @@ fn draw_tab(
     // A tab being carried is outlined, so it is clear which one is in the air. The insertion mark
     // that says where it would land is drawn by the window, because only the window knows which
     // strip the pointer has ended up over.
-    if response.dragged() {
+    if response.dragged() && !crate::theme::is_glass() {
         painter.rect_filled(rect, CornerRadius::ZERO, color::control());
         painter.rect_stroke(
             rect.shrink(1.0),

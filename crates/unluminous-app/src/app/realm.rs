@@ -262,7 +262,10 @@ impl UnluminousApp {
         }
         let header = Rect::from_min_size(
             rect.min,
-            Vec2::new(rect.width(), crate::components::agent_tasks::PANE_HEADER),
+            Vec2::new(
+                rect.width(),
+                crate::components::agent_tasks::PANE_HEADER + crate::theme::glass::header_drop(),
+            ),
         );
         let outcome = {
             let mut header_ui = ui.new_child(egui::UiBuilder::new().max_rect(header));

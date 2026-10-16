@@ -70,7 +70,14 @@ impl UnluminousApp {
     }
 
     pub fn panel_area(&self, panel: dock::Panel) -> Rect {
-        let rect = self.panel_rects.of(panel);
+        // A tile is drawn below the glass header gap, so its grid is sized from the same room it is drawn in.
+        let is_a_tile =
+            matches!(panel, dock::Panel::Terminal | dock::Panel::Run | dock::Panel::Debug);
+        let room = |rect: Rect| match is_a_tile {
+            true => crate::theme::glass::tile_room(rect),
+            false => rect,
+        };
+        let rect = room(self.panel_rects.of(panel));
         if rect.width() > 1.0 && rect.height() > 1.0 {
             return rect;
         }
@@ -84,14 +91,15 @@ impl UnluminousApp {
         // layout of a window that is not on the screen is how a pseudoconsole was opened at the wrong
         // size while the editing area was hidden — which is the fault `task-1684` measured losing a
         // program's first line. `task-1905`.
-        dock::regions_with(
+        let placed = dock::regions_with(
             self.panes_area,
             &self.panes.dock,
             showing,
             &self.panes,
             self.editor_visible,
         )
-        .of(panel)
+        .of(panel);
+        room(placed)
     }
 
     /// Which panels are drawn at all, in [`dock::Panel::index`] order.

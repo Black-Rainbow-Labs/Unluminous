@@ -81,15 +81,21 @@ pub fn pane_header(
         0,
         crate::theme::pane_ground(crate::theme::color::toolbar(), opacity),
     );
+    // Under glass the strip is taller by `header_drop`, and the words, the cross and the line under them go
+    // inside the panel.
+    let inside = crate::theme::glass::header_inside(area);
     painter.rect_filled(
-        Rect::from_min_max(Pos2::new(area.min.x, area.max.y - 1.0), area.max),
+        Rect::from_min_max(
+            Pos2::new(inside.min.x, area.max.y - 1.0),
+            Pos2::new(inside.max.x, area.max.y),
+        ),
         0,
         crate::theme::color::divider(),
     );
-    let mut pen = area.min.x + 10.0;
+    let mut pen = inside.min.x + 10.0;
     pen += text(
         &painter,
-        Pos2::new(pen, area.center().y - 7.0),
+        Pos2::new(pen, inside.center().y - 7.0),
         label,
         12.5,
         crate::theme::color::text_control(),
@@ -97,7 +103,7 @@ pub fn pane_header(
     if let Some(count) = count {
         text(
             &painter,
-            Pos2::new(pen + 8.0, area.center().y - 6.5),
+            Pos2::new(pen + 8.0, inside.center().y - 6.5),
             count,
             11.5,
             crate::theme::color::text_dim(),
@@ -108,8 +114,10 @@ pub fn pane_header(
     // the order `components::dock::handle`'s own documentation asks for, and it is why every other panel's
     // header adds its controls after the handle.
     outcome.grab = crate::components::dock::handle(ui, area, panel);
-    let cross =
-        Rect::from_center_size(Pos2::new(area.max.x - 14.0, area.center().y), Vec2::splat(18.0));
+    let cross = Rect::from_center_size(
+        Pos2::new(inside.max.x - 14.0, inside.center().y),
+        Vec2::splat(18.0),
+    );
     outcome.closed = crate::components::controls::icon_button(
         ui,
         cross,

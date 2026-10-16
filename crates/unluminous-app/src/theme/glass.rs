@@ -100,6 +100,46 @@ pub fn frosted(ctx: &egui::Context) -> Option<(egui::TextureId, egui::Rect)> {
 /// side have a gap of twice this between them, which is the window's glass showing.
 pub const PANE_GAP: f32 = 4.0;
 
+/// How much taller a pane's header strip is under glass: the panel's gap above it and a little air, so the
+/// name and the close cross are not against the top of the panel's glass (`task-2281`, Jason's fifth pass
+/// review). Nothing in any other theme.
+pub fn header_drop() -> f32 {
+    match super::is_glass() {
+        true => PANE_GAP + 5.0,
+        false => 0.0,
+    }
+}
+
+/// The part of a pane's header strip its name and its close cross are laid out in: under glass, inside the
+/// panel's glass and clear of its rounded corners; in any other theme, the whole strip.
+///
+/// @param strip - the header strip, as tall as [`header_drop`] and the header together
+pub fn header_inside(strip: egui::Rect) -> egui::Rect {
+    if !super::is_glass() {
+        return strip;
+    }
+    egui::Rect::from_min_max(
+        egui::Pos2::new(strip.min.x + PANE_GAP + 4.0, strip.min.y + header_drop()),
+        egui::Pos2::new(strip.max.x - PANE_GAP - 4.0, strip.max.y),
+    )
+}
+
+/// The room a tile along the bottom (the terminal, the run tile, the debug tile) is drawn in: under glass the
+/// room it was given less [`header_drop`] at the top, so its header is not against the top of its panel.
+/// The rectangle a tile's grid is sized from goes through this too, so a pseudoconsole is opened at the size
+/// it is drawn at.
+///
+/// @param room - the rectangle the layout gave the tile
+pub fn tile_room(room: egui::Rect) -> egui::Rect {
+    match super::is_glass() && room.height() > header_drop() {
+        true => egui::Rect::from_min_max(
+            egui::Pos2::new(room.min.x, room.min.y + header_drop()),
+            room.max,
+        ),
+        false => room,
+    }
+}
+
 /// How round a panel's glass is: the window's own corner less the gap, so a panel in a corner of the
 /// window sits in it concentrically, which is Apple's rule for glass inside glass.
 pub const PANE_RADIUS: f32 = 10.0;
