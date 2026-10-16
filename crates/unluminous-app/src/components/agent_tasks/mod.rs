@@ -76,7 +76,7 @@ pub fn pane_header(
 ) -> HeaderOutcome {
     let mut outcome = HeaderOutcome::default();
     let painter = ui.painter_at(area);
-    painter.rect_filled(area, 0, crate::theme::faded(crate::theme::color::toolbar(), opacity));
+    painter.rect_filled(area, 0, crate::theme::pane_ground(crate::theme::color::toolbar(), opacity));
     painter.rect_filled(
         Rect::from_min_max(Pos2::new(area.min.x, area.max.y - 1.0), area.max),
         0,

@@ -76,7 +76,7 @@ pub fn show(ui: &egui::Ui, area: Rect, status: &Status<'_>, opacity: f32) -> boo
     painter.rect_filled(
         area,
         CornerRadius { nw: 0, ne: 0, sw: size::WINDOW_CORNER, se: size::WINDOW_CORNER },
-        crate::theme::faded(color::status_bar(), opacity),
+        crate::theme::pane_ground(color::status_bar(), opacity),
     );
 
     let font = egui::FontId::proportional(11.0);

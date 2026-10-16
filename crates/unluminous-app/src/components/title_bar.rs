@@ -193,7 +193,7 @@ pub fn show(
     painter.rect_filled(
         area,
         CornerRadius { nw: size::WINDOW_CORNER, ne: size::WINDOW_CORNER, sw: 0, se: 0 },
-        crate::theme::faded(color::title_bar(), opacity),
+        crate::theme::pane_ground(color::title_bar(), opacity),
     );
     // The groove under the bar: a dark line and a lit one under it.
     crate::components::chrome_kit::groove(

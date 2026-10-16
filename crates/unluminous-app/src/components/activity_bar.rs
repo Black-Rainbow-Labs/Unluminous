@@ -167,7 +167,7 @@ pub fn show_with(
     plugins: &[PluginButton],
 ) -> RailOutcome {
     let painter = ui.painter_at(area);
-    painter.rect_filled(area, CornerRadius::ZERO, crate::theme::faded(color::title_bar(), opacity));
+    painter.rect_filled(area, CornerRadius::ZERO, crate::theme::pane_ground(color::title_bar(), opacity));
     // The groove down the rail's right hand edge: a dark line and a lit one beside it.
     crate::components::chrome_kit::groove(
         &painter,

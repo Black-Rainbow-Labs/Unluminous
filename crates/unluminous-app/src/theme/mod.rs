@@ -1235,6 +1235,18 @@ pub fn faded(base: Color32, opacity: f32) -> Color32 {
     )
 }
 
+/// The ground of a pane or a bar: [`faded`], or nothing under glass (`task-2281`).
+///
+/// Under glass the window is one sheet of glass and every pane is a frosted glass panel floating on it
+/// (`theme::glass::paint_the_panes`), so a pane's own ground, a bar's and the rail's would only be a
+/// second smoke laid over the glass. The editing area is not a pane: it keeps the window's ground.
+pub fn pane_ground(base: Color32, opacity: f32) -> Color32 {
+    match is_glass() {
+        true => Color32::TRANSPARENT,
+        false => faded(base, opacity),
+    }
+}
+
 /// The colour of the square in front of a file, by what kind of file it is.
 ///
 /// Markdown gets the blue square because Unluminous treats it differently, having a preview for it. Every

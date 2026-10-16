@@ -272,7 +272,7 @@ pub fn show(
     painter.rect_filled(
         area,
         CornerRadius::ZERO,
-        crate::theme::faded(color::explorer(), view.opacity),
+        crate::theme::pane_ground(color::explorer(), view.opacity),
     );
 
     // **A node has none of the panel's furniture**, because it has a header of its own to be moved
@@ -672,7 +672,7 @@ pub fn show(
     painter.rect_filled(
         footer,
         CornerRadius::ZERO,
-        crate::theme::faded(color::explorer_footer(), view.opacity),
+        crate::theme::pane_ground(color::explorer_footer(), view.opacity),
     );
     painter.line_segment(
         [Pos2::new(footer.left(), footer.top()), Pos2::new(footer.right(), footer.top())],

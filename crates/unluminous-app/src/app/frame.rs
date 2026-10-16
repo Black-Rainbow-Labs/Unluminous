@@ -390,6 +390,11 @@ impl UnluminousApp {
         // desktop has with it now. A window with no picture chosen paints nothing here at all and the
         // desktop shows through as it always did.
         self.paint_the_background(ui, full);
+        // **Under glass the window is one sheet of glass** (`task-2281`): the picture bent at its rounded
+        // edge, under the window's own smoke.
+        if theme::is_glass() {
+            theme::glass::paint_the_window(ui.painter(), full, f32::from(size::WINDOW_CORNER));
+        }
         // The window is one painted surface with rounded corners, because it has no operating system
         // title bar. Everything else is drawn on top of it.
         ui.painter().rect_filled(
@@ -446,6 +451,13 @@ impl UnluminousApp {
             dock::regions_with(panes, &self.panes.dock, showing, &self.panes, self.editor_visible);
         self.panes_area = panes;
         self.panel_rects = placed;
+        // **Under glass every pane is a floating panel of frosted glass** (`task-2281`), painted here, on
+        // the window's ground and before any pane draws, so each pane is drawn on its own panel.
+        if theme::is_glass() {
+            for room in placed.panels.iter().filter(|room| room.width() > 0.0 && room.height() > 0.0) {
+                theme::glass::paint_a_pane(ui.painter(), *room);
+            }
+        }
         let explorer_rect = placed.of(dock::Panel::Explorer);
         let terminal_rect = placed.of(dock::Panel::Terminal);
         let run_rect_tile = placed.of(dock::Panel::Run);
@@ -2078,6 +2090,7 @@ impl UnluminousApp {
             &self.settings.background_image,
         ) else {
             rux::render::set_backdrop(&ctx, rux::render::Plane::Page, None);
+            theme::glass::set_frost(&ctx, None);
             return;
         };
         let taken = crate::services::backgrounds::cover(picture.size_vec2(), full.size());
@@ -2092,6 +2105,11 @@ impl UnluminousApp {
             false => None,
         };
         rux::render::set_backdrop(&ctx, rux::render::Plane::Page, backdrop);
+        // The frosted copy, which the panes bend: one texture of the whole picture, drawn where the
+        // picture is.
+        let frost = crate::theme::is_glass()
+            .then(|| rux::render::Backdrop::single(picture.frosted(), full, taken, 1.0));
+        theme::glass::set_frost(&ctx, frost);
     }
 
     /// The notices, over every pane and under a modal.

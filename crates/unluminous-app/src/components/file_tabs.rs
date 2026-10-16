@@ -192,7 +192,7 @@ pub fn show(
 ) -> TabsOutcome {
     let mut outcome = TabsOutcome::default();
     let painter = ui.painter_at(area);
-    painter.rect_filled(area, CornerRadius::ZERO, crate::theme::faded(color::toolbar(), opacity));
+    painter.rect_filled(area, CornerRadius::ZERO, crate::theme::pane_ground(color::toolbar(), opacity));
     painter.line_segment(
         [Pos2::new(area.left(), area.bottom()), Pos2::new(area.right(), area.bottom())],
         Stroke::new(1.0, color::divider()),

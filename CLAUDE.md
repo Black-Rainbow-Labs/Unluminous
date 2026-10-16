@@ -1996,6 +1996,12 @@ tint and lit edges are painted over it. Five rules:
 - **The grounds are a light smoke.** `theme::faded` multiplies the opacity setting by `theme::veil()`,
   which is `GLASS_VEIL` under glass and one otherwise, and the editing area is painted a second time so
   code over a bright picture stays readable.
+- **The window is one sheet of glass and every docked panel floats on it as a frosted pane** (second
+  pass of `task-2281`, after Apple's Liquid Glass sidebars). `theme::glass::paint_the_window` bends the
+  whole picture under the window, and `paint_a_pane` draws each panel's room, inset by `PANE_GAP`, as glass
+  over `Picture::frosted`, a shrunk and blurred copy of the wallpaper. A card in a pane bends the sharp
+  picture, so it reads as a clearer lens laid on frosted glass. Under glass a pane's, a bar's and the rail's
+  own grounds are clear (`theme::pane_ground`, `Look::ground`), and the editing area keeps its smoke.
 - **It costs about 0.4 ms of egui's time a frame** while the chat is scrolled, against Unluminous Dark,
   measured with `UNLUMINOUS_FRAME_TRACE`. A still frame builds no glass: `rux` keeps each surface's shapes
   until the surface, the picture or the layer's transform moves.

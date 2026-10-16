@@ -99,7 +99,7 @@ pub fn show(
 ) -> PanelOutcome {
     let mut outcome = PanelOutcome::default();
     let painter = ui.painter_at(area);
-    painter.rect_filled(area, CornerRadius::ZERO, crate::theme::faded(color::toolbar(), opacity));
+    painter.rect_filled(area, CornerRadius::ZERO, crate::theme::pane_ground(color::toolbar(), opacity));
 
     let header = Rect::from_min_size(
         Pos2::new(area.left(), area.top() + 1.0),
@@ -437,7 +437,7 @@ pub(crate) fn grid(
 
     // The whole tile is filled first, so the strip narrower than one cell at the right and the bottom is the
     // terminal's own background rather than whatever was there before the tile was dragged smaller.
-    let background = crate::theme::faded(
+    let background = crate::theme::pane_ground(
         Color32::from_rgb(screen.background.r, screen.background.g, screen.background.b),
         opacity,
     );

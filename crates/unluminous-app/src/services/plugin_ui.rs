@@ -296,6 +296,11 @@ impl<'a> Look<'a> {
     /// window's and a provider that got it slightly wrong would show as a seam down the edge of its
     /// pane.
     pub fn ground(&self, colour: Color32) -> Color32 {
+        // Under glass a pane is a glass panel the window paints under it (`task-2281`), so the pane's own
+        // ground is clear.
+        if crate::theme::is_glass() {
+            return Color32::TRANSPARENT;
+        }
         let alpha = (self.opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
         Color32::from_rgba_unmultiplied(colour.r(), colour.g(), colour.b(), alpha)
     }

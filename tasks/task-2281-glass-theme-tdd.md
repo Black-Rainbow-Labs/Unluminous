@@ -177,6 +177,32 @@ samples the picture where it really is on the screen.
 The design's dark halo under words drawn straight on the picture was not needed: under glass every pane
 keeps a smoke over the picture, and the words read on it in every screen photographed.
 
+## Second pass: the whole window is glass
+
+Jason's review of 0.90.0 asked for three things: the white lines along the top edges of cards and buttons
+blend in, the window itself is glass, and the panes for the chat, the board and the rest are glass, with
+glass on glass looking right. The cards, modals and the bending itself were to stay as they were.
+
+What Apple's Liquid Glass does about the same question (WWDC25 session 310, "Get to know the new design
+system"): a sidebar is a pane of glass floating above the window's content, inset from the window's edges
+with corners concentric with the window's own; glass cannot sample other glass, so glass laid on glass is
+grouped so that the lower sheet reads as a frosted ground and the upper one as a clearer lens; and the
+content area itself is not glass. Unluminous follows that:
+
+- **The edges.** `rux`'s glass rim and top highlight dropped to a few percent of white (`Chat::glass`, the
+  `glass_*` elevations). The bending is unchanged.
+- **The window.** `theme::glass::paint_the_window` paints glass over the whole window, bending the
+  picture, before anything else is drawn.
+- **The panes.** Each docked panel's room is drawn by `theme::glass::paint_a_pane`: inset by `PANE_GAP`
+  (4 points), 10 points round, a soft shadow under it, glass bending `Picture::frosted` (the wallpaper
+  shrunk to an eighth and blurred three times, `backdrop_blur::frosted`), a dark tint, a hairline rim and
+  a faint glow along its top. A card in a pane bends the sharp picture, so the card reads as clear glass on
+  frosted glass, which is Apple's lens on a ground. The frosted backdrop is kept in egui's data by
+  `set_frost`, beside the sharp one.
+- **Clear grounds.** Under glass the title bar, the rail, the status bar, the tab strip and every pane
+  paint no ground of their own (`theme::pane_ground`, and `Look::ground` for a plugin), because a ground
+  would be a second smoke over the glass. The editing area keeps its smoke so code stays readable.
+
 ## What it costs
 
 The budget is that a still frame costs nothing new, and a frame that moves glass costs less than a
