@@ -6,7 +6,7 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.97.0 — 2026-10-17
 
 - A smoothness bench under load, and a frame trace that says when each frame ended, how long its thread ran and on which kind of core (`task-2288`)
 - The window's thread runs first on a busy machine, and rux draws at the processor's own SIMD level (`task-2288`)
@@ -14,6 +14,7 @@ bumps the release script makes are left out, because they are the boundaries rat
 - Rux layers, plugin panes and Realm nodes drawn as meshes, with every shadow a cached sprite (`task-2288`)
 - The smoothness rules and the TDD with every round's numbers (`task-2288`)
 - The backdrop's blur is asked for on every frame a modal is open and made once, so a frame that is never painted cannot lose it (`task-2288`)
+- The changelog (`task-2288`)
 
 ## 0.96.1 — 2026-10-17
 
