@@ -39,8 +39,8 @@ use crate::components::scrollbar;
 use crate::components::settings_kit::{self as kit, Column};
 use crate::services::plugins::Plugins;
 use crate::settings::{
-    Indent, LineEndings, Page, Settings, Suggestions, UpdateCheck, ValueTooltip, FONT_SIZES,
-    MIN_OPACITY, TERMINAL_FONT_SIZES, UI_FONT_SIZES,
+    Indent, LineEndings, ModelKept, Page, Settings, Suggestions, UpdateCheck, ValueTooltip,
+    FONT_SIZES, MIN_OPACITY, TERMINAL_FONT_SIZES, UI_FONT_SIZES,
 };
 
 /// How large the window is, before `modal::fit` shrinks it to a small Unluminous window: the design's
@@ -1049,14 +1049,8 @@ fn editor_page(
             changed = true;
         }
     });
-    // `task-2279`. The one switch that loads a model into the window, with what it costs said beside it.
-    kit::card(ui, &mut column, "Code index", None, |card| {
-        changed |= card.switch(
-            "Rank plain English searches by meaning",
-            Some("The code index embeds every passage of the project with an embedding model, so a question in plain English finds code that answers it in other words. It costs memory and processor time: the model holds about 1.1 GB while it is loaded, and the first time a project is opened every passage is embedded on two processors, which takes several minutes for a project the size of Unluminous. Off, the default, stops embedding at once, returns the model's memory ten seconds later, and plain English searches are ranked by their words. Completion, Go to Definition, references and text searches never use it."),
-            &mut settings.search_embeddings,
-        );
-    });
+    // `task-2279`, `task-2282`. How the code index loads and what it keeps in memory, each with what it costs.
+    changed |= code_index_card(ui, &mut column, settings);
     // `task-1922` WP4. What a key types, which is the one thing on this page a person changes because of how
     // they were taught to write code rather than because of what Unluminous does.
     kit::card(ui, &mut column, "Indentation", None, |card| {
@@ -1267,6 +1261,97 @@ fn default_shell_hint() -> &'static str {
     } else {
         "$SHELL"
     }
+}
+
+/// The Code index card: whether the embedding model runs, how long it stays loaded and on how many
+/// threads, how long a plain English question's search index is kept, how much of the index file is kept
+/// in memory, and whether file contents are. Each says what it costs, because each is memory or processor
+/// time against speed (`task-2279`, `task-2282`). Answers whether anything changed.
+///
+/// @param ui - the page
+/// @param column - where the card goes
+/// @param settings - the settings being edited
+fn code_index_card(ui: &mut egui::Ui, column: &mut Column, settings: &mut Settings) -> bool {
+    let mut changed = false;
+    kit::card(ui, column, "Code index", Some("The index behind Find in Files, Go to File, completion and the agents' searches. These trade memory and processor time for speed. The defaults keep the window small; the choices below each say what they cost. Except where a row says otherwise, a change applies to windows opened after it."), |card| {
+        changed |= card.switch(
+            "Rank plain English searches by meaning",
+            Some("The code index embeds every passage of the project with an embedding model, so a question in plain English finds code that answers it in other words. It costs memory and processor time: the model holds about 1.1 GB while it is loaded, and the first time a project is opened every passage is embedded on two processors, which takes several minutes for a project the size of Unluminous. Off, the default, stops embedding at once, returns the model's memory ten seconds later, and plain English searches are ranked by their words. Completion, Go to Definition, references and text searches never use it."),
+            &mut settings.search_embeddings,
+        );
+        let options: Vec<String> = ModelKept::ALL.iter().map(|kept| kept.title().to_owned()).collect();
+        let chosen = ModelKept::ALL.iter().position(|kept| *kept == settings.model_kept);
+        card.row(
+            "Keep the embedding model loaded",
+            Some("Only while ranking by meaning is on. Loading the model takes most of a second and it holds about 1.1 GB once loaded. 10 seconds, the default, gives the memory back soon after a burst of searches. 5 minutes or Always answers the next search sooner and keeps the 1.1 GB for that long. Only while it is working holds the least memory and loads the model again for every batch and every question."),
+            |row| {
+                if let Some(index) = row.select("Keep the embedding model loaded", &options, chosen, 230.0) {
+                    settings.model_kept = ModelKept::ALL[index];
+                    changed = true;
+                }
+            },
+        );
+        changed |= preset_row(
+            card,
+            "Embedding threads",
+            "How many processor threads the model embeds on. 2, the default, keeps the machine responsive while a new project is embedded. More finishes sooner and keeps more of the processor busy until it does.",
+            &mut settings.search_embedding_threads,
+            &[(1.0, "1"), (2.0, "2"), (4.0, "4"), (8.0, "8")],
+        );
+        changed |= preset_row(
+            card,
+            "Keep a question's search index",
+            "A plain English search builds a search index of the project's passages, about 100 MB for a project the size of Unluminous. 20 seconds, the default, answers a burst of questions from one build and then gives the memory back. Longer answers a later question sooner and holds the memory for longer; not at all holds nothing and builds it again for every question.",
+            &mut settings.search_question_index_seconds,
+            &[(0.0, "Not at all"), (20.0, "20 seconds"), (120.0, "2 minutes"), (600.0, "10 minutes"), (3600.0, "1 hour")],
+        );
+        changed |= preset_row(
+            card,
+            "Index file kept in memory",
+            "How much of the index file stays in memory once the index is built. 4 MB, the default, is enough: the operating system keeps the rest of the file in its own cache, so a larger cache costs its size in memory and makes searches little faster.",
+            &mut settings.search_page_cache_mb,
+            &[(4.0, "4 MB"), (16.0, "16 MB"), (32.0, "32 MB"), (128.0, "128 MB")],
+        );
+        changed |= card.switch(
+            "Keep file contents in memory",
+            Some("Off, the default, a search reads each file it might match from the disk, the way ripgrep does, and a project the size of Unluminous holds about 11 MB less. On saves that read, which helps an agent asking many questions a second. Applies the next time a window opens the project."),
+            &mut settings.search_keep_contents,
+        );
+    });
+    changed
+}
+
+/// A row that chooses a number from a short list, each with the words the list shows. A value set some
+/// other way, such as `settings set`, is listed as itself so the row still shows what is in effect.
+/// Answers whether the value changed.
+///
+/// @param card - the card the row goes in
+/// @param label - the row's name
+/// @param help - what each choice costs
+/// @param value - the setting
+/// @param presets - each value and its words
+fn preset_row(
+    card: &mut kit::Card<'_, '_>,
+    label: &str,
+    help: &str,
+    value: &mut f32,
+    presets: &[(f32, &str)],
+) -> bool {
+    let mut choices: Vec<(f32, String)> =
+        presets.iter().map(|(number, words)| (*number, (*words).to_owned())).collect();
+    if !choices.iter().any(|(number, _)| (*number - *value).abs() < 0.5) {
+        choices.push((*value, format!("{:.0}", value)));
+    }
+    let options: Vec<String> = choices.iter().map(|(_, words)| words.clone()).collect();
+    let chosen = choices.iter().position(|(number, _)| (*number - *value).abs() < 0.5);
+    let mut changed = false;
+    card.row(label, Some(help), |row| {
+        if let Some(index) = row.select(label, &options, chosen, 160.0) {
+            changed = (choices[index].0 - *value).abs() >= 0.5;
+            *value = choices[index].0;
+        }
+    });
+    changed
 }
 
 #[cfg(test)]

@@ -561,6 +561,13 @@ impl UnluminousApp {
             "mcp.enabled" => self.settings.mcp_enabled.to_string(),
             "telemetry.enabled" => self.settings.telemetry_enabled.to_string(),
             "search.embeddings" => self.settings.search_embeddings.to_string(),
+            "search.keep_contents" => self.settings.search_keep_contents.to_string(),
+            "search.model_kept" => self.settings.model_kept.name().to_owned(),
+            "search.question_index_seconds" => {
+                format!("{:.0}", self.settings.search_question_index_seconds)
+            }
+            "search.page_cache_mb" => format!("{:.0}", self.settings.search_page_cache_mb),
+            "search.embedding_threads" => format!("{:.0}", self.settings.search_embedding_threads),
             "mcp.port" => self.settings.mcp_port.to_string(),
             "mcp.tools" => self.settings.mcp_tools.name().to_owned(),
             "mcp.areas" => self.settings.mcp_areas.clone(),
@@ -1292,6 +1299,26 @@ const SETTINGS: &[SettingKey] = &[
         help: "Whether the code index embeds the project's passages with the embedding model, so a plain English `search find` is ranked by meaning as well as by its words. `false` by default. On, the model holds about 1.1 GB while it is loaded and the first open of a project embeds every passage on two processors for several minutes; vectors already made are reused. `false` stops embedding at once and the model's memory is returned ten seconds after its last use. Completion, Go to Definition, references and text and regex searches never use it.",
     },
     SettingKey {
+        name: "search.model_kept",
+        help: "How long the code index keeps the embedding model loaded after it was last used, while `search.embeddings` is on: `ten_seconds`, the default, `five_minutes`, `always` or `per_use`. Loading it takes 650 to 800 ms and it holds about 1.1 GB, so keeping it longer answers a burst of plain English searches sooner and holds the memory longer. Applies to windows and index hosts started after the change.",
+    },
+    SettingKey {
+        name: "search.embedding_threads",
+        help: "How many processor threads the embedding model runs on, from 1 to 32. 2 by default. More embeds a new project sooner and keeps more of the machine busy while it does. Applies to windows and index hosts started after the change.",
+    },
+    SettingKey {
+        name: "search.question_index_seconds",
+        help: "How many seconds the code index keeps the search index it builds for a plain English question after the last question, from 0 to 3600. 20 by default. Longer answers a later question sooner and holds about 100 MB on a project the size of Unluminous for longer; 0 lets it go at once. Applies to windows and index hosts started after the change.",
+    },
+    SettingKey {
+        name: "search.page_cache_mb",
+        help: "How many megabytes of the index file the code index keeps in memory once the index is built, from 1 to 512. 4 by default. A larger cache costs that much memory and helps little, because the operating system already caches the file. Applies to windows and index hosts started after the change.",
+    },
+    SettingKey {
+        name: "search.keep_contents",
+        help: "Whether the window's code index keeps every file's contents in memory. `false` by default: a search reads each candidate file from the disk, as ripgrep does, and a project the size of Unluminous holds about 11 MB less. `true` saves that read, which helps an agent asking many questions a second. Applies the next time a window opens the project.",
+    },
+    SettingKey {
         name: "update.skip",
         help: "The one version Don't Ask Again declined, which the daily check does not offer. A later version is offered again. Empty offers every version.",
     },
@@ -1383,6 +1410,11 @@ fn fresh_value(name: &str, fresh: &crate::settings::Settings) -> String {
         "mcp.enabled" => fresh.mcp_enabled.to_string(),
         "telemetry.enabled" => fresh.telemetry_enabled.to_string(),
         "search.embeddings" => fresh.search_embeddings.to_string(),
+        "search.keep_contents" => fresh.search_keep_contents.to_string(),
+        "search.model_kept" => fresh.model_kept.name().to_owned(),
+        "search.question_index_seconds" => format!("{:.0}", fresh.search_question_index_seconds),
+        "search.page_cache_mb" => format!("{:.0}", fresh.search_page_cache_mb),
+        "search.embedding_threads" => format!("{:.0}", fresh.search_embedding_threads),
         "mcp.port" => fresh.mcp_port.to_string(),
         "mcp.tools" => fresh.mcp_tools.name().to_owned(),
         "mcp.areas" => fresh.mcp_areas.clone(),

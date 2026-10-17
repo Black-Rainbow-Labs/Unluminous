@@ -291,6 +291,58 @@ impl Servers {
     }
 }
 
+/// How long the code index keeps the embedding model loaded after it was last used (`task-2282`).
+///
+/// Loading `nomic-embed-text` costs 650 to 800 ms and embedding one passage through a loaded model 12 to
+/// 36 ms (Inillucent's `docs/embeddings.md`), and the loaded model is about 1.1 GB of the window. So the
+/// choice is memory against a wait at the start of each burst of plain English questions. It only matters
+/// while `search.embeddings` is on. `unluminous_cli::search::residency_for` turns each word into the
+/// residency Inillucent reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ModelKept {
+    /// Ten seconds after its last use, which is what the window has done since `task-2279`.
+    #[default]
+    TenSeconds,
+    /// Five minutes after its last use, which is Inillucent's own default.
+    FiveMinutes,
+    /// Loaded once and kept for as long as the window is open.
+    Always,
+    /// Loaded for each batch of passages or question, and let go of straight afterwards.
+    PerUse,
+}
+
+impl ModelKept {
+    /// Every value, in the order the Settings page lists them.
+    pub const ALL: [ModelKept; 4] =
+        [ModelKept::TenSeconds, ModelKept::FiveMinutes, ModelKept::Always, ModelKept::PerUse];
+
+    /// The word the settings file, the command line and a test spell it with.
+    pub fn name(self) -> &'static str {
+        match self {
+            ModelKept::TenSeconds => "ten_seconds",
+            ModelKept::FiveMinutes => "five_minutes",
+            ModelKept::Always => "always",
+            ModelKept::PerUse => "per_use",
+        }
+    }
+
+    /// Read a value, or nothing when the file holds something this version does not have.
+    pub fn parse(name: &str) -> Option<Self> {
+        let wanted = name.trim().to_lowercase();
+        ModelKept::ALL.into_iter().find(|kept| kept.name() == wanted)
+    }
+
+    /// What the Settings page's list says for it.
+    pub fn title(self) -> &'static str {
+        match self {
+            ModelKept::TenSeconds => "10 seconds after its last use",
+            ModelKept::FiveMinutes => "5 minutes after its last use",
+            ModelKept::Always => "Always, once loaded",
+            ModelKept::PerUse => "Only while it is working",
+        }
+    }
+}
+
 /// What one indent is made of: a tab, or that many spaces. `task-1922` WP4.
 ///
 /// **The default is a tab, because that is what the `Tab` key types today and a setting added to a
@@ -1056,6 +1108,17 @@ settings! {
         /// The point size the window's own text is set in. [`DEFAULT_UI_FONT_SIZE`] leaves egui exactly as it
         /// was.
         ui_font_size = DEFAULT_UI_FONT_SIZE => "appearance.ui.font.size", MIN_UI_FONT_SIZE, MAX_UI_FONT_SIZE, "{:.1}";
+        /// How many seconds the code index keeps the search index it builds for a plain English question
+        /// after the last one (`task-2282`). Atrius 0.3.0's default is 20: long enough for an agent's
+        /// burst of questions, and about 115 MB on this repository while it is held. 0 lets it go at once.
+        search_question_index_seconds = 20.0 => "search.question_index_seconds", 0.0, 3600.0, "{:.0}";
+        /// How many megabytes of the index file the code index keeps in memory once it is built
+        /// (`task-2282`). 4, Atrius 0.3.0's 128 pages of 32 KiB, measured 33 MB less in a window than
+        /// 32; the operating system's file cache holds the pages a search reads whatever this says.
+        search_page_cache_mb = 4.0 => "search.page_cache_mb", 1.0, 512.0, "{:.0}";
+        /// How many processor threads the embedding model runs on (`task-2282`). 2, from `task-2255`,
+        /// where every logical processor embedding at once was 15 to 18 processors busy for minutes.
+        search_embedding_threads = 2.0 => "search.embedding_threads", 1.0, 32.0, "{:.0}";
     }
 
     flag {
@@ -1113,6 +1176,12 @@ settings! {
         /// index probed it at every open by running it. Completion, Go to Definition, references and
         /// text and regex searches never use it. `app::code_index` puts the switch into effect.
         search_embeddings = false => "search.embeddings";
+        /// Whether the code index keeps every file's contents in memory (`task-2282`).
+        ///
+        /// **Off**, as the window has had it since `task-2279`: 11.4 MB of a 2,000 file project, and a
+        /// search reads each candidate file from the disk the way ripgrep does. On saves that read, which
+        /// matters to an agent asking many questions a second. Read when a project's index opens.
+        search_keep_contents = false => "search.keep_contents";
     }
 
     coded {
@@ -1120,6 +1189,8 @@ settings! {
         suggestions: Suggestions = Suggestions::Automatic => "editor.suggestions", "automatic or manual";
         /// Whether completion asks a language server. See [`Servers`].
         servers: Servers = Servers::Off => "editor.servers", "automatic or off";
+        /// How long the embedding model stays loaded after its last use. See [`ModelKept`].
+        model_kept: ModelKept = ModelKept::TenSeconds => "search.model_kept", "ten_seconds, five_minutes, always or per_use";
         /// What one indent is made of. See [`Indent`], whose default is what `Tab` already typed.
         indent: Indent = Indent::Tab => "editor.indent", "tabs or spaces:N, N from 2 to 8";
         /// What line breaks a file is written back with. See [`LineEndings`].
@@ -1742,6 +1813,11 @@ mod tests {
             "notebook.scroll_outputs",
             "telemetry.enabled",
             "search.embeddings",
+            "search.keep_contents",
+            "search.question_index_seconds",
+            "search.page_cache_mb",
+            "search.embedding_threads",
+            "search.model_kept",
             "editor.suggestions",
             "editor.servers",
             "editor.indent",
@@ -1826,6 +1902,11 @@ mod tests {
             notebook_scroll_outputs: false,
             telemetry_enabled: false,
             search_embeddings: true,
+            search_keep_contents: true,
+            search_question_index_seconds: 120.0,
+            search_page_cache_mb: 16.0,
+            search_embedding_threads: 4.0,
+            model_kept: ModelKept::Always,
             suggestions: Suggestions::Manual,
             servers: Servers::Automatic,
             line_endings: LineEndings::Crlf,

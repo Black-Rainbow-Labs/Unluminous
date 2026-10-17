@@ -179,7 +179,11 @@ impl UnluminousApp {
         }
         // The code index reads and watches the project on threads of its own (`task-2231` §5.2), so
         // opening it is all a frame does, once, and a project opened later opens its own.
-        self.project_symbols = Some(ProjectSymbols::open(&root, self.index_on_disk));
+        self.project_symbols = Some(ProjectSymbols::open(
+            &root,
+            self.index_on_disk,
+            self.settings.search_keep_contents,
+        ));
     }
 
     /// Puts `search.embeddings` into effect in the code index this window hosts, before the index opens

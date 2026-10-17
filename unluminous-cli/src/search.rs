@@ -50,9 +50,12 @@ pub fn configure() {
                 }
             }
         }
-        keep_the_model_briefly();
-        embed_on_few_threads();
-        embed_only_when_asked();
+        let chosen = std::fs::read_to_string(settings_file()).unwrap_or_default();
+        keep_the_model_briefly(&chosen);
+        embed_on_few_threads(&chosen);
+        embed_only_when_asked(&chosen);
+        keep_the_question_index(&chosen);
+        size_the_page_cache(&chosen);
         if let Some(cli) = cli_program() {
             atrius_index::host::set_server_command(cli, vec!["search".into(), "serve".into()]);
         }
@@ -80,12 +83,93 @@ pub const MODEL_IDLE: &str = "idle:10s";
 /// wrong for an editor that embeds a few changed passages and then sits open all day. A minute still
 /// covers a burst of questions. `INILLUCENT_EMBED_RESIDENCY`, or a residency `inillucent
 /// setup-embeddings` recorded, wins over this.
-fn keep_the_model_briefly() {
+///
+/// `search.model_kept` in Settings chooses another residency (`task-2282`), and a choice other than the
+/// default wins over what `setup-embeddings` recorded, because it is the later and nearer choice.
+///
+/// @param chosen - the settings file's text
+fn keep_the_model_briefly(chosen: &str) {
     const VARIABLE: &str = "INILLUCENT_EMBED_RESIDENCY";
-    if std::env::var_os(VARIABLE).is_some() || was_recorded("residency") {
+    if std::env::var_os(VARIABLE).is_some() {
         return;
     }
-    std::env::set_var(VARIABLE, MODEL_IDLE);
+    let residency = setting(chosen, "search.model_kept").and_then(residency_for);
+    match residency {
+        Some(residency) if residency != MODEL_IDLE => std::env::set_var(VARIABLE, residency),
+        _ if was_recorded("residency") => {}
+        _ => std::env::set_var(VARIABLE, MODEL_IDLE),
+    }
+}
+
+/// The residency Inillucent reads for each value of `search.model_kept`, or nothing for a value this
+/// version does not have. The window's `ModelKept` setting spells the same four words.
+///
+/// @param name - the setting's value
+pub fn residency_for(name: &str) -> Option<&'static str> {
+    match name.trim().to_lowercase().as_str() {
+        "ten_seconds" => Some(MODEL_IDLE),
+        "five_minutes" => Some("idle:300s"),
+        "always" => Some("resident"),
+        "per_use" => Some("on-demand"),
+        _ => None,
+    }
+}
+
+/// How long the index keeps the search index it builds for a plain English question after the last
+/// one: `search.question_index_seconds`, unless `ATRIUS_SEARCH_INDEX_IDLE_SECONDS` was set by hand.
+/// Atrius reads it once, when an index first answers a question, so it applies to a process started
+/// after the setting changed (`task-2282`).
+///
+/// @param chosen - the settings file's text
+fn keep_the_question_index(chosen: &str) {
+    const VARIABLE: &str = "ATRIUS_SEARCH_INDEX_IDLE_SECONDS";
+    if std::env::var_os(VARIABLE).is_some() {
+        return;
+    }
+    if let Some(seconds) = whole_number(chosen, "search.question_index_seconds") {
+        std::env::set_var(VARIABLE, seconds.to_string());
+    }
+}
+
+/// How many 32 KiB pages of the index file are kept in memory once the index is built:
+/// `search.page_cache_mb` megabytes, unless `ATRIUS_STORE_CACHE_FRAMES` was set by hand
+/// (`task-2282`). A build and a batch of changes still use Atrius's larger pool while they run.
+///
+/// @param chosen - the settings file's text
+fn size_the_page_cache(chosen: &str) {
+    const VARIABLE: &str = "ATRIUS_STORE_CACHE_FRAMES";
+    if std::env::var_os(VARIABLE).is_some() {
+        return;
+    }
+    if let Some(megabytes) = whole_number(chosen, "search.page_cache_mb").filter(|&mb| mb > 0) {
+        std::env::set_var(VARIABLE, (megabytes * 32).to_string());
+    }
+}
+
+/// The settings file every window and every command line process reads.
+fn settings_file() -> PathBuf {
+    crate::instances::settings_folder().join("settings.conf")
+}
+
+/// The value a settings file's text gives `key`, trimmed, or nothing when it has no such line.
+///
+/// @param text - the settings file
+/// @param key - the setting, such as `search.model_kept`
+pub fn setting<'a>(text: &'a str, key: &str) -> Option<&'a str> {
+    text.lines().find_map(|line| {
+        let (name, value) = line.split_once('=')?;
+        (name.trim() == key).then(|| value.trim())
+    })
+}
+
+/// A setting read as a whole number, as the window writes a number with no places, or nothing when the
+/// file has no such line or it is not a number at least zero.
+///
+/// @param text - the settings file
+/// @param key - the setting
+fn whole_number(text: &str, key: &str) -> Option<u64> {
+    let number: f64 = setting(text, key)?.parse().ok()?;
+    (number.is_finite() && number >= 0.0).then(|| number.round() as u64)
 }
 
 /// Turns embedding off in this process unless the settings file says `search.embeddings = true` or
@@ -95,12 +179,13 @@ fn keep_the_model_briefly() {
 /// effect through `atrius_index::index::set_embedding`; this is for an index host the command line starts,
 /// `search serve` or `mcp serve`, which has no window and reads the same line of the same file, so the
 /// model is never loaded by a process the person did not ask to load it.
-fn embed_only_when_asked() {
+///
+/// @param chosen - the settings file's text
+fn embed_only_when_asked(chosen: &str) {
     if std::env::var_os("ATRIUS_EMBED").is_some() {
         return;
     }
-    let file = crate::instances::settings_folder().join("settings.conf");
-    if !embeddings_are_on(&std::fs::read_to_string(file).unwrap_or_default()) {
+    if !embeddings_are_on(chosen) {
         std::env::set_var("ATRIUS_EMBED", "off");
     }
 }
@@ -128,10 +213,21 @@ pub const EMBED_THREADS: &str = "2";
 
 /// Runs the embedding model on [`EMBED_THREADS`] threads, unless `INILLUCENT_EMBED_THREADS` or a thread count
 /// `inillucent setup-embeddings --threads` recorded says otherwise.
-fn embed_on_few_threads() {
+///
+/// `search.embedding_threads` in Settings chooses another count (`task-2282`), and a count other than the
+/// default wins over the recorded one, as `search.model_kept` does.
+///
+/// @param chosen - the settings file's text
+fn embed_on_few_threads(chosen: &str) {
     const VARIABLE: &str = "INILLUCENT_EMBED_THREADS";
-    if std::env::var_os(VARIABLE).is_none() && !was_recorded("threads") {
-        std::env::set_var(VARIABLE, EMBED_THREADS);
+    if std::env::var_os(VARIABLE).is_some() {
+        return;
+    }
+    let threads = whole_number(chosen, "search.embedding_threads").filter(|&n| n > 0);
+    match threads.map(|n| n.to_string()) {
+        Some(threads) if threads != EMBED_THREADS => std::env::set_var(VARIABLE, threads),
+        _ if was_recorded("threads") => {}
+        _ => std::env::set_var(VARIABLE, EMBED_THREADS),
     }
 }
 
@@ -240,6 +336,28 @@ mod tests {
         let seconds: u64 =
             after.strip_suffix('s').and_then(|n| n.parse().ok()).expect("a number of seconds");
         assert_eq!(seconds, 10);
+    }
+
+    /// `task-2282`: each value of `search.model_kept` is a residency Inillucent reads, and the default is
+    /// the ten seconds the window has kept the model for since `task-2279`.
+    #[test]
+    fn each_choice_of_how_long_the_model_is_kept_is_a_residency_inillucent_reads() {
+        assert_eq!(residency_for("ten_seconds"), Some(MODEL_IDLE));
+        assert_eq!(residency_for("five_minutes"), Some("idle:300s"));
+        assert_eq!(residency_for("always"), Some("resident"));
+        assert_eq!(residency_for("per_use"), Some("on-demand"));
+        assert_eq!(residency_for("forever"), None);
+    }
+
+    /// A settings file's line is found by its key, and a number is read the way the window writes it.
+    #[test]
+    fn a_code_index_setting_is_read_from_the_settings_file() {
+        let text = "search.embeddings = true\nsearch.page_cache_mb = 16\nsearch.question_index_seconds = 120\n";
+        assert_eq!(setting(text, "search.embeddings"), Some("true"));
+        assert_eq!(setting(text, "search.model_kept"), None);
+        assert_eq!(whole_number(text, "search.page_cache_mb"), Some(16));
+        assert_eq!(whole_number(text, "search.question_index_seconds"), Some(120));
+        assert_eq!(whole_number("search.page_cache_mb = lots", "search.page_cache_mb"), None);
     }
 
     /// `task-2279`: embedding is off unless the settings file turns it on.
