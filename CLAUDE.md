@@ -3954,6 +3954,75 @@ says how much of a frame's processor time was egui's own layout and tessellation
 default takes host memory in 64 MB blocks, and that alone was 37 MB of a fresh window's working set and
 139 MB of its private bytes.
 
+## The window stays smooth while the machine is busy, and nothing expensive is drawn on the processor (`task-2288`)
+
+*"When my cpu is busy, at 80% (eg when an agent is running the unluminous window suite), unluminous becomes
+jerky ... whereas other apps, such as Firefox, do not."* `tasks/task-2288-smoothness-tdd.md` is the design and
+`_agent_output/task-2288-perf/` holds every round of the climb. Four rules came out of it.
+
+**The window's thread runs first.** `services::scheduling` gives the thread that runs the window
+`THREAD_PRIORITY_ABOVE_NORMAL`, turns power throttling off for the process and the thread, asks for the one
+millisecond timer, and on a machine with two kinds of core keeps the thread on the fast kind
+(`SetThreadSelectedCpuSets`). Measured on the eight plus sixteen core Core Ultra 9 285 it was reported on: with
+the window suite's processor share (every performance core busy) 86% of the window's frames ran on efficient
+cores at 2.3 times the cost, and with more busy threads than processors the slowest frames waited 12 to 16 ms
+for a processor. Both went away, and the slowest 5% of frame gaps while scrolling, hovering or dragging a divider
+went from 22 to 24 ms to under 7.5. `UNLUMINOUS_SCHEDULING=off|priority|cores` chooses; `cores` is the default.
+macOS needs nothing: AppKit's main thread already runs at the user interactive quality of service.
+
+**A modal's backdrop is the previous frame blurred on the GPU.** egui-wgpu is vendored at `vendor/egui-wgpu`
+with one change (`vendor/egui-wgpu/UNLUMINOUS.md`): with `WgpuConfiguration::scene_texture` on, every frame is
+drawn into a texture and copied to the window, and the texture is handed to paint callbacks before they are
+prepared, so it still holds the frame before the one being drawn. `services::scene_blur` is the callback: it
+halves that texture, resamples it to 640 by 400 and blurs it across and down, and `modal.rs` draws the result on
+the modal's first frame. There is no frame with the modal invisible, no screenshot read back and nothing blurred
+on the processor. The callback is pushed on the background layer's painter, because a modal fades in from no
+opacity and egui drops every shape a painter at no opacity is given. A theme change under an open modal still
+draws one frame without the dialog, because then the previous frame is the dialog. A painter without the scene
+texture, which every screenshot test's is, keeps the photograph. The same vendored change moves the screenshot's
+pixel loop off the window's thread, so `window screenshot` no longer stalls the window for a tenth of a second.
+
+**rux draws a layer as meshes, with every shadow a cached sprite.** `rux::render::compose`: a fill, a gradient,
+a disc, a ring, a line and an arc are egui meshes with egui's own one pixel feather, and a blurred rounded
+rectangle, outside a surface or inside a carved one, is rasterised once by `vello_cpu`'s own call and drawn as a
+nine patch. Its tests compare the two renderers pixel by pixel. A layer it cannot draw exactly (glass, a
+translucent arc with round caps, a rounded clip something inside reaches the corner of) is rasterised on the
+canvas as before, and the frame trace counts those as `rux-fallbacks` and `vello-fallbacks`; across every bench
+case there are none. Unluminous's own canvas (`services::vello_canvas`, the plugin panes and the Realm's nodes)
+goes through the same composer in `Canvases::shape_for`. **A deterministic store never composes**, so every
+screenshot test still draws with the canvas and the pictures accepted on each platform did not move.
+`RUX_RASTER=canvas` turns the composer off in the window, which is how the two are measured against each other.
+
+**Every rux state the window makes rasterises at the processor's widest SIMD level.** They were all
+`RuxState::deterministic`, which pins `vello_cpu` to the target's baseline so a screenshot is the same on every
+machine. `theme::rux_state` answers a deterministic one unless `main` has called
+`theme::use_the_fastest_raster`, which no test does.
+
+Opening Settings cold went from 172 ms to 10.6 on an idle machine and from 491 to 16.6 with the machine
+oversubscribed. Most of what is left of a cold opening is egui laying the dialog out.
+
+**`tools/perf-smooth/` is the instrument**, and it measures what a person sees rather than what a frame costs:
+
+- `load.mjs` loads the processors the way a build does, at normal priority: `cap19` is the window suite's own
+  share through `tools/capped.ps1`, `all24` every processor, `over36` more busy threads than processors.
+- `probe.ps1` times how long the window takes to answer `WM_NULL` from a thread at high priority, which is what
+  every step of a drag, a resize and a hover waits on, and drives a window drag step by step.
+- `bench.mjs` is one build, one load, one rep: a project and a settings folder like the reporter's, the chat and
+  the board open, and nine cases. `rounds.mjs` interleaves builds pass by pass and `score.mjs` compares them.
+- Each frame trace line now has `at` (milliseconds since 1970, the clock every program reads), `cpu` (the
+  window thread's own processor time, from `QueryThreadCycleTime` at the time stamp counter's rate) and
+  `core P` or `core E`. `frame` minus `cpu` is the time the thread waited for a processor. The control channel
+  writes `event control <command> <ms>` the moment a command arrives, so a latency is the `at` of the frame that
+  answered minus the arrival, with the command line's own start up left out.
+- `egui-cpu` is eframe's figure for a **whole** frame, `UnluminousApp::ui` included, and it is written two
+  lines after the frame it belongs to.
+- A build with `--features diagnostic-spans` writes every egui, eframe and egui-wgpu `profiling::scope!` mark
+  longer than half a millisecond onto the frame line as `~<name>` (`services::span_trace`).
+- PresentMon 2.6.0 starts on this machine but records no rows, so frame gaps come from the window's own `at`.
+
+Measure only while the machine is otherwise quiet, and never build while a round is running: a compile on the
+same processors is exactly the load being measured, and it lands on whichever build happened to be running.
+
 ## A cluster holds no copy of its text, and the document is the one owner
 
 `task-1805` measured an idle window. `task-1813` measured what a window is *holding*, and found the
