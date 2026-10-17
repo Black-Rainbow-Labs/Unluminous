@@ -2950,9 +2950,10 @@ fn update_check_does_not_block_the_frame_it_arrives_on() {
     }
     let began = std::time::Instant::now();
     let status = did(&mut harness, "status");
+    let took = began.elapsed();
     assert!(
-        began.elapsed() < std::time::Duration::from_millis(500),
-        "the control channel is read at the top of a frame too, so a blocked frame stops `status` \n         answering as well -- and it answered at once"
+        took < std::time::Duration::from_millis(500),
+        "the control channel is read at the top of a frame too, so a blocked frame stops `status` \n         answering as well -- and it took {took:?}"
     );
     assert!(status.get("window").is_some(), "and answered with a window: {status}");
 
