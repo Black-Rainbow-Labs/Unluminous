@@ -22,7 +22,7 @@ pub fn take(board: &mut AgentTasks, look: &Look<'_>) -> rux::RuxState {
     let state = board
         .board_rux
         .take()
-        .unwrap_or_else(|| rux::RuxState::deterministic(crate::theme::rux_theme()));
+        .unwrap_or_else(|| crate::theme::rux_state(crate::theme::rux_theme()));
     state.set_zoom(look.scale());
     // Nothing on the board moves on its own, and a picture of it has to be the same on every run.
     state.set_still(true);

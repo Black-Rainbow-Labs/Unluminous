@@ -28,6 +28,33 @@ use std::sync::Arc;
 /// decoration draws) and a few buffers, which is a few dozen and at most a few hundred.
 pub const BINDINGS: u32 = 16_384;
 
+/// How frames are presented: egui-wgpu's own choice (`AutoVsync`, two frames in flight) unless `present` names
+/// `fifo`, `mailbox` or `immediate`, or `latency` names a number of frames. Both are only for measuring the
+/// choices against each other (`task-2288`); a value that is not one of these changes nothing.
+///
+/// @param surface - the configuration eframe would use
+/// @param present - `UNLUMINOUS_PRESENT`, if it is set
+/// @param latency - `UNLUMINOUS_FRAME_LATENCY`, if it is set
+pub fn presentation(
+    mut surface: eframe::egui_wgpu::SurfaceConfig,
+    present: Option<&str>,
+    latency: Option<&str>,
+) -> eframe::egui_wgpu::SurfaceConfig {
+    match present.map(str::trim) {
+        Some("fifo") => surface.present_mode = eframe::wgpu::PresentMode::Fifo,
+        Some("mailbox") => surface.present_mode = eframe::wgpu::PresentMode::Mailbox,
+        Some("immediate") => surface.present_mode = eframe::wgpu::PresentMode::Immediate,
+        _ => {}
+    }
+    if let Some(frames) = latency
+        .and_then(|named| named.trim().parse::<u32>().ok())
+        .filter(|frames| (1..=3).contains(frames))
+    {
+        surface.desired_maximum_frame_latency = Some(frames);
+    }
+    surface
+}
+
 /// Ask for a device that allocates in blocks the size of what a text editor draws.
 pub fn frugal(mut options: eframe::NativeOptions) -> eframe::NativeOptions {
     if let eframe::egui_wgpu::WgpuSetup::CreateNew(setup) = &mut options.wgpu_options.wgpu_setup {
@@ -48,4 +75,26 @@ pub fn frugal(mut options: eframe::NativeOptions) -> eframe::NativeOptions {
         });
     }
     options
+}
+
+#[cfg(test)]
+mod presentation_tests {
+    use super::*;
+    use eframe::egui_wgpu::SurfaceConfig;
+
+    /// Nothing named leaves egui-wgpu's own choice alone, and each name changes only what it names.
+    #[test]
+    fn only_what_is_named_changes() {
+        let own = SurfaceConfig::HIGH_THROUGHPUT;
+        assert_eq!(presentation(own, None, None), own);
+        assert_eq!(presentation(own, Some("vsync"), Some("seven")), own);
+        let mailbox = presentation(own, Some("mailbox"), None);
+        assert_eq!(mailbox.present_mode, eframe::wgpu::PresentMode::Mailbox);
+        assert_eq!(mailbox.desired_maximum_frame_latency, own.desired_maximum_frame_latency);
+        assert_eq!(presentation(own, None, Some("1")).desired_maximum_frame_latency, Some(1));
+        assert_eq!(
+            presentation(own, None, Some("9")).desired_maximum_frame_latency,
+            own.desired_maximum_frame_latency
+        );
+    }
 }

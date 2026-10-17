@@ -1738,7 +1738,7 @@ fn read_cached(
 /// picture on every machine.
 fn blocks_rux() -> rux::RuxState {
     let theme = crate::theme::rux_theme();
-    rux::RuxState::deterministic(theme)
+    crate::theme::rux_state(theme)
 }
 
 /// How tall one component is at `width`, in the pixels it will be drawn at.

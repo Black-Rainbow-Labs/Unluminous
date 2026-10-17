@@ -371,12 +371,12 @@ pub struct TicketKit {
 }
 
 impl TicketKit {
-    /// Drawn in `rux`'s dark theme, deterministically, for the reason `ModelSelect::new` gives: a
+    /// Drawn in `rux`'s dark theme, deterministically in a test, for the reason `ModelSelect::new` gives: a
     /// screenshot of the modal must be the same picture on every machine.
     pub fn new() -> Self {
         let theme = crate::theme::rux_theme();
         Self {
-            rux: rux::RuxState::deterministic(theme),
+            rux: crate::theme::rux_state(theme),
             selects: Default::default(),
             tab_order: Vec::new(),
             tab_frame: None,

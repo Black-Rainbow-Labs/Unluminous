@@ -50,7 +50,7 @@ pub fn state(ctx: &egui::Context, zoom: f32) -> Rc<rux::RuxState> {
         match slot.as_ref() {
             Some((held, state)) if *held == owner => state.clone(),
             _ => {
-                let state = Rc::new(rux::RuxState::deterministic(crate::theme::rux_theme()));
+                let state = Rc::new(crate::theme::rux_state(crate::theme::rux_theme()));
                 *slot = Some((owner, state.clone()));
                 state
             }

@@ -26,7 +26,7 @@ pub fn state<'a>(
     look: &Look<'_>,
     still: bool,
 ) -> &'a rux::RuxState {
-    let state = kept.get_or_insert_with(|| rux::RuxState::deterministic(crate::theme::rux_theme()));
+    let state = kept.get_or_insert_with(|| crate::theme::rux_state(crate::theme::rux_theme()));
     state.set_zoom(look.scale());
     state.set_still(still);
     crate::theme::in_step(state);

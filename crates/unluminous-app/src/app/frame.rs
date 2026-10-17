@@ -2156,7 +2156,7 @@ impl UnluminousApp {
         let state = self
             .toast_rux
             .take()
-            .unwrap_or_else(|| rux::RuxState::deterministic(crate::theme::rux_theme()));
+            .unwrap_or_else(|| crate::theme::rux_state(crate::theme::rux_theme()));
         let pressed =
             crate::components::toast::show(ui, full, &self.toasts, self.settings.font_size, &state);
         state.end_frame();

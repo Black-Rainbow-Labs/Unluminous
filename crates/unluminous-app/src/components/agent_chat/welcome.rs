@@ -71,7 +71,7 @@ pub fn show(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
     let still = parts.state.still;
     let kept = parts.state.blocks_rux.get_or_insert_with(|| {
         let theme = crate::theme::rux_theme();
-        rux::RuxState::deterministic(theme)
+        crate::theme::rux_state(theme)
     });
     kept.set_zoom(look.scale());
     kept.set_still(still);

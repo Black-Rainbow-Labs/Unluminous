@@ -585,13 +585,13 @@ pub struct ModelSelect {
 impl ModelSelect {
     /// Drawn in `rux`'s dark theme, which is the ai-service dark neumorphism this pane is modelled on.
     ///
-    /// **Deterministic**, meaning its canvases rasterise at the SIMD level every machine of this target
-    /// has, for the reason `UnluminousApp::draw_deterministically` gives: a screenshot of this pane must
-    /// be the same picture on every machine. The trigger is a few hundred points of decoration, so the
-    /// slower level costs nothing anybody can measure.
+    /// **Deterministic in a test**, meaning its canvases rasterise at the SIMD level every machine of this target
+    /// has, for the reason `UnluminousApp::draw_deterministically` gives: a screenshot of this pane must be the
+    /// same picture on every machine. In the window it rasterises as fast as the processor can
+    /// (`theme::rux_state`, `task-2288`).
     pub fn new() -> Self {
         let theme = crate::theme::rux_theme();
-        Self { rux: rux::RuxState::deterministic(theme), menu: Default::default() }
+        Self { rux: crate::theme::rux_state(theme), menu: Default::default() }
     }
 }
 

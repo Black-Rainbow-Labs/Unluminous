@@ -800,6 +800,31 @@ pub fn is_dark() -> bool {
     ACTIVE.with_borrow(|theme| theme.dark)
 }
 
+/// Whether rux rasterises at the widest SIMD level this processor has. Set once by the window binary,
+/// before anything is drawn, and never by a test.
+static FASTEST_RASTER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Let every rux state made from now on rasterise as fast as this processor can (`task-2288`).
+///
+/// A `RuxState::deterministic` pins `vello_cpu` to the target's baseline SIMD level, so a screenshot is the same
+/// picture on every machine of that target. Every state the window made was one of those, so the released
+/// binary drew its depth at the baseline level on a processor with AVX2. Only `main` calls this, which is what
+/// keeps every test, and every state a test builds before its setup runs, deterministic.
+pub fn use_the_fastest_raster() {
+    FASTEST_RASTER.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// A rux state for one of Unluminous's panes: the fastest rasterisation in the window, and the deterministic one
+/// everywhere else. See [`use_the_fastest_raster`].
+///
+/// @param theme - the rux theme it draws in, usually [`rux_theme`]
+pub fn rux_state(theme: &'static rux::Theme) -> rux::RuxState {
+    match FASTEST_RASTER.load(std::sync::atomic::Ordering::Relaxed) {
+        true => rux::RuxState::new(theme),
+        false => rux::RuxState::deterministic(theme),
+    }
+}
+
 /// The `rux` theme that matches the active one, so a `rux` control sits on a ground it was designed for.
 ///
 /// **Built from the active palette rather than chosen from `rux`'s two.** `rux` ships a light and a dark
