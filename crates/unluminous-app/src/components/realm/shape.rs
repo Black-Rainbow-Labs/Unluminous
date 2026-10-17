@@ -530,7 +530,7 @@ fn glass_in(painter: &egui::Painter, outline: &[Pos2], kernel: Pos2, rect: Rect)
 
     let opacity = (backdrop.opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
     // any ground: what the three passes add their colours onto is darkened by the picture's own opacity
-    let dark = Color32::from_rgba_premultiplied(0, 0, 0, opacity);
+    let dark = Color32::from_black_alpha(opacity);
     let cover = samples
         .iter()
         .map(|sample| Vertex {
