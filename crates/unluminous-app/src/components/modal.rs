@@ -567,8 +567,8 @@ fn show_framed<R>(
 struct Backdrop {
     image: Option<(egui::TextureId, Rect)>,
     hide: bool,
-    /// The opening to blur the previous frame for on the GPU this frame, when this is the frame it is made on.
-    /// See `services::scene_blur`.
+    /// The opening of the modal whose GPU blur this frame asks for, which the callback makes once for each
+    /// opening. See `services::scene_blur`.
     blur: Option<u64>,
 }
 
@@ -719,6 +719,8 @@ struct GpuBlurState {
     key: ([u8; 12], u64),
     /// When the modal was last drawn, in egui's seconds, so a modal opened again is blurred again.
     drawn: f64,
+    /// Which opening this is, which is what the callback makes its blur once for.
+    opening: u64,
     /// Whether the blur is waiting for a frame drawn without the modal, after the theme changed under it.
     waiting: bool,
 }
@@ -731,6 +733,10 @@ static OPENINGS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::ne
 ///
 /// The frame a modal opens is the one the blur is made in, from the previous frame, which has nothing of the
 /// dialog in it, so the modal is complete on its first frame: nothing is drawn invisible and nothing is read back.
+/// The callback is pushed on **every** frame the modal is open, not only the first, and makes the blur once for
+/// each opening: a frame can be laid out and never painted (a window that is covered, or a test harness, which
+/// paints only the frame it is asked to), and a blur asked for on such a frame alone would never be made.
+///
 /// The one case that needs a frame without the dialog is a theme changing while the modal is open, because then
 /// the previous frame is the dialog itself; that frame is drawn with the dialog invisible, as the photograph was.
 ///
@@ -746,32 +752,26 @@ fn blurred_on_the_gpu(ctx: &egui::Context, modal: egui::Id, texture: egui::Textu
     let kept: Option<GpuBlurState> = ctx.data(|data| data.get_temp(slot));
     let next = || OPENINGS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
     let whole = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
-    let (state, backdrop) = match kept {
-        // Open and unchanged: the blur made when it opened.
-        Some(kept) if now - kept.drawn <= GAP && kept.key == key && !kept.waiting => {
-            (kept, Backdrop { image: Some((texture, whole)), hide: false, blur: None })
-        }
+    let state = match kept {
+        // Open and unchanged: the same opening, so the blur it made is kept.
+        Some(kept) if now - kept.drawn <= GAP && kept.key == key && !kept.waiting => kept,
         // Waited a frame with the dialog invisible: the previous frame is the window without it.
-        Some(kept) if now - kept.drawn <= GAP && kept.key == key => (
-            GpuBlurState { waiting: false, ..kept },
-            Backdrop { image: Some((texture, whole)), hide: false, blur: Some(next()) },
-        ),
+        Some(kept) if now - kept.drawn <= GAP && kept.key == key => {
+            GpuBlurState { waiting: false, opening: next(), ..kept }
+        }
         // The theme changed under an open modal: draw one frame without the dialog first.
         Some(kept) if now - kept.drawn <= GAP => {
             ctx.request_repaint();
-            (
-                GpuBlurState { key, waiting: true, ..kept },
-                Backdrop { image: Some((texture, whole)), hide: true, blur: None },
-            )
+            GpuBlurState { key, waiting: true, ..kept }
         }
-        // A new opening: blur the frame before this one, now.
-        _ => (
-            GpuBlurState { key, drawn: now, waiting: false },
-            Backdrop { image: Some((texture, whole)), hide: false, blur: Some(next()) },
-        ),
+        // A new opening: blur the frame before this one.
+        _ => GpuBlurState { key, drawn: now, opening: next(), waiting: false },
     };
     ctx.data_mut(|data| data.insert_temp(slot, GpuBlurState { drawn: now, ..state }));
-    backdrop
+    match state.waiting {
+        true => Backdrop { image: Some((texture, whole)), hide: true, blur: None },
+        false => Backdrop { image: Some((texture, whole)), hide: false, blur: Some(state.opening) },
+    }
 }
 
 /// Where a modal of this size sits, and how big it really comes out.
