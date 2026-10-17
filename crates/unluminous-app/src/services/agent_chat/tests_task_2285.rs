@@ -55,12 +55,13 @@ fn a_scripted_claude(folder: &Path) -> (PathBuf, PathBuf) {
     let (program, text) = {
         let mut text = format!(
             "@echo off\r\necho ARGS %* >> \"{log}\"\r\nmore >> \"{log}\"\r\necho ===== >> \"{log}\"\r\n\
-             echo %* | findstr /C:\"s-gone\" >nul && (echo {refusal}& exit /b 0)\r\n",
+             for %%a in (%*) do if \"%%~a\"==\"s-gone\" goto refuse\r\n",
             log = log.display()
         );
         for line in answer {
             text.push_str(&format!("echo {line}\r\n"));
         }
+        text.push_str(&format!("exit /b 0\r\n:refuse\r\necho {refusal}\r\nexit /b 0\r\n"));
         (folder.join("scripted-claude.cmd"), text)
     };
     #[cfg(not(windows))]
