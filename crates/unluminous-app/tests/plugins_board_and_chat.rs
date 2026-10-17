@@ -1338,21 +1338,35 @@ fn a_command_with_its_arguments_missing_is_refused_rather_than_taking_the_window
 #[test]
 fn resume_session_is_refused_for_a_codex_ticket_and_says_what_to_press_instead() {
     // The two agents differ and the difference is not a preference: Claude takes the session id it is
-    // given, and Codex names its own. Starting a fresh Codex agent and calling it a resumed one would be
-    // the one outcome every check on this board exists to prevent.
+    // given, and Codex names its own. Since `task-2285` a Codex ticket's own session is found in Codex's
+    // records, and one that cannot be found is refused: starting a fresh Codex agent and calling it a
+    // resumed one would be the one outcome every check on this board exists to prevent.
+    //
+    // Codex's records are an empty folder here, so nothing is found. Only this test names the variable.
+    let codex = std::env::temp_dir().join(format!("unluminous-no-codex-{}", std::process::id()));
+    std::fs::create_dir_all(&codex).expect("a folder");
+    std::env::set_var("UNLUMINOUS_CODEX_HOME", &codex);
     let mut harness = harness("");
     did(&mut harness, "plugins pane agent-tasks/board --show");
     did(&mut harness, "plugins run agent-tasks new-task Something for Codex");
     did(&mut harness, "plugins run agent-tasks assign task-1 codex");
     let reply = run(&mut harness, "plugins run agent-tasks resume task-1");
-    assert!(!reply.ok, "a Codex ticket cannot be resumed");
-    assert!(reply.message.contains("names its own sessions"), "{}", reply.message);
-    assert!(reply.message.contains("Start"), "it says what to press instead: {}", reply.message);
-    // And a Claude ticket that has never had a session says that instead, which is a different miss.
+    assert!(!reply.ok, "a Codex ticket with no session cannot be resumed");
+    assert!(reply.message.contains("never had a session"), "{}", reply.message);
+    // A Claude ticket that has never had a session says the same.
     did(&mut harness, "plugins run agent-tasks assign task-1 claude");
     let reply = run(&mut harness, "plugins run agent-tasks resume task-1");
     assert!(!reply.ok);
     assert!(reply.message.contains("never had a session"), "{}", reply.message);
+    // A Codex ticket carrying a marker whose session is not in Codex's records is refused, and the refusal
+    // says what to press instead.
+    did(&mut harness, "plugins run agent-tasks assign task-1 codex");
+    did(&mut harness, "plugins run agent-tasks session task-1 0f9a1b2c-1234-4abc-8def-0123456789ab");
+    let reply = run(&mut harness, "plugins run agent-tasks resume task-1");
+    assert!(!reply.ok, "a Codex session that cannot be found is not resumed");
+    assert!(reply.message.contains("names its own sessions"), "{}", reply.message);
+    assert!(reply.message.contains("Start"), "it says what to press instead: {}", reply.message);
+    std::env::remove_var("UNLUMINOUS_CODEX_HOME");
 }
 
 #[test]
