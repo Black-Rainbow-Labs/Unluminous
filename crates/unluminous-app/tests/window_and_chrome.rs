@@ -6298,6 +6298,7 @@ fn the_intellij_keymap_preset_puts_duplicate_line_on_ctrl_d() {
 
     open_the_keymap_page(&mut harness, "");
     harness.snapshot(shot("settings_keymap_preset"));
+}
 
 /// Words in a chip, in a realm's tab and beside an icon in the explorer are centred by their ink, at the
 /// design size and at the interface zoom Jason runs at. `task-2287`: the `Run` chip's word was drawn about a
