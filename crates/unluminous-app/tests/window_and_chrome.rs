@@ -158,6 +158,82 @@ fn every_test_source() -> String {
     source
 }
 
+/// A modal's backdrop is the frame before it, blurred on the GPU, on the modal's first frame (`task-2288`).
+///
+/// The window's painter draws every frame into a texture paint callbacks can read
+/// (`WgpuConfiguration::scene_texture`). A test harness renders another way, so the test stands in for it: it
+/// hands the renderer a scene that is red for its first hundred pixels and blue after, and opens a modal. Away
+/// from the seam the backdrop is the scene's own colour under the scrim; at the seam it is both, which a sharp
+/// copy of the scene would not be. Without the blur being made, the backdrop shows the window itself.
+#[test]
+fn a_modal_is_drawn_over_the_frame_before_it_blurred_on_the_gpu() {
+    use eframe::egui_wgpu::wgpu;
+    let render_state = shared_render_state();
+    let seam = 100u32;
+    let size = [WINDOW[0] as u32, WINDOW[1] as u32];
+    let scene = render_state.device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("a scene with a seam"),
+        size: wgpu::Extent3d { width: size[0], height: size[1], depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    let pixels: Vec<u8> = (0..size[1])
+        .flat_map(|_| {
+            (0..size[0]).flat_map(|x| if x < seam { [255, 0, 0, 255] } else { [0, 0, 255, 255] })
+        })
+        .collect();
+    render_state.queue.write_texture(
+        scene.as_image_copy(),
+        &pixels,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(4 * size[0]),
+            rows_per_image: None,
+        },
+        wgpu::Extent3d { width: size[0], height: size[1], depth_or_array_layers: 1 },
+    );
+    render_state
+        .renderer
+        .write()
+        .callback_resources
+        .insert(eframe::egui_wgpu::SceneTexture { texture: scene, frame: 1 });
+    let folder = sample_folder();
+    let installed = render_state.clone();
+    let mut harness =
+        builder_on(render_state).with_size(vec2(WINDOW[0], WINDOW[1])).build_eframe(move |cc| {
+            unluminous_app::services::scene_blur::install(&installed, &cc.egui_ctx);
+            let mut app = UnluminousApp::new(folder);
+            app.prepare(&cc.egui_ctx);
+            app.draw_deterministically();
+            app
+        });
+    steady(&mut harness);
+    did(&mut harness, "modal open about");
+    steady(&mut harness);
+    let picture = harness.render().expect("the harness renders");
+    let at = |x: u32| picture.get_pixel(x, size[1] / 2).0;
+    let (far_red, near_red, near_blue, far_blue) =
+        (at(20), at(seam - 5), at(seam + 5), at(size[0] - 20));
+    assert!(
+        far_red[0] > 40 && far_red[2] < 8,
+        "well inside the red, the backdrop is red: {far_red:?}"
+    );
+    assert!(
+        far_blue[2] > 40 && far_blue[0] < 8,
+        "well inside the blue, the backdrop is blue: {far_blue:?}"
+    );
+    for near in [near_red, near_blue] {
+        assert!(
+            near[0] > 12 && near[2] > 12,
+            "beside the seam the backdrop is blurred across it: {near:?}"
+        );
+    }
+}
+
 #[test]
 fn the_title_bar_names_the_project_and_carries_the_window_buttons_and_the_text_tools() {
     // `task-1658` took the open file's name out of the bar, because it is on its own tab already, and

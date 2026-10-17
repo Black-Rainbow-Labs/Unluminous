@@ -427,8 +427,11 @@ fn show_framed<R>(
     // `backdrop_blur::frosted`. The modal is complete on the frame it opens. Without a picture, and in every
     // other theme, it is drawn over the blurred photograph of the window as before.
     let backdrop = match crate::theme::glass::frosted(ctx) {
-        Some((texture, uv)) => Backdrop { image: Some((texture, uv)), hide: false },
-        None => blurred_backdrop(ctx, egui::Id::new(id)),
+        Some((texture, uv)) => Backdrop { image: Some((texture, uv)), hide: false, blur: None },
+        None => match crate::services::scene_blur::output_texture(ctx) {
+            Some(texture) => blurred_on_the_gpu(ctx, egui::Id::new(id), texture),
+            None => blurred_backdrop(ctx, egui::Id::new(id)),
+        },
     };
     if backdrop.image.is_some() && !backdrop.hide {
         note_complete(ctx, egui::Id::new(id));
@@ -440,6 +443,18 @@ fn show_framed<R>(
             ctx,
             rux::render::Plane::Above,
             Some(rux::render::Backdrop::single(texture, ctx.content_rect(), uv, 1.0)),
+        );
+    }
+
+    // The blur is made in this frame's `prepare`, from the frame before it. Its callback goes on the background
+    // layer's painter rather than the modal's: a modal fades in from nothing, and egui drops every shape a painter
+    // at no opacity is given, the callback with them.
+    if let Some(opening) = backdrop.blur {
+        ctx.layer_painter(egui::LayerId::background()).add(
+            eframe::egui_wgpu::Callback::new_paint_callback(
+                ctx.content_rect(),
+                crate::services::scene_blur::SceneBlur { opening },
+            ),
         );
     }
 
@@ -552,6 +567,9 @@ fn show_framed<R>(
 struct Backdrop {
     image: Option<(egui::TextureId, Rect)>,
     hide: bool,
+    /// The opening to blur the previous frame for on the GPU this frame, when this is the frame it is made on.
+    /// See `services::scene_blur`.
+    blur: Option<u64>,
 }
 
 /// When a modal was last drawn and whether its opening has been noted complete, for the frame trace.
@@ -691,7 +709,69 @@ fn blurred_backdrop(ctx: &egui::Context, modal: egui::Id) -> Backdrop {
         .as_ref()
         .map(|texture| (texture.id(), Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0))));
     ctx.data_mut(|data| data.insert_temp(slot, state));
-    Backdrop { image, hide }
+    Backdrop { image, hide, blur: None }
+}
+
+/// What [`blurred_on_the_gpu`] keeps between frames.
+#[derive(Clone, Copy)]
+struct GpuBlurState {
+    /// The theme's colours and the background picture when the blur was made, as [`BlurState::key`] is.
+    key: ([u8; 12], u64),
+    /// When the modal was last drawn, in egui's seconds, so a modal opened again is blurred again.
+    drawn: f64,
+    /// Whether the blur is waiting for a frame drawn without the modal, after the theme changed under it.
+    waiting: bool,
+}
+
+/// Which opening of any modal the GPU blur was last made for. Each opening gets the next number.
+static OPENINGS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The backdrop of the modal with `modal` as its id, blurred on the GPU from the frame before it opened
+/// (`task-2288`). See `services::scene_blur`.
+///
+/// The frame a modal opens is the one the blur is made in, from the previous frame, which has nothing of the
+/// dialog in it, so the modal is complete on its first frame: nothing is drawn invisible and nothing is read back.
+/// The one case that needs a frame without the dialog is a theme changing while the modal is open, because then
+/// the previous frame is the dialog itself; that frame is drawn with the dialog invisible, as the photograph was.
+///
+/// @param texture - the blurred picture egui draws, from `scene_blur::output_texture`
+fn blurred_on_the_gpu(ctx: &egui::Context, modal: egui::Id, texture: egui::TextureId) -> Backdrop {
+    let slot = egui::Id::new("unluminous-modal-gpu-backdrop").with(modal);
+    let now = ctx.input(|input| input.time);
+    let mut tones = [0u8; 12];
+    for (at, colour) in [color::editor(), color::text(), color::accent()].iter().enumerate() {
+        tones[at * 4..at * 4 + 4].copy_from_slice(&colour.to_array());
+    }
+    let key = (tones, crate::services::backgrounds::changes(ctx));
+    let kept: Option<GpuBlurState> = ctx.data(|data| data.get_temp(slot));
+    let next = || OPENINGS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    let whole = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+    let (state, backdrop) = match kept {
+        // Open and unchanged: the blur made when it opened.
+        Some(kept) if now - kept.drawn <= GAP && kept.key == key && !kept.waiting => {
+            (kept, Backdrop { image: Some((texture, whole)), hide: false, blur: None })
+        }
+        // Waited a frame with the dialog invisible: the previous frame is the window without it.
+        Some(kept) if now - kept.drawn <= GAP && kept.key == key => (
+            GpuBlurState { waiting: false, ..kept },
+            Backdrop { image: Some((texture, whole)), hide: false, blur: Some(next()) },
+        ),
+        // The theme changed under an open modal: draw one frame without the dialog first.
+        Some(kept) if now - kept.drawn <= GAP => {
+            ctx.request_repaint();
+            (
+                GpuBlurState { key, waiting: true, ..kept },
+                Backdrop { image: Some((texture, whole)), hide: true, blur: None },
+            )
+        }
+        // A new opening: blur the frame before this one, now.
+        _ => (
+            GpuBlurState { key, drawn: now, waiting: false },
+            Backdrop { image: Some((texture, whole)), hide: false, blur: Some(next()) },
+        ),
+    };
+    ctx.data_mut(|data| data.insert_temp(slot, GpuBlurState { drawn: now, ..state }));
+    backdrop
 }
 
 /// Where a modal of this size sits, and how big it really comes out.

@@ -95,10 +95,15 @@ pub fn shared_render_state() -> RenderState {
 /// test added later cannot go back to a device of its own without meaning to. See
 /// [`shared_render_state`].
 pub fn builder<State>() -> egui_kittest::HarnessBuilder<State> {
+    builder_on(shared_render_state())
+}
+
+/// [`builder`] on a render state the test holds as well, so it can reach the renderer the harness draws with.
+pub fn builder_on<State>(render_state: RenderState) -> egui_kittest::HarnessBuilder<State> {
     turn::take_the_machines_turn();
     receipt::note_this_binary_started();
     egui_kittest::HarnessBuilder::default()
-        .renderer(WgpuTestRenderer::from_render_state(shared_render_state()))
+        .renderer(WgpuTestRenderer::from_render_state(render_state))
 }
 
 /// A folder with a nested structure, for the explorer screenshots. Written once and left in place, so

@@ -1,0 +1,293 @@
+diff -ru --strip-trailing-cr '--exclude=.cargo-ok' '--exclude=Cargo.lock' '--exclude=UNLUMINOUS.md' '--exclude=unluminous.patch' a/src/capture.rs b/src/capture.rs
+--- a/src/capture.rs	2006-07-23 19:21:28.000000000 -0600
++++ b/src/capture.rs	2026-10-17 11:04:29.485396400 -0600
+@@ -117,12 +117,17 @@
+         output_frame: &wgpu::SurfaceTexture,
+         encoder: &mut wgpu::CommandEncoder,
+     ) -> wgpu::Buffer {
+-        debug_assert_eq!(
+-            self.texture.size(),
+-            output_frame.texture.size(),
+-            "Texture sizes must match, `CaptureState::update` was probably not called"
+-        );
++        let buffer = self.copy_to_buffer(device, encoder);
++        self.copy_to_surface(output_frame, encoder);
++        buffer
++    }
+ 
++    /// Copy the texture into a new buffer the cpu can read, for [`CaptureState::read_screen_rgba`].
++    pub fn copy_to_buffer(
++        &mut self,
++        device: &wgpu::Device,
++        encoder: &mut wgpu::CommandEncoder,
++    ) -> wgpu::Buffer {
+         // It would be more efficient to reuse the Buffer, e.g. via some kind of ring buffer, but
+         // for most screenshot use cases this should be fine. When taking many screenshots (e.g. for a video)
+         // it might make sense to revisit this and implement a more efficient solution.
+@@ -150,7 +155,20 @@
+             },
+             tex_extent,
+         );
++        buffer
++    }
+ 
++    /// Draw the texture onto the surface texture, which is how a frame drawn into it reaches the window.
++    pub fn copy_to_surface(
++        &self,
++        output_frame: &wgpu::SurfaceTexture,
++        encoder: &mut wgpu::CommandEncoder,
++    ) {
++        debug_assert_eq!(
++            self.texture.size(),
++            output_frame.texture.size(),
++            "Texture sizes must match, `CaptureState::update` was probably not called"
++        );
+         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+             label: Some("texture_copy"),
+             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+@@ -171,8 +189,6 @@
+         pass.set_pipeline(&self.pipeline);
+         pass.set_bind_group(0, &self.bind_group, &[]);
+         pass.draw(0..3, 0..1);
+-
+-        buffer
+     }
+ 
+     /// Handles copying from the [`CaptureState`] texture to the surface texture and the cpu
+@@ -209,44 +225,69 @@
+                 log::error!("Failed to map buffer for reading: {err}");
+                 return;
+             }
+-            let buffer_slice = buffer.slice(..);
+-
+-            let mut pixels = Vec::with_capacity((tex_extent.width * tex_extent.height) as usize);
+-            let mapped_range = match buffer_slice.get_mapped_range() {
+-                Ok(range) => range,
+-                Err(err) => {
+-                    log::error!("Failed to get mapped range for reading: {err}");
+-                    return;
+-                }
+-            };
+-            for padded_row in mapped_range.chunks(padding.padded_bytes_per_row as usize) {
+-                let row = &padded_row[..padding.unpadded_bytes_per_row as usize];
+-                for color in row.chunks(4) {
+-                    pixels.push(epaint::Color32::from_rgba_premultiplied(
+-                        color[to_rgba[0]],
+-                        color[to_rgba[1]],
+-                        color[to_rgba[2]],
+-                        color[to_rgba[3]],
+-                    ));
+-                }
++            // Unluminous (`task-2288`): the callback runs inside whichever wgpu call on the window's thread
++            // services it, and turning a 4K frame into colours one pixel at a time is about a tenth of a second
++            // of that thread. On native it is done on a thread of its own, which owns the mapped buffer.
++            #[cfg(not(target_arch = "wasm32"))]
++            {
++                std::thread::spawn(move || {
++                    convert_and_send(&buffer, padding, tex_extent, to_rgba, data, tx, viewport_id, ctx);
++                });
+             }
+-            drop(mapped_range);
+-            buffer.unmap();
+-
+-            tx.send((
+-                viewport_id,
+-                data,
+-                ColorImage::new(
+-                    [tex_extent.width as usize, tex_extent.height as usize],
+-                    pixels,
+-                ),
+-            ))
+-            .ok();
+-            ctx.request_repaint();
++            #[cfg(target_arch = "wasm32")]
++            convert_and_send(&buffer, padding, tex_extent, to_rgba, data, tx, viewport_id, ctx);
+         });
+     }
+ }
+ 
++/// Read a mapped capture buffer into a [`ColorImage`], unmap it, send it, and ask for a frame.
++#[expect(clippy::too_many_arguments)]
++fn convert_and_send(
++    buffer: &wgpu::Buffer,
++    padding: BufferPadding,
++    tex_extent: wgpu::Extent3d,
++    to_rgba: [usize; 4],
++    data: Vec<UserData>,
++    tx: CaptureSender,
++    viewport_id: ViewportId,
++    ctx: egui::Context,
++) {
++    let buffer_slice = buffer.slice(..);
++
++    let mut pixels = Vec::with_capacity((tex_extent.width * tex_extent.height) as usize);
++    let mapped_range = match buffer_slice.get_mapped_range() {
++        Ok(range) => range,
++        Err(err) => {
++            log::error!("Failed to get mapped range for reading: {err}");
++            return;
++        }
++    };
++    for padded_row in mapped_range.chunks(padding.padded_bytes_per_row as usize) {
++        let row = &padded_row[..padding.unpadded_bytes_per_row as usize];
++        for color in row.chunks(4) {
++            pixels.push(epaint::Color32::from_rgba_premultiplied(
++                color[to_rgba[0]],
++                color[to_rgba[1]],
++                color[to_rgba[2]],
++                color[to_rgba[3]],
++            ));
++        }
++    }
++    drop(mapped_range);
++    buffer.unmap();
++
++    tx.send((
++        viewport_id,
++        data,
++        ColorImage::new(
++            [tex_extent.width as usize, tex_extent.height as usize],
++            pixels,
++        ),
++    ))
++    .ok();
++    ctx.request_repaint();
++}
++
+ #[derive(Copy, Clone)]
+ struct BufferPadding {
+     unpadded_bytes_per_row: u32,
+diff -ru --strip-trailing-cr '--exclude=.cargo-ok' '--exclude=Cargo.lock' '--exclude=UNLUMINOUS.md' '--exclude=unluminous.patch' a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs	2006-07-23 19:21:28.000000000 -0600
++++ b/src/lib.rs	2026-10-17 11:04:20.652423800 -0600
+@@ -350,6 +350,24 @@
+     /// in that case either.
+     pub on_surface_status:
+         Arc<dyn Fn(&wgpu::CurrentSurfaceTexture) -> SurfaceErrorAction + Send + Sync>,
++
++    /// Draw every frame into a texture of its own and copy it to the surface, and hand that texture to paint
++    /// callbacks as a [`SceneTexture`] in the renderer's callback resources. Off by default.
++    ///
++    /// Unluminous (`task-2288`): a callback's `prepare` runs before the frame is drawn, so the texture it is
++    /// handed still holds the **previous** frame, which is what a modal's blurred backdrop is made from.
++    pub scene_texture: bool,
++}
++
++/// The texture the previous frame was drawn into, in the renderer's callback resources while
++/// [`WgpuConfiguration::scene_texture`] is on. Absent on the first frame and after the surface's size or format
++/// changes, until a frame has been drawn into the new one.
++#[derive(Clone)]
++pub struct SceneTexture {
++    /// The texture. It has the surface's size and format, and `TEXTURE_BINDING` usage.
++    pub texture: wgpu::Texture,
++    /// How many frames have been drawn into it, so a callback can tell one frame's contents from another's.
++    pub frame: u64,
+ }
+ 
+ #[test]
+@@ -364,10 +382,12 @@
+             surface,
+             wgpu_setup,
+             on_surface_status: _,
++            scene_texture,
+         } = self;
+         f.debug_struct("WgpuConfiguration")
+             .field("surface", &surface)
+             .field("wgpu_setup", &wgpu_setup)
++            .field("scene_texture", &scene_texture)
+             .finish_non_exhaustive()
+     }
+ }
+@@ -411,6 +431,7 @@
+                     SurfaceErrorAction::SkipFrame
+                 }
+             }),
++            scene_texture: false,
+         }
+     }
+ }
+diff -ru --strip-trailing-cr '--exclude=.cargo-ok' '--exclude=Cargo.lock' '--exclude=UNLUMINOUS.md' '--exclude=unluminous.patch' a/src/winit.rs b/src/winit.rs
+--- a/src/winit.rs	2006-07-23 19:21:28.000000000 -0600
++++ b/src/winit.rs	2026-10-17 11:04:59.214241400 -0600
+@@ -32,6 +32,8 @@
+     options: RendererOptions,
+     support_transparent_backbuffer: bool,
+     screen_capture_state: Option<CaptureState>,
++    /// How many frames have been drawn into the scene texture. See [`crate::SceneTexture`].
++    scene_frames: u64,
+ 
+     instance: wgpu::Instance,
+     render_state: Option<RenderState>,
+@@ -72,6 +74,7 @@
+             options,
+             support_transparent_backbuffer,
+             screen_capture_state: None,
++            scene_frames: 0,
+ 
+             instance,
+             render_state: None,
+@@ -576,6 +579,18 @@
+                 }
+             }
+ 
++            // Unluminous (`task-2288`): the texture the previous frame was drawn into, for the callbacks
++            // `update_buffers` is about to prepare. Nothing has been drawn into it yet this frame.
++            if self.config.scene_texture
++                && let Some(capture_state) = &self.screen_capture_state
++                && self.scene_frames > 0
++            {
++                renderer.callback_resources.insert(crate::SceneTexture {
++                    texture: capture_state.texture.clone(),
++                    frame: self.scene_frames,
++                });
++            }
++
+             renderer.update_buffers(
+                 &render_state.device,
+                 &render_state.queue,
+@@ -630,11 +645,20 @@
+         {
+             let renderer = render_state.renderer.read();
+ 
+-            let target_texture = if capture {
++            // With the scene texture on, every frame is drawn the way a captured frame is: into the capture
++            // texture, then copied to the surface. A new texture after a resize holds nothing yet, so it is
++            // not handed to a callback until a frame has been drawn into it; until then the callbacks keep the
++            // old one, which still holds the frame from before the resize.
++            let scene = self.config.scene_texture && self.options.msaa_samples <= 1;
++            let target_texture = if capture || scene {
+                 let capture_state = self.screen_capture_state.get_or_insert_with(|| {
+                     CaptureState::new(&render_state.device, &output_frame.texture)
+                 });
++                let size = capture_state.texture.size();
+                 capture_state.update(&render_state.device, &output_frame.texture);
++                if capture_state.texture.size() != size {
++                    self.scene_frames = 0;
++                }
+ 
+                 &capture_state.texture
+             } else {
+@@ -707,11 +731,13 @@
+             );
+ 
+             if capture && let Some(capture_state) = &mut self.screen_capture_state {
+-                capture_buffer = Some(capture_state.copy_textures(
+-                    &render_state.device,
+-                    &output_frame,
+-                    &mut encoder,
+-                ));
++                capture_buffer = Some(capture_state.copy_to_buffer(&render_state.device, &mut encoder));
++            }
++            if (capture || scene) && let Some(capture_state) = &self.screen_capture_state {
++                capture_state.copy_to_surface(&output_frame, &mut encoder);
++            }
++            if scene {
++                self.scene_frames += 1;
+             }
+         }
+ 
+@@ -797,3 +823,4 @@
+         // TODO(emilk): something here?
+     }
+ }
++
