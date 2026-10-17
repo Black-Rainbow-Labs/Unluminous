@@ -628,7 +628,8 @@ fn show_list(ui: &mut egui::Ui, area: Rect, state: &mut SettingsWindow, context:
         if state.nav_followed != Some(state.page) {
             // Asked of the page chosen **now**: a press on a row changes the page inside the loop, and the row of
             // the page chosen before it is not the one to bring into view.
-            let chosen_row = rows_drawn.iter().find(|(page, _)| *page == state.page).map(|(_, row)| *row);
+            let chosen_row =
+                rows_drawn.iter().find(|(page, _)| *page == state.page).map(|(_, row)| *row);
             if let Some(row) = chosen_row {
                 state.nav_followed = Some(state.page);
                 if row.bottom() > room.bottom() {

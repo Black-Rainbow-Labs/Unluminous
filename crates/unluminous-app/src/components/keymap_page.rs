@@ -59,7 +59,12 @@ pub enum Recorded {
 }
 
 /// Draw the page down `area`, and answer whether a setting changed and how tall the page came out.
-pub(crate) fn show(ui: &mut egui::Ui, area: Rect, state: &mut KeymapState, settings: &mut Settings) -> Drawn {
+pub(crate) fn show(
+    ui: &mut egui::Ui,
+    area: Rect,
+    state: &mut KeymapState,
+    settings: &mut Settings,
+) -> Drawn {
     let mut changed = false;
     if state.recording.is_some() {
         changed |= follow_the_recording(ui, state, settings);
@@ -118,7 +123,8 @@ fn shortcuts_card(
     table: &Table,
 ) -> bool {
     let mut changed = false;
-    let help = "Press a shortcut's chip, then press the keys. Escape stops, Backspace takes the shortcut \
+    let help =
+        "Press a shortcut's chip, then press the keys. Escape stops, Backspace takes the shortcut \
                 away. A shortcut another action has is taken from it.";
     let rows = matching_rows(keymap::bindables(), table, &state.search);
     kit::card(ui, column, "Shortcuts", Some(help), |card| {
@@ -149,7 +155,11 @@ fn matching_rows<'a>(bindables: &'a [Bindable], table: &Table, search: &str) -> 
 /// spaces and whether `+` or `-` joins a chord's parts.
 pub fn matches_search(bindable: &Bindable, binding: Option<&Binding>, search: &str) -> bool {
     let squash = |text: &str| -> String {
-        text.to_lowercase().chars().filter(|c| !c.is_whitespace()).map(|c| if c == '-' { '+' } else { c }).collect()
+        text.to_lowercase()
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .map(|c| if c == '-' { '+' } else { c })
+            .collect()
     };
     let needle = squash(search);
     if needle.is_empty() {
@@ -157,7 +167,9 @@ pub fn matches_search(bindable: &Bindable, binding: Option<&Binding>, search: &s
     }
     let chord = binding.and_then(|binding| binding.chord).or(bindable.default);
     let chord = chord.map(|chord| keymap::text(&chord)).unwrap_or_default();
-    [bindable.path(), bindable.name.clone(), chord].iter().any(|text| squash(text).contains(&needle))
+    [bindable.path(), bindable.name.clone(), chord]
+        .iter()
+        .any(|text| squash(text).contains(&needle))
 }
 
 /// Draw the rows that are inside the part of the page that can be seen. Answers whether a binding changed.
@@ -211,7 +223,8 @@ fn one_row(
         Pos2::new(row.right() - RESET - GAP - CHIP, row.center().y - 15.0),
         Vec2::new(CHIP, 30.0),
     );
-    let words_right = chip.left() - GAP - source_width(rux, bindable, binding, settings.keymap_preset);
+    let words_right =
+        chip.left() - GAP - source_width(rux, bindable, binding, settings.keymap_preset);
     words(rux, row, bindable, words_right);
     source_tag(rux, chip, bindable, binding, settings.keymap_preset);
     let recording = state.recording.as_deref() == Some(bindable.name.as_str());
@@ -237,8 +250,17 @@ fn one_row(
     if !yours {
         return false;
     }
-    let reset = Rect::from_min_size(Pos2::new(chip.right() + GAP, chip.top()), Vec2::new(RESET, 30.0));
-    if chord_chip(rux, reset, "Reset", &format!("Reset {}", bindable.path()), theme.ink.i500, true, false) {
+    let reset =
+        Rect::from_min_size(Pos2::new(chip.right() + GAP, chip.top()), Vec2::new(RESET, 30.0));
+    if chord_chip(
+        rux,
+        reset,
+        "Reset",
+        &format!("Reset {}", bindable.path()),
+        theme.ink.i500,
+        true,
+        false,
+    ) {
         keymap::reset(&mut settings.key_bindings, &bindable.name);
         state.notice = Some(format!("{} is back on the preset's shortcut.", bindable.path()));
         return true;
@@ -287,14 +309,25 @@ fn source_word(bindable: &Bindable, binding: Option<&Binding>, preset: Preset) -
     }
 }
 
-fn source_width(rux: &Rux<'_>, bindable: &Bindable, binding: Option<&Binding>, preset: Preset) -> f32 {
+fn source_width(
+    rux: &Rux<'_>,
+    bindable: &Bindable,
+    binding: Option<&Binding>,
+    preset: Preset,
+) -> f32 {
     match source_word(bindable, binding, preset) {
         Some(word) => rux.measure(Style::sans(11.0), &word).x + GAP,
         None => 0.0,
     }
 }
 
-fn source_tag(rux: &mut Rux<'_>, chip: Rect, bindable: &Bindable, binding: Option<&Binding>, preset: Preset) {
+fn source_tag(
+    rux: &mut Rux<'_>,
+    chip: Rect,
+    bindable: &Bindable,
+    binding: Option<&Binding>,
+    preset: Preset,
+) {
     let Some(word) = source_word(bindable, binding, preset) else {
         return;
     };
@@ -324,19 +357,26 @@ fn chord_chip(
     let radius = rect.height() / 2.0;
     match (recording, live) {
         (true, _) => rux.chrome.surface(rect, radius, chat.well, chat.carved_sm()),
-        (false, true) => rux.chrome.surface(rect, radius, Fill::gradient(chat.chip, rect), chat.raised_chip()),
+        (false, true) => {
+            rux.chrome.surface(rect, radius, Fill::gradient(chat.chip, rect), chat.raised_chip())
+        }
         (false, false) => rux.chrome.surface(rect, radius, chat.well, chat.carved_sm()),
     }
     let style = Style::mono(11.5);
     let galley = rux.elided(style, said, ink, rect.width() - 16.0);
     rux::text::draw_centred(rux.painter(), rect, galley, ink);
     let named = format!("{name}: {said}");
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, live, named.clone()));
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, live, named.clone()));
     live && response.clicked()
 }
 
 /// Read what the recording row was given this frame, and act on it. Answers whether a binding changed.
-fn follow_the_recording(ui: &mut egui::Ui, state: &mut KeymapState, settings: &mut Settings) -> bool {
+fn follow_the_recording(
+    ui: &mut egui::Ui,
+    state: &mut KeymapState,
+    settings: &mut Settings,
+) -> bool {
     let Some(action) = state.recording.clone() else {
         return false;
     };
@@ -438,7 +478,11 @@ pub fn recorded(key: egui::Key, modifiers: &egui::Modifiers, mac: bool) -> Recor
     }
     let chord = Shortcut {
         key,
-        command: if mac { modifiers.mac_cmd || modifiers.command } else { modifiers.ctrl || modifiers.command },
+        command: if mac {
+            modifiers.mac_cmd || modifiers.command
+        } else {
+            modifiers.ctrl || modifiers.command
+        },
         ctrl: mac && modifiers.ctrl,
         alt: modifiers.alt,
         shift: modifiers.shift,

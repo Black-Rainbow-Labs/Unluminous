@@ -1875,10 +1875,8 @@ mod tests {
     #[test]
     fn a_key_binding_that_was_reset_is_taken_out_of_the_file() {
         let mut settings = Settings::new();
-        settings.key_bindings = vec![
-            ("save".to_owned(), "F4".to_owned()),
-            ("find".to_owned(), "none".to_owned()),
-        ];
+        settings.key_bindings =
+            vec![("save".to_owned(), "F4".to_owned()), ("find".to_owned(), "none".to_owned())];
         let mut values = Values::new();
         settings.write_into(&mut values);
         assert_eq!(values.text("keymap.key.save"), Some("F4"));

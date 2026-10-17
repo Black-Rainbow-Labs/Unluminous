@@ -6243,7 +6243,10 @@ fn the_keymap_page_records_a_shortcut_from_the_next_key_press() {
     // `Ctrl+Shift+Y`, which nothing has. While the row records, the menu watcher stands aside.
     harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, egui::Key::Y);
     steady(&mut harness);
-    assert!(harness.state().settings_window.keymap.recording.is_none(), "one key press is recorded");
+    assert!(
+        harness.state().settings_window.keymap.recording.is_none(),
+        "one key press is recorded"
+    );
     let wanted = unluminous_app::services::keymap::parse("Ctrl+Shift+Y").unwrap();
     let written = &harness.state().settings.key_bindings;
     assert_eq!(written.len(), 1, "{written:?}");

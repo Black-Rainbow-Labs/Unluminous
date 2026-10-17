@@ -501,7 +501,8 @@ impl UnluminousApp {
     ) -> Option<Action> {
         [false, true].into_iter().find_map(|down| {
             let action = Action::MoveLines { down };
-            let chord = keymap.chord(&action.name(), Some(crate::app::actions::move_line_shortcut(down)))?;
+            let chord = keymap
+                .chord(&action.name(), Some(crate::app::actions::move_line_shortcut(down)))?;
             chord.matches(key, modifiers).then_some(action)
         })
     }

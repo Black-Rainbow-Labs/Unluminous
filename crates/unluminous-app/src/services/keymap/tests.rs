@@ -26,7 +26,10 @@ fn a_chord_is_read_however_it_is_written() {
     assert_eq!(windows("ctrl--"), Shortcut::command(egui::Key::Minus));
     assert_eq!(windows("Ctrl+,"), Shortcut::command(egui::Key::Comma));
     assert_eq!(windows("Shift+F6"), Shortcut { shift: true, ..Shortcut::plain(egui::Key::F6) });
-    assert_eq!(windows("alt+pagedown"), Shortcut { alt: true, ..Shortcut::plain(egui::Key::PageDown) });
+    assert_eq!(
+        windows("alt+pagedown"),
+        Shortcut { alt: true, ..Shortcut::plain(egui::Key::PageDown) }
+    );
     assert_eq!(windows("Ctrl+`"), Shortcut::command(egui::Key::Backtick));
     let mac = |text: &str| parse_for(text, true).unwrap();
     assert_eq!(mac("Cmd+K"), Shortcut::command(egui::Key::K));
@@ -41,8 +44,14 @@ fn a_chord_is_read_however_it_is_written() {
 fn a_chord_written_down_reads_back_as_itself() {
     for bindable in bindables() {
         if let Some(default) = bindable.default {
-            let back = parse(&text(&default)).unwrap_or_else(|why| panic!("{}: {why}", text(&default)));
-            assert!(same(&back, &default), "{} wrote {} and read back {back:?}", bindable.name, text(&default));
+            let back =
+                parse(&text(&default)).unwrap_or_else(|why| panic!("{}: {why}", text(&default)));
+            assert!(
+                same(&back, &default),
+                "{} wrote {} and read back {back:?}",
+                bindable.name,
+                text(&default)
+            );
         }
     }
 }
@@ -64,11 +73,19 @@ fn every_preset_row_names_a_bindable_action_and_reads_on_both_platforms() {
     for preset in Preset::ALL {
         for row in preset.rows() {
             let found = bindables().iter().find(|b| b.name == row.action);
-            let found = found.unwrap_or_else(|| panic!("{} names {}, which is not bindable", preset.name(), row.action));
-            assert!(found.fixed.is_none(), "{} names {}, which is fixed", preset.name(), row.action);
+            let found = found.unwrap_or_else(|| {
+                panic!("{} names {}, which is not bindable", preset.name(), row.action)
+            });
+            assert!(
+                found.fixed.is_none(),
+                "{} names {}, which is fixed",
+                preset.name(),
+                row.action
+            );
             for (text, mac) in [(row.windows, false), (row.mac, true)] {
                 if !text.is_empty() && text != "none" {
-                    parse_for(text, mac).unwrap_or_else(|why| panic!("{}: {text}: {why}", row.action));
+                    parse_for(text, mac)
+                        .unwrap_or_else(|why| panic!("{}: {text}: {why}", row.action));
                 }
             }
         }
@@ -165,7 +182,10 @@ fn a_binding_for_an_unknown_action_is_kept_and_reported() {
     let table = table(Preset::Unluminous, &yours, bindables());
     assert_eq!(table.unknown, own(&[("teleport", "Ctrl+Shift+Y")]));
     bind(&mut yours, Preset::Unluminous, "save", Some(chord("F4"))).unwrap();
-    assert!(yours.iter().any(|(name, _)| name == "teleport"), "binding something else kept it: {yours:?}");
+    assert!(
+        yours.iter().any(|(name, _)| name == "teleport"),
+        "binding something else kept it: {yours:?}"
+    );
 }
 
 /// Binding takes the chord from the action that has it, writes `none` for it, and says so.
@@ -222,8 +242,12 @@ fn the_clipboard_is_fixed_and_an_action_about_a_path_is_not_bindable() {
     let copy = bindables().iter().find(|b| b.name == "copy").expect("copy is listed");
     assert!(copy.fixed.is_some());
     assert!(bindables().iter().all(|b| b.name != "open-recent" && b.name != "copy-path"));
-    let moving = bindables().iter().find(|b| b.name == "move-line-up").expect("moving a line is listed");
-    assert!(moving.fixed.is_none(), "moving a line can be bound, because the window reads it from the keymap");
+    let moving =
+        bindables().iter().find(|b| b.name == "move-line-up").expect("moving a line is listed");
+    assert!(
+        moving.fixed.is_none(),
+        "moving a line can be bound, because the window reads it from the keymap"
+    );
     assert_eq!(moving.menu, "Code");
 }
 
@@ -243,9 +267,13 @@ fn the_menus_and_the_watcher_follow_the_keymap() {
     } else {
         egui::Modifiers { command: true, ctrl: true, ..Default::default() }
     };
-    assert_eq!(actions::action_for_key(&menus, egui::Key::D, &control), Some(Action::DuplicateLines));
+    assert_eq!(
+        actions::action_for_key(&menus, egui::Key::D, &control),
+        Some(Action::DuplicateLines)
+    );
     let shown = bindables_in(&menus);
-    let diff = shown.iter().find(|b| b.name == "git-show-diff").expect("Show Diff is on the Git menu");
+    let diff =
+        shown.iter().find(|b| b.name == "git-show-diff").expect("Show Diff is on the Git menu");
     assert_eq!(diff.default, None, "Show Diff shows no chord once IntelliJ gave Ctrl+D away");
 }
 
@@ -287,10 +315,16 @@ fn each_preset_takes_away_only_the_unluminous_shortcuts_it_means_to() {
         let mut lost: Vec<&str> = table
             .rows
             .iter()
-            .filter(|(_, binding)| binding.source == Source::Unluminous && binding.lost_to.is_some())
+            .filter(|(_, binding)| {
+                binding.source == Source::Unluminous && binding.lost_to.is_some()
+            })
             .map(|(name, _)| name.as_str())
             .collect();
         lost.sort_unstable();
-        assert!(lost.is_empty(), "{} takes these shortcuts away without naming them: {lost:?}", preset.name());
+        assert!(
+            lost.is_empty(),
+            "{} takes these shortcuts away without naming them: {lost:?}",
+            preset.name()
+        );
     }
 }

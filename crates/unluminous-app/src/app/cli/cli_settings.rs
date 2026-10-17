@@ -429,7 +429,11 @@ impl UnluminousApp {
                 let said = crate::components::keymap_page::what_binding_did(&label, chord, &bound);
                 self.set_settings(settings);
                 let chord = chord.map(|chord| keymap::text(&chord));
-                ok(request, said, json!({ "action": action, "chord": chord, "takenFrom": bound.taken_from }))
+                ok(
+                    request,
+                    said,
+                    json!({ "action": action, "chord": chord, "takenFrom": bound.taken_from }),
+                )
             }
         }
     }

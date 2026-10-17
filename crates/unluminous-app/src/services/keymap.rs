@@ -260,7 +260,9 @@ pub fn parse_for(text: &str, mac: bool) -> Result<Shortcut, String> {
             },
             "alt" | "option" | "opt" => chord.alt = true,
             "shift" => chord.shift = true,
-            other => return Err(format!("`{other}` is not a modifier. Use Ctrl, Cmd, Alt or Shift.")),
+            other => {
+                return Err(format!("`{other}` is not a modifier. Use Ctrl, Cmd, Alt or Shift."))
+            }
         }
     }
     Ok(chord)
@@ -321,7 +323,11 @@ pub fn reserved_for(chord: &Shortcut, mac: bool) -> Option<&'static str> {
     let chord = chord.normalised_for(mac);
     let control = chord.command;
     let bare = !chord.command && !chord.ctrl && !chord.alt;
-    if control && !chord.alt && !chord.ctrl && !chord.shift && matches!(chord.key, Key::C | Key::X | Key::V)
+    if control
+        && !chord.alt
+        && !chord.ctrl
+        && !chord.shift
+        && matches!(chord.key, Key::C | Key::X | Key::V)
     {
         return Some("the clipboard, which egui delivers as its own events");
     }
@@ -380,7 +386,9 @@ pub fn formatting_chord(chord: &Shortcut) -> Option<&'static str> {
 }
 
 fn is_a_function_key(key: egui::Key) -> bool {
-    key.name().strip_prefix('F').is_some_and(|rest| !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()))
+    key.name()
+        .strip_prefix('F')
+        .is_some_and(|rest| !rest.is_empty() && rest.chars().all(|c| c.is_ascii_digit()))
 }
 
 /// One action a chord can be given, as the Keymap page lists it.
@@ -463,7 +471,9 @@ fn walk(
                 // the page would say Settings has no shortcut.
                 if !seen.insert(key.clone()) {
                     let earlier = found.iter_mut().find(|b| b.name == key);
-                    if let Some(earlier) = earlier.filter(|b| b.default.is_none() && shortcut.is_some()) {
+                    if let Some(earlier) =
+                        earlier.filter(|b| b.default.is_none() && shortcut.is_some())
+                    {
                         earlier.default = *shortcut;
                         earlier.label = name.clone();
                         earlier.menu = path.to_owned();
@@ -502,7 +512,9 @@ fn reads_back(action: &Action, name: &str) -> bool {
 fn why_fixed(name: &str) -> &'static str {
     match name {
         "cut" | "copy" | "paste" => "The clipboard: egui delivers these as their own events.",
-        _ if name.starts_with("notebook-") => "The notebook reads this key itself, in command mode.",
+        _ if name.starts_with("notebook-") => {
+            "The notebook reads this key itself, in command mode."
+        }
         _ => "The pane this belongs to reads the key itself.",
     }
 }
