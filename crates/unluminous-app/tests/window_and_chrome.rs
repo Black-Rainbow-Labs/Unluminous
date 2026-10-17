@@ -249,6 +249,22 @@ fn on_macos_the_mark_sits_after_the_traffic_lights() {
     harness.snapshot(shot("title_bar_mark_macos"));
 }
 
+/// `task-2282`: on macOS the mark opens the application's own menu, as it does on Windows, as well as that
+/// menu being in the bar along the top of the screen. Choosing from it does what the entry says.
+#[test]
+fn on_macos_the_mark_opens_the_unluminous_menu() {
+    let mut harness = harness("");
+    harness.state_mut().menu_placement = MenuPlacement::Native;
+    steady(&mut harness);
+    assert!(harness.query_by_label("About Unluminous").is_none(), "the list starts closed");
+    harness.get_by_label("Unluminous").click();
+    steady(&mut harness);
+    assert!(harness.query_by_label("Settings").is_some(), "the list holds Settings");
+    harness.get_by_label("About Unluminous").click();
+    steady(&mut harness);
+    assert!(harness.state().about.is_some(), "About Unluminous should open the About box");
+}
+
 /// Every window command this frame, as text, whatever kind it is.
 fn viewport_commands(harness: &Harness<'static, UnluminousApp>) -> Vec<String> {
     harness

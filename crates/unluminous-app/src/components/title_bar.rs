@@ -219,7 +219,8 @@ pub fn show(
             (right + 10.0, buttons[0].0.left() - BUTTON_MARGIN)
         }
         MenuPlacement::Native => {
-            let right = mac_mark(ui, area, buttons[2].0.right() + 10.0);
+            let (action, right) = mac_mark(ui, area, buttons[2].0.right() + 10.0, menus);
+            outcome.action = action;
             (right + 8.0, area.right())
         }
     };
@@ -294,18 +295,28 @@ pub fn show(
 
 /// The Unluminous mark at the left of the bar on macOS, just after the traffic lights (`task-2258`).
 ///
-/// On Windows the mark is the application's own menu, in `menu_bar`. macOS keeps that menu in the bar along the
-/// top of the screen, so here the mark is the mark alone and does nothing when pressed. It is the same size as
-/// the Windows one, and it answers where it ended.
-fn mac_mark(ui: &mut egui::Ui, area: Rect, left: f32) -> f32 {
+/// It is the application's own menu, as it is on Windows (`task-2282`): pressing it drops the `Unluminous`
+/// list down, beside the same menu in the bar along the top of the screen. It is the same size as the
+/// Windows one, and it answers what was chosen and where it ended. A list of menus with no `Unluminous`
+/// in it, which nothing builds, leaves the mark alone and inert.
+///
+/// @param ui - the title bar
+/// @param area - the bar
+/// @param left - where the mark starts
+/// @param menus - the window's menus, of which the `Unluminous` one is used
+fn mac_mark(ui: &mut egui::Ui, area: Rect, left: f32, menus: &[Menu]) -> (Option<Action>, f32) {
     let rect = Rect::from_min_size(
         Pos2::new(left, area.center().y - MARK_PILL / 2.0),
         Vec2::splat(MARK_PILL),
     );
-    let response = ui.interact(rect, ui.id().with("unluminous-mark"), Sense::hover());
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Unluminous"));
-    crate::components::logo::paint(ui, rect, menu_bar::MARK);
-    rect.right()
+    let Some(menu) = menus.iter().find(|menu| menu.name == "Unluminous") else {
+        let response = ui.interact(rect, ui.id().with("unluminous-mark"), Sense::hover());
+        response
+            .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Unluminous"));
+        crate::components::logo::paint(ui, rect, menu_bar::MARK);
+        return (None, rect.right());
+    };
+    (menu_bar::application_menu(ui, rect, menu), rect.right())
 }
 
 /// Whether the primary button went down inside `area` on this frame while a modal is open, somewhere the

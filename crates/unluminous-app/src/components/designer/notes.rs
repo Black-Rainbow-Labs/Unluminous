@@ -608,22 +608,30 @@ fn the_composer_buttons(
     acts: &mut Vec<Act>,
 ) {
     let height = 38.0 * scale;
-    let ask = kit::button_width(rux, "Add and ask agent", true);
+    let gap = 8.0 * scale;
+    // A composer too narrow for all three takes the shortfall out of `Add and ask agent` first, down
+    // to half of it, because it is the widest and its spark still says what it is; whatever is still
+    // short comes out of `Cancel`. Every button cuts its words short inside itself rather than
+    // reaching into the next one (`task-2282`).
+    // `Cancel` is a ghost, with no surface to keep its padding inside, so it asks for half of it.
+    let cancel_wants = kit::button_width(rux, "Cancel", false) - rux.z(16.0);
+    let add = kit::button_width(rux, "Add note", false);
+    let ask_wants = kit::button_width(rux, "Add and ask agent", true);
+    let short = (cancel_wants + gap + add + gap + ask_wants - (right - left)).max(0.0);
+    let ask = ask_wants - short.min(ask_wants / 2.0);
     let ask_at = Rect::from_min_size(Pos2::new(right - ask, top), Vec2::new(ask, height));
     if kit::button(rux, ask_at, "Add and ask agent", Some(Icon::Spark), kit::Look::Primary)
         && can_add
     {
         acts.push(Act::AddNote(design.to_path_buf(), true));
     }
-    let add = kit::button_width(rux, "Add note", false);
-    let add_at = Rect::from_min_size(
-        Pos2::new(ask_at.left() - 8.0 * scale - add, top),
-        Vec2::new(add, height),
-    );
+    let add_at =
+        Rect::from_min_size(Pos2::new(ask_at.left() - gap - add, top), Vec2::new(add, height));
     if kit::button(rux, add_at, "Add note", None, kit::Look::Chip) && can_add {
         acts.push(Act::AddNote(design.to_path_buf(), false));
     }
-    let cancel = Rect::from_min_size(Pos2::new(left, top), Vec2::new(60.0 * scale, height));
+    let cancel_width = cancel_wants.min((add_at.left() - gap - left).max(0.0));
+    let cancel = Rect::from_min_size(Pos2::new(left, top), Vec2::new(cancel_width, height));
     if kit::button(rux, cancel, "Cancel", None, kit::Look::Ghost) {
         acts.push(Act::CancelNote(design.to_path_buf()));
     }

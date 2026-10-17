@@ -320,8 +320,15 @@ pub fn button(rux: &mut Rux<'_>, rect: Rect, label: &str, mark: Option<Icon>, lo
         (Look::Ghost, false) => {}
     }
     let style = rux.zs(Style::sans(12.0).medium());
-    let galley = rux.text(style, label, ink);
     let mark_room = if mark.is_some() { rux.z(20.0) } else { 0.0 };
+    // Words that would reach the button's edge end with `…` a little inside it, rather than running
+    // out of both sides (`task-2282`). Several callers hand a button less than `button_width`'s full
+    // padding and their words fit, so only the edge itself is the limit.
+    let room = (rect.width() - rux.z(16.0) - mark_room).max(0.0);
+    let mut galley = rux.text(style, label, ink);
+    if galley.size().x > room + 1.0 {
+        galley = rux.elided(style, label, ink, room);
+    }
     let width = galley.size().x + mark_room;
     let left = rect.center().x - width / 2.0;
     if let Some(icon) = mark {

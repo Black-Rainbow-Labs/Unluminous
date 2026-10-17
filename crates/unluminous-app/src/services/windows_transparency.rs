@@ -22,6 +22,10 @@
 //! every pixel it touches, so one black fill over the whole client area is what makes the surface
 //! disappear. This is the same fault GLFW has, and the fix is the one its own bug report proposes.
 //!
+//! **Nothing of Windows' own may be drawn round the window**, or it shows as a square edge outside the
+//! window's rounded corners: a drop shadow, a black line along the top and Windows 11's one pixel
+//! border all did (`task-2282`). `take_the_frame_away` says how each is turned off.
+//!
 //! `WS_EX_NOREDIRECTIONBITMAP` removes the surface instead of clearing it, and was measured to work
 //! too. It is not used: eframe gives no way to pass a winit window attribute through, and the Win32
 //! reference implementations advise against it because it breaks any presentation path that blits
@@ -61,6 +65,7 @@ pub fn with_direct_composition(mut options: eframe::NativeOptions) -> eframe::Na
 /// — which says how little is left in one, not that this is worth changing.
 pub fn keep_transparent(window: &impl HasWindowHandle) {
     let Some(hwnd) = window_handle(window) else { return };
+    take_the_frame_away(hwnd);
     let Some((width, height)) = client_size(hwnd) else { return };
     fill(hwnd, width, height);
 }
@@ -73,6 +78,110 @@ fn window_handle(window: &impl HasWindowHandle) -> Option<isize> {
     match window.window_handle().ok()?.as_raw() {
         RawWindowHandle::Win32(handle) => Some(handle.hwnd.get()),
         _ => None,
+    }
+}
+
+/// The window whose frame was last taken away, so it is done once and not every frame.
+static FRAMELESS: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+
+/// Take away everything Windows draws round the window, once for each window handle.
+///
+/// Two things were drawn there, and between them they made a square edge outside each of the window's
+/// rounded corners (`task-2282`):
+///
+/// - **A drop shadow and a black line along the top.** `egui-winit` asks `winit` for its undecorated
+///   shadow on every window with no title bar, and `winit` makes one by leaving a single row of the
+///   window as frame in `WM_NCCALCSIZE`, which the desktop window manager answers with a shadow round
+///   the whole rectangle. Its own comment says the row shows as a black line. The shadow hugs the
+///   rectangle and stops at its edge, so outside a rounded corner the desktop showed through with no
+///   shadow on it, framed by shadow on both sides. The macOS window asks for no shadow, and this makes
+///   Windows the same: the row is given back to the window, and with no frame there is no shadow.
+/// - **Windows 11's one pixel border**, which `DWMWA_COLOR_NONE` turns off. The corner preference is
+///   set to square as well, so the window manager never clips the window to corners of its own.
+///
+/// Windows 10 has neither the border nor the corner attribute and refuses both, which changes nothing.
+///
+/// @param hwnd - the window
+fn take_the_frame_away(hwnd: isize) {
+    use std::sync::atomic::Ordering;
+    use windows_sys::Win32::Graphics::Dwm::{
+        DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE,
+        DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
+    };
+    use windows_sys::Win32::UI::Shell::SetWindowSubclass;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+    };
+    if FRAMELESS.swap(hwnd, Ordering::SeqCst) == hwnd {
+        return;
+    }
+    let colour: u32 = DWMWA_COLOR_NONE;
+    let corners: i32 = DWMWCP_DONOTROUND;
+    unsafe {
+        DwmSetWindowAttribute(
+            hwnd as _,
+            DWMWA_BORDER_COLOR as u32,
+            (&colour as *const u32).cast(),
+            std::mem::size_of::<u32>() as u32,
+        );
+        DwmSetWindowAttribute(
+            hwnd as _,
+            DWMWA_WINDOW_CORNER_PREFERENCE as u32,
+            (&corners as *const i32).cast(),
+            std::mem::size_of::<i32>() as u32,
+        );
+        SetWindowSubclass(hwnd as _, Some(no_frame_row), FRAME_SUBCLASS, 0);
+        // The frame is measured again only when Windows is told it has changed.
+        let flags = SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE;
+        SetWindowPos(hwnd as _, std::ptr::null_mut(), 0, 0, 0, 0, flags);
+    }
+}
+
+/// The id the frame's subclass is installed under.
+const FRAME_SUBCLASS: usize = 0x2282;
+
+/// Lets `winit` answer `WM_NCCALCSIZE` and then gives back the one row it kept as frame for its shadow.
+///
+/// Only that answer is changed: when `winit` has moved the client rectangle down by exactly one row,
+/// which is what it does for a window that is not maximised and not full screen. A maximised window's
+/// answer is the screen's work area and is left exactly as `winit` gave it.
+unsafe extern "system" fn no_frame_row(
+    hwnd: windows_sys::Win32::Foundation::HWND,
+    message: u32,
+    wparam: windows_sys::Win32::Foundation::WPARAM,
+    lparam: windows_sys::Win32::Foundation::LPARAM,
+    _id: usize,
+    _data: usize,
+) -> windows_sys::Win32::Foundation::LRESULT {
+    use windows_sys::Win32::UI::Shell::DefSubclassProc;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{NCCALCSIZE_PARAMS, WM_NCCALCSIZE};
+    if message != WM_NCCALCSIZE || wparam == 0 {
+        return unsafe { DefSubclassProc(hwnd, message, wparam, lparam) };
+    }
+    let params = lparam as *mut NCCALCSIZE_PARAMS;
+    let proposed = unsafe { (*params).rgrc[0] };
+    let result = unsafe { DefSubclassProc(hwnd, message, wparam, lparam) };
+    let answer = unsafe { &mut (*params).rgrc[0] };
+    *answer = without_the_frame_row(proposed, *answer);
+    result
+}
+
+/// The client rectangle to answer with: the proposed one when `winit` only moved it down a row for its
+/// shadow, and `winit`'s own answer otherwise.
+///
+/// @param proposed - the rectangle Windows proposed, which is the whole window
+/// @param answer - the rectangle `winit` answered with
+fn without_the_frame_row(
+    proposed: windows_sys::Win32::Foundation::RECT,
+    answer: windows_sys::Win32::Foundation::RECT,
+) -> windows_sys::Win32::Foundation::RECT {
+    let one_row_down = answer.left == proposed.left
+        && answer.right == proposed.right
+        && answer.top == proposed.top + 1
+        && answer.bottom == proposed.bottom + 1;
+    match one_row_down {
+        true => proposed,
+        false => answer,
     }
 }
 
@@ -123,6 +232,23 @@ mod tests {
             setup.instance_descriptor.backend_options.dx12.presentation_system,
             Dx12SwapchainKind::DxgiFromVisual,
             "a swapchain made from the window handle can only be opaque"
+        );
+    }
+
+    /// The row `winit` keeps for its shadow is given back, and nothing else it answers is touched: a
+    /// maximised window's answer is the work area, which must stay exactly as `winit` gave it.
+    #[test]
+    fn only_the_shadow_row_is_given_back_to_the_window() {
+        use windows_sys::Win32::Foundation::RECT;
+        let rect = |left, top, right, bottom| RECT { left, top, right, bottom };
+        let window = rect(200, 200, 1100, 800);
+        let shadowed = rect(200, 201, 1100, 801);
+        let given_back = without_the_frame_row(window, shadowed);
+        assert_eq!((given_back.top, given_back.bottom), (200, 800));
+        let maximised = without_the_frame_row(rect(-8, -8, 3848, 2168), rect(0, 0, 3840, 2112));
+        assert_eq!(
+            (maximised.left, maximised.top, maximised.right, maximised.bottom),
+            (0, 0, 3840, 2112)
         );
     }
 

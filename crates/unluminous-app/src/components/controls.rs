@@ -1288,7 +1288,10 @@ pub fn choice_button_over(
     let tint = if active { color::on_accent() } else { color::text_control() };
     let galley =
         painter.crisp_layout_no_wrap(label.to_owned(), egui::FontId::proportional(12.5), tint);
-    painter.crisp_galley(area.center() - galley.size() / 2.0, galley, tint);
+    // A word wider than the button is cut off at the button's edge rather than drawn past it
+    // (`task-2282`).
+    let inside = painter.with_clip_rect(area.intersect(painter.clip_rect()));
+    inside.crisp_galley(area.center() - galley.size() / 2.0, galley, tint);
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), active, announced)
     });
