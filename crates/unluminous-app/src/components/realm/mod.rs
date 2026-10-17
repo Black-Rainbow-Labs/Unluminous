@@ -47,8 +47,9 @@ pub const PORT: f32 = 6.0;
 ///
 /// *"the connectors for nodes shouldn't always be visible. They should show up when my mouse gets within
 /// 100 px or so to them, like a hover in/out."* A port is still there to be pulled while it is hidden, and
-/// the pointer is always within this distance of it before it can be.
-pub const PORT_REVEAL: f32 = 100.0;
+/// the pointer is always within this distance of it before it can be. Widened to 150 when Jason asked for
+/// *"within 150px or so"*.
+pub const PORT_REVEAL: f32 = 150.0;
 /// How long a port takes to fade in or out, in seconds.
 const PORT_FADE: f32 = 0.15;
 /// How near an edge the pointer has to be to take hold of it, in screen points.
