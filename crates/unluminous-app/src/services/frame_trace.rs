@@ -11,12 +11,15 @@
 //! real frame cost. `UNLUMINOUS_FRAME_TRACE=<file> unluminous` writes one line per frame —
 //!
 //! ```text
-//! frame 21.482 outside 3.104 | control 0.021 colour 0.004 index 0.002 watch 6.914 menus 4.201 ...
+//! frame 21.482 outside 3.104 at 1760716800123.456 cpu 19.871 core P | control 0.021 colour 0.004 index 0.002 watch 6.914 menus 4.201 ...
 //! ```
 //!
 //! — where `frame` is [`UnluminousApp::ui`](crate::UnluminousApp::ui) end to end, `outside` is
 //! everything between one frame's end and the next one's start (egui's own tessellation, the
-//! graphics card, and the wait), and each name after the bar is one phase of the frame.
+//! graphics card, and the wait), `at` is when the frame ended in milliseconds since 1970, `cpu` is how
+//! much of the frame the window's thread was running, and `core` is whether it ended on one of the
+//! machine's fastest processors (`P`) or a slower one (`E`). Each name after the bar is one phase of the
+//! frame.
 //!
 //! It is a **diagnostic and not a test**, for the reason `frame_cost` gives: a threshold in
 //! milliseconds would be a different number on every machine. What it buys is that the next person
@@ -52,6 +55,9 @@ struct Recording {
     /// How long between the last frame ending and this one starting: egui's own work, the graphics
     /// card, and the wait. Absent on the first frame, which has nothing before it.
     outside: Option<f64>,
+    /// The thread's processor time when the frame began, so the line can say how much of the frame's
+    /// time the thread was running. See [`thread_clock`](crate::services::thread_clock).
+    cpu_began: Option<f64>,
 }
 
 thread_local! {
@@ -114,6 +120,7 @@ pub fn begin() {
             }),
             allocations: crate::services::allocation_trace::snapshot(),
             outside,
+            cpu_began: crate::services::thread_clock::thread_cpu_ms(),
         });
     });
 }
@@ -165,6 +172,21 @@ pub fn end() {
     if let Some(outside) = recording.outside {
         line.push_str(&format!(" outside {outside:.3}"));
     }
+    // When the frame ended, on the clock every other program reads, so a harness can line a frame up
+    // with what it sent and when.
+    if let Ok(since) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+        line.push_str(&format!(" at {:.3}", since.as_secs_f64() * 1000.0));
+    }
+    // How much of the frame the thread was actually running, and on which kind of processor it ended.
+    // `frame` minus `cpu` is the time it waited, which on a busy machine is the time other programs had.
+    if let (Some(began), Some(now)) =
+        (recording.cpu_began, crate::services::thread_clock::thread_cpu_ms())
+    {
+        line.push_str(&format!(" cpu {:.3}", (now - began).max(0.0)));
+    }
+    if let Some(kind) = crate::services::thread_clock::processor_kind() {
+        line.push_str(&format!(" core {kind}"));
+    }
     line.push_str(" |");
     for (name, took, allocations) in &recording.phases {
         line.push_str(&format!(" {name} {took:.3}"));
@@ -198,6 +220,31 @@ pub fn mark(name: &str) {
     let since = STARTED.get_or_init(Instant::now).elapsed().as_secs_f64() * 1000.0;
     if let Ok(mut writer) = sink.lock() {
         let _ = writeln!(writer, "mark {name} {since:.3}");
+        let _ = writer.flush();
+    }
+}
+
+/// Note that something arrived from outside the window, with the time on the clock every other program
+/// reads, in milliseconds since 1970: `event <name> <detail> <ms>`.
+///
+/// A frame line's `at` is on the same clock, so how long the window took to answer something is the `at`
+/// of the frame that answered it minus this. It may be called from any thread, which is what makes it the
+/// answer for a command from `unluminous-cli`: the socket thread notes it the moment the request is read,
+/// before anything about the window's own thread has had a chance to be slow. `task-2288`.
+///
+/// @param name - what arrived, one word
+/// @param detail - which one, such as the command's name; its spaces are written as underscores
+pub fn event(name: &str, detail: &str) {
+    if !WATCHING.load(Ordering::Relaxed) {
+        return;
+    }
+    let Some(sink) = sink() else { return };
+    let Ok(since) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) else {
+        return;
+    };
+    let detail = detail.replace(char::is_whitespace, "_");
+    if let Ok(mut writer) = sink.lock() {
+        let _ = writeln!(writer, "event {name} {detail} {:.3}", since.as_secs_f64() * 1000.0);
         let _ = writer.flush();
     }
 }

@@ -540,6 +540,8 @@ fn read_and_queue(
         patience: deadline,
     };
     health.queued.fetch_add(1, Ordering::SeqCst);
+    // When it arrived, for a harness measuring how long the window took to answer it.
+    crate::services::frame_trace::event("control", &command);
     if sender.send(pending).is_err() {
         health.queued.fetch_sub(1, Ordering::SeqCst);
         let _ = stream.set_nonblocking(false);
