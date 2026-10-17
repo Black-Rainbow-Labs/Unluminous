@@ -106,3 +106,17 @@ history.
 row that ships is `http://127.0.0.1:8080/v1/chat/completions`, which is the machine's own llama
 server — a shared resource. A plugin settings file needs `providers = N` at the top of it or every
 `provider.N.*` row in it is ignored and the three shipped rows are used instead, silently.
+
+## A release cut from a worktree fails its changelog check on line endings (`task-2288`)
+
+A fresh worktree has `CHANGELOG.md` with carriage returns, and `node tools/changelog.mjs` writes it without, so
+`release.ps1`'s first step (`changelog.mjs --check`) refused 0.97.0 with "CHANGELOG.md is not what the history
+says" although its released sections were word for word the same. Run `node tools/changelog.mjs` in the worktree,
+commit it as `task-N: the changelog`, push, and release. The release also closes the person's own Unluminous to
+install over it and does not open it again, so say so when you hand back.
+
+## Timing the window needs the processors to yourself (`task-2288`)
+
+`tools/perf-smooth/` measures how the window behaves while the machine is loaded, and its load is a known shape.
+A `cargo build` or test run beside it is extra load on whichever build happened to be running and makes the
+comparison wrong. Run nothing else while a round runs, and run a no change control in every round.
