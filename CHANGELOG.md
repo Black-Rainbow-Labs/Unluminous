@@ -6,7 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 0.94.0 — 2026-10-17
+## Unreleased
+
+- A Realm node's ports show while the pointer is within 150 points of them (`task-2282`)
+
+## 0.94.0 — 2026-10-16
 
 - No square edge outside the window's corners, the macOS mark opens its menu, and button words stay inside their buttons (`task-2282`)
 - The Designer has Browse and Comment, and no Select (`task-2282`)
