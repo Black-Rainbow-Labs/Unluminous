@@ -43,6 +43,14 @@ pub const NODE_HEADER: f32 = 30.0;
 pub const NODE_RADIUS: f32 = 16.0;
 /// How far a port sticks out of a node's edge, and how big it is.
 pub const PORT: f32 = 6.0;
+/// How near the pointer has to come to a port, in screen points, before the port is drawn (`task-2282`).
+///
+/// *"the connectors for nodes shouldn't always be visible. They should show up when my mouse gets within
+/// 100 px or so to them, like a hover in/out."* A port is still there to be pulled while it is hidden, and
+/// the pointer is always within this distance of it before it can be.
+pub const PORT_REVEAL: f32 = 100.0;
+/// How long a port takes to fade in or out, in seconds.
+const PORT_FADE: f32 = 0.15;
 /// How near an edge the pointer has to be to take hold of it, in screen points.
 pub const GRIP_REACH: f32 = 6.0;
 /// The dot grid's spacing, in world points.
@@ -944,11 +952,24 @@ fn show_the_ports(
     // Drawn into the pane's canvas in screen points, so a port is a disc of the same size however far
     // the canvas is zoomed out — a port a point and a half wide is a port nobody can hit.
     let on_screen = |world: Pos2| framing.on_screen.min + (world - node.rect().min) * scale;
-    look.chrome.disc(on_screen(output), PORT, Fill::Solid(look_accent()));
-    look.chrome.ring(on_screen(output), PORT, 1.5, look.card);
+    // **Shown only while the pointer is near it** (`task-2282`), fading in and out. The output port also
+    // stays while its wire is being pulled, and every input port shows while a wire is in the air, so
+    // there is always somewhere visible to let it go.
+    let pointer = ui.ctx().pointer_hover_pos();
+    let near = |at: Pos2| pointer.is_some_and(|pointer| pointer.distance(at) <= PORT_REVEAL);
+    let out_shown = port_fade(
+        ui,
+        ("realm-port-out-shown", node.id),
+        near(on_screen(output)) || response.hovered() || response.dragged(),
+    );
+    let in_shown = port_fade(
+        ui,
+        ("realm-port-in-shown", node.id),
+        near(on_screen(input)) || framing.wire_is_looking,
+    );
     let input_fill = if over { look_accent() } else { color::text_faint() };
-    look.chrome.disc(on_screen(input), PORT, Fill::Solid(input_fill));
-    look.chrome.ring(on_screen(input), PORT, 1.5, look.card);
+    paint_a_port(ui, look, on_screen(output), output, scale, look_accent(), out_shown);
+    paint_a_port(ui, look, on_screen(input), input, scale, input_fill, in_shown);
     if over {
         look.chrome.glow(
             Rect::from_center_size(on_screen(input), Vec2::splat(PORT * 2.0)),
@@ -957,14 +978,50 @@ fn show_the_ports(
             6.0,
         );
     }
-    // **And into the node's own layer, always** (`task-2200`). The canvas is underneath every node layer, and
-    // since a node paints its card into its layer (see [`cover`]) the half of each port inside the node's
-    // edge was hidden by the node's own card. The same disc and ring at the same screen size, converted to
-    // the layer's world points, which is also the flat form for a canvas with the decoration switched off.
+}
+
+/// How far a port has faded in, from 0 hidden to 1 shown, moving towards `shown` over [`PORT_FADE`].
+///
+/// @param ui - the node's `Ui`, whose context keeps the fade between frames
+/// @param id - the port's own name
+/// @param shown - whether the port should be showing
+fn port_fade(ui: &egui::Ui, id: impl std::hash::Hash + std::fmt::Debug, shown: bool) -> f32 {
+    ui.ctx().animate_bool_with_time(ui.id().with(id), shown, PORT_FADE)
+}
+
+/// One port: a disc with a ring the card's colour, at `opacity`, or nothing while it is faded right out.
+///
+/// It goes into the pane's canvas in screen points, and **into the node's own layer as well**
+/// (`task-2200`): the canvas is underneath every node layer, and since a node paints its card into its layer
+/// (see [`cover`]) the half of each port inside the node's edge was hidden by the node's own card. The
+/// same disc and ring at the same screen size, converted to the layer's world points, which is also the
+/// flat form for a canvas with the decoration switched off.
+///
+/// @param ui - the node's `Ui`
+/// @param look - the canvas being recorded into
+/// @param screen - the port's centre in screen points
+/// @param world - the port's centre in world points
+/// @param scale - screen points to a world point
+/// @param fill - the disc's colour
+/// @param opacity - how far it has faded in
+fn paint_a_port(
+    ui: &egui::Ui,
+    look: Look<'_>,
+    screen: Pos2,
+    world: Pos2,
+    scale: f32,
+    fill: Color32,
+    opacity: f32,
+) {
+    if opacity <= 0.01 {
+        return;
+    }
+    let fill = fill.gamma_multiply(opacity);
+    let card = look.card.gamma_multiply(opacity);
+    look.chrome.disc(screen, PORT, Fill::Solid(fill));
+    look.chrome.ring(screen, PORT, 1.5, card);
     let radius = PORT / scale.max(0.01);
-    let ring = egui::Stroke::new(1.5 / scale.max(0.01), look.card);
-    ui.painter().circle(output, radius, look_accent(), ring);
-    ui.painter().circle(input, radius, input_fill, ring);
+    ui.painter().circle(world, radius, fill, egui::Stroke::new(1.5 / scale.max(0.01), card));
 }
 
 /// The eight invisible grips round a node's edge.

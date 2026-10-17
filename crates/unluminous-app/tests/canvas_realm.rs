@@ -472,6 +472,58 @@ fn pulling_a_wire_from_one_port_to_another_connects_the_two_nodes() {
     assert!(harness.state().realm.realm.may_reach(from, to), "and it grants what a wire grants");
 }
 
+/// `task-2282`: *"the connectors for nodes shouldn't always be visible. They should show up when my mouse
+/// gets within 100 px or so to them, like a hover in/out."* A port is drawn only while the pointer is within
+/// `PORT_REVEAL` screen points of it, and it can still be pulled from the moment the pointer reaches it.
+#[test]
+fn a_port_shows_only_while_the_pointer_is_near_it() {
+    let mut harness = harness("");
+    did(&mut harness, "realm show");
+    did(&mut harness, "realm add folder --x 40 --y 60 --width 260 --height 200");
+    steady(&mut harness);
+    let out = on_the_canvas(&harness, egui::pos2(300.0, 160.0));
+    // The half of the disc outside the node's edge, clear of the chosen node's blue ring along it.
+    let port = egui::Rect::from_min_max(
+        egui::pos2(out.x + 2.0, out.y - 5.0),
+        egui::pos2(out.x + 7.0, out.y + 5.0),
+    );
+    let reveal = unluminous_app::components::realm::PORT_REVEAL;
+
+    let far = egui::pos2(out.x, out.y + reveal + 120.0);
+    harness.input_mut().events.push(egui::Event::PointerMoved(far));
+    steady(&mut harness);
+    let hidden = accent_in(&mut harness, port);
+    assert!(
+        hidden < 5,
+        "with the pointer far away the output port is not drawn: {hidden} blue pixels"
+    );
+
+    let near = egui::pos2(out.x + 40.0, out.y + 40.0);
+    harness.input_mut().events.push(egui::Event::PointerMoved(near));
+    steady(&mut harness);
+    let shown = accent_in(&mut harness, port);
+    assert!(shown > 15, "with the pointer near it the output port is drawn: {shown} blue pixels");
+
+    harness.input_mut().events.push(egui::Event::PointerMoved(far));
+    steady(&mut harness);
+    let gone = accent_in(&mut harness, port);
+    assert!(gone < 3, "and it goes again when the pointer leaves: {gone} blue pixels");
+}
+
+/// How many pixels inside `rect` are the canvas's blue, which a live wire and an output port are drawn in.
+fn accent_in(harness: &mut Harness<'static, UnluminousApp>, rect: egui::Rect) -> usize {
+    let image = harness.render().expect("render the window");
+    let scale = image.width() as f32 / WINDOW[0];
+    image
+        .enumerate_pixels()
+        .filter(|(x, y, _)| rect.contains(egui::pos2(*x as f32 / scale, *y as f32 / scale)))
+        .filter(|(_, _, pixel)| {
+            let [r, _, b, _] = pixel.0;
+            b > 150 && b as i32 > r as i32 + 60
+        })
+        .count()
+}
+
 /// A wire let go over empty canvas connects nothing, which is the promise every drag in Unluminous makes.
 #[test]
 fn a_wire_let_go_over_nothing_is_a_drag_that_was_thought_better_of() {
