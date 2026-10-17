@@ -206,7 +206,7 @@ mod tests {
             for second in first + 1..theme.series.len() {
                 assert_ne!(
                     theme.series[first], theme.series[second],
-                    "series {first} and {second} are the same colour"
+                    "series {first} and {second} are the same color"
                 );
             }
         }

@@ -1364,7 +1364,7 @@ fn swatch(
             egui::WidgetType::Button,
             ui.is_enabled(),
             chosen,
-            format!("{what} colour {colour}"),
+            format!("{what} color {colour}"),
         )
     });
     response.clicked()

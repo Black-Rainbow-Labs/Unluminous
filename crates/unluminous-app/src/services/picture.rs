@@ -382,11 +382,7 @@ mod tests {
         let smaller = shrink_to_fit(wide, 2048);
         assert_eq!(smaller.size, [2048, 512], "no side past the limit, and the shape is kept");
         assert_eq!(smaller.pixels.len(), 2048 * 512);
-        assert_eq!(
-            smaller.pixels[0],
-            egui::Color32::from_rgb(10, 20, 30),
-            "and the colour with it"
-        );
+        assert_eq!(smaller.pixels[0], egui::Color32::from_rgb(10, 20, 30), "and the color with it");
     }
 
     #[test]

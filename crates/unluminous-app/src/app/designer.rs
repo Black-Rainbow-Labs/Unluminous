@@ -247,7 +247,11 @@ impl UnluminousApp {
 
     /// One sentence in the middle of a design tab that cannot be drawn.
     fn say_in_a_design_tab(&self, ui: &egui::Ui, area: Rect, said: &str) -> bool {
-        ui.painter().rect_filled(area, 0, crate::theme::color::editor());
+        ui.painter().rect_filled(
+            area,
+            0,
+            crate::theme::pane_ground(crate::theme::color::editor(), self.settings.opacity),
+        );
         crate::app::realm_nodes::say_in_a_node(ui, area, u64::MAX - 2, said);
         false
     }

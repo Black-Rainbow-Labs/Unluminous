@@ -121,15 +121,22 @@ pub fn top_on_baseline(painter: &Painter, font: &FontId, baseline_y: f32) -> f32
     }
 }
 
-/// From the top of a galley, where its first glyph's ink starts and where its baseline is.
+/// From the top of a galley, where its first glyph's ink starts and where it ends.
 ///
-/// `Glyph::pos` is the baseline relative to its row, and `uv_rect.offset` is where the ink starts relative
-/// to that, which is the sum `epaint`'s own tessellator makes when it places the glyph.
+/// `uv_rect.offset` is where the ink starts relative to `Glyph::pos`, which is the sum `epaint`'s own
+/// tessellator makes when it places the glyph, and `uv_rect.size` is how tall the ink is. For an `H` the end
+/// of the ink is the baseline the letters are drawn on.
+///
+/// **The end is read off the ink and not off `Glyph::pos`** (`task-2287`). `Glyph::pos` is the face's
+/// ascent, before the face's `y_offset` tweak, and `theme::centred_in_its_row` gives the interface face a
+/// tweak that moves its glyphs down by up to a fifth of an em. The tweak moves the ink and leaves
+/// `Glyph::pos` where it was, so a band ending at `Glyph::pos` ended about two points above the real
+/// baseline, and every word centred on it sat about a point and a quarter below the middle of its chip.
 fn capital_band(galley: &Galley) -> Option<(f32, f32)> {
     let row = galley.rows.first()?;
     let glyph = row.row.glyphs.first()?;
-    let baseline = row.pos.y + glyph.pos.y;
-    let cap = baseline + glyph.uv_rect.offset.y;
+    let cap = row.pos.y + glyph.pos.y + glyph.uv_rect.offset.y;
+    let baseline = cap + glyph.uv_rect.size.y;
     (baseline > cap).then_some((cap, baseline))
 }
 
@@ -407,6 +414,51 @@ mod tests {
         }
     }
 
+    /// The ink of an `H` placed with `top_centring_capitals` is centred on the row, in a face whose glyphs a
+    /// `y_offset` tweak has moved down. `task-2287`: the band used to end at `Glyph::pos`, which the tweak does
+    /// not move, so every word centred by it was drawn about a point and a quarter low. What is measured here
+    /// is the atlas's own pixels, not the arithmetic the helper does, so the test cannot agree with a wrong
+    /// helper the way the one above can.
+    #[test]
+    fn the_ink_of_a_capital_is_centred_in_a_face_moved_down_by_a_tweak() {
+        let mut definitions = egui::FontDefinitions::default();
+        let name = definitions.families[&egui::FontFamily::Proportional][0].clone();
+        let mut face = (*definitions.font_data[&name]).clone();
+        face.tweak.y_offset_factor = 0.15;
+        definitions.font_data.insert(name, std::sync::Arc::new(face));
+        let context = egui::Context::default();
+        context.set_fonts(definitions);
+        for scale in [1.0_f32, 1.6] {
+            context.set_pixels_per_point(scale);
+            let mut output = context.run_ui(egui::RawInput::default(), |_| {});
+            output.textures_delta.clear();
+            let painter =
+                Painter::new(context.clone(), egui::LayerId::background(), Rect::EVERYTHING);
+            for size in [12.5_f32, 20.0] {
+                let font = FontId::proportional(size);
+                let top = top_centring_capitals(&painter, &font, 100.0);
+                let probe = painter.layout_no_wrap("H".to_owned(), font, Color32::WHITE);
+                let row = &probe.rows[0];
+                let glyph = &row.row.glyphs[0];
+                let uv = glyph.uv_rect;
+                let image = context.fonts(|fonts| fonts.image());
+                let inked: Vec<u16> = (uv.min[1]..uv.max[1])
+                    .filter(|y| {
+                        (uv.min[0]..uv.max[0]).any(|x| image[(x as usize, *y as usize)].a() > 128)
+                    })
+                    .collect();
+                let first = f32::from(inked[0] - uv.min[1]) / scale;
+                let last = f32::from(inked[inked.len() - 1] - uv.min[1] + 1) / scale;
+                let ink_top = top + row.pos.y + glyph.pos.y + uv.offset.y;
+                let middle = ink_top + (first + last) / 2.0;
+                assert!(
+                    (middle - 100.0).abs() <= 0.5,
+                    "{size} at {scale}: the ink's middle is {middle}"
+                );
+            }
+        }
+    }
+
     /// Words of any size placed with `top_on_baseline` have their baseline where they were asked to.
     /// `task-2268`: the debugger's inline values, set smaller than the code, sat below its baseline.
     #[test]
@@ -581,7 +633,7 @@ mod tests {
         let highlight = visuals.selection.bg_fill;
         assert!(
             row.mesh.vertices.iter().any(|vertex| vertex.color == highlight),
-            "in the selection colour"
+            "in the selection color"
         );
         let unselected = plain.clone();
         let mut shape =

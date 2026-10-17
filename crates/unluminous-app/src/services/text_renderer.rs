@@ -1322,7 +1322,7 @@ mod tests {
         let renderer = TextRenderer::new();
         let style =
             CharStyle { family: renderer.default_family().as_str().into(), ..CharStyle::default() };
-        let first = renderer.glyph('A', &style).expect("A should rasterise");
+        let first = renderer.glyph('A', &style).expect("A should rasterize");
         let second = renderer.glyph('A', &style).expect("A should still be there");
         assert_eq!(renderer.atlas.borrow().entries.len(), 1, "asked twice, stored once");
         assert_eq!(first.uv, second.uv, "the same glyph comes back from the same place");
@@ -1338,8 +1338,8 @@ mod tests {
             ..CharStyle::default()
         };
         let large = CharStyle { size: 40.0, ..small.clone() };
-        let small_glyph = renderer.glyph('B', &small).expect("rasterise at 12");
-        let large_glyph = renderer.glyph('B', &large).expect("rasterise at 40");
+        let small_glyph = renderer.glyph('B', &small).expect("rasterize at 12");
+        let large_glyph = renderer.glyph('B', &large).expect("rasterize at 40");
         assert_eq!(renderer.atlas.borrow().entries.len(), 2);
         assert!(large_glyph.size.y > small_glyph.size.y, "40 point should be taller than 12 point");
     }
@@ -1450,7 +1450,7 @@ mod crispness_tests {
     #[test]
     fn the_atlas_is_asked_for_the_size_a_glyph_is_seen_at() {
         let doubled = Crispness::at(2.0);
-        assert_eq!(doubled.raster_size(12.0), 24.0, "rasterised at the size it is composited at");
+        assert_eq!(doubled.raster_size(12.0), 24.0, "rasterized at the size it is composited at");
         let glyph = AtlasGlyph {
             uv: egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
             size: egui::vec2(20.0, 30.0),
@@ -1513,7 +1513,7 @@ mod crispness_tests {
             let scale = Crispness::at(zoom).raster_size(16.0) / 16.0;
             assert!(
                 scale >= zoom.min(2.5) - 0.001,
-                "at a camera of {zoom} the glyph was rasterised at {scale} of its layout size"
+                "at a camera of {zoom} the glyph was rasterized at {scale} of its layout size"
             );
             zoom *= 1.1;
         }
@@ -1582,7 +1582,7 @@ mod crispness_tests {
             let crispness = Crispness::through(still, 1.0);
             assert!(
                 (crispness.raster_size(16.0) - 16.0 * zoom).abs() < 0.001,
-                "a still camera at {zoom} rasterised at {}",
+                "a still camera at {zoom} rasterized at {}",
                 crispness.raster_size(16.0) / 16.0
             );
             let gliding = Compositing { settled: false, ..still };

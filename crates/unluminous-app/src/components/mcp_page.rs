@@ -194,7 +194,7 @@ fn server_card(
             }
         });
         let help = format!(
-            "Which parts of the catalogue this offers, such as editor,git. Empty offers everything.\n{} tools. \
+            "Which parts of the catalog this offers, such as editor,git. Empty offers everything.\n{} tools. \
              One an area names every command Unluminous has for about a third of the context one a command \
              costs; one a command lets an agent permit a single tool by name.",
             unluminous_cli::mcp::tools::tools(settings.mcp_tools).len()

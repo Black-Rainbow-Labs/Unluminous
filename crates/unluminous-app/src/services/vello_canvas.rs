@@ -1297,7 +1297,7 @@ mod tests {
                 let hue_of = |c: Color32| (i32::from(c.r()) - i32::from(c.b())).abs();
                 assert!(
                     hue_of(colour) <= hue_of(surface),
-                    "{colour:?} is more coloured than the surface it belongs to"
+                    "{colour:?} is more colored than the surface it belongs to"
                 );
             }
         }
@@ -1534,7 +1534,7 @@ mod tests {
         let ctx = egui::Context::default();
         let huge = rect(0.0, 0.0, 40_000.0, 40_000.0);
         assert!(canvas.texture_for(&ctx, egui::Id::new("test"), huge, 1.0, &items).is_none());
-        assert_eq!(canvas.rasterisations(), 0, "nothing that big is ever rasterised");
+        assert_eq!(canvas.rasterisations(), 0, "nothing that big is ever rasterized");
         // And an empty list is nothing to draw rather than an empty texture.
         assert!(canvas
             .texture_for(&ctx, egui::Id::new("test"), rect(0.0, 0.0, 10.0, 10.0), 1.0, &[])

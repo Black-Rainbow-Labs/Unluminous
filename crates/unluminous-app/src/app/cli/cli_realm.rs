@@ -632,7 +632,7 @@ impl UnluminousApp {
                         .realm
                         .realm
                         .change_shape(node, |held| held.fill = Some(colour))
-                        .map(|()| format!("Coloured it {}.", colour.to_hex())),
+                        .map(|()| format!("Colored it {}.", colour.to_hex())),
                     None => Err(format!("{value} is not a colour. Write #RRGGBB, #RRGGBBAA or theme.")),
                 },
             },
@@ -642,7 +642,7 @@ impl UnluminousApp {
                     .realm
                     .change_shape(node, |held| held.align = align)
                     .map(|()| format!("Its words are {}.", align.label().to_lowercase())),
-                None => Err(format!("Words are aligned left, centre or right, not {value}.")),
+                None => Err(format!("Words are aligned left, center or right, not {value}.")),
             },
             "valign" => match VAlign::from_name(&value) {
                 Some(valign) => self
@@ -677,7 +677,7 @@ impl UnluminousApp {
             }
             "pick" => self.pick_a_shapes_colour(node, &value),
             other => Err(format!(
-                "A shape takes view, text, colour, align, valign, size, kind, edit, done, pick or points, not {other}."
+                "A shape takes view, text, color, align, valign, size, kind, edit, done, pick or points, not {other}."
             )),
         };
         let said = match done {
@@ -749,11 +749,9 @@ impl UnluminousApp {
     fn pick_a_shapes_colour(&mut self, node: NodeId, value: &str) -> Result<String, String> {
         let open = self.realm.picking.as_ref().is_some_and(|picking| picking.node == node);
         match value.to_lowercase().as_str() {
-            "" => {
-                self.open_the_colour_picker(node).map(|()| "Opened the colour picker.".to_owned())
-            }
+            "" => self.open_the_colour_picker(node).map(|()| "Opened the color picker.".to_owned()),
             "apply" | "cancel" if !open => {
-                Err("The colour picker is not open on that shape.".to_owned())
+                Err("The color picker is not open on that shape.".to_owned())
             }
             "apply" => {
                 self.finish_the_colour_picker(true);
@@ -761,7 +759,7 @@ impl UnluminousApp {
             }
             "cancel" => {
                 self.finish_the_colour_picker(false);
-                Ok("Put the colour back.".to_owned())
+                Ok("Put the color back.".to_owned())
             }
             written => {
                 let Some(colour) = unluminous_core::Rgba::parse(written) else {

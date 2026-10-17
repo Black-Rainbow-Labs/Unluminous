@@ -316,7 +316,11 @@ impl UnluminousApp {
         // One canvas, drawn once: while a realm tab is showing in the editing area the panel says so rather
         // than drawing the same nodes a second time.
         if self.a_realm_tab_is_showing() {
-            ui.painter().rect_filled(below, 0, crate::theme::color::editor());
+            ui.painter().rect_filled(
+                below,
+                0,
+                crate::theme::pane_ground(crate::theme::color::editor(), self.settings.opacity),
+            );
             crate::app::realm_nodes::say_in_a_node(
                 ui,
                 below,
@@ -358,7 +362,14 @@ impl UnluminousApp {
         };
         self.settle_the_zoom(ui, body);
         let mut body_ui = ui.new_child(egui::UiBuilder::new().max_rect(body));
-        body_ui.set_clip_rect(body);
+        // Under glass the canvas stops at its glass panel, which stands in from the pane by
+        // `glass::PANE_GAP` (`task-2287`): a node's shadow and a wire were drawn over the panel's rim and
+        // into the gap between two panels. `clip_for_nodes` does the same for the nodes' own layers.
+        let inside = match crate::theme::is_glass() {
+            true => body.shrink(crate::theme::glass::PANE_GAP),
+            false => body,
+        };
+        body_ui.set_clip_rect(inside);
         realm_view::ground(&body_ui, body, &self.realm.realm.camera, look);
         // The slot the decoration is rasterised into, reserved after the ground and before anything
         // else — the rule `show_the_plugin_panes` records: a ground painted after it covers the very
@@ -400,7 +411,14 @@ impl UnluminousApp {
         // Coarser while the camera is moving, which is every frame of a pan or of a zoom gliding to where
         // it is going - `task-2218`. The frame it stops on is drawn at the full resolution.
         let moving = self.realm.glide.is_some() || self.realm.gesture == Gesture::Panning;
-        self.paint_the_chrome_while(ui, slot, egui::Id::new("realm-canvas"), body, &chrome, moving);
+        self.paint_the_chrome_while(
+            &body_ui,
+            slot,
+            egui::Id::new("realm-canvas"),
+            body,
+            &chrome,
+            moving,
+        );
         crate::services::frame_trace::phase("realm-chrome");
         self.zoom_over_a_panel(ui, dock::Panel::Realm, body);
     }

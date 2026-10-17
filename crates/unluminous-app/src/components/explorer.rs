@@ -392,13 +392,30 @@ pub fn show(
 
     // The filter box.
     let filter_rect = filter_field(area, &view, heading);
-    painter.rect(
-        filter_rect,
-        CornerRadius::same(size::CONTROL_CORNER),
-        color::field(),
-        Stroke::new(1.0, color::divider()),
-        egui::StrokeKind::Inside,
-    );
+    // Under glass the box is the carved well Agent-Chat's prompt is (`task-2287`), rather than a dark field
+    // with a hairline round it.
+    match crate::theme::is_glass() {
+        true => {
+            crate::components::chrome_kit::layer(ui, "explorer-filter", filter_rect, 6.0, |rux| {
+                let chat = rux.theme().chat;
+                rux.chrome.surface(
+                    filter_rect,
+                    filter_rect.height() / 2.0,
+                    chat.well,
+                    chat.carved(),
+                );
+            })
+        }
+        false => {
+            painter.rect(
+                filter_rect,
+                CornerRadius::same(size::CONTROL_CORNER),
+                color::field(),
+                Stroke::new(1.0, color::divider()),
+                egui::StrokeKind::Inside,
+            );
+        }
+    }
     icon::magnifier_at(
         &painter,
         Pos2::new(filter_rect.left() + view.at(13.0), filter_rect.center().y),
@@ -674,17 +691,18 @@ pub fn show(
         CornerRadius::ZERO,
         crate::theme::pane_ground(color::explorer_footer(), view.opacity),
     );
-    painter.line_segment(
-        [Pos2::new(footer.left(), footer.top()), Pos2::new(footer.right(), footer.top())],
-        Stroke::new(1.0, color::divider()),
-    );
-    let count = tree.file_count();
-    let files = if count == 1 { "1 file".to_owned() } else { format!("{count} files") };
-    let openable = tree.openable_count();
-    let mut text = files;
-    if openable < count {
-        text = format!("{text}  \u{00B7}  {openable} can be opened");
+    // Under glass the footer sits on the panel's own glass with no line over it (`task-2287`): a hairline
+    // across a glass panel reads as a crack in it.
+    if !crate::theme::is_glass() {
+        painter.line_segment(
+            [Pos2::new(footer.left(), footer.top()), Pos2::new(footer.right(), footer.top())],
+            Stroke::new(1.0, color::divider()),
+        );
     }
+    // How many files there are, and nothing more about them. `task-2287` took away how many of them can be
+    // opened, a second number nobody acted on.
+    let count = tree.file_count();
+    let mut text = if count == 1 { "1 file".to_owned() } else { format!("{count} files") };
     if view.unsaved {
         text = format!("{text}  \u{00B7}  1 unsaved");
     }
@@ -904,6 +922,22 @@ fn name_column(x: f32, view: View, mark: f32, folder: bool) -> f32 {
     }
 }
 
+/// The quiet fill behind the cursor's row, a chosen row and the row under the pointer.
+///
+/// Under glass it is a raised piece of glass, which is what a message in Agent-Chat sits on (`task-2287`):
+/// the flat control colour was a dark block on a glass panel. Everywhere else it is the flat fill it always was.
+fn quiet_pill(ui: &mut egui::Ui, pill: Rect, salt: impl std::hash::Hash + std::fmt::Debug) {
+    if !crate::theme::is_glass() {
+        ui.painter().rect_filled(pill, CornerRadius::same(5), color::control());
+        return;
+    }
+    crate::components::chrome_kit::layer(ui, ("explorer-row", salt), pill, 6.0, |rux| {
+        let chat = rux.theme().chat;
+        let radius = pill.height() / 2.0;
+        rux.chrome.surface(pill, radius, rux::Fill::gradient(chat.card, pill), chat.raised_sm());
+    });
+}
+
 /// A folder row: a triangle that points down when open, then the name.
 fn folder_row(
     ui: &mut egui::Ui,
@@ -923,7 +957,7 @@ fn folder_row(
     // A folder is never the file that is showing, so it has only the cursor's quiet mark. See the
     // note at the top of this file.
     if selected || chosen || response.hovered() {
-        ui.painter().rect_filled(pill, CornerRadius::same(5), color::control());
+        quiet_pill(ui, pill, ("folder", depth, name));
     }
     if selected && view.keyboard {
         ui.painter().rect_stroke(
@@ -1010,10 +1044,15 @@ fn file_row(
     // The pill is the file that is **showing**. The explorer's own cursor gets the quieter fill the
     // hover already uses, so two rows are never drawn as though both were open — `task-1693`, and
     // the note at the top of this file.
-    if open {
+    if open && crate::theme::is_glass() {
+        // The same glass as the quieter rows, washed with the accent so the open file still stands apart
+        // from a hovered one (`task-2287`).
+        quiet_pill(ui, pill, ("file-open", path));
+        ui.painter().rect_filled(pill, pill.height() / 2.0, color::accent().gamma_multiply(0.22));
+    } else if open {
         crate::components::controls::pill(ui.painter(), pill, 5);
     } else if selected || chosen || (response.hovered() && openable) {
-        ui.painter().rect_filled(pill, CornerRadius::same(5), color::control());
+        quiet_pill(ui, pill, ("file", path));
     }
     // The ring says where the keyboard is, which is the whole reason the explorer has a selection of
     // its own. Without it a person could not tell whether Delete would take a letter or a file.

@@ -76,11 +76,15 @@ const MODE_GAP: f32 = 2.0;
 /// buttons in a row.
 const GROUP_GAP: f32 = 10.0;
 
-/// How wide the panel behind the `F` button is. Wide enough for `One and a half` to sit beside the
-/// other two spacings without the row wrapping, which is the longest thing in it.
+/// The least the panel behind the `F` button is wide. It grows past this when its words need more, see
+/// [`panel_layout`].
 const PANEL: f32 = 316.0;
-/// The column the labels down the left of the panel take.
+/// The least room the labels down the left of the panel take.
 const PANEL_LABEL: f32 = 78.0;
+/// What the panel's frame takes from its width, both sides together.
+const PANEL_MARGIN: f32 = 12.0;
+/// The four labels down the left of the panel.
+const PANEL_LABELS: [&str; 4] = ["Format", "Color", "Alignment", "Line spacing"];
 /// From the middle of one row of the panel to the middle of the next.
 const PANEL_ROW: f32 = 34.0;
 
@@ -154,7 +158,7 @@ pub fn show(
         let paint =
             |ui: &mut egui::Ui, open: bool, hovered: bool| options_chip(ui, button, open, hovered);
         if let Some(commands) =
-            controls::flyout_drawn(ui, button, "Text options", paint, PANEL, |panel| {
+            controls::flyout_drawn(ui, button, "Text options", paint, panel_layout(ui).1, |panel| {
                 text_options(panel, document, bold_family)
             })
         {
@@ -232,9 +236,12 @@ fn text_options(
     // The panel is painted at absolute positions inside one reserved rectangle, which is how
     // everything else in Unluminous is drawn. The rule between the two halves adds its own gap.
     let rule_gap = 11.0;
-    let (area, _) =
-        ui.allocate_exact_size(Vec2::new(PANEL - 12.0, PANEL_ROW * 4.0 + rule_gap), Sense::hover());
-    let left = area.left() + PANEL_LABEL;
+    let (label_column, panel) = panel_layout(ui);
+    let (area, _) = ui.allocate_exact_size(
+        Vec2::new(panel - PANEL_MARGIN, PANEL_ROW * 4.0 + rule_gap),
+        Sense::hover(),
+    );
+    let left = area.left() + label_column;
     let mut middle = area.top() + PANEL_ROW / 2.0;
 
     // Bold, italic, underline and strikethrough. Each glyph carries the formatting it applies.
@@ -256,14 +263,14 @@ fn text_options(
     middle += PANEL_ROW;
 
     // The colours, as circles with a ring round the chosen one.
-    controls::row_label(ui.painter(), Pos2::new(area.left(), middle), "Colour");
+    controls::row_label(ui.painter(), Pos2::new(area.left(), middle), "Color");
     let mut pen = left + 4.0;
     for (name, swatch) in COLORS {
         let centre = Pos2::new(pen + 8.0, middle);
         let hit = Rect::from_center_size(centre, Vec2::splat(24.0));
         let response = ui
             .interact(hit, ui.id().with(("colour", name)), Sense::click())
-            .with_hint(format!("Colour: {name}"));
+            .with_hint(format!("Color: {name}"));
         let chosen = style.color == *swatch;
         let painter = ui.painter();
         // Through `theme::ink`, so the first swatch shows the ink it really puts on the page: white on a
@@ -318,6 +325,26 @@ fn text_options(
     }
 
     commands
+}
+
+/// How wide the label column is and how wide the whole panel is, measured in the interface's face.
+///
+/// `task-2287`: both were fixed numbers, worked out for a proportional face. In a monospaced interface face
+/// `Line spacing` ran into its buttons and `Double` ran past the panel's right edge. So the label column is
+/// the widest label and a gap, and the panel is as wide as the line spacing row needs, never less than it was.
+fn panel_layout(ui: &egui::Ui) -> (f32, f32) {
+    let painter = ui.painter();
+    let label = PANEL_LABELS
+        .iter()
+        .map(|name| {
+            let font = egui::FontId::proportional(11.5);
+            painter.layout_no_wrap((*name).to_owned(), font, color::text_dim()).size().x
+        })
+        .fold(0.0_f32, f32::max);
+    let label_column = (label + 12.0).max(PANEL_LABEL).ceil();
+    let spacings: f32 = SPACINGS.iter().map(|(name, _)| spacing_width(ui, name) + 6.0).sum();
+    let panel = (label_column + spacings - 6.0 + PANEL_MARGIN).max(PANEL).ceil();
+    (label_column, panel)
 }
 
 /// How wide the button for one line spacing has to be to hold its name.

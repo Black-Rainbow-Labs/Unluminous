@@ -194,7 +194,7 @@ impl UnluminousApp {
         let text = self.files.at(index).document.text().to_string();
         if text.len() > Self::COLOUR_LIMIT {
             self.message = Some(format!(
-                "{} is too large to colour, so it is shown as plain text.",
+                "{} is too large to color, so it is shown as plain text.",
                 path.display()
             ));
             self.files.at_mut(index).coloured_revision = Some(revision);

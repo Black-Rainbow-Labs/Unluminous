@@ -625,13 +625,13 @@ mod tests {
         // The left edge out by 40, which is a *negative* movement: the right edge must not move.
         let west = after(ResizeDirection::West, Vec2::new(-40.0, 0.0));
         assert_eq!(west.left(), 60.0, "the left edge did not follow the pointer");
-        assert_eq!(west.right(), window.right(), "the right edge travelled");
+        assert_eq!(west.right(), window.right(), "the right edge traveled");
         assert_eq!(west.width(), 840.0);
 
         // And the top edge down by 30, which is the pair of the case above on the other axis.
         let north = after(ResizeDirection::North, Vec2::new(0.0, 30.0));
         assert_eq!(north.top(), 80.0);
-        assert_eq!(north.bottom(), window.bottom(), "the bottom edge travelled");
+        assert_eq!(north.bottom(), window.bottom(), "the bottom edge traveled");
         assert_eq!(north.height(), 570.0);
 
         // A corner moves two edges and leaves the opposite corner alone.
@@ -652,13 +652,13 @@ mod tests {
             Edges::of(ResizeDirection::North).moved_by(window, Vec2::new(0.0, 400.0), smallest);
         assert_eq!(size, Vec2::new(400.0, 240.0), "the height went under the floor");
         assert_eq!(at.y, 110.0, "the window slid further than the edge could move");
-        assert_eq!(at.y + size.y, window.bottom(), "and the bottom edge travelled");
+        assert_eq!(at.y + size.y, window.bottom(), "and the bottom edge traveled");
 
         // The same on the other axis and the other side of the window.
         let (at, size) =
             Edges::of(ResizeDirection::West).moved_by(window, Vec2::new(400.0, 0.0), smallest);
         assert_eq!(size.x, 320.0);
-        assert_eq!(at.x + size.x, window.right(), "the right edge travelled");
+        assert_eq!(at.x + size.x, window.right(), "the right edge traveled");
     }
 
     /// **A pane divider keeps its own points**, which is the second half of `task-2062`. Measured on a
@@ -900,7 +900,7 @@ mod tests {
         });
         // egui insists a pass's texture changes are taken or cleared before the output is dropped.
         output.textures_delta.clear();
-        assert_eq!(answer, None, "a maximised window has no size to change");
+        assert_eq!(answer, None, "a maximized window has no size to change");
     }
 }
 

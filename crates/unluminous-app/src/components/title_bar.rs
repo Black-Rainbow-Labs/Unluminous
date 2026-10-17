@@ -126,7 +126,7 @@ fn window_buttons(area: Rect, placement: MenuPlacement) -> [(Rect, &'static str)
                     Pos2::new(area.right() - WINDOWS_BUTTON * (2.0 - index), area.bottom()),
                 )
             };
-            [(strip(0.0), "Minimise"), (strip(1.0), "Maximise"), (strip(2.0), "Close")]
+            [(strip(0.0), "Minimize"), (strip(1.0), "Maximize"), (strip(2.0), "Close")]
         }
         MenuPlacement::Native => {
             let light = |index: f32| {
@@ -138,7 +138,7 @@ fn window_buttons(area: Rect, placement: MenuPlacement) -> [(Rect, &'static str)
                     Vec2::splat(LIGHT + 4.0),
                 )
             };
-            [(light(0.0), "Close"), (light(1.0), "Minimise"), (light(2.0), "Maximise")]
+            [(light(0.0), "Close"), (light(1.0), "Minimize"), (light(2.0), "Maximize")]
         }
     }
 }
@@ -406,13 +406,13 @@ fn windows_buttons(
         let centre = rect.center();
         let stroke = Stroke::new(1.0, tint);
         match *label {
-            "Minimise" => {
+            "Minimize" => {
                 painter.line_segment(
                     [centre + Vec2::new(-4.5, 0.0), centre + Vec2::new(4.5, 0.0)],
                     stroke,
                 );
             }
-            "Maximise" => {
+            "Maximize" => {
                 painter.rect_stroke(
                     Rect::from_center_size(centre, Vec2::splat(9.0)),
                     1.5,
@@ -438,7 +438,7 @@ fn windows_buttons(
         if response.clicked() {
             match *label {
                 "Close" => outcome.close = true,
-                "Minimise" => outcome.minimise = true,
+                "Minimize" => outcome.minimise = true,
                 _ => outcome.toggle_maximise = true,
             }
         }
@@ -460,7 +460,7 @@ fn traffic_lights(
             .with_hint(*label);
         let fill = match *label {
             "Close" => color::close(),
-            "Minimise" => color::minimise(),
+            "Minimize" => color::minimise(),
             _ => color::maximise(),
         };
         let painter = ui.painter();
@@ -482,7 +482,7 @@ fn traffic_lights(
                         stroke,
                     );
                 }
-                "Minimise" => {
+                "Minimize" => {
                     painter.line_segment(
                         [centre + Vec2::new(-3.0, 0.0), centre + Vec2::new(3.0, 0.0)],
                         stroke,
@@ -506,7 +506,7 @@ fn traffic_lights(
         if response.clicked() {
             match *label {
                 "Close" => outcome.close = true,
-                "Minimise" => outcome.minimise = true,
+                "Minimize" => outcome.minimise = true,
                 // The green light takes the window full screen on macOS, where full screen is a space of
                 // its own.
                 _ => outcome.toggle_fullscreen = true,
@@ -548,7 +548,7 @@ mod tests {
     fn the_windows_buttons_are_three_strips_at_the_right_hand_end_the_height_of_the_bar() {
         let area = bar();
         let buttons = window_buttons(area, MenuPlacement::InWindow);
-        assert_eq!(buttons.map(|(_, name)| name), ["Minimise", "Maximise", "Close"]);
+        assert_eq!(buttons.map(|(_, name)| name), ["Minimize", "Maximize", "Close"]);
         assert_eq!(buttons[2].0.right(), area.right());
         for (rect, _) in buttons {
             assert_eq!(rect.width(), WINDOWS_BUTTON);
@@ -562,7 +562,7 @@ mod tests {
         let run = run_rect(area, MenuPlacement::Native, 120.0);
         assert!(run.right() > area.right() - 30.0, "near the right hand edge");
         let lights = window_buttons(area, MenuPlacement::Native);
-        assert_eq!(lights.map(|(_, name)| name), ["Close", "Minimise", "Maximise"]);
+        assert_eq!(lights.map(|(_, name)| name), ["Close", "Minimize", "Maximize"]);
         assert!(run.left() > lights[2].0.right(), "clear of the lights");
     }
 

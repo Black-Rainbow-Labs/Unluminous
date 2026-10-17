@@ -855,7 +855,7 @@ fn theme_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings, plugins: &
         ui,
         &mut column,
         "Theme",
-        Some("A theme says what every colour in Unluminous's own palette means. One that names the nine token colours also recolours code, in every language at once, in the same frame."),
+        Some("A theme says what every color in Unluminous's own palette means. One that names the nine token colors also recolors code, in every language at once, in the same frame."),
         |card| {
             let height = 8.0 * 2.0 + themes.len() as f32 * 40.0 + themes.len().saturating_sub(1) as f32 * 4.0;
             card.custom(height, |rux, rect| {
@@ -951,7 +951,7 @@ fn theme_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings, plugins: &
             .collect();
         card.row(
             "Accent",
-            Some("One colour for everything the accent means: the caret, the open tab, an open folder and the line a program is stopped on. The first is whatever the theme chose."),
+            Some("One color for everything the accent means: the caret, the open tab, an open folder and the line a program is stopped on. The first is whatever the theme chose."),
             |row| {
                 let at = Pos2::new(row.x, row.top);
                 let (picked, rect) = kit::swatches(row.rux, at, &names, &colours, chosen);
@@ -1043,7 +1043,7 @@ fn editor_page(
         let (sizes, chosen) = options_with(sizes, &format!("{:.0}", settings.font_size));
         card.row(
             "Size",
-            Some("The font the editor sets every open file in. Bold, italic and colour stay as they were, and the size is also on the keyboard at Ctrl with plus and minus."),
+            Some("The font the editor sets every open file in. Bold, italic and color stay as they were, and the size is also on the keyboard at Ctrl with plus and minus."),
             |row| {
                 if let Some(index) = row.select("Editor font size", &sizes, chosen, 110.0) {
                     if let Ok(size) = sizes[index].parse::<f32>() {

@@ -102,7 +102,7 @@ fn main() {
         document.text().len_lines()
     );
     if let Some((tokenised, applied, count)) = coloured {
-        println!("  syntax highlight:        {tokenised:8.2} ms  ({count} coloured spans)");
+        println!("  syntax highlight:        {tokenised:8.2} ms  ({count} colored spans)");
         println!(
             "  set_syntax:              {applied:8.2} ms  ({} style spans after)",
             document.chars().span_count()
@@ -340,7 +340,7 @@ fn main() {
             ));
         });
         println!(
-            "  typing, coloured again:  {ms:8.2} ms  ({:.0} frames a second, {scanned} tokens read)",
+            "  typing, colored again:  {ms:8.2} ms  ({:.0} frames a second, {scanned} tokens read)",
             1000.0 / ms
         );
 

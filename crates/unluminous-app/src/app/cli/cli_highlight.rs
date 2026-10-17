@@ -472,7 +472,7 @@ impl UnluminousApp {
         let path = self.cli_path(named);
         let color = match entry.get("color").and_then(Value::as_str) {
             Some(name) => {
-                HighlightColor::parse(name).ok_or_else(|| format!("{name} is not a colour"))?
+                HighlightColor::parse(name).ok_or_else(|| format!("{name} is not a color"))?
             }
             None => HighlightColor::Yellow.rgba(),
         };

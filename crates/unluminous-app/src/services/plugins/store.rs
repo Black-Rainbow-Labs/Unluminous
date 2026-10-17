@@ -715,7 +715,7 @@ mod tests {
                 .any(|(el, lang)| el == "style" && lang.as_deref() == Some("css")),
             "the style block names css, which is what the window asks for"
         );
-        assert!(plugins.for_language("css").is_some(), "css is on, so the block is coloured");
+        assert!(plugins.for_language("css").is_some(), "css is on, so the block is colored");
         plugins.set_enabled(None, "css", false);
         assert!(plugins.for_language("css").is_none(), "and off, so it is not");
     }

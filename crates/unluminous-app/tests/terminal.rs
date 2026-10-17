@@ -967,6 +967,30 @@ fn the_environment_table_adds_edits_and_deletes_variables_and_stores_only_those_
     assert_eq!(configuration.environment(), vec![("DEBUG".to_owned(), "orphan".to_owned())]);
 }
 
+/// A key typed one letter at a time keeps every letter, a space included. `task-2287`: the table read its
+/// rows back out of the stored text on every frame, and reading trims, so a space typed at the end of a key
+/// was taken away before the next letter arrived.
+#[test]
+fn a_key_typed_a_letter_at_a_time_keeps_every_letter() {
+    let mut harness = harness("");
+    harness.state_mut().run_configurations.add_permanent(configuration("serve", "node server.js"));
+    harness.state_mut().run_selected = Some("serve".to_owned());
+    choose(&mut harness, Action::Run(RunAction::Edit));
+    harness.get_by_label("Add variable").click();
+    steady(&mut harness);
+    harness.get_by_label("Environment key 1").click();
+    steady(&mut harness);
+    for letter in ["M", "Y", " ", "V", "A", "R"] {
+        harness.get_by_label("Environment key 1").type_text(letter);
+        steady(&mut harness);
+    }
+    let shown = harness.get_by_label("Environment key 1").value().unwrap_or_default();
+    assert_eq!(shown, "MY VAR");
+    type_into(&mut harness, "Environment value 1", "1");
+    let stored = harness.state().run_configurations.find("serve").expect("serve").1.env.clone();
+    assert_eq!(stored, "MY VAR=1");
+}
+
 #[test]
 fn an_older_configuration_file_fills_the_table_and_a_new_key_field_takes_focus() {
     let mut harness = harness("");
@@ -1272,7 +1296,7 @@ fn every_run_command_reaches_the_window() {
         assert_ne!(
             reply.error.as_ref().map(|error| error.code.as_str()),
             Some("unknown"),
-            "`run {verb}` is in the catalogue and the window does not know it"
+            "`run {verb}` is in the catalog and the window does not know it"
         );
     }
 }

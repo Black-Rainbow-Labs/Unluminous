@@ -815,7 +815,7 @@ mod tests {
         assert_eq!(State::Finished.label(), "finished");
         assert_eq!(State::Failed(101).label(), "exit code 101");
         assert_eq!(State::Stopped.label(), "stopped");
-        assert_eq!(State::Failed(101).tint(), color::close(), "a bad code is in the error colour");
+        assert_eq!(State::Failed(101).tint(), color::close(), "a bad code is in the error color");
         assert_eq!(State::Running.tint(), color::git_added());
         assert!(State::Running.is_running());
         assert!(!State::Finished.is_running());

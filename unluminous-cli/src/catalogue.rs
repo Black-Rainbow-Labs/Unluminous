@@ -462,7 +462,7 @@ mod not_a_number {
     /// hovered, nothing was clicked, and nothing anywhere said why.
     #[test]
     fn a_number_that_is_not_finite_is_not_a_number() {
-        let command = find("input move").expect("input move is in the catalogue");
+        let command = find("input move").expect("input move is in the catalog");
         for written in ["nan", "NaN", "inf", "-inf", "infinity"] {
             let arguments: Map<String, Value> =
                 json!({ "x": written, "y": "10" }).as_object().expect("an object").clone();
@@ -569,9 +569,9 @@ pub fn area_title(area: &'static str) -> &'static str {
         "explorer" => "explorer — create, move and inspect the live project tree",
         "modal" => "modal — every dialog, driven the same way",
         "settings" => "settings — Edit -> Settings, by the names in the settings file",
-        "theme" => "theme — the colours the whole window is painted in",
+        "theme" => "theme — the colors the whole window is painted in",
         "background" => "background — the picture behind the window",
-        "plugins" => "plugins — the languages Unluminous colours, and the panes it draws",
+        "plugins" => "plugins — the languages Unluminous colors, and the panes it draws",
         "git" => "git — status, changed files and the Git menu",
         "action" => "action — every menu entry there is",
         "project" => "project — the folder this window is showing",
@@ -598,19 +598,19 @@ pub fn area_note(area: &'static str) -> &'static str {
         "notebook" => "Use this for any .ipynb file instead of editing its JSON or running Python in a shell. A notebook tab's text is its cells, one after another behind marker lines, so `editor text` reads every cell and `editor replace` edits one exactly as it does a file; these commands are for what text cannot do. `notebook run --wait` runs cells in a real Jupyter kernel started from the project's own Python and answers with what they printed, returned, raised and drew, and `notebook cell` reads one cell's outputs back, writing a plot to a PNG you can look at. Cells are numbered from 1 or named by `--id`. Saving writes the .ipynb, outputs included, which Jupyter, VS Code and PyCharm open.",
         "realm" => "If `UNLUMINOUS_REALM_NODE` is set in your environment you are running inside a node on this canvas, and `realm here` is the first thing to run: it says which node you are, which nodes you are wired to, and the command that drives each of them. `unluminous-cli` is on your PATH inside a node and already knows which window to drive, so `unluminous-cli realm here` is the whole command - no path and no `--instance`. (`$UNLUMINOUS_CLI` and `$UNLUMINOUS_INSTANCE` are set too, for a program that wants them.) You may act on the nodes you are wired to and no others, so every command you send carries `--from <your node>`. The Realm is a canvas you put nodes on: a terminal running a real shell, a web page, a folder tree, or a file editor with the editing area's own gutter, folding and find. A node is wired to another by connecting its output to that node's input, and a connection is what lets an agent running in a terminal node act on the node it is wired to - `realm browser`, `realm folder`, `realm editor` and `realm send` all take `--from` and are refused when there is no wire. The window's own agent passes no `--from` and may drive every node. Read `realm view --json` first: everything here names a node by the id it prints. Places and sizes are in canvas points, which are screen points at a zoom of 1.",
         "panel" => "Unluminous has four panels — the explorer, the terminal, the run tile and the debug tile — and each of them can be docked to any edge of the window, which is what dragging its header does. A side holds an ordered row of panels laid out left to right, so `panel dock terminal left --position 1` puts the terminal beside the explorer rather than in place of it. The terminal, run and debug tiles all draw a character grid and two grids in one strip would be two half-sized grids, so showing one puts away the other tiles **on its own side** — move one somewhere else and they are both showing at once. `panel list` says where everything is, including the rectangle each occupies, which is what to read before working out where a click lands. By default the top and the bottom run the whole width of the window and the columns stop at them; `panel fill <side>` makes a side run the whole length of its edge instead.",
-        "highlight" => "A highlight is a colour behind a passage of text. It stays there until it is cleared, in this file and next time the project is opened, and it moves with the text as the file is edited. These work on a file whether it is open or not, so `highlight apply` can mark twenty passages across twenty files in one call.",
+        "highlight" => "A highlight is a color behind a passage of text. It stays there until it is cleared, in this file and next time the project is opened, and it moves with the text as the file is edited. These work on a file whether it is open or not, so `highlight apply` can mark twenty passages across twenty files in one call.",
         "terminal" => "`terminal send` types into the shell and presses Enter; `terminal read --wait-for` is how to wait for what it did. Both take `--tab` to name a tab other than the one showing, and naming a tab does not show it, so a build in one tab and a dev server in another can each be spoken to without the other being disturbed.",
         "run" => "A run configuration is a named command line, a folder and some environment variables, kept in the project. Starting one runs the program in a pseudoterminal, so `run output` is what it would have printed to a terminal — which is how to start a dev server, read the port out of its log, use it, and stop it, with nobody watching.",
         "explorer" => "For requests to create, move, delete or list project paths, start here instead of using shell file operations. Unluminous updates its live tree immediately, and `new-file` also opens the file in a tab. `explorer files` leaves out `target`, `node_modules` and `__pycache__`.",
         "modal" => "One set of commands drives all of them: open it, type in it, read its results, choose a row, accept or cancel. A modal added to Unluminous later is driven with these same commands.",
         "settings" => "The names are the ones in Unluminous's own `settings.conf`, so there is one vocabulary rather than two. A change takes effect at once, in every tab, and is written to the file.",
         "background" => "What is behind Unluminous's window: the desktop showing through, which is what it does unless something else is chosen, or a picture. A picture is **copied into Unluminous's own folder** when it is added, so the setting survives the original being moved, and `background remove` deletes that copy. `settings set appearance.background.image` reaches the same setting by name; these exist because a setting cannot say what pictures there are. How much of it shows through is `appearance.background.opacity`.",
-        "theme" => "A theme says what every name in Unluminous's own palette means, which drawn icon set the rail and the explorer use, and — when it names all nine token colours — how code is coloured in every language at once. Unluminous Dark names none of the nine, so each language plugin's scheme colours its files; Unluminous Light names all nine. Unluminous Glass is dark and made of glass: its raised surfaces bend the background picture behind the window, and choosing it while no picture is chosen chooses `glass-spheres.jpg`. `settings set appearance.theme` reaches the same code; these exist because a setting cannot say what themes there are.",
-        "plugins" => "A plugin is a folder of data. A `language` one describes a language: its extensions, its keywords and a colour per kind of token. A `ui` one names code that shipped in the binary and says what it contributes — a pane, a tab, a menu, a Settings page — which is how the Agent-Tasks board, the Agent-Chat pane, the Database explorer and the Designer are reached. Nothing in a plugin is executed and nothing is fetched over a network.",
+        "theme" => "A theme says what every name in Unluminous's own palette means, which drawn icon set the rail and the explorer use, and — when it names all nine token colors — how code is colored in every language at once. Unluminous Dark names none of the nine, so each language plugin's scheme colors its files; Unluminous Light names all nine. Unluminous Glass is dark and made of glass: its raised surfaces bend the background picture behind the window, and choosing it while no picture is chosen chooses `glass-spheres.jpg`. `settings set appearance.theme` reaches the same code; these exist because a setting cannot say what themes there are.",
+        "plugins" => "A plugin is a folder of data. A `language` one describes a language: its extensions, its keywords and a color per kind of token. A `ui` one names code that shipped in the binary and says what it contributes — a pane, a tab, a menu, a Settings page — which is how the Agent-Tasks board, the Agent-Chat pane, the Database explorer and the Designer are reached. Nothing in a plugin is executed and nothing is fetched over a network.",
         "git" => "Use this tool first when asked for git status, uncommitted work, changed files or a diff in the open project; do not begin by running git in a shell. Call `status` for the branch and exact staged, unstaged and untracked file list, then `action` with `name: show-diff` and `path` to open a changed file's diff in Unluminous. These still run the machine's real git with its credential helper, SSH agent, configuration and hooks, on a thread; `wait` holds the answer open.",
         "action" => "The escape hatch, and the guarantee: every entry on every menu has a name here, and the list is built by walking the real menus, so a menu entry added to Unluminous tomorrow can be run from the command line tomorrow.",
         "project" => "A project is a window. Opening a second project is `unluminous-cli launch <folder>`, which starts a second Unluminous; `project open` changes the folder this window is showing.",
-        "mcp" => "The Model Context Protocol server, which is how an AI agent discovers and drives Unluminous without being handed a document first. Its tools are generated from this same catalogue, so a command added to Unluminous is a tool the day it is added.",
+        "mcp" => "The Model Context Protocol server, which is how an AI agent discovers and drives Unluminous without being handed a document first. Its tools are generated from this same catalog, so a command added to Unluminous is a tool the day it is added.",
         "search" => "Use this instead of Grep, Glob, grep in a shell, and reading whole files. `find` gives the lines ripgrep would, grouped by file within a token budget; one identifier gets its definitions first. `def` and `refs` find where a name is defined and used. `fragment path:line` shows just the function around a line, so read that rather than the file; `outline` lists a file's definitions with their line ranges, and a Read of more than that should take an offset and a limit from them. Small answers already include the code around the hit. `files` finds a file by name or glob. Kept current as files change.",
         _ => "",
     }
@@ -1529,7 +1529,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "highlight",
         verb: "list",
-        summary: "What is marked, in one file or across the whole project: where each passage is, what colour it is in, and the text under it.",
+        summary: "What is marked, in one file or across the whole project: where each passage is, what color it is in, and the text under it.",
         arguments: &[argument("path", false, "The file to list. The tab that is showing when it is left out.")],
         flags: &[switch("all", "List every file in the project rather than one.")],
         examples: &["unluminous-cli highlight list --json", "unluminous-cli highlight list --all --json"],
@@ -1546,7 +1546,7 @@ pub const COMMANDS: &[Command] = &[
             whole_option("to-line", "number", "The line it ends on. The line it started on when it is left out."),
             whole_option("to-column", "number", "The column it ends at. The end of the line when it is left out."),
             option("text", "words", "Mark every occurrence of these words in the file instead of a range."),
-            option("color", "name", "yellow, green, blue, pink, or a colour of your own as #rrggbb or #rrggbbaa. Yellow when it is left out."),
+            option("color", "name", "yellow, green, blue, pink, or a color of your own as #rrggbb or #rrggbbaa. Yellow when it is left out."),
         ],
         examples: &[
             "unluminous-cli highlight add --from-line 12 --to-line 18",
@@ -2074,7 +2074,7 @@ pub const COMMANDS: &[Command] = &[
         flags: &[whole_option("from", "node", "Which node is asking. It must be wired to the one it names.")],
         examples: &[
             "unluminous-cli realm chat 7 state",
-            "unluminous-cli realm chat 7 send Summarise what this project does",
+            "unluminous-cli realm chat 7 send Summarize what this project does",
             "unluminous-cli realm chat 7 last --json",
         ],
         local: false,
@@ -2210,7 +2210,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "realm",
         verb: "shape",
-        summary: "Change a whiteboard shape, as its menu and a double click do: `text` (\\n is a new line), `colour` (#RRGGBBAA, or `theme`), `align`, `valign`, `size` (points, larger or smaller), `kind`, `edit` and `done` typing, `pick` the colour picker (then a colour, `apply` or `cancel`), and `points`.",
+        summary: "Change a whiteboard shape, as its menu and a double click do: `text` (\\n is a new line), `color` (#RRGGBBAA, or `theme`), `align`, `valign`, `size` (points, larger or smaller), `kind`, `edit` and `done` typing, `pick` the color picker (then a color, `apply` or `cancel`), and `points`.",
         arguments: &[
             whole("node", true, "The shape node's id."),
             closed(
@@ -2222,7 +2222,7 @@ pub const COMMANDS: &[Command] = &[
             rest("value", false, "What the command takes."),
         ],
         flags: NO_FLAGS,
-        examples: &["unluminous-cli realm shape 12 text Agent builds it", "unluminous-cli realm shape 12 colour #FFC062D2"],
+        examples: &["unluminous-cli realm shape 12 text Agent builds it", "unluminous-cli realm shape 12 color #FFC062D2"],
         local: false,
     },
     Command {
@@ -2585,7 +2585,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "run",
         verb: "output",
-        summary: "What a run has written, as text. It ran in a pseudoterminal, so this is what it would have printed to a terminal — colours and progress bars included, with the escape sequences already read.",
+        summary: "What a run has written, as text. It ran in a pseudoterminal, so this is what it would have printed to a terminal — colors and progress bars included, with the escape sequences already read.",
         arguments: &[argument("name", false, "The configuration. The run that is showing when it is left out.")],
         flags: &[
             whole_option("tail", "number", "Only the last so many lines."),
@@ -3541,7 +3541,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "theme",
         verb: "list",
-        summary: "Every theme that can be chosen, with the plugin it came from and the six colours it is most recognisable by, and which one the window is painted in now.",
+        summary: "Every theme that can be chosen, with the plugin it came from and the six colors it is most recognizable by, and which one the window is painted in now.",
         arguments: NO_ARGUMENTS,
         flags: NO_FLAGS,
         examples: &["unluminous-cli theme list --json"],
@@ -3550,7 +3550,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "theme",
         verb: "show",
-        summary: "One theme in full: every colour in Unluminous's palette by name, the nine token colours, and which drawn icon set it uses. The one the window is painted in when no theme is named.",
+        summary: "One theme in full: every color in Unluminous's palette by name, the nine token colors, and which drawn icon set it uses. The one the window is painted in when no theme is named.",
         arguments: &[argument("theme", false, "Its key, `themes-bundle-1/dracula`, or its name, `Monokai Pro`. The active one when it is left out.")],
         flags: NO_FLAGS,
         examples: &["unluminous-cli theme show --json", "unluminous-cli theme show \"Monokai Pro\" --json"],
@@ -3562,7 +3562,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "Paint the window in a theme. It takes effect at once, in every tab and every pane, and is written to the settings file.",
         arguments: &[rest("theme", true, "Its key, `themes-bundle-1/dracula`, or its name, `Material Deep Ocean`.")],
         flags: &[
-            option("accent", "colour", "One colour for everything the accent means, as #RRGGBB. `none` puts it back to the theme's own."),
+            option("accent", "color", "One color for everything the accent means, as #RRGGBB. `none` puts it back to the theme's own."),
             option("icons", "set", "Which drawn icon set to use: material, classic, or `follow` for whichever the theme names."),
         ],
         examples: &[
@@ -3616,7 +3616,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "plugins",
         verb: "list",
-        summary: "The plugins Unluminous has, which of them are switched on, and what each one claims: a language it colours, or a pane, a tab, a menu and a Settings page it contributes. They ship with Unluminous; nothing is fetched.",
+        summary: "The plugins Unluminous has, which of them are switched on, and what each one claims: a language it colors, or a pane, a tab, a menu and a Settings page it contributes. They ship with Unluminous; nothing is fetched.",
         arguments: NO_ARGUMENTS,
         flags: NO_FLAGS,
         examples: &["unluminous-cli plugins list --json"],
@@ -3634,7 +3634,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "plugins",
         verb: "enable",
-        summary: "Switch a plugin on, so it colours the files it claims.",
+        summary: "Switch a plugin on, so it colors the files it claims.",
         arguments: &[argument("id", true, "The plugin's id.")],
         flags: NO_FLAGS,
         examples: &["unluminous-cli plugins enable rust"],
@@ -3884,7 +3884,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "mcp",
         verb: "tools",
-        summary: "The tools the MCP server offers, exactly as it would answer `tools/list`. This is how to see what an agent will be given, and how the cost of the two shapes is compared. With --areas it says what equipping an agent with only some of the catalogue would cost, which is the number `mcp serve --areas` is chosen against.",
+        summary: "The tools the MCP server offers, exactly as it would answer `tools/list`. This is how to see what an agent will be given, and how the cost of the two shapes is compared. With --areas it says what equipping an agent with only some of the catalog would cost, which is the number `mcp serve --areas` is chosen against.",
         arguments: NO_ARGUMENTS,
         flags: &[
             option("tools", "grouped|every", "Which shape to print. `grouped` by default."),

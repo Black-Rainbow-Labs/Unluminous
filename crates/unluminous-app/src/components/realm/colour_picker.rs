@@ -345,12 +345,12 @@ fn heading(rux: &mut Rux<'_>, row: Rect) -> bool {
         Pos2::new(row.right() - HEADING / 2.0, row.center().y),
         Vec2::splat(HEADING),
     );
-    let pressed = ChipButton::new(Icon::X, HEADING, "Close colour picker")
+    let pressed = ChipButton::new(Icon::X, HEADING, "Close color picker")
         .mark(10.0, Some(1.6))
         .show(rux, close)
         .clicked();
     let style = Style::sans(13.0).semibold();
-    let galley = rux.text(style, "Colour", theme.ink.i900);
+    let galley = rux.text(style, "Color", theme.ink.i900);
     rux::text::draw_left_capitals(
         rux.painter(),
         Pos2::new(row.left(), row.center().y),
@@ -529,7 +529,7 @@ fn fields(rux: &mut Rux<'_>, row: Rect, state: &mut State) {
         let well = Rect::from_min_size(Pos2::new(left, row.top()), Vec2::new(width, FIELD));
         left += width + gap;
         let (label, name) = match field {
-            Field::Hex => ("HEX RGBA", "Colour as hex"),
+            Field::Hex => ("HEX RGBA", "Color as hex"),
             Field::Red => ("R", "Red"),
             Field::Green => ("G", "Green"),
             Field::Blue => ("B", "Blue"),

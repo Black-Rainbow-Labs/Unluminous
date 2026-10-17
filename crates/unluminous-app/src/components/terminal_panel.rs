@@ -712,12 +712,20 @@ fn paint(ui: &egui::Ui, draw: ScreenPaint<'_>) {
         let galley =
             painter.crisp_layout_no_wrap(text, egui::FontId::proportional(11.0), color::text_dim());
         let at =
-            Pos2::new(ui.max_rect().right() - 12.0 - galley.size().x, ui.max_rect().top() + 6.0);
-        painter.rect_filled(
-            Rect::from_min_size(at, galley.size()).expand(4.0),
-            CornerRadius::same(4),
-            color::menu(),
-        );
+            Pos2::new(ui.max_rect().right() - 20.0 - galley.size().x, ui.max_rect().top() + 8.0);
+        let badge = Rect::from_min_size(at, galley.size()).expand2(Vec2::new(8.0, 4.0));
+        // Under glass the badge is a small piece of glass with the card's tint over it, the way a menu is,
+        // rather than a dark block over the terminal (`task-2287`).
+        match crate::theme::is_glass() {
+            true => {
+                let radius = badge.height() / 2.0;
+                crate::theme::glass::paint_glass(painter, badge, radius);
+                painter.rect_filled(badge, radius, crate::theme::glass::popup_fill());
+            }
+            false => {
+                painter.rect_filled(badge, CornerRadius::same(4), color::menu());
+            }
+        }
         painter.crisp_galley(at, galley, color::text_dim());
     }
 }

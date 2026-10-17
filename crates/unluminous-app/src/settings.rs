@@ -755,7 +755,7 @@ impl Page {
             Page::Theme => &["Theme", "Accent", "Icons"],
             Page::Keymap => &["Preset", "Shortcuts", "Keyboard", "VS Code", "IntelliJ"],
             Page::Editor => &["Font", "Gutter", "Suggestions", "Debugger", "Updates"],
-            Page::Plugins => &["Marketplace", "Installed", "Colour Scheme", "Syntax"],
+            Page::Plugins => &["Marketplace", "Installed", "Color Scheme", "Syntax"],
             Page::Terminal => &["Font", "Shell"],
             Page::Mcp => &["Install", "Server", "Configuration"],
             Page::Ai => &["Endpoints", "Keys", "OpenCode", "Claude", "Codex"],
@@ -2303,7 +2303,7 @@ update.check.chosen = true
         assert_eq!(change.family.as_deref(), Some("Menlo"));
         assert_eq!(change.size, Some(16.0));
         assert_eq!(change.bold, None, "a font setting must not touch bold");
-        assert_eq!(change.color, None, "or the colour");
+        assert_eq!(change.color, None, "or the color");
     }
 
     #[test]

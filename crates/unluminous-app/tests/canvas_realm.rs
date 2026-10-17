@@ -1362,6 +1362,15 @@ fn the_zoom_buttons_step_the_camera_and_the_reading_resets_it() {
     let was = harness.state().realm.realm.camera.zoom;
     assert_eq!(was, 1.0);
 
+    // Minus on the left and plus on the right, with the reading between them. `task-2287`.
+    let minus = harness.get_by_label("Zoom out").rect();
+    let reading = harness.get_by_label_contains("Reset zoom").rect();
+    let plus = harness.get_by_label("Zoom in").rect();
+    assert!(
+        minus.right() <= reading.left() && reading.right() <= plus.left(),
+        "{minus:?} {reading:?} {plus:?}"
+    );
+
     harness.get_by_label("Zoom in").click();
     let_the_zoom_settle(&mut harness);
     let bigger = harness.state().realm.realm.camera.zoom;
@@ -4216,10 +4225,10 @@ fn a_whiteboard() -> (Harness<'static, UnluminousApp>, u64) {
         "realm add shape parallelogram --x -80 --y 540 --text \"Input: realm file\"",
     );
     add(&mut harness, "realm add shape rectangle --x 160 --y 560");
-    did(&mut harness, &format!("realm shape {design} colour #FFC062D2"));
+    did(&mut harness, &format!("realm shape {design} color #FFC062D2"));
     did(&mut harness, &format!("realm shape {design} align left"));
     did(&mut harness, &format!("realm shape {design} valign top"));
-    did(&mut harness, &format!("realm shape {ship} colour #3AD6ADBE"));
+    did(&mut harness, &format!("realm shape {ship} color #3AD6ADBE"));
     did(&mut harness, &format!("realm shape {go} size 18"));
     did(
         &mut harness,
@@ -4386,7 +4395,7 @@ fn a_shapes_menu_has_a_text_submenu_whose_rows_change_it() {
     right_click_at(&mut harness, middle);
     steady(&mut harness);
     assert_eq!(harness.state().realm.chosen(), Some(node), "the right click chose it");
-    let _ = harness.get_by_label("Colour...");
+    let _ = harness.get_by_label("Color...");
     harness.get_by_label("Text").hover();
     steady(&mut harness);
     harness.snapshot(shot("realm_shape_text_menu").as_str());
@@ -4428,7 +4437,7 @@ fn the_colour_picker_recolours_a_shape_while_it_is_open_and_apply_or_cancel_fini
     assert_eq!(a_shape(&harness, node).fill, None, "nothing is written while the picker is open");
     steady(&mut harness);
     // No button that puts the shape back to the theme's colour: a shape with none follows the theme already.
-    assert!(harness.query_by_label("Use theme colour").is_none());
+    assert!(harness.query_by_label("Use theme color").is_none());
     harness.snapshot(shot("realm_colour_picker").as_str());
 
     harness.get_by_label("Apply").click();
@@ -4446,7 +4455,7 @@ fn the_colour_picker_recolours_a_shape_while_it_is_open_and_apply_or_cancel_fini
     assert_eq!(
         a_shape(&harness, node).fill,
         Some(unluminous_core::Rgba::new(0xFF, 0xC0, 0x62, 0xD2)),
-        "and left the colour it had"
+        "and left the color it had"
     );
     did(&mut harness, &format!("realm shape {node} pick"));
     did(&mut harness, &format!("realm shape {node} pick cancel"));
@@ -4524,7 +4533,7 @@ fn a_shape_is_driven_from_the_command_line_and_comes_back_from_its_realm_file() 
     let build = id_of(&did(&mut harness, "realm add shape hexagon --x 0 --y 300"));
     let terminal = id_of(&did(&mut harness, "realm add terminal --x 500 --y 0"));
     did(&mut harness, &format!("realm shape {build} text Agent\\nbuilds # it"));
-    did(&mut harness, &format!("realm shape {build} colour #3D78FF"));
+    did(&mut harness, &format!("realm shape {build} color #3D78FF"));
     did(&mut harness, &format!("realm shape {build} align right"));
     did(&mut harness, &format!("realm shape {build} valign bottom"));
     did(&mut harness, &format!("realm shape {build} size 24"));
@@ -4540,7 +4549,7 @@ fn a_shape_is_driven_from_the_command_line_and_comes_back_from_its_realm_file() 
     assert_eq!(points["points"].as_array().map(Vec::len), Some(4));
 
     // What is refused says why.
-    assert_eq!(refused(&mut harness, &format!("realm shape {build} colour sunshine")), "usage");
+    assert_eq!(refused(&mut harness, &format!("realm shape {build} color sunshine")), "usage");
     assert_eq!(refused(&mut harness, &format!("realm shape {build} kind blob")), "usage");
     assert_eq!(refused(&mut harness, &format!("realm shape {terminal} text no")), "refused");
     assert_eq!(
@@ -4622,8 +4631,8 @@ fn a_whiteboard_under_the_glass_theme() {
     let ship = add(&mut harness, "realm add shape circle --x 260 --y 380 --text Ship");
     add(&mut harness, "realm add shape star --x -250 --y 300 --text Go");
     add(&mut harness, "realm add shape triangle --x -420 --y 300 --text Risk");
-    did(&mut harness, &format!("realm shape {design} colour #FFC062D2"));
-    did(&mut harness, &format!("realm shape {ship} colour #3AD6ADBE"));
+    did(&mut harness, &format!("realm shape {design} color #FFC062D2"));
+    did(&mut harness, &format!("realm shape {ship} color #3AD6ADBE"));
     did(
         &mut harness,
         &format!("realm connect {start} {decide} --from-point bottom --to-point top"),

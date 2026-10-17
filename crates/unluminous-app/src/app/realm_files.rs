@@ -619,7 +619,13 @@ impl UnluminousApp {
         area: egui::Rect,
         tab: &crate::app::files::PluginTab,
     ) -> bool {
-        ui.painter().rect_filled(area, 0, crate::theme::color::editor());
+        // The editing area's own ground, which is clear under glass and faded by the opacity setting otherwise.
+        // An opaque fill here drew a realm tab black beside a preview under glass (`task-2287`).
+        ui.painter().rect_filled(
+            area,
+            0,
+            crate::theme::pane_ground(crate::theme::color::editor(), self.settings.opacity),
+        );
         let Some(path) = realm_of_a_tab_key(&tab.key) else { return false };
         let pass = ui.ctx().cumulative_pass_nr();
         if self

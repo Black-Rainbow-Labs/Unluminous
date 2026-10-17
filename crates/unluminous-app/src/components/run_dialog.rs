@@ -58,6 +58,9 @@ pub struct RunDialog {
     pub env_rows: Vec<(String, String)>,
     /// Which configuration `env_rows` belongs to.
     pub env_for: Option<String>,
+    /// The `env` text the table last wrote, or read its rows from. The rows are read again only when the
+    /// configuration's text differs from it, which means something other than the table changed it.
+    pub env_written: String,
     /// The row whose key field takes focus on the next frame, which is the one `Add variable` made.
     pub focus_row: Option<usize>,
     /// The project folder, which a relative `Directory` is read against so the field can show where it
@@ -307,23 +310,30 @@ fn show_fields(
 
 /// Make the dialog's table rows match the configuration's `env` text.
 ///
-/// The rows are rebuilt when a different configuration is chosen, and when the text was changed by
+/// The rows are read again when a different configuration is chosen, and when the text was changed by
 /// something other than this table (`run set` from the command line). Rows with an empty key are
 /// kept while they are being edited, because dropping one the moment it is added would make
 /// `Add variable` appear to do nothing; they are left out of the stored text.
+///
+/// **Whether something else changed the text is asked against what the table last wrote**, never against
+/// the rows written out and read back (`task-2287`). Reading the text back trims each key and value and
+/// splits at the first `=`, so a key typed as `MY ` lost its space on the next frame and a key typed with an
+/// `=` in it moved half of itself into the value. Both were rewritten under the caret while somebody typed.
 fn sync_environment_rows(dialog: &mut RunDialog, name: &str, configuration: &Configuration) {
-    let held = run_configurations::format_env(&rows_with_a_key(&dialog.env_rows));
-    let stored = run_configurations::format_env(&run_configurations::parse_env(&configuration.env));
-    if dialog.env_for.as_deref() != Some(name) || held != stored {
+    if dialog.env_for.as_deref() != Some(name) || configuration.env != dialog.env_written {
         dialog.env_rows = run_configurations::parse_env(&configuration.env);
         dialog.env_for = Some(name.to_owned());
+        dialog.env_written = configuration.env.clone();
         dialog.focus_row = None;
     }
 }
 
-/// The rows that have a key, which are the ones that are stored.
+/// The rows that have a key, which are the ones that are stored, trimmed the way they are read back.
 fn rows_with_a_key(rows: &[(String, String)]) -> Vec<(String, String)> {
-    rows.iter().filter(|(key, _)| !key.trim().is_empty()).cloned().collect()
+    rows.iter()
+        .filter(|(key, _)| !key.trim().is_empty())
+        .map(|(key, value)| (key.trim().to_owned(), value.trim().to_owned()))
+        .collect()
 }
 
 /// Draw the three text fields, the table and the notes from the top of `column`, answering where
@@ -474,6 +484,7 @@ fn draw_environment(
     }
     if changed {
         configuration.env = run_configurations::format_env(&rows_with_a_key(&dialog.env_rows));
+        dialog.env_written = configuration.env.clone();
         outcome.changed = true;
     }
     pen + 40.0

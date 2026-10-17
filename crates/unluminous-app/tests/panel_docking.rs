@@ -161,7 +161,7 @@ fn maximising_is_not_an_arrangement_and_a_toggle_inside_it_ends_it() {
     // and the editing area, which nobody asked for, stays away.
     did(&mut harness, "action run toggle-terminal");
     steady(&mut harness);
-    assert_eq!(harness.state().maximised_pane(), None, "the maximise is over");
+    assert_eq!(harness.state().maximised_pane(), None, "the maximize is over");
     assert!(harness.state().terminal.visible, "the pane that was asked for is showing");
     assert!(harness.state().explorer_visible, "so there is something to look at");
     assert!(!harness.state().editor_visible, "and nothing nobody asked for came back with it");
@@ -1024,7 +1024,7 @@ fn a_pane_toggle_inside_a_maximise_opens_that_pane_and_nothing_else() {
     assert_eq!(
         harness.state().maximised_pane(),
         None,
-        "the maximise is over, so `Restore Pane` is not offered for an arrangement nobody is in"
+        "the maximize is over, so `Restore Pane` is not offered for an arrangement nobody is in"
     );
 
     // And pressing it again closes the one it opened, and still nothing else.

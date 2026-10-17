@@ -206,12 +206,12 @@ mod tests {
             match plugin.kind {
                 Kind::Language => {
                     assert!(plugin.icon.is_some(), "{} has no icon", plugin.id);
-                    assert!(!plugin.theme.is_empty(), "{} has no colour scheme", plugin.id);
+                    assert!(!plugin.theme.is_empty(), "{} has no color scheme", plugin.id);
                 }
                 Kind::Ui => {
                     assert!(
                         plugin.theme.is_empty(),
-                        "{} names colours, which no plugin may",
+                        "{} names colors, which no plugin may",
                         plugin.id
                     );
                     // A ui plugin claims a file type only through `ui.extensions`, which is the file type its
@@ -408,14 +408,14 @@ mod tests {
             Some(&("<!--".to_owned(), "-->".to_owned()))
         );
         assert!(html.grammar.keywords.contains(&"p".to_owned()), "an element name is a keyword");
-        assert!(html.grammar.keywords.contains(&"DOCTYPE".to_owned()), "the declaration colours");
+        assert!(html.grammar.keywords.contains(&"DOCTYPE".to_owned()), "the declaration colors");
         assert!(
             html.grammar.builtins.contains(&"class".to_owned()),
             "an attribute name is a builtin"
         );
         assert!(
             html.grammar.types.is_empty(),
-            "the third list is empty, and the type colour is the tag-name rule"
+            "the third list is empty, and the type color is the tag-name rule"
         );
 
         // What that adds up to, read through the tokeniser the window uses.
@@ -434,7 +434,7 @@ mod tests {
                 || *word == "Jerry"
                 || *word == "5"
                 || *word == "3"),
-            "a word of the prose is not coloured: {found:?}"
+            "a word of the prose is not colored: {found:?}"
         );
     }
 

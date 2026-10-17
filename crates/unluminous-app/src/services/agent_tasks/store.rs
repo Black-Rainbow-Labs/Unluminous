@@ -1291,7 +1291,7 @@ impl Store {
         if let Some(color) = color {
             self.connection
                 .execute("UPDATE task_epic SET color = ?2 WHERE id = ?1", params![id, color])
-                .map_err(|problem| format!("the epic could not be recoloured: {problem}"))?;
+                .map_err(|problem| format!("the epic could not be recolored: {problem}"))?;
         }
         Ok(())
     }

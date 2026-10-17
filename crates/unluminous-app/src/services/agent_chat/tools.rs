@@ -281,7 +281,7 @@ mod tests {
         for name in RUNS_A_PROGRAM {
             assert!(
                 unluminous_cli::catalogue::find(name).is_some(),
-                "`{name}` is held back and the catalogue has no such command"
+                "`{name}` is held back and the catalog has no such command"
             );
         }
     }

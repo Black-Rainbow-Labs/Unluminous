@@ -1084,7 +1084,7 @@ pub fn swatches(
     for (index, (own, shown)) in colours.iter().enumerate() {
         let centre = Pos2::new(track.left() + 12.0 + 12.0 + index as f32 * 36.0, track.center().y);
         let disc = Rect::from_center_size(centre, Vec2::splat(24.0));
-        let name = names.get(index).copied().unwrap_or("Colour");
+        let name = names.get(index).copied().unwrap_or("Color");
         let response =
             rux.ui.interact(disc, rux.ui.id().with(("settings-swatch", name)), Sense::click());
         let response = controls::WithHint::with_hint(response, name);

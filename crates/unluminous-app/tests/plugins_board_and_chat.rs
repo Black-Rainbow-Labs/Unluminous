@@ -941,7 +941,7 @@ fn the_epics_view_is_a_grid_of_cards_that_can_be_renamed_recoloured_and_deleted(
     harness.snapshot(shot("agent_tasks_epics").as_str());
 
     // Recolouring is one press, and it is the same command the command line runs.
-    harness.get_by_label("Unluminous colour #2FCFA6").click();
+    harness.get_by_label("Unluminous color #2FCFA6").click();
     steady(&mut harness);
     let epics = did(&mut harness, "plugins view agent-tasks")["epics"].clone();
     let unluminous = epics
@@ -963,7 +963,7 @@ fn the_epics_view_is_a_grid_of_cards_that_can_be_renamed_recoloured_and_deleted(
     assert_eq!(
         did(&mut harness, "plugins view agent-tasks")["epics"].as_array().expect("the epics").len(),
         2,
-        "cancelling keeps it"
+        "canceling keeps it"
     );
 }
 

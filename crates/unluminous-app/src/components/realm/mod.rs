@@ -287,12 +287,13 @@ fn show_the_zoom_controls(rux: &mut rux::Rux<'_>, area: Rect, zoom: f32, outcome
         Pos2::new(area.right() - BAR_SIDE, middle + TRACK / 2.0),
     );
     rux.chrome.surface(track, TRACK / 2.0, chat.well, chat.carved_sm());
+    // Minus on the left and plus on the right (`task-2287`), the order a number line reads in.
     let chip = 28.0;
-    let into = Rect::from_center_size(
+    let out = Rect::from_center_size(
         Pos2::new(track.left() + TRACK_PAD + chip / 2.0, middle),
         Vec2::splat(chip),
     );
-    let out = Rect::from_center_size(
+    let into = Rect::from_center_size(
         Pos2::new(track.right() - TRACK_PAD - chip / 2.0, middle),
         Vec2::splat(chip),
     );
@@ -309,8 +310,8 @@ fn show_the_zoom_controls(rux: &mut rux::Rux<'_>, area: Rect, zoom: f32, outcome
     // gesture every other zoom in Unluminous has.
     let said = format!("{}%", (zoom * 100.0).round());
     let reading = Rect::from_min_max(
-        Pos2::new(into.right() + 2.0, middle - PILL / 2.0),
-        Pos2::new(out.left() - 2.0, middle + PILL / 2.0),
+        Pos2::new(out.right() + 2.0, middle - PILL / 2.0),
+        Pos2::new(into.left() - 2.0, middle + PILL / 2.0),
     );
     let response = rux.ui.interact(reading, rux.ui.id().with("realm-zoom-reading"), Sense::click());
     let tint = match response.hovered() {
@@ -1224,9 +1225,17 @@ pub fn node_name(node: &Node, fallback: &str) -> String {
 /// over the window's rail, and this is why every part of a node that reaches left of the canvas was drawn
 /// there — the rail is inside the *window*, so shrinking the window by six points does not exclude it.
 /// The clip has to be the pane's own rectangle first.
+///
+/// **Under glass it is the pane's glass panel**, which stands in from the pane by
+/// `theme::glass::PANE_GAP` (`task-2287`). Clipped to the pane itself, a node pushed against its edge was
+/// drawn over the panel's rim and into the gap between two panels.
 pub fn clip_for_nodes(pane: Rect, window: Rect, camera: &Camera) -> Rect {
     let inside = window.shrink(crate::components::resize_edges::EDGE);
-    let cut = pane.intersect(inside);
+    let panel = match crate::theme::is_glass() {
+        true => pane.shrink(crate::theme::glass::PANE_GAP),
+        false => pane,
+    };
+    let cut = panel.intersect(inside);
     Rect::from_min_max(camera.to_world(pane.min, cut.min), camera.to_world(pane.min, cut.max))
 }
 

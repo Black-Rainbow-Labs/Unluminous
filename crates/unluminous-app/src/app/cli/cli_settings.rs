@@ -1120,8 +1120,8 @@ impl UnluminousApp {
                         theme.name,
                         theme.icons.name(),
                         match theme.syntax.is_some() {
-                            true => "and it colours the tokens",
-                            false => "and each language plugin colours its own files",
+                            true => "and it colors the tokens",
+                            false => "and each language plugin colors its own files",
                         }
                     ),
                     rows,
@@ -1339,11 +1339,11 @@ const SETTINGS: &[SettingKey] = &[
     },
     SettingKey {
         name: "appearance.theme",
-        help: "What every colour in the window is. A theme that names the nine token colours also colours code, in every language at once.",
+        help: "What every color in the window is. A theme that names the nine token colors also colors code, in every language at once.",
     },
     SettingKey {
         name: "appearance.accent",
-        help: "One colour for everything the accent means: the caret, the open tab, an open folder.",
+        help: "One color for everything the accent means: the caret, the open tab, an open folder.",
     },
     SettingKey {
         name: "appearance.icons",
@@ -1459,7 +1459,7 @@ const SETTINGS: &[SettingKey] = &[
     },
     SettingKey {
         name: "mcp.areas",
-        help: "Which areas of the catalogue the MCP server offers, so an agent is not handed the whole of it. Empty means all of them. `mcp tools --count --areas editor,git` says what a choice costs; the whole catalogue is about 18 per cent of a 96k context window before a question is asked.",
+        help: "Which areas of the catalog the MCP server offers, so an agent is not handed the whole of it. Empty means all of them. `mcp tools --count --areas editor,git` says what a choice costs; the whole catalog is about 18 per cent of a 96k context window before a question is asked.",
     },
     SettingKey {
         name: "mcp.tools",

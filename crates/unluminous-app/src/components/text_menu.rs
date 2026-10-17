@@ -179,7 +179,7 @@ fn blocks(
     );
     icon::color_wheel(painter, area.center(), color::text_control());
     response.widget_info(|| {
-        egui::WidgetInfo::selected(egui::WidgetType::Button, true, open, "Choose a colour")
+        egui::WidgetInfo::selected(egui::WidgetType::Button, true, open, "Choose a color")
     });
     if response.clicked() {
         // It opens on the colour that was last marked in, so choosing a shade of it again is a drag

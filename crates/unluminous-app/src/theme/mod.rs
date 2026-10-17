@@ -1319,7 +1319,7 @@ mod tests {
         let capital = font.outline(font.glyph_id('H')).unwrap().bounds;
         let height = (capital.max.y - capital.min.y).abs() / em;
         let middle = ascent + shift - height / 2.0;
-        assert!((middle - row / 2.0).abs() < 0.01, "capitals centred: {middle} in a row of {row}");
+        assert!((middle - row / 2.0).abs() < 0.01, "capitals centered: {middle} in a row of {row}");
     }
 
     /// The test that makes the 689-site rewrite safe: every colour Unluminous shipped with, still there.
@@ -1404,7 +1404,7 @@ mod tests {
     #[test]
     fn light_code_is_readable_on_the_light_editor() {
         let light = Theme::unluminous_light();
-        let scheme = light.syntax.expect("the light theme colours code itself");
+        let scheme = light.syntax.expect("the light theme colors code itself");
         for token in unluminous_core::syntax::Token::ALL {
             let colour = scheme.colour(token).expect("all nine are named");
             let ink = Color32::from_rgb(colour.r, colour.g, colour.b);
@@ -1732,8 +1732,8 @@ mod closed_palette {
         }
         assert!(
             offenders.is_empty(),
-            "a component chose a colour of its own. The palette is `theme::color` and it is \
-             closed -- a colour that is not in it goes in `theme/mod.rs`'s `palette!` list with a \
+            "a component chose a color of its own. The palette is `theme::color` and it is \
+             closed -- a color that is not in it goes in `theme/mod.rs`'s `palette!` list with a \
              note saying what it means, so a theme can say what it means too:\n  {}",
             offenders.join("\n  ")
         );
@@ -1786,7 +1786,7 @@ mod closed_palette {
         assert!(
             offenders.is_empty(),
             "a component painted a white or a black that only reads on one kind of ground. Use a role \
-             in `theme::color` (`hover_wash`, `on_accent`, `scrim`, `control_hover`), or, if the colour \
+             in `theme::color` (`hover_wash`, `on_accent`, `scrim`, `control_hover`), or, if the color \
              really is the same on any ground, end the line with `// any ground:` and the reason:\n  {}",
             offenders.join("\n  ")
         );

@@ -67,7 +67,7 @@ fn a_typescript_file_is_coloured_by_its_plugin() {
         "a name starting with a capital is a type, in Dracula's cyan"
     );
     // Colouring is not an edit: nothing to undo and nothing to save.
-    assert!(!harness.state().document().is_modified(), "colouring must not mark the file changed");
+    assert!(!harness.state().document().is_modified(), "coloring must not mark the file changed");
     assert!(!harness.state().document().can_undo(), "and must not push onto the undo history");
     harness.snapshot(shot("syntax_typescript"));
 }
@@ -111,7 +111,7 @@ fn a_css_file_is_coloured_by_its_plugin() {
     assert_eq!(
         chars.style_at(inside("#ff79c6")).color,
         Color::rgb(0xFF, 0xB8, 0x6C),
-        "a hex colour is a number, in Dracula's orange"
+        "a hex color is a number, in Dracula's orange"
     );
     assert_eq!(
         chars.style_at(inside("calc(")).color,
@@ -123,7 +123,7 @@ fn a_css_file_is_coloured_by_its_plugin() {
         Color::rgb(0x62, 0x72, 0xA4),
         "the comment, in Dracula's blue-grey"
     );
-    assert!(!harness.state().document().is_modified(), "colouring must not mark the file changed");
+    assert!(!harness.state().document().is_modified(), "coloring must not mark the file changed");
     harness.snapshot(shot("syntax_css"));
 }
 
@@ -181,7 +181,7 @@ fn an_html_file_is_coloured_by_its_plugin() {
     assert_eq!(
         chars.style_at(inside("Tom")).color,
         Color::rgb(0xE8, 0xEB, 0xF1),
-        "a word of the prose is not coloured"
+        "a word of the prose is not colored"
     );
     // The body of the style block is coloured by the plugin that claims css, asked at the moment
     // of use — the same seam `colour_the_embedded` reads.
@@ -193,9 +193,9 @@ fn an_html_file_is_coloured_by_its_plugin() {
     assert_eq!(
         chars.style_at(inside("#ff79c6")).color,
         Color::rgb(0xFF, 0xB8, 0x6C),
-        "the style block is css, so its hex colour is a number"
+        "the style block is css, so its hex color is a number"
     );
-    assert!(!harness.state().document().is_modified(), "colouring must not mark the file changed");
+    assert!(!harness.state().document().is_modified(), "coloring must not mark the file changed");
     harness.snapshot(shot("syntax_html"));
 }
 
@@ -220,16 +220,16 @@ fn the_plugins_page_lists_the_ones_that_ship_with_unluminous() {
     // bundled, ticked and working, which is exactly what it reads as. Writing the folder out so it
     // can be edited is `Customise`; `Uninstall` is what takes that folder away again.
     assert_eq!(harness.query_all_by_label("Install").count(), 0, "nothing here is uninstalled");
-    harness.get_by_label("Customise").click();
+    harness.get_by_label("Customize").click();
     steady(&mut harness);
     steady(&mut harness);
     harness.get_by_label("Uninstall");
-    assert_eq!(harness.query_all_by_label("Customise").count(), 0, "it is on disk now");
+    assert_eq!(harness.query_all_by_label("Customize").count(), 0, "it is on disk now");
 
     harness.get_by_label("Uninstall").click();
     steady(&mut harness);
     steady(&mut harness);
-    harness.get_by_label("Customise");
+    harness.get_by_label("Customize");
     assert!(
         harness.state().plugins.all().iter().any(|plugin| plugin.id == "agent-chat"),
         "uninstalling a bundled plugin puts it back to the one Unluminous ships rather than removing it",
@@ -301,7 +301,7 @@ fn a_theme_repaints_the_window_and_recolours_the_code() {
     assert_eq!(
         harness.state().document().chars().style_at(keyword_at).color,
         unluminous_core::Color::rgb(0xFF, 0x61, 0x88),
-        "and the file that was already open was coloured again in Monokai's"
+        "and the file that was already open was colored again in Monokai's"
     );
     harness.snapshot(shot("themed_window"));
 }
@@ -340,7 +340,7 @@ fn the_light_theme_repaints_the_window_and_colours_code_for_a_light_ground() {
     assert_eq!(
         harness.state().document().chars().style_at(keyword_at).color,
         unluminous_core::Color::rgb(0xA6, 0x26, 0xA4),
-        "the light theme's keyword colour, not Dracula's pink"
+        "the light theme's keyword color, not Dracula's pink"
     );
     harness.snapshot(shot("light_window"));
 
@@ -479,7 +479,7 @@ fn theme_list_and_show_answer_in_a_payload_proportionate_to_the_question() {
     );
     assert_eq!(themes[1]["active"], false);
     assert_eq!(themes[0]["active"], true);
-    assert!(themes[0]["colours"]["accent"].is_string(), "six colours a theme is recognised by");
+    assert!(themes[0]["colours"]["accent"].is_string(), "six colors a theme is recognized by");
     assert!(
         themes[0]["colours"].as_object().expect("an object").len() <= 6,
         "not the whole palette"

@@ -165,7 +165,7 @@ fn dragging_a_selection_lays_nothing_out_again_and_colours_nothing_again() {
     let coloured = harness.state().files.active().coloured_revision;
     let text_revision = harness.state().document().text_revision();
     let revision = harness.state().document().revision();
-    assert!(coloured.is_some(), "a .rs file is coloured by the bundled plugin");
+    assert!(coloured.is_some(), "a .rs file is colored by the bundled plugin");
 
     let area = harness.state().editor_area();
     drag_through(
@@ -196,7 +196,7 @@ fn dragging_a_selection_lays_nothing_out_again_and_colours_nothing_again() {
     assert_eq!(
         harness.state().files.active().coloured_revision,
         coloured,
-        "and it was not coloured again"
+        "and it was not colored again"
     );
     assert_ne!(
         harness.state().document().revision(),
@@ -704,7 +704,7 @@ fn the_window_says_whether_the_operating_system_is_sending_it_the_keys() {
     let mut harness = harness_in(&sample_folder());
     let window = did(&mut harness, "status --section window");
     assert!(window.get("focused").is_some(), "the window section carries the focus");
-    assert!(window.get("maximised").is_some(), "and whether the window is maximised");
+    assert!(window.get("maximised").is_some(), "and whether the window is maximized");
     // **And what the operating system itself says, which is a different question.** `focused` above
     // is `winit`'s own cache of two window messages, and `task-2009` is a window that was the
     // foreground window with the keyboard while that cache said it had no focus — with no symptom at
@@ -936,8 +936,8 @@ const SETTINGS_HELP: &[&str] = &[
     "The family the editor sets text in.",
     "The point size the editor sets text in, in every tab.",
     "How opaque the window is. Below 1 the desktop shows through.",
-    "What every colour in the window is. A theme that names the nine token colours also colours code, in every language at once.",
-    "One colour for everything the accent means: the caret, the open tab, an open folder.",
+    "What every color in the window is. A theme that names the nine token colors also colors code, in every language at once.",
+    "One color for everything the accent means: the caret, the open tab, an open folder.",
     "Which drawn marks the rail buttons and the explorer's folder arrow use.",
     "The family the window's own text is set in: the menus, the rail and the status bar.",
     "The point size the window's own text is set in. The editing area keeps its own.",
@@ -965,7 +965,7 @@ const SETTINGS_HELP: &[&str] = &[
     "Whether this Unluminous serves MCP over HTTP. An agent that launches the server itself needs neither this nor a port.",
     "The port it serves on when it does.",
     "One tool an area, or one tool a command. `mcp tools --count` says what each costs.",
-    "Which areas of the catalogue the MCP server offers, so an agent is not handed the whole of it. Empty means all of them. `mcp tools --count --areas editor,git` says what a choice costs; the whole catalogue is about 18 per cent of a 96k context window before a question is asked.",
+    "Which areas of the catalog the MCP server offers, so an agent is not handed the whole of it. Empty means all of them. `mcp tools --count --areas editor,git` says what a choice costs; the whole catalog is about 18 per cent of a 96k context window before a question is asked.",
     "Where the LLDB adapter lives, for Rust and native code. Empty means Unluminous looks for codelldb then lldb-dap on PATH. `tools/get-debug-adapter.ps1` fetches one and prints the line.",
     "Where js-debug lives, for JavaScript and TypeScript. There is no default: js-debug is a script rather than a program, so Unluminous has nothing to look for until it is told.",
     "How wide the file explorer is.",
@@ -1202,7 +1202,7 @@ fn every_command_in_the_catalogue_is_one_the_window_knows() {
             assert_ne!(
                 failure.code,
                 "unknown-command",
-                "the window does not know `{}`, which the catalogue offers",
+                "the window does not know `{}`, which the catalog offers",
                 command.typed()
             );
         }
@@ -1648,15 +1648,15 @@ const CANNOT_BE_MADE_TO_SUCCEED: &[(&str, &str)] = &[
     // tested in `unluminous-cli` itself, where they live.
     ("instances", "the client answers it; it reads the instance files and never reaches a window"),
     ("launch", "the client answers it, by starting a second Unluminous process"),
-    ("commands", "the client answers it, out of the catalogue it already holds"),
+    ("commands", "the client answers it, out of the catalog it already holds"),
     ("version", "the client answers it, out of its own build information"),
     ("mcp.serve", "the client answers it, by becoming a Model Context Protocol server"),
     ("mcp.install", "the client answers it, by rewriting an agent's own configuration on this machine"),
     ("setup", "the client answers it, by connecting every agent on this machine; `unluminous-cli`'s own tests and tools/test-fresh-install.ps1 drive it"),
-    ("mcp.config", "the client answers it, out of the catalogue and this machine's paths"),
-    ("mcp.tools", "the client answers it, out of the catalogue it already holds"),
+    ("mcp.config", "the client answers it, out of the catalog and this machine's paths"),
+    ("mcp.tools", "the client answers it, out of the catalog it already holds"),
     // And the four that do reach the window and must not be allowed to finish.
-    ("quit", "it ends the window, and the walk has the rest of the catalogue still to drive"),
+    ("quit", "it ends the window, and the walk has the rest of the catalog still to drive"),
     // It is on a thread since `task-1984` L1, so the coverage walk sees a hold rather than a reply
     // -- and it would still ask the real GitHub, because this walk stands up no server.
     // `update_check_does_not_block_the_frame_it_arrives_on` and
@@ -3110,7 +3110,7 @@ fn every_command_that_holds_its_answer_says_so_in_the_catalogue() {
             .unwrap_or_else(|| panic!("`{first}` is a command"));
         assert!(
             command.answered_later(),
-            "`{}` holds its answer and the catalogue says it does not",
+            "`{}` holds its answer and the catalog says it does not",
             command.typed()
         );
         let answered = harness.state_mut().run_command_line(line, &ctx);
@@ -3129,7 +3129,7 @@ fn every_command_that_holds_its_answer_says_so_in_the_catalogue() {
         let command = unluminous_cli::catalogue::find(&first).expect("a command");
         assert!(
             !command.answered_later(),
-            "`{}` answers at once and the catalogue says it holds",
+            "`{}` answers at once and the catalog says it holds",
             command.typed()
         );
         assert!(

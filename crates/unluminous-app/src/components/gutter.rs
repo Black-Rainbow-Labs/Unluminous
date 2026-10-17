@@ -855,7 +855,7 @@ mod tests {
         let line_centre = 100.0 + line.height / 2.0;
         assert!(
             line_centre > band.center() + 3.0,
-            "the line box's centre is more than three points below the letters', which is the drift              that was reported: {line_centre} against {}",
+            "the line box's center is more than three points below the letters', which is the drift              that was reported: {line_centre} against {}",
             band.center()
         );
     }

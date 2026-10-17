@@ -176,7 +176,7 @@ fn main() {
     }
     let rasterising = began.elapsed().as_secs_f64() * 1000.0 / lists.len() as f64;
     println!(
-        "  {rasterising:>9.3} ms to rasterise at {} pixels a point on a changed frame",
+        "  {rasterising:>9.3} ms to rasterize at {} pixels a point on a changed frame",
         2.0_f32.min(MAX_SCALE)
     );
     let began = Instant::now();

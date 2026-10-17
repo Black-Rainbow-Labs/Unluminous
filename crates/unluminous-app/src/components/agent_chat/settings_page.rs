@@ -80,7 +80,7 @@ fn cards(chat: &mut AgentChat, ui: &mut egui::Ui, column: &mut Column) -> Vec<Re
             changed |= card.switch(
                 "Let the model use Unluminous's own commands",
                 Some(
-                    "On unless you turn it off. The model is offered Unluminous's whole command catalogue as \
+                    "On unless you turn it off. The model is offered Unluminous's whole command catalog as \
                      tools, so it can open a file, read the git status or run a search, through exactly the code \
                      a menu entry runs. The commands that run a program of the model's choosing are the switch \
                      below, and that one is off. The same switch is the first button in the composer.",

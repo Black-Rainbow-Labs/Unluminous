@@ -618,7 +618,7 @@ mod tests {
             "language.operators = +-=",
             "theme.keyword = #FF79C6",
             "theme.comment = 6272A4",
-            "theme.number = not a colour",
+            "theme.number = not a color",
         ]
         .join("\n")
     }
@@ -669,12 +669,12 @@ mod tests {
         assert_eq!(
             plugin.theme.colour(Token::Number),
             None,
-            "a value that is not a colour is skipped"
+            "a value that is not a color is skipped"
         );
         assert_eq!(
             plugin.theme.colour(Token::String),
             None,
-            "a colour that was not named is absent"
+            "a color that was not named is absent"
         );
     }
 

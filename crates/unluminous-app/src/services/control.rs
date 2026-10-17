@@ -1122,7 +1122,7 @@ mod tests {
             .filter_map(|command| command.waits_for().map(|waits| (command.typed(), waits)))
             .collect();
         longest.sort_by_key(|(_, waits)| *waits);
-        assert!(!longest.is_empty(), "some command in the catalogue waits on purpose");
+        assert!(!longest.is_empty(), "some command in the catalog waits on purpose");
         for (name, waits) in &longest {
             assert!(
                 BACKSTOP > Duration::from_millis(*waits),
@@ -1134,7 +1134,7 @@ mod tests {
         // report: a caller asking for five minutes was cut at two.
         assert!(
             BACKSTOP >= Duration::from_millis(unluminous_cli::catalogue::BUILD_WAIT_MS),
-            "the backstop covers the longest wait the catalogue names"
+            "the backstop covers the longest wait the catalog names"
         );
     }
 }

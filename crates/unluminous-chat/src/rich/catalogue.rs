@@ -83,7 +83,7 @@ pub const ENTRIES: &[Entry] = &[
         group: "Explaining",
         when: "one thing the person must not miss: a warning, a result, a tip",
         fields: &[
-            field("tone", "info | success | warning | danger | tip", "the colour and the mark; info when left out"),
+            field("tone", "info | success | warning | danger | tip", "the color and the mark; info when left out"),
             required("text", "markdown", "what it says"),
         ],
         example: r#"{"type": "callout", "tone": "warning", "title": "This rewrites history", "text": "The branch was pushed. A force push will be needed, and anyone who pulled it will have to reset."}"#,

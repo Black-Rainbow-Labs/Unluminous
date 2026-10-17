@@ -1494,7 +1494,7 @@ unluminous-cli report close --discard
 
 ## highlight — the passages marked in the project's files
 
-A highlight is a colour behind a passage of text. It stays there until it is cleared, in this file and next time the project is opened, and it moves with the text as the file is edited. These work on a file whether it is open or not, so `highlight apply` can mark twenty passages across twenty files in one call.
+A highlight is a color behind a passage of text. It stays there until it is cleared, in this file and next time the project is opened, and it moves with the text as the file is edited. These work on a file whether it is open or not, so `highlight apply` can mark twenty passages across twenty files in one call.
 
 ### highlight list
 
@@ -1502,7 +1502,7 @@ A highlight is a colour behind a passage of text. It stays there until it is cle
 unluminous-cli highlight list [path] [--all]
 ```
 
-What is marked, in one file or across the whole project: where each passage is, what colour it is in, and the text under it.
+What is marked, in one file or across the whole project: where each passage is, what color it is in, and the text under it.
 
 - `path` (optional) — The file to list. The tab that is showing when it is left out.
 
@@ -1528,7 +1528,7 @@ Mark a passage in a colour. Give it lines and columns, or --text to mark every o
 - `--to-line <number>` — The line it ends on. The line it started on when it is left out.
 - `--to-column <number>` — The column it ends at. The end of the line when it is left out.
 - `--text <words>` — Mark every occurrence of these words in the file instead of a range.
-- `--color <name>` — yellow, green, blue, pink, or a colour of your own as #rrggbb or #rrggbbaa. Yellow when it is left out.
+- `--color <name>` — yellow, green, blue, pink, or a color of your own as #rrggbb or #rrggbbaa. Yellow when it is left out.
 
 ```sh
 unluminous-cli highlight add --from-line 12 --to-line 18
@@ -2192,7 +2192,7 @@ Drive an Agent Chat node's own conversation: `new`, `send`, `stop`, `state`, `me
 
 ```sh
 unluminous-cli realm chat 7 state
-unluminous-cli realm chat 7 send Summarise what this project does
+unluminous-cli realm chat 7 send Summarize what this project does
 unluminous-cli realm chat 7 last --json
 ```
 
@@ -2355,7 +2355,7 @@ unluminous-cli realm note view 13 preview
 unluminous-cli realm shape <node> [view|text|colour|align|valign|size|kind|edit|done|pick|points] [value]
 ```
 
-Change a whiteboard shape, as its menu and a double click do: `text` (\n is a new line), `colour` (#RRGGBBAA, or `theme`), `align`, `valign`, `size` (points, larger or smaller), `kind`, `edit` and `done` typing, `pick` the colour picker (then a colour, `apply` or `cancel`), and `points`.
+Change a whiteboard shape, as its menu and a double click do: `text` (\n is a new line), `color` (#RRGGBBAA, or `theme`), `align`, `valign`, `size` (points, larger or smaller), `kind`, `edit` and `done` typing, `pick` the color picker (then a color, `apply` or `cancel`), and `points`.
 
 - `node` — The shape node's id.
 - `command` (optional) — What to change.
@@ -2363,7 +2363,7 @@ Change a whiteboard shape, as its menu and a double click do: `text` (\n is a ne
 
 ```sh
 unluminous-cli realm shape 12 text Agent builds it
-unluminous-cli realm shape 12 colour #FFC062D2
+unluminous-cli realm shape 12 color #FFC062D2
 ```
 
 ### realm play
@@ -2870,7 +2870,7 @@ unluminous-cli run select "Dev server"
 unluminous-cli run output [name] [--tail <number>] [--wait-for <text>] [--timeout <milliseconds>]
 ```
 
-What a run has written, as text. It ran in a pseudoterminal, so this is what it would have printed to a terminal — colours and progress bars included, with the escape sequences already read.
+What a run has written, as text. It ran in a pseudoterminal, so this is what it would have printed to a terminal — colors and progress bars included, with the escape sequences already read.
 
 - `name` (optional) — The configuration. The run that is showing when it is left out.
 
@@ -4138,9 +4138,9 @@ The font families this machine has that the editor can be set to.
 unluminous-cli settings fonts --json
 ```
 
-## theme — the colours the whole window is painted in
+## theme — the colors the whole window is painted in
 
-A theme says what every name in Unluminous's own palette means, which drawn icon set the rail and the explorer use, and — when it names all nine token colours — how code is coloured in every language at once. Unluminous Dark names none of the nine, so each language plugin's scheme colours its files; Unluminous Light names all nine. Unluminous Glass is dark and made of glass: its raised surfaces bend the background picture behind the window, and choosing it while no picture is chosen chooses `glass-spheres.jpg`. `settings set appearance.theme` reaches the same code; these exist because a setting cannot say what themes there are.
+A theme says what every name in Unluminous's own palette means, which drawn icon set the rail and the explorer use, and — when it names all nine token colors — how code is colored in every language at once. Unluminous Dark names none of the nine, so each language plugin's scheme colors its files; Unluminous Light names all nine. Unluminous Glass is dark and made of glass: its raised surfaces bend the background picture behind the window, and choosing it while no picture is chosen chooses `glass-spheres.jpg`. `settings set appearance.theme` reaches the same code; these exist because a setting cannot say what themes there are.
 
 ### theme list
 
@@ -4148,7 +4148,7 @@ A theme says what every name in Unluminous's own palette means, which drawn icon
 unluminous-cli theme list
 ```
 
-Every theme that can be chosen, with the plugin it came from and the six colours it is most recognisable by, and which one the window is painted in now.
+Every theme that can be chosen, with the plugin it came from and the six colors it is most recognizable by, and which one the window is painted in now.
 
 ```sh
 unluminous-cli theme list --json
@@ -4160,7 +4160,7 @@ unluminous-cli theme list --json
 unluminous-cli theme show [theme]
 ```
 
-One theme in full: every colour in Unluminous's palette by name, the nine token colours, and which drawn icon set it uses. The one the window is painted in when no theme is named.
+One theme in full: every color in Unluminous's palette by name, the nine token colors, and which drawn icon set it uses. The one the window is painted in when no theme is named.
 
 - `theme` (optional) — Its key, `themes-bundle-1/dracula`, or its name, `Monokai Pro`. The active one when it is left out.
 
@@ -4172,14 +4172,14 @@ unluminous-cli theme show "Monokai Pro" --json
 ### theme set
 
 ```
-unluminous-cli theme set <theme> [--accent <colour>] [--icons <set>]
+unluminous-cli theme set <theme> [--accent <color>] [--icons <set>]
 ```
 
 Paint the window in a theme. It takes effect at once, in every tab and every pane, and is written to the settings file.
 
 - `theme` — Its key, `themes-bundle-1/dracula`, or its name, `Material Deep Ocean`. Everything after it on the line belongs to it.
 
-- `--accent <colour>` — One colour for everything the accent means, as #RRGGBB. `none` puts it back to the theme's own.
+- `--accent <color>` — One color for everything the accent means, as #RRGGBB. `none` puts it back to the theme's own.
 - `--icons <set>` — Which drawn icon set to use: material, classic, or `follow` for whichever the theme names.
 
 ```sh
@@ -4251,9 +4251,9 @@ Delete one of the pictures Unluminous is keeping. Only a name is taken, never a 
 unluminous-cli background remove nebula.jpg
 ```
 
-## plugins — the languages Unluminous colours, and the panes it draws
+## plugins — the languages Unluminous colors, and the panes it draws
 
-A plugin is a folder of data. A `language` one describes a language: its extensions, its keywords and a colour per kind of token. A `ui` one names code that shipped in the binary and says what it contributes — a pane, a tab, a menu, a Settings page — which is how the Agent-Tasks board, the Agent-Chat pane, the Database explorer and the Designer are reached. Nothing in a plugin is executed and nothing is fetched over a network.
+A plugin is a folder of data. A `language` one describes a language: its extensions, its keywords and a color per kind of token. A `ui` one names code that shipped in the binary and says what it contributes — a pane, a tab, a menu, a Settings page — which is how the Agent-Tasks board, the Agent-Chat pane, the Database explorer and the Designer are reached. Nothing in a plugin is executed and nothing is fetched over a network.
 
 ### plugins list
 
@@ -4261,7 +4261,7 @@ A plugin is a folder of data. A `language` one describes a language: its extensi
 unluminous-cli plugins list
 ```
 
-The plugins Unluminous has, which of them are switched on, and what each one claims: a language it colours, or a pane, a tab, a menu and a Settings page it contributes. They ship with Unluminous; nothing is fetched.
+The plugins Unluminous has, which of them are switched on, and what each one claims: a language it colors, or a pane, a tab, a menu and a Settings page it contributes. They ship with Unluminous; nothing is fetched.
 
 ```sh
 unluminous-cli plugins list --json
@@ -4287,7 +4287,7 @@ unluminous-cli plugins install rust
 unluminous-cli plugins enable <id>
 ```
 
-Switch a plugin on, so it colours the files it claims.
+Switch a plugin on, so it colors the files it claims.
 
 - `id` — The plugin's id.
 
@@ -4570,7 +4570,7 @@ unluminous-cli project recent --json
 
 ## mcp — the server an AI agent drives Unluminous through
 
-The Model Context Protocol server, which is how an AI agent discovers and drives Unluminous without being handed a document first. Its tools are generated from this same catalogue, so a command added to Unluminous is a tool the day it is added.
+The Model Context Protocol server, which is how an AI agent discovers and drives Unluminous without being handed a document first. Its tools are generated from this same catalog, so a command added to Unluminous is a tool the day it is added.
 
 ### mcp serve
 
@@ -4657,7 +4657,7 @@ Answered by the CLI itself; no Unluminous needs to be running.
 unluminous-cli mcp tools [--tools <grouped|every>] [--areas <list>] [--count]
 ```
 
-The tools the MCP server offers, exactly as it would answer `tools/list`. This is how to see what an agent will be given, and how the cost of the two shapes is compared. With --areas it says what equipping an agent with only some of the catalogue would cost, which is the number `mcp serve --areas` is chosen against.
+The tools the MCP server offers, exactly as it would answer `tools/list`. This is how to see what an agent will be given, and how the cost of the two shapes is compared. With --areas it says what equipping an agent with only some of the catalog would cost, which is the number `mcp serve --areas` is chosen against.
 
 - `--tools <grouped|every>` — Which shape to print. `grouped` by default.
 - `--areas <list>` — Only the areas named, separated by commas. All of them when it is left out.

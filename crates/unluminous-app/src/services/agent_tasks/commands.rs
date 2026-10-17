@@ -111,7 +111,7 @@ pub const LIST: &[(&str, &str)] = &[
     ("sprint-rename", "Rename a sprint."),
     ("sprint-delete", "Delete a sprint. Its tickets go to the backlog rather than with it."),
     ("epic-rename", "Rename an epic."),
-    ("epic-colour", "Recolour an epic, as `#RRGGBB`. `epic-color` is the same command."),
+    ("epic-colour", "Recolor an epic, as `#RRGGBB`. `epic-color` is the same command."),
     ("epic-delete", "Delete an epic. Its tickets keep existing with no epic."),
     ("sync", "Not implemented on this board: says so and does nothing. There is no menu entry for it."),
     (
@@ -1084,7 +1084,7 @@ fn rename_epic(tasks: &mut AgentTasks, arguments: &[String]) -> Result<Answer, S
 /// so an epic whose name has a space in it can be recoloured without knowing its id.
 fn recolour_epic(tasks: &mut AgentTasks, arguments: &[String]) -> Result<Answer, String> {
     if arguments.len() < 2 {
-        return Err("say which epic and what colour: `epic-colour Unluminous #8B6BFF`".to_owned());
+        return Err("say which epic and what color: `epic-colour Unluminous #8B6BFF`".to_owned());
     }
     let colour = arguments.last().map(String::as_str).unwrap_or("");
     let named = arguments
@@ -1098,7 +1098,7 @@ fn recolour_epic(tasks: &mut AgentTasks, arguments: &[String]) -> Result<Answer,
     // the store does not enforce. The refusal names them as the ones on offer.
     if crate::services::plugins::colour(colour).is_none() {
         return Err(format!(
-            "`{colour}` is not a colour: say `#RRGGBB`. The Epics view offers {}",
+            "`{colour}` is not a color: say `#RRGGBB`. The Epics view offers {}",
             SWATCHES.join(", ")
         ));
     }

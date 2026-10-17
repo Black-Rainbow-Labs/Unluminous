@@ -1041,7 +1041,7 @@ mod tests {
             let Some(name) = values.text(&format!("widget.{index}.name")) else { return Ok(None) };
             match values.text(&format!("widget.{index}.colour")) {
                 None => Ok(Some(name.to_owned())),
-                Some(colour) => Err(format!("`{name}` names `{colour}`, which is not a colour")),
+                Some(colour) => Err(format!("`{name}` names `{colour}`, which is not a color")),
             }
         });
         // Row 1 has no `name` line at all, so it is skipped rather than counted as bad; row 2 has a

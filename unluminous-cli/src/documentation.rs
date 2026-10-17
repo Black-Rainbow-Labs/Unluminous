@@ -158,7 +158,7 @@ fn the_protocol_document_names_exactly_the_commands_that_wait() {
     expected.sort();
     assert_eq!(
         named, expected,
-        "unluminous-cli/docs/protocol.md's list of commands that wait does not match the catalogue"
+        "unluminous-cli/docs/protocol.md's list of commands that wait does not match the catalog"
     );
 }
 

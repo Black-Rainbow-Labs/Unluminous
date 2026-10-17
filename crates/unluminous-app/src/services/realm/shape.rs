@@ -135,7 +135,7 @@ impl Align {
     pub fn label(self) -> &'static str {
         match self {
             Align::Left => "Align Left",
-            Align::Centre => "Align Centre",
+            Align::Centre => "Align Center",
             Align::Right => "Align Right",
         }
     }
@@ -759,11 +759,7 @@ mod tests {
         assert_eq!(SizeStep::Larger.apply(32.0), 32.0, "the largest stays");
         assert_eq!(SizeStep::Smaller.apply(14.0), 12.0);
         assert_eq!(SizeStep::Smaller.apply(12.0), 12.0);
-        assert_eq!(
-            SizeStep::Larger.apply(16.0),
-            18.0,
-            "a size off the list steps to its neighbour"
-        );
+        assert_eq!(SizeStep::Larger.apply(16.0), 18.0, "a size off the list steps to its neighbor");
         assert_eq!(SizeStep::from_name("24 pt"), Some(SizeStep::To(24)));
         assert_eq!(SizeStep::To(24).apply(14.0), 24.0);
         assert_eq!(SizeStep::from_name("bigger"), Some(SizeStep::Larger));

@@ -112,7 +112,7 @@ fn main() {
             false => String::new(),
         };
         println!(
-            "  {rasterising:>9.3} ms to rasterise at {scale} pixels a point{capped} \u{2014} {pixels} pixels \u{2014} on a changed frame [{what}]"
+            "  {rasterising:>9.3} ms to rasterize at {scale} pixels a point{capped} \u{2014} {pixels} pixels \u{2014} on a changed frame [{what}]"
         );
 
         // And a frame where nothing moved, which is the common case. This is `Canvas::texture_for` alone:

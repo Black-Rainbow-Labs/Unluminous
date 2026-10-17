@@ -1883,7 +1883,7 @@ mod tests {
         assert!(field.contains_rect(real), "the strip is inside the field: {real:?} in {field:?}");
         assert!(
             (real.center().y - field.center().y).abs() <= 0.5,
-            "and centred on it: {} against {}",
+            "and centered on it: {} against {}",
             real.center().y,
             field.center().y,
         );

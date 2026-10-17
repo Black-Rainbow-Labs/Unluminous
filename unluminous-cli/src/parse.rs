@@ -84,7 +84,7 @@ pub const GLOBAL_FLAGS: &[(&str, Option<&str>, &str)] = &[
     ("quiet", None, "Print nothing when it worked. The exit code still says whether it did."),
     ("timeout", Some("milliseconds"), "How long to wait for an answer. 15000 by default. Lower it to fail fast; a command that waits for something of its own, such as `terminal read --wait-for`, is still waited out in full."),
     ("dry-run", None, "Print the command and the arguments that would be sent, and send nothing. Needs no running Unluminous."),
-    ("no-color", None, "Never colour the output. NO_COLOR in the environment does the same."),
+    ("no-color", None, "Never color the output. NO_COLOR in the environment does the same."),
     ("help", None, "Print help for the command, or for the whole CLI, and do nothing else."),
     ("version", None, "Print the version and do nothing else."),
 ];

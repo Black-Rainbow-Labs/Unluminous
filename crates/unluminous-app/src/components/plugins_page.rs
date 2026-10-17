@@ -325,13 +325,13 @@ fn detail(
     // is a different question and is the switch beside it.
     let word = match (on_disk, plugin.bundled) {
         (true, _) => "Uninstall",
-        (false, true) => "Customise",
+        (false, true) => "Customize",
         (false, false) => "Install",
     };
     let where_from = match (on_disk, plugin.bundled) {
         (true, true) => "Its folder is under the settings folder and can be edited by hand. Uninstalling takes that folder away and puts the plugin back to the one Unluminous ships.",
         (true, false) => "Its folder is under the settings folder and can be edited by hand. Uninstalling removes it.",
-        (false, _) => "Installed with Unluminous and working. Customising writes its folder out where it can be edited by hand.",
+        (false, _) => "Installed with Unluminous and working. Customizing writes its folder out where it can be edited by hand.",
     };
     let vendor = format!("{} \u{00B7} version {}", plugin.vendor, plugin.version);
     let overview = overview_of(plugin);
@@ -431,25 +431,25 @@ fn overview_of(plugin: &Plugin) -> String {
             // theme's when the theme names the nine tokens.
             let scheme = crate::services::plugins::scheme_of(plugin);
             let from = match crate::theme::syntax().is_some() {
-                true => ", from the theme, which colours every language at once",
+                true => ", from the theme, which colors every language at once",
                 false => "",
             };
             lines.push(format!(
-                "Colour scheme: {}{from}. A scheme colours the tokens and not the editing area, so the window still lets the desktop through.",
+                "Color scheme: {}{from}. A scheme colors the tokens and not the editing area, so the window still lets the desktop through.",
                 scheme.name
             ));
         }
         crate::services::plugins::Kind::Ui => {
             lines.push(format!("Adds {}", contributions_of(plugin)));
             lines.push(
-                "It draws with Unluminous's own controls, so it takes the font and the transparency from Appearance and cannot name a colour of its own.".to_owned(),
+                "It draws with Unluminous's own controls, so it takes the font and the transparency from Appearance and cannot name a color of its own.".to_owned(),
             );
         }
         crate::services::plugins::Kind::Theme => {
             let names: Vec<&str> = plugin.themes.iter().map(|theme| theme.name.as_str()).collect();
             lines.push(format!("Carries {}.", names.join(", ")));
             lines.push(
-                "A theme says what every name in Unluminous's own palette means, so the list of colours stays closed while what they are changes. Choose one in Appearance & Behavior, Theme.".to_owned(),
+                "A theme says what every name in Unluminous's own palette means, so the list of colors stays closed while what they are changes. Choose one in Appearance & Behavior, Theme.".to_owned(),
             );
         }
     }

@@ -322,7 +322,7 @@ fn alignment_actually_moves_the_text_within_the_width() {
     let left = left_edge(Align::Left);
     let centre = left_edge(Align::Center);
     let right = left_edge(Align::Right);
-    assert!(left < centre, "centred text should start further right than left aligned text");
+    assert!(left < centre, "centered text should start further right than left aligned text");
     assert!(centre < right, "right aligned text should start further right still");
 }
 
@@ -534,7 +534,7 @@ fn a_document_holding_every_feature_at_once_renders() {
     // One screenshot showing the whole feature set together, which is the quickest way for a person to
     // see that nothing interferes with anything else.
     let mut harness = harness(
-        "Unluminous\nA text editor written in Rust.\nbold italic underline struck\ncoloured text here\nThis last paragraph is centred and double spaced so that the paragraph settings show up next to the character settings.",
+        "Unluminous\nA text editor written in Rust.\nbold italic underline struck\ncoloured text here\nThis last paragraph is centered and double spaced so that the paragraph settings show up next to the character settings.",
     );
     select_phrase(
         &mut harness,
@@ -1237,7 +1237,7 @@ fn the_editing_areas_own_menu_holds_four_colours_and_the_wheels_icon() {
     for name in ["Highlight yellow", "Highlight green", "Highlight blue", "Highlight pink"] {
         harness.get_by_label(name);
     }
-    harness.get_by_label("Choose a colour");
+    harness.get_by_label("Choose a color");
     harness.get_by_label("Copy");
     harness.snapshot(shot("text_menu"));
 }
@@ -1249,7 +1249,7 @@ fn the_colour_wheel_opens_inside_the_menu_rather_than_in_a_second_popup() {
     let mut harness = harness(MARKABLE);
     select_phrase(&mut harness, "quick brown fox", &[]);
     open_text_menu(&mut harness, 4);
-    harness.get_by_label("Choose a colour").click();
+    harness.get_by_label("Choose a color").click();
     steady(&mut harness);
     for name in ["Highlight hue", "Highlight shade", "Highlight opacity", "Apply highlight"] {
         harness.get_by_label(name);
@@ -1265,7 +1265,7 @@ fn choosing_a_colour_marks_the_selection_and_shuts_the_menu() {
     open_text_menu(&mut harness, 4);
     harness.get_by_label("Highlight blue").click();
     steady(&mut harness);
-    assert!(harness.state().text_menu.is_none(), "choosing a colour puts the menu away");
+    assert!(harness.state().text_menu.is_none(), "choosing a color puts the menu away");
     let marks = harness.state().document().highlights();
     assert_eq!(marks.len(), 1);
     assert_eq!(
@@ -1473,7 +1473,7 @@ fn a_colour_that_is_not_a_colour_is_refused_with_the_names_that_are() {
     assert!(!reply.ok);
     assert!(
         reply.message.contains("yellow"),
-        "the refusal should name the colours: {}",
+        "the refusal should name the colors: {}",
         reply.message
     );
     assert_eq!(refused(&mut harness, "highlight add --from-line 9 --to-line 2"), "usage");
@@ -1490,7 +1490,7 @@ fn the_four_colours_and_the_two_ways_of_clearing_are_menu_entries_with_names() {
     assert_eq!(
         harness.state().document().highlights().len(),
         1,
-        "each colour replaces the last over the same passage"
+        "each color replaces the last over the same passage"
     );
     did(&mut harness, "action run clear-highlights");
     assert!(harness.state().document().highlights().is_empty());

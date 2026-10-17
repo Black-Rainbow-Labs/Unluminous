@@ -166,7 +166,7 @@ fn the_title_bar_names_the_project_and_carries_the_window_buttons_and_the_text_t
     let mut harness = harness("");
     harness.get_by_label_contains("readme.md").click();
     steady(&mut harness);
-    for button in ["Close", "Minimise", "Maximise"] {
+    for button in ["Close", "Minimize", "Maximize"] {
         harness.get_by_label(button);
     }
     let title_bar =
@@ -238,7 +238,7 @@ fn on_macos_the_mark_sits_after_the_traffic_lights() {
         (30.0, 30.0),
         "the same size as the Windows pill: {mark:?}"
     );
-    let lights = harness.get_by_label("Maximise").rect();
+    let lights = harness.get_by_label("Maximize").rect();
     assert!(mark.left() > lights.right(), "after the traffic lights: {mark:?} {lights:?}");
     assert!(mark.left() < 100.0, "at the top left of the bar: {mark:?}");
     let drag = harness.get_by_label("Move window").rect();
@@ -307,7 +307,7 @@ fn the_green_button_goes_full_screen_on_macos_and_maximises_everywhere_else() {
     let mut mac = harness("");
     mac.state_mut().menu_placement = MenuPlacement::Native;
     steady(&mut mac);
-    mac.get_by_label("Maximise").click();
+    mac.get_by_label("Maximize").click();
     // `step` and not `run`: `run` keeps painting until the window settles, and the commands read
     // below are the ones a single frame sent, so the frame that handled the click has to be the last.
     mac.step();
@@ -320,22 +320,22 @@ fn the_green_button_goes_full_screen_on_macos_and_maximises_everywhere_else() {
     // then leave it, which is the flicker this separation exists to avoid.
     assert!(
         !sent.iter().any(|command| command.starts_with("Maximized")),
-        "the green button on macOS should not also maximise, and it sent {sent:?}"
+        "the green button on macOS should not also maximize, and it sent {sent:?}"
     );
 
     let mut windows = harness("");
     windows.state_mut().menu_placement = MenuPlacement::InWindow;
     steady(&mut windows);
-    windows.get_by_label("Maximise").click();
+    windows.get_by_label("Maximize").click();
     windows.step();
     let sent = viewport_commands(&windows);
     assert!(
         sent.iter().any(|command| command == "Maximized(true)"),
-        "the maximise button should maximise off macOS, and it sent {sent:?}"
+        "the maximize button should maximize off macOS, and it sent {sent:?}"
     );
     assert!(
         !sent.iter().any(|command| command.starts_with("Fullscreen")),
-        "the maximise button off macOS should not go full screen, and it sent {sent:?}"
+        "the maximize button off macOS should not go full screen, and it sent {sent:?}"
     );
 }
 
@@ -353,7 +353,7 @@ fn a_double_click_on_the_bar_maximises_on_macos_rather_than_going_full_screen() 
     let sent = viewport_commands(&harness);
     assert!(
         sent.iter().any(|command| command.starts_with("Maximized")),
-        "a double click on the bar should maximise, and it sent {sent:?}"
+        "a double click on the bar should maximize, and it sent {sent:?}"
     );
     assert!(
         !sent.iter().any(|command| command.starts_with("Fullscreen")),
@@ -799,7 +799,7 @@ fn a_fence_of_rust_is_coloured_by_the_plugin_that_reads_rust() {
     let name = harness.state().preview_style_at(at + 4);
     assert_ne!(
         keyword.color, name.color,
-        "`fn` and `main` are different kinds of thing, so they are different colours"
+        "`fn` and `main` are different kinds of thing, so they are different colors"
     );
 }
 
@@ -1745,7 +1745,7 @@ fn a_maximised_window_offers_no_resize_grips() {
     for grip in ["top", "bottom", "left", "right", "top left", "bottom right"] {
         assert!(
             harness.query_by_label(&format!("Resize window: {grip}")).is_none(),
-            "a maximised window has no {grip} grip to offer"
+            "a maximized window has no {grip} grip to offer"
         );
     }
 }
@@ -3481,7 +3481,7 @@ fn window_commands(harness: &Harness<'static, UnluminousApp>) -> Vec<String> {
 fn a_window_button_holds_the_keyboard(
     harness: &mut Harness<'static, UnluminousApp>,
 ) -> Option<String> {
-    ["Close", "Minimise", "Maximise"].into_iter().find_map(|label| {
+    ["Close", "Minimize", "Maximize"].into_iter().find_map(|label| {
         let held = harness.get_all_by_label(label).any(|node| node.is_focused());
         held.then(|| label.to_owned())
     })
@@ -4765,7 +4765,7 @@ fn signature(harness: &mut Harness<'static, UnluminousApp>) -> String {
     parts.push(format!("manage the canvases -> {}", state.realm.managing.is_some()));
     // Which shape the colour picker is open on, which `realm view` does not say. `task-2284`.
     parts.push(format!(
-        "colour picker -> {:?}",
+        "color picker -> {:?}",
         state.realm.picking.as_ref().map(|picking| picking.node)
     ));
     parts.push(format!("in hand -> {:?}", state.realm.in_hand));
@@ -5949,7 +5949,7 @@ fn a_project_another_window_opened_reaches_this_windows_recent_projects() {
 #[test]
 fn a_selection_over_prose_sits_on_the_letters() {
     let mut harness = harness(
-        "A paragraph of prose, long enough to wrap onto a second line in the window, so the selection covers the server afterwards. It loads a snapshot with no lock and the selection is centred on the words.",
+        "A paragraph of prose, long enough to wrap onto a second line in the window, so the selection covers the server afterwards. It loads a snapshot with no lock and the selection is centered on the words.",
     );
     let ctx = harness.ctx.clone();
     harness.state_mut().run_action(Action::SelectAll, &ctx);
@@ -6298,4 +6298,112 @@ fn the_intellij_keymap_preset_puts_duplicate_line_on_ctrl_d() {
 
     open_the_keymap_page(&mut harness, "");
     harness.snapshot(shot("settings_keymap_preset"));
+
+/// Words in a chip, in a realm's tab and beside an icon in the explorer are centred by their ink, at the
+/// design size and at the interface zoom Jason runs at. `task-2287`: the `Run` chip's word was drawn about a
+/// point and a quarter below the middle of the chip, because `crisp::top_centring_capitals` measured the
+/// face before its `y_offset` tweak, and the menu bar, the branch chip and the explorer's rows were placed
+/// by the same helper.
+///
+/// **Every word is in capitals with nothing below the baseline**, so the top of its ink is the top of a
+/// capital and the bottom is the baseline. A word with an `l` or a `d` in it would be measured from the top
+/// of that stroke, which in a monospaced face stands well above the capitals.
+#[test]
+fn words_in_chips_tabs_and_rows_are_centred_by_their_ink() {
+    // **An interface face that `theme::centred_in_its_row` moves down**, which is the case that went wrong.
+    // The face a test window finds first on this machine may need no move at all, and then every word is
+    // centred whatever the helper does. Consolas is what the report came from, Menlo is its macOS sibling.
+    let face = ["C:/Windows/Fonts/consola.ttf", "/System/Library/Fonts/Menlo.ttc"]
+        .into_iter()
+        .find_map(|path| std::fs::read(path).ok());
+    let Some(face) = face else {
+        eprintln!("No monospaced system face to set the interface in, so nothing was measured.");
+        return;
+    };
+    let moved = unluminous_app::theme::capital_shift(&face, 0).unwrap_or(0.0);
+    assert!(moved > 0.0, "the face has to be one the tweak moves, or this measures nothing");
+
+    let folder = std::env::temp_dir().join("unluminous-ink-centring");
+    std::fs::remove_dir_all(&folder).ok();
+    std::fs::create_dir_all(&folder).expect("make the folder");
+    std::fs::write(folder.join("TODO.TXT"), "WORK\n").expect("write the file");
+    let mut harness = harness_in(&folder);
+    harness.state_mut().run_configurations.add_permanent(
+        unluminous_app::services::run_configurations::Configuration::new("BUILD", "cargo build"),
+    );
+    harness.state_mut().run_selected = Some("BUILD".to_owned());
+    did(&mut harness, "realm show");
+    did(&mut harness, "realm new HELM");
+    did(&mut harness, "realm hide");
+    unluminous_app::theme::install_fonts(
+        &harness.ctx,
+        "Mono",
+        Some(egui::FontData::from_owned(face)),
+        None,
+    );
+    // (control, points left out at its left, points left out at its right): the icon in front of an
+    // explorer row's name and the chevron at the end of the run chip are not words.
+    let chips = [("Choose a run configuration", 4.0, 20.0), ("TODO.TXT", 46.0, 8.0)];
+    let tabs = [("Realm tab: HELM", 4.0, 4.0)];
+    for zoom in [1.0_f32, 1.6] {
+        harness.ctx.set_zoom_factor(zoom);
+        steady(&mut harness);
+        assert_centred_by_ink(&mut harness, zoom, &chips);
+        // The realm takes the bottom of the window and leaves the explorer too short for a row, so its tab
+        // is measured while it shows and it is put away again.
+        did(&mut harness, "realm show");
+        steady(&mut harness);
+        assert_centred_by_ink(&mut harness, zoom, &tabs);
+        did(&mut harness, "realm hide");
+    }
+    drop(harness);
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+/// Assert that each named control's ink is centred on it, within half a point.
+fn assert_centred_by_ink(
+    harness: &mut Harness<'static, UnluminousApp>,
+    zoom: f32,
+    controls: &[(&str, f32, f32)],
+) {
+    for (name, left, right) in controls {
+        let rect = harness.get_by_label(name).rect();
+        let (top, bottom) = ink_rows(harness, rect, *left, *right);
+        let middle = (top + bottom) / 2.0;
+        assert!(
+            (middle - rect.center().y).abs() <= 0.5,
+            "at a zoom of {zoom}, `{name}` has its ink from {top} to {bottom}, so its middle is {middle} in a              control whose middle is {}",
+            rect.center().y
+        );
+    }
+}
+
+/// The first and last rows of `rect`, in points, holding a pixel that stands well apart from the rest of
+/// its row, which is a letter on the ground behind it.
+fn ink_rows(
+    harness: &mut Harness<'static, UnluminousApp>,
+    rect: egui::Rect,
+    left: f32,
+    right: f32,
+) -> (f32, f32) {
+    let scale = harness.ctx.pixels_per_point();
+    let image = harness.render().expect("render the window");
+    let luminance = |x: u32, y: u32| {
+        let [r, g, b, _] = image.get_pixel(x, y).0;
+        (u32::from(r) * 3 + u32::from(g) * 6 + u32::from(b)) as i32 / 10
+    };
+    let columns = ((rect.left() + left) * scale) as u32..((rect.right() - right) * scale) as u32;
+    let rows = ((rect.top() + 2.0) * scale) as u32..((rect.bottom() - 2.0) * scale) as u32;
+    let inked: Vec<u32> = rows
+        .filter(|y| {
+            let mut row: Vec<i32> = columns.clone().map(|x| luminance(x, *y)).collect();
+            row.sort_unstable();
+            let ground = row[row.len() / 2];
+            row.iter().any(|value| (value - ground).abs() > 60)
+        })
+        .collect();
+    let (Some(first), Some(last)) = (inked.first(), inked.last()) else {
+        panic!("no letters were found in {rect:?}");
+    };
+    (*first as f32 / scale, (*last + 1) as f32 / scale)
 }

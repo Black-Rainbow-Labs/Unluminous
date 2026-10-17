@@ -1791,6 +1791,23 @@ centred on `centre_y`, measured off the font from an `H`, so every row in a list
 letters are in it. The explorer's rows and the file tabs use it. Text that has no icon beside it is still
 centred by its box.
 
+**The band is read off the ink of the `H`, never off `Glyph::pos`** (`task-2287`). `theme::centred_in_its_row`
+gives the interface face a `y_offset` tweak (`task-2282`), and the tweak moves the ink while `Glyph::pos` stays
+where it was. Measured off `Glyph::pos`, the band ended about two points above the real baseline, so the `Run`
+chip, the branch chip, the menu bar and the explorer's rows were all drawn about a point and a quarter low.
+`words_in_chips_tabs_and_rows_are_centred_by_their_ink` renders the window in Consolas (Menlo on macOS) at
+zoom 1 and 1.6 and measures where the ink of the Run chip, an explorer row and a realm tab actually lands. Add
+a control to that list when you add one that carries a word, and measure capital words only: a monospaced
+face's `l` and `d` stand above its capitals.
+
+### Words a person reads are in American spelling (`task-2287`)
+
+Every string the window draws or a command prints is American: `color`, `center`, `catalog`, `gray`,
+`Minimize`, `Customize`. Comments, documents and identifiers keep the house's British spelling, and so does
+anything that is a key or a name somebody may have written down: `realm.colour` in a realm file,
+`toggle-maximised-pane`, `epic-colour`, `Align::name()`'s `centre`. A command word that changed is read in
+both spellings (`realm shape <node> colour` and `color`).
+
 ### `Ui::set_clip_rect` assigns, and on a canvas that matters twice over
 
 `components::explorer` has recorded since `task-1905` that a clip written from a component's own rectangle

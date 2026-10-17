@@ -103,12 +103,12 @@ fn one_theme(values: &Values, plugin: &str, id: &str) -> Result<crate::theme::Th
     for (role, value) in values.starting_with(&format!("theme.{id}.ui.")) {
         let Some(read) = colour(&value) else {
             return Err(format!(
-                "theme.{id}.ui.{role} is `{value}`, which is not a colour such as #FF79C6"
+                "theme.{id}.ui.{role} is `{value}`, which is not a color such as #FF79C6"
             ));
         };
         if !palette.set(&role, egui::Color32::from_rgb(read.r, read.g, read.b)) {
             return Err(format!(
-                "theme.{id}.ui.{role} names a colour Unluminous has not got. It has {}",
+                "theme.{id}.ui.{role} names a color Unluminous has not got. It has {}",
                 crate::theme::Palette::NAMES.join(", ")
             ));
         }
@@ -131,7 +131,7 @@ fn one_theme(values: &Values, plugin: &str, id: &str) -> Result<crate::theme::Th
                 Some(read) => named.push((token, read)),
                 None => {
                     return Err(format!(
-                        "theme.{id}.syntax.{} is `{value}`, which is not a colour such as #FF79C6",
+                        "theme.{id}.syntax.{} is `{value}`, which is not a color such as #FF79C6",
                         token.name()
                     ))
                 }
@@ -147,7 +147,7 @@ fn one_theme(values: &Values, plugin: &str, id: &str) -> Result<crate::theme::Th
         (false, true) => Some(SyntaxTheme::of(name.clone(), named)),
         (false, false) => {
             return Err(format!(
-                "theme.{id} colours some tokens and not others, which would leave a file in two schemes at once. It is missing {}",
+                "theme.{id} colors some tokens and not others, which would leave a file in two schemes at once. It is missing {}",
                 missing.join(", ")
             ))
         }
@@ -215,7 +215,7 @@ mod tests {
         assert_eq!(dracula.icons, crate::theme::IconSet::Material);
         // The blue comment is what makes Dracula **Colorful** rather than plain Dracula, and it is the
         // one number a theme called Dracula is most likely to be wrong about.
-        let scheme = dracula.syntax.as_ref().expect("it colours the tokens");
+        let scheme = dracula.syntax.as_ref().expect("it colors the tokens");
         assert_eq!(scheme.colour(Token::Comment), Some(Color::rgb(0x98, 0xAF, 0xFF)));
         assert_eq!(scheme.colour(Token::Keyword), Some(Color::rgb(0xFF, 0x79, 0xC6)));
         // And One Dark keeps the marks Unluminous shipped with, so the bundle has one of each.
@@ -234,7 +234,7 @@ mod tests {
             crate::theme::Palette::UNLUMINOUS_DARK.editor,
             "and every other is Unluminous's own"
         );
-        assert!(theme.syntax.is_none(), "naming no token colours leaves the plugins alone");
+        assert!(theme.syntax.is_none(), "naming no token colors leaves the plugins alone");
         assert_eq!(
             theme.icons,
             crate::theme::IconSet::Material,
@@ -263,7 +263,7 @@ mod tests {
         assert_eq!(
             paper.syntax,
             crate::theme::Theme::unluminous_light().syntax,
-            "and code coloured for a light ground, since every language plugin's own scheme is for a dark one"
+            "and code colored for a light ground, since every language plugin's own scheme is for a dark one"
         );
     }
 
@@ -289,7 +289,7 @@ mod tests {
         assert!(problem.contains("comment"), "and it says which: {problem}");
 
         let problem = refused(&format!("{base}theme.one.ui.accent = magenta\n"));
-        assert!(problem.contains("not a colour"), "{problem}");
+        assert!(problem.contains("not a color"), "{problem}");
 
         // **The one whose silent outcome looks legitimate**, which is why the review found it and the
         // eight-of-nine check above did not: a theme that names no token colours is a valid theme, so a
@@ -300,7 +300,7 @@ mod tests {
             all_nine_mistyped.push_str(&format!("theme.one.syntax.{} = #GGGGGG\n", token.name()));
         }
         let problem = refused(&all_nine_mistyped);
-        assert!(problem.contains("not a colour"), "{problem}");
+        assert!(problem.contains("not a color"), "{problem}");
         assert!(problem.contains("syntax."), "and it says which key: {problem}");
 
         // A key under a theme that is none of the five it reads.

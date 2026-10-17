@@ -2192,7 +2192,7 @@ fn view_menu(state: &MenuState) -> Menu {
             // the command line - an agent. Escape is what puts it back, and is not a shortcut here because
             // Escape already means several things and a menu equivalent would claim it from all of them.
             Entry::with_shortcut(
-                if state.maximised { "Restore Pane" } else { "Maximise Pane" },
+                if state.maximised { "Restore Pane" } else { "Maximize Pane" },
                 Action::ToggleMaximisedPane,
                 Shortcut::command_shift(egui::Key::M),
             ),
@@ -2400,7 +2400,7 @@ pub fn realm_node_menu(state: &MenuState) -> Vec<Entry> {
     // after it that opens to the side the way `Arrange` does, with the shape's own alignment and size ticked.
     // Absent on every other kind, because a terminal has no colour of its own and no words to align.
     if let Some((align, valign, size)) = state.realm_shape {
-        entries.push(Entry::item("Colour...", Action::Realm(RealmAction::ShapeColour)));
+        entries.push(Entry::item("Color...", Action::Realm(RealmAction::ShapeColour)));
         entries.push(Entry::Submenu {
             name: "Text".to_owned(),
             entries: shape_text_menu(align, valign, size),
@@ -3041,7 +3041,7 @@ mod tests {
                 Entry::Separator => "-".to_owned(),
             })
             .collect();
-        assert_eq!(top, vec!["Rename...", "Colour...", "Text", "-", "Arrange", "-", "Close"]);
+        assert_eq!(top, vec!["Rename...", "Color...", "Text", "-", "Arrange", "-", "Close"]);
         let Some(Entry::Submenu { entries, .. }) = menu
             .iter()
             .find(|entry| matches!(entry, Entry::Submenu { name, .. } if name == "Text"))
@@ -3060,7 +3060,7 @@ mod tests {
             named,
             vec![
                 "Align Left",
-                "Align Centre",
+                "Align Center",
                 "Align Right",
                 "-",
                 "Align Top",
@@ -3085,7 +3085,7 @@ mod tests {
         for kind in Kind::ALL.into_iter().filter(|kind| *kind != Kind::Shape) {
             let state = MenuState { realm_node: Some((kind, false)), ..MenuState::default() };
             let rows = names(&realm_node_menu(&state));
-            assert!(!rows.iter().any(|row| row == "Colour..."), "{}: {rows:?}", kind.name());
+            assert!(!rows.iter().any(|row| row == "Color..."), "{}: {rows:?}", kind.name());
         }
     }
 

@@ -1085,7 +1085,7 @@ mod tests {
         assert_eq!(
             read.terminal_tab_names,
             vec!["build".to_owned(), String::new(), "server".to_owned()],
-            "a tab nobody named stays blank rather than being given a neighbour's name"
+            "a tab nobody named stays blank rather than being given a neighbor's name"
         );
     }
 

@@ -180,12 +180,16 @@ pub fn show_with(
         CornerRadius::ZERO,
         crate::theme::pane_ground(color::title_bar(), opacity),
     );
-    // The groove down the rail's right hand edge: a dark line and a lit one beside it.
-    crate::components::chrome_kit::groove(
-        &painter,
-        Pos2::new(area.right() - 2.0, area.top()),
-        Pos2::new(area.right() - 2.0, area.bottom()),
-    );
+    // The groove down the rail's right hand edge: a dark line and a lit one beside it. Not under glass
+    // (`task-2287`), where the rail sits on the window's glass and the panels beside it are what mark
+    // where it ends.
+    if !crate::theme::is_glass() {
+        crate::components::chrome_kit::groove(
+            &painter,
+            Pos2::new(area.right() - 2.0, area.top()),
+            Pos2::new(area.right() - 2.0, area.bottom()),
+        );
+    }
     crate::components::chrome_kit::layer(ui, "rail", area, 0.0, |rux| {
         buttons(rux, area, state, plugins)
     })

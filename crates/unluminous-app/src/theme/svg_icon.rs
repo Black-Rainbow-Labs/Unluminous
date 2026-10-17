@@ -309,7 +309,7 @@ mod tests {
         assert!((last[0] - 18.0).abs() < 1e-3 && (last[1] - 3.0).abs() < 1e-3, "{last:?}");
         for p in points {
             let d = ((p[0] - 17.0).powi(2) + (p[1] - 3.0).powi(2)).sqrt();
-            assert!((d - 1.0).abs() < 1e-3, "{p:?} is {d} from the centre");
+            assert!((d - 1.0).abs() < 1e-3, "{p:?} is {d} from the center");
         }
     }
 

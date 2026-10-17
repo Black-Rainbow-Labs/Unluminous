@@ -625,8 +625,8 @@ fn designer_composer() {
         .composing
         .as_mut()
         .unwrap()
-        .text = "Put the first half on one line and use the accent colour for \"actually open\"."
-        .to_owned();
+        .text =
+        "Put the first half on one line and use the accent color for \"actually open\".".to_owned();
     steady(&mut harness);
     harness.snapshot(shot("designer_composer").as_str());
 }
