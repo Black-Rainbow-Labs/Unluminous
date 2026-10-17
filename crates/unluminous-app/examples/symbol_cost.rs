@@ -61,7 +61,7 @@ fn main() {
     // ---------------------------------------------------------------- building the index
     // The code index, held in memory as a window a test builds holds it (`task-2231` §5.2).
     let start = Instant::now();
-    let index = ProjectSymbols::open(&folder, false);
+    let index = ProjectSymbols::open(&folder, false, false);
     while index.is_building() {
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
