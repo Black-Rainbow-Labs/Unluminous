@@ -231,7 +231,8 @@ impl<'r, 'u> Card<'r, 'u> {
         self.rows += 1;
     }
 
-    /// A row with a label in the left column and controls in the right, and the help under the controls.
+    /// A row with a label in the left column and controls in the right, and the help under both, from the
+    /// card's margin.
     pub fn row<R>(
         &mut self,
         label: &str,
@@ -256,8 +257,12 @@ impl<'r, 'u> Card<'r, 'u> {
         let mut row = Row { rux: &mut *self.rux, x: left, left, right, top, bottom: top + CONTROL };
         let result = add(&mut row);
         let mut bottom = row.bottom;
+        // A row's help starts at the card's own margin, where the label and a switch start, rather than
+        // under the controls (`task-2282`): every paragraph on a card lines up on one edge.
         if let Some(help) = help.filter(|help| !help.is_empty()) {
-            bottom = paragraph(self.rux, Pos2::new(left, bottom + HELP_GAP), right - left, help);
+            let margin = self.left;
+            bottom =
+                paragraph(self.rux, Pos2::new(margin, bottom + HELP_GAP), right - margin, help);
         }
         self.pen = bottom;
         result
@@ -299,13 +304,13 @@ impl<'r, 'u> Card<'r, 'u> {
         let mut bottom = rect.bottom();
         if let Some(help) = help.filter(|help| !help.is_empty()) {
             bottom =
-                paragraph(self.rux, Pos2::new(left, bottom + HELP_GAP), self.right - left, help);
+                paragraph(self.rux, Pos2::new(self.left, bottom + HELP_GAP), self.width(), help);
         }
         self.pen = bottom;
         changed
     }
 
-    /// A switch with its label beside it and the help under the label.
+    /// A switch with its label beside it and the help under both, from the card's margin.
     pub fn switch(&mut self, label: &str, help: Option<&str>, value: &mut bool) -> bool {
         self.open_row();
         let top = self.pen;
@@ -325,12 +330,8 @@ impl<'r, 'u> Card<'r, 'u> {
         let changed = switch(self.rux, track, label, value, label_rect);
         let mut bottom = top + 26.0;
         if let Some(help) = help.filter(|help| !help.is_empty()) {
-            bottom = paragraph(
-                self.rux,
-                Pos2::new(words_left, bottom + TITLE_GAP),
-                self.right - words_left,
-                help,
-            );
+            bottom =
+                paragraph(self.rux, Pos2::new(self.left, bottom + TITLE_GAP), self.width(), help);
         }
         self.pen = bottom;
         changed

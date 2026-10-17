@@ -1185,13 +1185,12 @@ pub fn labelled_flyout_with_icon<T>(
         }
         None => area.left() + 9.0,
     };
-    let galley =
-        painter.crisp_layout_no_wrap(label.to_owned(), egui::FontId::proportional(12.5), tint);
-    painter.crisp_galley(
-        Pos2::new(words_from, area.center().y - galley.size().y / 2.0),
-        galley,
-        tint,
-    );
+    // By its capitals, as the menu bar's words are (`task-2282`): centring the line's own height put the
+    // words above the middle of the button, because that height includes the room below the baseline.
+    let font = egui::FontId::proportional(12.5);
+    let top = crate::theme::crisp::top_centring_capitals(painter, &font, area.center().y);
+    let galley = painter.crisp_layout_no_wrap(label.to_owned(), font, tint);
+    painter.crisp_galley(Pos2::new(words_from, top), galley, tint);
     // A stroked chevron rather than a solid triangle three pixels tall, which is what a select carries
     // everywhere else in the window, `rux`'s model selector among them.
     let chevron = Pos2::new(area.right() - 11.0, area.center().y + 0.5);

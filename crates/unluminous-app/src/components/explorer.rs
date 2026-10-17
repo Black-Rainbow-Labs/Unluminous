@@ -1030,7 +1030,18 @@ fn file_row(
     // set, where it is exactly the number this row has always used — see [`mark_column`].
     let mark = icon::folder_mark_width(view.zoom);
     match &decoration.icon {
-        // A file whose plugin gives it a picture gets the picture in place of the square.
+        // A file whose plugin gives it a picture gets the picture in place of the square. In a set with a
+        // mark column the picture starts where a folder's mark starts and stops three points short of the
+        // name (`task-2282`): a picture drawn at its own fourteen points in the middle of the column came
+        // within a point of the name, and Rust's and TOML's fill their whole square, so they touched it.
+        Some(icon) if mark > 0.0 => crate::services::icons::draw_in(
+            ui.painter(),
+            Rect::from_center_size(
+                Pos2::new(x + view.at(12.0) + (mark - view.at(3.0)) / 2.0, row.center().y),
+                Vec2::splat(mark - view.at(3.0)),
+            ),
+            icon,
+        ),
         Some(icon) => crate::services::icons::draw(
             ui.painter(),
             Pos2::new(mark_column(x, view, mark), row.center().y),

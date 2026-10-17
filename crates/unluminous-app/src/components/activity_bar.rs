@@ -50,6 +50,14 @@ const BUTTON: f32 = 34.0;
 const STEP: f32 = 38.0;
 /// Space between the top or bottom edge of the rail and the first button.
 const MARGIN: f32 = 8.0;
+/// Where a button's middle is, from the rail's left edge: the middle of the rail left of its groove, which
+/// sits two points in from the right hand edge (`task-2282`). The buttons used to start where the window's
+/// resize grip stops, six points in, which left six points beside them on the left and two on the right.
+const CENTRE: f32 = (size::ACTIVITY_BAR - 2.0) / 2.0;
+/// How much of a button's left side the window's resize grip covers, which the button leaves to the grip
+/// so a press there still resizes the window.
+const UNDER_THE_GRIP: f32 =
+    (crate::components::resize_edges::EDGE - (CENTRE - BUTTON / 2.0)).max(0.0);
 /// How large a mark is drawn in a button: `width="19"` on a 24 unit view box.
 const MARK: f32 = 19.0;
 
@@ -191,10 +199,10 @@ fn buttons(
     plugins: &[PluginButton],
 ) -> RailOutcome {
     let mut outcome = RailOutcome::default();
-    // Six points in from the left rather than centred in the rail, because the outer six belong to
-    // `components::resize_edges` and a button that reached into them would lose those clicks to the
-    // window's own resize grip. The six left at the right hand side make it look centred anyway.
-    let centre_x = area.left() + crate::components::resize_edges::EDGE + BUTTON / 2.0;
+    // Centred on the rail left of its groove (`task-2282`). The outer six points belong to
+    // `components::resize_edges`, so the part of a button under them is drawn and not pressed: see
+    // `UNDER_THE_GRIP`.
+    let centre_x = area.left() + CENTRE;
 
     // The panes at the side, from the top.
     let top: [SideButtonRow; 4] = [
@@ -412,9 +420,10 @@ fn rail_button(
     enabled: bool,
 ) -> Pressed {
     let hit = Rect::from_center_size(centre, Vec2::splat(BUTTON));
+    let pressable = Rect::from_min_max(Pos2::new(hit.left() + UNDER_THE_GRIP, hit.top()), hit.max);
     let sense = if enabled { Sense::click() } else { Sense::hover() };
     let response =
-        rux.ui.interact(hit, rux.ui.id().with(("activity", name)), sense).with_hint(name);
+        rux.ui.interact(pressable, rux.ui.id().with(("activity", name)), sense).with_hint(name);
     let chat = crate::components::chrome_kit::chat();
     let ink = rux.theme().ink;
     if on {

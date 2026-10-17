@@ -84,7 +84,11 @@ fn decode(bytes: &[u8]) -> Option<([usize; 2], Vec<egui::Color32>)> {
 
 /// Draw an icon centred at `centre`, at [`SIZE`] points.
 pub fn draw(painter: &egui::Painter, centre: egui::Pos2, texture: &egui::TextureHandle) {
-    let rect = egui::Rect::from_center_size(centre, egui::Vec2::splat(SIZE));
+    draw_in(painter, egui::Rect::from_center_size(centre, egui::Vec2::splat(SIZE)), texture);
+}
+
+/// Draw an icon filling `rect`, for a place that sizes its icons itself.
+pub fn draw_in(painter: &egui::Painter, rect: egui::Rect, texture: &egui::TextureHandle) {
     painter.image(
         texture.id(),
         rect,
