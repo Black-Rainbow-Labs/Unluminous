@@ -4596,3 +4596,55 @@ fn a_shape_has_the_same_depth_as_the_node_beside_it() {
     steady(&mut harness);
     harness.snapshot(shot("realm_shape_depth").as_str());
 }
+
+/// Item 9 under Unluminous Glass: the shapes are glass like every other raised surface, drawn over the
+/// picture the window bends, with the theme's own ink and accent.
+#[test]
+fn a_whiteboard_under_the_glass_theme() {
+    let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-glass-shapes");
+    let settings = folder.join(".unluminous-settings");
+    let mut harness = harness_in(&folder);
+    harness.state_mut().use_store(unluminous_app::services::store::Store::at(&settings));
+    steady(&mut harness);
+    did(&mut harness, "settings set appearance.ui.font.size 12.5");
+    did(&mut harness, "background use glass-spheres.jpg");
+    did(&mut harness, "theme set \"Unluminous Glass\"");
+    did(&mut harness, "realm show");
+    let add =
+        |harness: &mut Harness<'static, UnluminousApp>, line: &str| id_of(&did(harness, line));
+    let folder_node = add(&mut harness, "realm add folder --x -330 --y 0 --width 280 --height 220");
+    let start = add(&mut harness, "realm add shape rounded --x 0 --y 0 --text \"Ticket arrives\"");
+    let decide =
+        add(&mut harness, "realm add shape diamond --x 10 --y 150 --text \"Needs a design?\"");
+    let design = add(&mut harness, "realm add shape sticky --x 250 --y 160 --text \"Sketch it\"");
+    let build =
+        add(&mut harness, "realm add shape hexagon --x 0 --y 370 --text \"Agent builds it\"");
+    let ship = add(&mut harness, "realm add shape circle --x 260 --y 380 --text Ship");
+    add(&mut harness, "realm add shape star --x -250 --y 300 --text Go");
+    add(&mut harness, "realm add shape triangle --x -420 --y 300 --text Risk");
+    did(&mut harness, &format!("realm shape {design} colour #FFC062D2"));
+    did(&mut harness, &format!("realm shape {ship} colour #3AD6ADBE"));
+    did(
+        &mut harness,
+        &format!("realm connect {start} {decide} --from-point bottom --to-point top"),
+    );
+    did(
+        &mut harness,
+        &format!("realm connect {decide} {design} --from-point right --to-point left"),
+    );
+    did(
+        &mut harness,
+        &format!("realm connect {decide} {build} --from-point bottom --to-point top"),
+    );
+    did(&mut harness, &format!("realm connect {folder_node} {start} --to-point left"));
+    did(&mut harness, &format!("realm focus {decide}"));
+    did(&mut harness, "realm camera --fit");
+    // The picture is put on the graphics card a strip a frame (`task-2279`).
+    for _ in 0..24 {
+        pump(&mut harness);
+    }
+    steady(&mut harness);
+    assert!(unluminous_app::theme::rux_theme().glass.is_some(), "the rux theme is glazed");
+    harness.snapshot(shot("realm_shapes_glass").as_str());
+    std::fs::remove_dir_all(&folder).ok();
+}

@@ -273,6 +273,19 @@ pub fn paint(
     }
     // About one pixel of feathering on the fill's edge, which is what smooths it at any zoom.
     let edge = 1.0 / scale;
+    // **Under glass a shape is glass**, as a node's card is (`components::realm::cover`): the picture behind
+    // the window bent through it, and the card's translucent tint over that. With no picture to bend, an
+    // opaque ground under the tint does the hiding instead.
+    // A rectangle and a rounded rectangle are what `rux` builds glass for already, so they take a node's own
+    // glass; every other outline is bent by `glass_in`.
+    let bent = crate::theme::is_glass()
+        && match shape::corner_radius(kind, rect) {
+            Some(radius) => crate::theme::glass::paint_glass(painter, rect, radius),
+            None => glass_in(painter, &outline, kernel, rect),
+        };
+    if crate::theme::is_glass() && !bent {
+        painter.add(feathered(&outline, kernel, edge, |_| color::editor()));
+    }
     match fill {
         None => {
             let (from, to) = chat.card.axis(rect);
@@ -437,6 +450,128 @@ fn error_function(x: f32) -> f32 {
         * (0.254_829_6
             + t * (-0.284_496_74 + t * (1.421_413_7 + t * (-1.453_152 + t * 1.061_405_4))));
     sign * (1.0 - poly * (-x * x).exp())
+}
+
+/// Glass cut to a shape's outline: the picture behind the window, bent and split into its three colours the
+/// way `rux` bends it under a node's rounded card, over the part of the picture the shape covers. Answers
+/// whether there was a picture to bend.
+///
+/// **`rux` builds glass for a rounded rectangle only**, so this builds the same rings from the outline:
+/// a faded ring on the edge, six rings across the bevel moved inward along each corner's direction, and the
+/// kernel at the middle, each bent by `rux::render::glass::offset_at`, the same function `rux` bends a card
+/// with. The cover and the three passes and the cut at the picture's strips are `rux::render::glass::shapes`'s
+/// own, written out for a list of points.
+fn glass_in(painter: &egui::Painter, outline: &[Pos2], kernel: Pos2, rect: Rect) -> bool {
+    use rux::render::glass::{cut, offset_at, Pane, Sample};
+    let ctx = painter.ctx();
+    let Some(backdrop) = rux::render::backdrop_for(ctx, painter.layer_id()) else { return false };
+    let Some(material) = crate::theme::rux_theme().glass else { return false };
+    if backdrop.bands.is_empty() || outline.len() < 3 {
+        return false;
+    }
+    let to_global = ctx.layer_transform_to_global(painter.layer_id()).unwrap_or_default();
+    let feather = 1.0 / (ctx.pixels_per_point() * to_global.scaling).max(0.1);
+    let pane = Pane {
+        rect,
+        corners: rux::Corners::all(0.0),
+        bevel: material.bevel_for(rect.size()),
+        strength: material.strength_for(rect.size()),
+    };
+    let normals = outward_normals(outline, kernel);
+    let ring = |inset: f32, edge: bool| -> Vec<Sample> {
+        outline
+            .iter()
+            .zip(&normals)
+            .map(|(point, normal)| {
+                let room = (*point - kernel).length() * 0.9 / normal.length().max(1.0);
+                let inset = inset.min(room);
+                let at = *point - *normal * inset;
+                let offset = offset_at(&material, &pane, at, normal.normalized(), -inset);
+                Sample { at, offset, feather: edge }
+            })
+            .collect()
+    };
+    let mut samples = ring(0.0, true);
+    let mut starts = vec![0_usize];
+    const STEPS: usize = 6;
+    for step in 0..=STEPS {
+        starts.push(samples.len());
+        let inset = (pane.bevel * step as f32 / STEPS as f32).max(feather);
+        samples.extend(ring(inset, false));
+    }
+    // **Rings between the bevel and the middle as well**, each the last ring drawn in towards the kernel. The
+    // lens bends the picture by how far a point is from the middle, and one fan of long triangles from the
+    // bevel to the kernel interpolated that across corners and showed as seams along the diagonals.
+    let inner: Vec<Pos2> =
+        samples[*starts.last().unwrap_or(&0)..].iter().map(|sample| sample.at).collect();
+    for share in [0.8_f32, 0.6, 0.4, 0.2] {
+        starts.push(samples.len());
+        for point in &inner {
+            let at = kernel + (*point - kernel) * share;
+            let offset = offset_at(&material, &pane, at, Vec2::ZERO, -pane.bevel - 1.0);
+            samples.push(Sample { at, offset, feather: false });
+        }
+    }
+    let around = outline.len() as u32;
+    let centre = samples.len() as u32;
+    samples.push(Sample { at: kernel, offset: Vec2::ZERO, feather: false });
+    let mut indices = Vec::new();
+    for pair in starts.windows(2) {
+        let (outer, inner) = (pair[0] as u32, pair[1] as u32);
+        for i in 0..around {
+            let j = (i + 1) % around;
+            indices.extend([outer + i, outer + j, inner + j, outer + i, inner + j, inner + i]);
+        }
+    }
+    let last = *starts.last().unwrap_or(&0) as u32;
+    for i in 0..around {
+        indices.extend([last + i, last + (i + 1) % around, centre]);
+    }
+
+    let opacity = (backdrop.opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
+    // any ground: what the three passes add their colours onto is darkened by the picture's own opacity
+    let dark = Color32::from_rgba_premultiplied(0, 0, 0, opacity);
+    let cover = samples
+        .iter()
+        .map(|sample| Vertex {
+            pos: sample.at,
+            uv: WHITE_UV,
+            color: if sample.feather { Color32::TRANSPARENT } else { dark },
+        })
+        .collect();
+    painter.add(egui::Shape::mesh(Mesh {
+        indices: indices.clone(),
+        vertices: cover,
+        ..Mesh::default()
+    }));
+    let mut whole = Mesh::default();
+    for (channel, share) in material.chroma.iter().enumerate() {
+        let first = whole.vertices.len() as u32;
+        for sample in &samples {
+            let uv = backdrop.picture_at(to_global * (sample.at + sample.offset * *share));
+            let mut rgba = [0_u8; 4];
+            rgba[channel] = opacity;
+            let color = match sample.feather {
+                true => Color32::TRANSPARENT,
+                false => Color32::from_rgba_premultiplied(rgba[0], rgba[1], rgba[2], rgba[3]),
+            };
+            whole.vertices.push(Vertex { pos: sample.at, uv, color });
+        }
+        whole.indices.extend(indices.iter().map(|index| index + first));
+    }
+    for band in &backdrop.bands {
+        let mut piece = cut(&whole, band.drawn.0, band.drawn.1);
+        if piece.indices.is_empty() {
+            continue;
+        }
+        let span = (band.held.1 - band.held.0).max(f32::EPSILON);
+        for vertex in &mut piece.vertices {
+            vertex.uv.y = (vertex.uv.y - band.held.0) / span;
+        }
+        piece.texture_id = band.texture;
+        painter.add(egui::Shape::mesh(piece));
+    }
+    true
 }
 
 /// The lit edge inside a raised shape's top and left: a line of light one point in from each side that faces

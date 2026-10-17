@@ -329,6 +329,16 @@ pub fn point_from_name(shape: ShapeKind, name: &str) -> Option<usize> {
 const STAR_MIDDLE: f32 = 0.53;
 /// How far in a star's inner corners are, as a fraction of its outer reach.
 const STAR_INNER: f32 = 0.42;
+/// How round a rectangle's corners are: six points, or a fifth and a bit of the shorter side for a rounded
+/// one. `None` for every other shape, whose outline has no rounded corners.
+pub fn corner_radius(shape: ShapeKind, rect: Rect) -> Option<f32> {
+    match shape {
+        ShapeKind::Rectangle => Some(6.0),
+        ShapeKind::Rounded => Some(rect.width().min(rect.height()) * 0.22),
+        _ => None,
+    }
+}
+
 /// How big a sticky note's folded corner is, in world points, before it is capped for a small note.
 const FOLD: f32 = 22.0;
 
@@ -337,8 +347,9 @@ pub fn outline(shape: ShapeKind, rect: Rect) -> Vec<Pos2> {
     let (w, h) = (rect.width(), rect.height());
     let at = |x: f32, y: f32| Pos2::new(rect.left() + x, rect.top() + y);
     match shape {
-        ShapeKind::Rectangle => rounded(rect, 6.0),
-        ShapeKind::Rounded => rounded(rect, w.min(h) * 0.22),
+        ShapeKind::Rectangle | ShapeKind::Rounded => {
+            rounded(rect, corner_radius(shape, rect).unwrap_or(0.0))
+        }
         ShapeKind::Circle => (0..72)
             .map(|step| {
                 let angle =
