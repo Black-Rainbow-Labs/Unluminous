@@ -879,6 +879,8 @@ fn settings_page(name: &str) -> Option<crate::settings::Page> {
     use crate::settings::Page;
     Some(match name.trim().to_lowercase().as_str() {
         "appearance" => Page::Appearance,
+        "theme" => Page::Theme,
+        "keymap" | "keyboard" | "shortcuts" | "keys" => Page::Keymap,
         "editor" => Page::Editor,
         "plugins" => Page::Plugins,
         "terminal" => Page::Terminal,

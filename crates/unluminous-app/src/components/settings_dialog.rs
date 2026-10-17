@@ -113,6 +113,17 @@ pub struct SettingsWindow {
     pub plugins: PluginsState,
     /// What the MCP page is showing.
     pub mcp: McpState,
+    /// What the Keymap page is showing, and which row is recording a chord. `task-2286`.
+    pub keymap: crate::components::keymap_page::KeymapState,
+    /// How far the list of pages down the left is scrolled, and how tall it came out when it was last drawn.
+    ///
+    /// The list scrolls because a plugin can add a page: with the Keymap page added (`task-2286`) and four
+    /// plugins switched on, the last page was drawn below the card's bottom edge, where nothing could press it.
+    pub nav_scroll: f32,
+    pub nav_height: f32,
+    /// The page the list last made sure could be seen, so a page chosen some other way is scrolled into view
+    /// once and the wheel is free after that.
+    pub nav_followed: Option<Page>,
     /// How far the page showing is scrolled down, in points.
     pub scroll: f32,
     /// How tall the page came out when it was last drawn.
@@ -367,6 +378,10 @@ fn draw_the_page(
             let page = theme_page(ui, area, settings, context.plugins);
             (changed(page), page.height)
         }
+        Page::Keymap => {
+            let page = crate::components::keymap_page::show(ui, area, &mut state.keymap, settings);
+            (changed(page), page.height)
+        }
         Page::Editor => {
             let page = editor_page(ui, area, settings, context.families);
             (changed(page), page.height)
@@ -553,10 +568,20 @@ fn show_list(ui: &mut egui::Ui, area: Rect, state: &mut SettingsWindow, context:
         );
         let note_at = Pos2::new(left + 12.0, area.bottom() - 14.0 - note.size().y);
         let clip = rux.ui.clip_rect();
-        rux.ui.set_clip_rect(clip.intersect(Rect::from_min_max(
+        let room = Rect::from_min_max(
             Pos2::new(area.left(), pen),
             Pos2::new(area.right(), note_at.y - 8.0),
-        )));
+        );
+        rux.ui.set_clip_rect(clip.intersect(room));
+        // The list scrolls under the wheel when it is taller than its room. `task-2286`.
+        let wheel = rux.ui.input(|input| input.smooth_scroll_delta.y);
+        if wheel != 0.0 && rux.ui.rect_contains_pointer(room) {
+            state.nav_scroll -= wheel;
+        }
+        state.nav_scroll = state.nav_scroll.clamp(0.0, (state.nav_height - room.height()).max(0.0));
+        let list_top = pen;
+        pen -= state.nav_scroll;
+        let mut rows_drawn: Vec<(Page, Rect)> = Vec::new();
 
         let mut group_drawn: Option<&str> = None;
         let mut any = false;
@@ -587,10 +612,31 @@ fn show_list(ui: &mut egui::Ui, area: Rect, state: &mut SettingsWindow, context:
             }
             first = false;
             let row = Rect::from_min_max(Pos2::new(left, pen), Pos2::new(right, pen + 34.0));
-            if page_row(rux, row, page, &title, state.page == page, context.plugin_page_marks) {
+            rows_drawn.push((page, row));
+            // Only a row the room holds whole is drawn: a row's surface is `rux` decoration, which the clip
+            // does not cut, so a row half past the bottom drew its pill over the line under the list.
+            let whole = row.top() >= room.top() - 0.5 && row.bottom() <= room.bottom() + 0.5;
+            if whole
+                && page_row(rux, row, page, &title, state.page == page, context.plugin_page_marks)
+            {
                 state.page = page;
             }
             pen = row.bottom() + 3.0;
+        }
+        state.nav_height = pen + state.nav_scroll - list_top;
+        // A page chosen from outside the list, by a menu or the command line, is brought into view once.
+        if state.nav_followed != Some(state.page) {
+            // Asked of the page chosen **now**: a press on a row changes the page inside the loop, and the row of
+            // the page chosen before it is not the one to bring into view.
+            let chosen_row = rows_drawn.iter().find(|(page, _)| *page == state.page).map(|(_, row)| *row);
+            if let Some(row) = chosen_row {
+                state.nav_followed = Some(state.page);
+                if row.bottom() > room.bottom() {
+                    state.nav_scroll += row.bottom() - room.bottom() + 6.0;
+                } else if row.top() < room.top() {
+                    state.nav_scroll -= room.top() - row.top() + 6.0;
+                }
+            }
         }
         if !any {
             let galley = rux.text(Style::sans(11.5), "No setting matches", theme.ink.i400);
@@ -607,6 +653,7 @@ fn mark_of(page: Page, plugin_page_marks: &[String]) -> Icon {
     match page {
         Page::Appearance => Icon::Letters,
         Page::Theme => Icon::Palette,
+        Page::Keymap => Icon::Key,
         Page::Editor => Icon::Document,
         Page::Plugins => Icon::Puzzle,
         Page::Terminal => Icon::Terminal,

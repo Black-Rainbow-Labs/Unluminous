@@ -723,7 +723,7 @@ pub enum GitAction {
 ///
 /// `command` is the Apple key on macOS and the control key on Windows, which is what egui reports for a
 /// shortcut on either platform, and what a person means by the modifier a menu shows.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Shortcut {
     pub key: egui::Key,
     pub command: bool,
@@ -800,6 +800,30 @@ impl Shortcut {
             let control = modifiers.ctrl || modifiers.command;
             control == (self.command || self.ctrl)
         }
+    }
+
+    /// The one spelling of this chord that two chords matching the same key press share. `task-2286`.
+    ///
+    /// Off macOS the control key is one key, so `ctrl` is folded into `command`; `Equals` is folded into
+    /// `Plus` because [`Shortcut::matches`] accepts either; and the shifted spellings of `/` and `\` are
+    /// folded into the keys themselves. `services::keymap` compares chords through this, which is how a chord
+    /// recorded as `Ctrl+Questionmark` is found to be the `Ctrl+Shift+/` another entry already has.
+    pub fn normalised_for(&self, mac: bool) -> Shortcut {
+        let mut chord = *self;
+        if !mac && chord.ctrl {
+            chord.ctrl = false;
+            chord.command = true;
+        }
+        chord.key = match chord.key {
+            egui::Key::Equals => egui::Key::Plus,
+            egui::Key::Questionmark => egui::Key::Slash,
+            egui::Key::Pipe => egui::Key::Backslash,
+            other => other,
+        };
+        if chord.key == egui::Key::Plus {
+            chord.shift = false;
+        }
+        chord
     }
 
     /// What a menu shows to the right of the entry, spelled out in words.
@@ -1283,6 +1307,11 @@ pub struct MenuState {
     /// Whether the notebook numbers lines within its cells, and whether its variables are showing.
     pub notebook_line_numbers: bool,
     pub notebook_variables: bool,
+    /// The chords the keymap moved, which [`menus`] puts on the entries it builds. `task-2286`.
+    ///
+    /// Worked out when the settings change rather than here, and held in an `Arc` so building this state
+    /// once a frame copies a pointer. Empty is the chords Unluminous ships with.
+    pub keymap: std::sync::Arc<crate::services::keymap::Resolved>,
 }
 
 /// The whole menu bar: `Unluminous`, `File`, `Edit` and `View`, in that order.
@@ -1334,6 +1363,9 @@ pub fn menus(state: &MenuState) -> Vec<Menu> {
                 .collect(),
         });
     }
+    // The person's keymap last, over every entry the bar holds, so the bar, the menu watcher and the macOS
+    // menu all read one answer. `task-2286`.
+    crate::services::keymap::apply(&mut found, &state.keymap);
     found
 }
 
@@ -1934,6 +1966,19 @@ fn line_edit_entries(state: &MenuState) -> Vec<Entry> {
         Action::JoinLines,
         Shortcut::command_shift(egui::Key::J),
     ));
+    // On the menu so their chords can be seen and changed (`task-2286`), and not read from the keyboard by
+    // the menu watcher: `code_editing::route_the_line_move_keys` reads them, only while the editing area has
+    // the keyboard, which the watcher cannot know.
+    for down in [false, true] {
+        entries.push(
+            Entry::with_shortcut(
+                if down { "Move Line Down" } else { "Move Line Up" },
+                Action::MoveLines { down },
+                move_line_shortcut(down),
+            )
+            .not_from_the_keyboard(),
+        );
+    }
     entries.push(Entry::item("Sort Lines", Action::SortLines).enabled(state.has_selection));
     if state.trimming_applies {
         entries.push(Entry::item("Trim Trailing Whitespace", Action::TrimTrailingWhitespace));
@@ -1961,6 +2006,12 @@ fn line_edit_entries(state: &MenuState) -> Vec<Entry> {
         Shortcut::command_shift(egui::Key::Backslash),
     ));
     entries
+}
+
+/// `Alt+Up` and `Alt+Down`, the chords a line is moved by unless the keymap says otherwise.
+pub fn move_line_shortcut(down: bool) -> Shortcut {
+    let key = if down { egui::Key::ArrowDown } else { egui::Key::ArrowUp };
+    Shortcut { key, command: false, shift: false, alt: true, ctrl: false }
 }
 
 fn edit_menu(state: &MenuState) -> Menu {

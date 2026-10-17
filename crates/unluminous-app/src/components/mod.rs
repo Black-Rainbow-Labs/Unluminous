@@ -49,6 +49,8 @@ pub mod go_to_file;
 pub mod gutter;
 pub mod logo;
 pub mod markdown_text;
+// Settings -> Keymap, which chord each menu entry is on. `task-2286`.
+pub mod keymap_page;
 pub mod mcp_page;
 pub mod menu_bar;
 pub mod modal;

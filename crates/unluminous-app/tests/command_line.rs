@@ -946,6 +946,7 @@ const SETTINGS_HELP: &[&str] = &[
     "Whether the editing area has a column of line numbers.",
     "Whether PowerShell is asked to report the folder it is in, so a tab reopens where you were rather than where it started. Off. PowerShell's Set-Location never moves the process's own current directory, so there is no other way to read it; turning this on adds one line to the prompt, after your own profile has set it up. A shell that already reports its folder is followed whatever this says.",
     "Whether the completion popup arrives as you type. Ctrl+Space works either way.",
+    "The keymap preset the menus start from: unluminous, vscode or intellij. Your own bindings, from `settings bind`, stay on top of it.",
     "Whether completion asks a language server: `automatic` starts rust-analyzer for Rust and tsserver for TypeScript and JavaScript when one is found; `off`, the default, starts nothing, stops a server that is running, and completion answers from the project's own structure. rust-analyzer typically holds 1 to 4 GB on a project like this one and runs cargo and rustc while it reads the workspace.",
     "What line breaks a file is written back with. `keep` writes it the way it was read, which is what leaves a one character edit as a one line diff. A new file gets the platform's own either way.",
     "Patterns Go to File, Find in Files, completion, Go to Definition and Find References leave out, beside the project's own .gitignore, which is read already. The explorer goes on showing everything.",
@@ -2165,6 +2166,12 @@ fn drive_the_modals_and_the_settings(coverage: &mut Coverage) {
     c.works(&mut harness, "settings reset appearance.font.size");
     c.refuses(&mut harness, "settings reset no.such.key");
     c.works(&mut harness, "settings fonts --json");
+    // The keymap, `task-2286`: list it, bind a chord, take it back, and refuse what cannot be bound.
+    c.works(&mut harness, "settings keymap ctrl+d --json");
+    c.works(&mut harness, "settings bind duplicate-line Ctrl+Shift+Y");
+    c.works(&mut harness, "settings bind duplicate-line --reset");
+    c.refuses(&mut harness, "settings bind duplicate-line Ctrl+C");
+    c.refuses(&mut harness, "settings bind teleport F4");
     // A test's window never lets telemetry run, so this answers why it is off and sends nothing.
     c.works(&mut harness, "settings telemetry --json");
     c.works(&mut harness, "settings telemetry --flush");

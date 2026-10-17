@@ -575,6 +575,23 @@ pub fn open_about(harness: &mut Harness<'static, UnluminousApp>) {
 }
 
 /// Open the Settings window the way a person does on Windows: `Edit` in the bar, then `Settings`.
+/// Scroll the Settings window's list of pages to its end, where the pages plugins contribute are.
+///
+/// The list scrolls since `task-2286`, and a row it cannot hold whole is not drawn, so a page near the end
+/// is only there to press once the list has been scrolled to it.
+pub fn scroll_the_settings_list(harness: &mut Harness<'static, UnluminousApp>) {
+    let list = harness.get_by_label("Appearance").rect().center();
+    harness.input_mut().events.push(egui::Event::PointerMoved(list));
+    harness.input_mut().events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: vec2(0.0, -400.0),
+        phase: egui::TouchPhase::Move,
+        modifiers: Modifiers::default(),
+    });
+    steady(harness);
+    steady(harness);
+}
+
 pub fn open_settings(harness: &mut Harness<'static, UnluminousApp>) {
     harness.state_mut().menu_placement = MenuPlacement::InWindow;
     steady(harness);

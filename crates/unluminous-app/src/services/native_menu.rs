@@ -181,7 +181,12 @@ fn append(
             Entry::Item { name, action, shortcut, enabled, checked, .. } => {
                 let id = actions.len().to_string();
                 actions.push(action.clone());
-                let accelerator = shortcut.as_ref().and_then(accelerator);
+                // Moving a line is read by the window only while the editing area has the keyboard, so as a key
+                // equivalent it would move a line while a terminal had the keyboard. `task-2286`.
+                let accelerator = shortcut
+                    .as_ref()
+                    .filter(|_| !crate::services::keymap::shown_but_not_a_key_equivalent(action))
+                    .and_then(accelerator);
                 if *checked {
                     let item = CheckMenuItem::with_id(id, name, *enabled, true, accelerator);
                     submenu.append(&item)?;

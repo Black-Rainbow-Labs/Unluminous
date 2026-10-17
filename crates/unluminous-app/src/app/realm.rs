@@ -4068,11 +4068,12 @@ impl UnluminousApp {
         let (at, which) = self.realm.menu?;
         self.realm.menu_was_at = Some(at);
         let state = self.menu_state();
-        let entries = match which {
+        let mut entries = match which {
             Menu::Node => crate::app::actions::realm_node_menu(&state),
             Menu::Wire => crate::app::actions::realm_wire_menu(&state),
             Menu::View => crate::app::actions::realm_view_menu(&state),
         };
+        crate::services::keymap::apply_entries(&mut entries, &self.keymap);
         let name = match which {
             Menu::Node => "realm-node",
             Menu::Wire => "realm-wire",

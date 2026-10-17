@@ -12,6 +12,11 @@
 //! only reason this module exists is that a scrub nothing enforces lasts until the next person
 //! writes a comment from memory.
 //!
+//! **The keymap is the one place the name ships, on purpose.** `task-2286` asks for a keymap preset a
+//! person picks by that editor's name, and a preset called `the reference editor` would be a preset
+//! nobody could find. So a file whose name starts with `keymap`, and any other line that is about the
+//! keymap (it says `keymap`), may name it. Everything else is held to the rule as before.
+//!
 //! **What is deliberately not covered.** `tasks/*.md` and `_agent_output/` are the record of how
 //! Unluminous was designed: they are not shipped, are not reachable from the product, and rewriting a
 //! design document to say something it did not say is worse than leaving it alone. `CLAUDE.md` keeps
@@ -67,9 +72,19 @@ mod tests {
         if !readable {
             return;
         }
+        // The keymap's own files, which name the preset on purpose. See this module's comment.
+        let about_the_keymap =
+            path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("keymap"))
+                || path.parent().and_then(|p| p.file_name()).is_some_and(|n| n == "keymap");
+        if about_the_keymap {
+            return;
+        }
         let Ok(text) = std::fs::read_to_string(path) else { return };
         let lowered = text.to_lowercase();
         for (number, line) in lowered.lines().enumerate() {
+            if line.contains("keymap") {
+                continue;
+            }
             if names.iter().any(|name| line.contains(name.as_str())) {
                 found.push(format!("{}:{}", path.display(), number + 1));
             }

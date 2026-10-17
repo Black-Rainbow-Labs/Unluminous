@@ -6204,3 +6204,95 @@ fn the_glass_theme_bends_the_picture_behind_its_surfaces() {
     );
     std::fs::remove_dir_all(&folder).ok();
 }
+
+/// Open the Settings window on its Keymap page and search for `search`. `task-2286`.
+fn open_the_keymap_page(harness: &mut Harness<'static, UnluminousApp>, search: &str) {
+    open_settings(harness);
+    harness.get_by_label("Keymap").click();
+    steady(harness);
+    if !search.is_empty() {
+        harness.get_by_label("Search shortcuts").click();
+        steady(harness);
+        harness.get_by_label("Search shortcuts").type_text(search);
+        steady(harness);
+    }
+}
+
+/// The Keymap page lists the shortcuts, and pressing a chip records the next key press as that action's
+/// shortcut. `task-2286`.
+#[test]
+fn the_keymap_page_records_a_shortcut_from_the_next_key_press() {
+    let mut harness = harness("one\ntwo");
+    open_the_keymap_page(&mut harness, "");
+    harness.get_by_label("Keymap preset");
+    harness.snapshot(shot("settings_keymap"));
+
+    harness.get_by_label("Search shortcuts").click();
+    steady(&mut harness);
+    harness.get_by_label("Search shortcuts").type_text("duplicate");
+    steady(&mut harness);
+    harness.get_by_label_contains("Shortcut: Code \u{203A} Duplicate Line").click();
+    steady(&mut harness);
+    assert_eq!(
+        harness.state().settings_window.keymap.recording.as_deref(),
+        Some("duplicate-line"),
+        "pressing the chip starts recording"
+    );
+    harness.snapshot(shot("settings_keymap_recording"));
+
+    // `Ctrl+Shift+Y`, which nothing has. While the row records, the menu watcher stands aside.
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, egui::Key::Y);
+    steady(&mut harness);
+    assert!(harness.state().settings_window.keymap.recording.is_none(), "one key press is recorded");
+    let wanted = unluminous_app::services::keymap::parse("Ctrl+Shift+Y").unwrap();
+    let written = &harness.state().settings.key_bindings;
+    assert_eq!(written.len(), 1, "{written:?}");
+    assert_eq!(written[0].0, "duplicate-line");
+    assert_eq!(unluminous_app::services::keymap::parse(&written[0].1).unwrap(), wanted);
+
+    // And the new shortcut duplicates the line once the dialog is closed.
+    harness.get_by_label("Close settings").click();
+    steady(&mut harness);
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, egui::Key::Y);
+    steady(&mut harness);
+    assert_eq!(harness.state().document().text().to_string(), "one\none\ntwo");
+}
+
+/// Escape stops recording and changes nothing, and Ctrl+C is refused because the clipboard owns it.
+#[test]
+fn escape_stops_recording_and_the_clipboard_chord_is_refused() {
+    let mut harness = harness("");
+    open_the_keymap_page(&mut harness, "duplicate");
+    harness.get_by_label_contains("Shortcut: Code \u{203A} Duplicate Line").click();
+    steady(&mut harness);
+    harness.key_press(egui::Key::Escape);
+    steady(&mut harness);
+    assert!(harness.state().settings_window.keymap.recording.is_none());
+    assert!(harness.state().settings_window.open, "Escape stopped the recording, not the dialog");
+    assert!(harness.state().settings.key_bindings.is_empty());
+
+    harness.get_by_label_contains("Shortcut: Code \u{203A} Duplicate Line").click();
+    steady(&mut harness);
+    harness.input_mut().events.push(egui::Event::Copy);
+    steady(&mut harness);
+    assert!(harness.state().settings.key_bindings.is_empty(), "the clipboard chord was refused");
+    let notice = harness.state().settings_window.keymap.notice.clone().unwrap_or_default();
+    assert!(notice.contains("clipboard"), "{notice}");
+}
+
+/// With the reference editor's keymap preset chosen, `Ctrl+D` duplicates the line and the Git menu's
+/// `Show Diff` no longer claims it. `task-2286`.
+#[test]
+fn the_intellij_keymap_preset_puts_duplicate_line_on_ctrl_d() {
+    let mut harness = harness("alpha\nbeta");
+    let mut settings = harness.state().settings.clone();
+    settings.keymap_preset = unluminous_app::services::keymap::Preset::IntelliJ;
+    harness.state_mut().set_settings(settings);
+    steady(&mut harness);
+    harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::D);
+    steady(&mut harness);
+    assert_eq!(harness.state().document().text().to_string(), "alpha\nalpha\nbeta");
+
+    open_the_keymap_page(&mut harness, "");
+    harness.snapshot(shot("settings_keymap_preset"));
+}

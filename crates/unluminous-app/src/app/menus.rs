@@ -161,6 +161,7 @@ impl UnluminousApp {
                 .notebook
                 .as_deref()
                 .is_some_and(|tab| tab.variables_showing),
+            keymap: self.keymap.clone(),
         }
     }
 

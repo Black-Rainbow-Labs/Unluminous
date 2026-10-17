@@ -73,7 +73,23 @@ impl UnluminousApp {
         // The project index follows `editor.exclude`, and only reloads when the line really moved --
         // `FileTree::set_exclude` compares before it walks. `task-1804` §7.3.
         self.tree.set_exclude(&self.settings.exclude);
+        if self.settings.keymap_preset != before.keymap_preset
+            || self.settings.key_bindings != before.key_bindings
+        {
+            self.follow_the_keymap();
+        }
         self.unsaved_settings = true;
+    }
+
+    /// Work the keymap out again from the preset and the person's own bindings. `task-2286`.
+    ///
+    /// Asked when either changes rather than once a frame, because it settles every bindable action's chord
+    /// against every other's. What it answers is the short list of actions whose chord moved.
+    pub(crate) fn follow_the_keymap(&mut self) {
+        self.keymap = std::sync::Arc::new(crate::services::keymap::resolve(
+            self.settings.keymap_preset,
+            &self.settings.key_bindings,
+        ));
     }
 
     /// Choose the glass picture when a glass theme is chosen over the desktop (`task-2281`).

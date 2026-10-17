@@ -645,6 +645,7 @@ fn designer_settings() {
     let mut harness = the_busy_tab("unluminous-designer-shot-settings");
     did(&mut harness, "action run settings");
     steady(&mut harness);
+    scroll_the_settings_list(&mut harness);
     harness.get_all_by_label("Designer").last().expect("the Settings row").click();
     steady(&mut harness);
     harness.snapshot(shot("designer_settings").as_str());

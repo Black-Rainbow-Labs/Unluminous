@@ -568,7 +568,13 @@ impl UnluminousApp {
 
         // The macOS menu bar, which is built once and rebuilt when what it holds changes.
         if let Some(native) = self.native_menu.as_mut() {
-            native.refresh(menus);
+            // **No key equivalents while a chord is being recorded** on the Keymap page (`task-2286`):
+            // AppKit hands a key equivalent to the menu before the window sees it, so pressing `Cmd+S` to
+            // bind it would save instead.
+            match self.settings_window.keymap.recording.is_some() {
+                true => native.refresh(&crate::services::keymap::without_chords(menus)),
+                false => native.refresh(menus),
+            }
             if let Some(chosen) = native.poll() {
                 *action = Some(chosen);
             }
@@ -731,7 +737,9 @@ impl UnluminousApp {
         // whether or not the editing area has the keyboard, and because in preview mode there is no editing
         // area taking key presses at all. On macOS these never arrive, because the menu bar takes them
         // first and sends an action instead.
-        if action.is_none() {
+        // **Not while a chord is being recorded** on the Keymap page, or pressing `Ctrl+S` to bind it would
+        // also save. `task-2286`.
+        if action.is_none() && self.settings_window.keymap.recording.is_none() {
             // While one of the window's text boxes has the keyboard, undo, redo and select all
             // belong to that box rather than to the document, and it already does all three itself.
             // The rest of the menu is untouched, so control and S in the filter box still saves.
@@ -741,23 +749,33 @@ impl UnluminousApp {
             // and the menu's use of the pair for going back and forward (`task-2063`) must not take
             // either away from a program.
             let in_a_terminal = self.a_terminal_has_the_keyboard();
-            *action = ui.input(|input| {
+            // **The press an entry acted on is taken out of the frame** (`task-2286`), except while a terminal
+            // has the keyboard, where a program has always been sent the chord as well. Left in, a chord
+            // the keymap gives to a menu entry would also reach whatever reads that key itself: with the
+            // reference editor's keymap preset `Ctrl+R` is `Replace`, and in a Markdown file the editing area would also
+            // have aligned the paragraph to the right.
+            *action = ui.ctx().input_mut(|input| {
                 let mut found = None;
-                for event in &input.events {
-                    if let egui::Event::Key { key, pressed: true, modifiers, .. } = event {
-                        if let Some(chosen) = actions::action_for_key(menus, *key, modifiers) {
-                            if in_a_text_box && chosen.belongs_to_a_focused_text_box() {
-                                continue;
-                            }
-                            let a_bracket =
-                                matches!(key, egui::Key::OpenBracket | egui::Key::CloseBracket);
-                            if in_a_terminal && a_bracket {
-                                continue;
-                            }
-                            found = Some(chosen);
-                        }
+                input.events.retain(|event| {
+                    let egui::Event::Key { key, pressed: true, modifiers, .. } = event else {
+                        return true;
+                    };
+                    if found.is_some() {
+                        return true;
                     }
-                }
+                    let Some(chosen) = actions::action_for_key(menus, *key, modifiers) else {
+                        return true;
+                    };
+                    if in_a_text_box && chosen.belongs_to_a_focused_text_box() {
+                        return true;
+                    }
+                    let a_bracket = matches!(key, egui::Key::OpenBracket | egui::Key::CloseBracket);
+                    if in_a_terminal && a_bracket {
+                        return true;
+                    }
+                    found = Some(chosen);
+                    in_a_terminal
+                });
                 found
             });
         }
@@ -1092,13 +1110,15 @@ impl UnluminousApp {
         // The explorer's own menu, drawn after the explorer and the editing area so it sits over
         // both rather than under either.
         if let Some((at, path, directory, aimed)) = self.explorer_menu.clone() {
-            let entries = actions::explorer_menu_with_git(
+            let mut entries = actions::explorer_menu_with_git(
                 &self.menu_state(),
                 &path,
                 directory,
                 self.something_to_paste(),
                 aimed,
             );
+            // Every right click menu shows the chord the keymap put its entries on. `task-2286`.
+            crate::services::keymap::apply_entries(&mut entries, &self.keymap);
             let outcome = context_menu::show(ui, "explorer", at, &entries);
             if let Some(chosen) = outcome.chosen {
                 *action = Some(chosen);
@@ -1110,7 +1130,8 @@ impl UnluminousApp {
 
         // A tab's own menu, drawn after the panes so it sits over them rather than under one.
         if let Some((at, _)) = self.tab_menu {
-            let entries = actions::tab_menu(&self.menu_state());
+            let mut entries = actions::tab_menu(&self.menu_state());
+            crate::services::keymap::apply_entries(&mut entries, &self.keymap);
             let outcome = context_menu::show(ui, "tab", at, &entries);
             if let Some(chosen) = outcome.chosen {
                 *action = Some(chosen);
@@ -1134,7 +1155,8 @@ impl UnluminousApp {
 
         // The gutter's own menu, drawn after the editing area so it sits over it rather than under.
         if let Some(at) = self.gutter_menu {
-            let entries = actions::gutter_menu(&self.menu_state());
+            let mut entries = actions::gutter_menu(&self.menu_state());
+            crate::services::keymap::apply_entries(&mut entries, &self.keymap);
             let outcome = context_menu::show(ui, "gutter", at, &entries);
             if let Some(chosen) = outcome.chosen {
                 *action = Some(chosen);
@@ -1146,7 +1168,8 @@ impl UnluminousApp {
 
         // The Markdown preview's own menu: Copy and Select All, about what the preview has selected.
         if let Some(at) = self.preview_menu {
-            let entries = actions::preview_menu(self.preview_holds_the_selection());
+            let mut entries = actions::preview_menu(self.preview_holds_the_selection());
+            crate::services::keymap::apply_entries(&mut entries, &self.keymap);
             let outcome = context_menu::show(ui, "preview", at, &entries);
             if let Some(chosen) = outcome.chosen {
                 *action = Some(chosen);
@@ -1160,12 +1183,14 @@ impl UnluminousApp {
         // area for the same reason the other two are: it has to sit over what it was opened on.
         if let Some(menu) = self.text_menu.clone() {
             let state = self.menu_state();
-            let above = actions::text_menu(&state);
+            let mut above = actions::text_menu(&state);
+            crate::services::keymap::apply_entries(&mut above, &self.keymap);
             let mut below = actions::clear_highlight_menu(&state);
             // The ticket's own two rows, under the marks they are about: `Collapse All But
             // Highlighted` is worth something only to somebody who has just marked a passage, and
             // this is where they are already pointing.
-            let folding = actions::folding_here_menu(&state);
+            let mut folding = actions::folding_here_menu(&state);
+            crate::services::keymap::apply_entries(&mut folding, &self.keymap);
             if !folding.is_empty() {
                 below.push(actions::Entry::Separator);
                 below.extend(folding);

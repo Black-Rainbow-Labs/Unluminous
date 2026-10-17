@@ -309,6 +309,8 @@ impl UnluminousApp {
                 ok(request, sentence, status)
             }
             "reset" => self.cli_settings_reset(request),
+            "keymap" => self.cli_settings_keymap(request),
+            "bind" => self.cli_settings_bind(request),
             "fonts" => {
                 let limit = request.whole("limit").unwrap_or(100);
                 let families: Vec<String> =
@@ -325,6 +327,110 @@ impl UnluminousApp {
                 )
             }
             _ => unknown(request),
+        }
+    }
+
+    /// `settings keymap`: every action a shortcut can be given, its chord now, the preset's and Unluminous's
+    /// own, and where the one it is on came from. `task-2286`.
+    fn cli_settings_keymap(&mut self, request: &Request) -> Outcome {
+        use crate::services::keymap;
+        let preset = self.settings.keymap_preset;
+        let table = keymap::table(preset, &self.settings.key_bindings, keymap::bindables());
+        let filter = request.text("filter").unwrap_or_default();
+        let changed_only = request.switch("changed");
+        let mut rows = Vec::new();
+        let mut found = Vec::new();
+        for bindable in keymap::bindables() {
+            let binding = table.rows.get(&bindable.name);
+            if !crate::components::keymap_page::matches_search(bindable, binding, &filter) {
+                continue;
+            }
+            let chord = binding.map(|b| b.chord).unwrap_or(bindable.default);
+            if changed_only && chord == bindable.default {
+                continue;
+            }
+            let source = match (bindable.fixed, binding) {
+                (Some(_), _) => "fixed",
+                (None, Some(binding)) => binding.source.name(),
+                (None, None) => "unluminous",
+            };
+            rows.push(format!(
+                "{:<28}  {:<18}  {:<10}  {}",
+                bindable.name,
+                chord_text(chord),
+                source,
+                bindable.path()
+            ));
+            found.push(json!({
+                "action": bindable.name,
+                "menu": bindable.path(),
+                "chord": chord.map(|chord| keymap::text(&chord)),
+                "preset": preset.chord_for(&bindable.name, keymap::is_mac()).map(chord_text),
+                "unluminous": bindable.default.map(|chord| keymap::text(&chord)),
+                "source": source,
+                "takenBy": binding.and_then(|b| b.lost_to.clone()),
+                "fixed": bindable.fixed,
+            }));
+        }
+        let unknown: Vec<Value> = table
+            .unknown
+            .iter()
+            .map(|(action, chord)| json!({ "action": action, "chord": chord }))
+            .collect();
+        lines(
+            request,
+            format!("{} shortcuts, preset {}", found.len(), preset.name()),
+            rows,
+            json!({ "preset": preset.name(), "shortcuts": found, "unknown": unknown }),
+        )
+    }
+
+    /// `settings bind <action> <chord|none>`: give an action a chord, taking it from whatever had it, or take
+    /// an action's own binding away with `--reset`. The same `keymap::bind` the Keymap page records through.
+    fn cli_settings_bind(&mut self, request: &Request) -> Outcome {
+        use crate::services::keymap;
+        let mut settings = self.settings.clone();
+        if request.switch("reset-all") {
+            let count = settings.key_bindings.len();
+            settings.key_bindings.clear();
+            self.set_settings(settings);
+            let said = format!("{count} of your own shortcuts taken away");
+            return ok(request, said, json!({ "reset": count }));
+        }
+        let Some(action) = request.text("action").filter(|a| !a.trim().is_empty()) else {
+            return no(request, code::USAGE, "Say which action, as `settings keymap` names it.");
+        };
+        let action = action.trim().to_owned();
+        if request.switch("reset") {
+            keymap::reset(&mut settings.key_bindings, &action);
+            self.set_settings(settings);
+            let said = format!("{action} is on the preset's shortcut again");
+            return ok(request, said, json!({ "action": action }));
+        }
+        let Some(written) = request.text("chord").filter(|c| !c.trim().is_empty()) else {
+            return no(request, code::USAGE, "Say a shortcut such as Ctrl+Shift+K, or none.");
+        };
+        let chord = match written.trim().eq_ignore_ascii_case("none") {
+            true => None,
+            false => match keymap::parse(&written) {
+                Ok(chord) => Some(chord),
+                Err(why) => return no(request, code::USAGE, why),
+            },
+        };
+        let preset = settings.keymap_preset;
+        match keymap::bind(&mut settings.key_bindings, preset, &action, chord) {
+            Err(why) => no(request, code::USAGE, why),
+            Ok(bound) => {
+                let label = keymap::bindables()
+                    .iter()
+                    .find(|b| b.name == action)
+                    .map(|b| b.path())
+                    .unwrap_or_else(|| action.clone());
+                let said = crate::components::keymap_page::what_binding_did(&label, chord, &bound);
+                self.set_settings(settings);
+                let chord = chord.map(|chord| keymap::text(&chord));
+                ok(request, said, json!({ "action": action, "chord": chord, "takenFrom": bound.taken_from }))
+            }
         }
     }
 
@@ -551,6 +657,7 @@ impl UnluminousApp {
             "editor.auto_indent" => self.settings.auto_indent.to_string(),
             "editor.trim" => self.settings.trim_on_save.to_string(),
             "editor.suggestions" => self.settings.suggestions.name().to_owned(),
+            "keymap.preset" => self.settings.keymap_preset.name().to_owned(),
             "editor.servers" => self.settings.servers.name().to_owned(),
             "editor.line_ending" => self.settings.line_endings.name().to_owned(),
             "update.check" => self.settings.update_check.name().to_owned(),
@@ -1279,6 +1386,10 @@ const SETTINGS: &[SettingKey] = &[
         help: "Whether the completion popup arrives as you type. Ctrl+Space works either way.",
     },
     SettingKey {
+        name: "keymap.preset",
+        help: "The keymap preset the menus start from: unluminous, vscode or intellij. Your own bindings, from `settings bind`, stay on top of it.",
+    },
+    SettingKey {
         name: "editor.servers",
         help: "Whether completion asks a language server: `automatic` starts rust-analyzer for Rust and tsserver for TypeScript and JavaScript when one is found; `off`, the default, starts nothing, stops a server that is running, and completion answers from the project's own structure. rust-analyzer typically holds 1 to 4 GB on a project like this one and runs cargo and rustc while it reads the workspace.",
     },
@@ -1400,6 +1511,7 @@ fn fresh_value(name: &str, fresh: &crate::settings::Settings) -> String {
         "editor.auto_indent" => fresh.auto_indent.to_string(),
         "editor.trim" => fresh.trim_on_save.to_string(),
         "editor.suggestions" => fresh.suggestions.name().to_owned(),
+        "keymap.preset" => fresh.keymap_preset.name().to_owned(),
         "editor.servers" => fresh.servers.name().to_owned(),
         "editor.line_ending" => fresh.line_endings.name().to_owned(),
         "update.check" => fresh.update_check.name().to_owned(),
@@ -1424,4 +1536,9 @@ fn fresh_value(name: &str, fresh: &crate::settings::Settings) -> String {
         "panes.find.split" => format!("{:.3}", panes.find_split),
         _ => String::new(),
     }
+}
+
+/// A chord as `settings keymap` prints it, or `none`. `task-2286`.
+fn chord_text(chord: Option<crate::app::actions::Shortcut>) -> String {
+    chord.map(|chord| crate::services::keymap::text(&chord)).unwrap_or_else(|| "none".to_owned())
 }

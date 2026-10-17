@@ -5777,6 +5777,27 @@ key equivalent, and AppKit hands it to the menu before the window sees it, so th
 egui. Cut, copy and paste are the exception, marked in the list as not coming from the keyboard, because
 the platform delivers those as clipboard events.
 
+## Every shortcut is a menu entry, and the keymap moves them (`task-2286`)
+
+`tasks/task-2286-keymap-tdd.md` is the design. `Settings -> Keymap` chooses a preset (`keymap.preset`:
+`unluminous`, `vscode` or `intellij`) and records a person's own chords on top of it (`keymap.key.<action>`
+lines). `services::keymap` is all of it and is tested with no window. Five rules:
+
+- **`actions::menus` applies the keymap last**, through `MenuState::keymap`, so the bar, the menu watcher,
+  the macOS menu, the command palette and `action list` all read one answer. A right click menu is passed
+  through `keymap::apply_entries` where it is drawn. A shortcut added to a menu is bindable the day it is
+  added, with no change here.
+- **A chord given by a higher step takes it from a lower one**: your binding beats the preset, the preset
+  beats Unluminous's own. `keymap::bind` writes `none` for the action that lost it, and says so.
+- **The menu watcher takes the key press it acted on** out of the frame, except for a text box's own undo,
+  redo and select all and while a terminal has the keyboard, because a preset can put a menu entry on a
+  chord the editing area reads itself.
+- **`keymap::bindables` is the menus with everything switched on**, walked once. An action whose name does
+  not read back as itself with no path is not bindable; Cut, Copy and Paste are listed and fixed.
+- **A preset row names an action by `Action::name`**, and a test fails if one names nothing, does not parse,
+  or loses its chord to another row of the same preset. `settings keymap` and `settings bind` are the
+  agent's half.
+
 ## Components take a rectangle and return what happened
 
 A component is a function that takes a `Ui` and the rectangle it is to fill, draws itself, and returns what

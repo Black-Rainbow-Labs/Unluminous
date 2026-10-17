@@ -481,6 +481,7 @@ fn the_database_settings_page_says_where_a_password_is_and_never_what_it_is() {
     );
     did(&mut harness, "action run settings");
     steady(&mut harness);
+    scroll_the_settings_list(&mut harness);
     harness.get_all_by_label("Database").last().expect("the Settings row").click();
     steady(&mut harness);
     // Nothing on this page is the password, and the page says where it is instead.

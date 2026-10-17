@@ -453,13 +453,14 @@ impl UnluminousApp {
         {
             return None;
         }
+        let keymap = self.keymap.clone();
         ui.ctx().input_mut(|input| {
             let mut found = None;
             input.events.retain(|event| {
                 let egui::Event::Key { key, pressed, modifiers, .. } = event else {
                     return true;
                 };
-                match Self::a_line_move_chord(*key, modifiers) {
+                match Self::a_line_move_chord_in(&keymap, *key, modifiers) {
                     // The release is dropped with the press, or the pane would read a key up for a
                     // key it never saw go down.
                     Some(action) => {
@@ -483,15 +484,26 @@ impl UnluminousApp {
     /// `app::frame::route_the_keys_before_the_panes`, with the completion popup's keys and the
     /// explorer's, for the reason written there: a key taken before the panes are drawn cannot also
     /// reach `editor_view::handle_input`, where a bare `ArrowUp` moves the caret.
+    #[cfg(test)]
     pub(crate) fn a_line_move_chord(key: egui::Key, modifiers: &egui::Modifiers) -> Option<Action> {
-        if !modifiers.alt || modifiers.shift || modifiers.command || modifiers.ctrl {
-            return None;
-        }
-        match key {
-            egui::Key::ArrowUp => Some(Action::MoveLines { down: false }),
-            egui::Key::ArrowDown => Some(Action::MoveLines { down: true }),
-            _ => None,
-        }
+        Self::a_line_move_chord_in(&crate::services::keymap::Resolved::default(), key, modifiers)
+    }
+
+    /// [`Self::a_line_move_chord`], for the chords the keymap puts the two on. `task-2286`.
+    ///
+    /// They are menu entries now, `Code -> Move Line Up` and `Move Line Down`, so a person can see and change
+    /// their chords, and they are still read here rather than by the menu watcher, for the focus guard
+    /// above: the watcher fires whatever has the keyboard, and a line must only move in the editing area.
+    pub(crate) fn a_line_move_chord_in(
+        keymap: &crate::services::keymap::Resolved,
+        key: egui::Key,
+        modifiers: &egui::Modifiers,
+    ) -> Option<Action> {
+        [false, true].into_iter().find_map(|down| {
+            let action = Action::MoveLines { down };
+            let chord = keymap.chord(&action.name(), Some(crate::app::actions::move_line_shortcut(down)))?;
+            chord.matches(key, modifiers).then_some(action)
+        })
     }
 }
 

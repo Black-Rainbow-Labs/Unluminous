@@ -3330,7 +3330,7 @@ pub const COMMANDS: &[Command] = &[
         flags: &[
             option("query", "text", "Type this into the modal's box as it opens."),
             option("path", "path", "The folder a new file goes in, or the file being renamed. Needed by new-file and rename."),
-            option("page", "name", "Which page the Settings modal shows: appearance, editor, plugins, terminal, mcp or ai (AI Configuration)."),
+            option("page", "name", "Which page the Settings modal shows: appearance, theme, keymap, editor, plugins, terminal, mcp or ai (AI Configuration)."),
         ],
         examples: &[
             "unluminous-cli modal open go-to-file --query mdrs",
@@ -3493,6 +3493,39 @@ pub const COMMANDS: &[Command] = &[
         arguments: NO_ARGUMENTS,
         flags: &[switch("flush", "Send what is waiting now rather than at the next request, about every twenty minutes.")],
         examples: &["unluminous-cli settings telemetry --json", "unluminous-cli settings telemetry --flush"],
+        local: false,
+    },
+    Command {
+        area: "settings",
+        verb: "keymap",
+        summary: "Every action a keyboard shortcut can be given: its name, its menu, the shortcut it is on now, and where that came from (unluminous, preset, yours or fixed). Choose a preset with `settings set keymap.preset intellij` (or vscode, unluminous); change one shortcut with `settings bind`.",
+        arguments: &[rest("filter", false, "Only the actions whose name, menu or shortcut contains this, such as `duplicate` or `ctrl+d`.")],
+        flags: &[switch("changed", "Only the actions whose shortcut is not Unluminous's own.")],
+        examples: &[
+            "unluminous-cli settings keymap",
+            "unluminous-cli settings keymap ctrl+d",
+            "unluminous-cli settings keymap --changed --json",
+        ],
+        local: false,
+    },
+    Command {
+        area: "settings",
+        verb: "bind",
+        summary: "Give an action a keyboard shortcut, as Settings -> Keymap does when a key is pressed on its row. A shortcut another action has is taken from it, and the answer says which. `none` takes the action's shortcut away. Shortcuts that typing and the clipboard read, such as Ctrl+C or a bare letter, are refused.",
+        arguments: &[
+            argument("action", false, "The action, as `settings keymap` names it, such as duplicate-line."),
+            rest("chord", false, "The shortcut, such as Ctrl+Shift+D, Alt+F7 or F12, or none."),
+        ],
+        flags: &[
+            switch("reset", "Take your own shortcut for this action away, so it is on the preset's again."),
+            switch("reset-all", "Take every one of your own shortcuts away."),
+        ],
+        examples: &[
+            "unluminous-cli settings bind duplicate-line Ctrl+Shift+D",
+            "unluminous-cli settings bind git-show-diff none",
+            "unluminous-cli settings bind duplicate-line --reset",
+            "unluminous-cli settings bind --reset-all",
+        ],
         local: false,
     },
     Command {

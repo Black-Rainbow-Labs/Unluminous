@@ -3852,7 +3852,7 @@ Open a modal, and put something in its box in the same breath.
 
 - `--query <text>` — Type this into the modal's box as it opens.
 - `--path <path>` — The folder a new file goes in, or the file being renamed. Needed by new-file and rename.
-- `--page <name>` — Which page the Settings modal shows: appearance, editor, plugins, terminal, mcp or ai (AI Configuration).
+- `--page <name>` — Which page the Settings modal shows: appearance, theme, keymap, editor, plugins, terminal, mcp or ai (AI Configuration).
 
 ```sh
 unluminous-cli modal open go-to-file --query mdrs
@@ -4083,6 +4083,45 @@ Whether this window sends anonymous usage statistics, why not when it does not, 
 ```sh
 unluminous-cli settings telemetry --json
 unluminous-cli settings telemetry --flush
+```
+
+### settings keymap
+
+```
+unluminous-cli settings keymap [filter] [--changed]
+```
+
+Every action a keyboard shortcut can be given: its name, its menu, the shortcut it is on now, and where that came from (unluminous, preset, yours or fixed). Choose a preset with `settings set keymap.preset intellij` (or vscode, unluminous); change one shortcut with `settings bind`.
+
+- `filter` (optional) — Only the actions whose name, menu or shortcut contains this, such as `duplicate` or `ctrl+d`. Everything after it on the line belongs to it.
+
+- `--changed` — Only the actions whose shortcut is not Unluminous's own.
+
+```sh
+unluminous-cli settings keymap
+unluminous-cli settings keymap ctrl+d
+unluminous-cli settings keymap --changed --json
+```
+
+### settings bind
+
+```
+unluminous-cli settings bind [action] [chord] [--reset] [--reset-all]
+```
+
+Give an action a keyboard shortcut, as Settings -> Keymap does when a key is pressed on its row. A shortcut another action has is taken from it, and the answer says which. `none` takes the action's shortcut away. Shortcuts that typing and the clipboard read, such as Ctrl+C or a bare letter, are refused.
+
+- `action` (optional) — The action, as `settings keymap` names it, such as duplicate-line.
+- `chord` (optional) — The shortcut, such as Ctrl+Shift+D, Alt+F7 or F12, or none. Everything after it on the line belongs to it.
+
+- `--reset` — Take your own shortcut for this action away, so it is on the preset's again.
+- `--reset-all` — Take every one of your own shortcuts away.
+
+```sh
+unluminous-cli settings bind duplicate-line Ctrl+Shift+D
+unluminous-cli settings bind git-show-diff none
+unluminous-cli settings bind duplicate-line --reset
+unluminous-cli settings bind --reset-all
 ```
 
 ### settings fonts

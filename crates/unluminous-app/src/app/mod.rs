@@ -974,6 +974,9 @@ pub struct UnluminousApp {
     store: Option<Store>,
     /// Set when a setting or a pane size changed and has not been written yet.
     unsaved_settings: bool,
+    /// The chords the keymap moved, worked out from the settings when they change. `task-2286`; see
+    /// `services::keymap`. Every menu this window builds reads it through `MenuState::keymap`.
+    pub(crate) keymap: std::sync::Arc<crate::services::keymap::Resolved>,
     /// Whether `modals.conf` has been read into this window yet, and the count of modal changes it was
     /// last written at. `task-2280`; see `components::modal::kept_text`.
     modal_places_read: bool,
@@ -1586,6 +1589,7 @@ impl UnluminousApp {
             closed_by_hand: false,
             store: None,
             unsaved_settings: false,
+            keymap: std::sync::Arc::default(),
             modal_places_read: false,
             double_click_interval: Some(crate::services::double_click::system_interval()),
             modal_places_written: 0,
@@ -1874,6 +1878,7 @@ impl UnluminousApp {
             self.settings.font_family = self.renderer.default_family();
         }
         self.panes = panes;
+        self.follow_the_keymap();
         // What this project leaves out of the searchable list, which reloads the tree when it moved.
         // `task-1804` §7.3.
         self.tree.set_exclude(&self.settings.exclude);

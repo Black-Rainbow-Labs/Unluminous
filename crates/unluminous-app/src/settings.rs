@@ -651,6 +651,10 @@ pub enum Page {
     /// The window is still one size for every page; since `task-1922` a page taller than the body
     /// scrolls inside it rather than the window being made taller again.
     Theme,
+    /// Which chord each menu entry is on: a preset, and the person's own changes. `task-2286`.
+    ///
+    /// A page of its own between Theme and Editor, which is where the reference editor keeps its Keymap.
+    Keymap,
     /// The editing area itself: the gutter, and the colour scheme code is set in.
     Editor,
     /// The plugins that are installed, and the marketplace they came from.
@@ -675,9 +679,10 @@ pub enum Page {
 impl Page {
     /// Unluminous's own seven. A plugin's page is not in it, because there is no compile time list of them;
     /// [`Page::all`] is the one that includes them.
-    pub const ALL: [Page; 7] = [
+    pub const ALL: [Page; 8] = [
         Page::Appearance,
         Page::Theme,
+        Page::Keymap,
         Page::Editor,
         Page::Plugins,
         Page::Terminal,
@@ -706,6 +711,7 @@ impl Page {
         match self {
             Page::Appearance => "Appearance",
             Page::Theme => "Theme",
+            Page::Keymap => "Keymap",
             Page::Editor => "Editor",
             Page::Plugins => "Plugins",
             Page::Terminal => "Terminal",
@@ -724,6 +730,8 @@ impl Page {
             Page::Appearance => "Appearance & Behavior",
             // Beside Appearance, which is where the reference editor keeps the theme picker.
             Page::Theme => "Appearance & Behavior",
+            // No heading of its own, the way the reference editor lists Keymap between its groups.
+            Page::Keymap => "",
             Page::Editor => "Editor",
             // No heading of its own, the way the reference editor lists Plugins: it is one page rather than a
             // group with pages under it.
@@ -745,6 +753,7 @@ impl Page {
         match self {
             Page::Appearance => &["Interface font", "Background"],
             Page::Theme => &["Theme", "Accent", "Icons"],
+            Page::Keymap => &["Preset", "Shortcuts", "Keyboard", "VS Code", "IntelliJ"],
             Page::Editor => &["Font", "Gutter", "Suggestions", "Debugger", "Updates"],
             Page::Plugins => &["Marketplace", "Installed", "Colour Scheme", "Syntax"],
             Page::Terminal => &["Font", "Shell"],
@@ -1187,6 +1196,8 @@ settings! {
     coded {
         /// Whether the completion popup arrives while you type, or waits to be asked.
         suggestions: Suggestions = Suggestions::Automatic => "editor.suggestions", "automatic or manual";
+        /// The set of chords a person starts from. See `services::keymap::Preset`. `task-2286`.
+        keymap_preset: crate::services::keymap::Preset = crate::services::keymap::Preset::Unluminous => "keymap.preset", "unluminous, vscode or intellij";
         /// Whether completion asks a language server. See [`Servers`].
         servers: Servers = Servers::Off => "editor.servers", "automatic or off";
         /// How long the embedding model stays loaded after its last use. See [`ModelKept`].
@@ -1215,11 +1226,18 @@ settings! {
             /// "whatever this machine has", which is `Settings::shell()`'s sentence made once more. It is a
             /// path rather than a preference, so a settings file copied to another machine names nothing.
             pub debug_adapters: Vec<(String, String)>,
+            /// The person's own chords, on top of the preset: an action's name and a chord, or `none`. `task-2286`.
+            ///
+            /// One `keymap.key.<action>` line each. Kept as the text that was written rather than read into a
+            /// `Shortcut`, so a file written on a Mac that says `Cmd` means the same on Windows, and a line
+            /// naming an action this build has not got is written back rather than lost.
+            pub key_bindings: Vec<(String, String)>,
         }
         keys { "mcp.port" => "1024 to 65535" }
         defaults {
             mcp_port: unluminous_cli::mcp::DEFAULT_PORT,
             debug_adapters: Vec::new(),
+            key_bindings: Vec::new(),
         }
         read = |values: &Values, settings: &mut Settings| {
             if let Some(port) = values.number("mcp.port") {
@@ -1232,6 +1250,11 @@ settings! {
                     .filter(|path| !path.is_empty())
                 {
                     settings.debug_adapters.push(((*name).to_owned(), path.to_owned()));
+                }
+            }
+            for (action, chord) in values.starting_with(KEY_BINDING) {
+                if !action.is_empty() {
+                    settings.key_bindings.push((action, chord.trim().to_owned()));
                 }
             }
         };
@@ -1247,9 +1270,20 @@ settings! {
                     settings.debug_adapter(name).unwrap_or_default(),
                 );
             }
+            // Every binding line goes before the list is written, because the file is merged over the one on
+            // the disk and a binding that was reset would otherwise come back.
+            for (action, _) in values.starting_with(KEY_BINDING) {
+                values.remove(&format!("{KEY_BINDING}{action}"));
+            }
+            for (action, chord) in &settings.key_bindings {
+                values.set(&format!("{KEY_BINDING}{action}"), chord.clone());
+            }
         };
     }
 }
+
+/// What a line holding one of the person's own chords starts with. `task-2286`.
+pub const KEY_BINDING: &str = "keymap.key.";
 
 impl Settings {
     /// Set, or clear, which path this machine's settings give for the debug adapter called `name`.
@@ -1819,6 +1853,7 @@ mod tests {
             "search.embedding_threads",
             "search.model_kept",
             "editor.suggestions",
+            "keymap.preset",
             "editor.servers",
             "editor.indent",
             "editor.line_ending",
@@ -1834,6 +1869,24 @@ mod tests {
         let mut actual: Vec<&str> = Settings::NAMES.to_vec();
         actual.sort_unstable();
         assert_eq!(actual, expected, "a name was added or lost in the settings! declaration");
+    }
+
+    /// A binding that was taken away does not come back from the file it is merged over. `task-2286`.
+    #[test]
+    fn a_key_binding_that_was_reset_is_taken_out_of_the_file() {
+        let mut settings = Settings::new();
+        settings.key_bindings = vec![
+            ("save".to_owned(), "F4".to_owned()),
+            ("find".to_owned(), "none".to_owned()),
+        ];
+        let mut values = Values::new();
+        settings.write_into(&mut values);
+        assert_eq!(values.text("keymap.key.save"), Some("F4"));
+        assert_eq!(values.text("keymap.key.find"), Some("none"));
+        settings.key_bindings.retain(|(name, _)| name != "save");
+        settings.write_into(&mut values);
+        assert_eq!(values.text("keymap.key.save"), None);
+        assert_eq!(Settings::read_from(&values).key_bindings, settings.key_bindings);
     }
 
     /// `editor.indent` reads what it writes, and refuses a width no editor offers.
@@ -1908,6 +1961,11 @@ mod tests {
             search_embedding_threads: 4.0,
             model_kept: ModelKept::Always,
             suggestions: Suggestions::Manual,
+            keymap_preset: crate::services::keymap::Preset::IntelliJ,
+            key_bindings: vec![
+                ("duplicate-line".to_owned(), "Ctrl+Shift+D".to_owned()),
+                ("git-show-diff".to_owned(), "none".to_owned()),
+            ],
             servers: Servers::Automatic,
             line_endings: LineEndings::Crlf,
             update_check: UpdateCheck::Start,
@@ -2256,12 +2314,12 @@ update.check.chosen = true
             assert!(!page.title().is_empty());
             assert!(!page.sections().is_empty(), "{} should have sections", page.title());
         }
-        // Every page but one is listed under a heading. `Plugins` has none, because it is one page
-        // rather than a group with pages under it, which is how the reference editor lists it too, and the list
-        // draws a page with no heading at the left margin instead of indented under one.
+        // Every page but two is listed under a heading. `Keymap` and `Plugins` have none, because each is
+        // one page rather than a group with pages under it, which is how the reference editor lists both,
+        // and the list draws a page with no heading at the left margin instead of indented under one.
         let ungrouped: Vec<&str> =
             Page::ALL.into_iter().filter(|page| page.group().is_empty()).map(Page::title).collect();
-        assert_eq!(ungrouped, vec!["Plugins"]);
+        assert_eq!(ungrouped, vec!["Keymap", "Plugins"]);
     }
 
     #[test]
