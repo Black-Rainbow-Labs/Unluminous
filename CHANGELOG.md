@@ -6,7 +6,15 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 0.95.0 — 2026-10-17
+## Unreleased
+
+- An agent picks its conversation back up after a restart (`task-2285`)
+- The scripted agent checks its arguments with a loop rather than findstr (`task-2285`)
+- The Codex resume window test covers a ticket with no session and one whose session cannot be found (`task-2285`)
+- A window suite receipt per binary and commit, so tickets running the suite at once keep their own (`task-2285`)
+- Rustfmt the Codex resume window test (`task-2285`)
+
+## 0.95.0 — 2026-10-16
 
 - Whiteboard shape nodes on the Realm (`task-2284`)
 - Raise shapes with the same three shadows and lit edge as every node (`task-2284`)
