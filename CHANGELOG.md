@@ -6,6 +6,16 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- No square edge outside the window's corners, the macOS mark opens its menu, and button words stay inside their buttons (`task-2282`)
+- The Designer has Browse and Comment, and no Select (`task-2282`)
+- Settings for how the code index loads, with the current defaults and what each costs (`task-2282`)
+- A Realm node's ports show only while the pointer is within 100 points of them (`task-2282`)
+- Button words are cut only near the button's edge, and settings list knows the new code index help (`task-2282`)
+- The debug tile's Copy command is centred in its pill (`task-2282`)
+- The symbol_cost example opens the index with the new file contents argument (`task-2282`)
+
 ## 0.93.0 — 2026-10-16
 
 - The bars sit on the window's glass with no panel, panes use rux's capped Chrome::panel, and rux draws glass edges at the display's resolution and cuts glass to its clips (`task-2281`)
