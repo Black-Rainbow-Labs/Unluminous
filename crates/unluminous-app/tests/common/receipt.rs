@@ -94,9 +94,38 @@ fn binary_name() -> String {
     }
 }
 
-/// The file this binary's receipt is written to.
-fn path() -> std::path::PathBuf {
-    folder().join(format!("{}.txt", binary_name()))
+/// The file this binary's receipt at `commit` is written to: `<binary>@<commit>.txt`.
+///
+/// **One file per commit, not one per binary (`task-2285`).** The folder is shared by every worktree,
+/// and with one file a binary, two tickets running the suite at once replaced each other's receipts:
+/// a ticket whose suite had passed at its own commit found the other ticket's base commit in every
+/// file and could not release. A receipt per commit lets each run keep its own, and a panic removes
+/// only the receipt of the run that panicked. `tools/window-suite.mjs` still reads `<binary>.txt`,
+/// the name used before this.
+fn path(commit: &str) -> std::path::PathBuf {
+    folder().join(format!("{}@{}.txt", binary_name(), &commit[..commit.len().min(12)]))
+}
+
+/// How long a receipt is kept. A receipt older than a release cycle answers nothing a release asks.
+const KEPT_FOR: std::time::Duration = std::time::Duration::from_secs(14 * 24 * 60 * 60);
+
+/// Remove this binary's receipts that are older than [`KEPT_FOR`], so one file a commit does not grow
+/// for ever.
+fn forget_old_receipts(folder: &std::path::Path) {
+    let prefix = format!("{}@", binary_name());
+    let Ok(entries) = std::fs::read_dir(folder) else { return };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let old = entry
+            .metadata()
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|modified| modified.elapsed().ok())
+            .is_some_and(|age| age > KEPT_FOR);
+        if name.starts_with(&prefix) && name.ends_with(".txt") && old {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
 }
 
 /// Write this binary's receipt and arrange for it to be taken away again if anything panics.
@@ -112,19 +141,22 @@ pub fn note_this_binary_started() {
         if std::fs::create_dir_all(&folder).is_err() {
             return;
         }
+        forget_old_receipts(&folder);
+        let receipt = path(&commit);
         // The default hook first, so a failing test still prints its message and its backtrace, and
         // then the receipt goes. `set_hook` replaces rather than adds, so the previous one is kept
         // and called: another hook installed by a test is not thrown away by this.
         let previous = std::panic::take_hook();
+        let taken_away = receipt.clone();
         std::panic::set_hook(Box::new(move |info| {
             previous(info);
-            let _ = std::fs::remove_file(path());
+            let _ = std::fs::remove_file(&taken_away);
         }));
         let when = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|since| since.as_secs())
             .unwrap_or_default();
-        if let Ok(mut file) = std::fs::File::create(path()) {
+        if let Ok(mut file) = std::fs::File::create(&receipt) {
             let _ = writeln!(file, "{commit} {when} {}", binary_name());
         }
     });

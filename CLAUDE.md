@@ -6133,8 +6133,10 @@ Four layers, and a change should leave all four green:
    without that flag reports one red test while two hundred are simply untested — which is what
    `task-1984` T2 found, in the sentence the release scripts print as well as in this one.
 
-   **A run leaves a receipt** in `_agent_output/window-suite/`, one file a binary naming the commit it
-   ran at, written when the binary starts and deleted the instant anything in it panics. Both release
+   **A run leaves a receipt** in `_agent_output/window-suite/`, one file a binary and commit,
+   `<binary>@<commit>.txt`, written when the binary starts and deleted the instant anything in it
+   panics. One file a commit, because the folder is shared by every worktree and with one file a binary
+   two tickets running the suite at once overwrote each other's receipts (`task-2285`). Both release
    scripts read it through `node tools/window-suite.mjs --check` and refuse to publish while one is
    missing or names a commit HEAD is not built on. The suite stays manual, because a graphics card and
    a person opening a changed image are both needed and a script must not satisfy the second; what

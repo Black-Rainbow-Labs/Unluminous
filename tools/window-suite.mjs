@@ -62,13 +62,44 @@ function expectedBinaries() {
     .sort();
 }
 
-/** The receipt for one binary, or null. */
+/**
+ * Every receipt one binary has, newest first.
+ *
+ * `task-2285`: a receipt is `<binary>@<commit>.txt`, one per commit, because the folder is shared by
+ * every worktree and one file a binary let two tickets running the suite at once overwrite each
+ * other's receipts. `<binary>.txt` is the name used before, and is still read.
+ */
+function receiptsFor(binary) {
+  if (!fs.existsSync(receipts)) return [];
+  return fs
+    .readdirSync(receipts)
+    .filter((name) => name === `${binary}.txt` || (name.startsWith(`${binary}@`) && name.endsWith('.txt')))
+    .map((name) => {
+      const [commit, when] = fs.readFileSync(path.join(receipts, name), 'utf8').trim().split(/\s+/);
+      return { commit, when: Number(when) || 0 };
+    })
+    .filter((receipt) => receipt.commit)
+    .sort((left, right) => right.when - left.when);
+}
+
+/** The newest receipt for one binary, or null. */
 function receiptFor(binary) {
-  const file = path.join(receipts, `${binary}.txt`);
-  if (!fs.existsSync(file)) return null;
-  const [commit, when] = fs.readFileSync(file, 'utf8').trim().split(/\s+/);
-  if (!commit) return null;
-  return { commit, when: Number(when) || 0 };
+  return receiptsFor(binary)[0] ?? null;
+}
+
+/** Why a receipt does not answer for HEAD, or null when it does. */
+function whyNot(binary, receipt, moved) {
+  if (!isAncestorOfHead(receipt.commit)) {
+    return `${binary} (last passed at ${receipt.commit.slice(0, 7)}, which HEAD is not built on)`;
+  }
+  if (!moved.has(receipt.commit)) moved.set(receipt.commit, whatMovedSince(receipt.commit));
+  const since = moved.get(receipt.commit);
+  if (since.length > 0) {
+    return `${binary} (last passed at ${receipt.commit.slice(0, 7)}; ${since.length} file${
+      since.length === 1 ? '' : 's'
+    } a window is built from have changed since)`;
+  }
+  return null;
 }
 
 /** Is `commit` one HEAD is built on? A receipt from a commit that was never merged says nothing. */
@@ -143,33 +174,32 @@ const binaries = expectedBinaries();
 const missing = [];
 const stale = [];
 const moved = new Map();
+// The receipt that answers for HEAD, for each binary that has one.
+const answering = new Map();
 for (const binary of binaries) {
-  const receipt = receiptFor(binary);
-  if (!receipt) {
+  const all = receiptsFor(binary);
+  if (all.length === 0) {
     missing.push(binary);
     continue;
   }
-  if (!isAncestorOfHead(receipt.commit)) {
-    stale.push(
-      `${binary} (last passed at ${receipt.commit.slice(0, 7)}, which HEAD is not built on)`,
-    );
-    continue;
+  // Any receipt that answers for HEAD will do; when none does, the newest one says why.
+  const reasons = all.map((receipt) => whyNot(binary, receipt, moved));
+  const at = reasons.indexOf(null);
+  if (at >= 0) {
+    answering.set(binary, all[at]);
+  } else {
+    stale.push(reasons[0]);
   }
-  if (!moved.has(receipt.commit)) moved.set(receipt.commit, whatMovedSince(receipt.commit));
-  const since = moved.get(receipt.commit);
-  if (since.length > 0) {
-    stale.push(
-      `${binary} (last passed at ${receipt.commit.slice(0, 7)}; ${since.length} file${
-        since.length === 1 ? '' : 's'
-      } a window is built from have changed since)`,
-    );
-  }
+}
+// Only what moved since the receipts that were reported stale is printed below.
+for (const commit of [...moved.keys()]) {
+  if ([...answering.values()].some((receipt) => receipt.commit === commit)) moved.delete(commit);
 }
 
 if (!check) {
   console.log(`Window suite receipts in ${path.relative(repo, receipts)}:`);
   for (const binary of binaries) {
-    const receipt = receiptFor(binary);
+    const receipt = answering.get(binary) ?? receiptFor(binary);
     const when = receipt?.when ? new Date(receipt.when * 1000).toISOString() : '';
     console.log(
       receipt ? `  ${binary}: ${receipt.commit.slice(0, 7)} ${when}` : `  ${binary}: never`,
