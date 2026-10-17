@@ -6,6 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- Words centred in chips, glass explorer and badges, minus before plus, American spelling (`task-2287`)
+- Close the keymap test the rebase joined to the ink test (`task-2287`)
+- The Settings pictures again, with the Keymap row and American spelling (`task-2287`)
+
 ## 0.96.0 — 2026-10-17
 
 - Settings -> Keymap, with VS Code and IntelliJ presets (`task-2286`)
