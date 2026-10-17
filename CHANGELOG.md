@@ -6,7 +6,7 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.94.1 — 2026-10-17
 
 - A Realm node's ports show while the pointer is within 150 points of them (`task-2282`)
 - The changelog written from the history (`task-2282`)
@@ -14,6 +14,7 @@ bumps the release script makes are left out, because they are the boundaries rat
 - Settings help from the card's margin, plugin file icons clear of the name, Run and the branch centred, and the rail's buttons centred (`task-2282`)
 - Words sit in the middle of a text box's caret and of a menu row, and Directory shows the full path (`task-2282`)
 - The window pictures with the rail centred, words centred in their rows, and settings help from the card's margin (`task-2282`)
+- The changelog written from the history (`task-2282`)
 
 ## 0.94.0 — 2026-10-16
 
