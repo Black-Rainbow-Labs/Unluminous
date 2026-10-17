@@ -1361,7 +1361,10 @@ fn resume_session_is_refused_for_a_codex_ticket_and_says_what_to_press_instead()
     // A Codex ticket carrying a marker whose session is not in Codex's records is refused, and the refusal
     // says what to press instead.
     did(&mut harness, "plugins run agent-tasks assign task-1 codex");
-    did(&mut harness, "plugins run agent-tasks session task-1 0f9a1b2c-1234-4abc-8def-0123456789ab");
+    did(
+        &mut harness,
+        "plugins run agent-tasks session task-1 0f9a1b2c-1234-4abc-8def-0123456789ab",
+    );
     let reply = run(&mut harness, "plugins run agent-tasks resume task-1");
     assert!(!reply.ok, "a Codex session that cannot be found is not resumed");
     assert!(reply.message.contains("names its own sessions"), "{}", reply.message);
