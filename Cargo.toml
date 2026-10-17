@@ -1,6 +1,9 @@
 [workspace]
 resolver = "2"
 members = ["crates/unluminous-core", "crates/unluminous-chat", "crates/unluminous-db", "crates/unluminous-dap", "crates/unluminous-lsp", "crates/unluminous-git", "crates/unluminous-terminal", "crates/unluminous-jupyter", "crates/unluminous-app", "unluminous-cli"]
+# A crate taken from crates.io and changed here, through `[patch.crates-io]` below. Not a member, so the
+# workspace's lints, tests and formatting leave it as its authors wrote it.
+exclude = ["vendor"]
 
 [workspace.package]
 version = "0.96.1"
@@ -84,7 +87,7 @@ inillucent-driver = { version = "2.0.2", features = ["embed"] }
 # second copy: the Agent-Chat model selector is its `Select` (`task-2096`). It is built on the same egui
 # 0.36 and the same `vello_cpu` with the same features, so it adds no second renderer. Pinned to a commit
 # for the reason `inillucent-driver` is.
-rux = { git = "https://github.com/Black-Rainbow-Labs/black-rainbow-labs-rux.git", rev = "e04d8dad557e324e799952f99347b36acd7d0abe" }
+rux = { git = "https://github.com/Black-Rainbow-Labs/black-rainbow-labs-rux.git", rev = "9621e7cfa1390dcedf436a443cc6adfdc6eda797" }
 url = "2.5"
 percent-encoding = "2.3"
 mime_guess = "2.0"
@@ -192,6 +195,12 @@ windows-sys = { version = "0.61", features = [
     # `PrintWindow`, a picture of a browser node's page that the canvas draws while its zoom moves. See
     # `services::browser::BrowserHost::photograph`.
     "Win32_Storage_Xps",
+    # `QueryThreadCycleTime` and `PROCESSOR_NUMBER`: how much of a frame the window's thread was running, and
+    # on which kind of processor. See `services/thread_clock.rs`.
+    "Win32_System_WindowsProgramming",
+    "Win32_System_Kernel",
+    # `timeBeginPeriod`, the window's one millisecond timer. See `services/scheduling.rs`.
+    "Win32_Media",
 ] }
 # Already in the tree under `wry`, at the versions `wry` uses; named here because a browser node adds
 # `Select Element` to WebView2's own right click menu, which `wry` does not wrap. See
@@ -232,3 +241,12 @@ opt-level = 3
 # not worth that; the numbers are here so the trade can be made again rather than argued.
 lto = "thin"
 
+# **egui-wgpu 0.36.1 with one change** (`task-2288`): with `WgpuConfiguration::scene_texture` on, every frame is
+# drawn into a texture of its own and copied to the window, and that texture is handed to paint callbacks before
+# they are prepared, when it still holds the previous frame. It is what the screenshot path already did on the
+# frames it captured. A modal's backdrop is the previous frame blurred on the GPU (`services::scene_blur`), where it
+# was a screenshot read back, converted pixel by pixel and blurred on the window's thread. The same change moves
+# that pixel conversion off the window's thread for `window screenshot`. `vendor/egui-wgpu/UNLUMINOUS.md` says what
+# changed and how to carry it to the next egui.
+[patch.crates-io]
+egui-wgpu = { path = "vendor/egui-wgpu" }

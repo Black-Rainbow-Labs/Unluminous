@@ -2663,6 +2663,10 @@ impl eframe::App for UnluminousApp {
         }
         // What `rux` rasterised and built this frame, which is inside whichever phase drew it (`task-2281`).
         let drawn = rux::render::cost::take();
+        if drawn.fallbacks > 0 {
+            // Layers rux's composer could not draw as meshes and rasterised instead (`task-2288`).
+            crate::services::frame_trace::value("rux-fallbacks", f64::from(drawn.fallbacks));
+        }
         if drawn.canvases > 0 || drawn.glasses > 0 {
             crate::services::frame_trace::value("rux-raster", drawn.raster_ms);
             crate::services::frame_trace::value(

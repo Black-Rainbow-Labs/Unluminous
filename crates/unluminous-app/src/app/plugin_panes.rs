@@ -538,10 +538,10 @@ impl UnluminousApp {
             if items.is_empty() {
                 continue;
             }
-            if let Some((texture, drawn)) = self.canvases.texture_for(ui.ctx(), *id, *body, &items)
+            if let Some(drawn) =
+                self.canvases.shape_for(ui.ctx(), painter.layer_id(), *id, *body, &items, false)
             {
-                let uv = Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0));
-                painter.set(*shape, egui::Shape::image(texture, drawn, uv, egui::Color32::WHITE));
+                painter.set(*shape, drawn);
             }
         }
         if let Some((body, panel)) = designer_body {
@@ -619,12 +619,15 @@ impl UnluminousApp {
             if items.is_empty() {
                 continue;
             }
-            if let Some((texture, drawn)) =
-                self.canvases.texture_for(ui.ctx(), slot.id, slot.area, &items)
-            {
-                let uv = Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0));
-                slot.painter
-                    .set(slot.shape, egui::Shape::image(texture, drawn, uv, egui::Color32::WHITE));
+            if let Some(drawn) = self.canvases.shape_for(
+                ui.ctx(),
+                slot.painter.layer_id(),
+                slot.id,
+                slot.area,
+                &items,
+                false,
+            ) {
+                slot.painter.set(slot.shape, drawn);
             }
         }
         for (plugin, request) in asked {
@@ -1444,11 +1447,10 @@ impl UnluminousApp {
         if items.is_empty() {
             return;
         }
-        if let Some((texture, drawn)) =
-            self.canvases.texture_while(ui.ctx(), id, area, &items, moving)
+        if let Some(drawn) =
+            self.canvases.shape_for(ui.ctx(), ui.layer_id(), id, area, &items, moving)
         {
-            let uv = Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0));
-            ui.painter().set(slot, egui::Shape::image(texture, drawn, uv, egui::Color32::WHITE));
+            ui.painter().set(slot, drawn);
         }
     }
 }

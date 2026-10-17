@@ -303,6 +303,38 @@ pub enum Decor {
 /// compares it, so a collision cannot serve stale pixels. This is here because a `Decor` is a value and
 /// values in Unluminous are hashable, and because a test that wants to say "these two drawings are the same
 /// drawing" should not have to spell out how.
+impl Decor {
+    /// The same piece of decoration as rux records it, which is what rux's composer draws. The two lists have
+    /// the same shapes; a shadow's `blur` here is the standard deviation rux calls `deviation`, which is what
+    /// both hand to `vello_cpu`'s blurred rectangle.
+    pub fn to_rux(self) -> rux::Decor {
+        let corners = |of: Corners| rux::Corners { nw: of.nw, ne: of.ne, se: of.se, sw: of.sw };
+        let fill = |of: Fill| match of {
+            Fill::Solid(colour) => rux::Fill::Solid(colour),
+            Fill::Linear { from, to, start, end } => rux::Fill::Linear { from, to, start, end },
+        };
+        match self {
+            Self::Rect { rect, corners: round, fill: paint } => {
+                rux::Decor::Rect { rect, corners: corners(round), fill: fill(paint) }
+            }
+            Self::Shadow { rect, radius, blur, colour, inset } => {
+                rux::Decor::Shadow { rect, radius, deviation: blur, colour, inset }
+            }
+            Self::Disc { centre, radius, fill: paint } => {
+                rux::Decor::Disc { centre, radius, fill: fill(paint) }
+            }
+            Self::Ring { centre, radius, width, colour } => {
+                rux::Decor::Ring { centre, radius, width, colour }
+            }
+            Self::Line { from, to, width, colour } => rux::Decor::Line { from, to, width, colour },
+            Self::Clip { rect, corners: round, outside, bound } => {
+                rux::Decor::Clip { rect, corners: corners(round), outside, bound }
+            }
+            Self::Unclip => rux::Decor::Unclip,
+        }
+    }
+}
+
 impl Hash for Decor {
     fn hash<H: Hasher>(&self, into: &mut H) {
         fn f(value: f32, into: &mut impl Hasher) {
@@ -1116,12 +1148,55 @@ pub struct Canvases {
     frame: u64,
     /// Built with the tests' pinned SIMD level rather than the machine's.
     deterministic: bool,
+    /// The shadow sprites a surface drawn as meshes uses, which is every surface rux's composer can draw
+    /// (`task-2288`). See [`Canvases::shape_for`].
+    sprites: rux::render::Sprites,
 }
 
 impl Canvases {
     /// The store the screenshot tests use, whose canvases rasterise the same on every machine.
     pub fn deterministic() -> Self {
-        Self { deterministic: true, ..Self::default() }
+        let pinned =
+            vello_cpu::RenderSettings { level: vello_cpu::Level::baseline(), num_threads: 0 };
+        Self { deterministic: true, sprites: rux::render::Sprites::new(pinned), ..Self::default() }
+    }
+
+    /// One surface's decoration as a shape to put in its slot: meshes with every shadow a cached sprite where
+    /// rux's composer can draw it, and the rasterised texture otherwise (`task-2288`).
+    ///
+    /// Opening a pane rasterised its whole decoration on the window's thread, 32 to 44 ms at the size the
+    /// person who reported it works at, and more again on an efficient core. Drawn as meshes it rasterises a
+    /// handful of small sprites once and nothing after. `RUX_RASTER=canvas` asks for the texture everywhere,
+    /// which is how the two are measured against each other.
+    ///
+    /// @param layer - the layer the surface is painted on, whose zoom decides how finely a sprite is made
+    /// @param moving - whether what it decorates is moving this frame; see [`DRAFT_SCALE`]
+    #[allow(clippy::too_many_arguments)]
+    pub fn shape_for(
+        &mut self,
+        ctx: &egui::Context,
+        layer: egui::LayerId,
+        id: egui::Id,
+        rect: Rect,
+        items: &[Decor],
+        moving: bool,
+    ) -> Option<egui::Shape> {
+        // A test draws with the canvas, so the accepted pictures stay what they were; see rux's
+        // `Canvases::compose`.
+        let canvas_only = self.deterministic
+            || std::env::var("RUX_RASTER").is_ok_and(|named| named.trim() == "canvas");
+        if !canvas_only {
+            let scale = rux::render::composited_scale(ctx, layer);
+            let decor: Vec<rux::Decor> = items.iter().map(|item| item.to_rux()).collect();
+            if let Some(shapes) = rux::render::compose(ctx, &mut self.sprites, scale, &decor, rect)
+            {
+                return Some(egui::Shape::Vec(shapes));
+            }
+            crate::services::frame_trace::value("vello-fallbacks", 1.0);
+        }
+        let (texture, drawn) = self.texture_while(ctx, id, rect, items, moving)?;
+        let uv = Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0));
+        Some(egui::Shape::image(texture, drawn, uv, egui::Color32::WHITE))
     }
 
     /// Rasterise one surface's decoration and answer the texture to paint and where to paint it.
@@ -1162,6 +1237,7 @@ impl Canvases {
     pub fn tidy(&mut self) {
         let frame = self.frame;
         self.by_id.retain(|_, canvas| canvas.last_used == frame);
+        self.sprites.tidy();
         self.frame = self.frame.wrapping_add(1);
     }
 

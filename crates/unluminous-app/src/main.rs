@@ -309,12 +309,35 @@ fn main() -> eframe::Result {
     let options = unluminous_app::services::windows_transparency::with_direct_composition(options);
     // A graphics device that allocates in blocks the size of what is drawn - `task-2218`.
     let options = unluminous_app::services::graphics_memory::frugal(options);
+    // Every frame drawn into a texture a paint callback can read, so a modal's backdrop is the previous frame
+    // blurred on the GPU rather than a screenshot read back and blurred on this thread - `task-2288`.
+    let mut options = options;
+    options.wgpu_options.scene_texture = true;
+    // How frames are handed to the display, which `UNLUMINOUS_PRESENT` and `UNLUMINOUS_FRAME_LATENCY` can change
+    // for a measurement; see `services::graphics_memory::presentation`.
+    options.wgpu_options.surface = unluminous_app::services::graphics_memory::presentation(
+        options.wgpu_options.surface,
+        std::env::var("UNLUMINOUS_PRESENT").ok().as_deref(),
+        std::env::var("UNLUMINOUS_FRAME_LATENCY").ok().as_deref(),
+    );
+
+    // The window's thread is run first when the machine is busy - `task-2288`. This is the thread
+    // `run_native` runs the window on, so it is asked here, before the window exists.
+    unluminous_app::services::scheduling::favour_the_window_thread();
+    // rux draws its depth at this processor's widest SIMD level, which no test does - `task-2288`.
+    unluminous_app::theme::use_the_fastest_raster();
+    // egui's own marks in the frame trace, in a build made for it - `task-2288`.
+    #[cfg(feature = "diagnostic-spans")]
+    unluminous_app::services::span_trace::start();
 
     eframe::run_native(
         "Unluminous",
         options,
         Box::new(move |cc| {
             unluminous_app::services::frame_trace::mark("eframe-window");
+            if let Some(render_state) = cc.wgpu_render_state.as_ref() {
+                unluminous_app::services::scene_blur::install(render_state, &cc.egui_ctx);
+            }
             let mut app = UnluminousApp::new(folder);
             unluminous_app::services::frame_trace::mark("app-new");
             app.prepare(&cc.egui_ctx);

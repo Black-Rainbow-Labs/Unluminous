@@ -11,6 +11,10 @@ default-run = "unluminous"
 # A counting allocator behind the frame trace, and with `UNLUMINOUS_HEAP_PROFILE` the live heap by call site
 # (`services::allocation_profile`, `task-2279`).
 diagnostic-allocations = ["dep:backtrace"]
+# egui's, eframe's and egui-wgpu's own `profiling::scope!` marks as spans, and every slow one written into the
+# frame trace as `~<name>` (`services::span_trace`, `task-2288`). Off in a normal build, where the marks are
+# compiled to nothing.
+diagnostic-spans = ["dep:profiling", "dep:tracing-core", "profiling/profile-with-tracing"]
 
 [lib]
 name = "unluminous_app"
@@ -23,6 +27,9 @@ path = "src/main.rs"
 [dependencies]
 # Only in a build made with `diagnostic-allocations`, for the heap profile's call sites.
 backtrace = { version = "0.3", optional = true }
+# Only in a build made with `diagnostic-spans`. The versions are the ones egui's own crates already use.
+profiling = { version = "1", optional = true, default-features = false }
+tracing-core = { version = "0.1", optional = true }
 unluminous-core.workspace = true
 unluminous-dap.workspace = true
 unluminous-lsp.workspace = true
@@ -166,6 +173,9 @@ path = "examples/layout_memory.rs"
 
 [dev-dependencies]
 egui_kittest.workspace = true
+# wgpu's own shader compiler, so a test can parse and validate `services/scene_blur.wgsl` with no graphics card.
+# The version is the one wgpu already builds.
+naga = { version = "30", features = ["wgsl-in"] }
 unluminous-dap.workspace = true
 # Jupyter notebooks: the .ipynb file, the text a notebook tab edits, and the kernel. `task-2220`.
 unluminous-jupyter.workspace = true
