@@ -335,10 +335,10 @@ impl ModelKept {
     /// What the Settings page's list says for it.
     pub fn title(self) -> &'static str {
         match self {
-            ModelKept::TenSeconds => "10 seconds after its last use",
-            ModelKept::FiveMinutes => "5 minutes after its last use",
-            ModelKept::Always => "Always, once loaded",
-            ModelKept::PerUse => "Only while it is working",
+            ModelKept::TenSeconds => "10 seconds",
+            ModelKept::FiveMinutes => "5 minutes",
+            ModelKept::Always => "Always",
+            ModelKept::PerUse => "While working",
         }
     }
 }

@@ -1282,10 +1282,10 @@ fn code_index_card(ui: &mut egui::Ui, column: &mut Column, settings: &mut Settin
         let options: Vec<String> = ModelKept::ALL.iter().map(|kept| kept.title().to_owned()).collect();
         let chosen = ModelKept::ALL.iter().position(|kept| *kept == settings.model_kept);
         card.row(
-            "Keep the embedding model loaded",
-            Some("Only while ranking by meaning is on. Loading the model takes most of a second and it holds about 1.1 GB once loaded. 10 seconds, the default, gives the memory back soon after a burst of searches. 5 minutes or Always answers the next search sooner and keeps the 1.1 GB for that long. Only while it is working holds the least memory and loads the model again for every batch and every question."),
+            "Model kept",
+            Some("How long the embedding model stays loaded after it was last used, while ranking by meaning is on. Loading it takes most of a second and it holds about 1.1 GB once loaded. 10 seconds, the default, gives the memory back soon after a burst of searches. 5 minutes or Always answers the next search sooner and keeps the 1.1 GB for that long. While working holds the least memory and loads the model again for every batch and every question."),
             |row| {
-                if let Some(index) = row.select("Keep the embedding model loaded", &options, chosen, 230.0) {
+                if let Some(index) = row.select("Model kept", &options, chosen, 160.0) {
                     settings.model_kept = ModelKept::ALL[index];
                     changed = true;
                 }
@@ -1300,14 +1300,14 @@ fn code_index_card(ui: &mut egui::Ui, column: &mut Column, settings: &mut Settin
         );
         changed |= preset_row(
             card,
-            "Keep a question's search index",
-            "A plain English search builds a search index of the project's passages, about 100 MB for a project the size of Unluminous. 20 seconds, the default, answers a burst of questions from one build and then gives the memory back. Longer answers a later question sooner and holds the memory for longer; not at all holds nothing and builds it again for every question.",
+            "Question index",
+            "How long a question's search index is kept. A plain English search builds a search index of the project's passages, about 100 MB for a project the size of Unluminous. 20 seconds, the default, answers a burst of questions from one build and then gives the memory back. Longer answers a later question sooner and holds the memory for longer; not at all holds nothing and builds it again for every question.",
             &mut settings.search_question_index_seconds,
             &[(0.0, "Not at all"), (20.0, "20 seconds"), (120.0, "2 minutes"), (600.0, "10 minutes"), (3600.0, "1 hour")],
         );
         changed |= preset_row(
             card,
-            "Index file kept in memory",
+            "Index cache",
             "How much of the index file stays in memory once the index is built. 4 MB, the default, is enough: the operating system keeps the rest of the file in its own cache, so a larger cache costs its size in memory and makes searches little faster.",
             &mut settings.search_page_cache_mb,
             &[(4.0, "4 MB"), (16.0, "16 MB"), (32.0, "32 MB"), (128.0, "128 MB")],
