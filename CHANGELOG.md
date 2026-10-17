@@ -6,6 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- Settings -> Keymap, with VS Code and IntelliJ presets (`task-2286`)
+- IntelliJ's Expand All is left out, because Ctrl+Shift+Plus is Ctrl+Plus (`task-2286`)
+- Rustfmt the keymap (`task-2286`)
+
 ## 0.95.1 — 2026-10-17
 
 - An agent picks its conversation back up after a restart (`task-2285`)
