@@ -30,20 +30,20 @@ pub enum Mode {
     /// The page behaves as a page: links and buttons work.
     #[default]
     Browse,
-    /// Hovering outlines an element and a click chooses it.
-    Select,
-    /// As select, and the click opens a note on the element.
+    /// Hovering outlines an element, and a click chooses it and opens a note on it.
+    ///
+    /// There was a third mode, Select, which chose an element and opened no note. Comment chooses it as
+    /// well, so Select did nothing Comment does not, and it was taken away (`task-2282`).
     Comment,
 }
 
 impl Mode {
-    pub const ALL: [Mode; 3] = [Mode::Browse, Mode::Select, Mode::Comment];
+    pub const ALL: [Mode; 2] = [Mode::Browse, Mode::Comment];
 
     /// The word the script, the command line and the toolbar use.
     pub fn name(self) -> &'static str {
         match self {
             Mode::Browse => "browse",
-            Mode::Select => "select",
             Mode::Comment => "comment",
         }
     }
@@ -52,14 +52,19 @@ impl Mode {
     pub fn title(self) -> &'static str {
         match self {
             Mode::Browse => "Browse",
-            Mode::Select => "Select",
             Mode::Comment => "Comment",
         }
     }
 
     /// What a typed name stands for, ignoring case, or nothing when it names none of them.
+    ///
+    /// `select` still answers, as Comment, so a script or an agent that learned the old mode gets the one
+    /// that chooses an element now.
     pub fn from_name(name: &str) -> Option<Mode> {
         let wanted = name.trim().to_lowercase();
+        if wanted == "select" {
+            return Some(Mode::Comment);
+        }
         Mode::ALL.into_iter().find(|mode| mode.name() == wanted)
     }
 }

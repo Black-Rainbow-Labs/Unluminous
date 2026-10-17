@@ -569,12 +569,18 @@ fn a_verb_about_a_design_nobody_is_looking_at_takes_its_name_and_the_page_verbs_
     assert_eq!(designer.command("device", &words("phone")).unwrap().value["device"], "phone");
     assert_eq!(designer.design_view(&design).unwrap().device, Device::Phone);
     assert!(designer.command("device", &words("watch")).unwrap_err().contains("desktop, laptop"));
+    designer.command("mode-browse", &[]).unwrap();
+    assert_eq!(designer.design_view(&design).unwrap().mode, Mode::Browse);
     designer.command("mode", &words("comment")).unwrap();
     assert_eq!(designer.design_view(&design).unwrap().mode, Mode::Comment);
-    designer.command("mode-select", &[]).unwrap();
-    assert_eq!(designer.design_view(&design).unwrap().mode, Mode::Select);
     let calls = designer.take_calls(&design);
-    assert!(calls.contains(&super::PageCall::SetMode(Mode::Select)), "{calls:?}");
+    assert!(calls.contains(&super::PageCall::SetMode(Mode::Comment)), "{calls:?}");
+    // Select is gone (`task-2282`): its verb is not offered, and its old name gives Comment.
+    assert!(designer.command("mode-select", &[]).is_err(), "mode-select is no longer a verb");
+    designer.command("mode-browse", &[]).unwrap();
+    designer.command("mode", &words("select")).unwrap();
+    assert_eq!(designer.design_view(&design).unwrap().mode, Mode::Comment);
+    assert!(designer.command("mode", &words("hover")).unwrap_err().contains("browse, comment"));
 }
 
 #[test]
@@ -726,14 +732,14 @@ fn what_the_page_reports_changes_the_selection_the_composer_and_the_detached_mar
 fn a_loaded_document_is_told_the_mode_the_pins_and_the_choice_again() {
     let (mut designer, _project, design) = with_a_design("page-loaded");
     designer.comment(&design, "h1", "x", "you").unwrap();
-    designer.set_mode(&design, Mode::Select).unwrap();
+    designer.set_mode(&design, Mode::Comment).unwrap();
     designer.page_reported(&design, Report::Selected(an_element("h1")));
     designer.take_calls(&design);
     let before = designer.design_view(&design).unwrap().page_revision;
     designer.page_reported(&design, Report::Loaded { url: "u".into(), scroll_y: 0.0 });
     assert!(designer.design_view(&design).unwrap().page_revision > before);
     let calls = designer.take_calls(&design);
-    assert_eq!(calls[0], super::PageCall::SetMode(Mode::Select));
+    assert_eq!(calls[0], super::PageCall::SetMode(Mode::Comment));
     assert!(calls.contains(&super::PageCall::Select("h1".to_owned())));
     assert!(matches!(calls.last(), Some(super::PageCall::SetPins(pins)) if pins.len() == 1));
     assert!(designer.take_calls(&design).is_empty(), "and only once");

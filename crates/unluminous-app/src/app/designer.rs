@@ -462,7 +462,7 @@ impl UnluminousApp {
 
     /// The keys the Designer pane has while it holds the keyboard on a design and no text box does.
     ///
-    /// `Escape` puts the choice away, `C`, `V` and `B` switch to comment, select and browse, and `[` and `]`
+    /// `Escape` puts the choice away, `C` and `B` switch to comment and browse, and `[` and `]`
     /// move the choice to the parent and the first child. Read before the panes are drawn, which is the one
     /// frame ordering every other reader of keys in `route_the_keys_before_the_panes` relies on, and taken
     /// out of the frame so one press is not also read as typing.
@@ -483,8 +483,6 @@ impl UnluminousApp {
         let Ok(designer) = self.designer() else { return };
         let result = if pressed(ui, Key::C) {
             designer.set_mode(&design, Mode::Comment)
-        } else if pressed(ui, Key::V) {
-            designer.set_mode(&design, Mode::Select)
         } else if pressed(ui, Key::B) {
             designer.set_mode(&design, Mode::Browse)
         } else if pressed(ui, Key::OpenBracket) {

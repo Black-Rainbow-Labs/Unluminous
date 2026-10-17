@@ -251,17 +251,14 @@
     if (event.button !== 0) return;
     const el = elementAt(event.clientX, event.clientY);
     if (!el) return;
-    if (mode === 'comment') {
-      const r = el.getBoundingClientRect();
-      const fx = r.width > 0 ? (event.clientX - r.left) / r.width : 1;
-      const fy = r.height > 0 ? (event.clientY - r.top) / r.height : 0;
-      chosen = selectorFor(el);
-      hovered = null;
-      push({ kind: 'comment', element: details(el), fx: Math.max(0, Math.min(1, fx)), fy: Math.max(0, Math.min(1, fy)) });
-      wake();
-    } else {
-      choose(el);
-    }
+    // Comment is the one mode that listens for clicks: it chooses the element and opens a note on it.
+    const r = el.getBoundingClientRect();
+    const fx = r.width > 0 ? (event.clientX - r.left) / r.width : 1;
+    const fy = r.height > 0 ? (event.clientY - r.top) / r.height : 0;
+    chosen = selectorFor(el);
+    hovered = null;
+    push({ kind: 'comment', element: details(el), fx: Math.max(0, Math.min(1, fx)), fy: Math.max(0, Math.min(1, fy)) });
+    wake();
   };
 
   const onKey = (event) => {
@@ -287,7 +284,7 @@
   const setMode = (wanted) => {
     for (const [type, handler] of listeners) window.removeEventListener(type, handler, true);
     listeners = [];
-    mode = wanted === 'select' || wanted === 'comment' ? wanted : 'browse';
+    mode = wanted === 'comment' ? 'comment' : 'browse';
     const old = document.getElementById(CURSOR_STYLE);
     if (old) old.remove();
     hovered = null;

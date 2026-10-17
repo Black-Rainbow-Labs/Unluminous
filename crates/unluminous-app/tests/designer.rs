@@ -592,7 +592,7 @@ fn designer_tab() {
 fn designer_tab_phone() {
     let mut harness = the_busy_tab("unluminous-designer-shot-phone");
     did(&mut harness, "plugins run designer device phone");
-    did(&mut harness, "plugins run designer mode select");
+    did(&mut harness, "plugins run designer mode comment");
     the_page_reports(
         &mut harness,
         serde_json::json!([{ "kind": "anchors", "found": [], "missing": [3] }]),

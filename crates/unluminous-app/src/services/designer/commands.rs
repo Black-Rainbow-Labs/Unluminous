@@ -25,10 +25,9 @@ pub const LIST: &[(&str, &str)] = &[
     ("show-tab", "Show one of the Designer pane's tabs: show-tab <number|name>, counted from 0."),
     ("close-tab", "Close one of the Designer pane's tabs: close-tab [number|name]. With nothing, the one showing."),
     ("device", "Change the device of the showing design: device desktop|laptop|tablet|phone|fit."),
-    ("mode", "Change the mode of the showing design: mode browse|select|comment."),
+    ("mode", "Change the mode of the showing design: mode browse|comment."),
     ("mode-browse", "Let the page behave as a page."),
-    ("mode-select", "Hover to outline an element and click to choose it."),
-    ("mode-comment", "Click an element to make a note on it."),
+    ("mode-comment", "Hover to outline an element, and click it to choose it and make a note on it."),
     ("select", "Choose an element by selector, as a click would: select <selector>."),
     ("selection", "What is chosen: selector, tag, excerpt, the start of its HTML."),
     ("comments", "The notes on a design: comments [open|resolved|all]."),
@@ -82,7 +81,7 @@ pub fn run(designer: &mut Designer, command: &str, arguments: &[String]) -> Resu
         "new" => make_one(designer, &parsed),
         "open" => open_one(designer, &parsed),
         "tabs" | "new-tab" | "show-tab" | "close-tab" => about_the_tabs(designer, command, &parsed),
-        "device" | "mode" | "mode-browse" | "mode-select" | "mode-comment" | "select" => {
+        "device" | "mode" | "mode-browse" | "mode-comment" | "select" => {
             about_the_page(designer, command, &parsed)
         }
         "selection" | "comments" | "comment" | "reply" | "resolve" | "reopen" | "delete"
