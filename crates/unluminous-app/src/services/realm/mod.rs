@@ -39,6 +39,7 @@ pub mod live;
 pub mod node;
 pub mod pipe;
 pub mod player;
+pub mod shape;
 pub mod store;
 
 use std::collections::BTreeMap;
@@ -48,6 +49,7 @@ use egui::{Pos2, Rect, Vec2};
 
 pub use geometry::Grip;
 pub use node::{Camera, Edge, EdgeId, Fit, Kind, Node, NodeId, NoteView, Pipe, State};
+pub use shape::{Align, Anchor, Shape, ShapeKind, SizeStep, VAlign};
 
 /// The realm file format this build writes. Bumped only when a reader of the previous format could
 /// misread a file, which is when a key changes meaning. A new kind or a new key never bumps it. See the
@@ -322,8 +324,11 @@ impl Realm {
     ///
     /// Read from the end, because the list is the drawing order and the last one drawn is the one on
     /// top — which is also what [`Realm::raise`] relies on.
+    ///
+    /// A shape is under the point only inside its outline, so the corners of a diamond's rectangle are the
+    /// canvas and whatever is behind them. `task-2284`.
     pub fn node_at(&self, world: Pos2) -> Option<NodeId> {
-        self.nodes.iter().rev().find(|node| node.rect().contains(world)).map(|node| node.id)
+        self.nodes.iter().rev().find(|node| node.contains(world)).map(|node| node.id)
     }
 
     // ------------------------------------------------------------------------------- the nodes
@@ -342,6 +347,42 @@ impl Realm {
         self.chosen = Some(id);
         self.dirty = true;
         id
+    }
+
+    /// Put a shape of `shape` with its top left corner at `at`, at the size that shape opens at, and choose
+    /// it. `0` on a read only realm, as [`Self::add_node`] answers. `task-2284`.
+    pub fn add_shape(&mut self, shape: ShapeKind, at: Pos2) -> NodeId {
+        let id = self.add_node(Kind::Shape, at, None);
+        if let Some(node) = self.node_mut(id) {
+            node.size = shape.opens_at();
+            node.state = State::Shape(Shape::of(shape));
+        }
+        id
+    }
+
+    /// Change a shape's own state: its outline, its words, its colour, its alignment or its size.
+    ///
+    /// **Refused on a read only realm**, unlike [`Self::change`], because everything a shape holds is in the
+    /// realm file. Answers why when it is refused or the node is not a shape.
+    pub fn change_shape(
+        &mut self,
+        id: NodeId,
+        change: impl FnOnce(&mut Shape),
+    ) -> Result<(), String> {
+        if let Some(why) = self.read_only_because() {
+            return Err(why.to_owned());
+        }
+        let Some(node) = self.node_mut(id) else { return Err(format!("There is no node {id}.")) };
+        let kind = node.kind();
+        let State::Shape(shape) = &mut node.state else {
+            return Err(format!("Node {id} is a {} node, not a shape.", kind.name()));
+        };
+        let was = shape.clone();
+        change(shape);
+        if *shape != was {
+            self.dirty = true;
+        }
+        Ok(())
     }
 
     /// The largest `z` on the realm.
@@ -504,6 +545,23 @@ impl Realm {
     /// there, when a pipe is asked for into a kind that cannot take one — see [`Self::takes_a_pipe`] — or
     /// when the realm is read only.
     pub fn connect(&mut self, from: NodeId, to: NodeId, carrying: Pipe) -> Result<EdgeId, String> {
+        self.connect_at(from, None, to, None, carrying)
+    }
+
+    /// Wire one node to another from a point of the first to a point of the second. `task-2284`.
+    ///
+    /// A point is an index into [`Node::anchors`]; `None` is the output port leaving a node and the input
+    /// port arriving at one, which is what every wire before shapes was. Two wires between the same two nodes
+    /// are refused only when they join the same two points, because two arrows between two boxes of a flow
+    /// chart are an ordinary thing to draw.
+    pub fn connect_at(
+        &mut self,
+        from: NodeId,
+        from_point: Option<usize>,
+        to: NodeId,
+        to_point: Option<usize>,
+        carrying: Pipe,
+    ) -> Result<EdgeId, String> {
         if let Some(why) = self.read_only_because() {
             return Err(why.to_owned());
         }
@@ -512,7 +570,22 @@ impl Realm {
         }
         let Some(source) = self.node(from) else { return Err(format!("There is no node {from}.")) };
         let Some(target) = self.node(to) else { return Err(format!("There is no node {to}.")) };
-        if self.edge_between(from, to).is_some() {
+        for (point, node) in [(from_point, source), (to_point, target)] {
+            let count = node.anchors().len();
+            if let Some(point) = point.filter(|point| *point >= count) {
+                return Err(format!(
+                    "Node {} has {count} connection points, so there is no point {point}.",
+                    node.id
+                ));
+            }
+        }
+        let same = self.edges.iter().any(|edge| {
+            edge.from == from
+                && edge.to == to
+                && edge.from_point == from_point
+                && edge.to_point == to_point
+        });
+        if same {
             return Err("Those two are already wired that way round.".to_owned());
         }
         if carrying == Pipe::Lines && !Self::takes_a_pipe(source.kind(), target.kind()) {
@@ -523,9 +596,46 @@ impl Realm {
             ));
         }
         let id = self.fresh_id();
-        self.edges.push(Edge::new(id, from, to, carrying));
+        let mut edge = Edge::new(id, from, to, carrying);
+        edge.from_point = from_point;
+        edge.to_point = to_point;
+        self.edges.push(edge);
         self.dirty = true;
         Ok(id)
+    }
+
+    /// Which of a node's points a wire joins, which is what draws those ports lit.
+    pub fn joined_points(&self, id: NodeId) -> Vec<usize> {
+        let Some(node) = self.node(id) else { return Vec::new() };
+        let mut joined = Vec::new();
+        for edge in &self.edges {
+            let (Some(from), Some(to)) = (self.node(edge.from), self.node(edge.to)) else {
+                continue;
+            };
+            if edge.from == id {
+                joined.push(end_index(node, edge.from_point, to.rect().center(), true));
+            }
+            if edge.to == id {
+                joined.push(end_index(node, edge.to_point, from.rect().center(), false));
+            }
+        }
+        joined.sort_unstable();
+        joined.dedup();
+        joined
+    }
+
+    /// Where a wire's two ends are, each with the way out of its node, in world points.
+    ///
+    /// A point the edge names is used as it is. One it does not name is the output port leaving a node and
+    /// the input port arriving at one, or on a shape the point nearest the middle of the other node, so a
+    /// hand edited file that names no point still draws a wire that leaves from the side facing the other end.
+    pub fn wire_ends(&self, edge: &Edge) -> Option<(Anchor, Anchor)> {
+        let from = self.node(edge.from)?;
+        let to = self.node(edge.to)?;
+        Some((
+            end_of_a_wire(from, edge.from_point, to.rect().center(), true),
+            end_of_a_wire(to, edge.to_point, from.rect().center(), false),
+        ))
     }
 
     /// Whether text may be piped from one kind into another.
@@ -627,7 +737,15 @@ impl Realm {
                 continue;
             };
             let id = copy.fresh_id();
-            copy.edges.push(Edge { id, from, to, pipe: edge.pipe, extra: edge.extra.clone() });
+            copy.edges.push(Edge {
+                id,
+                from,
+                to,
+                pipe: edge.pipe,
+                from_point: edge.from_point,
+                to_point: edge.to_point,
+                extra: edge.extra.clone(),
+            });
         }
         copy.dirty = true;
         copy
@@ -702,9 +820,36 @@ impl Realm {
                     "from": edge.from,
                     "to": edge.to,
                     "pipe": edge.pipe.name(),
+                    "fromPoint": point_as_json(self.node(edge.from), edge.from_point),
+                    "toPoint": point_as_json(self.node(edge.to), edge.to_point),
                 }))
                 .collect::<Vec<_>>(),
         })
+    }
+}
+
+/// One end of a wire: the point it names on `node`, or the port or point that stands for it.
+fn end_of_a_wire(node: &Node, point: Option<usize>, other: Pos2, leaving: bool) -> Anchor {
+    let anchors = node.anchors();
+    anchors[end_index(node, point, other, leaving).min(anchors.len() - 1)]
+}
+
+/// Which of `node`'s points one end of a wire is at, as an index into [`Node::anchors`].
+fn end_index(node: &Node, point: Option<usize>, other: Pos2, leaving: bool) -> usize {
+    match (point, node.shape()) {
+        (Some(point), _) if point < node.anchors().len() => point,
+        (_, Some(shape)) => shape::nearest_anchor(shape.shape, node.rect(), other),
+        // The output port is the second of a node's two, and the input port the first.
+        _ => usize::from(leaving),
+    }
+}
+
+/// A point a wire names, as `realm view` prints it: its name on a shape, its index on anything else.
+fn point_as_json(node: Option<&Node>, point: Option<usize>) -> serde_json::Value {
+    match (node.and_then(Node::shape), point) {
+        (Some(shape), Some(point)) => shape::point_name(shape.shape, point).into(),
+        (None, Some(point)) => point.into(),
+        (_, None) => serde_json::Value::Null,
     }
 }
 
@@ -808,6 +953,28 @@ fn node_as_json(node: &Node) -> serde_json::Value {
             map.insert("view".into(), note.view.name().into());
             map.insert("caret".into(), note.caret.into());
             map.insert("scroll".into(), note.scroll.into());
+        }
+        State::Shape(shape) => {
+            map.insert("shape".into(), shape.shape.name().into());
+            map.insert("text".into(), shape.text.clone().into());
+            let colour = shape.fill.map(|fill| fill.to_hex()).unwrap_or_else(|| "theme".to_owned());
+            map.insert("colour".into(), colour.into());
+            map.insert("align".into(), shape.align.name().into());
+            map.insert("valign".into(), shape.valign.name().into());
+            map.insert("size".into(), shape.size.into());
+            let points: Vec<serde_json::Value> = node
+                .anchors()
+                .iter()
+                .enumerate()
+                .map(|(index, anchor)| {
+                    serde_json::json!({
+                        "point": shape::point_name(shape.shape, index),
+                        "x": anchor.at.x,
+                        "y": anchor.at.y,
+                    })
+                })
+                .collect();
+            map.insert("points".into(), points.into());
         }
         State::Unknown(unknown) => {
             map.insert(
@@ -915,6 +1082,84 @@ mod tests {
             realm.connect(second, editor, Pipe::Lines).expect_err("an editor takes no pipe");
         assert!(refusal.contains("realm editor"), "the refusal names what does apply: {refusal}");
         realm.connect(second, terminal, Pipe::Lines).expect("a terminal does take one");
+    }
+
+    /// `task-2284`: a shape is wired from a point to a point, two wires between the same two shapes are
+    /// allowed when they join different points, and a point a shape does not have is refused.
+    #[test]
+    fn a_shape_is_wired_from_one_of_its_points_to_another_nodes() {
+        let mut realm = a_canvas();
+        let decide = realm.add_shape(ShapeKind::Diamond, Pos2::new(0.0, 0.0));
+        let build = realm.add_shape(ShapeKind::Hexagon, Pos2::new(0.0, 300.0));
+        let terminal = realm.add_node(Kind::Terminal, Pos2::new(600.0, 0.0), None);
+        realm.connect_at(decide, Some(2), build, Some(0), Pipe::Off).expect("bottom to top");
+        realm
+            .connect_at(decide, Some(1), build, Some(1), Pipe::Off)
+            .expect("another pair of points");
+        assert!(
+            realm.connect_at(decide, Some(2), build, Some(0), Pipe::Off).is_err(),
+            "the same again"
+        );
+        assert!(realm.connect_at(decide, Some(7), build, None, Pipe::Off).is_err(), "no point 7");
+        realm
+            .connect_at(terminal, None, decide, Some(3), Pipe::Off)
+            .expect("a terminal to a shape");
+        assert_eq!(realm.joined_points(decide), vec![1, 2, 3]);
+
+        let edge =
+            realm.edges.iter().find(|edge| edge.from == decide && edge.from_point == Some(2));
+        let (leaving, arriving) =
+            realm.wire_ends(edge.expect("there")).expect("both ends are there");
+        let diamond = realm.node(decide).expect("there").rect();
+        assert_eq!(leaving.at, Pos2::new(diamond.center().x, diamond.bottom()));
+        assert_eq!(leaving.out, Vec2::new(0.0, 1.0), "it leaves the bottom point going down");
+        assert_eq!(arriving.out, Vec2::new(0.0, -1.0), "and arrives at the top point from above");
+
+        // A wire from a terminal leaves its output port, as a wire always has.
+        let into = realm.edges.iter().find(|edge| edge.from == terminal).expect("there");
+        let (leaving, _) = realm.wire_ends(into).expect("both ends");
+        assert_eq!(leaving.at, realm.node(terminal).expect("there").output_port());
+
+        let value = realm.as_json();
+        let shape =
+            value["nodes"].as_array().expect("nodes").iter().find(|node| node["id"] == decide);
+        let shape = shape.expect("the diamond is listed");
+        assert_eq!(shape["shape"], "diamond");
+        assert_eq!(shape["colour"], "theme");
+        assert_eq!(shape["points"].as_array().map(Vec::len), Some(4));
+        let edges = value["edges"].as_array().expect("edges");
+        assert!(edges.iter().any(|edge| edge["fromPoint"] == "bottom" && edge["toPoint"] == "top"));
+    }
+
+    /// A click in the corner of a diamond's rectangle is on the canvas, and in its middle is on the diamond.
+    #[test]
+    fn a_shape_is_under_the_pointer_only_inside_its_outline() {
+        let mut realm = a_canvas();
+        let behind = realm.add_node(Kind::Folder, Pos2::new(-50.0, -50.0), None);
+        let diamond = realm.add_shape(ShapeKind::Diamond, Pos2::new(0.0, 0.0));
+        assert_eq!(realm.node_at(Pos2::new(70.0, 70.0)), Some(diamond));
+        assert_eq!(
+            realm.node_at(Pos2::new(3.0, 3.0)),
+            Some(behind),
+            "the corner shows what is behind"
+        );
+    }
+
+    #[test]
+    fn a_shape_is_changed_only_while_the_realm_can_be_written() {
+        let mut realm = a_canvas();
+        let shape = realm.add_shape(ShapeKind::Star, Pos2::ZERO);
+        assert_eq!(realm.node(shape).expect("there").size, ShapeKind::Star.opens_at());
+        realm.written();
+        realm.change_shape(shape, |held| held.text = "Go".to_owned()).expect("a shape");
+        assert!(realm.is_dirty());
+        realm.written();
+        realm.change_shape(shape, |held| held.text = "Go".to_owned()).expect("a shape");
+        assert!(!realm.is_dirty(), "the same words again is not a change");
+        let terminal = realm.add_node(Kind::Terminal, Pos2::new(400.0, 0.0), None);
+        assert!(realm.change_shape(terminal, |_| {}).is_err(), "a terminal is not a shape");
+        realm.access = Access::ReadOnly("newer".to_owned());
+        assert!(realm.change_shape(shape, |held| held.size = 32.0).is_err());
     }
 
     #[test]

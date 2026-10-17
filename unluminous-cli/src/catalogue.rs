@@ -563,7 +563,7 @@ pub fn area_title(area: &'static str) -> &'static str {
         "fold" => "fold — the blocks collapsed in the tab that is showing",
         "notebook" => "notebook — Jupyter notebooks: run cells in a live kernel and read what they output",
         "panel" => "panel — which edge of the window each panel is docked to",
-        "realm" => "realm — the Realm: canvases of terminals, web pages, folder trees, file editors, notes, pictures, sounds and videos, wired together and kept as .realm files in the project",
+        "realm" => "realm — the Realm: canvases of terminals, web pages, folder trees, file editors, notes, pictures, sounds, videos and whiteboard shapes, wired together and kept as .realm files in the project",
         "terminal" => "terminal — the shells along the bottom",
         "run" => "run — the named commands the project is started with",
         "explorer" => "explorer — create, move and inspect the live project tree",
@@ -1875,18 +1875,18 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "realm",
         verb: "add",
-        summary: "Put a node on the realm that is open and answer with its id. A terminal node starts the machine's own shell in the project folder, or the program named by `--command`, with `unluminous-cli` on its PATH and pointed at this window, UNLUMINOUS_REALM_NODE set to its id so an agent started in it knows which node it is, UNLUMINOUS_REALM_HINT saying what to run first, and UNLUMINOUS_CLI and UNLUMINOUS_INSTANCE for a program that wants the path and the window outright. An image, audio or video node shows a file in this project, named as the second argument; a note node makes a Markdown file of that name in .realm-files/<realm>/, or shows an existing .md file when it is given one.",
+        summary: "Put a node on the realm that is open and answer with its id. A terminal node starts the machine's own shell in the project folder, or the program named by `--command`, with `unluminous-cli` on its PATH and pointed at this window, UNLUMINOUS_REALM_NODE set to its id so an agent started in it knows which node it is, UNLUMINOUS_REALM_HINT saying what to run first, and UNLUMINOUS_CLI and UNLUMINOUS_INSTANCE for a program that wants the path and the window outright. An image, audio or video node shows a file in this project, named as the second argument; a note node makes a Markdown file of that name in .realm-files/<realm>/, or shows an existing .md file when it is given one. A shape node is the shape named as the second argument, with `--text` for its words.",
         arguments: &[
             closed(
                 "kind",
                 true,
-                "terminal, browser, folder, editor, chat, tasks, image, audio, video or note.",
-                &["terminal", "browser", "folder", "editor", "chat", "tasks", "image", "audio", "video", "note"],
+                "terminal, browser, folder, editor, chat, tasks, image, audio, video, note or shape.",
+                &["terminal", "browser", "folder", "editor", "chat", "tasks", "image", "audio", "video", "note", "shape"],
             ),
             argument(
                 "file",
                 false,
-                "An image, audio or video node: the file in this project it shows. A note node: a name for a new note, or the path of an existing .md file.",
+                "An image, audio or video node: the file in this project it shows. A note node: a name for a new note, or the path of an existing .md file. A shape node: which shape.",
             ),
         ],
         flags: &[
@@ -1899,9 +1899,11 @@ pub const COMMANDS: &[Command] = &[
             option("url", "address", "A browser node: the page to open."),
             option("root", "path", "A folder node: which folder to show. The project when it is not given."),
             option("path", "path", "An editor node: which file to open."),
+            option("text", "words", "A shape node: its words."),
         ],
         examples: &[
             "unluminous-cli realm add terminal --command claude",
+            "unluminous-cli realm add shape diamond --text Decide",
             "unluminous-cli realm add browser --url https://example.com/",
             "unluminous-cli realm add editor --path src/main.rs --x 900 --y 40",
             "unluminous-cli realm add image design/cover.png",
@@ -1980,12 +1982,16 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "realm",
         verb: "connect",
-        summary: "Wire one node's output to another's input. A connection is what lets an agent in a terminal node act on the node it is wired to; with `--pipe lines` it also types each line the first node's program writes into the second node's terminal.",
+        summary: "Wire one node's output to another's input. A connection is what lets an agent in a terminal node act on the node it is wired to; with `--pipe lines` it also types each line the first node's program writes into the second node's terminal. A shape is joined at the point `--from-point` or `--to-point` names, or the one nearest the other node.",
         arguments: &[
             whole("from", true, "The node the wire leaves."),
             whole("to", true, "The node it arrives at."),
         ],
-        flags: &[option("pipe", "lines", "Carry text as well as permission. Only into a terminal node, because only a terminal has an input to type into.")],
+        flags: &[
+            option("pipe", "lines", "Carry text as well as permission. Only into a terminal node, because only a terminal has an input to type into."),
+            option("from-point", "point", "top, right, bottom or left; point-1 to point-5 on a star."),
+            option("to-point", "point", "The same, where it arrives."),
+        ],
         examples: &[
             "unluminous-cli realm connect 7 9",
             "unluminous-cli realm connect 7 9 --pipe lines",
@@ -2199,6 +2205,24 @@ pub const COMMANDS: &[Command] = &[
         ],
         flags: &[whole_option("from", "node", "Which node is asking. It must be wired to the one it names.")],
         examples: &["unluminous-cli realm note view 13 preview"],
+        local: false,
+    },
+    Command {
+        area: "realm",
+        verb: "shape",
+        summary: "Change a whiteboard shape, as its menu and a double click do: `text` (\\n is a new line), `colour` (#RRGGBBAA, or `theme`), `align`, `valign`, `size` (points, larger or smaller), `kind`, `edit` and `done` typing, `pick` the colour picker (then a colour, `apply` or `cancel`), and `points`.",
+        arguments: &[
+            whole("node", true, "The shape node's id."),
+            closed(
+                "command",
+                false,
+                "What to change.",
+                &["view", "text", "colour", "align", "valign", "size", "kind", "edit", "done", "pick", "points"],
+            ),
+            rest("value", false, "What the command takes."),
+        ],
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli realm shape 12 text Agent builds it", "unluminous-cli realm shape 12 colour #FFC062D2"],
         local: false,
     },
     Command {

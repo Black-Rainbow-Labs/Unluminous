@@ -2306,6 +2306,9 @@ fn drive_the_canvas(coverage: &mut Coverage) {
         .expect("the node the command made");
     let chat = did(&mut harness, "realm add chat")["node"].as_u64().expect("the chat node");
     let tasks = did(&mut harness, "realm add tasks")["node"].as_u64().expect("the tasks node");
+    let shape = did(&mut harness, "realm add shape diamond --text Decide")["node"]
+        .as_u64()
+        .expect("the shape node");
     c.refuses(&mut harness, "realm add nonsense");
 
     for (line, refusal) in [
@@ -2322,6 +2325,7 @@ fn drive_the_canvas(coverage: &mut Coverage) {
         (format!("realm editor {editor} src/other.rs"), "realm editor 99 src/other.rs"),
         (format!("realm folder {tree} rows"), "realm folder 99 rows"),
         (format!("realm chat {chat} state"), "realm chat 99 state"),
+        (format!("realm shape {shape} align left"), "realm shape 99 align left"),
         (
             format!("realm address {browser} https://example.com/"),
             "realm address 99 https://example.com/",

@@ -25,8 +25,10 @@ use crate::app::dock;
 use crate::app::files::{Home, OpenFile};
 use crate::app::{Drag, Focus, UnluminousApp, ZoomClaim};
 
-use crate::components::realm::{self as realm_view, add_modal};
-use crate::services::realm::{live::Live, store, Kind, Node, NodeId, Pipe, Realm, State};
+use crate::components::realm::{self as realm_view, add_modal, colour_picker, shape as shape_view};
+use crate::services::realm::{
+    live::Live, shape, store, Kind, Node, NodeId, Pipe, Realm, Shape, ShapeKind, SizeStep, State,
+};
 
 /// How long to wait before writing `space.conf` again after a write failed, in seconds.
 const RETRY_A_FAILED_WRITE: f64 = 2.0;
@@ -48,9 +50,25 @@ pub enum Gesture {
     None,
     /// The canvas itself is being dragged.
     Panning,
-    /// A wire is being pulled out of a node's output port. Where its free end is, in world points.
-    Wiring { from: NodeId, at: Pos2 },
+    /// A wire is being pulled out of a node's output port, or out of one of a shape's points. Where its free
+    /// end is, in world points.
+    Wiring { from: NodeId, point: Option<usize>, at: Pos2 },
 }
+
+/// A shape whose words are being typed into. `task-2284`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Typing {
+    pub node: NodeId,
+    /// Whether its text box has been asked for the keyboard yet. It is asked once, on the first frame.
+    pub asked: bool,
+    /// Whether the box has held the keyboard, which is what makes losing it the end of typing.
+    pub held: bool,
+    /// How many frames it has waited for the keyboard without being given it.
+    pub waited: u32,
+}
+
+/// How many frames a shape's text box waits for the keyboard before typing is given up as not started.
+const TYPING_WAITS: u32 = 20;
 
 /// When the canvas's own state is being read back out of what is running behind it.
 ///
@@ -165,6 +183,13 @@ pub struct RealmState {
     /// A picture of the page of the browser node the native view shows, drawn in its place while the
     /// camera's zoom moves. See [`PageStill`].
     pub still: Option<PageStill>,
+    /// The shape whose words are being typed into, while they are. `task-2284`.
+    pub typing: Option<Typing>,
+    /// The colour picker, while it is open on a shape. The shape is drawn in the picker's colour until Apply
+    /// writes it down or Cancel puts the old one back.
+    pub picking: Option<colour_picker::State>,
+    /// Where the canvas's last right click menu was opened, in screen points, which the picker opens beside.
+    pub menu_was_at: Option<Pos2>,
 }
 
 /// How long a page's picture stays over it after the zoom stops, while the live page is laid out at its new
@@ -232,6 +257,9 @@ impl Default for RealmState {
             body: Rect::ZERO,
             glide: None,
             still: None,
+            typing: None,
+            picking: None,
+            menu_was_at: None,
         }
     }
 }
@@ -501,12 +529,11 @@ impl UnluminousApp {
             .collect();
         let wiring = matches!(self.realm.gesture, Gesture::Wiring { .. });
         // Which node the wire in the air would land on, worked out once from the model rather than
-        // asked of each port - see the note in `components::realm::show_the_ports`.
-        let landing = match self.realm.gesture {
-            Gesture::Wiring { from, at } => {
-                self.realm.realm.node_at(at).filter(|over| *over != from)
-            }
-            _ => None,
+        // asked of each port - see the note in `components::realm::show_the_ports`. On a shape, which of its
+        // points: the nearest, which is where letting go joins it (`task-2284`).
+        let (landing, landing_point) = match self.realm.gesture {
+            Gesture::Wiring { from, at, .. } => self.where_a_wire_would_land(from, at),
+            _ => (None, None),
         };
         // **Which node the pointer is over is decided once, here, before any of them is drawn.**
         //
@@ -522,8 +549,9 @@ impl UnluminousApp {
             .input(|input| input.pointer.hover_pos().or_else(|| input.pointer.latest_pos()))
             .filter(|at| body.contains(*at));
         let under_the_pointer = pointer.and_then(|at| {
-            let over = |node: &Node| camera.rect_to_screen(body.min, node.rect()).contains(at);
-            nodes.iter().rev().find(|node| over(node)).map(|node| node.id)
+            // Inside a shape's outline rather than its rectangle, so the corners of a diamond are the canvas.
+            let world = camera.to_world(body.min, at);
+            nodes.iter().rev().find(|node| node.contains(world)).map(|node| node.id)
         });
         // **The modifier wheel goes to that node**, before `zoom_over_a_panel` at the end of
         // `show_the_realm` can give it to the camera. `task-1905`.
@@ -586,8 +614,33 @@ impl UnluminousApp {
                     .id_salt(("realm-node", node.id)),
             );
             node_ui.set_clip_rect(clip);
-            realm_view::cover(&node_ui, &node, look);
             let focused = Some(node.id) == chosen && matches!(self.focus, Focus::Realm);
+            // **A shape is drawn whole by its own component**: it has no header, no body to fill and no card
+            // behind it, because the outline is the node. `task-2284`.
+            if let Some(held) = node.shape().cloned() {
+                let title = self.name_of_a_node(&node);
+                let framing = realm_view::Framing {
+                    chosen: Some(node.id) == chosen,
+                    keyboard: focused,
+                    on_screen: camera.rect_to_screen(body.min, node.rect()),
+                    visible: body,
+                    wire_is_looking: wiring,
+                    landing,
+                    fallback_title: &title,
+                };
+                let point = landing_point.filter(|_| landing == Some(node.id));
+                let was_own = self.renderer.composite_through(to_global, settled);
+                let outcome =
+                    self.show_a_shape_node(&mut node_ui, &node, &held, framing, point, look);
+                self.renderer.restore_compositing(was_own);
+                node_layers.push(layer);
+                if let Some(at) = outcome.menu {
+                    menu = Some((at, node.id));
+                }
+                self.act_on_a_node(&node, outcome);
+                continue;
+            }
+            realm_view::cover(&node_ui, &node, look);
             let has_the_pointer = under_the_pointer == Some(node.id);
             // **Unluminous's own glyph engine is told the transform this node is composited through**, around
             // the whole of it: the editor's and the terminal's glyphs are rasterised at the size they are seen
@@ -629,6 +682,162 @@ impl UnluminousApp {
         if let Some((at, node)) = menu {
             self.realm.realm.choose(Some(node));
             self.realm.menu = Some((at, Menu::Node));
+        }
+    }
+
+    /// Where a wire whose free end is at `at` would land: the node under it that is not the one it leaves,
+    /// and on a shape the point nearest the free end. `task-2284`.
+    fn where_a_wire_would_land(&self, from: NodeId, at: Pos2) -> (Option<NodeId>, Option<usize>) {
+        let over = self.realm.realm.node_at(at).filter(|over| *over != from);
+        let point = over.and_then(|id| self.realm.realm.node(id)).and_then(|node| {
+            node.shape().map(|held| shape::nearest_anchor(held.shape, node.rect(), at))
+        });
+        (over, point)
+    }
+
+    /// Draw one shape node, with its words in a text box while they are being typed into. `task-2284`.
+    ///
+    /// **The words in the box are the shape's own**, read out of the model on every frame and written back the
+    /// frame they change, so `realm view` answers with what is being typed and a window closed in the middle of a sentence
+    /// keeps the sentence.
+    fn show_a_shape_node(
+        &mut self,
+        ui: &mut egui::Ui,
+        node: &Node,
+        held: &Shape,
+        framing: realm_view::Framing<'_>,
+        landing_point: Option<usize>,
+        look: realm_view::Look<'_>,
+    ) -> realm_view::NodeOutcome {
+        let joined = self.realm.realm.joined_points(node.id);
+        let fill = match &self.realm.picking {
+            Some(picking) if picking.node == node.id => Some(picking.colour()),
+            _ => held.fill,
+        };
+        let typing = self.realm.typing.filter(|typing| typing.node == node.id);
+        if let Some(typing) = typing.filter(|typing| !typing.asked) {
+            // **Handed the keyboard on the next frame**, through the slot `app::hold_the_keyboard` reads before
+            // anything is drawn: a text box created on the frame that asks for the keyboard is not yet there to
+            // be given it. That is `controls::claim_the_field`'s own arrangement.
+            let id = shape_view::text_box_id(node.id);
+            ui.ctx().data_mut(|data| {
+                data.insert_temp(crate::components::controls::wants_the_keyboard(), id)
+            });
+            self.realm.typing = Some(Typing { asked: true, ..typing });
+        }
+        let mut text = held.text.clone();
+        let outcome = shape_view::frame(
+            ui,
+            node,
+            held,
+            shape_view::ShapeFraming { node: framing, joined: &joined, landing_point, fill },
+            look,
+            typing.is_some().then_some(&mut text),
+        );
+        if typing.is_some() && text != held.text {
+            if let Err(problem) =
+                self.realm.realm.change_shape(node.id, |held| held.text = text.clone())
+            {
+                self.message = Some(problem);
+            }
+        }
+        if let Some(typing) = self.realm.typing.filter(|typing| typing.node == node.id) {
+            let held_it = typing.held || outcome.typing;
+            let waited = if outcome.typing { 0 } else { typing.waited + 1 };
+            let given_up = !held_it && waited > TYPING_WAITS;
+            let lost_it = typing.held && !outcome.typing;
+            self.realm.typing = match outcome.finished || lost_it || given_up {
+                true => None,
+                false => Some(Typing { held: held_it, waited, ..typing }),
+            };
+        }
+        outcome
+    }
+
+    /// Start typing in a shape, which is what a double click on it does. `task-2284`.
+    ///
+    /// It is chosen, the canvas takes the keyboard, and the shape's text box is handed the keyboard on the
+    /// next frame. Refused on a read only realm, because the words are in the realm file.
+    pub(crate) fn start_typing_in_a_shape(&mut self, node: NodeId) -> Result<(), String> {
+        if let Some(why) = self.realm.realm.read_only_because() {
+            return Err(format!("This realm is read only. {why}"));
+        }
+        if self.realm.realm.node(node).and_then(Node::shape).is_none() {
+            return Err(format!("Node {node} is not a shape."));
+        }
+        self.realm.realm.choose(Some(node));
+        self.take_the_keyboard_for_the_realm();
+        self.realm.typing = Some(Typing { node, asked: false, held: false, waited: 0 });
+        Ok(())
+    }
+
+    /// Put a shape on the canvas with its top left corner at `at`, choose it and start typing in it, which is
+    /// what choosing a shape in the Add a node dialog does. `task-2284`.
+    pub(crate) fn add_a_shape(&mut self, kind: ShapeKind, at: Pos2) -> NodeId {
+        let node = self.realm.realm.add_shape(kind, at);
+        if node != 0 {
+            if let Err(problem) = self.start_typing_in_a_shape(node) {
+                self.message = Some(problem);
+            }
+        }
+        node
+    }
+
+    /// Open the colour picker on a shape, beside where its menu was. `task-2284`.
+    pub(crate) fn open_the_colour_picker(&mut self, node: NodeId) -> Result<(), String> {
+        if let Some(why) = self.realm.realm.read_only_because() {
+            return Err(format!("This realm is read only. {why}"));
+        }
+        let Some(found) = self.realm.realm.node(node) else {
+            return Err(format!("There is no node {node}."));
+        };
+        let Some(held) = found.shape() else { return Err(format!("Node {node} is not a shape.")) };
+        let camera = self.realm.realm.camera;
+        let on_screen = camera.rect_to_screen(self.realm.body.min, found.rect());
+        let at = match self.realm.menu_was_at {
+            Some(menu) => menu + Vec2::new(260.0, -40.0),
+            None => Pos2::new(on_screen.right() + 16.0, on_screen.top()),
+        };
+        self.realm.picking = Some(colour_picker::State::new(node, held.fill, at));
+        Ok(())
+    }
+
+    /// Change the chosen shape's words, its alignment or its size, which is what the `Text` submenu does.
+    pub(crate) fn change_the_chosen_shape(&mut self, change: impl FnOnce(&mut Shape)) {
+        let Some(node) = self.realm.chosen() else {
+            self.message = Some("No node is chosen.".to_owned());
+            return;
+        };
+        if let Err(problem) = self.realm.realm.change_shape(node, change) {
+            self.message = Some(problem);
+        }
+    }
+
+    /// Draw the colour picker, while it is open, and act on Apply and Cancel. `task-2284`.
+    pub(crate) fn show_the_colour_picker(&mut self, ui: &egui::Ui) {
+        let Some(mut picking) = self.realm.picking.take() else { return };
+        // A shape that has gone takes its picker with it.
+        if self.realm.realm.node(picking.node).and_then(Node::shape).is_none() {
+            return;
+        }
+        let outcome = colour_picker::show(ui.ctx(), &mut picking);
+        self.realm.picking = Some(picking);
+        if outcome.apply || outcome.cancel {
+            self.finish_the_colour_picker(outcome.apply);
+        }
+    }
+
+    /// Close the colour picker: keep the colour it is on with `apply`, or leave the shape as it was. What the
+    /// picker's Apply and Cancel and `realm shape <node> pick apply` and `cancel` all do.
+    pub(crate) fn finish_the_colour_picker(&mut self, apply: bool) {
+        let Some(picking) = self.realm.picking.take() else { return };
+        if apply {
+            let colour = picking.colour();
+            if let Err(problem) =
+                self.realm.realm.change_shape(picking.node, |held| held.fill = Some(colour))
+            {
+                self.message = Some(problem);
+            }
         }
     }
 
@@ -688,6 +897,15 @@ impl UnluminousApp {
         let up = steps > 0;
         match found.kind() {
             Kind::Terminal => self.step_a_node_font(node, steps),
+            // A shape's words walk the Text menu's sizes, one step a notch. `task-2284`.
+            Kind::Shape => {
+                let step = if up { SizeStep::Larger } else { SizeStep::Smaller };
+                let _ = self.realm.realm.change_shape(node, |held| {
+                    for _ in 0..steps.abs() {
+                        held.size = step.apply(held.size);
+                    }
+                });
+            }
             // Nothing in a sound, a video or a node this build does not know has a size to change.
             Kind::Audio | Kind::Video | Kind::Unknown => {}
             Kind::Image => {
@@ -772,16 +990,25 @@ impl UnluminousApp {
             self.realm.realm.move_node(node.id, node.at + by);
         }
         if let Some((grip, by)) = outcome.resized {
-            let rect = crate::services::realm::geometry::resized(
+            let mut rect = crate::services::realm::geometry::resized(
                 node.rect(),
                 grip,
                 by,
                 node.kind().smallest(),
             );
+            // **Shift keeps a shape square** while it is resized. `task-2284`.
+            if outcome.square && node.kind() == Kind::Shape {
+                rect = shape::squared(rect, grip);
+            }
             self.realm.realm.place_node(node.id, rect);
         }
         if let Some(at) = outcome.wiring {
-            self.realm.gesture = Gesture::Wiring { from: node.id, at };
+            self.realm.gesture = Gesture::Wiring { from: node.id, point: outcome.point, at };
+        }
+        if outcome.edit {
+            if let Err(problem) = self.start_typing_in_a_shape(node.id) {
+                self.message = Some(problem);
+            }
         }
         if outcome.font_step != 0 {
             self.step_a_node_font(node.id, outcome.font_step);
@@ -798,30 +1025,64 @@ impl UnluminousApp {
     }
 
     /// Draw the wire that is being pulled out of a port, and let it go when the button comes up.
+    ///
+    /// **A wire to or from a shape leaves and arrives along the way out of the points it joins**, and lands on
+    /// the point of the shape nearest where it was let go. `task-2284`.
     fn settle_the_wire_in_the_air(&mut self, ui: &egui::Ui, body: Rect) {
-        let Gesture::Wiring { from, at } = self.realm.gesture else { return };
+        let Gesture::Wiring { from, point, at } = self.realm.gesture else { return };
         let camera = self.realm.realm.camera;
         let Some(node) = self.realm.realm.node(from) else {
             self.realm.gesture = Gesture::None;
             return;
         };
-        let start = camera.to_screen(body.min, node.output_port());
-        let end = camera.to_screen(body.min, at);
-        let over = self.realm.realm.node_at(at).filter(|over| *over != from);
-        realm_view::wire_in_the_air(ui, body, start, end, over.is_some());
+        let leaving = match point.and_then(|point| node.anchors().get(point).copied()) {
+            Some(anchor) => anchor,
+            None => shape::Anchor { at: node.output_port(), out: Vec2::new(1.0, 0.0) },
+        };
+        let start = camera.to_screen(body.min, leaving.at);
+        let (over, landing_point) = self.where_a_wire_would_land(from, at);
+        let arriving = over
+            .zip(landing_point)
+            .and_then(|(id, point)| self.realm.realm.node(id)?.anchors().get(point).copied());
+        match point.is_some() || arriving.is_some() {
+            true => {
+                let end =
+                    camera.to_screen(body.min, arriving.map(|anchor| anchor.at).unwrap_or(at));
+                let from = shape::Anchor { at: start, out: leaving.out };
+                realm_view::directed_wire_in_the_air(
+                    ui,
+                    body,
+                    from,
+                    end,
+                    arriving.map(|anchor| anchor.out),
+                    over.is_some(),
+                );
+            }
+            false => {
+                let end = camera.to_screen(body.min, at);
+                realm_view::wire_in_the_air(ui, body, start, end, over.is_some());
+            }
+        }
         // A drag that ended over nothing is a drag that was thought better of, which is the promise
         // the explorer's row drag and the tab drag already make.
         if ui.input(|input| input.pointer.any_released()) {
             self.realm.gesture = Gesture::None;
             if let Some(over) = over {
-                self.land_the_wire(from, over);
+                self.land_the_wire(from, point, over, landing_point);
             }
         }
     }
 
-    /// A wire was let go over another node.
-    fn land_the_wire(&mut self, from: NodeId, to: NodeId) {
-        match self.realm.realm.connect(from, to, Pipe::Off) {
+    /// A wire was let go over another node: from a point of the first, to a point of the second when it is
+    /// a shape.
+    fn land_the_wire(
+        &mut self,
+        from: NodeId,
+        from_point: Option<usize>,
+        to: NodeId,
+        to_point: Option<usize>,
+    ) {
+        match self.realm.realm.connect_at(from, from_point, to, to_point, Pipe::Off) {
             Ok(_) => self.message = Some("Connected.".to_owned()),
             Err(problem) => self.message = Some(problem),
         }
@@ -861,6 +1122,8 @@ impl UnluminousApp {
             Kind::Audio => self.show_an_audio_node(ui, node, body, focused),
             Kind::Video => self.show_a_video_node(ui, node, body, focused),
             Kind::Note => self.show_a_note_node(ui, node, body, focused),
+            // A shape is drawn whole by `show_a_shape_node` and never reaches here.
+            Kind::Shape => {}
             Kind::Unknown => self.show_an_unknown_node(ui, node, body),
         }
     }
@@ -1875,6 +2138,8 @@ impl UnluminousApp {
                 .and_then(|file| file.file_name())
                 .map(|name| name.to_string_lossy().into_owned())
                 .unwrap_or_else(|| node.kind().label().to_owned()),
+            // **A shape is called after its words**, the first line of them, or its outline's name.
+            State::Shape(held) => shape_view::name_of(held),
             State::Unknown(unknown) => unknown.kind.clone(),
         }
     }
@@ -3007,7 +3272,7 @@ impl UnluminousApp {
                 Kind::Browser => self.note_where_a_node_is_browsing(node),
                 Kind::Chat => self.note_which_conversation_a_node_is_on(node),
                 Kind::Editor | Kind::Folder | Kind::Terminal | Kind::Tasks | Kind::Note => {}
-                Kind::Image | Kind::Unknown => {}
+                Kind::Image | Kind::Shape | Kind::Unknown => {}
             }
         }
     }
@@ -3336,6 +3601,23 @@ impl UnluminousApp {
                 self.realm.realm.disconnect(edge);
                 self.realm.in_hand.wire = None;
             }
+            RealmAction::ShapeColour => match self.realm.chosen() {
+                Some(node) => {
+                    if let Err(problem) = self.open_the_colour_picker(node) {
+                        self.message = Some(problem);
+                    }
+                }
+                None => self.message = Some("No node is chosen.".to_owned()),
+            },
+            RealmAction::ShapeAlign(align) => {
+                self.change_the_chosen_shape(|held| held.align = align)
+            }
+            RealmAction::ShapeVAlign(valign) => {
+                self.change_the_chosen_shape(|held| held.valign = valign)
+            }
+            RealmAction::ShapeSize(step) => {
+                self.change_the_chosen_shape(|held| held.size = step.apply(held.size))
+            }
             RealmAction::CarryLines(on) => {
                 let Some(edge) = self.realm.in_hand.wire else { return };
                 let carrying = if on { Pipe::Lines } else { Pipe::Off };
@@ -3371,6 +3653,10 @@ impl UnluminousApp {
         match kind {
             Kind::Note => self.ask_for_a_note(at),
             Kind::Image | Kind::Audio | Kind::Video => self.ask_for_a_file_node(kind, at),
+            // `Add Shape` with no shape named is a rectangle, typed into at once. `task-2284`.
+            Kind::Shape => {
+                self.add_a_shape(ShapeKind::Rectangle, at);
+            }
             _ => {
                 self.add_a_realm_node(kind, at);
             }
@@ -3598,6 +3884,18 @@ impl UnluminousApp {
         }
         let node = self.realm.chosen()?;
         let found = self.realm.realm.node(node)?.clone();
+        // **Enter or F2 on a chosen shape starts typing in it**, which is the double click from the keyboard.
+        if found.kind() == Kind::Shape {
+            let start = ui.input(|input| {
+                input.key_pressed(egui::Key::Enter) || input.key_pressed(egui::Key::F2)
+            });
+            if start {
+                if let Err(problem) = self.start_typing_in_a_shape(node) {
+                    self.message = Some(problem);
+                }
+            }
+            return None;
+        }
         if found.kind() != Kind::Folder {
             return None;
         }
@@ -3748,6 +4046,15 @@ impl UnluminousApp {
         if let Some(kind) = outcome.chose {
             self.add_a_node_asking_what_it_holds(kind, state.at);
         }
+        // **A shape chosen in the flyout goes where the dialog was opened for, chosen and typed into.**
+        if let Some(shape) = outcome.shape {
+            match self.realm.realm.read_only_because() {
+                Some(why) => self.message = Some(why.to_owned()),
+                None => {
+                    self.add_a_shape(shape, state.at);
+                }
+            }
+        }
         if !outcome.closed {
             self.realm.adding = Some(state);
         }
@@ -3759,6 +4066,7 @@ impl UnluminousApp {
         ui: &mut egui::Ui,
     ) -> Option<crate::app::actions::Action> {
         let (at, which) = self.realm.menu?;
+        self.realm.menu_was_at = Some(at);
         let state = self.menu_state();
         let entries = match which {
             Menu::Node => crate::app::actions::realm_node_menu(&state),
@@ -3798,6 +4106,9 @@ pub(crate) fn drives(kind: Kind, node: NodeId, from: NodeId) -> String {
         Kind::Image => format!("realm view --json  # node {node} shows a picture, from {from}"),
         Kind::Audio | Kind::Video => format!("realm play {node} --from {from}"),
         Kind::Note => format!("realm note view {node} preview --from {from}"),
+        Kind::Shape => {
+            format!("realm shape {node} text <words>  # a whiteboard shape, from {from}")
+        }
         Kind::Unknown => {
             format!("realm info  # node {node} is a kind this Unluminous does not know")
         }
@@ -3907,7 +4218,7 @@ mod tests {
     fn a_wire_refuses_to_connect_a_node_to_itself() {
         let mut app = a_window("self-wire");
         let node = app.new_detached_realm_node(Kind::Terminal, Pos2::ZERO);
-        app.land_the_wire(node, node);
+        app.land_the_wire(node, None, node, None);
         assert_eq!(app.message.as_deref(), Some("A node cannot be wired to itself."));
     }
 
@@ -3917,11 +4228,11 @@ mod tests {
         let terminal = app.new_detached_realm_node(Kind::Terminal, Pos2::new(0.0, 0.0));
         let editor = app.new_detached_realm_node(Kind::Editor, Pos2::new(400.0, 0.0));
 
-        app.land_the_wire(editor, terminal);
+        app.land_the_wire(editor, None, terminal, None);
         assert_eq!(app.message.as_deref(), Some("Connected."));
 
         // Wiring the same two nodes the same way round again is refused rather than duplicated.
-        app.land_the_wire(editor, terminal);
+        app.land_the_wire(editor, None, terminal, None);
         assert_eq!(app.message.as_deref(), Some("Those two are already wired that way round."));
     }
 
@@ -3929,7 +4240,7 @@ mod tests {
     fn a_wire_to_a_node_that_is_not_there_says_so() {
         let mut app = a_window("wire-nowhere");
         let terminal = app.new_detached_realm_node(Kind::Terminal, Pos2::ZERO);
-        app.land_the_wire(terminal, 999_999);
+        app.land_the_wire(terminal, None, 999_999, None);
         assert_eq!(app.message.as_deref(), Some("There is no node 999999."));
     }
 

@@ -22,8 +22,10 @@
 //! glyphs. At 1.0, which is the default and where somebody reads code, it is exact.
 
 pub mod add_modal;
+pub mod colour_picker;
 pub mod dialog;
 pub mod manager;
+pub mod shape;
 
 use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Sense, Vec2};
 
@@ -458,16 +460,14 @@ pub fn wires(
     let clicked = ui.input(|input| input.pointer.secondary_clicked());
     let mut nearest: Option<(f32, u64)> = None;
     for edge in &view.edges {
-        let (Some(from), Some(to)) = (view.node(edge.from), view.node(edge.to)) else { continue };
-        let start = camera.to_screen(area.min, from.output_port());
-        let end = camera.to_screen(area.min, to.input_port());
+        let Some(points) = wire_points(view, edge, camera, area.min) else { continue };
+        let (start, end) = (points[0], points[points.len() - 1]);
         // A wire whose two ends are both far off the pane is not drawn: the curve between them cannot
         // cross it. `task-1666`'s rule, applied to a line.
         let span = Rect::from_two_pos(start, end).expand(240.0);
         if !span.intersects(area) {
             continue;
         }
-        let points = geometry::curve_points(start, end, WIRE_SEGMENTS);
         let colour = match edge.pipe {
             Pipe::Lines => look_accent(),
             Pipe::Off => color::text_faint(),
@@ -481,7 +481,8 @@ pub fn wires(
             ui.painter_at(area).add(egui::Shape::line(points, egui::Stroke::new(width, colour)));
         }
         if let Some(at) = pointer {
-            let near = geometry::distance_to_curve(start, end, at);
+            let near =
+                geometry::distance_to_points(&wire_hit_points(view, edge, camera, area.min), at);
             if near <= WIRE_REACH && nearest.is_none_or(|(so_far, _)| near < so_far) {
                 nearest = Some((near, edge.id));
             }
@@ -491,6 +492,47 @@ pub fn wires(
         outcome.menu = Some((at, edge));
     }
     outcome
+}
+
+/// The line one wire is drawn along, in screen points.
+///
+/// **A wire between two nodes that are not shapes is the curve it always was**, leaving the output port going
+/// right and arriving at the input port going right. A wire with a shape at either end leaves and arrives
+/// along the way out of the point it joins, because a shape is joined on all four sides. `task-2284`.
+pub fn wire_points(
+    view: &Realm,
+    edge: &crate::services::realm::Edge,
+    camera: &Camera,
+    origin: Pos2,
+) -> Option<Vec<Pos2>> {
+    wire_points_at(view, edge, camera, origin, WIRE_SEGMENTS)
+}
+
+/// The same line sampled finely, which is what a right click is measured against.
+fn wire_hit_points(
+    view: &Realm,
+    edge: &crate::services::realm::Edge,
+    camera: &Camera,
+    origin: Pos2,
+) -> Vec<Pos2> {
+    wire_points_at(view, edge, camera, origin, 32).unwrap_or_default()
+}
+
+fn wire_points_at(
+    view: &Realm,
+    edge: &crate::services::realm::Edge,
+    camera: &Camera,
+    origin: Pos2,
+    segments: usize,
+) -> Option<Vec<Pos2>> {
+    let (from, to) = (view.node(edge.from)?, view.node(edge.to)?);
+    let (leaving, arriving) = view.wire_ends(edge)?;
+    let start = camera.to_screen(origin, leaving.at);
+    let end = camera.to_screen(origin, arriving.at);
+    Some(match from.shape().is_none() && to.shape().is_none() {
+        true => geometry::curve_points(start, end, segments),
+        false => geometry::directed_points(start, leaving.out, end, arriving.out, segments),
+    })
 }
 
 /// The blue the canvas uses for a live wire and a lit port, which is the board's own.
@@ -505,7 +547,32 @@ fn look_accent() -> Color32 {
 /// into the chrome, because it changes on every frame of the drag and the chrome is cached against a
 /// list that would then never match.
 pub fn wire_in_the_air(ui: &egui::Ui, area: Rect, from: Pos2, to: Pos2, landing: bool) {
-    let points = geometry::curve_points(from, to, WIRE_SEGMENTS);
+    wire_in_the_air_along(ui, area, geometry::curve_points(from, to, WIRE_SEGMENTS), landing);
+}
+
+/// A wire being pulled out of a shape's point, which leaves along the way out of that point and, when it is
+/// over somewhere it would land, arrives along the way out of the point it would land on. `task-2284`.
+pub fn directed_wire_in_the_air(
+    ui: &egui::Ui,
+    area: Rect,
+    from: crate::services::realm::Anchor,
+    to: Pos2,
+    arriving: Option<Vec2>,
+    landing: bool,
+) {
+    let points = geometry::directed_points(
+        from.at,
+        from.out,
+        to,
+        arriving.unwrap_or(Vec2::ZERO),
+        WIRE_SEGMENTS,
+    );
+    wire_in_the_air_along(ui, area, points, landing);
+}
+
+/// Draw a wire in the air along `points`, dashed until it is over somewhere it would land.
+fn wire_in_the_air_along(ui: &egui::Ui, area: Rect, points: Vec<Pos2>, landing: bool) {
+    let to = points[points.len() - 1];
     let colour = if landing { look_accent() } else { look_accent().gamma_multiply(0.7) };
     let painter = ui.painter_at(area);
     if landing {
@@ -638,6 +705,17 @@ pub struct NodeOutcome {
     pub font_step: i32,
     /// One of a note node's three view buttons was pressed. `task-2202`.
     pub view: Option<crate::services::realm::NoteView>,
+    /// Which of a shape's points the wire in [`wiring`](Self::wiring) is being pulled from. `None` is a
+    /// node's output port. `task-2284`.
+    pub point: Option<usize>,
+    /// A shape was double clicked, which starts typing in it.
+    pub edit: bool,
+    /// Typing in a shape finished this frame: Escape, Ctrl+Enter, or a click outside it.
+    pub finished: bool,
+    /// A shape's text box holds the keyboard.
+    pub typing: bool,
+    /// Shift was held while the shape was resized, which keeps it square.
+    pub square: bool,
     /// The header was right clicked: where the pointer was, in **screen** points.
     ///
     /// Screen rather than world, because what it is handed to is `egui::Popup`, which places a menu on the
@@ -908,6 +986,7 @@ fn kind_mark(kind: Kind) -> fn(&egui::Painter, Pos2, Color32) {
         Kind::Audio => icon::audio,
         Kind::Video => icon::video,
         Kind::Note => icon::text_page,
+        Kind::Shape => shape::kind_mark,
         Kind::Unknown => icon::unknown,
     }
 }

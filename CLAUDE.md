@@ -1418,6 +1418,36 @@ of the data has not been recognized", and its `mp4` feature brings the AAC decod
 holding Apple Lossless needs `symphonia-alac` as well (`task-2207`). A video plays in the one web view, on
 `unluminous://realm/video/<id>`, with its file served by node id at `unluminous://realm/media/<id>`.
 
+### Whiteboard shapes are a node kind with no header (`task-2284`)
+
+`.designs/realm-whiteboard.html` is the design. `Kind::Shape` holds a `shape::Shape`: one of nine outlines
+(rectangle, rounded, circle, triangle, diamond, hexagon, parallelogram, star, sticky), its words, a colour of its
+own or none, how the words are aligned, and their size. Five rules:
+
+- **`services::realm::shape` is the arithmetic and `components::realm::shape` is the picture.** The outline, the
+  part of a shape that holds its words, the points a wire joins and whether a point is inside the outline are
+  pure functions of the shape and its rectangle, each with a test. A shape is drawn whole into its node's layer:
+  no header, no card behind it, its two shadows feathered from its own outline, and `None` for its colour is the
+  theme's card, so it follows a theme change.
+- **A wire joins a point, not a port.** `Edge::from_point` and `to_point` are indexes into `Node::anchors`,
+  written as `from.point` and `to.point`. A node that is not a shape has two anchors, input then output, so an
+  edge that names no point means what every edge before shapes meant. A wire with a shape at either end is drawn
+  with `geometry::directed_points`, leaving and arriving along the way out of its points; a wire between two other
+  nodes is the curve it always was.
+- **The words in a shape are typed into a `TextEdit` and written to the model on every change.**
+  `RealmState::typing` says which shape; the box is handed the keyboard through `controls::wants_the_keyboard`
+  on the next frame, and losing it (Escape, a click outside) or Ctrl+Enter ends typing. A realm file line cannot
+  hold a line break or a `#`, so the words are written with `shape::encode_text`.
+- **The colour picker floats rather than being a modal**, so the shape can be watched while the colour is
+  dragged. The shape is drawn in `RealmState::picking`'s colour, and nothing is written until Apply.
+  `finish_the_colour_picker` is what Apply, Cancel and `realm shape <node> pick apply|cancel` all reach.
+- **The Add a node dialog scrolls a row at a time** when the window is too short for every kind, which eleven
+  kinds in a 740 point window are. The Shape row opens its flyout of shapes beside the dialog
+  (`add_modal::flyout_rect`); typing a shape's name opens it on that shape.
+
+`realm add shape <kind> --text`, `realm shape <node> <command>` and `realm connect --from-point --to-point` are the
+agent's half. Adding them took the default MCP schema over its 30,000 token ceiling, which moved to 31,000.
+
 ### A node's place in the stacking order is the model's, and egui is told it every frame (`task-2200`)
 
 `Realm::nodes` is the drawing order, and the node menu's `Arrange` rows and `realm arrange <node>
@@ -1433,6 +1463,9 @@ only until the next click on that node. Two things keep the screen honest about 
   node covered nothing a node behind it drew.
 
 ### Six kinds of node, and the two that were added are not the same shape as each other
+
+There are eleven kinds now: `task-2202` added picture, sound, video and note nodes, and `task-2284` whiteboard
+shapes. What follows is about the two `task-1914` added.
 
 `task-1914` asks for an **Agent Chat** node and an **Agent Tasks** node beside the four `task-1904`
 built, and the two are arranged differently on purpose.

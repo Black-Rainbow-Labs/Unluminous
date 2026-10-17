@@ -13,7 +13,20 @@ use egui::{Pos2, Vec2};
 use crate::app::actions::RealmAction;
 use crate::app::realm::{drives, node_zoom_of, set_node_zoom};
 use crate::components::realm::{self as realm_view};
-use crate::services::realm::{Kind, NodeId, Pipe, State};
+use crate::services::realm::{
+    shape, Align, Kind, NodeId, Pipe, ShapeKind, SizeStep, State, VAlign,
+};
+
+/// How many points a shape of this kind can be joined at.
+fn held_points(shape: ShapeKind) -> usize {
+    shape::anchors(shape, egui::Rect::from_min_size(Pos2::ZERO, Vec2::splat(100.0))).len()
+}
+
+/// The refusal for a shape that is not one, naming the ones there are.
+fn no_such_shape(name: &str) -> String {
+    let names: Vec<&str> = ShapeKind::ALL.into_iter().map(ShapeKind::name).collect();
+    format!("There is no shape called {name}. The shapes are {}.", names.join(", "))
+}
 
 /// The `realm` area of `unluminous-cli`, which is the agent's half of the canvas.
 ///
@@ -29,8 +42,18 @@ use crate::services::realm::{Kind, NodeId, Pipe, State};
 /// can control every single node"* beside its *"terminal node agents control the things they are
 /// connected to"*.
 /// The verbs that change what the open realm file says, refused while it is read only.
-const CHANGES_THE_FILE: &[&str] =
-    &["add", "move", "size", "title", "remove", "arrange", "connect", "disconnect", "volume"];
+const CHANGES_THE_FILE: &[&str] = &[
+    "add",
+    "move",
+    "size",
+    "title",
+    "remove",
+    "arrange",
+    "connect",
+    "disconnect",
+    "volume",
+    "shape",
+];
 
 impl UnluminousApp {
     pub(crate) fn cli_realm(
@@ -88,6 +111,7 @@ impl UnluminousApp {
             "folder" => self.cli_realm_folder(request),
             "editor" => self.cli_realm_editor(request),
             "note" => self.cli_realm_note(request),
+            "shape" => self.cli_realm_shape(request),
             "play" => self.cli_realm_transport(request, crate::app::realm_nodes::Transport::Play),
             "pause" => self.cli_realm_transport(request, crate::app::realm_nodes::Transport::Pause),
             "seek" => match request.number("seconds") {
@@ -343,6 +367,26 @@ impl UnluminousApp {
                     Err(problem) => return no(request, code::REFUSED, problem),
                 }
             }
+            // **A shape is named as the second argument** and given its words with `--text`. It is chosen and
+            // the canvas takes the keyboard, as it is from the dialog, but nobody is typing in it: an agent
+            // that wanted to type would say `realm shape <node> edit`. `task-2284`.
+            Kind::Shape => {
+                let named = given.as_deref().map(str::trim).filter(|name| !name.is_empty());
+                let shape = match named {
+                    None => ShapeKind::Rectangle,
+                    Some(name) => match ShapeKind::from_name(name) {
+                        Some(shape) => shape,
+                        None => return no(request, code::USAGE, no_such_shape(name)),
+                    },
+                };
+                let node = self.realm.realm.add_shape(shape, at);
+                if let Some(text) = request.text("text") {
+                    let text = text.replace("\\n", "\n");
+                    let _ = self.realm.realm.change_shape(node, |held| held.text = text);
+                }
+                self.take_the_keyboard_for_the_realm();
+                node
+            }
             _ => self.add_a_realm_node(kind, at),
         };
         if let (Some(width), Some(height)) = (request.number("width"), request.number("height")) {
@@ -465,18 +509,272 @@ impl UnluminousApp {
                 }
             },
         };
-        match self.realm.realm.connect(from, to, pipe) {
+        let from_point = match self.a_named_point(request, "from-point", from) {
+            Ok(point) => point,
+            Err(outcome) => return *outcome,
+        };
+        let to_point = match self.a_named_point(request, "to-point", to) {
+            Ok(point) => point,
+            Err(outcome) => return *outcome,
+        };
+        // **A shape whose point was not named is joined at the point nearest the other node**, which is what
+        // letting a wire go over it does, so the file says which point rather than leaving it to be worked
+        // out every time it is drawn.
+        let nearest = |this: NodeId, other: NodeId| -> Option<usize> {
+            let node = self.realm.realm.node(this)?;
+            let held = node.shape()?;
+            let toward = self.realm.realm.node(other)?.rect().center();
+            Some(shape::nearest_anchor(held.shape, node.rect(), toward))
+        };
+        let from_point = from_point.or_else(|| nearest(from, to));
+        let to_point = to_point.or_else(|| nearest(to, from));
+        match self.realm.realm.connect_at(from, from_point, to, to_point, pipe) {
             Ok(edge) => {
                 if pipe == Pipe::Lines {
                     self.realm.live.follow_from_here(from);
                 }
+                let name = |node: NodeId, point: Option<usize>| -> Value {
+                    match (self.realm.realm.node(node).and_then(|node| node.shape()), point) {
+                        (Some(held), Some(point)) => shape::point_name(held.shape, point).into(),
+                        _ => Value::Null,
+                    }
+                };
                 ok(
                     request,
                     format!("Connected {from} to {to}."),
-                    json!({ "connection": edge, "from": from, "to": to, "pipe": pipe.name() }),
+                    json!({
+                        "connection": edge,
+                        "from": from,
+                        "to": to,
+                        "pipe": pipe.name(),
+                        "fromPoint": name(from, from_point),
+                        "toPoint": name(to, to_point),
+                    }),
                 )
             }
             Err(problem) => no(request, code::REFUSED, problem),
+        }
+    }
+
+    /// The point a `--from-point` or `--to-point` names on a node, when it names one.
+    ///
+    /// Refused when it is given for a node that is not a shape, or names a point the shape does not have,
+    /// with the points it does have, because a wire joined somewhere other than where it was asked to be is a
+    /// change nobody asked for.
+    fn a_named_point(
+        &self,
+        request: &Request,
+        flag: &str,
+        node: NodeId,
+    ) -> Result<Option<usize>, Box<Outcome>> {
+        let Some(named) = request.text(flag) else { return Ok(None) };
+        let Some(held) = self.realm.realm.node(node).and_then(|found| found.shape()) else {
+            return Err(Box::new(no(
+                request,
+                code::USAGE,
+                format!(
+                    "Node {node} is not a shape, so it has no points to name. Leave --{flag} off."
+                ),
+            )));
+        };
+        match shape::point_from_name(held.shape, &named) {
+            Some(point) => Ok(Some(point)),
+            None => {
+                let count = held_points(held.shape);
+                let names: Vec<String> =
+                    (0..count).map(|index| shape::point_name(held.shape, index)).collect();
+                Err(Box::new(no(
+                    request,
+                    code::USAGE,
+                    format!(
+                        "A {} has the points {}, not {named}.",
+                        held.shape.name(),
+                        names.join(", ")
+                    ),
+                )))
+            }
+        }
+    }
+
+    /// `realm shape <node> <command> [value]`: everything a shape's menu, its colour picker and a double click
+    /// do, through the same functions. `task-2284`.
+    fn cli_realm_shape(&mut self, request: &Request) -> Outcome {
+        let node = match self.a_named_node(request, "node") {
+            Ok(node) => node,
+            Err(outcome) => return *outcome,
+        };
+        let Some(found) = self.realm.realm.node(node).cloned() else {
+            return no(request, code::NOT_FOUND, format!("There is no node {node}."));
+        };
+        let Some(held) = found.shape().cloned() else {
+            return no(
+                request,
+                code::REFUSED,
+                format!("Node {node} is a {} node, not a shape.", found.kind().name()),
+            );
+        };
+        let command = request.text("command").map(|command| command.trim().to_lowercase());
+        let value = request.text("value").map(|value| value.trim().to_owned()).unwrap_or_default();
+        let done = match command.as_deref().unwrap_or("view") {
+            "view" | "points" => Ok(String::new()),
+            "text" => {
+                let text = value.replace("\\n", "\n");
+                self.realm.realm.change_shape(node, |held| held.text = text).map(|()| "Set its words.".to_owned())
+            }
+            "colour" | "color" => match value.to_lowercase().as_str() {
+                "theme" | "none" | "" => self
+                    .realm
+                    .realm
+                    .change_shape(node, |held| held.fill = None)
+                    .map(|()| "It follows the theme.".to_owned()),
+                written => match unluminous_core::Rgba::parse(written) {
+                    Some(colour) => self
+                        .realm
+                        .realm
+                        .change_shape(node, |held| held.fill = Some(colour))
+                        .map(|()| format!("Coloured it {}.", colour.to_hex())),
+                    None => Err(format!("{value} is not a colour. Write #RRGGBB, #RRGGBBAA or theme.")),
+                },
+            },
+            "align" => match Align::from_name(&value) {
+                Some(align) => self
+                    .realm
+                    .realm
+                    .change_shape(node, |held| held.align = align)
+                    .map(|()| format!("Its words are {}.", align.label().to_lowercase())),
+                None => Err(format!("Words are aligned left, centre or right, not {value}.")),
+            },
+            "valign" => match VAlign::from_name(&value) {
+                Some(valign) => self
+                    .realm
+                    .realm
+                    .change_shape(node, |held| held.valign = valign)
+                    .map(|()| format!("Its words are {}.", valign.label().to_lowercase())),
+                None => Err(format!("Words sit at the top, middle or bottom, not {value}.")),
+            },
+            "size" => match SizeStep::from_name(&value) {
+                Some(step) => self
+                    .realm
+                    .realm
+                    .change_shape(node, |held| held.size = step.apply(held.size))
+                    .map(|()| "Changed the size of its words.".to_owned()),
+                None => Err(format!("A size is 6 to 96 points, larger or smaller, not {value}.")),
+            },
+            "kind" => match ShapeKind::from_name(&value) {
+                Some(shape) => self
+                    .realm
+                    .realm
+                    .change_shape(node, |held| held.shape = shape)
+                    .map(|()| format!("It is a {} now.", shape.label().to_lowercase())),
+                None => Err(no_such_shape(&value)),
+            },
+            "edit" => self.start_typing_in_a_shape(node).map(|()| "Typing in it.".to_owned()),
+            "done" => {
+                if self.realm.typing.is_some_and(|typing| typing.node == node) {
+                    self.realm.typing = None;
+                }
+                Ok("Stopped typing in it.".to_owned())
+            }
+            "pick" => self.pick_a_shapes_colour(node, &value),
+            other => Err(format!(
+                "A shape takes view, text, colour, align, valign, size, kind, edit, done, pick or points, not {other}."
+            )),
+        };
+        let said = match done {
+            Ok(said) => said,
+            Err(problem) => {
+                let refused = problem.starts_with("This realm is read only")
+                    || problem.contains("not a shape");
+                return no(request, if refused { code::REFUSED } else { code::USAGE }, problem);
+            }
+        };
+        let value = self.realm.realm.as_json();
+        let mut answer = value["nodes"]
+            .as_array()
+            .and_then(|nodes| nodes.iter().find(|each| each["id"] == node).cloned())
+            .unwrap_or(Value::Null);
+        if let Some(map) = answer.as_object_mut() {
+            map.insert(
+                "typing".into(),
+                self.realm.typing.is_some_and(|typing| typing.node == node).into(),
+            );
+            map.insert(
+                "picker".into(),
+                match self.realm.picking.as_ref().filter(|picking| picking.node == node) {
+                    Some(picking) => json!({ "open": true, "colour": picking.colour().to_hex() }),
+                    None => json!({ "open": false }),
+                },
+            );
+        }
+        let now =
+            self.realm.realm.node(node).and_then(|found| found.shape().cloned()).unwrap_or(held);
+        let message = match said.is_empty() {
+            true => format!(
+                "Node {node} is a {} saying {:?}.",
+                now.shape.label().to_lowercase(),
+                now.text
+            ),
+            false => said,
+        };
+        let rows: Vec<String> = match command.as_deref() {
+            Some("points") => answer["points"]
+                .as_array()
+                .map(|points| {
+                    points
+                        .iter()
+                        .map(|point| {
+                            format!(
+                                "{:<8} {:>8.1},{:<8.1}",
+                                point["point"].as_str().unwrap_or_default(),
+                                point["x"].as_f64().unwrap_or_default(),
+                                point["y"].as_f64().unwrap_or_default(),
+                            )
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        };
+        match rows.is_empty() {
+            true => ok(request, message, answer),
+            false => lines(request, message, rows, answer),
+        }
+    }
+
+    /// `realm shape <node> pick [colour|apply|cancel]`: the colour picker, driven the way a person drives it.
+    ///
+    /// With nothing after it the picker opens, which is the shape's `Colour...` row. A colour moves the open
+    /// picker to it, which recolours the shape while the picker is open and writes nothing, as dragging the
+    /// picker does. `apply` and `cancel` are its two buttons.
+    fn pick_a_shapes_colour(&mut self, node: NodeId, value: &str) -> Result<String, String> {
+        let open = self.realm.picking.as_ref().is_some_and(|picking| picking.node == node);
+        match value.to_lowercase().as_str() {
+            "" => {
+                self.open_the_colour_picker(node).map(|()| "Opened the colour picker.".to_owned())
+            }
+            "apply" | "cancel" if !open => {
+                Err("The colour picker is not open on that shape.".to_owned())
+            }
+            "apply" => {
+                self.finish_the_colour_picker(true);
+                Ok("Kept the colour.".to_owned())
+            }
+            "cancel" => {
+                self.finish_the_colour_picker(false);
+                Ok("Put the colour back.".to_owned())
+            }
+            written => {
+                let Some(colour) = unluminous_core::Rgba::parse(written) else {
+                    return Err(format!("{written} is not a colour. Write #RRGGBB or #RRGGBBAA."));
+                };
+                if !open {
+                    self.open_the_colour_picker(node)?;
+                }
+                if let Some(picking) = self.realm.picking.as_mut() {
+                    picking.set(colour);
+                }
+                Ok(format!("The picker is on {}.", colour.to_hex()))
+            }
         }
     }
 
@@ -485,10 +783,25 @@ impl UnluminousApp {
         let view = &self.realm.realm;
         let found: Vec<&crate::services::realm::Edge> =
             view.edges.iter().filter(|edge| only.is_none_or(|from| edge.from == from)).collect();
+        let point = |node: NodeId, point: Option<usize>| -> Option<String> {
+            let held = view.node(node)?.shape()?;
+            point.map(|point| shape::point_name(held.shape, point))
+        };
         let rows: Vec<String> = found
             .iter()
             .map(|edge| {
-                format!("{:<4} {:>4} -> {:<4}  {}", edge.id, edge.from, edge.to, edge.pipe.name())
+                let at = |node, index| {
+                    point(node, index).map(|name| format!(".{name}")).unwrap_or_default()
+                };
+                format!(
+                    "{:<4} {:>4}{} -> {:<4}{}  {}",
+                    edge.id,
+                    edge.from,
+                    at(edge.from, edge.from_point),
+                    edge.to,
+                    at(edge.to, edge.to_point),
+                    edge.pipe.name()
+                )
             })
             .collect();
         let values: Vec<Value> = found
@@ -499,6 +812,8 @@ impl UnluminousApp {
                     "from": edge.from,
                     "to": edge.to,
                     "pipe": edge.pipe.name(),
+                    "fromPoint": point(edge.from, edge.from_point),
+                    "toPoint": point(edge.to, edge.to_point),
                 })
             })
             .collect();
@@ -716,6 +1031,7 @@ impl UnluminousApp {
                 State::Editor(editor) => editor.font_size = 0.0,
                 State::Note(note) => note.font_size = 0.0,
                 State::Image(image) => image.zoom = 1.0,
+                State::Shape(held) => held.size = shape::DEFAULT_SIZE,
                 State::Folder(_) | State::Chat(_) | State::Tasks(_) => set_node_zoom(state, 1.0),
                 State::Browser(_) | State::Audio(_) | State::Video(_) | State::Unknown(_) => {}
             });
@@ -731,7 +1047,7 @@ impl UnluminousApp {
                 return no(request, code::USAGE, "A zoom is a number above zero.");
             }
             match found.kind() {
-                Kind::Terminal | Kind::Editor | Kind::Note => {
+                Kind::Terminal | Kind::Editor | Kind::Note | Kind::Shape => {
                     if !(6.0..=96.0).contains(&asked) {
                         return no(request, code::USAGE, "A point size is 6 to 96.");
                     }
@@ -739,6 +1055,7 @@ impl UnluminousApp {
                         State::Terminal(terminal) => terminal.font_size = asked,
                         State::Editor(editor) => editor.font_size = asked,
                         State::Note(note) => note.font_size = asked,
+                        State::Shape(held) => held.size = asked,
                         _ => {}
                     });
                     if let Some(index) = self.files.tab_in_node(node) {
@@ -806,6 +1123,7 @@ impl UnluminousApp {
                 note.font_size > 0.0,
             ),
             Some(State::Image(image)) => (image.zoom, (image.zoom - 1.0).abs() > 0.001),
+            Some(State::Shape(held)) => (held.size, (held.size - shape::DEFAULT_SIZE).abs() > 0.01),
             Some(State::Audio(_) | State::Video(_) | State::Unknown(_)) => (1.0, false),
             Some(State::Folder(_) | State::Chat(_) | State::Tasks(_)) => {
                 let zoom = node_zoom_of(found.as_ref().expect("it is there"));
@@ -821,6 +1139,7 @@ impl UnluminousApp {
             Some(Kind::Terminal) => "terminal.font.size",
             Some(Kind::Editor | Kind::Note) => "appearance.font.size",
             Some(Kind::Image) => "the picture's own zoom",
+            Some(Kind::Shape) => "the size of its words",
             Some(Kind::Audio | Kind::Video | Kind::Unknown) => "nothing",
             Some(Kind::Folder) => "a multiplier over its rows",
             Some(Kind::Chat | Kind::Tasks) => "a multiplier over everything it draws",

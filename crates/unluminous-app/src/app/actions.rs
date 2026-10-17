@@ -918,6 +918,14 @@ pub enum RealmAction {
     Disconnect,
     /// Turn the connection that was right clicked into one that carries lines, or back.
     CarryLines(bool),
+    /// Open the colour picker on the chosen shape — `task-2284`.
+    ShapeColour,
+    /// Set how the chosen shape's words sit across it.
+    ShapeAlign(crate::services::realm::Align),
+    /// Set how they sit down it.
+    ShapeVAlign(crate::services::realm::VAlign),
+    /// Set how big they are, or step it larger or smaller.
+    ShapeSize(crate::services::realm::SizeStep),
 }
 
 impl RealmAction {
@@ -932,6 +940,19 @@ impl RealmAction {
         }
         if let Some(how) = name.strip_prefix("arrange-") {
             return crate::services::realm::Arrange::from_name(how).map(RealmAction::Arrange);
+        }
+        if let Some(how) = name.strip_prefix("shape-align-") {
+            return crate::services::realm::Align::from_name(how)
+                .filter(|align| align.name() == how)
+                .map(RealmAction::ShapeAlign);
+        }
+        if let Some(how) = name.strip_prefix("shape-valign-") {
+            return crate::services::realm::VAlign::from_name(how)
+                .filter(|valign| valign.name() == how)
+                .map(RealmAction::ShapeVAlign);
+        }
+        if let Some(how) = name.strip_prefix("shape-size-") {
+            return size_from_word(how).map(RealmAction::ShapeSize);
         }
         Some(match name {
             "toggle" => RealmAction::Toggle,
@@ -951,6 +972,7 @@ impl RealmAction {
             "disconnect" => RealmAction::Disconnect,
             "carry-lines" => RealmAction::CarryLines(true),
             "stop-carrying-lines" => RealmAction::CarryLines(false),
+            "shape-colour" => RealmAction::ShapeColour,
             _ => return None,
         })
     }
@@ -979,7 +1001,39 @@ impl RealmAction {
                 true => "carry-lines".to_owned(),
                 false => "stop-carrying-lines".to_owned(),
             },
+            RealmAction::ShapeColour => "shape-colour".to_owned(),
+            RealmAction::ShapeAlign(align) => format!("shape-align-{}", align.name()),
+            RealmAction::ShapeVAlign(valign) => format!("shape-valign-{}", valign.name()),
+            RealmAction::ShapeSize(step) => format!("shape-size-{}", size_word(step)),
         }
+    }
+}
+
+/// The sizes a shape's `Text` menu offers, as the words an action's name spells them in. An action's name is
+/// lower case letters and hyphens, so `12 pt` is `twelve`. `task-2284`.
+const SIZE_WORDS: [(u8, &str); 5] =
+    [(12, "twelve"), (14, "fourteen"), (18, "eighteen"), (24, "twenty-four"), (32, "thirty-two")];
+
+/// The word a size step is spelled with in an action's name.
+fn size_word(step: crate::services::realm::SizeStep) -> String {
+    use crate::services::realm::SizeStep;
+    match step {
+        SizeStep::To(points) => SIZE_WORDS
+            .iter()
+            .find(|(size, _)| *size == points)
+            .map(|(_, word)| (*word).to_owned())
+            .unwrap_or_else(|| points.to_string()),
+        other => other.name(),
+    }
+}
+
+/// The size step a word names, the inverse of [`size_word`].
+fn size_from_word(word: &str) -> Option<crate::services::realm::SizeStep> {
+    use crate::services::realm::SizeStep;
+    match word {
+        "larger" => Some(SizeStep::Larger),
+        "smaller" => Some(SizeStep::Smaller),
+        _ => SIZE_WORDS.iter().find(|(_, name)| *name == word).map(|(size, _)| SizeStep::To(*size)),
     }
 }
 
@@ -1133,6 +1187,9 @@ pub struct MenuState {
     /// is a *program* to offer. A node can have either, both or neither — a shell somebody typed `claude` into
     /// has the program and no conversation, and a node whose command is `claude` has both. `task-1907`.
     pub realm_node_running: String,
+    /// How the chosen node's words are aligned and how big they are, when it is a shape, which is what
+    /// ticks the `Text` submenu's rows. `task-2284`.
+    pub realm_shape: Option<(crate::services::realm::Align, crate::services::realm::VAlign, f32)>,
     /// Whether the connection in hand carries lines, which is what ticks its row.
     pub realm_pipe: bool,
     /// How many views the canvas has, which is what dims `Delete View` on the last one.
@@ -2288,6 +2345,16 @@ pub fn realm_menu(state: &MenuState) -> Vec<Entry> {
 /// named a conversation, because there is nothing to resume.
 pub fn realm_node_menu(state: &MenuState) -> Vec<Entry> {
     let mut entries = vec![Entry::item("Rename...", Action::Realm(RealmAction::RenameNode))];
+    // **A shape's colour and its words**, `task-2284`: `Colour...` after `Rename...`, and a `Text` submenu
+    // after it that opens to the side the way `Arrange` does, with the shape's own alignment and size ticked.
+    // Absent on every other kind, because a terminal has no colour of its own and no words to align.
+    if let Some((align, valign, size)) = state.realm_shape {
+        entries.push(Entry::item("Colour...", Action::Realm(RealmAction::ShapeColour)));
+        entries.push(Entry::Submenu {
+            name: "Text".to_owned(),
+            entries: shape_text_menu(align, valign, size),
+        });
+    }
     if let Some((crate::services::realm::Kind::Terminal, session)) = state.realm_node {
         entries.push(Entry::item("Restart", Action::Realm(RealmAction::RestartNode)));
         if session {
@@ -2322,6 +2389,44 @@ pub fn realm_node_menu(state: &MenuState) -> Vec<Entry> {
     });
     entries.push(Entry::Separator);
     entries.push(Entry::item("Close", Action::Realm(RealmAction::CloseNode)));
+    entries
+}
+
+/// The rows of a shape's `Text` submenu: three alignments across, three down, the five sizes, and a step
+/// larger or smaller, each group between separators, with the shape's own alignment and size ticked.
+pub fn shape_text_menu(
+    align: crate::services::realm::Align,
+    valign: crate::services::realm::VAlign,
+    size: f32,
+) -> Vec<Entry> {
+    use crate::services::realm::{shape, Align, SizeStep, VAlign};
+    let mut entries: Vec<Entry> = Align::ALL
+        .into_iter()
+        .map(|how| {
+            Entry::item(how.label(), Action::Realm(RealmAction::ShapeAlign(how)))
+                .checked(how == align)
+        })
+        .collect();
+    entries.push(Entry::Separator);
+    for how in VAlign::ALL {
+        entries.push(
+            Entry::item(how.label(), Action::Realm(RealmAction::ShapeVAlign(how)))
+                .checked(how == valign),
+        );
+    }
+    entries.push(Entry::Separator);
+    for points in shape::SIZES {
+        entries.push(
+            Entry::item(
+                &format!("{points:.0} pt"),
+                Action::Realm(RealmAction::ShapeSize(SizeStep::To(points as u8))),
+            )
+            .checked((points - size).abs() < 0.01),
+        );
+    }
+    entries.push(Entry::Separator);
+    entries.push(Entry::item("Larger", Action::Realm(RealmAction::ShapeSize(SizeStep::Larger))));
+    entries.push(Entry::item("Smaller", Action::Realm(RealmAction::ShapeSize(SizeStep::Smaller))));
     entries
 }
 
@@ -2864,6 +2969,72 @@ mod tests {
                 "a {} node offered {rows:?}",
                 kind.name()
             );
+        }
+    }
+
+    /// `task-2284`: a shape's menu is every node's, with `Colour...` after `Rename...` and a `Text` submenu after
+    /// that, and the shape's own alignment and size are the rows ticked in it.
+    #[test]
+    fn a_shapes_menu_has_colour_and_a_text_submenu_with_its_own_settings_ticked() {
+        use crate::services::realm::{Align, Kind, VAlign};
+        let state = MenuState {
+            realm_node: Some((Kind::Shape, false)),
+            realm_shape: Some((Align::Left, VAlign::Bottom, 18.0)),
+            ..MenuState::default()
+        };
+        let menu = realm_node_menu(&state);
+        let top: Vec<String> = menu
+            .iter()
+            .map(|entry| match entry {
+                Entry::Item { name, .. } | Entry::Submenu { name, .. } => name.clone(),
+                Entry::Separator => "-".to_owned(),
+            })
+            .collect();
+        assert_eq!(top, vec!["Rename...", "Colour...", "Text", "-", "Arrange", "-", "Close"]);
+        let Some(Entry::Submenu { entries, .. }) = menu
+            .iter()
+            .find(|entry| matches!(entry, Entry::Submenu { name, .. } if name == "Text"))
+        else {
+            panic!("there is a Text submenu")
+        };
+        let rows: Vec<(String, bool)> = entries
+            .iter()
+            .map(|entry| match entry {
+                Entry::Item { name, checked, .. } => (name.clone(), *checked),
+                _ => ("-".to_owned(), false),
+            })
+            .collect();
+        let named: Vec<&str> = rows.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(
+            named,
+            vec![
+                "Align Left",
+                "Align Centre",
+                "Align Right",
+                "-",
+                "Align Top",
+                "Align Middle",
+                "Align Bottom",
+                "-",
+                "12 pt",
+                "14 pt",
+                "18 pt",
+                "24 pt",
+                "32 pt",
+                "-",
+                "Larger",
+                "Smaller",
+            ]
+        );
+        let ticked: Vec<&str> =
+            rows.iter().filter(|(_, on)| *on).map(|(name, _)| name.as_str()).collect();
+        assert_eq!(ticked, vec!["Align Left", "Align Bottom", "18 pt"]);
+
+        // Every other kind has neither.
+        for kind in Kind::ALL.into_iter().filter(|kind| *kind != Kind::Shape) {
+            let state = MenuState { realm_node: Some((kind, false)), ..MenuState::default() };
+            let rows = names(&realm_node_menu(&state));
+            assert!(!rows.iter().any(|row| row == "Colour..."), "{}: {rows:?}", kind.name());
         }
     }
 

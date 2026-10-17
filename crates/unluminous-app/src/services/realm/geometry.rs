@@ -272,7 +272,42 @@ pub fn curve(from: Pos2, to: Pos2) -> [Pos2; 4] {
 /// indistinguishable from one at the sizes a node is drawn at. It is also what makes the wire cost a
 /// fixed number of points however long it is.
 pub fn curve_points(from: Pos2, to: Pos2, segments: usize) -> Vec<Pos2> {
-    let [a, b, c, d] = curve(from, to);
+    sampled(curve(from, to), segments)
+}
+
+/// The four control points of a wire that leaves one point along `from_out` and arrives at another along
+/// `to_out`, each a unit vector pointing out of the node at that end. `task-2284`.
+///
+/// **What a wire to a shape is drawn with**, because a shape is joined on all four sides and a wire leaving
+/// a shape's top point has to go up before it turns, where [`curve`] always leaves going right. The reach is
+/// a third of the distance between the two ends and never less than forty points, which is the design's own
+/// curve, so a short wire still bends out of the outline rather than lying along it.
+pub fn directed_curve(from: Pos2, from_out: Vec2, to: Pos2, to_out: Vec2) -> [Pos2; 4] {
+    let reach = (from.distance(to) / 3.0).clamp(40.0, 220.0);
+    [from, from + from_out * reach, to + to_out * reach, to]
+}
+
+/// [`directed_curve`] as a polyline of `segments` straight pieces.
+pub fn directed_points(
+    from: Pos2,
+    from_out: Vec2,
+    to: Pos2,
+    to_out: Vec2,
+    segments: usize,
+) -> Vec<Pos2> {
+    sampled(directed_curve(from, from_out, to, to_out), segments)
+}
+
+/// How near a point is to a polyline, which is how a right click on a wire drawn either way is answered.
+pub fn distance_to_points(points: &[Pos2], at: Pos2) -> f32 {
+    points
+        .windows(2)
+        .map(|pair| distance_to_segment(pair[0], pair[1], at))
+        .fold(f32::INFINITY, f32::min)
+}
+
+/// A cubic Bézier sampled at `segments + 1` points, its two ends included.
+fn sampled([a, b, c, d]: [Pos2; 4], segments: usize) -> Vec<Pos2> {
     let segments = segments.max(1);
     (0..=segments)
         .map(|step| {
@@ -513,6 +548,27 @@ mod tests {
             assert_eq!(b.y, a.y, "the handles are horizontal");
             assert_eq!(c.y, d.y);
         }
+    }
+
+    /// A wire to a shape leaves along the way out of the point it starts on and arrives along the way out
+    /// of the point it ends on. `task-2284`.
+    #[test]
+    fn a_directed_wire_leaves_and_arrives_along_the_ways_out_it_was_given() {
+        let from = Pos2::new(100.0, 100.0);
+        let to = Pos2::new(400.0, 300.0);
+        let up = Vec2::new(0.0, -1.0);
+        let left = Vec2::new(-1.0, 0.0);
+        let [a, b, c, d] = directed_curve(from, up, to, left);
+        assert_eq!((a, d), (from, to));
+        assert!(b.y < a.y && b.x == a.x, "it leaves going up: {b:?}");
+        assert!(c.x < d.x && c.y == d.y, "it arrives from the left: {c:?}");
+        // Two shapes nearly touching still bend out of their outlines.
+        let [_, near, ..] = directed_curve(from, up, from + Vec2::new(10.0, 0.0), up);
+        assert!(from.y - near.y >= 40.0);
+        let points = directed_points(from, up, to, left, 20);
+        assert_eq!(points.first(), Some(&from));
+        assert_eq!(points.last(), Some(&to));
+        assert!(distance_to_points(&points, points[7]) < 0.01);
     }
 
     #[test]

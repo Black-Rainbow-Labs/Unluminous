@@ -4376,6 +4376,10 @@ const EVERY_SPACE: &[&str] = &[
     "Arrange",
     "Disconnect",
     "CarryLines",
+    "ShapeColour",
+    "ShapeAlign",
+    "ShapeVAlign",
+    "ShapeSize",
 ];
 
 fn realm_variant_name(action: &RealmAction) -> &'static str {
@@ -4398,6 +4402,10 @@ fn realm_variant_name(action: &RealmAction) -> &'static str {
         RealmAction::Arrange(_) => "Arrange",
         RealmAction::Disconnect => "Disconnect",
         RealmAction::CarryLines(_) => "CarryLines",
+        RealmAction::ShapeColour => "ShapeColour",
+        RealmAction::ShapeAlign(_) => "ShapeAlign",
+        RealmAction::ShapeVAlign(_) => "ShapeVAlign",
+        RealmAction::ShapeSize(_) => "ShapeSize",
     }
 }
 
@@ -4755,6 +4763,11 @@ fn signature(harness: &mut Harness<'static, UnluminousApp>) -> String {
     parts.push(format!("breakpoint dialog -> {}", state.breakpoint_dialog.is_some()));
     parts.push(format!("add a node -> {}", state.realm.adding.is_some()));
     parts.push(format!("manage the canvases -> {}", state.realm.managing.is_some()));
+    // Which shape the colour picker is open on, which `realm view` does not say. `task-2284`.
+    parts.push(format!(
+        "colour picker -> {:?}",
+        state.realm.picking.as_ref().map(|picking| picking.node)
+    ));
     parts.push(format!("in hand -> {:?}", state.realm.in_hand));
     parts.push(format!("closing -> {}", state.closing));
     parts.push(format!("completion list -> {}", state.completion().is_some()));
@@ -5122,6 +5135,19 @@ fn every_step() -> Vec<Step> {
             .after(&["realm show"])
             .ready_with(a_wire_in_hand_carrying_lines),
     );
+
+    // A shape's own menu, on a shape that has just been added and so is the chosen node. `task-2284`.
+    for action in [
+        RealmAction::ShapeColour,
+        RealmAction::ShapeAlign(unluminous_app::services::realm::Align::Left),
+        RealmAction::ShapeVAlign(unluminous_app::services::realm::VAlign::Top),
+        RealmAction::ShapeSize(unluminous_app::services::realm::SizeStep::Larger),
+    ] {
+        steps.push(
+            Step::new(Action::Realm(action))
+                .after(&["realm show", "realm add shape diamond --x 40 --y 40 --text \"Decide\""]),
+        );
+    }
 
     // The four colours the editor's right click menu offers, over the selected line.
     for colour in HighlightColor::ALL {

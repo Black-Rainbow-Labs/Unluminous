@@ -490,6 +490,18 @@ mod tests {
         for panel in crate::app::dock::Panel::ALL {
             walk(&actions::panel_menu(&state, panel), &mut out);
         }
+        // And a shape's own menu, whose `Colour...` and `Text` rows are reached from `action run` too.
+        // `task-2284`.
+        let shape = MenuState {
+            realm_node: Some((crate::services::realm::Kind::Shape, false)),
+            realm_shape: Some((
+                crate::services::realm::Align::Centre,
+                crate::services::realm::VAlign::Middle,
+                14.0,
+            )),
+            ..MenuState::default()
+        };
+        walk(&actions::realm_node_menu(&shape), &mut out);
         out
     }
 

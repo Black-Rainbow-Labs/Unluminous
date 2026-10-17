@@ -22,7 +22,12 @@
 //! node.3f9a1c2d.z = 4
 //! node.3f9a1c2d.file = .realm-files/architecture/plan.md
 //! edge.e9a8b7c6.from = 3f9a1c2d
+//! edge.e9a8b7c6.from.point = 2
 //! ```
+//!
+//! A shape (`task-2284`) writes `shape`, `text`, `fill`, `align`, `valign` and `size`, and a wire that joins
+//! a particular point of a node writes `from.point` or `to.point` as an index into the node's points. The
+//! words are written with [`super::shape::encode_text`], because a line break or a hash cannot be in a value.
 //!
 //! ## The rules, each of which has a test below
 //!
@@ -58,6 +63,7 @@ use super::node::{
     Audio, Browser, Camera, Chat, Edge, Editor, Fit, Folder, Image, Kind, Node, NodeId, Note,
     NoteView, Pin, Pipe, State, Tasks, Terminal, Unknown, Video,
 };
+use super::shape::{self, Align, Shape, ShapeKind, VAlign};
 use super::{Access, Format, Realm, READS_UP_TO};
 
 /// The extension a realm file has, without the dot.
@@ -213,12 +219,14 @@ pub fn read(text: &str, root: &Path, path: &Path) -> Result<Realm, String> {
         };
         let pipe =
             keys.remove("pipe").and_then(|pipe| Pipe::from_name(pipe.trim())).unwrap_or_default();
+        let from_point = number(&mut keys, "from.point").map(|point| point.max(0.0) as usize);
+        let to_point = number(&mut keys, "to.point").map(|point| point.max(0.0) as usize);
         let id = match parse_id(&spelling) {
             Some(id) if !ids_taken.contains(&id) => id,
             _ => super::fresh_id(|taken| ids_taken.contains(&taken)),
         };
         ids_taken.insert(id);
-        realm.edges.push(Edge { id, from, to, pipe, extra: keys });
+        realm.edges.push(Edge { id, from, to, pipe, from_point, to_point, extra: keys });
     }
     realm.tidy();
     realm.on_disk.realm = Some(text.to_owned());
@@ -459,6 +467,22 @@ fn read_a_node(id: NodeId, mut keys: BTreeMap<String, String>, root: &Path, path
             caret: 0,
             scroll: 0.0,
         }),
+        Some(Kind::Shape) => State::Shape(Shape {
+            shape: take(&mut keys, "shape")
+                .and_then(|name| ShapeKind::from_name(&name))
+                .unwrap_or_default(),
+            text: take(&mut keys, "text").map(|text| shape::decode_text(&text)).unwrap_or_default(),
+            fill: take(&mut keys, "fill").and_then(|fill| unluminous_core::Rgba::parse(&fill)),
+            align: take(&mut keys, "align")
+                .and_then(|align| Align::from_name(&align))
+                .unwrap_or_default(),
+            valign: take(&mut keys, "valign")
+                .and_then(|valign| VAlign::from_name(&valign))
+                .unwrap_or_default(),
+            size: number(&mut keys, "size")
+                .filter(|size| (6.0..=96.0).contains(size))
+                .unwrap_or(shape::DEFAULT_SIZE),
+        }),
     };
     // Whatever the kind's reader did not take is a key a newer Unluminous wrote. §5.2 rule 3.
     extra.extend(keys);
@@ -490,6 +514,12 @@ pub fn write(realm: &Realm, root: &Path) -> String {
         values.set(&format!("{key}.from"), hex(edge.from));
         values.set(&format!("{key}.to"), hex(edge.to));
         values.set(&format!("{key}.pipe"), edge.pipe.name());
+        if let Some(point) = edge.from_point {
+            values.set(&format!("{key}.from.point"), point.to_string());
+        }
+        if let Some(point) = edge.to_point {
+            values.set(&format!("{key}.to.point"), point.to_string());
+        }
         for (name, value) in &edge.extra {
             values.set(&format!("{key}.{name}"), value.clone());
         }
@@ -596,6 +626,16 @@ fn write_a_node(node: &Node, root: &Path, values: &mut Values) {
             if note.font_size > 0.0 {
                 set(values, "font", format!("{:.0}", note.font_size));
             }
+        }
+        State::Shape(held) => {
+            set(values, "shape", held.shape.name().to_owned());
+            values.set_or_clear(&format!("{key}.text"), &shape::encode_text(&held.text));
+            if let Some(fill) = held.fill {
+                set(values, "fill", fill.to_hex());
+            }
+            set(values, "align", held.align.name().to_owned());
+            set(values, "valign", held.valign.name().to_owned());
+            set(values, "size", format!("{:.0}", held.size));
         }
         State::Unknown(unknown) => {
             for (name, value) in &unknown.keys {
@@ -1256,10 +1296,22 @@ mod tests {
         for (at, kind) in Kind::ALL.into_iter().enumerate() {
             ids.push(realm.add_node(kind, Pos2::new(at as f32 * 700.0, 40.0), Some(project)));
         }
-        let [terminal, browser, folder, editor, chat, tasks, image, audio, video, note] = ids[..]
+        let [terminal, browser, folder, editor, chat, tasks, image, audio, video, note, shape] =
+            ids[..]
         else {
-            panic!("ten kinds")
+            panic!("eleven kinds")
         };
+        // Words that need every escape, a colour of its own and a size off the default. `task-2284`.
+        realm
+            .change_shape(shape, |held| {
+                held.shape = ShapeKind::Diamond;
+                held.text = " Needs a design?\n#yes or \\no ".to_owned();
+                held.fill = Some(unluminous_core::Rgba::new(255, 192, 98, 210));
+                held.align = Align::Left;
+                held.valign = VAlign::Bottom;
+                held.size = 24.0;
+            })
+            .expect("it is a shape");
         realm.change(terminal, |state| {
             if let State::Terminal(terminal) = state {
                 terminal.command = "claude".to_owned();
@@ -1341,6 +1393,9 @@ mod tests {
         realm.connect(chat, terminal, Pipe::Off).expect("wired");
         realm.connect(terminal, browser, Pipe::Off).expect("wired");
         realm.connect(note, image, Pipe::Off).expect("wired");
+        // A wire from a shape's bottom point to the terminal's input, and one into the shape's left point.
+        realm.connect_at(shape, Some(2), terminal, None, Pipe::Off).expect("wired");
+        realm.connect_at(chat, None, shape, Some(3), Pipe::Off).expect("wired");
         realm.title_node(terminal, "the agent");
         realm.camera = Camera { at: Pos2::new(-317.5, 208.0), zoom: 0.75 };
         realm.choose(Some(note));

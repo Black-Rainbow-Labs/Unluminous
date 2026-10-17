@@ -1227,6 +1227,8 @@ impl UnluminousApp {
         if let Some(chosen) = self.show_the_realm_menu(ui) {
             *action = Some(chosen);
         }
+        // A shape's colour picker, after the menu that opened it. `task-2284`.
+        self.show_the_colour_picker(ui);
     }
 
     /// Where a tab and a file being carried by the pointer would land, and where they did.

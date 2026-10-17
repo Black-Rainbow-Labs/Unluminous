@@ -4164,3 +4164,417 @@ fn opening_a_project_with_a_space_conf_imports_it_and_shows_the_view_that_was_cu
     assert!(workspace.contains("realm.current = .realm-files/rendering.realm"), "{workspace}");
     std::fs::remove_dir_all(&folder).ok();
 }
+
+// ------------------------------------------------------------ whiteboard shapes (`task-2284`)
+
+/// The id a `realm add` answered with.
+fn id_of(reply: &serde_json::Value) -> u64 {
+    reply["node"].as_u64().expect("a node id")
+}
+
+/// The shape a node holds, read back from the window.
+fn a_shape(
+    harness: &Harness<'static, UnluminousApp>,
+    node: u64,
+) -> unluminous_app::services::realm::Shape {
+    harness
+        .state()
+        .realm
+        .realm
+        .node(node)
+        .and_then(|found| found.shape().cloned())
+        .expect("the node is a shape")
+}
+
+/// The design's own board: a flow chart of shapes beside a terminal node, every shape kind on it, three of
+/// them coloured, one with its words at the top left, and wires joined at the points of the shapes.
+fn a_whiteboard() -> (Harness<'static, UnluminousApp>, u64) {
+    let mut harness = harness("");
+    did(&mut harness, "realm show");
+    let terminal = harness.state_mut().new_detached_realm_node(
+        unluminous_app::services::realm::Kind::Terminal,
+        egui::pos2(-420.0, 0.0),
+    );
+    harness.state_mut().feed_a_realm_terminal(terminal, b"PS C:\\jason\\dev\\unluminous> ");
+    did(&mut harness, &format!("realm size {terminal} --width 360 --height 220"));
+    let add =
+        |harness: &mut Harness<'static, UnluminousApp>, line: &str| id_of(&did(harness, line));
+    let start = add(&mut harness, "realm add shape rounded --x 0 --y 0 --text \"Ticket arrives\"");
+    let decide =
+        add(&mut harness, "realm add shape diamond --x 10 --y 150 --text \"Needs a design?\"");
+    let design = add(
+        &mut harness,
+        "realm add shape sticky --x 250 --y 160 --text \"Sketch it on a whiteboard realm\"",
+    );
+    let build =
+        add(&mut harness, "realm add shape hexagon --x 0 --y 370 --text \"Agent builds it\"");
+    let ship = add(&mut harness, "realm add shape circle --x 260 --y 380 --text \"Ship\"");
+    add(&mut harness, "realm add shape triangle --x -420 --y 300 --text \"Risk\"");
+    let go = add(&mut harness, "realm add shape star --x -250 --y 290 --text \"Go\"");
+    let input = add(
+        &mut harness,
+        "realm add shape parallelogram --x -80 --y 540 --text \"Input: realm file\"",
+    );
+    add(&mut harness, "realm add shape rectangle --x 160 --y 560");
+    did(&mut harness, &format!("realm shape {design} colour #FFC062D2"));
+    did(&mut harness, &format!("realm shape {design} align left"));
+    did(&mut harness, &format!("realm shape {design} valign top"));
+    did(&mut harness, &format!("realm shape {ship} colour #3AD6ADBE"));
+    did(&mut harness, &format!("realm shape {go} size 18"));
+    did(
+        &mut harness,
+        &format!("realm connect {start} {decide} --from-point bottom --to-point top"),
+    );
+    did(
+        &mut harness,
+        &format!("realm connect {decide} {design} --from-point right --to-point left"),
+    );
+    did(
+        &mut harness,
+        &format!("realm connect {decide} {build} --from-point bottom --to-point top"),
+    );
+    did(&mut harness, &format!("realm connect {terminal} {start} --to-point left"));
+    did(&mut harness, &format!("realm connect {go} {input} --from-point point-2 --to-point left"));
+    did(&mut harness, &format!("realm focus {decide}"));
+    did(&mut harness, "realm camera --fit");
+    steady(&mut harness);
+    (harness, decide)
+}
+
+/// Items 3, 9 and 14 to 16: every shape, drawn in the theme's own surfaces with the shape's own colour where it
+/// has one, and wired from the middle of its edges, a diamond's corners and a star's points.
+#[test]
+fn a_whiteboard_of_every_shape_wired_together() {
+    let (mut harness, _) = a_whiteboard();
+    harness.snapshot(shot("realm_shapes").as_str());
+}
+
+/// Item 9: the same board in Unluminous Light, where every shape that has no colour of its own is the light
+/// card and the words are the light theme's ink.
+#[test]
+fn a_whiteboard_follows_a_change_of_theme() {
+    let (mut harness, _) = a_whiteboard();
+    did(&mut harness, "theme set Unluminous Light");
+    steady(&mut harness);
+    harness.snapshot(shot("realm_shapes_light").as_str());
+}
+
+/// Items 1 to 5: the Shape row is the last row of Add a node, pointing at it opens the shapes to the right of
+/// the dialog, and choosing one closes the dialog, adds that shape, chooses it and puts the caret in it.
+#[test]
+fn the_add_node_dialog_opens_its_shapes_beside_the_shape_row_and_one_is_added_and_typed_into() {
+    let mut harness = harness("");
+    did(&mut harness, "realm show");
+    did(&mut harness, "action run realm-add");
+    steady(&mut harness);
+    // The Shape row is the last of eleven, below what a 740 point window shows, so the keys walk the list
+    // to it, which is what scrolls it into view.
+    drove(&mut harness, "input key ArrowDown --times 10");
+    steady(&mut harness);
+    harness.get_by_label("Shape").hover();
+    steady(&mut harness);
+    let adding = harness.state().realm.adding.clone().expect("the dialog is open");
+    assert!(adding.flyout, "pointing at the Shape row opened its flyout");
+    let (row, dialog) = (adding.shape_row.expect("the row"), adding.dialog.expect("the dialog"));
+    harness.snapshot(shot("realm_add_shapes").as_str());
+    let diamond = harness.get_by_label("Shape: Diamond");
+    let flyout = diamond.rect();
+    assert!(flyout.left() > dialog.right(), "the flyout is to the right of the dialog: {flyout:?}");
+    assert!((flyout.top() - row.top()).abs() < 200.0, "and near the Shape row");
+    for label in [
+        "Rectangle",
+        "Rounded rectangle",
+        "Circle",
+        "Triangle",
+        "Hexagon",
+        "Parallelogram",
+        "Star",
+        "Sticky note",
+    ] {
+        let _ = harness.get_by_label(&format!("Shape: {label}"));
+    }
+
+    harness.get_by_label("Shape: Diamond").click();
+    for _ in 0..4 {
+        steady(&mut harness);
+    }
+    assert!(harness.state().realm.adding.is_none(), "choosing a shape closed the dialog");
+    let node = harness.state().realm.realm.nodes.last().map(|node| node.id).expect("a node");
+    assert_eq!(a_shape(&harness, node).shape, unluminous_app::services::realm::ShapeKind::Diamond);
+    assert_eq!(harness.state().realm.realm.chosen(), Some(node), "it is chosen");
+    assert!(
+        harness.state().realm.typing.is_some_and(|typing| typing.node == node),
+        "and typed into"
+    );
+
+    // The caret is in it: what is typed goes into the shape's words.
+    drove(&mut harness, "input text Ship it");
+    assert_eq!(a_shape(&harness, node).text, "Ship it");
+    drove(&mut harness, "input key Escape");
+    assert!(harness.state().realm.typing.is_none(), "Escape finished typing");
+    assert_eq!(a_shape(&harness, node).text, "Ship it", "and kept the words");
+}
+
+/// Item 2's keyboard half: typing a shape's name in the search opens the flyout on it, and Enter adds it.
+#[test]
+fn a_search_that_names_a_shape_opens_the_flyout_on_it_and_enter_adds_it() {
+    let mut harness = harness("");
+    did(&mut harness, "realm show");
+    did(&mut harness, "action run realm-add");
+    steady(&mut harness);
+    drove(&mut harness, "input text star");
+    steady(&mut harness);
+    let adding = harness.state().realm.adding.clone().expect("the dialog is open");
+    assert!(adding.flyout, "a shape's name opened the flyout");
+    let _ = harness.get_by_label("Shape: Star");
+    drove(&mut harness, "input key Enter");
+    for _ in 0..4 {
+        steady(&mut harness);
+    }
+    let node = harness.state().realm.realm.nodes.last().map(|node| node.id).expect("a node");
+    assert_eq!(a_shape(&harness, node).shape, unluminous_app::services::realm::ShapeKind::Star);
+}
+
+/// Item 6: a double click starts typing, Ctrl+Enter finishes, and a click outside the shape finishes too.
+#[test]
+fn a_double_click_types_in_a_shape_and_ctrl_enter_or_a_click_outside_finishes() {
+    let mut harness = harness("");
+    did(&mut harness, "realm show");
+    let node =
+        id_of(&did(&mut harness, "realm add shape rectangle --x 100 --y 100 --text \"Plan\""));
+    did(&mut harness, "realm camera --x 0 --y 0 --zoom 1");
+    steady(&mut harness);
+    let middle = on_the_canvas(&harness, egui::pos2(185.0, 150.0));
+    double_click_at(&mut harness, middle);
+    for _ in 0..4 {
+        steady(&mut harness);
+    }
+    assert!(harness.state().realm.typing.is_some_and(|typing| typing.node == node), "typing in it");
+    drove(&mut harness, "input key End --ctrl");
+    drove(&mut harness, "input text \" ahead\"");
+    assert_eq!(a_shape(&harness, node).text, "Plan ahead");
+    drove(&mut harness, "input key Enter --cmd");
+    steady(&mut harness);
+    assert!(harness.state().realm.typing.is_none(), "Ctrl+Enter finished typing");
+    assert_eq!(a_shape(&harness, node).text, "Plan ahead", "with no line break added");
+
+    double_click_at(&mut harness, middle);
+    for _ in 0..4 {
+        steady(&mut harness);
+    }
+    assert!(harness.state().realm.typing.is_some());
+    let outside = on_the_canvas(&harness, egui::pos2(600.0, 500.0));
+    drove(&mut harness, &format!("input click {} {}", outside.x, outside.y));
+    steady(&mut harness);
+    assert!(harness.state().realm.typing.is_none(), "a click outside finished typing");
+}
+
+/// Items 11 to 13: a shape's right click menu is every node's with `Colour...` after `Rename...` and a
+/// `Text` submenu after that, opening to the side with the shape's own alignment and size ticked, and a row
+/// of it changes the shape at once.
+#[test]
+fn a_shapes_menu_has_a_text_submenu_whose_rows_change_it() {
+    let mut harness = harness("");
+    did(&mut harness, "realm show");
+    let node = id_of(&did(
+        &mut harness,
+        "realm add shape diamond --x 200 --y 120 --text \"Needs a design?\"",
+    ));
+    did(&mut harness, "realm camera --x 0 --y 0 --zoom 1");
+    steady(&mut harness);
+    let middle = on_the_canvas(&harness, egui::pos2(270.0, 190.0));
+    right_click_at(&mut harness, middle);
+    steady(&mut harness);
+    assert_eq!(harness.state().realm.chosen(), Some(node), "the right click chose it");
+    let _ = harness.get_by_label("Colour...");
+    harness.get_by_label("Text").hover();
+    steady(&mut harness);
+    harness.snapshot(shot("realm_shape_text_menu").as_str());
+    harness.get_by_label("Align Left").click();
+    steady(&mut harness);
+    assert_eq!(a_shape(&harness, node).align, unluminous_app::services::realm::Align::Left);
+
+    // Larger steps through the menu's sizes, which is the same function the menu row reaches.
+    choose(
+        &mut harness,
+        unluminous_app::app::actions::Action::Realm(
+            unluminous_app::app::actions::RealmAction::ShapeSize(
+                unluminous_app::services::realm::SizeStep::Larger,
+            ),
+        ),
+    );
+    assert_eq!(a_shape(&harness, node).size, 18.0);
+}
+
+/// Item 12: `Colour...` opens the RGBA picker, the shape is drawn in the picker's colour while it is open and
+/// nothing is written down, Apply keeps the colour and Cancel puts the old one back.
+#[test]
+fn the_colour_picker_recolours_a_shape_while_it_is_open_and_apply_or_cancel_finish() {
+    let mut harness = harness("");
+    did(&mut harness, "realm show");
+    let node =
+        id_of(&did(&mut harness, "realm add shape sticky --x 160 --y 120 --text \"Sketch it\""));
+    did(&mut harness, &format!("realm focus {node}"));
+    did(&mut harness, "realm camera --x 0 --y 0 --zoom 1");
+    choose(
+        &mut harness,
+        unluminous_app::app::actions::Action::Realm(
+            unluminous_app::app::actions::RealmAction::ShapeColour,
+        ),
+    );
+    assert!(harness.state().realm.picking.is_some(), "the menu row opened the picker");
+    let reply = did(&mut harness, &format!("realm shape {node} pick #FFC062D2"));
+    assert_eq!(reply["picker"]["colour"], "#FFC062D2");
+    assert_eq!(a_shape(&harness, node).fill, None, "nothing is written while the picker is open");
+    steady(&mut harness);
+    // No button that puts the shape back to the theme's colour: a shape with none follows the theme already.
+    assert!(harness.query_by_label("Use theme colour").is_none());
+    harness.snapshot(shot("realm_colour_picker").as_str());
+
+    harness.get_by_label("Apply").click();
+    steady(&mut harness);
+    assert!(harness.state().realm.picking.is_none(), "Apply closed it");
+    assert_eq!(
+        a_shape(&harness, node).fill,
+        Some(unluminous_core::Rgba::new(0xFF, 0xC0, 0x62, 0xD2))
+    );
+
+    did(&mut harness, &format!("realm shape {node} pick #3D78FF50"));
+    harness.get_by_label("Cancel").click();
+    steady(&mut harness);
+    assert!(harness.state().realm.picking.is_none(), "Cancel closed it");
+    assert_eq!(
+        a_shape(&harness, node).fill,
+        Some(unluminous_core::Rgba::new(0xFF, 0xC0, 0x62, 0xD2)),
+        "and left the colour it had"
+    );
+    did(&mut harness, &format!("realm shape {node} pick"));
+    did(&mut harness, &format!("realm shape {node} pick cancel"));
+    assert!(harness.state().realm.picking.is_none());
+}
+
+/// Item 16: a wire pulled from a shape's point and let go over another shape joins the point of it nearest
+/// where it was let go, and one pulled from a terminal's output port lands on a shape the same way.
+#[test]
+fn a_wire_pulled_from_a_shapes_point_lands_on_the_nearest_point_of_another() {
+    use unluminous_app::services::realm::Kind;
+    let mut harness = harness("");
+    did(&mut harness, "realm show");
+    let left = id_of(&did(&mut harness, "realm add shape rectangle --x 40 --y 100"));
+    let right = id_of(&did(&mut harness, "realm add shape circle --x 400 --y 80"));
+    let terminal =
+        harness.state_mut().new_detached_realm_node(Kind::Terminal, egui::pos2(40.0, 240.0));
+    did(&mut harness, &format!("realm size {terminal} --width 280 --height 150"));
+    did(&mut harness, &format!("realm focus {left}"));
+    did(&mut harness, "realm camera --x 0 --y 0 --zoom 1");
+    steady(&mut harness);
+
+    // From the rectangle's right point, which is the middle of its right edge, to just inside the circle's
+    // left side.
+    let from = on_the_canvas(&harness, egui::pos2(210.0, 150.0));
+    let to = on_the_canvas(&harness, egui::pos2(412.0, 150.0));
+    drag(&mut harness, from, to);
+    let edges = harness.state().realm.realm.edges.clone();
+    assert_eq!(edges.len(), 1, "one wire");
+    assert_eq!((edges[0].from, edges[0].to), (left, right));
+    assert_eq!(edges[0].from_point, Some(1), "it left the rectangle's right point");
+    assert_eq!(edges[0].to_point, Some(3), "and joined the circle's left point, the nearest");
+
+    // A terminal's output port to the circle's bottom.
+    let port = on_the_canvas(&harness, egui::pos2(320.0, 315.0));
+    let bottom = on_the_canvas(&harness, egui::pos2(465.0, 205.0));
+    drag(&mut harness, port, bottom);
+    let wire = harness.state().realm.realm.edges.iter().find(|edge| edge.from == terminal).cloned();
+    let wire = wire.unwrap_or_else(|| {
+        panic!("the terminal is not wired to the circle: {:?}", harness.state().realm.realm.edges)
+    });
+    assert_eq!((wire.to, wire.from_point, wire.to_point), (right, None, Some(2)));
+}
+
+/// Item 10: a shape is resized from its grips like any node, and Shift keeps it square.
+#[test]
+fn shift_keeps_a_shape_square_while_it_is_resized() {
+    let mut harness = harness("");
+    did(&mut harness, "realm show");
+    let node = id_of(&did(&mut harness, "realm add shape rectangle --x 100 --y 100"));
+    did(&mut harness, &format!("realm focus {node}"));
+    did(&mut harness, "realm camera --x 0 --y 0 --zoom 1");
+    steady(&mut harness);
+    let corner = on_the_canvas(&harness, egui::pos2(270.0, 200.0));
+    let to = egui::pos2(corner.x + 30.0, corner.y + 10.0);
+    harness.input_mut().events.push(egui::Event::ModifiersChanged(Modifiers::SHIFT));
+    drag(&mut harness, corner, to);
+    harness.input_mut().events.push(egui::Event::ModifiersChanged(Modifiers::default()));
+    let size = harness.state().realm.realm.node(node).expect("there").size;
+    assert!((size.x - size.y).abs() < 0.5, "Shift kept it square: {size:?}");
+    assert!(size.x >= 199.0, "the larger side won: {size:?}");
+    let at = harness.state().realm.realm.node(node).expect("there").at;
+    assert_eq!(at, egui::pos2(100.0, 100.0), "the corner not being held stayed still");
+}
+
+/// Items 17 and 18: everything above done from the command line, and all of it read back from the realm file
+/// after the realm is opened again.
+#[test]
+fn a_shape_is_driven_from_the_command_line_and_comes_back_from_its_realm_file() {
+    use unluminous_app::services::realm::{Align, ShapeKind, VAlign};
+    let (folder, mut harness) = a_realm_project("shapes", &[]);
+    did(&mut harness, "realm show");
+    let decide =
+        id_of(&did(&mut harness, "realm add shape diamond --x 0 --y 0 --text \"Needs a design?\""));
+    let build = id_of(&did(&mut harness, "realm add shape hexagon --x 0 --y 300"));
+    let terminal = id_of(&did(&mut harness, "realm add terminal --x 500 --y 0"));
+    did(&mut harness, &format!("realm shape {build} text Agent\\nbuilds # it"));
+    did(&mut harness, &format!("realm shape {build} colour #3D78FF"));
+    did(&mut harness, &format!("realm shape {build} align right"));
+    did(&mut harness, &format!("realm shape {build} valign bottom"));
+    did(&mut harness, &format!("realm shape {build} size 24"));
+    did(&mut harness, &format!("realm shape {build} size larger"));
+    did(&mut harness, &format!("realm shape {decide} kind triangle"));
+    let wire = did(
+        &mut harness,
+        &format!("realm connect {decide} {build} --from-point bottom --to-point top"),
+    );
+    assert_eq!(wire["fromPoint"], "bottom");
+    did(&mut harness, &format!("realm connect {build} {terminal} --from-point right"));
+    let points = did(&mut harness, &format!("realm shape {build} points"));
+    assert_eq!(points["points"].as_array().map(Vec::len), Some(4));
+
+    // What is refused says why.
+    assert_eq!(refused(&mut harness, &format!("realm shape {build} colour sunshine")), "usage");
+    assert_eq!(refused(&mut harness, &format!("realm shape {build} kind blob")), "usage");
+    assert_eq!(refused(&mut harness, &format!("realm shape {terminal} text no")), "refused");
+    assert_eq!(
+        refused(&mut harness, &format!("realm connect {terminal} {build} --from-point top")),
+        "usage"
+    );
+    assert_eq!(
+        refused(&mut harness, &format!("realm connect {decide} {build} --from-point point-4")),
+        "usage"
+    );
+
+    // Away to another realm and back, which writes this one and reads it from the file again.
+    did(&mut harness, "realm new Elsewhere");
+    did(&mut harness, "realm open main");
+    for _ in 0..3 {
+        steady(&mut harness);
+    }
+    let held = a_shape(&harness, build);
+    assert_eq!(held.shape, ShapeKind::Hexagon);
+    assert_eq!(held.text, "Agent\nbuilds # it");
+    assert_eq!(held.fill, Some(unluminous_core::Rgba::new(0x3D, 0x78, 0xFF, 0xFF)));
+    assert_eq!((held.align, held.valign, held.size), (Align::Right, VAlign::Bottom, 32.0));
+    assert_eq!(a_shape(&harness, decide).shape, ShapeKind::Triangle);
+    let edges = &harness.state().realm.realm.edges;
+    assert!(edges
+        .iter()
+        .any(|edge| edge.from == decide && edge.from_point == Some(2) && edge.to_point == Some(0)));
+    assert!(edges
+        .iter()
+        .any(|edge| edge.from == build && edge.from_point == Some(1) && edge.to_point.is_none()));
+    let file =
+        std::fs::read_to_string(folder.join(".realm-files/main.realm")).expect("the realm file");
+    assert!(file.contains("shape = hexagon"), "{file}");
+    assert!(file.contains("text = Agent\\nbuilds \\h it"), "{file}");
+    assert!(file.contains("from.point = 2"), "{file}");
+    std::fs::remove_dir_all(&folder).ok();
+}

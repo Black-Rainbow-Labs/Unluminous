@@ -53,6 +53,13 @@ impl UnluminousApp {
                     _ => None,
                 })
                 .unwrap_or_default(),
+            // **The chosen shape's alignment and size**, which tick the `Text` submenu. `task-2284`.
+            realm_shape: self
+                .realm
+                .chosen()
+                .and_then(|node| self.realm.realm.node(node))
+                .and_then(crate::services::realm::Node::shape)
+                .map(|shape| (shape.align, shape.valign, shape.size)),
             realm_pipe: self.realm.in_hand.wire.is_some_and(|edge| {
                 self.realm.realm.edges.iter().any(|other| {
                     other.id == edge && other.pipe == crate::services::realm::Pipe::Lines

@@ -1764,7 +1764,7 @@ Put every panel back where a new Unluminous has it: the explorer down the left, 
 unluminous-cli panel reset
 ```
 
-## realm — the Realm: canvases of terminals, web pages, folder trees, file editors, notes, pictures, sounds and videos, wired together and kept as .realm files in the project
+## realm — the Realm: canvases of terminals, web pages, folder trees, file editors, notes, pictures, sounds, videos and whiteboard shapes, wired together and kept as .realm files in the project
 
 If `UNLUMINOUS_REALM_NODE` is set in your environment you are running inside a node on this canvas, and `realm here` is the first thing to run: it says which node you are, which nodes you are wired to, and the command that drives each of them. `unluminous-cli` is on your PATH inside a node and already knows which window to drive, so `unluminous-cli realm here` is the whole command - no path and no `--instance`. (`$UNLUMINOUS_CLI` and `$UNLUMINOUS_INSTANCE` are set too, for a program that wants them.) You may act on the nodes you are wired to and no others, so every command you send carries `--from <your node>`. The Realm is a canvas you put nodes on: a terminal running a real shell, a web page, a folder tree, or a file editor with the editing area's own gutter, folding and find. A node is wired to another by connecting its output to that node's input, and a connection is what lets an agent running in a terminal node act on the node it is wired to - `realm browser`, `realm folder`, `realm editor` and `realm send` all take `--from` and are refused when there is no wire. The window's own agent passes no `--from` and may drive every node. Read `realm view --json` first: everything here names a node by the id it prints. Places and sizes are in canvas points, which are screen points at a zoom of 1.
 
@@ -1954,13 +1954,13 @@ unluminous-cli realm info --json
 ### realm add
 
 ```
-unluminous-cli realm add <terminal|browser|folder|editor|chat|tasks|image|audio|video|note> [file] [--x <points>] [--y <points>] [--width <points>] [--height <points>] [--title <text>] [--command <text>] [--url <address>] [--root <path>] [--path <path>]
+unluminous-cli realm add <terminal|browser|folder|editor|chat|tasks|image|audio|video|note|shape> [file] [--x <points>] [--y <points>] [--width <points>] [--height <points>] [--title <text>] [--command <text>] [--url <address>] [--root <path>] [--path <path>] [--text <words>]
 ```
 
-Put a node on the realm that is open and answer with its id. A terminal node starts the machine's own shell in the project folder, or the program named by `--command`, with `unluminous-cli` on its PATH and pointed at this window, UNLUMINOUS_REALM_NODE set to its id so an agent started in it knows which node it is, UNLUMINOUS_REALM_HINT saying what to run first, and UNLUMINOUS_CLI and UNLUMINOUS_INSTANCE for a program that wants the path and the window outright. An image, audio or video node shows a file in this project, named as the second argument; a note node makes a Markdown file of that name in .realm-files/<realm>/, or shows an existing .md file when it is given one.
+Put a node on the realm that is open and answer with its id. A terminal node starts the machine's own shell in the project folder, or the program named by `--command`, with `unluminous-cli` on its PATH and pointed at this window, UNLUMINOUS_REALM_NODE set to its id so an agent started in it knows which node it is, UNLUMINOUS_REALM_HINT saying what to run first, and UNLUMINOUS_CLI and UNLUMINOUS_INSTANCE for a program that wants the path and the window outright. An image, audio or video node shows a file in this project, named as the second argument; a note node makes a Markdown file of that name in .realm-files/<realm>/, or shows an existing .md file when it is given one. A shape node is the shape named as the second argument, with `--text` for its words.
 
-- `kind` — terminal, browser, folder, editor, chat, tasks, image, audio, video or note.
-- `file` (optional) — An image, audio or video node: the file in this project it shows. A note node: a name for a new note, or the path of an existing .md file.
+- `kind` — terminal, browser, folder, editor, chat, tasks, image, audio, video, note or shape.
+- `file` (optional) — An image, audio or video node: the file in this project it shows. A note node: a name for a new note, or the path of an existing .md file. A shape node: which shape.
 
 - `--x <points>` — Where to put it, in canvas points. The middle of what is showing when it is not given.
 - `--y <points>` — The same, down the canvas.
@@ -1971,9 +1971,11 @@ Put a node on the realm that is open and answer with its id. A terminal node sta
 - `--url <address>` — A browser node: the page to open.
 - `--root <path>` — A folder node: which folder to show. The project when it is not given.
 - `--path <path>` — An editor node: which file to open.
+- `--text <words>` — A shape node: its words.
 
 ```sh
 unluminous-cli realm add terminal --command claude
+unluminous-cli realm add shape diamond --text Decide
 unluminous-cli realm add browser --url https://example.com/
 unluminous-cli realm add editor --path src/main.rs --x 900 --y 40
 unluminous-cli realm add image design/cover.png
@@ -2076,15 +2078,17 @@ unluminous-cli realm arrange 3 forward
 ### realm connect
 
 ```
-unluminous-cli realm connect <from> <to> [--pipe <lines>]
+unluminous-cli realm connect <from> <to> [--pipe <lines>] [--from-point <point>] [--to-point <point>]
 ```
 
-Wire one node's output to another's input. A connection is what lets an agent in a terminal node act on the node it is wired to; with `--pipe lines` it also types each line the first node's program writes into the second node's terminal.
+Wire one node's output to another's input. A connection is what lets an agent in a terminal node act on the node it is wired to; with `--pipe lines` it also types each line the first node's program writes into the second node's terminal. A shape is joined at the point `--from-point` or `--to-point` names, or the one nearest the other node.
 
 - `from` — The node the wire leaves.
 - `to` — The node it arrives at.
 
 - `--pipe <lines>` — Carry text as well as permission. Only into a terminal node, because only a terminal has an input to type into.
+- `--from-point <point>` — top, right, bottom or left; point-1 to point-5 on a star.
+- `--to-point <point>` — The same, where it arrives.
 
 ```sh
 unluminous-cli realm connect 7 9
@@ -2343,6 +2347,23 @@ Show a note node as its Markdown source (raw), as the source beside its preview 
 
 ```sh
 unluminous-cli realm note view 13 preview
+```
+
+### realm shape
+
+```
+unluminous-cli realm shape <node> [view|text|colour|align|valign|size|kind|edit|done|pick|points] [value]
+```
+
+Change a whiteboard shape, as its menu and a double click do: `text` (\n is a new line), `colour` (#RRGGBBAA, or `theme`), `align`, `valign`, `size` (points, larger or smaller), `kind`, `edit` and `done` typing, `pick` the colour picker (then a colour, `apply` or `cancel`), and `points`.
+
+- `node` — The shape node's id.
+- `command` (optional) — What to change.
+- `value` (optional) — What the command takes. Everything after it on the line belongs to it.
+
+```sh
+unluminous-cli realm shape 12 text Agent builds it
+unluminous-cli realm shape 12 colour #FFC062D2
 ```
 
 ### realm play

@@ -57,6 +57,12 @@ pub enum Kind {
     Video,
     /// A Markdown file in the editor, with the raw, side by side and preview buttons. `task-2202`.
     Note,
+    /// A whiteboard shape with words in it: a rectangle, a circle, a diamond and six more. `task-2284`.
+    ///
+    /// **A node with no header**, because a shape on a whiteboard is the thing itself rather than a window
+    /// onto something. It is moved by dragging it, resized by its grips, and wired from the middle of its
+    /// edges. See `services::realm::shape`.
+    Shape,
     /// A node of a kind this build does not know, read from a file a newer Unluminous wrote.
     ///
     /// **Not in [`Kind::ALL`]**, so nothing offers to make one. It is drawn as a placeholder that can be
@@ -66,7 +72,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub const ALL: [Kind; 10] = [
+    pub const ALL: [Kind; 11] = [
         Kind::Terminal,
         Kind::Browser,
         Kind::Folder,
@@ -77,6 +83,7 @@ impl Kind {
         Kind::Audio,
         Kind::Video,
         Kind::Note,
+        Kind::Shape,
     ];
 
     /// The name the command line and the file on disk use: lower case, one word.
@@ -92,6 +99,7 @@ impl Kind {
             Kind::Audio => "audio",
             Kind::Video => "video",
             Kind::Note => "note",
+            Kind::Shape => "shape",
             Kind::Unknown => "unknown",
         }
     }
@@ -109,6 +117,7 @@ impl Kind {
             Kind::Audio => "Audio",
             Kind::Video => "Video",
             Kind::Note => "Note",
+            Kind::Shape => "Shape",
             Kind::Unknown => "Unknown",
         }
     }
@@ -134,6 +143,9 @@ impl Kind {
             Kind::Audio => "A sound from this project, with play, pause, a seek bar and a volume.",
             Kind::Video => "A video from this project, with play, pause, a seek bar and a volume.",
             Kind::Note => "A Markdown note, written in the editor and read as a preview.",
+            Kind::Shape => {
+                "A whiteboard shape with text in it: a rectangle, a circle, a diamond and more."
+            }
             Kind::Unknown => {
                 "A node a newer Unluminous made. It is kept exactly as it was written."
             }
@@ -165,6 +177,8 @@ impl Kind {
             // Sixteen by nine under the header.
             Kind::Video => Vec2::new(640.0, 386.0),
             Kind::Note => Vec2::new(520.0, 420.0),
+            // A rectangle's own size. Each shape opens at its own, `ShapeKind::opens_at`.
+            Kind::Shape => Vec2::new(170.0, 100.0),
             Kind::Unknown => Vec2::new(320.0, 200.0),
         }
     }
@@ -195,6 +209,8 @@ impl Kind {
             Kind::Audio => Vec2::new(280.0, 96.0),
             Kind::Video => Vec2::new(240.0, 160.0),
             Kind::Note => Vec2::new(240.0, 140.0),
+            // Small enough for a box in a flow chart, large enough to hold a word and be grabbed.
+            Kind::Shape => Vec2::new(48.0, 40.0),
             Kind::Unknown => Vec2::new(160.0, 90.0),
         }
     }
@@ -221,6 +237,7 @@ pub enum State {
     Audio(Audio),
     Video(Video),
     Note(Note),
+    Shape(super::shape::Shape),
     Unknown(Unknown),
 }
 
@@ -237,6 +254,7 @@ impl State {
             State::Audio(_) => Kind::Audio,
             State::Video(_) => Kind::Video,
             State::Note(_) => Kind::Note,
+            State::Shape(_) => Kind::Shape,
             State::Unknown(_) => Kind::Unknown,
         }
     }
@@ -294,6 +312,7 @@ impl State {
             Kind::Audio => State::Audio(Audio::default()),
             Kind::Video => State::Video(Video::default()),
             Kind::Note => State::Note(Note::default()),
+            Kind::Shape => State::Shape(super::shape::Shape::default()),
             Kind::Unknown => State::Unknown(Unknown::default()),
         }
     }
@@ -706,6 +725,38 @@ impl Node {
     pub fn input_port(&self) -> Pos2 {
         Pos2::new(self.at.x, self.at.y + self.size.y / 2.0)
     }
+
+    /// The shape this node is, when it is a shape. `task-2284`.
+    pub fn shape(&self) -> Option<&super::shape::Shape> {
+        match &self.state {
+            State::Shape(shape) => Some(shape),
+            _ => None,
+        }
+    }
+
+    /// Every place a wire may join this node, in world points.
+    ///
+    /// A shape's are its own (see `shape::anchors`). Every other kind has the two ports it always had, the
+    /// input on the left first and the output on the right second, so an edge that names no point on such a
+    /// node means what it always meant.
+    pub fn anchors(&self) -> Vec<super::shape::Anchor> {
+        match self.shape() {
+            Some(shape) => super::shape::anchors(shape.shape, self.rect()),
+            None => vec![
+                super::shape::Anchor { at: self.input_port(), out: Vec2::new(-1.0, 0.0) },
+                super::shape::Anchor { at: self.output_port(), out: Vec2::new(1.0, 0.0) },
+            ],
+        }
+    }
+
+    /// Whether a world point is on this node: inside a shape's outline, or anywhere in any other node's
+    /// rectangle. The corners of a diamond's rectangle are the canvas, so a click there pans it.
+    pub fn contains(&self, world: Pos2) -> bool {
+        match self.shape() {
+            Some(shape) => super::shape::contains(shape.shape, self.rect(), world),
+            None => self.rect().contains(world),
+        }
+    }
 }
 
 /// Whether an edge carries text as well as permission.
@@ -745,13 +796,20 @@ pub struct Edge {
     pub from: NodeId,
     pub to: NodeId,
     pub pipe: Pipe,
+    /// Which of the first node's points the wire leaves from, as an index into [`Node::anchors`].
+    ///
+    /// `None` is the output port on a node that is not a shape, which is what every edge written before
+    /// `task-2284` means, and the point nearest the other node on a shape. Written as `from.point`.
+    pub from_point: Option<usize>,
+    /// Which of the second node's points it arrives at. `None` is the input port, or the nearest point.
+    pub to_point: Option<usize>,
     /// Keys under this edge this build did not read, kept for the reason [`Node::extra`] is.
     pub extra: BTreeMap<String, String>,
 }
 
 impl Edge {
     pub fn new(id: EdgeId, from: NodeId, to: NodeId, pipe: Pipe) -> Edge {
-        Edge { id, from, to, pipe, extra: BTreeMap::new() }
+        Edge { id, from, to, pipe, from_point: None, to_point: None, extra: BTreeMap::new() }
     }
 }
 

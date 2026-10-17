@@ -1701,6 +1701,10 @@ mod tests {
         //            summary cut to a few words first. Under the ceiling, with 176 tokens to spare.
         //            `task-2280` added `run set` and `pane place`, each cut to one short sentence and one
         //            example, which keeps it under.
+        //   30,188   `task-2284` adding `realm shape` for the whiteboard shapes, with `realm add shape`
+        //            and the two points `realm connect` takes. Every summary was cut to one sentence
+        //            first; a command for a new kind of node cannot fit in the 176 tokens that were
+        //            left. The ceiling moves to 31,000.
         //
         // **The number being hard to hold is itself `task-1804` §4.2's finding**, and what
         // changed with it is that there is now an answer: `mcp serve --areas` equips an agent with
@@ -1708,7 +1712,7 @@ mod tests {
         // `editor,git` rather than 18,511 for all of it. This ceiling goes on saying when the
         // *default* has grown, which is what it is for; it is no longer the only lever there is.
         assert!(
-            grouped.len() / 4 < 30_000,
+            grouped.len() / 4 < 31_000,
             "grouped MCP schema exceeded budget: {} bytes",
             grouped.len()
         );
