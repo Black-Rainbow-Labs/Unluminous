@@ -276,3 +276,21 @@ fn an_action_on_two_menus_is_listed_with_the_chord_one_of_them_shows() {
     assert!(settings.default.is_some(), "{settings:?}");
     assert_eq!(settings.menu, "Edit");
 }
+
+/// No preset takes an Unluminous shortcut away by accident: every action whose chord a preset changes is
+/// named in the preset, `none` included. IntelliJ's `Ctrl+Shift+Plus` for Expand All once took Increase Font
+/// Size, because plus is the shifted `=` and the two are one key press.
+#[test]
+fn each_preset_takes_away_only_the_unluminous_shortcuts_it_means_to() {
+    for preset in [Preset::VsCode, Preset::IntelliJ] {
+        let table = table(preset, &[], bindables());
+        let mut lost: Vec<&str> = table
+            .rows
+            .iter()
+            .filter(|(_, binding)| binding.source == Source::Unluminous && binding.lost_to.is_some())
+            .map(|(name, _)| name.as_str())
+            .collect();
+        lost.sort_unstable();
+        assert!(lost.is_empty(), "{} takes these shortcuts away without naming them: {lost:?}", preset.name());
+    }
+}

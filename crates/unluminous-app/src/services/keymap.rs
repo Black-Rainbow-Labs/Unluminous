@@ -142,7 +142,8 @@ const INTELLIJ: &[Row] = &[
     row("toggle-maximised-pane", "Ctrl+Shift+F12", "Cmd+Shift+F12"),
     row("fold-toggle", "Ctrl+.", "Cmd+."),
     row("fold-all", "Ctrl+Shift+Minus", "Cmd+Shift+Minus"),
-    row("fold-none", "Ctrl+Shift+Plus", "Cmd+Shift+Plus"),
+    // No `fold-none`: IntelliJ's Expand All is `Ctrl+Shift` and the keypad's plus, and plus is the shifted
+    // `=`, so `Ctrl+Shift+Plus` is the same key press as `Ctrl+Plus` and took Increase Font Size away.
     row("run-start", "Shift+F10", "Ctrl+R"),
     row("run-stop", "Ctrl+F2", "Cmd+F2"),
     row("debug-start", "Shift+F9", "Ctrl+D"),

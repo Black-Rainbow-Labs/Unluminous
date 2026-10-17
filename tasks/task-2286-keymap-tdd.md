@@ -145,7 +145,6 @@ press, the row is absent.
 | `toggle-maximised-pane` | `Ctrl+Shift+F12` | `Cmd+Shift+F12` |
 | `fold-toggle` | `Ctrl+.` | `Cmd+.` |
 | `fold-all` | `Ctrl+Shift+Minus` | `Cmd+Shift+Minus` |
-| `fold-none` | `Ctrl+Shift+Plus` | `Cmd+Shift+Plus` |
 | `run-start` | `Shift+F10` | `Ctrl+R` |
 | `run-stop` | `Ctrl+F2` | `Cmd+F2` |
 | `debug-start` | `Shift+F9` | `Ctrl+D` |
@@ -163,6 +162,10 @@ press, the row is absent.
 | `redo` | `Ctrl+Shift+Z` | `Cmd+Shift+Z` |
 | `save` | `Ctrl+S` | `Cmd+S` |
 | `quit` | none | `Cmd+Q` |
+
+IntelliJ's Expand All is `Ctrl+Shift` and the keypad's plus. It is left out: plus is the shifted `=`, so
+`Ctrl+Shift+Plus` is the same key press as `Ctrl+Plus` and would take Increase Font Size away. A test
+checks that no preset takes an Unluminous shortcut away without naming that action itself.
 
 `git-show-diff` is none because IntelliJ's own Windows keymap puts `Ctrl+D` on both Duplicate and Compare,
 and leaves which one fires to the context. Unluminous has no context, so Duplicate keeps it.
