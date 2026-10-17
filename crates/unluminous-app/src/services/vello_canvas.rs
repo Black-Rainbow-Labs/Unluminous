@@ -462,9 +462,8 @@ impl Chrome {
     pub fn raised(&self, rect: Rect, radius: impl Into<Corners>, fill: Fill, lift: Lift) {
         let corners = radius.into();
         let radius = corners.representative();
-        let height = lift.height();
-        let weight = lift.weight();
         let tones = Tones::of(fill.representative());
+        let [contact, ambient, light] = elevation(fill.representative(), lift).shadows;
         // **The shadows are cut to the band around the shape**, which is what makes elevation affordable.
         // The surface is opaque and is painted over its own shadows, so every pixel of blur inside it is
         // computed and then thrown away; on a lane 328 by 812 that was a third of a million pixels of
@@ -474,27 +473,15 @@ impl Chrome {
         // the surface meets the ground; an ambient one, wide and faint, says how high it stands; and the pale
         // one up and to the left is the light. The old pair had only the soft half, at the strength the
         // contact half should have, so every surface was a blur with no edge.
-        self.push(Decor::Shadow {
-            rect: rect.translate(Vec2::new(0.0, 1.0)),
-            radius,
-            blur: 1.5,
-            colour: tones.contact.gamma_multiply(weight.min(1.2)),
-            inset: false,
-        });
-        self.push(Decor::Shadow {
-            rect: rect.translate(Vec2::new(height * 0.5, height)),
-            radius,
-            blur: height * 2.0,
-            colour: tones.ambient.gamma_multiply(weight),
-            inset: false,
-        });
-        self.push(Decor::Shadow {
-            rect: rect.translate(Vec2::splat(-height * 0.6)),
-            radius,
-            blur: height * 1.5,
-            colour: tones.light,
-            inset: false,
-        });
+        for layer in [contact, ambient, light] {
+            self.push(Decor::Shadow {
+                rect: rect.translate(layer.offset),
+                radius,
+                blur: layer.blur,
+                colour: layer.colour,
+                inset: false,
+            });
+        }
         self.push(Decor::Unclip);
         // A hairline round the surface on a light ground, where a white card on a pale grey ground has
         // too little contrast to be found otherwise: WCAG 2.2's 1.4.11 asks for 3 to 1 on the edge of a
@@ -632,6 +619,57 @@ impl Tones {
                 hairline: Some(Color32::from_rgba_unmultiplied(0x46, 0x52, 0x6A, 30)),
             },
         }
+    }
+}
+
+/// One shadow of a raised surface: how far it is moved from the surface, how blurred it is as a Gaussian
+/// standard deviation, and its colour. In screen points.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ShadowLayer {
+    pub offset: Vec2,
+    pub blur: f32,
+    pub colour: Color32,
+}
+
+/// Everything a raised surface is drawn with besides its own fill: its three shadows, the lit edge inside its
+/// top and left, and on a light ground the hairline round it.
+///
+/// **What [`Chrome::raised`] draws, as values**, for a surface whose outline is not a rounded rectangle and so
+/// cannot be one of [`Decor`]'s. A whiteboard shape (`task-2284`) is drawn from this so it has the same depth
+/// as every node beside it, and the numbers are written once, in [`Chrome::raised`]'s own order.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Elevation {
+    /// Contact, ambient and light, in the order they are painted.
+    pub shadows: [ShadowLayer; 3],
+    pub edge: Color32,
+    pub hairline: Option<Color32>,
+}
+
+/// The elevation a surface of colour `surface` raised by `lift` has.
+pub fn elevation(surface: Color32, lift: Lift) -> Elevation {
+    let height = lift.height();
+    let weight = lift.weight();
+    let tones = Tones::of(surface);
+    Elevation {
+        shadows: [
+            ShadowLayer {
+                offset: Vec2::new(0.0, 1.0),
+                blur: 1.5,
+                colour: tones.contact.gamma_multiply(weight.min(1.2)),
+            },
+            ShadowLayer {
+                offset: Vec2::new(height * 0.5, height),
+                blur: height * 2.0,
+                colour: tones.ambient.gamma_multiply(weight),
+            },
+            ShadowLayer {
+                offset: Vec2::splat(-height * 0.6),
+                blur: height * 1.5,
+                colour: tones.light,
+            },
+        ],
+        edge: tones.edge,
+        hairline: tones.hairline,
     }
 }
 

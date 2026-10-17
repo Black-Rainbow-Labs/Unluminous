@@ -6,10 +6,17 @@
 //! dark one down and to the right, an accent outline while it is chosen, its words, its eight grips while it
 //! is chosen, and a port at each point a wire can join it.
 //!
-//! **The shadows are drawn here rather than into the pane's decoration canvas.** That canvas draws rounded
-//! rectangles, and a diamond's shadow is a diamond. A shape's shadow is the outline itself, offset and
-//! feathered, painted under the fill in the same layer, so it is cut to the same clip and covered by the same
-//! nodes.
+//! **A shape is raised exactly as every other node is**: the same three shadows, the same lit edge inside its
+//! top and left, and on a light ground the same hairline, all read from `vello_canvas::elevation` with
+//! `Lift::Medium`, which is what `components::realm::frame` raises a node's card with. The numbers are in
+//! screen points there, so they are divided by the zoom here and a shape's shadow is the same width on the
+//! screen as a node's at any zoom.
+//!
+//! **What differs is how they are painted**, because the pane's decoration canvas draws blurred rounded
+//! rectangles and a diamond's shadow is a diamond. Each shadow is the outline moved by its offset and blurred
+//! by its standard deviation: a band of rings either side of the outline whose opacity follows the normal
+//! distribution, which is what a Gaussian blur of an edge is. They are painted under the fill in the shape's
+//! own layer.
 //!
 //! **Every colour comes from the theme as it is now**: `chrome_kit::chat()` is `rux::theme::Chat::lit_from` of
 //! the theme's ground, so a shape follows a theme change on the next frame, Unluminous Light included.
@@ -27,12 +34,9 @@ use crate::services::realm::shape::{self, Shape, ShapeKind};
 use crate::services::realm::{Node, NodeId};
 use crate::theme::color;
 
-/// How far the lit shadow sits up and to the left of a shape, and how soft it is, in world points.
-const LIT_OFFSET: f32 = -5.0;
-const LIT_BLUR: f32 = 7.0;
-/// How far the dark shadow sits down and to the right, and how soft it is.
-const DARK_OFFSET: f32 = 6.0;
-const DARK_BLUR: f32 = 8.0;
+/// Where the rings of a blurred edge are, in standard deviations from the edge, inside negative. The blur is
+/// all but complete two deviations in and two and a half out.
+const RINGS: [f32; 9] = [-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.5];
 /// How big a grip square is, in world points.
 const GRIP: f32 = 9.0;
 
@@ -253,18 +257,20 @@ pub fn paint(
     let kernel = shape::kernel(kind, rect);
     // A shape of a translucent colour casts a fainter shadow, which is what a CSS drop shadow does.
     let solid = fill.map(|fill| f32::from(fill.a) / 255.0).unwrap_or(1.0);
-    let offset =
-        |by: f32| -> Vec<Pos2> { outline.iter().map(|point| *point + Vec2::splat(by)).collect() };
-    let lit = chat.light.gamma_multiply(0.9 * solid);
-    let dark = chat.dark.gamma_multiply(0.95 * solid);
-    painter
-        .add(feathered(&offset(LIT_OFFSET), kernel + Vec2::splat(LIT_OFFSET), LIT_BLUR, |_| lit));
-    painter.add(feathered(
-        &offset(DARK_OFFSET),
-        kernel + Vec2::splat(DARK_OFFSET),
-        DARK_BLUR,
-        |_| dark,
-    ));
+    let surface = super::card_colour();
+    let raised = crate::services::vello_canvas::elevation(
+        surface,
+        crate::services::vello_canvas::Lift::Medium,
+    );
+    for layer in raised.shadows {
+        let by = layer.offset / scale;
+        let moved: Vec<Pos2> = outline.iter().map(|point| *point + by).collect();
+        let colour = layer.colour.gamma_multiply(solid);
+        painter.add(blurred(&moved, kernel + by, layer.blur / scale, colour));
+    }
+    if let Some(hairline) = raised.hairline {
+        painter.add(PathShape::closed_line(outline.clone(), Stroke::new(1.5 / scale, hairline)));
+    }
     // About one pixel of feathering on the fill's edge, which is what smooths it at any zoom.
     let edge = 1.0 / scale;
     match fill {
@@ -281,6 +287,7 @@ pub fn paint(
                 .add(feathered(&outline, kernel, edge, |at| sheen(base, chat.dark, from, to, at)));
         }
     }
+    lit_edge(painter, &outline, kernel, raised.edge, scale);
     if kind == ShapeKind::Sticky {
         let fold = shape::fold_of(rect);
         let corner = [
@@ -367,6 +374,92 @@ pub fn feathered(
         mesh.indices.extend_from_slice(&[next_inner, outer, next_outer]);
     }
     mesh
+}
+
+/// A polygon's edge blurred by a Gaussian of standard deviation `sigma`: full inside it, fading through half
+/// at the outline to nothing outside it, the way `fill_blurred_rounded_rect` fades a rectangle's.
+///
+/// Rings either side of the outline, moved along each corner's outward direction, at [`RINGS`] deviations,
+/// each at the opacity the normal distribution gives it. A ring moved inward is stopped short of the kernel,
+/// so the inner corners of a small star do not cross over.
+pub fn blurred(points: &[Pos2], kernel: Pos2, sigma: f32, colour: Color32) -> Mesh {
+    let mut mesh = Mesh::default();
+    let count = points.len();
+    if count < 3 {
+        return mesh;
+    }
+    let sigma = sigma.max(0.05);
+    let normals = outward_normals(points, kernel);
+    mesh.vertices.push(Vertex {
+        pos: kernel,
+        uv: WHITE_UV,
+        color: colour.gamma_multiply(outside_share(RINGS[0])),
+    });
+    for ring in RINGS {
+        let share = outside_share(ring);
+        for (point, normal) in points.iter().zip(&normals) {
+            let reach = ring * sigma;
+            let inward_room = (*point - kernel).length() * 0.9 / normal.length().max(1.0);
+            let reach = reach.max(-inward_room);
+            mesh.vertices.push(Vertex {
+                pos: *point + *normal * reach,
+                uv: WHITE_UV,
+                color: colour.gamma_multiply(share),
+            });
+        }
+    }
+    let count = count as u32;
+    for index in 0..count {
+        let next = (index + 1) % count;
+        mesh.indices.extend_from_slice(&[0, 1 + index, 1 + next]);
+        for ring in 0..RINGS.len() as u32 - 1 {
+            let (here, out) = (1 + ring * count, 1 + (ring + 1) * count);
+            mesh.indices.extend_from_slice(&[here + index, out + index, here + next]);
+            mesh.indices.extend_from_slice(&[here + next, out + index, out + next]);
+        }
+    }
+    mesh
+}
+
+/// How much of a Gaussian blurred edge is left `deviations` standard deviations outside it: one minus the
+/// normal distribution's cumulative share.
+fn outside_share(deviations: f32) -> f32 {
+    0.5 * (1.0 - error_function(deviations / std::f32::consts::SQRT_2))
+}
+
+/// The error function, by Abramowitz and Stegun's formula 7.1.26, which is good to about one part in a
+/// hundred thousand and far finer than a shadow's opacity is drawn in.
+fn error_function(x: f32) -> f32 {
+    let sign = x.signum();
+    let x = x.abs();
+    let t = 1.0 / (1.0 + 0.327_591_1 * x);
+    let poly = t
+        * (0.254_829_6
+            + t * (-0.284_496_74 + t * (1.421_413_7 + t * (-1.453_152 + t * 1.061_405_4))));
+    sign * (1.0 - poly * (-x * x).exp())
+}
+
+/// The lit edge inside a raised shape's top and left: a line of light one point in from each side that faces
+/// up or left, brightest where it faces the top left corner, which is `Chrome::raised`'s inset lit edge drawn
+/// along an outline that is not a rectangle.
+fn lit_edge(painter: &egui::Painter, outline: &[Pos2], kernel: Pos2, edge: Color32, scale: f32) {
+    let inset = 0.5 / scale;
+    for index in 0..outline.len() {
+        let (from, to) = (outline[index], outline[(index + 1) % outline.len()]);
+        let along = to - from;
+        let mut normal = Vec2::new(along.y, -along.x).normalized();
+        if normal.dot(from + along / 2.0 - kernel) < 0.0 {
+            normal = -normal;
+        }
+        let facing = (-(normal.x + normal.y) / std::f32::consts::SQRT_2).max(0.0);
+        if facing < 0.05 {
+            continue;
+        }
+        painter.line_segment(
+            [from - normal * inset, to - normal * inset],
+            Stroke::new(1.0 / scale, edge.gamma_multiply(facing)),
+        );
+    }
 }
 
 /// The direction out of a polygon at each of its corners: the two sides' outward normals averaged, and

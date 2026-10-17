@@ -4578,3 +4578,21 @@ fn a_shape_is_driven_from_the_command_line_and_comes_back_from_its_realm_file() 
     assert!(file.contains("from.point = 2"), "{file}");
     std::fs::remove_dir_all(&folder).ok();
 }
+
+/// Item 9, close up: a shape beside an ordinary node at a zoom of one, which is where their depth can be
+/// compared. A shape is raised with the same three shadows and the same lit edge as the node's card.
+#[test]
+fn a_shape_has_the_same_depth_as_the_node_beside_it() {
+    let mut harness = harness("");
+    did(&mut harness, "realm show");
+    let folder = did(&mut harness, "realm add folder --x 30 --y 30 --width 260 --height 200");
+    let folder = id_of(&folder);
+    did(&mut harness, "realm add shape rounded --x 340 --y 40 --text \"Ticket arrives\"");
+    did(&mut harness, "realm add shape diamond --x 340 --y 170 --text \"Needs a design?\"");
+    did(&mut harness, "realm add shape star --x 560 --y 60 --text Go");
+    did(&mut harness, "realm add shape triangle --x 560 --y 220 --text Risk");
+    did(&mut harness, &format!("realm focus {folder}"));
+    did(&mut harness, "realm camera --x 0 --y 0 --zoom 1");
+    steady(&mut harness);
+    harness.snapshot(shot("realm_shape_depth").as_str());
+}
