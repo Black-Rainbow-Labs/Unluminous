@@ -960,6 +960,14 @@ theme.comment = #6272A4
                 "fixtures the telemetry tests write into a temporary folder",
             ),
             (
+                "services/agent_chat/tests_task_2285.rs",
+                "a scripted agent and an older conversation file, written into a temporary folder",
+            ),
+            (
+                "services/agent_tasks/tests_task_2285.rs",
+                "fixtures the ticket resume test writes into a temporary folder",
+            ),
+            (
                 "app/git.rs",
                 "the commit message git itself is about to read and delete, in a folder git owns",
             ),

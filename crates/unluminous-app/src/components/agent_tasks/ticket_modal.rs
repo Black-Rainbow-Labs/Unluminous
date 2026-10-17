@@ -1337,7 +1337,7 @@ fn no_terminal(
     rux::components::chip_disc(rux, disc);
     terminal_mark(rux, disc.center(), theme.ink.i400);
     let resumable =
-        task.session_id.is_some() && crate::services::agent_tasks::agent::can_resume(task.assignee);
+        crate::services::agent_tasks::agent::can_resume(task.assignee, task.session_id.as_deref());
     let mut right = at.max.x - 14.0;
     if resumable {
         let button = rux::components::PillButton::new("Resume session");
@@ -1602,11 +1602,15 @@ fn field_column(
         let (label, command, icon) = match () {
             _ if attached => ("Stop", "stop", Icon::Pause),
             _ if task.session_id.is_none() => ("Start Work", "start", Icon::Play),
-            _ if crate::services::agent_tasks::agent::can_resume(task.assignee) => {
+            _ if crate::services::agent_tasks::agent::can_resume(
+                task.assignee,
+                task.session_id.as_deref(),
+            ) =>
+            {
                 ("Resume session", "resume", Icon::Play)
             }
-            // **`Start Work again`, not `Resume session`.** Codex names its own sessions, so the id on a Codex
-            // ticket is only Unluminous's marker that a worker was here and there is no conversation to hand back.
+            // **`Start Work again`, not `Resume session`.** Codex and OpenCode name their own sessions, and a
+            // ticket recorded with a marker from before `task-2285` has nothing that finds the one they chose.
             _ => ("Start Work again", "start", Icon::Play),
         };
         let at = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(width, 44.0));

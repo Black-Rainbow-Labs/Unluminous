@@ -287,6 +287,13 @@ pub struct Conversation {
     /// HTTP endpoint, which keeps no session of its own — there the transcript Unluminous holds *is* the
     /// context, and it is sent again every turn.
     pub session: String,
+    /// The provider whose agent gave [`Self::session`].
+    ///
+    /// **A session id means something to one agent only.** `provider` is whichever was asked last, so a
+    /// conversation started with Claude Code and carried on after the chooser was moved to Codex would hand
+    /// Codex Claude's id, and Codex refuses it. A turn resumes only when this is the provider being asked
+    /// (`task-2285`).
+    pub session_provider: String,
     pub usage: Usage,
     /// How many tokens of the model's context the conversation filled at the end of the last turn, and
     /// how large that context is when the agent named it. See `Reply::Context`. Written down with the
@@ -311,6 +318,7 @@ impl Conversation {
             messages: Vec::new(),
             provider: provider.into(),
             session: String::new(),
+            session_provider: String::new(),
             usage: Usage::default(),
             context_used: None,
             context_window: None,
@@ -364,6 +372,7 @@ impl Conversation {
             "name": self.display_name(),
             "provider": self.provider,
             "session": self.session,
+            "sessionProvider": self.session_provider,
             "changed": self.changed,
             "usage": { "input": self.usage.input, "output": self.usage.output },
             "messages": self.messages.iter().map(message_json).collect::<Vec<serde_json::Value>>(),

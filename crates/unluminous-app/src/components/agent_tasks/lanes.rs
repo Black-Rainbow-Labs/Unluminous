@@ -78,15 +78,22 @@ fn live_for(board: &AgentTasks, task: &Task) -> Live {
         // Start claims an unclaimed ticket. One that already has a session is resumed instead, and one
         // assigned to a person is handed to the configured agent — which is still a start, so it counts.
         //
-        // **And a Codex ticket whose process has gone can be started again.** Codex names its own sessions, so
-        // the id on the ticket is only Unluminous's marker that a worker was here and there is nothing to resume.
+        // **And a Codex or OpenCode ticket that cannot be resumed can be started again.** They name their own
+        // sessions, so a ticket recorded with a marker from before `task-2285` has nothing that finds the one
+        // they chose. A newer marker or the agent's own id is resumed instead. See `agent::can_resume`.
         can_start: task.session_id.is_none()
             || (!attached
-                && !crate::services::agent_tasks::agent::can_resume(task.assignee)
+                && !crate::services::agent_tasks::agent::can_resume(
+                    task.assignee,
+                    task.session_id.as_deref(),
+                )
                 && task.assignee.is_an_agent()),
         can_resume: !attached
             && task.session_id.is_some()
-            && crate::services::agent_tasks::agent::can_resume(task.assignee),
+            && crate::services::agent_tasks::agent::can_resume(
+                task.assignee,
+                task.session_id.as_deref(),
+            ),
     }
 }
 
@@ -616,14 +623,30 @@ mod tests {
 
     #[test]
     fn a_codex_ticket_whose_session_has_gone_can_be_started_again() {
-        // Codex names its own sessions, so the id on the ticket is only a marker that a worker was
-        // here once — there is nothing behind it to resume. See `agent::can_resume`.
+        // A marker Unluminous wrote before `task-2285` says only that a worker was here once, so there is
+        // nothing behind it to resume. See `agent::can_resume`.
         let board = AgentTasks::new();
-        let task = a_task(Some("codex-session"), Assignee::Codex);
+        let task = a_task(Some("0f9a1b2c-1234-4abc-8def-0123456789ab"), Assignee::Codex);
         assert!(
             live_for(&board, &task).can_start,
             "a dead Codex session can only be started afresh"
         );
+    }
+
+    #[test]
+    fn a_codex_or_opencode_ticket_with_its_own_session_offers_resume() {
+        // `task-2285`: the id the agent chose, or a marker that finds it, is resumed natively.
+        let board = AgentTasks::new();
+        for (session, agent) in [
+            ("pending-1789325868527-0f9a1b2c-1234-4abc-8def-0123456789ab", Assignee::Codex),
+            ("01a09c21-fdee-7863-b1fe-024b9b37474d", Assignee::Codex),
+            ("pending-1789325868527-0f9a1b2c-1234-4abc-8def-0123456789ab", Assignee::OpenCode),
+            ("ses_fb2c3309bffeDgOfAESYHtu5n3", Assignee::OpenCode),
+        ] {
+            let live = live_for(&board, &a_task(Some(session), agent));
+            assert!(live.can_resume, "{session}");
+            assert!(!live.can_start, "{session}");
+        }
     }
 
     #[test]

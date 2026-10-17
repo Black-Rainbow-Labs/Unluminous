@@ -22,6 +22,7 @@
 //! Unluminous with a socket in it.
 
 pub mod components;
+pub mod restore;
 pub mod store;
 pub mod tools;
 
@@ -790,6 +791,12 @@ pub struct AgentChat {
     pub ticket: Option<Box<SidePaneTicket>>,
     /// How many requests have been sent for the ticket, so each has an id of its own.
     ticket_requests: u64,
+    /// How the turn in flight, or the last one, started: `resume`, `fresh`, `replay` or `retried`. See
+    /// [`restore`]. `task-2285`.
+    restored: Option<&'static str>,
+    /// Whether the turn in flight resumed a session, so a refusal to resume it is asked again as a replay.
+    /// Cleared by that retry, so a turn is retried once at most.
+    may_retry_without_the_session: bool,
 }
 
 impl std::fmt::Debug for AgentChat {
@@ -838,6 +845,8 @@ impl AgentChat {
             readiness_taken: None,
             ticket: None,
             ticket_requests: 0,
+            restored: None,
+            may_retry_without_the_session: false,
             shapes: Vec::new(),
             shapes_taken: None,
         }
@@ -1563,10 +1572,24 @@ impl AgentChat {
         let newest =
             self.session.chat.messages.iter().rev().find(|message| message.role == Role::User);
         let said = newest.map(Message::text).unwrap_or_default();
-        let session = self.session.chat.session.clone();
-        let prompt = match session.is_empty() {
-            true => format!("{}\n\n{said}", self.what_the_agent_should_know()),
-            false => said,
+        // **Resume when the agent has this conversation, and replay it only when it does not**
+        // (`task-2285`). See `restore` for the three cases.
+        let decided = restore::decide(&self.session.chat, &self.session.chat.provider);
+        self.restored = Some(decided.name());
+        self.may_retry_without_the_session = matches!(decided, restore::Restore::Resume(_));
+        let (session, prompt) = match &decided {
+            restore::Restore::Resume(session) => (session.clone(), said),
+            restore::Restore::Fresh => {
+                (String::new(), format!("{}\n\n{said}", self.what_the_agent_should_know()))
+            }
+            restore::Restore::Replay => (
+                String::new(),
+                format!(
+                    "{}\n\n{}\n\n{said}",
+                    self.what_the_agent_should_know(),
+                    restore::replay(&self.session.chat)
+                ),
+            ),
         };
         // **Written to files, because both agents take a picture by path.** The pane holds one as
         // bytes so that a conversation reopened after the file moved still shows what was sent; an
@@ -1699,7 +1722,28 @@ impl AgentChat {
     fn take_the_replies(&mut self) -> bool {
         let replies = self.client.take();
         let anything = !replies.is_empty();
+        let mut ask_again = false;
         for reply in replies {
+            // **An agent that no longer has the session is asked again with the conversation written out**
+            // (`task-2285`). All three refuse before calling a model, so this costs nothing, and it happens
+            // once: the retry clears the flag, so a second refusal is reported like any failure.
+            if let unluminous_chat::Reply::Failed(why) = &reply {
+                let nothing_said_yet = self
+                    .session
+                    .chat
+                    .last()
+                    .is_none_or(|last| last.role == Role::User || !last.has_content());
+                if self.may_retry_without_the_session
+                    && nothing_said_yet
+                    && unluminous_chat::agent::refused_to_resume(why)
+                {
+                    self.may_retry_without_the_session = false;
+                    self.session.chat.session.clear();
+                    self.session.chat.session_provider.clear();
+                    ask_again = true;
+                    continue;
+                }
+            }
             // **A turn that failed raises a notice**, so the reason is on the screen rather than only in
             // the message's own `failure`. `task-1848` reported the server's own `HTTP 500: the current
             // context does not logits computation` as something that had to be found by reading the
@@ -1718,6 +1762,12 @@ impl AgentChat {
         }
         if anything {
             self.session.chat.changed = store::seconds_now();
+        }
+        if ask_again {
+            if let Some(provider) = self.provider().cloned() {
+                self.dispatch(&provider);
+                self.restored = Some("retried");
+            }
         }
         // **A command-line agent runs its own tools, so Unluminous runs none of them.** Measured against
         // a real `claude`: it asked for `Grep` and `Read`, which are its own tools and are not in
@@ -2192,6 +2242,10 @@ impl UiProvider for AgentChat {
                 // How many questions are waiting their turn behind this answer. `task-2060`.
                 "queued": self.queued.len(),
                 "problem": self.problem,
+                // How the turn started: `resume`, `fresh`, `replay`, or `retried` after the agent refused to
+                // resume (`task-2285`).
+                "restore": self.restored,
+                "session": self.session.chat.session,
             }))),
             "messages" => Ok(
                 Answer::said(format!("{} messages", self.session.chat.messages.len()))
@@ -3251,3 +3305,6 @@ mod tests_task_2261 {
         assert!(!chat.session().is_busy());
     }
 }
+
+#[cfg(test)]
+mod tests_task_2285;

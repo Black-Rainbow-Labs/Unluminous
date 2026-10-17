@@ -723,13 +723,21 @@ impl Decoder {
                 });
                 // **An error is the agent's own words**, which is `unluminous-git`'s rule: it explains
                 // itself better than Unluminous could.
+                //
+                // Claude Code leaves `result` empty for an error it hit before the model was asked, such as
+                // a session it does not have, and puts its words in `errors` instead (`task-2285`).
+                let errors = value["errors"]
+                    .as_array()
+                    .map(|all| all.iter().filter_map(|one| one.as_str()).collect::<Vec<_>>().join("\n"))
+                    .unwrap_or_default();
                 match value["is_error"].as_bool().unwrap_or(false) {
                     true => out.push(Reply::Failed(
                         value["result"]
                             .as_str()
                             .filter(|said| !said.is_empty())
-                            .unwrap_or("the agent stopped with an error.")
-                            .to_owned(),
+                            .map(str::to_owned)
+                            .or_else(|| Some(errors).filter(|said| !said.is_empty()))
+                            .unwrap_or_else(|| "the agent stopped with an error.".to_owned()),
                     )),
                     false => out.push(Reply::Finished {
                         reason: value["subtype"].as_str().unwrap_or("stop").to_owned(),
@@ -942,9 +950,15 @@ impl Decoder {
                 }
                 out
             }
-            "error" => vec![Reply::Failed(
-                item["message"].as_str().unwrap_or("the agent reported an error.").to_owned(),
-            )],
+            // **An error item is a warning, and the turn goes on.** codex-cli 0.153.4 writes one on every turn
+            // on a machine with many skills ("Skill descriptions were shortened to fit the skills context
+            // budget"), followed by the answer and `turn.completed`. Read as a failure it marked every Codex
+            // turn failed (`task-2285`). A turn that really fails ends with `turn.failed` or a top level
+            // `error`, which are failures above. So the warning is shown with the agent's thinking.
+            "error" if completed => match item["message"].as_str().map(str::trim) {
+                Some(said) if !said.is_empty() => vec![Reply::Thinking(format!("{said}\n"))],
+                _ => Vec::new(),
+            },
             _ => Vec::new(),
         }
     }
@@ -1013,6 +1027,23 @@ pub(crate) fn text_of(value: &serde_json::Value) -> String {
         serde_json::Value::Null => String::new(),
         other => other.to_string(),
     }
+}
+
+/// Whether an agent's failure says it does not have the session it was asked to resume.
+///
+/// Measured on Claude Code 2.1.302, codex-cli 0.153.4 and OpenCode 1.18.32 by asking each to resume an id
+/// it had never issued. All three refuse before any model is called, so recognising the refusal and asking
+/// again without the id costs nothing (`task-2285`):
+///
+/// - Claude Code: `No conversation found with session ID: <id>`, in its `result` line's `errors`.
+/// - Codex: `thread/resume failed: no rollout found for thread id <id>`, on standard error.
+/// - OpenCode: `Error: Session not found`, on standard error.
+pub fn refused_to_resume(words: &str) -> bool {
+    let words = words.to_lowercase();
+    words.contains("no conversation found with session id")
+        || words.contains("no rollout found for thread id")
+        || (words.contains("thread/resume") && words.contains("not found"))
+        || words.contains("session not found")
 }
 
 /// The session an agent gave for this conversation, so the next turn carries on rather than starting
@@ -1499,7 +1530,7 @@ mod tests {
         assert!(provider.headers(&here).iter().all(|(name, _)| name == "content-type"));
     }
 
-    fn feed(decoder: &mut Decoder, lines: &[&str]) -> Vec<Reply> {
+    pub(super) fn feed(decoder: &mut Decoder, lines: &[&str]) -> Vec<Reply> {
         let mut out = Vec::new();
         for line in lines {
             out.extend(decoder.line(line));
@@ -1586,5 +1617,66 @@ mod only_the_new_part {
             replies.last(),
             Some(&Reply::Context { used: Some(76002), window: Some(1_000_000) })
         );
+    }
+
+    #[test]
+    fn a_session_claude_code_does_not_have_is_reported_in_its_own_words() {
+        // The line Claude Code 2.1.302 printed for `--resume` with an id it never issued: `result` is absent
+        // and the reason is in `errors` (`task-2285`).
+        let mut decoder = Decoder::new(Wire::ClaudeCli);
+        let replies = super::tests::feed(
+            &mut decoder,
+            &[
+                r#"{"type":"result","subtype":"error_during_execution","is_error":true,"num_turns":0,"session_id":"1111","usage":{"input_tokens":0,"output_tokens":0},"errors":["No conversation found with session ID: 1111"]}"#,
+            ],
+        );
+        let failed = replies.iter().find_map(|reply| match reply {
+            Reply::Failed(why) => Some(why.clone()),
+            _ => None,
+        });
+        assert_eq!(failed.as_deref(), Some("No conversation found with session ID: 1111"));
+        assert!(refused_to_resume(&failed.unwrap_or_default()));
+    }
+
+    #[test]
+    fn each_agents_refusal_to_resume_is_recognised_and_nothing_else_is() {
+        // Recorded from the three agents on this machine, asked to resume an id they never issued.
+        for refusal in [
+            "No conversation found with session ID: 11111111-2222-3333-4444-555555555555",
+            "codex stopped with exit code: 1.\n\nError: thread/resume: thread/resume failed: no rollout found for thread id 01a00000-0000-7000-8000-000000000000 (code -32600)",
+            "opencode stopped with exit code: 1.\n\n\u{1b}[91m\u{1b}[1mError: \u{1b}[0mSession not found",
+        ] {
+            assert!(refused_to_resume(refusal), "{refusal}");
+        }
+        for other in [
+            "HTTP 500: the server is overloaded",
+            "claude could not be started: program not found",
+            "the agent stopped without finishing its answer.",
+            "Error: file not found",
+        ] {
+            assert!(!refused_to_resume(other), "{other}");
+        }
+    }
+
+    #[test]
+    fn a_codex_error_item_is_a_warning_and_the_turn_still_finishes() {
+        // The lines codex-cli 0.153.4 wrote for one ordinary turn on this machine (`task-2285`).
+        let mut decoder = Decoder::new(Wire::CodexCli);
+        let replies = super::tests::feed(
+            &mut decoder,
+            &[
+                r#"{"type":"thread.started","thread_id":"01a148bb-16b6-7223-838d-4ace4749305b"}"#,
+                r#"{"type":"turn.started"}"#,
+                r#"{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Skill descriptions were shortened to fit the skills context budget."}}"#,
+                r#"{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"OK"}}"#,
+                r#"{"type":"turn.completed","usage":{"input_tokens":28697,"cached_input_tokens":17152,"output_tokens":5}}"#,
+            ],
+        );
+        assert!(!replies.iter().any(|reply| matches!(reply, Reply::Failed(_))), "{replies:?}");
+        assert!(replies.contains(&Reply::Text("OK".to_owned())), "{replies:?}");
+        assert!(replies.iter().any(
+            |reply| matches!(reply, Reply::Thinking(said) if said.contains("Skill descriptions"))
+        ));
+        assert!(replies.iter().any(|reply| matches!(reply, Reply::Finished { .. })));
     }
 }

@@ -214,6 +214,10 @@ fn to_json(chat: &Conversation) -> serde_json::Value {
         "changed": chat.changed,
         "usage": { "input": chat.usage.input, "output": chat.usage.output },
         "context": { "used": chat.context_used, "window": chat.context_window },
+        // **The agent's own session, and which agent gave it**, so the first question after a restart
+        // resumes that conversation natively instead of starting the agent again with none of it.
+        // Missing until `task-2285`, which is the whole of what that ticket reported.
+        "session": { "id": chat.session, "provider": chat.session_provider },
         "messages": chat.messages.iter().map(|message| serde_json::json!({
             "id": message.id,
             "role": message.role.wire_name(),
@@ -259,6 +263,8 @@ fn from_json(id: &str, value: &serde_json::Value) -> Conversation {
     };
     chat.context_used = value["context"]["used"].as_u64();
     chat.context_window = value["context"]["window"].as_u64();
+    chat.session = value["session"]["id"].as_str().unwrap_or_default().to_owned();
+    chat.session_provider = value["session"]["provider"].as_str().unwrap_or_default().to_owned();
     for one in value["messages"].as_array().map(Vec::as_slice).unwrap_or_default() {
         let role = match one["role"].as_str() {
             Some("user") => Role::User,
@@ -348,6 +354,37 @@ mod tests {
         assert_eq!(read.messages[1].thinking, "looking");
         assert_eq!(read.messages[1].tools[0].answer.as_deref(), Some("clean"));
         assert_eq!(read.messages[1].tools[0].took, Some(12));
+    }
+
+    #[test]
+    fn the_agents_session_and_the_agent_it_belongs_to_come_back_after_a_restart() {
+        // `task-2285`: the session id was never written, so the first question after a restart started the
+        // agent again with none of the conversation on the screen.
+        let store = Store::at(Some(a_folder("session")));
+        let mut chat = Conversation::new(store.new_id(), "Claude Code");
+        chat.push(Message::said(1, Role::User, "Remember the word teal."));
+        chat.session = "29611139-4d2a-495a-b9a9-94a6189e509c".to_owned();
+        chat.session_provider = "Claude Code".to_owned();
+        store.write(&chat).expect("written");
+        let read = store.read(&chat.id).expect("read back");
+        assert_eq!(read.session, chat.session);
+        assert_eq!(read.session_provider, "Claude Code");
+    }
+
+    #[test]
+    fn a_conversation_written_before_sessions_were_kept_opens_with_none() {
+        let store = Store::at(Some(a_folder("no-session")));
+        let inside = store.folder().expect("a folder").to_path_buf();
+        std::fs::create_dir_all(&inside).expect("the conversations folder");
+        std::fs::write(
+            inside.join("c-1.json"),
+            r#"{"version":1,"name":"Old","provider":"Claude Code","messages":[{"id":1,"role":"user","parts":[{"type":"text","text":"hi"}]}]}"#,
+        )
+        .expect("written");
+        let read = store.read("c-1").expect("read back");
+        assert!(read.session.is_empty());
+        assert!(read.session_provider.is_empty());
+        assert_eq!(read.messages.len(), 1);
     }
 
     #[test]

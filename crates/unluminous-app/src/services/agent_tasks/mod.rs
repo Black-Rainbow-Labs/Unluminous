@@ -34,6 +34,7 @@ pub mod db;
 pub mod folder_trust;
 pub mod keychain;
 pub mod model;
+pub mod native_session;
 pub mod screen_choice;
 pub mod store;
 pub mod ticket_chat;
@@ -1054,6 +1055,51 @@ impl AgentTasks {
         }
     }
 
+    /// The session id a ticket's agent answers to, or `None` when there is none to hand back.
+    ///
+    /// A Claude ticket's recorded id is the one Claude was started with. Codex and OpenCode choose their own,
+    /// so a ticket of theirs carries a `pending-` marker until the session is found in the agent's own
+    /// records (`native_session`), and the id found is then written to the ticket so it is looked up once.
+    /// `task-2285`.
+    fn native_session_for(&mut self, task: &Task, agent: Assignee) -> Option<String> {
+        let recorded = task.session_id.clone()?;
+        let found = match agent {
+            Assignee::Claude => return Some(recorded),
+            Assignee::Human => return None,
+            Assignee::Codex => {
+                let home = native_session::codex_home()?;
+                if native_session::codex_knows(&home, &recorded) {
+                    return Some(recorded);
+                }
+                let folder = self.working_folder(task).ok()?;
+                // An older marker carries no time, and the ticket key in the first message is enough on its own.
+                native_session::codex_thread(
+                    &home,
+                    &folder,
+                    &task.key,
+                    native_session::started_at(&recorded),
+                )?
+            }
+            Assignee::OpenCode => {
+                let data = native_session::opencode_data()?;
+                if recorded.starts_with("ses_") && native_session::opencode_knows(&data, &recorded)
+                {
+                    return Some(recorded);
+                }
+                let folder = self.working_folder(task).ok()?;
+                native_session::opencode_session(
+                    &data,
+                    &folder,
+                    native_session::started_at(&recorded)?,
+                )?
+            }
+        };
+        if let Ok(store) = self.store() {
+            let _ = store.set_session(task.id, &found, &clock::now());
+        }
+        Some(found)
+    }
+
     /// Start an agent on a ticket and hand it over.
     ///
     /// The claim is a guarded update, so two callers pressing start on one card do not both get it. The
@@ -1076,14 +1122,24 @@ impl AgentTasks {
         if self.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running()) {
             return Err(format!("{key} already has an agent running"));
         }
-        // A ticket whose agent has exited can be started again, and for a Codex ticket that is the **only** way
-        // on: Codex names its own sessions, so its recorded id is Unluminous's marker and Resume refuses it. Refusing
-        // Start as well left such a ticket trapped between two refusals with nothing to press.
+        // A ticket whose agent has exited can be started again, and for a Codex or OpenCode ticket whose session
+        // cannot be found that is the **only** way on, because Resume refuses it. Refusing Start as well left such
+        // a ticket trapped between two refusals with nothing to press.
         //
-        // For Claude, Start on a ticket that has a session hands the same conversation back rather than
-        // beginning a second one, because the id is one Claude answers to and losing it would lose the work.
-        let resuming = task.session_id.is_some() && agent::can_resume(agent);
-        let session = task.session_id.clone().filter(|_| resuming).unwrap_or_else(new_session_id);
+        // Start on a ticket that has a session hands the same conversation back rather than beginning a second
+        // one, because losing it would lose the work. For Codex and OpenCode that is the session found in the
+        // agent's own records (`task-2285`); when none is found, a new conversation begins as it always did.
+        let native = match task.session_id.is_some() {
+            true => self.native_session_for(&task, agent),
+            false => None,
+        };
+        let resuming = native.is_some();
+        let session = native.unwrap_or_else(|| match agent {
+            Assignee::Claude => new_session_id(),
+            // Codex and OpenCode name their own sessions, so the ticket carries a marker with the time it
+            // started, which is what finds the session they chose when the ticket is resumed.
+            _ => native_session::pending_marker(&new_session_id()),
+        });
         self.terminals
             .retain(|terminal| terminal.task_id != task.id || terminal.session.is_running());
         let plan = self.plan_for(&task, agent, endpoint.as_deref(), session.clone(), resuming);
@@ -1125,7 +1181,7 @@ impl AgentTasks {
             "task": key,
             "agent": agent.name(),
             "session": session,
-            "resuming": false,
+            "resuming": resuming,
             "folder": folder.display().to_string(),
             "command": launch.line(),
         })))
@@ -1281,15 +1337,15 @@ impl AgentTasks {
             true => task.assignee,
             false => return Err(format!("{key} is assigned to a person, so there is no session")),
         };
-        // Codex names its own sessions, so the id on a Codex ticket is Unluminous's marker that a worker was
-        // here and means nothing to Codex. Starting a fresh agent and calling it a resumed one would be
-        // the one outcome every check on this board exists to prevent.
-        if !agent::can_resume(agent) {
-            return Err(agent::why_it_cannot_resume(key));
+        if task.session_id.is_none() {
+            return Err(format!("{key} has never had a session, so there is nothing to resume"));
         }
-        let session = task.session_id.clone().ok_or_else(|| {
-            format!("{key} has never had a session, so there is nothing to resume")
-        })?;
+        // Codex and OpenCode name their own sessions, so the id they answer to is found in their own records
+        // (`task-2285`). Starting a fresh agent and calling it a resumed one would be the one outcome every
+        // check on this board exists to prevent, so a session that cannot be found is refused.
+        let session = self
+            .native_session_for(&task, agent)
+            .ok_or_else(|| agent::why_it_cannot_resume(agent, key))?;
         // A terminal object that is **running**, not merely one that is there. A retired session leaves its object
         // behind so its last screen can still be read, and refusing on that meant a Claude ticket whose agent had
         // exited could not be resumed at all — which is the one thing Resume session exists for.
@@ -1323,9 +1379,10 @@ impl AgentTasks {
     /// Type a line into a ticket's agent, starting one first when none is running.
     ///
     /// Typing at a process that has exited writes to nothing, and the comment would look sent, so an agent is
-    /// brought up first. A Claude ticket that still has its session is resumed, which keeps its lane, as
-    /// `Resume session` does. Any other ticket is started: one the watchdog moved back to New for inactivity
-    /// has had its session cleared, and a Codex or OpenCode ticket cannot be resumed at all.
+    /// brought up first. A ticket that still has its session is resumed, which keeps its lane, as
+    /// `Resume session` does; for Codex and OpenCode that is the session found in the agent's own records
+    /// (`task-2285`), and a ticket whose session cannot be found is started instead. Any other ticket is
+    /// started: one the watchdog moved back to New for inactivity has had its session cleared.
     ///
     /// `task-2268`: *"a task got moved back to new due to inactivity. I then added a comment and sent to
     /// terminal ... It should wake/start the agent."* It used to call `resume` only, so that send was refused
@@ -1337,12 +1394,22 @@ impl AgentTasks {
         let alive =
             self.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());
         if !alive {
-            let resumable = task.session_id.is_some()
-                && task.assignee.is_an_agent()
-                && agent::can_resume(task.assignee);
+            let resumable = task.assignee.is_an_agent()
+                && agent::can_resume(task.assignee, task.session_id.as_deref());
             match resumable {
-                true => self.resume(key)?,
-                false => self.start(key)?,
+                // A Codex or OpenCode ticket whose session cannot be found in the agent's own records is
+                // started instead, which is what Send did for those tickets before `task-2285`.
+                true if task.assignee != Assignee::Claude => {
+                    if self.resume(key).is_err() {
+                        self.start(key)?;
+                    }
+                }
+                true => {
+                    self.resume(key)?;
+                }
+                false => {
+                    self.start(key)?;
+                }
             };
         }
         let terminal = self
@@ -3152,3 +3219,6 @@ mod tests_task_28 {
         assert!(refused.contains("board"), "the refusal lists the commands: {refused}");
     }
 }
+
+#[cfg(test)]
+mod tests_task_2285;

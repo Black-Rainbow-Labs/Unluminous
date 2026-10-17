@@ -227,9 +227,8 @@ fn claude(plan: &Plan) -> Result<Launch, String> {
 ///
 /// **Codex has no way to be told what to call a new session, and Claude does.** `codex --help` offers no
 /// `--session-id`; a session gets an id from Codex and `codex resume <id>` takes it back. So a first run
-/// names nothing and [`can_resume`] says that a Codex ticket cannot be resumed by an id Unluminous chose. The
-/// board being replaced solves this by reading the rollout id Codex wrote after the launch, and doing the
-/// same here is its own piece of work — §10 of `tasks/agent-tasks-plugin-tdd.md` records it.
+/// names nothing, the ticket is recorded with a `pending-` marker, and the id Codex chose is found in its own
+/// records when the ticket is resumed (`native_session`, `task-2285`).
 ///
 /// `resume` is a subcommand, so it comes **first**, before the flags. `codex --model x resume <id>` is
 /// accepted by clap as well, but a command line a person reads should be in the order its own help
@@ -261,35 +260,63 @@ fn codex(plan: &Plan) -> Result<Launch, String> {
 /// `--auto` approves what its configuration has not refused, for the reason Claude is given
 /// `--dangerously-skip-permissions`: nobody is watching the terminal to answer. Its effort is a model
 /// variant rather than a level, so the ticket's effort is not passed. **Like Codex, it names its own
-/// sessions**, so a ticket's id is Unluminous's marker and [`can_resume`] is false for it.
+/// sessions**, so a first run names nothing and a resumed one is `--session <id>` with the id found in
+/// OpenCode's own records (`native_session`, `task-2285`).
 fn opencode(plan: &Plan) -> Result<Launch, String> {
     let (program, mut arguments) = command(plan, &["opencode", "--auto"])?;
     if let Some(model) = &plan.model {
         arguments.push("--model".to_owned());
         arguments.push(model.clone());
     }
+    if plan.resuming {
+        arguments.push("--session".to_owned());
+        arguments.push(plan.session.clone());
+    }
     Ok(Launch { program, arguments })
 }
 
-/// Whether a ticket's recorded session can be handed back to its agent.
+/// Whether a ticket's recorded session can be handed back to its agent, read from the id alone so the card
+/// and the ticket modal can ask it every frame without opening a database.
 ///
-/// **True for Claude and false for Codex**, and the difference is not a preference: Claude takes
-/// `--session-id <uuid>` on a first run, so the id in the ticket is one Claude will answer to, and Codex
-/// assigns its own, so the id in the ticket is Unluminous's own marker and means nothing to Codex.
-///
-/// The marker is still written for a Codex ticket, because the watchdog's whole question is whether a card
-/// has a worker at all. What it cannot do is name a conversation, so `Resume session` on a Codex ticket
-/// refuses with a sentence rather than starting a fresh agent that looks like a resumed one.
-pub fn can_resume(agent: Assignee) -> bool {
-    matches!(agent, Assignee::Claude)
+/// Claude takes `--session-id <uuid>` on a first run, so any id on a Claude ticket is one it answers to.
+/// Codex and OpenCode choose their own ids. Since `task-2285` such a ticket is recorded with a `pending-`
+/// marker carrying the time it started, and the id the agent chose is found in its own records when the
+/// ticket is resumed, then written in place of the marker. So for those two an id is resumable when it is a
+/// marker of that kind or one the agent issued: for OpenCode that is `ses_…`, and for Codex anything that is
+/// not one of the markers Unluminous wrote before, which have its own UUID shape (`is_an_older_marker`).
+pub fn can_resume(agent: Assignee, session: Option<&str>) -> bool {
+    let Some(session) = session.map(str::trim).filter(|one| !one.is_empty()) else {
+        return false;
+    };
+    let pending = session.starts_with(super::native_session::PENDING);
+    match agent {
+        Assignee::Claude => true,
+        Assignee::Codex => pending || !is_an_older_marker(session),
+        Assignee::OpenCode => pending || session.starts_with("ses_"),
+        Assignee::Human => false,
+    }
 }
 
-/// Why a Codex ticket cannot be resumed, in the words a person reads in the status bar.
-pub fn why_it_cannot_resume(key: &str) -> String {
+/// Whether an id is one `new_session_id` made, which for a Codex ticket before `task-2285` was only
+/// Unluminous's marker. That generator writes the version digit `4` and the variant digit `8`; the ids Codex
+/// issues are version 7.
+fn is_an_older_marker(session: &str) -> bool {
+    let parts: Vec<&str> = session.split('-').collect();
+    parts.len() == 5
+        && [8, 4, 4, 4, 12].iter().zip(&parts).all(|(length, part)| {
+            part.len() == *length && part.chars().all(|one| one.is_ascii_hexdigit())
+        })
+        && parts[2].starts_with('4')
+        && parts[3].starts_with('8')
+}
+
+/// Why a Codex or OpenCode ticket cannot be resumed, in the words a person reads in the status bar.
+pub fn why_it_cannot_resume(agent: Assignee, key: &str) -> String {
     format!(
-        "{key} is Codex's, and Codex names its own sessions rather than taking one, so the id on the ticket \
-         is only Unluminous's marker that a worker was here. Starting it again begins a new conversation: press \
-         Start rather than Resume session, and the ticket's comments are what the new one reads."
+        "{key}'s conversation could not be found in {}'s own sessions: it names its own sessions, so Unluminous \
+         looks for the one started in this ticket's folder when the ticket was started, and there is none. \
+         Press Start Work again to begin a new conversation; the ticket's comments are what the new one reads.",
+        agent.name()
     )
 }
 
@@ -489,10 +516,14 @@ mod tests {
         // id has nothing to resume: `Resume session` refuses it and tells the person to press Start. The card and
         // the modal used to read only whether an id was there, so such a ticket offered `Resume session` alone and
         // that button could only fail. Both now ask this question instead.
-        assert!(!can_resume(Assignee::Codex), "Codex cannot be handed a session id");
-        assert!(can_resume(Assignee::Claude), "Claude can");
-        let refusal = why_it_cannot_resume("task-7");
-        assert!(refusal.contains("press Start"), "the refusal names Start: {refusal}");
+        let older = "0f9a1b2c-1234-4abc-8def-0123456789ab";
+        assert!(
+            !can_resume(Assignee::Codex, Some(older)),
+            "an older marker means nothing to Codex"
+        );
+        assert!(can_resume(Assignee::Claude, Some(older)), "Claude can");
+        let refusal = why_it_cannot_resume(Assignee::Codex, "task-7");
+        assert!(refusal.contains("Start Work again"), "the refusal names Start: {refusal}");
     }
 
     #[test]
@@ -633,16 +664,35 @@ mod tests {
     }
 
     #[test]
-    fn only_claude_can_be_handed_its_conversation_back() {
-        // Claude takes `--session-id`, so the id on the ticket is one it will answer to. Codex assigns its
-        // own, so the id on the ticket is Unluminous's marker that a worker was here and nothing more.
-        assert!(can_resume(Assignee::Claude));
-        assert!(!can_resume(Assignee::Codex));
-        assert!(!can_resume(Assignee::Human));
-        let said = why_it_cannot_resume("task-27");
+    fn which_recorded_ids_each_agent_can_be_handed_back() {
+        // `task-2285`. Claude answers to the id Unluminous chose. Codex and OpenCode answer to the ids they
+        // chose, which are found behind a `pending-` marker when the ticket is resumed.
+        let older = "0f9a1b2c-1234-4abc-8def-0123456789ab";
+        let pending = "pending-1789325868527-0f9a1b2c-1234-4abc-8def-0123456789ab";
+        let codex = "01a09c21-fdee-7863-b1fe-024b9b37474d";
+        assert!(can_resume(Assignee::Claude, Some(older)));
+        assert!(!can_resume(Assignee::Claude, None));
+        assert!(!can_resume(Assignee::Codex, Some(older)));
+        assert!(can_resume(Assignee::Codex, Some(pending)));
+        assert!(can_resume(Assignee::Codex, Some(codex)));
+        assert!(!can_resume(Assignee::OpenCode, Some(older)));
+        assert!(can_resume(Assignee::OpenCode, Some(pending)));
+        assert!(can_resume(Assignee::OpenCode, Some("ses_fb2c3309bffeDgOfAESYHtu5n3")));
+        assert!(!can_resume(Assignee::Human, Some(older)));
+        let said = why_it_cannot_resume(Assignee::OpenCode, "task-27");
         assert!(said.contains("task-27"));
         assert!(said.contains("names its own sessions"), "{said}");
         assert!(said.contains("Start"), "it says what to press instead: {said}");
+    }
+
+    #[test]
+    fn opencode_is_resumed_with_its_own_session() {
+        let mut asked = plan(Assignee::OpenCode);
+        asked.session = "ses_abc".to_owned();
+        assert!(!launch(&asked).expect("a launch").arguments.contains(&"--session".to_owned()));
+        asked.resuming = true;
+        let line = launch(&asked).expect("a launch").arguments;
+        assert!(line.windows(2).any(|pair| pair == ["--session", "ses_abc"]), "{line:?}");
     }
 
     #[test]

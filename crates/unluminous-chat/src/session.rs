@@ -183,7 +183,12 @@ impl Session {
             }
             // **The agent's own session, kept on the conversation**, so a second question carries
             // the first one on rather than starting the agent again with no memory of it.
-            Reply::Session(session) => self.chat.session = session,
+            //
+            // The provider it came from is kept beside it, because the id means nothing to any other agent.
+            Reply::Session(session) => {
+                self.chat.session = session;
+                self.chat.session_provider = self.chat.provider.clone();
+            }
             // **A tool the agent ran itself.** Unluminous did not run it and has nothing to send back: it
             // is filled in on the call that is already showing, which is what turns the running block
             // in the pane into a finished one. A call this conversation has never heard of is

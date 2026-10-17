@@ -638,6 +638,36 @@ runs inside a frame and a command that blocked would stop the window drawing for
 model's answer, which is the sentence `unluminous_git::Worker` exists for; `state` says when it has
 finished, which is the shape `run start` and `run output` already have.
 
+### A conversation is carried on by the agent's own session after a restart (`task-2285`)
+
+`tasks/task-2285-agent-chat-restoration-tdd.md` is the design. The session id was never written to the
+conversation file, so the first question after a restart started a new agent session that had seen none of
+the messages on the screen. Four rules:
+
+- **The session id and the provider it came from are written with the conversation** (`"session": { "id",
+  "provider" }` in the store). `Conversation::session_provider` is set when `Reply::Session` arrives, and a
+  session is only handed to the provider that gave it.
+- **A turn resumes natively when it can and replays only when it cannot.** `services::agent_chat::restore`
+  decides `resume` (only the newest message, with `--resume`, `exec resume` or `--session`), `fresh`, or
+  `replay`: the earlier messages written out once in front of the question, keeping the newest up to
+  `REPLAY_LIMIT`, for a conversation no session of this agent holds. `plugins run agent-chat state` says which
+  as `restore`.
+- **A refused resume is retried once as a replay.** All three agents refuse an unknown session before any model
+  is called; `unluminous_chat::agent::refused_to_resume` knows their three sentences. A second refusal is an
+  ordinary failure.
+- **A Codex or OpenCode ticket resumes the session its agent chose.** Such a ticket is recorded as
+  `pending-<ms>-<id>`, and `services::agent_tasks::native_session` finds the session read only in Codex's
+  `state_<n>.sqlite` (by folder, start time and the ticket key in the first message) or OpenCode's
+  `opencode.db` (by folder and the earliest session since the start), then writes it to the ticket.
+  `UNLUMINOUS_CODEX_HOME` and `UNLUMINOUS_OPENCODE_DATA` are the seams. `agent::can_resume` reads the id alone,
+  because the card asks it every frame.
+
+The live tests run the real agents and are `#[ignore]`: `cargo test -p unluminous-app --lib live_restore --
+--ignored --nocapture --test-threads=1`. They were run once for `task-2285`; run them again only when the
+resume path or an agent's output changes. A Codex `error` item is a warning and is shown with the thinking:
+codex-cli 0.153.4 writes one on every turn on a machine with many skills, and reading it as a failure marked
+every Codex turn failed.
+
 ### The endpoints are one list, in `Settings -> AI Configuration` (`task-2247`)
 
 *"The goal is to have the configurations for keys, urls, cli, etc in one place, and then for Agent Chat, Agent
