@@ -1854,6 +1854,7 @@ impl UnluminousApp {
                 .map(|run| run.name().to_owned())
                 .collect();
             let mut dialog = std::mem::take(&mut self.run_dialog);
+            dialog.root = self.tree.root().to_path_buf();
             let outcome =
                 run_dialog::show(ui.ctx(), &mut dialog, &mut self.run_configurations, &running);
             self.run_dialog = dialog;

@@ -897,6 +897,16 @@ fn the_run_configurations_dialog_lists_them_on_the_left_and_edits_one_on_the_rig
     harness.get_by_label("Add");
     harness.get_by_label("Remove");
     harness.get_by_label("Done");
+    // `task-2282`: the field shows the full path of the folder, and what is stored stays relative.
+    let root = harness.state().tree.root().to_path_buf();
+    let shown = harness.get_by_label("Run configuration directory").value().unwrap_or_default();
+    assert_eq!(
+        std::path::Path::new(&shown),
+        root.join("backend"),
+        "the folder's full path: {shown}"
+    );
+    let stored = &harness.state().run_configurations.find("Dev server").expect("it").1.directory;
+    assert_eq!(stored, "backend", "stored relative to the project");
     harness.snapshot(shot("run_dialog"));
 
     // Add makes one with a name nothing else has, and chooses it.
@@ -904,6 +914,12 @@ fn the_run_configurations_dialog_lists_them_on_the_left_and_edits_one_on_the_rig
     steady(&mut harness);
     assert_eq!(harness.state().run_dialog.chosen.as_deref(), Some("Unnamed"));
     assert_eq!(harness.state().run_configurations.permanent().len(), 3);
+
+    // A configuration that runs in the project itself shows the project's full path, not an empty box.
+    harness.state_mut().run_dialog.chosen = Some("cargo run".to_owned());
+    steady(&mut harness);
+    let shown = harness.get_by_label("Run configuration directory").value().unwrap_or_default();
+    assert_eq!(std::path::Path::new(&shown), root, "the project's own folder: {shown}");
 
     // Done shuts it.
     harness.get_by_label("Done").click();

@@ -1153,10 +1153,12 @@ pub fn install_fonts(
     let mut fonts = egui::FontDefinitions::default();
     let mut bold_stack = Vec::new();
     if let Some(bytes) = bold {
+        let bytes = centred_in_its_row(bytes);
         fonts.font_data.insert("unluminous-ui-bold".to_owned(), std::sync::Arc::new(bytes));
         bold_stack.push("unluminous-ui-bold".to_owned());
     }
     if let Some(bytes) = regular {
+        let bytes = centred_in_its_row(bytes);
         fonts.font_data.insert("unluminous-ui".to_owned(), std::sync::Arc::new(bytes));
         if let Some(list) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
             list.insert(0, "unluminous-ui".to_owned());
@@ -1177,6 +1179,39 @@ pub fn install_fonts(
     name_the_rux_families(&mut fonts, &bold_stack);
     let _ = family;
     ctx.set_fonts(fonts);
+}
+
+/// A face moved down inside its row so that its capitals sit in the middle of the row (`task-2282`).
+///
+/// egui puts a line's baseline at the face's ascent and makes the row the ascent, the descent and the line
+/// gap tall, so all of a face's leading is below its letters and its capitals sit above the middle of the
+/// row. A text box's caret is the whole row, so the words beside it lined up with the caret's top rather than
+/// its middle; and a word centred on its row's height sat above the middle of the pill or menu row it was in.
+/// The shift is worked out from the face's own measurements, because the interface font is the person's
+/// choice, and is never more than a fifth of an em. Text centred on its measured capitals, which is what
+/// `crisp::top_centring_capitals` does, measures the moved glyphs and stays where it was.
+///
+/// @param data - the face as it was read
+pub fn centred_in_its_row(mut data: egui::FontData) -> egui::FontData {
+    data.tweak.y_offset_factor = capital_shift(&data.font, data.index).unwrap_or(0.0);
+    data
+}
+
+/// How far to move a face's glyphs down, as a fraction of an em, to put the middle of its capitals at the
+/// middle of the row egui lays it out in. Nothing when the face cannot be read or has no `H`.
+///
+/// @param bytes - the font file
+/// @param index - which face in it
+pub fn capital_shift(bytes: &[u8], index: u32) -> Option<f32> {
+    use ab_glyph::Font as _;
+    let font = ab_glyph::FontRef::try_from_slice_and_index(bytes, index).ok()?;
+    let em = font.units_per_em()?;
+    let ascent = font.ascent_unscaled();
+    let row = ascent - font.descent_unscaled() + font.line_gap_unscaled();
+    let capital = font.outline(font.glyph_id('H'))?.bounds;
+    let height = (capital.max.y - capital.min.y).abs();
+    let shift = row / 2.0 - (ascent - height / 2.0);
+    Some((shift / em).clamp(0.0, 0.2))
 }
 
 /// Bind the seven family names `rux` sets its text in to the faces Unluminous already has.
@@ -1266,6 +1301,26 @@ pub fn file_marker(path: &std::path::Path) -> Color32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `task-2282`: a face's capitals end up in the middle of the row egui lays it out in, so the words in
+    /// a text box sit in the middle of the caret. Measured on a face egui ships, so it needs no fonts from
+    /// the machine.
+    #[test]
+    fn a_face_is_moved_down_until_its_capitals_are_in_the_middle_of_its_row() {
+        use ab_glyph::Font as _;
+        let defaults = egui::FontDefinitions::default();
+        let face = defaults.font_data.values().next().expect("egui ships a face");
+        let shift = capital_shift(&face.font, face.index).expect("the face has an H");
+        assert!(shift > 0.0 && shift <= 0.2, "a small downward shift: {shift}");
+        let font = ab_glyph::FontRef::try_from_slice_and_index(&face.font, face.index).unwrap();
+        let em = font.units_per_em().unwrap();
+        let ascent = font.ascent_unscaled() / em;
+        let row = ascent - font.descent_unscaled() / em + font.line_gap_unscaled() / em;
+        let capital = font.outline(font.glyph_id('H')).unwrap().bounds;
+        let height = (capital.max.y - capital.min.y).abs() / em;
+        let middle = ascent + shift - height / 2.0;
+        assert!((middle - row / 2.0).abs() < 0.01, "capitals centred: {middle} in a row of {row}");
+    }
 
     /// The test that makes the 689-site rewrite safe: every colour Unluminous shipped with, still there.
     #[test]

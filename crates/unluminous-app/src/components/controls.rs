@@ -1441,12 +1441,11 @@ fn submenu(ui: &mut egui::Ui, name: &str, entries: &[Entry], indent: f32) -> Opt
     let left = rect.left() + 10.0 + indent;
     let font = egui::FontId::proportional(12.5);
     let (shown, _) = elide_in(ui, name, &font, (rect.right() - 30.0 - left - 26.0).max(0.0));
+    // By its capitals, as the bar's own words are (`task-2282`): centring the line's height put the words
+    // above the middle of the row, which showed once a hovered row's highlight was drawn round them.
+    let top = crate::theme::crisp::top_centring_capitals(painter, &font, rect.center().y);
     let label = painter.crisp_layout_no_wrap(shown, font, tint);
-    painter.crisp_galley(
-        Pos2::new(left + 26.0, rect.center().y - label.size().y / 2.0),
-        label,
-        tint,
-    );
+    painter.crisp_galley(Pos2::new(left + 26.0, top), label, tint);
     // `M3.8 2.5L6.3 5 3.8 7.5` on a ten unit box: the chevron, in the sky colour while the list is open.
     let chevron = Pos2::new(rect.right() - 14.0, rect.center().y);
     let colour = if open { chat.sky } else { ink.i400 };
@@ -1525,14 +1524,13 @@ pub fn menu_row(
     // The quiet column first, because the name is cut to whatever room it leaves. `task-2229`.
     let mut name_right = rect.right() - 12.0;
     if !shortcut.is_empty() {
-        let keys = painter.crisp_layout_no_wrap(
-            shortcut.to_owned(),
-            egui::FontId::proportional(11.5),
-            ink.i400,
-        );
+        let keys_font = egui::FontId::proportional(11.5);
+        let keys_top =
+            crate::theme::crisp::top_centring_capitals(painter, &keys_font, rect.center().y);
+        let keys = painter.crisp_layout_no_wrap(shortcut.to_owned(), keys_font, ink.i400);
         name_right = rect.right() - 12.0 - keys.size().x - 12.0;
         painter.crisp_galley(
-            Pos2::new(rect.right() - 12.0 - keys.size().x, rect.center().y - keys.size().y / 2.0),
+            Pos2::new(rect.right() - 12.0 - keys.size().x, keys_top),
             keys,
             ink.i400,
         );

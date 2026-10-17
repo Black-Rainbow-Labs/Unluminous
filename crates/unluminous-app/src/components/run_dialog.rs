@@ -60,6 +60,12 @@ pub struct RunDialog {
     pub env_for: Option<String>,
     /// The row whose key field takes focus on the next frame, which is the one `Add variable` made.
     pub focus_row: Option<usize>,
+    /// The project folder, which a relative `Directory` is read against so the field can show where it
+    /// really is. The window sets it before the dialog is drawn.
+    pub root: std::path::PathBuf,
+    /// What is in the `Directory` field while somebody is typing in it. Kept apart from the stored value so
+    /// a path half typed is not turned into another form under the caret.
+    pub directory_typing: Option<String>,
 }
 
 impl RunDialog {
@@ -334,8 +340,7 @@ fn draw_fields(
     pen = text_row(ui, column, pen, name, &mut configuration.name, false, outcome);
     let command = ("Command", "Run configuration command");
     pen = text_row(ui, column, pen, command, &mut configuration.command, false, outcome);
-    let directory = ("Directory", "Run configuration directory");
-    pen = text_row(ui, column, pen, directory, &mut configuration.directory, true, outcome);
+    pen = directory_row(ui, column, pen, dialog, &mut configuration.directory, outcome);
     pen = draw_environment(ui, column, pen, dialog, configuration, outcome);
     draw_notes(ui, column, pen)
 }
@@ -370,6 +375,60 @@ fn text_row(
         }
     }
     pen + 36.0
+}
+
+/// The `Directory` row: the field, showing the absolute path of the folder the command runs in, and the
+/// folder button after it (`task-2282`).
+///
+/// What is stored is unchanged: a folder inside the project is kept relative to it, and the project itself
+/// as nothing, which is what lets a project move. The field shows where that really is, the project
+/// included, rather than an empty box or a relative path. While somebody types in it, the field holds
+/// exactly what they typed; an absolute path inside the project is stored relative to it, and a relative
+/// one is stored as it was typed. Once the field lets go of the keyboard it shows the absolute path again.
+fn directory_row(
+    ui: &mut egui::Ui,
+    column: Rect,
+    pen: f32,
+    dialog: &mut RunDialog,
+    stored: &mut String,
+    outcome: &mut DialogOutcome,
+) -> f32 {
+    let row = Rect::from_min_size(Pos2::new(column.left(), pen), Vec2::new(column.width(), 26.0));
+    modal::label(ui.painter(), row, row.left(), "Directory", color::text_control(), 12.5);
+    let field = Rect::from_min_size(
+        Pos2::new(row.left() + LABEL_WIDTH, row.top()),
+        Vec2::new((row.width() - LABEL_WIDTH - 32.0).max(120.0), 26.0),
+    );
+    let mut shown = dialog.directory_typing.clone().unwrap_or_else(|| {
+        let folder = run_configurations::resolve_directory(&dialog.root, stored);
+        unluminous_terminal::paths::plain(&folder).display().to_string()
+    });
+    let response = modal::field(ui, field, "Run configuration directory", &mut shown);
+    if response.changed() {
+        *stored = stored_directory(&dialog.root, &shown);
+        outcome.changed = true;
+    }
+    dialog.directory_typing = response.has_focus().then_some(shown);
+    let button = Rect::from_min_size(Pos2::new(field.right() + 6.0, row.top()), Vec2::splat(26.0));
+    let draw = crate::theme::icon::folder;
+    if crate::components::controls::icon_button(ui, button, CHOOSE_DIRECTORY, draw) {
+        outcome.browse_directory = true;
+    }
+    pen + 36.0
+}
+
+/// What the `Directory` field's text is stored as: nothing for nothing, an absolute path the way a folder
+/// chosen in the picker is, and anything else as it was typed.
+///
+/// @param root - the project folder
+/// @param typed - what is in the field
+pub fn stored_directory(root: &std::path::Path, typed: &str) -> String {
+    let typed = typed.trim();
+    let path = std::path::Path::new(typed);
+    match !typed.is_empty() && path.is_absolute() {
+        true => run_configurations::directory_for_choice(root, path),
+        false => typed.to_owned(),
+    }
 }
 
 /// The `Environment` table: a key field and a value field per variable, a delete button on each
@@ -456,8 +515,8 @@ fn draw_notes(ui: &mut egui::Ui, column: Rect, pen: f32) -> f32 {
         column,
         pen + 4.0,
         "The command is one line: the first word is the program and the rest are its arguments. \
-         The directory is relative to the project, and empty means the project itself. A folder \
-         chosen inside the project is stored relative to it. A variable with no key is dropped.",
+         The directory is shown as the full path of the folder the command runs in. A folder inside \
+         the project is stored relative to it, so the project can move. A variable with no key is dropped.",
     );
     modal::note(
         ui,
