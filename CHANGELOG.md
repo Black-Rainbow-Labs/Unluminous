@@ -6,12 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.95.0 — 2026-10-17
 
 - Whiteboard shape nodes on the Realm (`task-2284`)
 - Raise shapes with the same three shadows and lit edge as every node (`task-2284`)
 - Shapes are glass under Unluminous Glass (`task-2284`)
 - The glass cover's black through from_black_alpha (`task-2284`)
+- The changelog for the whiteboard shapes (`task-2284`)
 
 ## 0.94.1 — 2026-10-16
 
