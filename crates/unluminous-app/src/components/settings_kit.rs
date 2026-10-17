@@ -953,9 +953,10 @@ pub fn button(rux: &mut Rux<'_>, rect: Rect, label: &str, kind: Kind) -> bool {
             false => theme.ink.i500,
         },
     };
-    // Handed less than `button_width`, the words end with `…` inside the button rather than running
-    // out of both of its sides (`task-2282`).
-    let room = (rect.width() - 30.0).max(0.0);
+    // Words that would reach the button's edge end with `…` a little inside it, rather than running out
+    // of both of its sides (`task-2282`). Callers often hand a button less than `button_width`'s full
+    // padding and their words fit, so only the edge itself is the limit.
+    let room = (rect.width() - 12.0).max(0.0);
     let mut galley = rux.text(Style::sans(12.0).medium(), label, ink);
     if galley.size().x > room + 1.0 {
         galley = rux.elided(Style::sans(12.0).medium(), label, ink, room);
