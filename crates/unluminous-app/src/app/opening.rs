@@ -144,6 +144,24 @@ impl UnluminousApp {
         permanent: bool,
         as_text: bool,
     ) -> Result<(), String> {
+        let opened = self.open_path_without_showing_the_editing_area(path, permanent, as_text);
+        if opened.is_ok() {
+            self.show_the_editing_area_for_a_tab();
+        }
+        opened
+    }
+
+    /// Open a file into a tab and leave the editing area as it is.
+    ///
+    /// What a canvas node opens a file through: the tab is moved onto the node straight afterwards, so
+    /// bringing a hidden editing area back for it showed an empty editing area beside the canvas.
+    /// `task-2294`.
+    pub(crate) fn open_path_without_showing_the_editing_area(
+        &mut self,
+        path: &Path,
+        permanent: bool,
+        as_text: bool,
+    ) -> Result<(), String> {
         let opened = self.load_a_path_into_a_tab(path, permanent, as_text);
         if opened.is_ok() {
             // The kind of file, from `file_kind`'s closed list, and never its name. `task-2271`.
@@ -151,9 +169,6 @@ impl UnluminousApp {
                 crate::services::telemetry::Category::File,
                 crate::services::file_kind::kind_name(Some(path)),
             );
-        }
-        if opened.is_ok() {
-            self.show_the_editing_area_for_a_tab();
         }
         opened
     }

@@ -631,6 +631,22 @@ fn designer_composer() {
     harness.snapshot(shot("designer_composer").as_str());
 }
 
+/// The note being written on an element with every style that goes with a note: the card is as tall as the rows
+/// what goes with it wraps to, and the buttons are under the last row rather than over it. `task-2294`.
+#[test]
+fn designer_composer_every_style() {
+    let mut harness = the_busy_tab("unluminous-designer-shot-composer-every-style");
+    let mut element = a_chosen_element();
+    element["styles"] = serde_json::json!({ "font-family": "Inter", "font-size": "62px",
+        "color": "rgb(20, 20, 20)", "padding": "12px", "margin": "0px" });
+    the_page_reports(
+        &mut harness,
+        serde_json::json!([{ "kind": "comment", "element": element, "fx": 1.0, "fy": 0.0 }]),
+    );
+    steady(&mut harness);
+    harness.snapshot(shot("designer_composer_every_style").as_str());
+}
+
 /// The blank tab beside the design's tab: the list of designs the pane opens one from.
 #[test]
 fn designer_pane() {

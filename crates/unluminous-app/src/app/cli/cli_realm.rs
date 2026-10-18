@@ -1342,29 +1342,16 @@ impl UnluminousApp {
                 let Some(path) = self.cli_path_argument(request, "path") else {
                     return no(request, code::USAGE, "Say which file, with --path.");
                 };
-                // **The same rule a double click keeps**: into a wired File Editor node when there is one,
-                // and into the editing area when there is not. One function, so the pointer and the agent
-                // cannot come to different answers. `task-1905`.
-                let wired = self.realm.realm.reaches(node).into_iter().find(|other| {
-                    self.realm.realm.node(*other).is_some_and(|found| found.kind() == Kind::Editor)
-                });
-                match wired {
-                    Some(editor) => match self.open_in_a_realm_node(editor, &path) {
-                        Ok(()) => ok(
-                            request,
-                            format!("Opened {} in node {editor}.", path.display()),
-                            json!({ "node": editor, "path": path.to_string_lossy() }),
-                        ),
-                        Err(problem) => no(request, code::FAILED, problem),
-                    },
-                    None => match self.open_path_permanently(&path) {
-                        Ok(()) => ok(
-                            request,
-                            format!("Opened {} in the editing area.", path.display()),
-                            json!({ "node": Value::Null, "path": path.to_string_lossy() }),
-                        ),
-                        Err(problem) => no(request, code::FAILED, problem),
-                    },
+                // **The same function a click and a double click call**: into a wired File Editor node,
+                // made beside this one when there is none. One function, so the pointer and the agent
+                // cannot come to different answers. `task-1905`, `task-2294`.
+                match self.open_from_a_folder_node(node, &path) {
+                    Ok(editor) => ok(
+                        request,
+                        format!("Opened {} in node {editor}.", path.display()),
+                        json!({ "node": editor, "path": path.to_string_lossy() }),
+                    ),
+                    Err(problem) => no(request, code::FAILED, problem),
                 }
             }
             "root" => {

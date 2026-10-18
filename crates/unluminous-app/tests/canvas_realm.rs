@@ -1238,10 +1238,12 @@ fn a_tab_is_dragged_between_a_node_and_a_pane() {
     assert!(harness.state().files.iter().any(|file| file.home.pane().is_some()));
 }
 
-/// A double click in a folder node opens the file in a wired File Editor node, making one if there is none.
+/// A click or a double click in a folder node opens the file in a wired File Editor node, making one if there
+/// is none, and leaves the editing area alone.
 ///
 /// `task-1905`: *"If I double click a file, it should open a file view node and connect it, if one isn't
-/// already open, or open a new tab in the connected file view node."*
+/// already open, or open a new tab in the connected file view node."* `task-2294`: *"when I click or double
+/// click a file, it should only open the file in the applicable realm node."*
 #[test]
 fn a_double_click_in_a_folder_node_opens_a_wired_editor_node() {
     use unluminous_app::services::realm::Kind;
@@ -1249,17 +1251,20 @@ fn a_double_click_in_a_folder_node_opens_a_wired_editor_node() {
     let mut harness = harness("");
     did(&mut harness, "realm show");
     let tree = did(&mut harness, "realm add folder --x 40 --y 40")["node"].as_u64().expect("id");
+    harness.state_mut().editor_visible = false;
     steady(&mut harness);
+    let tabs_in_panes = |harness: &Harness<'_, UnluminousApp>| {
+        harness.state().files.iter().filter(|file| file.home.pane().is_some()).count()
+    };
+    let before = tabs_in_panes(&harness);
 
-    // Nothing is wired, so `realm folder open` — which is what the double click reaches — makes an editor
-    // node beside it and wires it.
+    // Nothing is wired, so `realm folder open`, which is what a click reaches, makes an editor node beside it
+    // and wires it.
     let answer = did(&mut harness, &format!("realm folder {tree} open --path readme.md"));
     steady(&mut harness);
-    // With no editor node wired the file goes to the editing area, which is the single click's own answer;
-    // the double click is what makes one. So drive the node's own path.
-    assert!(answer["path"].as_str().is_some());
-    harness.state_mut().open_from_a_folder_node_for_a_test(tree, &folder.join("readme.md"));
-    steady(&mut harness);
+    assert!(answer["node"].as_u64().is_some(), "{answer}");
+    assert!(!harness.state().editor_visible, "the editing area stays hidden");
+    assert_eq!(tabs_in_panes(&harness), before, "and gains no tab");
 
     let made = harness
         .state()

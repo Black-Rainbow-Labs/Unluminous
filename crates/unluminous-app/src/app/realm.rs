@@ -1665,17 +1665,14 @@ impl UnluminousApp {
             self.realm.realm.choose(Some(node.id));
             self.take_the_keyboard_for_the_realm();
         }
-        // **A double click opens a wired File Editor node; a single click opens into the editing area.**
+        // **A click or a double click opens the file in a wired File Editor node, and nowhere else.**
         // `task-1905`: *"If I double click a file, it should open a file view node and connect it, if one
-        // isn't already open, or open a new tab in the connected file view node."*
-        //
-        // The split is the panel's own: a single click there is a way of looking through a folder, so a
-        // preview belongs in the editing area, and a double click is what says "I mean this one". That is
-        // why the report asks for a double click rather than a click.
-        if let Some(path) = outcome.open_permanently {
-            self.open_from_a_folder_node(node.id, &path);
-        } else if let Some(path) = outcome.open {
-            let _ = self.open_path_permanently(&path);
+        // isn't already open, or open a new tab in the connected file view node."* A single click used to
+        // open the file in the editing area, which brought a hidden editing area back beside the canvas;
+        // `task-2294`: *"when I click or double click a file, it should only open the file in the
+        // applicable realm node."*
+        if let Some(path) = outcome.open_permanently.or(outcome.open) {
+            let _ = self.open_from_a_folder_node(node.id, &path);
         }
         // **A row carried out of a Folder node may be meant for the canvas.** `task-1914`: *"I should be
         // able to drag a file onto the canvas to have it open into a new file editor node. Or if I drag to
@@ -1699,14 +1696,22 @@ impl UnluminousApp {
     /// **One wired already and the file joins its tabs; none and one is made beside this node and wired.**
     /// Made *beside* means to the right of the folder node with a gap, so the wire is visible rather than
     /// crossing the node that drew it. `task-1905`.
-    fn open_from_a_folder_node(&mut self, from: NodeId, path: &std::path::Path) {
+    ///
+    /// Answers the File Editor node the file went to, so `realm folder <node> open` can say which.
+    pub(crate) fn open_from_a_folder_node(
+        &mut self,
+        from: NodeId,
+        path: &std::path::Path,
+    ) -> Result<NodeId, String> {
         let wired = self.realm.realm.reaches(from).into_iter().find(|other| {
             self.realm.realm.node(*other).is_some_and(|node| node.kind() == Kind::Editor)
         });
         let editor = match wired {
             Some(editor) => editor,
             None => {
-                let Some(found) = self.realm.realm.node(from).cloned() else { return };
+                let Some(found) = self.realm.realm.node(from).cloned() else {
+                    return Err(format!("There is no node {from}."));
+                };
                 let at = Pos2::new(found.rect().right() + 60.0, found.at.y);
                 let made = self.add_a_realm_node(Kind::Editor, at);
                 if let Err(problem) = self.realm.realm.connect(from, made, Pipe::Off) {
@@ -1715,8 +1720,12 @@ impl UnluminousApp {
                 made
             }
         };
-        if let Err(problem) = self.open_in_a_realm_node(editor, path) {
-            self.message = Some(problem);
+        match self.open_in_a_realm_node(editor, path) {
+            Ok(()) => Ok(editor),
+            Err(problem) => {
+                self.message = Some(problem.clone());
+                Err(problem)
+            }
         }
     }
 
@@ -1726,7 +1735,7 @@ impl UnluminousApp {
     /// contents are drawn into a transformed sublayer, so a press at the rectangle the accessibility tree
     /// reports lands where the widget in the layer's own coordinates is not.
     pub fn open_from_a_folder_node_for_a_test(&mut self, from: NodeId, path: &std::path::Path) {
-        self.open_from_a_folder_node(from, path);
+        let _ = self.open_from_a_folder_node(from, path);
     }
 
     /// An Agent-Chat node: the whole chat pane, with a conversation of this node's own.
@@ -3133,8 +3142,9 @@ impl UnluminousApp {
             return Ok(());
         }
         // **The one place a file is opened**, so a node's editor and the editing area's read a file
-        // the same way, refuse it the same way, and answer the same thing when they cannot.
-        self.open_path_permanently(path)?;
+        // the same way, refuse it the same way, and answer the same thing when they cannot. It does not
+        // bring the editing area back, because the tab is about to leave it. `task-2294`.
+        self.open_path_without_showing_the_editing_area(path, true, false)?;
         let Some(index) = self.files.index_of(path) else {
             return Err(format!("{} did not open.", path.display()));
         };

@@ -154,7 +154,11 @@ fn a_new_design_is_the_starter_page_and_a_name_that_exists_or_holds_a_slash_is_r
     let made = library::make(&project, folder, "Landing Page", Starter::House).expect("made");
     assert_eq!(made, PathBuf::from(".designs/Landing Page.html"));
     let text = std::fs::read_to_string(project.join(&made)).expect("read");
-    assert!(text.contains(">Design</h1>") && text.contains("--accent"), "the house starter");
+    assert!(text.contains(">Design</h1>"), "the house starter");
+    // Only the picture and the word: no navigation, no cards and no footer (`task-2294`).
+    for gone in ["<nav", "class=\"card\"", "<footer", "class=\"intro\""] {
+        assert!(!text.contains(gone), "the house starter still has {gone}");
+    }
     // Its picture is written beside it, at the address its stylesheet names (`task-2293`).
     assert!(text.contains(library::HOUSE_BACKGROUND_PATH));
     let picture = project.join(".designs").join(library::HOUSE_BACKGROUND_PATH);
@@ -747,6 +751,22 @@ fn a_loaded_document_is_told_the_mode_the_pins_and_the_choice_again() {
     assert!(calls.contains(&super::PageCall::Select("h1".to_owned())));
     assert!(matches!(calls.last(), Some(super::PageCall::SetPins(pins)) if pins.len() == 1));
     assert!(designer.take_calls(&design).is_empty(), "and only once");
+}
+
+#[test]
+fn going_back_to_browse_puts_the_chosen_element_away() {
+    let (mut designer, _project, design) = with_a_design("back-to-browse");
+    designer.set_mode(&design, Mode::Comment).unwrap();
+    designer
+        .page_reported(&design, Report::Comment { element: an_element("h1"), fx: 0.5, fy: 0.5 });
+    assert!(designer.design_view(&design).unwrap().selection.is_some());
+    designer.take_calls(&design);
+    designer.set_mode(&design, Mode::Browse).unwrap();
+    let view = designer.design_view(&design).unwrap();
+    assert!(view.selection.is_none(), "no element is chosen in Browse (task-2294)");
+    assert!(view.composing.is_none());
+    let calls = designer.take_calls(&design);
+    assert_eq!(calls, [super::PageCall::SetMode(Mode::Browse), super::PageCall::Clear]);
 }
 
 #[test]

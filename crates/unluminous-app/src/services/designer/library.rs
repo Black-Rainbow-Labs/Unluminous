@@ -11,7 +11,8 @@ use std::path::{Component, Path, PathBuf};
 
 use super::config::{slashed, Starter};
 
-/// The starter page, in the house style: a header, a hero, three feature cards, a pricing row and a footer.
+/// The starter page, in the house style: the hand picture filling the page and the word DESIGN over it, and
+/// nothing else (`task-2294`).
 pub const HOUSE_STARTER: &str = include_str!("starter.html");
 
 /// The picture the house starter is drawn on (`task-2293`), and where in the designs folder it is written, which

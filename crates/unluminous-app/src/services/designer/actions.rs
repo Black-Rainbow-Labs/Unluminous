@@ -30,12 +30,22 @@ impl Designer {
 
     /// Choose what a click in the page does.
     ///
+    /// **Going back to Browse puts the chosen element away**, and the note being written on it with it:
+    /// Browse is for using the page, and an outline left on an element from Comment read as something still
+    /// chosen. `task-2294`: *"When I go to comment tab, then back to Browse, no components should be
+    /// selected."*
+    ///
     /// @param design - the design, relative to the project
     /// @param mode - the mode
     pub fn set_mode(&mut self, design: &Path, mode: Mode) -> Result<(), String> {
         let view = self.loaded(design)?;
         view.mode = mode;
         view.calls.push(PageCall::SetMode(mode));
+        if mode == Mode::Browse {
+            view.selection = None;
+            view.composing = None;
+            view.calls.push(PageCall::Clear);
+        }
         Ok(())
     }
 

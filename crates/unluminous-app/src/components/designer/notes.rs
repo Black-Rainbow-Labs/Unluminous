@@ -36,8 +36,14 @@ const BLOCK_RADIUS: f32 = 16.0;
 const BUTTON: f32 = 30.0;
 const DISC: f32 = 24.0;
 const REPLY: f32 = 40.0;
-/// How tall the note being written is: its header, a text area, the list of what goes with it, and its buttons.
-const COMPOSER: f32 = 318.0;
+/// How tall the note being written is above the list of what goes with it: its padding, its header, its text
+/// area and the label over the list.
+const COMPOSER_TOP: f32 = PAD_Y + 40.0 + 104.0 + 12.0 + 20.0;
+/// How tall it is under that list: the room above the buttons, the buttons and the padding.
+const COMPOSER_FOOT: f32 = 14.0 + 38.0 + PAD_Y;
+/// How tall one chip of what goes with the note is, and the room between two rows of them.
+const CHIP: f32 = 24.0;
+const CHIP_ROW: f32 = 30.0;
 /// The type size of a note's words.
 const WORDS: f32 = 12.5;
 
@@ -85,7 +91,7 @@ struct Facts {
 /// How tall one thing in the column is, and what it is.
 enum Block {
     Element(f32),
-    Composer,
+    Composer(f32),
     Thread(usize, f32),
 }
 
@@ -161,7 +167,7 @@ fn what_goes_with(
     };
     named("font-family", "font", &mut goes);
     named("font-size", "size", &mut goes);
-    named("color", "colour", &mut goes);
+    named("color", "color", &mut goes);
     named("padding", "padding", &mut goes);
     named("margin", "margin", &mut goes);
     goes
@@ -301,8 +307,8 @@ fn the_column(
     if let Some(chosen) = facts.chosen.as_ref().filter(|_| facts.composing.is_none()) {
         blocks.push(Block::Element(element_height(ui, chosen, width, scale)));
     }
-    if facts.composing.is_some() {
-        blocks.push(Block::Composer);
+    if let Some((_, _, goes)) = facts.composing.as_ref() {
+        blocks.push(Block::Composer(composer_height(ui, goes, width, scale)));
     }
     for (at, thread) in facts.threads.iter().enumerate() {
         blocks.push(Block::Thread(
@@ -323,13 +329,14 @@ fn the_column(
             let mut y = top.y;
             for block in &blocks {
                 let height = match block {
-                    Block::Element(height) | Block::Thread(_, height) => *height,
-                    Block::Composer => COMPOSER * scale,
+                    Block::Element(height) | Block::Thread(_, height) | Block::Composer(height) => {
+                        *height
+                    }
                 };
                 let card = Rect::from_min_size(Pos2::new(rect.left(), y), Vec2::new(width, height));
                 match block {
                     Block::Element(_) => acts.extend(the_element(ui, card, design, facts, scale)),
-                    Block::Composer => {
+                    Block::Composer(_) => {
                         acts.extend(the_composer(designer, ui, card, design, facts, scale))
                     }
                     Block::Thread(at, _) => acts.extend(one_thread(
@@ -553,12 +560,14 @@ fn the_composer(
             right - left,
         );
         y += 20.0 * scale;
-        what_goes(rux, goes, left, right, y, scale);
+        let chips_end = what_goes(rux, goes, left, right, y, scale);
+        // The buttons sit under the last row of chips, never over it, whatever the card was measured at.
+        let buttons = (card.bottom() - (PAD_Y + 38.0) * scale).max(chips_end + 14.0 * scale);
         the_composer_buttons(
             rux,
             left - 8.0 * scale,
             right + 8.0 * scale,
-            card.bottom() - (PAD_Y + 38.0) * scale,
+            buttons,
             can_add,
             design,
             scale,
@@ -566,6 +575,42 @@ fn the_composer(
         );
     });
     acts
+}
+
+/// How tall the note being written is, with as many rows of what goes with it as its width wraps them to.
+///
+/// It was a fixed 318 points, room for two rows, and a selector, an excerpt, the markup and five styles
+/// wrap to three in the column's usual width, so the third row was drawn under the buttons (`task-2294`).
+/// The rows are counted by [`chip_places`], the function the drawing places them with.
+fn composer_height(ui: &egui::Ui, goes: &[String], width: f32, scale: f32) -> f32 {
+    let style = Style::sans(11.0 * scale);
+    let ink = crate::theme::color::text();
+    let widths: Vec<f32> = goes
+        .iter()
+        .map(|word| rux::text::wrapped(ui.painter(), style, word, ink, f32::INFINITY).size().x)
+        .collect();
+    let left = PAD_X * scale;
+    let right = width - PAD_X * scale;
+    let chips =
+        chip_places(&widths, left, right, 0.0, scale).last().map_or(0.0, |chip| chip.bottom());
+    (COMPOSER_TOP + COMPOSER_FOOT) * scale + chips
+}
+
+/// Where each chip of what goes with the note goes, given how wide each one's words are, wrapped to the card.
+fn chip_places(widths: &[f32], left: f32, right: f32, top: f32, scale: f32) -> Vec<Rect> {
+    let (mut x, mut y) = (left, top);
+    let mut places = Vec::with_capacity(widths.len());
+    for words in widths {
+        let width = words + 22.0 * scale;
+        if x > left && x + width > right {
+            x = left;
+            y += CHIP_ROW * scale;
+        }
+        let chip = Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, CHIP * scale));
+        x = chip.right() + 6.0 * scale;
+        places.push(chip);
+    }
+    places
 }
 
 /// The chips that say what goes with the note, wrapped to the card's width. Answers where they end.
@@ -577,22 +622,17 @@ fn what_goes(
     top: f32,
     scale: f32,
 ) -> f32 {
-    let (mut x, mut y) = (left, top);
-    for word in goes {
-        let style = rux.zs(Style::sans(11.0));
-        let ink = rux.theme().ink.i500;
-        let galley = rux.text(style, word, ink);
-        let width = galley.size().x + 22.0 * scale;
-        if x + width > right {
-            x = left;
-            y += 30.0 * scale;
-        }
-        let chip = Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, 24.0 * scale));
+    let style = rux.zs(Style::sans(11.0));
+    let ink = rux.theme().ink.i500;
+    let galleys: Vec<_> = goes.iter().map(|word| rux.text(style, word, ink)).collect();
+    let widths: Vec<f32> = galleys.iter().map(|galley| galley.size().x).collect();
+    let places = chip_places(&widths, left, right, top, scale);
+    let end = places.last().map_or(top, |chip| chip.bottom());
+    for (chip, galley) in places.into_iter().zip(galleys) {
         kit::well_surface(rux, chip, chip.height() / 2.0);
         rux::text::draw_centred(rux.painter(), chip, galley, ink);
-        x = chip.right() + 6.0 * scale;
     }
-    y + 24.0 * scale
+    end
 }
 
 /// `Cancel`, `Add note` and `Add and ask agent` along the foot of the composer.
@@ -952,5 +992,24 @@ fn the_buttons(
         if place(rux, "Delete", None, kit::Look::Ghost) {
             acts.push(Act::Delete(owner, thread.id));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Eight chips in a narrow card wrap to three rows, and a chip that does not fit never starts a row empty.
+    /// `task-2294` is the composer whose third row was drawn under its buttons.
+    #[test]
+    fn the_chips_wrap_to_as_many_rows_as_the_card_needs() {
+        let widths = [50.0, 80.0, 100.0, 30.0, 30.0, 40.0, 50.0, 45.0];
+        let places = chip_places(&widths, 0.0, 300.0, 0.0, 1.0);
+        let rows: Vec<f32> = places.iter().map(|chip| chip.top()).collect();
+        assert_eq!(rows, [0.0, 0.0, 30.0, 30.0, 30.0, 60.0, 60.0, 60.0]);
+        assert!(places.iter().all(|chip| chip.right() <= 300.0));
+        // A chip wider than the card has a row to itself rather than an empty row above it.
+        let wide = chip_places(&[400.0], 0.0, 300.0, 0.0, 1.0);
+        assert_eq!(wide[0].top(), 0.0);
     }
 }
