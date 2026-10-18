@@ -1585,7 +1585,7 @@ fn fresh_value(name: &str, fresh: &crate::settings::Settings) -> String {
         "panes.terminal.height" => format!("{:.0}", panes.terminal_height),
         "panes.preview.fraction" => format!("{:.3}", panes.preview_fraction),
         "panes.find.split" => format!("{:.3}", panes.find_split),
-        name if name.starts_with("voice.") => voice_setting(&fresh, name),
+        name if name.starts_with("voice.") => voice_setting(fresh, name),
         _ => String::new(),
     }
 }

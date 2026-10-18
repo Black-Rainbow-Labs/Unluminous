@@ -98,6 +98,9 @@ pub struct Voice {
     events: Mutex<Receiver<Event>>,
     shared: Arc<Mutex<Snapshot>>,
     tags: Arc<AtomicU64>,
+    /// What the transcriber says about the model, read when asked: the transcriber changes it on its own
+    /// thread, after the worker's last message, so the copy in [`Snapshot`] can be a step behind.
+    model_state: Arc<Mutex<ModelState>>,
 }
 
 /// What the worker's one channel carries.
@@ -125,6 +128,7 @@ impl Voice {
         let held = Arc::new(AtomicBool::new(false));
         let model_state = Arc::new(Mutex::new(ModelState::default()));
         transcriber::spawn(jobs_rx, heard_tx, held.clone(), model_state.clone());
+        let model_kept = model_state.clone();
         let forward = inputs.clone();
         let _ =
             std::thread::Builder::new().name("unluminous-voice-heard".into()).spawn(move || {
@@ -147,7 +151,7 @@ impl Voice {
         let _ = std::thread::Builder::new()
             .name("unluminous-voice".into())
             .spawn(move || worker.run(receiver));
-        Voice { inputs, events: Mutex::new(events), shared, tags }
+        Voice { inputs, events: Mutex::new(events), shared, tags, model_state: model_kept }
     }
 
     /// Changes what the engine does.
@@ -192,7 +196,11 @@ impl Voice {
 
     /// What `voice status` reads.
     pub fn snapshot(&self) -> Snapshot {
-        self.shared.lock().map(|snapshot| snapshot.clone()).unwrap_or_default()
+        let mut snapshot = self.shared.lock().map(|snapshot| snapshot.clone()).unwrap_or_default();
+        if let Ok(model) = self.model_state.lock() {
+            snapshot.model = model.clone();
+        }
+        snapshot
     }
 }
 
@@ -718,7 +726,7 @@ impl Worker {
     /// @param samples - the chunk
     /// @param last - whether it is the file's last
     fn file_chunk(&mut self, tag: u64, samples: &[i16], last: bool) {
-        if !self.dictation.as_ref().is_some_and(|d| d.tag == tag) {
+        if self.dictation.as_ref().is_none_or(|d| d.tag != tag) {
             return;
         }
         self.dictate_audio(samples, None);

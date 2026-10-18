@@ -2644,8 +2644,7 @@ fn a_scripted_transcription_endpoint() -> String {
             let mut stream = stream;
             let mut read = Vec::new();
             let mut buffer = [0u8; 65536];
-            loop {
-                let Ok(n) = stream.read(&mut buffer) else { break };
+            while let Ok(n) = stream.read(&mut buffer) {
                 if n == 0 {
                     break;
                 }

@@ -117,7 +117,7 @@ impl FeatureStream {
             let hop: Vec<f32> = self.pending.drain(..HOP).collect();
             self.raw.extend_from_slice(&hop);
             let start = self.raw.len() - (HOP + MEL_CONTEXT);
-            let frames = self.mel_of(&self.raw[start..].to_vec())?;
+            let frames = self.mel_of(&self.raw[start..])?;
             self.raw.drain(..self.raw.len() - MEL_CONTEXT);
             self.mel_frames.extend(frames);
             if self.mel_frames.len() > MEL_MAX {
