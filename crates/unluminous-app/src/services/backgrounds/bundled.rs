@@ -97,9 +97,10 @@ const RETIRED: &[(&str, u64, &str)] = &[
 pub const DEFAULT: &str = "landscape-dolomites-autumn-peak.jpg";
 
 /// The picture the Unluminous Glass theme is shown over (`task-2281`): sharp and busy, because glass
-/// bends what is behind it and a flat colour shows nothing bent. The paper stripes are straight coloured
-/// lines, which is what shows a bend best.
-pub const GLASS: &str = "abstract-paper-stripes.jpg";
+/// bends what is behind it and a flat colour shows nothing bent. The Milky Way's core is dark enough for
+/// the words on the glass to be read and has bright stars and colour for the glass to bend. The paper
+/// stripes were tried first and every surface over them was too busy to read (`task-2291`).
+pub const GLASS: &str = "space-milky-way-core.jpg";
 
 /// How opaque the window is over [`DEFAULT`].
 ///

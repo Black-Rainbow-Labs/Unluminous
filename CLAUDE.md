@@ -2067,7 +2067,7 @@ tint is painted over it. The rules:
 - **Glass bends a picture it is handed, never the frame.** `paint_the_background` hands `rux` the
   wallpaper's strips every frame, and `Picture::frosted` (the picture shrunk and blurred once, when it is
   chosen) through `theme::glass::set_frosted`. With no picture chosen there is nothing to bend and glass is
-  tint only, so choosing the theme while no picture is chosen chooses `abstract-paper-stripes.jpg`
+  tint only, so choosing the theme while no picture is chosen chooses `space-milky-way-core.jpg`
   (`give_glass_something_to_bend`). Glass over the desktop with no picture makes every popup frame nearly
   opaque instead (`thicken_the_popups_in`, `task-2291`), because a tint over the desktop could not be read.
 - **Under glass a modal is drawn over the frosted picture, not a photograph of the window** (third pass).
@@ -2399,7 +2399,7 @@ installed binary and reading what came back. That is what the release step is fo
 `Wallpaper` shrinks a picture to cover the screen it is on when it is chosen, so a 1080p screen holds a
 1080p texture. `bundled::retire_from` removes the six earlier pictures from a person's folder on start,
 only when a file is byte for byte what an earlier version wrote, and a setting that named one moves to
-`DEFAULT` (`landscape-dolomites-autumn-peak.jpg`) or, under glass, `GLASS` (`abstract-paper-stripes.jpg`).
+`DEFAULT` (`landscape-dolomites-autumn-peak.jpg`) or, under glass, `GLASS` (`space-milky-way-core.jpg`).
 
 `task-2063` made the pictures in the binary the default backgrounds, with one chosen at 86% opacity. `services::backgrounds::bundled` is the list and the reasoning, and it is
 `services::plugins::bundled`'s argument made about pictures: they are in the binary so that an Unluminous

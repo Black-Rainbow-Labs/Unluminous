@@ -4247,7 +4247,7 @@ unluminous-cli settings fonts --json
 
 ## theme — the colors the whole window is painted in
 
-A theme says what every name in Unluminous's own palette means, which drawn icon set the rail and the explorer use, and — when it names all nine token colors — how code is colored in every language at once. Unluminous Dark names none of the nine, so each language plugin's scheme colors its files; Unluminous Light names all nine. Unluminous Glass is dark and made of glass: its raised surfaces bend the background picture behind the window, and choosing it while no picture is chosen chooses `abstract-paper-stripes.jpg`. `settings set appearance.theme` reaches the same code; these exist because a setting cannot say what themes there are.
+A theme says what every name in Unluminous's own palette means, which drawn icon set the rail and the explorer use, and — when it names all nine token colors — how code is colored in every language at once. Unluminous Dark names none of the nine, so each language plugin's scheme colors its files; Unluminous Light names all nine. Unluminous Glass is dark and made of glass: its raised surfaces bend the background picture behind the window, and choosing it while no picture is chosen chooses `space-milky-way-core.jpg`. `settings set appearance.theme` reaches the same code; these exist because a setting cannot say what themes there are.
 
 ### theme list
 
