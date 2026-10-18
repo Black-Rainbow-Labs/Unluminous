@@ -259,3 +259,22 @@ A `voice` area in the catalogue, each command through `UnluminousApp::run_cli`:
   `voice.language`.
 - Choosing the input device: the system default is used. `voice status` names it.
 - Speaking answers aloud. Sable does that; this ticket is about the prompt.
+
+## 14. Changed after the first release (0.98.0), from using it
+
+- **A second press of the microphone sends.** `voice dictate off --send` stops dictation and sends once the
+  last words are in; the button and the `Dictate` menu entry use it.
+- **Alt+V is `View -> Dictate into Agent-Chat`**, two keys under the left hand, and the keymap can move it.
+- **Words heard after a wake no longer vanish.** Measured with `voice hear --live` on two "Sable" requests
+  with a three second pause: the detector fires a few hops after the word, so a fixed two second pre roll
+  could start inside "Sable" and Moonshine wrote "Able"; partial passes were kept only when they started
+  with "Sable", so that pass blanked the prompt; and Moonshine answers a segment ending in a long silence
+  with nothing, so the final blanked it again. With no words the dictation waited six seconds instead of
+  ending at the first pause, and swallowed the second request. Now the pre roll starts 1.8 s before the
+  hop that fired, a partial is judged as the final is (`phonetic::confirm`), an empty pass never replaces
+  words already heard, and a segment's silent ends are trimmed before either engine sees it. Both requests
+  now wake, end at their pause and send.
+- **One window per machine listens for "Sable"** (`voice/listening.pid`): the window with the keyboard
+  takes it, so two open windows do not both answer.
+- **The microphone switch**: `voice.button` (section 9).
+

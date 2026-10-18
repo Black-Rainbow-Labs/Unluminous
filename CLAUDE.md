@@ -6743,6 +6743,13 @@ rules:
 - **What is open follows what is needed** (`voice.rs`, `Worker::settle`): the microphone only while dictating
   or listening, the wake models only while listening, and the local model loaded when dictation starts and let
   go `voice.model_idle` seconds after its last use. A window nobody speaks to starts none of it.
+- **One window on the machine listens for "Sable"**: `voice/listening.pid` names it, and a window takes it
+  when it has the keyboard or when the holder has closed (`follow_the_listening_claim`). Two windows hearing
+  one "Sable" typed and sent the request twice.
+- **An empty pass never takes away words already heard, and a segment's silent ends are trimmed before it
+  is transcribed** (`audio::trim_silence`). Moonshine answers a segment ending in a long silence with
+  nothing, which blanked the prompt mid sentence after a wake and kept the dictation open until the next
+  "Sable" was swallowed into it. `UNLUMINOUS_VOICE_TRACE=1` prints every pass.
 - **A test's window never opens the microphone.** `main` calls `allow_the_microphone`; nothing else does.
   `voice transcribe` and `voice hear` take a WAV through the same engine, which is how both engines and the
   wake word are tested and driven with no microphone. `UNLUMINOUS_REQUIRE_VOICE=1` makes a missing model a

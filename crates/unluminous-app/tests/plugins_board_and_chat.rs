@@ -2803,6 +2803,32 @@ fn the_microphone_button_can_be_switched_off_from_the_chat_settings() {
     assert!(harness.query_by_label("Dictate").is_some(), "and back");
 }
 
+/// `task-2290`: *"a keyboard shortcut for clicking the mic, that is configurable in the keymap ... easy to press
+/// with the left hand only, ideally only 2 keys"*. Alt+V is the `Dictate` menu entry, the keymap lists it and
+/// can move it, and pressing it presses the microphone, which in a test's window opens the dialog saying why it
+/// cannot listen.
+#[test]
+fn alt_v_presses_the_microphone_and_the_keymap_can_move_it() {
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    steady(&mut harness);
+    let listed = did(&mut harness, "settings keymap alt+v --json").to_string();
+    assert!(listed.contains("dictate"), "the keymap lists it: {listed}");
+    did(&mut harness, "settings bind dictate Alt+Q");
+    let moved = did(&mut harness, "settings keymap alt+q --json").to_string();
+    assert!(moved.contains("dictate"), "and moves it: {moved}");
+    did(&mut harness, "settings bind dictate --reset");
+    harness.key_press_modifiers(egui::Modifiers::ALT, egui::Key::V);
+    for _ in 0..40 {
+        harness.step();
+        if harness.state().voice.dialog.is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    assert!(harness.state().voice.dialog.is_some(), "Alt+V pressed the microphone");
+}
+
 /// `task-2290`: the Voice page holds the engine, the endpoint, the microphone and always listen.
 #[test]
 fn the_voice_settings_page() {

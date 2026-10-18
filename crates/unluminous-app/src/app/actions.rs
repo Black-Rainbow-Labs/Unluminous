@@ -286,6 +286,8 @@ pub enum Action {
     /// Open the Report an Issue modal, which the flag at the bottom right of the window also opens.
     /// `task-2276`.
     ReportIssue,
+    /// The Agent-Chat prompt's microphone: start dictation, or stop it and send. `task-2290`.
+    Dictate,
     Quit,
     /// Show or hide a pane a plugin contributed, named `<plugin id>/<pane id>`.
     ///
@@ -2171,6 +2173,21 @@ fn view_menu(state: &MenuState) -> Menu {
             )
             .checked(state.view_mode == ViewMode::Preview)
             .enabled(state.can_preview),
+            Entry::Separator,
+            // **Alt+V, two keys under the left hand** (`task-2290`: *"a keyboard shortcut for clicking the mic
+            // ... easy to press with the left hand only, ideally only 2 keys"*), V for voice. Nothing else in
+            // Unluminous or either preset uses it. A menu entry, so the keymap can move it.
+            Entry::with_shortcut(
+                "Dictate into Agent-Chat",
+                Action::Dictate,
+                Shortcut {
+                    key: egui::Key::V,
+                    command: false,
+                    shift: false,
+                    alt: true,
+                    ctrl: false,
+                },
+            ),
             Entry::Separator,
             Entry::with_shortcut(
                 explorer,

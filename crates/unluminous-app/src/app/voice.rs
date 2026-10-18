@@ -72,6 +72,13 @@ pub struct VoiceState {
     /// What the Voice page shows instead of asking this machine, for a screenshot test whose picture must
     /// not depend on whether the machine running it has the model or a microphone.
     pub facts: Option<VoiceFacts>,
+    /// The dictation whose message is sent once its last words are in, because it was stopped with `--send`,
+    /// which is what a second press of the microphone does.
+    send_when_done: Option<u64>,
+    /// Whether this window is the one on the machine that listens for "Sable", and when that was last asked.
+    /// See [`UnluminousApp::follow_the_listening_claim`].
+    pub listening_here: bool,
+    claim_asked: Option<std::time::Instant>,
 }
 
 /// The engine's configuration for these settings.
@@ -106,13 +113,13 @@ impl UnluminousApp {
     /// Once a frame: start or configure the engine, act on what it heard, and tell every chat what it needs
     /// to draw. Cheap when nothing is happening: no engine is started unless always listen is on.
     pub(crate) fn follow_the_voice(&mut self, ctx: &egui::Context) {
-        if self.voice.engine.is_none()
-            && self.settings.voice_always_listen
-            && self.voice.microphone_allowed
-        {
+        let focused = ctx.input(|input| input.viewport().focused.unwrap_or(false));
+        self.follow_the_listening_claim(focused);
+        if self.voice.engine.is_none() && self.voice.listening_here {
             self.voice_engine();
         }
-        let config = config_for(&self.settings, self.voice.microphone_allowed);
+        let mut config = config_for(&self.settings, self.voice.microphone_allowed);
+        config.always_listen &= self.voice.listening_here;
         if let Some(engine) = self.voice.engine.as_ref() {
             if self.voice.applied.as_ref() != Some(&config) {
                 engine.configure(config.clone());
@@ -128,6 +135,37 @@ impl UnluminousApp {
         if self.voice.dictating.is_some() || self.voice.download.is_some() {
             ctx.request_repaint_after(Duration::from_millis(80));
         }
+    }
+
+    /// **One window on the machine listens for "Sable"** (`task-2290`). Every Unluminous window is a process
+    /// and each would otherwise open the microphone and answer the same "Sable", typing the request into two
+    /// prompts and sending it twice. `voice/listening.pid` names the window that listens: a window takes it
+    /// when nobody holds it, when its holder has closed, or when the window has the keyboard, so the window
+    /// a person is using is the one that hears them. Asked at most once a second.
+    /// @param focused - whether this window has the keyboard
+    fn follow_the_listening_claim(&mut self, focused: bool) {
+        if !self.settings.voice_always_listen || !self.voice.microphone_allowed {
+            self.voice.listening_here = false;
+            return;
+        }
+        if self.voice.claim_asked.is_some_and(|asked| asked.elapsed() < Duration::from_secs(1)) {
+            return;
+        }
+        self.voice.claim_asked = Some(std::time::Instant::now());
+        let path = unluminous_voice::install::home().join("listening.pid");
+        let me = std::process::id();
+        let holder =
+            std::fs::read_to_string(&path).ok().and_then(|text| text.trim().parse::<u32>().ok());
+        let take = match holder {
+            Some(pid) if pid == me => false,
+            Some(pid) => focused || !unluminous_cli::instances::is_running(pid),
+            None => true,
+        };
+        if take {
+            let _ = std::fs::create_dir_all(unluminous_voice::install::home());
+            let _ = crate::services::store::write_atomically(&path, me.to_string().as_bytes());
+        }
+        self.voice.listening_here = take || holder == Some(me);
     }
 
     /// The engine, started now if it is not running.
@@ -174,6 +212,18 @@ impl UnluminousApp {
         Ok(tag)
     }
 
+    /// The microphone button, as the `Dictate` menu entry and its chord press it: start dictation into the
+    /// side pane's prompt, or, while one is running, stop it and send once the last words are in.
+    pub(crate) fn press_the_microphone(&mut self) {
+        if self.voice.dictating.is_some() {
+            self.stop_dictation(true);
+            return;
+        }
+        if let Err(problem) = self.start_dictation(Target::Pane) {
+            self.message = Some(problem);
+        }
+    }
+
     /// Records whose prompt a dictation fills and tells that chat it has started.
     /// @param tag - the dictation
     /// @param target - whose prompt
@@ -190,7 +240,13 @@ impl UnluminousApp {
     }
 
     /// Stops the dictation in progress. Its last words still arrive.
-    pub(crate) fn stop_dictation(&mut self) {
+    /// With `send`, the message goes once the last words are in: *"When I click the record, then click it
+    /// again after it transcribes, it should send the message."* (`task-2290`).
+    /// @param send - whether the message is sent once the last words are in
+    pub(crate) fn stop_dictation(&mut self, send: bool) {
+        if send {
+            self.voice.send_when_done = self.voice.dictating.map(|(tag, _)| tag);
+        }
         if let Some(engine) = self.voice.engine.as_ref() {
             engine.stop();
         }
@@ -244,9 +300,14 @@ impl UnluminousApp {
         if self.voice.dictating.is_some_and(|(dictating, _)| dictating == tag) {
             self.voice.dictating = None;
         }
-        let send = started == Started::Wake
+        let asked = self.voice.send_when_done == Some(tag);
+        if asked {
+            self.voice.send_when_done = None;
+        }
+        let woke = started == Started::Wake
             && ended == Ended::Finished
             && self.settings.voice_send_after_wake;
+        let send = (asked || woke) && ended != Ended::FalseWake;
         if target != Target::Nowhere {
             self.tell_a_chat(target, &Dictation::Ended { words: text.clone(), send });
         }

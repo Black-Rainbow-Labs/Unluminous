@@ -127,7 +127,7 @@ pub(crate) fn show(
         changed |= card.switch("Show the microphone in the Agent-Chat prompt", Some("Off removes the button. Dictation is still reached through \"Sable\" and `voice dictate`."), &mut settings.voice_button);
     });
     kit::card(ui, &mut column, "Listen for Sable", None, |card| {
-        changed |= card.switch("Always listen for \"Sable\"", Some("Say \"Sable\" and then what you want: the Agent-Chat pane opens and the words fill its prompt. Off by default. A voice activity detector keeps the wake word model idle in a quiet room."), &mut settings.voice_always_listen);
+        changed |= card.switch("Always listen for \"Sable\"", Some("Say \"Sable\" and then what you want: the Agent-Chat pane opens and the words fill its prompt. Off by default. A voice activity detector keeps the wake word model idle in a quiet room. With several windows open, the one you used last is the one that listens."), &mut settings.voice_always_listen);
         changed |= card.switch("Send when I stop talking", Some("After \"Sable\", the message is sent at the first pause once something was said. Off leaves it in the prompt."), &mut settings.voice_send_after_wake);
         let mut sensitivity = settings.voice_wake_sensitivity;
         card.row(

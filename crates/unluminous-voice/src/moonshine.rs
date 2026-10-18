@@ -78,6 +78,10 @@ impl Moonshine {
         if samples.len() < SHORTEST {
             return Ok(String::new());
         }
+        let samples = crate::audio::trim_silence(samples);
+        if samples.len() < SHORTEST {
+            return Ok(String::new());
+        }
         let input: Vec<f32> = samples.iter().map(|s| crate::audio::to_f32(*s)).collect();
         let (hidden_shape, hidden) = {
             let encoded = self.encoder.run(ort::inputs!["input_values" => Tensor::from_array(([1usize, input.len()], input)).map_err(said)?]).map_err(said)?;

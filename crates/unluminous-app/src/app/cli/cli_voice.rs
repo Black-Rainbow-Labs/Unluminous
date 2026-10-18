@@ -57,7 +57,7 @@ impl UnluminousApp {
         };
         if !on {
             if self.voice.dictating.is_some() {
-                self.stop_dictation();
+                self.stop_dictation(request.switch("send"));
                 return ok(
                     request,
                     "Dictation stopped; its last words still arrive in the prompt.",
@@ -124,7 +124,10 @@ impl UnluminousApp {
         };
         let seconds = samples.len() as f32 / 16_000.0;
         let listening = self.settings.voice_always_listen;
-        self.voice_engine().hear(samples);
+        match request.switch("live") {
+            true => self.voice_engine().hear_live(samples),
+            false => self.voice_engine().hear(samples),
+        }
         let said = match (listening, self.voice.dictating.is_some()) {
             (true, _) => format!("Heard {seconds:.1} s through the wake word detector. `voice status` says whether it woke."),
             (false, true) => format!("Heard {seconds:.1} s into the dictation in progress."),
@@ -199,6 +202,7 @@ impl UnluminousApp {
             "endpoint": self.settings.voice_endpoint,
             "listening": self.settings.voice_always_listen,
             "wakeDetectorRunning": snapshot.listening,
+            "listeningInThisWindow": self.voice.listening_here,
             "dictating": target,
             "words": snapshot.text,
             "microphone": snapshot.microphone,

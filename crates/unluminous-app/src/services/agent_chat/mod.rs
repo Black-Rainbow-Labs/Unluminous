@@ -815,6 +815,11 @@ pub fn voice_request(verb: &str, state: &str) -> Request {
     if !state.is_empty() {
         arguments.insert("state".to_owned(), serde_json::json!(state));
     }
+    // **A second press of the microphone sends**, once the last words are in. `task-2290`: *"When I click the
+    // record, then click it again after it transcribes, it should send the message."*
+    if verb == "dictate" && state == "off" {
+        arguments.insert("send".to_owned(), serde_json::json!(true));
+    }
     Request::RunCommand {
         id: format!("{VOICE}{verb}"),
         command: format!("voice.{verb}"),

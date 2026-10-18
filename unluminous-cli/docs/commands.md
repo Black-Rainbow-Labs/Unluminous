@@ -1392,7 +1392,7 @@ unluminous-cli voice status --json
 ### voice dictate
 
 ```
-unluminous-cli voice dictate [on|off] [--from <node>]
+unluminous-cli voice dictate [on|off] [--from <node>] [--send]
 ```
 
 The Agent-Chat prompt's microphone button: words fill the prompt as they are spoken.
@@ -1400,6 +1400,7 @@ The Agent-Chat prompt's microphone button: words fill the prompt as they are spo
 - `state` (optional) — on, off, or nothing to toggle
 
 - `--from <node>` — A chat node's prompt instead of the side pane's.
+- `--send` — With off: send the message once the last words are in, as a second press of the button does.
 
 ```sh
 unluminous-cli voice dictate on
@@ -1439,12 +1440,14 @@ unluminous-cli voice transcribe clip.wav
 ### voice hear
 
 ```
-unluminous-cli voice hear <path>
+unluminous-cli voice hear <path> [--live]
 ```
 
 Hear a WAV file as if from the microphone: through the wake word when listening, else into the dictation.
 
 - `path` — A WAV file.
+
+- `--live` — At the speed it was spoken.
 
 ```sh
 unluminous-cli voice hear clip.wav

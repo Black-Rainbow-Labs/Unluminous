@@ -74,6 +74,12 @@ pub fn transcribe(endpoint: &Endpoint, samples: &[i16]) -> Result<String, String
     if endpoint.url.trim().is_empty() {
         return Err("no transcription endpoint is set. Set voice.endpoint to an OpenAI compatible /v1/audio/transcriptions URL".to_owned());
     }
+    // Whisper writes a phrase it has heard a thousand times ("Thank you.") for a long silence, and a segment
+    // always ends in one, so the silence at both ends is taken off first, as it is for the local model.
+    let samples = crate::audio::trim_silence(samples);
+    if samples.is_empty() {
+        return Ok(String::new());
+    }
     let body = form(&crate::audio::wav_encode(samples), endpoint);
     let mut request = agent()
         .post(endpoint.url.trim())
@@ -140,7 +146,7 @@ mod tests {
 
     #[test]
     fn a_missing_url_and_a_missing_key_are_refused_before_anything_is_sent() {
-        assert!(transcribe(&Endpoint::default(), &[0; 8000])
+        assert!(transcribe(&Endpoint::default(), &[2000; 8000])
             .unwrap_err()
             .contains("voice.endpoint"));
         let endpoint = Endpoint {
@@ -148,7 +154,7 @@ mod tests {
             key_variable: "UNLUMINOUS_VOICE_TEST_KEY_THAT_IS_NOT_SET".into(),
             ..Endpoint::default()
         };
-        assert!(transcribe(&endpoint, &[0; 8000]).unwrap_err().contains("is not set"));
+        assert!(transcribe(&endpoint, &[2000; 8000]).unwrap_err().contains("is not set"));
     }
 
     /// ai-proxy on this machine, when `UNLUMINOUS_VOICE_ENDPOINT` names it.

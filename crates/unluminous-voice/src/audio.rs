@@ -106,6 +106,25 @@ pub fn level(samples: &[i16]) -> f32 {
     (sum / samples.len() as f64).sqrt() as f32
 }
 
+/// The audio with the silence at both ends taken off, keeping 250 ms either side of the speech.
+///
+/// Moonshine answers a segment that ends in a long silence with nothing at all, or with a guess, and a
+/// segment always ends in silence because that is what ends it (`task-2290`). Silence is a 20 ms frame
+/// quieter than -50 dBFS, which room noise on a laptop microphone is under and speech is well over.
+/// @param samples - 16 kHz audio
+pub fn trim_silence(samples: &[i16]) -> &[i16] {
+    const FRAME: usize = 320;
+    const QUIET: f32 = 0.003;
+    const MARGIN: usize = 4_000;
+    let loud = |frame: &[i16]| level(frame) >= QUIET;
+    let frames: Vec<&[i16]> = samples.chunks(FRAME).collect();
+    let Some(first) = frames.iter().position(|frame| loud(frame)) else { return &samples[..0] };
+    let last = frames.iter().rposition(|frame| loud(frame)).unwrap_or(first);
+    let start = (first * FRAME).saturating_sub(MARGIN);
+    let end = ((last + 1) * FRAME + MARGIN).min(samples.len());
+    &samples[start..end]
+}
+
 /// Wraps 16 kHz mono 16 bit samples in a WAV header, in memory.
 /// @param samples - the samples
 pub fn wav_encode(samples: &[i16]) -> Vec<u8> {
@@ -223,6 +242,16 @@ mod tests {
         let bytes = wav_encode(&samples);
         assert_eq!(bytes.len(), 44 + 3200);
         assert_eq!(wav_decode(&bytes).unwrap(), samples);
+    }
+
+    #[test]
+    fn silence_is_trimmed_from_both_ends_with_a_margin() {
+        let mut audio = vec![0i16; 32_000];
+        audio.extend(std::iter::repeat_n(8_000i16, 16_000));
+        audio.extend(vec![3i16; 48_000]);
+        let trimmed = trim_silence(&audio);
+        assert_eq!(trimmed.len(), 16_000 + 2 * 4_000);
+        assert!(trim_silence(&[0i16; 16_000]).is_empty(), "nothing loud is nothing");
     }
 
     #[test]

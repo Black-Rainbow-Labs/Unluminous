@@ -141,3 +141,45 @@ fn an_endpoint_writes_a_recording_out_as_words() {
     let (_, text, _, _) = until_ended(&voice, tag);
     assert!(text.to_lowercase().contains("lighthouse"), "{text}");
 }
+
+/// Jason, on `task-2290`: *"When I use sable, the first time it works, but then there are times when the
+/// transcribed message doesn't get sent."* Two requests, each "Sable" and a question, with the pauses a
+/// person leaves, heard at the speed they were spoken. Each must wake, and each must end at its pause as
+/// `Finished`, which is the ending the window sends on.
+#[test]
+fn saying_sable_twice_in_real_time_ends_both_dictations_ready_to_send() {
+    if !local_engine_is_installed() {
+        return;
+    }
+    let voice = Voice::start(Arc::new(|| {}));
+    voice.configure(Config { always_listen: true, ..Config::default() });
+    let silence = |seconds: f32| vec![0i16; (seconds * 16_000.0) as usize];
+    let mut recording = silence(1.0);
+    recording.extend(clip("sable-what-time-is-it"));
+    recording.extend(silence(3.0));
+    recording.extend(clip("sable-tell-me-a-long-story"));
+    voice.hear_live(recording);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut ended = Vec::new();
+    let mut woke = 0;
+    while Instant::now() < deadline && ended.len() < 2 {
+        for event in voice.take_events() {
+            eprintln!("{:?} {event:?}", Instant::now());
+            match event {
+                Event::Woke { .. } => woke += 1,
+                Event::Ended { text, ended: why, started, .. } => ended.push((text, why, started)),
+                Event::Problem(problem) => panic!("{problem}"),
+                _ => {}
+            }
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    eprintln!("woke {woke} times; ended {ended:?}");
+    assert_eq!(woke, 2, "both requests woke it");
+    assert_eq!(ended.len(), 2, "both dictations ended: {ended:?}");
+    for (text, why, started) in &ended {
+        assert_eq!(*started, Started::Wake);
+        assert_eq!(*why, Ended::Finished, "each ends at its own pause, ready to send: {text:?}");
+        assert!(!text.is_empty() && !text.to_lowercase().starts_with("sable"), "{text:?}");
+    }
+}

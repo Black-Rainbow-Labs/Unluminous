@@ -305,6 +305,8 @@ impl UnluminousApp {
             Action::About | Action::CheckForUpdates | Action::ReportIssue => {
                 self.an_unluminous_entry(action)
             }
+            // The microphone, as a chord: the same toggle the button is, and a second press sends.
+            Action::Dictate => self.press_the_microphone(),
             // The Git menu is `run_git`, which was already the one place a git action turns into
             // a command.
             Action::Git(what) => self.run_git(what),

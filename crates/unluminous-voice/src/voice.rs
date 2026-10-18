@@ -38,14 +38,15 @@ pub struct Config {
 }
 
 impl Default for Config {
-    /// The settings' defaults: the local engine, always listen off.
+    /// The settings' defaults: the local engine, always listen off, and the microphone shut. The window's
+    /// released binary is what opens it, so a test that builds an engine from this never hears the room.
     fn default() -> Self {
         Config {
             engine: Engine::Local { threads: 2 },
             always_listen: false,
             sensitivity: 0.5,
             model_idle: Duration::from_secs(60),
-            microphone: true,
+            microphone: false,
         }
     }
 }
@@ -111,6 +112,8 @@ enum Input {
     File { tag: u64, samples: Vec<i16>, live: bool },
     FileChunk { tag: u64, samples: Vec<i16>, last: bool },
     Hear(Vec<i16>),
+    HearLive(Vec<i16>),
+    HearChunk { samples: Vec<i16>, last: bool },
     Audio { generation: u64, samples: Vec<i16> },
     Heard(Heard),
 }
@@ -189,6 +192,14 @@ impl Voice {
         let _ = self.inputs.send(Input::Hear(samples));
     }
 
+    /// The same, at the speed it was spoken, in 20 ms frames, which is how the microphone delivers it. The
+    /// words come back while it plays and a dictation ends at its own pause, so this is what shows a problem
+    /// that only happens in real time.
+    /// @param samples - 16 kHz audio
+    pub fn hear_live(&self, samples: Vec<i16>) {
+        let _ = self.inputs.send(Input::HearLive(samples));
+    }
+
     /// The events that have arrived since the last call.
     pub fn take_events(&self) -> Vec<Event> {
         self.events.lock().map(|events| events.try_iter().collect()).unwrap_or_default()
@@ -254,8 +265,10 @@ impl Dictation {
     }
 }
 
-/// Audio kept for the pre roll of a wake: 2 s.
-const RECENT: usize = 32_000;
+/// Audio kept for the pre roll of a wake: 3 s.
+const RECENT: usize = 48_000;
+/// How far before the hop that fired the pre roll starts: 1.8 s, which holds "hey Sable" said slowly.
+const WORD_BEFORE_THE_HOP: usize = 28_800;
 /// A newly opened microphone that delivers only zeros for this long is taken as refused: 1.5 s.
 const SILENT: usize = 24_000;
 /// Silence added after a file, so its last segment ends at a pause: 1 s.
@@ -328,6 +341,8 @@ impl Worker {
                 Input::Configure(config) => self.configure(config),
                 Input::Dictate(tag) => self.begin(tag, Started::Button, Vec::new(), true),
                 Input::Hear(samples) => self.hear(&samples),
+                Input::HearLive(samples) => self.hear_live(samples),
+                Input::HearChunk { samples, last } => self.hear_chunk(&samples, last),
                 Input::Stop => self.end(Ended::Stopped),
                 Input::File { tag, samples, live } => self.file(tag, samples, live),
                 Input::FileChunk { tag, samples, last } => self.file_chunk(tag, &samples, last),
@@ -533,7 +548,11 @@ impl Worker {
         if let Some(event) = fired.first() {
             let tag = self.tags.fetch_add(1, Ordering::Relaxed);
             self.say(Event::Woke { tag, score: event.score });
-            let pre_roll: Vec<i16> = self.recent.iter().copied().collect();
+            // **From where the word began**, which is a little before the hop that fired: the classifier scores
+            // highest a few hops after "Sable" ends, so a fixed last two seconds could start partway through
+            // the word and the model then wrote "Able" (`task-2290`). Everything after the firing hop is kept.
+            let start = self.recent.len().saturating_sub(event.samples_ago + WORD_BEFORE_THE_HOP);
+            let pre_roll: Vec<i16> = self.recent.iter().skip(start).copied().collect();
             self.begin(tag, Started::Wake, pre_roll, from_microphone);
             if let Some(dictation) = self.dictation.as_mut() {
                 dictation.wake_score = event.score;
@@ -613,6 +632,33 @@ impl Worker {
             }
         };
         let Some(dictation) = self.dictation.as_mut() else { return };
+        if std::env::var_os("UNLUMINOUS_VOICE_TRACE").is_some() {
+            eprintln!(
+                "unluminous-voice: segment {} last {} took {:?}: {text:?}",
+                heard.segment, heard.last, heard.took
+            );
+        }
+        // **An empty pass never takes away words already heard** (`task-2290`). Moonshine sometimes answers a
+        // segment with nothing once it ends in a long silence, and that wiped the words out of the prompt.
+        let had = match heard.last {
+            true => dictation
+                .partial
+                .as_ref()
+                .filter(|(segment, _)| *segment == heard.segment)
+                .map(|(_, words)| words.clone()),
+            false => None,
+        };
+        let text = match (text.trim().is_empty(), heard.last, had) {
+            (true, false, _) => return,
+            (true, true, Some(had)) if !had.is_empty() => {
+                dictation.confirmed = true;
+                dictation.finals.insert(heard.segment, had);
+                self.say_the_words();
+                self.finish_if_done();
+                return;
+            }
+            _ => text,
+        };
         let mut false_wake = false;
         let text = match (dictation.confirmed, heard.last, heard.segment) {
             (false, true, 0) => match phonetic::confirm(&text, dictation.wake_score, threshold) {
@@ -625,7 +671,14 @@ impl Worker {
                     String::new()
                 }
             },
-            (false, false, 0) => phonetic::strip_wake(&text).unwrap_or_default(),
+            // **A partial is judged the way the final will be** (`task-2290`). It used to be kept only when it
+            // started with "Sable", so a pass that heard the clipped word as "Able" blanked the words already in
+            // the prompt, and with no words the dictation waited for a long quiet instead of ending at the first
+            // pause, swallowing the next "Sable" too. A partial that cannot be read yet keeps the last one.
+            (false, false, 0) => match phonetic::confirm(&text, dictation.wake_score, threshold) {
+                Some(stripped) => stripped,
+                None => return,
+            },
             _ => text,
         };
         if false_wake {
@@ -640,6 +693,13 @@ impl Worker {
             }
             false => dictation.partial = Some((heard.segment, text)),
         }
+        self.say_the_words();
+        self.finish_if_done();
+    }
+
+    /// Tells the window the dictation's words, when they changed.
+    fn say_the_words(&mut self) {
+        let Some(dictation) = self.dictation.as_mut() else { return };
         let words = dictation.text();
         if words != dictation.said {
             dictation.said = words.clone();
@@ -649,7 +709,6 @@ impl Worker {
             }
             self.say(Event::Words { tag, text: words });
         }
-        self.finish_if_done();
     }
 
     /// Starts dictation from a file.
@@ -718,6 +777,45 @@ impl Worker {
         }
         if self.dictation.is_none() {
             self.settle();
+        }
+    }
+
+    /// Starts hearing a recording in real time: the frames are sent back to this thread by a pacing thread,
+    /// followed by four seconds of silence so a dictation reaches its own end.
+    /// @param samples - 16 kHz audio
+    fn hear_live(&mut self, samples: Vec<i16>) {
+        self.hearing = true;
+        self.settle();
+        let mut audio = samples;
+        audio.extend(std::iter::repeat_n(0i16, 4 * FILE_TAIL));
+        let inputs = self.inputs.clone();
+        let _ = std::thread::Builder::new().name("unluminous-voice-hear".into()).spawn(move || {
+            let chunks: Vec<&[i16]> = audio.chunks(320).collect();
+            for (at, chunk) in chunks.iter().enumerate() {
+                if inputs
+                    .send(Input::HearChunk {
+                        samples: chunk.to_vec(),
+                        last: at + 1 == chunks.len(),
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        });
+    }
+
+    /// One frame of a recording heard in real time.
+    /// @param samples - the frame
+    /// @param last - whether it is the recording's last
+    fn hear_chunk(&mut self, samples: &[i16], last: bool) {
+        self.audio(samples, false);
+        if last {
+            self.hearing = false;
+            if self.dictation.is_none() {
+                self.settle();
+            }
         }
     }
 

@@ -4201,6 +4201,7 @@ const EVERY_VARIANT: &[&str] = &[
     "Fold",
     "About",
     "ReportIssue",
+    "Dictate",
     "Quit",
     "PluginPane",
     "PluginCommand",
@@ -4309,6 +4310,7 @@ fn variant_name(action: &Action) -> &'static str {
         Action::Fold(_) => "Fold",
         Action::About => "About",
         Action::ReportIssue => "ReportIssue",
+        Action::Dictate => "Dictate",
         Action::Quit => "Quit",
         Action::PluginPane { .. } => "PluginPane",
         Action::PluginCommand { .. } => "PluginCommand",
@@ -4492,6 +4494,10 @@ fn realm_variant_name(action: &RealmAction) -> &'static str {
 /// the direction that hides something. Each name is read back through `Action::from_name`, so a
 /// name that stops being an action fails here too.
 const CANNOT_BE_DRIVEN: &[(&str, &str)] = &[
+    (
+        "dictate",
+        "it opens the microphone, which a test's window never does; `alt_v_presses_the_microphone_and_the_keymap_can_move_it` drives it",
+    ),
     ("new-window", "it starts a second Unluminous process"),
     ("open-recent", "it starts a second Unluminous process on the project it names"),
     (
