@@ -6,6 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- Unluminous Issues v18 (`task-2294`)
+- A shorter realm folder summary, under the MCP schema ceiling (`task-2294`)
+
 ## 0.99.0 — 2026-10-18
 
 - Unluminous Issues v18 (`task-2293`)
