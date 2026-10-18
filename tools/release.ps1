@@ -558,9 +558,14 @@ if ($doMacos) {
     New-Item -ItemType Directory -Force -Path $logs | Out-Null
     $macosLog = Join-Path $logs "macos-$next.log"
     Write-Host "Started the macOS build beside the Windows one. Its log: $macosLog"
-    $macosProcess = Start-Process -FilePath 'pwsh' -NoNewWindow -PassThru `
-        -ArgumentList @('-NoProfile', '-File', "`"$macosBuild`"", '-Version', $next, '-Notarize') `
-        -RedirectStandardOutput $macosLog -RedirectStandardError "$macosLog.err"
+    # **Without `CC`**, as every cargo run here is (`Invoke-WithoutCc`): the child inherits this environment, and
+    # with the person's `CC` naming `cl.exe` cc-rs compiled a C file of `stacker` for macOS with MSVC, which cannot
+    # find `windows.h` and fails both architectures (`task-2293`).
+    $macosProcess = Invoke-WithoutCc {
+        Start-Process -FilePath 'pwsh' -NoNewWindow -PassThru `
+            -ArgumentList @('-NoProfile', '-File', "`"$macosBuild`"", '-Version', $next, '-Notarize') `
+            -RedirectStandardOutput $macosLog -RedirectStandardError "$macosLog.err"
+    }
     # Read now, so the exit code is still there to read after the process has gone.
     $null = $macosProcess.Handle
 }

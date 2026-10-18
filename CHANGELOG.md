@@ -10,6 +10,8 @@ bumps the release script makes are left out, because they are the boundaries rat
 
 - Unluminous Issues v18 (`task-2293`)
 - Rustfmt on the ticket's own code, which the release's format check asks for (`task-2293`)
+- The changelog (`task-2293`)
+- The release starts the macOS build without CC, as it runs every other build (`task-2293`)
 
 ## 0.98.3 — 2026-10-17
 
