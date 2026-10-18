@@ -6,7 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 0.98.3 — 2026-10-18
+## Unreleased
+
+- Unluminous Issues v18 (`task-2293`)
+- Rustfmt on the ticket's own code, which the release's format check asks for (`task-2293`)
+
+## 0.98.3 — 2026-10-17
 
 - Realm ports zoom with the canvas, glass fixes, a sized switch knob, and nineteen 4K wallpapers (`task-2291`)
 - The glass theme's picture is the Milky Way core, since glass over the paper stripes could not be read (`task-2291`)
