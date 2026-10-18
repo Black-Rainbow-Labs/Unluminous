@@ -277,4 +277,9 @@ A `voice` area in the catalogue, each command through `UnluminousApp::run_cli`:
 - **One window per machine listens for "Sable"** (`voice/listening.pid`): the window with the keyboard
   takes it, so two open windows do not both answer.
 - **The microphone switch**: `voice.button` (section 9).
+- **Switching always listen off releases everything "Sable" loaded at once**, the speech model included unless
+  a dictation is still using it. Measured with `cargo run --release -p unluminous-voice --example voice --
+  memory <wav>`: private memory 2.1 MB with the switch off, 430 MB after a "Sable" request, 17.8 MB half a
+  second after switching it off. The 15.7 MB left is the ONNX Runtime library, which `ort` keeps loaded for
+  the process. `voice status` says `wakeModelLoaded`, `vadLoaded` and `model.loaded`.
 
