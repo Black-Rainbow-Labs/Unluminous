@@ -38,11 +38,11 @@ use crate::components::plugins_page::{self, PluginsState};
 use crate::components::scrollbar;
 use crate::components::settings_kit::{self as kit, Column};
 use crate::services::plugins::Plugins;
-use crate::theme::svg_icon;
 use crate::settings::{
     Indent, LineEndings, ModelKept, Page, Settings, Suggestions, UpdateCheck, ValueTooltip,
     FONT_SIZES, MIN_OPACITY, TERMINAL_FONT_SIZES, UI_FONT_SIZES,
 };
+use crate::theme::svg_icon;
 
 /// How large the window is, before `modal::fit` shrinks it to a small Unluminous window: the design's
 /// `width: 1000px; height: 700px`.
@@ -829,7 +829,11 @@ fn appearance_page(
 /// The Background card, at the top of the Theme page (`task-2293`): whether the window draws a background at
 /// all, how opaque it is, and which picture is behind it. Answers whether a setting changed and whether the
 /// picture chooser was pressed.
-fn background_card(ui: &mut egui::Ui, column: &mut Column, settings: &mut Settings) -> (bool, bool) {
+fn background_card(
+    ui: &mut egui::Ui,
+    column: &mut Column,
+    settings: &mut Settings,
+) -> (bool, bool) {
     let mut changed = false;
     let mut backgrounds = false;
     kit::card(ui, column, "Background", None, |card| {

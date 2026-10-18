@@ -748,7 +748,10 @@ impl UnluminousApp {
         ui.painter().rect_filled(
             area,
             0,
-            crate::theme::pane_ground(crate::theme::color::editor(), self.settings.window_opacity()),
+            crate::theme::pane_ground(
+                crate::theme::color::editor(),
+                self.settings.window_opacity(),
+            ),
         );
         let Some(path) = realm_of_a_tab_key(&tab.key) else { return false };
         let pass = ui.ctx().cumulative_pass_nr();

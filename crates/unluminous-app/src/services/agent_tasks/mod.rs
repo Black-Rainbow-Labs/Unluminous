@@ -2724,8 +2724,9 @@ impl AgentTasks {
         use crate::services::plugin_ui::Dictation;
         let words = match note {
             Dictation::Began => {
-                self.dictating =
-                    Some(crate::services::agent_chat::Dictating::starting(&self.description_text()));
+                self.dictating = Some(crate::services::agent_chat::Dictating::starting(
+                    &self.description_text(),
+                ));
                 return;
             }
             Dictation::Words(words) => words,

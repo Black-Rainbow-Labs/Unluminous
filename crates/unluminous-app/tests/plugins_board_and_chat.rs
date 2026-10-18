@@ -4240,7 +4240,10 @@ fn tab_walks_the_ticket_modals_text_boxes_in_order() {
     steady(&mut harness);
     let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
     let said = ticket["comments"].to_string();
-    assert!(said.contains("Said after Shift+Tab"), "Shift+Tab with nothing focused is the last box: {said}");
+    assert!(
+        said.contains("Said after Shift+Tab"),
+        "Shift+Tab with nothing focused is the last box: {said}"
+    );
 }
 
 /// `task-2214`: *"The description in the modal needs to be resizable so it can take less height."* The strip

@@ -1513,7 +1513,10 @@ fn the_background_switch_is_off_by_default_and_takes_its_rows_with_it() {
     open_settings(&mut harness);
     harness.get_by_label("Theme").click();
     steady(&mut harness);
-    assert!(harness.query_by_label("Background opacity").is_none(), "absent while the background is off");
+    assert!(
+        harness.query_by_label("Background opacity").is_none(),
+        "absent while the background is off"
+    );
     assert_eq!(harness.state().opacity(), 1.0, "and the window is drawn solid");
     did(&mut harness, "settings set appearance.background.enabled true");
     steady(&mut harness);

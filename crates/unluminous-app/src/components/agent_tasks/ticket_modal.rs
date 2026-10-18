@@ -770,7 +770,8 @@ fn description_microphone(
     use crate::components::controls::WithHint;
     let chat = rux.theme().chat;
     let ink = rux.theme().ink;
-    let response = rux.ui.interact(mic, rux.ui.id().with("agent-tasks-microphone"), egui::Sense::click());
+    let response =
+        rux.ui.interact(mic, rux.ui.id().with("agent-tasks-microphone"), egui::Sense::click());
     let hovered = response.hovered();
     match voice.dictating || response.is_pointer_button_down_on() {
         true => rux.chrome.surface(mic, MIC / 2.0, chat.well, chat.carved_sm()),
@@ -798,7 +799,13 @@ fn description_microphone(
     if hovered {
         rux.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
-    crate::theme::icon::scaled(rux.painter(), mic.center(), tint, 0.9, crate::theme::icon::microphone);
+    crate::theme::icon::scaled(
+        rux.painter(),
+        mic.center(),
+        tint,
+        0.9,
+        crate::theme::icon::microphone,
+    );
     let hint = match (&voice.refused, voice.dictating) {
         (Some(why), _) => format!("The microphone cannot be used: {why}"),
         (None, true) => "Stop dictating".to_owned(),
@@ -806,7 +813,12 @@ fn description_microphone(
     };
     let response = response.with_hint(hint);
     response.widget_info(|| {
-        egui::WidgetInfo::selected(egui::WidgetType::Button, true, voice.dictating, "Dictate description")
+        egui::WidgetInfo::selected(
+            egui::WidgetType::Button,
+            true,
+            voice.dictating,
+            "Dictate description",
+        )
     });
     response.clicked()
 }
@@ -1603,8 +1615,7 @@ fn fields(
                 egui::Id::new("agent-tasks-ticket-fields-rux"),
                 content.expand(24.0),
                 |rux| {
-                    let (asked, used) =
-                        field_column(board, rux, selects, content, task, new, gap);
+                    let (asked, used) = field_column(board, rux, selects, content, task, new, gap);
                     requests = asked;
                     used
                 },

@@ -348,7 +348,10 @@ impl UnluminousApp {
             ui.painter().rect_filled(
                 below,
                 0,
-                crate::theme::pane_ground(crate::theme::color::editor(), self.settings.window_opacity()),
+                crate::theme::pane_ground(
+                    crate::theme::color::editor(),
+                    self.settings.window_opacity(),
+                ),
             );
             crate::app::realm_nodes::say_in_a_node(
                 ui,
@@ -466,8 +469,8 @@ impl UnluminousApp {
         let response =
             ui.interact(body, ui.id().with("realm-canvas"), egui::Sense::click_and_drag());
         // A drag that began on a wire moves the wire, not the canvas.
-        let on_a_wire = self.realm.wire_press.is_some()
-            || matches!(self.realm.gesture, Gesture::Wiring { .. });
+        let on_a_wire =
+            self.realm.wire_press.is_some() || matches!(self.realm.gesture, Gesture::Wiring { .. });
         if response.dragged() && !on_a_wire {
             let by = response.drag_delta();
             self.realm.realm.pan_by(by);
@@ -1095,7 +1098,8 @@ impl UnluminousApp {
     /// nothing, it stays disconnected, which is what pulling a wire off a port means in every node editor.
     fn pick_up_a_pressed_wire(&mut self, ui: &egui::Ui, body: Rect) {
         let Some(press) = self.realm.wire_press else { return };
-        let (down, pointer) = ui.input(|input| (input.pointer.primary_down(), input.pointer.latest_pos()));
+        let (down, pointer) =
+            ui.input(|input| (input.pointer.primary_down(), input.pointer.latest_pos()));
         if !down {
             self.realm.wire_press = None;
             return;
@@ -1114,7 +1118,8 @@ impl UnluminousApp {
         }
         let at = self.realm.realm.camera.to_world(body.min, pointer);
         self.message = Some(
-            "Let go on a node to connect it there, or anywhere else to leave it disconnected.".to_owned(),
+            "Let go on a node to connect it there, or anywhere else to leave it disconnected."
+                .to_owned(),
         );
         self.realm.gesture = match press.arriving_end {
             true => Gesture::Wiring {
@@ -1139,7 +1144,9 @@ impl UnluminousApp {
     /// **A wire to or from a shape leaves and arrives along the way out of the points it joins**, and lands on
     /// the point of the shape nearest where it was let go. `task-2284`.
     fn settle_the_wire_in_the_air(&mut self, ui: &egui::Ui, body: Rect) {
-        let Gesture::Wiring { from, point, at, backwards, pipe } = self.realm.gesture else { return };
+        let Gesture::Wiring { from, point, at, backwards, pipe } = self.realm.gesture else {
+            return;
+        };
         if backwards {
             self.settle_a_wire_picked_up_by_its_source(ui, body, from, point, at, pipe);
             return;
@@ -1216,7 +1223,10 @@ impl UnluminousApp {
         realm_view::directed_wire_in_the_air(
             ui,
             body,
-            shape::Anchor { at: start, out: leaving.map(|anchor| anchor.out).unwrap_or(Vec2::new(1.0, 0.0)) },
+            shape::Anchor {
+                at: start,
+                out: leaving.map(|anchor| anchor.out).unwrap_or(Vec2::new(1.0, 0.0)),
+            },
             end,
             Some(arriving.out),
             over.is_some(),

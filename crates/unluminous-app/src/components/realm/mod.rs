@@ -528,7 +528,8 @@ pub fn wires(
         outcome.menu = Some((at, edge));
     }
     // **Not over a node**, because a wire is drawn under every node and a press on a node is the node's.
-    let over_a_node = pointer.is_some_and(|at| view.node_at(camera.to_world(area.min, at)).is_some());
+    let over_a_node =
+        pointer.is_some_and(|at| view.node_at(camera.to_world(area.min, at)).is_some());
     if let (true, false, Some((_, edge, arriving_end)), Some(at)) =
         (pressed, over_a_node, nearest, pointer)
     {

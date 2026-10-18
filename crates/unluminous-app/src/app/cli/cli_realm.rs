@@ -1753,7 +1753,13 @@ impl UnluminousApp {
                     .unwrap_or_default();
                 format!(
                     "{}{:<40} {:<14} {}",
-                    if row.showing { "*" } else if row.tab { "+" } else { " " },
+                    if row.showing {
+                        "*"
+                    } else if row.tab {
+                        "+"
+                    } else {
+                        " "
+                    },
                     crate::services::realm::slashed(&row.id),
                     when,
                     if row.tab { "tab" } else { "" },
@@ -1775,7 +1781,11 @@ impl UnluminousApp {
             .collect();
         lines(
             request,
-            format!("{} realm file{}, newest first", realms.len(), if realms.len() == 1 { "" } else { "s" }),
+            format!(
+                "{} realm file{}, newest first",
+                realms.len(),
+                if realms.len() == 1 { "" } else { "s" }
+            ),
             lines_out,
             json!({ "realms": realms, "listShowing": self.realm.recent.is_some() }),
         )

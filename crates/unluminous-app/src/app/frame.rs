@@ -1669,7 +1669,11 @@ impl UnluminousApp {
     ///
     /// @param folder - the backgrounds folder
     /// @param ctx - the window's context, asked for a frame when the thumbnails are there
-    pub(crate) fn make_the_background_thumbnails(&self, folder: std::path::PathBuf, ctx: egui::Context) {
+    pub(crate) fn make_the_background_thumbnails(
+        &self,
+        folder: std::path::PathBuf,
+        ctx: egui::Context,
+    ) {
         use std::sync::atomic::Ordering;
         if self.background_thumbnails_making.swap(true, Ordering::AcqRel) {
             return;

@@ -147,7 +147,8 @@ pub fn show(
     let screen = ctx.content_rect();
     let height = card_height(found.len()).min(screen.height() - 24.0).max(200.0);
     let left = anchor.left().min(screen.right() - WIDTH - 12.0).max(screen.left() + 12.0);
-    let card = Rect::from_min_size(Pos2::new(left, anchor.bottom() + 8.0), Vec2::new(WIDTH, height));
+    let card =
+        Rect::from_min_size(Pos2::new(left, anchor.bottom() + 8.0), Vec2::new(WIDTH, height));
     egui::Area::new(egui::Id::new("unluminous-realm-recent"))
         .order(egui::Order::Foreground)
         .fixed_pos(card.min)
@@ -156,7 +157,12 @@ pub fn show(
             ui.set_min_size(card.size());
             kit::layer_reaching(ui, "realm-recent-surface", card, modal::SHADOW_REACH, |rux| {
                 let chat = rux.theme().chat;
-                rux.chrome.surface(card, RADIUS, rux::Fill::gradient(chat.card, card), modal::shadow());
+                rux.chrome.surface(
+                    card,
+                    RADIUS,
+                    rux::Fill::gradient(chat.card, card),
+                    modal::shadow(),
+                );
             });
             let inner = card.shrink(PAD);
             let list = kit::layer(ui, "realm-recent", inner, |rux| {
@@ -190,7 +196,13 @@ pub fn show(
                     Pos2::new(inner.left(), inner.top() + HEADING + GAP),
                     Vec2::new(inner.width(), SEARCH),
                 );
-                let entry = dialog::search(rux, well, "Find a realm file", "Search realms", &mut state.filter);
+                let entry = dialog::search(
+                    rux,
+                    well,
+                    "Find a realm file",
+                    "Search realms",
+                    &mut state.filter,
+                );
                 if !state.focused {
                     entry.request_focus();
                     state.focused = true;
@@ -229,7 +241,10 @@ pub fn show(
     // dropdown does. The chip's own press is the bar's, which toggles it.
     let pressed_outside = ctx.input(|input| {
         input.pointer.any_pressed()
-            && input.pointer.interact_pos().is_some_and(|at| !card.contains(at) && !anchor.contains(at))
+            && input
+                .pointer
+                .interact_pos()
+                .is_some_and(|at| !card.contains(at) && !anchor.contains(at))
     });
     if escape || pressed_outside || outcome.open.is_some() || outcome.new_realm || outcome.manage {
         outcome.closed = true;
@@ -253,10 +268,12 @@ fn show_the_rows(
         &mut child,
         |ui| {
             if found.is_empty() {
-                let rect = Rect::from_min_size(ui.cursor().min, Vec2::new(ui.available_width(), ROW));
+                let rect =
+                    Rect::from_min_size(ui.cursor().min, Vec2::new(ui.available_width(), ROW));
                 kit::layer(ui, "realm-recent-none", rect, |rux| {
                     let theme = rux.theme();
-                    let galley = rux.text(Style::sans(12.0), "No realm file is called that", theme.ink.i400);
+                    let galley =
+                        rux.text(Style::sans(12.0), "No realm file is called that", theme.ink.i400);
                     rux::text::draw_centred(rux.painter(), rect, galley, theme.ink.i400);
                 });
                 ui.allocate_space(rect.size());
@@ -298,7 +315,8 @@ fn draw_a_row(
         rux.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     // The realm's mark in a small carved disc, lit while it is the one on the canvas.
-    let disc = Rect::from_center_size(Pos2::new(rect.left() + 26.0, rect.center().y), Vec2::splat(32.0));
+    let disc =
+        Rect::from_center_size(Pos2::new(rect.left() + 26.0, rect.center().y), Vec2::splat(32.0));
     rux.chrome.surface(disc, 16.0, chat.well, chat.carved_sm());
     let mark_tint = match row.showing {
         true => chat.sky,

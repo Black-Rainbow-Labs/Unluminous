@@ -846,7 +846,12 @@ impl Dictating {
     /// A dictation starting over `draft`, whose words stay in front of what is said.
     /// @param draft - the text as it is when dictation starts
     pub fn starting(draft: &str) -> Self {
-        Dictating { applied: draft.to_owned(), base: draft.trim_end().to_owned(), skip: 0, shown: 0 }
+        Dictating {
+            applied: draft.to_owned(),
+            base: draft.trim_end().to_owned(),
+            skip: 0,
+            shown: 0,
+        }
     }
 
     /// The text again, as what was there before dictation followed by the words heard. A change typed by hand

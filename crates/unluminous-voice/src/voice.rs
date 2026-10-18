@@ -469,7 +469,8 @@ impl Worker {
         if started == Started::Button {
             self.refused = None;
         }
-        let mut dictation = Dictation::new(tag, started, &self.config.engine, self.config.send_pause);
+        let mut dictation =
+            Dictation::new(tag, started, &self.config.engine, self.config.send_pause);
         dictation.microphone = microphone;
         if started == Started::Wake {
             dictation.wake_score = self.wake.as_ref().map(WakeDetector::last_score).unwrap_or(0.0);

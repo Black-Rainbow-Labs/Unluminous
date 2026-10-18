@@ -140,11 +140,13 @@ pub fn make(
         let picture = designs_root(project, folder).join(HOUSE_BACKGROUND_PATH);
         if !picture.exists() {
             if let Some(parent) = picture.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|problem| format!("{} could not be made: {problem}", parent.display()))?;
+                std::fs::create_dir_all(parent).map_err(|problem| {
+                    format!("{} could not be made: {problem}", parent.display())
+                })?;
             }
-            crate::services::store::write_atomically(&picture, HOUSE_BACKGROUND)
-                .map_err(|problem| format!("{} could not be written: {problem}", picture.display()))?;
+            crate::services::store::write_atomically(&picture, HOUSE_BACKGROUND).map_err(
+                |problem| format!("{} could not be written: {problem}", picture.display()),
+            )?;
         }
     }
     crate::services::store::write_atomically(&disk, page.as_bytes())

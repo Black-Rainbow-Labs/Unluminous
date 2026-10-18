@@ -57,7 +57,11 @@ pub fn make(folder: &Path, name: &str) -> Result<PathBuf, String> {
         .round()
         .max(1.0) as u32;
     let small = picture
-        .resize_exact(WIDTH.min(picture.width()), height.min(picture.height()), image::imageops::FilterType::Triangle)
+        .resize_exact(
+            WIDTH.min(picture.width()),
+            height.min(picture.height()),
+            image::imageops::FilterType::Triangle,
+        )
         .to_rgb8();
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent)
@@ -86,10 +90,11 @@ pub fn make_the_missing(folder: &Path) -> usize {
 /// @param folder - the backgrounds folder
 /// @param done - called once every missing thumbnail has been made, such as a request for a frame
 pub fn make_the_missing_later(folder: PathBuf, done: impl FnOnce() + Send + 'static) {
-    let started = std::thread::Builder::new().name("unluminous-thumbnails".to_owned()).spawn(move || {
-        make_the_missing(&folder);
-        done();
-    });
+    let started =
+        std::thread::Builder::new().name("unluminous-thumbnails".to_owned()).spawn(move || {
+            make_the_missing(&folder);
+            done();
+        });
     if let Err(problem) = started {
         eprintln!("Unluminous could not start making background thumbnails: {problem}");
     }
@@ -122,7 +127,11 @@ mod tests {
         assert_eq!((small.width(), small.height()), (WIDTH, 270), "the picture's shape, 480 wide");
         assert!(is_current(&folder, "wide.png"));
         assert_eq!(make_the_missing(&folder), 0, "nothing is made twice");
-        assert_eq!(super::super::list_in(&folder), vec!["wide.png".to_owned()], "the folder is not a picture");
+        assert_eq!(
+            super::super::list_in(&folder),
+            vec!["wide.png".to_owned()],
+            "the folder is not a picture"
+        );
         forget(&folder, "wide.png");
         assert!(!is_current(&folder, "wide.png"));
         assert_eq!(make_the_missing(&folder), 1);

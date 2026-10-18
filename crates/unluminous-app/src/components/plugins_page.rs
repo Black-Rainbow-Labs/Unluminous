@@ -134,7 +134,8 @@ fn scrolled_detail(
         state.detail_height = 0.0;
     }
     let view = (page.bottom() - room.top()).max(0.0);
-    let track = Rect::from_min_max(room.min, Pos2::new(room.right() + DETAIL_BAR_OUTSIDE, page.bottom()));
+    let track =
+        Rect::from_min_max(room.min, Pos2::new(room.right() + DETAIL_BAR_OUTSIDE, page.bottom()));
     let was = state.detail_scroll;
     let grab = match scrollbar::Bar::new(track, was, state.detail_height, view) {
         Some(bar) => scrollbar::grab(ui, &bar, DETAIL_SCROLLBAR),

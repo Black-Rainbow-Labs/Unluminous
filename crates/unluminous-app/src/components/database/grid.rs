@@ -386,7 +386,13 @@ fn sort_mark(order: &str, column: &str) -> Option<bool> {
 ///
 /// `task-2293`: *"The sort caret points right instead of up when sorting descending."* It was the explorer's
 /// disclosure mark, whose closed state points right; a sort only ever has two directions, and both are vertical.
-fn sort_chevron(painter: &egui::Painter, centre: Pos2, ascending: bool, colour: egui::Color32, scale: f32) {
+fn sort_chevron(
+    painter: &egui::Painter,
+    centre: Pos2,
+    ascending: bool,
+    colour: egui::Color32,
+    scale: f32,
+) {
     let at = |x: f32, y: f32| Pos2::new(centre.x + x * scale, centre.y + y * scale);
     let tip = if ascending { 2.5 } else { -2.5 };
     let points = vec![at(-4.0, -tip), at(0.0, tip), at(4.0, -tip)];
