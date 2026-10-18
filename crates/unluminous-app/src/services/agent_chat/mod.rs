@@ -69,6 +69,9 @@ pub const CLIPBOARD: &str = "clipboard";
 /// What the id of a command a component asked for starts with, so its answer is not taken for a tool's.
 pub const OPENING: &str = "open-file:";
 
+/// What the id of a request about speech to text starts with, so its answer is not taken for a tool's.
+pub const VOICE: &str = "voice:";
+
 /// How long an endpoint's readiness is believed for.
 ///
 /// `services::debuggers::ADAPTER_SEARCH_TTL`'s number and its reason: the answer comes from reading
@@ -541,6 +544,9 @@ pub struct PaneState {
     pub chrome_rux: Option<rux::RuxState>,
     /// Whether the Chat settings dialog is open over the pane.
     pub settings_open: bool,
+    /// What speech to text is doing for this chat's prompt, which the window says every frame it changes.
+    /// The microphone button and the Chat settings' `Listen for "Sable"` switch read it. `task-2290`.
+    pub voice: crate::services::plugin_ui::VoiceView,
     /// Who answers in this conversation, which is the name over each answer.
     pub speaker: String,
     /// Whether the pane is showing another program's conversation, set by the drawing each frame from
@@ -797,6 +803,38 @@ pub struct AgentChat {
     /// Whether the turn in flight resumed a session, so a refusal to resume it is asked again as a replay.
     /// Cleared by that retry, so a turn is retried once at most.
     may_retry_without_the_session: bool,
+    /// The dictation filling the draft, while there is one. See [`Dictating`].
+    dictating: Option<Dictating>,
+}
+
+/// The request that runs `voice <verb> [state]` through `UnluminousApp::run_cli`. `task-2290`.
+/// @param verb - `dictate` or `listen`
+/// @param state - `on`, `off`, or empty to toggle
+pub fn voice_request(verb: &str, state: &str) -> Request {
+    let mut arguments = serde_json::Map::new();
+    if !state.is_empty() {
+        arguments.insert("state".to_owned(), serde_json::json!(state));
+    }
+    Request::RunCommand {
+        id: format!("{VOICE}{verb}"),
+        command: format!("voice.{verb}"),
+        arguments,
+    }
+}
+
+/// What a dictation into the draft remembers, so the words it adds go after what was there and a word typed
+/// by hand in the middle of it is kept. `task-2290`.
+///
+/// The window hands over **everything said so far** each time, the newest words still provisional, so the
+/// draft is worked out again from `base` rather than added to. When the draft is not what was last written
+/// into it, somebody typed: what they typed becomes the new `base`, and the words already shown are not
+/// written again.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Dictating {
+    base: String,
+    applied: String,
+    skip: usize,
+    shown: usize,
 }
 
 impl std::fmt::Debug for AgentChat {
@@ -849,7 +887,61 @@ impl AgentChat {
             may_retry_without_the_session: false,
             shapes: Vec::new(),
             shapes_taken: None,
+            dictating: None,
         }
+    }
+
+    /// Whether dictation is filling the draft.
+    pub fn is_dictating(&self) -> bool {
+        self.dictating.is_some()
+    }
+
+    /// Take a note from dictation: start, words so far, or the end, which may send. `task-2290`.
+    /// @param note - what the window heard for this prompt
+    pub fn hear(&mut self, note: &crate::services::plugin_ui::Dictation) {
+        use crate::services::plugin_ui::Dictation;
+        match note {
+            Dictation::Began => {
+                let base = self.draft.trim_end().to_owned();
+                self.dictating =
+                    Some(Dictating { applied: self.draft.clone(), base, skip: 0, shown: 0 });
+                self.ui.focus_the_prompt = true;
+            }
+            Dictation::Words(words) => self.put_the_words(words),
+            Dictation::Ended { words, send } => {
+                self.put_the_words(words);
+                let had = self.dictating.take().is_some();
+                if had && *send && !self.draft.trim().is_empty() {
+                    let _ = self.send();
+                }
+            }
+        }
+    }
+
+    /// Writes the draft again as what was there before dictation followed by the words heard.
+    /// @param words - everything said so far
+    fn put_the_words(&mut self, words: &str) {
+        let Some(dictating) = self.dictating.as_mut() else { return };
+        if self.draft != dictating.applied {
+            dictating.base = self.draft.trim_end().to_owned();
+            dictating.skip = dictating.shown;
+        }
+        let said: Vec<&str> = words.split_whitespace().collect();
+        let heard = said.iter().skip(dictating.skip).copied().collect::<Vec<&str>>().join(" ");
+        self.draft = match (dictating.base.is_empty(), heard.is_empty()) {
+            (true, _) => heard,
+            (false, true) => dictating.base.clone(),
+            (false, false) => format!("{} {heard}", dictating.base),
+        };
+        dictating.applied = self.draft.clone();
+        dictating.shown = said.len();
+    }
+
+    /// The request that runs a `voice` command for this chat. `task-2290`.
+    /// @param verb - `dictate` or `listen`
+    /// @param state - `on`, `off`, or empty to toggle
+    pub fn ask_the_voice(&mut self, verb: &str, state: &str) {
+        self.asking.push(voice_request(verb, state));
     }
 
     /// The pane's own pieces, split so that the drawing can read the conversation while it writes
@@ -1300,6 +1392,11 @@ impl AgentChat {
     pub fn send(&mut self) -> Result<u64, String> {
         if self.draft.trim().is_empty() && self.attachments.is_empty() {
             return Err("there is nothing to send.".to_owned());
+        }
+        // **Sending ends dictation**, so the words still on their way do not land in the empty prompt after the
+        // message went. `task-2290`.
+        if self.dictating.take().is_some() {
+            self.ask_the_voice("dictate", "off");
         }
         if self.mirror.is_some() {
             return self.send_to_the_mirror();
@@ -2396,6 +2493,15 @@ impl UiProvider for AgentChat {
                 })
                 .with(serde_json::json!({ "motion": !self.ui.still })))
             }
+            // The microphone button, for an agent: the same `voice dictate` the button runs. `task-2290`.
+            "mic" => {
+                let state = rest.trim();
+                if !matches!(state, "" | "on" | "off") {
+                    return Err(format!("mic takes `on` or `off`, not `{state}`."));
+                }
+                self.ask_the_voice("dictate", state);
+                Ok(Answer::said("asked the window to dictate into this prompt").with(serde_json::json!({ "dictating": self.ui.voice.dictating })))
+            }
             other => Err(self.refuse(other)),
         }
     }
@@ -2403,6 +2509,7 @@ impl UiProvider for AgentChat {
     fn commands(&self) -> Vec<(&'static str, &'static str)> {
         vec![
             ("open-pane", "Show the chat pane."),
+            ("mic", "The microphone button inside the prompt: start or stop dictation into this prompt, `on`, `off` or nothing to toggle. The same as `voice dictate`."),
             ("new", "Start a new conversation."),
             (
                 "send",
@@ -2489,6 +2596,14 @@ impl UiProvider for AgentChat {
             }
             return;
         }
+        // A `voice` command the microphone button or the Chat settings ran. A refusal is said where the person
+        // pressed. `task-2290`.
+        if id.starts_with(VOICE) {
+            if let Err(problem) = answer {
+                self.problem = Some(problem);
+            }
+            return;
+        }
         // A file a component opened. A failure is the window's to report; nothing waits on it here.
         if id.starts_with(OPENING) {
             if let Err(problem) = answer {
@@ -2511,6 +2626,14 @@ impl UiProvider for AgentChat {
         }
         let put = (self.ui.scrolled + above) * ratio - above;
         self.ui.scroll_to = Some(put.max(0.0));
+    }
+
+    fn voice(&mut self, view: &crate::services::plugin_ui::VoiceView) {
+        self.ui.voice = view.clone();
+    }
+
+    fn dictation(&mut self, note: &crate::services::plugin_ui::Dictation) {
+        self.hear(note);
     }
 
     fn showing(&mut self, project: Option<&Path>, file: Option<&Path>) {
@@ -3104,6 +3227,59 @@ mod tests {
             Queue::GoesBack,
             "three questions asked of an endpoint that is not answering would be three failures"
         );
+    }
+
+    /// `task-2290`: dictated words go after what was already typed, are written again as they firm up, and
+    /// a word typed by hand in the middle of dictation is kept rather than overwritten by the next words.
+    #[test]
+    fn dictated_words_follow_the_draft_and_keep_what_is_typed_in_the_middle() {
+        use crate::services::plugin_ui::Dictation;
+        let mut chat = AgentChat::new();
+        chat.draft = "In main.rs".to_owned();
+        chat.hear(&Dictation::Began);
+        assert!(chat.is_dictating());
+        chat.hear(&Dictation::Words("fix the".to_owned()));
+        assert_eq!(chat.draft, "In main.rs fix the");
+        chat.hear(&Dictation::Words("fix the failing test".to_owned()));
+        assert_eq!(
+            chat.draft, "In main.rs fix the failing test",
+            "a partial is replaced, not added to"
+        );
+        chat.draft.push_str(", carefully");
+        chat.hear(&Dictation::Words("fix the failing test and run it".to_owned()));
+        assert_eq!(chat.draft, "In main.rs fix the failing test, carefully and run it");
+        chat.hear(&Dictation::Ended {
+            words: "fix the failing test and run it".to_owned(),
+            send: false,
+        });
+        assert!(!chat.is_dictating());
+        assert_eq!(chat.draft, "In main.rs fix the failing test, carefully and run it");
+        chat.hear(&Dictation::Words("late words".to_owned()));
+        assert_eq!(
+            chat.draft, "In main.rs fix the failing test, carefully and run it",
+            "words after the end are not written"
+        );
+    }
+
+    /// A wake asks for the message to go when the speaker stops, and sending stops a dictation still running.
+    #[test]
+    fn a_wake_sends_when_it_ends_and_sending_stops_dictation() {
+        use crate::services::plugin_ui::Dictation;
+        let mut chat = opened("dictation-send");
+        a_local_endpoint(&mut chat);
+        chat.hear(&Dictation::Began);
+        chat.hear(&Dictation::Ended { words: "What changed in git".to_owned(), send: true });
+        assert!(chat.draft.is_empty(), "the words went: {:?}", chat.draft);
+        assert!(
+            chat.session.chat.messages.iter().any(|m| m.text().contains("What changed in git")),
+            "the message is in the conversation"
+        );
+        chat.hear(&Dictation::Began);
+        chat.draft = "stop here".to_owned();
+        let _ = chat.send();
+        assert!(!chat.is_dictating());
+        let asked = chat.asking.iter().any(|r| matches!(r, Request::RunCommand { command, arguments, .. } if command == "voice.dictate" && arguments.get("state") == Some(&serde_json::json!("off"))));
+        assert!(asked, "sending asked the window to stop dictating");
     }
 
     #[test]

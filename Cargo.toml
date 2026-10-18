@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/unluminous-core", "crates/unluminous-chat", "crates/unluminous-db", "crates/unluminous-dap", "crates/unluminous-lsp", "crates/unluminous-git", "crates/unluminous-terminal", "crates/unluminous-jupyter", "crates/unluminous-app", "unluminous-cli"]
+members = ["crates/unluminous-core", "crates/unluminous-chat", "crates/unluminous-db", "crates/unluminous-dap", "crates/unluminous-lsp", "crates/unluminous-git", "crates/unluminous-terminal", "crates/unluminous-jupyter", "crates/unluminous-voice", "crates/unluminous-app", "unluminous-cli"]
 # A crate taken from crates.io and changed here, through `[patch.crates-io]` below. Not a member, so the
 # workspace's lints, tests and formatting leave it as its authors wrote it.
 exclude = ["vendor"]
@@ -20,6 +20,9 @@ unluminous-lsp = { path = "crates/unluminous-lsp" }
 unluminous-git = { path = "crates/unluminous-git" }
 unluminous-terminal = { path = "crates/unluminous-terminal" }
 unluminous-jupyter = { path = "crates/unluminous-jupyter" }
+# Speech to text for the Agent-Chat prompt: the microphone, the "Sable" wake word, the local Moonshine model
+# and an OpenAI compatible endpoint. `task-2290`.
+unluminous-voice = { path = "crates/unluminous-voice" }
 # The code index is Atrius, its own product since task-2172: the engine, the index host and the wire
 # protocol. `unluminous-cli/src/search.rs` is the seam. `crates/unluminous-index` is the copy it was
 # made from and is no longer built.

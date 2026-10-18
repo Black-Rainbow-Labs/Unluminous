@@ -2139,6 +2139,8 @@ fn the_boards_own_settings_page_with_its_agent_configuration() {
     did(&mut harness, "plugins pane agent-tasks/board --show");
     did(&mut harness, "action run settings");
     steady(&mut harness);
+    // The Voice page (`task-2290`) pushed the plugins' pages to the end of the list, which scrolls.
+    scroll_the_settings_list(&mut harness);
     harness.get_all_by_label("Agent-Tasks").last().expect("the Settings row").click();
     steady(&mut harness);
     harness.snapshot(shot("agent_tasks_settings").as_str());
@@ -2701,6 +2703,162 @@ fn the_gear_opens_chat_settings_where_a_pill_chooses_the_model() {
     harness.get_by_label("Close settings").click();
     steady(&mut harness);
     assert!(harness.query_by_label("Model: second").is_none(), "the round cross closes it");
+}
+
+/// `task-2290`: *"a small microphone button to our agent chat input prompt on the inside left of it"*. The
+/// button is inside the left end of the prompt box and the words start after it.
+#[test]
+fn the_prompt_has_a_microphone_inside_its_left_end() {
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    steady(&mut harness);
+    let mic = harness.get_by_label("Dictate").rect();
+    let field = harness.get_by_label("Message").rect();
+    assert!(
+        mic.right() <= field.left() + 1.0,
+        "the microphone {mic:?} is before the words {field:?}"
+    );
+    assert!(field.left() - mic.left() < 60.0, "and beside them, inside the box");
+    assert!((mic.center().y - field.center().y).abs() < 14.0, "on the line the words are on");
+    harness.snapshot(shot("agent_chat_microphone").as_str());
+}
+
+/// A test's window may not open the microphone, so pressing the button says so in the dialog, and the
+/// prompt is left as it was. The released binary is the one `allow_the_microphone` is called in.
+#[test]
+fn the_microphone_in_a_window_that_may_not_use_one_says_so() {
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    steady(&mut harness);
+    let status = did(&mut harness, "voice status");
+    assert_eq!(status["dictating"], serde_json::Value::Null);
+    assert_eq!(status["listening"], false, "always listen is off by default");
+    harness.get_by_label("Dictate").click();
+    for _ in 0..40 {
+        harness.step();
+        if harness.state().voice.dialog.is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    let dialog = harness.state().voice.dialog.clone();
+    assert!(
+        matches!(
+            dialog,
+            Some(
+                unluminous_app::components::microphone_dialog::VoiceDialog::Microphone(_)
+                    | unluminous_app::components::microphone_dialog::VoiceDialog::Model { .. }
+            )
+        ),
+        "the button opened the dialog that says why it cannot listen: {dialog:?}"
+    );
+    let mut draft = String::from("unchanged");
+    with_the_chat(&mut harness, |chat| draft = chat.draft.clone());
+    assert_eq!(draft, "", "nothing was written into the prompt");
+}
+
+/// `task-2290`: always listen for "Sable" is a switch in the Chat settings as well as on Settings, Voice,
+/// and both are the one setting.
+#[test]
+fn the_chat_settings_switch_is_the_always_listen_setting() {
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    steady(&mut harness);
+    harness.get_by_label("Chat settings").click();
+    steady(&mut harness);
+    assert!(!harness.state().settings.voice_always_listen);
+    harness.snapshot(shot("agent_chat_settings_listen").as_str());
+    harness.get_by_label("Listen for \"Sable\"").click();
+    for _ in 0..6 {
+        harness.step();
+    }
+    assert!(harness.state().settings.voice_always_listen, "the switch turned the setting on");
+    let got = did(&mut harness, "settings get voice.always_listen");
+    assert_eq!(got["value"], "true");
+    did(&mut harness, "voice listen off");
+    assert!(!harness.state().settings.voice_always_listen);
+}
+
+/// `task-2290`: *"add a setting in main settings and chat setting to disable, which removes the mic"*. The
+/// Chat settings' `Microphone button` switch is `voice.button`, and off takes the button out of the prompt.
+#[test]
+fn the_microphone_button_can_be_switched_off_from_the_chat_settings() {
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    steady(&mut harness);
+    assert!(harness.query_by_label("Dictate").is_some(), "the button is there by default");
+    harness.get_by_label("Chat settings").click();
+    steady(&mut harness);
+    harness.get_by_label("Microphone button").click();
+    for _ in 0..6 {
+        harness.step();
+    }
+    assert!(!harness.state().settings.voice_button, "the switch turned the setting off");
+    harness.get_by_label("Close settings").click();
+    steady(&mut harness);
+    assert!(harness.query_by_label("Dictate").is_none(), "and the button is gone");
+    harness.snapshot(shot("agent_chat_no_microphone").as_str());
+    did(&mut harness, "settings set voice.button true");
+    steady(&mut harness);
+    assert!(harness.query_by_label("Dictate").is_some(), "and back");
+}
+
+/// `task-2290`: the Voice page holds the engine, the endpoint, the microphone and always listen.
+#[test]
+fn the_voice_settings_page() {
+    let mut harness = harness("");
+    harness.state_mut().voice.facts = Some(unluminous_app::components::voice_page::VoiceFacts {
+        model: "Not downloaded (66 MB)".to_owned(),
+        may_download: true,
+        microphone: "The default microphone: allowed".to_owned(),
+        refused: false,
+    });
+    did(&mut harness, "modal open settings --page voice");
+    steady(&mut harness);
+    assert!(harness.query_by_label("Speech to text engine").is_some());
+    assert!(harness.query_by_label("Transcription endpoint").is_some());
+    harness.snapshot(shot("settings_voice").as_str());
+    did(&mut harness, "settings set voice.engine endpoint");
+    did(&mut harness, "settings set voice.endpoint http://localhost:4141/v1/audio/transcriptions");
+    assert_eq!(
+        harness.state().settings.voice_engine,
+        unluminous_app::settings::VoiceEngine::Endpoint
+    );
+    assert_eq!(
+        harness.state().settings.voice_endpoint,
+        "http://localhost:4141/v1/audio/transcriptions"
+    );
+}
+
+/// `task-2290`: a recording played in real time fills the prompt as it plays, through the same engine the
+/// microphone feeds, and `voice transcribe` answers its words. Needs the speech model installed.
+#[test]
+fn a_recording_played_live_fills_the_prompt_as_it_plays() {
+    if !unluminous_voice::install::status().is_complete() {
+        assert!(
+            std::env::var("UNLUMINOUS_REQUIRE_VOICE").is_err(),
+            "UNLUMINOUS_REQUIRE_VOICE is set and the speech model is not installed"
+        );
+        eprintln!("the speech model is not installed, so this test did nothing");
+        return;
+    }
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    steady(&mut harness);
+    let clip = format!(
+        "{}/../unluminous-voice/tests/audio/sable-tell-me-a-long-story.wav",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let answer = did(&mut harness, &format!("voice transcribe \"{clip}\" --live"));
+    let text = answer["text"].as_str().unwrap_or_default().to_lowercase();
+    assert!(text.contains("lighthouse keeper"), "{text}");
+    let mut draft = String::new();
+    with_the_chat(&mut harness, |chat| draft = chat.draft.clone());
+    assert!(
+        draft.to_lowercase().contains("lighthouse keeper"),
+        "the prompt holds the words: {draft}"
+    );
+    harness.snapshot(shot("agent_chat_dictated").as_str());
 }
 
 /// Zooming a file does not resize the Agent-Tasks board either. `task-2200`: *"when i zoom in/out with mouse

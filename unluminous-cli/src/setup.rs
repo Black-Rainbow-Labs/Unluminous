@@ -47,6 +47,9 @@ pub struct Options {
     /// Whether to start the server and ask it for its tools. Off only in a test with no program to
     /// start.
     pub ask_the_server: bool,
+    /// Whether to download what speech to text needs and ask about the microphone, by running the window
+    /// program beside this one with `--setup-voice`. Off with `--no-voice`. `task-2290`.
+    pub voice: bool,
 }
 
 impl Default for Options {
@@ -58,6 +61,7 @@ impl Default for Options {
             agents: Client::ALL.to_vec(),
             path: PathChoice::Auto,
             ask_the_server: true,
+            voice: true,
         }
     }
 }
@@ -274,8 +278,91 @@ pub fn run(options: &Options, machine: &Machine) -> Report {
         if options.ask_the_server {
             report.steps.push(server_step(&machine.program));
         }
+        if options.voice {
+            report.steps.push(voice_step(options, &machine.program));
+        }
     }
     report
+}
+
+/// How long the window program may take to download the speech model and ONNX Runtime.
+const VOICE_PATIENCE: Duration = Duration::from_secs(900);
+
+/// Speech to text (`task-2290`): runs the window program beside this one with `--setup-voice`, which
+/// downloads the speech model (66 MB) and, when this machine has none, ONNX Runtime, and asks about the
+/// microphone. Skipped when there is no window program beside this one, which is a build run on its own.
+fn voice_step(options: &Options, program: &Path) -> Step {
+    let name = if cfg!(windows) { "unluminous.exe" } else { "unluminous" };
+    let window = program.parent().map(|folder| folder.join(name)).filter(|path| path.is_file());
+    let Some(window) = window else {
+        return Step::new(
+            "voice",
+            State::Skipped,
+            "The window program is not beside unluminous-cli, so speech to text was not set up.",
+            json!({}),
+        );
+    };
+    if options.check {
+        return Step::new(
+            "voice",
+            State::Would,
+            "Would download the speech model if it is missing, and ask about the microphone.",
+            json!({ "program": window.to_string_lossy() }),
+        );
+    }
+    let child = std::process::Command::new(&window)
+        .arg("--setup-voice")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    let mut child = match child {
+        Ok(child) => child,
+        Err(problem) => {
+            return Step::new(
+                "voice",
+                State::Failed,
+                format!("{} could not be started: {problem}", window.display()),
+                json!({}),
+            )
+        }
+    };
+    let started = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if started.elapsed() < VOICE_PATIENCE => {
+                std::thread::sleep(Duration::from_millis(200))
+            }
+            _ => {
+                let _ = child.kill();
+                return Step::new(
+                    "voice",
+                    State::Failed,
+                    "Setting up speech to text took longer than fifteen minutes and was stopped.",
+                    json!({}),
+                );
+            }
+        }
+    }
+    let mut said = String::new();
+    if let Some(mut out) = child.stdout.take() {
+        let _ = std::io::Read::read_to_string(&mut out, &mut said);
+    }
+    let lines: Vec<&str> = said
+        .lines()
+        .filter(|line| line.starts_with("speech model:") || line.starts_with("microphone:"))
+        .collect();
+    let state = match lines.iter().any(|line| line.contains("not downloaded")) {
+        true => State::Failed,
+        false => State::Done,
+    };
+    Step::new(
+        "voice",
+        state,
+        lines.join("; "),
+        json!({ "program": window.to_string_lossy(), "said": said }),
+    )
 }
 
 // ---------------------------------------------------------------------------------------- agents
@@ -1230,7 +1317,7 @@ mod tests {
     }
 
     fn options() -> Options {
-        Options { path: PathChoice::No, ask_the_server: false, ..Options::default() }
+        Options { path: PathChoice::No, ask_the_server: false, voice: false, ..Options::default() }
     }
 
     #[test]

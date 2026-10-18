@@ -42,7 +42,7 @@
 //! drawn first as a beetle and a play triangle of equal weight — plainly two shapes on the sheet, and a
 //! smudge in a photograph of the real title bar.
 
-use egui::{Color32, CornerRadius, Pos2, Rect, Stroke};
+use egui::{Color32, CornerRadius, Pos2, Rect, Stroke, Vec2};
 
 use super::{color, IconSet};
 
@@ -2231,6 +2231,29 @@ pub fn pencil(painter: &egui::Painter, centre: Pos2, color: Color32) {
     let outline = vec![at(16.0, 4.0), at(20.0, 8.0), at(9.0, 19.0), at(5.0, 19.0), at(5.0, 15.0)];
     painter.add(egui::Shape::closed_line(outline, Stroke::new(1.3, color)));
     painter.line_segment([at(13.0, 7.0), at(17.0, 11.0)], Stroke::new(1.3, color));
+}
+
+/// The microphone inside the left of the Agent-Chat prompt (`task-2290`): a capsule, the cradle under it, the
+/// stem and the foot. Thirteen points tall, in the weight of the rail's line marks.
+pub fn microphone(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    let stroke = Stroke::new(1.35, color);
+    let capsule = Rect::from_center_size(Pos2::new(centre.x, centre.y - 2.2), Vec2::new(4.6, 8.0));
+    painter.rect_stroke(capsule, egui::CornerRadius::same(2), stroke, egui::StrokeKind::Middle);
+    let cradle: Vec<Pos2> = (0..=12)
+        .map(|step| {
+            let angle = std::f32::consts::PI * step as f32 / 12.0;
+            Pos2::new(centre.x + 4.4 * angle.cos(), centre.y - 1.4 + 4.4 * angle.sin())
+        })
+        .collect();
+    painter.add(egui::Shape::line(cradle, stroke));
+    painter.line_segment(
+        [Pos2::new(centre.x, centre.y + 3.0), Pos2::new(centre.x, centre.y + 5.6)],
+        stroke,
+    );
+    painter.line_segment(
+        [Pos2::new(centre.x - 2.6, centre.y + 5.6), Pos2::new(centre.x + 2.6, centre.y + 5.6)],
+        stroke,
+    );
 }
 
 /// A flag on a pole, outlined: report an issue (`task-2276`).

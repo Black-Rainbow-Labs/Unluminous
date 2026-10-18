@@ -53,6 +53,7 @@ pub mod markdown_text;
 pub mod keymap_page;
 pub mod mcp_page;
 pub mod menu_bar;
+pub mod microphone_dialog;
 pub mod modal;
 pub mod new_project_dialog;
 pub mod notebook_view;
@@ -81,3 +82,4 @@ pub mod title_bar;
 /// see it, rather than the status bar's running commentary.
 pub mod toast;
 pub mod value_tooltip;
+pub mod voice_page;

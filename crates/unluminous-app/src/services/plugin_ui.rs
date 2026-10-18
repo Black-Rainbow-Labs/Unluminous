@@ -409,6 +409,37 @@ impl std::fmt::Debug for ChromeSlot {
     }
 }
 
+/// What speech to text is doing, as far as one chat's prompt is concerned. `task-2290`.
+///
+/// The microphone button reads it: lit while `dictating`, its ring following `level`, and a mark when the
+/// microphone is `refused`. The Chat settings' `Listen for "Sable"` switch reads `listening`.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct VoiceView {
+    /// Dictation is filling this chat's prompt.
+    pub dictating: bool,
+    /// Always listen for "Sable" is on.
+    pub listening: bool,
+    /// The prompt has its microphone button, which `voice.button` turns off.
+    pub button: bool,
+    /// How loud the microphone is, 0 to 1, while dictating here.
+    pub level: f32,
+    /// The local model is loading, or a pass is in flight, so the words are on their way.
+    pub working: bool,
+    /// Why the microphone cannot be used, when it cannot.
+    pub refused: Option<String>,
+}
+
+/// Words dictation has for one chat's prompt. `task-2290`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Dictation {
+    /// Dictation into this prompt has started; whatever is in the draft now stays in front of the words.
+    Began,
+    /// Everything said so far, the newest words still provisional.
+    Words(String),
+    /// Dictation is over with these words, and `send` says the message goes now, which a wake asks for.
+    Ended { words: String, send: bool },
+}
+
 /// What a provider asks the window to do, having drawn.
 ///
 /// Every variant is something only the window can do. A provider does none of them itself, so there is
@@ -773,6 +804,19 @@ pub trait UiProvider: std::fmt::Debug {
     /// ignores it, which is the default.
     fn endpoints(&mut self, endpoints: &[unluminous_chat::Provider]) {
         let _ = endpoints;
+    }
+
+    /// What speech to text is doing, as far as this provider's prompt is concerned (`task-2290`). Told every
+    /// frame it changes. A provider with no prompt ignores it, which is the default.
+    fn voice(&mut self, view: &VoiceView) {
+        let _ = view;
+    }
+
+    /// Words dictation has for this provider's prompt (`task-2290`). The window says which provider a
+    /// dictation is for: the side pane's chat, or one chat node, whichever pressed its microphone or the one
+    /// a wake opened. A provider with no prompt ignores it, which is the default.
+    fn dictation(&mut self, note: &Dictation) {
+        let _ = note;
     }
 
     /// This provider as its own type, for a caller that has to reach past the trait.

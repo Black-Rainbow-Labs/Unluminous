@@ -91,6 +91,7 @@ mod cli_search;
 mod cli_settings;
 mod cli_tab;
 mod cli_terminal;
+mod cli_voice;
 mod cli_window;
 
 /// How long a command waits when it was not told.
@@ -198,6 +199,8 @@ pub enum Waiting {
     /// `editor signature` waiting for the language server's signature help. At `answer_by` the
     /// structural reading is given instead. `task-2231` §6.10.
     Signature { answer_by: Instant, until: Instant },
+    /// `voice transcribe` waiting for the words of the dictation with this tag. `task-2290`.
+    VoiceTranscribe { tag: u64, until: Instant },
 }
 
 /// Who asked for a tool call to be run, which is who its answer goes back to.
@@ -249,6 +252,7 @@ impl Waiting {
             | Waiting::NotebookKernels { until, .. }
             | Waiting::Completion { until, .. }
             | Waiting::Signature { until, .. }
+            | Waiting::VoiceTranscribe { until, .. }
             | Waiting::DebugPause { until, .. }
             | Waiting::DebugEvaluate { until, .. }
             | Waiting::DebugHover { until, .. } => *until,
@@ -575,6 +579,10 @@ impl UnluminousApp {
                 self.notebook_kernels_answer(request, &python)
             }
             Waiting::ReportShot { count, .. } => self.report_shot_answer(request, *count),
+            Waiting::VoiceTranscribe { tag, .. } => {
+                let tag = *tag;
+                self.voice_transcribe_answer(request, tag)
+            }
             Waiting::UpdateCheck { .. } => {
                 let check = self.update.as_ref()?;
                 // `take_the_update_answer` is what reads the channel, once a frame, beside the git
@@ -719,6 +727,10 @@ impl UnluminousApp {
             Waiting::ModalResults { .. } => {
                 ("modal.results", "The search was still running when the time ran out.".to_owned())
             }
+            Waiting::VoiceTranscribe { .. } => (
+                "voice.transcribe",
+                "The words had not come back when the time ran out. `voice status` says what the engine is doing.".to_owned(),
+            ),
             Waiting::ReportShot { .. } => (
                 "report.screenshot",
                 "The window had not been photographed when the time ran out.".to_owned(),
@@ -836,10 +848,16 @@ impl UnluminousApp {
         mut waiting: Waiting,
         ctx: &egui::Context,
     ) -> Option<Reply> {
-        if !matches!(waiting, Waiting::Git { answer: GitAnswer::GitStatus, .. }) {
+        // `voice transcribe` is the same shape (`task-2290`): what it waits for is the voice engine's own
+        // threads, which `follow_the_voice` reads, so a test's caller can wait for it here too.
+        let voice = matches!(waiting, Waiting::VoiceTranscribe { .. });
+        if !voice && !matches!(waiting, Waiting::Git { answer: GitAnswer::GitStatus, .. }) {
             return None;
         }
         loop {
+            if voice {
+                self.follow_the_voice(ctx);
+            }
             if let Some(git) = self.git.as_mut() {
                 git.take_replies(&mut self.files);
             }
@@ -965,6 +983,7 @@ impl UnluminousApp {
             "update" => self.cli_update(request, verb),
             "report" => self.cli_report(request, verb),
             "search" => self.cli_search(request, verb),
+            "voice" => self.cli_voice(request, verb),
             _ => no(
                 request,
                 code::UNKNOWN_COMMAND,

@@ -217,6 +217,7 @@ impl Command {
                 | ("terminal", "read")
                 | ("run", "output")
                 | ("update", "check")
+                | ("voice", "transcribe")
                 | ("report", "screenshot")
                 | (
                     "debug",
@@ -558,6 +559,7 @@ pub fn area_title(area: &'static str) -> &'static str {
         "pane" => "pane — the editing area split into panes",
         "editor" => "editor — safely rename symbols everywhere, find every use and definitions",
         "update" => "update — whether a newer Unluminous has been released, and installing it",
+        "voice" => "voice — speech to text in the Agent-Chat prompt, and listening for \"Sable\"",
         "report" => "report — telling the people who make Unluminous about a bug, or asking for a feature",
         "highlight" => "highlight — the passages marked in the project's files",
         "fold" => "fold — the blocks collapsed in the tab that is showing",
@@ -593,6 +595,7 @@ pub fn area_note(area: &'static str) -> &'static str {
         "pane" => "The editing area can be split into panes side by side, each with its own tabs, which is the reference editor's split view. `pane split` moves the tab that is showing into a new pane on the right — it moves rather than copies, because two tabs on one file would be two documents over one path. A pane holding only that tab keeps it and the new pane opens empty, ready for the next file: opening a file always lands in the pane that has the keyboard.",
         "editor" => "Use this tool first for project-symbol work. If asked to find every place a name is used, call `references` with `name`; if asked where a name is defined, call `definition`; if asked to rename it everywhere, call `rename` with `name`, `new-name` and `apply: true`. Do not begin those jobs with grep, file search, reads or file edits. Unluminous's native answers combine unsaved live open tabs with the project index, distinguish code from comments and strings, and apply a role-aware project rename as one undo step per open file while safely rewriting closed files. Lines and columns count from 1.",
         "update" => "One request to unluminous.com, which is where the installer is, and to the public GitHub releases only if the site does not answer. The window asks once a day on its own unless the `update.check` setting is `off`, and offers a newer version in a notice with Install & Restart and Don't Ask Again. `update install` is that button: the installer is checked against the size and SHA-256 unluminous.com publishes before anything is run.",
+        "voice" => "Engines: `local` (Moonshine, `voice install`) or `endpoint` (`voice.endpoint`). Settings are `voice.*`.",
         "report" => "The flag at the bottom right. `report send` opens a GitHub issue on Black-Rainbow-Labs/Unluminous, already written, and puts the attachments on the clipboard; the person submits it there.",
         "fold" => "A block that can be collapsed is a function, an `if`, a bracket that spans lines, a run of comments, an indented section, or a Markdown heading — worked out from the file itself, so nothing has to be written into it. Collapsing one hides its lines; the line numbers of everything still showing are unchanged, so `fold list` and `editor caret --line` speak the same language whatever is folded. `fold others` is the one to notice: it collapses everything that does not hold a marked passage, which is how to leave only the four places you care about on the screen.",
         "notebook" => "Use this for any .ipynb file instead of editing its JSON or running Python in a shell. A notebook tab's text is its cells, one after another behind marker lines, so `editor text` reads every cell and `editor replace` edits one exactly as it does a file; these commands are for what text cannot do. `notebook run --wait` runs cells in a real Jupyter kernel started from the project's own Python and answers with what they printed, returned, raised and drew, and `notebook cell` reads one cell's outputs back, writing a plot to a PNG you can look at. Cells are numbered from 1 or named by `--id`. Saving writes the .ipynb, outputs included, which Jupyter, VS Code and PyCharm open.",
@@ -709,7 +712,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "",
         verb: "setup",
-        summary: "Finish setting Unluminous up on this machine: put `unluminous-cli` on the path, connect every coding agent found (Claude Code, Codex, OpenCode) to Unluminous's MCP server, say which API keys are set, and check that the server answers. The installers run it; running it again changes nothing. An entry an agent already has that points at another Unluminous is left alone. Restart an agent to see the tools it was given.",
+        summary: "Finish setting Unluminous up on this machine: put `unluminous-cli` on the path, connect every coding agent found (Claude Code, Codex, OpenCode) to Unluminous's MCP server, say which API keys are set, check that the server answers, and download the speech model for dictation and ask about the microphone. The installers run it; running it again changes nothing. An entry an agent already has that points at another Unluminous is left alone. Restart an agent to see the tools it was given.",
         arguments: NO_ARGUMENTS,
         flags: &[
             switch("check", "Say what is and is not set up, and change nothing."),
@@ -718,6 +721,7 @@ pub const COMMANDS: &[Command] = &[
             option("agents", "list", "Only these agents, separated by commas: `claude`, `codex`, `opencode`. All of them by default."),
             switch("path", "Put `unluminous-cli` on the path even when this is a build rather than an installed copy."),
             switch("no-path", "Leave the path alone."),
+            switch("no-voice", "Do not download the speech model or ask about the microphone. The Windows installer passes it, because its own `voice` task does that."),
             switch("installer", "Also write the report to `setup.log` in Unluminous's settings folder. The Windows installer passes it, because nothing reads the output of a program it runs hidden."),
         ],
         examples: &["unluminous-cli setup", "unluminous-cli setup --check --json", "unluminous-cli setup --agents claude", "unluminous-cli setup --remove"],
@@ -1440,6 +1444,70 @@ pub const COMMANDS: &[Command] = &[
         arguments: NO_ARGUMENTS,
         flags: NO_FLAGS,
         examples: &["unluminous-cli update status --json"],
+        local: false,
+    },
+    // ------------------------------------------------------------------ speech to text
+    Command {
+        area: "voice",
+        verb: "status",
+        summary: "Engine, model, microphone access, listening, and the dictation's words so far.",
+        arguments: NO_ARGUMENTS,
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli voice status --json"],
+        local: false,
+    },
+    Command {
+        area: "voice",
+        verb: "dictate",
+        summary: "The Agent-Chat prompt's microphone button: words fill the prompt as they are spoken.",
+        arguments: &[closed("state", false, "on, off, or nothing to toggle", &["on", "off"])],
+        flags: &[whole_option("from", "node", "A chat node's prompt instead of the side pane's.")],
+        examples: &["unluminous-cli voice dictate on"],
+        local: false,
+    },
+    Command {
+        area: "voice",
+        verb: "listen",
+        summary: "Always listen for \"Sable\", which then dictates into the side pane's prompt. The `voice.always_listen` setting.",
+        arguments: &[closed("state", false, "on, off, or nothing to toggle", &["on", "off"])],
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli voice listen on"],
+        local: false,
+    },
+    Command {
+        area: "voice",
+        verb: "transcribe",
+        summary: "Transcribe a WAV file with the chosen engine and answer the text. `--live` plays it in real time into the prompt.",
+        arguments: &[argument("path", true, "A WAV file.")],
+        flags: &[switch("live", "Fill the prompt as it plays."), whole_option("timeout", "milliseconds", "120000 by default.")],
+        examples: &["unluminous-cli voice transcribe clip.wav"],
+        local: false,
+    },
+    Command {
+        area: "voice",
+        verb: "hear",
+        summary: "Hear a WAV file as if from the microphone: through the wake word when listening, else into the dictation.",
+        arguments: &[argument("path", true, "A WAV file.")],
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli voice hear clip.wav"],
+        local: false,
+    },
+    Command {
+        area: "voice",
+        verb: "install",
+        summary: "Download the local speech model (66 MB), and ONNX Runtime when missing.",
+        arguments: NO_ARGUMENTS,
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli voice install"],
+        local: false,
+    },
+    Command {
+        area: "voice",
+        verb: "microphone",
+        summary: "Microphone access; `ask` asks the system, `open-settings` opens its privacy page.",
+        arguments: &[closed("action", false, "ask or open-settings", &["ask", "open-settings"])],
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli voice microphone"],
         local: false,
     },
     // ------------------------------------------------------------------ reporting an issue

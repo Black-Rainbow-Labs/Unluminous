@@ -48,6 +48,12 @@
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.developer-tools</string>
 
+    <!-- `task-2290`: the microphone in the Agent-Chat prompt, and listening for "Sable". macOS shows this
+         sentence in the prompt it raises the first time Unluminous opens the microphone, and refuses the
+         microphone outright to a bundle that does not say why it wants it. -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Unluminous turns what you say into text in the Agent-Chat prompt, and listens for "Sable" when you turn that on. Audio is transcribed on this Mac unless you choose a transcription endpoint.</string>
+
     <!-- The same file kinds the Windows installer registers, and on the same terms: Unluminous is offered
          as one of the applications that can open them and does not claim to own any of them. That is
          what `LSHandlerRank: Alternate` says, and `Viewer` rather than `Editor` keeps Unluminous out of

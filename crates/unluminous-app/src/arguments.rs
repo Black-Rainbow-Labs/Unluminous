@@ -25,7 +25,7 @@ use crate::components::title_bar::MenuPlacement;
 /// The one line that says what the program takes, quoted by `--help` and by the module comment.
 pub const USAGE: &str = "Usage: unluminous [path] [--opacity N] [--view raw|side|preview] \
                          [--menu-bar native|in-window] [--terminal] [--control on|off] \
-                         [--background] [--print-menus] [--version]";
+                         [--background] [--print-menus] [--setup-voice] [--version]";
 
 /// The settings a window opens with, once the command line has been read.
 #[derive(Debug, Clone, PartialEq)]
@@ -55,6 +55,9 @@ pub struct Arguments {
     /// command channel, and the foreground window does not change. `tools/drive-a-window.ps1` is what uses
     /// it, and `tasks/task-1914-testing-without-stealing-focus-tdd.md` is the design.
     pub background: bool,
+    /// `--setup-voice`: download what speech to text needs and ask about the microphone, and stop. The
+    /// installer runs it, and so does `unluminous-cli setup`. `task-2290`.
+    pub setup_voice: bool,
 }
 
 impl Default for Arguments {
@@ -70,6 +73,7 @@ impl Default for Arguments {
             print_menus: false,
             control: true,
             background: false,
+            setup_voice: false,
         }
     }
 }
@@ -157,6 +161,7 @@ pub fn read(arguments: impl IntoIterator<Item = String>, control_setting: Option
             }
             "--background" | "--no-activate" => settings.background = true,
             "--print-menus" => settings.print_menus = true,
+            "--setup-voice" => settings.setup_voice = true,
             "--version" | "-V" => return Start::Answer(version()),
             "--help" | "-h" => return Start::Answer(help()),
             // A switch nobody here knows. Said as a sentence, with the one command that lists the
@@ -228,6 +233,7 @@ pub fn help() -> String {
         "  --control WHICH on to let unluminous-cli drive this window, off to close the channel. On by default.",
         "  --background    open the window without taking the keyboard from whatever is in front",
         "  --print-menus   print the menus and their shortcuts, and stop",
+        "  --setup-voice   download the speech model, ask about the microphone, and stop",
         "  --version       print the version and the build date, and stop",
     ]
     .join("\n")

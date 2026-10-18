@@ -120,6 +120,11 @@ Name: "associate"; Description: "Offer Unluminous in ""Open with"" for text, Mar
 ; Unluminous. On by default, so a silent install with no /TASKS does it too. An upgrade from a version
 ; without this task selects it, because Inno selects a task it has no record of by its default.
 Name: "connectagents"; Description: "Connect the coding agents on this machine (Claude Code, Codex, OpenCode) to Unluminous"; GroupDescription: "Other:"
+; `task-2290`. Runs `unluminous.exe --setup-voice`, which downloads the speech model the microphone in the
+; Agent-Chat prompt uses (66 MB from Hugging Face, and ONNX Runtime when this machine has none), checks each
+; file's SHA-256, and checks microphone access: when a Windows privacy switch refuses it, a message box says
+; which one and offers to open its page. On by default. It never fails the install.
+Name: "voice"; Description: "Set up speech to text: download the speech model (66 MB) and check microphone access"; GroupDescription: "Other:"
 
 [Files]
 Source: "{#BinaryDir}\{#ExeName}"; DestDir: "{app}"; Flags: ignoreversion
@@ -192,8 +197,16 @@ Root: HKA; Subkey: "Software\Classes\.yaml\OpenWithProgids"; ValueType: string; 
 ; `--installer` writes what it did to %APPDATA%\Unluminous\setup.log, since a hidden program's output
 ; goes nowhere. It never fails the install: a step that did not work is in the log, and setup's exit
 ; code is not checked.
-Filename: "{app}\{#CliName}"; Parameters: "setup --installer --no-path"; StatusMsg: "Connecting the coding agents on this machine to Unluminous..."; Flags: runhidden waituntilterminated runasoriginaluser; Tasks: connectagents
+Filename: "{app}\{#CliName}"; Parameters: "setup --installer --no-path --no-voice"; StatusMsg: "Connecting the coding agents on this machine to Unluminous..."; Flags: runhidden waituntilterminated runasoriginaluser; Tasks: connectagents
+; `task-2290`. Waited for, as the person who started setup, because the model goes in their own local
+; application data and the microphone switches are theirs.
+Filename: "{app}\{#ExeName}"; Parameters: "--setup-voice"; StatusMsg: "Downloading the speech model and checking the microphone..."; Flags: waituntilterminated runasoriginaluser; Tasks: voice
 Filename: "{app}\{#ExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+
+[UninstallDelete]
+; `task-2290`. The speech model and ONNX Runtime `--setup-voice` downloaded into this person's local application
+; data. Only that folder: settings are in the roaming folder and are left.
+Type: filesandordirs; Name: "{localappdata}\Unluminous\voice"
 
 [UninstallRun]
 ; Take Unluminous out of every agent `setup` connected, so no agent is left starting a program that is

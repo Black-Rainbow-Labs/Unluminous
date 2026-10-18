@@ -455,6 +455,7 @@ fn setup(typed: &Typed) -> i32 {
             _ => PathChoice::Auto,
         },
         ask_the_server: true,
+        voice: !flag("no-voice"),
     };
     let machine = unluminous_cli::setup::Machine::this_one();
     let report = unluminous_cli::setup::run(&options, &machine);

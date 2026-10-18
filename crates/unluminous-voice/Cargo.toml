@@ -1,0 +1,35 @@
+[package]
+name = "unluminous-voice"
+description = "Speech to text for the Agent-Chat prompt: the microphone, the \"Sable\" wake word, the local Moonshine model and an OpenAI compatible endpoint. No user interface."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+# The microphone. Already in the build through `rodio`, at this version.
+cpal = "0.17"
+# The wake word and the voice activity detector, which are Sable's (`C:/jason/dev/sable/crates/sable-wake`):
+# openWakeWord's two front end models, the trained `sable.onnx` classifier and Silero VAD, run in pure Rust so
+# they need no runtime to be downloaded. See `tasks/task-2290-speech-to-text-tdd.md` section 2.
+tract-onnx = "0.21"
+# The local speech model, Moonshine base, through the same ONNX Runtime the code index loads. `load-dynamic`
+# and the same exact version as `inillucent-core`, so the two share one library in one process.
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "ndarray", "load-dynamic"] }
+# The endpoint engine and the download. The workspace's one HTTP client.
+ureq.workspace = true
+serde_json.workspace = true
+# The downloaded model files are checked against the hashes written in `install.rs`.
+sha2.workspace = true
+# Whether a transcript starts with "Sable", the way Sable's server confirms a wake.
+rphonetic = "3"
+
+[target.'cfg(windows)'.dependencies]
+# The microphone consent switches in the registry, and `ShellExecuteW` for the Settings page.
+windows-sys.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# `AVCaptureDevice`'s authorization status and its request, which is the system's microphone prompt.
+objc2.workspace = true
+objc2-foundation = { workspace = true, features = ["NSString"] }
+block2 = { version = "0.6", default-features = false, features = ["std"] }

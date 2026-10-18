@@ -466,6 +466,7 @@ fn the_settings_modal_opens_on_the_page_it_is_asked_for() {
         ("editor", settings::Page::Editor),
         ("plugins", settings::Page::Plugins),
         ("mcp", settings::Page::Mcp),
+        ("voice", settings::Page::Voice),
     ] {
         did(&mut harness, &format!("modal open settings --page {named}"));
         assert_eq!(harness.state().settings_window.page, page, "--page {named}");
@@ -925,6 +926,17 @@ fn settings_list_keeps_a_long_value_and_its_help_apart() {
 /// The help of every setting, so the test can find the seam in a row without a second copy of the
 /// settings list.
 const SETTINGS_HELP: &[&str] = &[
+    // `task-2290`: speech to text.
+    "Which engine turns speech into text in the Agent-Chat prompt: `local`, Moonshine on this machine, the default, or `endpoint`, the OpenAI compatible URL in `voice.endpoint`. `voice install` downloads the local model.",
+    "The OpenAI compatible /v1/audio/transcriptions URL the `endpoint` engine posts audio to, such as ai-proxy's http://localhost:4141/v1/audio/transcriptions.",
+    "The `model` field sent to the transcription endpoint. `whisper-1` by default.",
+    "The name of the environment variable that holds the transcription endpoint's key, never the key itself. Empty for an endpoint that needs none.",
+    "The language sent to the transcription endpoint, such as `en`. Empty lets the endpoint decide. The local model is English.",
+    "Whether the window listens for \"Sable\" and then takes dictation into the Agent-Chat prompt. `false` by default. The same switch as `voice listen` and the Chat settings' Listen for \"Sable\".",
+    "Whether a dictation \"Sable\" started sends its message at the first pause after something was said. `true` by default.",
+    "Whether the Agent-Chat prompt has its microphone button. `true` by default; `false` removes it.",
+    "How readily \"Sable\" wakes the window, 0 to 1. 0.5 by default, which is a detector threshold of 0.6.",
+    "How many seconds the local speech model stays loaded after its last use, 10 to 3600. 60 by default. It holds about 200 MB while loaded.",
     // `task-2247`: every key of every AI endpoint, which `Settings -> AI Configuration` edits.
     "An AI endpoint, which Settings -> AI Configuration edits.",
     // `task-1922` WP4's three, which are the reason this list is a list rather than a rule: a help
@@ -1663,6 +1675,7 @@ const CANNOT_BE_MADE_TO_SUCCEED: &[(&str, &str)] = &[
     // `update_check_answers_with_what_the_releases_page_said` drive it against one on loopback.
     ("update.check", "it asks the releases page, and this walk stands up no server to answer it"),
     ("debug.install", "it downloads and installs a debug adapter onto this machine"),
+    ("voice.install", "it downloads the speech model, 66 MB, into the person's own folder; `unluminous-voice`'s example and tests drive the download"),
     ("explorer.reveal", "it hands the path to the operating system's own file manager"),
     // Three that need something a window with no web view behind it has not got.
     ("browser.back", "it needs a rendered page with somewhere behind it, and a test window renders none"),
@@ -1692,6 +1705,7 @@ fn every_catalogue_command_is_driven_both_ways() {
     drive_a_contributed_tab(&mut coverage);
     drive_the_project(&mut coverage);
     drive_a_notebook(&mut coverage);
+    drive_the_voice(&mut coverage);
 
     let driven = commands_driven();
     let mut missing = Vec::new();
@@ -2617,6 +2631,68 @@ fn drive_a_notebook(coverage: &mut Coverage) {
     c.refuses(&mut harness, "notebook new fresh.ipynb");
     c.works(&mut harness, "notebook new rusty.ipynb --language rust");
     c.refuses(&mut harness, "notebook new other.ipynb --language cobol");
+}
+
+/// A transcription endpoint on loopback that answers every request with the same words, so the `voice`
+/// commands are driven against the endpoint engine with no model, no network and no microphone. `task-2290`.
+fn a_scripted_transcription_endpoint() -> String {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port on loopback");
+    let port = listener.local_addr().expect("its address").port();
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let mut stream = stream;
+            let mut read = Vec::new();
+            let mut buffer = [0u8; 65536];
+            loop {
+                let Ok(n) = stream.read(&mut buffer) else { break };
+                if n == 0 {
+                    break;
+                }
+                read.extend_from_slice(&buffer[..n]);
+                let text = String::from_utf8_lossy(&read).to_string();
+                if let Some(end) = text.find("\r\n\r\n") {
+                    let length = text[..end]
+                        .lines()
+                        .find_map(|line| {
+                            line.to_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|v| v.trim().parse::<usize>().unwrap_or(0))
+                        })
+                        .unwrap_or(0);
+                    if read.len() >= end + 4 + length {
+                        break;
+                    }
+                }
+            }
+            let body = r#"{"text":"what time is it"}"#;
+            let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+        }
+    });
+    format!("http://127.0.0.1:{port}/v1/audio/transcriptions")
+}
+
+/// `voice`, against a scripted endpoint. `task-2290`.
+fn drive_the_voice(coverage: &mut Coverage) {
+    let mut harness = harness_in(&dispatch_folder());
+    let clip = format!(
+        "{}/../unluminous-voice/tests/audio/sable-what-time-is-it.wav",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    coverage.works(&mut harness, "voice status");
+    coverage.works(&mut harness, "voice microphone");
+    coverage.works(&mut harness, "settings set voice.engine endpoint");
+    coverage.works(
+        &mut harness,
+        &format!("settings set voice.endpoint {}", a_scripted_transcription_endpoint()),
+    );
+    coverage.refuses(&mut harness, "voice transcribe no-such-recording.wav");
+    coverage.works(&mut harness, &format!("voice transcribe \"{clip}\""));
+    coverage.works(&mut harness, "voice listen on");
+    coverage.works(&mut harness, &format!("voice hear \"{clip}\""));
+    coverage.works(&mut harness, "voice listen off");
+    coverage.works(&mut harness, "voice dictate on");
+    coverage.works(&mut harness, "voice dictate off");
 }
 
 fn drive_the_project(coverage: &mut Coverage) {

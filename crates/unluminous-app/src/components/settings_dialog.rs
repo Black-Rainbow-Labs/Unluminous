@@ -167,6 +167,8 @@ pub enum PageOutcome {
     OpenBackgrounds,
     /// The AI Configuration page changed an endpoint, so the window writes the list and tells every pane.
     EndpointsChanged,
+    /// The Voice page asked for something that is not a setting. `task-2290`.
+    Voice(crate::components::voice_page::VoiceAsk),
 }
 
 /// What happened in the Settings window this frame.
@@ -201,6 +203,8 @@ pub struct SettingsContext<'a> {
     /// The mark each contributed page is listed with, in slot order: the name of the plugin's own rail mark
     /// (`chat`, `board`, `database`), or empty for a plugin with no pane.
     pub plugin_page_marks: &'a [String],
+    /// What the window knows about speech to text, for the Voice page. `task-2290`.
+    pub voice: &'a crate::components::voice_page::VoiceFacts,
 }
 
 /// Draw the Settings window. Does nothing when it is not open.
@@ -417,6 +421,15 @@ fn draw_the_page(
                 false => PageOutcome::Nothing,
             };
             (outcome, page.height)
+        }
+        Page::Voice => {
+            let page = crate::components::voice_page::show(ui, area, settings, context.voice);
+            let outcome = match (page.ask, page.drawn.changed) {
+                (Some(ask), _) => PageOutcome::Voice(ask),
+                (None, true) => PageOutcome::Changed,
+                (None, false) => PageOutcome::Nothing,
+            };
+            (outcome, page.drawn.height)
         }
         Page::Plugins => {
             let result = plugins_page::show(
@@ -660,6 +673,7 @@ fn mark_of(page: Page, plugin_page_marks: &[String]) -> Icon {
         Page::Terminal => Icon::Terminal,
         Page::Mcp => Icon::Plug,
         Page::Ai => Icon::Spark,
+        Page::Voice => Icon::Music,
         Page::Plugin(slot) => match plugin_page_marks.get(slot as usize).map(String::as_str) {
             Some("chat") => Icon::Bubble,
             Some("board") => Icon::Board,
@@ -1452,6 +1466,7 @@ mod tests {
             icon_for: &icon_for,
             plugin_pages: &[],
             plugin_page_marks: &[],
+            voice: &crate::components::voice_page::VoiceFacts::default(),
         };
         let egui = fonted();
         let mut shapes = Vec::new();
@@ -1544,6 +1559,7 @@ mod tests {
             icon_for: &icon_for,
             plugin_pages: &[],
             plugin_page_marks: &[],
+            voice: &crate::components::voice_page::VoiceFacts::default(),
         };
         let egui = fonted();
         let mut once = |state: &mut SettingsWindow| {

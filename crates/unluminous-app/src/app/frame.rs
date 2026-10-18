@@ -1606,6 +1606,8 @@ impl UnluminousApp {
         if self.take_the_first_setup() {
             ui.ctx().request_repaint();
         }
+        // What speech to text heard, for the prompt that is listening. `task-2290`.
+        self.follow_the_voice(ui.ctx());
     }
 
     /// The text prompt, drawn before the Settings window because a prompt opened from a menu belongs
@@ -1867,6 +1869,8 @@ impl UnluminousApp {
                 self.about = Some(about);
             }
         }
+        // The microphone or speech model dialog the microphone button opens when dictation cannot start.
+        self.show_the_voice_dialog(ui.ctx());
     }
 
     /// The `Run Configurations` modal, drawn beside the other project-wide dialogs.
@@ -2012,6 +2016,11 @@ impl UnluminousApp {
         // Taken apart before the call so the closure below can borrow `plugin_ui` while the dialog holds
         // `settings` and `settings_window`. Two disjoint fields of one value, which the compiler allows
         // only when they are named separately.
+        // Asked only while the Voice page is the one showing, because it reads the disk and the registry.
+        let voice_facts = match self.settings_window.page {
+            crate::settings::Page::Voice => self.voice_facts(),
+            _ => crate::components::voice_page::VoiceFacts::default(),
+        };
         let page_look = crate::services::plugin_ui::Look::of(&self.settings, &self.renderer);
         let plugins_ui = &mut self.plugin_ui;
         let mut page_asked: Vec<(String, crate::services::plugin_ui::Request)> = Vec::new();
@@ -2032,6 +2041,7 @@ impl UnluminousApp {
             icon_for: &icon_for,
             plugin_pages: &page_names,
             plugin_page_marks: &page_marks,
+            voice: &voice_facts,
         };
         let settings_outcome = settings_dialog::show(
             ui.ctx(),
@@ -2085,6 +2095,7 @@ impl UnluminousApp {
             // from another one does: closing the grid puts Appearance back where it was.
             settings_dialog::PageOutcome::OpenBackgrounds => self.background_grid = Some(None),
             settings_dialog::PageOutcome::EndpointsChanged => self.the_endpoints_changed(),
+            settings_dialog::PageOutcome::Voice(ask) => self.voice_page_asked(ask),
             settings_dialog::PageOutcome::Nothing | settings_dialog::PageOutcome::Changed => {}
         }
         if page_changed || self.settings != before {

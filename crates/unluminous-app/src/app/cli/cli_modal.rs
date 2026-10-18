@@ -886,6 +886,7 @@ fn settings_page(name: &str) -> Option<crate::settings::Page> {
         "terminal" => Page::Terminal,
         "mcp" => Page::Mcp,
         "ai" | "ai-configuration" | "endpoints" => Page::Ai,
+        "voice" | "speech" | "dictation" | "microphone" => Page::Voice,
         _ => return None,
     })
 }

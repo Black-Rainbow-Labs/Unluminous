@@ -79,6 +79,7 @@ pub mod symbols;
 pub mod telemetry;
 mod terminals;
 mod updating;
+pub mod voice;
 mod zooming;
 
 use std::collections::HashMap;
@@ -1290,6 +1291,9 @@ pub struct UnluminousApp {
     pub(crate) fresh_install: bool,
     /// The answer of `unluminous-cli setup` run on the first start, while it is being worked out.
     pub(crate) first_setup: Option<std::sync::mpsc::Receiver<unluminous_cli::setup::Report>>,
+    /// Speech to text for the Agent-Chat prompt: the engine, whose prompt is listening, and the dialog the
+    /// microphone opens when it cannot. `task-2290`. Nothing is started until something needs it.
+    pub voice: voice::VoiceState,
     /// The Find bar over the file that is showing, when it is open. `task-1804` §3.1.
     ///
     /// A bar rather than a modal, and it holds no thread: the file being searched is already in
@@ -1653,6 +1657,7 @@ impl UnluminousApp {
             install: None,
             fresh_install: false,
             first_setup: None,
+            voice: voice::VoiceState::default(),
             find: None,
             find_in_files: None,
             references: None,

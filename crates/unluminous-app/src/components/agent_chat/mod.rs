@@ -89,6 +89,12 @@ pub enum Act {
     ShowSettings(bool),
     /// Ask again the question the answer with this id was given to.
     Rerun(u64),
+    /// The microphone inside the prompt: start or stop dictation into it. `task-2290`.
+    Dictate,
+    /// The Chat settings' `Listen for "Sable"` switch. `task-2290`.
+    Listen(bool),
+    /// The Chat settings' `Microphone button` switch, which is `voice.button`. `task-2290`.
+    MicrophoneButton(bool),
 }
 
 /// Draw the pane, and act on what was pressed.
@@ -321,10 +327,15 @@ fn settings(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
     let used = parts.session.chat.context_used;
     let window = parts.session.chat.context_window;
     let mirrored = parts.mirror.map(|_| parts.session.chat.provider.clone());
+    let mut listening = parts.state.voice.listening;
+    let mut button = parts.state.voice.button;
     let side = SIDE * scale;
     let foot = settings_foot(parts, look, area);
-    // `padding: 20px 20px 22px; gap: 22px`: the title row, the model and the context well.
-    let height = (20.0 + 34.0 + 22.0 + 17.0 + 10.0 + 46.0 + 22.0 + 80.0 + 22.0) * scale;
+    // `padding: 20px 20px 22px; gap: 22px`: the title row, the model, the context well and the switch that
+    // listens for "Sable" (`task-2290`).
+    let height =
+        (20.0 + 34.0 + 22.0 + 17.0 + 10.0 + 46.0 + 22.0 + 80.0 + 22.0 + 26.0 + 14.0 + 26.0 + 22.0)
+            * scale;
     // **Under the header, where the gear that opens it is** (`task-2261`), and never past the prompt box.
     let top = area.top() + side + (HEADER + 12.0) * scale;
     let dialog = Rect::from_min_max(
@@ -429,6 +440,54 @@ fn settings(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
                     Vec2::new(inner.width(), rux.z(80.0)),
                 );
                 context_well(rux, well, used, window);
+                // **Always listen for "Sable"**, which `task-2290` asks to be here as well as on Settings,
+                // Voice. One setting, `voice.always_listen`, written through `voice listen`.
+                top = well.bottom() + rux.z(22.0);
+                let track = Rect::from_min_size(
+                    Pos2::new(inner.left(), top),
+                    Vec2::new(rux.z(44.0), rux.z(26.0)),
+                );
+                let words = "Listen for \"Sable\"";
+                let style = rux.zs(rux::Style::sans(13.0));
+                let galley = rux.text(style, words, theme.ink.i900);
+                let label = Rect::from_min_size(
+                    Pos2::new(track.right() + rux.z(12.0), top),
+                    Vec2::new(galley.size().x, track.height()),
+                );
+                rux::text::draw_left_capitals(
+                    rux.painter(),
+                    Pos2::new(label.left(), track.center().y),
+                    galley,
+                    style,
+                    theme.ink.i900,
+                );
+                if crate::components::settings_kit::switch(rux, track, words, &mut listening, label)
+                {
+                    acts.push(Act::Listen(listening));
+                }
+                // **And the microphone button itself**, which `task-2290` asks to be switchable here and on
+                // Settings, Voice. One setting, `voice.button`.
+                let top = track.bottom() + rux.z(14.0);
+                let track = Rect::from_min_size(
+                    Pos2::new(inner.left(), top),
+                    Vec2::new(rux.z(44.0), rux.z(26.0)),
+                );
+                let words = "Microphone button";
+                let galley = rux.text(style, words, theme.ink.i900);
+                let label = Rect::from_min_size(
+                    Pos2::new(track.right() + rux.z(12.0), top),
+                    Vec2::new(galley.size().x, track.height()),
+                );
+                rux::text::draw_left_capitals(
+                    rux.painter(),
+                    Pos2::new(label.left(), track.center().y),
+                    galley,
+                    style,
+                    theme.ink.i900,
+                );
+                if crate::components::settings_kit::switch(rux, track, words, &mut button, label) {
+                    acts.push(Act::MicrophoneButton(button));
+                }
             });
         },
     );
@@ -1375,6 +1434,26 @@ fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {
             }
             Act::ShowSettings(open) => {
                 chat.ui.settings_open = open;
+            }
+            Act::Dictate => {
+                let state = if chat.ui.voice.dictating { "off" } else { "on" };
+                requests.push(crate::services::agent_chat::voice_request("dictate", state));
+            }
+            Act::MicrophoneButton(on) => {
+                let mut arguments = serde_json::Map::new();
+                arguments.insert("key".to_owned(), serde_json::json!("voice.button"));
+                arguments.insert("value".to_owned(), serde_json::json!(on.to_string()));
+                requests.push(Request::RunCommand {
+                    id: format!("{}button", crate::services::agent_chat::VOICE),
+                    command: "settings.set".to_owned(),
+                    arguments,
+                });
+            }
+            Act::Listen(on) => {
+                requests.push(crate::services::agent_chat::voice_request(
+                    "listen",
+                    if on { "on" } else { "off" },
+                ));
             }
             Act::ToggleTool(id) => match chat.ui.opened_tools.iter().position(|one| *one == id) {
                 Some(at) => {

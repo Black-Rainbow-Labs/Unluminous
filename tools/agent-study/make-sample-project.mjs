@@ -187,6 +187,13 @@ if (!fs.existsSync(database)) {
   }
 }
 
+// A recording for s36-dictation, from the voice engine's own test clips (`task-2290`).
+{
+  const clip = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..', '..', 'crates', 'unluminous-voice', 'tests', 'audio', 'sable-what-time-is-it.wav');
+  fs.mkdirSync(path.join(P, 'audio'), { recursive: true });
+  if (fs.existsSync(clip)) fs.copyFileSync(clip, path.join(P, 'audio', 'question.wav'));
+}
+
 const git = (...a) => spawnSync('git', a, { cwd: P, encoding: 'utf8' });
 if (!fs.existsSync(path.join(P, '.git'))) git('init', '-q');
 git('add', '-A');

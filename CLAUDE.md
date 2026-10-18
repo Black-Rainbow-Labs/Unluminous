@@ -6723,6 +6723,41 @@ left, a menu, a Settings page and `explorer.shows = .designs`. Six rules to keep
 
 Each document stands on its own. If a fact from another one is needed, state the fact.
 
+## Speech to text fills the Agent-Chat prompt, and "Sable" starts it (`task-2290`)
+
+`tasks/task-2290-speech-to-text-tdd.md` is the design. A microphone button inside the left of the prompt box
+dictates into it, words appearing as they are spoken; always listen (`voice.always_listen`, off by default)
+listens for "Sable" and dictates into the side pane's prompt, sending at the first pause after something was
+said unless `voice.send_after_wake` is off. `crates/unluminous-voice` is everything with no window in it. Six
+rules:
+
+- **The wake word is Sable's, unchanged.** `wake.rs` and `vad.rs` are `C:/jason/dev/sable/crates/sable-wake`:
+  openWakeWord's front end, the trained `sable.onnx` and a Silero gate, under `tract`, compiled into the binary
+  (4.5 MB). Sable's `docs/wake-word.md` has the measurements. A wake stands only when the transcript starts with
+  "Sable" or the detector was well over its threshold (`phonetic::confirm`), and the word is taken off the words.
+- **Two engines, one path.** `local` is Moonshine base, quantized (66 MB), through the ONNX Runtime the code
+  index loads (`ort` with `load-dynamic`, 1.22, looked for in the index's order first). `endpoint` posts a WAV
+  built in memory to an OpenAI compatible `/v1/audio/transcriptions` (`voice.endpoint`; ai-proxy is
+  `http://localhost:4141/v1/audio/transcriptions`). Both are fed by `segmenter.rs`, which transcribes the whole
+  open segment again every 300 ms (1.2 s for an endpoint) and cuts it at a 700 ms pause or 20 s.
+- **What is open follows what is needed** (`voice.rs`, `Worker::settle`): the microphone only while dictating
+  or listening, the wake models only while listening, and the local model loaded when dictation starts and let
+  go `voice.model_idle` seconds after its last use. A window nobody speaks to starts none of it.
+- **A test's window never opens the microphone.** `main` calls `allow_the_microphone`; nothing else does.
+  `voice transcribe` and `voice hear` take a WAV through the same engine, which is how both engines and the
+  wake word are tested and driven with no microphone. `UNLUMINOUS_REQUIRE_VOICE=1` makes a missing model a
+  failure in the tests that need it; `cargo run --release -p unluminous-voice --example voice -- install`
+  downloads it, and `-- bench <wav>` times a pass.
+- **The chat is told, the window decides.** The button runs `voice dictate` through `run_cli`; the window
+  hands words back with `UiProvider::dictation` and state with `UiProvider::voice`. Which prompt a dictation
+  fills is fixed by its tag when it starts (`app::voice::Target`): the side pane, a chat node, or nobody.
+- **Microphone access is asked, and refused access is explained.** Windows has no prompt for a desktop
+  program, so `access.rs` reads the three consent switches in the registry and the dialog opens
+  `ms-settings:privacy-microphone`; a stream of exact zeros is taken as refused too. macOS asks through
+  `AVCaptureDevice`, with `NSMicrophoneUsageDescription` in `Info.plist` and
+  `com.apple.security.device.audio-input` in the entitlements. The Windows installer's `voice` task and
+  `unluminous-cli setup` run `unluminous --setup-voice`, which downloads the model and asks.
+
 ## A notebook is one document of percent cells, and the kernel is spoken to through Python
 
 Opening a `.ipynb` file opens a notebook tab: code, Markdown and raw cells, run against a Jupyter

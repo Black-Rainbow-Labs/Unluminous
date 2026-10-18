@@ -340,10 +340,10 @@ Answered by the CLI itself; no Unluminous needs to be running.
 ### setup
 
 ```
-unluminous-cli setup [--check] [--remove] [--force] [--agents <list>] [--path] [--no-path] [--installer]
+unluminous-cli setup [--check] [--remove] [--force] [--agents <list>] [--path] [--no-path] [--no-voice] [--installer]
 ```
 
-Finish setting Unluminous up on this machine: put `unluminous-cli` on the path, connect every coding agent found (Claude Code, Codex, OpenCode) to Unluminous's MCP server, say which API keys are set, and check that the server answers. The installers run it; running it again changes nothing. An entry an agent already has that points at another Unluminous is left alone. Restart an agent to see the tools it was given.
+Finish setting Unluminous up on this machine: put `unluminous-cli` on the path, connect every coding agent found (Claude Code, Codex, OpenCode) to Unluminous's MCP server, say which API keys are set, check that the server answers, and download the speech model for dictation and ask about the microphone. The installers run it; running it again changes nothing. An entry an agent already has that points at another Unluminous is left alone. Restart an agent to see the tools it was given.
 
 - `--check` — Say what is and is not set up, and change nothing.
 - `--remove` — Take out every `unluminous` entry that starts this program, and the path entry `setup` made. Entries pointing at another program are left.
@@ -351,6 +351,7 @@ Finish setting Unluminous up on this machine: put `unluminous-cli` on the path, 
 - `--agents <list>` — Only these agents, separated by commas: `claude`, `codex`, `opencode`. All of them by default.
 - `--path` — Put `unluminous-cli` on the path even when this is a build rather than an installed copy.
 - `--no-path` — Leave the path alone.
+- `--no-voice` — Do not download the speech model or ask about the microphone. The Windows installer passes it, because its own `voice` task does that.
 - `--installer` — Also write the report to `setup.log` in Unluminous's settings folder. The Windows installer passes it, because nothing reads the output of a program it runs hidden.
 
 ```sh
@@ -1370,6 +1371,109 @@ The last check's answer, an install's progress, the declined version, and the of
 
 ```sh
 unluminous-cli update status --json
+```
+
+## voice — speech to text in the Agent-Chat prompt, and listening for "Sable"
+
+Engines: `local` (Moonshine, `voice install`) or `endpoint` (`voice.endpoint`). Settings are `voice.*`.
+
+### voice status
+
+```
+unluminous-cli voice status
+```
+
+Engine, model, microphone access, listening, and the dictation's words so far.
+
+```sh
+unluminous-cli voice status --json
+```
+
+### voice dictate
+
+```
+unluminous-cli voice dictate [on|off] [--from <node>]
+```
+
+The Agent-Chat prompt's microphone button: words fill the prompt as they are spoken.
+
+- `state` (optional) — on, off, or nothing to toggle
+
+- `--from <node>` — A chat node's prompt instead of the side pane's.
+
+```sh
+unluminous-cli voice dictate on
+```
+
+### voice listen
+
+```
+unluminous-cli voice listen [on|off]
+```
+
+Always listen for "Sable", which then dictates into the side pane's prompt. The `voice.always_listen` setting.
+
+- `state` (optional) — on, off, or nothing to toggle
+
+```sh
+unluminous-cli voice listen on
+```
+
+### voice transcribe
+
+```
+unluminous-cli voice transcribe <path> [--live] [--timeout <milliseconds>]
+```
+
+Transcribe a WAV file with the chosen engine and answer the text. `--live` plays it in real time into the prompt.
+
+- `path` — A WAV file.
+
+- `--live` — Fill the prompt as it plays.
+- `--timeout <milliseconds>` — 120000 by default.
+
+```sh
+unluminous-cli voice transcribe clip.wav
+```
+
+### voice hear
+
+```
+unluminous-cli voice hear <path>
+```
+
+Hear a WAV file as if from the microphone: through the wake word when listening, else into the dictation.
+
+- `path` — A WAV file.
+
+```sh
+unluminous-cli voice hear clip.wav
+```
+
+### voice install
+
+```
+unluminous-cli voice install
+```
+
+Download the local speech model (66 MB), and ONNX Runtime when missing.
+
+```sh
+unluminous-cli voice install
+```
+
+### voice microphone
+
+```
+unluminous-cli voice microphone [ask|open-settings]
+```
+
+Microphone access; `ask` asks the system, `open-settings` opens its privacy page.
+
+- `action` (optional) — ask or open-settings
+
+```sh
+unluminous-cli voice microphone
 ```
 
 ## report — telling the people who make Unluminous about a bug, or asking for a feature

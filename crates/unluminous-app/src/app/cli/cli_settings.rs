@@ -688,6 +688,7 @@ impl UnluminousApp {
             "panes.terminal.height" => format!("{:.0}", self.panes.terminal_height),
             "panes.preview.fraction" => format!("{:.3}", self.panes.preview_fraction),
             "panes.find.split" => format!("{:.3}", self.panes.find_split),
+            name if name.starts_with("voice.") => voice_setting(&self.settings, name),
             other => match self.pane_setting(other) {
                 Some((slot, measure)) => measure.read(&self.panes, slot),
                 None => String::new(),
@@ -814,6 +815,12 @@ impl UnluminousApp {
             // nothing. A pattern that will not parse at all is skipped by the reader with the rest
             // of the line kept, which is what a `.gitignore` comment does.
             "editor.exclude" => settings.exclude = value.trim().to_owned(),
+            // Speech to text (`task-2290`). Free text, so the table cannot check them; an endpoint is any URL
+            // and a key is the name of an environment variable.
+            "voice.endpoint" => settings.voice_endpoint = value.trim().to_owned(),
+            "voice.endpoint_model" => settings.voice_endpoint_model = value.trim().to_owned(),
+            "voice.endpoint_key" => settings.voice_endpoint_key = value.trim().to_owned(),
+            "voice.language" => settings.voice_language = value.trim().to_lowercase(),
             // A version, or empty to offer every version again. Not checked against the releases,
             // because declining a version that has not been published yet is harmless.
             "update.skip" => settings.update_skip = value.trim().trim_start_matches('v').to_owned(),
@@ -1326,6 +1333,46 @@ impl PaneMeasure {
 /// to keep in step.
 const SETTINGS: &[SettingKey] = &[
     SettingKey {
+        name: "voice.engine",
+        help: "Which engine turns speech into text in the Agent-Chat prompt: `local`, Moonshine on this machine, the default, or `endpoint`, the OpenAI compatible URL in `voice.endpoint`. `voice install` downloads the local model.",
+    },
+    SettingKey {
+        name: "voice.endpoint",
+        help: "The OpenAI compatible /v1/audio/transcriptions URL the `endpoint` engine posts audio to, such as ai-proxy's http://localhost:4141/v1/audio/transcriptions.",
+    },
+    SettingKey {
+        name: "voice.endpoint_model",
+        help: "The `model` field sent to the transcription endpoint. `whisper-1` by default.",
+    },
+    SettingKey {
+        name: "voice.endpoint_key",
+        help: "The name of the environment variable that holds the transcription endpoint's key, never the key itself. Empty for an endpoint that needs none.",
+    },
+    SettingKey {
+        name: "voice.language",
+        help: "The language sent to the transcription endpoint, such as `en`. Empty lets the endpoint decide. The local model is English.",
+    },
+    SettingKey {
+        name: "voice.always_listen",
+        help: "Whether the window listens for \"Sable\" and then takes dictation into the Agent-Chat prompt. `false` by default. The same switch as `voice listen` and the Chat settings' Listen for \"Sable\".",
+    },
+    SettingKey {
+        name: "voice.send_after_wake",
+        help: "Whether a dictation \"Sable\" started sends its message at the first pause after something was said. `true` by default.",
+    },
+    SettingKey {
+        name: "voice.button",
+        help: "Whether the Agent-Chat prompt has its microphone button. `true` by default; `false` removes it.",
+    },
+    SettingKey {
+        name: "voice.wake_sensitivity",
+        help: "How readily \"Sable\" wakes the window, 0 to 1. 0.5 by default, which is a detector threshold of 0.6.",
+    },
+    SettingKey {
+        name: "voice.model_idle",
+        help: "How many seconds the local speech model stays loaded after its last use, 10 to 3600. 60 by default. It holds about 200 MB while loaded.",
+    },
+    SettingKey {
         name: "appearance.font.family",
         help: "The family the editor sets text in.",
     },
@@ -1538,6 +1585,24 @@ fn fresh_value(name: &str, fresh: &crate::settings::Settings) -> String {
         "panes.terminal.height" => format!("{:.0}", panes.terminal_height),
         "panes.preview.fraction" => format!("{:.3}", panes.preview_fraction),
         "panes.find.split" => format!("{:.3}", panes.find_split),
+        name if name.starts_with("voice.") => voice_setting(&fresh, name),
+        _ => String::new(),
+    }
+}
+
+/// A `voice.*` setting as `settings get` prints it. One function for the value and the default. `task-2290`.
+fn voice_setting(settings: &crate::settings::Settings, name: &str) -> String {
+    match name {
+        "voice.engine" => settings.voice_engine.name().to_owned(),
+        "voice.endpoint" => settings.voice_endpoint.clone(),
+        "voice.endpoint_model" => settings.voice_endpoint_model.clone(),
+        "voice.endpoint_key" => settings.voice_endpoint_key.clone(),
+        "voice.language" => settings.voice_language.clone(),
+        "voice.always_listen" => settings.voice_always_listen.to_string(),
+        "voice.send_after_wake" => settings.voice_send_after_wake.to_string(),
+        "voice.button" => settings.voice_button.to_string(),
+        "voice.wake_sensitivity" => format!("{:.2}", settings.voice_wake_sensitivity),
+        "voice.model_idle" => format!("{:.0}", settings.voice_model_idle),
         _ => String::new(),
     }
 }

@@ -98,6 +98,7 @@ fn sheet() -> Vec<Mark> {
         ("bin", icon::bin),
         ("clock", icon::clock),
         ("flag", icon::flag),
+        ("microphone", icon::microphone),
         ("send", icon::send),
         ("pencil", icon::pencil),
         ("copy", icon::copy),

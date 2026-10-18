@@ -122,6 +122,11 @@ fn main() -> eframe::Result {
         print_menus();
         std::process::exit(0);
     }
+    // What speech to text needs, for the installer and `unluminous-cli setup`. `task-2290`.
+    if arguments.setup_voice {
+        console::attach_to_the_calling_terminal();
+        std::process::exit(unluminous_app::app::voice::set_up_from_the_installer());
+    }
 
     // Before anything else, so that a panic while the window is being built is written down too. A
     // graphical application on macOS has no standard error to print one to, and a panic that unwinds
@@ -357,6 +362,8 @@ fn main() -> eframe::Result {
             app.index_on_disk();
             // And it may start rust-analyzer and tsserver, which a test's window does not.
             app.allow_language_servers();
+            // And open the microphone for dictation and for "Sable", which a test's window never does.
+            app.allow_the_microphone();
             // The first start on a Mac or a Linux machine finishes setting Unluminous up, which the
             // Windows installer does on Windows: the command line tool on the path and the coding
             // agents connected. A test never calls this. `task-2278`.

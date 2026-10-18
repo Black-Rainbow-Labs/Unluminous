@@ -40,6 +40,9 @@ unluminous-terminal.workspace = true
 # The Agent-Chat plugin's half with no window in it: the endpoints, the two wire shapes, the
 # server-sent-event framing, the conversation and the thread a request runs on.
 unluminous-chat.workspace = true
+# Speech to text for the Agent-Chat prompt: the microphone, the "Sable" wake word, Moonshine and an endpoint.
+# `task-2290`.
+unluminous-voice.workspace = true
 # The Database plugin's half with no window in it: the PostgreSQL wire protocol, SQLite, the values a
 # grid draws, and the thread a query runs on. See `tasks/task-1777-database-plugin-tdd.md` §2 for why
 # the PostgreSQL client is written here rather than taken from `tokio-postgres`.

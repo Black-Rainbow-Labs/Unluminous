@@ -343,6 +343,47 @@ impl ModelKept {
     }
 }
 
+/// Which engine turns speech into text for the Agent-Chat prompt. `task-2290`.
+///
+/// **Local by default**: Moonshine base on this machine, through the ONNX Runtime the code index already
+/// loads, downloaded by the installer. `endpoint` sends the audio to `voice.endpoint` instead, an OpenAI
+/// compatible `/v1/audio/transcriptions` such as ai-proxy's. `tasks/task-2290-speech-to-text-tdd.md`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VoiceEngine {
+    /// Moonshine on this machine.
+    #[default]
+    Local,
+    /// An OpenAI compatible transcription endpoint.
+    Endpoint,
+}
+
+impl VoiceEngine {
+    /// Every value, in the order the Settings page lists them.
+    pub const ALL: [VoiceEngine; 2] = [VoiceEngine::Local, VoiceEngine::Endpoint];
+
+    /// The word the settings file, the command line and a test spell it with.
+    pub fn name(self) -> &'static str {
+        match self {
+            VoiceEngine::Local => "local",
+            VoiceEngine::Endpoint => "endpoint",
+        }
+    }
+
+    /// Read a value, or nothing when the file holds something this version does not have.
+    pub fn parse(name: &str) -> Option<Self> {
+        let wanted = name.trim().to_lowercase();
+        VoiceEngine::ALL.into_iter().find(|engine| engine.name() == wanted)
+    }
+
+    /// What the Settings page says for it.
+    pub fn title(self) -> &'static str {
+        match self {
+            VoiceEngine::Local => "On this machine",
+            VoiceEngine::Endpoint => "Endpoint",
+        }
+    }
+}
+
 /// What one indent is made of: a tab, or that many spaces. `task-1922` WP4.
 ///
 /// **The default is a tab, because that is what the `Tab` key types today and a setting added to a
@@ -666,6 +707,8 @@ pub enum Page {
     /// What can answer: the one list of AI endpoints that Agent Chat and Agent Tasks pick from
     /// (`task-2247`). See `services::ai_endpoints`.
     Ai,
+    /// Speech to text for the Agent-Chat prompt, and always listen for "Sable" (`task-2290`).
+    Voice,
     /// A page a plugin contributed, by its place in `plugins::Surfaces::pages`.
     ///
     /// A slot rather than a name, so `Page` stays `Copy` — it is passed by value through the dialog and
@@ -679,7 +722,7 @@ pub enum Page {
 impl Page {
     /// Unluminous's own seven. A plugin's page is not in it, because there is no compile time list of them;
     /// [`Page::all`] is the one that includes them.
-    pub const ALL: [Page; 8] = [
+    pub const ALL: [Page; 9] = [
         Page::Appearance,
         Page::Theme,
         Page::Keymap,
@@ -688,6 +731,7 @@ impl Page {
         Page::Terminal,
         Page::Mcp,
         Page::Ai,
+        Page::Voice,
     ];
 
     /// Unluminous's own seven, then one per plugin that contributed a page, in the order the plugins are
@@ -717,6 +761,7 @@ impl Page {
             Page::Terminal => "Terminal",
             Page::Mcp => "MCP",
             Page::Ai => "AI Configuration",
+            Page::Voice => "Voice",
             // A contributed page's real name is `settings.page` in its manifest, which this function has
             // no way to reach. `settings_dialog::title_of` is what draws it, asking the surfaces; this is
             // the answer for a slot with no plugin in it, which nothing draws.
@@ -742,6 +787,8 @@ impl Page {
             Page::Mcp => "Tools",
             // Under Tools beside the MCP server, because both are about Unluminous and a model.
             Page::Ai => "Tools",
+            // Under Tools beside the AI endpoints, because an endpoint can be where speech goes.
+            Page::Voice => "Tools",
             // A contributed page is listed under `Plugins`, so a person looking for what a plugin added
             // finds it under the heading that says where it came from.
             Page::Plugin(_) => "Plugins",
@@ -759,6 +806,9 @@ impl Page {
             Page::Terminal => &["Font", "Shell"],
             Page::Mcp => &["Install", "Server", "Configuration"],
             Page::Ai => &["Endpoints", "Keys", "OpenCode", "Claude", "Codex"],
+            Page::Voice => {
+                &["Speech to text", "Endpoint", "Microphone", "Listen for Sable", "Dictation"]
+            }
             // A contributed page's headings are its own, and a manifest does not name them: the plugin
             // draws its page. So it has none here, which means the search box finds it by its name.
             Page::Plugin(_) => &[],
@@ -1094,6 +1144,17 @@ settings! {
         /// setting only ever needs to remember the newest one somebody declined.
         update_skip = String::new() => "update.skip", "a version the daily check does not offer, or empty";
         background_image = String::new() => "appearance.background.image", "a file in Unluminous's backgrounds folder, or empty to let the desktop show through";
+        /// The OpenAI compatible `/v1/audio/transcriptions` URL the `endpoint` voice engine sends audio to.
+        /// Empty until somebody names one; ai-proxy's is `http://localhost:4141/v1/audio/transcriptions`.
+        voice_endpoint = String::new() => "voice.endpoint", "an OpenAI compatible /v1/audio/transcriptions URL";
+        /// The `model` field sent to that endpoint.
+        voice_endpoint_model = "whisper-1".to_owned() => "voice.endpoint_model", "the model name the endpoint expects";
+        /// The **name** of the environment variable holding the endpoint's key, never the key itself, which is
+        /// `services::ai_endpoints`' rule for every endpoint. Empty for an endpoint that needs none.
+        voice_endpoint_key = String::new() => "voice.endpoint_key", "an environment variable's name, or empty for no key";
+        /// The language sent to the endpoint, such as `en`. Empty lets the endpoint decide. The local model is
+        /// English.
+        voice_language = "en".to_owned() => "voice.language", "a language code such as en, or empty";
     }
 
     text_raw {
@@ -1128,6 +1189,11 @@ settings! {
         /// How many processor threads the embedding model runs on (`task-2282`). 2, from `task-2255`,
         /// where every logical processor embedding at once was 15 to 18 processors busy for minutes.
         search_embedding_threads = 2.0 => "search.embedding_threads", 1.0, 32.0, "{:.0}";
+        /// How readily the "Sable" wake word fires, 0 to 1. 0.5 is a threshold of 0.6, which Sable measured
+        /// at one false wake every three hours of podcasts. `task-2290`.
+        voice_wake_sensitivity = 0.5 => "voice.wake_sensitivity", 0.0, 1.0, "{:.2}";
+        /// How many seconds the local speech model stays loaded after its last use, about 200 MB while it is.
+        voice_model_idle = 60.0 => "voice.model_idle", 10.0, 3600.0, "{:.0}";
     }
 
     flag {
@@ -1185,6 +1251,17 @@ settings! {
         /// index probed it at every open by running it. Completion, Go to Definition, references and
         /// text and regex searches never use it. `app::code_index` puts the switch into effect.
         search_embeddings = false => "search.embeddings";
+        /// Whether the window listens for "Sable" and then takes dictation into the Agent-Chat prompt.
+        ///
+        /// **Off by default**, which `task-2290` asks for. On, the microphone is open whenever the window
+        /// is, gated by a voice activity detector so a quiet room costs about 1% of one processor.
+        voice_always_listen = false => "voice.always_listen";
+        /// Whether a dictation the wake word started sends its message when the speaker stops. On, so
+        /// "Sable, run the tests" needs no hand; off leaves the words in the prompt to be sent.
+        voice_send_after_wake = true => "voice.send_after_wake";
+        /// Whether the Agent-Chat prompt has its microphone button. On by default; off removes the button and
+        /// dictation is reached only through `voice dictate` and "Sable".
+        voice_button = true => "voice.button";
         /// Whether the code index keeps every file's contents in memory (`task-2282`).
         ///
         /// **Off**, as the window has had it since `task-2279`: 11.4 MB of a 2,000 file project, and a
@@ -1214,6 +1291,8 @@ settings! {
         browser_agent: BrowserAgent = BrowserAgent::Default => "browser.user_agent", "default, chrome, firefox, safari or edge";
         /// How many tools the catalogue is cut into for an agent. See `unluminous_cli::mcp::tools`.
         mcp_tools: unluminous_cli::mcp::Shape = unluminous_cli::mcp::Shape::default() => "mcp.tools", "grouped or every";
+        /// Which engine dictation uses. See [`VoiceEngine`].
+        voice_engine: VoiceEngine = VoiceEngine::Local => "voice.engine", "local or endpoint";
     }
 
     extra {
@@ -1864,6 +1943,16 @@ mod tests {
             "mcp.tools",
             "mcp.port",
             "appearance.background.image",
+            "voice.endpoint",
+            "voice.endpoint_model",
+            "voice.endpoint_key",
+            "voice.language",
+            "voice.wake_sensitivity",
+            "voice.model_idle",
+            "voice.always_listen",
+            "voice.send_after_wake",
+            "voice.button",
+            "voice.engine",
         ];
         expected.sort_unstable();
         let mut actual: Vec<&str> = Settings::NAMES.to_vec();
@@ -1983,6 +2072,16 @@ mod tests {
             ui_font_size: 14.0,
             background_image: "wallpaper.png".to_owned(),
             debug_adapters: vec![("lldb".to_owned(), r"C:\tools\codelldb.exe".to_owned())],
+            voice_engine: VoiceEngine::Endpoint,
+            voice_endpoint: "http://localhost:4141/v1/audio/transcriptions".to_owned(),
+            voice_endpoint_model: "whisper-large".to_owned(),
+            voice_endpoint_key: "OPENAI_API_KEY".to_owned(),
+            voice_language: "fr".to_owned(),
+            voice_wake_sensitivity: 0.75,
+            voice_model_idle: 300.0,
+            voice_always_listen: true,
+            voice_send_after_wake: false,
+            voice_button: false,
         };
         let mut values = Values::new();
         settings.write_into(&mut values);

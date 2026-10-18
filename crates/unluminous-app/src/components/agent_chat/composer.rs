@@ -27,6 +27,14 @@
 //! card. Nothing else is in the box: no attach button, no file chip and no model dropdown. A picture
 //! still goes up by dropping or pasting it, and the model is chosen in the Chat settings the gear opens.
 //!
+//! ## The microphone is inside the left end of the well (`task-2290`)
+//!
+//! *"We want to add a small microphone button to our agent chat input prompt on the inside left of it."* A 30
+//! point round button, flat until it is pressed, carved in while dictation is filling this prompt, with a ring
+//! that follows how loud the microphone is. The words start after it. Pressing it runs `voice dictate` through
+//! `UnluminousApp::run_cli`, the same command an agent runs, and the window hands the words back through
+//! `UiProvider::dictation`. It is drawn in a mirror too, because the words go into the same draft.
+//!
 //! ## The words start at the top of the well
 //!
 //! `task-2193`: *"The prompt input is not formatting well when I add new lines. It has a giant space above
@@ -66,6 +74,11 @@ const SEND: f32 = 44.0;
 const SEND_INSET: f32 = 8.0;
 /// Between the composer's rows.
 const GAP: f32 = 8.0;
+/// The microphone button inside the left of the well: 30 points, the size of the gear.
+const MIC: f32 = 30.0;
+/// From the well's left edge to the microphone, which puts the button's middle where a one line pill's
+/// curve is centred.
+const MIC_INSET: f32 = 15.0;
 
 /// How tall the composer is, which the pane measures back from its own bottom.
 pub fn height(parts: &Parts<'_>, look: &Look<'_>, width: f32) -> f32 {
@@ -283,10 +296,23 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
         ),
         false => disc,
     };
+    let mic = Rect::from_center_size(
+        Pos2::new(area.left() + (MIC_INSET + MIC / 2.0) * scale, middle),
+        Vec2::splat(MIC * scale),
+    );
+    // **`voice.button` off removes the microphone** (`task-2290`), and the words start where they did before it.
+    let with_mic = parts.state.voice.button;
+    let words_left = match with_mic {
+        true => mic.right() + 6.0 * scale,
+        false => area.left() + 20.0 * scale,
+    };
     let field = Rect::from_min_max(
-        Pos2::new(area.left() + 20.0 * scale, area.top() + 6.0 * scale),
+        Pos2::new(words_left, area.top() + 6.0 * scale),
         Pos2::new(send_disc.left() - 8.0 * scale, area.bottom() - 6.0 * scale),
     );
+    if with_mic && microphone(parts.state, ui, look, mic) {
+        acts.push(Act::Dictate);
+    }
 
     parts.state.prompt_focused = false;
     // `claude is answering…` while an answer arrives, which is the design's prompt in that state.
@@ -432,6 +458,62 @@ fn prompt(parts: Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rect) -> V
         acts.push(Act::Send);
     }
     acts
+}
+
+/// The microphone button: flat at rest, carved in while dictating here, a ring that follows the level, and a
+/// warning colour when the microphone is refused. Answers whether it was pressed.
+/// @param state - the pane's state, which holds what the window said about the voice
+/// @param ui - the pane
+/// @param look - the pane's look
+/// @param mic - where the button goes
+fn microphone(
+    state: &mut crate::services::agent_chat::PaneState,
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    mic: Rect,
+) -> bool {
+    let scale = look.scale();
+    let voice = state.voice.clone();
+    let response = ui.interact(mic, ui.id().with("agent-chat-microphone"), egui::Sense::click());
+    let hovered = response.hovered();
+    kit::layer(state, look, ui, "prompt-microphone", mic, kit::SMALL_REACH, |rux| {
+        let chat = rux.theme().chat;
+        let radius = mic.width() / 2.0;
+        if voice.dictating {
+            rux.chrome.surface(mic, radius, chat.well, chat.carved_sm());
+        } else if hovered {
+            let wash = rux.theme().interaction.hover;
+            rux.wash(mic, radius, wash);
+        }
+    });
+    let ink = match (&voice.refused, voice.dictating, hovered) {
+        (Some(_), _, _) => look.palette.text_faint,
+        (None, true, _) => look.palette.accent,
+        (None, false, true) => look.palette.text,
+        (None, false, false) => look.palette.text_dim,
+    };
+    let painter = ui.painter_at(mic.expand(4.0 * scale));
+    if voice.dictating {
+        // The ring follows the microphone's level, so somebody speaking can see they are heard.
+        let strength = (0.35 + voice.level * 6.0).min(1.0);
+        painter.circle_stroke(
+            mic.center(),
+            mic.width() / 2.0 + 1.5 * scale,
+            egui::Stroke::new(1.5 * scale, look.palette.accent.gamma_multiply(strength)),
+        );
+    }
+    icon::scaled(&painter, mic.center(), ink, scale, icon::microphone);
+    let hint = match (&voice.refused, voice.dictating) {
+        (Some(why), _) => format!("The microphone cannot be used: {why}"),
+        (None, true) => "Stop dictating".to_owned(),
+        (None, false) => "Dictate: speak and the words fill the prompt".to_owned(),
+    };
+    use crate::components::controls::WithHint;
+    let response = response.with_hint(hint);
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::Button, true, voice.dictating, "Dictate")
+    });
+    response.clicked()
 }
 
 #[cfg(test)]
