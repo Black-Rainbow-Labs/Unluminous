@@ -648,6 +648,7 @@ impl UnluminousApp {
             "appearance.font.family" => self.settings.font_family.clone(),
             "appearance.font.size" => format!("{:.0}", self.settings.font_size),
             "appearance.background.opacity" => format!("{:.3}", self.settings.opacity),
+            "appearance.background.enabled" => self.settings.background_enabled.to_string(),
             "appearance.theme" => self.settings.theme.clone(),
             "appearance.accent" => self.settings.accent.clone(),
             "appearance.icons" => self.settings.icons.clone(),
@@ -953,6 +954,7 @@ impl UnluminousApp {
                         let using = !request.switch("keep");
                         if using {
                             self.settings.background_image = name.clone();
+                            self.settings.background_enabled = true;
                             self.unsaved_settings = true;
                         }
                         // Decoded again on the next frame by `Wallpaper`, which is keyed on the name.
@@ -973,6 +975,7 @@ impl UnluminousApp {
                 let wanted = request.text("name").unwrap_or_default();
                 if wanted.trim().is_empty() {
                     self.settings.background_image.clear();
+                    self.settings.background_enabled = true;
                     self.unsaved_settings = true;
                     return ok(
                         request,
@@ -990,6 +993,7 @@ impl UnluminousApp {
                     );
                 }
                 self.settings.background_image = wanted.clone();
+                self.settings.background_enabled = true;
                 self.unsaved_settings = true;
                 ok(
                     request,
@@ -1361,6 +1365,10 @@ const SETTINGS: &[SettingKey] = &[
         help: "Whether a dictation \"Sable\" started sends its message at the first pause after something was said. `true` by default.",
     },
     SettingKey {
+        name: "voice.send_pause",
+        help: "How many seconds of quiet, once something was said, end a dictation \"Sable\" started, which is when `voice.send_after_wake` sends it. 0.7 to 10, 1.5 by default.",
+    },
+    SettingKey {
         name: "voice.button",
         help: "Whether the Agent-Chat prompt has its microphone button. `true` by default; `false` removes it.",
     },
@@ -1381,8 +1389,12 @@ const SETTINGS: &[SettingKey] = &[
         help: "The point size the editor sets text in, in every tab.",
     },
     SettingKey {
+        name: "appearance.background.enabled",
+        help: "Whether the window draws a background behind itself: the chosen picture, or the desktop through the opacity. `false` by default, which makes the window opaque with no picture; the picture and the opacity are kept for when it is turned on.",
+    },
+    SettingKey {
         name: "appearance.background.opacity",
-        help: "How opaque the window is. Below 1 the desktop shows through.",
+        help: "How opaque the window is while the background is on. Below 1 the desktop shows through.",
     },
     SettingKey {
         name: "appearance.theme",
@@ -1458,11 +1470,11 @@ const SETTINGS: &[SettingKey] = &[
     },
     SettingKey {
         name: "search.embeddings",
-        help: "Whether the code index embeds the project's passages with the embedding model, so a plain English `search find` is ranked by meaning as well as by its words. `false` by default. On, the model holds about 1.1 GB while it is loaded and the first open of a project embeds every passage on two processors for several minutes; vectors already made are reused. `false` stops embedding at once and the model's memory is returned ten seconds after its last use. Completion, Go to Definition, references and text and regex searches never use it.",
+        help: "Whether the code index embeds the project's passages with the embedding model, so a plain English `search find` is ranked by meaning as well as by its words. `false` by default. On, the model holds about 1.1 GB while it is loaded and the first open of a project embeds every passage on two processors for several minutes; vectors already made are reused. `false` stops embedding at once and the model's memory is returned once `search.model_kept` has passed since its last use. Completion, Go to Definition, references and text and regex searches never use it.",
     },
     SettingKey {
         name: "search.model_kept",
-        help: "How long the code index keeps the embedding model loaded after it was last used, while `search.embeddings` is on: `ten_seconds`, the default, `five_minutes`, `always` or `per_use`. Loading it takes 650 to 800 ms and it holds about 1.1 GB, so keeping it longer answers a burst of plain English searches sooner and holds the memory longer. Applies to windows and index hosts started after the change.",
+        help: "How long the code index keeps the embedding model loaded after it was last used, while `search.embeddings` is on: `ten_seconds`, `five_minutes`, the default, `always` or `per_use`. Loading it takes 650 to 800 ms and it holds about 1.1 GB, so keeping it longer answers a burst of plain English searches sooner and holds the memory longer. Applies to windows and index hosts started after the change.",
     },
     SettingKey {
         name: "search.embedding_threads",
@@ -1470,7 +1482,7 @@ const SETTINGS: &[SettingKey] = &[
     },
     SettingKey {
         name: "search.question_index_seconds",
-        help: "How many seconds the code index keeps the search index it builds for a plain English question after the last question, from 0 to 3600. 20 by default. Longer answers a later question sooner and holds about 100 MB on a project the size of Unluminous for longer; 0 lets it go at once. Applies to windows and index hosts started after the change.",
+        help: "How many seconds the code index keeps the search index it builds for a plain English question after the last question, from 0 to 3600. 600 by default. Longer answers a later question sooner and holds about 100 MB on a project the size of Unluminous for longer; 0 lets it go at once. Applies to windows and index hosts started after the change.",
     },
     SettingKey {
         name: "search.page_cache_mb",
@@ -1478,7 +1490,7 @@ const SETTINGS: &[SettingKey] = &[
     },
     SettingKey {
         name: "search.keep_contents",
-        help: "Whether the window's code index keeps every file's contents in memory. `false` by default: a search reads each candidate file from the disk, as ripgrep does, and a project the size of Unluminous holds about 11 MB less. `true` saves that read, which helps an agent asking many questions a second. Applies the next time a window opens the project.",
+        help: "Whether the window's code index keeps every file's contents in memory. `true` by default, which saves reading each candidate file from the disk and helps an agent asking many questions a second. `false` reads them from the disk, as ripgrep does, and a project the size of Unluminous holds about 11 MB less. Applies the next time a window opens the project.",
     },
     SettingKey {
         name: "update.skip",
@@ -1549,6 +1561,7 @@ fn fresh_value(name: &str, fresh: &crate::settings::Settings) -> String {
         "appearance.font.family" => fresh.font_family.clone(),
         "appearance.font.size" => format!("{:.0}", fresh.font_size),
         "appearance.background.opacity" => format!("{:.3}", fresh.opacity),
+        "appearance.background.enabled" => fresh.background_enabled.to_string(),
         "appearance.theme" => fresh.theme.clone(),
         "appearance.accent" => fresh.accent.clone(),
         "appearance.icons" => fresh.icons.clone(),
@@ -1603,6 +1616,7 @@ fn voice_setting(settings: &crate::settings::Settings, name: &str) -> String {
         "voice.button" => settings.voice_button.to_string(),
         "voice.wake_sensitivity" => format!("{:.2}", settings.voice_wake_sensitivity),
         "voice.model_idle" => format!("{:.0}", settings.voice_model_idle),
+        "voice.send_pause" => format!("{:.1}", settings.voice_send_pause),
         _ => String::new(),
     }
 }

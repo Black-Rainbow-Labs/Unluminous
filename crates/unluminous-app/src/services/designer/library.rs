@@ -14,6 +14,12 @@ use super::config::{slashed, Starter};
 /// The starter page, in the house style: a header, a hero, three feature cards, a pricing row and a footer.
 pub const HOUSE_STARTER: &str = include_str!("starter.html");
 
+/// The picture the house starter is drawn on (`task-2293`), and where in the designs folder it is written, which
+/// is the address the starter's own stylesheet names. A JPEG, so the binary carries 167 KB rather than the
+/// 2.5 MB PNG it was made from.
+pub const HOUSE_BACKGROUND: &[u8] = include_bytes!("design-background.jpg");
+pub const HOUSE_BACKGROUND_PATH: &str = "assets/design-background.jpg";
+
 /// An empty page, for a person who wants to start from nothing.
 pub const BLANK_STARTER: &str = "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n\
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Untitled design</title>\n\
@@ -128,6 +134,19 @@ pub fn make(
         Starter::House => HOUSE_STARTER,
         Starter::Blank => BLANK_STARTER,
     };
+    // The house starter's picture goes beside it the first time, and is never written over: a person who
+    // changed it changed it on purpose.
+    if starter == Starter::House {
+        let picture = designs_root(project, folder).join(HOUSE_BACKGROUND_PATH);
+        if !picture.exists() {
+            if let Some(parent) = picture.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|problem| format!("{} could not be made: {problem}", parent.display()))?;
+            }
+            crate::services::store::write_atomically(&picture, HOUSE_BACKGROUND)
+                .map_err(|problem| format!("{} could not be written: {problem}", picture.display()))?;
+        }
+    }
     crate::services::store::write_atomically(&disk, page.as_bytes())
         .map_err(|problem| format!("{} could not be written: {problem}", disk.display()))?;
     Ok(relative)

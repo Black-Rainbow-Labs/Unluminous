@@ -175,6 +175,12 @@ pub struct ProjectState {
     pub realm_current: Option<PathBuf>,
     /// Whether `space.conf` has been turned into realm files, so the import happens once a project.
     pub realm_imported: bool,
+    /// The realms open as tabs on the realm bar, in order, relative to the project with `/` (`task-2293`).
+    ///
+    /// `None` for a file written before tabs could be closed, and then every realm file is a tab, which is
+    /// what the bar drew before. Written as one line with `|` between the paths, because Windows refuses a `|`
+    /// in a file name, so no path can hold one.
+    pub realm_tabs: Option<Vec<PathBuf>>,
     /// How many terminal tabs there were. The shells themselves cannot be brought back — what a
     /// program was doing when the window closed is gone — so what is restored is the same number of
     /// fresh shells in the project's own folder, which is what a person means by "my terminals were
@@ -356,6 +362,15 @@ pub fn load(root: &Path) -> ProjectState {
         state.realm_current = Some(PathBuf::from(current.trim()));
     }
     state.realm_imported = values.flag("realm.imported").unwrap_or(false);
+    if let Some(tabs) = values.text("realm.tabs") {
+        state.realm_tabs = Some(
+            tabs.split('|')
+                .map(str::trim)
+                .filter(|path| !path.is_empty())
+                .map(PathBuf::from)
+                .collect(),
+        );
+    }
     if let Some(on) = values.flag("run.visible") {
         state.run_visible = on;
     }
@@ -519,6 +534,11 @@ pub fn save(root: &Path, state: &ProjectState) {
     }
     if state.realm_imported {
         values.set("realm.imported", "true");
+    }
+    if let Some(tabs) = &state.realm_tabs {
+        let written: Vec<String> =
+            tabs.iter().map(|path| path.display().to_string().replace('\\', "/")).collect();
+        values.set("realm.tabs", written.join("|"));
     }
     values.set("terminal.tabs", state.terminal_tabs.to_string());
     // Written even when empty, so a pane put away is put away next time too rather than falling back to
@@ -986,6 +1006,10 @@ mod tests {
             realm_visible: true,
             realm_current: Some(PathBuf::from(".realm-files/plan.realm")),
             realm_imported: true,
+            realm_tabs: Some(vec![
+                PathBuf::from(".realm-files/plan.realm"),
+                PathBuf::from(".realm-files/scratch.realm"),
+            ]),
             terminal_visible: true,
             terminal_tabs: 2,
             terminal_tab_names: vec!["build".to_owned(), String::new()],

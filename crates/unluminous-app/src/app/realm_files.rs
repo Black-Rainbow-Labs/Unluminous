@@ -27,6 +27,9 @@ use crate::services::realm::{slashed, store, title_of, Realm, State};
 /// another program takes to appear.
 const LIST_AGAIN_AFTER: std::time::Duration = std::time::Duration::from_secs(3);
 
+/// What closing the only realm tab says, from the menu and from `realm close`.
+pub(crate) const LAST_TAB: &str = "The last realm tab stays open, because the canvas always shows a realm. Open another from the folder button first.";
+
 impl UnluminousApp {
     /// Whether the Realm plugin is switched on. Off, the panel, its rail button, its menu and its commands
     /// are all absent, the way Agent-Tasks' pane is when that plugin is off. `task-2202`.
@@ -70,9 +73,95 @@ impl UnluminousApp {
         }
     }
 
-    /// The realms the bar draws: a path and a name each.
+    /// The realms the bar draws, which are the open tabs: a path and a name each.
+    ///
+    /// A tab whose file has gone is left out, and the open realm is always drawn, so the bar never names a
+    /// realm that is not there and never hides the one on the canvas.
     pub(crate) fn realms_for_the_bar(&self) -> Vec<(PathBuf, String)> {
-        self.realm.files.iter().map(|path| (path.clone(), title_of(path))).collect()
+        self.open_realm_tabs().into_iter().map(|path| (path.clone(), title_of(&path))).collect()
+    }
+
+    /// The open tabs, in order, with any whose file has gone left out and the open realm always among them.
+    pub(crate) fn open_realm_tabs(&self) -> Vec<PathBuf> {
+        let current = &self.realm.realm.path;
+        let mut tabs: Vec<PathBuf> = self
+            .realm
+            .tabs
+            .iter()
+            .filter(|path| *path == current || self.realm.files.contains(path))
+            .cloned()
+            .collect();
+        if !tabs.contains(current) {
+            tabs.push(current.clone());
+        }
+        tabs
+    }
+
+    /// Put `path` on the bar as a tab, after the open realm's tab, when it is not one already.
+    fn keep_a_realm_tab(&mut self, path: &Path) {
+        if self.realm.tabs.iter().any(|tab| tab == path) {
+            return;
+        }
+        // The open realm is always a tab, so it is written into the list before another is put after it.
+        let current = self.realm.realm.path.clone();
+        if !self.realm.tabs.contains(&current) {
+            self.realm.tabs.push(current);
+        }
+        let after = self.realm.tabs.iter().position(|tab| *tab == self.realm.realm.path);
+        match after {
+            Some(at) => self.realm.tabs.insert(at + 1, path.to_path_buf()),
+            None => self.realm.tabs.push(path.to_path_buf()),
+        }
+    }
+
+    /// Take the realm at `path` off the bar without deleting its file (`task-2293`: *"We need to be able to
+    /// close/open. right now we can only delete."*). When it was the open realm, the tab beside it opens.
+    ///
+    /// Refused while it is the only tab, because the canvas always shows a realm: the folder button and the plus
+    /// open another, and the last tab closes once there is one.
+    pub(crate) fn close_a_realm_tab(&mut self, path: &Path) -> Result<(), String> {
+        let tabs = self.open_realm_tabs();
+        let Some(at) = tabs.iter().position(|tab| tab == path) else {
+            return Err(format!("{} is not open in a tab.", slashed(path)));
+        };
+        if tabs.len() <= 1 {
+            return Err(LAST_TAB.to_owned());
+        }
+        if self.realm.realm.path == path {
+            let next = match tabs.get(at + 1) {
+                Some(next) => next.clone(),
+                None => tabs[at - 1].clone(),
+            };
+            self.open_a_realm(&next)?;
+        }
+        self.realm.tabs = tabs.into_iter().filter(|tab| tab != path).collect();
+        Ok(())
+    }
+
+    /// The project's realm files with when each was last written, newest first: what the bar's folder button
+    /// lists (`task-2293`). A realm kept in memory, which has no file, counts as written now.
+    pub(crate) fn realms_by_recency(&self) -> Vec<(PathBuf, Option<std::time::SystemTime>)> {
+        let root = self.tree.root();
+        let mut found: Vec<(PathBuf, Option<std::time::SystemTime>)> = self
+            .realm
+            .files
+            .iter()
+            .map(|path| {
+                let written = match self.realm.unsaved.contains_key(path)
+                    || (*path == self.realm.realm.path && !root.join(path).is_file())
+                {
+                    true => Some(std::time::SystemTime::now()),
+                    false => {
+                        std::fs::metadata(root.join(path)).and_then(|meta| meta.modified()).ok()
+                    }
+                };
+                (path.clone(), written)
+            })
+            .collect();
+        found.sort_by(|(left, left_at), (right, right_at)| {
+            right_at.cmp(left_at).then_with(|| slashed(left).cmp(&slashed(right)))
+        });
+        found
     }
 
     /// A realm named the way a person or an agent names one: its path in the project, or its name.
@@ -126,8 +215,9 @@ impl UnluminousApp {
         Ok(())
     }
 
-    /// Put `next` in the panel in place of the realm that is open.
+    /// Put `next` in the panel in place of the realm that is open, as a tab of its own when it was not one.
     fn replace_the_open_realm(&mut self, next: Realm) {
+        self.keep_a_realm_tab(&next.path);
         self.leave_the_open_realm();
         self.realm.realm = next;
         self.realm.problem = None;
@@ -226,6 +316,9 @@ impl UnluminousApp {
             return Err(format!("There is a realm called {name} already."));
         }
         if !self.remembers_this_project() {
+            for tab in self.realm.tabs.iter_mut().filter(|tab| tab.as_path() == path) {
+                *tab = to.clone();
+            }
             if self.realm.realm.path == path {
                 self.realm.realm.path = to.clone();
                 self.realm.realm.name = name.to_owned();
@@ -362,6 +455,20 @@ impl UnluminousApp {
         let relative = crate::services::project_state::relative(&root, gone);
         self.close_the_realm_tabs_under(&relative);
         let was_open = self.realm.realm.path.starts_with(&relative);
+        // The tab beside the open one, chosen before the tabs under the deleted path are taken away.
+        let beside = match was_open {
+            true => {
+                let tabs = self.open_realm_tabs();
+                let at = tabs.iter().position(|tab| *tab == self.realm.realm.path).unwrap_or(0);
+                tabs.iter()
+                    .skip(at + 1)
+                    .chain(tabs.iter().take(at).rev())
+                    .find(|tab| !tab.starts_with(&relative))
+                    .cloned()
+            }
+            false => None,
+        };
+        self.realm.tabs.retain(|tab| !tab.starts_with(&relative));
         for path in self.realm.files.clone() {
             if path.starts_with(&relative) {
                 self.realm.unsaved.remove(&path);
@@ -377,13 +484,14 @@ impl UnluminousApp {
             self.realm.files.retain(|path| *path != gone_path);
             self.list_the_realms();
             self.realm.files.retain(|path| *path != gone_path);
-            let next = self.realm.files.first().cloned();
+            let next = beside.or_else(|| self.realm.files.first().cloned());
             let opened = next.map(|next| self.read_a_realm(&next));
             let next = match opened {
                 Some(Ok(next)) => next,
                 _ => Realm::default(),
             };
             // The deleted realm is not stashed or written on the way out: it is gone.
+            self.keep_a_realm_tab(&next.path);
             self.realm.realm = next;
             self.realm.problem = None;
             self.realm.brought_to_life = None;
@@ -400,6 +508,11 @@ impl UnluminousApp {
             crate::services::project_state::relative(&root, to),
         );
         self.move_the_realm_tabs(&from_relative, &to_relative);
+        for tab in self.realm.tabs.iter_mut() {
+            if let Ok(rest) = tab.strip_prefix(&from_relative) {
+                *tab = to_relative.join(rest);
+            }
+        }
         for path in self.realm.files.clone() {
             if let Ok(rest) = path.strip_prefix(&from_relative) {
                 let moved = to_relative.join(rest);
@@ -462,6 +575,17 @@ impl UnluminousApp {
         self.realm.brought_to_life = None;
         self.realm.unsaved.clear();
         self.realm.problem = None;
+        // **The tabs the project was left with**, or every realm file for a project written before a tab could
+        // be closed, which is what the bar drew then (`task-2293`).
+        self.realm.tabs = match state.realm_tabs {
+            Some(tabs) => tabs.into_iter().filter(|path| root.join(path).is_file()).collect(),
+            None => files.clone(),
+        };
+        if let Some(path) = &chosen {
+            if !self.realm.tabs.contains(path) {
+                self.realm.tabs.push(path.clone());
+            }
+        }
         match chosen {
             Some(path) => match store::load(&root, &path) {
                 Ok(realm) => self.realm.realm = realm,
@@ -624,7 +748,7 @@ impl UnluminousApp {
         ui.painter().rect_filled(
             area,
             0,
-            crate::theme::pane_ground(crate::theme::color::editor(), self.settings.opacity),
+            crate::theme::pane_ground(crate::theme::color::editor(), self.settings.window_opacity()),
         );
         let Some(path) = realm_of_a_tab_key(&tab.key) else { return false };
         let pass = ui.ctx().cumulative_pass_nr();

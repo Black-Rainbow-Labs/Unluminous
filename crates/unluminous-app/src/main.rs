@@ -364,6 +364,9 @@ fn main() -> eframe::Result {
             app.allow_language_servers();
             // And open the microphone for dictation and for "Sable", which a test's window never does.
             app.allow_the_microphone();
+            // The Background grid's thumbnails for every picture already there, on a thread, so the grid opens
+            // at once (`task-2293`). A test's window makes them only when its grid asks.
+            app.make_the_missing_background_thumbnails(&cc.egui_ctx);
             // The first start on a Mac or a Linux machine finishes setting Unluminous up, which the
             // Windows installer does on Windows: the command line tool on the path and the coding
             // agents connected. A test never calls this. `task-2278`.
@@ -382,6 +385,8 @@ fn main() -> eframe::Result {
             }
             if let Some(opacity) = arguments.opacity {
                 app.settings.opacity = opacity.clamp(0.05, 1.0);
+                // Asking for an opacity is asking for the background (`task-2293`).
+                app.settings.background_enabled = true;
             }
             if let Some(view) = arguments.view {
                 app.set_view_mode(view);

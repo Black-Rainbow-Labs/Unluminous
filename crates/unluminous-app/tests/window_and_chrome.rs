@@ -1492,10 +1492,33 @@ fn the_settings_window_opens_from_the_edit_menu_and_holds_the_font_and_the_backg
     // is on the Editor page since `task-2280`, and the interface's is here.
     harness.get_by_label("Interface font family");
     harness.get_by_label("Interface font size");
-    harness.get_by_label("Background opacity");
     harness.get_by_label("Appearance");
     harness.get_by_label("Terminal");
     harness.snapshot(shot("settings_appearance"));
+    // The background is the Theme page's first card since `task-2293`, with its switch first.
+    harness.get_by_label("Theme").click();
+    steady(&mut harness);
+    harness.get_by_label("Show a background");
+    harness.get_by_label("Background opacity");
+}
+
+/// `task-2293`: the background switch, off by default for a person, takes the picture and the opacity away and
+/// gives them back as they were, and the two rows that only apply while it is on go with it.
+#[test]
+fn the_background_switch_is_off_by_default_and_takes_its_rows_with_it() {
+    assert!(!unluminous_app::settings::Settings::new().background_enabled, "off by default");
+    let mut harness = harness("");
+    did(&mut harness, "settings set appearance.background.opacity 0.6");
+    did(&mut harness, "settings set appearance.background.enabled false");
+    open_settings(&mut harness);
+    harness.get_by_label("Theme").click();
+    steady(&mut harness);
+    assert!(harness.query_by_label("Background opacity").is_none(), "absent while the background is off");
+    assert_eq!(harness.state().opacity(), 1.0, "and the window is drawn solid");
+    did(&mut harness, "settings set appearance.background.enabled true");
+    steady(&mut harness);
+    harness.get_by_label("Background opacity");
+    assert!((harness.state().opacity() - 0.6).abs() < 0.001, "the opacity comes back as it was");
 }
 
 #[test]
@@ -4445,6 +4468,7 @@ const EVERY_SPACE: &[&str] = &[
     "RenameRealm",
     "DuplicateRealm",
     "DeleteRealm",
+    "CloseRealm",
     "RenameNode",
     "CloseNode",
     "ChooseFolder",
@@ -4471,6 +4495,7 @@ fn realm_variant_name(action: &RealmAction) -> &'static str {
         RealmAction::RenameRealm => "RenameRealm",
         RealmAction::DuplicateRealm => "DuplicateRealm",
         RealmAction::DeleteRealm => "DeleteRealm",
+        RealmAction::CloseRealm => "CloseRealm",
         RealmAction::RenameNode => "RenameNode",
         RealmAction::CloseNode => "CloseNode",
         RealmAction::ChooseFolder => "ChooseFolder",
@@ -5179,6 +5204,11 @@ fn every_step() -> Vec<Step> {
     // The last view cannot be deleted, so there are two.
     steps.push(
         Step::new(Action::Realm(RealmAction::DeleteRealm))
+            .after(&["realm show", "realm new Second"]),
+    );
+    // Nor can the last tab be closed (`task-2293`), so there are two here as well.
+    steps.push(
+        Step::new(Action::Realm(RealmAction::CloseRealm))
             .after(&["realm show", "realm new Second"]),
     );
     for action in [

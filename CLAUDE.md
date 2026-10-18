@@ -2444,6 +2444,32 @@ a picture to the person's backgrounds folder and deleted it again. A window nobo
 has no backgrounds folder at all, so it draws no picture and refuses to add or remove one. In the shipped
 binary `load_settings` gives it the person's store, so nothing a person sees changed.
 
+## What `task-2293` changed, and the rules it left
+
+- **The background is a switch, `appearance.background.enabled`, off by default.** Off, the window is opaque and draws
+  no picture whatever `appearance.background.image` and `opacity` say. Everything that paints reads
+  `Settings::window_opacity` and `Settings::background_picture`, never the two fields. Choosing a picture, `--opacity`
+  and choosing the glass theme turn it on. `draw_deterministically` turns it on, so a test window draws as it did; a
+  test that calls `use_store` gets a person's default, off. The card is the first on the Theme page.
+- **A realm bar shows the realms open as tabs** (`RealmState::tabs`, `realm.tabs` in `workspace.conf`, paths joined
+  with `|` because Windows refuses one in a file name). Closing a tab keeps its file; the last tab cannot be closed.
+  The folder chip at the bar's left opens `components::realm::recent`, every realm file newest first.
+  `realm close` and `realm files [--show|--hide]` are the agent's half.
+- **A press on a wire that then moves picks the wire up by its nearer end** (`RealmState::wire_press`,
+  `pick_up_a_pressed_wire`). Let go on a node, it connects there with the pipe it had; anywhere else, it stays
+  disconnected. A click that does not move leaves the wire alone.
+- **Every git dialog asks for the working size** and opens the size of every other modal. Their ids changed to
+  `unluminous-git-commit` and `unluminous-git-dialogs` so a size kept under the old ids does not apply.
+- **A frame drawn only to be read is held**: `egui_wgpu::hold_the_next_frame` draws the next frame into the scene
+  texture and does not present it. The modal backdrop uses it on the frame it draws without the dialog after a theme
+  change, which used to flash the window without its dialog.
+- **The background grid reads thumbnails** (`services::backgrounds::thumbnails`, 480 pixel JPEGs in `.thumbnails/`
+  in the backgrounds folder), made at start on a thread, when a picture is added, and by the grid when one is missing.
+- **The ticket's description has a microphone** after its heading: `voice dictate --into description`, the same
+  engine and settings as the chat's, through `app::voice::Target::Description` and the board's `UiProvider::dictation`.
+- **Both release scripts run `cargo update -p inillucent-driver` before the suite**, so a release takes the newest
+  2.x. A new major version is a manifest edit.
+
 ## The look is written down, and a new control is measured against it
 
 `design/style-guide.md` says what a control in Unluminous is built from: the palette is closed, a list row

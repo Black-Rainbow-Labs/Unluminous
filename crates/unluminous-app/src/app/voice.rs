@@ -26,6 +26,8 @@ use crate::settings::{Settings, VoiceEngine};
 
 /// The plugin whose prompt the side pane's dictation fills.
 const AGENT_CHAT: &str = "agent-chat";
+/// The plugin whose open ticket's description the description's microphone fills (`task-2293`).
+const AGENT_TASKS: &str = "agent-tasks";
 
 /// Whose prompt a dictation's words go into.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -34,6 +36,8 @@ pub enum Target {
     Pane,
     /// A chat node on the canvas.
     Node(crate::services::realm::NodeId),
+    /// The description of the ticket open in the Agent-Tasks modal (`task-2293`).
+    Description,
     /// Nobody's: a transcription the command line asked for and reads back itself.
     Nowhere,
 }
@@ -99,6 +103,7 @@ pub fn config_for(settings: &Settings, microphone: bool) -> Config {
         always_listen: settings.voice_always_listen,
         sensitivity: settings.voice_wake_sensitivity,
         model_idle: Duration::from_secs_f32(settings.voice_model_idle),
+        send_pause: Duration::from_secs_f32(settings.voice_send_pause),
         microphone,
     }
 }
@@ -332,6 +337,11 @@ impl UnluminousApp {
                     crate::services::plugin_ui::UiProvider::dictation(chat, note);
                 }
             }
+            Target::Description => {
+                if let Some(board) = self.plugin_ui.provider(AGENT_TASKS) {
+                    board.dictation(note);
+                }
+            }
             Target::Nowhere => {}
         }
     }
@@ -357,7 +367,7 @@ impl UnluminousApp {
             true => self.voice.engine.as_ref().map(Voice::snapshot).unwrap_or_default(),
             false => Default::default(),
         };
-        let mut targets = vec![Target::Pane];
+        let mut targets = vec![Target::Pane, Target::Description];
         targets.extend(self.realm.live.chat_nodes().into_iter().map(Target::Node));
         for target in targets {
             let dictating = self.voice.dictating.is_some_and(|(_, t)| t == target);
@@ -379,6 +389,10 @@ impl UnluminousApp {
                 },
                 Target::Node(node) => match self.realm.live.chat_mut(node) {
                     Some(chat) => crate::services::plugin_ui::UiProvider::voice(chat, &view),
+                    None => continue,
+                },
+                Target::Description => match self.plugin_ui.provider(AGENT_TASKS) {
+                    Some(board) => board.voice(&view),
                     None => continue,
                 },
                 Target::Nowhere => continue,

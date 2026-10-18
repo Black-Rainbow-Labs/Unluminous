@@ -605,6 +605,75 @@ impl Painter {
             surface_state.needs_reconfigure = false;
         }
 
+        // Unluminous (`task-2293`): a held frame is drawn into the scene texture, where the next frame's callbacks
+        // read it, and is neither copied to the surface nor presented, so the window keeps the frame before it.
+        if self.config.scene_texture
+            && self.options.msaa_samples <= 1
+            && !capture
+            && self.screen_capture_state.is_some()
+            && crate::take_the_hold()
+            && let Some(texture) = self.screen_capture_state.as_ref().map(|state| state.texture.clone())
+        {
+            let target_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+            {
+                let renderer = render_state.renderer.read();
+                let render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("egui_render_held"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &target_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color {
+                                r: clear_color[0] as f64,
+                                g: clear_color[1] as f64,
+                                b: clear_color[2] as f64,
+                                a: clear_color[3] as f64,
+                            }),
+                            store: wgpu::StoreOp::Store,
+                        },
+                        depth_slice: None,
+                    })],
+                    depth_stencil_attachment: self.depth_texture_view.get(&viewport_id).map(|view| {
+                        wgpu::RenderPassDepthStencilAttachment {
+                            view,
+                            depth_ops: Some(wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(1.0),
+                                store: wgpu::StoreOp::Discard,
+                            })
+                            .filter(|_| {
+                                self.options.depth_stencil_format.is_some_and(|format| format.has_depth_aspect())
+                            }),
+                            stencil_ops: Some(wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(0),
+                                store: wgpu::StoreOp::Discard,
+                            })
+                            .filter(|_| {
+                                self.options.depth_stencil_format.is_some_and(|format| format.has_stencil_aspect())
+                            }),
+                        }
+                    }),
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                });
+                renderer.render(
+                    &mut render_pass.forget_lifetime(),
+                    clipped_primitives,
+                    &screen_descriptor,
+                );
+            }
+            self.scene_frames += 1;
+            render_state.queue.submit(std::iter::chain(user_cmd_bufs, [encoder.finish()]));
+            render_queue_guard.commands_submitted = true;
+            let mut renderer = render_state.renderer.write();
+            #[expect(clippy::iter_over_hash_type)] // Order doesn't matter here
+            for id in textures_delta.free.drain() {
+                renderer.free_texture(&id);
+            }
+            self.context.request_repaint_of(viewport_id);
+            return vsync_sec;
+        }
+
         let output_frame = {
             profiling::scope!("get_current_texture");
             // This is what vsync-waiting happens on my Mac.

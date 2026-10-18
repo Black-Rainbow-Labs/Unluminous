@@ -370,6 +370,24 @@ pub struct SceneTexture {
     pub frame: u64,
 }
 
+/// Whether the next frame is drawn into the scene texture and not shown (Unluminous `task-2293`).
+static HOLD_THE_NEXT_FRAME: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Draw the next frame into the scene texture only, and leave the window showing the frame before it.
+///
+/// For a frame that has to be drawn so the frame after it can read it, and that nobody should see: Unluminous
+/// draws one frame without an open modal when the theme changes under it, so the modal's backdrop can be blurred
+/// from the window in the new theme, and that frame was a flash of the window with the dialog gone. Ignored while
+/// [`WgpuConfiguration::scene_texture`] is off or before the scene texture exists, when the frame is shown as usual.
+pub fn hold_the_next_frame() {
+    HOLD_THE_NEXT_FRAME.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Takes the request [`hold_the_next_frame`] made, once.
+pub(crate) fn take_the_hold() -> bool {
+    HOLD_THE_NEXT_FRAME.swap(false, std::sync::atomic::Ordering::Relaxed)
+}
+
 #[test]
 fn wgpu_config_impl_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}

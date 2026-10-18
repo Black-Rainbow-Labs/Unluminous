@@ -375,12 +375,16 @@ fn toolbar(explorer: &DatabaseExplorer, rux: &mut rux::Rux<'_>, bar: Rect, scale
         .map(|chosen| chosen.source.clone())
         .unwrap_or_else(|| explorer.configuration.chosen.clone());
     let mut buttons: Vec<(Icon, &str, Act)> = vec![(Icon::Plus, "New data source", Act::NewSource)];
+    // **The plug is a switch, and it is always there while a source is chosen** (`task-2293`): carved in and lit
+    // while connected, pressing it disconnects; raised while not, pressing it connects. See `kit::toggle_chip`.
+    let plug = (!chosen_source.is_empty()).then(|| explorer.is_connected(&chosen_source));
     if !chosen_source.is_empty() {
         buttons.push((Icon::Rerun, "Refresh", Act::Refresh(chosen_source.clone())));
-        // Absent while nothing is connected: a control that cannot apply is not drawn.
-        if explorer.is_connected(&chosen_source) {
-            buttons.push((Icon::Plug, "Disconnect", Act::Disconnect(chosen_source.clone())));
-        }
+        let act = match plug == Some(true) {
+            true => Act::Disconnect(chosen_source.clone()),
+            false => Act::Connect(chosen_source.clone()),
+        };
+        buttons.push((Icon::Plug, "Connection", act));
         buttons.push((Icon::Lines, "Open console", Act::OpenConsole(chosen_source.clone())));
     }
     if let Some(chosen) = chosen.filter(|chosen| !chosen.name.is_empty()) {
@@ -404,7 +408,18 @@ fn toolbar(explorer: &DatabaseExplorer, rux: &mut rux::Rux<'_>, bar: Rect, scale
             break;
         }
         let rect = Rect::from_min_size(Pos2::new(left, bar.top()), Vec2::splat(chip));
-        if kit::chip_button(rux, rect, icon, CHIPS, name) {
+        let pressed = match name {
+            "Connection" => {
+                let on = plug == Some(true);
+                let hint = match on {
+                    true => format!("Connected to {chosen_source}. Press to disconnect."),
+                    false => format!("Not connected to {chosen_source}. Press to connect."),
+                };
+                kit::toggle_chip(rux, rect, icon, name, on, &hint)
+            }
+            _ => kit::chip_button(rux, rect, icon, CHIPS, name),
+        };
+        if pressed {
             acts.push(act);
         }
     }

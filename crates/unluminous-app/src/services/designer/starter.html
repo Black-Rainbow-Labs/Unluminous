@@ -3,213 +3,166 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Northlight</title>
+<title>Design</title>
 <style>
   :root {
-    --ink: #1d2330;
-    --ink-soft: #566074;
-    --ink-faint: #8a93a6;
-    --ground: #f6f7fb;
-    --card: #ffffff;
-    --line: #e3e7f0;
-    --accent: #4b6bfb;
-    --accent-ink: #ffffff;
-    --accent-soft: #e8edff;
-    --radius: 16px;
-    --shadow: 0 1px 2px rgba(29, 35, 48, 0.06), 0 8px 24px rgba(29, 35, 48, 0.08);
-    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --ink: #141414;
+    --ink-soft: #4b4a47;
+    --ink-faint: #8c8a85;
+    --paper: #eeece8;
+    --card: rgba(255, 255, 255, 0.72);
+    --line: rgba(20, 20, 20, 0.12);
+    --accent: #141414;
+    --accent-ink: #f6f5f2;
+    --radius: 18px;
+    --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   }
 
   * { box-sizing: border-box; }
 
+  html, body { margin: 0; }
+
   body {
-    margin: 0;
-    background: var(--ground);
+    background: var(--paper);
     color: var(--ink);
     font-family: var(--font);
     font-size: 16px;
     line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
   }
 
   a { color: inherit; text-decoration: none; }
 
-  .wrap { width: min(1120px, 100% - 48px); margin-inline: auto; }
+  /* ------------------------------------------------------------------------------------ hero */
+  /* The picture fills the first screen. Its subject is on the right, so the words sit on the open paper at
+     the left, and the picture is anchored to its right edge so a narrow window keeps the hand in view. */
+  .hero {
+    position: relative;
+    min-height: 100vh;
+    padding: clamp(28px, 4vw, 56px);
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    background: var(--paper) url("assets/design-background.jpg") right center / cover no-repeat;
+    overflow: hidden;
+  }
 
-  /* ---------------------------------------------------------------------------------- header */
-  .site-header { background: var(--card); border-bottom: 1px solid var(--line); }
-  .site-header .wrap { display: flex; align-items: center; justify-content: space-between; height: 68px; }
-  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; letter-spacing: -0.01em; }
-  .brand-mark { width: 28px; height: 28px; border-radius: 9px; background: linear-gradient(135deg, #7c93ff, var(--accent)); }
-  .nav { display: flex; align-items: center; gap: 28px; color: var(--ink-soft); font-size: 15px; }
+  .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+
+  .title {
+    margin: 0;
+    font-size: clamp(88px, 15vw, 248px);
+    line-height: 0.82;
+    letter-spacing: -0.055em;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .nav { display: flex; gap: 26px; padding-top: 14px; font-size: 14px; color: var(--ink-soft); }
   .nav a:hover { color: var(--ink); }
+
+  .intro { align-self: end; max-width: 440px; padding-bottom: 8px; }
+  .eyebrow { margin: 0 0 14px; font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-faint); }
+  .lede { margin: 0 0 28px; font-size: clamp(18px, 1.6vw, 22px); line-height: 1.45; color: var(--ink-soft); }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; }
 
   .button {
     display: inline-flex; align-items: center; justify-content: center;
-    height: 44px; padding: 0 22px; border-radius: 999px;
-    font: inherit; font-weight: 600; border: 1px solid transparent; cursor: pointer;
+    height: 48px; padding: 0 24px; border-radius: 999px;
+    font: inherit; font-size: 15px; font-weight: 600; border: 1px solid transparent; cursor: pointer;
+    transition: transform 160ms ease, box-shadow 160ms ease;
   }
-  .button-primary { background: var(--accent); color: var(--accent-ink); box-shadow: 0 6px 16px rgba(75, 107, 251, 0.35); }
-  .button-ghost { background: transparent; color: var(--ink); border-color: var(--line); }
-  .button-small { height: 38px; padding: 0 16px; font-size: 14px; }
+  .button:hover { transform: translateY(-1px); }
+  .button-primary { background: var(--accent); color: var(--accent-ink); box-shadow: 0 10px 24px rgba(20, 20, 20, 0.22); }
+  .button-ghost { background: var(--card); color: var(--ink); border-color: var(--line); backdrop-filter: blur(8px); }
 
-  /* ------------------------------------------------------------------------------------ hero */
-  .hero { padding: 88px 0 72px; }
-  .hero .wrap { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 56px; align-items: center; }
-  .eyebrow {
-    display: inline-block; padding: 6px 12px; border-radius: 999px;
-    background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 600;
+  .foot {
+    display: flex; flex-wrap: wrap; gap: 12px 40px; padding-top: 32px;
+    font-size: 13px; color: var(--ink-faint);
   }
-  .hero-title { margin: 18px 0 16px; font-size: 56px; line-height: 1.05; letter-spacing: -0.03em; font-weight: 800; }
-  .hero-copy { margin: 0 0 32px; max-width: 520px; font-size: 19px; color: var(--ink-soft); }
-  .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; }
-  .hero-panel {
-    background: var(--card); border-radius: 24px; box-shadow: var(--shadow); padding: 28px;
-    display: grid; gap: 16px;
-  }
-  .hero-panel .row { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; }
-  .hero-panel .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); }
-  .hero-panel .row:nth-child(2) .dot { background: #34c38f; }
-  .hero-panel .row:nth-child(3) .dot { background: #f6a23b; }
-  .hero-panel strong { display: block; font-size: 15px; }
-  .hero-panel span { color: var(--ink-faint); font-size: 13px; }
+  .foot strong { display: block; color: var(--ink); font-weight: 600; font-size: 14px; }
 
-  /* --------------------------------------------------------------------------------- features */
-  .section-title { margin: 0 0 12px; font-size: 34px; letter-spacing: -0.02em; text-align: center; }
-  .section-copy { margin: 0 auto 44px; max-width: 560px; text-align: center; color: var(--ink-soft); }
-  .features { padding: 40px 0 72px; }
-  .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
-  .feature-card {
-    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
-    padding: 28px; box-shadow: var(--shadow);
+  /* ------------------------------------------------------------------------------------ work */
+  .work { padding: clamp(56px, 8vw, 112px) clamp(28px, 4vw, 56px); }
+  .work-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 36px; }
+  .work-head h2 { margin: 0; font-size: clamp(32px, 4vw, 52px); letter-spacing: -0.035em; line-height: 1; }
+  .work-head p { margin: 0; max-width: 360px; color: var(--ink-soft); }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .card {
+    background: #f7f6f3; border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 28px; min-height: 220px; display: flex; flex-direction: column; justify-content: space-between;
   }
-  .feature-icon {
-    width: 44px; height: 44px; border-radius: 14px; margin-bottom: 18px;
-    background: var(--accent-soft); display: grid; place-items: center; color: var(--accent); font-weight: 800;
-  }
-  .feature-card h3 { margin: 0 0 8px; font-size: 20px; letter-spacing: -0.01em; }
-  .feature-card p { margin: 0; color: var(--ink-soft); }
+  .card .number { font-size: 13px; color: var(--ink-faint); letter-spacing: 0.08em; }
+  .card h3 { margin: 0 0 8px; font-size: 22px; letter-spacing: -0.02em; }
+  .card p { margin: 0; color: var(--ink-soft); }
 
-  /* ----------------------------------------------------------------------------------- pricing */
-  .pricing { padding: 24px 0 88px; }
-  .price-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; align-items: stretch; }
-  .price-card {
-    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
-    padding: 32px 28px; display: flex; flex-direction: column; gap: 14px;
+  .site-footer {
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px;
+    padding: 28px clamp(28px, 4vw, 56px); border-top: 1px solid var(--line);
+    font-size: 13px; color: var(--ink-faint);
   }
-  .price-card.featured { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow); }
-  .price-name { font-weight: 700; font-size: 18px; }
-  .price-amount { font-size: 44px; font-weight: 800; letter-spacing: -0.03em; }
-  .price-amount small { font-size: 15px; font-weight: 500; color: var(--ink-faint); letter-spacing: 0; }
-  .price-list { margin: 0 0 8px; padding: 0; list-style: none; color: var(--ink-soft); display: grid; gap: 8px; }
-  .price-list li::before { content: "\2713"; color: var(--accent); font-weight: 800; margin-right: 10px; }
-  .price-card .button { margin-top: auto; }
-
-  /* ------------------------------------------------------------------------------------ footer */
-  .site-footer { background: var(--card); border-top: 1px solid var(--line); padding: 36px 0; color: var(--ink-faint); font-size: 14px; }
-  .site-footer .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
-  .footer-links { display: flex; gap: 22px; }
 
   /* ------------------------------------------------------------------------------------ narrow */
   @media (max-width: 860px) {
-    .hero { padding: 56px 0 40px; }
-    .hero .wrap { grid-template-columns: 1fr; gap: 36px; }
-    .hero-title { font-size: 40px; }
-    .feature-grid, .price-grid { grid-template-columns: 1fr; }
-    .nav a:not(.button) { display: none; }
+    .hero { background-position: 70% center; }
+    .nav { display: none; }
+    .intro { padding: 20px; margin-left: -8px; border-radius: var(--radius); background: var(--card); backdrop-filter: blur(10px); }
+    .grid { grid-template-columns: 1fr; }
+    .work-head { flex-direction: column; align-items: start; }
   }
 </style>
 </head>
 <body>
 
-<header class="site-header">
-  <div class="wrap">
-    <a class="brand" href="#top"><span class="brand-mark"></span>Northlight</a>
+<section class="hero">
+  <div class="top">
+    <h1 class="title">Design</h1>
     <nav class="nav">
-      <a href="#features">Features</a>
-      <a href="#pricing">Pricing</a>
-      <a href="#docs">Docs</a>
-      <a class="button button-primary button-small" href="#start">Get started</a>
+      <a href="#work">Work</a>
+      <a href="#about">About</a>
+      <a href="#contact">Contact</a>
     </nav>
   </div>
-</header>
 
-<main id="top">
-  <section class="hero">
-    <div class="wrap">
-      <div>
-        <span class="eyebrow">New: shared dashboards</span>
-        <h1 class="hero-title">Know how your team is doing, without the meeting</h1>
-        <p class="hero-copy">Northlight gathers the work your team already does into one calm page, so everyone can see what moved today and what needs a hand.</p>
-        <div class="hero-actions">
-          <a class="button button-primary" id="start" href="#start">Start for free</a>
-          <a class="button button-ghost" href="#features">See how it works</a>
-        </div>
-      </div>
-      <div class="hero-panel" aria-label="A sample of the dashboard">
-        <div class="row"><span class="dot"></span><div><strong>Checkout redesign</strong><span>On track, 3 days left</span></div></div>
-        <div class="row"><span class="dot"></span><div><strong>Mobile onboarding</strong><span>Shipped this morning</span></div></div>
-        <div class="row"><span class="dot"></span><div><strong>Billing migration</strong><span>Needs a reviewer</span></div></div>
-      </div>
+  <div class="intro">
+    <p class="eyebrow">A starting point</p>
+    <p class="lede">Describe what this page should become, and the agent will shape it. Every heading, color and section here is yours to change.</p>
+    <div class="actions">
+      <a class="button button-primary" href="#work">See the work</a>
+      <a class="button button-ghost" href="#contact">Get in touch</a>
     </div>
-  </section>
-
-  <section class="features" id="features">
-    <div class="wrap">
-      <h2 class="section-title">Everything in one place</h2>
-      <p class="section-copy">Three things people ask for in their first week, built so they work the same way on day one hundred.</p>
-      <div class="feature-grid">
-        <article class="feature-card">
-          <div class="feature-icon">1</div>
-          <h3>One timeline</h3>
-          <p>Every update from every tool lands in a single feed that reads like a conversation, not a report.</p>
-        </article>
-        <article class="feature-card">
-          <div class="feature-icon">2</div>
-          <h3>Quiet by default</h3>
-          <p>Northlight only speaks up when something is blocked or late. The rest stays out of your way.</p>
-        </article>
-        <article class="feature-card">
-          <div class="feature-icon">3</div>
-          <h3>Ready for a review</h3>
-          <p>Turn any week into a summary you can share, with the numbers and the people behind them.</p>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <section class="pricing" id="pricing">
-    <div class="wrap">
-      <h2 class="section-title">Simple pricing</h2>
-      <p class="section-copy">Start free and pay when your team grows. Every plan can be cancelled in one click.</p>
-      <div class="price-grid">
-        <article class="price-card">
-          <div class="price-name">Starter</div>
-          <div class="price-amount">$0 <small>a month</small></div>
-          <ul class="price-list"><li>Up to 5 people</li><li>30 days of history</li><li>Email support</li></ul>
-          <a class="button button-ghost" href="#start">Choose Starter</a>
-        </article>
-        <article class="price-card featured">
-          <div class="price-name">Team</div>
-          <div class="price-amount">$12 <small>a person a month</small></div>
-          <ul class="price-list"><li>Unlimited people</li><li>Unlimited history</li><li>Shared dashboards</li></ul>
-          <a class="button button-primary" href="#start">Choose Team</a>
-        </article>
-        <article class="price-card">
-          <div class="price-name">Company</div>
-          <div class="price-amount">$30 <small>a person a month</small></div>
-          <ul class="price-list"><li>Single sign on</li><li>Audit log</li><li>Priority support</li></ul>
-          <a class="button button-ghost" href="#start">Talk to us</a>
-        </article>
-      </div>
-    </div>
-  </section>
-</main>
-
-<footer class="site-footer">
-  <div class="wrap">
-    <span>&copy; 2026 Northlight</span>
-    <div class="footer-links"><a href="#docs">Docs</a><a href="#pricing">Pricing</a><a href="#start">Contact</a></div>
   </div>
+
+  <div class="foot">
+    <div><strong>Studio</strong>Independent, since 2026</div>
+    <div><strong>Focus</strong>Products and brands</div>
+    <div><strong>Based</strong>Wherever the work is</div>
+  </div>
+</section>
+
+<section class="work" id="work">
+  <div class="work-head">
+    <h2>Selected work</h2>
+    <p>Three places to start. Replace them with your own projects, services or ideas.</p>
+  </div>
+  <div class="grid">
+    <article class="card">
+      <span class="number">01</span>
+      <div><h3>Identity</h3><p>A mark, a type system and the rules that hold them together.</p></div>
+    </article>
+    <article class="card">
+      <span class="number">02</span>
+      <div><h3>Product</h3><p>Interfaces that feel calm on the first day and the hundredth.</p></div>
+    </article>
+    <article class="card">
+      <span class="number">03</span>
+      <div><h3>Launch</h3><p>Pages and pictures that say what something is in one look.</p></div>
+    </article>
+  </div>
+</section>
+
+<footer class="site-footer" id="contact">
+  <span>&copy; 2026 Design</span>
+  <span>hello@example.com</span>
 </footer>
 
 </body>

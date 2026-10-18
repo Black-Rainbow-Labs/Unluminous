@@ -917,6 +917,8 @@ pub enum RealmAction {
     RenameRealm,
     DuplicateRealm,
     DeleteRealm,
+    /// Take a realm's tab off the bar, leaving its file where it is (`task-2293`).
+    CloseRealm,
     RenameNode,
     CloseNode,
     /// Ask for the folder a Folder View node shows.
@@ -989,6 +991,7 @@ impl RealmAction {
             "rename-realm" => RealmAction::RenameRealm,
             "duplicate-realm" => RealmAction::DuplicateRealm,
             "delete-realm" => RealmAction::DeleteRealm,
+            "close-realm" => RealmAction::CloseRealm,
             "rename-node" => RealmAction::RenameNode,
             "close-node" => RealmAction::CloseNode,
             "choose-folder" => RealmAction::ChooseFolder,
@@ -1015,6 +1018,7 @@ impl RealmAction {
             RealmAction::RenameRealm => "rename-realm".to_owned(),
             RealmAction::DuplicateRealm => "duplicate-realm".to_owned(),
             RealmAction::DeleteRealm => "delete-realm".to_owned(),
+            RealmAction::CloseRealm => "close-realm".to_owned(),
             RealmAction::RenameNode => "rename-node".to_owned(),
             RealmAction::CloseNode => "close-node".to_owned(),
             RealmAction::ChooseFolder => "choose-folder".to_owned(),
@@ -1220,6 +1224,8 @@ pub struct MenuState {
     pub realm_pipe: bool,
     /// How many views the canvas has, which is what dims `Delete View` on the last one.
     pub realm_views: usize,
+    /// How many realms are open as tabs on the bar. `task-2293`.
+    pub realm_tabs: usize,
     /// True when the folder that is open is in a git repository. With none, every git entry is
     /// dimmed rather than absent, so the menu does not change shape depending on where you are.
     pub in_repository: bool,
@@ -2511,6 +2517,10 @@ pub fn realm_wire_menu(state: &MenuState) -> Vec<Entry> {
 /// What a realm's own chip on the realm bar holds, which is the four things `task-1904` asks for by name.
 pub fn realm_view_menu(state: &MenuState) -> Vec<Entry> {
     vec![
+        // **Close first, and dimmed while it is the only tab**, which is the dimmed half of the absent control
+        // rule: it applies the moment a second realm is opened. `task-2293`.
+        Entry::item("Close", Action::Realm(RealmAction::CloseRealm)).enabled(state.realm_tabs > 1),
+        Entry::Separator,
         Entry::item("Rename...", Action::Realm(RealmAction::RenameRealm)),
         Entry::item("Duplicate", Action::Realm(RealmAction::DuplicateRealm)),
         Entry::Separator,

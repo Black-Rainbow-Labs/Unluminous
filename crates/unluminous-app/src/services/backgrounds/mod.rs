@@ -27,6 +27,7 @@
 //! removes it for good.
 
 pub mod bundled;
+pub mod thumbnails;
 
 use std::path::{Path, PathBuf};
 
@@ -97,13 +98,18 @@ pub fn add_into(folder: &Path, source: &Path) -> Result<String, String> {
         ));
     }
     if source.parent() == Some(folder) {
-        return Ok(source.file_name().unwrap_or_default().to_string_lossy().into_owned());
+        let name = source.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        let _ = thumbnails::make(folder, &name);
+        return Ok(name);
     }
     std::fs::create_dir_all(folder)
         .map_err(|problem| format!("{} could not be made: {problem}", folder.display()))?;
     let name = free_name(folder, source);
     std::fs::copy(source, folder.join(&name))
         .map_err(|problem| format!("{} could not be copied: {problem}", source.display()))?;
+    // Its thumbnail now, so the grid has it the next time it opens (`task-2293`). A picture that cannot be
+    // made small is still added; the grid draws its cell empty, as it does for one it cannot read.
+    let _ = thumbnails::make(folder, &name);
     Ok(name)
 }
 
@@ -143,7 +149,9 @@ pub fn remove_from(folder: &Path, name: &str) -> Result<(), String> {
         return Err(format!("There is no background called {name}."));
     }
     std::fs::remove_file(&path)
-        .map_err(|problem| format!("{} could not be removed: {problem}", path.display()))
+        .map_err(|problem| format!("{} could not be removed: {problem}", path.display()))?;
+    thumbnails::forget(folder, name);
+    Ok(())
 }
 
 #[cfg(test)]

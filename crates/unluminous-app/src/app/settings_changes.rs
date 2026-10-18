@@ -101,7 +101,12 @@ impl UnluminousApp {
     /// @param before - the settings before this change
     fn give_glass_something_to_bend(&mut self, before: &Settings) {
         let chose_glass = self.settings.theme != before.theme && theme::is_glass();
-        if !chose_glass || !self.settings.background_image.trim().is_empty() {
+        if !chose_glass {
+            return;
+        }
+        // Glass with the background off bends nothing, so choosing glass turns it on (`task-2293`).
+        self.settings.background_enabled = true;
+        if !self.settings.background_image.trim().is_empty() {
             return;
         }
         let Some(folder) = self.backgrounds_folder() else { return };

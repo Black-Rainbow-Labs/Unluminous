@@ -738,7 +738,8 @@ static OPENINGS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::ne
 /// paints only the frame it is asked to), and a blur asked for on such a frame alone would never be made.
 ///
 /// The one case that needs a frame without the dialog is a theme changing while the modal is open, because then
-/// the previous frame is the dialog itself; that frame is drawn with the dialog invisible, as the photograph was.
+/// the previous frame is the dialog itself; that frame is drawn with the dialog invisible and is held by the
+/// renderer rather than shown, so nobody sees the window without its dialog (`task-2293`).
 ///
 /// @param texture - the blurred picture egui draws, from `scene_blur::output_texture`
 fn blurred_on_the_gpu(ctx: &egui::Context, modal: egui::Id, texture: egui::TextureId) -> Backdrop {
@@ -759,8 +760,13 @@ fn blurred_on_the_gpu(ctx: &egui::Context, modal: egui::Id, texture: egui::Textu
         Some(kept) if now - kept.drawn <= GAP && kept.key == key => {
             GpuBlurState { waiting: false, opening: next(), ..kept }
         }
-        // The theme changed under an open modal: draw one frame without the dialog first.
+        // The theme changed under an open modal: draw one frame without the dialog first, **and do not show it**
+        // (`task-2293`: *"when I change themes with settings modal open, there is a brief flash where the content
+        // under the modal flashes and the modal is repainted."*). The renderer draws the held frame into the scene
+        // texture the blur reads and leaves the window on the frame before, so the next frame the screen shows is
+        // the dialog in the new theme over the window in the new theme.
         Some(kept) if now - kept.drawn <= GAP => {
+            eframe::egui_wgpu::hold_the_next_frame();
             ctx.request_repaint();
             GpuBlurState { key, waiting: true, ..kept }
         }

@@ -74,6 +74,15 @@ pub fn configure() {
 /// switched off.
 pub const MODEL_IDLE: &str = "idle:10s";
 
+/// How long the model is kept when `search.model_kept` says nothing: five minutes, Inillucent's own default,
+/// since `task-2293` asked for it. `ten_seconds` is still offered for a person who wants the memory back
+/// sooner.
+pub const DEFAULT_RESIDENCY: &str = "idle:300s";
+
+/// How long the question index is kept when `search.question_index_seconds` says nothing: ten minutes, since
+/// `task-2293` asked for it. The window's `Settings` default is the same number.
+pub const DEFAULT_QUESTION_INDEX_SECONDS: u64 = 600;
+
 /// Releases the embedding model a minute after its last use, unless somebody has chosen otherwise.
 ///
 /// The model is ONNX Runtime and `nomic-embed-text`, and while it is loaded it is about 1 GB of the
@@ -95,9 +104,9 @@ fn keep_the_model_briefly(chosen: &str) {
     }
     let residency = setting(chosen, "search.model_kept").and_then(residency_for);
     match residency {
-        Some(residency) if residency != MODEL_IDLE => std::env::set_var(VARIABLE, residency),
+        Some(residency) if residency != DEFAULT_RESIDENCY => std::env::set_var(VARIABLE, residency),
         _ if was_recorded("residency") => {}
-        _ => std::env::set_var(VARIABLE, MODEL_IDLE),
+        _ => std::env::set_var(VARIABLE, DEFAULT_RESIDENCY),
     }
 }
 
@@ -126,9 +135,9 @@ fn keep_the_question_index(chosen: &str) {
     if std::env::var_os(VARIABLE).is_some() {
         return;
     }
-    if let Some(seconds) = whole_number(chosen, "search.question_index_seconds") {
-        std::env::set_var(VARIABLE, seconds.to_string());
-    }
+    let seconds = whole_number(chosen, "search.question_index_seconds")
+        .unwrap_or(DEFAULT_QUESTION_INDEX_SECONDS);
+    std::env::set_var(VARIABLE, seconds.to_string());
 }
 
 /// How many 32 KiB pages of the index file are kept in memory once the index is built:

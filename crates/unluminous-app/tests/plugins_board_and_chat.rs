@@ -1558,57 +1558,6 @@ fn chosen_card(harness: &mut Harness<'static, UnluminousApp>) -> Option<(String,
 }
 
 #[test]
-fn a_ticket_can_name_its_jira_issue_and_copy_the_link_to_it() {
-    // The JIRA panel on the ticket. Nothing here talks to JIRA and nothing here pretends to: the key is recorded
-    // and the link is copied, and both say so.
-    let mut harness = harness("");
-    did(&mut harness, "plugins pane agent-tasks/board --show");
-    did(&mut harness, "plugins run agent-tasks new-task A ticket that came from a JIRA issue");
-    did(&mut harness, "plugins run agent-tasks jira-key task-1 ENX-1932");
-    did(&mut harness, "plugins run agent-tasks open task-1");
-    steady(&mut harness);
-    let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
-    assert_eq!(ticket["task"]["jira"], "ENX-1932", "the ticket names its issue");
-    // With no `jira_url` on the row, the key itself is what Copy hands over: there is no configured JIRA site to
-    // build an address against, and a guessed one would open nothing.
-    //
-    // The column of fields scrolls, and in this window the JIRA field is below the fold, so the column is
-    // scrolled to the bottom first, the way a person would reach it.
-    let over = harness.get_by_label("Assignee").rect().center();
-    harness.input_mut().events.push(egui::Event::PointerMoved(over));
-    harness.input_mut().events.push(egui::Event::MouseWheel {
-        unit: egui::MouseWheelUnit::Point,
-        delta: egui::vec2(0.0, -2000.0),
-        phase: egui::TouchPhase::Move,
-        modifiers: egui::Modifiers::default(),
-    });
-    steady(&mut harness);
-    harness.get_by_label("Copy issue link").click();
-    // Read across frames rather than from the last one. The modal is drawn after the point in the frame where a
-    // plugin's copy is handed to egui, so the request the button makes is acted on one frame later, and only that
-    // frame's output carries it.
-    let mut copied = String::new();
-    for _ in 0..4 {
-        harness.step();
-        if let Some(text) =
-            harness.output().platform_output.commands.iter().find_map(|command| match command {
-                egui::OutputCommand::CopyText(text) => Some(text.clone()),
-                _ => None,
-            })
-        {
-            copied = text;
-            break;
-        }
-    }
-    assert_eq!(copied, "ENX-1932", "the key is what was copied");
-    // Cleared by emptying the field, which is what the command does with nothing after it.
-    did(&mut harness, "plugins run agent-tasks jira-key task-1");
-    steady(&mut harness);
-    let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
-    assert_eq!(ticket["task"]["jira"], serde_json::Value::Null, "and it can be cleared");
-}
-
-#[test]
 fn a_person_can_change_their_own_comment_and_cannot_change_an_agents() {
     // `Edit` on a comment, which the browser board has and the first pass did not. The refusal is in the store
     // rather than only in the button: what an agent said is a record of what it said, so the command line cannot
@@ -3882,7 +3831,7 @@ fn delete_task_deletes_the_ticket_on_one_press() {
     let mut harness = harness("");
     a_ticket_open(&mut harness);
     // The column of fields scrolls, and in this window `Delete task` is below the fold, so the column is scrolled
-    // to the bottom first, the way `a_ticket_can_name_its_jira_issue_and_copy_the_link_to_it` reaches its field.
+    // to the bottom first, the way a person reaches a field below the fold.
     let over = harness.get_by_label("Assignee").rect().center();
     harness.input_mut().events.push(egui::Event::PointerMoved(over));
     harness.input_mut().events.push(egui::Event::MouseWheel {
@@ -3912,7 +3861,7 @@ fn a_comment_in_the_ticket_modal_is_copied_from_its_right_click_menu() {
     let edit = harness.get_by_label_contains("Edit the comment by").rect();
     right_click_at(&mut harness, egui::pos2(edit.left() - 200.0, edit.bottom() + 6.0));
     harness.get_by_label("Copy Comment").click();
-    // Read across frames, for the reason the JIRA test gives: a plugin's copy reaches egui a frame later.
+    // Read across frames: a plugin's copy reaches egui a frame later.
     let mut copied = String::new();
     for _ in 0..4 {
         harness.step();
@@ -4253,7 +4202,7 @@ fn a_real_answer_from_claude_code_draws_its_table_with_every_column_readable() {
 // -------------------------------------------------------------------------------------- task-2214
 
 /// `task-2214`: *"Tab press should navigate fields/inputs."* With nothing focused `Tab` goes to the first text
-/// box, the description, and each press after that goes to the next box: the comment box, then the JIRA key. The
+/// box, the description, and each press after that goes to the next box: the comment box. The
 /// todos have had no box since `task-2263`. What is typed after each press lands in that box, which is what makes the walk real rather
 /// than a focus that moves somewhere nobody can see.
 #[test]
@@ -4281,13 +4230,17 @@ fn tab_walks_the_ticket_modals_text_boxes_in_order() {
     assert!(said.contains("Said after a Tab"), "the second Tab is the comment box: {said}");
 
     // The chord in the comment box posts and lets go of the keyboard, so nothing in the modal has it, and Shift+Tab
-    // from there goes the other way round to the last box, the JIRA key.
+    // from there goes the other way round to the last box, which is the comment box since the JIRA field went
+    // (`task-2293`).
     harness.key_press_modifiers(Modifiers::SHIFT, egui::Key::Tab);
     steady(&mut harness);
-    harness.input_mut().events.push(egui::Event::Text("PROJ-7".to_owned()));
+    harness.input_mut().events.push(egui::Event::Text("Said after Shift+Tab".to_owned()));
+    steady(&mut harness);
+    harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::Enter);
     steady(&mut harness);
     let ticket = did(&mut harness, "plugins run agent-tasks task task-1");
-    assert_eq!(ticket["task"]["jira"], "PROJ-7", "Shift+Tab with nothing focused is the last box");
+    let said = ticket["comments"].to_string();
+    assert!(said.contains("Said after Shift+Tab"), "Shift+Tab with nothing focused is the last box: {said}");
 }
 
 /// `task-2214`: *"The description in the modal needs to be resizable so it can take less height."* The strip

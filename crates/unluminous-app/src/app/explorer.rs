@@ -397,7 +397,7 @@ impl UnluminousApp {
             unsaved: false,
             reveal: false,
             reveal_selected: false,
-            opacity: self.settings.opacity,
+            opacity: self.settings.window_opacity(),
             zoom: self.panes.zoom_of(dock::Panel::Explorer),
             scroll_to: None,
             host: explorer::Host::Panel,

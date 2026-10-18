@@ -91,12 +91,14 @@ pub struct Segmenter {
     since_pass: usize,
     quiet: usize,
     spoke_at_all: bool,
+    wake_done: usize,
 }
 
 /// After the button, dictation ends after this much with no speech: 15 s.
 const BUTTON_QUIET: usize = 240_000;
-/// After a wake, dictation ends after this much silence once something has been said: 1.5 s.
-const WAKE_DONE: usize = 24_000;
+/// After a wake, dictation ends after this much silence once something has been said: 1.5 s, unless the
+/// window's `voice.send_pause` asks for another length through [`Segmenter::ending_a_wake_after`].
+pub const WAKE_DONE: usize = 24_000;
 /// After a wake, dictation ends after this much silence when nothing has been said yet: 6 s.
 const WAKE_QUIET: usize = 96_000;
 
@@ -115,7 +117,18 @@ impl Segmenter {
             since_pass: 0,
             quiet: 0,
             spoke_at_all: false,
+            wake_done: WAKE_DONE,
         }
+    }
+
+    /// How long a pause ends a dictation the wake word started once something has been said, in samples.
+    /// `task-2293`: *"The "Send when I stop talking" control should have a seconds configuration for how long
+    /// the pause is before send is sent."* Never shorter than [`PAUSE`], so the segment holding the last words
+    /// is always transcribed before the dictation ends.
+    /// @param samples - the pause, in 16 kHz samples
+    pub fn ending_a_wake_after(mut self, samples: usize) -> Self {
+        self.wake_done = samples.max(PAUSE);
+        self
     }
 
     /// How it started.
@@ -174,7 +187,7 @@ impl Segmenter {
         match self.started {
             Started::Button => (self.quiet >= BUTTON_QUIET).then_some(Ended::Quiet),
             Started::Wake if has_words && self.spoke_at_all => {
-                (self.quiet >= WAKE_DONE).then_some(Ended::Finished)
+                (self.quiet >= self.wake_done).then_some(Ended::Finished)
             }
             Started::Wake => (self.quiet >= WAKE_QUIET).then_some(Ended::Quiet),
             Started::File => None,
@@ -235,6 +248,18 @@ mod tests {
     fn an_endpoint_is_asked_less_often() {
         let mut s = Segmenter::new(Started::Button, ENDPOINT_PARTIAL);
         assert_eq!(feed(&mut s, 2.4, true).len(), 2);
+    }
+
+    #[test]
+    fn a_wake_ends_after_the_pause_it_was_given() {
+        let mut wake = Segmenter::new(Started::Wake, LOCAL_PARTIAL).ending_a_wake_after(48_000);
+        feed(&mut wake, 1.0, true);
+        feed(&mut wake, 2.5, false);
+        assert_eq!(wake.should_end(true), None, "two and a half seconds is shorter than three");
+        feed(&mut wake, 0.6, false);
+        assert_eq!(wake.should_end(true), Some(Ended::Finished));
+        let short = Segmenter::new(Started::Wake, LOCAL_PARTIAL).ending_a_wake_after(10);
+        assert_eq!(short.wake_done, PAUSE, "never shorter than the pause that ends a segment");
     }
 
     #[test]

@@ -24,6 +24,9 @@ use crate::components::modal;
 use crate::theme::{color, icon, size};
 
 const WIDTH: f32 = 780.0;
+/// The commit panel's modal id. **Not `unluminous-commit`**, the id a size kept before `task-2293` was written
+/// under, so a panel dragged small then opens the size of every other modal now.
+pub const COMMIT: &str = "unluminous-git-commit";
 const HEIGHT: f32 = 620.0;
 /// How tall the message box is.
 const MESSAGE: f32 = 120.0;
@@ -97,7 +100,7 @@ pub fn show(
     if !panel.open {
         return outcome;
     }
-    let (_, closed) = modal::show(ctx, "unluminous-commit", WIDTH, HEIGHT, |ui, area| {
+    let (_, closed) = modal::show(ctx, COMMIT, WIDTH, HEIGHT, |ui, area| {
         if modal::header(ui, area, "Commit") {
             outcome.close = true;
         }

@@ -52,8 +52,25 @@ pub enum Gesture {
     Panning,
     /// A wire is being pulled out of a node's output port, or out of one of a shape's points. Where its free
     /// end is, in world points.
-    Wiring { from: NodeId, point: Option<usize>, at: Pos2 },
+    ///
+    /// **`backwards` is a connection picked up by the end it leaves from** (`task-2293`): `from` is then the
+    /// node it arrives at, which stays where it is, and the free end is the one being moved to another source.
+    /// `pipe` is what the connection carried, so one picked up and let go on another node carries the same.
+    Wiring { from: NodeId, point: Option<usize>, at: Pos2, backwards: bool, pipe: Pipe },
 }
+
+/// A press on a wire that has not moved far enough yet to pick the wire up (`task-2293`): which connection,
+/// where the press was in screen points, and whether it was nearer the end the wire arrives at.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WirePress {
+    pub edge: u64,
+    pub at: Pos2,
+    pub arriving_end: bool,
+}
+
+/// How far the pointer moves from a press on a wire before the wire is picked up, in screen points. Less is a
+/// click, which leaves the wire alone.
+const WIRE_PICK_UP: f32 = 4.0;
 
 /// A shape whose words are being typed into. `task-2284`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -144,6 +161,14 @@ pub struct RealmState {
     pub tab_drawn: Option<(String, u64)>,
     /// The project's realm files, relative to it, as last listed. See `app::realm_files`.
     pub files: Vec<std::path::PathBuf>,
+    /// The realms open as tabs on the bar, in the order they are drawn (`task-2293`). A realm file that is not
+    /// here is still in the project, and the bar's folder button lists it. The open realm is always one of them.
+    pub tabs: Vec<std::path::PathBuf>,
+    /// A press on a wire waiting to become a drag (`task-2293`).
+    pub wire_press: Option<WirePress>,
+    /// The bar's folder dropdown, while it is open, and the chip it hangs from (`task-2293`).
+    pub recent: Option<crate::components::realm::recent::State>,
+    pub recent_anchor: Rect,
     /// How many nodes and connections each listed realm holds, read when the list was walked, for the
     /// realm manager's rows.
     pub counts: std::collections::HashMap<std::path::PathBuf, (usize, usize)>,
@@ -246,6 +271,10 @@ impl Default for RealmState {
             in_hand: InHand::default(),
             brought_to_life: None,
             files: Vec::new(),
+            tabs: Vec::new(),
+            wire_press: None,
+            recent: None,
+            recent_anchor: Rect::ZERO,
             counts: std::collections::HashMap::new(),
             listed_at: None,
             problem: None,
@@ -304,7 +333,7 @@ impl UnluminousApp {
                 "Realm",
                 Some(&count.to_string()),
                 dock::Panel::Realm,
-                self.settings.opacity,
+                self.settings.window_opacity(),
             )
         };
         self.note_a_panel_grab(dock::Panel::Realm, outcome.grab);
@@ -319,7 +348,7 @@ impl UnluminousApp {
             ui.painter().rect_filled(
                 below,
                 0,
-                crate::theme::pane_ground(crate::theme::color::editor(), self.settings.opacity),
+                crate::theme::pane_ground(crate::theme::color::editor(), self.settings.window_opacity()),
             );
             crate::app::realm_nodes::say_in_a_node(
                 ui,
@@ -354,7 +383,7 @@ impl UnluminousApp {
             false => crate::services::vello_canvas::Chrome::off(),
         };
         let look = realm_view::Look {
-            opacity: self.settings.opacity,
+            opacity: self.settings.window_opacity(),
             page: crate::theme::color::editor(),
             card: realm_view::card_colour(),
             header: realm_view::card_colour(),
@@ -387,6 +416,7 @@ impl UnluminousApp {
         self.act_on_the_view_bar(bar_outcome);
         self.show_the_realm_banner(&body_ui, body);
 
+        self.pick_up_a_pressed_wire(&body_ui, body);
         self.take_the_canvas_input(&mut body_ui, body);
         // **Borrowed rather than cloned** (`task-1984` A8): the canvas that is showing, with every
         // node on it, was deep copied on every frame to escape a borrow. `realm` is one field of
@@ -399,6 +429,11 @@ impl UnluminousApp {
         if let Some((at, edge)) = wire_outcome.menu {
             self.realm.in_hand.wire = Some(edge);
             self.realm.menu = Some((at, Menu::Wire));
+        }
+        if let Some((edge, at, arriving_end)) = wire_outcome.pressed {
+            if matches!(self.realm.gesture, Gesture::None) && self.realm.realm.editable() {
+                self.realm.wire_press = Some(WirePress { edge, at, arriving_end });
+            }
         }
         crate::services::frame_trace::phase("realm-ground");
         self.show_the_realm_nodes(ui, &mut body_ui, body, look);
@@ -430,7 +465,10 @@ impl UnluminousApp {
     fn take_the_canvas_input(&mut self, ui: &mut egui::Ui, body: Rect) {
         let response =
             ui.interact(body, ui.id().with("realm-canvas"), egui::Sense::click_and_drag());
-        if response.dragged() {
+        // A drag that began on a wire moves the wire, not the canvas.
+        let on_a_wire = self.realm.wire_press.is_some()
+            || matches!(self.realm.gesture, Gesture::Wiring { .. });
+        if response.dragged() && !on_a_wire {
             let by = response.drag_delta();
             self.realm.realm.pan_by(by);
             self.realm.gesture = Gesture::Panning;
@@ -1021,7 +1059,13 @@ impl UnluminousApp {
             self.realm.realm.place_node(node.id, rect);
         }
         if let Some(at) = outcome.wiring {
-            self.realm.gesture = Gesture::Wiring { from: node.id, point: outcome.point, at };
+            self.realm.gesture = Gesture::Wiring {
+                from: node.id,
+                point: outcome.point,
+                at,
+                backwards: false,
+                pipe: Pipe::Off,
+            };
         }
         if outcome.edit {
             if let Err(problem) = self.start_typing_in_a_shape(node.id) {
@@ -1042,12 +1086,64 @@ impl UnluminousApp {
         }
     }
 
+    /// Pick up the wire a press landed on once the pointer has moved from it, or forget the press when the
+    /// button comes up first (`task-2293`): *"When I have two nodes connected, and I click a connector, i
+    /// should be able to drag/disconnect it."*
+    ///
+    /// **Picking a wire up takes it off the canvas**, and the end that was nearer the press is the free end of
+    /// the wire in the air. Let go over a node, `settle_the_wire_in_the_air` connects it there; let go over
+    /// nothing, it stays disconnected, which is what pulling a wire off a port means in every node editor.
+    fn pick_up_a_pressed_wire(&mut self, ui: &egui::Ui, body: Rect) {
+        let Some(press) = self.realm.wire_press else { return };
+        let (down, pointer) = ui.input(|input| (input.pointer.primary_down(), input.pointer.latest_pos()));
+        if !down {
+            self.realm.wire_press = None;
+            return;
+        }
+        let Some(pointer) = pointer else { return };
+        if pointer.distance(press.at) < WIRE_PICK_UP {
+            return;
+        }
+        self.realm.wire_press = None;
+        let Some(edge) = self.realm.realm.edges.iter().find(|edge| edge.id == press.edge).cloned()
+        else {
+            return;
+        };
+        if !self.realm.realm.disconnect(edge.id) {
+            return;
+        }
+        let at = self.realm.realm.camera.to_world(body.min, pointer);
+        self.message = Some(
+            "Let go on a node to connect it there, or anywhere else to leave it disconnected.".to_owned(),
+        );
+        self.realm.gesture = match press.arriving_end {
+            true => Gesture::Wiring {
+                from: edge.from,
+                point: edge.from_point,
+                at,
+                backwards: false,
+                pipe: edge.pipe,
+            },
+            false => Gesture::Wiring {
+                from: edge.to,
+                point: edge.to_point,
+                at,
+                backwards: true,
+                pipe: edge.pipe,
+            },
+        };
+    }
+
     /// Draw the wire that is being pulled out of a port, and let it go when the button comes up.
     ///
     /// **A wire to or from a shape leaves and arrives along the way out of the points it joins**, and lands on
     /// the point of the shape nearest where it was let go. `task-2284`.
     fn settle_the_wire_in_the_air(&mut self, ui: &egui::Ui, body: Rect) {
-        let Gesture::Wiring { from, point, at } = self.realm.gesture else { return };
+        let Gesture::Wiring { from, point, at, backwards, pipe } = self.realm.gesture else { return };
+        if backwards {
+            self.settle_a_wire_picked_up_by_its_source(ui, body, from, point, at, pipe);
+            return;
+        }
         let camera = self.realm.realm.camera;
         let Some(node) = self.realm.realm.node(from) else {
             self.realm.gesture = Gesture::None;
@@ -1086,7 +1182,49 @@ impl UnluminousApp {
         if ui.input(|input| input.pointer.any_released()) {
             self.realm.gesture = Gesture::None;
             if let Some(over) = over {
-                self.land_the_wire(from, point, over, landing_point);
+                self.land_the_wire(from, point, over, landing_point, pipe);
+            }
+        }
+    }
+
+    /// The same for a connection picked up by the end it leaves from: the node it arrives at stays put, and the
+    /// free end is let go on the node it should come from instead (`task-2293`).
+    fn settle_a_wire_picked_up_by_its_source(
+        &mut self,
+        ui: &egui::Ui,
+        body: Rect,
+        to: NodeId,
+        to_point: Option<usize>,
+        at: Pos2,
+        pipe: Pipe,
+    ) {
+        let camera = self.realm.realm.camera;
+        let Some(node) = self.realm.realm.node(to) else {
+            self.realm.gesture = Gesture::None;
+            return;
+        };
+        let arriving = match to_point.and_then(|point| node.anchors().get(point).copied()) {
+            Some(anchor) => anchor,
+            None => shape::Anchor { at: node.input_port(), out: Vec2::new(-1.0, 0.0) },
+        };
+        let (over, landing_point) = self.where_a_wire_would_land(to, at);
+        let leaving = over
+            .zip(landing_point)
+            .and_then(|(id, point)| self.realm.realm.node(id)?.anchors().get(point).copied());
+        let start = camera.to_screen(body.min, leaving.map(|anchor| anchor.at).unwrap_or(at));
+        let end = camera.to_screen(body.min, arriving.at);
+        realm_view::directed_wire_in_the_air(
+            ui,
+            body,
+            shape::Anchor { at: start, out: leaving.map(|anchor| anchor.out).unwrap_or(Vec2::new(1.0, 0.0)) },
+            end,
+            Some(arriving.out),
+            over.is_some(),
+        );
+        if ui.input(|input| input.pointer.any_released()) {
+            self.realm.gesture = Gesture::None;
+            if let Some(over) = over {
+                self.land_the_wire(over, landing_point, to, to_point, pipe);
             }
         }
     }
@@ -1099,8 +1237,9 @@ impl UnluminousApp {
         from_point: Option<usize>,
         to: NodeId,
         to_point: Option<usize>,
+        pipe: Pipe,
     ) {
-        match self.realm.realm.connect_at(from, from_point, to, to_point, Pipe::Off) {
+        match self.realm.realm.connect_at(from, from_point, to, to_point, pipe) {
             Ok(_) => self.message = Some("Connected.".to_owned()),
             Err(problem) => self.message = Some(problem),
         }
@@ -1150,7 +1289,7 @@ impl UnluminousApp {
     /// run tile already share.
     fn show_a_terminal_node(&mut self, ui: &mut egui::Ui, node: &Node, body: Rect, focused: bool) {
         let font = realm_view::font_size_of(node, self.settings.terminal_font_size);
-        let opacity = self.settings.opacity;
+        let opacity = self.settings.window_opacity();
         let id = format!("realm-terminal-{}", node.id);
         let outcome = {
             let (session, selecting) = self.realm.live.terminal_and_selection(node.id);
@@ -1393,7 +1532,7 @@ impl UnluminousApp {
         self.make_sure_a_node_has_a_tree(node);
         let selected = self.realm.live.tree_selection(node.id).map(std::path::Path::to_path_buf);
         let showing = self.files.active().path().map(std::path::Path::to_path_buf);
-        let opacity = self.settings.opacity;
+        let opacity = self.settings.window_opacity();
         let scroll = self.wheel_over_a_folder_node(ui, node, has_the_pointer);
         let node_zoom = realm_view::folder_zoom_of(node);
         // **The icons and the git colours, before the borrow.** `task-1904` asked for a node to have the
@@ -2042,7 +2181,7 @@ impl UnluminousApp {
             .tab_in_node(node.id)
             .and_then(|showing| indices.iter().position(|index| *index == showing))
             .unwrap_or(0);
-        let opacity = self.settings.opacity;
+        let opacity = self.settings.window_opacity();
         let outcome = {
             let mut strip_ui = ui.new_child(egui::UiBuilder::new().max_rect(strip));
             // The pane number a strip is given is only an id salt and a drag's origin, and a node is not a
@@ -3545,6 +3684,13 @@ impl UnluminousApp {
                     crate::components::prompt_dialog::Purpose::RenameRealmView(path),
                 ));
             }
+            RealmAction::CloseRealm => {
+                let path =
+                    self.realm.in_hand.view.take().unwrap_or_else(|| self.realm.realm.path.clone());
+                if let Err(problem) = self.close_a_realm_tab(&path) {
+                    self.message = Some(problem);
+                }
+            }
             RealmAction::DuplicateRealm => {
                 let path =
                     self.realm.in_hand.view.take().unwrap_or_else(|| self.realm.realm.path.clone());
@@ -3869,6 +4015,13 @@ impl UnluminousApp {
         if outcome.manage {
             self.run_a_realm_action(RealmAction::Manage);
         }
+        self.realm.recent_anchor = outcome.files_chip.unwrap_or(Rect::ZERO);
+        if outcome.files {
+            self.realm.recent = match self.realm.recent {
+                Some(_) => None,
+                None => Some(crate::components::realm::recent::State::default()),
+            };
+        }
         if outcome.reset_zoom {
             let body = self.realm.body;
             self.aim_the_zoom_at(1.0, body.center());
@@ -4057,6 +4210,66 @@ impl UnluminousApp {
         }
     }
 
+    /// The rows the folder dropdown lists: every realm file, newest first, with whether each is a tab.
+    pub(crate) fn rows_for_the_realm_files(&self) -> Vec<crate::components::realm::recent::Row> {
+        let tabs = self.open_realm_tabs();
+        let open = &self.realm.realm.path;
+        self.realms_by_recency()
+            .into_iter()
+            .map(|(path, written)| {
+                let showing = path == *open;
+                let nodes = match showing {
+                    true => self.realm.realm.nodes.len(),
+                    false => self.realm.counts.get(&path).map(|(nodes, _)| *nodes).unwrap_or(0),
+                };
+                let folder = match path.parent().map(crate::services::realm::slashed) {
+                    Some(folder) if !folder.is_empty() => folder,
+                    _ => "the project".to_owned(),
+                };
+                crate::components::realm::recent::Row {
+                    name: crate::services::realm::title_of(&path),
+                    folder,
+                    written,
+                    nodes,
+                    tab: tabs.contains(&path),
+                    showing,
+                    id: path,
+                }
+            })
+            .collect()
+    }
+
+    /// Draw the realm bar's folder dropdown, when it is open (`task-2293`).
+    pub(crate) fn show_the_realm_files(&mut self, ui: &mut egui::Ui) {
+        let Some(mut state) = self.realm.recent.take() else { return };
+        // Only while the canvas is drawn: the chip it hangs from is on the canvas's own bar.
+        if !self.the_canvas_is_drawn() || self.realm.recent_anchor == Rect::ZERO {
+            return;
+        }
+        let rows = self.rows_for_the_realm_files();
+        let outcome = crate::components::realm::recent::show(
+            ui.ctx(),
+            self.realm.recent_anchor,
+            &mut state,
+            &rows,
+            std::time::SystemTime::now(),
+        );
+        if let Some(path) = outcome.open {
+            if self.open_a_realm(&path).is_ok() {
+                self.focus = Focus::Realm;
+            }
+        }
+        if outcome.new_realm {
+            self.run_a_realm_action(RealmAction::NewRealm);
+        }
+        if outcome.manage {
+            self.run_a_realm_action(RealmAction::Manage);
+        }
+        if !outcome.closed {
+            self.realm.recent = Some(state);
+        }
+    }
+
     /// Draw the add modal, when it is open.
     pub(crate) fn show_the_realm_modal(&mut self, ui: &mut egui::Ui) {
         let Some(mut state) = self.realm.adding.take() else { return };
@@ -4237,7 +4450,7 @@ mod tests {
     fn a_wire_refuses_to_connect_a_node_to_itself() {
         let mut app = a_window("self-wire");
         let node = app.new_detached_realm_node(Kind::Terminal, Pos2::ZERO);
-        app.land_the_wire(node, None, node, None);
+        app.land_the_wire(node, None, node, None, Pipe::Off);
         assert_eq!(app.message.as_deref(), Some("A node cannot be wired to itself."));
     }
 
@@ -4247,11 +4460,11 @@ mod tests {
         let terminal = app.new_detached_realm_node(Kind::Terminal, Pos2::new(0.0, 0.0));
         let editor = app.new_detached_realm_node(Kind::Editor, Pos2::new(400.0, 0.0));
 
-        app.land_the_wire(editor, None, terminal, None);
+        app.land_the_wire(editor, None, terminal, None, Pipe::Off);
         assert_eq!(app.message.as_deref(), Some("Connected."));
 
         // Wiring the same two nodes the same way round again is refused rather than duplicated.
-        app.land_the_wire(editor, None, terminal, None);
+        app.land_the_wire(editor, None, terminal, None, Pipe::Off);
         assert_eq!(app.message.as_deref(), Some("Those two are already wired that way round."));
     }
 
@@ -4259,7 +4472,7 @@ mod tests {
     fn a_wire_to_a_node_that_is_not_there_says_so() {
         let mut app = a_window("wire-nowhere");
         let terminal = app.new_detached_realm_node(Kind::Terminal, Pos2::ZERO);
-        app.land_the_wire(terminal, None, 999_999, None);
+        app.land_the_wire(terminal, None, 999_999, None, Pipe::Off);
         assert_eq!(app.message.as_deref(), Some("There is no node 999999."));
     }
 

@@ -18,6 +18,11 @@ use crate::components::settings_kit::{self as kit, Kind as ButtonKind};
 
 /// What the list's scrollbar is called.
 const LIST_SCROLLBAR: &str = "plugins list";
+/// What the chosen plugin's card's scrollbar is called.
+const DETAIL_SCROLLBAR: &str = "plugins detail";
+/// How far the card's scrollbar sits to the right of the card: the dialog's own padding less the bar's inset,
+/// so it is where the dialog's own bar is on every other page.
+const DETAIL_BAR_OUTSIDE: f32 = 16.0;
 use crate::services::plugins::{Plugin, Plugins};
 
 /// How wide the list at the left is: `width: 240px`.
@@ -51,6 +56,15 @@ pub struct PluginsState {
     pub chosen: Option<String>,
     /// How far the list at the left is scrolled, in points.
     pub list_scroll: f32,
+    /// How far the chosen plugin's card at the right is scrolled, and how tall it came out when last drawn.
+    ///
+    /// The card scrolls on its own and the list beside it stays where it is (`task-2293`): *"We want the left
+    /// column to fill the available height, and its contents to be scrollable, and remain fixed in place as the
+    /// content on the right scrolls."*
+    pub detail_scroll: f32,
+    pub detail_height: f32,
+    /// Which plugin [`PluginsState::detail_scroll`] is about, so choosing another starts at the top of its card.
+    pub detail_of: Option<String>,
 }
 
 /// What the page asked for.
@@ -62,7 +76,8 @@ pub struct PluginsOutcome {
     pub uninstall: Option<String>,
     /// Switch a plugin on or off.
     pub set_enabled: Option<(String, bool)>,
-    /// How tall the page came out, which is what decides whether the dialog gives it a scrollbar.
+    /// How tall the page came out, which is what decides whether the dialog gives it a scrollbar. Always the
+    /// height of the room it was given, because the page scrolls its own two halves and the dialog must not.
     pub height: f32,
 }
 
@@ -87,18 +102,70 @@ pub fn show(
     if state.chosen.as_ref().is_none_or(|chosen| !showing.contains(chosen)) {
         state.chosen = showing.first().cloned();
     }
-    let mut bottom = list_bottom;
     if let Some(id) = state.chosen.clone() {
         if let Some(plugin) = plugins.get(&id) {
-            let card = Rect::from_min_max(
+            let room = Rect::from_min_max(
                 Pos2::new(list.right() + GAP, top),
-                Pos2::new(area.right(), top),
+                Pos2::new(area.right(), list_bottom.max(list.bottom())),
             );
-            bottom = bottom.max(detail(ui, card, plugin, installed_on_disk(&id), &mut outcome));
+            scrolled_detail(ui, room, area, state, plugin, installed_on_disk(&id), &mut outcome);
         }
     }
-    outcome.height = bottom - area.top() + 20.0;
+    outcome.height = area.height();
     outcome
+}
+
+/// The chosen plugin's card in `room`, scrolled by the page itself, with its own bar where the dialog's would be.
+///
+/// The card's shadows reach past `room`, so the clip is widened sideways and downwards by what they need and
+/// cut at the top just under the tabs, which is where a card scrolled up should disappear.
+fn scrolled_detail(
+    ui: &mut egui::Ui,
+    room: Rect,
+    page: Rect,
+    state: &mut PluginsState,
+    plugin: &Plugin,
+    on_disk: bool,
+    outcome: &mut PluginsOutcome,
+) {
+    if state.detail_of.as_deref() != Some(plugin.id.as_str()) {
+        state.detail_of = Some(plugin.id.clone());
+        state.detail_scroll = 0.0;
+        state.detail_height = 0.0;
+    }
+    let view = (page.bottom() - room.top()).max(0.0);
+    let track = Rect::from_min_max(room.min, Pos2::new(room.right() + DETAIL_BAR_OUTSIDE, page.bottom()));
+    let was = state.detail_scroll;
+    let grab = match scrollbar::Bar::new(track, was, state.detail_height, view) {
+        Some(bar) => scrollbar::grab(ui, &bar, DETAIL_SCROLLBAR),
+        None => scrollbar::Grab::default(),
+    };
+    if let Some(to) = grab.scroll {
+        state.detail_scroll = to;
+    }
+    if ui.rect_contains_pointer(track) {
+        // Taken out of the frame, so the dialog does not also scroll the page under the card.
+        let wheel = ui.input_mut(|input| std::mem::take(&mut input.smooth_scroll_delta.y));
+        state.detail_scroll -= wheel;
+    }
+    state.detail_scroll = state.detail_scroll.clamp(0.0, (state.detail_height - view).max(0.0));
+    let scroll = state.detail_scroll;
+    let clip = ui.clip_rect();
+    let reach = Rect::from_min_max(
+        Pos2::new(room.left() - 16.0, room.top() - 6.0),
+        Pos2::new(track.right(), page.bottom() + 24.0),
+    );
+    ui.set_clip_rect(clip.intersect(reach));
+    let card = Rect::from_min_max(
+        Pos2::new(room.left(), room.top() - scroll),
+        Pos2::new(room.right(), room.top() - scroll),
+    );
+    let bottom = detail(ui, card, plugin, on_disk, outcome);
+    ui.set_clip_rect(clip);
+    state.detail_height = bottom + scroll - room.top() + LIST_MARGIN;
+    if let Some(bar) = scrollbar::Bar::new(track, scroll, state.detail_height, view) {
+        scrollbar::paint(ui, &bar, DETAIL_SCROLLBAR, grab.active || (scroll - was).abs() > 0.01);
+    }
 }
 
 /// The two tabs and the search well.

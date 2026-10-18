@@ -1259,6 +1259,9 @@ pub struct UnluminousApp {
     /// size the card will take and is kept for as long as it is chosen, and these are a dozen pictures
     /// nobody is looking at a moment after the dialog goes.
     background_thumbnails: std::collections::HashMap<String, Option<egui::TextureHandle>>,
+    /// Whether thumbnails are being made on a thread for the Background grid (`task-2293`), so the grid asks
+    /// for them once rather than on every frame it finds one missing.
+    pub(crate) background_thumbnails_making: std::sync::Arc<std::sync::atomic::AtomicBool>,
     /// The `Go to File` modal, when it is open.
     pub go_to_file: Option<GoToFile>,
     /// The `Find Action` palette, when it is open — `task-1922` WP4.
@@ -1647,6 +1650,7 @@ impl UnluminousApp {
             new_project: None,
             background_grid: None,
             background_thumbnails: std::collections::HashMap::new(),
+            background_thumbnails_making: Default::default(),
             go_to_file: None,
             palette: None,
             closed_tabs: Vec::new(),
@@ -1769,6 +1773,10 @@ impl UnluminousApp {
         // Unluminous easier to read, and every picture the suite has taken would otherwise have moved with
         // it. A test about the interface's size sets one, the way a person does.
         self.settings.ui_font_size = settings::DESIGN_UI_FONT_SIZE;
+        // **With the background on**, which is what every picture the suite accepted was taken with: a test
+        // window has no picture, so this is the opacity alone. `task-2293` made the background off by default
+        // for a person, and a test about the switch turns it off the way a person does.
+        self.settings.background_enabled = true;
         // And egui's own double click interval rather than this machine's mouse setting, so a test that
         // clicks once and then twice means the same thing on every machine. Given to egui on the first frame.
         self.double_click_interval = Some(crate::services::double_click::EGUI_INTERVAL);
@@ -2146,6 +2154,7 @@ impl UnluminousApp {
             realm_visible: self.was_showing(dock::Panel::Realm, self.realm.visible),
             realm_current: Some(self.realm.realm.path.clone()),
             realm_imported: self.realm.imported,
+            realm_tabs: Some(self.realm.tabs.clone()),
             terminal_tabs: self.terminal.tabs.count(),
             // The names a person typed, and nothing else: `Tabs::names` would give back
             // `powershell.exe 2` for a tab nobody has named, which is a name the next run would
@@ -2317,9 +2326,9 @@ impl UnluminousApp {
         self.editor_area
     }
 
-    /// How opaque the window background is.
+    /// How opaque the window background is drawn, which is fully opaque while the background is off.
     pub fn opacity(&self) -> f32 {
-        self.settings.opacity
+        self.settings.window_opacity()
     }
 
     /// Where the window last noticed itself being, which is what a project remembers about it.
@@ -2393,7 +2402,7 @@ impl UnluminousApp {
     /// The alpha is what makes the desktop visible through the window. It is applied to the background
     /// only; text is painted separately at full alpha.
     pub fn background(&self) -> Color32 {
-        theme::faded(color::editor(), self.settings.opacity)
+        theme::faded(color::editor(), self.settings.window_opacity())
     }
 
     /// True when this window is the one allowed to read and write the project's own `.unluminous` folder.

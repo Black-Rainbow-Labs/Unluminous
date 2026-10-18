@@ -300,10 +300,10 @@ impl Servers {
 /// residency Inillucent reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ModelKept {
-    /// Ten seconds after its last use, which is what the window has done since `task-2279`.
-    #[default]
+    /// Ten seconds after its last use, which is what the window did from `task-2279` to `task-2293`.
     TenSeconds,
-    /// Five minutes after its last use, which is Inillucent's own default.
+    /// Five minutes after its last use, which is Inillucent's own default and the window's since `task-2293`.
+    #[default]
     FiveMinutes,
     /// Loaded once and kept for as long as the window is open.
     Always,
@@ -798,8 +798,9 @@ impl Page {
     /// The headings inside the page. They are what the search box matches on as well as being drawn.
     pub fn sections(self) -> &'static [&'static str] {
         match self {
-            Page::Appearance => &["Interface font", "Background"],
-            Page::Theme => &["Theme", "Accent", "Icons"],
+            Page::Appearance => &["Interface font", "Plugin panes"],
+            // The Background card is the Theme page's first since `task-2293`.
+            Page::Theme => &["Background", "Theme", "Accent", "Icons"],
             Page::Keymap => &["Preset", "Shortcuts", "Keyboard", "VS Code", "IntelliJ"],
             Page::Editor => &["Font", "Gutter", "Suggestions", "Debugger", "Updates"],
             Page::Plugins => &["Marketplace", "Installed", "Color Scheme", "Syntax"],
@@ -1179,9 +1180,10 @@ settings! {
         /// was.
         ui_font_size = DEFAULT_UI_FONT_SIZE => "appearance.ui.font.size", MIN_UI_FONT_SIZE, MAX_UI_FONT_SIZE, "{:.1}";
         /// How many seconds the code index keeps the search index it builds for a plain English question
-        /// after the last one (`task-2282`). Atrius 0.3.0's default is 20: long enough for an agent's
-        /// burst of questions, and about 115 MB on this repository while it is held. 0 lets it go at once.
-        search_question_index_seconds = 20.0 => "search.question_index_seconds", 0.0, 3600.0, "{:.0}";
+        /// after the last one (`task-2282`). Ten minutes since `task-2293`, which asks for it, so a person
+        /// asking a question every few minutes does not wait for the index to be built again; it is about
+        /// 115 MB on this repository while it is held. 0 lets it go at once.
+        search_question_index_seconds = 600.0 => "search.question_index_seconds", 0.0, 3600.0, "{:.0}";
         /// How many megabytes of the index file the code index keeps in memory once it is built
         /// (`task-2282`). 4, Atrius 0.3.0's 128 pages of 32 KiB, measured 33 MB less in a window than
         /// 32; the operating system's file cache holds the pages a search reads whatever this says.
@@ -1194,6 +1196,9 @@ settings! {
         voice_wake_sensitivity = 0.5 => "voice.wake_sensitivity", 0.0, 1.0, "{:.2}";
         /// How many seconds the local speech model stays loaded after its last use, about 200 MB while it is.
         voice_model_idle = 60.0 => "voice.model_idle", 10.0, 3600.0, "{:.0}";
+        /// How many seconds of quiet, once something was said, end a dictation "Sable" started, which is when
+        /// `voice.send_after_wake` sends it (`task-2293`). 1.5 by default, which is what it always was.
+        voice_send_pause = 1.5 => "voice.send_pause", 0.7, 10.0, "{:.1}";
     }
 
     flag {
@@ -1264,10 +1269,19 @@ settings! {
         voice_button = true => "voice.button";
         /// Whether the code index keeps every file's contents in memory (`task-2282`).
         ///
-        /// **Off**, as the window has had it since `task-2279`: 11.4 MB of a 2,000 file project, and a
-        /// search reads each candidate file from the disk the way ripgrep does. On saves that read, which
-        /// matters to an agent asking many questions a second. Read when a project's index opens.
-        search_keep_contents = false => "search.keep_contents";
+        /// **On** since `task-2293`, which asks for it: 11.4 MB of a 2,000 file project, and a search no
+        /// longer reads each candidate file from the disk. Off, a search reads them the way ripgrep does.
+        /// Read when a project's index opens.
+        search_keep_contents = true => "search.keep_contents";
+        /// Whether the window draws a background behind itself at all: the chosen picture, or the desktop
+        /// through the opacity (`task-2293`).
+        ///
+        /// **Off by default**: *"The settings background should have a toggle to turn on/off background. The
+        /// default should be off."* Off, the window is opaque and has no picture, whatever
+        /// `appearance.background.image` and `appearance.background.opacity` say, so turning it back on gives
+        /// back exactly what was chosen. [`Settings::window_opacity`] and [`Settings::background_picture`] are
+        /// the two answers everything that paints reads.
+        background_enabled = false => "appearance.background.enabled";
     }
 
     coded {
@@ -1278,7 +1292,7 @@ settings! {
         /// Whether completion asks a language server. See [`Servers`].
         servers: Servers = Servers::Off => "editor.servers", "automatic or off";
         /// How long the embedding model stays loaded after its last use. See [`ModelKept`].
-        model_kept: ModelKept = ModelKept::TenSeconds => "search.model_kept", "ten_seconds, five_minutes, always or per_use";
+        model_kept: ModelKept = ModelKept::FiveMinutes => "search.model_kept", "ten_seconds, five_minutes, always or per_use";
         /// What one indent is made of. See [`Indent`], whose default is what `Tab` already typed.
         indent: Indent = Indent::Tab => "editor.indent", "tabs or spaces:N, N from 2 to 8";
         /// What line breaks a file is written back with. See [`LineEndings`].
@@ -1425,6 +1439,24 @@ impl Settings {
         let (least, most) =
             (MIN_UI_FONT_SIZE / DESIGN_UI_FONT_SIZE, MAX_UI_FONT_SIZE / DESIGN_UI_FONT_SIZE);
         (self.ui_font_size / DESIGN_UI_FONT_SIZE).clamp(least, most)
+    }
+
+    /// How opaque the window's background is drawn: the opacity setting while the background is on, and fully
+    /// opaque while it is off (`task-2293`).
+    pub fn window_opacity(&self) -> f32 {
+        match self.background_enabled {
+            true => self.opacity,
+            false => 1.0,
+        }
+    }
+
+    /// The picture drawn behind the window, or empty for none: the chosen picture while the background is on,
+    /// and nothing while it is off (`task-2293`).
+    pub fn background_picture(&self) -> &str {
+        match self.background_enabled {
+            true => &self.background_image,
+            false => "",
+        }
     }
 
     /// The accent this settings file asks for, or nothing when it asks for the theme's own.
@@ -1949,6 +1981,8 @@ mod tests {
             "voice.language",
             "voice.wake_sensitivity",
             "voice.model_idle",
+            "voice.send_pause",
+            "appearance.background.enabled",
             "voice.always_listen",
             "voice.send_after_wake",
             "voice.button",
@@ -2042,7 +2076,7 @@ mod tests {
             notebook_scroll_outputs: false,
             telemetry_enabled: false,
             search_embeddings: true,
-            search_keep_contents: true,
+            search_keep_contents: false,
             search_question_index_seconds: 120.0,
             search_page_cache_mb: 16.0,
             search_embedding_threads: 4.0,
@@ -2079,6 +2113,8 @@ mod tests {
             voice_language: "fr".to_owned(),
             voice_wake_sensitivity: 0.75,
             voice_model_idle: 300.0,
+            voice_send_pause: 3.5,
+            background_enabled: true,
             voice_always_listen: true,
             voice_send_after_wake: false,
             voice_button: false,
@@ -2424,7 +2460,8 @@ update.check.chosen = true
         assert!(Page::Appearance.matches(""), "an empty search shows every page");
         assert!(Page::Appearance.matches("appear"));
         assert!(Page::Appearance.matches("behavior"));
-        assert!(Page::Appearance.matches("background"), "a section inside the page counts");
+        assert!(Page::Theme.matches("background"), "a section inside the page counts");
+        assert!(!Page::Appearance.matches("background"), "it moved to Theme in `task-2293`");
         assert!(Page::Terminal.matches("font"), "both pages have a Font section");
         assert!(
             Page::Editor.matches("font"),

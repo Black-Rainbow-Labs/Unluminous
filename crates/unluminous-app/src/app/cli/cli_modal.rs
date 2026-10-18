@@ -860,8 +860,8 @@ fn modal_id(name: &str) -> Option<&'static str> {
         "create-project" => "unluminous-new-project",
         "background" => "unluminous-background",
         "confirmation" => "unluminous-confirmation",
-        "commit" => "unluminous-commit",
-        "git-dialog" => "unluminous-git-dialog",
+        "commit" => crate::components::git_panel::COMMIT,
+        "git-dialog" => crate::components::git_dialogs::GIT_DIALOG,
         _ => return None,
     })
 }

@@ -381,6 +381,18 @@ fn sort_mark(order: &str, column: &str) -> Option<bool> {
     }
 }
 
+/// The chevron at the right of a sorted column's header: pointing down while it is sorted ascending and up while
+/// it is sorted descending.
+///
+/// `task-2293`: *"The sort caret points right instead of up when sorting descending."* It was the explorer's
+/// disclosure mark, whose closed state points right; a sort only ever has two directions, and both are vertical.
+fn sort_chevron(painter: &egui::Painter, centre: Pos2, ascending: bool, colour: egui::Color32, scale: f32) {
+    let at = |x: f32, y: f32| Pos2::new(centre.x + x * scale, centre.y + y * scale);
+    let tip = if ascending { 2.5 } else { -2.5 };
+    let points = vec![at(-4.0, -tip), at(0.0, tip), at(4.0, -tip)];
+    painter.add(egui::Shape::line(points, egui::Stroke::new(1.6 * scale, colour)));
+}
+
 /// The column names, with their types and a sort chevron.
 #[allow(clippy::too_many_arguments)]
 fn header(
@@ -435,7 +447,7 @@ fn header(
         // The chevron says which way this column is sorted, and nothing at all when it is not — which
         // is how a grid says "the order you are looking at is the server's own".
         if let Some(ascending) = sort_mark(&order, &column.name) {
-            icon::disclosure_at(
+            sort_chevron(
                 &painter,
                 Pos2::new(rect.right() - 10.0 * scale, rect.center().y),
                 ascending,

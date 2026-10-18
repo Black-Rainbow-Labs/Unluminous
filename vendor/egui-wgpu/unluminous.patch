@@ -1,6 +1,6 @@
-diff -ru --strip-trailing-cr '--exclude=.cargo-ok' '--exclude=Cargo.lock' '--exclude=UNLUMINOUS.md' '--exclude=unluminous.patch' a/src/capture.rs b/src/capture.rs
---- a/src/capture.rs	2006-07-23 19:21:28.000000000 -0600
-+++ b/src/capture.rs	2026-10-17 11:04:29.485396400 -0600
+diff -ru --strip-trailing-cr '--exclude=.cargo-ok' '--exclude=Cargo.lock' '--exclude=UNLUMINOUS.md' '--exclude=unluminous.patch' '--exclude=target' a/src/capture.rs b/src/capture.rs
+--- a/src/capture.rs	2026-10-18 11:08:10.720855300 -0600
++++ b/src/capture.rs	2026-10-18 11:08:10.814973900 -0600
 @@ -117,12 +117,17 @@
          output_frame: &wgpu::SurfaceTexture,
          encoder: &mut wgpu::CommandEncoder,
@@ -157,10 +157,10 @@ diff -ru --strip-trailing-cr '--exclude=.cargo-ok' '--exclude=Cargo.lock' '--exc
  #[derive(Copy, Clone)]
  struct BufferPadding {
      unpadded_bytes_per_row: u32,
-diff -ru --strip-trailing-cr '--exclude=.cargo-ok' '--exclude=Cargo.lock' '--exclude=UNLUMINOUS.md' '--exclude=unluminous.patch' a/src/lib.rs b/src/lib.rs
---- a/src/lib.rs	2006-07-23 19:21:28.000000000 -0600
-+++ b/src/lib.rs	2026-10-17 11:04:20.652423800 -0600
-@@ -350,6 +350,24 @@
+diff -ru --strip-trailing-cr '--exclude=.cargo-ok' '--exclude=Cargo.lock' '--exclude=UNLUMINOUS.md' '--exclude=unluminous.patch' '--exclude=target' a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs	2026-10-18 11:08:10.730392800 -0600
++++ b/src/lib.rs	2026-10-18 11:08:10.815997600 -0600
+@@ -350,6 +350,42 @@
      /// in that case either.
      pub on_surface_status:
          Arc<dyn Fn(&wgpu::CurrentSurfaceTexture) -> SurfaceErrorAction + Send + Sync>,
@@ -182,10 +182,28 @@ diff -ru --strip-trailing-cr '--exclude=.cargo-ok' '--exclude=Cargo.lock' '--exc
 +    pub texture: wgpu::Texture,
 +    /// How many frames have been drawn into it, so a callback can tell one frame's contents from another's.
 +    pub frame: u64,
++}
++
++/// Whether the next frame is drawn into the scene texture and not shown (Unluminous `task-2293`).
++static HOLD_THE_NEXT_FRAME: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
++
++/// Draw the next frame into the scene texture only, and leave the window showing the frame before it.
++///
++/// For a frame that has to be drawn so the frame after it can read it, and that nobody should see: Unluminous
++/// draws one frame without an open modal when the theme changes under it, so the modal's backdrop can be blurred
++/// from the window in the new theme, and that frame was a flash of the window with the dialog gone. Ignored while
++/// [`WgpuConfiguration::scene_texture`] is off or before the scene texture exists, when the frame is shown as usual.
++pub fn hold_the_next_frame() {
++    HOLD_THE_NEXT_FRAME.store(true, std::sync::atomic::Ordering::Relaxed);
++}
++
++/// Takes the request [`hold_the_next_frame`] made, once.
++pub(crate) fn take_the_hold() -> bool {
++    HOLD_THE_NEXT_FRAME.swap(false, std::sync::atomic::Ordering::Relaxed)
  }
  
  #[test]
-@@ -364,10 +382,12 @@
+@@ -364,10 +400,12 @@
              surface,
              wgpu_setup,
              on_surface_status: _,
@@ -198,7 +216,7 @@ diff -ru --strip-trailing-cr '--exclude=.cargo-ok' '--exclude=Cargo.lock' '--exc
              .finish_non_exhaustive()
      }
  }
-@@ -411,6 +431,7 @@
+@@ -411,6 +449,7 @@
                      SurfaceErrorAction::SkipFrame
                  }
              }),
@@ -206,9 +224,9 @@ diff -ru --strip-trailing-cr '--exclude=.cargo-ok' '--exclude=Cargo.lock' '--exc
          }
      }
  }
-diff -ru --strip-trailing-cr '--exclude=.cargo-ok' '--exclude=Cargo.lock' '--exclude=UNLUMINOUS.md' '--exclude=unluminous.patch' a/src/winit.rs b/src/winit.rs
---- a/src/winit.rs	2006-07-23 19:21:28.000000000 -0600
-+++ b/src/winit.rs	2026-10-17 11:04:59.214241400 -0600
+diff -ru --strip-trailing-cr '--exclude=.cargo-ok' '--exclude=Cargo.lock' '--exclude=UNLUMINOUS.md' '--exclude=unluminous.patch' '--exclude=target' a/src/winit.rs b/src/winit.rs
+--- a/src/winit.rs	2026-10-18 11:08:10.769151200 -0600
++++ b/src/winit.rs	2026-10-18 11:08:10.819521000 -0600
 @@ -32,6 +32,8 @@
      options: RendererOptions,
      support_transparent_backbuffer: bool,
@@ -245,7 +263,83 @@ diff -ru --strip-trailing-cr '--exclude=.cargo-ok' '--exclude=Cargo.lock' '--exc
              renderer.update_buffers(
                  &render_state.device,
                  &render_state.queue,
-@@ -630,11 +645,20 @@
+@@ -590,6 +605,75 @@
+             surface_state.needs_reconfigure = false;
+         }
+ 
++        // Unluminous (`task-2293`): a held frame is drawn into the scene texture, where the next frame's callbacks
++        // read it, and is neither copied to the surface nor presented, so the window keeps the frame before it.
++        if self.config.scene_texture
++            && self.options.msaa_samples <= 1
++            && !capture
++            && self.screen_capture_state.is_some()
++            && crate::take_the_hold()
++            && let Some(texture) = self.screen_capture_state.as_ref().map(|state| state.texture.clone())
++        {
++            let target_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
++            {
++                let renderer = render_state.renderer.read();
++                let render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
++                    label: Some("egui_render_held"),
++                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
++                        view: &target_view,
++                        resolve_target: None,
++                        ops: wgpu::Operations {
++                            load: wgpu::LoadOp::Clear(wgpu::Color {
++                                r: clear_color[0] as f64,
++                                g: clear_color[1] as f64,
++                                b: clear_color[2] as f64,
++                                a: clear_color[3] as f64,
++                            }),
++                            store: wgpu::StoreOp::Store,
++                        },
++                        depth_slice: None,
++                    })],
++                    depth_stencil_attachment: self.depth_texture_view.get(&viewport_id).map(|view| {
++                        wgpu::RenderPassDepthStencilAttachment {
++                            view,
++                            depth_ops: Some(wgpu::Operations {
++                                load: wgpu::LoadOp::Clear(1.0),
++                                store: wgpu::StoreOp::Discard,
++                            })
++                            .filter(|_| {
++                                self.options.depth_stencil_format.is_some_and(|format| format.has_depth_aspect())
++                            }),
++                            stencil_ops: Some(wgpu::Operations {
++                                load: wgpu::LoadOp::Clear(0),
++                                store: wgpu::StoreOp::Discard,
++                            })
++                            .filter(|_| {
++                                self.options.depth_stencil_format.is_some_and(|format| format.has_stencil_aspect())
++                            }),
++                        }
++                    }),
++                    timestamp_writes: None,
++                    occlusion_query_set: None,
++                    multiview_mask: None,
++                });
++                renderer.render(
++                    &mut render_pass.forget_lifetime(),
++                    clipped_primitives,
++                    &screen_descriptor,
++                );
++            }
++            self.scene_frames += 1;
++            render_state.queue.submit(std::iter::chain(user_cmd_bufs, [encoder.finish()]));
++            render_queue_guard.commands_submitted = true;
++            let mut renderer = render_state.renderer.write();
++            #[expect(clippy::iter_over_hash_type)] // Order doesn't matter here
++            for id in textures_delta.free.drain() {
++                renderer.free_texture(&id);
++            }
++            self.context.request_repaint_of(viewport_id);
++            return vsync_sec;
++        }
++
+         let output_frame = {
+             profiling::scope!("get_current_texture");
+             // This is what vsync-waiting happens on my Mac.
+@@ -630,11 +714,20 @@
          {
              let renderer = render_state.renderer.read();
  
@@ -267,7 +361,7 @@ diff -ru --strip-trailing-cr '--exclude=.cargo-ok' '--exclude=Cargo.lock' '--exc
  
                  &capture_state.texture
              } else {
-@@ -707,11 +731,13 @@
+@@ -707,11 +800,13 @@
              );
  
              if capture && let Some(capture_state) = &mut self.screen_capture_state {
@@ -286,7 +380,7 @@ diff -ru --strip-trailing-cr '--exclude=.cargo-ok' '--exclude=Cargo.lock' '--exc
              }
          }
  
-@@ -797,3 +823,4 @@
+@@ -797,3 +892,4 @@
          // TODO(emilk): something here?
      }
  }

@@ -455,7 +455,7 @@ impl UnluminousApp {
                     &label,
                     count.as_deref(),
                     panel,
-                    self.settings.opacity,
+                    self.settings.window_opacity(),
                 )
             };
             grabs.push((panel, outcome.grab));

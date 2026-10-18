@@ -420,6 +420,14 @@ if ($dirty) {
     throw 'The working tree is not clean. Commit the task''s own work first: a release built from a dirty checkout is one nobody can rebuild.'
 }
 
+Write-Step 'Taking the newest Inillucent'
+# `task-2293`: *"Make sure our build always pulls in the latest version of inillucent."* The manifest asks for
+# `inillucent-driver` 2.x and Cargo.lock held whichever 2.x was newest the day it was last written, which had
+# fallen six releases behind. The newest compatible release is taken here, before the suite, so what is tested
+# is what ships; Cargo.lock goes into the version commit with the manifest. A new major version is a change to
+# the manifest, made by hand.
+Invoke-Checked 'cargo update' { & cargo update --manifest-path $Manifest -p inillucent-driver }
+
 Write-Step 'Running the suite'
 # `task-1922`: a release was tagged, installed and published before anything had run the tests. It is
 # the whole gate now rather than a second opinion -- `task-1928` took the continuous integration out,

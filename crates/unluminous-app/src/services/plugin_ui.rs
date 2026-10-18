@@ -166,7 +166,7 @@ impl<'a> Look<'a> {
             font_family: settings.font_family.clone(),
             font_size: settings.font_size,
             monospace_size: settings.terminal_font_size,
-            opacity: settings.opacity,
+            opacity: settings.window_opacity(),
             palette: Palette::active(),
             chrome: &NO_CHROME,
             highlighter: None,
@@ -1003,6 +1003,7 @@ mod tests {
     fn a_provider_is_handed_the_windows_own_look_and_cannot_name_a_colour() {
         let mut settings = Settings::new();
         settings.font_size = 17.0;
+        settings.background_enabled = true;
         settings.opacity = 0.5;
         // A real renderer, because `Look` carries one so that a provider can draw a character grid. Building
         // one loads the system fonts, which this test does not read: it is here so the value can exist.
@@ -1016,6 +1017,10 @@ mod tests {
         let ground = look.ground(look.palette.editor);
         assert_eq!(ground.a(), 128, "half opacity is half alpha");
         settings.opacity = 1.0;
+        assert_eq!(Look::of(&settings, &renderer).ground(look.palette.editor).a(), 255);
+        // With the background off (`task-2293`) the ground is opaque whatever the opacity says.
+        settings.opacity = 0.5;
+        settings.background_enabled = false;
         assert_eq!(Look::of(&settings, &renderer).ground(look.palette.editor).a(), 255);
     }
 

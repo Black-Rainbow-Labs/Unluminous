@@ -129,6 +129,19 @@ pub(crate) fn show(
     kit::card(ui, &mut column, "Listen for Sable", None, |card| {
         changed |= card.switch("Always listen for \"Sable\"", Some("Say \"Sable\" and then what you want: the Agent-Chat pane opens and the words fill its prompt. Off by default. A voice activity detector keeps the wake word model idle in a quiet room. With several windows open, the one you used last is the one that listens."), &mut settings.voice_always_listen);
         changed |= card.switch("Send when I stop talking", Some("After \"Sable\", the message is sent at the first pause once something was said. Off leaves it in the prompt."), &mut settings.voice_send_after_wake);
+        // `task-2293`: how long that pause is, in seconds. It also ends a dictation whose message is not sent.
+        let mut pause = settings.voice_send_pause;
+        card.row(
+            "Pause before sending",
+            Some("How many seconds of quiet, once something was said, end what \"Sable\" heard and send it."),
+            |row| {
+                if row.slider("Pause before sending", &mut pause, 0.7, 10.0) {
+                    settings.voice_send_pause = (pause * 10.0).round() / 10.0;
+                    changed = true;
+                }
+                row.suffix(&format!("{:.1} s", settings.voice_send_pause));
+            },
+        );
         let mut sensitivity = settings.voice_wake_sensitivity;
         card.row(
             "Sensitivity",

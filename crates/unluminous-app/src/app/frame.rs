@@ -400,7 +400,7 @@ impl UnluminousApp {
         ui.painter().rect_filled(
             full,
             CornerRadius::same(size::WINDOW_CORNER),
-            theme::faded(color::editor(), self.settings.opacity),
+            theme::faded(color::editor(), self.settings.window_opacity()),
         );
 
         let title_rect = Rect::from_min_size(full.min, Vec2::new(full.width(), size::TITLE_BAR));
@@ -524,7 +524,7 @@ impl UnluminousApp {
             ui,
             title_rect,
             self.folder_name().as_deref(),
-            self.settings.opacity,
+            self.settings.window_opacity(),
             self.menu_placement,
             menus,
             tools_width,
@@ -650,7 +650,7 @@ impl UnluminousApp {
                 run_visible: self.run.visible,
                 debug_visible: self.debug_panel.visible,
             };
-            let opacity = self.settings.opacity;
+            let opacity = self.settings.window_opacity();
             // One button per pane the plugins that are switched on contributed, in the group each
             // manifest named. Built here rather than inside the rail, because what is contributed is the
             // window's knowledge and the rail draws what it is given.
@@ -876,7 +876,7 @@ impl UnluminousApp {
                         unsaved,
                         reveal,
                         reveal_selected,
-                        opacity: self.settings.opacity,
+                        opacity: self.settings.window_opacity(),
                         zoom: self.panes.zoom_of(dock::Panel::Explorer),
                         scroll_to: self.explorer_scroll_to.take(),
                         host: explorer::Host::Panel,
@@ -1249,6 +1249,7 @@ impl UnluminousApp {
         }
         self.show_the_realm_modal(ui);
         self.show_the_realm_manager(ui);
+        self.show_the_realm_files(ui);
         if let Some(chosen) = self.show_the_realm_menu(ui) {
             *action = Some(chosen);
         }
@@ -1300,7 +1301,7 @@ impl UnluminousApp {
                     &mut self.terminal,
                     &self.renderer,
                     font_size,
-                    self.settings.opacity,
+                    self.settings.window_opacity(),
                 )
             };
             self.zoom_over_a_panel(ui, dock::Panel::Terminal, terminal_rect);
@@ -1345,7 +1346,7 @@ impl UnluminousApp {
                     &mut self.run,
                     &self.renderer,
                     font_size,
-                    self.settings.opacity,
+                    self.settings.window_opacity(),
                 )
             };
             self.zoom_over_a_panel(ui, dock::Panel::Run, run_rect_tile);
@@ -1382,7 +1383,7 @@ impl UnluminousApp {
             let outcome = {
                 let mut panel_ui = ui.new_child(egui::UiBuilder::new().max_rect(debug_rect));
                 panel_ui.set_clip_rect(debug_rect);
-                let opacity = self.settings.opacity;
+                let opacity = self.settings.window_opacity();
                 // The panel and the session are borrowed apart, which is what lets a component take
                 // its own state mutably and what it draws immutably — the shape every component in
                 // Unluminous has.
@@ -1568,7 +1569,7 @@ impl UnluminousApp {
                     .or(self.message.as_deref()),
                 git: branch.as_deref(),
             },
-            self.settings.opacity,
+            self.settings.window_opacity(),
         );
         // Under glass the status bar is a panel of its own (`task-2281`), so it needs no line above it.
         if !theme::is_glass() {
@@ -1663,6 +1664,30 @@ impl UnluminousApp {
         self.new_project = Some(project);
     }
 
+    /// Make every missing background thumbnail on a thread, once at a time, and ask for a frame when they are
+    /// made (`task-2293`). The grid asks when it finds one missing, and `main` asks as the window starts.
+    ///
+    /// @param folder - the backgrounds folder
+    /// @param ctx - the window's context, asked for a frame when the thumbnails are there
+    pub(crate) fn make_the_background_thumbnails(&self, folder: std::path::PathBuf, ctx: egui::Context) {
+        use std::sync::atomic::Ordering;
+        if self.background_thumbnails_making.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let making = self.background_thumbnails_making.clone();
+        crate::services::backgrounds::thumbnails::make_the_missing_later(folder, move || {
+            making.store(false, Ordering::Release);
+            ctx.request_repaint();
+        });
+    }
+
+    /// Make the thumbnails for every background already in the folder, as the released window starts.
+    pub fn make_the_missing_background_thumbnails(&self, ctx: &egui::Context) {
+        if let Some(folder) = self.backgrounds_folder() {
+            self.make_the_background_thumbnails(folder.to_owned(), ctx.clone());
+        }
+    }
+
     /// The Background grid, beside the other modals. `task-2004`.
     ///
     /// **Everything it reports is acted on here and takes effect at once**, which needs no machinery at
@@ -1677,12 +1702,21 @@ impl UnluminousApp {
         let names = self.background_names();
         let folder = self.backgrounds_folder().map(|folder| folder.to_owned());
         // **Decoded before the dialog is drawn rather than inside it**, so the closure it is handed only
-        // reads a map. A picture is decoded once while the grid is open and forgotten when it closes.
+        // reads a map. **And from the picture's thumbnail** (`task-2293`), which is 480 pixels wide and decodes
+        // in a few milliseconds, where the picture itself is 4K and took the window's thread a large part of a
+        // second each. A picture with no thumbnail yet gets one made on a thread, and its cell is empty until then.
+        let mut missing = false;
         for name in &names {
             if let (false, Some(folder)) = (self.background_thumbnails.contains_key(name), &folder)
             {
-                let decoded =
-                    crate::services::picture::decode(&folder.join(name)).ok().map(|image| {
+                use crate::services::backgrounds::thumbnails;
+                if !thumbnails::is_current(folder, name) {
+                    missing = true;
+                    continue;
+                }
+                let decoded = crate::services::picture::decode(&thumbnails::path_of(folder, name))
+                    .ok()
+                    .map(|image| {
                         crate::services::picture::upload(
                             ui.ctx(),
                             format!("unluminous-background-cell-{name}"),
@@ -1692,6 +1726,9 @@ impl UnluminousApp {
                     });
                 self.background_thumbnails.insert(name.clone(), decoded);
             }
+        }
+        if let (true, Some(folder)) = (missing, &folder) {
+            self.make_the_background_thumbnails(folder.clone(), ui.ctx().clone());
         }
         let thumbnails = &self.background_thumbnails;
         let texture = |name: &str| thumbnails.get(name).cloned().flatten();
@@ -1707,6 +1744,8 @@ impl UnluminousApp {
         );
         if let Some(chosen) = outcome.chosen {
             self.settings.background_image = chosen;
+            // A picture chosen is a picture meant to be seen, so it turns the background on (`task-2293`).
+            self.settings.background_enabled = true;
             self.unsaved_settings = true;
             problem = None;
         }
@@ -1727,6 +1766,7 @@ impl UnluminousApp {
                     // Chosen as well as added, because somebody who picked a picture meant to use it.
                     Ok(name) => {
                         self.settings.background_image = name;
+                        self.settings.background_enabled = true;
                         self.unsaved_settings = true;
                         problem = None;
                     }
@@ -2125,7 +2165,7 @@ impl UnluminousApp {
         let Some(picture) = self.wallpaper.texture(
             &ctx,
             self.backgrounds.as_deref(),
-            &self.settings.background_image,
+            self.settings.background_picture(),
         ) else {
             rux::render::set_backdrop(&ctx, rux::render::Plane::Page, None);
             theme::glass::set_frosted(&ctx, None);

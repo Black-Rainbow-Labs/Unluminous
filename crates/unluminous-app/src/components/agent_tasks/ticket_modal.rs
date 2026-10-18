@@ -297,7 +297,7 @@ fn contents(
                 let main =
                     Rect::from_min_max(body.min, Pos2::new(aside.min.x - GUTTER, body.max.y));
                 requests.extend(main_column(board, rux, order, main, look, task, new));
-                let (more, pressed) = fields(board, rux, selects, order, aside, task, new);
+                let (more, pressed) = fields(board, rux, selects, aside, task, new);
                 requests.extend(more);
                 let create = pressed && press_create(board, rux.ui, &mut requests);
                 (requests, closed || create)
@@ -311,7 +311,7 @@ fn contents(
                 let rest =
                     Rect::from_min_max(Pos2::new(body.min.x, aside.max.y + SECTION_GAP), body.max);
                 let mut column = Vec::new();
-                let (more, pressed) = fields(board, rux, selects, order, aside, task, new);
+                let (more, pressed) = fields(board, rux, selects, aside, task, new);
                 requests.extend(more);
                 let create = pressed && press_create(board, rux.ui, &mut requests);
                 if rest.height() > 120.0 {
@@ -757,6 +757,60 @@ fn fold_heading(
     (pressed, left + width)
 }
 
+/// How wide the description's microphone is.
+const MIC: f32 = 24.0;
+
+/// The description's microphone: a round chip that is carved in while dictating, with a ring that follows how
+/// loud the microphone is, and the chat prompt's own mark. Answers whether it was pressed.
+fn description_microphone(
+    rux: &mut rux::Rux<'_>,
+    mic: Rect,
+    voice: &crate::services::plugin_ui::VoiceView,
+) -> bool {
+    use crate::components::controls::WithHint;
+    let chat = rux.theme().chat;
+    let ink = rux.theme().ink;
+    let response = rux.ui.interact(mic, rux.ui.id().with("agent-tasks-microphone"), egui::Sense::click());
+    let hovered = response.hovered();
+    match voice.dictating || response.is_pointer_button_down_on() {
+        true => rux.chrome.surface(mic, MIC / 2.0, chat.well, chat.carved_sm()),
+        false => rux.chrome.surface(
+            mic,
+            MIC / 2.0,
+            rux::Fill::gradient(chat.chip, mic),
+            chat.raised_chip(),
+        ),
+    }
+    let tint = match (&voice.refused, voice.dictating, hovered) {
+        (Some(_), _, _) => ink.i300,
+        (None, true, _) => chat.sky,
+        (None, false, true) => chat.sky,
+        (None, false, false) => ink.i500,
+    };
+    if voice.dictating {
+        let strength = (0.35 + voice.level * 6.0).min(1.0);
+        rux.painter().circle_stroke(
+            mic.center(),
+            MIC / 2.0 + 1.5,
+            egui::Stroke::new(1.5, chat.sky.gamma_multiply(strength)),
+        );
+    }
+    if hovered {
+        rux.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    crate::theme::icon::scaled(rux.painter(), mic.center(), tint, 0.9, crate::theme::icon::microphone);
+    let hint = match (&voice.refused, voice.dictating) {
+        (Some(why), _) => format!("The microphone cannot be used: {why}"),
+        (None, true) => "Stop dictating".to_owned(),
+        (None, false) => "Dictate: speak and the words fill the description".to_owned(),
+    };
+    let response = response.with_hint(hint);
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::Button, true, voice.dictating, "Dictate description")
+    });
+    response.clicked()
+}
+
 /// The description, the todos, the terminal and the comments.
 fn main_column(
     board: &mut AgentTasks,
@@ -777,13 +831,13 @@ fn main_column(
     // A ticket that exists folds its description, as it folds its agent and its todos (`task-2269`). A new ticket
     // is being written, so its description is always open.
     let description_open = new || !board.description_shut;
-    let row = match new {
+    let (row, heading_right, heading_middle) = match new {
         true => {
-            label(rux, Pos2::new(area.min.x, pen), "Description");
-            LABEL
+            let width = label(rux, Pos2::new(area.min.x, pen), "Description");
+            (LABEL, area.min.x + width, pen + LABEL / 2.0)
         }
         false => {
-            let (pressed, _) = fold_heading(
+            let (pressed, right) = fold_heading(
                 rux,
                 Pos2::new(area.min.x, pen),
                 "Description",
@@ -794,9 +848,21 @@ fn main_column(
             if pressed {
                 board.description_shut = description_open;
             }
-            TODO_HEAD
+            (TODO_HEAD, right, pen + TODO_HEAD / 2.0)
         }
     };
+    // **The microphone, after the heading** (`task-2293`: *"add a mic button to the top left of description in
+    // task modal ... similar to agent chat"*). The same dictation as the chat's prompt, with the same settings and
+    // model, filling the description as it is spoken. Absent while `voice.button` is off, as the chat's is.
+    if description_open && board.voice.button {
+        let mic = Rect::from_center_size(
+            Pos2::new(heading_right + 8.0 + MIC / 2.0, heading_middle),
+            Vec2::splat(MIC),
+        );
+        if description_microphone(rux, mic, &board.voice) {
+            requests.push(AgentTasks::dictation_request(!board.voice.dictating));
+        }
+    }
     // The two view buttons, on the heading's own row and right aligned, which is where a section's controls go.
     let buttons_top = match new {
         true => pen - 2.0,
@@ -1479,13 +1545,12 @@ fn section_grip(
 /// asked for, and whether `Create task` was pressed.
 ///
 /// `padding: 18px; gap: 16px` on the card gradient with `--out`, `border-radius: 26px`. **It scrolls**, because
-/// in a dialog dragged towards its smallest it cannot be made to fit, and the JIRA key, the date and `Delete task`
+/// in a dialog dragged towards its smallest it cannot be made to fit, and the date and `Delete task`
 /// are under the priority, past the design's own fields.
 fn fields(
     board: &mut AgentTasks,
     rux: &mut rux::Rux<'_>,
     selects: &mut std::collections::HashMap<&'static str, rux::components::SelectState>,
-    order: &mut Vec<egui::Id>,
     area: Rect,
     task: &Task,
     new: bool,
@@ -1539,7 +1604,7 @@ fn fields(
                 content.expand(24.0),
                 |rux| {
                     let (asked, used) =
-                        field_column(board, rux, selects, order, content, task, new, gap);
+                        field_column(board, rux, selects, content, task, new, gap);
                     requests = asked;
                     used
                 },
@@ -1580,7 +1645,6 @@ fn field_column(
     board: &mut AgentTasks,
     rux: &mut rux::Rux<'_>,
     selects: &mut std::collections::HashMap<&'static str, rux::components::SelectState>,
-    order: &mut Vec<egui::Id>,
     area: Rect,
     task: &Task,
     new: bool,
@@ -1588,7 +1652,6 @@ fn field_column(
 ) -> (Vec<Request>, f32) {
     let mut requests = Vec::new();
     let theme = rux.theme();
-    let chat = theme.chat;
     let width = area.width();
     let mut pen = area.min.y;
 
@@ -1775,51 +1838,10 @@ fn field_column(
         return (requests, pen);
     }
 
-    // ---------------------------------------------------------------- the JIRA issue, and when it was made
+    // ---------------------------------------------------------------- when it was made
     //
-    // **It does not sync.** There is no HTTP client in Unluminous, so the key is a field somebody types.
-    pen = caption(rux, pen, area.min.x, "JIRA");
-    let mut key = task.jira_key.clone().unwrap_or_default();
-    let at = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::new(width, 38.0));
-    rux.chrome.surface(at, 19.0, chat.well, chat.carved_sm());
-    let font = Style::sans(12.5).font();
-    let id = rux.ui.id().with(("rux-text-input", egui::Id::new("agent-tasks-ticket-jira")));
-    let text = crate::components::controls::field_takes_the_whole_rectangle_at(
-        rux.ui,
-        at.shrink2(Vec2::new(14.0, 0.0)),
-        0.0,
-        id,
-        "JIRA field",
-        &font,
-    );
-    let mut child = rux.ui.new_child(egui::UiBuilder::new().max_rect(text));
-    let response = child.text_box(
-        egui::TextEdit::singleline(&mut key)
-            .id(id)
-            .hint_text(crate::components::controls::placeholder("No issue", &font, theme.ink.i400))
-            .font(font.clone())
-            .frame(egui::Frame::NONE)
-            .desired_width(text.width())
-            .text_color(theme.ink.i900),
-    );
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "JIRA"));
-    order.push(id);
-    if response.changed() {
-        requests.extend(write(board, task, Field::JiraKey(key.clone())));
-    }
-    pen += 38.0 + 10.0;
-    if !key.trim().is_empty() {
-        let button = rux::components::PillButton::new("Copy issue link").mark(Icon::Copy).ghost();
-        let size = button.measure(rux);
-        let at = Rect::from_min_size(Pos2::new(area.min.x, pen), size);
-        if button.show(rux, at).clicked() {
-            requests.push(Request::Copy(board.jira_link(&key)));
-            requests.push(Request::Message(format!("copied the link to {key}")));
-        }
-        pen += size.y + 10.0;
-    }
-    pen += 6.0;
-
+    // The JIRA field that was here is gone (`task-2293`): *"Get rid of the JIRA input. We don't need to track this
+    // any longer."*
     pen = caption(rux, pen, area.min.x, "Created");
     let now = clock::now();
     let said = clock::relative(&task.created_at, &now);

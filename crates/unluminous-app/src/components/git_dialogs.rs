@@ -87,6 +87,14 @@ pub struct DialogOutcome {
     pub remove_remote: Option<String>,
 }
 
+/// The size every git dialog asks for: a working dialog's, so it opens the size of every other one.
+const WORKING: (f32, f32) = (900.0, 620.0);
+
+/// The git dialogs' modal id. **Not `unluminous-git-dialog`**, which is the id a size kept before `task-2293`
+/// was written under: those dialogs were smaller than every other modal, and a size dragged then would open
+/// them smaller again.
+pub const GIT_DIALOG: &str = "unluminous-git-dialogs";
+
 /// Draw whichever dialog is open.
 pub fn show(
     ctx: &egui::Context,
@@ -100,18 +108,22 @@ pub fn show(
     let Some(dialog) = dialogs.open.clone() else {
         return outcome;
     };
-    let (title, width, height) = match &dialog {
-        Dialog::Push => ("Push Commits", 560.0, 340.0),
-        Dialog::Pull => ("Pull Changes", 560.0, 320.0),
-        Dialog::Merge { rebase: false } => ("Merge into the current branch", 560.0, 420.0),
-        Dialog::Merge { rebase: true } => ("Rebase onto", 560.0, 420.0),
-        Dialog::Reset => ("Reset HEAD", 560.0, 430.0),
-        Dialog::Branches => ("Branches", 560.0, 520.0),
-        Dialog::History => ("History", 860.0, 560.0),
-        Dialog::Remotes => ("Remotes", 620.0, 440.0),
-        Dialog::Text { title, .. } => (title.as_str(), 900.0, 620.0),
+    // **Every git dialog is a working dialog, the size of every other one** (`task-2293`: *"The git modal is too
+    // small. all of our modals should be the same size."*). Asking for [`WORKING`] makes `modal::starting_size`
+    // open each at the window less its margin, which is what the commit panel, Settings and the ticket do.
+    let title = match &dialog {
+        Dialog::Push => "Push Commits",
+        Dialog::Pull => "Pull Changes",
+        Dialog::Merge { rebase: false } => "Merge into the current branch",
+        Dialog::Merge { rebase: true } => "Rebase onto",
+        Dialog::Reset => "Reset HEAD",
+        Dialog::Branches => "Branches",
+        Dialog::History => "History",
+        Dialog::Remotes => "Remotes",
+        Dialog::Text { title, .. } => title.as_str(),
     };
-    let (_, closed) = modal::show(ctx, "unluminous-git-dialog", width, height, |ui, area| {
+    let (width, height) = WORKING;
+    let (_, closed) = modal::show(ctx, GIT_DIALOG, width, height, |ui, area| {
         if modal::header(ui, area, title) {
             outcome.close = true;
         }

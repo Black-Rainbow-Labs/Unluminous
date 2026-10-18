@@ -174,6 +174,11 @@ if [ -n "$dirty" ]; then
     die "The working tree is not clean. Commit the task's own work first: a release built from a dirty checkout is one nobody can rebuild."
 fi
 
+step 'Taking the newest Inillucent'
+# `task-2293`: the newest compatible inillucent-driver, before the suite, so what is tested is what ships.
+# Cargo.lock goes into the version commit with the manifest. See release.ps1.
+cargo update --manifest-path "$manifest" -p inillucent-driver
+
 step 'Running the suite'
 # `task-1922`: a release was tagged, installed and published before anything had run the tests. It is
 # the whole gate now rather than a second opinion -- `task-1928` took the continuous integration out,

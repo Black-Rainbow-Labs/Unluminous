@@ -937,6 +937,7 @@ const SETTINGS_HELP: &[&str] = &[
     "Whether the Agent-Chat prompt has its microphone button. `true` by default; `false` removes it.",
     "How readily \"Sable\" wakes the window, 0 to 1. 0.5 by default, which is a detector threshold of 0.6.",
     "How many seconds the local speech model stays loaded after its last use, 10 to 3600. 60 by default. It holds about 200 MB while loaded.",
+    "How many seconds of quiet, once something was said, end a dictation \"Sable\" started, which is when `voice.send_after_wake` sends it. 0.7 to 10, 1.5 by default.",
     // `task-2247`: every key of every AI endpoint, which `Settings -> AI Configuration` edits.
     "An AI endpoint, which Settings -> AI Configuration edits.",
     // `task-1922` WP4's three, which are the reason this list is a list rather than a rule: a help
@@ -947,7 +948,8 @@ const SETTINGS_HELP: &[&str] = &[
     "Whether the trailing whitespace goes off every line when a file is written. Off. It never runs on a Markdown file, where two trailing spaces are a line break.",
     "The family the editor sets text in.",
     "The point size the editor sets text in, in every tab.",
-    "How opaque the window is. Below 1 the desktop shows through.",
+    "Whether the window draws a background behind itself: the chosen picture, or the desktop through the opacity. `false` by default, which makes the window opaque with no picture; the picture and the opacity are kept for when it is turned on.",
+    "How opaque the window is while the background is on. Below 1 the desktop shows through.",
     "What every color in the window is. A theme that names the nine token colors also colors code, in every language at once.",
     "One color for everything the accent means: the caret, the open tab, an open folder.",
     "Which drawn marks the rail buttons and the explorer's folder arrow use.",
@@ -964,12 +966,12 @@ const SETTINGS_HELP: &[&str] = &[
     "Patterns Go to File, Find in Files, completion, Go to Definition and Find References leave out, beside the project's own .gitignore, which is read already. The explorer goes on showing everything.",
     "Whether Unluminous sends anonymous usage statistics to Google Analytics: when a window is open and for how long, which panels and kinds of tab are showing, and how often each menu entry and command is used. Never a path, a file name, a project name or anything typed. `true` by default; `false` stops counting and sending at once. `settings telemetry` says what it has sent.",
     // `task-2282`: how the code index loads, each with what it costs.
-    "How long the code index keeps the embedding model loaded after it was last used, while `search.embeddings` is on: `ten_seconds`, the default, `five_minutes`, `always` or `per_use`. Loading it takes 650 to 800 ms and it holds about 1.1 GB, so keeping it longer answers a burst of plain English searches sooner and holds the memory longer. Applies to windows and index hosts started after the change.",
+    "How long the code index keeps the embedding model loaded after it was last used, while `search.embeddings` is on: `ten_seconds`, `five_minutes`, the default, `always` or `per_use`. Loading it takes 650 to 800 ms and it holds about 1.1 GB, so keeping it longer answers a burst of plain English searches sooner and holds the memory longer. Applies to windows and index hosts started after the change.",
     "How many processor threads the embedding model runs on, from 1 to 32. 2 by default. More embeds a new project sooner and keeps more of the machine busy while it does. Applies to windows and index hosts started after the change.",
-    "How many seconds the code index keeps the search index it builds for a plain English question after the last question, from 0 to 3600. 20 by default. Longer answers a later question sooner and holds about 100 MB on a project the size of Unluminous for longer; 0 lets it go at once. Applies to windows and index hosts started after the change.",
+    "How many seconds the code index keeps the search index it builds for a plain English question after the last question, from 0 to 3600. 600 by default. Longer answers a later question sooner and holds about 100 MB on a project the size of Unluminous for longer; 0 lets it go at once. Applies to windows and index hosts started after the change.",
     "How many megabytes of the index file the code index keeps in memory once the index is built, from 1 to 512. 4 by default. A larger cache costs that much memory and helps little, because the operating system already caches the file. Applies to windows and index hosts started after the change.",
-    "Whether the window's code index keeps every file's contents in memory. `false` by default: a search reads each candidate file from the disk, as ripgrep does, and a project the size of Unluminous holds about 11 MB less. `true` saves that read, which helps an agent asking many questions a second. Applies the next time a window opens the project.",
-    "Whether the code index embeds the project's passages with the embedding model, so a plain English `search find` is ranked by meaning as well as by its words. `false` by default. On, the model holds about 1.1 GB while it is loaded and the first open of a project embeds every passage on two processors for several minutes; vectors already made are reused. `false` stops embedding at once and the model's memory is returned ten seconds after its last use. Completion, Go to Definition, references and text and regex searches never use it.",
+    "Whether the window's code index keeps every file's contents in memory. `true` by default, which saves reading each candidate file from the disk and helps an agent asking many questions a second. `false` reads them from the disk, as ripgrep does, and a project the size of Unluminous holds about 11 MB less. Applies the next time a window opens the project.",
+    "Whether the code index embeds the project's passages with the embedding model, so a plain English `search find` is ranked by meaning as well as by its words. `false` by default. On, the model holds about 1.1 GB while it is loaded and the first open of a project embeds every passage on two processors for several minutes; vectors already made are reused. `false` stops embedding at once and the model's memory is returned once `search.model_kept` has passed since its last use. Completion, Go to Definition, references and text and regex searches never use it.",
     "Whether Unluminous asks unluminous.com for a newer version on its own: `daily`, the default, asks at most once a day across every window; `start` asks whenever a window opens; `off` asks nothing until somebody presses Check for Updates or runs `update check`. A newer version is offered in a notice with Install & Restart and Don't Ask Again, and nothing is installed until that is pressed.",
     "The one version Don't Ask Again declined, which the daily check does not offer. A later version is offered again. Empty offers every version.",
     "Whether resting the pointer on a name while the program is stopped shows its value. Show Value on the Debug menu works either way.",
@@ -2300,6 +2302,10 @@ fn drive_the_canvas(coverage: &mut Coverage) {
     c.refuses(&mut harness, "realm open Nosuchrealm");
     c.works(&mut harness, "realm rename Rendering Second");
     c.works(&mut harness, "realm duplicate Second");
+    // `task-2293`: the bar's folder list, and closing a tab without deleting its file.
+    c.works(&mut harness, "realm files --show");
+    c.works(&mut harness, "realm files --hide");
+    c.works(&mut harness, "realm close Second");
     c.works(&mut harness, "realm delete Second");
     c.refuses(&mut harness, "realm delete Nosuchrealm");
     // A window with no space.conf has nothing to import, and says so rather than making something up.

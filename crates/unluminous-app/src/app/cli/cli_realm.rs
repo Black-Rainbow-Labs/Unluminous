@@ -87,6 +87,8 @@ impl UnluminousApp {
             "rename" => self.cli_realm_rename(request),
             "duplicate" => self.cli_realm_duplicate(request),
             "delete" => self.cli_realm_delete(request),
+            "close" => self.cli_realm_close(request),
+            "files" => self.cli_realm_files(request),
             "import" => self.cli_realm_import(request),
             "info" => self.cli_realm_info(request),
             "add" => self.cli_realm_add(request),
@@ -1703,6 +1705,80 @@ impl UnluminousApp {
             true => no(request, code::FAILED, self.message.clone().unwrap_or_default()),
             false => done(request, format!("Deleted {}.", crate::services::realm::slashed(&path))),
         }
+    }
+
+    /// `close`: take a realm's tab off the bar, leaving its file where it is. `task-2293`.
+    fn cli_realm_close(&mut self, request: &Request) -> Outcome {
+        let path = match self.a_named_realm(request, "realm") {
+            Ok(path) => path,
+            Err(outcome) => return *outcome,
+        };
+        match self.close_a_realm_tab(&path) {
+            Ok(()) => ok(
+                request,
+                format!("Closed the tab of {}.", crate::services::realm::slashed(&path)),
+                json!({
+                    "closed": crate::services::realm::slashed(&path),
+                    "current": crate::services::realm::slashed(&self.realm.realm.path),
+                    "tabs": self.open_realm_tabs().iter().map(|tab| crate::services::realm::slashed(tab)).collect::<Vec<_>>(),
+                }),
+            ),
+            Err(problem) => no(request, code::REFUSED, problem),
+        }
+    }
+
+    /// `files`: every realm file newest first, which is what the bar's folder button lists, and `--show` or
+    /// `--hide` for the list itself. `task-2293`.
+    fn cli_realm_files(&mut self, request: &Request) -> Outcome {
+        self.list_the_realms();
+        if request.switch("show") {
+            self.show_a_panel(dock::Panel::Realm, true);
+            self.realm.recent = Some(crate::components::realm::recent::State::default());
+        }
+        if request.switch("hide") {
+            self.realm.recent = None;
+        }
+        let now = std::time::SystemTime::now();
+        let rows = self.rows_for_the_realm_files();
+        let lines_out: Vec<String> = rows
+            .iter()
+            .map(|row| {
+                let when = row
+                    .written
+                    .map(|written| {
+                        crate::components::realm::recent::ago(
+                            now.duration_since(written).unwrap_or_default(),
+                        )
+                    })
+                    .unwrap_or_default();
+                format!(
+                    "{}{:<40} {:<14} {}",
+                    if row.showing { "*" } else if row.tab { "+" } else { " " },
+                    crate::services::realm::slashed(&row.id),
+                    when,
+                    if row.tab { "tab" } else { "" },
+                )
+            })
+            .collect();
+        let realms: Vec<serde_json::Value> = rows
+            .iter()
+            .map(|row| {
+                json!({
+                    "path": crate::services::realm::slashed(&row.id),
+                    "name": row.name,
+                    "nodes": row.nodes,
+                    "tab": row.tab,
+                    "showing": row.showing,
+                    "written": row.written.and_then(|written| written.duration_since(std::time::UNIX_EPOCH).ok()).map(|since| since.as_secs()),
+                })
+            })
+            .collect();
+        lines(
+            request,
+            format!("{} realm file{}, newest first", realms.len(), if realms.len() == 1 { "" } else { "s" }),
+            lines_out,
+            json!({ "realms": realms, "listShowing": self.realm.recent.is_some() }),
+        )
     }
 
     /// `import`: turn `.unluminous/space.conf` into realm files, writing over nothing. `task-2202`.

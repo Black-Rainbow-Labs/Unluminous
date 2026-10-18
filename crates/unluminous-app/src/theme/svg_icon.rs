@@ -52,6 +52,35 @@ pub static LIST_TODO: SvgMark = SvgMark {
     ],
 };
 
+/// Lucide `key-round`'s older drawing, `key` (MIT), 24 unit view box: a ring and a shaft with two teeth.
+///
+/// The Settings list's Keymap mark since `task-2293`, whose `rux::Icon::Key` sat a unit and a half above the
+/// middle of its view box and so above the middle of its row. This one fills the box evenly, 2 to 21 both ways.
+pub static KEY: SvgMark = SvgMark {
+    view: 24.0,
+    stroke: 1.8,
+    parts: &[
+        Part::Path("M2 15.5a5.5 5.5 0 1 0 11 0a5.5 5.5 0 1 0 -11 0z"),
+        Part::Path("M21 2 11.4 11.6"),
+        Part::Path("M15.5 7.5 17.8 9.8a1 1 0 0 0 1.4 0l2.1 -2.1a1 1 0 0 0 0 -1.4L19 4"),
+    ],
+};
+
+/// Material `record_voice_over` (Apache 2.0), as a line mark in a 24 unit view box: a head and shoulders and
+/// two arcs of sound in front of the face. `task-2293`: *"The voice icon should look more like a person
+/// talking, not music, like MdRecordVoiceOver."* The Material icon is filled; it is drawn here as strokes along
+/// the same shapes so it sits with the line marks round it in the Settings list.
+pub static VOICE_OVER: SvgMark = SvgMark {
+    view: 24.0,
+    stroke: 1.8,
+    parts: &[
+        Part::Path("M5.5 9a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0 -7 0z"),
+        Part::Path("M2 20.5v-0.5c0 -2.7 4.6 -4.2 7 -4.2s7 1.5 7 4.2v0.5"),
+        Part::Path("M15.6 6.6a3.4 3.4 0 0 1 0 4.8"),
+        Part::Path("M18.6 3.8a7.4 7.4 0 0 1 0 10.4"),
+    ],
+};
+
 /// VS Code codicon `debug-continue` (CC BY 4.0), 16 unit view box.
 ///
 /// The codicon is a filled outline: a bar 1.5 wide at the left and a play triangle drawn as a ring 1.5

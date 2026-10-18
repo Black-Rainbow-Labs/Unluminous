@@ -842,6 +842,35 @@ pub struct Dictating {
     shown: usize,
 }
 
+impl Dictating {
+    /// A dictation starting over `draft`, whose words stay in front of what is said.
+    /// @param draft - the text as it is when dictation starts
+    pub fn starting(draft: &str) -> Self {
+        Dictating { applied: draft.to_owned(), base: draft.trim_end().to_owned(), skip: 0, shown: 0 }
+    }
+
+    /// The text again, as what was there before dictation followed by the words heard. A change typed by hand
+    /// since the last call becomes the new start, and the words already shown are not written twice.
+    /// @param draft - the text as it is now
+    /// @param words - everything said so far
+    pub fn put(&mut self, draft: &str, words: &str) -> String {
+        if draft != self.applied {
+            self.base = draft.trim_end().to_owned();
+            self.skip = self.shown;
+        }
+        let said: Vec<&str> = words.split_whitespace().collect();
+        let heard = said.iter().skip(self.skip).copied().collect::<Vec<&str>>().join(" ");
+        let next = match (self.base.is_empty(), heard.is_empty()) {
+            (true, _) => heard,
+            (false, true) => self.base.clone(),
+            (false, false) => format!("{} {heard}", self.base),
+        };
+        self.applied = next.clone();
+        self.shown = said.len();
+        next
+    }
+}
+
 impl std::fmt::Debug for AgentChat {
     /// Written by hand because a `Client` holds a channel and a `Session` holds a whole transcript,
     /// and what a failing assertion wants to see is neither.
@@ -907,9 +936,7 @@ impl AgentChat {
         use crate::services::plugin_ui::Dictation;
         match note {
             Dictation::Began => {
-                let base = self.draft.trim_end().to_owned();
-                self.dictating =
-                    Some(Dictating { applied: self.draft.clone(), base, skip: 0, shown: 0 });
+                self.dictating = Some(Dictating::starting(&self.draft));
                 self.ui.focus_the_prompt = true;
             }
             Dictation::Words(words) => self.put_the_words(words),
@@ -927,19 +954,7 @@ impl AgentChat {
     /// @param words - everything said so far
     fn put_the_words(&mut self, words: &str) {
         let Some(dictating) = self.dictating.as_mut() else { return };
-        if self.draft != dictating.applied {
-            dictating.base = self.draft.trim_end().to_owned();
-            dictating.skip = dictating.shown;
-        }
-        let said: Vec<&str> = words.split_whitespace().collect();
-        let heard = said.iter().skip(dictating.skip).copied().collect::<Vec<&str>>().join(" ");
-        self.draft = match (dictating.base.is_empty(), heard.is_empty()) {
-            (true, _) => heard,
-            (false, true) => dictating.base.clone(),
-            (false, false) => format!("{} {heard}", dictating.base),
-        };
-        dictating.applied = self.draft.clone();
-        dictating.shown = said.len();
+        self.draft = dictating.put(&self.draft, words);
     }
 
     /// The request that runs a `voice` command for this chat. `task-2290`.

@@ -38,6 +38,7 @@ use crate::components::plugins_page::{self, PluginsState};
 use crate::components::scrollbar;
 use crate::components::settings_kit::{self as kit, Column};
 use crate::services::plugins::Plugins;
+use crate::theme::svg_icon;
 use crate::settings::{
     Indent, LineEndings, ModelKept, Page, Settings, Suggestions, UpdateCheck, ValueTooltip,
     FONT_SIZES, MIN_OPACITY, TERMINAL_FONT_SIZES, UI_FONT_SIZES,
@@ -370,6 +371,10 @@ fn draw_the_page(
     match state.page {
         Page::Appearance => {
             let page = appearance_page(ui, area, settings, context.families);
+            (changed(page), page.height)
+        }
+        Page::Theme => {
+            let page = theme_page(ui, area, settings, context.plugins);
             // **After the change**, so a frame on which both happened opens the grid: the window's own before
             // and after comparison writes a change that arrived with it anyway.
             let outcome = match page.backgrounds {
@@ -377,10 +382,6 @@ fn draw_the_page(
                 false => changed(page),
             };
             (outcome, page.height)
-        }
-        Page::Theme => {
-            let page = theme_page(ui, area, settings, context.plugins);
-            (changed(page), page.height)
         }
         Page::Keymap => {
             let page = crate::components::keymap_page::show(ui, area, &mut state.keymap, settings);
@@ -505,8 +506,7 @@ fn header(ui: &mut egui::Ui, area: Rect, page: Page, plugin_pages: &[String]) ->
     })
 }
 
-/// The window's name, the search well and the list of pages, grouped under their headings, with the line
-/// under them that says changes take effect at once.
+/// The window's name, the search well and the list of pages, grouped under their headings.
 fn show_list(ui: &mut egui::Ui, area: Rect, state: &mut SettingsWindow, context: SettingsContext) {
     let plugin_pages = context.plugin_pages;
     kit::layer(ui, "settings-nav", area, |rux| {
@@ -570,20 +570,12 @@ fn show_list(ui: &mut egui::Ui, area: Rect, state: &mut SettingsWindow, context:
         });
         pen = well.bottom() + 8.0 + 3.0;
 
-        // The line at the foot of the card, measured first so the list can stop above it: in a short window,
-        // or a zoomed one, the list is cut there rather than drawn over it.
-        let note = rux::text::wrapped(
-            rux.painter(),
-            Style::sans(11.0).leading(1.5),
-            "Changes take effect at once.",
-            theme.ink.i400,
-            right - left - 24.0,
-        );
-        let note_at = Pos2::new(left + 12.0, area.bottom() - 14.0 - note.size().y);
+        // The list stops above the foot of the card: in a short window, or a zoomed one, it is cut there and
+        // scrolls. The line that said changes take effect at once is gone (`task-2293`).
         let clip = rux.ui.clip_rect();
         let room = Rect::from_min_max(
             Pos2::new(area.left(), pen),
-            Pos2::new(area.right(), note_at.y - 8.0),
+            Pos2::new(area.right(), area.bottom() - 14.0),
         );
         rux.ui.set_clip_rect(clip.intersect(room));
         // The list scrolls under the wheel when it is taller than its room. `task-2286`.
@@ -658,28 +650,39 @@ fn show_list(ui: &mut egui::Ui, area: Rect, state: &mut SettingsWindow, context:
         }
 
         rux.ui.set_clip_rect(clip);
-        rux.painter().galley(note_at, note, theme.ink.i400);
     });
 }
 
+/// A page's mark: one of the design's line marks, or a mark drawn from published SVG path data.
+#[derive(Debug, Clone, Copy)]
+enum PageMark {
+    Line(Icon),
+    Svg(&'static svg_icon::SvgMark),
+}
+
 /// The mark a page is listed with.
-fn mark_of(page: Page, plugin_page_marks: &[String]) -> Icon {
+///
+/// A contributed page whose plugin has a button in the rail uses the rail's own mark (`task-2293`: *"Agent
+/// tasks, designer icons should be changed to match the left bar icons on the main window"*), so a page and the
+/// button that opens its pane cannot look like two different things.
+fn mark_of(page: Page, plugin_page_marks: &[String]) -> PageMark {
     match page {
-        Page::Appearance => Icon::Letters,
-        Page::Theme => Icon::Palette,
-        Page::Keymap => Icon::Key,
-        Page::Editor => Icon::Document,
-        Page::Plugins => Icon::Puzzle,
-        Page::Terminal => Icon::Terminal,
-        Page::Mcp => Icon::Plug,
-        Page::Ai => Icon::Spark,
-        Page::Voice => Icon::Music,
+        Page::Appearance => PageMark::Line(Icon::Letters),
+        Page::Theme => PageMark::Line(Icon::Palette),
+        Page::Keymap => PageMark::Svg(&svg_icon::KEY),
+        Page::Editor => PageMark::Line(Icon::Document),
+        Page::Plugins => PageMark::Line(Icon::Puzzle),
+        Page::Terminal => PageMark::Line(Icon::Terminal),
+        Page::Mcp => PageMark::Line(Icon::Plug),
+        Page::Ai => PageMark::Line(Icon::Spark),
+        Page::Voice => PageMark::Svg(&svg_icon::VOICE_OVER),
         Page::Plugin(slot) => match plugin_page_marks.get(slot as usize).map(String::as_str) {
-            Some("chat") => Icon::Bubble,
-            Some("board") => Icon::Board,
-            Some("database") => Icon::Database,
-            Some("terminal") => Icon::Terminal,
-            _ => Icon::Puzzle,
+            Some("chat") => PageMark::Line(Icon::Bubble),
+            Some("board") => PageMark::Svg(&svg_icon::LIST_TODO),
+            Some("design") => PageMark::Svg(&svg_icon::PAINTBRUSH_VERTICAL),
+            Some("database") => PageMark::Line(Icon::Database),
+            Some("terminal") => PageMark::Line(Icon::Terminal),
+            _ => PageMark::Line(Icon::Puzzle),
         },
     }
 }
@@ -707,11 +710,11 @@ fn page_row(
         true => theme.ink.i900,
         false => theme.ink.i500,
     };
-    rux.mark(
-        Mark::new(mark_of(page, plugin_page_marks), 16.0),
-        Pos2::new(row.left() + 20.0, row.center().y),
-        ink,
-    );
+    let centre = Pos2::new(row.left() + 20.0, row.center().y);
+    match mark_of(page, plugin_page_marks) {
+        PageMark::Line(icon) => rux.mark(Mark::new(icon, 16.0), centre, ink),
+        PageMark::Svg(mark) => svg_icon::paint(rux.ui.painter(), centre, 16.0, mark, ink),
+    }
     let galley = rux.text(Style::sans(12.5), title, ink);
     rux::text::draw_left_capitals(
         rux.painter(),
@@ -774,7 +777,6 @@ fn appearance_page(
     families: &[String],
 ) -> Drawn {
     let mut changed = false;
-    let mut backgrounds = false;
     let mut column = Column::new(area.left(), area.right(), area.top());
 
     // The reference editor's `Appearance -> Use custom font`: the window's own text was the editor's family at
@@ -812,7 +814,35 @@ fn appearance_page(
         );
     });
 
-    kit::card(ui, &mut column, "Background", None, |card| {
+    // Here rather than on the Plugins page, which is a list of what is installed. Depth is an appearance choice
+    // in exactly the way the opacity above it is.
+    kit::card(ui, &mut column, "Plugin panes", None, |card| {
+        changed |= card.switch(
+            "Draw depth in plugin panes",
+            Some("Soft shadows, gradients and pressed edges behind a plugin's own pane, drawn on the processor. Off, a plugin draws flat, which costs nothing at all."),
+            &mut settings.plugin_chrome,
+        );
+    });
+    drawn(area.top(), &column, changed)
+}
+
+/// The Background card, at the top of the Theme page (`task-2293`): whether the window draws a background at
+/// all, how opaque it is, and which picture is behind it. Answers whether a setting changed and whether the
+/// picture chooser was pressed.
+fn background_card(ui: &mut egui::Ui, column: &mut Column, settings: &mut Settings) -> (bool, bool) {
+    let mut changed = false;
+    let mut backgrounds = false;
+    kit::card(ui, column, "Background", None, |card| {
+        changed |= card.switch(
+            "Show a background",
+            Some("A picture behind the window, or the desktop through it. Off, the window is drawn solid in the theme's colors."),
+            &mut settings.background_enabled,
+        );
+        // The two rows that only mean something while the background is on are absent while it is off, which is
+        // Unluminous's rule for a control that cannot apply. What they say is kept for when it is turned on.
+        if !settings.background_enabled {
+            return;
+        }
         card.row(
             "Opacity",
             Some("Fades the window so what is behind shows through. Text stays fully solid at every setting."),
@@ -828,27 +858,13 @@ fn appearance_page(
             true => "Show Contents Underneath".to_owned(),
             false => settings.background_image.clone(),
         };
-        card.row(
-            "Behind",
-            Some("A picture behind the window, or the desktop. Pictures chosen here are kept in Unluminous's own folder, so moving the original does not lose it."),
-            |row| {
-                if row.chooser("Background", &showing, 260.0) {
-                    backgrounds = true;
-                }
-            },
-        );
+        card.row("Behind", Some("A picture behind the window, or the desktop."), |row| {
+            if row.chooser("Background", &showing, 260.0) {
+                backgrounds = true;
+            }
+        });
     });
-
-    // Here rather than on the Plugins page, which is a list of what is installed. Depth is an appearance choice
-    // in exactly the way the opacity above it is.
-    kit::card(ui, &mut column, "Plugin panes", None, |card| {
-        changed |= card.switch(
-            "Draw depth in plugin panes",
-            Some("Soft shadows, gradients and pressed edges behind a plugin's own pane, drawn on the processor. Off, a plugin draws flat, which costs nothing at all."),
-            &mut settings.plugin_chrome,
-        );
-    });
-    Drawn { backgrounds, ..drawn(area.top(), &column, changed) }
+    (changed, backgrounds)
 }
 
 /// `Appearance & Behavior > Theme`: which palette the window is painted in, its accent, and its icons.
@@ -856,8 +872,8 @@ fn appearance_page(
 /// Laid out the way the reference editor's own theme list is: a row per theme, its name and where it came from
 /// on the left and the colours it is made of on the right, so the choice is made by looking.
 fn theme_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings, plugins: &Plugins) -> Drawn {
-    let mut changed = false;
     let mut column = Column::new(area.left(), area.right(), area.top());
+    let (mut changed, backgrounds) = background_card(ui, &mut column, settings);
     let themes = plugins.themes();
     // Empty means Unluminous's own, which is what the settings file says by saying nothing. Matched on the key
     // rather than remembered, so a theme whose plugin has been switched off leaves the row on Unluminous Dark.
@@ -1006,7 +1022,7 @@ fn theme_page(ui: &mut egui::Ui, area: Rect, settings: &mut Settings, plugins: &
             },
         );
     });
-    drawn(area.top(), &column, changed)
+    Drawn { backgrounds, ..drawn(area.top(), &column, changed) }
 }
 
 /// What a person reads for an icon set, which is its name with a capital letter.

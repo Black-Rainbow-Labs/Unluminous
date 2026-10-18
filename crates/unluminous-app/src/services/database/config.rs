@@ -44,13 +44,24 @@ pub struct Configuration {
     /// Which data source the tree and a new console are pointed at.
     pub chosen: String,
     pub page_size: usize,
+    /// Whether the Agent-Tasks board has been offered as a data source (`task-2293`). Set once it has been, so
+    /// a person who removes it does not get it back.
+    pub board_offered: bool,
 }
 
 impl Default for Configuration {
     fn default() -> Self {
-        Self { sources: Vec::new(), chosen: String::new(), page_size: DEFAULT_PAGE_SIZE }
+        Self {
+            sources: Vec::new(),
+            chosen: String::new(),
+            page_size: DEFAULT_PAGE_SIZE,
+            board_offered: false,
+        }
     }
 }
+
+/// What the Agent-Tasks board is called as a data source.
+pub const BOARD_SOURCE: &str = "Agent Tasks board";
 
 impl Configuration {
     pub const FILE: &'static str = "sources.conf";
@@ -71,6 +82,7 @@ impl Configuration {
             out.page_size = (size as usize).clamp(1, 100_000);
         }
         out.chosen = values.text("chosen").unwrap_or_default().to_owned();
+        out.board_offered = values.flag("board_offered").unwrap_or(false);
         let (sources, refused) =
             plugin_ui::read_numbered_rows(values, "source", 200, |values, index| {
                 one(values, index).map(Some)
@@ -89,6 +101,9 @@ impl Configuration {
         values.set("sources", self.sources.len().to_string());
         values.set("chosen", &self.chosen);
         values.set("page_size", self.page_size.to_string());
+        if self.board_offered {
+            values.set("board_offered", "true");
+        }
         for (index, source) in self.sources.iter().enumerate() {
             let at = |key: &str| format!("source.{index}.{key}");
             values.set(&at("name"), &source.name);
@@ -123,6 +138,31 @@ impl Configuration {
              variable and `password.keychain` names an entry in this machine's own keychain,\n\
              and the value is read at the moment a connection is opened and never held.",
         )
+    }
+
+    /// Put the Agent-Tasks board in the list as an Inillucent data source, the first time this is asked
+    /// (`task-2293`: *"The default should have a connection to our inillucent db for agent tasks, etc."*).
+    /// Answers whether the list changed, so the caller writes it.
+    ///
+    /// Only once: [`Configuration::board_offered`] is set whether or not the source was added, so a board that
+    /// was removed stays removed, and a list that already names the same file is left as it is.
+    ///
+    /// @param board - the board's file, which is Agent-Tasks' own `board.rdb` unless its settings name another
+    pub fn offer_the_board(&mut self, board: &Path) -> bool {
+        if self.board_offered {
+            return false;
+        }
+        self.board_offered = true;
+        let file = board.display().to_string();
+        if self.sources.iter().any(|source| source.database == file) {
+            return true;
+        }
+        let name = self.a_free_name(BOARD_SOURCE);
+        self.sources.push(Source::inillucent(name.clone(), file));
+        if self.chosen.is_empty() {
+            self.chosen = name;
+        }
+        true
     }
 
     pub fn source(&self, name: &str) -> Option<&Source> {

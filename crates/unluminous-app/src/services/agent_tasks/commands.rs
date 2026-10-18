@@ -16,7 +16,7 @@ use crate::services::plugin_ui::{self, Answer, UiProvider};
 
 use super::model::{Author, Priority, Status};
 use super::store::{NewTask, TaskEdit};
-use super::{agent, clock, model, split_off_a_name, AgentTasks, Field, View, SWATCHES, TAIL_LINES};
+use super::{agent, clock, model, split_off_a_name, AgentTasks, View, SWATCHES, TAIL_LINES};
 
 /// Every command, with the one line `plugins show agent-tasks` prints for each.
 pub const LIST: &[(&str, &str)] = &[
@@ -68,7 +68,6 @@ pub const LIST: &[(&str, &str)] = &[
     ("todo-undone", "Untick a ticket's nth todo."),
     ("todo-remove", "Delete a ticket's nth todo."),
     ("comment", "Post a comment on a ticket."),
-    ("jira-key", "Record which JIRA issue a ticket is about. Nothing is fetched."),
     ("comment-edit", "Change what a comment says. A person's own comments only."),
     ("comment-send", "Post a comment and type it into the ticket's agent, starting the agent when none is running."),
     ("heartbeat", "Record that a ticket's agent is working, with a lease in minutes."),
@@ -744,7 +743,7 @@ fn todo_commands(
     })
 }
 
-/// Comments on a ticket, and the JIRA key it names.
+/// Comments on a ticket.
 fn comment_commands(
     tasks: &mut AgentTasks,
     command: &str,
@@ -773,11 +772,6 @@ fn comment_commands(
             tasks.store()?.add_comment(task.id, author, &body, &now)?;
             tasks.refresh()?;
             Ok(Answer::said(format!("commented on {} as {}", task.key, author.name())))
-        })(),
-        "jira-key" => (|| {
-            let task = tasks.by_key(argument(0))?;
-            tasks.edit_field(task.id, Field::JiraKey(rest(1)))?;
-            Ok(Answer::said(format!("{} names its JIRA issue", task.key)))
         })(),
         "comment-edit" => (|| {
             let id: i64 = argument(0)

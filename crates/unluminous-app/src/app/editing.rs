@@ -549,7 +549,7 @@ impl UnluminousApp {
             .showing_in(pane)
             .and_then(|showing| indices.iter().position(|index| *index == showing))
             .unwrap_or(0);
-        let opacity = self.settings.opacity;
+        let opacity = self.settings.window_opacity();
         let outcome = {
             let mut tabs_ui = ui.new_child(egui::UiBuilder::new().max_rect(tabs_rect));
             file_tabs::show(&mut tabs_ui, tabs_rect, &tabs, active, pane, focused, opacity)

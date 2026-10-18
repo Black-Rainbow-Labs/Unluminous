@@ -45,9 +45,17 @@ impl UnluminousApp {
 
     /// `voice dictate [on|off] [--from <node>]`.
     fn cli_voice_dictate(&mut self, request: &Request) -> Outcome {
-        let target = match request.whole("from") {
-            Some(node) => Target::Node(node as crate::services::realm::NodeId),
-            None => Target::Pane,
+        let target = match (request.whole("from"), request.text("into").as_deref()) {
+            (Some(node), _) => Target::Node(node as crate::services::realm::NodeId),
+            (None, Some("description")) => Target::Description,
+            (None, Some(other)) => {
+                return no(
+                    request,
+                    code::USAGE,
+                    format!("`--into` takes description, the open ticket's, and not {other}."),
+                )
+            }
+            (None, None) => Target::Pane,
         };
         let here = self.voice.dictating.is_some_and(|(_, t)| t == target);
         let on = match request.text("state").as_deref() {
@@ -195,6 +203,7 @@ impl UnluminousApp {
         let target = self.voice.dictating.map(|(_, target)| match target {
             Target::Pane => json!("pane"),
             Target::Node(node) => json!({ "node": node }),
+            Target::Description => json!("description"),
             Target::Nowhere => json!(null),
         });
         json!({

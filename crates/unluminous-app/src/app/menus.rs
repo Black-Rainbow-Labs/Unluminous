@@ -66,6 +66,7 @@ impl UnluminousApp {
                 })
             }),
             realm_views: self.realm.files.len(),
+            realm_tabs: self.open_realm_tabs().len(),
 
             plugin_menus: self
                 .plugin_ui

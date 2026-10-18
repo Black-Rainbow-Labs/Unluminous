@@ -25,6 +25,7 @@ pub mod add_modal;
 pub mod colour_picker;
 pub mod dialog;
 pub mod manager;
+pub mod recent;
 pub mod shape;
 
 use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Sense, Vec2};
@@ -88,6 +89,10 @@ pub struct BarOutcome {
     pub reset_zoom: bool,
     /// The row saying how many realms are not listed was pressed, which opens the manager.
     pub manage: bool,
+    /// The folder chip at the left was pressed, which opens or closes the list of realm files (`task-2293`).
+    pub files: bool,
+    /// Where the folder chip was drawn, which is what the list hangs from.
+    pub files_chip: Option<Rect>,
 }
 
 /// How much room the overflow row takes, when there is one.
@@ -107,6 +112,9 @@ const TRACK_PAD: f32 = 4.0;
 const PILL_GAP: f32 = 3.0;
 /// The bar's own margin at either end.
 const BAR_SIDE: f32 = 14.0;
+/// The folder chip at the left of the bar, and the gap after it (`task-2293`).
+const FILES_CHIP: f32 = 30.0;
+const FILES_GAP: f32 = 10.0;
 
 /// The realm bar along the top of the canvas: one pill a realm file in the project, the open one raised, a
 /// round `+` chip after the last of them, and the zoom controls at the right.
@@ -151,7 +159,21 @@ pub fn view_bar(
         let theme = rux.theme();
         let chat = theme.chat;
         let limit = area.right() - BAR_SIDE - PLUS - ZOOM_CONTROLS - MORE_ROW;
-        let left = area.left() + BAR_SIDE;
+        // **The folder chip first**, which lists every realm file in the project newest first, so a tab that was
+        // closed is one press from coming back (`task-2293`).
+        let files = Rect::from_min_size(
+            Pos2::new(area.left() + BAR_SIDE, middle - FILES_CHIP / 2.0),
+            Vec2::splat(FILES_CHIP),
+        );
+        outcome.files_chip = Some(files);
+        if rux::components::ChipButton::new(rux::Icon::Folder, FILES_CHIP, "Realm files")
+            .mark(14.0, Some(1.7))
+            .show(rux, files)
+            .clicked()
+        {
+            outcome.files = true;
+        }
+        let left = files.right() + FILES_GAP;
         // How many realms fit, measured before the track is drawn so the track is as long as what is in it.
         let mut widths = Vec::new();
         let mut right = left + TRACK_PAD;
@@ -449,6 +471,10 @@ fn snapped(at: Pos2) -> Pos2 {
 pub struct WireOutcome {
     /// A wire was right clicked: where the pointer was, and which connection it is.
     pub menu: Option<(Pos2, u64)>,
+    /// The primary button went down on a wire, over no node: which connection, where, and whether the press
+    /// was nearer the end it arrives at than the end it leaves from (`task-2293`). The window picks that end up
+    /// once the pointer moves, so a click on a wire does nothing to it.
+    pub pressed: Option<(u64, Pos2, bool)>,
 }
 
 /// Draw every connection, under every node.
@@ -466,7 +492,8 @@ pub fn wires(
     let mut outcome = WireOutcome::default();
     let pointer = ui.ctx().pointer_latest_pos().filter(|at| area.contains(*at));
     let clicked = ui.input(|input| input.pointer.secondary_clicked());
-    let mut nearest: Option<(f32, u64)> = None;
+    let pressed = ui.input(|input| input.pointer.primary_pressed());
+    let mut nearest: Option<(f32, u64, bool)> = None;
     for edge in &view.edges {
         let Some(points) = wire_points(view, edge, camera, area.min) else { continue };
         let (start, end) = (points[0], points[points.len() - 1]);
@@ -491,13 +518,21 @@ pub fn wires(
         if let Some(at) = pointer {
             let near =
                 geometry::distance_to_points(&wire_hit_points(view, edge, camera, area.min), at);
-            if near <= WIRE_REACH && nearest.is_none_or(|(so_far, _)| near < so_far) {
-                nearest = Some((near, edge.id));
+            if near <= WIRE_REACH && nearest.is_none_or(|(so_far, _, _)| near < so_far) {
+                let arriving_end = at.distance(end) <= at.distance(start);
+                nearest = Some((near, edge.id, arriving_end));
             }
         }
     }
-    if let (true, Some((_, edge)), Some(at)) = (clicked, nearest, pointer) {
+    if let (true, Some((_, edge, _)), Some(at)) = (clicked, nearest, pointer) {
         outcome.menu = Some((at, edge));
+    }
+    // **Not over a node**, because a wire is drawn under every node and a press on a node is the node's.
+    let over_a_node = pointer.is_some_and(|at| view.node_at(camera.to_world(area.min, at)).is_some());
+    if let (true, false, Some((_, edge, arriving_end)), Some(at)) =
+        (pressed, over_a_node, nearest, pointer)
+    {
+        outcome.pressed = Some((edge, at, arriving_end));
     }
     outcome
 }

@@ -503,6 +503,11 @@ pub struct AgentTasks {
     /// *"The description and comments of task modal in agent chat should have a collapse toggle similar to Agent
     /// chat and todos."*). Open until somebody shuts it, as the Agent section is.
     pub description_shut: bool,
+    /// What the window last said about dictation into the ticket's description (`task-2293`), which draws the
+    /// microphone beside the Description heading.
+    pub voice: crate::services::plugin_ui::VoiceView,
+    /// The dictation filling the description, while one is.
+    pub dictating: Option<crate::services::agent_chat::Dictating>,
     /// Whether the ticket's Comments section, the list and the box a comment is written in, has been shut
     /// (`task-2269`). Open until somebody shuts it.
     pub comments_shut: bool,
@@ -1658,9 +1663,6 @@ impl AgentTasks {
             Field::Project(value) => {
                 edit.project = Some((!empty(value)).then(|| value.trim().to_owned()));
             }
-            Field::JiraKey(value) => {
-                edit.jira_key = Some((!empty(value)).then(|| value.trim().to_owned()));
-            }
             Field::Epic(value) => {
                 let epic = match empty(value) {
                     true => None,
@@ -1979,21 +1981,6 @@ impl AgentTasks {
         changed.agent = kind;
         changed.endpoint = endpoint;
         self.change_the_configuration(changed)
-    }
-
-    /// The link to a JIRA issue, for the `Copy issue link` button on the ticket.
-    ///
-    /// The row's own `jira_url` when it has one, because a ticket that came from a sync carries the URL that
-    /// sync read it from and that is the address that certainly works. Otherwise the key on its own: there is no
-    /// configured JIRA site here to build a `/browse/` URL against, and a guessed address that opens nothing
-    /// would be worse than the key, which somebody can paste into their own JIRA search.
-    pub fn jira_link(&self, key: &str) -> String {
-        self.detail
-            .task
-            .as_ref()
-            .and_then(|task| task.jira_url.clone())
-            .filter(|url| !url.trim().is_empty())
-            .unwrap_or_else(|| key.to_owned())
     }
 
     /// Move the keyboard's ring to another card, and say which ticket it is on now.
@@ -2632,8 +2619,6 @@ pub enum Field {
     Effort(String),
     Project(String),
     Epic(String),
-    /// The JIRA issue key, typed into the JIRA panel on the ticket.
-    JiraKey(String),
 }
 
 /// The effort levels a ticket may name.
@@ -2716,6 +2701,50 @@ pub fn new_session_id() -> String {
         (nanos >> 16) as u16 & 0x0fff,
         (nanos as u64 ^ count.rotate_left(24)) & 0xffff_ffff_ffff
     )
+}
+
+impl AgentTasks {
+    /// The request the description's microphone makes: `voice dictate --into description`, on or off.
+    /// @param on - whether to start dictating
+    pub fn dictation_request(on: bool) -> Request {
+        let mut arguments = serde_json::Map::new();
+        arguments.insert("state".to_owned(), serde_json::json!(if on { "on" } else { "off" }));
+        arguments.insert("into".to_owned(), serde_json::json!("description"));
+        Request::RunCommand {
+            id: "agent-tasks-voice".to_owned(),
+            command: "voice.dictate".to_owned(),
+            arguments,
+        }
+    }
+
+    /// Words dictation has for the open ticket's description, written onto the ticket as they arrive, which is
+    /// what typing into it does.
+    /// @param note - what the window heard
+    fn hear(&mut self, note: &crate::services::plugin_ui::Dictation) {
+        use crate::services::plugin_ui::Dictation;
+        let words = match note {
+            Dictation::Began => {
+                self.dictating =
+                    Some(crate::services::agent_chat::Dictating::starting(&self.description_text()));
+                return;
+            }
+            Dictation::Words(words) => words,
+            Dictation::Ended { words, .. } => words,
+        };
+        let current = self.description_text();
+        let next = match self.dictating.as_mut() {
+            Some(dictating) => dictating.put(&current, words),
+            None => return,
+        };
+        if matches!(note, Dictation::Ended { .. }) {
+            self.dictating = None;
+        }
+        if next != current {
+            if let Err(problem) = self.save_the_description(&next) {
+                self.message = problem;
+            }
+        }
+    }
 }
 
 impl UiProvider for AgentTasks {
@@ -2900,6 +2929,14 @@ impl UiProvider for AgentTasks {
         self.supervisor_open = false;
     }
 
+    fn voice(&mut self, view: &crate::services::plugin_ui::VoiceView) {
+        self.voice = view.clone();
+    }
+
+    fn dictation(&mut self, note: &crate::services::plugin_ui::Dictation) {
+        self.hear(note);
+    }
+
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
     }
@@ -3029,7 +3066,6 @@ fn card_json(task: &Task) -> serde_json::Value {
         "todos": format!("{}/{}", task.todo_done_count, task.todo_count),
         "comments": task.comment_count,
         "session": task.session_id,
-        "jira": task.jira_key,
         "strikes": task.watchdog_strikes,
         "nudges": task.watchdog_nudges,
     })
@@ -3149,6 +3185,27 @@ mod tests_task_28 {
             .expect("launched")
             .arguments
             .contains(&"llama-local/qwen-27b".to_owned()));
+    }
+
+    /// `task-2293`: the description's microphone. Words dictated go after what the description already says,
+    /// each pass replacing the last one's provisional words, and are written onto the ticket as they arrive.
+    #[test]
+    fn dictated_words_fill_the_open_tickets_description() {
+        use crate::services::plugin_ui::{Context, Dictation, UiProvider};
+        let mut board = AgentTasks::new();
+        board.open(&Context::default()).expect("a board in memory");
+        board.command_now("new-task", &["A".to_owned(), "ticket".to_owned()]).expect("made");
+        board.command_now("open", &["task-1".to_owned()]).expect("opened");
+        board.save_the_description("Fix the parser.").expect("described");
+        board.dictation(&Dictation::Began);
+        board.dictation(&Dictation::Words("also the".to_owned()));
+        assert_eq!(board.description_text(), "Fix the parser. also the");
+        board.dictation(&Dictation::Ended { words: "also the lexer".to_owned(), send: false });
+        assert_eq!(board.description_text(), "Fix the parser. also the lexer");
+        assert!(board.dictating.is_none(), "the dictation is over");
+        // Words after the end are not for this description.
+        board.dictation(&Dictation::Words("stray".to_owned()));
+        assert_eq!(board.description_text(), "Fix the parser. also the lexer");
     }
 
     /// `task-28`: the `Project` field was free text. The dropdown offers this window's folder and the recent

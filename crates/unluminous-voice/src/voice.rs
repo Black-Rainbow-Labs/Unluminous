@@ -32,6 +32,8 @@ pub struct Config {
     pub always_listen: bool,
     pub sensitivity: f32,
     pub model_idle: Duration,
+    /// How long a pause ends a dictation "Sable" started, once something was said (`task-2293`).
+    pub send_pause: Duration,
     /// Whether the microphone may be opened at all. The window's released binary says yes; a window a test
     /// builds says no, so a test never listens to the room it runs in. A file can always be transcribed.
     pub microphone: bool,
@@ -46,6 +48,7 @@ impl Default for Config {
             always_listen: false,
             sensitivity: 0.5,
             model_idle: Duration::from_secs(60),
+            send_pause: Duration::from_millis(1_500),
             microphone: false,
         }
     }
@@ -239,14 +242,15 @@ impl Dictation {
     /// @param tag - its tag
     /// @param started - how
     /// @param engine - which engine, for how often to ask for a partial
-    fn new(tag: u64, started: Started, engine: &Engine) -> Self {
+    fn new(tag: u64, started: Started, engine: &Engine, send_pause: Duration) -> Self {
         let every = match engine {
             Engine::Local { .. } => LOCAL_PARTIAL,
             Engine::Endpoint(_) => ENDPOINT_PARTIAL,
         };
         Dictation {
             tag,
-            segmenter: Segmenter::new(started, every),
+            segmenter: Segmenter::new(started, every)
+                .ending_a_wake_after((send_pause.as_secs_f32() * 16_000.0) as usize),
             finals: BTreeMap::new(),
             partial: None,
             outstanding: 0,
@@ -465,7 +469,7 @@ impl Worker {
         if started == Started::Button {
             self.refused = None;
         }
-        let mut dictation = Dictation::new(tag, started, &self.config.engine);
+        let mut dictation = Dictation::new(tag, started, &self.config.engine, self.config.send_pause);
         dictation.microphone = microphone;
         if started == Started::Wake {
             dictation.wake_score = self.wake.as_ref().map(WakeDetector::last_score).unwrap_or(0.0);

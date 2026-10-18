@@ -1392,15 +1392,16 @@ unluminous-cli voice status --json
 ### voice dictate
 
 ```
-unluminous-cli voice dictate [on|off] [--from <node>] [--send]
+unluminous-cli voice dictate [on|off] [--from <node>] [--into <where>] [--send]
 ```
 
-The Agent-Chat prompt's microphone button: words fill the prompt as they are spoken.
+The microphone button: words fill a prompt as they are spoken.
 
 - `state` (optional) — on, off, or nothing to toggle
 
-- `--from <node>` — A chat node's prompt instead of the side pane's.
-- `--send` — With off: send the message once the last words are in, as a second press of the button does.
+- `--from <node>` — A chat node's prompt.
+- `--into <where>` — description: the open ticket's.
+- `--send` — With off: send when done.
 
 ```sh
 unluminous-cli voice dictate on
@@ -1412,7 +1413,7 @@ unluminous-cli voice dictate on
 unluminous-cli voice listen [on|off]
 ```
 
-Always listen for "Sable", which then dictates into the side pane's prompt. The `voice.always_listen` setting.
+Always listen for "Sable", then dictate into the side pane. The `voice.always_listen` setting.
 
 - `state` (optional) — on, off, or nothing to toggle
 
@@ -1944,7 +1945,7 @@ unluminous-cli realm nodes
 unluminous-cli realm manage
 ```
 
-Open the modal that lists every realm file in this project, with a search box over it. `realm list` is the same list as data. A realm belongs to the project it was made in, because its nodes name that project's files, so the modal's last button opens another project in a window of its own.
+Open the modal listing every realm file in this project, with a search box. `realm list` is the same list as data.
 
 ```sh
 unluminous-cli realm manage
@@ -1956,7 +1957,7 @@ unluminous-cli realm manage
 unluminous-cli realm list
 ```
 
-Every .realm file in this project, with which one is open and how many nodes each holds. New realms are made in .realm-files/, and a .realm file anywhere in the project is listed.
+Every .realm file in this project, which one is open and how many nodes each holds.
 
 ```sh
 unluminous-cli realm list --json
@@ -1968,13 +1969,42 @@ unluminous-cli realm list --json
 unluminous-cli realm open <realm>
 ```
 
-Show a realm file in the panel, writing the one that was open first. One realm is open at a time.
+Show a realm file in the panel, in a tab of its own. One realm is open at a time.
 
 - `realm` — The realm's name, or its path in the project.
 
 ```sh
 unluminous-cli realm open architecture
 unluminous-cli realm open .realm-files/architecture.realm
+```
+
+### realm close
+
+```
+unluminous-cli realm close [realm]
+```
+
+Close a realm's tab on the bar. The file stays; `realm open` reopens it.
+
+- `realm` (optional) — The realm's name, or its path in the project. The open one when it is not given.
+
+```sh
+unluminous-cli realm close Scratch
+```
+
+### realm files
+
+```
+unluminous-cli realm files [--show] [--hide]
+```
+
+Realm files newest first, and which are tabs. `--show` opens the bar's folder list.
+
+- `--show` — Open the list.
+- `--hide` — Close it.
+
+```sh
+unluminous-cli realm files --json
 ```
 
 ### realm new

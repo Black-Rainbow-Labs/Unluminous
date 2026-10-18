@@ -154,7 +154,11 @@ fn a_new_design_is_the_starter_page_and_a_name_that_exists_or_holds_a_slash_is_r
     let made = library::make(&project, folder, "Landing Page", Starter::House).expect("made");
     assert_eq!(made, PathBuf::from(".designs/Landing Page.html"));
     let text = std::fs::read_to_string(project.join(&made)).expect("read");
-    assert!(text.contains("hero-title") && text.contains("--accent"), "the house starter");
+    assert!(text.contains(">Design</h1>") && text.contains("--accent"), "the house starter");
+    // Its picture is written beside it, at the address its stylesheet names (`task-2293`).
+    assert!(text.contains(library::HOUSE_BACKGROUND_PATH));
+    let picture = project.join(".designs").join(library::HOUSE_BACKGROUND_PATH);
+    assert_eq!(std::fs::read(&picture).expect("the picture"), library::HOUSE_BACKGROUND);
     assert!(library::make(&project, folder, "Landing Page", Starter::House)
         .unwrap_err()
         .contains("already"));

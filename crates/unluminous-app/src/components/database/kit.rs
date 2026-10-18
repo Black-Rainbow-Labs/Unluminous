@@ -121,6 +121,54 @@ pub fn chip_button(rux: &mut Rux<'_>, rect: Rect, icon: Icon, diameter: f32, nam
         .clicked()
 }
 
+/// A round chip that is a switch: carved in with its mark lit while `on`, raised while not, with `hint` under
+/// the pointer. Answers whether it was pressed.
+///
+/// `task-2293`: *"I don't understand what the connector icon does. I press it, and it dissappears, and nothing
+/// else seems to happen."* The plug was `Disconnect` and was absent while nothing was connected, so pressing it
+/// took it away. As a switch it stays, says which way it is by how it is drawn, and says so in words too.
+pub fn toggle_chip(
+    rux: &mut Rux<'_>,
+    rect: Rect,
+    icon: Icon,
+    name: &str,
+    on: bool,
+    hint: &str,
+) -> bool {
+    use crate::components::controls::WithHint;
+    let chat = rux.theme().chat;
+    let ink = rux.theme().ink;
+    let rect = Rect::from_center_size(rect.center(), Vec2::splat(rect.width().min(rect.height())));
+    let response = rux
+        .ui
+        .interact(rect, rux.ui.id().with(("database-toggle", name)), egui::Sense::click())
+        .with_hint(hint);
+    let held = response.is_pointer_button_down_on();
+    match on || held {
+        true => rux.chrome.surface(rect, rect.width() / 2.0, chat.well, chat.carved_sm()),
+        false => rux.chrome.surface(
+            rect,
+            rect.width() / 2.0,
+            Fill::gradient(chat.chip, rect),
+            chat.raised_chip(),
+        ),
+    }
+    let tint = match (on, response.hovered()) {
+        (true, _) => chat.sky,
+        (false, true) => chat.sky,
+        (false, false) => ink.i500,
+    };
+    if response.hovered() {
+        rux.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    rux.mark(Mark::new(icon, 12.0).stroke(1.8), rect.center(), tint);
+    let named = name.to_owned();
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::Button, true, on, named.clone())
+    });
+    response.clicked()
+}
+
 /// A round chip with one of Unluminous's own drawn marks in it, for a meaning `rux` has no mark for: undo,
 /// the bin, a key. Answers whether it was pressed.
 pub fn chip_drawn(

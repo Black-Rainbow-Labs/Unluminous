@@ -2083,6 +2083,20 @@ impl UiProvider for DatabaseExplorer {
             if !refused.is_empty() {
                 self.problem = Some(refused.join(" "));
             }
+            // The Agent-Tasks board, offered once as a data source (`task-2293`). Its folder is the board
+            // plugin's own, beside this one, and its file is whatever that plugin's settings name.
+            if let Some(board_folder) = folder.parent().map(|plugins| plugins.join("agent-tasks")) {
+                let board = crate::services::agent_tasks::Configuration::read(&board_folder)
+                    .database_path(Some(&board_folder));
+                // Only a board that is there: a window that has never opened the board has nothing to offer.
+                if let Some(board) = board.filter(|board| board.is_file()) {
+                    if self.configuration.offer_the_board(&board) {
+                        if let Err(problem) = self.configuration.write(folder) {
+                            self.problem = Some(problem);
+                        }
+                    }
+                }
+            }
         }
         // **Nothing is connected at startup**, which is the laziness `UiProvider::open`'s own comment
         // describes: opening a pane must not open a socket to somebody's server. A source is
