@@ -563,15 +563,23 @@ pub fn switch(
         ),
         false => rux.chrome.surface(track, radius, chat.well, chat.carved_sm()),
     }
+    // **The knob is measured from the track**, so a track drawn at a pane's zoom has a knob at the same
+    // zoom (`task-2291`). It was a fixed 20 points two points in from the end, which in the Agent-Chat
+    // pane's settings at a zoom below one put a knob larger than the track a little left of where "on"
+    // is, and at a zoom above one a small knob short of the right hand end. The design's switch is 24
+    // points tall with a 20 point knob, so the inset is a twelfth of the height.
+    let unit = track.height() / SWITCH.y;
+    let inset = 2.0 * unit;
+    let diameter = (track.height() - inset * 2.0).max(1.0);
     let knob = Rect::from_center_size(
         Pos2::new(
             match *value {
-                true => track.right() - 2.0 - 10.0,
-                false => track.left() + 2.0 + 10.0,
+                true => track.right() - inset - diameter / 2.0,
+                false => track.left() + inset + diameter / 2.0,
             },
             track.center().y,
         ),
-        Vec2::splat(20.0),
+        Vec2::splat(diameter),
     );
     let knob_fill = match *value {
         true => Fill::Solid(theme.ink.i900),
@@ -579,9 +587,9 @@ pub fn switch(
     };
     rux.chrome.surface(
         knob,
-        10.0,
+        diameter / 2.0,
         knob_fill,
-        Elevation::of([Shadow::outer(1.0, 1.0, 3.0, chat.dark)]),
+        Elevation::of([Shadow::outer(unit, unit, 3.0 * unit, chat.dark)]),
     );
     let on = *value;
     let named = name.to_owned();

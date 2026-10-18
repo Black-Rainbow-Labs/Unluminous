@@ -78,7 +78,7 @@ function prepare() {
   // behind a translucent window, a 20 point interface and a 24 point editor, and the plugins' depth on.
   // The language servers and the embeddings stay off, because what they cost is their own and varies.
   writeFileSync(path.join(appdata, 'Unluminous', 'settings.conf'), [
-    'appearance.background.image = desert-1.jpg',
+    'appearance.background.image = landscape-dolomites-cliffs.jpg',
     'appearance.background.opacity = 0.754',
     'appearance.font.family = Consolas',
     'appearance.font.size = 24',

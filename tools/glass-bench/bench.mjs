@@ -4,7 +4,7 @@
 //   node tools/glass-bench/bench.mjs <bin folder> <variant dir> <rep>
 //
 // It starts the build in the background, without taking the keyboard, on a small project under the temporary
-// folder with a settings folder of its own and a frame trace, in the glass theme over glass-spheres.jpg with
+// folder with a settings folder of its own and a frame trace, in the glass theme over abstract-paper-stripes.jpg with
 // the Agent-Chat gallery and the Agent-Tasks board showing (BENCH_THEME names another theme), and then:
 //
 // - drag: moves the window 60 times through `window position`, which reaches the same `Moved` handling a
@@ -70,7 +70,7 @@ sleep(4000);
 cli('window', 'size', '--width', '1600', '--height', '1000');
 cli('window', 'position', '--x', '80', '--y', '60');
 cli('theme', 'set', process.env.BENCH_THEME || 'Unluminous Glass');
-cli('background', 'use', 'glass-spheres.jpg');
+cli('background', 'use', 'abstract-paper-stripes.jpg');
 cli('tab', 'open', 'src/glass.rs');
 cli('plugins', 'pane', 'agent-chat/chat', '--show');
 cli('plugins', 'run', 'agent-chat', 'gallery');

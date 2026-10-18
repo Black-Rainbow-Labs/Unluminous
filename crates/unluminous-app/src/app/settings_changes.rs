@@ -111,6 +111,29 @@ impl UnluminousApp {
         }
     }
 
+    /// Take the pictures earlier versions shipped out of the backgrounds folder (`task-2291`), and move a
+    /// setting that named one of them onto a picture that ships now.
+    ///
+    /// Only an untouched copy is removed; see `bundled::retire_from`. A window drawn on a retired picture
+    /// moves to the glass picture under the glass theme and to the default otherwise, rather than to the
+    /// desktop, which is what a name that is not there would fall back to.
+    ///
+    /// @param folder - this window's backgrounds folder
+    pub(crate) fn retire_the_old_backgrounds(&mut self, folder: &std::path::Path) {
+        use crate::services::backgrounds::bundled;
+        bundled::retire_from(folder);
+        let chosen = self.settings.background_image.clone();
+        if !bundled::is_retired(&chosen) || folder.join(&chosen).is_file() {
+            return;
+        }
+        let glass = self.settings.theme == theme::GLASS_KEY || chosen == "glass-spheres.jpg";
+        let picture = if glass { bundled::GLASS } else { bundled::DEFAULT };
+        if folder.join(picture).is_file() {
+            self.settings.background_image = picture.to_owned();
+            self.unsaved_settings = true;
+        }
+    }
+
     /// Paint this window in the theme the settings name, and tell egui about it.
     ///
     /// **The one place a theme becomes a change**, which is `run_action`'s rule and `run_cli`'s: the

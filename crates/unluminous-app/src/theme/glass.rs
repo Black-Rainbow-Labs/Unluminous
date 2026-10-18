@@ -250,7 +250,10 @@ pub fn glaze_the_popups(ctx: &egui::Context) {
         if matches!(layer.order, egui::Order::Background) {
             continue;
         }
-        let Some(backdrop) = rux::render::backdrop_for(ctx, layer) else { continue };
+        let Some(backdrop) = rux::render::backdrop_for(ctx, layer) else {
+            thicken_the_popups_in(ctx, layer, marker);
+            continue;
+        };
         let to_global = ctx.layer_transform_to_global(layer).unwrap_or_default();
         let pixels_per_point = ctx.pixels_per_point();
         let mut changed: Vec<(usize, Shape)> = Vec::new();
@@ -297,6 +300,65 @@ pub fn glaze_the_popups(ctx: &egui::Context) {
                 }
             }
         });
+    }
+}
+
+/// How opaque a popup is under glass with no picture behind the window (`task-2291`).
+///
+/// With a picture, a popup is the bent picture with the card's tint over it, so the tint can be light. With
+/// no picture the desktop shows through the window, nothing is bent under the popup, and the tint alone
+/// over the desktop left the File menu's words hard to read against whatever was behind it.
+const POPUP_WITH_NOTHING_BEHIND: f32 = 0.96;
+
+/// Make every popup frame in `layer` nearly opaque, for glass with no picture to bend under it.
+///
+/// @param ctx - the window's context, once everything has been drawn
+/// @param layer - a layer above the page
+/// @param marker - the popup fill, as [`popup_fill`] answers it
+fn thicken_the_popups_in(ctx: &egui::Context, layer: egui::LayerId, marker: Color32) {
+    let [r, g, b, _] = marker.to_srgba_unmultiplied();
+    let solid = Color32::from_rgba_unmultiplied(r, g, b, (POPUP_WITH_NOTHING_BEHIND * 255.0) as u8);
+    let mut changed: Vec<(usize, Shape)> = Vec::new();
+    ctx.graphics_mut(|graphics| {
+        let Some(list) = graphics.get_mut(layer) else { return };
+        for (index, clipped) in list.all_entries().enumerate() {
+            let mut shape = clipped.shape.clone();
+            if thicken(&mut shape, marker, solid) {
+                changed.push((index, shape));
+            }
+        }
+    });
+    if changed.is_empty() {
+        return;
+    }
+    ctx.graphics_mut(|graphics| {
+        if let Some(list) = graphics.get_mut(layer) {
+            for (index, shape) in changed {
+                list.mutate_shape(egui::layers::ShapeIdx(index), |clipped| clipped.shape = shape);
+            }
+        }
+    });
+}
+
+/// Fill every rectangle in `shape` filled in `marker` with `solid` instead, faded as far as the rectangle
+/// was, and answer whether any was. A popup fading in keeps fading in.
+fn thicken(shape: &mut Shape, marker: Color32, solid: Color32) -> bool {
+    match shape {
+        Shape::Rect(rect) if rect.rect.is_positive() => match faded_by(rect.fill, marker) {
+            Some(opacity) => {
+                rect.fill = solid.gamma_multiply(opacity);
+                true
+            }
+            None => false,
+        },
+        Shape::Vec(shapes) => {
+            let mut any = false;
+            for inner in shapes.iter_mut() {
+                any |= thicken(inner, marker, solid);
+            }
+            any
+        }
+        _ => false,
     }
 }
 

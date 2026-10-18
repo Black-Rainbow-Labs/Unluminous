@@ -27,7 +27,7 @@ use unluminous_core::Rgba;
 
 use super::{
     look_accent, paint_a_port, port_fade, scale_of, show_the_grips, Framing, Look, NodeOutcome,
-    PORT, PORT_REVEAL,
+    PORT, PORT_REVEAL, PORT_SMALLEST_HIT,
 };
 use crate::components::controls::TextBoxes;
 use crate::services::realm::shape::{self, Shape, ShapeKind};
@@ -662,7 +662,7 @@ fn show_the_points(
 ) {
     let on_screen = |world: Pos2| framing.node.on_screen.min + (world - node.rect().min) * scale;
     let pointer = ui.ctx().pointer_hover_pos();
-    let reach = (PORT * 3.0 / scale).max(PORT * 2.0);
+    let reach = (PORT * 3.0).max(PORT_SMALLEST_HIT / scale.max(0.01));
     for (index, anchor) in shape::anchors(held.shape, node.rect()).iter().enumerate() {
         let hit = Rect::from_center_size(anchor.at, Vec2::splat(reach));
         let response = ui.interact(
@@ -693,15 +693,14 @@ fn show_the_points(
         }
         let joined = framing.joined.contains(&index);
         let target = framing.landing_point == Some(index);
+        // **Shown only while the pointer is near it**, as every other node's ports are (`task-2291`). A
+        // point with a wire on it used to stay lit for good, so a diagram of joined shapes was covered in
+        // dots. A point still shows while a wire is in the air, so there is somewhere to let it go.
         let near = pointer.is_some_and(|at| at.distance(on_screen(anchor.at)) <= PORT_REVEAL);
         let shown = port_fade(
             ui,
             ("realm-shape-point-shown", node.id, index),
-            near || joined
-                || framing.node.chosen
-                || framing.node.wire_is_looking
-                || response.hovered()
-                || response.dragged(),
+            near || framing.node.wire_is_looking || response.hovered() || response.dragged(),
         );
         let fill = match joined || target || response.hovered() || response.dragged() {
             true => look_accent(),
@@ -710,10 +709,10 @@ fn show_the_points(
         paint_a_port(ui, look, on_screen(anchor.at), anchor.at, scale, fill, shown);
         if target {
             look.chrome.glow(
-                Rect::from_center_size(on_screen(anchor.at), Vec2::splat(PORT * 2.0)),
-                PORT,
+                Rect::from_center_size(on_screen(anchor.at), Vec2::splat(PORT * 2.0 * scale)),
+                PORT * scale,
                 look_accent(),
-                6.0,
+                6.0 * scale,
             );
         }
     }

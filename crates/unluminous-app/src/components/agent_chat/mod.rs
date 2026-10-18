@@ -336,11 +336,18 @@ fn settings(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
     let height =
         (20.0 + 34.0 + 22.0 + 17.0 + 10.0 + 46.0 + 22.0 + 80.0 + 22.0 + 26.0 + 14.0 + 26.0 + 22.0)
             * scale;
-    // **Under the header, where the gear that opens it is** (`task-2261`), and never past the prompt box.
+    // **Under the header, where the gear that opens it is** (`task-2261`), and not past the prompt box
+    // while it fits above it. When it does not, which a pane zoomed to 1.6 in a window 900 points tall
+    // is, it reaches over the prompt box rather than leaving its last switch drawn below its own bottom
+    // edge (`task-2291`).
     let top = area.top() + side + (HEADER + 12.0) * scale;
+    let bottom = match top + height <= foot {
+        true => top + height,
+        false => (top + height).min(area.bottom() - side).max(top + 40.0),
+    };
     let dialog = Rect::from_min_max(
         Pos2::new(area.left() + side, top),
-        Pos2::new(area.right() - side, (top + height).min(foot.max(top + 40.0))),
+        Pos2::new(area.right() - side, bottom),
     );
     let id = ui.id().with("agent-chat-settings");
     let still = parts.state.still;

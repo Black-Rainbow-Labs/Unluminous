@@ -2067,8 +2067,9 @@ tint is painted over it. The rules:
 - **Glass bends a picture it is handed, never the frame.** `paint_the_background` hands `rux` the
   wallpaper's strips every frame, and `Picture::frosted` (the picture shrunk and blurred once, when it is
   chosen) through `theme::glass::set_frosted`. With no picture chosen there is nothing to bend and glass is
-  tint only, so choosing the theme while no picture is chosen chooses `glass-spheres.jpg`
-  (`give_glass_something_to_bend`), which `tools/glass-spheres.py` draws.
+  tint only, so choosing the theme while no picture is chosen chooses `abstract-paper-stripes.jpg`
+  (`give_glass_something_to_bend`). Glass over the desktop with no picture makes every popup frame nearly
+  opaque instead (`thicken_the_popups_in`, `task-2291`), because a tint over the desktop could not be read.
 - **Under glass a modal is drawn over the frosted picture, not a photograph of the window** (third pass).
   The photograph cost a frame with the modal invisible, a screenshot read back (about 60 ms) and a second
   appearance once it arrived, which was the modal "chunking" open. Every other theme still photographs.
@@ -2090,7 +2091,7 @@ tint is painted over it. The rules:
   while pointed at, a groove has no lit half, and popups have no outline.
 - **No light line along any edge, and nothing with an edge drawn below the display's resolution.**
   `tools/glass-rims.py` reads a screenshot and fails while a round control's rim is brighter than both sides.
-  Run it after changing anything about glass, **on a bright picture (`desert-1.jpg`) with the interface at
+  Run it after changing anything about glass, **on a bright picture (`landscape-dolomites-cliffs.jpg`) with the interface at
   18.75 points**, which is 1.5 pixels a point: 0.92.0 passed it on a dark picture at one pixel a point and
   shipped a ring round every chip. Look at a round control magnified as well: the check does not see a
   polygon, and the fourth pass shipped chips whose corners were five straight segments. The causes are in
@@ -2390,10 +2391,17 @@ clothes: a person and an agent looking at one row were shown different things.
 Neither had a failing test, and neither would have got one: both were only visible by starting the
 installed binary and reading what came back. That is what the release step is for.
 
-## Five backgrounds ship in the binary, and a fresh Unluminous is drawn on one of them
+## Nineteen 4K backgrounds ship in the binary, and a fresh Unluminous is drawn on one of them
 
-`task-2063`: the pictures in `design/background-images/` are the default backgrounds, with the forest one
-chosen at 86% opacity. `services::backgrounds::bundled` is the list and the reasoning, and it is
+`task-2291` replaced the library: nineteen Pexels photographs at 3840 by 2160, named by subject
+(`abstract-`, `landscape-`, `nature-`, `space-`, `wood-`) so the grid, which sorts by name, groups them.
+`crates/unluminous-app/backgrounds/SOURCES.md` names each photograph's page. They are 35 MB of the binary.
+`Wallpaper` shrinks a picture to cover the screen it is on when it is chosen, so a 1080p screen holds a
+1080p texture. `bundled::retire_from` removes the six earlier pictures from a person's folder on start,
+only when a file is byte for byte what an earlier version wrote, and a setting that named one moves to
+`DEFAULT` (`landscape-dolomites-autumn-peak.jpg`) or, under glass, `GLASS` (`abstract-paper-stripes.jpg`).
+
+`task-2063` made the pictures in the binary the default backgrounds, with one chosen at 86% opacity. `services::backgrounds::bundled` is the list and the reasoning, and it is
 `services::plugins::bundled`'s argument made about pictures: they are in the binary so that an Unluminous
 somebody has just installed has something to choose from with no network involved and nothing to find on
 their disk.
@@ -2401,13 +2409,10 @@ their disk.
 **The folder is still the whole of the state**, which is what `services::backgrounds` already said. So
 shipping a background means **writing it into that folder**, once, and after that it is an ordinary file:
 the grid lists what is there, and removing one removes it for good. `write_into` is called on every start
-and writes only what is missing, so a person who deleted `moab.jpg` does not get it back.
+and writes only what is missing, so a person who deleted `wood-rings.jpg` does not get it back.
 
-**They are JPEG rather than PNG, and that was measured.** The five are 1920 by 1088; as PNG they are
-**13 MB**, which on a 33 MB binary is a 39% increase to carry pictures nobody may use. At quality 82 they
-are **2.3 MB**, and the binary went from 33 MB to 36. A background is drawn at 86% behind a window full of
-text, which is the one place a compression artefact cannot be seen. `design/background-images/` keeps the
-PNG originals, which is what a better encoding would be made from.
+**They are JPEG at quality 82.** A background is drawn at 86% behind a window full of text, which is the
+one place a compression artefact cannot be seen.
 
 **The default is chosen in `use_store`, not as the `Settings` default**, and that is the one thing here
 that needed care rather than typing. An empty `appearance.background.image` means *"let the desktop show

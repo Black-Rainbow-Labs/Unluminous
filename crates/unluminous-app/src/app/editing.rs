@@ -509,6 +509,13 @@ impl UnluminousApp {
         // everything, including whatever is added to a pane later.
         let ui =
             &mut ui.new_child(egui::UiBuilder::new().max_rect(area).id_salt(("editor-pane", pane)));
+        // **Under glass the pane is cut to its glass panel** (`task-2291`). The panel stands in from the
+        // editing area by `PANE_GAP`, and everything in the pane is clipped to the editing area, so the
+        // last line of a file showed in the gap below the panel and over the status bar.
+        if theme::is_glass() && self.panel_rects.editor.is_positive() {
+            let panel = self.panel_rects.editor.shrink(theme::glass::PANE_GAP);
+            ui.set_clip_rect(ui.clip_rect().intersect(panel));
+        }
 
         // The tabs in this pane, in the order they are drawn. The strip counts within itself, so what
         // it reports is turned back into an index into the open files here.

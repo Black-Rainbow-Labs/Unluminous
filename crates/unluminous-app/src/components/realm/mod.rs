@@ -43,8 +43,15 @@ pub const VIEW_BAR: f32 = 50.0;
 pub const NODE_HEADER: f32 = 30.0;
 /// How round a node's corners are, in world points: the Settings design's card.
 pub const NODE_RADIUS: f32 = 16.0;
-/// How far a port sticks out of a node's edge, and how big it is.
+/// How far a port sticks out of a node's edge, and how big it is, in world points.
+///
+/// A port is drawn this size in the world, so it grows and shrinks with the canvas zoom like the node it
+/// belongs to (`task-2291`). It used to be this many *screen* points at every zoom, which made the dots
+/// look larger beside their node as the canvas was zoomed out and smaller as it was zoomed in.
 pub const PORT: f32 = 6.0;
+/// The smallest a port's hit area is, in screen points, so a canvas zoomed far out still has a port
+/// somebody can take hold of although the dot drawn on it is small.
+pub const PORT_SMALLEST_HIT: f32 = 14.0;
 /// How near the pointer has to come to a port, in screen points, before the port is drawn (`task-2282`).
 ///
 /// *"the connectors for nodes shouldn't always be visible. They should show up when my mouse gets within
@@ -1005,7 +1012,10 @@ fn show_the_ports(
 ) {
     let scale = scale_of(node.rect(), framing.on_screen);
     let output = node.output_port();
-    let hit = Rect::from_center_size(output, Vec2::splat(PORT * 3.0));
+    let hit = Rect::from_center_size(
+        output,
+        Vec2::splat((PORT * 3.0).max(PORT_SMALLEST_HIT / scale.max(0.01))),
+    );
     let response =
         ui.interact(hit, ui.id().with(("realm-port-out", node.id)), Sense::click_and_drag());
     if response.dragged() {
@@ -1030,8 +1040,8 @@ fn show_the_ports(
     let input = node.input_port();
     let over = framing.wire_is_looking && framing.landing == Some(node.id);
 
-    // Drawn into the pane's canvas in screen points, so a port is a disc of the same size however far
-    // the canvas is zoomed out — a port a point and a half wide is a port nobody can hit.
+    // Drawn into the pane's canvas in screen points at the canvas's own scale, so a port keeps its size
+    // beside its node at every zoom. Its hit area has a floor in screen points instead.
     let on_screen = |world: Pos2| framing.on_screen.min + (world - node.rect().min) * scale;
     // **Shown only while the pointer is near it** (`task-2282`), fading in and out. The output port also
     // stays while its wire is being pulled, and every input port shows while a wire is in the air, so
@@ -1053,10 +1063,10 @@ fn show_the_ports(
     paint_a_port(ui, look, on_screen(input), input, scale, input_fill, in_shown);
     if over {
         look.chrome.glow(
-            Rect::from_center_size(on_screen(input), Vec2::splat(PORT * 2.0)),
-            PORT,
+            Rect::from_center_size(on_screen(input), Vec2::splat(PORT * 2.0 * scale)),
+            PORT * scale,
             look_accent(),
-            6.0,
+            6.0 * scale,
         );
     }
 }
@@ -1072,11 +1082,11 @@ fn port_fade(ui: &egui::Ui, id: impl std::hash::Hash + std::fmt::Debug, shown: b
 
 /// One port: a disc with a ring the card's colour, at `opacity`, or nothing while it is faded right out.
 ///
-/// It goes into the pane's canvas in screen points, and **into the node's own layer as well**
-/// (`task-2200`): the canvas is underneath every node layer, and since a node paints its card into its layer
-/// (see [`cover`]) the half of each port inside the node's edge was hidden by the node's own card. The
-/// same disc and ring at the same screen size, converted to the layer's world points, which is also the
-/// flat form for a canvas with the decoration switched off.
+/// It is [`PORT`] world points across, so it zooms with the canvas (`task-2291`). It goes into the pane's
+/// canvas in screen points, and **into the node's own layer as well** (`task-2200`): the canvas is
+/// underneath every node layer, and since a node paints its card into its layer (see [`cover`]) the half
+/// of each port inside the node's edge was hidden by the node's own card. The same disc and ring in the
+/// layer's world points is also the flat form for a canvas with the decoration switched off.
 ///
 /// @param ui - the node's `Ui`
 /// @param look - the canvas being recorded into
@@ -1099,10 +1109,9 @@ fn paint_a_port(
     }
     let fill = fill.gamma_multiply(opacity);
     let card = look.card.gamma_multiply(opacity);
-    look.chrome.disc(screen, PORT, Fill::Solid(fill));
-    look.chrome.ring(screen, PORT, 1.5, card);
-    let radius = PORT / scale.max(0.01);
-    ui.painter().circle(world, radius, fill, egui::Stroke::new(1.5 / scale.max(0.01), card));
+    look.chrome.disc(screen, PORT * scale, Fill::Solid(fill));
+    look.chrome.ring(screen, PORT * scale, 1.5 * scale, card);
+    ui.painter().circle(world, PORT, fill, egui::Stroke::new(1.5, card));
 }
 
 /// The eight invisible grips round a node's edge.

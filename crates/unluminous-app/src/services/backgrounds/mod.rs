@@ -504,6 +504,7 @@ impl Wallpaper {
         let limit = ctx.input(|input| input.max_texture_side);
         match crate::services::picture::decode(&path) {
             Ok(image) => {
+                let image = shrink_to_cover(image, screen_pixels(ctx));
                 self.arriving =
                     Some((crate::services::picture::shrink_to_fit(image, limit), 0, Vec::new()));
             }
@@ -563,6 +564,39 @@ impl Wallpaper {
         self.arriving = None;
         self.looked = None;
     }
+}
+
+/// How many pixels the screen the window is on has, across and down, or the window's own size where the
+/// screen is not known (a test's window has no monitor).
+///
+/// @param ctx - the window's context
+fn screen_pixels(ctx: &egui::Context) -> egui::Vec2 {
+    let (monitor, window, pixels_per_point) = ctx.input(|input| {
+        (input.viewport().monitor_size, input.content_rect().size(), input.pixels_per_point)
+    });
+    monitor.filter(|size| size.x > 0.0 && size.y > 0.0).unwrap_or(window) * pixels_per_point
+}
+
+/// `image` made no larger than it needs to be to cover a screen of `screen` pixels (`task-2291`).
+///
+/// The bundled pictures are 3840 by 2160, so a 4K screen gets every pixel of them. On a smaller screen
+/// the picture is shrunk to the size it will be drawn at, once, when it is chosen: a 4K picture is a 33 MB
+/// texture, and on a 1920 by 1080 screen three quarters of it would never be seen. A picture is only
+/// shrunk when that saves something worth the time, a fifth of its size or more.
+///
+/// @param image - the decoded picture
+/// @param screen - the screen's size in pixels
+pub fn shrink_to_cover(image: egui::ColorImage, screen: egui::Vec2) -> egui::ColorImage {
+    let [width, height] = image.size;
+    if width == 0 || height == 0 || screen.x < 1.0 || screen.y < 1.0 {
+        return image;
+    }
+    let scale = (screen.x / width as f32).max(screen.y / height as f32);
+    if scale > 0.8 {
+        return image;
+    }
+    let longest = (width.max(height) as f32 * scale).ceil() as usize;
+    crate::services::picture::shrink_to_fit(image, longest)
 }
 
 /// The part of a picture that fills `area` without distorting it, as texture coordinates.
@@ -659,6 +693,20 @@ mod covering {
         let taken = cover(egui::vec2(1600.0, 900.0), egui::vec2(800.0, 450.0));
         assert!((taken.width() - 1.0).abs() < 0.001);
         assert!((taken.height() - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn a_4k_picture_is_shrunk_to_cover_a_smaller_screen_and_kept_whole_on_a_4k_one() {
+        let picture = egui::ColorImage::filled([3840, 2160], egui::Color32::WHITE);
+        let small = shrink_to_cover(picture.clone(), egui::vec2(1920.0, 1080.0));
+        assert_eq!(small.size, [1920, 1080]);
+        // A tall window on a narrow screen still covers it down its whole height.
+        let tall = shrink_to_cover(picture.clone(), egui::vec2(1000.0, 1600.0));
+        assert!(tall.size[1] >= 1600 && tall.size[0] >= 1000, "{:?}", tall.size);
+        let whole = shrink_to_cover(picture.clone(), egui::vec2(3840.0, 2160.0));
+        assert_eq!(whole.size, [3840, 2160]);
+        let unknown = shrink_to_cover(picture, egui::Vec2::ZERO);
+        assert_eq!(unknown.size, [3840, 2160]);
     }
 
     #[test]

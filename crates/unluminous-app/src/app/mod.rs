@@ -1861,11 +1861,11 @@ impl UnluminousApp {
         // A settings file written before this system had the family in it, or with no family at all, falls
         // back to one this system has.
         self.settings = settings;
-        // **A fresh Unluminous is drawn on the forest picture**, which is what `task-2063` asks for. It is
+        // **A fresh Unluminous is drawn on the default picture**, which is what `task-2063` asks for. It is
         // done here rather than as the `Settings` default because an *empty*
         // `appearance.background.image` means "let the desktop show through" and is a first class choice
         // on the grid — and `Settings::write_into` clears a setting that is at its default out of the
-        // file. A default of `forest-1.jpg` would therefore have read somebody's deliberate choice of the
+        // file. A default picture name would therefore have read somebody's deliberate choice of the
         // desktop as "never chosen" and put the picture back at the next start, for ever.
         //
         // `default_in` rather than `DEFAULT`, because the folder may already hold that picture under
@@ -1877,6 +1877,7 @@ impl UnluminousApp {
                 crate::services::backgrounds::bundled::default_in(&backgrounds);
             self.unsaved_settings = true;
         }
+        self.retire_the_old_backgrounds(&backgrounds);
         if self.settings.font_family.is_empty()
             || !self.renderer.families().contains(&self.settings.font_family)
         {
@@ -2858,7 +2859,7 @@ mod tests_task_2063 {
         let (root, settings, mut app) = a_window("fresh");
         app.use_store(Store::at(&settings));
 
-        assert_eq!(app.settings.background_image, "forest-1.jpg");
+        assert_eq!(app.settings.background_image, "landscape-dolomites-autumn-peak.jpg");
         assert!(
             (app.settings.opacity - 0.86).abs() < 0.0005,
             "the opacity is {}",
@@ -2866,7 +2867,10 @@ mod tests_task_2063 {
         );
         // And the picture it names is really there to be drawn, in this store's own folder.
         let folder = backgrounds::folder_in(&settings);
-        assert!(folder.join("forest-1.jpg").is_file(), "the picture was not written");
+        assert!(
+            folder.join("landscape-dolomites-autumn-peak.jpg").is_file(),
+            "the picture was not written"
+        );
         assert_eq!(
             backgrounds::list_in(&folder).len(),
             backgrounds::bundled::ALL.len(),
@@ -2879,7 +2883,7 @@ mod tests_task_2063 {
     /// **Somebody who chose the desktop keeps the desktop.** This is the whole reason the choice is made
     /// in `use_store` rather than as the `Settings` default: an empty `appearance.background.image` means
     /// "let the desktop show through", and `Settings::write_into` clears a setting that is at its default
-    /// out of the file — so a default of `forest-1.jpg` would have read a deliberate choice of the
+    /// out of the file — so a default of `landscape-dolomites-autumn-peak.jpg` would have read a deliberate choice of the
     /// desktop as "never chosen" and put the picture back at every start, for ever.
     #[test]
     fn a_settings_file_that_chose_the_desktop_is_left_on_the_desktop() {
@@ -2898,10 +2902,10 @@ mod tests_task_2063 {
 
     /// **A window given a store draws its pictures from that store and from nowhere else.** `task-2105`:
     /// the pictures were written into the store's folder and then drawn from the person's own settings
-    /// folder, so a test pointed at a temporary store drew whatever `forest-1.jpg` the machine running it
+    /// folder, so a test pointed at a temporary store drew whatever `landscape-dolomites-autumn-peak.jpg` the machine running it
     /// happened to have.
     ///
-    /// The store here is given the bundled pictures and then loses `forest-1.jpg`, which the settings
+    /// The store here is given the bundled pictures and then loses `landscape-dolomites-autumn-peak.jpg`, which the settings
     /// still name. Drawing must find nothing. Before the fix it found the person's copy on any machine
     /// that had started 0.56.0, which is every machine this was measured on.
     #[test]
@@ -2910,14 +2914,16 @@ mod tests_task_2063 {
         app.use_store(Store::at(&settings));
         let folder = backgrounds::folder_in(&settings);
         assert_eq!(app.backgrounds_folder(), Some(folder.as_path()));
-        assert_eq!(app.settings.background_image, "forest-1.jpg");
+        assert_eq!(app.settings.background_image, "landscape-dolomites-autumn-peak.jpg");
 
         let ctx = egui::Context::default();
         let given = app.backgrounds_folder().map(|folder| folder.to_owned());
         // A strip a frame, so a picture this size takes a few frames to arrive (`task-2279`).
         let mut strips = None;
         for _ in 0..64 {
-            if let Some(picture) = app.wallpaper.texture(&ctx, given.as_deref(), "forest-1.jpg") {
+            if let Some(picture) =
+                app.wallpaper.texture(&ctx, given.as_deref(), "landscape-dolomites-autumn-peak.jpg")
+            {
                 strips = Some(picture.strips());
                 break;
             }
@@ -2925,12 +2931,14 @@ mod tests_task_2063 {
         let strips = strips.expect("the store's own copy of the picture was not drawn");
         assert!(strips > 1, "a 1920 by 1088 picture was uploaded in {strips} piece");
 
-        std::fs::remove_file(folder.join("forest-1.jpg"))
+        std::fs::remove_file(folder.join("landscape-dolomites-autumn-peak.jpg"))
             .expect("take the picture out of the store");
         let mut fresh = backgrounds::Wallpaper::default();
-        let drawn = fresh.texture(&ctx, given.as_deref(), "forest-1.jpg");
+        let drawn = fresh.texture(&ctx, given.as_deref(), "landscape-dolomites-autumn-peak.jpg");
         assert!(drawn.is_none(), "a picture the store does not have was drawn from somewhere else");
-        assert!(!app.background_names().contains(&"forest-1.jpg".to_owned()));
+        assert!(!app
+            .background_names()
+            .contains(&"landscape-dolomites-autumn-peak.jpg".to_owned()));
 
         std::fs::remove_dir_all(&root).ok();
     }
@@ -2944,7 +2952,9 @@ mod tests_task_2063 {
         assert!(app.background_names().is_empty());
         let ctx = egui::Context::default();
         let mut wallpaper = backgrounds::Wallpaper::default();
-        assert!(wallpaper.texture(&ctx, app.backgrounds_folder(), "forest-1.jpg").is_none());
+        assert!(wallpaper
+            .texture(&ctx, app.backgrounds_folder(), "landscape-dolomites-autumn-peak.jpg")
+            .is_none());
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -2965,11 +2975,11 @@ mod tests_task_2063 {
         let before = app.settings.clone();
         app.settings.theme = "unluminous/dark".to_owned();
         app.apply_settings(&before);
-        app.settings.background_image = "moab.jpg".to_owned();
+        app.settings.background_image = "wood-rings.jpg".to_owned();
         let before = app.settings.clone();
         app.settings.theme = crate::theme::GLASS_KEY.to_owned();
         app.apply_settings(&before);
-        assert_eq!(app.settings.background_image, "moab.jpg", "a chosen picture is kept");
+        assert_eq!(app.settings.background_image, "wood-rings.jpg", "a chosen picture is kept");
 
         crate::theme::activate(crate::theme::Theme::unluminous_dark());
         std::fs::remove_dir_all(&root).ok();
@@ -2979,11 +2989,14 @@ mod tests_task_2063 {
     #[test]
     fn a_settings_file_that_named_a_picture_keeps_it() {
         let (root, settings, mut app) = a_window("chose-a-picture");
-        std::fs::write(settings.join("settings.conf"), "appearance.background.image = moab.jpg\n")
-            .expect("write a settings file");
+        std::fs::write(
+            settings.join("settings.conf"),
+            "appearance.background.image = wood-rings.jpg\n",
+        )
+        .expect("write a settings file");
 
         app.use_store(Store::at(&settings));
-        assert_eq!(app.settings.background_image, "moab.jpg");
+        assert_eq!(app.settings.background_image, "wood-rings.jpg");
 
         std::fs::remove_dir_all(&root).ok();
     }

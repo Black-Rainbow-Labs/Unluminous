@@ -6242,7 +6242,7 @@ fn a_draft_that_goes_away_unsent_takes_its_pictures_with_it() {
 
 /// `task-2281`: under Unluminous Glass every raised surface bends the picture behind the window, and a
 /// modal's glass bends the modal's photograph of the window. The pictures are the evidence: the chat's
-/// cards, bubbles and buttons over `glass-spheres.jpg`, and the Settings window over the frosted window.
+/// cards, bubbles and buttons over `abstract-paper-stripes.jpg`, and the Settings window over the frosted window.
 #[test]
 fn the_glass_theme_bends_the_picture_behind_its_surfaces() {
     let folder = copy_out_of_the_repository(&sample_folder(), "unluminous-glass-theme");
@@ -6252,7 +6252,7 @@ fn the_glass_theme_bends_the_picture_behind_its_surfaces() {
     steady(&mut harness);
     // A fresh settings folder holds the default interface size; the pictures are of the design's own.
     did(&mut harness, "settings set appearance.ui.font.size 12.5");
-    did(&mut harness, "background use glass-spheres.jpg");
+    did(&mut harness, "background use abstract-paper-stripes.jpg");
     did(&mut harness, "theme set \"Unluminous Glass\"");
     did(&mut harness, "plugins pane agent-chat/chat --show");
     did(&mut harness, "plugins run agent-chat motion off");

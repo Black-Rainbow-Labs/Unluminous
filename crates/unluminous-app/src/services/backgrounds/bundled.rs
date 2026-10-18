@@ -6,12 +6,14 @@
 //! "shipping a background" means is **writing these into that folder the first time the folder is
 //! made** — after which they are ordinary files a person can remove like any other.
 //!
-//! **They are JPEG rather than PNG**, which is the one thing here worth measuring rather than assuming.
-//! The five pictures are 1920 by 1088 photographs and abstract art; as PNG they are **13 MB**, which on
-//! a 33 MB binary is a 39% increase to carry pictures nobody may use. At JPEG quality 82 they are
-//! **2.3 MB**, and a background is drawn at 86% opacity behind a window full of text — the one place a
-//! compression artefact cannot be seen. `design/background-images/` keeps the PNG originals, which is
-//! where a better encoding would be made from.
+//! **They are 3840 by 2160 JPEGs** (`task-2291`): nineteen photographs from Pexels, cropped to 16:9 from
+//! their originals and saved at quality 82, 35 MB in all. They were 1920 by 1088 before, and on a 4K
+//! screen a wallpaper that size is drawn at twice its own size and looks soft. A smaller screen does not
+//! pay for the extra pixels at run time: `Wallpaper` shrinks a picture to the screen it covers when it is
+//! chosen. `backgrounds/SOURCES.md` says where each one came from.
+//!
+//! **They are named by subject**, `abstract-`, `landscape-`, `nature-`, `space-` and `wood-`, because the
+//! grid sorts by name, so each subject sits together in it.
 //!
 //! **Nothing is fetched**, which is the rule the whole of this module keeps and the Markdown preview
 //! keeps: a picture is read from the binary or from a disk somebody pointed at, and from nowhere else.
@@ -21,13 +23,68 @@
 /// The order is the order the grid shows them in, which is what `list` sorts by name — so these are
 /// named for what they are rather than numbered, and a person reading the grid sees the names.
 pub const ALL: &[(&str, &[u8])] = &[
-    ("abstract-1.jpg", include_bytes!("../../../backgrounds/abstract-1.jpg")),
-    ("desert-1.jpg", include_bytes!("../../../backgrounds/desert-1.jpg")),
-    ("forest-1.jpg", include_bytes!("../../../backgrounds/forest-1.jpg")),
-    // The Unluminous Glass theme's own picture (`task-2281`), drawn by `tools/glass-spheres.py`.
-    ("glass-spheres.jpg", include_bytes!("../../../backgrounds/glass-spheres.jpg")),
-    ("moab.jpg", include_bytes!("../../../backgrounds/moab.jpg")),
-    ("mountain-aurora.jpg", include_bytes!("../../../backgrounds/mountain-aurora.jpg")),
+    (
+        "abstract-paper-stripes.jpg",
+        include_bytes!("../../../backgrounds/abstract-paper-stripes.jpg"),
+    ),
+    (
+        "landscape-dolomites-autumn-peak.jpg",
+        include_bytes!("../../../backgrounds/landscape-dolomites-autumn-peak.jpg"),
+    ),
+    (
+        "landscape-dolomites-cliffs.jpg",
+        include_bytes!("../../../backgrounds/landscape-dolomites-cliffs.jpg"),
+    ),
+    (
+        "landscape-dolomites-lake.jpg",
+        include_bytes!("../../../backgrounds/landscape-dolomites-lake.jpg"),
+    ),
+    ("landscape-green-hills.jpg", include_bytes!("../../../backgrounds/landscape-green-hills.jpg")),
+    (
+        "landscape-valley-light.jpg",
+        include_bytes!("../../../backgrounds/landscape-valley-light.jpg"),
+    ),
+    ("nature-dark-foliage.jpg", include_bytes!("../../../backgrounds/nature-dark-foliage.jpg")),
+    ("nature-dark-sand.jpg", include_bytes!("../../../backgrounds/nature-dark-sand.jpg")),
+    ("nature-veined-leaves.jpg", include_bytes!("../../../backgrounds/nature-veined-leaves.jpg")),
+    ("space-milky-way-amber.jpg", include_bytes!("../../../backgrounds/space-milky-way-amber.jpg")),
+    ("space-milky-way-core.jpg", include_bytes!("../../../backgrounds/space-milky-way-core.jpg")),
+    (
+        "space-milky-way-diagonal.jpg",
+        include_bytes!("../../../backgrounds/space-milky-way-diagonal.jpg"),
+    ),
+    ("space-milky-way-glow.jpg", include_bytes!("../../../backgrounds/space-milky-way-glow.jpg")),
+    ("space-milky-way-teal.jpg", include_bytes!("../../../backgrounds/space-milky-way-teal.jpg")),
+    (
+        "space-milky-way-violet.jpg",
+        include_bytes!("../../../backgrounds/space-milky-way-violet.jpg"),
+    ),
+    ("space-red-nebula.jpg", include_bytes!("../../../backgrounds/space-red-nebula.jpg")),
+    ("wood-driftwood.jpg", include_bytes!("../../../backgrounds/wood-driftwood.jpg")),
+    ("wood-rings.jpg", include_bytes!("../../../backgrounds/wood-rings.jpg")),
+    ("wood-weathered.jpg", include_bytes!("../../../backgrounds/wood-weathered.jpg")),
+];
+
+/// The pictures earlier versions shipped, as the name each was written under, its length and its SHA-256.
+///
+/// `task-2291` took them out of the library. [`retire_from`] removes a copy that is still exactly what
+/// an earlier Unluminous wrote, and nothing else: a file with the same name and different bytes is a
+/// picture somebody put there.
+const RETIRED: &[(&str, u64, &str)] = &[
+    ("abstract-1.jpg", 199_056, "dd7a9118695c9430570ceb0d7d8fa65837cff24767adef4646030bfef8cffe7e"),
+    ("desert-1.jpg", 316_569, "eabfbf63d223fdc0c3ccc669535bb76048c654b95bb7f4dd39d4866680fcfb8a"),
+    ("forest-1.jpg", 590_133, "c035bfd087f04ea44dc19ba188c6dcd88dad5e289c058bf7bd6246e52383cbb5"),
+    (
+        "glass-spheres.jpg",
+        348_035,
+        "ca7005b0a24f5a368f5d6275557bffb5a3e3e3132d1670c7436ff6c3999fd4d3",
+    ),
+    ("moab.jpg", 680_895, "2914904ba50f2419844c12f7e555a3c94fe5cad767a13afa01b7d4acf3922d15"),
+    (
+        "mountain-aurora.jpg",
+        578_381,
+        "6043e3c6b0f5daf772e1442d714764d702eca1bf979e7f78bb91cd301f80e0fa",
+    ),
 ];
 
 /// The picture a fresh Unluminous is drawn on, and the opacity it is drawn at.
@@ -37,11 +94,12 @@ pub const ALL: &[(&str, &[u8])] = &[
 /// first class choice on the grid. So the default cannot simply be "no picture" — see
 /// `Settings::background_image` for the pair of settings this needs and why a fresh install and somebody
 /// who chose the desktop have to stay tellable apart.
-pub const DEFAULT: &str = "forest-1.jpg";
+pub const DEFAULT: &str = "landscape-dolomites-autumn-peak.jpg";
 
 /// The picture the Unluminous Glass theme is shown over (`task-2281`): sharp and busy, because glass
-/// bends what is behind it and a flat colour shows nothing bent.
-pub const GLASS: &str = "glass-spheres.jpg";
+/// bends what is behind it and a flat colour shows nothing bent. The paper stripes are straight coloured
+/// lines, which is what shows a bend best.
+pub const GLASS: &str = "abstract-paper-stripes.jpg";
 
 /// How opaque the window is over [`DEFAULT`].
 ///
@@ -50,19 +108,49 @@ pub const GLASS: &str = "glass-spheres.jpg";
 /// desktop does and the text has to stay the thing being read.
 pub const DEFAULT_OPACITY: f32 = 0.86;
 
+/// Remove the pictures earlier versions shipped from `folder`, and answer with the names removed.
+///
+/// Only a file whose name, length and SHA-256 are exactly one an earlier Unluminous wrote, so a picture
+/// somebody added by hand is never touched, whatever it is called. It is safe on every start: once they
+/// are gone it costs one `metadata` call a name.
+///
+/// @param folder - the backgrounds folder
+pub fn retire_from(folder: &std::path::Path) -> Vec<String> {
+    use sha2::Digest;
+    let mut removed = Vec::new();
+    for (name, length, digest) in RETIRED {
+        let path = folder.join(name);
+        if std::fs::metadata(&path).map(|found| found.len()).ok() != Some(*length) {
+            continue;
+        }
+        let Ok(bytes) = std::fs::read(&path) else { continue };
+        let found: String =
+            sha2::Sha256::digest(&bytes).iter().map(|byte| format!("{byte:02x}")).collect();
+        if found == *digest && std::fs::remove_file(&path).is_ok() {
+            removed.push((*name).to_owned());
+        }
+    }
+    removed
+}
+
+/// Whether `name` is one of the pictures earlier versions shipped and [`retire_from`] removes.
+pub fn is_retired(name: &str) -> bool {
+    RETIRED.iter().any(|(retired, _, _)| *retired == name)
+}
+
 /// Write the bundled pictures into `folder`, and answer with the names that were put there.
 ///
 /// **Only the ones that are not already there**, so this is safe to call on every start: a person who
-/// removed `moab.jpg` does not get it back, which is the whole point of the grid's remove button, and one
-/// who has never opened the grid gets all five. A picture that cannot be written is skipped rather than
+/// removed `wood-rings.jpg` does not get it back, which is the whole point of the grid's remove button, and one
+/// who has never opened the grid gets every one. A picture that cannot be written is skipped rather than
 /// refused — an Unluminous with four backgrounds is better than one that will not start, which is
 /// `plugins::Plugins::load`'s own rule about a manifest it cannot read.
 ///
 /// **A picture already there under a different extension counts as there**, which is why the test is the
-/// file's *stem* rather than its whole name. Somebody who put `forest-1.png` in the folder by hand has
-/// that picture, and writing `forest-1.jpg` beside it would show them the same photograph twice in a grid
+/// file's *stem* rather than its whole name. Somebody who put `wood-rings.png` in the folder by hand has
+/// that picture, and writing `wood-rings.jpg` beside it would show them the same photograph twice in a grid
 /// whose cells they cannot tell apart. Measured on the machine this was built for, which had four of the
-/// five already in it as PNG.
+/// first five already in it as PNG.
 pub fn write_into(folder: &std::path::Path) -> Vec<String> {
     let mut written = Vec::new();
     if std::fs::create_dir_all(folder).is_err() {
@@ -130,7 +218,7 @@ mod tests {
         std::fs::write(at, bytes).expect("write the picture");
     }
 
-    /// The five are written into a folder that is not there yet, which is a fresh install.
+    /// They are all written into a folder that is not there yet, which is a fresh install.
     #[test]
     fn a_fresh_folder_is_given_every_bundled_picture() {
         let folder = temporary("fresh");
@@ -146,14 +234,14 @@ mod tests {
     fn a_picture_somebody_removed_is_not_put_back() {
         let folder = temporary("removed");
         write_into(&folder);
-        std::fs::remove_file(folder.join("moab.jpg")).expect("remove one");
+        std::fs::remove_file(folder.join("wood-rings.jpg")).expect("remove one");
         let again = write_into(&folder);
-        assert_eq!(again, vec!["moab.jpg"], "only the missing one is written");
+        assert_eq!(again, vec!["wood-rings.jpg"], "only the missing one is written");
 
         // Removed a second time and asked again: it comes back, because this function's promise is
         // about a folder rather than about a person's history. The *caller* is what only asks once --
         // see `UnluminousApp::use_store`.
-        std::fs::remove_file(folder.join("moab.jpg")).expect("remove it again");
+        std::fs::remove_file(folder.join("wood-rings.jpg")).expect("remove it again");
         assert_eq!(write_into(&folder).len(), 1);
     }
 
@@ -165,16 +253,22 @@ mod tests {
         let folder = temporary("already-a-png");
         std::fs::create_dir_all(&folder).expect("make the folder");
         // A real PNG, because `list_in` only counts files it would show.
-        a_png(&folder.join("forest-1.png"));
+        a_png(&folder.join("landscape-dolomites-autumn-peak.png"));
 
         let written = write_into(&folder);
-        assert!(!written.contains(&"forest-1.jpg".to_owned()), "{written:?}");
-        assert_eq!(written.len(), ALL.len() - 1, "the other four are still written");
-        assert!(!folder.join("forest-1.jpg").exists(), "the photograph is in the grid twice");
+        assert!(
+            !written.contains(&"landscape-dolomites-autumn-peak.jpg".to_owned()),
+            "{written:?}"
+        );
+        assert_eq!(written.len(), ALL.len() - 1, "the others are still written");
+        assert!(
+            !folder.join("landscape-dolomites-autumn-peak.jpg").exists(),
+            "the photograph is in the grid twice"
+        );
 
         // And the default names the copy that is really there, or it would name a missing file — which
         // falls back to the desktop, so a fresh Unluminous would come up on no picture at all.
-        assert_eq!(default_in(&folder), "forest-1.png");
+        assert_eq!(default_in(&folder), "landscape-dolomites-autumn-peak.png");
     }
 
     /// With none of them there, the default is the name this binary writes.
@@ -185,7 +279,7 @@ mod tests {
         assert_eq!(default_in(&folder), DEFAULT);
     }
 
-    /// Nothing is written twice, so a second start costs five `exists` calls and no bytes.
+    /// Nothing is written twice, so a second start costs one `exists` call a picture and no bytes.
     #[test]
     fn a_folder_that_already_has_them_is_left_alone() {
         let folder = temporary("again");
@@ -208,6 +302,35 @@ mod tests {
             // whatever is at that path, and a file that is not a picture would only show up as an
             // empty cell in the grid.
             assert_eq!(&bytes[..2], &[0xFF, 0xD8], "{name} is not a JPEG");
+        }
+    }
+
+    /// **A picture an earlier version shipped is removed only when it is byte for byte what that version
+    /// wrote** (`task-2291`). One with the same name and other bytes is somebody's own, and stays.
+    #[test]
+    fn only_an_untouched_copy_of_a_retired_picture_is_removed() {
+        let folder = temporary("retired");
+        std::fs::create_dir_all(&folder).expect("make the folder");
+        // Not the real bytes, so this one stays whatever it is called.
+        a_png(&folder.join("moab.jpg"));
+        a_png(&folder.join("my-own.png"));
+        assert!(retire_from(&folder).is_empty());
+        assert!(folder.join("moab.jpg").exists());
+        assert!(folder.join("my-own.png").exists());
+        assert!(is_retired("moab.jpg") && is_retired("glass-spheres.jpg"));
+        assert!(!is_retired(DEFAULT) && !is_retired(GLASS));
+    }
+
+    /// Every entry in the retired list names a SHA-256 and none of them is still shipped.
+    #[test]
+    fn no_retired_picture_is_still_shipped() {
+        for (name, length, digest) in RETIRED {
+            assert_eq!(digest.len(), 64, "{name}");
+            assert!(*length > 0, "{name}");
+            assert!(
+                ALL.iter().all(|(shipped, _)| shipped != name),
+                "{name} is shipped and retired"
+            );
         }
     }
 }

@@ -4616,7 +4616,7 @@ fn a_whiteboard_under_the_glass_theme() {
     harness.state_mut().use_store(unluminous_app::services::store::Store::at(&settings));
     steady(&mut harness);
     did(&mut harness, "settings set appearance.ui.font.size 12.5");
-    did(&mut harness, "background use glass-spheres.jpg");
+    did(&mut harness, "background use abstract-paper-stripes.jpg");
     did(&mut harness, "theme set \"Unluminous Glass\"");
     did(&mut harness, "realm show");
     let add =
