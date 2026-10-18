@@ -6,7 +6,7 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.99.0 — 2026-10-18
 
 - Unluminous Issues v18 (`task-2293`)
 - Rustfmt on the ticket's own code, which the release's format check asks for (`task-2293`)
