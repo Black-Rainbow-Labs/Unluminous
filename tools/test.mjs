@@ -370,6 +370,29 @@ async function runLane(groups, failed) {
   }
 }
 
+/**
+ * Whether the workspace is formatted the way the release's `cargo fmt --all -- --check` asks.
+ *
+ * `task-2295`. Formatting was checked only by the release, after a ticket had run the window suite, and it
+ * refused about eight releases. Fixing it rewrote `.rs` files, so the suite ran again: 25 minutes for
+ * whitespace. This is the step a ticket runs after committing and before the window suite, so the check is
+ * here, first, and takes about a second.
+ */
+function formatted() {
+  try {
+    execFileSync('cargo', ['fmt', '--manifest-path', path.join(repo, 'Cargo.toml'), '--all', '--', '--check'], {
+      stdio: ['ignore', 'ignore', 'inherit'],
+    });
+    console.log('Formatting: as rustfmt writes it.');
+    return true;
+  } catch {
+    console.error('\nThe workspace is not formatted, and the release refuses it. Run this, commit, and run this script again:');
+    console.error(`  cargo fmt --manifest-path ${path.join(repo, 'Cargo.toml')} --all`);
+    console.error('Do it before the window suite, so the suite runs on the code the release will ship.');
+    return false;
+  }
+}
+
 /** Selects the units to run, prints the plan, runs the lanes at the same time and sets the exit code. */
 async function main() {
   const all = process.argv.includes('--all');
@@ -380,6 +403,8 @@ async function main() {
   const members = new Set(crates.map((crate) => crate.name));
   const blobs = workingTreeBlobs();
   const shared = READ_BY_EVERY_BUILD.map((file) => `${file}\n${versionlessText(file, members)}\n`).join('');
+
+  if (!dryRun && !formatted()) process.exit(1);
 
   const units = allUnits(crates, kernelOptional).filter((unit) => !(noClippy && unit.kind === 'clippy'));
   const toRun = [];

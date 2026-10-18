@@ -207,6 +207,8 @@ Filename: "{app}\{#ExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flag
 ; `task-2290`. The speech model and ONNX Runtime `--setup-voice` downloaded into this person's local application
 ; data. Only that folder: settings are in the roaming folder and are left.
 Type: filesandordirs; Name: "{localappdata}\Unluminous\voice"
+; `task-2295`. Copies of `unluminous-cli` that setup moved aside because an agent's server was running them.
+Type: files; Name: "{app}\{#CliName}.*.old"
 
 [UninstallRun]
 ; Take Unluminous out of every agent `setup` connected, so no agent is left starting a program that is
@@ -308,6 +310,52 @@ begin
   until Existing = '';
 
   RegWriteExpandStringValue(EnvironmentRoot(), EnvironmentKey(), 'Path', Rebuilt);
+end;
+
+{ The command line program, moved out of the way when something is running it.
+
+  `task-2295`. Every coding agent connected to Unluminous runs `unluminous-cli mcp serve`, and the code
+  index runs `unluminous-cli search serve`, from the install folder. Those are programs with no window,
+  so the Restart Manager cannot close them, and a silent setup answers its "unable to close all
+  applications" box with Abort: exit code 5, measured with one `mcp serve` running. That stopped a
+  release and would stop an update for anybody with an agent connected.
+
+  Windows lets a running program's file be renamed, though not replaced or deleted. So a copy that will
+  not delete is renamed to `unluminous-cli.exe.<time>.old`, the new one is written in its place, and the
+  servers keep running the old copy until their agent restarts them. A renamed copy that is no longer
+  running is deleted the next time setup runs. }
+procedure DeleteOldCommandLines(const Folder: String);
+var
+  Found: TFindRec;
+begin
+  if FindFirst(Folder + '\{#CliName}.*.old', Found) then
+  try
+    repeat
+      DeleteFile(Folder + '\' + Found.Name);
+    until not FindNext(Found);
+  finally
+    FindClose(Found);
+  end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Folder: String;
+  Cli: String;
+  Aside: String;
+begin
+  Result := '';
+  Folder := ExpandConstant('{app}');
+  DeleteOldCommandLines(Folder);
+  Cli := Folder + '\{#CliName}';
+  if FileExists(Cli) and not DeleteFile(Cli) then
+  begin
+    Aside := Cli + '.' + GetDateTimeString('yyyymmddhhnnss', #0, #0) + '.old';
+    if RenameFile(Cli, Aside) then
+      Log('Moved the running ' + Cli + ' to ' + Aside)
+    else
+      Log('Could not move ' + Cli + ' out of the way; the Restart Manager will be asked to close it');
+  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

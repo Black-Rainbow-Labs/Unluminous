@@ -141,7 +141,8 @@ function whatMovedSince(commit) {
       .map((line) => line.trim())
       .filter(Boolean)
       .filter(CHANGES_A_WINDOW)
-      .filter((file) => !onlyTheVersionMoved(file, commit));
+      .filter((file) => !onlyTheVersionMoved(file, commit))
+      .filter((file) => !onlyTheFormattingMoved(file, commit));
   } catch {
     // A commit git cannot reach is already reported as stale by the ancestor check above.
     return [];
@@ -167,6 +168,46 @@ function onlyTheVersionMoved(file, commit) {
     execFileSync('git', ['-C', repo, 'show', `${revision}:${name}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   const members = workspaceMembersInLock(show('HEAD', 'Cargo.lock'));
   return versionless(file, show(commit, file), members) === versionless(file, show('HEAD', file), members);
+}
+
+/** The workspace's Rust edition, which rustfmt needs when it is handed a file on its own. */
+function workspaceEdition() {
+  const manifest = fs.readFileSync(path.join(repo, 'Cargo.toml'), 'utf8');
+  return manifest.match(/^\s*edition\s*=\s*"(\d{4})"/m)?.[1] ?? '2021';
+}
+
+/**
+ * Whether a `.rs` file at HEAD is exactly what rustfmt makes of the same file at `commit`.
+ *
+ * `task-2295`. The release's `cargo fmt --check` refused about eight releases after the ticket had run the
+ * window suite, and `cargo fmt` rewrites `.rs` files, so every one of those receipts went stale and the suite
+ * ran again, for whitespace. Rustfmt is run on the file as it was at the receipt's commit, with the workspace's
+ * own `rustfmt.toml` and edition, and the answer is compared with HEAD. A file that differs in any other way,
+ * by a single character, is still a change, so this lets through a formatting commit and nothing else.
+ * @param file - a path from `git diff --name-only`
+ * @param commit - the commit the receipt names
+ */
+function onlyTheFormattingMoved(file, commit) {
+  if (!file.endsWith('.rs')) return false;
+  const show = (revision) =>
+    execFileSync('git', ['-C', repo, 'show', `${revision}:${file}`], {
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).replace(/\r\n/g, '\n');
+  try {
+    const before = show(commit);
+    const after = show('HEAD');
+    const formatted = execFileSync(
+      'rustfmt',
+      ['--edition', workspaceEdition(), '--config-path', path.join(repo, 'rustfmt.toml'), '--emit', 'stdout'],
+      { input: before, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['pipe', 'pipe', 'ignore'] },
+    ).replace(/\r\n/g, '\n');
+    return formatted === after;
+  } catch {
+    // A file that is new or deleted since the receipt, or one rustfmt cannot read, is a change.
+    return false;
+  }
 }
 
 const check = process.argv.includes('--check');

@@ -155,7 +155,7 @@ echo "Unluminous $current -> $next  on $branch"
 if [ "$dry_run" = 1 ]; then
     echo
     echo "What would happen:"
-    echo "  0. cargo fmt --check, cargo clippy -D warnings, changelog --check, contrast --check,"
+    echo "  0. cargo fmt --check, cargo clippy -D warnings, contrast --check,"
     echo "     the window suite's receipt, then cargo test --workspace --exclude unluminous-app"
     echo "     and -p unluminous-app --lib --bins"
     echo "  1. Cargo.toml version -> $next"
@@ -174,7 +174,20 @@ if [ -n "$dirty" ]; then
     die "The working tree is not clean. Commit the task's own work first: a release built from a dirty checkout is one nobody can rebuild."
 fi
 
+# A release that fails puts back the three files it writes before its commit, so the next start is not
+# refused as dirty (`task-2295`, see release.ps1). Nothing before this point is touched, and the commit
+# below sets `writing` back to 0.
+writing=0
+put_back() {
+    if [ "$?" -ne 0 ] && [ "$writing" = 1 ]; then
+        git -C "$repo" checkout -- Cargo.toml Cargo.lock CHANGELOG.md
+        echo 'The release stopped, and Cargo.toml, Cargo.lock and CHANGELOG.md were put back as they were.' >&2
+    fi
+}
+trap put_back EXIT
+
 step 'Taking the newest Inillucent'
+writing=1
 # `task-2293`: the newest compatible inillucent-driver, before the suite, so what is tested is what ships.
 # Cargo.lock goes into the version commit with the manifest. See release.ps1.
 cargo update --manifest-path "$manifest" -p inillucent-driver
@@ -205,7 +218,8 @@ if [ "$skip_tests" = 1 ]; then
     echo 'the window suite has ever been run against it.'
 else
     env -u CC cargo fmt --manifest-path "$repo/Cargo.toml" --all -- --check
-    node "$repo/tools/changelog.mjs" --check
+    # No `changelog.mjs --check` (`task-2295`): "Writing CHANGELOG.md" below rewrites the file from the
+    # history and commits it with the version, so checking it here only refused releases.
     node "$repo/tools/contrast.mjs" --check
     # Clippy and the tests for the crates whose inputs changed since they last passed, three lanes at
     # once (`task-2240`, `tools/test.mjs`). `--kernel-optional` keeps this script's rule that the
@@ -349,9 +363,22 @@ node "$repo/tools/changelog.mjs" --release "$next"
 
 git add -- Cargo.toml Cargo.lock CHANGELOG.md
 git commit -m "Unluminous $next" > /dev/null
+writing=0
 git tag -a "v$next" -m "Unluminous $next"
 git push origin "$branch"
 git push origin "v$next"
+# A release cut on a ticket's branch brings main with it, as fast forwards only (`task-2295`, see
+# `Update-Main` in release.ps1). A refusal is reported and the release goes on, because the tag is out.
+if [ "$branch" != main ]; then
+    step 'Bringing main up to this release'
+    git push origin HEAD:main || echo "  origin/main could not be moved. Run: git push origin $branch:main" >&2
+    main_checkout="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+    if [ "$(cd "$main_checkout" && pwd -P)" != "$(pwd -P)" ] \
+        && [ "$(git -C "$main_checkout" rev-parse --abbrev-ref HEAD)" = main ]; then
+        git -C "$main_checkout" merge --ff-only "$branch" \
+            || echo "  The main checkout could not be moved. Run: git -C $main_checkout merge --ff-only $branch" >&2
+    fi
+fi
 
 if [ "$skip_publish" = 1 ]; then
     echo

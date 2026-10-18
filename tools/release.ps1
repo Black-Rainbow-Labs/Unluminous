@@ -369,6 +369,76 @@ function Restore-Keyboard {
     & pwsh -NoProfile -File $unstick | ForEach-Object { Write-Host "  $_" }
 }
 
+<#
+.SYNOPSIS
+  The main checkout: the parent of git's common directory. In a ticket's worktree that is the folder the
+  worktree was made from; in the main checkout it is the checkout itself.
+#>
+function Get-MainCheckout {
+    $common = (& git -C $Repo rev-parse --path-format=absolute --git-common-dir).Trim()
+    return (Split-Path -Parent $common)
+}
+
+<#
+.SYNOPSIS
+  Puts the two files the macOS build needs into this checkout when they are missing.
+
+.DESCRIPTION
+  `task-2295`. `installer/macos/notarize.env` and `tools/cross/bin` are ignored by git, so a ticket's
+  worktree starts without them and the preflight fails. The project's CLAUDE.md told an agent to copy one
+  and fetch the other first, which worked when the agent read that paragraph. The release does it now: the
+  signing file is copied from the main checkout, and the toolchain is fetched.
+#>
+function Get-TheMacosFiles {
+    $settings = Join-Path $Repo 'installer\macos\notarize.env'
+    if (-not (Test-Path $settings)) {
+        $kept = Join-Path (Get-MainCheckout) 'installer\macos\notarize.env'
+        if ((Test-Path $kept) -and ((Resolve-Path $kept).Path -ne $settings)) {
+            Copy-Item -LiteralPath $kept -Destination $settings
+            Write-Host "Copied installer\macos\notarize.env from $(Get-MainCheckout)"
+        }
+    }
+    if (-not (Test-Path (Join-Path $Repo 'tools\cross\bin\cargo-zigbuild.exe'))) {
+        Write-Host 'Fetching the macOS cross toolchain into tools\cross\bin'
+        & pwsh -NoProfile -File (Join-Path $Repo 'tools\cross\fetch-toolchain.ps1') | Out-Null
+        if ($LASTEXITCODE -ne 0) { Write-Host '  tools\cross\fetch-toolchain.ps1 failed; the preflight says what is missing.' -ForegroundColor Yellow }
+    }
+}
+
+<#
+.SYNOPSIS
+  Brings main up to a release cut on another branch.
+
+.DESCRIPTION
+  `task-2295`. A ticket releases from its worktree's branch, and `git push origin $branch` pushed that
+  branch alone: the version commit and the tag reached GitHub while `main`, on GitHub and in the main
+  checkout, stayed behind until somebody moved it by hand (task-2200, task-2294). Both moves are fast
+  forwards only. Git refuses to push one that is not, and `merge --ff-only` refuses to touch a file the
+  person has changed in the main checkout. A refusal is reported with the command to run, and the release
+  goes on, because the tag is already published.
+.PARAMETER Branch
+  The branch the release was cut on.
+#>
+function Update-Main([string] $Branch) {
+    if ($Branch -eq 'main') { return }
+    Write-Step 'Bringing main up to this release'
+    & git -C $Repo push origin HEAD:main
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  origin/main could not be moved to this release. Run: git push origin $($Branch):main" -ForegroundColor Yellow
+    }
+    $main = Get-MainCheckout
+    if ((Resolve-Path $main).Path -eq (Resolve-Path $Repo).Path) { return }
+    $there = (& git -C $main rev-parse --abbrev-ref HEAD).Trim()
+    if ($there -ne 'main') {
+        Write-Host "  The main checkout is on $there, so its main was left alone." -ForegroundColor Yellow
+        return
+    }
+    & git -C $main merge --ff-only $Branch
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  The main checkout could not be moved to this release. Run: git -C $main merge --ff-only $Branch" -ForegroundColor Yellow
+    }
+}
+
 # ---------------------------------------------------------------------------------------------
 
 Set-Location $Repo
@@ -388,7 +458,7 @@ Write-Host "Unluminous $current -> $next  on $branch"
 if ($WhatIf) {
     Write-Host ''
     Write-Host 'What would happen:' -ForegroundColor Yellow
-    Write-Host "  0. on $(Get-ProcessorSharePercent 0)% of the processors: cargo fmt --check, changelog --check,"
+    Write-Host "  0. on $(Get-ProcessorSharePercent 0)% of the processors: cargo fmt --check,"
     Write-Host "     contrast --check, node tools\test.mjs$(if ($FullTests) { ' --all' }) (clippy and tests for the crates that changed),"
     Write-Host "     and the window suite's receipt"
     $dryRun = @((Join-Path $Repo 'tools\test.mjs'), '--dry-run')
@@ -420,7 +490,29 @@ if ($dirty) {
     throw 'The working tree is not clean. Commit the task''s own work first: a release built from a dirty checkout is one nobody can rebuild.'
 }
 
+# **A release that fails puts back what it changed (`task-2295`).** From here to the commit the release writes
+# three files: `Cargo.lock` (the newest Inillucent), `Cargo.toml` (the version) and `CHANGELOG.md`. A failure
+# in between used to leave them changed, and the next start refused the checkout as dirty, which is how
+# task-2294's release needed a third start. The trap puts those three back with `git checkout --` and stops
+# the macOS build this release started. It does nothing before `$script:Writing` is set, so a person's own
+# change to `Cargo.toml` is never thrown away, and nothing after the commit, when the files are the release's.
+$script:Writing = $false
+$script:MacosChild = $null
+trap {
+    if ($script:Writing) {
+        if ($script:MacosChild -and -not $script:MacosChild.HasExited) {
+            & taskkill /PID $script:MacosChild.Id /T /F | Out-Null
+        }
+        & git -C $Repo checkout -- Cargo.toml Cargo.lock CHANGELOG.md
+        Write-Host ''
+        Write-Host 'The release stopped, and Cargo.toml, Cargo.lock and CHANGELOG.md were put back as they were.' -ForegroundColor Yellow
+        $script:Writing = $false
+    }
+    break
+}
+
 Write-Step 'Taking the newest Inillucent'
+$script:Writing = $true
 # `task-2293`: *"Make sure our build always pulls in the latest version of inillucent."* The manifest asks for
 # `inillucent-driver` 2.x and Cargo.lock held whichever 2.x was newest the day it was last written, which had
 # fallen six releases behind. The newest compatible release is taken here, before the suite, so what is tested
@@ -448,9 +540,9 @@ if (-not $SkipTests) {
         Invoke-Checked 'cargo fmt --all -- --check' {
             & cargo fmt --manifest-path $Manifest --all -- --check
         }
-        Invoke-Checked 'node tools\changelog.mjs --check' {
-            & node (Join-Path $Repo 'tools\changelog.mjs') --check
-        }
+        # No `changelog.mjs --check` (`task-2295`). Every ticket's commits put the file out of date, so it
+        # refused a release at least six times over a file that "Writing CHANGELOG.md" below rewrites from
+        # the history and commits with the version anyway.
         Invoke-Checked 'node tools\contrast.mjs --check' {
             & node (Join-Path $Repo 'tools\contrast.mjs') --check
         }
@@ -524,10 +616,17 @@ if ($SkipMacos) {
 } elseif (-not (Test-Path $macosBuild)) {
     $macosReason = "$macosBuild is missing"
 } else {
+    Get-TheMacosFiles
     $answer = & pwsh -NoProfile -File $macosBuild -Preflight 2>&1
     if ($LASTEXITCODE -ne 0) { $macosReason = ($answer | Out-String).Trim() }
 }
 $doMacos = -not $macosReason
+# **A release without macOS is not a release (`task-2295`).** A failed preflight used to print one yellow line
+# and go on, and 0.64.4 went out Windows only that way (`task-2207`). It stops here instead, before anything is
+# built, unless `-SkipMacos` says to leave macOS out.
+if (-not $doMacos -and -not $SkipMacos) {
+    throw "macOS cannot be built, so nothing was released: $macosReason`nFix that, or pass -SkipMacos to release Windows only."
+}
 
 $plan = [ordered]@{
     'Windows installer'    = 'yes'
@@ -568,6 +667,7 @@ if ($doMacos) {
     }
     # Read now, so the exit code is still there to read after the process has gone.
     $null = $macosProcess.Handle
+    $script:MacosChild = $macosProcess
 }
 
 Write-Step 'Building the installer, and installing it'
@@ -647,9 +747,11 @@ if ($LASTEXITCODE -ne 0) { throw 'tools/changelog.mjs failed.' }
 Write-Step "Committing and tagging v$next"
 Invoke-Checked 'git add' { & git add -- Cargo.toml Cargo.lock CHANGELOG.md }
 Invoke-Checked 'git commit' { & git commit -m "Unluminous $next" | Out-Null }
+$script:Writing = $false
 Invoke-Checked 'git tag' { & git tag -a "v$next" -m "Unluminous $next" }
 Invoke-Checked 'git push' { & git push origin $branch }
 Invoke-Checked 'git push --tags' { & git push origin "v$next" }
+Update-Main $branch
 
 if ($SkipPublish) {
     Write-Host ''
