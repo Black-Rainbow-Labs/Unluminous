@@ -2438,7 +2438,7 @@ unluminous-cli realm browser 9 unpin
 unluminous-cli realm folder <node> <expand|collapse|select|open|root|rows> [--path <path>] [--from <node>]
 ```
 
-Drive a folder node: `expand` and `collapse` a folder in it, `select` a row, `open` a file, `root` to point it at another folder, and `rows` to read what it is showing. `open` puts the file in a File Editor node this one is wired to, and makes one beside it and wires it when there is none, which is what a click or a double click in the node does. `root` is what the node's own `Choose Folder...` menu row calls, so several folder nodes can show several different folders.
+Drive a folder node: `expand` and `collapse` a folder in it, `select` a row, `open` a file, `root` to point it at another folder, and `rows` to read what it is showing. `open` puts the file in a File Editor node wired to this one, made if there is none, as a click does. `root` is what the node's own `Choose Folder...` menu row calls, so several folder nodes can show several different folders.
 
 - `node` — The folder node's id.
 - `command` — expand, collapse, select, open, root or rows.
