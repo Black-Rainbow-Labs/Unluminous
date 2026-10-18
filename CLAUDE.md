@@ -190,10 +190,29 @@ reason, and `installer/macos/build.sh` is unchanged and still the route on a Mac
 `installer/macos/notarize.env` names the sealed Developer ID key, its certificate, the sealed notary key and
 `SDKROOT=J:\mac-sdk\MacOSX.sdk`, and `tools/cross/bin` holds zig, cargo-zigbuild and rcodesign. Both are
 ignored by git, so a fresh worktree under `.claude/worktrees/` has neither, the macOS preflight fails, and
-`release.ps1` goes out Windows only while saying so in one yellow line. 0.64.4 shipped that way. Before
-releasing from a worktree, copy `notarize.env` from `C:/jason/dev/unluminous/installer/macos/`, run
-`pwsh tools/cross/fetch-toolchain.ps1`, and check that `pwsh installer/macos/build-on-windows.ps1 -Preflight`
-prints `ready`. A release without macOS is not a finished release.
+`release.ps1` went out Windows only while saying so in one yellow line. 0.64.4 shipped that way. Since
+`task-2295` the release copies `notarize.env` from the main checkout and runs `tools/cross/fetch-toolchain.ps1`
+itself when they are missing, and a preflight that still fails stops the release before anything is built,
+unless `-SkipMacos` is given. A release without macOS is not a finished release.
+
+### A release does not have to be run twice (`task-2295`)
+
+`tasks/task-2295-release-reliability-tdd.md` lists what made releases run again across 70 tickets. What a ticket
+needs to know:
+
+- **Run `pwsh tools/capped.ps1 node tools/test.mjs` after committing and before the window suite.** It checks
+  formatting first, in about a second, and then clippy and the tests. Formatting was the most common refusal.
+  A commit that only ran `cargo fmt` no longer makes the window suite's receipts stale:
+  `tools/window-suite.mjs` counts a `.rs` file that is exactly rustfmt of the receipt's version as unchanged.
+- **No changelog commit is needed.** The release writes `CHANGELOG.md` from the history and no longer checks it
+  first.
+- **Release from the ticket's branch.** After the tag is pushed, the release fast forwards `main` on GitHub and
+  in the main checkout. A refusal is printed with the command to run.
+- **A failed release leaves the checkout clean.** It puts `Cargo.toml`, `Cargo.lock` and `CHANGELOG.md` back,
+  so starting it again is never refused as dirty.
+- **An agent's `unluminous-cli mcp serve` no longer stops the install.** Setup renames a running
+  `unluminous-cli.exe` to `unluminous-cli.exe.<time>.old` and writes the new one beside it, because the Restart
+  Manager cannot close a program with no window. Do not stop agents' servers to release.
 
 ### A release reclaims the build output it just superseded
 
