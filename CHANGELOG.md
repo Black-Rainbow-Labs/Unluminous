@@ -6,7 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 0.98.0 — 2026-10-18
+## Unreleased
+
+- Sable requests keep their words and send, a second press sends, Alt+V, one listening window (`task-2290`)
+- The View menu picture with Dictate on Alt+V (`task-2290`)
+
+## 0.98.0 — 2026-10-17
 
 - Repo notes on releasing from a worktree and on timing the window (`task-2288`)
 - Speech to text in the Agent-Chat prompt (`task-2290`)
