@@ -91,6 +91,11 @@ pub struct Snapshot {
     pub last_pass: Option<Duration>,
     /// The highest wake score lately, for tuning.
     pub wake_score: f32,
+    /// Whether the "Sable" wake word models are in memory, which is only while always listen is on.
+    pub wake_loaded: bool,
+    /// Whether the voice activity detector is in memory, which is only while the microphone is open or a
+    /// dictation is running.
+    pub vad_loaded: bool,
 }
 
 /// The handle the window holds.
@@ -367,6 +372,11 @@ impl Worker {
         }
         if config.always_listen && !self.config.always_listen {
             self.refused = None;
+        }
+        // **Always listen switched off lets the speech model go at once** rather than after `model_idle`,
+        // unless a dictation is still using it: everything "Sable" loaded is released with the switch.
+        if !config.always_listen && self.config.always_listen && self.dictation.is_none() {
+            let _ = self.jobs.send(Job::Release);
         }
         if let Some(wake) = self.wake.as_mut() {
             wake.set_sensitivity(config.sensitivity);
@@ -855,6 +865,8 @@ impl Worker {
             shared.started = self.dictation.as_ref().map(|d| d.segmenter.started());
             shared.level = self.level;
             shared.refused = self.refused.clone();
+            shared.wake_loaded = self.wake.is_some();
+            shared.vad_loaded = self.vad.is_some();
             shared.model = model;
         }
     }

@@ -203,6 +203,8 @@ impl UnluminousApp {
             "listening": self.settings.voice_always_listen,
             "wakeDetectorRunning": snapshot.listening,
             "listeningInThisWindow": self.voice.listening_here,
+            "wakeModelLoaded": snapshot.wake_loaded,
+            "vadLoaded": snapshot.vad_loaded,
             "dictating": target,
             "words": snapshot.text,
             "microphone": snapshot.microphone,

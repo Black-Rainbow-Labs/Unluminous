@@ -23,6 +23,7 @@ fn main() {
         Some("install") => install(),
         Some("transcribe") => transcribe(&arguments[1..]),
         Some("bench") => bench(&arguments[1..]),
+        Some("memory") => memory(&arguments[1..]),
         _ => Err("usage: voice install | transcribe <file.wav> [--endpoint <url>] | bench <file.wav> [threads]".to_owned()),
     };
     if let Err(problem) = result {
@@ -91,6 +92,35 @@ fn transcribe(arguments: &[String]) -> Result<(), String> {
         }
         std::thread::sleep(Duration::from_millis(10));
     }
+}
+
+/// Prints a line a phase so a sampler outside the process can read its memory in each: always listen off,
+/// on with a "Sable" request heard in real time, and off again. `task-2290`.
+/// @param arguments - a WAV file that says "Sable" and something
+fn memory(arguments: &[String]) -> Result<(), String> {
+    let samples = read(arguments.first())?;
+    let say = |phase: &str, voice: &Voice| {
+        let s = voice.snapshot();
+        println!(
+            "phase {phase} pid {} wake {} vad {} model {}",
+            std::process::id(),
+            s.wake_loaded,
+            s.vad_loaded,
+            s.model.loaded
+        );
+    };
+    let voice = Voice::start(Arc::new(|| {}));
+    voice.configure(Config::default());
+    std::thread::sleep(Duration::from_secs(5));
+    say("off", &voice);
+    voice.configure(Config { always_listen: true, ..Config::default() });
+    voice.hear_live(samples);
+    std::thread::sleep(Duration::from_secs(9));
+    say("on", &voice);
+    voice.configure(Config::default());
+    std::thread::sleep(Duration::from_secs(5));
+    say("off-again", &voice);
+    Ok(())
 }
 
 /// Times passes of Moonshine over a whole file.

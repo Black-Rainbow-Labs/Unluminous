@@ -183,3 +183,63 @@ fn saying_sable_twice_in_real_time_ends_both_dictations_ready_to_send() {
         assert!(!text.is_empty() && !text.to_lowercase().starts_with("sable"), "{text:?}");
     }
 }
+
+/// Waits up to two seconds for the snapshot to say `wanted`.
+fn until(voice: &Voice, wanted: impl Fn(&unluminous_voice::Snapshot) -> bool) -> bool {
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline {
+        if wanted(&voice.snapshot()) {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    false
+}
+
+/// Jason, on `task-2290`: *"Verify that any model used for "sable" detection is not loaded when that toggle is
+/// disabled, and unloads immediately when toggled off."* Nothing is in memory with the toggle off; the wake
+/// models and the detector load while listening; and switching it off drops them, and the speech model, at once.
+#[test]
+fn nothing_for_sable_is_in_memory_with_the_toggle_off_and_it_all_goes_when_switched_off() {
+    if !local_engine_is_installed() {
+        return;
+    }
+    let voice = Voice::start(Arc::new(|| {}));
+    voice.configure(Config::default());
+    std::thread::sleep(Duration::from_millis(200));
+    let idle = voice.snapshot();
+    assert!(
+        !idle.wake_loaded && !idle.vad_loaded && !idle.model.loaded,
+        "nothing loaded with the toggle off: {idle:?}"
+    );
+
+    // Listening: the wake models and the detector are loaded while audio is being heard.
+    voice.configure(Config { always_listen: true, ..Config::default() });
+    voice.hear_live(clip("sable-what-time-is-it"));
+    assert!(
+        until(&voice, |s| s.wake_loaded && s.vad_loaded),
+        "the wake models load while listening"
+    );
+    assert!(
+        until(&voice, |s| s.model.loaded),
+        "the wake started a dictation, which loads the speech model"
+    );
+    // Let the dictation end, so nothing is holding the speech model.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while Instant::now() < deadline
+        && !voice.take_events().iter().any(|e| matches!(e, Event::Ended { .. }))
+    {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+
+    // Switched off: everything goes at once, not after the speech model's idle time.
+    let switched = Instant::now();
+    voice.configure(Config::default());
+    assert!(
+        until(&voice, |s| !s.wake_loaded && !s.vad_loaded && !s.model.loaded),
+        "all of it is released: {:?}",
+        voice.snapshot()
+    );
+    eprintln!("released {} ms after the switch", switched.elapsed().as_millis());
+    assert!(switched.elapsed() < Duration::from_secs(2));
+}
