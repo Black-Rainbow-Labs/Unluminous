@@ -6,6 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 0.99.2 — 2026-10-18
+
+- A release that does not have to be run twice (`task-2295`)
+- CLAUDE.md says what a ticket needs to know about the release now (`task-2295`)
+
 ## 0.99.1 — 2026-10-18
 
 - Unluminous Issues v18 (`task-2294`)
