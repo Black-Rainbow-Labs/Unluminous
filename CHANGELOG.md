@@ -6,6 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## Unreleased
+
+- Repo notes on releasing from a worktree and on timing the window (`task-2288`)
+- Speech to text in the Agent-Chat prompt (`task-2290`)
+- Clippy, the model state read when asked, ticket chats keep no microphone (`task-2290`)
+
 ## 0.97.0 — 2026-10-17
 
 - A smoothness bench under load, and a frame trace that says when each frame ended, how long its thread ran and on which kind of core (`task-2288`)
