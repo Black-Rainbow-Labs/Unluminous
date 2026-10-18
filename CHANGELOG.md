@@ -6,10 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## Unreleased
+## 0.98.2 — 2026-10-18
 
 - Switching always listen off releases the speech model at once, and voice status says what is loaded (`task-2290`)
 - The code for releasing everything Sable loaded when always listen is switched off (`task-2290`)
+- The changelog (`task-2290`)
 
 ## 0.98.1 — 2026-10-17
 
