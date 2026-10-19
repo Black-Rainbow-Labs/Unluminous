@@ -745,6 +745,17 @@ button on the MCP page made a texture with no pixels and egui-wgpu panicked, so 
 nothing into an empty rectangle, the buttons are two a row, and the AI page's `Speaks` track becomes a dropdown
 when its seven shapes do not fit.
 
+**Two faults reported against 1.1.0, fixed in the same ticket.** `Row::status` took the rest of its row, so the
+Voice page's `Download` after `Not downloaded (66 MB)` was given no width, and opening Settings, Voice on any
+machine without the speech model closed the window with the same egui-wgpu panic (reported on a Mac; measured on
+Windows too, against the installed 1.1.0, with `UNLUMINOUS_VOICE_HOME` pointed at an empty folder). A status
+takes the width of its words now. The speech model dialog said a failed download only in a toast, which is drawn
+under the dialog and under the ticket it was opened from, so `Download` looked as if it did nothing; the dialog
+says the failure itself and its button becomes `Try Again`, which dictates into the prompt the dialog was opened
+for. `UNLUMINOUS_VOICE_MODEL_SOURCE` replaces the Hugging Face address, so a test can make the download fail.
+And a new ticket drew only its description: it draws its todos and comments too, and leaves out only the agent
+section, unless its column is too short for them under a description of its least height.
+
 `mcp install pi` and `setup` write the `unluminous` entry into `~/.pi/agent/mcp.json`. On this machine Pi runs the
 local Qwen through `~/.pi/agent/models.json`, which needs `"compat": { "supportsDeveloperRole": false }`: without
 it the server refuses Pi's `developer` message.
