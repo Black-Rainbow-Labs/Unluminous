@@ -3110,7 +3110,7 @@ fn agents_on_the_path() {
     ONCE.get_or_init(|| {
         let folder = std::env::temp_dir().join("unluminous-screenshot-agents");
         std::fs::create_dir_all(&folder).expect("a folder for the stand-in agents");
-        for name in ["claude", "codex", "opencode"] {
+        for name in ["claude", "codex", "opencode", "pi"] {
             let at = folder.join(match cfg!(windows) {
                 true => format!("{name}.exe"),
                 false => name.to_owned(),
@@ -3269,7 +3269,7 @@ fn the_ai_configuration_page_lists_the_endpoints_and_an_agent_can_change_them() 
     let mut harness = harness("");
     did(&mut harness, "modal open settings --page ai");
     steady(&mut harness);
-    assert_eq!(harness.get_all_by_label("Remove").count(), 4, "one card an endpoint");
+    assert_eq!(harness.get_all_by_label("Remove").count(), 5, "one card an endpoint");
     harness.snapshot(shot("ai_configuration").as_str());
 
     did(&mut harness, "settings set ai.provider.3.model llama-local/local");
@@ -3293,7 +3293,7 @@ fn the_chat_answers_the_command_line() {
     let providers = did(&mut harness, "plugins run agent-chat providers");
     let rows = providers["providers"].as_array().expect("the endpoints");
     let names: Vec<&str> = rows.iter().filter_map(|one| one["name"].as_str()).collect();
-    assert_eq!(names, ["claude", "codex", "local", "opencode"]);
+    assert_eq!(names, ["claude", "codex", "local", "opencode", "pi"]);
     // **The two rows the ticket names run the command line, not the API.** *"connection to Claude
     // and codex etc through cli"* — so what a row holds is a program, and Unluminous holds no key for
     // either of them.
