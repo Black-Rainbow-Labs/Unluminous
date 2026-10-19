@@ -949,7 +949,10 @@ mod tests {
         let voice = Voice { model: false, microphone: Access::NotAsked };
         let plan = plan_from(&steps, &voice, &[], "No API key is set.".to_owned());
         let names: Vec<&str> = plan.rows.iter().map(|row| row.name.as_str()).collect();
-        assert_eq!(names, ["path", "claude", "opencode", "pi", "speech-model", "microphone", "server"]);
+        assert_eq!(
+            names,
+            ["path", "claude", "opencode", "pi", "speech-model", "microphone", "server"]
+        );
         assert_eq!(plan.not_found, ["Codex"]);
         let claude = &plan.rows[1];
         assert!(claude.ticked && claude.word() == "to do", "{claude:?}");
