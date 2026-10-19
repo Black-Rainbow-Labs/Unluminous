@@ -735,6 +735,16 @@ insert would otherwise reuse the id of the last ticket deleted.
   way schema 3 let `opencode` in, after copying the files into `board-before-schema-4/`. An Unluminous older than
   this refuses a board at schema 4.
 
+**Three faults the live runs found, each fixed in the same ticket.** An open board read its settings file once, so
+`settings set plugins.agent-tasks.endpoint pi` (or another window's Settings page) did not change who a new
+ticket went to until a restart: `AgentTasks::follow_the_configuration_file` reads it again once a second and
+before `new-task`. `login_shell::spellings` tried a bare name as written before `PATHEXT` on Windows, so a
+ticket started npm's extensionless `pi` shell script and failed with `%1 is not a valid Win32 application`. And
+a settings row that runs out of width hands the next control a rectangle with no width: a fourth `Install for`
+button on the MCP page made a texture with no pixels and egui-wgpu panicked, so `settings_kit::button` draws
+nothing into an empty rectangle, the buttons are two a row, and the AI page's `Speaks` track becomes a dropdown
+when its seven shapes do not fit.
+
 `mcp install pi` and `setup` write the `unluminous` entry into `~/.pi/agent/mcp.json`. On this machine Pi runs the
 local Qwen through `~/.pi/agent/models.json`, which needs `"compat": { "supportsDeveloperRole": false }`: without
 it the server refuses Pi's `developer` message.

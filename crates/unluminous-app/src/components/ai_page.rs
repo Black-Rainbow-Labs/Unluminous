@@ -33,6 +33,9 @@ use crate::components::settings_dialog::{drawn, Drawn};
 use crate::components::settings_kit::{self as kit, Column, Kind as ButtonKind};
 use crate::services::ai_endpoints::{self, Readiness};
 
+/// How wide the dropdown of shapes is when the track does not fit across the card (`task-2302`).
+const SPEAKS_SELECT: f32 = 200.0;
+
 /// An endpoint card's own padding and the gap between the things in it: `padding: 14px 16px; gap: 12px`.
 const ENDPOINT_PAD_Y: f32 = 14.0;
 const ENDPOINT_PAD_X: f32 = 16.0;
@@ -226,18 +229,41 @@ fn endpoint(
     label(rux, Pos2::new(inside_left, pen + ENDPOINT_ROW / 2.0), "Speaks");
     let controls_left = inside_left + ENDPOINT_LABEL + 14.0;
     // Six shapes do not fit across a narrow card at eleven points, so the track takes the largest of three
-    // sizes that fits rather than running past the card's edge.
+    // sizes that fits rather than running past the card's edge. **With seven (`task-2302`) none of the three
+    // fits on a card of the usual width**, and the last shape was drawn past the edge where it could not be
+    // pressed, so a card too narrow for the track offers the shapes as a dropdown instead.
     let room = inside_right - controls_left;
     let size = [11.0, 10.0, 9.0]
         .into_iter()
-        .find(|size| kit::segmented_width(rux, &offered, 0.0, true, *size) <= room)
-        .unwrap_or(9.0);
-    let width = kit::segmented_width(rux, &offered, 0.0, true, size).min(room);
-    let track = Rect::from_min_size(Pos2::new(controls_left, pen), Vec2::new(width, ENDPOINT_ROW));
+        .find(|size| kit::segmented_width(rux, &offered, 0.0, true, *size) <= room);
     let chosen_shape = offered.iter().position(|named| here.name() == *named);
-    if let Some(picked) =
-        kit::segmented_sized(rux, track, "Speaks", &offered, chosen_shape, 0.0, true, 26.0, size)
-    {
+    let picked = match size {
+        Some(size) => {
+            let width = kit::segmented_width(rux, &offered, 0.0, true, size);
+            let track =
+                Rect::from_min_size(Pos2::new(controls_left, pen), Vec2::new(width, ENDPOINT_ROW));
+            kit::segmented_sized(
+                rux,
+                track,
+                "Speaks",
+                &offered,
+                chosen_shape,
+                0.0,
+                true,
+                26.0,
+                size,
+            )
+        }
+        None => {
+            let names: Vec<String> = offered.iter().map(|named| (*named).to_owned()).collect();
+            let chip = Rect::from_min_size(
+                Pos2::new(controls_left, pen),
+                Vec2::new(SPEAKS_SELECT.min(room), ENDPOINT_ROW),
+            );
+            kit::select(rux, chip, &format!("Speaks {index}"), &names, chosen_shape)
+        }
+    };
+    if let Some(picked) = picked {
         if let Some(wire) = Wire::from_name(offered[picked]) {
             providers[index].wire = wire;
             // **Changing the shape fills in what that shape needs.** A row switched to `codex-cli` with an

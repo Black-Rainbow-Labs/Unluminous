@@ -119,7 +119,7 @@ impl Default for Configuration {
 }
 
 impl Configuration {
-    const FILE: &'static str = "settings.conf";
+    pub(crate) const FILE: &'static str = "settings.conf";
 
     /// Read the configuration out of the plugin's folder, or the defaults when there is no file.
     ///

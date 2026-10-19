@@ -126,13 +126,22 @@ fn install_card(
              itself over a pipe, so nothing listens on a port.",
         ),
         |card| {
-            card.row("", Some(&help), |row| {
-                for (client, installed) in [
-                    (Client::Claude, state.claude_installed),
-                    (Client::Codex, state.codex_installed),
-                    (Client::OpenCode, state.opencode_installed),
-                    (Client::Pi, state.pi_installed),
-                ] {
+            // **Two buttons a row** (`task-2302`): four `Install for ...` chips are wider than the row, and the
+            // last one was handed no room at all.
+            let clients = [
+                (Client::Claude, state.claude_installed),
+                (Client::Codex, state.codex_installed),
+                (Client::OpenCode, state.opencode_installed),
+                (Client::Pi, state.pi_installed),
+            ];
+            for (at, pair) in clients.chunks(2).enumerate() {
+                let last = at + 1 == clients.len().div_ceil(2);
+                let said = match last {
+                    true => Some(help.as_str()),
+                    false => None,
+                };
+                card.row("", said, |row| {
+                for &(client, installed) in pair {
                     let name = match installed {
                         true => format!("Remove from {}", client.title()),
                         false => format!("Install for {}", client.title()),
@@ -150,7 +159,8 @@ fn install_card(
                         state.refresh(settings, program);
                     }
                 }
-            });
+                });
+            }
         },
     );
 }

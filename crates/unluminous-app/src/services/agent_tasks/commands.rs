@@ -531,6 +531,9 @@ fn task_commands(
     Some(match command {
         "new-task" => (|| {
             let title = arguments.join(" ");
+            // The settings as they are on disk now, so a change made a moment ago from the command line or from
+            // another window is the default this ticket gets (`task-2302`).
+            tasks.follow_the_configuration_file();
             let (assignee, endpoint) = tasks.default_assignee();
             let draft = NewTask {
                 title: title.trim().to_owned(),
@@ -1200,6 +1203,36 @@ mod tests {
         board.configuration.agent = model::Assignee::Pi;
         let made = key(&did(&mut board, "new-task", &["no", "endpoint", "named"]));
         assert_eq!(board.by_key(&made).expect("the ticket").assignee, model::Assignee::Pi);
+    }
+
+    /// `task-2302`: the board's endpoint changed on disk while the board is open, which is what
+    /// `settings set plugins.agent-tasks.endpoint pi` and another window's Settings page both do, is the
+    /// default of the next ticket. An open board read its settings once and went on giving new tickets the
+    /// agent it read then.
+    #[test]
+    fn a_setting_written_while_the_board_is_open_is_the_next_tickets_default() {
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-board-follows-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("a folder");
+        let mut board = AgentTasks::new();
+        let context = Context {
+            folder: Some(folder.clone()),
+            endpoints: unluminous_chat::Provider::defaults(),
+            ..Context::default()
+        };
+        board.open(&context).expect("a board in the folder");
+        let first = key(&did(&mut board, "new-task", &["before"]));
+        assert_eq!(board.by_key(&first).expect("a ticket").assignee, model::Assignee::Claude);
+        let mut written = super::super::configuration::Configuration::read(&folder);
+        written.endpoint = Some("pi".to_owned());
+        written.write(&folder).expect("written by somebody else");
+        let next = key(&did(&mut board, "new-task", &["after"]));
+        let ticket = board.by_key(&next).expect("a ticket");
+        assert_eq!(ticket.assignee, model::Assignee::Pi);
+        assert_eq!(ticket.endpoint.as_deref(), Some("pi"));
+        drop(board);
+        let _ = std::fs::remove_dir_all(&folder);
     }
 
     /// A ticket is made, changed, given a todo and a comment, and deleted, through the one path.

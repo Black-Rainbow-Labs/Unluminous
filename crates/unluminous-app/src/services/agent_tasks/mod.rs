@@ -551,6 +551,9 @@ pub struct AgentTasks {
     /// looked at. See [`Self::notice_another_window`].
     files_read: Option<FilesStamp>,
     files_asked: Option<std::time::Instant>,
+    /// When the board's settings file was last written, as this window last read it (`task-2302`). See
+    /// [`Self::follow_the_configuration_file`].
+    configuration_written: Option<std::time::SystemTime>,
     /// The open ticket's conversation, read from its agent's transcript for the modal's Chat tab (`task-2261`).
     /// `None` while no ticket with a session is open.
     pub ticket_chat: Option<ticket_chat::TicketChat>,
@@ -1832,6 +1835,27 @@ impl AgentTasks {
         Ok(answer.message)
     }
 
+    /// Read the board's settings file again when it has been written since this window last read it.
+    ///
+    /// `task-2302`: *"whatever the settings have for agent tasks should be the default that tasks are assigned
+    /// to."* `unluminous-cli settings set plugins.agent-tasks.endpoint pi` writes the file, and so does another
+    /// window's Settings page, and an open board went on giving new tickets the agent it read when it opened. It
+    /// is asked once a second and again just before a ticket is made. The board file stays the one that is open:
+    /// moving the database is the Settings page's own change, which reopens it.
+    pub fn follow_the_configuration_file(&mut self) {
+        let Some(folder) = self.folder.clone() else { return };
+        let written = std::fs::metadata(folder.join(Configuration::FILE))
+            .and_then(|metadata| metadata.modified())
+            .ok();
+        if written.is_none() || written == self.configuration_written {
+            return;
+        }
+        self.configuration_written = written;
+        let mut fresh = Configuration::read(&folder);
+        fresh.database = self.configuration.database.clone();
+        self.configuration = fresh;
+    }
+
     /// Write a changed configuration to the plugin's own settings file.
     ///
     /// One function, so seven controls on the Settings page are seven calls to one place. Nothing here is a
@@ -1839,7 +1863,13 @@ impl AgentTasks {
     pub fn change_the_configuration(&mut self, changed: Configuration) -> Result<(), String> {
         self.configuration = changed;
         match self.folder.clone() {
-            Some(folder) => self.configuration.write(&folder),
+            Some(folder) => {
+                self.configuration.write(&folder)?;
+                self.configuration_written = std::fs::metadata(folder.join(Configuration::FILE))
+                    .and_then(|metadata| metadata.modified())
+                    .ok();
+                Ok(())
+            }
             // A window with no settings folder — every window a test builds — keeps the change in memory and
             // writes nothing, which is the rule that stops a test touching the settings of the person running
             // it.
@@ -2495,6 +2525,7 @@ impl AgentTasks {
             return false;
         }
         self.files_asked = Some(now);
+        self.follow_the_configuration_file();
         let stamp = stamp_the_files(&path);
         if stamp.is_none() || stamp == self.files_read {
             return false;
@@ -2773,6 +2804,9 @@ impl UiProvider for AgentTasks {
         match context.folder.clone() {
             Some(folder) => {
                 self.configuration = Configuration::read(&folder);
+                self.configuration_written = std::fs::metadata(folder.join(Configuration::FILE))
+                    .and_then(|metadata| metadata.modified())
+                    .ok();
                 let path = self
                     .configuration
                     .database_path(Some(&folder))

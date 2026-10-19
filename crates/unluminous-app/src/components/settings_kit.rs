@@ -930,6 +930,12 @@ pub fn button_width(rux: &Rux<'_>, label: &str, plus: bool) -> f32 {
 
 /// A button with a word on it. Answers whether it was pressed.
 pub fn button(rux: &mut Rux<'_>, rect: Rect, label: &str, kind: Kind) -> bool {
+    // **A button given no room draws nothing** (`task-2302`). A row that has run out of width hands the next
+    // control a rectangle with no width, and a chip drawn into one asked for a texture with no pixels, which
+    // egui-wgpu refuses with a panic that closed the window.
+    if rect.width() < 1.0 || rect.height() < 1.0 {
+        return false;
+    }
     let theme = rux.theme();
     let chat = theme.chat;
     let response = rux.ui.interact(

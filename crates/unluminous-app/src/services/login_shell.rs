@@ -281,11 +281,17 @@ pub fn look_up(program: &str, path: &OsStr) -> Option<PathBuf> {
 
 /// The spellings of one program name the platform will really run.
 ///
-/// One on every platform but Windows, where a bare name is completed from `PATHEXT` — and where the
-/// name as written is tried first, so a program named `claude.cmd` outright is not looked for as
-/// `claude.cmd.COM`.
+/// One on every platform but Windows, where a bare name is completed from `PATHEXT`. A name that already has
+/// an extension is tried as written, so `claude.cmd` outright is not looked for as `claude.cmd.COM`. **A name
+/// with no extension is never tried as written on Windows** (`task-2302`): npm puts an extensionless shell
+/// script for Git Bash beside `pi.cmd`, in the same folder, and starting it answers `%1 is not a valid Win32
+/// application`. That is the rule `unluminous_chat::provider::program` already keeps for Agent Chat.
 fn spellings(program: &str) -> Vec<String> {
-    let mut spellings = vec![program.to_owned()];
+    let has_an_extension = std::path::Path::new(program).extension().is_some();
+    let mut spellings = Vec::new();
+    if !cfg!(windows) || has_an_extension {
+        spellings.push(program.to_owned());
+    }
     if cfg!(windows) {
         let listed = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_owned());
         for extension in listed.split(';').map(str::trim).filter(|extension| !extension.is_empty())
@@ -592,6 +598,35 @@ mod tests {
         );
         assert!(look_up("unluminous-no-such-agent", &path).is_none());
         assert!(look_up("", &path).is_none(), "an empty name is not a program");
+    }
+
+    /// `task-2302`: npm puts `pi`, a shell script for Git Bash, beside `pi.cmd`. On Windows the script cannot be
+    /// started, so a bare name finds the `.cmd` and never the script.
+    #[test]
+    #[cfg(windows)]
+    fn a_bare_name_on_windows_finds_the_cmd_and_not_npms_shell_script_beside_it() {
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-npm-folder-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("a folder");
+        std::fs::write(
+            folder.join("pi"),
+            "#!/bin/sh
+",
+        )
+        .expect("the script");
+        std::fs::write(
+            folder.join("pi.cmd"),
+            "@echo off
+",
+        )
+        .expect("the cmd");
+        let found = look_up("pi", folder.as_os_str()).expect("found");
+        assert_eq!(
+            found.to_string_lossy().to_lowercase(),
+            folder.join("pi.cmd").to_string_lossy().to_lowercase()
+        );
+        assert_eq!(look_up("pi.cmd", folder.as_os_str()), Some(folder.join("pi.cmd")));
+        let _ = std::fs::remove_dir_all(&folder);
     }
 
     #[test]
