@@ -6,7 +6,16 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.0.19 — 2026-10-19
+## 1.1.0 — 2026-10-19
+
+- The TDD for a Set Up Unluminous dialog that finishes the install from the window (`task-2301`)
+- The Set Up Unluminous dialog finishes setup from inside the window (`task-2301`)
+- A background window never opens Set Up Unluminous by itself, and a test of it opening (`task-2301`)
+- The open by itself test uses a second window of its own (`task-2301`)
+- Clippy (`task-2301`)
+- The Keymap page lists Unluminous -> Set Up Unluminous... (`task-2301`)
+
+## 1.0.19 — 2026-10-18
 
 - A panel let go where the blue rectangle shows lands there (`task-2298`)
 
