@@ -225,7 +225,7 @@ A new file in the settings folder, `setup.conf`, in the store's ordinary `key = 
 ```
 setup.prompt = on            # off after "Don't show this again"
 setup.declined = microphone,speech-model
-setup.last = 1.0.19 1792376339
+setup.finished = 1.0.19 1792376339
 ```
 
 Setup is **finished** when every row `plan` returns is `done`, `already`, `left` or declined. `left` counts,
@@ -238,7 +238,8 @@ because an entry pointing at another Unluminous was somebody's choice.
 - **On Windows, the installer's own record.** A task the person unticked in the installer is in
   `Inno Setup: Selected Tasks` as missing, but so is a task added after the first install, which is the
   case in §3.2. The two are told apart by a second value the installer writes from now on:
-  `[Registry]` gains `Unluminous: Offered Tasks` with the list of task names this installer offered. A
+  `[Registry]` gains `HKA\Software\Unluminous`, value `OfferedTasks`, with the task names this installer
+  offered. A
   task that was offered and is not selected was declined; a task that was never offered was not. An
   installer from before this change wrote no such value, so for it every missing task counts as never
   offered, which shows the dialog for `voice` on this machine, which is the right answer here.
@@ -272,8 +273,8 @@ finds a live process named there does not open it. That is `voice/listening.pid`
 **Once it has been finished, a later gap is a toast.** A person who finished setup and then installs
 Codex should not be met by a modal. When `setup.last` says setup was finished before and `plan` now
 finds rows to do, the window shows a `toast::Kind::Offer` toast, `Codex is not connected to Unluminous`
-with `Connect` and `Not now`. `Connect` takes that step and `Not now` declines it. `setup.last` records
-the version and time of the last `Run` that left setup finished.
+with `Set Up` and `Not Now`. `Set Up` takes that step and `Not Now` declines it. `setup.finished` records
+the version and time of the last run that left setup finished.
 
 `Don't show this again` stops the dialog and the toast opening by themselves. The menu entry still works.
 
@@ -382,3 +383,17 @@ flowchart TD
 - **Gemini CLI, Cursor and VS Code** as agents. `task-2278` §6 says why, and adding one is a row in
   `Client`, which the dialog then lists with no change.
 - **Writing an API key.** The keys stay environment variables, as `services::ai_endpoints` requires.
+
+## 10. Where what was built differs from the above
+
+Written after the implementation, so this document matches the code.
+
+- **The buttons are `Not Now` and `Run Setup`**, not `Close` and `Run`. The title bar already has controls
+  named `Close` and `Run`, and two controls must not share a name.
+- **The server row's word before a run is `on run`.** It has no tick box and is asked at the end of every
+  run.
+- **The `setup` area has five verbs: `status`, `open`, `run`, `decline`, `close`.** `open` was added because
+  it is the name an agent guesses. `run` answers at once and `setup status` follows it; there is no `--wait`.
+- **`--setup-voice` still downloads the speech model on macOS and no longer asks for the microphone there**,
+  with no new flag, because on macOS that program is only ever started by `unluminous-cli setup`.
+- **`app/first_start.rs` is no longer in the module tree.** It is left on disk for a person to delete.

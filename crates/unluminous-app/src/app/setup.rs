@@ -188,18 +188,26 @@ impl SetupState {
 }
 
 impl UnluminousApp {
-    /// The released binary's planner and steps, and leave to open the dialog by itself. Called from `main`
-    /// and by nothing else, so a test's window never reads or changes this machine's setup.
-    pub fn allow_the_setup(&mut self) {
+    /// The released binary's planner and steps, and, when `opens_by_itself`, leave to open the dialog by
+    /// itself as the window starts. Called from `main` and by nothing else, so a test's window never reads or
+    /// changes this machine's setup. A window started with `--background` passes false.
+    pub fn allow_the_setup(&mut self, opens_by_itself: bool) {
         self.setup.planner = Some(Arc::new(plan_this_machine));
         self.setup.taker = Some(Arc::new(take_on_this_machine));
-        self.setup.may_prompt = true;
+        self.setup.may_prompt = opens_by_itself;
     }
 
     /// A test's planner and steps, in place of this machine's.
     pub fn use_a_setup(&mut self, planner: Planner, taker: Taker) {
         self.setup.planner = Some(planner);
         self.setup.taker = Some(taker);
+    }
+
+    /// Let the dialog open by itself as the window starts, which `allow_the_setup` does in the released
+    /// binary. For a test that hands in its own plan with `use_a_setup`.
+    pub fn let_the_setup_open_by_itself(&mut self) {
+        self.setup.may_prompt = true;
+        self.setup.deciding = false;
     }
 
     /// The settings folder the record of what the person chose is kept in.

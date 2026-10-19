@@ -6659,6 +6659,32 @@ mod setup_dialog {
     }
 
     #[test]
+    fn it_opens_by_itself_while_setup_is_not_finished_and_not_once_it_is() {
+        let mut harness = harness("");
+        harness.state_mut().use_a_setup(planner(), taker(Arc::default()));
+        harness.state_mut().let_the_setup_open_by_itself();
+        until(&mut harness, |app| app.setup.showing);
+
+        let finished = || Plan {
+            rows: vec![
+                Row::new("path", State::Already, "On the path."),
+                Row::new("claude", State::Left, "Points at another Unluminous."),
+                Row::new("speech-model", State::Declined, "Declined."),
+                Row { ticked: false, ..Row::new("server", State::Would, "Asked on a run.") },
+            ],
+            ..Plan::default()
+        };
+        let mut harness = harness("");
+        harness.state_mut().use_a_setup(Arc::new(finished), taker(Arc::default()));
+        harness.state_mut().let_the_setup_open_by_itself();
+        until(&mut harness, |app| app.setup.plan.is_some());
+        for _ in 0..10 {
+            pump(&mut harness);
+        }
+        assert!(!harness.state().setup.showing, "a finished setup does not open the dialog");
+    }
+
+    #[test]
     fn dont_show_this_again_is_kept_and_a_window_a_test_builds_never_opens_it_by_itself() {
         let mut harness = harness("");
         harness.state_mut().use_a_setup(planner(), taker(Arc::default()));

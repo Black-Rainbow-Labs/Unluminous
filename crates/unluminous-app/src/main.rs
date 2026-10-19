@@ -370,7 +370,8 @@ fn main() -> eframe::Result {
             // The Set Up Unluminous dialog looks at this machine, and opens by itself while setup is not
             // finished: the command line tool, the coding agents, the speech model and the microphone. A
             // test never calls this, so a test's window never reads or changes any of them. `task-2301`.
-            app.allow_the_setup();
+            // A window started with `--background` is one something is driving, so it never opens it by itself.
+            app.allow_the_setup(!arguments.background);
             unluminous_app::services::frame_trace::mark("settings");
             // What was left open in this project last time. After the settings, because it opens files
             // and they have to be set in the font the settings name; before the file argument, so a file

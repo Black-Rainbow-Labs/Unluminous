@@ -1872,8 +1872,7 @@ mod dialog_tests {
 
     #[test]
     fn the_record_reads_back_what_it_wrote_and_ignores_what_it_does_not_know() {
-        let mut record = Record::default();
-        record.prompt = false;
+        let mut record = Record { prompt: false, ..Record::default() };
         record.decline("microphone");
         record.decline("codex");
         record.decline("codex");
