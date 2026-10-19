@@ -2072,6 +2072,9 @@ fn the_ticket_modals_comments_are_whole_and_scroll() {
     assert!(moved > fourth + 20.0, "the list scrolled: {fourth} then {moved}");
 }
 
+/// A new ticket shows its description, its todos and its comments, and no agent section until one is started
+/// (`task-2302`: *"sometimes when I create a new task in agent tasks, only the description is shown, and not the
+/// todos and comments"*).
 #[test]
 fn the_editor_for_a_new_ticket() {
     let mut harness = harness("");
@@ -2079,6 +2082,16 @@ fn the_editor_for_a_new_ticket() {
     did(&mut harness, "plugins run agent-tasks new-sprint Current Sprint");
     did(&mut harness, "plugins run agent-tasks new-task");
     steady(&mut harness);
+    for heading in ["Todos", "Comments"] {
+        assert!(
+            harness.query_all_by_label_contains(heading).count() > 0,
+            "a new ticket has its {heading}"
+        );
+    }
+    assert!(
+        harness.query_all_by_label_contains("Comment field").count() > 0,
+        "and a box to write a comment in"
+    );
     harness.snapshot(shot("agent_tasks_editor").as_str());
 }
 
@@ -2670,6 +2683,82 @@ fn the_prompt_has_a_microphone_inside_its_left_end() {
     assert!(field.left() - mic.left() < 60.0, "and beside them, inside the box");
     assert!((mic.center().y - field.center().y).abs() < 14.0, "on the line the words are on");
     harness.snapshot(shot("agent_chat_microphone").as_str());
+}
+
+/// The speech model dialog opened from a ticket's description is on top of the ticket and takes its own
+/// presses. Reported on a Mac with no model (`task-2302`): Download did nothing, and Voice Settings closed the
+/// window.
+///
+/// Download did fail, and said so only in a toast, which is drawn under the dialog and the ticket. So the
+/// download is made to fail here, against a port nothing listens on, and the dialog has to say why.
+#[test]
+fn the_speech_model_dialog_over_a_ticket_says_a_failed_download_and_opens_voice_settings() {
+    use unluminous_app::components::microphone_dialog::VoiceDialog;
+    let home =
+        std::env::temp_dir().join(format!("unluminous-voice-failing-{}", std::process::id()));
+    std::fs::create_dir_all(&home).expect("a voice folder");
+    let mut harness = harness("");
+    did(&mut harness, "plugins run agent-tasks new-task Dictate into me");
+    did(&mut harness, "plugins run agent-tasks open task-1");
+    steady(&mut harness);
+    harness.state_mut().voice.dialog = Some(VoiceDialog::Model { downloading: None, failed: None });
+    steady(&mut harness);
+    harness.snapshot(shot("speech_model_dialog_over_a_ticket").as_str());
+
+    std::env::set_var(unluminous_voice::install::HOME_VAR, &home);
+    std::env::set_var(unluminous_voice::install::MODEL_SOURCE_VAR, "http://127.0.0.1:9");
+    harness.get_by_label("Download").click();
+    let mut failed = None;
+    for _ in 0..200 {
+        harness.step();
+        if let Some(VoiceDialog::Model { failed: Some(why), .. }) =
+            harness.state().voice.dialog.clone()
+        {
+            failed = Some(why);
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    std::env::remove_var(unluminous_voice::install::MODEL_SOURCE_VAR);
+    std::env::remove_var(unluminous_voice::install::HOME_VAR);
+    let failed = failed.expect("the dialog says the download failed");
+    assert!(failed.contains("127.0.0.1:9"), "and says what it could not fetch: {failed}");
+    steady(&mut harness);
+    assert!(harness.get_all_by_label("Try Again").count() == 1, "Download became Try Again");
+    harness.snapshot(shot("speech_model_dialog_failed").as_str());
+
+    harness.get_by_label("Voice Settings").click();
+    for _ in 0..8 {
+        harness.step();
+    }
+    assert!(
+        harness.state().voice.dialog.is_none(),
+        "Voice Settings closed the speech model dialog"
+    );
+    assert!(harness.state().settings_window.open, "and opened Settings");
+    assert_eq!(harness.state().settings_window.page, unluminous_app::settings::Page::Voice);
+    std::fs::remove_dir_all(&home).ok();
+}
+
+/// The Voice page on a machine with no model and the microphone refused, which is a fresh Mac (`task-2302`).
+/// Each row is a status and then a button, and the status took the rest of the row, so each button was given
+/// a rectangle with no width and drawing one closed the window. Each button has room for its word now.
+#[test]
+fn the_voice_page_with_no_model_has_room_for_its_buttons() {
+    let mut harness = harness("");
+    harness.state_mut().voice.facts = Some(unluminous_app::components::voice_page::VoiceFacts {
+        model: "Not downloaded (66 MB)".to_owned(),
+        may_download: true,
+        microphone: "Unluminous is not allowed to use the microphone in System Settings, Privacy and Security, Microphone.".to_owned(),
+        refused: true,
+    });
+    did(&mut harness, "modal open settings --page voice");
+    steady(&mut harness);
+    for label in ["Download"] {
+        let button = harness.get_by_label(label).rect();
+        assert!(button.width() > 60.0, "{label} has room for its word: {button:?}");
+    }
+    harness.snapshot(shot("settings_voice_no_model").as_str());
 }
 
 /// A test's window may not open the microphone, so pressing the button says so in the dialog, and the

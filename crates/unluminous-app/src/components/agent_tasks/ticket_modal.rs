@@ -515,14 +515,28 @@ struct Budget {
     todos: f32,
     terminal: f32,
     comments: f32,
+    /// Whether a new ticket has room for its todos and comments under its description. When it has not, the
+    /// description keeps the column, because it is what a new ticket is being written for.
+    rest: bool,
 }
 
 /// Share the column's height out, taking the shortfall from the terminal, then the description down to three
 /// lines, then the comments, and the todos last, because the todos are the plan an agent is working through.
 fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new: bool) -> Budget {
     let room = area.height();
-    // A new ticket has no todos to show: they are written by the agent working it (`task-2263`).
-    let todos_open = board.todos_open && !new;
+    let composer = super::detail::composer_room(board) + DESCRIPTION_GRIP;
+    // A new ticket draws its todos and comments only when they fit under a description of its least height
+    // (`task-2302`). In a short column they would squeeze the description to nothing.
+    let rest = !new
+        || room
+            >= LABEL
+                + LABEL_GAP
+                + DESCRIPTION_LEAST
+                + (TODO_HEAD + LABEL_GAP) * 2.0
+                + SECTION_GAP * 2.0
+                + 2.0
+                + composer;
+    let todos_open = board.todos_open && rest;
     let rows = board.detail().todos.len() as f32;
     let list = |rows: f32| TODO_PAD * 2.0 + rows * (TODO_ROW + TODO_GAP) + 2.0;
     let (todo_want, todo_least) = match todos_open && rows > 0.0 {
@@ -550,8 +564,7 @@ fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new:
         ),
         (false, false, true) => (TERMINAL_EMPTY, TERMINAL_EMPTY),
     };
-    let composer = super::detail::composer_room(board) + DESCRIPTION_GRIP;
-    let (comment_want, comment_least) = match new || board.comments_shut {
+    let (comment_want, comment_least) = match !rest || board.comments_shut {
         true => (0.0, 0.0),
         false => {
             let used = board.detail().comments.len() as f32 * COMMENT_ROUGHLY + composer;
@@ -567,10 +580,12 @@ fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new:
             }
         }
     };
-    // Every heading of a ticket that exists is a fold, as tall as its round chevron (`task-2269`).
-    let headings = match new {
-        true => LABEL + LABEL_GAP,
-        false => (TODO_HEAD + LABEL_GAP) * 4.0 + SECTION_GAP * 3.0 + 2.0,
+    // Every heading of a ticket that exists is a fold, as tall as its round chevron (`task-2269`). A new ticket's
+    // description has a plain label, and it has no agent section.
+    let headings = match (new, rest) {
+        (true, false) => LABEL + LABEL_GAP,
+        (true, true) => LABEL + LABEL_GAP + (TODO_HEAD + LABEL_GAP) * 2.0 + SECTION_GAP * 2.0 + 2.0,
+        (false, _) => (TODO_HEAD + LABEL_GAP) * 4.0 + SECTION_GAP * 3.0 + 2.0,
     };
     let description_shut = board.description_shut && !new;
     let description_least = match (description_shut, board.description_height) {
@@ -578,10 +593,10 @@ fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new:
         (false, Some(dragged)) => DESCRIPTION_LEAST.min(dragged.max(DESCRIPTION_SMALLEST)),
         (false, None) => DESCRIPTION_LEAST,
     };
-    let description_want = match (new, description_shut) {
-        (true, _) => (room - headings - todo_want).max(DESCRIPTION_LEAST),
-        (false, true) => 0.0,
-        (false, false) => match board.description_height {
+    let description_want = match (rest, description_shut) {
+        (false, _) => (room - headings).max(DESCRIPTION_LEAST),
+        (true, true) => 0.0,
+        (true, false) => match board.description_height {
             Some(dragged) => dragged.max(DESCRIPTION_SMALLEST),
             None => DESCRIPTION.max(DESCRIPTION_LEAST),
         },
@@ -613,10 +628,15 @@ fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new:
     // contents of the modal should fill the space when possible. e.g. the description of task in agent task
     // should grow to help the contents fit."*). A modal that fills the window has room to show a long
     // description whole, and the comments have only their composer to show until somebody comments.
-    let grows = !dragged && !description_shut && !new;
-    let to_description = match grows {
-        true => (description_fits(_rux, board, area.width()) - description).clamp(0.0, spare),
-        false => 0.0,
+    let grows = !dragged && !description_shut;
+    // A new ticket's description is what is being written, and its comments have only their composer, so it
+    // takes all of the spare room (`task-2302`).
+    let to_description = match (grows, new) {
+        (true, true) => spare,
+        (true, false) => {
+            (description_fits(_rux, board, area.width()) - description).clamp(0.0, spare)
+        }
+        (false, _) => 0.0,
     };
     let description = description + to_description;
     let spare = spare - to_description;
@@ -678,7 +698,7 @@ fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new:
     };
     // **A shut section gives its room to the other of the two that take what is spare**, the comments or the
     // description, so the dialog does not end in an empty band (`task-2269`).
-    let comments_shut = board.comments_shut && !new;
+    let comments_shut = board.comments_shut && rest;
     let (description, comments) = match (description_shut, comments_shut) {
         (true, false) => (0.0, comments + description + left_over),
         (true, true) => (0.0, 0.0),
@@ -689,13 +709,14 @@ fn budget(board: &AgentTasks, _rux: &rux::Rux<'_>, area: Rect, task: &Task, new:
                 todos,
                 terminal: terminal + comments + left_over,
                 comments: 0.0,
+                rest,
             };
         }
         (false, true) if dragged => (description, 0.0),
         (false, true) => (description + comments + left_over, 0.0),
         (false, false) => (description + left_over, comments),
     };
-    Budget { description, todos, terminal, comments }
+    Budget { description, todos, terminal, comments, rest }
 }
 
 /// How tall the description's well has to be to show all of its words without scrolling: the words laid out at
@@ -923,121 +944,125 @@ fn main_column(
         }
     }
     pen = well.max.y + SECTION_GAP;
-
-    // A new ticket is its title, its description and its fields. Its todos are written by the agent that works
-    // it, and the agent and the comments come once it exists (`task-2263`).
-    if new {
+    if !budget.rest {
         return requests;
     }
 
     // ------------------------------------------------------------------ the agent: its chat and its terminal
-    let tab = board.agent_tab_for(task);
-    let live = board.terminal_for(task.id).is_some();
-    let attached =
-        board.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());
-    let title = match attached {
-        true => format!("Agent \u{b7} live \u{b7} {}", task.key),
-        false => "Agent".to_owned(),
-    };
-    // **The terminal folds**, as the todos do, and with the same round disc before its heading: a ticket whose
-    // agent has written a screenful is unreadable until it is put away. The design draws the fold for the todos
-    // only; the terminal has it too because it is the section that most needs it.
-    let open = !board.terminal_shut;
-    let disc = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::splat(TODO_HEAD));
-    let turn = match open {
-        true => std::f32::consts::PI,
-        false => 0.0,
-    };
-    if ChipButton::new(Icon::ChevDown, TODO_HEAD, "Agent")
-        .mark(10.0, Some(1.6))
-        .turn(turn)
-        .folds(open)
-        .show(rux, disc)
-        .clicked()
-    {
-        board.terminal_shut = open;
-    }
-    let style = Style::sans(12.0).semibold();
-    let words = rux.text(style, &title, theme.ink.i500);
-    rux::text::draw_left_capitals(
-        rux.painter(),
-        Pos2::new(disc.max.x + 10.0, disc.center().y),
-        words,
-        style,
-        theme.ink.i500,
-    );
-    // The two tabs, at the right hand end of the heading row, which is where a section's controls go.
-    let (chosen, tabs_left) = agent_tabs(rux, Pos2::new(area.max.x, disc.center().y), tab);
-    if let Some(chosen) = chosen {
-        board.agent_tab = Some(chosen);
-    }
-    let tab = board.agent_tab_for(task);
-    // `To Side Pane`, before the tabs while the Chat tab shows a conversation (`task-2269`): the same agent and the
-    // same conversation in the Agent-Chat side pane, with the modal closed so the files can be seen beside it.
-    if tab == AgentTab::Chat && board.ticket_chat.is_some() {
-        let pill = rux::components::PillButton::new(TO_SIDE_PANE).mark(Icon::ArrowRight);
-        let width = pill.measure(rux).x;
-        let at = Rect::from_center_size(
-            Pos2::new(tabs_left - 10.0 - width / 2.0, disc.center().y),
-            Vec2::new(width, TAB_HEIGHT + 8.0),
+    // A new ticket has no agent yet, so it has no agent section. Its todos and its comments are drawn as any
+    // ticket's are: `+ Add Task` made the row before anything was typed, so both can be written while the ticket
+    // is being made (`task-2302`: *"sometimes when I create a new task in agent tasks, only the description is
+    // shown, and not the todos and comments"*).
+    if !new {
+        let tab = board.agent_tab_for(task);
+        let live = board.terminal_for(task.id).is_some();
+        let attached =
+            board.terminal_for(task.id).is_some_and(|terminal| terminal.session.is_running());
+        let title = match attached {
+            true => format!("Agent \u{b7} live \u{b7} {}", task.key),
+            false => "Agent".to_owned(),
+        };
+        // **The terminal folds**, as the todos do, and with the same round disc before its heading: a ticket whose
+        // agent has written a screenful is unreadable until it is put away. The design draws the fold for the todos
+        // only; the terminal has it too because it is the section that most needs it.
+        let open = !board.terminal_shut;
+        let disc = Rect::from_min_size(Pos2::new(area.min.x, pen), Vec2::splat(TODO_HEAD));
+        let turn = match open {
+            true => std::f32::consts::PI,
+            false => 0.0,
+        };
+        if ChipButton::new(Icon::ChevDown, TODO_HEAD, "Agent")
+            .mark(10.0, Some(1.6))
+            .turn(turn)
+            .folds(open)
+            .show(rux, disc)
+            .clicked()
+        {
+            board.terminal_shut = open;
+        }
+        let style = Style::sans(12.0).semibold();
+        let words = rux.text(style, &title, theme.ink.i500);
+        rux::text::draw_left_capitals(
+            rux.painter(),
+            Pos2::new(disc.max.x + 10.0, disc.center().y),
+            words,
+            style,
+            theme.ink.i500,
         );
-        let words_end = disc.max.x + 10.0 + rux.measure(style, &title).x;
-        if at.left() > words_end + 8.0 && pill.show(rux, at).clicked() {
-            let key = task.key.clone();
-            match board.to_the_side_pane(&key) {
-                Ok(said) => requests.push(Request::Message(said.message)),
-                Err(problem) => requests.push(Request::Message(problem)),
+        // The two tabs, at the right hand end of the heading row, which is where a section's controls go.
+        let (chosen, tabs_left) = agent_tabs(rux, Pos2::new(area.max.x, disc.center().y), tab);
+        if let Some(chosen) = chosen {
+            board.agent_tab = Some(chosen);
+        }
+        let tab = board.agent_tab_for(task);
+        // `To Side Pane`, before the tabs while the Chat tab shows a conversation (`task-2269`): the same agent and the
+        // same conversation in the Agent-Chat side pane, with the modal closed so the files can be seen beside it.
+        if tab == AgentTab::Chat && board.ticket_chat.is_some() {
+            let pill = rux::components::PillButton::new(TO_SIDE_PANE).mark(Icon::ArrowRight);
+            let width = pill.measure(rux).x;
+            let at = Rect::from_center_size(
+                Pos2::new(tabs_left - 10.0 - width / 2.0, disc.center().y),
+                Vec2::new(width, TAB_HEIGHT + 8.0),
+            );
+            let words_end = disc.max.x + 10.0 + rux.measure(style, &title).x;
+            if at.left() > words_end + 8.0 && pill.show(rux, at).clicked() {
+                let key = task.key.clone();
+                match board.to_the_side_pane(&key) {
+                    Ok(said) => requests.push(Request::Message(said.message)),
+                    Err(problem) => requests.push(Request::Message(problem)),
+                }
             }
         }
-    }
-    pen += TODO_HEAD + LABEL_GAP;
-    let chatting = tab == AgentTab::Chat && board.ticket_chat.is_some();
-    let shown = live || chatting;
-    if open && budget.terminal > 24.0 {
-        let at = Rect::from_min_size(
-            Pos2::new(area.min.x, pen),
-            Vec2::new(area.width(), budget.terminal),
-        );
-        rux.chrome.surface(at, 20.0, chat.well, chat.carved_sm());
-        match (tab, live, chatting) {
-            (AgentTab::Chat, _, true) => requests.extend(agent_chat(board, rux, look, at)),
-            (AgentTab::Chat, _, false) if task.session_id.is_some() => {
-                let agent = board.agent_of(task);
-                let said = match ticket_chat::chat_is_readable(agent) {
+        pen += TODO_HEAD + LABEL_GAP;
+        let chatting = tab == AgentTab::Chat && board.ticket_chat.is_some();
+        let shown = live || chatting;
+        if open && budget.terminal > 24.0 {
+            let at = Rect::from_min_size(
+                Pos2::new(area.min.x, pen),
+                Vec2::new(area.width(), budget.terminal),
+            );
+            rux.chrome.surface(at, 20.0, chat.well, chat.carved_sm());
+            match (tab, live, chatting) {
+                (AgentTab::Chat, _, true) => requests.extend(agent_chat(board, rux, look, at)),
+                (AgentTab::Chat, _, false) if task.session_id.is_some() => {
+                    let agent = board.agent_of(task);
+                    let said = match ticket_chat::chat_is_readable(agent) {
                     true => format!(
                         "{} names no folder that is there, so its agent's conversation cannot be found. Its                          work is in the Terminal tab.",
                         task.key
                     ),
                     false => ticket_chat::why_the_chat_is_empty(agent),
                 };
-                note_in_a_well(rux, at, &said);
+                    note_in_a_well(rux, at, &said);
+                }
+                (AgentTab::Terminal, true, _) => {
+                    let grid = at.shrink2(Vec2::new(10.0, 10.0));
+                    let focused = board.terminal_focused;
+                    requests.extend(super::detail::terminal(
+                        board, rux.ui, look, grid, task.id, focused,
+                    ));
+                }
+                _ => requests.extend(no_terminal(board, rux, at, task)),
             }
-            (AgentTab::Terminal, true, _) => {
-                let grid = at.shrink2(Vec2::new(10.0, 10.0));
-                let focused = board.terminal_focused;
-                requests
-                    .extend(super::detail::terminal(board, rux.ui, look, grid, task.id, focused));
+            // A menu the agent's terminal is waiting on is never in the transcript, so the Chat tab draws it over the
+            // conversation with a button for each option (`task-2263`).
+            if tab == AgentTab::Chat {
+                if let Some(choice) = board.choice_for(task.id) {
+                    requests.extend(choice_card(board, rux, at, task, &choice));
+                }
             }
-            _ => requests.extend(no_terminal(board, rux, at, task)),
+            if shown {
+                let grip =
+                    Grip { salt: "agent-tasks-terminal-grip", name: "Resize agent", corner: true };
+                let most = area.max.y - at.min.y - LABEL - 12.0 - SECTION_GAP;
+                if let Some(height) = section_grip(rux, at, TERMINAL_LEAST, most, grip) {
+                    board.terminal_height = height;
+                }
+            }
+            pen = at.max.y;
         }
-        // A menu the agent's terminal is waiting on is never in the transcript, so the Chat tab draws it over the
-        // conversation with a button for each option (`task-2263`).
-        if tab == AgentTab::Chat {
-            if let Some(choice) = board.choice_for(task.id) {
-                requests.extend(choice_card(board, rux, at, task, &choice));
-            }
-        }
-        if shown {
-            let grip =
-                Grip { salt: "agent-tasks-terminal-grip", name: "Resize agent", corner: true };
-            let most = area.max.y - at.min.y - LABEL - 12.0 - SECTION_GAP;
-            if let Some(height) = section_grip(rux, at, TERMINAL_LEAST, most, grip) {
-                board.terminal_height = height;
-            }
-        }
-        pen = at.max.y;
+        pen += SECTION_GAP;
     }
-    pen += SECTION_GAP;
 
     // ------------------------------------------------------------------ the todos
     // Under the agent and above the comments, shut until somebody opens them, and with no field to add one: the
