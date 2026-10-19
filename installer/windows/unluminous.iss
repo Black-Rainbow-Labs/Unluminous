@@ -143,6 +143,14 @@ Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\{#ExeNam
 Root: HKA; Subkey: "Software\Microsoft\Windows\CurrentVersion\App Paths\{#ExeName}"; ValueType: string; ValueName: "Path"; ValueData: "{app}"
 
 ; ---------------------------------------------------------------------------------------------
+; `task-2301`. The tasks this installer offered. Inno records the tasks that were ticked; this records the
+; tasks that were offered, so the window's Set Up Unluminous dialog can tell a task somebody unticked (which
+; it does not offer again) from a task added after their first install (which it does offer). Keep it in step
+; with [Tasks].
+; ---------------------------------------------------------------------------------------------
+Root: HKA; Subkey: "Software\{#AppName}"; ValueType: string; ValueName: "OfferedTasks"; ValueData: "desktopicon,addtopath,contextfile,contextfolder,associate,connectagents,voice"; Flags: uninsdeletekey
+
+; ---------------------------------------------------------------------------------------------
 ; "Open with Unluminous" on a file, on a folder, and on the empty space inside a folder. %1 is what was
 ; clicked; %V is the folder being looked at when the click was on its background.
 ; ---------------------------------------------------------------------------------------------

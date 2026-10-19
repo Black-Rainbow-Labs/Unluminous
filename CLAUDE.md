@@ -6159,8 +6159,8 @@ it gives the editing area the keyboard so the zoom keys reach it.
 `tasks/task-2278-installers-tdd.md` is the design. `unluminous_cli::setup` puts `unluminous-cli` on the path,
 connects Claude Code, Codex and OpenCode to the MCP server through `mcp::install`, names the API keys that are
 set, and starts `mcp serve` to check it answers. The Windows installer runs it as the `connectagents` task, on
-by default, and the uninstaller runs `setup --remove`; on macOS and Linux the window runs it on the first start
-(`app::first_start`). The agent instructions on unluminous.com run it too. Five rules:
+by default, and the uninstaller runs `setup --remove`; on macOS and Linux the Set Up Unluminous dialog
+takes the same steps when the window starts (`task-2301`, below). The agent instructions on unluminous.com run it too. Five rules:
 
 - **An entry that points at another program that exists is left alone**, unless `--force`. Running it twice
   changes nothing.
@@ -6174,6 +6174,34 @@ by default, and the uninstaller runs `setup --remove`; on macOS and Linux the wi
   checks the real agents list Unluminous as connected, has Claude Code call a tool on the fresh window,
   uninstalls, and puts back and byte compares every registry key, the PATH and the shortcuts the installer
   touches. Run it after any change to the installer or to `setup`.
+
+## The window finishes setup with the Set Up Unluminous dialog (`task-2301`)
+
+`tasks/task-2301-setup-modal-tdd.md` is the design. `components::setup_dialog` draws one row a step (the
+command line tool, each coding agent found, the speech model, the microphone, and the MCP server last), and
+`app::setup` works the plan out and takes the steps on a thread. It opens by itself while setup is not
+finished, in one window a session (`setup-prompt.pid` in the settings folder), and from
+`Unluminous -> Set Up Unluminous...`. Six rules:
+
+- **The steps are `unluminous-cli setup`'s.** `setup::plan` is `--check` without the server and the keys, and
+  `setup::take` takes one step by name. The speech model is `unluminous_voice::install::install`, whose
+  progress draws the row's track.
+- **The microphone is asked for in the window's process.** macOS records a request against the process
+  responsible for it, which for `unluminous-cli setup` run in Terminal is Terminal, so `--setup-voice` no longer
+  asks on macOS.
+- **What the person chose is `setup.conf`** in the settings folder (`setup::record`): `setup.prompt`, which
+  `Don't show this again` turns off; `setup.declined`, a step unticked when `Run Setup` was pressed; and
+  `setup.finished`. `unluminous-cli setup` leaves a declined step alone unless `--force`; the installer's own
+  run (`--installer`) ignores the list, because ticking its box is saying yes again.
+- **A Windows installer task is declined only if it was offered.** Inno records the ticked tasks in
+  `Inno Setup: Selected Tasks`, and the installer now writes the tasks it offered to
+  `HKA\Software\Unluminous\OfferedTasks`. Keep that list in step with `[Tasks]`. A task an upgrade never
+  offered, such as `voice` on a machine first installed before `task-2290`, is offered by the dialog.
+- **Once setup has been finished, a new gap is a notice** (`toast::Act::RunSetup` and `DeclineSetup`), such
+  as an agent installed later. Only a setup never finished opens the dialog.
+- **Only the released binary looks at the machine.** `main` calls `allow_the_setup`; a test hands its own plan
+  and steps to `use_a_setup`. `setup status|open|run|decline|close` is the agent's half, and `setup status`
+  with two words is the window's command while `setup` alone is still the client's.
 
 ## Shipping it is a folder of its own
 

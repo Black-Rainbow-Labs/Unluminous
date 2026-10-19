@@ -2174,6 +2174,32 @@ fn drive_the_modals_and_the_settings(coverage: &mut Coverage) {
     c.works(&mut harness, "report send --no-browser");
     c.works(&mut harness, "report close --discard");
 
+    // The Set Up Unluminous dialog, with a plan and steps of the walk's own, so nothing here reads or
+    // changes the agents, the path or the microphone of the machine running it. `task-2301`.
+    {
+        use std::sync::Arc;
+        use unluminous_app::app::setup::{Plan, Row};
+        use unluminous_cli::setup::State;
+        let plan = || Plan {
+            rows: vec![
+                Row::new("claude", State::Would, "Gives Claude Code its tools."),
+                Row::new("microphone", State::Would, "Asks for the microphone."),
+            ],
+            ..Plan::default()
+        };
+        harness.state_mut().use_a_setup(
+            Arc::new(plan),
+            Arc::new(|name: &str, _: &dyn Fn(f32, &str)| (State::Done, format!("Set up {name}."))),
+        );
+    }
+    c.works(&mut harness, "setup status --json");
+    c.works(&mut harness, "setup open");
+    c.works(&mut harness, "setup run claude");
+    c.refuses(&mut harness, "setup run gemini");
+    c.works(&mut harness, "setup decline microphone");
+    c.refuses(&mut harness, "setup decline server");
+    c.works(&mut harness, "setup close --dont-show-again");
+
     c.works(&mut harness, "settings list --json");
     c.works(&mut harness, "settings get appearance.font.size");
     c.refuses(&mut harness, "settings get no.such.key");

@@ -303,7 +303,7 @@ impl UnluminousApp {
             | Action::DeletePath(_)
             | Action::RevealPath(_)
             | Action::ReloadPath(_) => self.an_explorer_entry(action, ctx),
-            Action::About | Action::CheckForUpdates | Action::ReportIssue => {
+            Action::About | Action::CheckForUpdates | Action::ReportIssue | Action::OpenSetup => {
                 self.an_unluminous_entry(action)
             }
             // The microphone, as a chord: the same toggle the button is, and a second press sends.
@@ -1050,6 +1050,7 @@ impl UnluminousApp {
             }
             Action::CheckForUpdates => self.check_for_updates(),
             Action::ReportIssue => self.open_the_report(),
+            Action::OpenSetup => self.open_the_setup(),
             other => unreachable!("{other:?} is not handled by an_unluminous_entry"),
         }
     }

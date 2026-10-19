@@ -45,6 +45,8 @@ pub enum Action {
     FindInFiles,
     /// Ask the releases page whether a newer Unluminous exists. `task-1804` §6.
     CheckForUpdates,
+    /// `Unluminous -> Set Up Unluminous...`: the dialog that finishes setting Unluminous up. `task-2301`.
+    OpenSetup,
     /// Open the Find bar over the file that is showing. `task-1804` §3.1.
     Find,
     /// The same bar with its Replace row already open.
@@ -1740,6 +1742,8 @@ fn unluminous_menu() -> Menu {
             // own behalf. `update.check` is off until somebody turns it on, and this entry works
             // either way. See `services::update`. `task-1804` §6.
             Entry::item("Check for Updates", Action::CheckForUpdates),
+            // The dialog that opens by itself while setup is not finished. `task-2301`.
+            Entry::item("Set Up Unluminous...", Action::OpenSetup),
             // The flag at the bottom right of the window is the same entry. `task-2276`.
             Entry::item("Report an Issue...", Action::ReportIssue),
             Entry::Separator,

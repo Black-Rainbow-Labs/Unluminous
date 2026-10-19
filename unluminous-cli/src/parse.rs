@@ -116,10 +116,19 @@ pub fn parse(words: &[String]) -> Result<Typed, Problem> {
         return Ok(Typed { command: None, arguments: Map::new(), global });
     }
 
-    // One word or two. `tab open` is two, `status` is one, and `tab.open` is one that holds both.
+    // One word or two. `tab open` is two, `status` is one, and `tab.open` is one that holds both. Two words
+    // that name a command are that command even when the first word is a command on its own: `setup` is
+    // the client's setup and `setup status` is the window's (`task-2301`).
     let first = &words[at];
-    let (command, mut next) = match catalogue::find(first) {
-        Some(command) => (command, at + 1),
+    let two = words
+        .get(at + 1)
+        .and_then(|second| catalogue::find(&format!("{first} {second}")))
+        .filter(|command| !command.area.is_empty());
+    let (command, mut next) = match two
+        .map(|command| (command, at + 2))
+        .or_else(|| catalogue::find(first).map(|command| (command, at + 1)))
+    {
+        Some(found) => found,
         None => {
             let joined = match words.get(at + 1) {
                 Some(second) => format!("{first} {second}"),
@@ -523,6 +532,20 @@ mod tests {
     #[test]
     fn a_command_with_no_area_is_one_word() {
         assert_eq!(parsed("status").command.map(|c| c.wire()), Some("status".to_owned()));
+    }
+
+    #[test]
+    fn a_command_on_its_own_and_an_area_of_the_same_name_are_told_apart_by_the_second_word() {
+        // `setup` is the client's own setup and `setup status` is the window's dialog (`task-2301`).
+        assert_eq!(parsed("setup --check").command.map(|c| c.wire()), Some("setup".to_owned()));
+        assert_eq!(parsed("setup").command.map(|c| c.wire()), Some("setup".to_owned()));
+        assert_eq!(
+            parsed("setup status").command.map(|c| c.wire()),
+            Some("setup.status".to_owned())
+        );
+        let typed = parsed("setup run claude,codex");
+        assert_eq!(typed.command.map(|c| c.wire()), Some("setup.run".to_owned()));
+        assert_eq!(typed.arguments["steps"], Value::String("claude,codex".to_owned()));
     }
 
     #[test]

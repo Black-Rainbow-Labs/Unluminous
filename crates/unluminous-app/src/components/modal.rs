@@ -92,7 +92,10 @@ pub const FILLS_FROM: f32 = 600.0;
 /// The working dialogs that keep the size they asked for: the two lists that are searched by typing and
 /// closed by choosing a row, which are a search box with a list under it the way they are in every
 /// other editor.
-const KEEP_THEIR_SIZE: &[&str] = &["unluminous-command-palette", "unluminous-go-to-file"];
+// Set Up Unluminous is a short list of steps, read and pressed once, so it stays the size it asks for
+// (`task-2301`).
+const KEEP_THEIR_SIZE: &[&str] =
+    &["unluminous-command-palette", "unluminous-go-to-file", "unluminous-setup"];
 
 /// The size a modal starts at in a window this big: the window less [`MARGIN_SHARE`] round it for a
 /// working dialog, and what it asked for otherwise.

@@ -87,6 +87,10 @@ pub enum Act {
     SkipUpdate(String),
     /// Open a page in the person's own browser, for a platform with nothing to install.
     OpenPage(String),
+    /// Open Set Up Unluminous and take the steps that are left. `task-2301`.
+    RunSetup,
+    /// Say no to the steps that are left, so they are not offered again.
+    DeclineSetup,
 }
 
 /// What a person did to the stack this frame.

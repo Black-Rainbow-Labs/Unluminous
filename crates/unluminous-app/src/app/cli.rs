@@ -982,6 +982,7 @@ impl UnluminousApp {
             "mcp" => self.cli_mcp(request, verb),
             "update" => self.cli_update(request, verb),
             "report" => self.cli_report(request, verb),
+            "setup" => self.cli_setup(request, verb),
             "search" => self.cli_search(request, verb),
             "voice" => self.cli_voice(request, verb),
             _ => no(

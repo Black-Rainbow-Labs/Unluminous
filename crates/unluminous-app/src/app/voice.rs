@@ -587,6 +587,16 @@ Open the microphone settings now?"))
                 let _ = unluminous_voice::access::open_settings();
             }
         }
+        // On macOS this program is only ever started by `unluminous-cli setup`, very often from a terminal, and
+        // macOS records a microphone request against the terminal that started it. It also exits before the
+        // answer comes back. So the window's Set Up Unluminous dialog asks, in Unluminous's own process.
+        // `task-2301`.
+        unluminous_voice::access::Access::NotAsked if cfg!(target_os = "macos") => {
+            said.push(
+                "microphone: not asked yet; Set Up Unluminous asks the next time Unluminous opens"
+                    .to_owned(),
+            );
+        }
         unluminous_voice::access::Access::NotAsked => {
             unluminous_voice::access::request();
             said.push("microphone: asked".to_owned());

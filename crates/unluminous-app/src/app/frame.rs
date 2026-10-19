@@ -153,6 +153,7 @@ impl UnluminousApp {
         self.show_the_references(ui);
         self.show_the_about_box(ui);
         self.show_the_report(ui);
+        self.show_the_setup(ui);
         // The two debug modals, beside the other project-wide dialogs and for the same reason: only
         // one is ever open, so where they are drawn among the others decides nothing.
         self.show_the_debug_modals(ui.ctx());
@@ -1603,8 +1604,9 @@ impl UnluminousApp {
         if self.take_the_install_progress() {
             ui.ctx().request_repaint();
         }
-        // What the first start's `setup` connected, on macOS and Linux. `task-2278`.
-        if self.take_the_first_setup() {
+        // Whether setup is finished, as the window starts, and what a setup run did. `task-2301`.
+        self.decide_whether_to_open_the_setup();
+        if self.take_the_setup_news() {
             ui.ctx().request_repaint();
         }
         // What speech to text heard, for the prompt that is listening. `task-2290`.

@@ -1600,6 +1600,76 @@ unluminous-cli report close
 unluminous-cli report close --discard
 ```
 
+## setup — the Set Up Unluminous dialog
+
+Read `setup status` first. `unluminous-cli setup` with no second word is a different command: it runs in your terminal.
+
+### setup status
+
+```
+unluminous-cli setup status
+```
+
+Each setup step's state, and whether the dialog is open.
+
+```sh
+unluminous-cli setup status --json
+```
+
+### setup open
+
+```
+unluminous-cli setup open
+```
+
+Open the Set Up Unluminous dialog.
+
+```sh
+unluminous-cli setup open
+```
+
+### setup run
+
+```
+unluminous-cli setup run [steps]
+```
+
+Press Run Setup: take the steps named, or every one not done. Answers at once.
+
+- `steps` (optional) — path, claude, codex, opencode, speech-model, microphone, comma separated.
+
+```sh
+unluminous-cli setup run claude,codex
+```
+
+### setup decline
+
+```
+unluminous-cli setup decline <steps>
+```
+
+Say no to steps, so they are not offered again.
+
+- `steps` — As for setup run.
+
+```sh
+unluminous-cli setup decline microphone
+```
+
+### setup close
+
+```
+unluminous-cli setup close [--dont-show-again]
+```
+
+Close the dialog; a run carries on.
+
+- `--dont-show-again` — Stop it opening by itself.
+
+```sh
+unluminous-cli setup close
+```
+
 ## highlight — the passages marked in the project's files
 
 A highlight is a color behind a passage of text. It stays there until it is cleared, in this file and next time the project is opened, and it moves with the text as the file is edited. These work on a file whether it is open or not, so `highlight apply` can mark twenty passages across twenty files in one call.

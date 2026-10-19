@@ -50,6 +50,10 @@ pub struct Options {
     /// Whether to download what speech to text needs and ask about the microphone, by running the window
     /// program beside this one with `--setup-voice`. Off with `--no-voice`. `task-2290`.
     pub voice: bool,
+    /// The steps the person said no to in the Set Up Unluminous dialog or the installer, by step name
+    /// (`path`, `claude`, `codex`, `opencode`, `speech-model`, `microphone`). Each is reported as
+    /// declined and left alone, unless `force` is set. `task-2301`.
+    pub declined: Vec<String>,
 }
 
 impl Default for Options {
@@ -62,6 +66,7 @@ impl Default for Options {
             path: PathChoice::Auto,
             ask_the_server: true,
             voice: true,
+            declined: Vec::new(),
         }
     }
 }
@@ -157,6 +162,8 @@ pub enum State {
     Skipped,
     /// Something somebody else chose is in the way, and it was left as it was.
     Left,
+    /// The person said no to this step, in the Set Up Unluminous dialog or the installer. `task-2301`.
+    Declined,
     /// Information only, such as which keys are set.
     Noted,
     /// It did not work.
@@ -171,6 +178,7 @@ impl State {
             State::Would => "would",
             State::Skipped => "skipped",
             State::Left => "left",
+            State::Declined => "declined",
             State::Noted => "noted",
             State::Failed => "failed",
         }
@@ -267,10 +275,16 @@ pub fn run(options: &Options, machine: &Machine) -> Report {
         ));
         return report;
     }
-    report.steps.push(path::step(options, machine));
+    report.steps.push(match declined("path", options) {
+        Some(step) => step,
+        None => path::step(options, machine),
+    });
     for client in Client::ALL {
         if options.agents.contains(&client) {
-            report.steps.push(agent_step(client, options, machine));
+            report.steps.push(match declined(client.name(), options) {
+                Some(step) => step,
+                None => agent_step(client, options, machine),
+            });
         }
     }
     if !options.remove {
@@ -279,10 +293,77 @@ pub fn run(options: &Options, machine: &Machine) -> Report {
             report.steps.push(server_step(&machine.program));
         }
         if options.voice {
-            report.steps.push(voice_step(options, &machine.program));
+            let both = ["speech-model", "microphone"]
+                .iter()
+                .all(|name| options.declined.iter().any(|declined| declined == name));
+            report.steps.push(match both && !options.force {
+                true => Step::new(
+                    "voice",
+                    State::Declined,
+                    "Speech to text was declined, so it was not set up. `--force` sets it up anyway.",
+                    json!({}),
+                ),
+                false => voice_step(options, &machine.program),
+            });
         }
     }
     report
+}
+
+/// The step `name` as declined, when the person said no to it and `--force` was not given.
+fn declined(name: &str, options: &Options) -> Option<Step> {
+    if options.force || options.remove || !options.declined.iter().any(|declined| declined == name)
+    {
+        return None;
+    }
+    let what = match name {
+        "path" => "Putting `unluminous-cli` on the path".to_owned(),
+        other => match Client::parse(other) {
+            Some(client) => format!("Connecting {}", client.title()),
+            None => format!("`{other}`"),
+        },
+    };
+    Some(Step::new(
+        name,
+        State::Declined,
+        format!("{what} was declined, so it was left as it is. `--force` does it anyway."),
+        json!({}),
+    ))
+}
+
+/// What setup would do on this machine, step by step, without doing any of it: the path and each agent,
+/// as `--check` reports them. The server is left out, because asking it is a check of what a run has just
+/// changed, and so are the keys, which are information only. The Set Up Unluminous dialog draws a row for
+/// each step this answers. `task-2301`.
+pub fn plan(options: &Options, machine: &Machine) -> Vec<Step> {
+    let checking = Options { check: true, ask_the_server: false, voice: false, ..options.clone() };
+    run(&checking, machine).steps.into_iter().filter(|step| step.step != "keys").collect()
+}
+
+/// Take the one step called `name`: `path`, an agent's name, or `server`. `None` for a name that is not
+/// one of those. The dialog takes the steps one at a time so it can draw each as it finishes.
+pub fn take(name: &str, options: &Options, machine: &Machine) -> Option<Step> {
+    if name == "server" {
+        return Some(server_step(&machine.program));
+    }
+    if name == "keys" {
+        return Some(keys_step(machine));
+    }
+    let only = Options {
+        ask_the_server: false,
+        voice: false,
+        agents: Client::parse(name).into_iter().collect(),
+        ..options.clone()
+    };
+    if name != "path" && only.agents.is_empty() {
+        return None;
+    }
+    run(&only, machine).steps.into_iter().find(|step| step.step == name)
+}
+
+/// The API keys the window's endpoints read, set or not.
+pub fn keys(machine: &Machine) -> Step {
+    keys_step(machine)
 }
 
 /// How long the window program may take to download the speech model and ONNX Runtime.
@@ -1236,6 +1317,224 @@ pub mod path {
     pub use platform::{link_folder, profile, profile_line, MARK};
 }
 
+// ---------------------------------------------------------------------------------------- record
+
+/// What the person chose about setup, kept in `setup.conf` in the settings folder (`task-2301`).
+///
+/// Three things: whether the Set Up Unluminous dialog may open by itself, the steps the person said no to,
+/// and the version and time of the last run that left setup finished. The window writes it; `unluminous-cli
+/// setup` reads the declined steps so it does not do behind the person's back what they said no to.
+pub mod record {
+    use super::*;
+
+    /// The file's name in the settings folder.
+    pub const FILE: &str = "setup.conf";
+
+    /// What `setup.conf` says.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct Record {
+        /// Whether the dialog may open by itself. `Don't show this again` turns it off.
+        pub prompt: bool,
+        /// The steps declined, by step name.
+        pub declined: Vec<String>,
+        /// `<version> <seconds since 1970>` of the last run that left setup finished, when there was one.
+        pub finished: Option<String>,
+    }
+
+    impl Default for Record {
+        fn default() -> Self {
+            Record { prompt: true, declined: Vec::new(), finished: None }
+        }
+    }
+
+    impl Record {
+        /// Whether `name` was declined.
+        pub fn has_declined(&self, name: &str) -> bool {
+            self.declined.iter().any(|declined| declined == name)
+        }
+
+        /// Say no to `name`, once.
+        pub fn decline(&mut self, name: &str) {
+            if !self.has_declined(name) {
+                self.declined.push(name.to_owned());
+            }
+        }
+
+        /// Take `name` off the declined list, which running it on purpose does.
+        pub fn accept(&mut self, name: &str) {
+            self.declined.retain(|declined| declined != name);
+        }
+
+        /// The file's text.
+        pub fn to_text(&self) -> String {
+            let mut text = String::from(
+                "# What you chose in Set Up Unluminous. Delete this file to be asked again.\n",
+            );
+            let prompt = match self.prompt {
+                true => "on",
+                false => "off",
+            };
+            text.push_str(&format!("setup.prompt = {prompt}\n"));
+            text.push_str(&format!("setup.declined = {}\n", self.declined.join(",")));
+            if let Some(finished) = &self.finished {
+                text.push_str(&format!("setup.finished = {finished}\n"));
+            }
+            text
+        }
+
+        /// Read the file's text. A line this version does not know is ignored.
+        pub fn parse(text: &str) -> Record {
+            let mut record = Record::default();
+            for line in text.lines().map(str::trim).filter(|line| !line.starts_with('#')) {
+                let Some((key, value)) = line.split_once('=') else { continue };
+                let value = value.trim();
+                match key.trim() {
+                    "setup.prompt" => record.prompt = value != "off",
+                    "setup.declined" => {
+                        record.declined = value
+                            .split(',')
+                            .map(str::trim)
+                            .filter(|name| !name.is_empty())
+                            .map(str::to_owned)
+                            .collect()
+                    }
+                    "setup.finished" if !value.is_empty() => {
+                        record.finished = Some(value.to_owned())
+                    }
+                    _ => {}
+                }
+            }
+            record
+        }
+    }
+
+    /// `setup.conf` in `folder`, or the default when there is none.
+    pub fn read(folder: &Path) -> Record {
+        std::fs::read_to_string(folder.join(FILE))
+            .map(|text| Record::parse(&text))
+            .unwrap_or_default()
+    }
+
+    /// Write `record` to `setup.conf` in `folder`.
+    pub fn write(folder: &Path, record: &Record) -> Result<(), String> {
+        let file = folder.join(FILE);
+        std::fs::create_dir_all(folder)
+            .and_then(|()| std::fs::write(&file, record.to_text()))
+            .map_err(|problem| format!("{} could not be written: {problem}", file.display()))
+    }
+
+    /// Whether setup is finished: every step is done, already as it should be, left because somebody else
+    /// chose it, skipped because there is nothing to do, or declined. The server and the keys are not steps
+    /// a person can finish, so they are left out.
+    pub fn finished<'a>(
+        steps: impl IntoIterator<Item = (&'a str, State)>,
+        record: &Record,
+    ) -> bool {
+        steps.into_iter().filter(|(name, _)| !matches!(*name, "server" | "keys")).all(
+            |(name, state)| {
+                record.has_declined(name)
+                    || matches!(
+                        state,
+                        State::Done
+                            | State::Already
+                            | State::Left
+                            | State::Skipped
+                            | State::Declined
+                    )
+            },
+        )
+    }
+
+    /// The steps the Windows installer's tick boxes said no to, from what it offered and what was ticked.
+    ///
+    /// A task that was offered and not ticked was declined. A task that is not in `offered` was not offered
+    /// to this person, because their installer came before it, so it is not declined: an upgrade keeps the
+    /// tasks the first install chose and does not ask about a task added since. An installer from before
+    /// `task-2301` wrote no list of what it offered, which is `offered` empty.
+    pub fn declined_by_the_installer(selected: &str, offered: &str) -> Vec<String> {
+        let list = |text: &str| -> Vec<String> {
+            text.split(',')
+                .map(|task| task.trim().to_lowercase())
+                .filter(|task| !task.is_empty())
+                .collect()
+        };
+        let (selected, offered) = (list(selected), list(offered));
+        let mut declined = Vec::new();
+        for task in offered.iter().filter(|task| !selected.contains(task)) {
+            let steps: &[&str] = match task.as_str() {
+                "addtopath" => &["path"],
+                "connectagents" => &["claude", "codex", "opencode"],
+                "voice" => &["speech-model", "microphone"],
+                _ => &[],
+            };
+            declined.extend(steps.iter().map(|step| step.to_string()));
+        }
+        declined
+    }
+
+    /// What the Windows installer recorded on this machine: the tasks that were ticked and the tasks it
+    /// offered. `None` when Unluminous was not put here by the installer, and on every other platform.
+    pub fn the_installers_tasks() -> Option<(String, String)> {
+        #[cfg(windows)]
+        {
+            windows::tasks()
+        }
+        #[cfg(not(windows))]
+        {
+            None
+        }
+    }
+
+    #[cfg(windows)]
+    mod windows {
+        use windows_sys::Win32::System::Registry::{
+            RegGetValueW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ,
+        };
+
+        /// The installer's record of this install, which Inno Setup names after the AppId.
+        const UNINSTALL: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{64635361-18F5-4632-B119-16D487214CA1}_is1";
+        /// Where the installer writes the tasks it offered.
+        const OURS: &str = "Software\\Unluminous";
+
+        fn wide(text: &str) -> Vec<u16> {
+            text.encode_utf16().chain(std::iter::once(0)).collect()
+        }
+
+        fn read(root: HKEY, key: &str, name: &str) -> Option<String> {
+            let (key, name) = (wide(key), wide(name));
+            let mut buffer = vec![0u16; 2048];
+            let mut size = (buffer.len() * 2) as u32;
+            // Safe: `buffer` outlives the call and `size` says how large it is in bytes.
+            let status = unsafe {
+                RegGetValueW(
+                    root,
+                    key.as_ptr(),
+                    name.as_ptr(),
+                    RRF_RT_REG_SZ,
+                    std::ptr::null_mut(),
+                    buffer.as_mut_ptr().cast(),
+                    &mut size,
+                )
+            };
+            if status != 0 {
+                return None;
+            }
+            let length = (size as usize / 2).saturating_sub(1).min(buffer.len());
+            Some(String::from_utf16_lossy(&buffer[..length]))
+        }
+
+        pub fn tasks() -> Option<(String, String)> {
+            for root in [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
+                if let Some(selected) = read(root, UNINSTALL, "Inno Setup: Selected Tasks") {
+                    let offered = read(root, OURS, "OfferedTasks").unwrap_or_default();
+                    return Some((selected, offered));
+                }
+            }
+            None
+        }
+    }
+}
+
 // ------------------------------------------------------------------------------------------- log
 
 /// Write the report to `setup.log` in the settings folder, which is where the Windows installer's
@@ -1561,5 +1860,124 @@ mod tests {
         std::fs::write(bin.join("codex"), "#!/bin/sh\n").expect("write");
         let found = look_up("codex", bin.as_os_str());
         assert_eq!(found.is_some(), !cfg!(windows), "{found:?}");
+    }
+}
+
+/// The pieces the Set Up Unluminous dialog rests on (`task-2301`).
+#[cfg(test)]
+mod dialog_tests {
+    use super::record::{self, Record};
+    use super::*;
+    use crate::mcp::install::tests::ONE_AT_A_TIME;
+
+    #[test]
+    fn the_record_reads_back_what_it_wrote_and_ignores_what_it_does_not_know() {
+        let mut record = Record::default();
+        record.prompt = false;
+        record.decline("microphone");
+        record.decline("codex");
+        record.decline("codex");
+        record.finished = Some("1.0.20 1792376339".to_owned());
+        let text = record.to_text();
+        assert_eq!(Record::parse(&text), record);
+        assert_eq!(record.declined, ["microphone", "codex"], "declining twice is once");
+        let older = format!("{text}setup.something_later = yes\n");
+        assert_eq!(Record::parse(&older), record);
+        record.accept("codex");
+        assert_eq!(record.declined, ["microphone"]);
+        assert_eq!(Record::parse(""), Record::default());
+        assert!(Record::default().prompt, "a person who has chosen nothing is offered setup");
+    }
+
+    #[test]
+    fn the_record_is_written_into_the_folder_it_is_given() {
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-setup-record-{}", std::process::id()));
+        std::fs::remove_dir_all(&folder).ok();
+        let mut record = Record::default();
+        record.decline("path");
+        record::write(&folder, &record).expect("write it");
+        assert_eq!(record::read(&folder), record);
+        assert_eq!(record::read(&folder.join("nowhere")), Record::default());
+        std::fs::remove_dir_all(&folder).ok();
+    }
+
+    #[test]
+    fn setup_is_finished_when_nothing_is_left_that_was_not_declined() {
+        let mut record = Record::default();
+        let mostly = [
+            ("path", State::Already),
+            ("claude", State::Done),
+            ("codex", State::Left),
+            ("opencode", State::Skipped),
+            ("server", State::Failed),
+            ("keys", State::Noted),
+        ];
+        assert!(
+            record::finished(mostly, &record),
+            "the server and the keys are not steps a person finishes"
+        );
+        let left = [("path", State::Already), ("microphone", State::Would)];
+        assert!(!record::finished(left, &record));
+        record.decline("microphone");
+        assert!(record::finished(left, &record));
+        assert!(!record::finished([("claude", State::Failed)], &Record::default()));
+        assert!(record::finished([("claude", State::Declined)], &Record::default()));
+    }
+
+    #[test]
+    fn a_task_the_installer_offered_and_was_unticked_is_declined_and_one_it_never_offered_is_not() {
+        let offered =
+            "desktopicon,addtopath,contextfile,contextfolder,associate,connectagents,voice";
+        assert_eq!(
+            record::declined_by_the_installer("desktopicon,addtopath,connectagents", offered),
+            ["speech-model", "microphone"]
+        );
+        assert_eq!(
+            record::declined_by_the_installer("desktopicon,voice", offered),
+            ["path", "claude", "codex", "opencode"]
+        );
+        // This machine's own record, from an installer that came before `task-2301`: `voice` is missing
+        // because it was never offered, so nothing is declined and the dialog offers it.
+        let measured = "desktopicon,addtopath,contextfile,contextfolder,associate,connectagents";
+        assert!(record::declined_by_the_installer(measured, "").is_empty());
+    }
+
+    #[test]
+    fn plan_changes_nothing_and_take_does_one_step() {
+        let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let home =
+            std::env::temp_dir().join(format!("unluminous-setup-plan-{}", std::process::id()));
+        std::fs::remove_dir_all(&home).ok();
+        std::fs::create_dir_all(home.join(".claude")).expect("a Claude Code folder");
+        std::env::set_var("UNLUMINOUS_HOME", &home);
+        let program =
+            home.join(if cfg!(windows) { "unluminous-cli.exe" } else { "unluminous-cli" });
+        std::fs::write(&program, "").expect("a program");
+        let machine = Machine {
+            program,
+            search_path: std::ffi::OsString::new(),
+            home: home.clone(),
+            variables: vec![],
+        };
+        let options = Options { path: PathChoice::No, ..Options::default() };
+        let planned = plan(&options, &machine);
+        let names: Vec<&str> = planned.iter().map(|step| step.step.as_str()).collect();
+        assert_eq!(names, ["path", "claude", "codex", "opencode"]);
+        assert_eq!(planned[1].state, State::Would, "{}", planned[1].message);
+        assert!(!home.join(".claude.json").exists(), "planning wrote nothing");
+
+        let declined = Options { declined: vec!["claude".to_owned()], ..options.clone() };
+        assert_eq!(plan(&declined, &machine)[1].state, State::Declined);
+        let forced = Options { force: true, ..declined.clone() };
+        assert_eq!(plan(&forced, &machine)[1].state, State::Would);
+
+        let taken = take("claude", &options, &machine).expect("a step");
+        assert_eq!(taken.state, State::Done, "{}", taken.message);
+        assert!(home.join(".claude.json").exists(), "taking it connected Claude Code");
+        assert_eq!(take("claude", &options, &machine).unwrap().state, State::Already);
+        assert!(take("gemini", &options, &machine).is_none());
+        std::env::remove_var("UNLUMINOUS_HOME");
+        std::fs::remove_dir_all(&home).ok();
     }
 }

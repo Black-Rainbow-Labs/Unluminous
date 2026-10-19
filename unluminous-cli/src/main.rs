@@ -456,6 +456,15 @@ fn setup(typed: &Typed) -> i32 {
         },
         ask_the_server: true,
         voice: !flag("no-voice"),
+        // What the person said no to in the Set Up Unluminous dialog (`task-2301`). The installer's own
+        // run ignores it, because ticking the installer's box is the person saying yes again.
+        declined: match flag("installer") {
+            true => Vec::new(),
+            false => {
+                unluminous_cli::setup::record::read(&unluminous_cli::instances::settings_folder())
+                    .declined
+            }
+        },
     };
     let machine = unluminous_cli::setup::Machine::this_one();
     let report = unluminous_cli::setup::run(&options, &machine);

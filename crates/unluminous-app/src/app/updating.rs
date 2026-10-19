@@ -108,6 +108,8 @@ impl UnluminousApp {
                     self.message = Some(problem);
                 }
             }
+            Act::RunSetup => self.act_on_the_setup_notice(true),
+            Act::DeclineSetup => self.act_on_the_setup_notice(false),
         }
     }
 

@@ -67,7 +67,6 @@ pub mod report;
 pub mod servers;
 pub mod signature;
 // The window's side of the UI plugins: which providers are open, and which of their panes are showing.
-mod first_start;
 pub mod plugin_panes;
 mod preview;
 pub mod realm;
@@ -75,6 +74,7 @@ pub mod realm_files;
 pub mod realm_nodes;
 mod running;
 mod settings_changes;
+pub mod setup;
 pub mod symbols;
 pub mod telemetry;
 mod terminals;
@@ -1292,8 +1292,8 @@ pub struct UnluminousApp {
     /// Whether the settings folder had no settings file when this window was given its store, which is
     /// what a first start on a machine looks like (`task-2278`).
     pub(crate) fresh_install: bool,
-    /// The answer of `unluminous-cli setup` run on the first start, while it is being worked out.
-    pub(crate) first_setup: Option<std::sync::mpsc::Receiver<unluminous_cli::setup::Report>>,
+    /// The Set Up Unluminous dialog: what is left of setting Unluminous up on this machine. `task-2301`.
+    pub setup: setup::SetupState,
     /// Speech to text for the Agent-Chat prompt: the engine, whose prompt is listening, and the dialog the
     /// microphone opens when it cannot. `task-2290`. Nothing is started until something needs it.
     pub voice: voice::VoiceState,
@@ -1660,7 +1660,7 @@ impl UnluminousApp {
             update_looked_at: 0.0,
             install: None,
             fresh_install: false,
-            first_setup: None,
+            setup: setup::SetupState::default(),
             voice: voice::VoiceState::default(),
             find: None,
             find_in_files: None,

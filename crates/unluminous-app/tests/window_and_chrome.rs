@@ -4227,6 +4227,7 @@ const EVERY_VARIANT: &[&str] = &[
     "Fold",
     "About",
     "ReportIssue",
+    "OpenSetup",
     "Dictate",
     "Quit",
     "PluginPane",
@@ -4336,6 +4337,7 @@ fn variant_name(action: &Action) -> &'static str {
         Action::Fold(_) => "Fold",
         Action::About => "About",
         Action::ReportIssue => "ReportIssue",
+        Action::OpenSetup => "OpenSetup",
         Action::Dictate => "Dictate",
         Action::Quit => "Quit",
         Action::PluginPane { .. } => "PluginPane",
@@ -5094,6 +5096,7 @@ fn every_step() -> Vec<Step> {
         Step::new(Action::ClearHighlights).after(&["highlight add --from-line 3 --to-line 3"]),
         Step::new(Action::About),
         Step::new(Action::ReportIssue),
+        Step::new(Action::OpenSetup),
         Step::new(Action::PluginPane { pane: "agent-tasks/board".to_owned() }),
         // A plugin command that changes the window rather than one that answers with data: this is
         // the half of the plugin contract Unluminous owns, and it is what puts a pane on the screen.
@@ -6522,4 +6525,153 @@ fn ink_rows(
         panic!("no letters were found in {rect:?}");
     };
     (*first as f32 / scale, (*last + 1) as f32 / scale)
+}
+
+// ------------------------------------------------------------------ the Set Up Unluminous dialog
+
+/// The Set Up Unluminous dialog (`task-2301`), with a planner and steps of the test's own, so nothing here
+/// reads or changes the agents, the path or the microphone of the machine running it.
+mod setup_dialog {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+    use unluminous_app::app::setup::{Plan, Planner, Row, Taker};
+    use unluminous_cli::setup::State;
+
+    /// Every state a row can be in at once: one done, one to do, one left alone, one failed with the
+    /// button that fixes it, one declined, and the server waiting for a run.
+    fn a_plan() -> Plan {
+        Plan {
+            rows: vec![
+                Row::new("path", State::Already, "`unluminous-cli` is on the path, in /Applications/Unluminous.app/Contents/MacOS."),
+                Row::new("claude", State::Would, "Gives Claude Code Unluminous's tools, through its MCP server."),
+                Row::new("codex", State::Left, "Codex's `unluminous` entry points at a build in a checkout, so it was left as it is."),
+                Row::new("opencode", State::Would, "Gives OpenCode Unluminous's tools, through its MCP server."),
+                Row::new("speech-model", State::Would, "Downloads the model that turns speech into text in the Agent-Chat prompt."),
+                Row::new("microphone", State::Failed, "Microphone access is off in Settings -> Privacy & security -> Microphone."),
+                Row { ticked: false, ..Row::new("server", State::Would, "Asked whether it answers once the steps above have run.") },
+            ],
+            not_found: vec![],
+            keys: "ANTHROPIC_API_KEY is set, so Unluminous offers the Anthropic API.".to_owned(),
+        }
+    }
+
+    fn planner() -> Planner {
+        Arc::new(a_plan)
+    }
+
+    /// Steps that remember what they were asked to take, and answer at once.
+    fn taker(taken: Arc<Mutex<Vec<String>>>) -> Taker {
+        Arc::new(move |name: &str, progress: &dyn Fn(f32, &str)| {
+            taken.lock().unwrap().push(name.to_owned());
+            progress(0.5, "half way");
+            match name {
+                "server" => (State::Already, "The MCP server answered with 33 tools.".to_owned()),
+                other => (State::Done, format!("Set up {other}.")),
+            }
+        })
+    }
+
+    /// Draw until `done` says so, for a plan or a run arriving from its thread.
+    fn until(harness: &mut Harness<'static, UnluminousApp>, done: impl Fn(&UnluminousApp) -> bool) {
+        for _ in 0..400 {
+            if done(harness.state()) {
+                steady(harness);
+                return;
+            }
+            pump(harness);
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        panic!("the setup dialog never got there");
+    }
+
+    fn opened(taken: Arc<Mutex<Vec<String>>>) -> Harness<'static, UnluminousApp> {
+        let mut harness = harness("Text behind the setup dialog.");
+        harness.state_mut().use_a_setup(planner(), taker(taken));
+        let ctx = harness.ctx.clone();
+        harness.state_mut().run_action(Action::OpenSetup, &ctx);
+        until(&mut harness, |app| app.setup.plan.is_some());
+        harness
+    }
+
+    #[test]
+    fn the_dialog_draws_one_row_a_step_with_its_state() {
+        let mut harness = opened(Arc::default());
+        assert!(harness.state().setup.showing);
+        harness.get_by_label("Set up Unluminous");
+        harness.get_by_label("Command line tool: already");
+        harness.get_by_label("Claude Code: to do");
+        harness.get_by_label("Codex: left");
+        harness.get_by_label("Microphone: failed");
+        harness.get_by_label("Open Settings");
+        harness.get_by_label("Run Setup");
+        harness.snapshot(shot("setup_dialog"));
+    }
+
+    #[test]
+    fn run_takes_the_ticked_steps_and_the_server_and_declines_the_unticked() {
+        let taken = Arc::new(Mutex::new(Vec::new()));
+        let mut harness = opened(taken.clone());
+        harness.get_by_label("Set up OpenCode").click();
+        steady(&mut harness);
+        harness.get_by_label("Run Setup").click();
+        until(&mut harness, |app| app.setup.runs == 1);
+        assert_eq!(*taken.lock().unwrap(), ["claude", "speech-model", "microphone", "server"]);
+        let rows = &harness.state().setup.plan.as_ref().unwrap().rows;
+        let state = |name: &str| rows.iter().find(|row| row.name == name).unwrap().state;
+        assert_eq!(state("opencode"), State::Declined);
+        assert_eq!(state("claude"), State::Done);
+        assert_eq!(state("server"), State::Already);
+        assert!(harness.query_all_by_label("Run Setup").next().is_none(), "nothing is left to run");
+        harness.snapshot(shot("setup_dialog_done"));
+    }
+
+    #[test]
+    fn a_step_that_is_running_is_drawn_running_with_how_far_it_has_got() {
+        let release = Arc::new(AtomicBool::new(false));
+        let held = release.clone();
+        let taker: Taker = Arc::new(move |name: &str, progress: &dyn Fn(f32, &str)| {
+            if name == "speech-model" {
+                progress(0.42, "Downloading the speech model 42%");
+                while !held.load(Ordering::SeqCst) {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+            }
+            (State::Done, format!("Set up {name}."))
+        });
+        let mut harness = harness("Text behind the setup dialog.");
+        harness.state_mut().use_a_setup(planner(), taker);
+        let ctx = harness.ctx.clone();
+        let reply = harness.state_mut().run_command_line("setup run claude,speech-model", &ctx);
+        assert!(reply.is_none_or(|reply| reply.ok), "setup run was refused");
+        until(&mut harness, |app| {
+            app.setup.plan.as_ref().is_some_and(|plan| {
+                plan.rows
+                    .iter()
+                    .any(|row| row.name == "speech-model" && row.running && row.fraction.is_some())
+            })
+        });
+        harness.get_by_label("Speech model (66 MB): running");
+        harness.get_by_label("Stop");
+        harness.snapshot(shot("setup_dialog_running"));
+        release.store(true, Ordering::SeqCst);
+        until(&mut harness, |app| app.setup.runs == 1);
+    }
+
+    #[test]
+    fn dont_show_this_again_is_kept_and_a_window_a_test_builds_never_opens_it_by_itself() {
+        let mut harness = harness("");
+        harness.state_mut().use_a_setup(planner(), taker(Arc::default()));
+        steady(&mut harness);
+        assert!(!harness.state().setup.showing, "only the released binary opens it by itself");
+        let ctx = harness.ctx.clone();
+        harness.state_mut().run_action(Action::OpenSetup, &ctx);
+        until(&mut harness, |app| app.setup.plan.is_some());
+        harness.get_by_label("Don't show this again").click();
+        steady(&mut harness);
+        assert!(harness.state().setup.dont_show);
+        harness.get_by_label("Not Now").click();
+        steady(&mut harness);
+        assert!(!harness.state().setup.showing);
+    }
 }
