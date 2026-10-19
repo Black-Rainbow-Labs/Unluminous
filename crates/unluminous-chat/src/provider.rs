@@ -85,7 +85,7 @@ pub enum Wire {
     /// configuration names (`task-2302`).
     PiCli,
     /// An agent spoken to through the Agent Client Protocol (`task-2308`): JSON-RPC over the program's
-    /// standard input and output, which Zed, JetBrains and the agents in the ACP registry speak. The program and
+    /// standard input and output, which Zed and the agents in the ACP registry speak. The program and
     /// its arguments are the row's own, because an ACP agent is often `npx` with a package after it.
     Acp,
 }
