@@ -969,6 +969,11 @@ pub struct UnluminousApp {
     /// Set when a person closed the window: its close button, `Close Window`, `Quit` or `unluminous-cli quit`.
     /// Such a window leaves the session unless it is the only one open; see `Store::forget_open_window`.
     pub closed_by_hand: bool,
+    /// Set when this window was started with no project to open, and is waiting for the person to choose one
+    /// in the Set Up Unluminous dialog (`task-2305`). Its folder is an empty placeholder in the settings folder:
+    /// it is not remembered as a recent project, does not join the session, and is not indexed. Choosing a
+    /// project opens it in a window of its own and closes this one. See [`Self::wait_for_a_project`].
+    pub waiting_for_a_project: bool,
     /// Where the settings are kept. Absent until [`Self::load_settings`] is called, which the released
     /// binary does and the tests do not, so a test never reads or writes the settings of the person running
     /// it.
@@ -1594,6 +1599,7 @@ impl UnluminousApp {
             toast_rux: None,
             closing: false,
             closed_by_hand: false,
+            waiting_for_a_project: false,
             store: None,
             unsaved_settings: false,
             keymap: std::sync::Arc::default(),
@@ -1902,7 +1908,12 @@ impl UnluminousApp {
         if self.settings.update_check.at_start() {
             self.check_for_updates_on_its_own();
         }
-        store.remember_project(self.tree.root());
+        // A window waiting for a project is on a placeholder nobody chose, which is neither a recent project nor
+        // a window anybody wants back next time (`task-2305`).
+        let waiting = self.waiting_for_a_project;
+        if !waiting {
+            store.remember_project(self.tree.root());
+        }
         // And that this project has a window open, which is what `task-1693` asks Unluminous to bring
         // back next time. A window that is already in the list writes nothing — `Store::open_windows`
         // records why.
@@ -1914,7 +1925,7 @@ impl UnluminousApp {
         //
         // **And only a window a person would want back** (`task-2253`): one started with `--background`, which
         // is a window something is driving, stays out. See `store::joins_the_session`.
-        if crate::services::store::this_window_joins_the_session() {
+        if !waiting && crate::services::store::this_window_joins_the_session() {
             store.remember_open_window(self.tree.root(), std::process::id(), &window_is_running);
         }
         self.recent = store.recent_projects();
@@ -2753,7 +2764,10 @@ impl eframe::App for UnluminousApp {
         crate::services::allocation_profile::write_the_report();
         // **A window a person closed leaves the session**, unless it was the only one open (`task-2253`). A
         // window the operating system closed keeps its line, so a restart of the machine brings it back.
-        if self.closed_by_hand && crate::services::store::this_window_joins_the_session() {
+        if self.closed_by_hand
+            && !self.waiting_for_a_project
+            && crate::services::store::this_window_joins_the_session()
+        {
             if let Some(store) = &self.store {
                 store.forget_open_window(self.tree.root(), std::process::id(), &window_is_running);
             }

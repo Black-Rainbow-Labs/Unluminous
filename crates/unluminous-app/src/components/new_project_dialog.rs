@@ -43,7 +43,14 @@ impl NewProject {
     /// `untitled` counts up past whatever is already there, so pressing Create twice in a row makes two
     /// projects rather than refusing the second — the reference dialog's own `untitled1`, `untitled2`.
     pub fn beside(project: &Path) -> Self {
-        let location = project.parent().unwrap_or(project).to_path_buf();
+        Self::in_folder(project.parent().unwrap_or(project))
+    }
+
+    /// A new project inside `location`, named the first `untitledN` that is not taken there. The Set Up
+    /// Unluminous dialog offers one in the home folder, because a window waiting for its first project is on a
+    /// placeholder whose neighbours are nobody's projects (`task-2305`).
+    pub fn in_folder(location: &Path) -> Self {
+        let location = location.to_path_buf();
         let mut name = String::new();
         for number in 1..1000 {
             name = format!("untitled{number}");

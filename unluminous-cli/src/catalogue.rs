@@ -1634,6 +1634,15 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         area: "setup",
+        verb: "project",
+        summary: "In a window started with no project, choose the folder it opens once setup has run. With no folder, says whether the window is waiting for one.",
+        arguments: &[argument("folder", false, "The folder to open, as an absolute path.")],
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli setup project C:\\jason\\dev\\notes"],
+        local: false,
+    },
+    Command {
+        area: "setup",
         verb: "close",
         summary: "Close the dialog; a run carries on.",
         arguments: NO_ARGUMENTS,

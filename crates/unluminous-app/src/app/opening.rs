@@ -32,6 +32,8 @@ impl UnluminousApp {
     /// opened one file elsewhere would be a surprise. A project's state is restored when a window opens
     /// on it, which is what `File -> Open Folder` now does.
     pub fn open_folder(&mut self, folder: &Path) {
+        // A window that was waiting for a project has one now, whichever way it arrived. `task-2305`.
+        self.waiting_for_a_project = false;
         self.remember_the_project(None);
         self.tree = FileTree::new(folder);
         // A fresh tree knows nothing of the settings, and the folder it has just read may be a
@@ -61,6 +63,12 @@ impl UnluminousApp {
     /// Only if a second process cannot be started does the folder take this window, which is better than the
     /// entry doing nothing at all.
     pub fn open_a_project_window(&mut self, folder: &Path) {
+        // A window that has no project yet takes the one chosen as its first, which may wait for setup to
+        // finish and replaces this window rather than adding one beside it (`task-2305`).
+        if self.waiting_for_a_project {
+            self.choose_the_first_project(folder);
+            return;
+        }
         if let Some(store) = &self.store {
             store.remember_project(folder);
             self.recent = store.recent_projects();
@@ -733,6 +741,10 @@ impl UnluminousApp {
 
     /// The folder shown after the file name in the title bar.
     pub(crate) fn folder_name(&self) -> Option<String> {
+        // A window waiting for a project is on a placeholder, whose name would only mislead (`task-2305`).
+        if self.waiting_for_a_project {
+            return Some("No folder open".to_owned());
+        }
         self.tree.root().file_name().map(|name| name.to_string_lossy().to_string())
     }
 

@@ -23,6 +23,9 @@
 //! folder that file is in. With no path at all it is the current directory — or, when Unluminous was started
 //! from the desktop and the current directory is only wherever the shortcut points, the project that was
 //! open last time. `unluminous_app::starting_folder` is that rule and says why it is drawn so narrowly.
+//! When there is no such project, which is the first launch after an install, or the folder would be a root of
+//! the file system, the window opens on nothing and waits for a project to be chosen in the Set Up Unluminous
+//! dialog. `unluminous_app::waits_for_a_project` is that rule (`task-2305`).
 //! Several Unluminous windows can run at once, each on its own project, which is what `File -> New Window`
 //! and `File -> Recent Projects` start.
 //!
@@ -211,12 +214,30 @@ fn main() -> eframe::Result {
     unluminous_app::services::frame_trace::mark("running-instances");
     let mine = session.pop();
 
-    let fallback = unluminous_app::starting_folder(
+    let most_recent = mine.as_deref().or_else(|| recent.first().map(PathBuf::as_path));
+    let fallback =
+        unluminous_app::starting_folder(&current_directory, program.as_deref(), most_recent);
+    let (folder, file) = unluminous_app::resolve_target(arguments.path.as_deref(), &fallback);
+
+    // **No project to open is not a reason to open the folder this process is standing in** (`task-2305`). The
+    // first launch after an install opened the root of the file system on macOS and the installation folder on
+    // Windows, walked and indexed it, and started a terminal in it: permission errors and a great deal of
+    // memory, for a folder nobody chose. Such a window opens on an empty folder of Unluminous's own instead, and
+    // the Set Up Unluminous dialog asks for the project.
+    let waiting = unluminous_app::waits_for_a_project(
+        arguments.path.as_deref(),
         &current_directory,
         program.as_deref(),
-        mine.as_deref().or_else(|| recent.first().map(PathBuf::as_path)),
+        most_recent,
     );
-    let (folder, file) = unluminous_app::resolve_target(arguments.path.as_deref(), &fallback);
+    let (folder, file) = match waiting {
+        true => {
+            let placeholder = store.folder().join("No Folder Open");
+            let _ = std::fs::create_dir_all(&placeholder);
+            (placeholder, None)
+        }
+        false => (folder, file),
+    };
 
     // The other windows, each with its project named on the command line so that none of them tries
     // to restore the session in its turn. Each reads its own project's geometry, so they come back
@@ -344,6 +365,9 @@ fn main() -> eframe::Result {
                 unluminous_app::services::scene_blur::install(render_state, &cc.egui_ctx);
             }
             let mut app = UnluminousApp::new(folder);
+            if waiting {
+                app.wait_for_a_project();
+            }
             unluminous_app::services::frame_trace::mark("app-new");
             app.prepare(&cc.egui_ctx);
             unluminous_app::services::frame_trace::mark("prepare");
@@ -376,7 +400,10 @@ fn main() -> eframe::Result {
             // What was left open in this project last time. After the settings, because it opens files
             // and they have to be set in the font the settings name; before the file argument, so a file
             // named on the command line is the tab that ends up showing.
-            app.restore_project();
+            // A window waiting for a project is on a placeholder with nothing in it to restore.
+            if !waiting {
+                app.restore_project();
+            }
             unluminous_app::services::frame_trace::mark("restore-project");
             if let Some(file) = file {
                 // A file named on the command line that will not open leaves its reason in the

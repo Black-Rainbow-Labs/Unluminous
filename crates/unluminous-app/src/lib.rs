@@ -202,6 +202,66 @@ pub fn starting_folder(
     }
 }
 
+/// Whether a window started with this command line has no project to open, and should wait for the person to
+/// choose one in the Set Up Unluminous dialog rather than open the folder it happens to be standing in.
+///
+/// `task-2305`: *"Our installer and first open uses the root folder, which is bad, as it causes a bunch of
+/// permission issues and huge amount of memory."* The first launch after an install is a launch from the desktop
+/// with nothing in the recent projects list, so [`starting_folder`] fell back to the current directory: the root
+/// of the file system for a bundle on macOS, and the installation folder on Windows. Unluminous then walked it,
+/// indexed it and started a terminal in it.
+///
+/// So a window waits for a project when no path was named and either:
+///
+/// - it was started from the desktop and there is no recent project that still exists, because then the current
+///   directory is wherever the shortcut or the operating system left it and nobody chose it; or
+/// - the folder it would open is a root of the file system or the operating system's own folder, which nobody
+///   means as a project however Unluminous was started, and which is the folder whose walk and index cost the
+///   memory and raised the permission errors in the report.
+///
+/// `unluminous <folder>`, `unluminous-cli launch` and `File -> New Window` all name their folder, so none of them
+/// ever waits.
+pub fn waits_for_a_project(
+    argument: Option<&Path>,
+    current_directory: &Path,
+    program: Option<&Path>,
+    most_recent: Option<&Path>,
+) -> bool {
+    if argument.is_some() {
+        return false;
+    }
+    let from_the_desktop = started_from_the_desktop(current_directory, program);
+    let reopens = most_recent.is_some_and(Path::is_dir);
+    if from_the_desktop && !reopens {
+        return true;
+    }
+    let folder = starting_folder(current_directory, program, most_recent);
+    nobody_means_this_as_a_project(&folder)
+}
+
+/// A root of the file system, or the operating system's own folder or anything inside it.
+///
+/// The system folder is asked of `SystemRoot` (`C:\Windows`), because a program Windows starts with no working
+/// directory of its own is commonly left in `C:\Windows\System32`.
+pub fn nobody_means_this_as_a_project(folder: &Path) -> bool {
+    let tidied = tidy(folder.to_path_buf());
+    if tidied.parent().is_none() {
+        return true;
+    }
+    #[cfg(windows)]
+    if let Some(system) = std::env::var_os("SystemRoot") {
+        // Compared as text without case, because Windows names folders without it and `Path::starts_with`
+        // compares with it.
+        let lower = |path: &Path| path.to_string_lossy().to_lowercase().replace('/', "\\");
+        let system = lower(Path::new(&system)).trim_end_matches('\\').to_owned();
+        let folder = lower(&tidied);
+        if folder == system || folder.starts_with(&format!("{system}\\")) {
+            return true;
+        }
+    }
+    false
+}
+
 /// Whether two paths name the same folder, as far as this can be told without asking the disk twice.
 ///
 /// Compared through `canonicalize` when both resolve, because one of them has come from the operating
@@ -413,5 +473,48 @@ mod tests {
         let (folder, opened) = resolve_target(Some(&missing), Path::new("/nowhere"));
         assert_eq!(folder, missing);
         assert_eq!(opened, None);
+    }
+    #[test]
+    fn a_first_launch_from_the_desktop_waits_for_a_project_rather_than_opening_where_it_stands() {
+        // task-2305. Nothing in the recent projects list, started by a shortcut: the installation folder is
+        // not a project, and neither is the root a macOS bundle is started in.
+        let root = sample();
+        let program = root.join("Programs/Unluminous/unluminous.exe");
+        std::fs::create_dir_all(program.parent().expect("a folder")).expect("make the folder");
+        let installed = program.parent().expect("a folder").to_path_buf();
+        assert!(waits_for_a_project(None, &installed, Some(&program), None));
+        let gone = root.join("a-project-that-was-deleted");
+        std::fs::remove_dir_all(&gone).ok();
+        assert!(waits_for_a_project(None, &installed, Some(&program), Some(&gone)));
+        let bundle = Path::new("/Applications/Unluminous.app/Contents/MacOS/unluminous");
+        assert!(waits_for_a_project(None, Path::new("/"), Some(bundle), None));
+        // A project to reopen is opened, as it always was.
+        assert!(!waits_for_a_project(None, &installed, Some(&program), Some(&root)));
+    }
+
+    #[test]
+    fn a_named_folder_or_a_terminal_standing_in_a_project_never_waits() {
+        let root = sample();
+        let program = root.join("Programs/Unluminous/unluminous.exe");
+        let here = root.join("inner");
+        assert!(!waits_for_a_project(Some(&here), &here, Some(&program), None));
+        assert!(!waits_for_a_project(None, &here, Some(&program), None));
+        // Even a root is opened when somebody names it on purpose.
+        assert!(!waits_for_a_project(Some(Path::new("/")), Path::new("/"), Some(&program), None));
+    }
+
+    #[test]
+    fn a_root_of_the_file_system_is_never_opened_as_a_project_by_default() {
+        let program = std::env::temp_dir().join("unluminous-bin/unluminous");
+        assert!(waits_for_a_project(None, Path::new("/"), Some(&program), None));
+        assert!(nobody_means_this_as_a_project(Path::new("/")));
+        assert!(!nobody_means_this_as_a_project(&sample()));
+        #[cfg(windows)]
+        {
+            assert!(nobody_means_this_as_a_project(Path::new("C:\\")));
+            let system = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_owned());
+            assert!(nobody_means_this_as_a_project(&Path::new(&system).join("System32")));
+            assert!(!nobody_means_this_as_a_project(Path::new(&format!("{system}Apps"))));
+        }
     }
 }

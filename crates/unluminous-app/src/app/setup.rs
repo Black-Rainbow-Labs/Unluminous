@@ -16,11 +16,17 @@
 //! against the process responsible for it, and for a program started from a terminal that is the terminal, so
 //! `unluminous-cli setup` run in Terminal asked on Terminal's behalf. The window is Unluminous itself.
 //!
+//! **A window with no project to open waits for one here** (`task-2305`). The first launch after an install
+//! used to open the folder it was standing in, which was the root of the file system on macOS and the
+//! installation folder on Windows, and walking and indexing that cost memory and raised permission errors. Such
+//! a window is now on an empty placeholder, the dialog opens by itself with a Project card above the steps, and
+//! the folder chosen there is opened once setup has run, in a window of its own that replaces this one.
+//!
 //! **Only the released binary looks at this machine.** `main` calls `allow_the_setup`, which hands the window
 //! the real planner and the real steps. A window a test builds has neither unless the test hands it its own,
 //! so a test never reads or changes the person's agents, path or microphone.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
@@ -149,6 +155,11 @@ pub type Planner = Arc<dyn Fn() -> Plan + Send + Sync>;
 /// Takes one step by name, saying how far through it is. The released binary's changes this machine.
 pub type Taker = Arc<dyn Fn(&str, &dyn Fn(f32, &str)) -> (State, String) + Send + Sync>;
 
+/// Opens the project chosen in a window that was waiting for one, answering whether it did. The released
+/// binary's starts a window of its own on it; a test hands in its own, and with none the folder is opened in this
+/// window.
+pub type Opener = Arc<dyn Fn(&Path) -> bool + Send + Sync>;
+
 /// The dialog's state, whether or not it is showing.
 #[derive(Default)]
 pub struct SetupState {
@@ -175,6 +186,14 @@ pub struct SetupState {
     open_when_free: bool,
     /// How many runs have ended, which a test waits on.
     pub runs: usize,
+    /// The folder chosen in the Project card of a window waiting for a project. `task-2305`.
+    pub project: Option<PathBuf>,
+    /// `Not Now` was pressed in a window waiting for a project, so a folder chosen afterwards is opened at once
+    /// rather than bringing the dialog back.
+    put_off: bool,
+    /// The dialog stepped aside for the Create Project dialog, and comes back when that one closes.
+    back_after_new_project: bool,
+    pub opener: Option<Opener>,
 }
 
 impl SetupState {
@@ -195,6 +214,107 @@ impl UnluminousApp {
         self.setup.planner = Some(Arc::new(plan_this_machine));
         self.setup.taker = Some(Arc::new(take_on_this_machine));
         self.setup.may_prompt = opens_by_itself;
+        self.setup.opener = Some(Arc::new(|folder: &Path| {
+            crate::services::launcher::open_window(folder).is_some()
+        }));
+    }
+
+    /// Start with no project, waiting for one to be chosen in the Set Up Unluminous dialog. Called by `main`
+    /// before the settings are read, when [`crate::waits_for_a_project`] says the folder this window would open
+    /// is one nobody chose. The explorer is put away, because the placeholder it would show is nobody's
+    /// folder, and a terminal starts in the home folder rather than in it. `task-2305`.
+    pub fn wait_for_a_project(&mut self) {
+        self.waiting_for_a_project = true;
+        self.explorer_visible = false;
+        if let Some(home) = home_folder() {
+            self.terminal.tabs.settings.working_directory = Some(home);
+        }
+        self.setup.deciding = false;
+    }
+
+    /// A test's way of opening the chosen project, in place of starting a window.
+    pub fn use_a_project_opener(&mut self, opener: Opener) {
+        self.setup.opener = Some(opener);
+    }
+
+    /// A folder was chosen as this window's first project, from the Project card, `Open Folder`, `Create
+    /// Project` or `Recent Projects`. It is opened at once unless setup still has something to do: then the
+    /// dialog shows it and opens it when the run ends, which is what `task-2305` asks: *"Let's not open up and
+    /// load root on first load until setup is complete and the folder is choosen."*
+    pub(crate) fn choose_the_first_project(&mut self, folder: &Path) {
+        self.setup.project = Some(unluminous_terminal::paths::plain(folder));
+        self.setup.problem = None;
+        if self.setup.is_running() {
+            self.show_the_setup_again();
+            return;
+        }
+        let still_to_do = match &self.setup.plan {
+            Some(_) => !self.setup_left().is_empty(),
+            None => self.setup.planner.is_some(),
+        };
+        if still_to_do && !self.setup.put_off {
+            self.show_the_setup_again();
+            return;
+        }
+        self.open_the_chosen_project();
+    }
+
+    /// Put the dialog back on the screen, when no other modal is in the way.
+    fn show_the_setup_again(&mut self) {
+        if self.setup.showing {
+            return;
+        }
+        if self.setup.plan.is_none() && !self.setup.is_planning() {
+            self.plan_the_setup();
+        }
+        self.setup.open_when_free = true;
+    }
+
+    /// Open the folder chosen in the Project card, and close this window, which was only ever a placeholder.
+    /// When a window of its own cannot be started the folder is opened here instead, which is `Open Folder`'s
+    /// own fallback.
+    pub(crate) fn open_the_chosen_project(&mut self) {
+        let Some(folder) = self.setup.project.clone() else { return };
+        if let Some(store) = &self.store {
+            store.remember_project(&folder);
+            self.recent = store.recent_projects();
+        }
+        self.setup.showing = false;
+        self.setup.open_when_free = false;
+        let started = self.setup.opener.as_ref().is_some_and(|opener| opener(&folder));
+        if started {
+            self.closing = true;
+            self.write_settings();
+            if let Some(context) = &self.context {
+                context.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            return;
+        }
+        self.waiting_for_a_project = false;
+        self.open_folder(&folder);
+        self.restore_project();
+    }
+
+    /// The Project card's `Open Folder...` button: the system's folder picker, starting in the home folder.
+    fn pick_the_first_project(&mut self) {
+        let start = self.setup.project.clone().or_else(home_folder);
+        let mut picker = rfd::FileDialog::new().set_title("Open Folder");
+        if let Some(start) = start {
+            picker = picker.set_directory(start);
+        }
+        if let Some(folder) = picker.pick_folder() {
+            self.choose_the_first_project(&folder);
+        }
+    }
+
+    /// The Project card's `Create Project...` button: the Create Project dialog, offering a folder in the home
+    /// folder. The setup dialog steps aside for it and comes back when it closes.
+    fn create_the_first_project(&mut self) {
+        let home = home_folder().unwrap_or_else(|| self.tree.root().to_path_buf());
+        self.setup.showing = false;
+        self.setup.back_after_new_project = true;
+        self.new_project =
+            Some(crate::components::new_project_dialog::NewProject::in_folder(&home));
     }
 
     /// A test's planner and steps, in place of this machine's.
@@ -269,6 +389,13 @@ impl UnluminousApp {
             return;
         }
         self.setup.deciding = true;
+        // A window waiting for a project needs the dialog for its Project card, whatever the record says about
+        // the steps, so it opens however setup stands. `task-2305`.
+        if self.waiting_for_a_project {
+            self.plan_the_setup();
+            self.setup.open_when_free = true;
+            return;
+        }
         let record = self.setup_record();
         if !record.prompt {
             return;
@@ -288,6 +415,12 @@ impl UnluminousApp {
             }
         }
         changed |= self.take_the_run_events();
+        if self.setup.back_after_new_project && self.new_project.is_none() {
+            self.setup.back_after_new_project = false;
+            if self.waiting_for_a_project && !self.closing {
+                self.setup.open_when_free = true;
+            }
+        }
         if self.setup.open_when_free && self.open_modal().is_none() {
             self.setup.open_when_free = false;
             self.close_every_modal();
@@ -303,7 +436,10 @@ impl UnluminousApp {
         let record = self.setup_record();
         let finished =
             record::finished(plan.rows.iter().map(|row| (row.name.as_str(), row.state)), &record);
-        let deciding = self.setup.deciding && self.setup.may_prompt && !self.setup.showing;
+        let deciding = self.setup.deciding
+            && self.setup.may_prompt
+            && !self.setup.showing
+            && !self.waiting_for_a_project;
         let left: Vec<String> = plan
             .rows
             .iter()
@@ -516,6 +652,27 @@ impl UnluminousApp {
     fn end_the_run(&mut self) {
         self.setup.running = None;
         self.setup.runs += 1;
+        self.finish_the_record_of_the_run();
+        // A window waiting for a project opens the one chosen once setup has run. One whose run was stopped, or
+        // has a step that failed, stays, so what went wrong can be read and tried again. `task-2305`.
+        let failed = self
+            .setup
+            .plan
+            .iter()
+            .flat_map(|plan| plan.rows.iter())
+            .any(|row| row.state == State::Failed && row.can_be_ticked());
+        if self.waiting_for_a_project
+            && self.setup.project.is_some()
+            && !failed
+            && !self.setup.stop.load(Ordering::SeqCst)
+        {
+            self.open_the_chosen_project();
+        }
+    }
+
+    /// What a run that ended leaves in the record: what was stopped before it started goes back to waiting, and
+    /// when nothing is left to do the record says setup is finished.
+    fn finish_the_record_of_the_run(&mut self) {
         let mut record = self.setup_record();
         let Some(plan) = self.setup.plan.as_mut() else { return };
         for row in plan.rows.iter_mut().filter(|row| row.queued) {
@@ -547,6 +704,9 @@ impl UnluminousApp {
             looking: self.setup.plan.is_none(),
             problem: self.setup.problem.clone(),
             can_run: self.setup.taker.is_some(),
+            project: self
+                .waiting_for_a_project
+                .then(|| self.setup.project.as_ref().map(|folder| folder.display().to_string())),
         };
         let had_a_plan = self.setup.plan.is_some();
         let mut plan = self.setup.plan.take().unwrap_or_default();
@@ -558,6 +718,16 @@ impl UnluminousApp {
     }
 
     fn act_on_the_setup(&mut self, outcome: setup_dialog::Outcome) {
+        if outcome.open_folder {
+            self.pick_the_first_project();
+        }
+        if outcome.create_project {
+            self.create_the_first_project();
+        }
+        if outcome.open_project {
+            self.open_the_chosen_project();
+            return;
+        }
         if let Some(name) = outcome.fix {
             self.fix_a_setup_step(&name);
         }
@@ -579,6 +749,14 @@ impl UnluminousApp {
         }
         if outcome.close {
             self.close_the_setup();
+            // `Not Now` in a window waiting for a project: a folder already chosen is opened now, and one chosen
+            // later is opened at once rather than bringing the dialog back. `task-2305`.
+            if self.waiting_for_a_project {
+                self.setup.put_off = true;
+                if self.setup.project.is_some() && !self.setup.is_running() {
+                    self.open_the_chosen_project();
+                }
+            }
         }
     }
 
@@ -641,6 +819,8 @@ impl UnluminousApp {
             "runs": self.setup.runs,
             "problem": self.setup.problem,
             "looksAtThisMachine": self.setup.planner.is_some(),
+            "waitingForAProject": self.waiting_for_a_project,
+            "project": self.setup.project.as_ref().map(|folder| folder.display().to_string()),
         })
     }
 
@@ -731,6 +911,38 @@ impl UnluminousApp {
                 }
                 ok(request, format!("Declined {}.", steps.join(", ")), self.setup_status())
             }
+            "project" => {
+                if !self.waiting_for_a_project {
+                    return no(
+                        request,
+                        code::NOT_APPLICABLE,
+                        "This window already has a project. Open another one with `project open` or File -> Open Folder.",
+                    );
+                }
+                let Some(folder) = request.text("folder") else {
+                    return ok(
+                        request,
+                        "This window is waiting for a project.",
+                        self.setup_status(),
+                    );
+                };
+                let folder = PathBuf::from(folder);
+                if !folder.is_dir() {
+                    return no(
+                        request,
+                        code::NOT_FOUND,
+                        format!("{} is not a folder.", folder.display()),
+                    );
+                }
+                self.choose_the_first_project(&folder);
+                let said = match self.waiting_for_a_project && !self.closing {
+                    true => {
+                        format!("{} is chosen, and opens when setup has run.", folder.display())
+                    }
+                    false => format!("Opened {}.", folder.display()),
+                };
+                ok(request, said, self.setup_status())
+            }
             "close" => {
                 if request.switch("dont-show-again") {
                     self.setup.dont_show = true;
@@ -742,6 +954,12 @@ impl UnluminousApp {
             other => no(request, code::USAGE, format!("setup has no command called {other}.")),
         }
     }
+}
+
+/// The person's home folder, where a first project is looked for and made.
+fn home_folder() -> Option<PathBuf> {
+    let name = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    std::env::var_os(name).map(PathBuf::from).filter(|folder| folder.is_dir())
 }
 
 /// Step names from a comma separated list, refused when one is not a step.

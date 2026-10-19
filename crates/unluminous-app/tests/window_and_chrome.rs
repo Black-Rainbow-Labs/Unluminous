@@ -6700,4 +6700,120 @@ mod setup_dialog {
         steady(&mut harness);
         assert!(!harness.state().setup.showing);
     }
+
+    /// A folder of the test's own to choose as a first project.
+    fn a_first_project(name: &str) -> std::path::PathBuf {
+        let folder = std::env::temp_dir().join(format!("unluminous-first-project-{name}"));
+        std::fs::create_dir_all(&folder).expect("make the folder");
+        std::fs::write(folder.join("README.md"), "# A first project\n").expect("write a file");
+        folder
+    }
+
+    /// A window started with no project to open, with the setup dialog's own planner and steps, and an opener
+    /// that remembers what it was asked to open rather than starting a window. `task-2305`.
+    fn waiting(
+        taken: Arc<Mutex<Vec<String>>>,
+        opened: Option<Arc<Mutex<Vec<std::path::PathBuf>>>>,
+    ) -> Harness<'static, UnluminousApp> {
+        let mut harness = harness("");
+        harness.state_mut().use_a_setup(planner(), taker(taken));
+        harness.state_mut().wait_for_a_project();
+        if let Some(opened) = opened {
+            harness.state_mut().use_a_project_opener(Arc::new(move |folder: &std::path::Path| {
+                opened.lock().unwrap().push(folder.to_path_buf());
+                true
+            }));
+        }
+        harness.state_mut().let_the_setup_open_by_itself();
+        until(&mut harness, |app| app.setup.showing && app.setup.plan.is_some());
+        harness
+    }
+
+    #[test]
+    fn a_window_with_no_project_asks_for_one_and_opens_it_once_setup_has_run() {
+        // task-2305: the first launch used to open the folder it was standing in, the root of the file system on
+        // macOS. A window with no project now waits, the dialog asks for the folder, and nothing is opened until
+        // setup has run.
+        let taken = Arc::new(Mutex::new(Vec::new()));
+        let opened = Arc::new(Mutex::new(Vec::new()));
+        let mut harness = waiting(taken.clone(), Some(opened.clone()));
+        assert!(harness.state().waiting_for_a_project);
+        assert!(!harness.state().explorer_visible, "the placeholder is nobody's folder to show");
+        harness.get_by_label("Project");
+        harness.get_by_label("Open Folder...");
+        harness.get_by_label("Create Project...");
+        harness.snapshot(shot("setup_dialog_waiting_for_a_project"));
+
+        let folder = a_first_project("after-setup");
+        let ctx = harness.ctx.clone();
+        let reply = harness
+            .state_mut()
+            .run_command_line(&format!("setup project \"{}\"", folder.display()), &ctx)
+            .expect("setup project answers at once");
+        assert!(reply.ok, "setup project was refused: {}", reply.message);
+        steady(&mut harness);
+        assert!(
+            opened.lock().unwrap().is_empty(),
+            "nothing is opened while setup has steps to run"
+        );
+        assert!(harness.state().setup.showing);
+
+        harness.get_by_label("Run Setup").click();
+        until(&mut harness, |app| app.setup.runs == 1);
+        assert_eq!(*opened.lock().unwrap(), [folder.clone()]);
+        assert!(
+            harness.state().closing,
+            "the placeholder window closes once its project has a window"
+        );
+        assert!(!harness.state().setup.showing);
+    }
+
+    #[test]
+    fn with_nothing_left_to_run_the_button_opens_the_chosen_folder() {
+        let opened = Arc::new(Mutex::new(Vec::new()));
+        let mut harness = waiting(Arc::default(), Some(opened.clone()));
+        let ctx = harness.ctx.clone();
+        for step in ["claude", "opencode", "speech-model", "microphone"] {
+            let reply =
+                harness.state_mut().run_command_line(&format!("setup decline {step}"), &ctx);
+            assert!(reply.is_some_and(|reply| reply.ok), "setup decline {step} was refused");
+        }
+        steady(&mut harness);
+        // With no folder chosen the button is there and waits for one.
+        harness.get_by_label("Open Project");
+        harness.get_by_label("Open Project").click();
+        steady(&mut harness);
+        assert!(opened.lock().unwrap().is_empty());
+
+        // Nothing is left to run, so a folder chosen now is opened at once.
+        let folder = a_first_project("nothing-to-run");
+        let reply = harness
+            .state_mut()
+            .run_command_line(&format!("setup project \"{}\"", folder.display()), &ctx)
+            .expect("setup project answers at once");
+        assert!(reply.ok, "{}", reply.message);
+        assert_eq!(*opened.lock().unwrap(), [folder]);
+    }
+
+    #[test]
+    fn not_now_with_a_folder_chosen_opens_it_in_this_window_when_no_other_can_start() {
+        // No opener, as when a second process cannot be started: the folder takes this window, which is
+        // Open Folder's own fallback.
+        let mut harness = waiting(Arc::default(), None);
+        let folder = a_first_project("not-now");
+        let ctx = harness.ctx.clone();
+        let reply = harness
+            .state_mut()
+            .run_command_line(&format!("setup project \"{}\"", folder.display()), &ctx)
+            .expect("setup project answers at once");
+        assert!(reply.ok, "{}", reply.message);
+        steady(&mut harness);
+        assert!(harness.state().waiting_for_a_project, "setup still has steps, so it waits");
+        harness.get_by_label("Not Now").click();
+        steady(&mut harness);
+        assert!(!harness.state().waiting_for_a_project);
+        assert_eq!(harness.state().tree.root(), folder.as_path());
+        let reply = harness.state_mut().run_command_line("setup project", &ctx).expect("an answer");
+        assert!(!reply.ok, "a window with a project has none to choose");
+    }
 }

@@ -2199,6 +2199,8 @@ fn drive_the_modals_and_the_settings(coverage: &mut Coverage) {
     c.works(&mut harness, "setup decline microphone");
     c.refuses(&mut harness, "setup decline server");
     c.works(&mut harness, "setup close --dont-show-again");
+    // This window has a project, so it has none to choose (`task-2305`).
+    c.refuses(&mut harness, "setup project");
 
     c.works(&mut harness, "settings list --json");
     c.works(&mut harness, "settings get appearance.font.size");
@@ -2244,6 +2246,10 @@ fn drive_the_modals_and_the_settings(coverage: &mut Coverage) {
     c.refuses(&mut harness, "theme set no-such-theme");
 
     c.works(&mut harness, "project recent --json");
+    // A window started with no project says it is waiting for one. Last, because it changes what the window
+    // is on. `task-2305`.
+    harness.state_mut().wait_for_a_project();
+    c.works(&mut harness, "setup project");
     drop(harness);
     std::fs::remove_dir_all(&settings).ok();
 }

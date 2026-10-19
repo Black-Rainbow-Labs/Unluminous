@@ -1656,6 +1656,20 @@ Say no to steps, so they are not offered again.
 unluminous-cli setup decline microphone
 ```
 
+### setup project
+
+```
+unluminous-cli setup project [folder]
+```
+
+In a window started with no project, choose the folder it opens once setup has run. With no folder, says whether the window is waiting for one.
+
+- `folder` — The folder to open, as an absolute path.
+
+```sh
+unluminous-cli setup project C:\jason\dev\notes
+```
+
 ### setup close
 
 ```

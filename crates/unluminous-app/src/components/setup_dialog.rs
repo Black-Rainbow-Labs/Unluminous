@@ -5,6 +5,10 @@
 //! takes the ticked rows in order, and each row is drawn again as its step starts and finishes; the speech
 //! model's row shows a track while it downloads. A failed row has the button that fixes it.
 //!
+//! A window started with no project to open (`task-2305`) draws a Project card above the steps, with the folder
+//! chosen and `Open Folder...` and `Create Project...`. The chosen folder is opened when setup has run, and with
+//! nothing left to run the primary button is `Open Project`.
+//!
 //! It is built from the same furniture as the Report an Issue dialog: `components::realm::dialog`'s surface,
 //! heading and footer, and one of `components::settings_kit`'s cards. Like every component it decides
 //! nothing: it draws the plan it is handed, flips the tick boxes a person presses, and answers what was
@@ -46,6 +50,8 @@ pub struct Showing {
     pub problem: Option<String>,
     /// Whether this window may take the steps at all, which only the released binary may.
     pub can_run: bool,
+    /// `Some` in a window waiting for a project, holding the folder chosen so far. `task-2305`.
+    pub project: Option<Option<String>>,
 }
 
 /// What a person pressed.
@@ -56,6 +62,12 @@ pub struct Outcome {
     pub stop: bool,
     /// The button on the failed row with this name.
     pub fix: Option<String>,
+    /// The Project card's `Open Folder...`.
+    pub open_folder: bool,
+    /// The Project card's `Create Project...`.
+    pub create_project: bool,
+    /// `Open Project`, pressed with nothing left to run.
+    pub open_project: bool,
 }
 
 /// Draw the dialog for `plan`. Answers what was pressed.
@@ -80,7 +92,10 @@ pub fn show(
         );
         named.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, heading));
         let top = inner.top() + dialog::CLOSE + 8.0;
-        let lead = "Unluminous works best with these connected. Untick anything you do not want, then press Run Setup. You can come back here from Unluminous -> Set Up Unluminous.";
+        let lead = match showing.project {
+            Some(_) => "Choose the folder Unluminous opens. Nothing is opened until you do. Untick any step you do not want, then press Run Setup, and the folder opens when setup has run.",
+            None => "Unluminous works best with these connected. Untick anything you do not want, then press Run Setup. You can come back here from Unluminous -> Set Up Unluminous.",
+        };
         let below = kit::layer(ui, "setup-lead", inner, |rux| {
             kit::paragraph(rux, Pos2::new(inner.left(), top), inner.width(), lead)
         }) + 6.0;
@@ -99,6 +114,9 @@ pub fn show(
             .show(&mut child, |ui| {
                 let room = ui.available_rect_before_wrap();
                 let mut column = Column::new(inner.left(), inner.right(), room.top() + 10.0);
+                if let Some(chosen) = &showing.project {
+                    project(ui, &mut column, chosen.as_deref(), showing, &mut outcome);
+                }
                 steps(ui, &mut column, plan, showing, &mut outcome);
                 let drew = (column.pen - kit::CARD_GAP + 14.0 - room.top()).max(0.0);
                 ui.allocate_space(Vec2::new(room.width(), drew));
@@ -109,6 +127,33 @@ pub fn show(
         outcome.close = true;
     }
     outcome
+}
+
+/// The Project card: the folder chosen, or that none is, and the two ways of choosing one.
+fn project(
+    ui: &mut egui::Ui,
+    column: &mut Column,
+    chosen: Option<&str>,
+    showing: &Showing,
+    outcome: &mut Outcome,
+) {
+    let help = "The folder this window opens. Unluminous reads and indexes what is in it, so choose a project rather than a whole drive.";
+    kit::card(ui, column, "Project", Some(help), |card| {
+        card.row("Folder", None, |row| {
+            row.path("Project folder", chosen.unwrap_or("No folder chosen yet"), f32::MAX);
+        });
+        if showing.running {
+            return;
+        }
+        card.row("", None, |row| {
+            if row.button("Open Folder...") {
+                outcome.open_folder = true;
+            }
+            if row.button("Create Project...") {
+                outcome.create_project = true;
+            }
+        });
+    });
 }
 
 /// The card of steps, and the two lines under it.
@@ -293,10 +338,14 @@ fn footer(
     let footer = Rect::from_min_max(Pos2::new(inner.left(), foot), inner.max);
     let anything =
         plan.rows.iter().any(|row| row.ticked && row.can_be_ticked() && row.needs_doing());
-    let primary = match (showing.running, anything) {
-        (true, _) => ("Stop", true),
-        (false, true) => ("Run Setup", showing.can_run && !showing.looking),
-        (false, false) => ("Done", true),
+    // A window waiting for a project opens the folder chosen, so with nothing left to run its button says so, and
+    // it waits for a folder to be chosen.
+    let chosen = showing.project.as_ref().map(Option::is_some);
+    let primary = match (showing.running, anything, chosen) {
+        (true, _, _) => ("Stop", true),
+        (false, true, _) => ("Run Setup", showing.can_run && !showing.looking),
+        (false, false, Some(chosen)) => ("Open Project", chosen),
+        (false, false, None) => ("Done", true),
     };
     let pressed = kit::layer(ui, "setup-footer", footer, |rux| {
         let theme = rux.theme();
@@ -332,11 +381,16 @@ fn footer(
         Some(_) => match primary.0 {
             "Stop" => outcome.stop = true,
             "Run Setup" => outcome.run = true,
+            "Open Project" => outcome.open_project = true,
             _ => outcome.close = true,
         },
         None => {}
     }
-    if primary.1 && primary.0 == "Run Setup" && modal::Confirm::Enter.pressed(ui) {
-        outcome.run = true;
+    if primary.1 && modal::Confirm::Enter.pressed(ui) {
+        match primary.0 {
+            "Run Setup" => outcome.run = true,
+            "Open Project" => outcome.open_project = true,
+            _ => {}
+        }
     }
 }

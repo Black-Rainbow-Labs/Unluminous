@@ -6250,6 +6250,28 @@ finished, in one window a session (`setup-prompt.pid` in the settings folder), a
   and steps to `use_a_setup`. `setup status|open|run|decline|close` is the agent's half, and `setup status`
   with two words is the window's command while `setup` alone is still the client's.
 
+### A window with no project waits for one in the Set Up dialog (`task-2305`)
+
+The first launch after an install opened the folder it was standing in: the root of the file system for a macOS
+bundle, the installation folder on Windows. Walking and indexing that raised permission errors and used a great
+deal of memory. `unluminous_app::waits_for_a_project` is the rule: no path was named, and either the window was
+started from the desktop with no recent project that still exists, or the folder would be a root of the file
+system or inside `SystemRoot`. Four rules:
+
+- **Such a window is on `<settings folder>/No Folder Open`**, an empty placeholder, through
+  `UnluminousApp::wait_for_a_project`, which `main` calls before the settings are read. It is not a recent
+  project, does not join the session, restores nothing, hides the explorer and starts a terminal in the home
+  folder. The title bar says `No folder open`.
+- **The Set Up dialog opens by itself in it, whatever `setup.conf` says**, with a Project card above the steps:
+  the folder chosen, `Open Folder...` and `Create Project...` (which offers a folder in the home folder).
+- **The folder is opened once setup has run** (`choose_the_first_project`, `open_the_chosen_project`): at the
+  end of a run with no failed step, at once when nothing is left to run (the button says `Open Project`), and at
+  once after `Not Now`. It opens in a window of its own and the placeholder window closes; a test hands in its
+  own opener with `use_a_project_opener`, and with none the folder is opened in place.
+- **Every way of opening a project goes through it while the window waits**, because `open_a_project_window`
+  hands the folder to `choose_the_first_project`: `Open Folder`, `Create Project` and `Recent Projects`.
+  `setup project [folder]` is the agent's half.
+
 ## Shipping it is a folder of its own
 
 `installer/` turns the built binary into something a person can install, and it does not reach into the
