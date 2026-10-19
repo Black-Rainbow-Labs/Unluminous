@@ -6674,14 +6674,14 @@ mod setup_dialog {
             ],
             ..Plan::default()
         };
-        let mut harness = harness("");
-        harness.state_mut().use_a_setup(Arc::new(finished), taker(Arc::default()));
-        harness.state_mut().let_the_setup_open_by_itself();
-        until(&mut harness, |app| app.setup.plan.is_some());
+        let mut second = super::harness("");
+        second.state_mut().use_a_setup(Arc::new(finished), taker(Arc::default()));
+        second.state_mut().let_the_setup_open_by_itself();
+        until(&mut second, |app| app.setup.plan.is_some());
         for _ in 0..10 {
-            pump(&mut harness);
+            pump(&mut second);
         }
-        assert!(!harness.state().setup.showing, "a finished setup does not open the dialog");
+        assert!(!second.state().setup.showing, "a finished setup does not open the dialog");
     }
 
     #[test]
