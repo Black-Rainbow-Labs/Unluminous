@@ -39,6 +39,8 @@
 //! the Markdown preview, the Mermaid reader and the plugin loader all keep, stated once more for the
 //! one part of Unluminous that opens a socket or starts a program.
 
+pub mod acp;
+pub mod acp_registry;
 pub mod agent;
 pub mod base64;
 pub mod client;

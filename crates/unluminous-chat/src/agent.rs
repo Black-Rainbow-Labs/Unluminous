@@ -380,6 +380,9 @@ pub fn command_line(provider: &Provider, ask: &Ask) -> Vec<String> {
                 out.push(format!("@{}", picture.display()));
             }
         }
+        // **An ACP agent is started with the row's own arguments** (`task-2308`), because which agent it is lives
+        // in them: `npx -y @agentclientprotocol/claude-agent-acp`. What it is asked goes over the protocol.
+        Wire::Acp => out.extend(provider.args.iter().cloned()),
         // Not a program. A caller that asks anyway gets an empty command line rather than a panic,
         // and `run` refuses it by name.
         Wire::OpenAi | Wire::Anthropic | Wire::Responses => {}
@@ -419,59 +422,16 @@ pub fn run(
     generation: u64,
     on_reply: &dyn Fn(Reply) -> bool,
 ) {
-    let Some(program) = provider.program_path(&ask.environment) else {
-        on_reply(Reply::Failed(
-            provider
-                .why_not(&ask.environment)
-                .unwrap_or_else(|| format!("`{}` could not be run.", provider.command)),
-        ));
+    // **An ACP agent is a conversation, not a stream to read**: it answers requests and asks some of its own,
+    // so it has a transport of its own (`task-2308`).
+    if provider.wire == Wire::Acp {
+        crate::acp::run(provider, ask, stopping, running, generation, on_reply);
         return;
-    };
-    let arguments = command_line(provider, ask);
-    let mut command = Command::new(&program);
-    command.args(&arguments);
-    if let Some(folder) = &ask.folder {
-        command.current_dir(folder);
     }
-    // **The whole environment the caller handed over, and nothing this process happens to hold.** An agent
-    // started from a window launchd started has none of the person's own exports otherwise, and says it is
-    // not logged in — `task-1905`.
-    //
-    // `env_clear` before `envs`, which is the half the Codex Sol review of `task-1905` found missing:
-    // `Command::envs` replaces the names it is given and **leaves the rest**, so a stale `ANTHROPIC_API_KEY`
-    // this process was launched with survived a profile that had removed it, and the child went on using a
-    // key its owner had revoked. What the child gets is what a command typed in the person's own shell would
-    // have got, which is the whole claim `services::login_shell` makes.
-    //
-    // **It is cleared only for an environment that really is one**, which is the safe reading of
-    // `Environment::is_whole`: a caller that handed over nothing, or a shell profile that could not be read
-    // and came back holding a `PATH` and little else, means "whatever you have". Clearing for one of those
-    // would start `claude` with no `HOME` and no `USER`, which is a worse failure than a stale variable.
-    if ask.environment.is_whole() {
-        command.env_clear();
-    }
-    command.envs(ask.environment.variables().iter().map(|(name, value)| (name, value)));
-    // **The prompt goes down standard input**, for the reason at the top of this file: a batch file
-    // cannot take a multi-line argument, and `codex` is a batch file on Windows. Inheriting the
-    // window's own would be worse than either, since there is nothing on the other end of it.
-    command.stdin(Stdio::piped());
-    command.stdout(Stdio::piped());
-    command.stderr(Stdio::piped());
-    #[cfg(windows)]
-    {
-        // No console window, which is what `unluminous_git` does for the same reason: a flashing black
-        // rectangle every time somebody asks a question is not a feature.
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
-    let mut child = match command.spawn() {
+    let mut child = match start(provider, ask, &command_line(provider, ask)) {
         Ok(child) => child,
-        Err(problem) => {
-            on_reply(Reply::Failed(format!(
-                "{} could not be started: {problem}",
-                program.display()
-            )));
+        Err(why) => {
+            on_reply(Reply::Failed(why));
             return;
         }
     };
@@ -598,6 +558,60 @@ pub fn run(
             false => format!("{ended}\n\n{detail}"),
         }));
     }
+}
+
+/// Start the program `provider` names with `arguments`, in the turn's folder and environment, with all three of
+/// its standard streams piped. The refusal is a sentence for the pane.
+///
+/// Split out of [`run`] so the ACP transport starts its agent the same way (`task-2308`).
+pub(crate) fn start(provider: &Provider, ask: &Ask, arguments: &[String]) -> Result<Child, String> {
+    let Some(program) = provider.program_path(&ask.environment) else {
+        return Err(provider
+            .why_not(&ask.environment)
+            .unwrap_or_else(|| format!("`{}` could not be run.", provider.command)));
+    };
+    let mut command = Command::new(&program);
+    command.args(arguments);
+    if let Some(folder) = &ask.folder {
+        command.current_dir(folder);
+    }
+    // **The whole environment the caller handed over, and nothing this process happens to hold.** An agent
+    // started from a window launchd started has none of the person's own exports otherwise, and says it is
+    // not logged in — `task-1905`.
+    //
+    // `env_clear` before `envs`, which is the half the Codex Sol review of `task-1905` found missing:
+    // `Command::envs` replaces the names it is given and **leaves the rest**, so a stale `ANTHROPIC_API_KEY`
+    // this process was launched with survived a profile that had removed it, and the child went on using a
+    // key its owner had revoked. What the child gets is what a command typed in the person's own shell would
+    // have got, which is the whole claim `services::login_shell` makes.
+    //
+    // **It is cleared only for an environment that really is one**, which is the safe reading of
+    // `Environment::is_whole`: a caller that handed over nothing, or a shell profile that could not be read
+    // and came back holding a `PATH` and little else, means "whatever you have". Clearing for one of those
+    // would start `claude` with no `HOME` and no `USER`, which is a worse failure than a stale variable.
+    if ask.environment.is_whole() {
+        command.env_clear();
+    }
+    command.envs(ask.environment.variables().iter().map(|(name, value)| (name, value)));
+    // What the row itself names, such as an ACP registry entry's `AUGMENT_DISABLE_AUTO_UPDATE=1`, last so it wins.
+    command.envs(provider.env.iter().map(|(name, value)| (name, value)));
+    // **The prompt goes down standard input**, for the reason at the top of this file: a batch file
+    // cannot take a multi-line argument, and `codex` is a batch file on Windows. Inheriting the
+    // window's own would be worse than either, since there is nothing on the other end of it.
+    command.stdin(Stdio::piped());
+    command.stdout(Stdio::piped());
+    command.stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        // No console window, which is what `unluminous_git` does for the same reason: a flashing black
+        // rectangle every time somebody asks a question is not a feature.
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command
+        .spawn()
+        .map_err(|problem| format!("{} could not be started: {problem}", program.display()))
 }
 
 /// Kill a child and reap it, so a stopped turn leaves no process behind.

@@ -416,6 +416,7 @@ fn draw_the_page(
                 area,
                 &mut endpoints.providers,
                 &mut endpoints.readiness,
+                &mut endpoints.acp,
             );
             let outcome = match page.changed {
                 true => PageOutcome::EndpointsChanged,

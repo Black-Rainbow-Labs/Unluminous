@@ -27,11 +27,14 @@ use egui::{Pos2, Rect, Vec2};
 use rux::icon::{Icon, Mark};
 use rux::{Rux, Style};
 
-use unluminous_chat::provider::{Provider, Wire, DEFAULT_MAX_TOKENS, WIRES};
+use unluminous_chat::acp_registry::{self, Agent};
+use unluminous_chat::provider::{
+    join_arguments, split_arguments, Provider, Wire, DEFAULT_MAX_TOKENS, WIRES,
+};
 
 use crate::components::settings_dialog::{drawn, Drawn};
 use crate::components::settings_kit::{self as kit, Column, Kind as ButtonKind};
-use crate::services::ai_endpoints::{self, Readiness};
+use crate::services::ai_endpoints::{self, AcpRegistry, Readiness};
 
 /// How wide the dropdown of shapes is when the track does not fit across the card (`task-2302`).
 const SPEAKS_SELECT: f32 = 200.0;
@@ -57,6 +60,7 @@ pub(crate) fn show(
     area: Rect,
     providers: &mut Vec<Provider>,
     readiness: &mut Readiness,
+    acp: &mut AcpRegistry,
 ) -> Drawn {
     let mut column = Column::new(area.left(), area.right(), area.top());
     let refusals = readiness.rows(providers);
@@ -69,7 +73,8 @@ pub(crate) fn show(
         Some(
             "What answers, for Agent Chat, Agent Tasks and anything else that talks to a model. claude-cli, \
              codex-cli, opencode-cli and pi-cli run the agent already installed on this machine: they need no key, they \
-             bring their own tools, and they read the open project's own instructions. openai, anthropic and \
+             bring their own tools, and they read the open project's own instructions. acp runs any agent that speaks \
+             the Agent Client Protocol, started as the program and arguments you give it. openai, anthropic and \
              responses send to a URL instead; for those a key is never stored by Unluminous, so name the \
              environment variable it is in.",
         ),
@@ -120,10 +125,157 @@ pub(crate) fn show(
             });
         },
     );
+    if let Some(new) = registry_card(ui, &mut column, providers, acp) {
+        providers.push(new);
+        changed = true;
+    }
     if changed {
         readiness.forget();
     }
     drawn(area.top(), &column, changed)
+}
+
+/// How tall one agent of the registry is in its list.
+const AGENT_ROW: f32 = 58.0;
+
+/// The `ACP Registry` card (`task-2308`): read the published list of ACP agents when asked, and add one as an
+/// `acp` endpoint. Answers an endpoint to add now; a binary agent arrives later through `AcpRegistry::poll`,
+/// once it has been downloaded.
+fn registry_card(
+    ui: &mut egui::Ui,
+    column: &mut Column,
+    providers: &[Provider],
+    acp: &mut AcpRegistry,
+) -> Option<Provider> {
+    let mut added = None;
+    kit::card(
+        ui,
+        column,
+        "ACP Registry",
+        Some(
+            "Agents that speak the Agent Client Protocol, from the registry at agentclientprotocol.com. Nothing is \
+             read from it until you press Load registry. Add makes an acp endpoint: an npx or uvx agent runs through \
+             that package runner, and a binary agent is downloaded into the settings folder and its checksum \
+             checked. Each agent signs in with its own account.",
+        ),
+        |card| {
+            let loading = acp.is_loading();
+            let status = match (&acp.problem, &acp.said, &acp.agents) {
+                _ if loading => "Reading the registry".to_owned(),
+                (Some(problem), _, _) => problem.clone(),
+                (None, Some(said), _) => said.clone(),
+                (None, None, Some(agents)) => format!("{} agents", agents.len()),
+                (None, None, None) => "Not read yet".to_owned(),
+            };
+            card.row("Registry", None, |row| {
+                let word = match acp.agents.is_some() {
+                    true => "Read again",
+                    false => "Load registry",
+                };
+                if row.button(word) && !loading {
+                    acp.load(true);
+                }
+                row.status(&status);
+            });
+            let Some(agents) = acp.agents.clone() else {
+                return;
+            };
+            card.row("Find", None, |row| {
+                row.text("Find an agent", &mut acp.filter, "a name or an id", 260.0);
+            });
+            let wanted = acp.filter.trim().to_lowercase();
+            let shown: Vec<&Agent> = agents
+                .iter()
+                .filter(|agent| {
+                    wanted.is_empty()
+                        || agent.id.to_lowercase().contains(&wanted)
+                        || agent.name.to_lowercase().contains(&wanted)
+                })
+                .collect();
+            let platform = acp_registry::platform();
+            card.grow(|rux, column| {
+                let mut pen = column.pen;
+                for agent in shown {
+                    let rect = Rect::from_min_size(
+                        Pos2::new(column.left, pen),
+                        Vec2::new(column.right - column.left, AGENT_ROW),
+                    );
+                    if let Some(pressed) = agent_row(rux, rect, agent, providers, acp, &platform) {
+                        let environment = crate::services::agent_chat::AgentChat::the_environment();
+                        let has = |program: &str| {
+                            unluminous_chat::provider::program(program, &environment).is_some()
+                        };
+                        match acp.add(&pressed, None, providers, &has) {
+                            Ok(Some(provider)) => added = Some(provider),
+                            Ok(None) => {}
+                            Err(why) => acp.problem = Some(why),
+                        }
+                    }
+                    pen = rect.bottom() + 8.0;
+                }
+                ((), pen)
+            });
+        },
+    );
+    added
+}
+
+/// One agent of the registry: its name, version and how it runs, its description, and `Add`. Answers the id when
+/// `Add` was pressed.
+fn agent_row(
+    rux: &mut Rux<'_>,
+    rect: Rect,
+    agent: &Agent,
+    providers: &[Provider],
+    acp: &AcpRegistry,
+    platform: &str,
+) -> Option<String> {
+    let theme = rux.theme();
+    let chat = theme.chat;
+    rux.chrome.surface(rect, 16.0, chat.well, chat.carved_sm());
+    let left = rect.left() + 14.0;
+    let mut kinds: Vec<&str> = Vec::new();
+    for kind in agent.distributions.iter().map(|one| one.kind()) {
+        if !kinds.contains(&kind) {
+            kinds.push(kind);
+        }
+    }
+    let runs_here = acp_registry::launch_for(agent, platform, &|_| true).is_some();
+    let installing = acp.installing() == Some(agent.id.as_str());
+    let added = providers.iter().any(|one| one.wire == Wire::Acp && one.name == agent.id);
+    let (word, kind) = match (added, installing, runs_here) {
+        (true, _, _) => ("Added", ButtonKind::Ghost),
+        (false, true, _) => ("Installing", ButtonKind::Ghost),
+        (false, false, false) => ("Not for this machine", ButtonKind::Ghost),
+        (false, false, true) => ("Add", ButtonKind::Chip),
+    };
+    let width = kit::button_width(rux, word, false);
+    let button = Rect::from_min_size(
+        Pos2::new(rect.right() - 12.0 - width, rect.center().y - 15.0),
+        Vec2::new(width, 30.0),
+    );
+    let words_right = button.left() - 12.0;
+    let title = format!("{}  {}  \u{00B7}  {}", agent.name, agent.version, kinds.join(", "));
+    let galley =
+        rux.elided(Style::sans(12.5).semibold(), &title, theme.ink.i900, words_right - left);
+    rux::text::draw_left_capitals(
+        rux.painter(),
+        Pos2::new(left, rect.top() + 19.0),
+        galley,
+        Style::sans(12.5).semibold(),
+        theme.ink.i900,
+    );
+    let galley =
+        rux.elided(Style::sans(11.5), &agent.description, theme.ink.i400, words_right - left);
+    rux::text::draw_left_capitals(
+        rux.painter(),
+        Pos2::new(left, rect.top() + 40.0),
+        galley,
+        Style::sans(11.5),
+        theme.ink.i400,
+    );
+    let pressed = kit::button_named(rux, button, word, &format!("{word} {}", agent.id), kind);
+    (pressed && word == "Add").then(|| agent.id.clone())
 }
 
 /// What one endpoint's card reported.
@@ -154,6 +306,9 @@ struct EndpointRow<'a> {
 /// **Absent rather than dimmed** for a row they cannot apply to: a URL, a key and a token budget mean nothing
 /// to an agent that holds its own key and picks its own model.
 fn fields_of(provider: &Provider) -> Vec<(&'static str, f32)> {
+    if provider.wire == Wire::Acp {
+        return vec![("Program", 220.0), ("Arguments", 420.0), ("Model", 220.0)];
+    }
     match provider.is_a_program() {
         true => vec![("Program", 220.0), ("Model", 220.0)],
         false => {
@@ -288,7 +443,17 @@ fn endpoint(
         );
         let provider = &mut providers[index];
         let (mut value, hint) = match field {
-            "Program" => (provider.command.clone(), "claude".to_owned()),
+            "Program" => (
+                provider.command.clone(),
+                match provider.wire {
+                    Wire::Acp => "npx".to_owned(),
+                    _ => "claude".to_owned(),
+                },
+            ),
+            "Arguments" => (
+                join_arguments(&provider.args),
+                "-y @agentclientprotocol/claude-agent-acp".to_owned(),
+            ),
             "URL" => (provider.url.clone(), "https://\u{2026}".to_owned()),
             // Empty is the honest default for an agent: it answers with the model its own person chose.
             "Model" => (
@@ -313,6 +478,7 @@ fn endpoint(
             let provider = &mut providers[index];
             match field {
                 "Program" => provider.command = value.trim().to_owned(),
+                "Arguments" => provider.args = split_arguments(&value),
                 "URL" => provider.url = value.trim().to_owned(),
                 "Model" => provider.model = value.trim().to_owned(),
                 "Key from" => provider.key_env = value.trim().to_owned(),

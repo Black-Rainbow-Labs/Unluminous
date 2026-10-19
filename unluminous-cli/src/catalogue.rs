@@ -187,6 +187,8 @@ impl Command {
             // A cell can run for as long as the code in it takes; ten minutes, which `--timeout`
             // lengthens. `task-2220`.
             ("notebook", "run") => Some(NOTEBOOK_WAIT_MS),
+            // Adding an agent from the ACP registry, which may download one (`task-2308`).
+            ("settings", "acp-add") => Some(BUILD_WAIT_MS),
             _ => None,
         }
     }
@@ -217,6 +219,7 @@ impl Command {
                 | ("terminal", "read")
                 | ("run", "output")
                 | ("update", "check")
+                | ("settings", "acp-registry" | "acp-add")
                 | ("voice", "transcribe")
                 | ("report", "screenshot")
                 | (
@@ -3676,6 +3679,37 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         area: "settings",
+        verb: "acp-registry",
+        summary: "The agents in the ACP registry (agentclientprotocol.com), which speak the Agent Client Protocol: each one's id, version, name, how it is distributed (npx, uvx or binary), whether it runs on this machine and whether it is already an endpoint. Read once a window and kept; `--refresh` reads it again. Add one with `settings acp-add`.",
+        arguments: &[rest("filter", false, "Only the agents whose id or name contains this, such as `claude` or `gemini`.")],
+        flags: &[
+            switch("refresh", "Read the registry again rather than using the copy this window already read."),
+            whole_option("timeout", "milliseconds", "How long to wait for the registry. 12000 by default."),
+        ],
+        examples: &[
+            "unluminous-cli settings acp-registry",
+            "unluminous-cli settings acp-registry claude --json",
+            "unluminous-cli settings acp-registry --refresh",
+        ],
+        local: false,
+    },
+    Command {
+        area: "settings",
+        verb: "acp-add",
+        summary: "Add an agent from the ACP registry as an `acp` endpoint, which Agent Chat can then use. An npx or uvx agent runs through that package runner; a binary agent is downloaded into the settings folder, its SHA-256 checked, and unpacked first. Answers the endpoint's name; `plugins run agent-chat use <name>` chooses it. Change it afterwards with `settings set ai.provider.<n>.args`.",
+        arguments: &[argument("id", true, "The agent's id, as `settings acp-registry` lists it, such as claude-acp.")],
+        flags: &[
+            option("name", "endpoint", "What to call the endpoint. The agent's id by default."),
+            whole_option("timeout", "milliseconds", "How long to wait, including a download. 600000 by default."),
+        ],
+        examples: &[
+            "unluminous-cli settings acp-add claude-acp",
+            "unluminous-cli settings acp-add gemini --name gemini-acp --json",
+        ],
+        local: false,
+    },
+    Command {
+        area: "settings",
         verb: "fonts",
         summary: "The font families this machine has that the editor can be set to.",
         arguments: NO_ARGUMENTS,
@@ -4205,8 +4239,10 @@ mod tests {
             // `notebook run --wait` is the one long wait that is not a pause: a cell runs for as long
             // as its code takes, so it says how long the window waits too. `task-2220`.
             let runs = command.wire() == "notebook.run" && command.flag("wait").is_some();
+            // `settings acp-add` may download a binary agent first, which takes as long as it takes. `task-2308`.
+            let downloads = command.wire() == "settings.acp-add";
             assert_eq!(
-                pauses || runs,
+                pauses || runs || downloads,
                 command.waits_for().is_some(),
                 "{} has --wait-for-pause = {pauses} and waits_for() = {:?}",
                 command.typed(),

@@ -2219,6 +2219,11 @@ fn drive_the_modals_and_the_settings(coverage: &mut Coverage) {
     // A test's window never lets telemetry run, so this answers why it is off and sends nothing.
     c.works(&mut harness, "settings telemetry --json");
     c.works(&mut harness, "settings telemetry --flush");
+    // The ACP registry (`task-2308`), read from the copy the tests keep so nothing is fetched.
+    std::env::set_var("UNLUMINOUS_ACP_REGISTRY", acp_registry_fixture());
+    c.works(&mut harness, "settings acp-registry claude --json");
+    c.works(&mut harness, "settings acp-add claude-acp --name acp-walk");
+    c.refuses(&mut harness, "settings acp-add no-such-agent");
 
     // The backgrounds, which are files in Unluminous's own folder rather than a setting on its own.
     // Added from a picture this walk writes, so nothing depends on what is on the machine.
@@ -3251,6 +3256,54 @@ fn every_command_that_holds_its_answer_says_so_in_the_catalogue() {
         );
         pump(&mut harness);
     }
+}
+
+/// The ACP registry as it was published on 2026-10-19, which the chat crate's tests keep.
+fn acp_registry_fixture() -> String {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../unluminous-chat/tests/streams/acp-registry.json")
+        .display()
+        .to_string()
+}
+
+/// An agent from the ACP registry becomes an `acp` endpoint that runs it, and every field of it is a setting
+/// (`task-2308`).
+#[test]
+fn an_acp_agent_from_the_registry_becomes_an_endpoint_that_runs_it() {
+    std::env::set_var("UNLUMINOUS_ACP_REGISTRY", acp_registry_fixture());
+    let mut harness = harness(
+        "# a file
+",
+    );
+    let listed = did(&mut harness, "settings acp-registry claude");
+    let agents = listed["agents"].as_array().expect("agents");
+    let claude = agents.iter().find(|agent| agent["id"] == "claude-acp").expect("Claude's adapter");
+    assert_eq!(claude["runsHere"], true);
+    assert_eq!(claude["added"], false);
+
+    let added = did(&mut harness, "settings acp-add claude-acp");
+    assert_eq!(added["endpoint"], "claude-acp");
+    assert_eq!(added["wire"], "acp");
+    assert_eq!(added["command"], "npx");
+    assert_eq!(
+        added["args"],
+        serde_json::json!(["-y", "@agentclientprotocol/claude-agent-acp@0.94.0"])
+    );
+    let index = added["index"].as_u64().expect("an index");
+    let args = did(&mut harness, &format!("settings get ai.provider.{index}.args"));
+    assert!(args.to_string().contains("@agentclientprotocol/claude-agent-acp@0.94.0"), "{args}");
+    let wire = did(&mut harness, &format!("settings get ai.provider.{index}.wire"));
+    assert!(wire.to_string().contains("acp"), "{wire}");
+
+    // The list says it is there now, and a second add of the same name is refused.
+    let listed = did(&mut harness, "settings acp-registry claude-acp");
+    assert_eq!(listed["agents"][0]["added"], true);
+    refused(&mut harness, "settings acp-add claude-acp");
+
+    // Its arguments are a setting like every other field of an endpoint.
+    did(&mut harness, &format!("settings set ai.provider.{index}.args -y another-package --acp"));
+    let args = did(&mut harness, &format!("settings get ai.provider.{index}.args"));
+    assert!(args.to_string().contains("-y another-package --acp"), "{args}");
 }
 
 /// A picture on disk for `background add` to copy in, written once.

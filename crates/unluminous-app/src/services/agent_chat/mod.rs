@@ -752,6 +752,9 @@ pub struct AgentChat {
     pub mirror: Option<Mirror>,
     open: bool,
     folder: Option<PathBuf>,
+    /// When the configuration file was last read or written by this pane, so a change somebody else made is
+    /// noticed. See [`Self::follow_the_configuration_file`].
+    configuration_written: Option<std::time::SystemTime>,
     project: Option<PathBuf>,
     /// The file showing in the window, which the window tells the provider — see
     /// [`UiProvider::showing`]. A chat in an editor that does not know what you are looking at is a
@@ -901,6 +904,7 @@ impl AgentChat {
             mirror: None,
             open: false,
             folder: None,
+            configuration_written: None,
             project: None,
             showing: None,
             configuration: Configuration::default(),
@@ -1182,7 +1186,31 @@ impl AgentChat {
         let Some(folder) = &self.folder else {
             return Ok(());
         };
-        self.configuration.write(folder)
+        let written = self.configuration.write(folder);
+        self.configuration_written = Self::when_written(folder);
+        written
+    }
+
+    fn when_written(folder: &Path) -> Option<std::time::SystemTime> {
+        std::fs::metadata(folder.join(Configuration::FILE)).and_then(|one| one.modified()).ok()
+    }
+
+    /// Read the configuration file again when something other than this pane changed it (`task-2308`).
+    ///
+    /// `settings set plugins.agent-chat.permission read` writes the file, and the open pane went on answering
+    /// with what it read when it opened: a turn after setting `read` still let the agent write. The rule
+    /// `AgentTasks::follow_the_configuration_file` already keeps for the board. Asked before a turn is sent and
+    /// before a command is answered, which costs one `metadata` call. The endpoints are the window's and stay.
+    fn follow_the_configuration_file(&mut self) {
+        let Some(folder) = self.folder.clone() else { return };
+        let written = Self::when_written(&folder);
+        if written.is_none() || written == self.configuration_written {
+            return;
+        }
+        self.configuration_written = written;
+        let mut fresh = Configuration::read(&folder).0;
+        fresh.providers = std::mem::take(&mut self.configuration.providers);
+        self.configuration = fresh;
     }
 
     /// The environment the pane answers out of: the person's own shell profile.
@@ -1656,6 +1684,7 @@ impl AgentChat {
     /// nobody pressed a button for: a key cleared out of the environment while a turn was running
     /// would otherwise be a request that fails at the far end rather than a sentence in the pane.
     fn dispatch(&mut self, provider: &Provider) {
+        self.follow_the_configuration_file();
         if let Some(why) = provider.why_not(&Self::the_environment()) {
             self.problem = Some(why.clone());
             self.session.reply(unluminous_chat::Reply::Failed(why));
@@ -2255,6 +2284,7 @@ impl UiProvider for AgentChat {
             }
             configuration.forget_the_agents_that_are_not_installed(&Self::the_environment());
             self.configuration = configuration;
+            self.configuration_written = Self::when_written(folder);
             if !refused.is_empty() {
                 self.problem = Some(refused.join(" "));
             }
@@ -2311,6 +2341,7 @@ impl UiProvider for AgentChat {
     }
 
     fn command(&mut self, command: &str, arguments: &[String]) -> Result<Answer, String> {
+        self.follow_the_configuration_file();
         // The components an answer holds have verbs of their own. See `components`.
         if let Some(answer) = self.component_command(command, arguments) {
             return answer;
@@ -2898,6 +2929,23 @@ mod tests {
         let mut chat = AgentChat::new();
         chat.open(&Context { folder: Some(a_folder(name)), ..Context::default() }).expect("opened");
         chat
+    }
+
+    /// A permission written into the file by `settings set` reaches the open pane before its next turn
+    /// (`task-2308`). It used to stay at what the pane read when it opened.
+    #[test]
+    fn a_permission_set_while_the_pane_is_open_is_the_one_the_next_turn_uses() {
+        let mut chat = opened("follow-the-file");
+        assert_eq!(chat.configuration.permission, unluminous_chat::Permission::Full);
+        let folder = chat.folder.clone().expect("a folder");
+        // A file whose time has moved, as another writer leaves it.
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        let mut written = Configuration::read(&folder).0;
+        written.permission = unluminous_chat::Permission::Read;
+        written.write(&folder).expect("written");
+        let answer = chat.command("providers", &[]).expect("answered");
+        assert_eq!(chat.configuration.permission, unluminous_chat::Permission::Read);
+        assert_eq!(answer.value["permission"], "read", "{:?}", answer.value);
     }
 
     #[test]

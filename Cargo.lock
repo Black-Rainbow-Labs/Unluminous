@@ -6671,6 +6671,7 @@ name = "unluminous-chat"
 version = "1.2.2"
 dependencies = [
  "serde_json",
+ "sha2",
  "ureq",
 ]
 

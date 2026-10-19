@@ -760,6 +760,34 @@ section, unless its column is too short for them under a description of its leas
 local Qwen through `~/.pi/agent/models.json`, which needs `"compat": { "supportsDeveloperRole": false }`: without
 it the server refuses Pi's `developer` message.
 
+### Any agent that speaks the Agent Client Protocol is an `acp` endpoint (`task-2308`)
+
+`tasks/task-2308-acp-tdd.md` is the design. ACP is JSON-RPC over an agent program's standard input and output,
+and the registry at `https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json` lists the agents that
+speak it (42 on 2026-10-19, Claude's adapter among them). Six rules:
+
+- **`acp` is the eighth wire, and a program.** `Provider` gained `args` and `env` (`provider.<n>.args` and
+  `.env` in `ai-endpoints.conf`, reached by `settings set ai.provider.<n>.args`), used only by an `acp` row: the
+  other agent wires build their own arguments.
+- **One process a turn**, carried on with `session/resume`, or `session/load` with its replay dropped. An agent
+  that can do neither fails the turn with `Session not found`, so `refused_to_resume` replays it.
+  `unluminous_chat::acp::Turn` is the protocol as a pure value machine, replayed against the recorded streams in
+  `tests/streams/acp-claude-*.jsonl`; `acp::run` is the transport, started by `agent::start`.
+- **Unluminous offers no file system and no terminal**, so the agent uses its own tools, and any request it did
+  not offer is answered `-32601`. A permission request is answered from `chat.permission` by the tool call's
+  `kind`, and a refusal is said in the thinking.
+- **Nothing is fetched until asked.** `Settings -> AI Configuration` has an `ACP Registry` card with `Load
+  registry`; `settings acp-registry` and `settings acp-add <id>` are the agent's half, held until the thread
+  answers. `UNLUMINOUS_ACP_REGISTRY` names a file or address instead, which the tests use.
+- **A binary agent is downloaded into `<settings folder>/acp-agents/<id>/<version>/`**, its SHA-256 checked
+  before anything is unpacked, and unpacked with `%SystemRoot%\System32\tar.exe` on Windows.
+- **An `acp` endpoint is never a ticket's agent** (`ai_endpoints::agents`): a ticket runs in a terminal.
+
+`cargo test -p unluminous-chat --test acp_live -- --ignored --nocapture` runs two real turns against Claude's
+adapter. `UNLUMINOUS_ACP_TRACE=1` writes every message both ways to standard error. Agent Chat now reads its
+settings file again when something else changed it (`follow_the_configuration_file`), which the live run found:
+`settings set plugins.agent-chat.permission read` used to reach only the next window.
+
 ### A modal's backdrop is a blurred photograph of the window (`task-2247`)
 
 egui cannot read back what is under a layer, so `modal::show` asks for a `ViewportCommand::Screenshot` the

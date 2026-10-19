@@ -18,3 +18,6 @@ serde_json.workspace = true
 # all off: nothing here posts a form, keeps a cookie or wants a second JSON layer.
 # See `tasks/task-1767-agent-chat-tdd.md` §3.1 for the two routes that were weighed and refused.
 ureq = { workspace = true }
+# The SHA-256 an ACP registry entry gives for a binary agent's archive (`task-2308`). Already in the tree
+# through `wry` and the Database plugin.
+sha2.workspace = true

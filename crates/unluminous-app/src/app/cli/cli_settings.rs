@@ -309,6 +309,30 @@ impl UnluminousApp {
                 ok(request, sentence, status)
             }
             "reset" => self.cli_settings_reset(request),
+            "acp-registry" => {
+                self.endpoints.acp.load(request.switch("refresh"));
+                let filter = request.text("filter").unwrap_or_default().trim().to_owned();
+                let until = waits_for(request, "timeout", ACP_REGISTRY_WAIT);
+                Outcome::Hold(Waiting::Acp { add: None, filter, started: false, until })
+            }
+            "acp-add" => {
+                let Some(id) = request.text("id").map(|id| id.trim().to_owned()) else {
+                    return no(
+                        request,
+                        code::USAGE,
+                        "Name the agent, as `settings acp-registry` lists it.",
+                    );
+                };
+                let name = request.text("name").map(|name| name.trim().to_owned());
+                self.endpoints.acp.load(false);
+                let until = waits_for(request, "timeout", ACP_INSTALL_WAIT);
+                Outcome::Hold(Waiting::Acp {
+                    add: Some((id, name)),
+                    filter: String::new(),
+                    started: false,
+                    until,
+                })
+            }
             "keymap" => self.cli_settings_keymap(request),
             "bind" => self.cli_settings_bind(request),
             "fonts" => {
@@ -328,6 +352,126 @@ impl UnluminousApp {
             }
             _ => unknown(request),
         }
+    }
+
+    /// The answer to `settings acp-registry` or `settings acp-add`, once the registry has been read and any agent
+    /// being installed has been (`task-2308`). `None` while either is still going on.
+    pub(crate) fn acp_answer(
+        &mut self,
+        request: &Request,
+        add: &Option<(String, Option<String>)>,
+        filter: &str,
+        started: &mut bool,
+    ) -> Option<Reply> {
+        if self.endpoints.acp.is_loading() {
+            return None;
+        }
+        if self.endpoints.acp.agents.is_none() {
+            let why = self
+                .endpoints
+                .acp
+                .problem
+                .clone()
+                .unwrap_or_else(|| "The ACP registry could not be read.".to_owned());
+            return Some(Reply::failed(&request.command, code::REFUSED, why));
+        }
+        let Some((id, name)) = add else {
+            return Some(self.acp_registry_reply(request, filter));
+        };
+        let wanted = name.clone().unwrap_or_else(|| id.clone());
+        if !*started {
+            *started = true;
+            let environment = crate::services::agent_chat::AgentChat::the_environment();
+            let has =
+                |program: &str| unluminous_chat::provider::program(program, &environment).is_some();
+            let providers = self.endpoints.providers.clone();
+            match self.endpoints.acp.add(id, name.as_deref(), &providers, &has) {
+                Ok(Some(provider)) => {
+                    self.endpoints.providers.push(provider);
+                    self.the_endpoints_changed();
+                }
+                Ok(None) => return None,
+                Err(why) => return Some(Reply::failed(&request.command, code::REFUSED, why)),
+            }
+        } else if self.endpoints.acp.installing().is_some() {
+            return None;
+        }
+        let Some(index) = self.endpoints.providers.iter().position(|one| one.name == wanted) else {
+            let why = self
+                .endpoints
+                .acp
+                .problem
+                .clone()
+                .unwrap_or_else(|| format!("{id} was not added."));
+            return Some(Reply::failed(&request.command, code::REFUSED, why));
+        };
+        let provider = &self.endpoints.providers[index];
+        let said = format!(
+            "Added the ACP agent {id} as the endpoint `{wanted}`, which runs {} {}. Choose it in Agent Chat with `plugins run agent-chat use {wanted}`.",
+            provider.command,
+            unluminous_chat::provider::join_arguments(&provider.args)
+        );
+        Some(Reply::done(
+            &request.command,
+            said,
+            json!({
+                "endpoint": wanted,
+                "index": index,
+                "wire": provider.wire.name(),
+                "command": provider.command,
+                "args": provider.args,
+                "env": provider.env.iter().map(|(name, value)| format!("{name}={value}")).collect::<Vec<_>>(),
+            }),
+        ))
+    }
+
+    /// Every agent in the ACP registry whose id or name holds `filter`, as lines and as data.
+    fn acp_registry_reply(&self, request: &Request, filter: &str) -> Reply {
+        let agents = self.endpoints.acp.agents.clone().unwrap_or_default();
+        let platform = unluminous_chat::acp_registry::platform();
+        let wanted = filter.to_lowercase();
+        let mut shown = Vec::new();
+        let mut said = Vec::new();
+        for agent in agents.iter().filter(|agent| {
+            wanted.is_empty()
+                || agent.id.to_lowercase().contains(&wanted)
+                || agent.name.to_lowercase().contains(&wanted)
+        }) {
+            let mut kinds: Vec<&str> = Vec::new();
+            for kind in agent.distributions.iter().map(|one| one.kind()) {
+                if !kinds.contains(&kind) {
+                    kinds.push(kind);
+                }
+            }
+            let runs_here =
+                unluminous_chat::acp_registry::launch_for(agent, &platform, &|_| true).is_some();
+            let added = self.endpoints.providers.iter().any(|one| one.name == agent.id);
+            said.push(format!(
+                "{}  {}  {}  ({}){}: {}",
+                agent.id,
+                agent.version,
+                agent.name,
+                kinds.join(", "),
+                match (added, runs_here) {
+                    (true, _) => ", added",
+                    (false, false) => ", not for this machine",
+                    _ => "",
+                },
+                agent.description
+            ));
+            shown.push(json!({
+                "id": agent.id,
+                "name": agent.name,
+                "version": agent.version,
+                "description": agent.description,
+                "repository": agent.repository,
+                "distributions": kinds,
+                "runsHere": runs_here,
+                "added": added,
+            }));
+        }
+        let message = format!("{} of {} agents in the ACP registry", shown.len(), agents.len());
+        lines_reply(request, message, said, json!({ "agents": shown, "platform": platform }))
     }
 
     /// `settings keymap`: every action a shortcut can be given, its chord now, the preset's and Unluminous's

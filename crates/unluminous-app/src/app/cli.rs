@@ -96,6 +96,13 @@ mod cli_window;
 
 /// How long a command waits when it was not told.
 const DEFAULT_WAIT: Duration = Duration::from_millis(10_000);
+
+/// How long `settings acp-registry` waits for the registry to be read (`task-2308`).
+/// Under the client's own fifteen seconds, so the window's sentence about what it was waiting for is the answer.
+const ACP_REGISTRY_WAIT: Duration = Duration::from_secs(12);
+
+/// How long `settings acp-add` waits, which includes downloading a binary agent.
+const ACP_INSTALL_WAIT: Duration = Duration::from_secs(600);
 /// What running a command produced.
 pub enum Outcome {
     /// Answer it now.
@@ -182,6 +189,10 @@ pub enum Waiting {
     DebugHover { id: u64, expand: Option<String>, until: Instant },
     /// `update check` waiting for the releases endpoint, which is on a thread. `task-1984` L1.
     UpdateCheck { until: Instant },
+    /// `settings acp-registry` and `settings acp-add` waiting for the ACP registry, and for a binary agent to be
+    /// downloaded, both on threads (`task-2308`). `add` is the agent and the endpoint name; `started` says the
+    /// add has been asked for.
+    Acp { add: Option<(String, Option<String>)>, filter: String, started: bool, until: Instant },
     /// `notebook run --wait` waiting for every cell it ran to finish or be skipped. The notebook is
     /// named by its path, so a tab switched away from still answers. `task-2220`.
     NotebookRun { path: Option<PathBuf>, cells: Vec<String>, until: Instant },
@@ -245,6 +256,7 @@ impl Waiting {
             | Waiting::References { until, .. }
             | Waiting::Git { until, .. }
             | Waiting::UpdateCheck { until }
+            | Waiting::Acp { until, .. }
             | Waiting::ReportShot { until, .. }
             | Waiting::NotebookRun { until, .. }
             | Waiting::NotebookVariables { until, .. }
@@ -583,6 +595,16 @@ impl UnluminousApp {
                 let tag = *tag;
                 self.voice_transcribe_answer(request, tag)
             }
+            Waiting::Acp { add, filter, started, .. } => {
+                // The threads' answers are read here as well as once a frame, so the reply is not a frame late.
+                self.take_the_acp_agents_that_arrived(ctx);
+                let (add, filter) = (add.clone(), filter.clone());
+                let answer = self.acp_answer(request, &add, &filter, started);
+                if answer.is_none() {
+                    ctx.request_repaint_after(Duration::from_millis(100));
+                }
+                answer
+            }
             Waiting::UpdateCheck { .. } => {
                 let check = self.update.as_ref()?;
                 // `take_the_update_answer` is what reads the channel, once a frame, beside the git
@@ -735,6 +757,14 @@ impl UnluminousApp {
                 "report.screenshot",
                 "The window had not been photographed when the time ran out.".to_owned(),
             ),
+            Waiting::Acp { add: Some(_), .. } => (
+                "settings.acp",
+                "The agent was still being added when the time ran out. `settings acp-registry` says whether it is there.".to_owned(),
+            ),
+            Waiting::Acp { .. } => (
+                "settings.acp",
+                "The ACP registry had not been read when the time ran out.".to_owned(),
+            ),
             Waiting::UpdateCheck { .. } => (
                 "update.check",
                 "The releases page had not answered when the time ran out.".to_owned(),
@@ -851,7 +881,9 @@ impl UnluminousApp {
         // `voice transcribe` is the same shape (`task-2290`): what it waits for is the voice engine's own
         // threads, which `follow_the_voice` reads, so a test's caller can wait for it here too.
         let voice = matches!(waiting, Waiting::VoiceTranscribe { .. });
-        if !voice && !matches!(waiting, Waiting::Git { answer: GitAnswer::GitStatus, .. }) {
+        // And the ACP registry's (`task-2308`), whose threads `ready` reads itself.
+        let acp = matches!(waiting, Waiting::Acp { .. });
+        if !voice && !acp && !matches!(waiting, Waiting::Git { answer: GitAnswer::GitStatus, .. }) {
             return None;
         }
         loop {

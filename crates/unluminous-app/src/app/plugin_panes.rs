@@ -937,6 +937,7 @@ impl UnluminousApp {
         }
         crate::services::frame_trace::phase("plugins-asked");
         self.tell_the_plugins_what_is_showing();
+        self.take_the_acp_agents_that_arrived(ctx);
         self.tell_the_plugins_the_endpoints();
         self.act_on_the_designer_wants();
         crate::services::frame_trace::phase("plugins-told");
@@ -1004,6 +1005,27 @@ impl UnluminousApp {
             }
         }
         self.realm.live.tell_the_chats_the_endpoints(&providers);
+    }
+
+    /// Add the ACP agents a thread has finished installing to the endpoints, and keep the window drawing while
+    /// the registry is being read or an agent installed (`task-2308`). Two channel reads a frame otherwise.
+    pub(crate) fn take_the_acp_agents_that_arrived(&mut self, ctx: &egui::Context) {
+        if self.endpoints.acp.is_busy() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(200));
+        }
+        if !self.endpoints.acp.poll() {
+            return;
+        }
+        let arrived = self.endpoints.acp.take_ready();
+        if arrived.is_empty() {
+            return;
+        }
+        for provider in arrived {
+            if !self.endpoints.providers.iter().any(|one| one.name == provider.name) {
+                self.endpoints.providers.push(provider);
+            }
+        }
+        self.the_endpoints_changed();
     }
 
     /// Write the AI endpoints to the settings folder and tell everything that uses them.

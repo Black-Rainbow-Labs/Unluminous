@@ -4345,6 +4345,43 @@ unluminous-cli settings bind duplicate-line --reset
 unluminous-cli settings bind --reset-all
 ```
 
+### settings acp-registry
+
+```
+unluminous-cli settings acp-registry [filter] [--refresh] [--timeout <milliseconds>]
+```
+
+The agents in the ACP registry (agentclientprotocol.com), which speak the Agent Client Protocol: each one's id, version, name, how it is distributed (npx, uvx or binary), whether it runs on this machine and whether it is already an endpoint. Read once a window and kept; `--refresh` reads it again. Add one with `settings acp-add`.
+
+- `filter` (optional) — Only the agents whose id or name contains this, such as `claude` or `gemini`. Everything after it on the line belongs to it.
+
+- `--refresh` — Read the registry again rather than using the copy this window already read.
+- `--timeout <milliseconds>` — How long to wait for the registry. 12000 by default.
+
+```sh
+unluminous-cli settings acp-registry
+unluminous-cli settings acp-registry claude --json
+unluminous-cli settings acp-registry --refresh
+```
+
+### settings acp-add
+
+```
+unluminous-cli settings acp-add <id> [--name <endpoint>] [--timeout <milliseconds>]
+```
+
+Add an agent from the ACP registry as an `acp` endpoint, which Agent Chat can then use. An npx or uvx agent runs through that package runner; a binary agent is downloaded into the settings folder, its SHA-256 checked, and unpacked first. Answers the endpoint's name; `plugins run agent-chat use <name>` chooses it. Change it afterwards with `settings set ai.provider.<n>.args`.
+
+- `id` — The agent's id, as `settings acp-registry` lists it, such as claude-acp.
+
+- `--name <endpoint>` — What to call the endpoint. The agent's id by default.
+- `--timeout <milliseconds>` — How long to wait, including a download. 600000 by default.
+
+```sh
+unluminous-cli settings acp-add claude-acp
+unluminous-cli settings acp-add gemini --name gemini-acp --json
+```
+
 ### settings fonts
 
 ```

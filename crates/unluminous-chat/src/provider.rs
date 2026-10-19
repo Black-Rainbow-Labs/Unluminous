@@ -84,6 +84,10 @@ pub enum Wire {
     /// The `pi --mode json` command line, Pi's coding agent, which answers with whichever model its own
     /// configuration names (`task-2302`).
     PiCli,
+    /// An agent spoken to through the Agent Client Protocol (`task-2308`): JSON-RPC over the program's
+    /// standard input and output, which Zed, JetBrains and the agents in the ACP registry speak. The program and
+    /// its arguments are the row's own, because an ACP agent is often `npx` with a package after it.
+    Acp,
 }
 
 /// Every wire shape this version speaks, which is what a settings page offers and what a
@@ -93,8 +97,16 @@ pub enum Wire {
 /// debuggers, the UI providers and the chrome. A configuration naming a shape this version has not
 /// got is refused with the list rather than loading as an endpoint whose every request fails
 /// obscurely — the rule `language.renders` set and every one since has kept.
-pub const WIRES: &[&str] =
-    &["claude-cli", "codex-cli", "opencode-cli", "pi-cli", "openai", "anthropic", "responses"];
+pub const WIRES: &[&str] = &[
+    "claude-cli",
+    "codex-cli",
+    "opencode-cli",
+    "pi-cli",
+    "acp",
+    "openai",
+    "anthropic",
+    "responses",
+];
 
 impl Wire {
     pub fn name(self) -> &'static str {
@@ -106,6 +118,7 @@ impl Wire {
             Self::CodexCli => "codex-cli",
             Self::OpenCodeCli => "opencode-cli",
             Self::PiCli => "pi-cli",
+            Self::Acp => "acp",
         }
     }
 
@@ -118,6 +131,7 @@ impl Wire {
             "codex-cli" => Some(Self::CodexCli),
             "opencode-cli" => Some(Self::OpenCodeCli),
             "pi-cli" => Some(Self::PiCli),
+            "acp" => Some(Self::Acp),
             _ => None,
         }
     }
@@ -128,7 +142,10 @@ impl Wire {
     /// catalogue from Unluminous, and its conversation is continued by its own session id rather than by
     /// sending the transcript again.
     pub fn is_a_program(self) -> bool {
-        matches!(self, Self::ClaudeCli | Self::CodexCli | Self::OpenCodeCli | Self::PiCli)
+        matches!(
+            self,
+            Self::ClaudeCli | Self::CodexCli | Self::OpenCodeCli | Self::PiCli | Self::Acp
+        )
     }
 
     /// Whether this shape carries a whole agent — its own tools, its own permissions, its own files.
@@ -151,7 +168,9 @@ impl Wire {
             Self::CodexCli => Some("codex"),
             Self::OpenCodeCli => Some("opencode"),
             Self::PiCli => Some("pi"),
-            Self::OpenAi | Self::Anthropic | Self::Responses => None,
+            // **An ACP row names its own program**, often `npx` with a package after it, so there is no one
+            // program to look for before the shape is offered.
+            Self::Acp | Self::OpenAi | Self::Anthropic | Self::Responses => None,
         }
     }
 
@@ -194,6 +213,15 @@ pub struct Provider {
     pub key_entry: String,
     /// The most tokens to ask for in one answer.
     pub max_tokens: u32,
+    /// The arguments the program is started with, for an `acp` row (`task-2308`).
+    ///
+    /// Empty for every other shape, whose arguments are built in `agent.rs`: a row must not be able to change
+    /// what `claude --print` means. An ACP agent is often `npx -y <package>`, so the words after the program are
+    /// part of which agent it is.
+    pub args: Vec<String>,
+    /// Variables added to the environment the program is started with, for an `acp` row. What the ACP registry
+    /// names for an agent, such as `AUGMENT_DISABLE_AUTO_UPDATE=1`, and never a secret.
+    pub env: Vec<(String, String)>,
 }
 
 /// What `max_tokens` is when nothing says.
@@ -224,6 +252,8 @@ impl Provider {
                 key_env: String::new(),
                 key_entry: String::new(),
                 max_tokens: DEFAULT_MAX_TOKENS,
+                args: Vec::new(),
+                env: Vec::new(),
             },
             Provider {
                 name: "codex".to_owned(),
@@ -234,6 +264,8 @@ impl Provider {
                 key_env: String::new(),
                 key_entry: String::new(),
                 max_tokens: DEFAULT_MAX_TOKENS,
+                args: Vec::new(),
+                env: Vec::new(),
             },
             Provider {
                 name: "local".to_owned(),
@@ -247,6 +279,8 @@ impl Provider {
                 key_env: String::new(),
                 key_entry: String::new(),
                 max_tokens: DEFAULT_MAX_TOKENS,
+                args: Vec::new(),
+                env: Vec::new(),
             },
             // **OpenCode, with whichever model its own configuration names** (`task-2247`). It is what
             // drives a local model as an agent with tools: a provider in `opencode.json` pointed at
@@ -261,6 +295,8 @@ impl Provider {
                 key_env: String::new(),
                 key_entry: String::new(),
                 max_tokens: DEFAULT_MAX_TOKENS,
+                args: Vec::new(),
+                env: Vec::new(),
             },
             // **Pi, with whichever model its own configuration names** (`task-2302`). Its models are in
             // `~/.pi/agent/models.json` and its subscriptions are signed in with `/login` in Pi itself, so
@@ -274,6 +310,8 @@ impl Provider {
                 key_env: String::new(),
                 key_entry: String::new(),
                 max_tokens: DEFAULT_MAX_TOKENS,
+                args: Vec::new(),
+                env: Vec::new(),
             },
         ]
     }
@@ -416,7 +454,7 @@ impl Provider {
             }
             // A program is not sent headers at all, and asking for them is a caller's mistake
             // rather than something to answer with a guess.
-            Wire::ClaudeCli | Wire::CodexCli | Wire::OpenCodeCli | Wire::PiCli => {}
+            Wire::ClaudeCli | Wire::CodexCli | Wire::OpenCodeCli | Wire::PiCli | Wire::Acp => {}
             Wire::Anthropic => {
                 if let Some(key) = self.key(environment) {
                     headers.push(("x-api-key".to_owned(), key));
@@ -429,6 +467,79 @@ impl Provider {
         }
         headers
     }
+}
+
+/// A row's arguments as one line, split the way a shell splits words: on spaces, with a double-quoted run
+/// kept as one word (`task-2308`).
+///
+/// A backslash is a backslash unless it is in front of a quote, because half the paths on Windows have one in
+/// them. That is `run_configurations::split_command`'s rule, written again here because that function is in
+/// `unluminous-app`, which depends on this crate.
+pub fn split_arguments(line: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut word = String::new();
+    let mut quoted = false;
+    let mut started = false;
+    let mut characters = line.chars().peekable();
+    while let Some(one) = characters.next() {
+        match one {
+            '\\' if characters.peek() == Some(&'"') => {
+                word.push('"');
+                characters.next();
+                started = true;
+            }
+            '"' => {
+                quoted = !quoted;
+                started = true;
+            }
+            one if one.is_whitespace() && !quoted => {
+                if started {
+                    words.push(std::mem::take(&mut word));
+                    started = false;
+                }
+            }
+            one => {
+                word.push(one);
+                started = true;
+            }
+        }
+    }
+    if started {
+        words.push(word);
+    }
+    words
+}
+
+/// Arguments as the one line [`split_arguments`] reads back, quoting a word that is empty or holds a space or a
+/// quote.
+pub fn join_arguments(words: &[String]) -> String {
+    words
+        .iter()
+        .map(|word| {
+            match word.is_empty() || word.chars().any(|one| one.is_whitespace() || one == '"') {
+                true => format!("\"{}\"", word.replace('"', "\\\"")),
+                false => word.clone(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Variables written as `A=1; B=2`, which is how `run_configurations` writes a configuration's environment.
+/// A part with no `=` or no name is left out.
+pub fn split_variables(line: &str) -> Vec<(String, String)> {
+    line.split(';')
+        .filter_map(|part| {
+            let (name, value) = part.split_once('=')?;
+            let name = name.trim();
+            (!name.is_empty()).then(|| (name.to_owned(), value.trim().to_owned()))
+        })
+        .collect()
+}
+
+/// Variables as the one line [`split_variables`] reads back.
+pub fn join_variables(variables: &[(String, String)]) -> String {
+    variables.iter().map(|(name, value)| format!("{name}={value}")).collect::<Vec<_>>().join("; ")
 }
 
 /// Where the program called `name` really is, looking on `PATH` the way a shell would.
@@ -611,6 +722,31 @@ mod tests {
         }
     }
 
+    /// An `acp` row's arguments are one line split the way a shell splits words, and written back the same way
+    /// (`task-2308`).
+    #[test]
+    fn arguments_and_variables_are_one_line_that_reads_back_the_same() {
+        assert_eq!(split_arguments("-y  @scope/pkg@1.0 --acp"), ["-y", "@scope/pkg@1.0", "--acp"]);
+        assert_eq!(
+            split_arguments(r#"--dir "C:\My Projects" "" x"#),
+            ["--dir", r"C:\My Projects", "", "x"]
+        );
+        assert_eq!(split_arguments(r#"say \"hi\""#), ["say", "\"hi\""]);
+        let words: Vec<String> =
+            ["-y", "a b", "", "q\"t"].iter().map(|one| one.to_string()).collect();
+        assert_eq!(split_arguments(&join_arguments(&words)), words);
+        assert!(split_arguments("   ").is_empty());
+        assert_eq!(
+            split_variables("A=1; B = two;;=x; C"),
+            [("A".to_owned(), "1".to_owned()), ("B".to_owned(), "two".to_owned())]
+        );
+        let variables = vec![("A".to_owned(), "1".to_owned())];
+        assert_eq!(split_variables(&join_variables(&variables)), variables);
+        // An ACP row is a program that needs no key, and its shape is offered on any machine.
+        assert!(Wire::Acp.is_a_program() && Wire::Acp.is_available(&nothing()));
+        assert_eq!(Wire::from_name("acp"), Some(Wire::Acp));
+    }
+
     /// The environment a test that is not about the environment hands over.
     fn nothing() -> Environment {
         Environment::empty()
@@ -640,6 +776,8 @@ mod tests {
             key_env: String::new(),
             key_entry: String::new(),
             max_tokens: DEFAULT_MAX_TOKENS,
+            args: Vec::new(),
+            env: Vec::new(),
         }
     }
 

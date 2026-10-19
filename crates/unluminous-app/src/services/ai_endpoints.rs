@@ -17,9 +17,14 @@
 //! written before it existed.
 
 use std::path::Path;
+use std::sync::mpsc::{channel, Receiver, TryRecvError};
 use std::time::{Duration, Instant};
 
-use unluminous_chat::provider::{Provider, Wire, WIRES};
+use unluminous_chat::acp_registry;
+
+use unluminous_chat::provider::{
+    join_arguments, join_variables, split_arguments, split_variables, Provider, Wire, WIRES,
+};
 
 use crate::services::plugin_ui;
 use crate::services::store::Values;
@@ -43,6 +48,8 @@ pub struct Endpoints {
     pub readiness: Readiness,
     /// Moved every time the list changes, so a pane can be told once rather than every frame.
     pub revision: u64,
+    /// The ACP registry, once somebody has asked for it (`task-2308`).
+    pub acp: AcpRegistry,
 }
 
 impl Default for Endpoints {
@@ -54,6 +61,7 @@ impl Default for Endpoints {
             problems: Vec::new(),
             readiness: Readiness::default(),
             revision: 1,
+            acp: AcpRegistry::default(),
         }
     }
 }
@@ -68,7 +76,7 @@ impl Endpoints {
     /// [`load_with`].
     pub fn in_folder_with(folder: &Path, has_key: &dyn Fn(&str) -> bool) -> Self {
         let (providers, problems) = load_with(folder, has_key);
-        Self { providers, problems, ..Self::default() }
+        Self { providers, problems, acp: AcpRegistry::in_folder(folder), ..Self::default() }
     }
 
     /// Say the list changed, so every pane is told.
@@ -127,6 +135,8 @@ pub fn api_endpoints() -> Vec<Provider> {
         key_env: key_env.to_owned(),
         key_entry: String::new(),
         max_tokens: unluminous_chat::provider::DEFAULT_MAX_TOKENS,
+        args: Vec::new(),
+        env: Vec::new(),
     };
     vec![
         api(
@@ -164,7 +174,8 @@ pub fn write(folder: &Path, providers: &[Provider]) -> Result<(), String> {
         &values,
         "# What can answer, for Agent Chat, Agent Tasks and anything else in Unluminous that talks to a model.\n\
          # `Settings -> AI Configuration` writes this file and reads it back. `wire` is `claude-cli`, `codex-cli`,\n\
-         # `opencode-cli` or `pi-cli` for a row that runs the agent installed on this machine, which needs no key, or\n\
+         # `opencode-cli` or `pi-cli` for a row that runs the agent installed on this machine, which needs no key,\n\
+         # `acp` for an agent spoken to through the Agent Client Protocol, started as `command` with `args`, or\n\
          # `openai`, `anthropic` or `responses` for one that sends to a URL. A row that sends names the\n\
          # environment variable its key comes from; the key itself is never written here.",
     )
@@ -188,6 +199,13 @@ pub fn write_rows(values: &mut Values, providers: &[Provider]) {
         values.set(&format!("provider.{index}.key-env"), provider.key_env.clone());
         values.set(&format!("provider.{index}.key-entry"), provider.key_entry.clone());
         values.set(&format!("provider.{index}.max-tokens"), provider.max_tokens.to_string());
+        // Only for a row that has them, so a file of the shapes that never do reads as it always did.
+        if !provider.args.is_empty() {
+            values.set(&format!("provider.{index}.args"), join_arguments(&provider.args));
+        }
+        if !provider.env.is_empty() {
+            values.set(&format!("provider.{index}.env"), join_variables(&provider.env));
+        }
     }
 }
 
@@ -219,12 +237,17 @@ fn provider_at(values: &Values, index: usize) -> Result<Option<Provider>, String
             .number(&format!("provider.{index}.max-tokens"))
             .unwrap_or(unluminous_chat::provider::DEFAULT_MAX_TOKENS as f32)
             .clamp(64.0, 200_000.0) as u32,
+        args: split_arguments(&text("args")),
+        env: split_variables(&text("env")),
     }))
 }
 
 /// The endpoints that run an agent on this machine, which are the ones a ticket can be given to.
+///
+/// **Not an `acp` row** (`task-2308`): a ticket's agent runs in a terminal with its own interface, and an ACP
+/// agent has none.
 pub fn agents(providers: &[Provider]) -> impl Iterator<Item = &Provider> {
-    providers.iter().filter(|provider| provider.is_a_program())
+    providers.iter().filter(|provider| provider.is_a_program() && provider.wire != Wire::Acp)
 }
 
 /// What one key of an endpoint is called in `settings list`, `get` and `set`: `ai.provider.<n>.<field>`.
@@ -232,7 +255,8 @@ pub fn agents(providers: &[Provider]) -> impl Iterator<Item = &Provider> {
 /// **The agent's half of the AI Configuration page** (`task-2247`). The same names the file uses, under
 /// `ai.`, the way a plugin's own file is reached as `plugins.<id>.<key>`, so nothing about the page needs a
 /// command of its own: `settings set ai.provider.3.model llama-local/local` is the field on the page.
-const FIELDS: [&str; 7] = ["name", "wire", "command", "url", "model", "key-env", "max-tokens"];
+const FIELDS: [&str; 9] =
+    ["name", "wire", "command", "args", "env", "url", "model", "key-env", "max-tokens"];
 
 /// Every endpoint key and its value, for `settings list` and `settings get`.
 pub fn settings(providers: &[Provider]) -> Vec<(String, String)> {
@@ -292,6 +316,8 @@ pub fn set(providers: &mut Vec<Provider>, name: &str, value: &str) -> Option<Res
             }
         },
         "command" => provider.command = value.to_owned(),
+        "args" => provider.args = split_arguments(value),
+        "env" => provider.env = split_variables(value),
         "url" => provider.url = value.to_owned(),
         "model" => provider.model = value.to_owned(),
         "key-env" => provider.key_env = value.to_owned(),
@@ -361,6 +387,192 @@ impl Readiness {
     /// Ask again on the next frame, because a row was just edited.
     pub fn forget(&mut self) {
         self.rows_taken = None;
+    }
+}
+
+/// The ACP registry as the window holds it: the agents once they have been read, and an agent being installed
+/// (`task-2308`).
+///
+/// **Nothing is fetched until somebody asks**, by pressing `Load registry` or running `settings acp-registry`.
+/// The fetch and a binary agent's download each run on a thread of their own, and the window asks [`Self::poll`]
+/// once a frame, which costs two channel reads while nothing is happening.
+#[derive(Debug, Default)]
+pub struct AcpRegistry {
+    /// The agents, once read.
+    pub agents: Option<Vec<acp_registry::Agent>>,
+    /// Why the last fetch or the last install did not work.
+    pub problem: Option<String>,
+    /// What the last install or add did, for the page and for `settings acp-add`.
+    pub said: Option<String>,
+    /// What the page's `Find` field holds.
+    pub filter: String,
+    /// The settings folder a binary agent is installed under. `None` in a test's window.
+    folder: Option<std::path::PathBuf>,
+    loading: Option<Receiver<Result<Vec<acp_registry::Agent>, String>>>,
+    /// The registry id being installed, and where its endpoint will arrive.
+    installing: Option<(String, Receiver<Result<Provider, String>>)>,
+    /// Endpoints that are ready to be added to the list, taken by [`Self::take_ready`].
+    ready: Vec<Provider>,
+}
+
+impl AcpRegistry {
+    /// The registry for a window whose settings are in `folder`.
+    pub fn in_folder(folder: &Path) -> Self {
+        Self { folder: Some(folder.to_path_buf()), ..Self::default() }
+    }
+
+    /// Read the registry on a thread, unless it is already being read. `again` reads it even when it has been.
+    pub fn load(&mut self, again: bool) {
+        if self.loading.is_some() || (self.agents.is_some() && !again) {
+            return;
+        }
+        let (send, receive) = channel();
+        let started = std::thread::Builder::new().name("unluminous-acp-registry".to_owned()).spawn(
+            move || {
+                let _ =
+                    send.send(acp_registry::fetch().and_then(|text| acp_registry::parse(&text)));
+            },
+        );
+        match started {
+            Ok(_) => {
+                self.loading = Some(receive);
+                self.problem = None;
+            }
+            Err(problem) => {
+                self.problem = Some(format!("The registry could not be read: {problem}"))
+            }
+        }
+    }
+
+    /// The agents, as a test or a window with no network would be handed them.
+    pub fn use_agents(&mut self, agents: Vec<acp_registry::Agent>) {
+        self.agents = Some(agents);
+        self.loading = None;
+    }
+
+    /// Whether the registry is being read or an agent installed, so the window keeps drawing until it is done.
+    pub fn is_busy(&self) -> bool {
+        self.loading.is_some() || self.installing.is_some()
+    }
+
+    /// Whether the registry is being read.
+    pub fn is_loading(&self) -> bool {
+        self.loading.is_some()
+    }
+
+    /// The id of the agent being installed, if one is.
+    pub fn installing(&self) -> Option<&str> {
+        self.installing.as_ref().map(|(id, _)| id.as_str())
+    }
+
+    /// Take what the threads have finished. Answers whether anything changed.
+    pub fn poll(&mut self) -> bool {
+        let mut changed = false;
+        if let Some(loading) = &self.loading {
+            let arrived = match loading.try_recv() {
+                Ok(arrived) => Some(arrived),
+                Err(TryRecvError::Disconnected) => {
+                    Some(Err("The registry stopped being read.".to_owned()))
+                }
+                Err(TryRecvError::Empty) => None,
+            };
+            if let Some(arrived) = arrived {
+                match arrived {
+                    Ok(agents) => self.agents = Some(agents),
+                    Err(problem) => self.problem = Some(problem),
+                }
+                self.loading = None;
+                changed = true;
+            }
+        }
+        if let Some((id, installing)) = &self.installing {
+            let id = id.clone();
+            let arrived = match installing.try_recv() {
+                Ok(arrived) => Some(arrived),
+                Err(TryRecvError::Disconnected) => {
+                    Some(Err(format!("Installing {id} stopped before it finished.")))
+                }
+                Err(TryRecvError::Empty) => None,
+            };
+            if let Some(arrived) = arrived {
+                match arrived {
+                    Ok(provider) => {
+                        self.said =
+                            Some(format!("Installed {id} and added it as `{}`.", provider.name));
+                        self.ready.push(provider);
+                    }
+                    Err(problem) => self.problem = Some(problem),
+                }
+                self.installing = None;
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    /// The endpoints that are ready to be added.
+    pub fn take_ready(&mut self) -> Vec<Provider> {
+        std::mem::take(&mut self.ready)
+    }
+
+    /// Add the agent `id` as an endpoint named `name`, or by its id. `has` says which programs are installed.
+    ///
+    /// An agent a package runner starts is ready at once and is answered. A binary agent is downloaded on a
+    /// thread, and its endpoint arrives through [`Self::poll`] and [`Self::take_ready`].
+    pub fn add(
+        &mut self,
+        id: &str,
+        name: Option<&str>,
+        providers: &[Provider],
+        has: &dyn Fn(&str) -> bool,
+    ) -> Result<Option<Provider>, String> {
+        let Some(agents) = &self.agents else {
+            return Err("The ACP registry has not been read yet.".to_owned());
+        };
+        let Some(agent) = agents.iter().find(|agent| agent.id == id.trim()) else {
+            return Err(format!("The ACP registry has no agent `{id}`."));
+        };
+        let name = name
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .unwrap_or(agent.id.as_str())
+            .to_owned();
+        if providers.iter().any(|provider| provider.name == name) {
+            return Err(format!("There is already an endpoint called `{name}`."));
+        }
+        let platform = acp_registry::platform();
+        let Some(distribution) = acp_registry::launch_for(agent, &platform, has) else {
+            return Err(format!("{} has no way to run on {platform}.", agent.name));
+        };
+        if !matches!(distribution, acp_registry::Distribution::Binary { .. }) {
+            self.said = Some(format!("Added {} as `{name}`.", agent.id));
+            self.problem = None;
+            return Ok(Some(acp_registry::provider_for(&name, distribution, None)));
+        }
+        if self.installing.is_some() {
+            return Err(
+                "Another agent is being installed. Add this one when it has finished.".to_owned()
+            );
+        }
+        let Some(settings) = &self.folder else {
+            return Err("This window has no settings folder to install an agent into.".to_owned());
+        };
+        let into = acp_registry::install_folder(settings, &agent.id, &agent.version);
+        let distribution = distribution.clone();
+        let (send, receive) = channel();
+        std::thread::Builder::new()
+            .name("unluminous-acp-install".to_owned())
+            .spawn(move || {
+                let installed = acp_registry::install(&distribution, &into).map(|program| {
+                    acp_registry::provider_for(&name, &distribution, Some(&program))
+                });
+                let _ = send.send(installed);
+            })
+            .map_err(|problem| format!("The agent could not be installed: {problem}"))?;
+        self.installing = Some((agent.id.clone(), receive));
+        self.problem = None;
+        self.said = Some(format!("Installing {}.", agent.id));
+        Ok(None)
     }
 }
 
@@ -455,10 +667,61 @@ mod tests {
         assert_eq!(set(&mut providers, "editor.indent", "tabs"), None, "not one of these");
     }
 
+    /// An `acp` row keeps its program's arguments and its variables through the file and through `settings set`
+    /// (`task-2308`), and a row of any other shape writes neither, so a file written before stays as it was.
+    #[test]
+    fn an_acp_rows_arguments_and_variables_survive_the_file_and_the_settings() {
+        let folder = a_folder("acp");
+        let mut row = Provider::defaults()[0].clone();
+        row.name = "gemini".to_owned();
+        row.wire = Wire::Acp;
+        row.command = "npx".to_owned();
+        row.args = vec![
+            "-y".to_owned(),
+            "@google/gemini-cli@0.64.0".to_owned(),
+            "--acp".to_owned(),
+            "a b".to_owned(),
+        ];
+        row.env = vec![("GEMINI_NO_UPDATE".to_owned(), "1".to_owned())];
+        write(&folder, &[Provider::defaults()[0].clone(), row.clone()]).expect("written");
+        let written = std::fs::read_to_string(folder.join(FILE)).expect("there");
+        assert!(
+            written.contains(r#"provider.1.args = -y @google/gemini-cli@0.64.0 --acp "a b""#),
+            "{written}"
+        );
+        assert!(!written.contains("provider.0.args"), "a row with no arguments writes none");
+        let (rows, refused) = load(&folder);
+        assert!(refused.is_empty(), "{refused:?}");
+        assert_eq!(rows[1], row);
+
+        let mut providers = rows;
+        assert_eq!(set(&mut providers, "ai.provider.1.args", "-y other@1"), Some(Ok(())));
+        assert_eq!(providers[1].args, ["-y", "other@1"]);
+        assert_eq!(set(&mut providers, "ai.provider.1.env", "A=1; B = two"), Some(Ok(())));
+        assert_eq!(
+            providers[1].env,
+            [("A".to_owned(), "1".to_owned()), ("B".to_owned(), "two".to_owned())]
+        );
+        let listed = settings(&providers);
+        assert!(
+            listed.contains(&("ai.provider.1.wire".to_owned(), "acp".to_owned())),
+            "{listed:?}"
+        );
+        assert!(
+            listed.contains(&("ai.provider.1.args".to_owned(), "-y other@1".to_owned())),
+            "{listed:?}"
+        );
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
     #[test]
     fn only_a_program_can_be_given_a_ticket() {
-        let names: Vec<String> =
-            agents(&Provider::defaults()).map(|provider| provider.name.clone()).collect();
+        let mut providers = Provider::defaults();
+        let mut acp = providers[0].clone();
+        acp.name = "claude-acp".to_owned();
+        acp.wire = Wire::Acp;
+        providers.push(acp);
+        let names: Vec<String> = agents(&providers).map(|provider| provider.name.clone()).collect();
         assert_eq!(names, ["claude", "codex", "opencode", "pi"]);
     }
 }

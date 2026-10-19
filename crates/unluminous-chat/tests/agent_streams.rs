@@ -342,3 +342,137 @@ fn a_pi_turn_the_model_refused_fails_in_the_servers_words_once() {
     assert!(decoder.ended);
     assert!(!replies.iter().any(|reply| matches!(reply, Reply::Finished { .. })), "{replies:?}");
 }
+
+// ------------------------------------------------------------------------------ ACP (`task-2308`)
+
+/// A recorded ACP conversation with Claude's adapter, replayed through `acp::Turn`: what the agent sent is
+/// handed to the turn one message at a time, and what the turn answers is kept beside the replies, so a test can
+/// say both what the pane was told and what Unluminous would have written back.
+///
+/// `tests/streams/acp-claude-*.jsonl` is `npx -y @agentclientprotocol/claude-agent-acp@0.94.0` driven by
+/// `_agent_output/task-2308-acp/record.cjs`, one object a line: `dir` is `out` for what the recorder sent and
+/// `in` for what the agent sent. The skills list and the account are cut and the folder is `C:\project`.
+fn acp_from(
+    name: &str,
+    asking: unluminous_chat::acp::Asking,
+) -> (Vec<Reply>, Vec<serde_json::Value>, bool) {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/streams").join(name);
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|_| panic!("{} should be there", path.display()));
+    let mut turn = unluminous_chat::acp::Turn::new(asking);
+    let mut sent = turn.start();
+    let mut replies = Vec::new();
+    let mut done = false;
+    for line in text.lines() {
+        let recorded: serde_json::Value = serde_json::from_str(line).expect("a recorded line");
+        if recorded["dir"] != "in" || done {
+            continue;
+        }
+        let step = turn.message(&recorded["message"]);
+        sent.extend(step.send);
+        replies.extend(step.replies);
+        done = step.done;
+    }
+    (replies, sent, done)
+}
+
+fn acp_asking(
+    session: &str,
+    permission: unluminous_chat::Permission,
+) -> unluminous_chat::acp::Asking {
+    unluminous_chat::acp::Asking {
+        words: "Read the first 5 lines of Cargo.toml and tell me the workspace's first member."
+            .to_owned(),
+        folder: "C:/project".to_owned(),
+        session: session.to_owned(),
+        permission,
+        ..Default::default()
+    }
+}
+
+const ACP_SESSION: &str = "113c32e6-52cc-4340-bc49-e0471f8be27e";
+
+#[test]
+fn a_recorded_acp_turn_reads_a_file_and_answers_with_its_usage_and_context() {
+    let (replies, sent, done) =
+        acp_from("acp-claude-tool.jsonl", acp_asking("", unluminous_chat::Permission::Full));
+    assert!(done, "the answer to session/prompt ends the turn");
+    let methods: Vec<&str> = sent.iter().filter_map(|one| one["method"].as_str()).collect();
+    assert_eq!(methods, ["initialize", "session/new", "session/prompt"]);
+    assert_eq!(sent[2]["params"]["sessionId"], ACP_SESSION);
+    assert_eq!(replies[0], Reply::Session(ACP_SESSION.to_owned()));
+    assert_eq!(replies[1], Reply::Started { model: "Opus 5.5".to_owned() });
+    // The read is one tool block, named by the title that says which file, with its input and its answer.
+    let calls: Vec<&Reply> =
+        replies.iter().filter(|one| matches!(one, Reply::ToolCall { .. })).collect();
+    assert_eq!(calls.len(), 1, "{replies:?}");
+    match calls[0] {
+        Reply::ToolCall { name, arguments, .. } => {
+            assert_eq!(name, "Read Cargo.toml");
+            assert!(arguments.contains("Cargo.toml"), "{arguments}");
+        }
+        _ => unreachable!(),
+    }
+    let answer = replies.iter().find_map(|one| match one {
+        Reply::ToolAnswer { answer, failed, .. } => Some((answer.clone(), *failed)),
+        _ => None,
+    });
+    let (answer, failed) = answer.expect("the read's answer");
+    assert!(!failed);
+    assert!(answer.contains("[workspace]"), "{answer}");
+    assert_eq!(
+        texts(&replies),
+        "The first workspace member in `Cargo.toml:3` is `crates/unluminous-core`."
+    );
+    let end = &replies[replies.len() - 3..];
+    assert_eq!(end[0], Reply::Usage { input: 4 + 251415 + 223670, output: 166 });
+    assert_eq!(end[1], Reply::Finished { reason: "end_turn".to_owned() });
+    assert_eq!(end[2], Reply::Context { used: Some(239750), window: Some(1_000_000) });
+}
+
+#[test]
+fn a_recorded_acp_turn_resumes_its_session_and_a_write_is_allowed_only_when_the_permission_says() {
+    let (replies, sent, done) = acp_from(
+        "acp-claude-write.jsonl",
+        acp_asking(ACP_SESSION, unluminous_chat::Permission::Full),
+    );
+    assert!(done);
+    assert_eq!(sent[1]["method"], "session/resume", "a session the agent advertises it can resume");
+    assert_eq!(sent[1]["params"]["sessionId"], ACP_SESSION);
+    let answered =
+        sent.iter().find(|one| one["result"]["outcome"].is_object()).expect("a permission answer");
+    assert_eq!(answered["result"]["outcome"]["optionId"], "allow-once");
+    // The write is a tool block whose answer is the diff it made.
+    assert!(replies
+        .iter()
+        .any(|one| matches!(one, Reply::ToolCall { name, .. } if name == "Write probe.txt")));
+    assert_eq!(texts(&replies), "done");
+
+    // At `read` the same request is refused, and the thinking says why.
+    let (replies, sent, _) = acp_from(
+        "acp-claude-write.jsonl",
+        acp_asking(ACP_SESSION, unluminous_chat::Permission::Read),
+    );
+    let answered =
+        sent.iter().find(|one| one["result"]["outcome"].is_object()).expect("a permission answer");
+    assert_eq!(answered["result"]["outcome"]["optionId"], "reject");
+    assert!(replies.iter().any(
+        |one| matches!(one, Reply::Thinking(said) if said.contains("Refused: Write probe.txt"))
+    ));
+}
+
+#[test]
+fn a_session_the_acp_agent_does_not_have_fails_in_words_that_ask_again_as_a_replay() {
+    let (replies, _, done) = acp_from(
+        "acp-claude-badresume.jsonl",
+        acp_asking("00000000-1111-2222-3333-444444444444", unluminous_chat::Permission::Full),
+    );
+    assert!(done);
+    let failed = replies.iter().find_map(|one| match one {
+        Reply::Failed(why) => Some(why.clone()),
+        _ => None,
+    });
+    let failed = failed.expect("a failure");
+    assert!(unluminous_chat::agent::refused_to_resume(&failed), "{failed}");
+    assert!(failed.contains("Resource not found"), "{failed}");
+}

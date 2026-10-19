@@ -934,6 +934,12 @@ pub fn button_width(rux: &Rux<'_>, label: &str, plus: bool) -> f32 {
 
 /// A button with a word on it. Answers whether it was pressed.
 pub fn button(rux: &mut Rux<'_>, rect: Rect, label: &str, kind: Kind) -> bool {
+    button_named(rux, rect, label, label, kind)
+}
+
+/// A button with a word on it whose name is not the word, for a list where every row has an `Add` and two
+/// controls must not share a name (`task-2308`). Answers whether it was pressed.
+pub fn button_named(rux: &mut Rux<'_>, rect: Rect, label: &str, name: &str, kind: Kind) -> bool {
     // **A button given no room draws nothing** (`task-2302`). A row that has run out of width hands the next
     // control a rectangle with no width, and a chip drawn into one asked for a texture with no pixels, which
     // egui-wgpu refuses with a panic that closed the window.
@@ -944,7 +950,7 @@ pub fn button(rux: &mut Rux<'_>, rect: Rect, label: &str, kind: Kind) -> bool {
     let chat = theme.chat;
     let response = rux.ui.interact(
         rect,
-        rux.ui.id().with(("settings-button", label, rect.min.x.to_bits(), rect.min.y.to_bits())),
+        rux.ui.id().with(("settings-button", name, rect.min.x.to_bits(), rect.min.y.to_bits())),
         Sense::click(),
     );
     if response.hovered() {
@@ -981,7 +987,7 @@ pub fn button(rux: &mut Rux<'_>, rect: Rect, label: &str, kind: Kind) -> bool {
         galley = rux.elided(Style::sans(12.0).medium(), label, ink, room);
     }
     rux::text::draw_centred(rux.painter(), rect, galley, ink);
-    let named = label.to_owned();
+    let named = name.to_owned();
     response
         .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, named.clone()));
     response.clicked()

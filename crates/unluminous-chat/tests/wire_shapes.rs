@@ -58,6 +58,8 @@ fn provider(wire: Wire) -> Provider {
         key_env: String::new(),
         key_entry: String::new(),
         max_tokens: 4096,
+        args: Vec::new(),
+        env: Vec::new(),
     }
 }
 

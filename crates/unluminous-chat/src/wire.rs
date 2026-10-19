@@ -130,7 +130,9 @@ pub fn request(
         // builds a command line instead, and everything about a body, a header and a URL is
         // irrelevant. An empty object rather than a panic, because a caller that got here has made a
         // mistake and a window that fell over would be a worse way to learn about it.
-        Wire::ClaudeCli | Wire::CodexCli | Wire::OpenCodeCli | Wire::PiCli => Value::Null,
+        Wire::ClaudeCli | Wire::CodexCli | Wire::OpenCodeCli | Wire::PiCli | Wire::Acp => {
+            Value::Null
+        }
     }
 }
 
@@ -560,7 +562,9 @@ impl Decoder {
             Wire::Responses => self.responses_event(event),
             // Read by `agent::Decoder`, which owns one of these for the events `claude` nests inside
             // its own envelope and never hands it one of its own.
-            Wire::ClaudeCli | Wire::CodexCli | Wire::OpenCodeCli | Wire::PiCli => Vec::new(),
+            Wire::ClaudeCli | Wire::CodexCli | Wire::OpenCodeCli | Wire::PiCli | Wire::Acp => {
+                Vec::new()
+            }
         }
     }
 
@@ -996,7 +1000,7 @@ pub fn whole(wire: Wire, body: &str) -> Vec<Reply> {
     match wire {
         // A program is always streamed — there is no second, whole-answer mode to fall back to,
         // because its answer arrives as lines whether or not anybody wanted them one at a time.
-        Wire::ClaudeCli | Wire::CodexCli | Wire::OpenCodeCli | Wire::PiCli => {}
+        Wire::ClaudeCli | Wire::CodexCli | Wire::OpenCodeCli | Wire::PiCli | Wire::Acp => {}
         Wire::OpenAi => {
             if let Some(model) = value["model"].as_str() {
                 replies.push(Reply::Started { model: model.to_owned() });
@@ -1165,6 +1169,8 @@ mod tests {
             key_env: String::new(),
             key_entry: String::new(),
             max_tokens: crate::provider::DEFAULT_MAX_TOKENS,
+            args: Vec::new(),
+            env: Vec::new(),
         }
     }
     fn openai() -> Provider {
