@@ -3736,6 +3736,24 @@ Three ways in, and all three go through `UnluminousApp::fill_a_side`:
 - **`unluminous-cli panel fill <side> [on|off]`** and `panel dock --fill`. `panel list` answers `fills` and
   `corners`.
 
+### A drop does what the strong rectangle shows, and the fill target means the window's edge (`task-2298`)
+
+*"Some panels I'm not able to drag to where the blue boxes indicate I can. After I release, nothing happens."*
+Two faults in `dock::aim`, and both left the arrangement exactly as it was:
+
+- **A column let go on `Fill whole <side>` goes against the window's edge**, outside every other panel on that
+  side. It used to keep the place the pointer gave it among the panels there, so the canvas inside the chat on
+  the right stayed inside it, and with no strip showing a side that fills looks the same as one that does not.
+  A strip keeps the pointer's place along it, because a strip's panels sit side by side along the edge.
+- **`dock::position_in` answers an index among every panel on the side**, the ones put away too, because that
+  is what `Layout::dock` counts. It counted only the showing ones, so with a hidden pane docked in front (the
+  Database pane is on the right by its manifest) a panel let go past the chat's middle landed in front of it.
+
+`UnluminousApp::where_a_panel_would_land` is the one answer the strong rectangle is painted from and the drop
+applies, and `drop_preview` reads it for a test. `every_drop_lands_where_the_preview_said_it_would` carries each
+panel to the inner and outer part of every band in fourteen arrangements and checks the drop against the preview
+and against where the pointer was.
+
 ## A block is collapsed by hiding its lines, and the line numbers do not move
 
 `task-1686` asks for IntelliJ's fold arrows: a chevron beside the line number against a function, an

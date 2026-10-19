@@ -1683,3 +1683,352 @@ fn carry_a_pane(harness: &mut Harness<'static, UnluminousApp>, from: egui::Pos2,
     }
     steady(harness);
 }
+
+// -------------------------------------------------------------------------------------- task-2298
+//
+// *"Some panels I'm not able to drag to where the blue boxes indicate I can. After I release, nothing happens.
+// Eg if realm is to the left of agent chat and I drag realm to the right for full right side, nothing happens.
+// Thoroughly test all combinations and placements and ensure they work as expected."*
+
+/// The pane the Agent-Chat plugin contributed, which is the one plugin pane these tests show.
+fn the_chat(harness: &Harness<'static, UnluminousApp>) -> Panel {
+    (0..unluminous_app::app::dock::PLUGIN_PANES as u8)
+        .map(Panel::Plugin)
+        .find(|panel| harness.state().panel_is_showing(*panel))
+        .expect("the chat pane is showing")
+}
+
+/// A point on a panel's header, left of the buttons at its right end.
+fn header_of(harness: &Harness<'static, UnluminousApp>, panel: Panel) -> egui::Pos2 {
+    let area = harness.state().panel_area(panel);
+    egui::pos2(area.left() + 40.0_f32.min(area.width() / 3.0), area.top() + 12.0)
+}
+
+/// Press on `from` and move to `to` in steps, leaving the button down, so the panel is in the air.
+fn lift(harness: &mut Harness<'static, UnluminousApp>, from: egui::Pos2, to: egui::Pos2) {
+    harness.input_mut().events.push(egui::Event::PointerMoved(from));
+    steady(harness);
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: from,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers: Modifiers::default(),
+    });
+    steady(harness);
+    for step in 1..=8 {
+        let at = from + (to - from) * (step as f32 / 8.0);
+        harness.input_mut().events.push(egui::Event::PointerMoved(at));
+        harness.step();
+    }
+    steady(harness);
+}
+
+/// Let the button go at `at`.
+fn let_go(harness: &mut Harness<'static, UnluminousApp>, at: egui::Pos2) {
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: at,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: Modifiers::default(),
+    });
+    steady(harness);
+}
+
+/// The reported arrangement: the canvas inside the chat on the right. Let go anywhere on the `Fill whole right`
+/// target, the canvas goes against the window's right edge and runs the whole height. Checked with the right
+/// already filling or not, with the editing area showing or not, and with a strip along the bottom or not.
+#[test]
+fn the_canvas_let_go_on_fill_whole_right_goes_against_the_edge_whatever_was_there() {
+    use unluminous_app::app::dock::Side;
+    for (filled, editor, strip) in [
+        (false, true, false),
+        (true, true, false),
+        (false, false, false),
+        (true, false, true),
+        (false, true, true),
+    ] {
+        let mut harness = harness("");
+        if strip {
+            harness.state_mut().new_detached_terminal_tab(8, 60);
+            feed(&mut harness, b"$ ");
+            did(&mut harness, "terminal show");
+        }
+        did(&mut harness, "realm show");
+        did(&mut harness, "plugins pane agent-chat/chat --show");
+        steady(&mut harness);
+        let chat = the_chat(&harness);
+        did(&mut harness, "panel dock realm right --position 0");
+        if filled {
+            did(&mut harness, "panel fill right");
+        }
+        if !editor {
+            did(&mut harness, "action run toggle-editor");
+        }
+        steady(&mut harness);
+        let start = harness.state().panes.dock;
+        assert!(
+            harness.state().panel_area(Panel::Realm).right()
+                < harness.state().panel_area(chat).left() + 1.0,
+            "the canvas starts inside the chat"
+        );
+        for (across, along) in [(0.15, 0.5), (0.85, 0.2), (0.5, 0.9)] {
+            harness.state_mut().panes.dock = start;
+            steady(&mut harness);
+            let body = harness.state().panes_area();
+            let zones = harness.state().drop_zones();
+            let right = zones.iter().find(|zone| zone.side == Side::Right).expect("a right band");
+            let at = egui::pos2(
+                right.whole.left() + right.whole.width() * across,
+                right.whole.top() + right.whole.height() * along,
+            );
+            let from = header_of(&harness, Panel::Realm);
+            lift(&mut harness, from, at);
+            let (_, aim, _) = harness.state().drop_preview().expect("the canvas is in the air");
+            assert!(aim.fill, "the pointer is on the fill target: {at:?}");
+            let_go(&mut harness, at);
+            let case =
+                format!("filled {filled}, editor {editor}, strip {strip}, at {across},{along}");
+            let realm = harness.state().panel_area(Panel::Realm);
+            assert!(
+                (realm.right() - body.right()).abs() < 1.0,
+                "against the right edge, {case}: {realm:?}"
+            );
+            assert!((realm.top() - body.top()).abs() < 1.0, "from the top, {case}: {realm:?}");
+            assert!(
+                (realm.bottom() - body.bottom()).abs() < 1.0,
+                "to the bottom, {case}: {realm:?}"
+            );
+            assert!(harness.state().panes.dock.fills(Side::Right), "{case}");
+        }
+    }
+}
+
+/// A pane that is put away but docked to the same side has no middle to pass, and must not change where a panel
+/// lands. Every pane that is not showing is put on the right in front of the canvas and the chat, and the canvas
+/// let go just past the chat's middle lands outside the chat.
+#[test]
+fn a_pane_that_is_put_away_does_not_change_where_a_panel_lands() {
+    use unluminous_app::app::dock::Side;
+    let mut harness = harness("");
+    did(&mut harness, "realm show");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    did(&mut harness, "action run toggle-editor");
+    steady(&mut harness);
+    let chat = the_chat(&harness);
+    let mut layout = harness.state().panes.dock;
+    for slot in 0..unluminous_app::app::dock::PLUGIN_PANES as u8 {
+        let panel = Panel::Plugin(slot);
+        if panel != chat {
+            layout.dock(panel, Side::Right, Some(0));
+        }
+    }
+    layout.dock(Panel::Realm, Side::Right, None);
+    layout.dock(chat, Side::Right, None);
+    harness.state_mut().panes.dock = layout;
+    steady(&mut harness);
+    let before = harness.state().panel_area(chat);
+    let zones = harness.state().drop_zones();
+    let right = zones.iter().find(|zone| zone.side == Side::Right).expect("a right band");
+    let at = egui::pos2(before.center().x + 8.0, before.center().y);
+    assert!(right.band.contains(at), "the pointer is in the right band: {at:?} {:?}", right.band);
+    let from = header_of(&harness, Panel::Realm);
+    lift(&mut harness, from, at);
+    let (_, _, after) = harness.state().drop_preview().expect("the canvas is in the air");
+    let_go(&mut harness, at);
+    assert_eq!(harness.state().panes.dock, after, "the drop is what the preview showed");
+    let realm = harness.state().panel_area(Panel::Realm);
+    let chat_now = harness.state().panel_area(chat);
+    assert!(
+        realm.left() >= chat_now.right() - 1.0,
+        "past the chat's middle, so outside it: {realm:?} {chat_now:?}"
+    );
+}
+
+/// Every panel, several arrangements, every side, and the inner and outer part of each band: the drop does what
+/// the strong rectangle showed, and what it showed is what the pointer was over.
+#[test]
+fn every_drop_lands_where_the_preview_said_it_would() {
+    let arrangements: [(&str, &[&str]); 7] = [
+        ("default", &[]),
+        ("canvas inside the chat", &["panel dock realm right --position 0"]),
+        ("chat inside the canvas", &["panel dock realm right --position 9"]),
+        ("canvas along the bottom", &["panel dock realm bottom"]),
+        ("canvas on top, right fills", &["panel dock realm top", "panel fill right"]),
+        (
+            "explorer right, left fills",
+            &["panel dock explorer right --position 0", "panel fill left"],
+        ),
+        (
+            "canvas left beside the explorer",
+            &["panel dock realm left --position 9", "panel fill bottom"],
+        ),
+    ];
+    let mut checked = 0;
+    for editor in [true, false] {
+        for (name, commands) in arrangements {
+            let mut harness = harness("");
+            harness.state_mut().new_detached_terminal_tab(8, 60);
+            feed(&mut harness, b"$ ");
+            did(&mut harness, "terminal show");
+            did(&mut harness, "realm show");
+            did(&mut harness, "plugins pane agent-chat/chat --show");
+            for command in commands {
+                did(&mut harness, command);
+            }
+            if !editor {
+                did(&mut harness, "action run toggle-editor");
+            }
+            steady(&mut harness);
+            let chat = the_chat(&harness);
+            let start = harness.state().panes.dock;
+            let showing: Vec<Panel> = [Panel::Explorer, Panel::Terminal, Panel::Realm, chat]
+                .into_iter()
+                .filter(|panel| harness.state().panel_is_showing(*panel))
+                .collect();
+            assert_eq!(showing.len(), 4, "editor {editor}, {name}: every panel is showing");
+            for carried in showing {
+                harness.state_mut().panes.dock = start;
+                steady(&mut harness);
+                let zones = harness.state().drop_zones();
+                for zone in zones {
+                    for (part, outer) in [(zone.whole, true), (inner_part(&zone), false)] {
+                        if part.width() < 4.0 || part.height() < 4.0 {
+                            continue;
+                        }
+                        // Two points across the inner part of a column band, where which middles the pointer
+                        // has passed decides the order, and one point everywhere else.
+                        let points: &[(f32, f32)] = match !outer && zone.side.is_a_column() {
+                            true => &[(0.25, 0.3), (0.75, 0.7)],
+                            false => &[(0.5, 0.5)],
+                        };
+                        for &(across, along) in points {
+                            let at = match zone.side.is_a_column() {
+                                true => egui::pos2(
+                                    part.left() + part.width() * across,
+                                    part.top() + part.height() * along,
+                                ),
+                                false => egui::pos2(
+                                    part.left() + part.width() * along,
+                                    part.top() + part.height() * across,
+                                ),
+                            };
+                            // A corner where two bands overlap goes to the edge it is nearest, which
+                            // `a_corner_goes_to_the_edge_it_is_nearest` checks. Here each point is in one band.
+                            if zones
+                                .iter()
+                                .any(|other| other.side != zone.side && other.band.contains(at))
+                            {
+                                continue;
+                            }
+                            let case = format!(
+                                "editor {editor}, {name}, {carried:?} to {:?} {} at {at:?}",
+                                zone.side,
+                                if outer { "outer" } else { "inner" }
+                            );
+                            check_one_drop(
+                                &mut harness,
+                                start,
+                                carried,
+                                zone.side,
+                                outer,
+                                at,
+                                &case,
+                            );
+                            checked += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    eprintln!("{checked} drops checked");
+    assert!(checked > 200, "{checked}");
+}
+
+/// The part of a band nearest the document, which moves a panel to the side without filling it.
+fn inner_part(zone: &unluminous_app::app::dock::Zone) -> egui::Rect {
+    use unluminous_app::app::dock::Side;
+    let band = zone.band;
+    match zone.side {
+        Side::Left => {
+            egui::Rect::from_min_max(egui::pos2(zone.whole.right(), band.top()), band.max)
+        }
+        Side::Right => {
+            egui::Rect::from_min_max(band.min, egui::pos2(zone.whole.left(), band.bottom()))
+        }
+        Side::Top => {
+            egui::Rect::from_min_max(egui::pos2(band.left(), zone.whole.bottom()), band.max)
+        }
+        Side::Bottom => {
+            egui::Rect::from_min_max(band.min, egui::pos2(band.right(), zone.whole.top()))
+        }
+    }
+}
+
+/// Put the arrangement back to `start`, carry `carried` to `at` and let go, and check the drop against the preview
+/// and against the place the pointer was in.
+fn check_one_drop(
+    harness: &mut Harness<'static, UnluminousApp>,
+    start: unluminous_app::app::dock::Layout,
+    carried: Panel,
+    side: unluminous_app::app::dock::Side,
+    outer: bool,
+    at: egui::Pos2,
+    case: &str,
+) {
+    use unluminous_app::app::dock::Side;
+    harness.state_mut().panes.dock = start;
+    steady(harness);
+    // Which showing panels on the side the pointer is past the middle of, measured before anything moves.
+    let passed = start
+        .panels_on(side)
+        .into_iter()
+        .filter(|panel| *panel != carried)
+        .filter(|panel| {
+            harness.state().panel_is_showing(*panel)
+                && at.x > harness.state().panel_area(*panel).center().x
+        })
+        .count();
+    let from = header_of(harness, carried);
+    lift(harness, from, at);
+    let (panel, aim, after) =
+        harness.state().drop_preview().unwrap_or_else(|| panic!("no target, {case}"));
+    assert_eq!(panel, carried, "{case}");
+    assert_eq!(aim.side, side, "the band the pointer is in, {case}");
+    assert_eq!(aim.fill, outer, "the outer part fills and the inner part does not, {case}");
+    let_go(harness, at);
+    let now = harness.state().panes.dock;
+    assert_eq!(now, after, "the drop is what the preview showed, {case}");
+    assert_eq!(now.side_of(carried), side, "{case}");
+    let body = harness.state().panes_area();
+    let area = harness.state().panel_area(carried);
+    let showing_order: Vec<Panel> = now
+        .panels_on(side)
+        .into_iter()
+        .filter(|panel| harness.state().panel_is_showing(*panel))
+        .collect();
+    let placed = showing_order.iter().position(|panel| *panel == carried).expect("on the side");
+    match (outer, side.is_a_column()) {
+        (true, true) => {
+            assert!(now.fills(side), "{case}");
+            let against = match side {
+                Side::Left => (area.left() - body.left()).abs(),
+                _ => (area.right() - body.right()).abs(),
+            };
+            assert!(against < 1.0, "against the edge, {case}: {area:?} in {body:?}");
+            assert!(area.height() >= body.height() - 1.0, "the whole height, {case}: {area:?}");
+        }
+        (true, false) => {
+            assert!(now.fills(side), "{case}");
+            assert_eq!(placed, passed, "after every panel whose middle it passed, {case}");
+        }
+        (false, _) => {
+            assert_eq!(
+                now.fills(side),
+                start.fills(side),
+                "the inner part changes no corner, {case}"
+            );
+            assert_eq!(placed, passed, "after every panel whose middle it passed, {case}");
+        }
+    }
+}

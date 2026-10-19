@@ -988,6 +988,19 @@ pub fn aim(
     let &DockGeometry { body, layout, showing, sizes, editor } = geometry;
     let (side, position) = target(body, layout, showing, sizes, carrying, pointer, editor)?;
     let fill = zones.iter().any(|zone| zone.side == side && zone.whole.contains(pointer));
+    // **A column let go on its `Fill whole side` target goes against the window's edge.** The target is drawn
+    // along the edge, so that is where the panel is shown landing. `task-2298`: with the canvas inside the chat
+    // on the right, the canvas let go on `Fill whole right` short of the chat's middle kept its place inside the
+    // chat, and with no strip showing a side that fills looks the same as one that does not, so nothing moved.
+    // A strip's panels sit side by side along the edge rather than one outside another, so a strip keeps the
+    // pointer's place along it.
+    let position = match (fill, side) {
+        (true, Side::Left) => 0,
+        (true, Side::Right) => {
+            layout.panels_on(side).into_iter().filter(|panel| *panel != carrying).count()
+        }
+        _ => position,
+    };
     Some(Aim { side, position, fill })
 }
 
@@ -1047,15 +1060,21 @@ pub struct DockGeometry<'a> {
 /// `file_tabs::Strip::position_at`'s rule, word for word, and the reason order is screen order along
 /// x on every side — one comparison answers it for all four. The panel being carried is left out, so
 /// what comes back is a plain insertion index and no caller has to subtract one.
+///
+/// **The index counts every panel on the side, the ones that are not showing too**, because that is what
+/// [`Layout::dock`] counts. Only a showing panel has a middle to pass, so the panel goes in front of the first
+/// showing panel whose middle the pointer has not reached, or at the end. `task-2298`: counting only the showing
+/// panels put the canvas in front of the chat when the pointer was past the chat's middle, whenever a pane that
+/// was put away was docked to that side before the chat, and the drop then changed nothing.
 pub fn position_in(geometry: &DockGeometry, side: Side, carrying: Panel, x: f32) -> usize {
     let &DockGeometry { body, layout, showing, sizes, editor } = geometry;
     let placed = regions_with(body, layout, showing, sizes, editor);
-    layout
-        .panels_on(side)
-        .into_iter()
-        .filter(|panel| *panel != carrying && showing[panel.index()])
-        .filter(|panel| x > placed.of(*panel).center().x)
-        .count()
+    let others: Vec<Panel> =
+        layout.panels_on(side).into_iter().filter(|panel| *panel != carrying).collect();
+    others
+        .iter()
+        .position(|panel| showing[panel.index()] && x <= placed.of(*panel).center().x)
+        .unwrap_or(others.len())
 }
 
 #[cfg(test)]
@@ -1317,6 +1336,53 @@ mod tests {
             true,
         );
         assert_eq!(after, Some((Side::Left, 1)));
+    }
+
+    #[test]
+    fn a_panel_that_is_not_showing_is_counted_in_the_index_but_has_no_middle_to_pass() {
+        // `task-2298`: the run tile is put away and docked in front of the explorer on the left. The pointer is
+        // past the explorer's middle, so the terminal goes after the explorer, which is index 2 of the three.
+        let sizes = Panes::new();
+        let mut layout = Layout::new();
+        layout.dock(Panel::Run, Side::Left, Some(0));
+        let showing = only(&[Panel::Explorer, Panel::Terminal]);
+        let middle = regions(body(), &layout, showing, &sizes).of(Panel::Explorer).center().x;
+        let geometry =
+            DockGeometry { body: body(), layout: &layout, showing, sizes: &sizes, editor: true };
+        assert_eq!(position_in(&geometry, Side::Left, Panel::Terminal, middle + 10.0), 2);
+        assert_eq!(position_in(&geometry, Side::Left, Panel::Terminal, middle - 10.0), 1);
+        let after = layout.with(Panel::Terminal, Side::Left, Some(2));
+        assert_eq!(after.panels_on(Side::Left), vec![Panel::Run, Panel::Explorer, Panel::Terminal]);
+    }
+
+    #[test]
+    fn a_column_let_go_on_its_fill_target_goes_against_the_edge() {
+        // `task-2298`: the target is drawn along the window's edge, so that is where the panel lands, whatever
+        // middle the pointer has or has not passed.
+        let sizes = Panes::new();
+        let layout = Layout::new().with(Panel::Realm, Side::Right, Some(0)).with(
+            Panel::Terminal,
+            Side::Right,
+            Some(1),
+        );
+        let showing = only(&[Panel::Explorer, Panel::Realm, Panel::Terminal]);
+        let bands = zones(body(), &layout, showing, &sizes, true);
+        let right = bands.iter().find(|zone| zone.side == Side::Right).expect("a right band");
+        let geometry =
+            DockGeometry { body: body(), layout: &layout, showing, sizes: &sizes, editor: true };
+        let aim =
+            aim(&geometry, &bands, Panel::Realm, right.whole.left_center() + egui::vec2(2.0, 0.0))
+                .expect("an aim");
+        assert!(aim.fill);
+        let after = layout.with(Panel::Realm, aim.side, Some(aim.position));
+        assert_eq!(after.panels_on(Side::Right).last(), Some(&Panel::Realm));
+        let left = bands.iter().find(|zone| zone.side == Side::Left).expect("a left band");
+        let aim = aim_left(&geometry, &bands, left.whole.right_center() - egui::vec2(2.0, 0.0));
+        assert_eq!((aim.side, aim.position, aim.fill), (Side::Left, 0, true));
+    }
+
+    fn aim_left(geometry: &DockGeometry, bands: &[Zone; 4], at: Pos2) -> Aim {
+        aim(geometry, bands, Panel::Realm, at).expect("an aim")
     }
 
     #[test]

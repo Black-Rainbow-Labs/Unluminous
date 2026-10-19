@@ -965,33 +965,62 @@ impl UnluminousApp {
         let Some((panel, at, _)) = self.panel_drag.in_the_air() else {
             return;
         };
-        let showing = self.panels_showing();
-        // **Every one of these three asks about the layout that is really on the screen**, which means
-        // each is told whether the editing area is showing. They read `dock::regions`, which means "with
-        // the editing area showing", so with it hidden the bands, the answer and the strong rectangle
-        // were all worked out against a window nobody was looking at. `task-1905`.
-        let editor = self.editor_visible;
+        let bands = self.drop_bands(panes);
+        let aimed = self.where_a_panel_would_land(panes, panel, at);
+        let landing = match aimed {
+            Some((_, after)) => dock::regions_with(
+                panes,
+                &after,
+                self.panels_showing(),
+                &self.panes,
+                self.editor_visible,
+            )
+            .of(panel),
+            None => Rect::ZERO,
+        };
+        crate::components::dock::zones(ui, &bands, aimed.map(|(aim, _)| aim), landing, panel);
+    }
+
+    /// The four bands, worked out against the layout that is really on the screen.
+    ///
+    /// **Told whether the editing area is showing**, because `dock::regions` means "with the editing area
+    /// showing", and with it hidden the bands, the answer and the strong rectangle were all worked out against
+    /// a window nobody was looking at. `task-1905`.
+    fn drop_bands(&self, panes: Rect) -> [dock::Zone; 4] {
+        dock::zones(
+            panes,
+            &self.panes.dock,
+            self.panels_showing(),
+            &self.panes,
+            self.editor_visible,
+        )
+    }
+
+    /// Where `panel` let go at `at` would land, and the whole arrangement as it would be afterwards.
+    ///
+    /// The one answer the strong rectangle is painted from and the drop then applies, so the two cannot
+    /// disagree. `None` over the document, where letting go leaves the panel where it was.
+    fn where_a_panel_would_land(
+        &self,
+        panes: Rect,
+        panel: dock::Panel,
+        at: egui::Pos2,
+    ) -> Option<(dock::Aim, dock::Layout)> {
         let layout = self.panes.dock;
-        let bands = dock::zones(panes, &layout, showing, &self.panes, editor);
+        let bands = self.drop_bands(panes);
         let geometry = dock::DockGeometry {
             body: panes,
             layout: &layout,
-            showing,
+            showing: self.panels_showing(),
             sizes: &self.panes,
-            editor,
+            editor: self.editor_visible,
         };
-        let aimed = dock::aim(&geometry, &bands, panel, at);
-        let landing = match aimed {
-            Some(aim) => {
-                let mut after = layout.with(panel, aim.side, Some(aim.position));
-                if aim.fill {
-                    after = after.filling(aim.side);
-                }
-                dock::regions_with(panes, &after, showing, &self.panes, editor).of(panel)
-            }
-            None => Rect::ZERO,
-        };
-        crate::components::dock::zones(ui, &bands, aimed, landing, panel);
+        let aim = dock::aim(&geometry, &bands, panel, at)?;
+        let mut after = layout.with(panel, aim.side, Some(aim.position));
+        if aim.fill {
+            after = after.filling(aim.side);
+        }
+        Some((aim, after))
     }
 
     /// Where the panel that was let go actually landed.
@@ -1006,20 +1035,9 @@ impl UnluminousApp {
             return;
         }
         self.panel_drag = Drag::Nothing;
-        let showing = self.panels_showing();
         // Let go over the document rather than over an edge, nothing happens: a drag can be thought
         // better of, which is what the explorer's row drag and the tab drag both already promise.
-        let layout = self.panes.dock;
-        let editor = self.editor_visible;
-        let bands = dock::zones(panes, &layout, showing, &self.panes, editor);
-        let geometry = dock::DockGeometry {
-            body: panes,
-            layout: &layout,
-            showing,
-            sizes: &self.panes,
-            editor,
-        };
-        if let Some(aim) = dock::aim(&geometry, &bands, panel, at) {
+        if let Some((aim, _)) = self.where_a_panel_would_land(panes, panel, at) {
             self.dock_the_panel(panel, aim.side, Some(aim.position));
             if aim.fill {
                 self.fill_a_side(aim.side, true);
@@ -1058,13 +1076,18 @@ impl UnluminousApp {
     /// For a test, which has to aim at a target it cannot find by name: the bands are drawn rather than added
     /// as widgets, because a widget over the body would take the drag that is carrying the panel.
     pub fn drop_zones(&self) -> [dock::Zone; 4] {
-        let regions = self.panel_rects;
-        let body = regions
-            .panels
-            .iter()
-            .filter(|rect| rect.width() > 0.0 && rect.height() > 0.0)
-            .fold(regions.editor, |whole, rect| whole.union(*rect));
-        dock::zones(body, &self.panes.dock, self.panels_showing(), &self.panes, self.editor_visible)
+        self.drop_bands(self.panes_area)
+    }
+
+    /// The panel in the air, where the drop would put it and the arrangement afterwards, as the strong
+    /// rectangle shows it.
+    ///
+    /// For a test, which checks that letting go does what this said: the preview is painted rather than added
+    /// as a widget, so it cannot be found by name.
+    pub fn drop_preview(&self) -> Option<(dock::Panel, dock::Aim, dock::Layout)> {
+        let (panel, at, _) = self.panel_drag.in_the_air()?;
+        let (aim, after) = self.where_a_panel_would_land(self.panes_area, panel, at)?;
+        Some((panel, aim, after))
     }
 
     /// Make `side` run the whole length of its edge of the window, or give its corners to the sides it meets.
