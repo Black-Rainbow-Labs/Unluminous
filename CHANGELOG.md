@@ -6,6 +6,10 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.0.19 — 2026-10-19
+
+- A panel let go where the blue rectangle shows lands there (`task-2298`)
+
 ## 0.99.2 — 2026-10-18
 
 - A release that does not have to be run twice (`task-2295`)
