@@ -27,7 +27,10 @@ impl UnluminousApp {
                 if installed.is_complete() {
                     return ok(
                         request,
-                        "The speech model and ONNX Runtime are already installed.",
+                        match installed.packaged {
+                            true => "The speech model and ONNX Runtime came with Unluminous.",
+                            false => "The speech model and ONNX Runtime are already installed.",
+                        },
                         self.voice_status_value(),
                     );
                 }
@@ -224,6 +227,7 @@ impl UnluminousApp {
                 "folder": installed.model.as_ref().map(|path| path.display().to_string()),
                 "runtime": installed.runtime.as_ref().map(|path| path.display().to_string()),
                 "downloaded": installed.is_complete(),
+                "packaged": installed.packaged,
                 "loaded": snapshot.model.loaded,
                 "loads": snapshot.model.loads,
                 "lastLoadMs": snapshot.model.last_load.map(|took| took.as_millis() as u64),

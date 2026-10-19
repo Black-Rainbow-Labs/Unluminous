@@ -26,6 +26,15 @@ ln -sf /Applications/Unluminous.app/Contents/MacOS/unluminous     /usr/local/bin
 is signed round it, because codesign treats a second binary inside `Contents/MacOS` as something that
 must carry its own signature.
 
+Both installers also ship **the speech model and ONNX Runtime** (`task-2306`), so dictation works with
+nothing downloaded. Each build runs `cargo run --release -p unluminous-voice --example voice -- package
+<folder> <windows|macos>`, which fetches Moonshine base (63 MB) and the ONNX Runtime 1.22 library once a
+machine, checks every file against the size and SHA-256 in `crates/unluminous-voice/src/install.rs`, and
+keeps them in `%LOCALAPPDATA%\Unluminous\package` (`~/Library/Caches/Unluminous/package` on a Mac) for the
+next build. On Windows they go to `voice\` beside `unluminous.exe`; in `Unluminous.app` the model goes to
+`Contents/Resources/voice` and the universal `libonnxruntime.dylib` to `Contents/Frameworks`, signed with the
+bundle's identity before the bundle is signed round it.
+
 The version comes from `Cargo.toml` and nowhere else. It reaches `unluminous.exe`'s version block, the
 installer's file name, the Add or Remove Programs entry and `Unluminous.app`'s `Info.plist` from there, so
 releasing a new version is changing one number.

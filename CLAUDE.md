@@ -6915,6 +6915,17 @@ rules:
   is transcribed** (`audio::trim_silence`). Moonshine answers a segment ending in a long silence with
   nothing, which blanked the prompt mid sentence after a wake and kept the dictation open until the next
   "Sable" was swallowed into it. `UNLUMINOUS_VOICE_TRACE=1` prints every pass.
+- **The installers ship the speech model and ONNX Runtime** (`task-2306`), so an installed Unluminous downloads
+  nothing for speech to text. `install::package` fetches them once a machine (checked against pinned sizes and
+  SHA-256 hashes) into `%LOCALAPPDATA%\Unluminous\package\voice-<platform>` (`~/Library/Caches/Unluminous/...`
+  on a Mac), through `cargo run -p unluminous-voice --example voice -- package <folder> <platform>`, and the
+  three installer builds copy them: `{app}\voice\models\moonshine-base` and `{app}\voice\runtime\onnxruntime.dll`
+  on Windows, `Contents/Resources/voice/models/moonshine-base` and `Contents/Frameworks/libonnxruntime.dylib`
+  (signed with this team's identity, universal) in `Unluminous.app`. `install::packaged_beside` is where they
+  are looked for, before the downloaded copy; inillucent's runtime still comes first, because one process loads
+  one ONNX Runtime and the code index looks there first. The download stays for a build no installer made, and
+  `UNLUMINOUS_VOICE_HOME` turns the packaged lookup off. A packaged model has no row in the Set Up dialog.
+  `nomic-embed-text` for the code index is not packaged: it is 547 MB and `search.embeddings` is off by default.
 - **A test's window never opens the microphone.** `main` calls `allow_the_microphone`; nothing else does.
   `voice transcribe` and `voice hear` take a WAV through the same engine, which is how both engines and the
   wake word are tested and driven with no microphone. `UNLUMINOUS_REQUIRE_VOICE=1` makes a missing model a

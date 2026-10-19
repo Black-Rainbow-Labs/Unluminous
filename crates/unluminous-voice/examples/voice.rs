@@ -2,9 +2,12 @@
 //!
 //! ```text
 //! cargo run --release -p unluminous-voice --example voice -- install
+//! cargo run --release -p unluminous-voice --example voice -- package <folder> [windows|macos|linux]
 //! cargo run --release -p unluminous-voice --example voice -- transcribe <file.wav> [--endpoint <url>]
 //! cargo run --release -p unluminous-voice --example voice -- bench <file.wav> [threads]
 //! ```
+//!
+//! `package` fills a folder with what an installer ships (`task-2306`); the installer builds run it.
 //!
 //! `bench` loads Moonshine once and times a pass over the whole file, which is the cost of one partial
 //! for a segment that long.
@@ -21,10 +24,11 @@ fn main() {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let result = match arguments.first().map(String::as_str) {
         Some("install") => install(),
+        Some("package") => package(&arguments[1..]),
         Some("transcribe") => transcribe(&arguments[1..]),
         Some("bench") => bench(&arguments[1..]),
         Some("memory") => memory(&arguments[1..]),
-        _ => Err("usage: voice install | transcribe <file.wav> [--endpoint <url>] | bench <file.wav> [threads]".to_owned()),
+        _ => Err("usage: voice install | package <folder> [windows|macos|linux] | transcribe <file.wav> [--endpoint <url>] | bench <file.wav> [threads]".to_owned()),
     };
     if let Err(problem) = result {
         eprintln!("{problem}");
@@ -45,6 +49,24 @@ fn install() -> Result<(), String> {
         installed.runtime.unwrap_or_default().display(),
         started.elapsed().as_secs_f32()
     );
+    Ok(())
+}
+
+/// Fetches and checks what an installer ships into a folder, and prints the model folder and the library.
+/// @param arguments - the folder, and the platform when it is not this one
+fn package(arguments: &[String]) -> Result<(), String> {
+    let into = arguments.first().ok_or("name the folder to fill")?;
+    let platform = match arguments.get(1) {
+        Some(name) => unluminous_voice::install::Platform::parse(name)
+            .ok_or_else(|| format!("{name} is not windows, macos or linux"))?,
+        None => unluminous_voice::install::Platform::this(),
+    };
+    let (model, library) =
+        unluminous_voice::install::package(std::path::Path::new(into), platform, &|said, done| {
+            eprint!("\r{said}: {:>3.0}%   ", done * 100.0)
+        })?;
+    eprintln!();
+    println!("model {}\nruntime {}", model.display(), library.display());
     Ok(())
 }
 

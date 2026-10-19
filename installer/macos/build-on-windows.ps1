@@ -340,6 +340,17 @@ function New-AppBundle {
     Copy-Item -LiteralPath (Join-Path $repo 'installer/icon/unluminous.icns') `
         -Destination (Join-Path $resources 'Unluminous.icns') -Force
 
+    # `task-2306`. The speech model and ONNX Runtime ship in the bundle, where
+    # `unluminous_voice::install::packaged_beside` looks: the model under Resources and the
+    # library in Frameworks, because a Mach-O outside the places Apple expects code is a
+    # bundle notarisation refuses.
+    $model = Join-Path $resources 'voice/models/moonshine-base'
+    $frameworks = Join-Path $app 'Contents/Frameworks'
+    New-Item -ItemType Directory -Force -Path $model, $frameworks | Out-Null
+    Copy-Item -Path (Join-Path $voiceDir 'models/moonshine-base/*') -Destination $model -Force
+    Copy-Item -LiteralPath (Join-Path $voiceDir 'runtime/libonnxruntime.dylib') `
+        -Destination (Join-Path $frameworks 'libonnxruntime.dylib') -Force
+
     $plist = (Get-Content -Path (Join-Path $PSScriptRoot 'Info.plist') -Raw).Replace('__VERSION__', $Version)
     $plistPath = Join-Path $app 'Contents/Info.plist'
     [System.IO.File]::WriteAllText($plistPath, $plist)
@@ -484,6 +495,12 @@ function Invoke-BundleSigning {
     # with no error. 0.84.5 shipped that way: both programs were signed and notarised with no entitlements
     # at all. A bare `main:` does not work either, because rcodesign reads it as a path called `main`.
     $entitlements = '@main:' + (Join-Path $PSScriptRoot 'Unluminous.entitlements')
+    # `task-2306`. ONNX Runtime comes signed by Microsoft, and every Mach-O in a notarised bundle has to
+    # carry this team's Developer ID signature, so it is signed on its own first, the way
+    # unluminous-cli is. It takes no entitlements: those belong to the programs that load it.
+    Invoke-Rcodesign -Quiet -Arguments (@('sign') + $Session.Arguments + @(
+            '--binary-identifier', 'libonnxruntime', '--code-signature-flags', 'runtime',
+            (Join-Path $app 'Contents/Frameworks/libonnxruntime.dylib')))
     Invoke-Rcodesign -Quiet -Arguments (@('sign') + $Session.Arguments + @(
             '--binary-identifier', 'unluminous-cli', '--code-signature-flags', 'runtime',
             '--entitlements-xml-file', $entitlements,
@@ -512,6 +529,7 @@ function Invoke-BundleSigning {
     foreach ($program in $programs) {
         Invoke-Rcodesign -Quiet -Arguments @('verify', (Join-Path $app "Contents/MacOS/$($program.Bin)"))
     }
+    Invoke-Rcodesign -Quiet -Arguments @('verify', (Join-Path $app 'Contents/Frameworks/libonnxruntime.dylib'))
 }
 
 function Set-ZipUnixModes {
@@ -687,6 +705,16 @@ if (-not $SkipBuild) {
     Build-AppleTargets -Targets $appleTargets -SdkRoot $sdkRoot
 }
 
+# `task-2306`. The speech model and the universal ONNX Runtime library the bundle ships, fetched once a
+# machine and checked against the hashes in `unluminous_voice::install`. The example runs on this machine,
+# so it is built for Windows whatever the bundle is for.
+$voiceDir = Join-Path $env:LOCALAPPDATA 'Unluminous/package/voice-macos'
+if (-not $CliOnly) {
+    Write-Host '==> the speech model'
+    & cargo run --release --quiet --manifest-path (Join-Path $repo 'Cargo.toml') -p unluminous-voice --example voice -- package $voiceDir macos
+    if ($LASTEXITCODE -ne 0) { throw 'packaging the speech model failed' }
+}
+
 if ($CliOnly) {
     Write-Host ''
     Write-Host 'unluminous-cli built for both Apple architectures. The bundle needs the SDK; see -Sdk.'
@@ -737,6 +765,7 @@ Write-Host 'checked here:'
 Write-Host '  both architectures in both programs'
 Write-Host '  the nested unluminous-cli signed, then the bundle signed round it'
 Write-Host '  _CodeSignature/CodeResources written, hardened runtime on all four signatures'
+Write-Host '  the speech model in Resources, and ONNX Runtime in Frameworks signed and verified'
 if ($Notarize) {
     Write-Host '  Apple notarised the archive, and the bundle carries a stapled ticket'
 } else {

@@ -273,6 +273,18 @@ else
     echo "  icon taken from the committed unluminous.icns, because iconutil is absent or refused the iconset"
 fi
 
+# `task-2306`. The speech model and ONNX Runtime ship in the bundle, where
+# `unluminous_voice::install::packaged_beside` looks: the model under Resources and the library in Frameworks,
+# because a Mach-O outside the places Apple expects code is something notarisation refuses. They are fetched
+# once a machine into the user's caches and checked against the hashes in `unluminous_voice::install`.
+voice_package="$HOME/Library/Caches/Unluminous/package/voice-macos"
+cargo run --release --quiet --manifest-path "$repo/Cargo.toml" -p unluminous-voice --example voice -- \
+    package "$voice_package" macos
+mkdir -p "$app/Contents/Resources/voice/models/moonshine-base" "$app/Contents/Frameworks"
+cp "$voice_package/models/moonshine-base/"* "$app/Contents/Resources/voice/models/moonshine-base/"
+cp "$voice_package/runtime/libonnxruntime.dylib" "$app/Contents/Frameworks/libonnxruntime.dylib"
+echo "  the speech model and ONNX Runtime"
+
 sed "s/__VERSION__/$version/g" "$here/Info.plist" > "$app/Contents/Info.plist"
 plutil -lint "$app/Contents/Info.plist" >/dev/null
 printf 'APPL????' > "$app/Contents/PkgInfo"
@@ -292,9 +304,13 @@ signed_properly=0
 # embeds with. The file says why; without it a Developer ID build cannot load that library at all.
 entitlements="$here/Unluminous.entitlements"
 sign_the_cli() {
+    # `task-2306`. ONNX Runtime comes signed by Microsoft, and a notarised bundle's every Mach-O carries this
+    # team's signature, so it is signed too. It takes no entitlements: those belong to the programs.
     if [ "$1" = "-" ]; then
+        codesign --force --options runtime --sign - "$app/Contents/Frameworks/libonnxruntime.dylib"
         codesign --force --options runtime --entitlements "$entitlements" --sign - "$app/Contents/MacOS/unluminous-cli"
     else
+        codesign --force --options runtime --timestamp --sign "$1" "$app/Contents/Frameworks/libonnxruntime.dylib"
         codesign --force --options runtime --entitlements "$entitlements" --timestamp --sign "$1" "$app/Contents/MacOS/unluminous-cli"
     fi
 }

@@ -1008,8 +1008,10 @@ fn plan_this_machine() -> Plan {
     let options = options_for_this_machine();
     let steps = setup::plan(&options, &machine);
     let keys = setup::keys(&machine).message;
+    let installed = unluminous_voice::install::status();
     let voice = Voice {
-        model: unluminous_voice::install::status().is_complete(),
+        model: installed.is_complete(),
+        packaged: installed.packaged,
         microphone: unluminous_voice::access::status(),
     };
     plan_from(&steps, &voice, &options.declined, keys)
@@ -1019,6 +1021,8 @@ fn plan_this_machine() -> Plan {
 pub struct Voice {
     /// Whether the speech model and ONNX Runtime are both on disk.
     pub model: bool,
+    /// Whether the model came with Unluminous (`task-2306`), so there is no step to take about it.
+    pub packaged: bool,
     pub microphone: unluminous_voice::access::Access,
 }
 
@@ -1044,19 +1048,24 @@ pub fn plan_from(steps: &[Step], voice: &Voice, declined: &[String], keys: Strin
     }
     let is_declined = |name: &str| declined.iter().any(|declined| declined == name);
     let model = match (voice.model, is_declined("speech-model")) {
-        (true, _) => Row::new("speech-model", State::Already, "The speech model is downloaded."),
-        (false, true) => Row::new(
+        // An installed Unluminous carries the model, so it is not a step at all. Only a build no installer
+        // made has the row.
+        _ if voice.packaged => None,
+        (true, _) => {
+            Some(Row::new("speech-model", State::Already, "The speech model is downloaded."))
+        }
+        (false, true) => Some(Row::new(
             "speech-model",
             State::Declined,
             "Declined. Tick it and press Run Setup to download it.",
-        ),
-        (false, false) => Row::new(
+        )),
+        (false, false) => Some(Row::new(
             "speech-model",
             State::Would,
             "Downloads the model that turns speech into text in the Agent-Chat prompt.",
-        ),
+        )),
     };
-    plan.rows.push(model);
+    plan.rows.extend(model);
     use unluminous_voice::access::Access;
     let microphone = match (&voice.microphone, is_declined("microphone")) {
         (Access::Allowed, _) => {
@@ -1164,7 +1173,7 @@ mod tests {
             step("opencode", State::Done),
             step("pi", State::Would),
         ];
-        let voice = Voice { model: false, microphone: Access::NotAsked };
+        let voice = Voice { model: false, packaged: false, microphone: Access::NotAsked };
         let plan = plan_from(&steps, &voice, &[], "No API key is set.".to_owned());
         let names: Vec<&str> = plan.rows.iter().map(|row| row.name.as_str()).collect();
         assert_eq!(
@@ -1180,15 +1189,23 @@ mod tests {
 
     #[test]
     fn a_platform_with_no_microphone_question_has_no_microphone_row() {
-        let voice = Voice { model: true, microphone: Access::Unknown };
+        let voice = Voice { model: true, packaged: false, microphone: Access::Unknown };
         let plan = plan_from(&[], &voice, &[], String::new());
         assert!(plan.rows.iter().all(|row| row.name != "microphone"));
         assert_eq!(plan.rows[0].state, State::Already);
     }
 
     #[test]
+    fn a_model_that_came_with_unluminous_has_no_row() {
+        let voice = Voice { model: true, packaged: true, microphone: Access::NotAsked };
+        let plan = plan_from(&[], &voice, &["speech-model".to_owned()], String::new());
+        let names: Vec<&str> = plan.rows.iter().map(|row| row.name.as_str()).collect();
+        assert_eq!(names, ["microphone", "server"]);
+    }
+
+    #[test]
     fn a_declined_voice_step_is_drawn_declined_and_unticked() {
-        let voice = Voice { model: false, microphone: Access::NotAsked };
+        let voice = Voice { model: false, packaged: false, microphone: Access::NotAsked };
         let declined = vec!["speech-model".to_owned(), "microphone".to_owned()];
         let plan = plan_from(&[], &voice, &declined, String::new());
         for name in ["speech-model", "microphone"] {
@@ -1200,8 +1217,11 @@ mod tests {
 
     #[test]
     fn a_refused_microphone_is_a_failure_with_the_reason() {
-        let voice =
-            Voice { model: true, microphone: Access::Refused("The switch is off.".to_owned()) };
+        let voice = Voice {
+            model: true,
+            packaged: false,
+            microphone: Access::Refused("The switch is off.".to_owned()),
+        };
         let plan = plan_from(&[], &voice, &[], String::new());
         let row = plan.rows.iter().find(|row| row.name == "microphone").expect("a row");
         assert_eq!((row.state, row.message.as_str()), (State::Failed, "The switch is off."));

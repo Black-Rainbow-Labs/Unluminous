@@ -343,7 +343,7 @@ Answered by the CLI itself; no Unluminous needs to be running.
 unluminous-cli setup [--check] [--remove] [--force] [--agents <list>] [--path] [--no-path] [--no-voice] [--installer]
 ```
 
-Finish setting Unluminous up on this machine: put `unluminous-cli` on the path, connect every coding agent found (Claude Code, Codex, OpenCode, Pi) to Unluminous's MCP server, say which API keys are set, check that the server answers, and download the speech model for dictation and ask about the microphone. The installers run it; running it again changes nothing. An entry an agent already has that points at another Unluminous is left alone. Restart an agent to see the tools it was given.
+Finish setting Unluminous up on this machine: put `unluminous-cli` on the path, connect every coding agent found (Claude Code, Codex, OpenCode, Pi) to Unluminous's MCP server, say which API keys are set, check that the server answers, download the speech model for dictation when this build did not come with it, and ask about the microphone. The installers run it; running it again changes nothing. An entry an agent already has that points at another Unluminous is left alone. Restart an agent to see the tools it was given.
 
 - `--check` — Say what is and is not set up, and change nothing.
 - `--remove` — Take out every `unluminous` entry that starts this program, and the path entry `setup` made. Entries pointing at another program are left.
@@ -1460,7 +1460,7 @@ unluminous-cli voice hear clip.wav
 unluminous-cli voice install
 ```
 
-Download the local speech model (66 MB), and ONNX Runtime when missing.
+Download the local speech model (66 MB) and ONNX Runtime, for a build no installer made. An installed Unluminous already carries both, and this says so.
 
 ```sh
 unluminous-cli voice install
@@ -1664,7 +1664,7 @@ unluminous-cli setup project [folder]
 
 In a window started with no project, choose the folder it opens once setup has run. With no folder, says whether the window is waiting for one.
 
-- `folder` — The folder to open, as an absolute path.
+- `folder` (optional) — The folder to open, as an absolute path.
 
 ```sh
 unluminous-cli setup project C:\jason\dev\notes

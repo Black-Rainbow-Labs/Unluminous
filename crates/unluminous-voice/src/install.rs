@@ -1,4 +1,10 @@
-//! What the local engine needs on disk, where it goes, and the download that puts it there.
+//! What the local engine needs on disk, where it is, and the download that puts it there.
+//!
+//! **The installers ship both files with Unluminous** (`task-2306`), so an installed Unluminous never downloads
+//! anything for speech to text. [`package`] fetches and checks them for a build, and [`packaged_beside`] is where
+//! an installed copy finds them: `voice\` beside the program on Windows and Linux, and on macOS the model under
+//! `Contents/Resources/voice` and the library in `Contents/Frameworks`. The download below is what a build no
+//! installer made (a `cargo build`, a test) falls back to.
 //!
 //! Two things: Moonshine base (quantized ONNX, 67 MB, from a pinned commit of `moonshine-ai/moonshine` on
 //! Hugging Face) and ONNX Runtime 1.22 (one library, from Microsoft's release). The runtime is only
@@ -78,6 +84,8 @@ pub struct Installed {
     pub model: Option<PathBuf>,
     /// The ONNX Runtime library the engine would load.
     pub runtime: Option<PathBuf>,
+    /// Whether the model is the one the installer put beside the program, so there is nothing to download.
+    pub packaged: bool,
 }
 
 impl Installed {
@@ -134,11 +142,46 @@ pub fn model_dir() -> PathBuf {
 
 /// The model's folder when every file is there at its size, which is what a finished download leaves.
 pub fn installed_model() -> Option<PathBuf> {
-    let dir = model_dir();
+    complete_model(model_dir())
+}
+
+/// `dir` when every model file is in it at its size.
+/// @param dir - a model folder
+fn complete_model(dir: PathBuf) -> Option<PathBuf> {
     MODEL_FILES
         .iter()
         .all(|file| std::fs::metadata(dir.join(file.name)).is_ok_and(|m| m.len() == file.bytes))
         .then_some(dir)
+}
+
+/// What the installer put beside the program in `program_dir`: the model folder and the library, each when it is
+/// there. On macOS `program_dir` is `Contents/MacOS`.
+/// @param program_dir - the folder `unluminous` or `unluminous-cli` is in
+pub fn packaged_beside(program_dir: &Path) -> (Option<PathBuf>, Option<PathBuf>) {
+    let (voice, library) = if cfg!(target_os = "macos") {
+        let contents = program_dir.parent().unwrap_or(program_dir);
+        (
+            contents.join("Resources").join("voice"),
+            contents.join("Frameworks").join(runtime_library_name()),
+        )
+    } else {
+        let voice = program_dir.join("voice");
+        let library = voice.join("runtime").join(runtime_library_name());
+        (voice, library)
+    };
+    (complete_model(voice.join("models").join(MODEL_NAME)), library.is_file().then_some(library))
+}
+
+/// What the installer put beside this program. Nothing while `UNLUMINOUS_VOICE_HOME` is set, because a test
+/// that names a folder means that folder and nothing else.
+fn packaged() -> (Option<PathBuf>, Option<PathBuf>) {
+    if variable(HOME_VAR).is_some() {
+        return (None, None);
+    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|program| program.parent().map(packaged_beside))
+        .unwrap_or((None, None))
 }
 
 /// The library's file name on this platform.
@@ -152,8 +195,18 @@ pub fn runtime_library_name() -> &'static str {
     }
 }
 
-/// The ONNX Runtime library to load: `ORT_DYLIB_PATH`, then inillucent's, then the one installed here.
+/// The ONNX Runtime library to load: `ORT_DYLIB_PATH`, then inillucent's, then the one that came with
+/// Unluminous, then one downloaded here.
+///
+/// Inillucent's comes before Unluminous's own because `ort` loads one library per process and the code index
+/// looks for inillucent's first, so the two have to agree.
 pub fn runtime_library() -> Option<PathBuf> {
+    runtime_library_after(packaged().1)
+}
+
+/// [`runtime_library`], with the packaged library already found.
+/// @param packaged - the library beside the program, when there is one
+fn runtime_library_after(packaged: Option<PathBuf>) -> Option<PathBuf> {
     if let Some(named) = variable("ORT_DYLIB_PATH") {
         let path = PathBuf::from(named);
         return path.exists().then_some(path);
@@ -162,6 +215,7 @@ pub fn runtime_library() -> Option<PathBuf> {
         variable("INILLUCENT_HOME").map(PathBuf::from).or_else(|| local_data("inillucent"));
     inillucent
         .and_then(|root| inillucents_runtime(&root))
+        .or(packaged)
         .or_else(|| newest_runtime(&home().join("runtime")))
 }
 
@@ -216,9 +270,15 @@ fn newest_runtime(root: &Path) -> Option<PathBuf> {
     best.map(|(_, library)| library)
 }
 
-/// What is on disk now.
+/// What is on disk now: the packaged model first, then a downloaded one.
 pub fn status() -> Installed {
-    Installed { model: installed_model(), runtime: runtime_library() }
+    let (model, runtime) = packaged();
+    let packaged = model.is_some();
+    Installed {
+        model: model.or_else(installed_model),
+        runtime: runtime_library_after(runtime),
+        packaged,
+    }
 }
 
 /// The runtime archive for this platform, its approximate size, and the folder inside it.
@@ -340,12 +400,158 @@ fn install_runtime(progress: &dyn Fn(&str, f32)) -> Result<(), String> {
     Ok(())
 }
 
-/// Unpack one folder of an archive with the system's own `tar`, which reads a `.zip` on Windows 10 and
+/// The platform an installer is built for, which decides which ONNX Runtime archive its package holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Platform {
+    Windows,
+    /// Both Apple architectures in one library, because `Unluminous.app` is one universal program.
+    Macos,
+    Linux,
+}
+
+impl Platform {
+    /// The platform this program was built for.
+    pub fn this() -> Platform {
+        if cfg!(windows) {
+            Platform::Windows
+        } else if cfg!(target_os = "macos") {
+            Platform::Macos
+        } else {
+            Platform::Linux
+        }
+    }
+
+    /// `windows`, `macos` or `linux`, the way a build script names it.
+    /// @param name - the name
+    pub fn parse(name: &str) -> Option<Platform> {
+        match name {
+            "windows" => Some(Platform::Windows),
+            "macos" => Some(Platform::Macos),
+            "linux" => Some(Platform::Linux),
+            _ => None,
+        }
+    }
+
+    /// The archive's name, its size and SHA-256 (measured on the release), the library inside it, and the
+    /// name the library is given in the package.
+    fn archive(self) -> (&'static str, u64, &'static str, &'static str, &'static str) {
+        match self {
+            Platform::Windows => (
+                "onnxruntime-win-x64-1.22.0.zip",
+                72_368_545,
+                "174c616efc0271194488642a72f1a514e01487da4dfe84c49296d66e40ebe0da",
+                "onnxruntime-win-x64-1.22.0/lib/onnxruntime.dll",
+                "onnxruntime.dll",
+            ),
+            // The archive's `libonnxruntime.dylib` is a link to this file, and a link is not something every
+            // `tar` can write, so the file itself is taken and given the short name.
+            Platform::Macos => (
+                "onnxruntime-osx-universal2-1.22.0.tgz",
+                54_820_264,
+                "cfa6f6584d87555ed9f6e7e8a000d3947554d589efe3723b8bfa358cd263d03c",
+                "onnxruntime-osx-universal2-1.22.0/lib/libonnxruntime.1.22.0.dylib",
+                "libonnxruntime.dylib",
+            ),
+            Platform::Linux => (
+                "onnxruntime-linux-x64-1.22.0.tgz",
+                7_798_730,
+                "8344d55f93d5bc5021ce342db50f62079daf39aaafb5d311a451846228be49b3",
+                "onnxruntime-linux-x64-1.22.0/lib/libonnxruntime.so.1.22.0",
+                "libonnxruntime.so",
+            ),
+        }
+    }
+}
+
+/// Fill `into` with what an installer ships for speech to text: `models/moonshine-base/` and
+/// `runtime/<library>`. Every file is checked against the size and SHA-256 written here, and a file already
+/// there and right is not fetched again, so a release that runs this every time downloads once.
+///
+/// Answers the model folder and the library.
+/// @param into - the folder, which is made when it is missing
+/// @param platform - which ONNX Runtime library to take
+/// @param progress - as for [`install`]
+pub fn package(
+    into: &Path,
+    platform: Platform,
+    progress: &dyn Fn(&str, f32),
+) -> Result<(PathBuf, PathBuf), String> {
+    let models = into.join("models").join(MODEL_NAME);
+    std::fs::create_dir_all(&models)
+        .map_err(|e| format!("{} could not be made: {e}", models.display()))?;
+    let total: u64 = MODEL_FILES.iter().map(|f| f.bytes).sum();
+    let mut before = 0u64;
+    for file in &MODEL_FILES {
+        let target = models.join(file.name);
+        if !holds(&target, file.bytes, file.sha256) {
+            let url = format!(
+                "https://huggingface.co/moonshine-ai/moonshine/resolve/{MOONSHINE_COMMIT}/{}",
+                file.path
+            );
+            let said = format!("Downloading the speech model ({} MB)", total / 1_000_000);
+            let partial = target.with_extension("part");
+            fetch(&url, &partial, file.bytes, Some(file.sha256), &|done| {
+                progress(&said, (before + done) as f32 / total as f32)
+            })?;
+            std::fs::rename(&partial, &target)
+                .map_err(|e| format!("{} could not be moved into place: {e}", file.name))?;
+        }
+        before += file.bytes;
+    }
+    let (archive_name, size, sha256, inside, library_name) = platform.archive();
+    let runtime = into.join("runtime");
+    let library = runtime.join(library_name);
+    let marker = runtime.join("from.sha256");
+    let current = library.is_file()
+        && std::fs::read_to_string(&marker).is_ok_and(|text| text.trim() == sha256);
+    if !current {
+        std::fs::create_dir_all(&runtime).map_err(|e| e.to_string())?;
+        let archive = runtime.join(archive_name);
+        let url = format!(
+            "https://github.com/microsoft/onnxruntime/releases/download/v{RUNTIME_VERSION}/{archive_name}"
+        );
+        let said = format!("Downloading ONNX Runtime {RUNTIME_VERSION} ({} MB)", size / 1_000_000);
+        fetch(&url, &archive, size, Some(sha256), &|done| {
+            progress(&said, done as f32 / size as f32)
+        })?;
+        let unpacked = runtime.join("unpacked");
+        let _ = std::fs::remove_dir_all(&unpacked);
+        std::fs::create_dir_all(&unpacked).map_err(|e| e.to_string())?;
+        let extracted = extract(&archive, &unpacked, inside);
+        let _ = std::fs::remove_file(&archive);
+        extracted?;
+        let _ = std::fs::remove_file(&library);
+        std::fs::rename(unpacked.join(inside), &library)
+            .map_err(|e| format!("{library_name} could not be moved into place: {e}"))?;
+        let _ = std::fs::remove_dir_all(&unpacked);
+        std::fs::write(&marker, sha256).map_err(|e| e.to_string())?;
+    }
+    Ok((models, library))
+}
+
+/// Whether `path` is `bytes` long with SHA-256 `sha256`.
+/// @param path - the file
+/// @param bytes - its length
+/// @param sha256 - its hash
+fn holds(path: &Path, bytes: u64, sha256: &str) -> bool {
+    if !std::fs::metadata(path).is_ok_and(|m| m.len() == bytes) {
+        return false;
+    }
+    let Ok(mut file) = std::fs::File::open(path) else { return false };
+    let mut hasher = Sha256::new();
+    if std::io::copy(&mut file, &mut hasher).is_err() {
+        return false;
+    }
+    let hash: String = hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect();
+    hash == sha256
+}
+
+/// Unpack one folder or file of an archive with the system's own `tar`, which reads a `.zip` on Windows 10 and
 /// later as well as a `.tgz`. Named by its full path on Windows, because Git for Windows puts a different
 /// `tar` ahead of it on the path that cannot read a zip.
 /// @param archive - the archive
 /// @param into - where it is unpacked
-/// @param inside - the folder in the archive to keep
+/// @param inside - the folder or file in the archive to keep
 fn extract(archive: &Path, into: &Path, inside: &str) -> Result<(), String> {
     let tar = match variable("SystemRoot") {
         Some(root) if cfg!(windows) => PathBuf::from(root).join("System32").join("tar.exe"),
@@ -454,6 +660,52 @@ mod tests {
         let found = newest_runtime(&root).unwrap();
         assert!(found.to_string_lossy().contains("onnxruntime-1.23.0"), "{}", found.display());
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn what_an_installer_put_beside_the_program_is_found_there() {
+        let root =
+            std::env::temp_dir().join(format!("unluminous-voice-packaged-{}", std::process::id()));
+        let program_dir = if cfg!(target_os = "macos") {
+            root.join("Unluminous.app").join("Contents").join("MacOS")
+        } else {
+            root.join("Unluminous")
+        };
+        std::fs::create_dir_all(&program_dir).unwrap();
+        assert_eq!(packaged_beside(&program_dir), (None, None));
+        let (models, library) = if cfg!(target_os = "macos") {
+            let contents = program_dir.parent().unwrap();
+            (contents.join("Resources/voice/models"), contents.join("Frameworks"))
+        } else {
+            (program_dir.join("voice/models"), program_dir.join("voice/runtime"))
+        };
+        let model = models.join(MODEL_NAME);
+        std::fs::create_dir_all(&model).unwrap();
+        std::fs::create_dir_all(&library).unwrap();
+        std::fs::write(library.join(runtime_library_name()), b"x").unwrap();
+        for file in &MODEL_FILES {
+            let handle = std::fs::File::create(model.join(file.name)).unwrap();
+            handle.set_len(file.bytes).unwrap();
+        }
+        let (found_model, found_library) = packaged_beside(&program_dir);
+        assert_eq!(found_model.as_deref(), Some(model.as_path()));
+        assert_eq!(found_library, Some(library.join(runtime_library_name())));
+        // One file cut short and the model is not taken, so a half copied install downloads instead.
+        std::fs::File::create(model.join("tokenizer.json")).unwrap().set_len(10).unwrap();
+        assert_eq!(packaged_beside(&program_dir).0, None);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_file_is_held_only_at_its_length_and_hash() {
+        let path =
+            std::env::temp_dir().join(format!("unluminous-voice-holds-{}", std::process::id()));
+        std::fs::write(&path, b"abc").unwrap();
+        let abc = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        assert!(holds(&path, 3, abc));
+        assert!(!holds(&path, 4, abc));
+        assert!(!holds(&path, 3, &abc.replace('b', "c")));
+        std::fs::remove_file(&path).unwrap();
     }
 
     #[test]

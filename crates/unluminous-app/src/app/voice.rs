@@ -502,6 +502,10 @@ impl UnluminousApp {
             .unwrap_or(false);
         let model = match (self.download_progress(), installed.is_complete(), loaded) {
             (Some(progress), _, _) => progress,
+            (None, true, true) if installed.packaged => "Comes with Unluminous; loaded".to_owned(),
+            (None, true, false) if installed.packaged => {
+                "Comes with Unluminous; it loads when dictation starts".to_owned()
+            }
             (None, true, true) => "Downloaded and loaded".to_owned(),
             (None, true, false) => "Downloaded; it loads when dictation starts".to_owned(),
             (None, false, _) => {
@@ -567,8 +571,8 @@ impl UnluminousApp {
     }
 }
 
-/// `unluminous --setup-voice`: download the speech model and ONNX Runtime when they are missing, and ask about
-/// the microphone, which is the install's half of `task-2290`'s *"make sure our install prompts the user for
+/// `unluminous --setup-voice`: download the speech model and ONNX Runtime when they are missing, which since
+/// `task-2306` is only a build no installer made, and ask about the microphone, which is the install's half of `task-2290`'s *"make sure our install prompts the user for
 /// mic access"*. Answers the process's exit status, which is always 0: a step that did not work is said on
 /// standard output and in `voice/setup.log`, and never fails an install.
 ///
@@ -583,8 +587,9 @@ pub fn set_up_from_the_installer() -> i32 {
         }
     }) {
         Ok(installed) => said.push(format!(
-            "speech model: {}",
-            installed.model.map(|m| m.display().to_string()).unwrap_or_default()
+            "speech model: {}{}",
+            installed.model.map(|m| m.display().to_string()).unwrap_or_default(),
+            if installed.packaged { " (comes with Unluminous)" } else { "" }
         )),
         Err(problem) => said.push(format!("speech model: not downloaded: {problem}")),
     }

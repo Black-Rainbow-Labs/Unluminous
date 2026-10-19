@@ -277,6 +277,18 @@ if ($info.ProductName -ne 'Unluminous') {
     throw "unluminous.exe has no version block, so it has no icon either. Install the Windows SDK (it comes with the C++ build tools) and build again."
 }
 
+# `task-2306`. The speech model and ONNX Runtime ship in the installer, so an installed Unluminous downloads
+# nothing for speech to text. They are fetched once a machine, checked against the sizes and SHA-256 hashes in
+# `unluminous_voice::install`, and kept in the local application data so every checkout and worktree shares
+# the one copy. A second build finds them already there and fetches nothing.
+Write-Step 'Packaging the speech model'
+$VoiceDir = Join-Path $env:LOCALAPPDATA 'Unluminous\package\voice-windows'
+& cargo run --release --quiet --manifest-path (Join-Path $Repo 'Cargo.toml') -p unluminous-voice --example voice -- package $VoiceDir windows
+if ($LASTEXITCODE -ne 0) { throw 'Packaging the speech model failed.' }
+foreach ($needed in @('models\moonshine-base\encoder_model.onnx', 'models\moonshine-base\decoder_model_merged.onnx', 'models\moonshine-base\tokenizer.json', 'runtime\onnxruntime.dll')) {
+    if (-not (Test-Path (Join-Path $VoiceDir $needed))) { throw "The speech model package has no $needed." }
+}
+
 # **The binaries first, then the installer.** An installer is signed as one file, and what it holds
 # is signed separately or not at all -- so a person who runs `unluminous.exe` from the install folder
 # would meet the warning the signed installer just took away.
@@ -288,6 +300,7 @@ New-Item -ItemType Directory -Force -Path $Dist | Out-Null
 $compilerArguments = @(
     "/DAppVersion=$version",
     "/DBinaryDir=$BinaryDir",
+    "/DVoiceDir=$VoiceDir",
     "/DOutputDir=$Dist"
 )
 $uninstallerSigning = Get-UninstallerSignCommand

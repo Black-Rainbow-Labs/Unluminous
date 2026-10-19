@@ -714,7 +714,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "",
         verb: "setup",
-        summary: "Finish setting Unluminous up on this machine: put `unluminous-cli` on the path, connect every coding agent found (Claude Code, Codex, OpenCode, Pi) to Unluminous's MCP server, say which API keys are set, check that the server answers, and download the speech model for dictation and ask about the microphone. The installers run it; running it again changes nothing. An entry an agent already has that points at another Unluminous is left alone. Restart an agent to see the tools it was given.",
+        summary: "Finish setting Unluminous up on this machine: put `unluminous-cli` on the path, connect every coding agent found (Claude Code, Codex, OpenCode, Pi) to Unluminous's MCP server, say which API keys are set, check that the server answers, download the speech model for dictation when this build did not come with it, and ask about the microphone. The installers run it; running it again changes nothing. An entry an agent already has that points at another Unluminous is left alone. Restart an agent to see the tools it was given.",
         arguments: NO_ARGUMENTS,
         flags: &[
             switch("check", "Say what is and is not set up, and change nothing."),
@@ -1497,7 +1497,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "voice",
         verb: "install",
-        summary: "Download the local speech model (66 MB), and ONNX Runtime when missing.",
+        summary: "Download the local speech model (66 MB) and ONNX Runtime, for a build no installer made. An installed Unluminous already carries both, and this says so.",
         arguments: NO_ARGUMENTS,
         flags: NO_FLAGS,
         examples: &["unluminous-cli voice install"],

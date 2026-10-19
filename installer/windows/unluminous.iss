@@ -32,6 +32,12 @@
 #ifndef BinaryDir
   #define BinaryDir "..\..\target\release"
 #endif
+; `task-2306`. The speech model and ONNX Runtime the microphone in the Agent-Chat prompt uses, which ship
+; with Unluminous so nothing is downloaded for speech to text. build.ps1 fills this folder with
+; `cargo run -p unluminous-voice --example voice -- package` and passes it in.
+#ifndef VoiceDir
+  #define VoiceDir "..\..\target\voice-package\windows"
+#endif
 #ifndef OutputDir
   #define OutputDir "..\dist"
 #endif
@@ -120,15 +126,18 @@ Name: "associate"; Description: "Offer Unluminous in ""Open with"" for text, Mar
 ; Unluminous. On by default, so a silent install with no /TASKS does it too. An upgrade from a version
 ; without this task selects it, because Inno selects a task it has no record of by its default.
 Name: "connectagents"; Description: "Connect the coding agents on this machine (Claude Code, Codex, OpenCode, Pi) to Unluminous"; GroupDescription: "Other:"
-; `task-2290`. Runs `unluminous.exe --setup-voice`, which downloads the speech model the microphone in the
-; Agent-Chat prompt uses (66 MB from Hugging Face, and ONNX Runtime when this machine has none), checks each
-; file's SHA-256, and checks microphone access: when a Windows privacy switch refuses it, a message box says
-; which one and offers to open its page. On by default. It never fails the install.
-Name: "voice"; Description: "Set up speech to text: download the speech model (66 MB) and check microphone access"; GroupDescription: "Other:"
+; `task-2290`. Runs `unluminous.exe --setup-voice`, which checks microphone access for speech to text: when a
+; Windows privacy switch refuses it, a message box says which one and offers to open its page. The speech
+; model itself is installed in [Files] since `task-2306`, so nothing is downloaded. On by default. It never
+; fails the install. The name stays `voice`, because `OfferedTasks` and `setup` read it.
+Name: "voice"; Description: "Set up speech to text: check microphone access"; GroupDescription: "Other:"
 
 [Files]
 Source: "{#BinaryDir}\{#ExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BinaryDir}\{#CliName}"; DestDir: "{app}"; Flags: ignoreversion
+; `task-2306`. `unluminous_voice::install::packaged_beside` looks for exactly these two places.
+Source: "{#VoiceDir}\models\moonshine-base\*"; DestDir: "{app}\voice\models\moonshine-base"; Flags: ignoreversion
+Source: "{#VoiceDir}\runtime\onnxruntime.dll"; DestDir: "{app}\voice\runtime"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#ExeName}"
@@ -206,14 +215,14 @@ Root: HKA; Subkey: "Software\Classes\.yaml\OpenWithProgids"; ValueType: string; 
 ; goes nowhere. It never fails the install: a step that did not work is in the log, and setup's exit
 ; code is not checked.
 Filename: "{app}\{#CliName}"; Parameters: "setup --installer --no-path --no-voice"; StatusMsg: "Connecting the coding agents on this machine to Unluminous..."; Flags: runhidden waituntilterminated runasoriginaluser; Tasks: connectagents
-; `task-2290`. Waited for, as the person who started setup, because the model goes in their own local
-; application data and the microphone switches are theirs.
-Filename: "{app}\{#ExeName}"; Parameters: "--setup-voice"; StatusMsg: "Downloading the speech model and checking the microphone..."; Flags: waituntilterminated runasoriginaluser; Tasks: voice
+; `task-2290`. Waited for, as the person who started setup, because the microphone switches are theirs.
+Filename: "{app}\{#ExeName}"; Parameters: "--setup-voice"; StatusMsg: "Checking the microphone..."; Flags: waituntilterminated runasoriginaluser; Tasks: voice
 Filename: "{app}\{#ExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
-; `task-2290`. The speech model and ONNX Runtime `--setup-voice` downloaded into this person's local application
-; data. Only that folder: settings are in the roaming folder and are left.
+; `task-2290`. The voice folder in this person's local application data: `listening.pid`, `setup.log`, and a
+; speech model an Unluminous from before `task-2306` downloaded there. Only that folder: settings are in the
+; roaming folder and are left.
 Type: filesandordirs; Name: "{localappdata}\Unluminous\voice"
 ; `task-2295`. Copies of `unluminous-cli` that setup moved aside because an agent's server was running them.
 Type: files; Name: "{app}\{#CliName}.*.old"
