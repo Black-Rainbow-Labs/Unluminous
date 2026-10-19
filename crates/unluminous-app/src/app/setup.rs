@@ -417,7 +417,7 @@ impl UnluminousApp {
         };
         let mut order = Vec::new();
         for row in plan.rows.iter_mut() {
-            let asked = wanted.iter().any(|name| *name == row.name);
+            let asked = wanted.contains(&row.name);
             if row.name == "server" {
                 continue;
             }
