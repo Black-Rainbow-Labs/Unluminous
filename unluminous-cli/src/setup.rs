@@ -12,7 +12,7 @@
 //! 1. **The command line tool is on the path.** On Windows that is the user's `PATH` in the registry;
 //!    elsewhere it is a symbolic link in a folder on the path, and a marked line in the login shell's
 //!    profile when the only folder that can be written is not on it.
-//! 2. **Each coding agent on the machine** (Claude Code, Codex, OpenCode) is found.
+//! 2. **Each coding agent on the machine** (Claude Code, Codex, OpenCode, Pi) is found.
 //! 3. **Each agent found is connected** to Unluminous's MCP server, through `mcp::install`. An entry
 //!    that already points at another program that exists is somebody's choice and is left alone.
 //! 4. **The API keys** the window's AI endpoints read are named, set or not. Never their values.
@@ -188,7 +188,7 @@ impl State {
 /// One step and what came of it.
 #[derive(Debug, Clone)]
 pub struct Step {
-    /// `path`, `claude`, `codex`, `opencode`, `keys` or `server`.
+    /// `path`, `claude`, `codex`, `opencode`, `pi`, `keys` or `server`.
     pub step: String,
     pub state: State,
     /// One sentence for a person.
@@ -473,6 +473,7 @@ pub fn find_agent(client: Client, machine: &Machine) -> Found {
         Client::Claude => Some(install::claude_folder()),
         Client::Codex => Some(install::codex_folder()),
         Client::OpenCode => Some(install::opencode_folder()),
+        Client::Pi => Some(install::pi_folder()),
     }
     .filter(|folder| folder.is_dir());
     Found { program, folder }

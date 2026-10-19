@@ -24,7 +24,7 @@ use super::model::Assignee;
 ///
 /// Checked the way `plugins::DEBUGGERS` is checked, and for the same reason: a ticket naming something
 /// that cannot be launched should say so plainly rather than open a terminal that sits at a shell.
-pub const AGENTS: &[&str] = &["claude", "codex", "opencode"];
+pub const AGENTS: &[&str] = &["claude", "codex", "opencode", "pi"];
 
 /// The models each agent can be asked for, which is what the `Model` dropdown offers.
 ///
@@ -54,6 +54,10 @@ pub const MODELS: &[(&str, &[&str])] = &[
     // OpenCode names a model as `provider/model` from its own configuration, so what is offered is what that
     // file names on the machine this was written on. A ticket or an endpoint naming another keeps it.
     ("opencode", &["llama-local/local", "llama-local/qwen-27b", "llama-local/qwen-35b-a3b"]),
+    // Pi names a model as `provider/id` from `~/.pi/agent/models.json` or its own catalogue, and this is the one
+    // that file names on the machine this was written on (`task-2302`). A ticket or an endpoint naming another
+    // keeps it.
+    ("pi", &["local-qwen/ninfer-qwen3.8-27b-coletti-v9"]),
 ];
 
 /// The models to offer for `agent`, with `holding` kept in the list wherever it is.
@@ -100,7 +104,7 @@ pub const CODEX_READY_MS: u64 = 3000;
 /// outside. Codex keeps the longer floor because it prints its banner and its model line first.
 pub fn ready_after(agent: Assignee) -> std::time::Duration {
     std::time::Duration::from_millis(match agent {
-        Assignee::Codex | Assignee::OpenCode => CODEX_READY_MS,
+        Assignee::Codex | Assignee::OpenCode | Assignee::Pi => CODEX_READY_MS,
         _ => CLAUDE_READY_MS,
     })
 }
@@ -153,6 +157,7 @@ pub fn launch(plan: &Plan) -> Result<Launch, String> {
         Assignee::Claude => claude(plan),
         Assignee::Codex => codex(plan),
         Assignee::OpenCode => opencode(plan),
+        Assignee::Pi => pi(plan),
         Assignee::Human => {
             Err("this ticket is assigned to a person, and a person is not launched in a terminal"
                 .to_owned())
@@ -275,6 +280,29 @@ fn opencode(plan: &Plan) -> Result<Launch, String> {
     Ok(Launch { program, arguments })
 }
 
+/// Pi's own invocation, in its terminal interface (`task-2302`).
+///
+/// **Pi names a session the way Claude does**: `--session-id <id>` makes the session with Unluminous's id when
+/// Pi has none and carries it on when it has, so the same flag starts a ticket and resumes it, and nothing has
+/// to be found in Pi's records afterwards. `--approve` answers Pi's project trust question for this run, for
+/// the reason Claude is given `--dangerously-skip-permissions`: nobody is watching the terminal to answer it.
+/// Pi asks before no tool call, so nothing else is needed. The effort is `--thinking`, whose levels include all
+/// five the board offers.
+fn pi(plan: &Plan) -> Result<Launch, String> {
+    let (program, mut arguments) = command(plan, &["pi", "--approve"])?;
+    if let Some(model) = &plan.model {
+        arguments.push("--model".to_owned());
+        arguments.push(model.clone());
+    }
+    if let Some(effort) = &plan.effort {
+        arguments.push("--thinking".to_owned());
+        arguments.push(effort.clone());
+    }
+    arguments.push("--session-id".to_owned());
+    arguments.push(plan.session.clone());
+    Ok(Launch { program, arguments })
+}
+
 /// Whether a ticket's recorded session can be handed back to its agent, read from the id alone so the card
 /// and the ticket modal can ask it every frame without opening a database.
 ///
@@ -290,7 +318,7 @@ pub fn can_resume(agent: Assignee, session: Option<&str>) -> bool {
     };
     let pending = session.starts_with(super::native_session::PENDING);
     match agent {
-        Assignee::Claude => true,
+        Assignee::Claude | Assignee::Pi => true,
         Assignee::Codex => pending || !is_an_older_marker(session),
         Assignee::OpenCode => pending || session.starts_with("ses_"),
         Assignee::Human => false,
@@ -771,9 +799,37 @@ mod tests {
         assert!(said.contains("Use the dark palette."));
     }
 
+    /// `task-2302`: Pi names its session the way Claude does, so the one flag that makes it also carries it on,
+    /// and the ticket's model and effort go through as `--model` and `--thinking`.
+    #[test]
+    fn pi_is_launched_with_the_session_unluminous_chose_and_resumed_with_it() {
+        let mut asked = plan(Assignee::Pi);
+        asked.model = Some("local-qwen/qwen".to_owned());
+        asked.effort = Some("high".to_owned());
+        let launched = launch(&asked).expect("pi");
+        assert_eq!(launched.program, "pi");
+        assert_eq!(
+            launched.arguments,
+            [
+                "--approve",
+                "--model",
+                "local-qwen/qwen",
+                "--thinking",
+                "high",
+                "--session-id",
+                asked.session.as_str()
+            ]
+        );
+        asked.resuming = true;
+        let again = launch(&asked).expect("pi");
+        assert!(again.arguments.ends_with(&["--session-id".to_owned(), asked.session.clone()]));
+        assert!(can_resume(Assignee::Pi, Some(&asked.session)));
+        assert!(!can_resume(Assignee::Pi, None));
+    }
+
     #[test]
     fn the_agents_in_the_registry_are_the_ones_that_can_be_launched() {
-        assert_eq!(AGENTS, ["claude", "codex", "opencode"]);
+        assert_eq!(AGENTS, ["claude", "codex", "opencode", "pi"]);
         for name in AGENTS {
             let assignee =
                 Assignee::parse(name).unwrap_or_else(|| panic!("{name} is not an assignee"));

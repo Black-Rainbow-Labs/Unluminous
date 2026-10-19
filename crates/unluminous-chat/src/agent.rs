@@ -344,6 +344,42 @@ pub fn command_line(provider: &Provider, ask: &Ask) -> Vec<String> {
                 out.push(picture.display().to_string());
             }
         }
+        // `pi --mode json`, with the prompt on standard input because npm installs it as `pi.cmd` on Windows.
+        // Measured on Pi 1.3.0 (`task-2302`).
+        Wire::PiCli => {
+            out.push("--mode".to_owned());
+            out.push("json".to_owned());
+            // **Pi has no permission prompts**, so what it may do is which tools it is given. `full` is its
+            // own default set, which includes `bash`. Like Claude Code's mode, this is the agent's own policy
+            // rather than the operating system's.
+            match ask.permission {
+                Permission::Read => {
+                    out.push("--tools".to_owned());
+                    out.push("read,grep,find,ls".to_owned());
+                }
+                Permission::Edit => {
+                    out.push("--tools".to_owned());
+                    out.push("read,grep,find,ls,edit,write".to_owned());
+                }
+                Permission::Full => {}
+            }
+            if !provider.model.trim().is_empty() {
+                out.push("--model".to_owned());
+                out.push(provider.model.trim().to_owned());
+            }
+            // **`--session`, never `--session-id`, to carry a conversation on.** `--session-id` makes an empty
+            // session for an id Pi does not have and carries on with an agent that has seen none of the
+            // conversation, saying so only on standard error. `--session` refuses with `No session found
+            // matching`, which `refused_to_resume` knows, so the turn is asked again as a replay.
+            if !ask.session.trim().is_empty() {
+                out.push("--session".to_owned());
+                out.push(ask.session.trim().to_owned());
+            }
+            // A file is attached as `@<path>`, which is how Pi's own command line takes one.
+            for picture in &ask.pictures {
+                out.push(format!("@{}", picture.display()));
+            }
+        }
         // Not a program. A caller that asks anyway gets an empty command line rather than a panic,
         // and `run` refuses it by name.
         Wire::OpenAi | Wire::Anthropic | Wire::Responses => {}
@@ -358,7 +394,9 @@ pub fn command_line(provider: &Provider, ask: &Ask) -> Vec<String> {
 /// they are named as attachments so the agent is not left guessing why a path is there. Codex has
 /// `--image`, so its paths are already on the command line and are not repeated here.
 pub fn prompt_for(provider: &Provider, ask: &Ask) -> String {
-    if ask.pictures.is_empty() || matches!(provider.wire, Wire::CodexCli | Wire::OpenCodeCli) {
+    if ask.pictures.is_empty()
+        || matches!(provider.wire, Wire::CodexCli | Wire::OpenCodeCli | Wire::PiCli)
+    {
         return ask.prompt.clone();
     }
     let named: Vec<String> = ask.pictures.iter().map(|path| path.display().to_string()).collect();
@@ -623,6 +661,7 @@ impl Decoder {
             Wire::ClaudeCli => self.claude(&value),
             Wire::CodexCli => self.codex(&value),
             Wire::OpenCodeCli => self.opencode(&value),
+            Wire::PiCli => self.pi(&value),
             _ => Vec::new(),
         }
     }
@@ -890,6 +929,117 @@ impl Decoder {
         out
     }
 
+    /// Pi's events (`task-2302`): a `session` header, then the agent's own events, one a line.
+    ///
+    /// **Words and thinking arrive as deltas**, inside `message_update`'s `assistantMessageEvent`, so they are
+    /// passed on as they come. A tool call is complete at `toolcall_end`, and what it got back is
+    /// `tool_execution_end`. A model's failure is not a separate event: the assistant `message_end` says
+    /// `stopReason: "error"` with the server's words in `errorMessage`, and Pi still exits 0, so that message is
+    /// what fails the turn. `agent_settled` is the end of the turn, after any retry or compaction Pi does by
+    /// itself. Pi does not say how large the model's context is, so the context ring is given the tokens used
+    /// and no window.
+    fn pi(&mut self, value: &serde_json::Value) -> Vec<Reply> {
+        let mut out = Vec::new();
+        match value["type"].as_str().unwrap_or_default() {
+            "session" => {
+                if let Some(session) = value["id"].as_str().filter(|one| !one.is_empty()) {
+                    if session != self.session {
+                        self.session = session.to_owned();
+                        out.push(Reply::Session(session.to_owned()));
+                    }
+                }
+            }
+            "message_start" if value["message"]["role"] == "assistant" => {
+                if !self.started {
+                    self.started = true;
+                    let model = value["message"]["model"].as_str().unwrap_or_default();
+                    out.push(Reply::Started { model: model.to_owned() });
+                }
+            }
+            "message_update" => {
+                let event = &value["assistantMessageEvent"];
+                match event["type"].as_str().unwrap_or_default() {
+                    "text_delta" => {
+                        let delta = event["delta"].as_str().unwrap_or_default();
+                        if !delta.is_empty() {
+                            out.push(Reply::Text(delta.to_owned()));
+                        }
+                    }
+                    "thinking_delta" => {
+                        let delta = event["delta"].as_str().unwrap_or_default();
+                        if !delta.is_empty() {
+                            out.push(Reply::Thinking(delta.to_owned()));
+                        }
+                    }
+                    "toolcall_end" => {
+                        let call = &event["toolCall"];
+                        let id = call["id"].as_str().unwrap_or_default().to_owned();
+                        if self.first_time(&id) {
+                            out.push(Reply::ToolCall {
+                                id,
+                                name: call["name"].as_str().unwrap_or("tool").to_owned(),
+                                arguments: call["arguments"].to_string(),
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            "tool_execution_end" => out.push(Reply::ToolAnswer {
+                id: value["toolCallId"].as_str().unwrap_or_default().to_owned(),
+                answer: text_of(&value["result"]["content"]),
+                failed: value["isError"].as_bool().unwrap_or(false),
+            }),
+            "message_end" if value["message"]["role"] == "assistant" => {
+                let message = &value["message"];
+                let usage = &message["usage"];
+                let input = usage["input"].as_u64().unwrap_or(0)
+                    + usage["cacheRead"].as_u64().unwrap_or(0)
+                    + usage["cacheWrite"].as_u64().unwrap_or(0);
+                self.used.0 += input;
+                self.used.1 += usage["output"].as_u64().unwrap_or(0);
+                if input > 0 {
+                    self.context = Some(input);
+                }
+                if matches!(message["stopReason"].as_str(), Some("error" | "aborted")) {
+                    self.ended = true;
+                    out.push(Reply::Failed(
+                        message["errorMessage"]
+                            .as_str()
+                            .filter(|said| !said.trim().is_empty())
+                            .unwrap_or("the agent stopped with an error.")
+                            .to_owned(),
+                    ));
+                }
+            }
+            // **A retry is the turn going on**, so it is shown with the thinking rather than as a failure.
+            "auto_retry_start" => {
+                let said = value["errorMessage"].as_str().unwrap_or_default();
+                out.push(Reply::Thinking(format!("Retrying after: {said}\n")));
+            }
+            "compaction_end" if value["result"].is_object() => {
+                out.push(Reply::Compacted {
+                    before: value["result"]["tokensBefore"].as_u64().unwrap_or(0),
+                });
+            }
+            "agent_settled" if !self.ended => {
+                self.ended = true;
+                out.push(Reply::Usage { input: self.used.0, output: self.used.1 });
+                out.push(Reply::Finished {
+                    reason: match value["aborted"].as_bool().unwrap_or(false) {
+                        true => "aborted".to_owned(),
+                        false => "stop".to_owned(),
+                    },
+                });
+                if let Some(used) = self.context.take() {
+                    out.push(Reply::Context { used: Some(used), window: None });
+                }
+            }
+            _ => {}
+        }
+        out
+    }
+
     /// One Codex item, reported as only the part of it that has not been reported already.
     ///
     /// **Because an item arrives whole and then arrives again.** `item.updated` carries the item's
@@ -1038,12 +1188,14 @@ pub(crate) fn text_of(value: &serde_json::Value) -> String {
 /// - Claude Code: `No conversation found with session ID: <id>`, in its `result` line's `errors`.
 /// - Codex: `thread/resume failed: no rollout found for thread id <id>`, on standard error.
 /// - OpenCode: `Error: Session not found`, on standard error.
+/// - Pi 1.3.0: `No session found matching '<id>'`, on standard error, with exit code 1 (`task-2302`).
 pub fn refused_to_resume(words: &str) -> bool {
     let words = words.to_lowercase();
     words.contains("no conversation found with session id")
         || words.contains("no rollout found for thread id")
         || (words.contains("thread/resume") && words.contains("not found"))
         || words.contains("session not found")
+        || words.contains("no session found matching")
 }
 
 /// The session an agent gave for this conversation, so the next turn carries on rather than starting
@@ -1158,6 +1310,43 @@ mod tests {
         assert!(full.contains(&"--auto".to_owned()), "{full:?}");
         assert!(!full.contains(&"plan".to_owned()), "{full:?}");
         assert!(full.windows(2).any(|pair| pair == ["--session", "ses_1"]), "{full:?}");
+        assert_eq!(prompt_for(&row, &ask), "What does this do?\nAnd this?");
+    }
+
+    /// `task-2302`: Pi's permission is the tool list it is given, and a conversation is carried on with
+    /// `--session`, which refuses an id it does not have, never `--session-id`, which would make an empty one.
+    #[test]
+    fn pi_is_asked_in_its_own_words() {
+        let mut ask = Ask {
+            prompt: "What does this do?\nAnd this?".to_owned(),
+            permission: Permission::Read,
+            pictures: vec![std::path::PathBuf::from("shot.png")],
+            ..Ask::default()
+        };
+        let mut row = provider(Wire::PiCli);
+        assert_eq!(row.command, "pi");
+        row.model = "local-qwen/qwen".to_owned();
+        let read = command_line(&row, &ask);
+        assert_eq!(&read[..2], ["--mode", "json"]);
+        assert!(read.windows(2).any(|pair| pair == ["--tools", "read,grep,find,ls"]), "{read:?}");
+        assert!(read.windows(2).any(|pair| pair == ["--model", "local-qwen/qwen"]), "{read:?}");
+        assert!(read.contains(&"@shot.png".to_owned()), "{read:?}");
+        assert!(!read.iter().any(|word| word.contains("What does this do?")), "{read:?}");
+        assert!(!read.contains(&"--session".to_owned()), "a first turn names no session");
+        ask.permission = Permission::Edit;
+        let edit = command_line(&row, &ask);
+        assert!(edit.windows(2).any(|pair| pair == ["--tools", "read,grep,find,ls,edit,write"]));
+        ask.permission = Permission::Full;
+        ask.session = "01a1541d-de65-73d9-af86-1d6c68c1eabd".to_owned();
+        let full = command_line(&row, &ask);
+        assert!(!full.contains(&"--tools".to_owned()), "full is Pi's own set, with bash: {full:?}");
+        assert!(
+            full.windows(2)
+                .any(|pair| pair == ["--session", "01a1541d-de65-73d9-af86-1d6c68c1eabd"]),
+            "{full:?}"
+        );
+        assert!(!full.contains(&"--session-id".to_owned()), "{full:?}");
+        // The picture is an argument, so the words are not given its path a second time.
         assert_eq!(prompt_for(&row, &ask), "What does this do?\nAnd this?");
     }
 
@@ -1645,6 +1834,7 @@ mod only_the_new_part {
             "No conversation found with session ID: 11111111-2222-3333-4444-555555555555",
             "codex stopped with exit code: 1.\n\nError: thread/resume: thread/resume failed: no rollout found for thread id 01a00000-0000-7000-8000-000000000000 (code -32600)",
             "opencode stopped with exit code: 1.\n\n\u{1b}[91m\u{1b}[1mError: \u{1b}[0mSession not found",
+            "pi stopped with exit code: 1.\n\nNo session found matching '00000000-dead-beef-0000-000000000000'",
         ] {
             assert!(refused_to_resume(refusal), "{refusal}");
         }

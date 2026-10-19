@@ -1069,7 +1069,9 @@ impl AgentTasks {
     fn native_session_for(&mut self, task: &Task, agent: Assignee) -> Option<String> {
         let recorded = task.session_id.clone()?;
         let found = match agent {
-            Assignee::Claude => return Some(recorded),
+            // Pi carries a session on with the flag that made it, so the id on the ticket is the one it answers
+            // to (`task-2302`).
+            Assignee::Claude | Assignee::Pi => return Some(recorded),
             Assignee::Human => return None,
             Assignee::Codex => {
                 let home = native_session::codex_home()?;
@@ -1140,7 +1142,7 @@ impl AgentTasks {
         };
         let resuming = native.is_some();
         let session = native.unwrap_or_else(|| match agent {
-            Assignee::Claude => new_session_id(),
+            Assignee::Claude | Assignee::Pi => new_session_id(),
             // Codex and OpenCode name their own sessions, so the ticket carries a marker with the time it
             // started, which is what finds the session they chose when the ticket is resumed.
             _ => native_session::pending_marker(&new_session_id()),
@@ -1404,7 +1406,7 @@ impl AgentTasks {
             match resumable {
                 // A Codex or OpenCode ticket whose session cannot be found in the agent's own records is
                 // started instead, which is what Send did for those tickets before `task-2285`.
-                true if task.assignee != Assignee::Claude => {
+                true if !matches!(task.assignee, Assignee::Claude | Assignee::Pi) => {
                     if self.resume(key).is_err() {
                         self.start(key)?;
                     }
@@ -1449,6 +1451,7 @@ impl AgentTasks {
         let agent_kind = match named.as_str() {
             "codex" => Assignee::Codex,
             "opencode" => Assignee::OpenCode,
+            "pi" => Assignee::Pi,
             _ => Assignee::Claude,
         };
         // Which kind of agent a ticket started, and nothing about the ticket. `task-2271`.

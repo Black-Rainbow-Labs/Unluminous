@@ -19,6 +19,15 @@
 //! `isMeta` are what Claude Code expanded a slash command into, and lines marked `isSidechain` belong to a
 //! sub-agent; neither is drawn. Every other kind of line (attachments, file snapshots, permission modes, costs)
 //! says nothing a chat shows.
+//!
+//! ## Pi's session file is read the same way (`task-2302`)
+//!
+//! A Pi ticket is `pi --session-id <uuid>` in a terminal, and Pi writes its session to
+//! `~/.pi/agent/sessions/--<folder>--/<time>_<id>.jsonl`. [`Transcript::for_pi`] reads that file. Each `message`
+//! line holds one whole message, so nothing has to be gathered: `user` is a prompt, `assistant` is its text,
+//! thinking and `toolCall` blocks, and `toolResult` answers the call named by its `toolCallId`. An assistant
+//! message whose `stopReason` is `toolUse` keeps the turn open and any other ends it. A `compaction` line is the
+//! note drawn where the context was compacted.
 
 use crate::model::{Conversation, Message, Role, ToolCall};
 
@@ -37,6 +46,8 @@ pub struct Transcript {
     /// The text of each prompt read since the board last asked, so a message shown as queued can be matched
     /// with the line that recorded it. See [`Transcript::take_new_prompts`].
     new_prompts: Vec<String>,
+    /// Whether this is Pi's session file rather than Claude Code's transcript (`task-2302`).
+    pi: bool,
 }
 
 /// How many recent model message ids are remembered.
@@ -45,6 +56,11 @@ const GATHERED: usize = 16;
 impl Transcript {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// A reader for Pi's session file rather than Claude Code's transcript (`task-2302`).
+    pub fn for_pi() -> Self {
+        Self { pi: true, ..Self::default() }
     }
 
     /// Whether the agent is working on a prompt.
@@ -65,6 +81,10 @@ impl Transcript {
         let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
             return;
         };
+        if self.pi {
+            self.pi_line(chat, &value);
+            return;
+        }
         if value["isSidechain"].as_bool() == Some(true) {
             return;
         }
@@ -211,6 +231,100 @@ impl Transcript {
     }
 }
 
+impl Transcript {
+    /// One line of Pi's session file.
+    fn pi_line(&mut self, chat: &mut Conversation, value: &serde_json::Value) {
+        match value["type"].as_str().unwrap_or_default() {
+            "message" => {}
+            "compaction" => {
+                let id = chat.next_id();
+                let mut note = Message::new(id, Role::Assistant);
+                note.compacted = Some(value["tokensBefore"].as_u64().unwrap_or(0));
+                chat.push(note);
+                return;
+            }
+            _ => return,
+        }
+        let message = &value["message"];
+        match message["role"].as_str().unwrap_or_default() {
+            "user" => {
+                let said = match &message["content"] {
+                    serde_json::Value::String(text) => text.clone(),
+                    blocks => crate::agent::text_of(blocks),
+                };
+                if said.trim().is_empty() {
+                    return;
+                }
+                let id = chat.next_id();
+                chat.push(Message::said(id, Role::User, said.clone()));
+                self.turn_open = true;
+                self.prompts += 1;
+                self.new_prompts.push(said);
+            }
+            "assistant" => self.pi_assistant(chat, message),
+            "toolResult" => answer(
+                chat,
+                message["toolCallId"].as_str().unwrap_or_default(),
+                crate::agent::text_of(&message["content"]),
+                message["isError"].as_bool().unwrap_or(false),
+            ),
+            _ => {}
+        }
+    }
+
+    /// A Pi assistant message, which is one whole model message on one line.
+    fn pi_assistant(&mut self, chat: &mut Conversation, message: &serde_json::Value) {
+        if let Some(model) = message["model"].as_str().filter(|model| !model.is_empty()) {
+            self.model = model.to_owned();
+        }
+        let usage = &message["usage"];
+        let used = usage["input"].as_u64().unwrap_or(0)
+            + usage["cacheRead"].as_u64().unwrap_or(0)
+            + usage["cacheWrite"].as_u64().unwrap_or(0);
+        if used > 0 {
+            chat.context_used = Some(used);
+        }
+        let id = chat.next_id();
+        let mut into = Message::new(id, Role::Assistant);
+        for block in message["content"].as_array().into_iter().flatten() {
+            match block["type"].as_str().unwrap_or_default() {
+                "text" => {
+                    let text = block["text"].as_str().unwrap_or_default();
+                    if !into.text().is_empty() && !text.is_empty() {
+                        into.push_text("\n\n");
+                    }
+                    into.push_text(text);
+                }
+                "thinking" => {
+                    into.thinking.push_str(block["thinking"].as_str().unwrap_or_default())
+                }
+                "toolCall" => into.tools.push(ToolCall::new(
+                    block["id"].as_str().unwrap_or_default(),
+                    block["name"].as_str().unwrap_or_default(),
+                    block["arguments"].to_string(),
+                )),
+                _ => {}
+            }
+        }
+        match message["stopReason"].as_str().unwrap_or_default() {
+            "toolUse" => self.turn_open = true,
+            "error" | "aborted" => {
+                let said = message["errorMessage"].as_str().unwrap_or_default();
+                if !said.is_empty() && into.text().is_empty() {
+                    into.push_text(said);
+                }
+                into.finish = Some("stop".to_owned());
+                self.turn_open = false;
+            }
+            _ => {
+                into.finish = Some("stop".to_owned());
+                self.turn_open = false;
+            }
+        }
+        chat.push(into);
+    }
+}
+
 /// File `answer` under the newest call with `id` that has not been answered.
 fn answer(chat: &mut Conversation, id: &str, answer: String, failed: bool) {
     let call = chat.messages.iter_mut().rev().find_map(|message| {
@@ -299,6 +413,54 @@ pub fn find_claude_transcript(
         .flatten()
         .map(|entry| entry.path().join(&file))
         .find(|candidate| candidate.is_file())
+}
+
+/// The name of the folder Pi keeps a project's sessions in: the path with its leading separator taken off,
+/// every `/`, `\` and `:` written as `-`, and `--` on each side (`task-2302`).
+///
+/// `C:\jason\dev\unluminous` is `--C--jason-dev-unluminous--`, measured on Pi 1.3.0 on this machine.
+pub fn pi_project_folder(project: &std::path::Path) -> String {
+    let path = project.to_string_lossy();
+    let path = path.trim_start_matches(['/', '\\']);
+    let named: String = path
+        .chars()
+        .map(|character| match character {
+            '/' | '\\' | ':' => '-',
+            other => other,
+        })
+        .collect();
+    format!("--{named}--")
+}
+
+/// Where Pi's session file for `session`, started in `project`, is, or `None` when it is not on the disk.
+///
+/// `home` is Pi's own folder, `~/.pi/agent`. A file is named `<time>_<id>.jsonl`, so the one whose name ends with
+/// the id is taken. The folder named by [`pi_project_folder`] is looked in first and then every other one, the
+/// way [`find_claude_transcript`] does.
+pub fn find_pi_transcript(
+    home: &std::path::Path,
+    project: &std::path::Path,
+    session: &str,
+) -> Option<std::path::PathBuf> {
+    if session.trim().is_empty() || session.contains(['/', '\\', '.']) {
+        return None;
+    }
+    let ending = format!("_{session}.jsonl");
+    let in_folder = |folder: &std::path::Path| {
+        std::fs::read_dir(folder).ok()?.flatten().map(|entry| entry.path()).find(|path| {
+            path.is_file()
+                && path.file_name().is_some_and(|name| name.to_string_lossy().ends_with(&ending))
+        })
+    };
+    let sessions = home.join("sessions");
+    if let Some(found) = in_folder(&sessions.join(pi_project_folder(project))) {
+        return Some(found);
+    }
+    std::fs::read_dir(&sessions)
+        .ok()?
+        .flatten()
+        .filter(|entry| entry.path().is_dir())
+        .find_map(|entry| in_folder(&entry.path()))
 }
 
 #[cfg(test)]
@@ -476,6 +638,68 @@ mod tests {
         );
         assert_eq!(find_claude_transcript(&home, project, "none"), None);
         assert_eq!(find_claude_transcript(&home, project, "../abc"), None, "an id is not a path");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// `task-2302`: Pi's session file, in the shape Pi 1.3.0 wrote it, read into the same conversation.
+    #[test]
+    fn a_pi_session_file_is_read_into_the_conversation() {
+        let lines = [
+            r#"{"type":"session","version":3,"id":"7f3c2a10","timestamp":"2026-10-19T12:20:53.309Z","cwd":"C:/work"}"#,
+            r#"{"type":"model_change","id":"9707f601","parentId":null,"provider":"local-qwen","modelId":"qwen"}"#,
+            r#"{"type":"message","id":"6904e543","message":{"role":"system","content":"","sections":{"preamble":"You are"}}}"#,
+            r#"{"type":"message","id":"a0f84348","message":{"role":"user","content":[{"type":"text","text":"What is in note.txt?"}]}}"#,
+            r#"{"type":"message","id":"73461ca8","message":{"role":"assistant","content":[{"type":"thinking","thinking":"Read it."},{"type":"toolCall","id":"call_1","name":"read","arguments":{"path":"note.txt"}}],"model":"qwen","usage":{"input":8000,"cacheRead":230,"cacheWrite":0,"output":20},"stopReason":"toolUse"}}"#,
+            r#"{"type":"message","id":"b1","message":{"role":"toolResult","toolCallId":"call_1","toolName":"read","content":[{"type":"text","text":"The answer is 42."}],"isError":false}}"#,
+        ];
+        let mut chat = Conversation::new("ticket", "pi");
+        let mut transcript = Transcript::for_pi();
+        for line in lines {
+            transcript.line(&mut chat, line);
+        }
+        assert!(transcript.turn_open(), "a tool call keeps the turn open");
+        assert_eq!(transcript.prompts, 1);
+        assert_eq!(transcript.take_new_prompts(), ["What is in note.txt?"]);
+        assert_eq!(transcript.model, "qwen");
+        assert_eq!(chat.context_used, Some(8230));
+        let call = &chat.messages[1].tools[0];
+        assert_eq!(call.name, "read");
+        assert_eq!(call.answer.as_deref(), Some("The answer is 42."));
+        transcript.line(
+            &mut chat,
+            r#"{"type":"message","id":"c1","message":{"role":"assistant","content":[{"type":"text","text":"It says 42."}],"model":"qwen","stopReason":"stop"}}"#,
+        );
+        assert!(!transcript.turn_open(), "an answer that stops ends the turn");
+        assert_eq!(
+            chat.messages.last().map(|message| message.text()),
+            Some("It says 42.".to_owned())
+        );
+        transcript.line(&mut chat, r#"{"type":"compaction","id":"d1","tokensBefore":50000}"#);
+        assert_eq!(chat.messages.last().and_then(|message| message.compacted), Some(50000));
+    }
+
+    #[test]
+    fn a_pi_session_is_found_by_the_id_at_the_end_of_its_name() {
+        let home = std::env::temp_dir().join(format!("unluminous-pi-home-{}", std::process::id()));
+        let project = std::path::Path::new(r"C:\work\project");
+        assert_eq!(pi_project_folder(project), "--C--work-project--");
+        assert_eq!(pi_project_folder(std::path::Path::new("/home/me/code")), "--home-me-code--");
+        let folder = home.join("sessions").join(pi_project_folder(project));
+        std::fs::create_dir_all(&folder).expect("a folder");
+        let file = folder.join("2026-10-19T12-20-53-309Z_7f3c2a10-5b6e.jsonl");
+        std::fs::write(&file, "{}\n").expect("a file");
+        assert_eq!(find_pi_transcript(&home, project, "7f3c2a10-5b6e"), Some(file.clone()));
+        // Found from another folder too, because the folder name is Pi's rule and not Unluminous's.
+        assert_eq!(
+            find_pi_transcript(&home, std::path::Path::new("D:/elsewhere"), "7f3c2a10-5b6e"),
+            Some(file)
+        );
+        assert_eq!(
+            find_pi_transcript(&home, project, "5b6e"),
+            None,
+            "the whole id, not a piece of it"
+        );
+        assert_eq!(find_pi_transcript(&home, project, "../x"), None);
         let _ = std::fs::remove_dir_all(&home);
     }
 }

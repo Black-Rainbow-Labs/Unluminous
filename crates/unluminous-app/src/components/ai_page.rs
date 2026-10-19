@@ -65,7 +65,7 @@ pub(crate) fn show(
         "Endpoints",
         Some(
             "What answers, for Agent Chat, Agent Tasks and anything else that talks to a model. claude-cli, \
-             codex-cli and opencode-cli run the agent already installed on this machine: they need no key, they \
+             codex-cli, opencode-cli and pi-cli run the agent already installed on this machine: they need no key, they \
              bring their own tools, and they read the open project's own instructions. openai, anthropic and \
              responses send to a URL instead; for those a key is never stored by Unluminous, so name the \
              environment variable it is in.",

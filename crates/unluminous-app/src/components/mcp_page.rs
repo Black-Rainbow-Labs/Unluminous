@@ -49,6 +49,7 @@ pub struct McpState {
     pub claude_installed: bool,
     pub codex_installed: bool,
     pub opencode_installed: bool,
+    pub pi_installed: bool,
     /// Whether it has been read at all yet.
     pub read: bool,
     /// What the last button did, for the line under it.
@@ -64,6 +65,7 @@ impl McpState {
         self.claude_installed = install::installed(Client::Claude, &wanted).is_some();
         self.codex_installed = install::installed(Client::Codex, &wanted).is_some();
         self.opencode_installed = install::installed(Client::OpenCode, &wanted).is_some();
+        self.pi_installed = install::installed(Client::Pi, &wanted).is_some();
         self.read = true;
         if self.port.is_empty() {
             self.port = settings.mcp_port.to_string();
@@ -129,6 +131,7 @@ fn install_card(
                     (Client::Claude, state.claude_installed),
                     (Client::Codex, state.codex_installed),
                     (Client::OpenCode, state.opencode_installed),
+                    (Client::Pi, state.pi_installed),
                 ] {
                     let name = match installed {
                         true => format!("Remove from {}", client.title()),

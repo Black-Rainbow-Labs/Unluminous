@@ -1,8 +1,9 @@
 //! Writing Unluminous into an agent's own configuration.
 //!
-//! Three clients, three files, and one rule for all of them: **use the client's own command when it
+//! Four clients, four files, and one rule for all of them: **use the client's own command when it
 //! is on the path and asks nothing, and edit the file only when it does not.** OpenCode is always the
-//! file, because its `opencode mcp add` asks its questions interactively (`task-2278`).
+//! file, because its `opencode mcp add` asks its questions interactively (`task-2278`). Pi is always the
+//! file too: `~/.pi/agent/mcp.json` is Pi's own and nothing else writes it while Pi runs (`task-2302`).
 //!
 //! For Claude Code and Codex: Both files are
 //! written by a program that may be running right now — `~/.claude.json` is rewritten by every
@@ -58,10 +59,12 @@ pub enum Client {
     Codex,
     /// OpenCode: `~/.config/opencode/opencode.json` on every platform (`task-2278`).
     OpenCode,
+    /// Pi: `~/.pi/agent/mcp.json`, or `$PI_CODING_AGENT_DIR/mcp.json` (`task-2302`).
+    Pi,
 }
 
 impl Client {
-    pub const ALL: [Client; 3] = [Client::Claude, Client::Codex, Client::OpenCode];
+    pub const ALL: [Client; 4] = [Client::Claude, Client::Codex, Client::OpenCode, Client::Pi];
 
     /// The word the command line and the settings page spell it with, which is also the name of the
     /// program the agent is started with.
@@ -70,6 +73,7 @@ impl Client {
             Client::Claude => "claude",
             Client::Codex => "codex",
             Client::OpenCode => "opencode",
+            Client::Pi => "pi",
         }
     }
 
@@ -79,6 +83,7 @@ impl Client {
             Client::Claude => "Claude Code",
             Client::Codex => "Codex",
             Client::OpenCode => "OpenCode",
+            Client::Pi => "Pi",
         }
     }
 
@@ -87,6 +92,7 @@ impl Client {
             "claude" | "claude-code" | "claude code" => Some(Client::Claude),
             "codex" => Some(Client::Codex),
             "opencode" | "open-code" | "open code" => Some(Client::OpenCode),
+            "pi" | "pi-coding-agent" => Some(Client::Pi),
             _ => None,
         }
     }
@@ -97,6 +103,7 @@ impl Client {
             Client::Claude => claude_file(wanted),
             Client::Codex => codex_file(),
             Client::OpenCode => opencode_file(),
+            Client::Pi => pi_file(),
         }
     }
 }
@@ -269,6 +276,8 @@ impl Wanted {
                 )
             }
             Client::Codex => self.toml_table(),
+            // Pi reads an `mcpServers` object in the shape Claude Code does.
+            Client::Pi => self.example(Client::Claude),
             Client::OpenCode => {
                 let entry = entry_node(&self.opencode_entry(), OPENCODE_ORDER);
                 let block = Node::Object(vec![(self.name.clone(), entry)]);
@@ -295,6 +304,7 @@ pub fn install(client: Client, wanted: &Wanted) -> Result<Done, String> {
         Client::Claude => claude_install(wanted),
         Client::Codex => codex_install(wanted),
         Client::OpenCode => opencode_install(wanted),
+        Client::Pi => pi_install(wanted),
     }
 }
 
@@ -304,6 +314,7 @@ pub fn remove(client: Client, wanted: &Wanted) -> Result<Done, String> {
         Client::Claude => claude_remove(wanted),
         Client::Codex => codex_remove(wanted),
         Client::OpenCode => opencode_remove(wanted),
+        Client::Pi => pi_remove(wanted),
     }
 }
 
@@ -328,6 +339,11 @@ pub fn installed(client: Client, wanted: &Wanted) -> Option<Value> {
                 serde_json::from_str(&std::fs::read_to_string(opencode_file()).ok()?).ok()?;
             value.get("mcp")?.get(&wanted.name).cloned()
         }
+        Client::Pi => {
+            let value: Value =
+                serde_json::from_str(&std::fs::read_to_string(pi_file()).ok()?).ok()?;
+            value.get("mcpServers")?.get(&wanted.name).cloned()
+        }
     }
 }
 
@@ -350,7 +366,7 @@ pub enum Pointing {
 pub fn points_at(client: Client, wanted: &Wanted) -> Option<Pointing> {
     let entry = installed(client, wanted)?;
     Some(match client {
-        Client::Claude => match (entry.get("command"), entry.get("url")) {
+        Client::Claude | Client::Pi => match (entry.get("command"), entry.get("url")) {
             (Some(Value::String(program)), _) => Pointing::Program(PathBuf::from(program)),
             (_, Some(Value::String(url))) => Pointing::Address(url.clone()),
             _ => Pointing::Unknown,
@@ -609,6 +625,54 @@ fn opencode_remove(wanted: &Wanted) -> Result<Done, String> {
         });
     }
     write_json_entry(&file, "mcp", &wanted.name, None)?;
+    Ok(Done {
+        message: format!("Took `{}` out of {}.", wanted.name, file.display()),
+        file,
+        through_the_cli: false,
+    })
+}
+
+// --------------------------------------------------------------------------------------------- Pi
+
+/// Pi's own folder: `PI_CODING_AGENT_DIR`, or `~/.pi/agent` on every platform (`task-2302`).
+pub fn pi_folder() -> PathBuf {
+    match variable("PI_CODING_AGENT_DIR") {
+        Some(folder) => PathBuf::from(folder),
+        None => home().join(".pi").join("agent"),
+    }
+}
+
+/// Where Pi reads its user level MCP servers from.
+pub fn pi_file() -> PathBuf {
+    pi_folder().join("mcp.json")
+}
+
+fn pi_install(wanted: &Wanted) -> Result<Done, String> {
+    let file = pi_file();
+    write_json_server(&file, &wanted.name, Some(&wanted.entry())).map_err(|problem| {
+        format!("{problem}. Add this to it by hand instead:\n{}", wanted.example(Client::Pi))
+    })?;
+    Ok(Done {
+        message: format!(
+            "Wrote `{}` into the `mcpServers` block of {}. Restart Pi, or run /reload in it, and `pi mcp list` will show it.",
+            wanted.name,
+            file.display()
+        ),
+        file,
+        through_the_cli: false,
+    })
+}
+
+fn pi_remove(wanted: &Wanted) -> Result<Done, String> {
+    let file = pi_file();
+    if installed(Client::Pi, wanted).is_none() {
+        return Ok(Done {
+            message: format!("{} has no `{}` to take out.", file.display(), wanted.name),
+            file,
+            through_the_cli: false,
+        });
+    }
+    write_json_server(&file, &wanted.name, None)?;
     Ok(Done {
         message: format!("Took `{}` out of {}.", wanted.name, file.display()),
         file,
@@ -1190,5 +1254,36 @@ pub(crate) mod tests {
         assert_eq!(Client::parse("cursor"), None);
         assert_eq!(Scope::parse("project"), Some(Scope::Project));
         assert_eq!(Scope::default().name(), "user");
+    }
+
+    /// `task-2302`: Pi keeps its servers in `~/.pi/agent/mcp.json`, an `mcpServers` object, and whatever else is
+    /// in the file is kept.
+    #[test]
+    fn installing_into_pi_writes_its_mcp_file_and_keeps_the_rest() {
+        let home = a_home("pi");
+        let file = home.folder.join(".pi").join("agent").join("mcp.json");
+        std::fs::create_dir_all(file.parent().expect("a folder")).expect("the folder");
+        std::fs::write(&file, "{\n  \"mcpServers\": {\n    \"docs\": { \"url\": \"https://example.com/mcp\" }\n  }\n}\n")
+            .expect("a file");
+        let wanted = wanted(&home);
+        assert_eq!(Client::Pi.file(&wanted), file);
+        assert_eq!(Client::parse("pi"), Some(Client::Pi));
+        install(Client::Pi, &wanted).expect("installed");
+        install(Client::Pi, &wanted).expect("installed twice");
+        let written: Value =
+            serde_json::from_str(&std::fs::read_to_string(&file).expect("read")).expect("json");
+        assert_eq!(written["mcpServers"]["docs"]["url"], "https://example.com/mcp");
+        assert_eq!(written["mcpServers"]["unluminous"]["args"], json!(["mcp", "serve"]));
+        assert_eq!(
+            points_at(Client::Pi, &wanted),
+            Some(Pointing::Program(PathBuf::from(
+                "C:\\Program Files\\Unluminous\\unluminous-cli.exe"
+            )))
+        );
+        remove(Client::Pi, &wanted).expect("removed");
+        assert!(installed(Client::Pi, &wanted).is_none());
+        let kept: Value =
+            serde_json::from_str(&std::fs::read_to_string(&file).expect("read")).expect("json");
+        assert_eq!(kept["mcpServers"]["docs"]["url"], "https://example.com/mcp");
     }
 }

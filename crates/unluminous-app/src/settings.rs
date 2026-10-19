@@ -806,7 +806,7 @@ impl Page {
             Page::Plugins => &["Marketplace", "Installed", "Color Scheme", "Syntax"],
             Page::Terminal => &["Font", "Shell"],
             Page::Mcp => &["Install", "Server", "Configuration"],
-            Page::Ai => &["Endpoints", "Keys", "OpenCode", "Claude", "Codex"],
+            Page::Ai => &["Endpoints", "Keys", "OpenCode", "Claude", "Codex", "Pi"],
             Page::Voice => {
                 &["Speech to text", "Endpoint", "Microphone", "Listen for Sable", "Dictation"]
             }

@@ -40,6 +40,8 @@ pub fn agent_name(wire: Wire, name: &str) -> String {
     match wire {
         Wire::ClaudeCli => "Claude Code".to_owned(),
         Wire::CodexCli => "Codex".to_owned(),
+        Wire::OpenCodeCli => "OpenCode".to_owned(),
+        Wire::PiCli => "Pi".to_owned(),
         _ if name.is_empty() => "The model".to_owned(),
         _ => name.to_owned(),
     }
@@ -372,6 +374,7 @@ mod tests {
     fn an_agent_goes_by_the_name_of_the_program() {
         assert_eq!(agent_name(Wire::ClaudeCli, "claude"), "Claude Code");
         assert_eq!(agent_name(Wire::CodexCli, "codex"), "Codex");
+        assert_eq!(agent_name(Wire::PiCli, "pi"), "Pi");
         assert_eq!(agent_name(Wire::OpenAi, "local"), "local");
     }
 }

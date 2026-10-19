@@ -59,8 +59,13 @@ use super::model::{
 ///
 /// Bumped when a column is added. Version 2 added `task.owner`, which [`migrate`] adds to a board that was
 /// written at version 1. Version 3 (`task-2247`) added `task.endpoint` and lets `assignee` and a comment's
-/// `author` be `opencode`, which [`Store::let_opencode_in`] does to a board written before it.
-pub const SCHEMA_VERSION: i64 = 3;
+/// `author` be `opencode`. Version 4 (`task-2302`) lets them be `pi`. [`Store::let_every_agent_in`] rebuilds the
+/// two tables of a board written before either.
+pub const SCHEMA_VERSION: i64 = 4;
+
+/// The agents the two check constraints have to let in, quoted the way `SCHEMA` writes them. A table whose
+/// check leaves one of these out was made by an older Unluminous and is rebuilt.
+const AGENT_VALUES: &[&str] = &["'opencode'", "'pi'"];
 
 /// The file name inside the plugin's own folder.
 pub const FILE: &str = "board.rdb";
@@ -142,12 +147,12 @@ impl Store {
         store.check_version()?;
         // Before anything is changed, because the rebuild below is the one change this store makes that
         // does more than add a column.
-        let rebuilding = store.tables_refusing_opencode()?;
+        let rebuilding = store.tables_refusing_an_agent()?;
         if !rebuilding.is_empty() {
-            store.keep_a_copy_before("schema-3")?;
+            store.keep_a_copy_before(&format!("schema-{SCHEMA_VERSION}"))?;
         }
         migrate(&store.connection)?;
-        store.let_opencode_in(&rebuilding)?;
+        store.let_every_agent_in(&rebuilding)?;
         store.put_the_newest_finished_work_first()?;
         // **After the migration, not before it.** The version says which columns the file has, so it can only be
         // written once they are there. Writing it in `check_version` meant a file made at version 1 stayed at
@@ -219,10 +224,10 @@ impl Store {
         Ok(())
     }
 
-    /// The tables whose check constraint was written before `opencode` was a value they may hold.
+    /// The tables whose check constraint was written before `opencode` or `pi` was a value they may hold.
     ///
     /// Read from what the file says it was created with, because that is the constraint that is enforced.
-    fn tables_refusing_opencode(&self) -> Result<Vec<&'static str>, String> {
+    fn tables_refusing_an_agent(&self) -> Result<Vec<&'static str>, String> {
         let mut refusing = Vec::new();
         for (table, check) in
             [("task", "CHECK (assignee IN ("), ("task_comment", "CHECK (author IN (")]
@@ -238,9 +243,12 @@ impl Store {
                 .map_err(|problem| {
                     format!("the board's {table} table could not be read: {problem}")
                 })?;
-            // Only a table whose check names the values it may hold and leaves `opencode` out. A table
+            // Only a table whose check names the values it may hold and leaves one of the agents out. A table
             // something else made with no check at all refuses nothing, and is left as it was.
-            if sql.is_some_and(|sql| sql.contains(check) && !sql.contains("'opencode'")) {
+            let refuses = |sql: &String| {
+                sql.contains(check) && AGENT_VALUES.iter().any(|value| !sql.contains(value))
+            };
+            if sql.as_ref().is_some_and(refuses) {
                 refusing.push(table);
             }
         }
@@ -278,14 +286,14 @@ impl Store {
         Ok(())
     }
 
-    /// Rebuild each of `tables` from `SCHEMA`, which lets `opencode` in, keeping every row and every id.
+    /// Rebuild each of `tables` from `SCHEMA`, which lets every agent in, keeping every row and every id.
     ///
     /// **The one place this store recreates a table**, and it has to: a check constraint cannot be changed in
     /// place. The rows are copied column by column, by name, into a table made from the schema below, the old
     /// table is dropped and the new one takes its name. The table's place in `sqlite_sequence` is put back
     /// where it was, so an id a deleted ticket once had is never handed out again, which `AUTOINCREMENT` is
     /// there to promise. Measured on a copy of a real board before it was written.
-    fn let_opencode_in(&self, tables: &[&'static str]) -> Result<(), String> {
+    fn let_every_agent_in(&self, tables: &[&'static str]) -> Result<(), String> {
         if tables.is_empty() {
             return Ok(());
         }
@@ -329,7 +337,7 @@ impl Store {
                     format!("DELETE FROM sqlite_sequence WHERE name = '{table}'"),
                 ] {
                     self.connection.execute(&statement, []).map_err(|problem| {
-                        format!("{table} could not be rebuilt to let opencode in: {problem}")
+                        format!("{table} could not be rebuilt to let every agent in: {problem}")
                     })?;
                 }
                 // Written rather than updated: after the rename the table has no row in `sqlite_sequence` until
@@ -1852,7 +1860,7 @@ CREATE TABLE IF NOT EXISTS task (
   endpoint               TEXT,
   CONSTRAINT task_priority_check CHECK (priority IN ('low','medium','high')),
   CONSTRAINT task_status_check   CHECK (status IN ('new','in_progress','agent_done','qa_failed')),
-  CONSTRAINT task_assignee_check CHECK (assignee IN ('claude','codex','opencode','human'))
+  CONSTRAINT task_assignee_check CHECK (assignee IN ('claude','codex','opencode','pi','human'))
 );
 CREATE INDEX IF NOT EXISTS task_status_idx ON task(status);
 CREATE INDEX IF NOT EXISTS task_sprint_idx ON task(sprint_id);
@@ -1871,7 +1879,7 @@ CREATE TABLE IF NOT EXISTS task_comment (
   author     TEXT NOT NULL DEFAULT 'claude',
   body       TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  CONSTRAINT task_comment_author_check CHECK (author IN ('human','claude','codex','opencode','system'))
+  CONSTRAINT task_comment_author_check CHECK (author IN ('human','claude','codex','opencode','pi','system'))
 );
 CREATE INDEX IF NOT EXISTS task_comment_task_idx ON task_comment(task_id);
 CREATE TABLE IF NOT EXISTS task_schedule (
@@ -2068,9 +2076,9 @@ mod tests {
             // The schema as it was written before this change: no `endpoint`, and no `opencode` in either check.
             let old = SCHEMA
                 .replace("  endpoint               TEXT,\n", "")
-                .replace("'claude','codex','opencode','human'", "'claude','codex','human'")
+                .replace("'claude','codex','opencode','pi','human'", "'claude','codex','human'")
                 .replace(
-                    "'human','claude','codex','opencode','system'",
+                    "'human','claude','codex','opencode','pi','system'",
                     "'human','claude','codex','system'",
                 );
             let db = Db::open(&path).expect("a file");
@@ -2101,9 +2109,9 @@ mod tests {
                 .query_map("SELECT id, title FROM task", [], |row| Ok((row.get(0)?, row.get(1)?)))
                 .expect("rows");
             let old = SCHEMA
-                .replace("'claude','codex','opencode','human'", "'claude','codex','human'")
+                .replace("'claude','codex','opencode','pi','human'", "'claude','codex','human'")
                 .replace(
-                    "'human','claude','codex','opencode','system'",
+                    "'human','claude','codex','opencode','pi','system'",
                     "'human','claude','codex','system'",
                 );
             let old_task = old[old.find("CREATE TABLE IF NOT EXISTS task (").expect("task")..]
@@ -2134,7 +2142,7 @@ mod tests {
         }
 
         let store = Store::open(&path).expect("the same board");
-        assert!(folder.join("board-before-schema-3").join(FILE).is_file(), "a copy is kept first");
+        assert!(folder.join("board-before-schema-4").join(FILE).is_file(), "a copy is kept first");
         let edit = TaskEdit {
             assignee: Some(Assignee::OpenCode),
             endpoint: Some(Some("local-agent".to_owned())),
@@ -2153,6 +2161,89 @@ mod tests {
             .create_task(NewTask { title: "Next".to_owned(), ..NewTask::default() }, NOW)
             .expect("a ticket");
         assert!(next.id > gone.id, "{} reuses the id of a deleted ticket, {}", next.id, gone.id);
+        drop(store);
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// `task-2302`: a board at schema 3 lets `opencode` in and refuses `pi`, in both tables. Opening it rebuilds
+    /// them once more, with a copy kept first, every row and every id kept, and the version written as 4.
+    #[test]
+    fn a_board_at_schema_3_lets_pi_in_and_keeps_every_row_and_id() {
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-board-pi-{}", std::process::id()));
+        let path = folder.join(FILE);
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("a folder");
+        let (kept, gone) = {
+            let store = Store::open(&path).expect("a board");
+            let kept = store
+                .create_task(NewTask { title: "Kept".to_owned(), ..NewTask::default() }, NOW)
+                .expect("a ticket");
+            store.add_comment(kept.id, Author::OpenCode, "a comment", NOW).expect("a comment");
+            let gone = store
+                .create_task(NewTask { title: "Deleted".to_owned(), ..NewTask::default() }, NOW)
+                .expect("a ticket");
+            store
+                .connection
+                .execute("DELETE FROM task WHERE id = ?1", params![gone.id])
+                .expect("deleted");
+            (kept, gone)
+        };
+        // Put back the two checks schema 3 wrote, which name `opencode` and not `pi`.
+        {
+            let db = Db::open(&path).expect("the file");
+            let old = SCHEMA.replace(",'pi'", "");
+            for table in ["task", "task_comment"] {
+                let made = old[old
+                    .find(&format!("CREATE TABLE IF NOT EXISTS {table} ("))
+                    .expect("the table")..]
+                    .split("\n);")
+                    .next()
+                    .expect("the table")
+                    .replace(
+                        &format!("CREATE TABLE IF NOT EXISTS {table} ("),
+                        &format!("CREATE TABLE {table}_old ("),
+                    )
+                    + "\n)";
+                db.execute_batch(&format!(
+                    "{made};\n\
+                     INSERT INTO {table}_old SELECT * FROM {table};\n\
+                     DROP TABLE {table};\n\
+                     ALTER TABLE {table}_old RENAME TO {table};\n\
+                     DELETE FROM sqlite_sequence WHERE name = '{table}_old';"
+                ))
+                .expect("a table from schema 3");
+            }
+            db.execute_batch(&format!(
+                "DELETE FROM sqlite_sequence WHERE name = 'task';\n\
+                 INSERT INTO sqlite_sequence (name, seq) VALUES ('task', {});\n\
+                 UPDATE meta SET value = 3 WHERE name = 'schema_version';",
+                gone.id
+            ))
+            .expect("schema 3");
+            let refused =
+                db.execute("UPDATE task SET assignee = 'pi' WHERE id = ?1", params![kept.id]);
+            assert!(refused.is_err(), "schema 3's check has to refuse pi for this to be the fault");
+        }
+        let store = Store::open(&path).expect("the same board");
+        assert!(folder.join("board-before-schema-4").join(FILE).is_file(), "a copy is kept first");
+        let edit = TaskEdit { assignee: Some(Assignee::Pi), ..TaskEdit::default() };
+        store.edit_task(kept.id, &edit, NOW).expect("pi is a value it may hold now");
+        let read = store.task(kept.id).expect("a read").expect("the ticket");
+        assert_eq!(read.title, "Kept");
+        assert_eq!(read.assignee, Assignee::Pi);
+        let comments = store.comments(kept.id).expect("comments");
+        assert_eq!(comments.len(), 1, "the comment was kept");
+        store.add_comment(kept.id, Author::Pi, "from pi", NOW).expect("a pi comment");
+        let next = store
+            .create_task(NewTask { title: "Next".to_owned(), ..NewTask::default() }, NOW)
+            .expect("a ticket");
+        assert!(next.id > gone.id, "{} reuses the id of a deleted ticket, {}", next.id, gone.id);
+        let version: i64 = store
+            .connection
+            .query_row("SELECT value FROM meta WHERE name = 'schema_version'", [], |row| row.get(0))
+            .expect("the version");
+        assert_eq!(version, 4);
         drop(store);
         let _ = std::fs::remove_dir_all(&folder);
     }

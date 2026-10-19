@@ -12,7 +12,7 @@ commands with an agent's tool-calling machinery in front of it.
 
 The installers already did it. The Windows installer runs `unluminous-cli setup`, and on macOS the
 window runs it the first time it starts. `setup` connects every coding agent it finds on the machine,
-Claude Code, Codex and OpenCode, and leaves alone an entry that already points at another Unluminous.
+Claude Code, Codex, OpenCode and Pi, and leaves alone an entry that already points at another Unluminous.
 Run it yourself at any time; running it again changes nothing:
 
 ```sh
@@ -22,10 +22,10 @@ unluminous-cli setup --remove        # take Unluminous out of every agent again
 ```
 
 Restart an agent after it is connected. In Claude Code, `/mcp` will list Unluminous; `claude mcp list`,
-`codex mcp list` and `opencode mcp list` each say whether it connected.
+`codex mcp list`, `opencode mcp list` and `pi mcp list` each say whether it connected.
 
 One agent at a time: `Unluminous -> Edit -> Settings -> Tools -> MCP`, and press **Install for Claude
-Code**, **Install for Codex** or **Install for OpenCode**. The same thing from a terminal:
+Code**, **Install for Codex**, **Install for OpenCode** or **Install for Pi**. The same thing from a terminal:
 
 ```sh
 unluminous-cli mcp install all
@@ -36,7 +36,8 @@ unluminous-cli mcp install codex --remove           # take it out again
 It writes through the agent's own command — `claude mcp add-json`, `codex mcp add` — when that is on
 the path, and edits the file directly when it is not. OpenCode is always the file
 (`~/.config/opencode/opencode.json`, its `mcp` block), because `opencode mcp add` only asks its
-questions interactively. The direct edit takes a copy first, keeps everything else in the file in the
+questions interactively. Pi is always the file too (`~/.pi/agent/mcp.json`, its `mcpServers` block, or
+`$PI_CODING_AGENT_DIR/mcp.json`). The direct edit takes a copy first, keeps everything else in the file in the
 order it was in, and leaves the comments in Codex's TOML alone.
 
 `codex mcp add` rewrites the whole of `config.toml` as it goes: the keys inside a table come back in

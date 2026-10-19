@@ -50,6 +50,38 @@ pub fn claude_home() -> Option<PathBuf> {
         .map(|home| PathBuf::from(home).join(".claude"))
 }
 
+/// The variable a test sets to name Pi's own folder, so it never reads the person's `~/.pi/agent` (`task-2302`).
+pub const PI_HOME_VARIABLE: &str = "UNLUMINOUS_PI_HOME";
+
+/// Pi's own folder: [`PI_HOME_VARIABLE`], then `PI_CODING_AGENT_DIR`, then `~/.pi/agent`.
+pub fn pi_home() -> Option<PathBuf> {
+    for variable in [PI_HOME_VARIABLE, "PI_CODING_AGENT_DIR"] {
+        if let Some(named) = std::env::var_os(variable).filter(|value| !value.is_empty()) {
+            return Some(PathBuf::from(named));
+        }
+    }
+    std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(|home| PathBuf::from(home).join(".pi").join("agent"))
+}
+
+/// Where the conversation of `session` is on the disk: Claude Code's transcript, or Pi's session file when `pi`.
+fn find_the_transcript(pi: bool, folder: &Path, session: &str) -> Option<PathBuf> {
+    match pi {
+        true => pi_home().and_then(|home| transcript::find_pi_transcript(&home, folder, session)),
+        false => claude_home()
+            .and_then(|home| transcript::find_claude_transcript(&home, folder, session)),
+    }
+}
+
+/// A reader for the agent's own file.
+fn a_reader(pi: bool) -> Transcript {
+    match pi {
+        true => Transcript::for_pi(),
+        false => Transcript::new(),
+    }
+}
+
 /// Which tab of the ticket modal's Agent section is showing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentTab {
@@ -86,11 +118,11 @@ impl AgentTab {
 
 /// Whether the Chat tab can show `agent`'s conversation.
 ///
-/// Claude Code writes its transcript under the session id the ticket chose, so the file can be found. Codex and
-/// OpenCode name their own sessions, so the id on the ticket names nothing they wrote: the reason
-/// `agent::can_resume` gives, about the same fact.
+/// Claude Code and Pi write their conversation under the session id the ticket chose, so the file can be found
+/// (Pi since `task-2302`). Codex and OpenCode name their own sessions, so the id on the ticket names nothing they
+/// wrote: the reason `agent::can_resume` gives, about the same fact.
 pub fn chat_is_readable(agent: Assignee) -> bool {
-    matches!(agent, Assignee::Claude)
+    matches!(agent, Assignee::Claude | Assignee::Pi)
 }
 
 /// What the Chat tab says for an agent whose conversation it cannot read.
@@ -118,13 +150,13 @@ const READING: &str = "Reading the conversation\u{2026}";
 /// The one reading of a whole file there is, used on the thread [`TicketChat::follow`] starts and directly by
 /// [`TicketChat::read_now`]. A line not yet finished is kept as `partial`, exactly as a later read keeps one.
 fn read_the_whole_transcript(
+    pi: bool,
     folder: &Path,
     session: &str,
     mut chat: unluminous_chat::Conversation,
 ) -> Loaded {
-    let path =
-        claude_home().and_then(|home| transcript::find_claude_transcript(&home, folder, session));
-    let mut transcript = Transcript::new();
+    let path = find_the_transcript(pi, folder, session);
+    let mut transcript = a_reader(pi);
     let mut offset = 0;
     let mut partial = String::new();
     if let Some(bytes) = path.as_ref().and_then(|path| std::fs::read(path).ok()) {
@@ -148,6 +180,8 @@ pub struct TicketChat {
     folder: PathBuf,
     pub chat: AgentChat,
     transcript: Transcript,
+    /// Whether the agent is Pi, whose session file is read rather than Claude Code's transcript (`task-2302`).
+    pi: bool,
     /// The file, once it has been found.
     path: Option<PathBuf>,
     /// How much of it has been read, and the part of a line after that.
@@ -213,7 +247,8 @@ impl TicketChat {
             session: session.to_owned(),
             folder: folder.to_path_buf(),
             chat: AgentChat::mirroring(&title, speaker, READING, chat_folder),
-            transcript: Transcript::new(),
+            transcript: a_reader(agent == Assignee::Pi.name()),
+            pi: agent == Assignee::Pi.name(),
             path: None,
             offset: 0,
             partial: String::new(),
@@ -239,7 +274,12 @@ impl TicketChat {
         // A read already running on its thread is waited for rather than done twice.
         let loaded = self.loading.take().and_then(|receiver| receiver.recv().ok());
         let loaded = loaded.unwrap_or_else(|| {
-            read_the_whole_transcript(&self.folder, &self.session, self.chat.session().chat.clone())
+            read_the_whole_transcript(
+                self.pi,
+                &self.folder,
+                &self.session,
+                self.chat.session().chat.clone(),
+            )
         });
         self.take_in(loaded);
     }
@@ -251,10 +291,11 @@ impl TicketChat {
             let folder = self.folder.clone();
             let session = self.session.clone();
             let chat = self.chat.session().chat.clone();
+            let pi = self.pi;
             let started = std::thread::Builder::new()
                 .name("unluminous-ticket-transcript".to_owned())
                 .spawn(move || {
-                    let _ = send.send(read_the_whole_transcript(&folder, &session, chat));
+                    let _ = send.send(read_the_whole_transcript(pi, &folder, &session, chat));
                 });
             match started {
                 Ok(_) => self.loading = Some(receive),
@@ -366,8 +407,7 @@ impl TicketChat {
     /// Find the file when it has not been found, and read what was added to it since the last read.
     fn read_what_was_added(&mut self) -> bool {
         if self.path.is_none() {
-            let Some(home) = claude_home() else { return false };
-            self.path = transcript::find_claude_transcript(&home, &self.folder, &self.session);
+            self.path = find_the_transcript(self.pi, &self.folder, &self.session);
         }
         let Some(path) = self.path.clone() else { return false };
         let Ok(mut file) = std::fs::File::open(&path) else { return false };
@@ -377,7 +417,7 @@ impl TicketChat {
             // read from the middle of a line.
             self.offset = 0;
             self.partial.clear();
-            self.transcript = Transcript::new();
+            self.transcript = a_reader(self.pi);
             let session = self.chat.mirrored();
             session.chat.messages.clear();
         }
@@ -515,6 +555,7 @@ mod tests {
         assert_eq!(AgentTab::default_for(Assignee::Claude), AgentTab::Chat);
         assert_eq!(AgentTab::default_for(Assignee::Codex), AgentTab::Terminal);
         assert_eq!(AgentTab::default_for(Assignee::OpenCode), AgentTab::Terminal);
+        assert_eq!(AgentTab::default_for(Assignee::Pi), AgentTab::Chat);
         assert_eq!(AgentTab::parse(" Terminal "), Some(AgentTab::Terminal));
         assert_eq!(AgentTab::parse("chat"), Some(AgentTab::Chat));
         assert_eq!(AgentTab::parse("both"), None);

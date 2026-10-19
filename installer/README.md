@@ -74,7 +74,7 @@ optional things, all on one page, all on by default and all remembered by the un
 | Right click a file | *Open with Unluminous* |
 | Right click a folder | *Open with Unluminous*, on the folder and on the empty space inside it |
 | Open with | Unluminous is offered for `.md .markdown .txt .rs .js .ts .json .toml .yml .yaml` — offered, never taken as the default |
-| Connect agents | runs `unluminous-cli setup`, which connects Claude Code, Codex and OpenCode to Unluminous's MCP server and writes what it did to `%APPDATA%\Unluminous\setup.log` (`task-2278`) |
+| Connect agents | runs `unluminous-cli setup`, which connects Claude Code, Codex, OpenCode and Pi to Unluminous's MCP server and writes what it did to `%APPDATA%\Unluminous\setup.log` (`task-2278`) |
 
 A silent install with no `/TASKS` takes all six. `/TASKS` replaces the defaults rather than adding to them,
 so a script that names only some of them turns the rest off; `/MERGETASKS` adds.

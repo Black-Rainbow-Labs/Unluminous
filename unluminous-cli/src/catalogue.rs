@@ -714,13 +714,13 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "",
         verb: "setup",
-        summary: "Finish setting Unluminous up on this machine: put `unluminous-cli` on the path, connect every coding agent found (Claude Code, Codex, OpenCode) to Unluminous's MCP server, say which API keys are set, check that the server answers, and download the speech model for dictation and ask about the microphone. The installers run it; running it again changes nothing. An entry an agent already has that points at another Unluminous is left alone. Restart an agent to see the tools it was given.",
+        summary: "Finish setting Unluminous up on this machine: put `unluminous-cli` on the path, connect every coding agent found (Claude Code, Codex, OpenCode, Pi) to Unluminous's MCP server, say which API keys are set, check that the server answers, and download the speech model for dictation and ask about the microphone. The installers run it; running it again changes nothing. An entry an agent already has that points at another Unluminous is left alone. Restart an agent to see the tools it was given.",
         arguments: NO_ARGUMENTS,
         flags: &[
             switch("check", "Say what is and is not set up, and change nothing."),
             switch("remove", "Take out every `unluminous` entry that starts this program, and the path entry `setup` made. Entries pointing at another program are left."),
             switch("force", "Replace an agent's `unluminous` entry, or a link, that points at another program."),
-            option("agents", "list", "Only these agents, separated by commas: `claude`, `codex`, `opencode`. All of them by default."),
+            option("agents", "list", "Only these agents, separated by commas: `claude`, `codex`, `opencode`, `pi`. All of them by default."),
             switch("path", "Put `unluminous-cli` on the path even when this is a build rather than an installed copy."),
             switch("no-path", "Leave the path alone."),
             switch("no-voice", "Do not download the speech model or ask about the microphone. The Windows installer passes it, because its own `voice` task does that."),
@@ -3994,7 +3994,7 @@ pub const COMMANDS: &[Command] = &[
         area: "mcp",
         verb: "install",
         summary: "Write Unluminous's MCP server into an agent's own configuration, so it is there next time the agent starts.",
-        arguments: &[closed("client", true, "`claude`, `codex`, `opencode`, `both` (Claude Code and Codex) or `all`.", &["claude", "codex", "opencode", "both", "all"])],
+        arguments: &[closed("client", true, "`claude`, `codex`, `opencode`, `pi`, `both` (Claude Code and Codex) or `all`.", &["claude", "codex", "opencode", "pi", "both", "all"])],
         flags: &[
             option("transport", "stdio|http", "Which way the agent should talk to it. `stdio` by default, which needs no port."),
             whole_option("port", "number", "The port to point at, for `--transport http`."),
@@ -4008,8 +4008,8 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "mcp",
         verb: "config",
-        summary: "Print the configuration to paste into an agent that has no button of its own: the JSON an `mcpServers` block wants, the TOML Codex wants, and the `mcp` entry OpenCode wants.",
-        arguments: &[closed("client", false, "`claude`, `codex` or `opencode`. All of them when it is left out.", &["claude", "codex", "opencode"])],
+        summary: "Print the configuration to paste into an agent that has no button of its own: the JSON an `mcpServers` block wants, the TOML Codex wants, the `mcp` entry OpenCode wants, and the `mcpServers` block Pi wants.",
+        arguments: &[closed("client", false, "`claude`, `codex`, `opencode` or `pi`. All of them when it is left out.", &["claude", "codex", "opencode", "pi"])],
         flags: &[
             option("transport", "stdio|http", "Which way to describe. `stdio` by default."),
             whole_option("port", "number", "The port to name, for `--transport http`."),

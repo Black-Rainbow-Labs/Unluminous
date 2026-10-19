@@ -343,12 +343,12 @@ Answered by the CLI itself; no Unluminous needs to be running.
 unluminous-cli setup [--check] [--remove] [--force] [--agents <list>] [--path] [--no-path] [--no-voice] [--installer]
 ```
 
-Finish setting Unluminous up on this machine: put `unluminous-cli` on the path, connect every coding agent found (Claude Code, Codex, OpenCode) to Unluminous's MCP server, say which API keys are set, check that the server answers, and download the speech model for dictation and ask about the microphone. The installers run it; running it again changes nothing. An entry an agent already has that points at another Unluminous is left alone. Restart an agent to see the tools it was given.
+Finish setting Unluminous up on this machine: put `unluminous-cli` on the path, connect every coding agent found (Claude Code, Codex, OpenCode, Pi) to Unluminous's MCP server, say which API keys are set, check that the server answers, and download the speech model for dictation and ask about the microphone. The installers run it; running it again changes nothing. An entry an agent already has that points at another Unluminous is left alone. Restart an agent to see the tools it was given.
 
 - `--check` — Say what is and is not set up, and change nothing.
 - `--remove` — Take out every `unluminous` entry that starts this program, and the path entry `setup` made. Entries pointing at another program are left.
 - `--force` — Replace an agent's `unluminous` entry, or a link, that points at another program.
-- `--agents <list>` — Only these agents, separated by commas: `claude`, `codex`, `opencode`. All of them by default.
+- `--agents <list>` — Only these agents, separated by commas: `claude`, `codex`, `opencode`, `pi`. All of them by default.
 - `--path` — Put `unluminous-cli` on the path even when this is a build rather than an installed copy.
 - `--no-path` — Leave the path alone.
 - `--no-voice` — Do not download the speech model or ask about the microphone. The Windows installer passes it, because its own `voice` task does that.
@@ -4816,12 +4816,12 @@ unluminous-cli mcp status --json
 ### mcp install
 
 ```
-unluminous-cli mcp install <claude|codex|opencode|both|all> [--transport <stdio|http>] [--port <number>] [--scope <user|project>] [--name <name>] [--remove]
+unluminous-cli mcp install <claude|codex|opencode|pi|both|all> [--transport <stdio|http>] [--port <number>] [--scope <user|project>] [--name <name>] [--remove]
 ```
 
 Write Unluminous's MCP server into an agent's own configuration, so it is there next time the agent starts.
 
-- `client` — `claude`, `codex`, `opencode`, `both` (Claude Code and Codex) or `all`.
+- `client` — `claude`, `codex`, `opencode`, `pi`, `both` (Claude Code and Codex) or `all`.
 
 - `--transport <stdio|http>` — Which way the agent should talk to it. `stdio` by default, which needs no port.
 - `--port <number>` — The port to point at, for `--transport http`.
@@ -4840,12 +4840,12 @@ Answered by the CLI itself; no Unluminous needs to be running.
 ### mcp config
 
 ```
-unluminous-cli mcp config [claude|codex|opencode] [--transport <stdio|http>] [--port <number>] [--name <name>]
+unluminous-cli mcp config [claude|codex|opencode|pi] [--transport <stdio|http>] [--port <number>] [--name <name>]
 ```
 
-Print the configuration to paste into an agent that has no button of its own: the JSON an `mcpServers` block wants, the TOML Codex wants, and the `mcp` entry OpenCode wants.
+Print the configuration to paste into an agent that has no button of its own: the JSON an `mcpServers` block wants, the TOML Codex wants, the `mcp` entry OpenCode wants, and the `mcpServers` block Pi wants.
 
-- `client` (optional) — `claude`, `codex` or `opencode`. All of them when it is left out.
+- `client` (optional) — `claude`, `codex`, `opencode` or `pi`. All of them when it is left out.
 
 - `--transport <stdio|http>` — Which way to describe. `stdio` by default.
 - `--port <number>` — The port to name, for `--transport http`.

@@ -95,8 +95,9 @@ impl Priority {
 
 /// Who is working a ticket.
 ///
-/// Three agents and a person. `OpenCode` is `task-2247`'s, which runs a model OpenCode's own configuration
-/// names, a local one through llama.cpp included. Which endpoint of a kind a ticket uses is
+/// Four agents and a person. `OpenCode` is `task-2247`'s, which runs a model OpenCode's own configuration
+/// names, a local one through llama.cpp included. `Pi` is `task-2302`'s, Pi's coding agent, which runs the
+/// model its own `~/.pi/agent` configuration names. Which endpoint of a kind a ticket uses is
 /// [`Task::endpoint`]: two endpoints can both run `claude`, with different models. `Human` is what the application being replaced calls `jason`, spelled here
 /// as what it means rather than as whose machine this is, because a settings file is copied between
 /// machines and a name in an enum is not.
@@ -106,18 +107,20 @@ pub enum Assignee {
     Claude,
     Codex,
     OpenCode,
+    Pi,
     Human,
 }
 
 impl Assignee {
-    pub const ALL: [Assignee; 4] =
-        [Assignee::Claude, Assignee::Codex, Assignee::OpenCode, Assignee::Human];
+    pub const ALL: [Assignee; 5] =
+        [Assignee::Claude, Assignee::Codex, Assignee::OpenCode, Assignee::Pi, Assignee::Human];
 
     pub fn name(self) -> &'static str {
         match self {
             Assignee::Claude => "claude",
             Assignee::Codex => "codex",
             Assignee::OpenCode => "opencode",
+            Assignee::Pi => "pi",
             Assignee::Human => "human",
         }
     }
@@ -129,6 +132,7 @@ impl Assignee {
             unluminous_chat::Wire::ClaudeCli => Some(Assignee::Claude),
             unluminous_chat::Wire::CodexCli => Some(Assignee::Codex),
             unluminous_chat::Wire::OpenCodeCli => Some(Assignee::OpenCode),
+            unluminous_chat::Wire::PiCli => Some(Assignee::Pi),
             _ => None,
         }
     }
@@ -139,6 +143,7 @@ impl Assignee {
             Assignee::Claude => Author::Claude,
             Assignee::Codex => Author::Codex,
             Assignee::OpenCode => Author::OpenCode,
+            Assignee::Pi => Author::Pi,
             Assignee::Human => Author::Human,
         }
     }
@@ -164,13 +169,20 @@ pub enum Author {
     Claude,
     Codex,
     OpenCode,
+    Pi,
     /// The board itself: the watchdog's first strike, and a reclaim.
     System,
 }
 
 impl Author {
-    pub const ALL: [Author; 5] =
-        [Author::Human, Author::Claude, Author::Codex, Author::OpenCode, Author::System];
+    pub const ALL: [Author; 6] = [
+        Author::Human,
+        Author::Claude,
+        Author::Codex,
+        Author::OpenCode,
+        Author::Pi,
+        Author::System,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -178,6 +190,7 @@ impl Author {
             Author::Claude => "claude",
             Author::Codex => "codex",
             Author::OpenCode => "opencode",
+            Author::Pi => "pi",
             Author::System => "system",
         }
     }

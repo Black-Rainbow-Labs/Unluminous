@@ -1180,6 +1180,28 @@ mod tests {
         assert!(!board.modal_open);
     }
 
+    /// `task-2302`: *"whatever the settings have for agent tasks should be the default that tasks are assigned
+    /// to. Eg if Pi is my config, that should be the default when I create a task."* A ticket made by `+ Add Task`
+    /// and one an agent made with a title are both given the endpoint the board's settings name, and with no
+    /// endpoint named, the agent they name.
+    #[test]
+    fn a_new_ticket_is_given_the_agent_the_boards_settings_name() {
+        let mut board = board();
+        board.endpoints = unluminous_chat::Provider::defaults();
+        board.configuration.endpoint = Some("pi".to_owned());
+        for words in [&[][..], &["Made", "by", "an", "agent"][..]] {
+            let made = key(&did(&mut board, "new-task", words));
+            let ticket = board.by_key(&made).expect("the ticket");
+            assert_eq!(ticket.assignee, model::Assignee::Pi, "{made}");
+            assert_eq!(ticket.endpoint.as_deref(), Some("pi"), "{made}");
+            did(&mut board, "close", &[]);
+        }
+        board.configuration.endpoint = None;
+        board.configuration.agent = model::Assignee::Pi;
+        let made = key(&did(&mut board, "new-task", &["no", "endpoint", "named"]));
+        assert_eq!(board.by_key(&made).expect("the ticket").assignee, model::Assignee::Pi);
+    }
+
     /// A ticket is made, changed, given a todo and a comment, and deleted, through the one path.
     ///
     /// **`task-1984` S18.** This file is 872 lines with no test in it. `mod.rs`'s

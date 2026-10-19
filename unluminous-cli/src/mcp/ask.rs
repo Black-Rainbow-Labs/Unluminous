@@ -94,7 +94,7 @@ pub fn clients_from(named: Option<&str>) -> Result<Vec<Client>, String> {
         Some("both") => Ok(vec![Client::Claude, Client::Codex]),
         Some(name) => Client::parse(name).map(|client| vec![client]).ok_or_else(|| {
             format!(
-                "`{name}` is not a client Unluminous can write to. It is `claude`, `codex`, `opencode`, `both` or `all`."
+                "`{name}` is not a client Unluminous can write to. It is `claude`, `codex`, `opencode`, `pi`, `both` or `all`."
             )
         }),
     }

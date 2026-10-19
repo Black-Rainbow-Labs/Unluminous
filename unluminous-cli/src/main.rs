@@ -429,7 +429,7 @@ fn setup(typed: &Typed) -> i32 {
                     None => {
                         complain(
                             &format!(
-                                "`{name}` is not an agent. It is `claude`, `codex` or `opencode`."
+                                "`{name}` is not an agent. It is `claude`, `codex`, `opencode` or `pi`."
                             ),
                             &typed.global,
                         );

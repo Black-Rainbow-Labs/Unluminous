@@ -205,7 +205,7 @@ impl Configuration {
         match agent {
             Assignee::Claude => self.claude_command.clone(),
             Assignee::Codex => self.codex_command.clone(),
-            Assignee::OpenCode | Assignee::Human => None,
+            Assignee::OpenCode | Assignee::Pi | Assignee::Human => None,
         }
     }
 

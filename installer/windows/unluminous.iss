@@ -116,10 +116,10 @@ Name: "contextfile"; Description: "Add ""Open with Unluminous"" to the right cli
 Name: "contextfolder"; Description: "Add ""Open with Unluminous"" to the right click menu of a folder"; GroupDescription: "Other:"
 Name: "associate"; Description: "Offer Unluminous in ""Open with"" for text, Markdown and source files"; GroupDescription: "Other:"
 ; `task-2278`. Runs `unluminous-cli setup`, which connects every coding agent it finds (Claude Code, Codex,
-; OpenCode) to Unluminous's MCP server and leaves alone an entry that already points at another
+; OpenCode, Pi) to Unluminous's MCP server and leaves alone an entry that already points at another
 ; Unluminous. On by default, so a silent install with no /TASKS does it too. An upgrade from a version
 ; without this task selects it, because Inno selects a task it has no record of by its default.
-Name: "connectagents"; Description: "Connect the coding agents on this machine (Claude Code, Codex, OpenCode) to Unluminous"; GroupDescription: "Other:"
+Name: "connectagents"; Description: "Connect the coding agents on this machine (Claude Code, Codex, OpenCode, Pi) to Unluminous"; GroupDescription: "Other:"
 ; `task-2290`. Runs `unluminous.exe --setup-voice`, which downloads the speech model the microphone in the
 ; Agent-Chat prompt uses (66 MB from Hugging Face, and ONNX Runtime when this machine has none), checks each
 ; file's SHA-256, and checks microphone access: when a Windows privacy switch refuses it, a message box says

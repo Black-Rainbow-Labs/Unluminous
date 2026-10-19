@@ -163,8 +163,8 @@ pub fn write(folder: &Path, providers: &[Provider]) -> Result<(), String> {
         FILE,
         &values,
         "# What can answer, for Agent Chat, Agent Tasks and anything else in Unluminous that talks to a model.\n\
-         # `Settings -> AI Configuration` writes this file and reads it back. `wire` is `claude-cli`, `codex-cli`\n\
-         # or `opencode-cli` for a row that runs the agent installed on this machine, which needs no key, or\n\
+         # `Settings -> AI Configuration` writes this file and reads it back. `wire` is `claude-cli`, `codex-cli`,\n\
+         # `opencode-cli` or `pi-cli` for a row that runs the agent installed on this machine, which needs no key, or\n\
          # `openai`, `anthropic` or `responses` for one that sends to a URL. A row that sends names the\n\
          # environment variable its key comes from; the key itself is never written here.",
     )
@@ -391,7 +391,7 @@ mod tests {
         let (rows, refused) = load(&folder);
         assert!(refused.is_empty(), "{refused:?}");
         let names: Vec<&str> = rows.iter().map(|row| row.name.as_str()).collect();
-        assert_eq!(names, ["claude", "gateway", "codex", "local", "opencode"]);
+        assert_eq!(names, ["claude", "gateway", "codex", "local", "opencode", "pi"]);
         assert_eq!(rows[1], gateway, "a row somebody wrote keeps every field");
         assert!(folder.join(FILE).is_file(), "written out so the next start reads it from here");
 
@@ -408,7 +408,7 @@ mod tests {
         let folder = a_folder("api-keys");
         let (rows, _) = load_with(&folder, &|name| name == "ANTHROPIC_API_KEY");
         let names: Vec<&str> = rows.iter().map(|row| row.name.as_str()).collect();
-        assert_eq!(names, ["claude", "codex", "local", "opencode", "anthropic"]);
+        assert_eq!(names, ["claude", "codex", "local", "opencode", "pi", "anthropic"]);
         let anthropic = rows.last().expect("a row");
         assert_eq!(anthropic.wire, Wire::Anthropic);
         assert_eq!(anthropic.key_env, "ANTHROPIC_API_KEY");
@@ -443,7 +443,7 @@ mod tests {
     fn every_field_on_the_page_is_a_setting_an_agent_can_change() {
         let mut providers = Provider::defaults();
         let listed = settings(&providers);
-        assert!(listed.contains(&("ai.providers".to_owned(), "4".to_owned())), "{listed:?}");
+        assert!(listed.contains(&("ai.providers".to_owned(), "5".to_owned())), "{listed:?}");
         assert!(listed.contains(&("ai.provider.3.wire".to_owned(), "opencode-cli".to_owned())));
         assert_eq!(set(&mut providers, "ai.provider.3.model", "llama-local/local"), Some(Ok(())));
         assert_eq!(providers[3].model, "llama-local/local");
@@ -459,6 +459,6 @@ mod tests {
     fn only_a_program_can_be_given_a_ticket() {
         let names: Vec<String> =
             agents(&Provider::defaults()).map(|provider| provider.name.clone()).collect();
-        assert_eq!(names, ["claude", "codex", "opencode"]);
+        assert_eq!(names, ["claude", "codex", "opencode", "pi"]);
     }
 }

@@ -9,7 +9,7 @@
   environment is made inside this user:
 
   - Every home folder an installed Unluminous or an agent reads is pointed inside a scratch profile:
-    USERPROFILE, HOME, APPDATA, LOCALAPPDATA, CODEX_HOME and CLAUDE_CONFIG_DIR. The real `claude`, `codex`
+    USERPROFILE, HOME, APPDATA, LOCALAPPDATA, CODEX_HOME and CLAUDE_CONFIG_DIR. The real `claude`, `codex`, `pi`
     and `opencode` are put on its PATH, so the real agents are what gets connected, and each writes its
     settings inside the scratch profile.
   - The installer still writes some of this user's own state, because Inno Setup reads the registry and
@@ -24,7 +24,7 @@
   What is checked, in order:
     1. The installer finishes, and both programs are in the folder it was told to use.
     2. The PATH names that folder, and `setup.log` was written into the scratch profile.
-    3. `claude mcp list`, `codex mcp list` and `opencode mcp list`, run in the scratch profile, each list
+    3. `claude mcp list`, `codex mcp list`, `opencode mcp list` and `pi mcp list`, run in the scratch profile, each list
        Unluminous and say it connected.
     4. `unluminous-cli setup --check --json` says every agent is already connected and the server answers.
     5. The freshly installed window starts on a scratch project, and Claude Code, with this machine's own
@@ -141,6 +141,7 @@ function Get-AgentSettings {
         claude   = $entry
         codex    = & $hash (Join-Path $realHome '.codex\config.toml')
         opencode = & $hash (Join-Path $realHome '.config\opencode\opencode.json')
+        pi       = & $hash (Join-Path $realHome '.pi\agent\mcp.json')
     }
 }
 
@@ -180,11 +181,11 @@ New-Item -ItemType Directory -Force -Path $roaming, $local, (Join-Path $profileR
 Set-Content (Join-Path $project 'README.md') "# A project made by test-fresh-install.ps1`n" -Encoding utf8
 
 $agentFolders = @()
-foreach ($name in 'claude', 'codex', 'opencode') {
+foreach ($name in 'claude', 'codex', 'opencode', 'pi') {
     $found = Get-Command $name -All -ErrorAction SilentlyContinue | Where-Object { $_.Source -match '\.(exe|cmd)$' } | Select-Object -First 1
     if ($found) { $agentFolders += (Split-Path $found.Source) } else { Write-Warning "$name is not installed here, so it is not tested." }
 }
-$agentsHere = @('claude', 'codex', 'opencode' | Where-Object { Get-Command $_ -ErrorAction SilentlyContinue })
+$agentsHere = @('claude', 'codex', 'opencode', 'pi' | Where-Object { Get-Command $_ -ErrorAction SilentlyContinue })
 $freshPath = (@("$env:SystemRoot\system32", $env:SystemRoot, "$env:SystemRoot\System32\WindowsPowerShell\v1.0") + ($agentFolders | Select-Object -Unique)) -join ';'
 
 $fresh = @{
@@ -196,6 +197,7 @@ $fresh = @{
     CLAUDE_CONFIG_DIR = (Join-Path $profileRoot '.claude')
     XDG_CONFIG_HOME   = $null
     OPENCODE_CONFIG   = $null
+    PI_CODING_AGENT_DIR = $null
     ANTHROPIC_API_KEY = $null
     OPENAI_API_KEY    = $null
     PATH              = $freshPath
@@ -270,6 +272,7 @@ try {
             'claude' { $line -match 'Connected' }
             'codex' { $line -match 'enabled' -and $line -match [regex]::Escape($cli) }
             'opencode' { $line -match 'connected' }
+            'pi' { $line -match 'connected' }
         }
         Check "$agent lists Unluminous" ([bool] $line) ($line ?? '').Trim()
         Check "$agent says it connected" ([bool] $connected)

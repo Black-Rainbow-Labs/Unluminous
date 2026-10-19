@@ -713,6 +713,32 @@ and theirs refused `opencode`. The files are copied into `board-before-schema-3/
 kept, and `sqlite_sequence` is written back by hand: after a rename the table has no row there, and the first
 insert would otherwise reuse the id of the last ticket deleted.
 
+### Pi is the fifth agent, and it names its sessions the way Claude Code does (`task-2302`)
+
+`tasks/task-2302-pi-support-tdd.md` is the design. Pi is `@earendil-works/pi-coding-agent` (the older
+`@mariozechner/` package is deprecated), a program called `pi`, `pi.cmd` on Windows. Five rules:
+
+- **`pi-cli` is a wire**: `pi --mode json` with the prompt on standard input, words and thinking as deltas inside
+  `message_update`, the tool call at `toolcall_end` and its answer at `tool_execution_end`, and the end of the turn
+  at `agent_settled`. A model's refusal is the assistant `message_end` with `stopReason: "error"`, and Pi still
+  exits 0, so that message is what fails the turn. `tests/streams/pi-cli*.jsonl` are real runs.
+- **Chat carries a conversation on with `--session <id>`, never `--session-id`.** `--session-id` makes an empty
+  session for an id Pi does not have, and `--session` refuses with `No session found matching`, which
+  `refused_to_resume` knows, so a restored conversation is replayed instead.
+- **Pi has no permission prompts.** `chat.permission` is the tool list: `read` is `--tools read,grep,find,ls`,
+  `edit` adds `edit,write`, `full` is Pi's own set with `bash`.
+- **A Pi ticket is `pi --approve --session-id <uuid>`, started and resumed alike**, with Unluminous's id, so it
+  needs nothing from `native_session`. Its Chat tab reads Pi's session file,
+  `~/.pi/agent/sessions/--<folder>--/<time>_<id>.jsonl`, through `Transcript::for_pi`. `UNLUMINOUS_PI_HOME`,
+  then `PI_CODING_AGENT_DIR`, names Pi's folder.
+- **Board schema 4 rebuilds `task` and `task_comment` once more** to let `pi` into their check constraints, the
+  way schema 3 let `opencode` in, after copying the files into `board-before-schema-4/`. An Unluminous older than
+  this refuses a board at schema 4.
+
+`mcp install pi` and `setup` write the `unluminous` entry into `~/.pi/agent/mcp.json`. On this machine Pi runs the
+local Qwen through `~/.pi/agent/models.json`, which needs `"compat": { "supportsDeveloperRole": false }`: without
+it the server refuses Pi's `developer` message.
+
 ### A modal's backdrop is a blurred photograph of the window (`task-2247`)
 
 egui cannot read back what is under a layer, so `modal::show` asks for a `ViewportCommand::Screenshot` the

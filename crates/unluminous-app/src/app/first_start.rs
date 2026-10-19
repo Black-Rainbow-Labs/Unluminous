@@ -110,13 +110,14 @@ mod tests {
                 step("claude", State::Done, "Claude Code"),
                 step("codex", State::Skipped, "Codex"),
                 step("opencode", State::Done, "OpenCode"),
+                step("pi", State::Done, "Pi"),
             ],
         };
         let (text, kind) = sentence(&report);
         assert_eq!(kind, Kind::Done);
         assert_eq!(
             text,
-            "Connected Claude Code, OpenCode to Unluminous. Restart them to use its tools."
+            "Connected Claude Code, OpenCode, Pi to Unluminous. Restart them to use its tools."
         );
     }
 

@@ -287,3 +287,58 @@ fn a_tool_opencode_ran_is_shown_with_the_answer_it_got() {
     let finished = replies.iter().filter(|reply| matches!(reply, Reply::Finished { .. })).count();
     assert_eq!(finished, 1, "a step that ends in tool-calls is not the end of the turn");
 }
+
+/// `pi --mode json` against the local Qwen (`task-2302`): the session from the header, the model from the first
+/// assistant message, the words as deltas, and one end at `agent_settled`.
+#[test]
+fn a_recorded_pi_turn_is_read_as_one_answer() {
+    let (replies, decoder) = replies_from("pi-cli.jsonl", Wire::PiCli);
+    assert_eq!(replies[0], Reply::Session("01a1541d-de65-73d9-af86-1d6c68c1eabd".to_owned()));
+    assert_eq!(replies[1], Reply::Started { model: "ninfer-qwen3.8-27b-coletti-v9".to_owned() });
+    assert_eq!(texts(&replies), "Hello, Jason, friend.");
+    assert!(replies.iter().any(|reply| matches!(reply, Reply::Thinking(_))), "{replies:?}");
+    assert!(decoder.ended);
+    assert!(replies.contains(&Reply::Usage { input: 8192, output: 21 }), "{replies:?}");
+    let finished = replies.iter().filter(|reply| matches!(reply, Reply::Finished { .. })).count();
+    assert_eq!(finished, 1, "{replies:?}");
+    assert!(replies.contains(&Reply::Context { used: Some(8192), window: None }), "{replies:?}");
+}
+
+/// A tool Pi ran itself is one tool block holding its answer, and the turn ends once, after the second model
+/// message rather than after the first.
+#[test]
+fn a_tool_pi_ran_is_shown_with_the_answer_it_got() {
+    let (replies, _) = replies_from("pi-cli-tool.jsonl", Wire::PiCli);
+    let calls: Vec<&Reply> =
+        replies.iter().filter(|reply| matches!(reply, Reply::ToolCall { .. })).collect();
+    assert_eq!(calls.len(), 1, "{replies:?}");
+    let Reply::ToolCall { id, name, arguments } = calls[0] else { unreachable!() };
+    assert_eq!(name, "read");
+    assert!(arguments.contains("note.txt"), "{arguments}");
+    let answered = replies.iter().any(|reply| {
+        matches!(reply, Reply::ToolAnswer { id: answered, answer, failed: false }
+            if answered == id && answer.contains("The answer is 42."))
+    });
+    assert!(answered, "{replies:?}");
+    assert_eq!(texts(&replies), "The answer it gives is 42.");
+    let finished = replies.iter().filter(|reply| matches!(reply, Reply::Finished { .. })).count();
+    assert_eq!(finished, 1, "{replies:?}");
+    assert!(replies.contains(&Reply::Usage { input: 16547, output: 92 }), "{replies:?}");
+}
+
+/// A model that refuses is the server's own words, though Pi exits 0 and still says the agent settled.
+#[test]
+fn a_pi_turn_the_model_refused_fails_in_the_servers_words_once() {
+    let (replies, decoder) = replies_from("pi-cli-error.jsonl", Wire::PiCli);
+    let failed: Vec<&String> = replies
+        .iter()
+        .filter_map(|reply| match reply {
+            Reply::Failed(said) => Some(said),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(failed.len(), 1, "{replies:?}");
+    assert!(failed[0].contains("401") && failed[0].contains("Incorrect API key"), "{}", failed[0]);
+    assert!(decoder.ended);
+    assert!(!replies.iter().any(|reply| matches!(reply, Reply::Finished { .. })), "{replies:?}");
+}
