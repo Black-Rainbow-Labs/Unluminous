@@ -6,6 +6,20 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.2.0 — 2026-10-19
+
+- Pi as a fifth agent for Agent Chat, Agent Tasks, MCP and setup (`task-2302`)
+- The Pi decoder's first message_start is one match arm, for clippy (`task-2302`)
+- Fixes the live Pi runs found (`task-2302`)
+- The window suite expects Pi among the endpoints, and the pictures with its pill and its Install button (`task-2302`)
+- Set Up Unluminous has a Pi row, and unticking Connect agents in the installer declines Pi too (`task-2302`)
+- Cargo fmt (`task-2302`)
+- Setup's plan has a Pi step after the rebase onto task-2301 (`task-2302`)
+- The Voice page's Download button has room, so opening it with no model no longer closes the window, and a failed model download is said in its dialog (`task-2302`)
+- A new ticket shows its todos and comments under its description (`task-2302`)
+- The Voice page test measures its one Download button without a loop, for clippy (`task-2302`)
+- CLAUDE.md says what the Voice page, the speech model dialog and a new ticket changed (`task-2302`)
+
 ## 1.1.0 — 2026-10-19
 
 - The TDD for a Set Up Unluminous dialog that finishes the install from the window (`task-2301`)
