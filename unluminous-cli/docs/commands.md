@@ -1636,7 +1636,7 @@ unluminous-cli setup run [steps]
 
 Press Run Setup: take the steps named, or every one not done. Answers at once.
 
-- `steps` (optional) — path, claude, codex, opencode, speech-model, microphone, comma separated.
+- `steps` (optional) — path, claude, codex, opencode, pi, speech-model, microphone, comma separated.
 
 ```sh
 unluminous-cli setup run claude,codex

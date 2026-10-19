@@ -36,8 +36,8 @@ use crate::components::toast::Act;
 
 /// The steps the dialog can take, in the order it takes them. The server is last because asking it is a
 /// check of what the steps before it changed.
-pub const STEPS: [&str; 7] =
-    ["path", "claude", "codex", "opencode", "speech-model", "microphone", "server"];
+pub const STEPS: [&str; 8] =
+    ["path", "claude", "codex", "opencode", "pi", "speech-model", "microphone", "server"];
 
 /// One row of the dialog.
 #[derive(Debug, Clone, PartialEq)]
@@ -750,7 +750,7 @@ fn steps_named(named: &str) -> Result<Vec<String>, String> {
     for name in named.split(',').map(str::trim).filter(|name| !name.is_empty()) {
         if !STEPS.contains(&name) || name == "server" {
             return Err(format!(
-                "`{name}` is not a setup step. The steps are path, claude, codex, opencode, speech-model and microphone."
+                "`{name}` is not a setup step. The steps are path, claude, codex, opencode, pi, speech-model and microphone."
             ));
         }
         if !steps.iter().any(|step| step == name) {
@@ -944,11 +944,12 @@ mod tests {
             step("claude", State::Would),
             step("codex", State::Skipped),
             step("opencode", State::Done),
+            step("pi", State::Would),
         ];
         let voice = Voice { model: false, microphone: Access::NotAsked };
         let plan = plan_from(&steps, &voice, &[], "No API key is set.".to_owned());
         let names: Vec<&str> = plan.rows.iter().map(|row| row.name.as_str()).collect();
-        assert_eq!(names, ["path", "claude", "opencode", "speech-model", "microphone", "server"]);
+        assert_eq!(names, ["path", "claude", "opencode", "pi", "speech-model", "microphone", "server"]);
         assert_eq!(plan.not_found, ["Codex"]);
         let claude = &plan.rows[1];
         assert!(claude.ticked && claude.word() == "to do", "{claude:?}");

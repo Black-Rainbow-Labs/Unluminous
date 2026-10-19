@@ -51,7 +51,7 @@ pub struct Options {
     /// program beside this one with `--setup-voice`. Off with `--no-voice`. `task-2290`.
     pub voice: bool,
     /// The steps the person said no to in the Set Up Unluminous dialog or the installer, by step name
-    /// (`path`, `claude`, `codex`, `opencode`, `speech-model`, `microphone`). Each is reported as
+    /// (`path`, `claude`, `codex`, `opencode`, `pi`, `speech-model`, `microphone`). Each is reported as
     /// declined and left alone, unless `force` is set. `task-2301`.
     pub declined: Vec<String>,
 }
@@ -1464,7 +1464,7 @@ pub mod record {
         for task in offered.iter().filter(|task| !selected.contains(task)) {
             let steps: &[&str] = match task.as_str() {
                 "addtopath" => &["path"],
-                "connectagents" => &["claude", "codex", "opencode"],
+                "connectagents" => &["claude", "codex", "opencode", "pi"],
                 "voice" => &["speech-model", "microphone"],
                 _ => &[],
             };
@@ -1935,7 +1935,7 @@ mod dialog_tests {
         );
         assert_eq!(
             record::declined_by_the_installer("desktopicon,voice", offered),
-            ["path", "claude", "codex", "opencode"]
+            ["path", "claude", "codex", "opencode", "pi"]
         );
         // This machine's own record, from an installer that came before `task-2301`: `voice` is missing
         // because it was never offered, so nothing is declined and the dialog offers it.

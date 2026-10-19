@@ -1618,7 +1618,7 @@ pub const COMMANDS: &[Command] = &[
         area: "setup",
         verb: "run",
         summary: "Press Run Setup: take the steps named, or every one not done. Answers at once.",
-        arguments: &[argument("steps", false, "path, claude, codex, opencode, speech-model, microphone, comma separated.")],
+        arguments: &[argument("steps", false, "path, claude, codex, opencode, pi, speech-model, microphone, comma separated.")],
         flags: NO_FLAGS,
         examples: &["unluminous-cli setup run claude,codex"],
         local: false,
