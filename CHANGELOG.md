@@ -6,6 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.2.1 — 2026-10-19
+
+- A window with no project waits for one in the Set Up dialog rather than opening the folder it stands in (`task-2305`)
+- The waiting window test compares with a slice of the folder, for clippy (`task-2305`)
+
 ## 1.2.0 — 2026-10-19
 
 - Pi as a fifth agent for Agent Chat, Agent Tasks, MCP and setup (`task-2302`)
