@@ -6760,7 +6760,7 @@ mod setup_dialog {
 
         harness.get_by_label("Run Setup").click();
         until(&mut harness, |app| app.setup.runs == 1);
-        assert_eq!(*opened.lock().unwrap(), [folder.clone()]);
+        assert_eq!(*opened.lock().unwrap(), std::slice::from_ref(&folder));
         assert!(
             harness.state().closing,
             "the placeholder window closes once its project has a window"
