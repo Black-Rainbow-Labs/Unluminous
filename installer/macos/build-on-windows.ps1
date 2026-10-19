@@ -711,8 +711,17 @@ if (-not $SkipBuild) {
 $voiceDir = Join-Path $env:LOCALAPPDATA 'Unluminous/package/voice-macos'
 if (-not $CliOnly) {
     Write-Host '==> the speech model'
-    & cargo run --release --quiet --manifest-path (Join-Path $repo 'Cargo.toml') -p unluminous-voice --example voice -- package $voiceDir macos
-    if ($LASTEXITCODE -ne 0) { throw 'packaging the speech model failed' }
+    # A `CC` naming cl.exe with no `INCLUDE` beside it breaks the example's one C dependency (`stacker`),
+    # which installer/windows/build.ps1 explains, so it is put aside for this one command.
+    $keptCc = $env:CC; $keptCxx = $env:CXX
+    if ($env:CC -and -not $env:INCLUDE) { $env:CC = $null; $env:CXX = $null }
+    try {
+        & cargo run --release --quiet --manifest-path (Join-Path $repo 'Cargo.toml') -p unluminous-voice --example voice -- package $voiceDir macos
+        if ($LASTEXITCODE -ne 0) { throw 'packaging the speech model failed' }
+    } finally {
+        $env:CC = $keptCc
+        $env:CXX = $keptCxx
+    }
 }
 
 if ($CliOnly) {

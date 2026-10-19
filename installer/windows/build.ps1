@@ -283,8 +283,16 @@ if ($info.ProductName -ne 'Unluminous') {
 # the one copy. A second build finds them already there and fetches nothing.
 Write-Step 'Packaging the speech model'
 $VoiceDir = Join-Path $env:LOCALAPPDATA 'Unluminous\package\voice-windows'
-& cargo run --release --quiet --manifest-path (Join-Path $Repo 'Cargo.toml') -p unluminous-voice --example voice -- package $VoiceDir windows
-if ($LASTEXITCODE -ne 0) { throw 'Packaging the speech model failed.' }
+# `CC` is put aside for the reason given at the build above: the example has a C dependency (`stacker`).
+$keptCc = $env:CC; $keptCxx = $env:CXX
+if ($env:CC -and -not $env:INCLUDE) { $env:CC = $null; $env:CXX = $null }
+try {
+    & cargo run --release --quiet --manifest-path (Join-Path $Repo 'Cargo.toml') -p unluminous-voice --example voice -- package $VoiceDir windows
+    if ($LASTEXITCODE -ne 0) { throw 'Packaging the speech model failed.' }
+} finally {
+    $env:CC = $keptCc
+    $env:CXX = $keptCxx
+}
 foreach ($needed in @('models\moonshine-base\encoder_model.onnx', 'models\moonshine-base\decoder_model_merged.onnx', 'models\moonshine-base\tokenizer.json', 'runtime\onnxruntime.dll')) {
     if (-not (Test-Path (Join-Path $VoiceDir $needed))) { throw "The speech model package has no $needed." }
 }
