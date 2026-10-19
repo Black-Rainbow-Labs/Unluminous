@@ -18,8 +18,9 @@ const HEIGHT: f32 = 260.0;
 pub enum VoiceDialog {
     /// The microphone is refused, with the sentence saying which switch refuses it.
     Microphone(String),
-    /// The local model is missing, with how far a download has got when one is running.
-    Model { downloading: Option<String> },
+    /// The local model is missing, with how far a download has got when one is running, and why the last
+    /// download failed when it did.
+    Model { downloading: Option<String>, failed: Option<String> },
 }
 
 /// What the dialog asked for.
@@ -50,13 +51,19 @@ pub fn show(ctx: &egui::Context, dialog: &VoiceDialog) -> Outcome {
                 format!("{why}\n\nUnluminous uses the microphone only while you dictate into the Agent-Chat prompt, or while it listens for \"Sable\". Turn access on, then press Try Again."),
                 vec![("Open Microphone Settings", true), ("Try Again", true)],
             ),
-            VoiceDialog::Model { downloading } => (
+            VoiceDialog::Model { downloading, failed } => (
                 "Speech model",
-                match downloading {
-                    Some(progress) => format!("{progress}\n\nThe words will fill the prompt once it is ready."),
-                    None => "Dictation on this machine needs the Moonshine speech model: 66 MB, downloaded once from Hugging Face and checked before it is used. Nothing you say leaves this machine.\n\nOr send speech to a transcription endpoint instead, on Settings, Voice.".to_owned(),
+                match (downloading, failed) {
+                    (Some(progress), _) => format!("{progress}\n\nThe words will fill the prompt once it is ready."),
+                    // `task-2302`: a failure is said here, because the toast that said it is drawn under the
+                    // dialog and under the ticket it was opened from, so the person saw nothing happen.
+                    (None, Some(why)) => format!("The download failed: {why}\n\nPress Try Again, or send speech to a transcription endpoint instead, on Settings, Voice."),
+                    (None, None) => "Dictation on this machine needs the Moonshine speech model: 66 MB, downloaded once from Hugging Face and checked before it is used. Nothing you say leaves this machine.\n\nOr send speech to a transcription endpoint instead, on Settings, Voice.".to_owned(),
                 },
-                vec![("Voice Settings", true), ("Download", downloading.is_none())],
+                vec![
+                    ("Voice Settings", true),
+                    (if failed.is_some() { "Try Again" } else { "Download" }, downloading.is_none()),
+                ],
             ),
         };
         let crossed = modal::header(ui, area, title);

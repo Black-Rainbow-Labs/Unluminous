@@ -69,6 +69,8 @@ pub struct VoiceState {
     told: HashMap<Target, VoiceView>,
     pub download: Option<Arc<Mutex<Download>>>,
     pub dialog: Option<VoiceDialog>,
+    /// Whose prompt the dialog was opened for, so `Try Again` dictates into the same one (`task-2302`).
+    dialog_for: Option<Target>,
     pub problem: Option<String>,
     /// Whether this window may open the microphone, which only the released binary says. See
     /// [`UnluminousApp::allow_the_microphone`].
@@ -198,12 +200,16 @@ impl UnluminousApp {
         }
         if let unluminous_voice::access::Access::Refused(why) = unluminous_voice::access::status() {
             self.voice.dialog = Some(VoiceDialog::Microphone(why.clone()));
+            self.voice.dialog_for = Some(target);
             return Err(why);
         }
         match self.settings.voice_engine {
             VoiceEngine::Local if !unluminous_voice::install::status().is_complete() => {
-                self.voice.dialog =
-                    Some(VoiceDialog::Model { downloading: self.download_progress() });
+                self.voice.dialog = Some(VoiceDialog::Model {
+                    downloading: self.download_progress(),
+                    failed: None,
+                });
+                self.voice.dialog_for = Some(target);
                 return Err("the speech model is not downloaded yet. `voice install` downloads it"
                     .to_owned());
             }
@@ -451,7 +457,10 @@ impl UnluminousApp {
             .and_then(|d| d.lock().ok().and_then(|d| d.finished.clone()));
         let Some(finished) = finished else {
             let progress = self.download_progress();
-            if let Some(VoiceDialog::Model { downloading }) = self.voice.dialog.as_mut() {
+            if let Some(VoiceDialog::Model { downloading, failed }) = self.voice.dialog.as_mut() {
+                if progress.is_some() {
+                    *failed = None;
+                }
                 *downloading = progress;
             }
             return;
@@ -469,6 +478,11 @@ impl UnluminousApp {
                     format!("The speech model could not be downloaded: {problem}"),
                     Kind::Problem,
                 );
+                if let Some(VoiceDialog::Model { downloading, failed }) = self.voice.dialog.as_mut()
+                {
+                    *downloading = None;
+                    *failed = Some(problem.clone());
+                }
                 self.voice.problem = Some(problem);
             }
         }
@@ -538,7 +552,8 @@ impl UnluminousApp {
             }
             microphone_dialog::Outcome::TryAgain => {
                 self.voice.dialog = None;
-                if let Err(problem) = self.start_dictation(Target::Pane) {
+                let target = self.voice.dialog_for.take().unwrap_or(Target::Pane);
+                if let Err(problem) = self.start_dictation(target) {
                     self.message = Some(problem);
                 }
             }

@@ -495,6 +495,7 @@ impl<'a, 'u> Row<'a, 'u> {
         );
         let left = disc.right() + 10.0;
         let galley = self.rux.elided(Style::sans(12.0), said, theme.ink.i500, self.right - left);
+        let width = galley.size().x;
         rux::text::draw_left_capitals(
             self.rux.painter(),
             Pos2::new(left, disc.center().y),
@@ -502,7 +503,10 @@ impl<'a, 'u> Row<'a, 'u> {
             Style::sans(12.0),
             theme.ink.i500,
         );
-        self.x = self.right;
+        // **A status takes the width of its words and no more** (`task-2302`). It took the rest of the row, so
+        // the Voice page's `Download` after `Not downloaded (66 MB)` was given a rectangle with no width, and on
+        // a Mac without the model, opening the page closed the window.
+        self.x = (left + width + INLINE_GAP).min(self.right);
     }
 
     /// A block under the controls, `height` tall, across the control column.

@@ -21,6 +21,10 @@ use sha2::{Digest, Sha256};
 /// The environment variable that moves the whole folder, for tests.
 pub const HOME_VAR: &str = "UNLUMINOUS_VOICE_HOME";
 
+/// The environment variable that names another address to fetch the model from, in place of
+/// `https://huggingface.co`, so a test can make a download fail without the network.
+pub const MODEL_SOURCE_VAR: &str = "UNLUMINOUS_VOICE_MODEL_SOURCE";
+
 /// The ONNX Runtime version downloaded, and the oldest minor version `ort` 2.0.0-rc.13 accepts.
 pub const RUNTIME_VERSION: &str = "1.22.0";
 const RUNTIME_MINOR: u64 = 22;
@@ -273,8 +277,11 @@ fn install_model(progress: &dyn Fn(&str, f32)) -> Result<(), String> {
     let total: u64 = MODEL_FILES.iter().map(|f| f.bytes).sum();
     let mut before = 0u64;
     for file in &MODEL_FILES {
+        let source =
+            variable(MODEL_SOURCE_VAR).unwrap_or_else(|| "https://huggingface.co".to_owned());
         let url = format!(
-            "https://huggingface.co/moonshine-ai/moonshine/resolve/{MOONSHINE_COMMIT}/{}",
+            "{}/moonshine-ai/moonshine/resolve/{MOONSHINE_COMMIT}/{}",
+            source.trim_end_matches('/'),
             file.path
         );
         let into = staging.join(file.name);
