@@ -2741,10 +2741,11 @@ fn the_speech_model_dialog_over_a_ticket_says_a_failed_download_and_opens_voice_
 }
 
 /// The Voice page on a machine with no model and the microphone refused, which is a fresh Mac (`task-2302`).
-/// Each row is a status and then a button, and the status took the rest of the row, so each button was given
-/// a rectangle with no width and drawing one closed the window. Each button has room for its word now.
+/// Its rows are a status and then a button, and the status took the rest of the row, so the button was given
+/// a rectangle with no width and drawing it closed the window. The microphone's row is below the page's first
+/// screenful, so the model's row is the one measured; both rows are drawn by the same `Row::status`.
 #[test]
-fn the_voice_page_with_no_model_has_room_for_its_buttons() {
+fn the_voice_page_with_no_model_has_room_for_its_download_button() {
     let mut harness = harness("");
     harness.state_mut().voice.facts = Some(unluminous_app::components::voice_page::VoiceFacts {
         model: "Not downloaded (66 MB)".to_owned(),
@@ -2754,10 +2755,8 @@ fn the_voice_page_with_no_model_has_room_for_its_buttons() {
     });
     did(&mut harness, "modal open settings --page voice");
     steady(&mut harness);
-    for label in ["Download"] {
-        let button = harness.get_by_label(label).rect();
-        assert!(button.width() > 60.0, "{label} has room for its word: {button:?}");
-    }
+    let button = harness.get_by_label("Download").rect();
+    assert!(button.width() > 60.0, "Download has room for its word: {button:?}");
     harness.snapshot(shot("settings_voice_no_model").as_str());
 }
 
