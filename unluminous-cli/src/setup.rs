@@ -1963,7 +1963,7 @@ mod dialog_tests {
         let options = Options { path: PathChoice::No, ..Options::default() };
         let planned = plan(&options, &machine);
         let names: Vec<&str> = planned.iter().map(|step| step.step.as_str()).collect();
-        assert_eq!(names, ["path", "claude", "codex", "opencode"]);
+        assert_eq!(names, ["path", "claude", "codex", "opencode", "pi"]);
         assert_eq!(planned[1].state, State::Would, "{}", planned[1].message);
         assert!(!home.join(".claude.json").exists(), "planning wrote nothing");
 
