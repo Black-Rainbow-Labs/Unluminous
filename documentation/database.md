@@ -4,9 +4,9 @@ Nine captures of the Database plugin, taken from the real window the same way
 [what it looks like](overview.md) was, by the same command —
 [Taking the pictures](taking-the-pictures.md) is how.
 
-It is a data source tree down one side and a workspace of query consoles and row editors under it:
-showing what a schema holds, running a query, editing rows, and writing the edits back. PostgreSQL,
-SQLite and Inillucent.
+It is a workspace of query consoles and row editors on the left and the data source tree in a card on
+the right: showing what a schema holds, running a query, editing rows, and writing the edits back.
+PostgreSQL, SQLite and Inillucent.
 
 `tasks/task-1777-database-plugin-tdd.md` is the design, and it answers three questions this page
 assumes: which third of a commercial database tool was copied, why the client for PostgreSQL is
@@ -19,6 +19,24 @@ foreign key between them, and a view over the join. `tools/documentation/library
 and nothing in it is real.
 
 ---
+
+## Where things are in the pane
+
+The pane is docked on the right by default and asks for 720 points of width. From 560 points wide, the
+data source tree is a card at the right, between 220 and 340 points wide, and the workspace is
+everything to the left of it. Narrower than 560 points, the tree is on top and the workspace under it.
+Shorter than 360 points, the pane is the tree alone, because a console in eighty points is a console
+nobody reads a result in. Like every pane, it can be dragged to any edge of the window.
+
+The workspace is a strip of pages: each console and each open table is a page, drawn as a pill in a
+carved track with the page showing raised out of it, and a round `New query` chip after the last one.
+A console is named `Query 1`, `Query 2` and so on, numbered across the session, because its data source
+can change and a page whose name changed under it would be a different page to anything that found it
+by name. `New query` opens a console on the data source the page showing is on, or on the one the tree
+is pointed at. With no data source at all it opens the New Data Source dialog.
+
+Every surface is drawn with the `rux` component library, in the same language as the Settings window,
+the Agent-Tasks board and the Agent-Chat pane.
 
 ## The tree, and what is in a table
 
@@ -35,7 +53,7 @@ will refuse to leave blank.
 
 ## Opening a grid
 
-A double click on a table — or the grid button in the pane's toolbar — opens it as a tab in the
+A double click on a table — or the grid button in the tree card's toolbar — opens it as a page in the
 workspace, with a `WHERE` and an `ORDER BY` field above the rows: two fragments of SQL rather than a
 query builder, which is what a person who already knows SQL wants to type into. The footer says how
 many rows are showing and pages through more, one more than the row limit asked for, so
@@ -45,10 +63,18 @@ many rows are showing and pages through more, one more than the row limit asked 
 
 ## A console runs what you type
 
-The console button in the pane opens a query console: a plain text field with SQL colouring —
-selection, undo, the clipboard, no folding, no gutter, because it is a place to type a statement
-rather than a second copy of the editor. `Execute` runs whatever the caret is in, and what comes back
-is a result panel below it, one result a run.
+The `New query` chip in the workspace's page strip opens a query console: a plain text field with SQL
+colouring — selection, undo, the clipboard, no folding, no gutter, because it is a place to type a
+statement rather than a second copy of the editor. `Execute` is the pill at the left of the console's
+toolbar and runs whatever the caret is in. At the right of the toolbar is a dropdown naming the data
+source the console runs against. Choosing another one keeps the statement and drops the last result,
+and a console that is still running refuses the change.
+
+**A `SELECT` answers in the same grid a table opens in**, so the result can be sorted, filtered, paged
+and, where it can be, edited. It is editable only when the statement reads one table's own columns.
+Any other `SELECT` is read again inside `select * from (...)` so that it can be filtered and sorted,
+and it is never editable. A statement that is not a `SELECT` shows a result panel below the text field
+instead, one result a run.
 
 ![A console running a joined `SELECT`, with its nine rows underneath it](images/db-03-console-select.jpg)
 
@@ -85,7 +111,7 @@ as a success is how an edit is silently lost.
 ## The `CREATE` statement, on demand
 
 `Show DDL` on a table's right click menu asks the server for the statement that made it and shows it
-in a modal — not a dialog with fields for a name and a type, because changing a table's shape is a
+in a modal, opened from the tree card's `Show DDL` chip or from the table's menu — not a dialog with fields for a name and a type, because changing a table's shape is a
 statement you write, the same as everywhere else in this plugin. `Copy` puts it on the clipboard.
 
 A modal that exists to show a piece of text has a second reader. None of the lines inside a
@@ -136,13 +162,12 @@ the limit is asked for and thrown away, which is what makes `1-200 of 200+` hone
 
 ## The menu
 
-The plugin's entries are in the `Plugins` menu under its own heading, beside Agent-Chat's and
-Agent-Tasks': showing the pane, adding a source, making a table, reloading the tree, and saving
-whatever is pending. The same five things the rail button, the toolbar and
-`unluminous-cli plugins run database …` all reach, because a menu entry in Unluminous needs nothing
-else to be run from the command line.
+The plugin has a menu of its own in the menu bar, named `Database`: `Show Databases`, `New Data
+Source`, `New Table`, `Reload` and `Save Changes`. Those are the same things the rail button, the
+buttons in the pane and `unluminous-cli plugins run database …` all reach, because a menu entry in
+Unluminous needs nothing else to be run from the command line.
 
-![The Plugins menu, with the Database entries in it](images/db-09-menu.jpg)
+![The Database menu, with its entries](images/db-09-menu.jpg)
 
 ---
 
@@ -190,10 +215,11 @@ unluminous-cli plugins run database pending --json
 unluminous-cli plugins run database submit
 ```
 
-`sources`, `add-source`, `remove-source`, `password`, `connect`, `disconnect`, `use`, `schemas`,
-`tables`, `columns`, `ddl`, `open`, `console`, `query`, `state`, `result`, `stop`, `reload`, `page`,
-`filter`, `sort`, `set`, `add-row`, `delete-row`, `pending`, `revert`, `submit`, `read-only`,
-`new-table`, `drop-table`, `vector`, `search`, `capabilities` and `import` — and
+`open-pane`, `sources`, `add-source`, `remove-source`, `password`, `connect`, `disconnect`, `use`,
+`schemas`, `tables`, `columns`, `ddl`, `open`, `console`, `new-query`, `console-source`, `pages`,
+`show-page`, `close-page`, `query`, `state`, `result`, `stop`, `reload`, `page`, `filter`, `sort`,
+`set`, `add-row`, `delete-row`, `pending`, `revert`, `submit`, `read-only`, `new-table`,
+`drop-table`, `vector`, `search`, `capabilities` and `import` — and
 `unluminous-cli plugins view database` answers the whole pane as data.
 
 **`query` does not wait**, for the reason nothing that runs inside a frame does; `state` says when it

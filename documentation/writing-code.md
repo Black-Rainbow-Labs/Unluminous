@@ -32,10 +32,32 @@ under the caret. `Up` and `Down` steer it, `Tab` and `Enter` take a row, `Escape
 typing carries on underneath it the whole time. `Ctrl+Space` and `Code -> Complete Word` ask for the
 same list by hand.
 
-**Everything it offers was already in memory**, which is what makes it a small feature where most
+**Most of what it offers was already in memory**, which is what makes it a small feature where most
 editors' completion is an enormous one. Four sources: this tab's definitions and its distinct words,
 the other open tabs' definitions, the project's symbol index, and the language's own keywords,
-builtins and types out of the plugin manifest. No new thread, no new index, no watcher, no debounce.
+builtins and types out of the plugin manifest. No new index, no watcher, no debounce. There are three
+tiers of answer. The words of the file and the project come first. Behind them is the structure of the
+project, which the code index reads from each language's definitions, and behind that is a language
+server, when one is switched on (see [Language servers](#language-servers)). The words and the
+structure answer first, every time, and the server's rows are merged in when they arrive. Nothing
+waits for a server.
+
+**A `.` or `::` opens the list with nothing typed.** A plugin's `language.members` names the characters
+that do this (`.` and `::` for Rust, `.` and `?.` for TypeScript and JavaScript, `.` for Python). The
+list is the members of the receiver. The receiver's type is read from the enclosing `impl` or class
+when the receiver is `self` or `this`, from a parameter or `let` with a written type, from a field, or
+from a constructor call on the same line. Generics are stripped and references are looked through.
+When the type is not known, the rows are the members of every container whose name matches the stem,
+each marked with its container. Typing `(` or `,` inside a call shows the callable's signature on a
+line above the caret with the parameter being typed in bold, drawn from the server when one runs and
+from the project's definitions otherwise. `unluminous-cli editor signature` answers the same
+question. The list has a documentation panel beside it for the chosen row.
+
+**A name from another file brings its import with it.** Accepting a row for a name the project exports
+from a file this one does not import writes the `use` line in Rust or the `import` line in TypeScript,
+merged into an existing one from the same module when there is one, in the same undo step as the name.
+When two files export the same name, both rows are shown, each marked with its file, and nothing is
+guessed.
 
 The match is a case-insensitive **subsequence** and the score is Sublime Text's rubric — a large bonus
 for a prefix, one per matched letter on a word boundary, one per consecutive letter, a small one for
@@ -50,7 +72,34 @@ list has either something genuinely longer to offer or nothing at all.
 
 `Tab` replaces the whole identifier and `Enter` replaces the stem, which is the reference editor's own distinction
 and is right in both directions. `editor.suggestions` is `automatic` or `manual`; `manual` is already
-the off switch, since `Ctrl+Space` works either way, which is why there is no third value.
+the off switch, since `Ctrl+Space` works either way, which is why there is no third value. The
+members of a receiver obey it too.
+
+**The order is learned.** The rows are ordered by a ranking trained on positions taken from real code,
+which reads how the typed letters matched the word, which sources offered it, its kind against the
+place the caret is in, how near its last use is, and the server's own order. One ranking is read by the
+popup and by `unluminous-cli editor complete`, and `editor complete --explain` shows every fact the
+ranking read about each row and the score it gave. The case of a word's first letter is one of those
+facts. `editor complete --stem <text>` ranks a hypothetical word without typing it.
+
+### Language servers
+
+`editor.servers` is `off` by default. Off starts nothing, stops a server that is running as soon as
+the setting changes, and completion answers from the project's own structure. `automatic` starts
+`rust-analyzer` for Rust and `tsserver` for TypeScript and JavaScript when one is found, from the second
+frame on, once a file whose plugin names a server is showing. A plugin names its server with the
+`language.server` key, which names an adapter built into Unluminous (`lsp` or `tsserver`), and a name
+this version does not have is refused when the plugin loads.
+
+The setting is off because of what a server costs. `rust-analyzer` typically holds 1 to 4 GB on a
+project the size of this one and starts `cargo` and `rustc` while it reads the workspace. The Editor
+page says so beside the switch.
+
+`rust-analyzer` is looked for in the project's toolchain, on `PATH`, and from `rustup`, and `tsserver` in
+the project's own `node_modules/typescript` or a global install. When none is found its state is
+`Absent` with what would install one. The state is shown beside the language in the status bar, for
+example `rust-analyzer: ready`, and `unluminous-cli status --section servers` says what each server is
+doing. Nothing is written to the project folder by a server, and the window never waits on one.
 
 ### Inside an import, the list is the files, and what they export
 
@@ -78,13 +127,27 @@ no `exports` map.
 ## Go to definition, find all references, rename
 
 `Ctrl/Cmd+Click` or `Code -> Go to Definition` goes to where a name is defined. `Alt+F7` lists every
-reference. `Shift+F6` renames one everywhere it is used.
+reference. `Shift+F6` renames one everywhere it is used. Each of these can be given another shortcut
+on `Settings -> Keymap`, or by choosing the VS Code or IntelliJ preset.
 
-**The tier is a syntactic index**, built from the token stream the colouring already produces, and the
-three mechanisms were weighed. A language server client would be the true answer and would die on most
+`Ctrl/Cmd+Click` jumps in whichever pane is under the pointer, and not only in the pane that has the
+keyboard. A name that no definer declares, which is a parameter, a local or a field, goes to where it
+is first written in its function; a field goes to the first place it is written without a `.` in front
+of it.
+
+**Back and forward are `Ctrl/Cmd+[` and `Ctrl/Cmd+]`** (`Edit -> Navigate Back` and `Navigate Forward`),
+and the older `Ctrl/Cmd+Alt` with the arrow keys still work. The brackets are never taken from a
+terminal, where `Ctrl+[` is `Escape` and `Ctrl+]` detaches from `claude`. Opening a file, `Go to File`,
+`Go to Line`, a search hit and a jump to a definition all record the place you left, and a place a few
+lines from the last one replaces it. The history is not written to disk.
+
+**The tier for navigation is a syntactic index**, built from the token stream the colouring already
+produces, and the three mechanisms were weighed. Completion uses a language server when one is
+switched on, because completion needs name resolution and type inference. Go to definition, references
+and rename do not use one. A language server client would be the true answer for them and would die on most
 machines — a separate program per language, found on `PATH`, holding gigabytes, and nothing about it
 could be a screenshot test because when it answers depends on the machine. Tree-sitter is code where
-Unluminous's plugins are data. This is the tier Sublime Text's goto-definition and GitHub's shipped
+Unluminous's plugins are data. This is the tier Sublime Text's go to definition and GitHub's shipped
 code navigation are, and it is what makes the answer instant, deterministic and testable with no
 window.
 
@@ -151,6 +214,93 @@ break, so trimming them changes what the document means rather than tidying it. 
 place a tab is written, so a save from the menu, from `Ctrl+S`, from `tab save` and from closing a
 modified tab all do the same thing — and it is an ordinary command, so a person who did not mean it
 can undo it.
+
+## The keymap
+
+`Settings -> Keymap` chooses a preset (`unluminous`, `vscode` or `intellij`), and a shortcut set on an
+action's row is kept on top of it. A chord is checked against every menu entry and against the keys the
+editing area reads for itself before it is bound, and a chord another action holds is taken from that
+action with the answer saying so. [The window](the-window.md#the-keymap) has the rules, and
+`unluminous-cli settings keymap` and `settings bind` are the command line.
+
+## Searching the project with the code index
+
+The code index answers what `ripgrep` would, from memory. It is Atrius, a separate project with its own
+repository, which Unluminous depends on as a crate, and the same index is reached by the window, by
+`unluminous-cli search` and by the MCP tool `unluminous_search`. It is built for each checkout in a cache
+folder outside the project, one host for each checkout, started by the window, by `mcp serve` or by a
+detached `search serve`.
+
+- `search find <query>` gives the lines `ripgrep` gives for a literal or a regex, grouped by file and cut
+  to a token budget. The file set is the one the Grep tool uses: hidden files included, version
+  control folders left out, and `.gitignore` obeyed. A question in plain English goes to a table of
+  passages taken from each language's definitions and folds.
+- `search def <name>` is where a name is defined (`Type::name` works), `search refs <name>` is its uses,
+  `search fragment path:line` is the function around a line, `search outline <path>` is a file's
+  definitions, and `search files <name or glob>` finds files.
+- A change on disk is in the next answer. Writing, editing, renaming, deleting, a burst of 5,000 files
+  and a branch switch gave no stale or missing results against `ripgrep` on the three local
+  repositories measured.
+- On the three local repositories `find` is 27 to 36 times faster than `ripgrep`, with the same lines.
+
+`search.embeddings` is off by default, so plain English questions are ranked by their words. Turning it
+on loads the `nomic-embed-text` model, which holds about 1 GB while it is loaded and is let go ten
+seconds after its last use. The Editor page and `settings` say what the switch costs. Nothing is
+downloaded for it automatically. `search.model_kept`, `search.embedding_threads` and the other
+`search.*` settings are listed by `unluminous-cli settings list`.
+
+## Notebooks
+
+A `.ipynb` file opens as a notebook tab: code, Markdown and raw cells, run against a Jupyter kernel,
+with each cell's outputs drawn under it. `File -> New Jupyter Notebook` and `File -> New Rust Notebook`
+make one, so does `New -> Jupyter Notebook` on an explorer row, and `unluminous-cli notebook convert`
+turns a `.py` file's `# %%` cells into a notebook, or a notebook into a `.py` file, beside the original
+and without writing over anything.
+
+**The tab's document is the cells written as percent text.** Each cell is a marker line followed by
+its source: `# %% id=X` for code, `# %% [markdown] id=X` and `# %% [raw] id=X` for the others. The
+caret, the selection, undo, find, multiple carets, completion, colouring and the gutter all work on a
+notebook without knowing it is one, because they work on a document. The marker lines are hidden. What
+is drawn between the cells is room in the layout and not text: the outputs and a status line sit under
+the last line of a code cell, and a rendered Markdown cell or a collapsed cell is one empty line of the
+height it needs. A notebook saved without changes comes back byte for byte, including Windows line
+breaks, and each cell's outputs, metadata and execution count are kept by its id through edits.
+
+**There are two modes, as in the reference editor.** Command mode works on whole cells: `A` and `B` add
+above and below, `D D` deletes, `Z` undoes the deletion, `M` and `Y` make a cell Markdown or code, `C`
+and `V` copy and paste, and `Shift` with the arrow keys extends the choice. Edit mode is ordinary
+typing. Backspace at the start of a cell and Delete at the end of one do not join a cell to its marker.
+`Notebook -> Cell` holds the same commands, and the notebook has an outline and sections that fold.
+
+**The kernel is spoken to through Python, and there is no ZeroMQ in Rust.** A Python program compiled
+into the binary starts the kernel with `jupyter_client` and speaks JSON lines to Unluminous, so any
+installed kernel spec works. The Pythons are looked for on a thread: the project's `.venv`, `venv`,
+`env` and `.env` folders, `$VIRTUAL_ENV`, `$CONDA_PREFIX`, `python3` and `python` on `PATH`, the `py`
+launcher, and `miniconda3` and `anaconda3` in the home folder. A Python without `ipykernel` gets a
+banner with an `Install` button that runs `pip install ipykernel` in the run tile. One cell runs at a
+time, and a cell that fails skips the cells still queued, as Jupyter does. Interrupting a single long
+`time.sleep` does not work on Windows, which is a limit of `ipykernel` there.
+
+**Debug Cell uses the debugger Unluminous already has.** The kernel contains `debugpy`, so the existing
+debug session attaches to a port the kernel opens, and each cell is debugged as its own file. The
+session only disconnects when stopped, so the kernel keeps its variables. Debug Cell is for Python only,
+and its button is absent for other languages.
+
+**Rust notebooks run on `evcxr`** through the same bridge. `evcxr_jupyter` registers a kernel named
+`rust`, and the kernel picker offers `Install the Rust kernel (evcxr)`, which runs the install command in
+the run tile. State between cells is `evcxr`'s own. The notebook's language is in its metadata, so
+completion, the comment toggle and the symbol reading use the cells' grammar.
+
+**Completion in a notebook asks the kernel.** After `.` or `::` in a code cell the kernel is asked with
+nothing typed, and only its rows are offered there. `Tab` after a word, a `.` or a `:` asks for
+completions in a code cell, which is Jupyter's own key. A kernel's range is its own, so its matches are
+fitted to the editor's stem.
+
+`unluminous-cli notebook` is the command line half: `status`, `cell`, `run`, `add`, `source`, `edit`,
+`select`, `view`, `output`, `outline`, `kernel`, `variables`, `input`, `export`, `new`, `convert` and
+`complete`. Everything a person does with the pointer has one, including collapsing cells and
+outputs, sorting a table output, and `run --debug`. `notebook run --wait` answers when the cells
+finish.
 
 ## Git
 

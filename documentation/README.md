@@ -9,14 +9,14 @@ said it.
 
 **The order below is a reading order**, for somebody who has just opened the repository: what it is,
 then how to run it, then what is in the window, then what it does with text and with code, then the
-three panes it carries, then how it is built.
+panes it carries, then how it is built.
 
 ## Start here
 
 | | page | what it answers |
 |---|---|---|
 | 1 | [What it is](what-it-is.md) | what Unluminous is, who it is for, and the case for it against the editor you already use |
-| 2 | [What it looks like](overview.md) | thirty-seven captures of the running window, over a real desktop |
+| 2 | [What it looks like](overview.md) | captures of the running window, over a real desktop |
 | 3 | [Getting started](getting-started.md) | install it, run it, the switches, windows and projects, where the settings live |
 | 4 | [The window](the-window.md) | every part of it named, the panels and how they move, the nine menus, every Settings page |
 
@@ -27,16 +27,17 @@ three panes it carries, then how it is built.
 | 5 | [Editing](editing.md) | text, formatting, files, encodings, find and replace, highlights, folding, Markdown and diagrams |
 | 6 | [Writing code in it](writing-code.md) | line numbers, tabs, completion, definitions and references and rename, git, running, the debugger |
 | 7 | [The terminal](the-terminal.md) | the tile, the tabs, which shell, what the emulator handles, and how a tab comes back |
-| 8 | [The Realm](the-realm.md) | the canvas: realm files, ten kinds of node, what a connection grants, and how it is driven |
+| 8 | [The Realm](the-realm.md) | the canvas: realm files, eleven kinds of node, what a connection grants, and how it is driven |
 | 9 | [The agent panes](agent-panes.md) | Agent-Chat and Agent-Tasks: what runs, what a key is, and what a model may call |
-| | [The Database plugin in pictures](database.md) | the tree, a grid, a console, a pending change, and adding a data source |
+| | [The Database plugin in pictures](database.md) | the consoles and grids on the left and the data source tree on the right, a console's data source, a pending change, and adding a data source |
+| | [The Designer plugin](designer.md) | notes on an HTML design, sent to the agent |
 
 ## Driving it
 
 | | page | what it answers |
 |---|---|---|
 | 10 | [For AI agents](for-ai-agents.md) | the contract, the three mechanisms that enforce it, what an agent is given and what it costs, and what a study found an agent actually does |
-| 11 | [The command line](command-line.md) | the 214 commands, the channel underneath them, and the MCP server on top |
+| 11 | [The command line](command-line.md) | the 292 commands, the channel underneath them, and the MCP server on top |
 | | [`unluminous-cli/docs/commands.md`](../unluminous-cli/docs/commands.md) | the reference, written to be handed to an AI agent whole |
 | | [`unluminous-cli/docs/protocol.md`](../unluminous-cli/docs/protocol.md) | the socket underneath it, for a client in another language |
 | | [`unluminous-cli/docs/mcp.md`](../unluminous-cli/docs/mcp.md) | installing the MCP server into an agent, the two tool shapes, and what a local port does and does not defend against |
@@ -45,9 +46,9 @@ three panes it carries, then how it is built.
 
 | | page | what it answers |
 |---|---|---|
-| 12 | [Architecture](architecture.md) | eight crates, inside the editor, inside the window, what one frame does, the seams, the threads, where state lives, and what it all costs |
-| 13 | [How plugins work](plugins.md) | why a plugin is data, the manifest key by key, where they come from, what the tokeniser does with a grammar, and writing one |
-| 14 | [Tests](testing.md) | the four layers, the three rules the rendered tests keep, and what the release scripts check |
+| 12 | [Architecture](architecture.md) | eleven crates, inside the editor, inside the window, what one frame does, the seams, the threads, where state lives, and what it all costs |
+| 13 | [How plugins work](plugins.md) | why a plugin is data, the eighteen bundled plugins, the manifest key by key, where they come from, what the tokeniser does with a grammar, and writing one |
+| 14 | [Tests](testing.md) | the four layers, running only the crates a change reaches, the processor share, the window suite receipts, and what the release scripts check |
 | | [Not included](not-included.md) | everything deliberately absent, with the reason for each |
 | | [Taking the pictures](taking-the-pictures.md) | how the gallery is made, in one command, without taking the keyboard |
 | | [`../CONTRIBUTING.md`](../CONTRIBUTING.md) | why a feature is three things, how to run each test layer, which crate a change goes in, and the house style |

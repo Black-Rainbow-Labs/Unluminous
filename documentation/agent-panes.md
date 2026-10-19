@@ -1,20 +1,22 @@
 # The agent panes
 
-Three panes a plugin contributes: **Agent-Chat**, a chat beside your work; **Agent-Tasks**, a board
-whose tickets are worked by an agent in a terminal Unluminous owns; and **Database**, which has a page
-of its own in [the Database plugin in pictures](database.md).
+Four panes a plugin contributes. **Agent-Chat** is a chat beside your work. **Agent-Tasks** is a board
+whose tickets are worked by an agent in a terminal Unluminous owns. **Database** has a page of its own in
+[the Database plugin in pictures](database.md). **Designer** has a page of its own in
+[the Designer](designer.md).
 
 Each is an ordinary `ui` plugin — a folder with a manifest and an icon — so switching one off in
 `Settings -> Plugins` withdraws its pane, its menu and its Settings page on the next frame.
 
 ## Agent-Chat
 
-A chat pane that **runs the `claude` or `codex` command line already installed on this machine**. That
-is the better half of the feature rather than a cheaper one, and the four reasons are worth keeping:
+A chat pane that **runs the `claude`, `codex`, `opencode` or `pi` command line already installed on this
+machine**. That is the better half of the feature rather than a cheaper one, and the four reasons are
+worth keeping:
 
 - **Unluminous holds no key at all.** Nothing to put in a settings file, nothing to read out of an
   environment variable, nothing to redact out of an error message. `claude` and `codex` hold their own
-  credentials, which is their business and not this window's.
+  credentials, which is their business and not this window's. `opencode` and `pi` do the same.
 - **The agent brings its own tools**, its own sandbox and its own permission model — so the question
   of what a model may do to this machine is answered by a program the person already trusts with it.
   Unluminous runs **none** of an agent's tool calls; what it does with one is *show* it. The other
@@ -25,17 +27,19 @@ is the better half of the feature rather than a cheaper one, and the four reason
   what they configured it to do, in the folder they pointed the window at.
 - **It reads the project.** Started in the folder the window has open, `claude` finds that project's
   `CLAUDE.md` and `codex` its `AGENTS.md`, so the answer is about the code in front of you without a
-  word of it being uploaded by Unluminous.
+  word of it being uploaded by Unluminous. `opencode` and `pi` read the files their own programs read.
 - **The conversation is the agent's.** A second question is `--resume <session>` carrying one turn's
   words, not the whole transcript sent again, so the context the agent built is the context it keeps.
 
-A row can be pointed at an address instead. Five wire shapes are read, and all five are read into the
+A row can be pointed at an address instead. Seven wire shapes are read, and all of them are read into the
 **same** values, so the component that draws a message has never heard of any of them:
 
 | | |
 |---|---|
 | `claude-cli` | Claude Code's `--output-format stream-json`, which nests the Anthropic wire verbatim inside an envelope — so the decoder that reads that API reads this one level down, and thinking, tool calls and token deltas needed no new code |
 | `codex-cli` | a thread of **items** that are started, updated and completed, where a shell command the agent ran is an item beside the words it said. Its items are not deltas, so only the part not yet shown is passed on |
+| `opencode-cli` | `opencode run --format json`, with the prompt on standard input. Its parts arrive finished, not as deltas |
+| `pi-cli` | `pi --mode json`, with the prompt on standard input. Words and thinking are deltas inside `message_update`, and the end of a turn is `agent_settled` |
 | `messages` | Anthropic's `/v1/messages`: named events, indexed content blocks, a system prompt that is a field rather than a message |
 | `chat` | OpenAI's `/v1/chat/completions`, which is what llama.cpp, LM Studio, Ollama and every gateway speak |
 | `responses` | the shape the Codex models are served on: a list of items rather than of messages |
@@ -43,10 +47,40 @@ A row can be pointed at an address instead. Five wire shapes are read, and all f
 A configuration naming a shape this version has not got is **refused with the list**, which is the
 rule every other named-thing key in a manifest keeps.
 
+### The endpoints are one list
+
+`Settings -> AI Configuration` holds the keys, addresses and programs in one list, kept in
+`ai-endpoints.conf` in the settings folder. Agent-Chat and Agent-Tasks each have a dropdown that picks
+from it. A pane keeps the **name** of an endpoint and never a copy of it, so changing an endpoint on that
+page changes it in every open chat, every chat node on the canvas and every ticket. The first time the list
+is made, it is copied from the rows the Agent-Chat file used to hold. `settings list`, `get` and `set`
+reach every field as `ai.provider.<n>.<field>` and `ai.providers`.
+
+A program that is not installed on this machine is not offered as a shape button. A row that runs a
+missing program, ships with Unluminous and is not the chosen one is left out of the list when the
+window reads it. Nothing is written, so installing the program brings the row back at the next start.
+
+### Conversations resume after a restart
+
+The agent's session id and the provider it came from are written with the conversation. A turn then
+resumes natively when it can, with `--resume`, `exec resume` or `--session`, sending only the newest
+message. When no session of that agent holds the conversation, the earlier messages are written out once in
+front of the question, keeping the newest up to a limit. All of the agents refuse an unknown session before
+any model is called, so a refused resume is tried once more as a replay. `plugins run agent-chat state`
+says which one a turn used, as `restore`.
+
+A Codex or OpenCode ticket records its session as `pending` first. Unluminous finds the session the agent
+chose in Codex's `state_<n>.sqlite` or OpenCode's `opencode.db`, by folder, start time and the ticket key,
+and writes it to the ticket.
+
 ### What an agent may do
 
-`chat.permission` is `read`, `edit` or `full`, in one vocabulary rather than each agent's own. It is a
-setting rather than a prompt because an agent run with `--print` cannot stop and ask.
+`chat.permission` is `read`, `edit` or `full`, in one vocabulary rather than each agent's own, and `full`
+is the default. It is a setting rather than a prompt because an agent run with `--print` cannot stop and
+ask. The agent is the one the person already has signed in, started by the person sitting at the machine on
+the checkout the window has open, so a pane that answered "fix this" with a refusal would send its first
+use to Settings. Pi has no permission prompts, so for Pi the setting is the list of tools: `read` is
+`read,grep,find,ls`, `edit` adds `edit,write`, and `full` is Pi's own set including `bash`.
 
 **The two are not the same strength and the page says so.** Codex takes an operating system sandbox,
 so at `read` its process cannot write whatever it decides. Claude Code takes a permission *mode*, so
@@ -61,7 +95,7 @@ command line reads — never a second list. A call goes back through the one pla
 a change, so a tool call and a person pressing the same menu entry are the same thing. For a
 **program** there are none, because the agent has its own.
 
-It is **off** unless somebody says so, and `chat.tool_limit` bounds a turn at thirty rounds because a
+It is **off** unless somebody says so, and `chat.tool_limit` bounds a turn at a hundred rounds because a
 model that decides to list every file should stop being funded by a pane nobody is watching. A call
 that *asks to wait*, with a flag such as `--wait-for`, is refused with a sentence. A command that answers
 on a later frame, such as `window screenshot`, is held and answered when it is ready or when its own
@@ -109,9 +143,11 @@ to. What is *drawn* is the text; what is *sent* is the block.
 row**: they are reports rather than speech, and sized to their own message a tool called from a two
 word answer came out two words wide with its own caret clipped off the end of it.
 
-**There is no context meter**, and that is the absent-control rule rather than an omission. A URL and
-a model name say nothing about a context length, so a bar there would be a fraction of a number nobody
-measured. What is drawn is what the server really reported: the tokens in and the tokens out.
+**The context ring is drawn only when both numbers were measured.** Claude Code reports how large its
+context is and how much each message started with, so for that agent the ring in the Chat settings dialog is
+a real share. No other shape names a window, so for those the ring stays empty and its line says how many
+tokens were used and that the agent does not say its context size. `plugins view agent-chat` still
+reports the tokens in and out.
 
 **A picture can be attached** — pasted, dropped, or chosen with the button. Pasting is seen on the key
 going **up**, and it could not have been seen any other way: the interface library recognises the
@@ -125,6 +161,56 @@ release arrives after an ordinary text paste too, and "there is no picture on th
 composer every time somebody pasted a sentence would be a message about nothing. And **a drop with no
 pointer is this pane's**: Windows carries a file over a window through OLE and sends no cursor
 movement at all, so gating the drop on the pointer threw the picture away silently.
+
+### The pane's design
+
+The pane follows the Agent-Chat design from the Claude Design canvas, drawn with `rux`, the component
+library from Black Rainbow Labs. There is no card round the whole pane. The header has two round buttons
+with the conversation's name between them. The person's messages are raised bubbles, and the agent's words
+sit on the pane under a round avatar and the agent's name. A run of tool calls is a command card with a
+status well, and a tool call is a wrench in a ring that stays folded until somebody opens it. Under a
+finished answer are copy, run again, and how long the answer took and how much it wrote. A turn waiting for
+its first words shows `claude is thinking 0:04`, the reasoning is a pill that opens into a well, and a
+compaction by Claude Code becomes a note between the messages.
+
+The gear in the header opens the **Chat settings** dialog, which holds the model choice (a pill switch with
+one pill for each provider) and the context ring. Only its round cross closes it. The model dropdown, the
+attach button and the file chip are not in the prompt box; a picture still goes up by dropping or pasting it.
+`plugins run agent-chat settings [open|close]` is the command line half.
+
+### Components in an answer
+
+An agent can write a component as a fenced block whose language is `ui`, holding one JSON object with a
+`type`. The types are `card`, `columns`, `tabs`, `stack`, `callout`, `steps`, `timeline`, `keyvalue`,
+`badges`, `diagram`, `stats`, `progress`, `chart`, `table`, `files`, `diff`, `actions`, `choices`,
+`checklist`, `form` and `calculator`. A block is drawn while it arrives. A component can send a message, fill
+the composer, open a project file or copy text, and nothing else: it cannot run a command, change a file or
+fetch anything, and a path outside the project is refused. `plugins run agent-chat motion off` holds every
+light and number still.
+
+### A message sent while an answer arrives waits its turn
+
+A question typed while an answer is arriving is drawn at once, under the conversation, with a `Queued`
+line, and is sent when the answer ends. If the turn fails, or Stop is pressed, or the conversation is
+switched, the queued words go back into the composer with their pictures attached. While an answer is
+arriving there are two discs at the end of the prompt: a red stop, and a blue send that appears only when
+there is something to send. `Enter` queues.
+
+### Links open in a browser tab
+
+A link in an answer opens on a plain click in a browser tab. `Ctrl` or `Cmd` with a click opens a web address
+in a file or a terminal where that applies. Only `http` and `https` open. A right click on a link offers
+`Open in Unluminous Browser`, `Open in Default Browser` and `Copy Link Address`.
+
+### Speech to text
+
+A microphone button inside the left of the prompt box dictates into it, with words appearing as they are
+spoken. With `voice.always_listen` on, which is off by default, Unluminous listens for the word "Sable" and
+dictates into the side pane's prompt, sending at the first pause unless `voice.send_after_wake` is off. Two
+engines are available: `local`, which is Moonshine base running on the machine, and `endpoint`, which posts
+audio to an OpenAI compatible `/v1/audio/transcriptions` address. The installers ship the speech model and
+ONNX Runtime, so an installed Unluminous downloads nothing for speech to text. Only one window on the machine
+listens for the word at a time. `unluminous-cli voice` is the command line half.
 
 ### Nothing is fetched that was not asked for
 
@@ -155,8 +241,43 @@ A board whose tickets are worked by an agent in a terminal Unluminous owns. Four
 todos and comments, a terminal for each ticket, and a session that is resumed by the agent's own
 conversation id rather than by a process that outlives the editor.
 
-The board is one SQLite file, compiled into Unluminous, so there is nothing to install, no server to
-be running and no port.
+The board is one Inillucent file, `board.rdb`, read through the `inillucent-driver` compiled into
+Unluminous, so there is nothing to install, no server to be running and no port. A `board.sqlite3` from an
+earlier version is imported the first time the board opens and is never written to. Every window opens the
+same file and reads it again about once a second, so a ticket made in another window appears.
+
+A ticket is given to an **endpoint**, by name, from the list in `Settings -> AI Configuration`. The ticket's
+kind is `claude`, `codex`, `opencode`, `pi` or `human`. The agents the board launches hold their own
+accounts, so the board's settings have no key or gateway. A new ticket made with a title opens nothing;
+only `+ Add Task` opens the empty ticket.
+
+The board and the ticket modal follow the Agent-Tasks design, drawn with `rux`. The views are a pill switch
+in the header beside the sprint's ring and counts, the search well and `Add Task`. A lane is a carved well
+the whole height of the board and a card is as tall as its title. A card's round button is play for a
+ticket that can be started or resumed, and pause while its agent is running, which interrupts the agent and
+keeps the terminal.
+
+### The ticket's agent
+
+The ticket modal's Agent section has two tabs, **Chat** and **Terminal**. Chat is the default for a Claude
+ticket. It reads the agent's own transcript, `~/.claude/projects/<folder>/<id>.jsonl`, and does not run a
+second agent. Sending puts the words in the terminal, and Stop is `Escape`. Codex, OpenCode and Pi tickets
+open on the terminal. `To Side Pane` in the Agent heading closes the modal and shows the same agent in the
+Agent-Chat pane, under a strip with `Back to My Chat`. Every section of a ticket folds: Description, Agent,
+Todos and Comments. An agent cannot move a ticket to `agent_done` while a todo is unticked unless it says
+`anyway`.
+
+Claude Code and Codex ask whether to trust a folder the first time they see one, and every ticket worktree is
+a new folder. Unluminous records the trust in `.claude.json` and Codex's `config.toml` before the agent starts,
+and changes nothing when the folder is already trusted. If an agent stops on any other menu, the ticket's
+Chat tab draws it as a card with a button for each option, and `plugins run agent-tasks choice <task> [n]`
+answers it.
+
+### The supervisor
+
+The round button in front of `Add Task` opens a modal with the supervisor: one agent, the board's endpoint,
+started in the board's project folder and told the board's commands. `plugins run agent-tasks supervisor
+[start|stop|send <text>|open|close]` is the command line half.
 
 Three listings beside the board — Backlog, Completed and Epics — and one rule decides their shape: **a
 card on the board is a hundred points tall and carries a play button and three counts, because a lane

@@ -12,13 +12,67 @@ unluminous-cli terminal read --wait-for "test result"     # wait for it, and rea
 unluminous-cli window screenshot shot.png                 # a real picture of the window
 ```
 
-**214 commands across 23 areas**, and `--json` makes every answer machine-readable.
-`unluminous-cli/docs/commands.md` is the reference, written to be handed to an AI agent whole;
-`unluminous-cli commands --json` is the same thing as data.
+**292 commands across 29 areas**, and seven more with no area, as of 1.2.2. `--json` makes every
+answer readable by a program. `unluminous-cli/docs/commands.md` is the reference, written to be handed to
+an AI agent whole; `unluminous-cli commands --json` is the same thing as data.
+
+The seven commands with no area are `status`, `instances`, `launch`, `setup`, `quit`, `commands` and
+`version`. The areas are `window`, `browser`, `tab`, `pane`, `editor`, `update`, `voice`, `report`,
+`setup`, `highlight`, `fold`, `panel`, `realm`, `input`, `terminal`, `run`, `notebook`, `debug`,
+`explorer`, `modal`, `settings`, `theme`, `background`, `plugins`, `git`, `action`, `project`, `mcp`
+and `search`. `unluminous-cli commands --json` lists every one with its arguments, flags and examples.
 
 It is **not a second way of doing things**. `run_cli` is to the command line what `run_action` is to
 the menus, and wherever there is already a way in it uses it — so a thing done from the command line
 and the same thing done by hand are the same thing.
+
+## Areas added since the first version
+
+Each of these is reached the same way as the rest, through a row in the catalogue and an arm in
+`run_cli`.
+
+| Area | What it drives |
+|---|---|
+| `notebook` | Jupyter notebooks: run cells in a live kernel, read and edit cells, collapse cells and outputs, sort a table output, debug a cell, export and convert. `notebook status --json` reports the mode, the chosen cells and each cell's state |
+| `voice` | speech to text in the Agent-Chat prompt: `voice dictate`, `voice listen` for the wake word "Sable", `voice transcribe` and `voice hear` on a recorded WAV file, and `voice install` for the speech model |
+| `report` | the Report an Issue dialog: `report open`, `report set`, `report attach`, `report screenshot` and `report send`. `report send --no-browser` answers the address and the files without opening anything |
+| `setup` | the Set Up Unluminous dialog: `setup status`, `setup open`, `setup run`, `setup decline`, `setup project` and `setup close` |
+| `search` | the code index, described below |
+| `input` | clicking, typing, dragging and scrolling in the window without it being in front |
+| `background` | the picture behind the window: `background list`, `background add`, `background use` and `background remove` |
+| `theme` | the colours the whole window is painted in: `theme list`, `theme show` and `theme set` |
+| `project` | the folder a window is showing: `project open` and `project recent` |
+| `update` | whether a newer version is out, and installing it: `update check`, `update install`, `update skip` and `update status` |
+| `highlight`, `fold`, `panel`, `pane`, `run` | marked passages, collapsed blocks, which edge each panel is docked to, the editing panes, and the named commands a project is started with |
+
+### `unluminous-cli setup`
+
+`unluminous-cli setup` with no second word runs in the terminal and needs no window. It puts
+`unluminous-cli` on the path, connects every coding agent it finds (Claude Code, Codex, OpenCode and
+Pi) to the MCP server, says which API keys are set, checks that the server answers, downloads the
+speech model when the build did not come with it, and asks about the microphone. Running it again
+changes nothing, and an entry an agent already has that points at another program is left alone unless
+`--force` is given. `--check` says what is and is not set up and changes nothing, `--remove` takes out
+the entries it made, and `--agents claude,codex` limits it to some agents.
+
+The Windows installer runs it as its `connectagents` task, and the uninstaller runs `setup --remove`.
+On macOS and Linux the Set Up Unluminous dialog takes the same steps when the window starts. With two
+words, `setup status` and the rest are the window's commands for that dialog.
+
+### `unluminous-cli search`
+
+The code index answers what ripgrep would, from memory. `search find` gives the lines ripgrep would
+print for a literal or a regular expression, grouped by file and cut to a token budget, and takes a
+question in plain English as well. `search def` and `search refs` find where a name is defined and used,
+`search fragment path:line` shows the function around a line, `search outline` lists a file's
+definitions with their line ranges, and `search files` finds a file by name or glob. `search status`
+says what the index holds and `search serve` starts the index host for a checkout without a window.
+
+The index is Atrius, which moved to its own repository and is used here as the `atrius-index` crate. One
+host serves each checkout, started by the window, by `mcp serve` or by a one off command, and a change on
+disk is in the next answer. `UNLUMINOUS_EMBED=off` and the `search.embeddings` setting stop the embedding
+model from loading, and it is off by default. The MCP tool `unluminous_search` is generated from the same
+catalogue.
 
 ## Three rules, all of them tests rather than promises
 

@@ -35,14 +35,18 @@ its own page in `Settings -> Plugins`.
 
 ## In code navigation
 
-**A language server.** Go to definition, find all references and rename are a syntactic index built
-from the token stream, which is the tier Sublime Text's goto-definition and GitHub's shipped code
-navigation are. A language server would be the true answer and would die on most machines — a separate
-program per language, found on `PATH`, holding gigabytes, and nothing about it could be a screenshot
-test because when it answers depends on the machine.
+**A language server for go to definition, find all references and rename.** These three are a
+syntactic index built from the token stream, which is the tier Sublime Text's go to definition and
+GitHub's shipped code navigation are. A language server would be the true answer for them and would
+die on most machines, because it is a separate program per language, found on `PATH`, holding
+gigabytes, and nothing about it could be a screenshot test since when it answers depends on the
+machine.
 
-**Auto-import.** A different feature with a different risk, since it edits a part of the file the caret
-is not in.
+A language server **is** included for completion, signature help and auto import. It is `rust-analyzer`
+for Rust and `tsserver` for JavaScript and TypeScript, and it is **off by default**: the switch is
+`Ask language servers (rust-analyzer, tsserver)` in the Suggestions card of `Settings -> Editor`. Off
+stops a running server at once, and completion then answers from the project's structure alone. No
+other language has an adapter, and no server is ever downloaded.
 
 **Bare package specifiers** in import completion, **`tsconfig` path aliases**, and **following
 re-exports**. `node_modules` is out of the walk, and putting it back was measured: it took the file
@@ -75,14 +79,17 @@ bar they are held to is correct and readable.
 
 ## In the debugger
 
-**Attach.** Launch only; the protocol work is attach-ready and attach is its own ticket.
+**Attach to a running program.** Launch only. The protocol client does send `attach`, but only for
+`Debug Cell` in a notebook, which attaches to the kernel's own debugger.
 
 **More than one session at a time.** There is machinery for more than one *connection*, because
 js-debug hands its target to a second session and that is not a feature but how it works at all — but
 one program is debugged at a time.
 
-**Python.** No Python debugger entry ships, because a `python` entry no manifest could name would be
-dead code. The Python *language* plugin ships; what it does not name is a debug adapter.
+**Python files.** No Python debugger entry ships for a `.py` file, because a `python` entry no
+manifest could name would be dead code. The Python *language* plugin ships; what it does not name is
+a debug adapter. The one Python debugging that exists is `Debug Cell` in a notebook, which attaches
+the debugger Unluminous already has to the `debugpy` that the kernel carries.
 
 **Smart Step Into, Force variants, stepping filters, Reset Frame, data breakpoints, memory and
 disassembly views, and hot code replace.**
@@ -107,9 +114,11 @@ error, and no frame ever drawn again. Every other explanation was eliminated.
 
 ## In the chat pane
 
-**A context meter.** A URL and a model name say nothing about a context length, so a bar there would
-be a fraction of a number nobody measured. What is drawn is the tokens in and the tokens out, which
-the server really reported.
+**A context meter for an agent that does not report one.** Claude Code says how large its context is
+and how much each message started with, so for that agent the ring in the Chat settings dialog is a
+real share. A URL and a model name say nothing about a context length, so for every other agent the
+ring stays empty and its line says how many tokens were used and that the agent does not say its
+context size.
 
 **A key field for a program.** A row that runs `claude` or `codex` holds no key at all, so there is
 nothing to draw.
@@ -131,6 +140,18 @@ server's own, and `plugins run database read-only` is the one way to ask for the
 **A Stop button on an Inillucent source**, because that driver reports that it cannot cancel, and a
 cancel that returned success and did nothing is worse than no button. Read from the driver at run time
 rather than written down, so the day the engine grows a cancel the button appears with nothing edited.
+
+## In notebooks
+
+**A kernel that Unluminous starts by itself.** Cells run through the machine's own Python and
+`jupyter_client`. A Python without `ipykernel` gets a banner with an Install button that runs
+`pip install ipykernel` in the run tile, and nothing is installed until it is pressed. Rust notebooks
+need `evcxr_jupyter` installed, and the kernel picker offers the command that installs it.
+
+**Debugging a cell in any language but Python.** `Debug Cell` is absent for a notebook whose language
+is not Python.
+
+**Interrupting a single long `time.sleep` on Windows.** That is a limit of `ipykernel` there.
 
 ## In the product as a whole
 
