@@ -6,6 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.2.2 — 2026-10-19
+
+- The installers ship the speech model and ONNX Runtime, so dictation downloads nothing (`task-2306`)
+- The speech model package step puts a bare CC aside, as the binary build already does (`task-2306`)
+
 ## 1.2.1 — 2026-10-19
 
 - A window with no project waits for one in the Set Up dialog rather than opening the folder it stands in (`task-2305`)
