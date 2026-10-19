@@ -949,12 +949,10 @@ impl Decoder {
                     }
                 }
             }
-            "message_start" if value["message"]["role"] == "assistant" => {
-                if !self.started {
-                    self.started = true;
-                    let model = value["message"]["model"].as_str().unwrap_or_default();
-                    out.push(Reply::Started { model: model.to_owned() });
-                }
+            "message_start" if value["message"]["role"] == "assistant" && !self.started => {
+                self.started = true;
+                let model = value["message"]["model"].as_str().unwrap_or_default();
+                out.push(Reply::Started { model: model.to_owned() });
             }
             "message_update" => {
                 let event = &value["assistantMessageEvent"];
