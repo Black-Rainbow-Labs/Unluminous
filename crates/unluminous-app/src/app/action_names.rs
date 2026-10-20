@@ -33,6 +33,8 @@ impl Action {
             Action::PluginTab { tab } => format!("plugin-tab:{tab}"),
             Action::PluginCommand { plugin, command } => format!("plugin-run:{plugin}:{command}"),
             Action::NewWindow => "new-window".to_owned(),
+            Action::NextWindow => "next-window".to_owned(),
+            Action::PreviousWindow => "previous-window".to_owned(),
             Action::OpenFolder => "open-folder".to_owned(),
             Action::CreateProject => "create-project".to_owned(),
             Action::OpenFile => "open-file".to_owned(),
@@ -209,6 +211,8 @@ impl Action {
         let with_path = || path.clone().unwrap_or_default();
         Some(match name {
             "new-window" => Action::NewWindow,
+            "next-window" => Action::NextWindow,
+            "previous-window" => Action::PreviousWindow,
             "open-folder" => Action::OpenFolder,
             "create-project" => Action::CreateProject,
             "open-file" => Action::OpenFile,

@@ -2593,6 +2593,7 @@ impl UnluminousApp {
         self.page_was_pressed = crate::services::browser::the_page_was_the_last_thing_pressed(
             &raw_input.events,
             &placements,
+            &occluders,
             self.page_was_pressed,
         );
         // **A press inside a page reaches the page and not egui**, because the page is a native child window
@@ -2626,7 +2627,8 @@ impl UnluminousApp {
         // before it. The live page takes its own clicks, so this is a press on a page showing its picture. The page is
         // given the keyboard too, as a click into a live page is, so on the next frame its pane is the focused one and
         // the view does not go back to the pane that held the keyboard before.
-        if let Some(id) = crate::services::browser::the_page_pressed(&raw_input.events, &placements)
+        if let Some(id) =
+            crate::services::browser::the_page_pressed(&raw_input.events, &placements, &occluders)
         {
             for placement in &mut placements {
                 placement.focused = placement.id == id;

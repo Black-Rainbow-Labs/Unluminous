@@ -5169,3 +5169,205 @@ fn a_tickets_project_can_be_any_folder_through_the_picker_or_the_command() {
     let said = did(&mut harness, "plugins run agent-tasks project task-1");
     assert!(said["project"].is_null(), "back to the board's default: {said}");
 }
+
+// -------------------------------------------------------------------------------------- task-2317
+
+/// Press, move in steps the way a hand does, and let go.
+fn sweep(harness: &mut Harness<'static, UnluminousApp>, from: egui::Pos2, to: egui::Pos2) {
+    let modifiers = Modifiers::default();
+    harness.input_mut().events.push(egui::Event::PointerMoved(from));
+    steady(harness);
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: from,
+        button: egui::PointerButton::Primary,
+        pressed: true,
+        modifiers,
+    });
+    harness.step();
+    for step in 1..=8 {
+        let at = from + (to - from) * (step as f32 / 8.0);
+        harness.input_mut().events.push(egui::Event::PointerMoved(at));
+        harness.step();
+    }
+    harness.input_mut().events.push(egui::Event::PointerButton {
+        pos: to,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers,
+    });
+    steady(harness);
+}
+
+/// Copy what is selected and answer what reached the clipboard, or nothing.
+fn copied(harness: &mut Harness<'static, UnluminousApp>) -> String {
+    harness.input_mut().events.push(egui::Event::Copy);
+    for _ in 0..4 {
+        harness.step();
+        if let Some(text) =
+            harness.output().platform_output.commands.iter().find_map(|command| match command {
+                egui::OutputCommand::CopyText(text) => Some(text.clone()),
+                _ => None,
+            })
+        {
+            return text;
+        }
+    }
+    String::new()
+}
+
+/// Where a point the modal laid out is drawn on the screen.
+///
+/// The accessibility tree holds a zoomed modal's controls where they were laid out, in a rectangle `zoom`
+/// times smaller, and the modal's layer is drawn through `position + (point - position) * zoom`. See
+/// `modal::show_framed`.
+fn on_the_screen(harness: &Harness<'static, UnluminousApp>, laid_out: egui::Pos2) -> egui::Pos2 {
+    use unluminous_app::components::{agent_tasks::ticket_modal::MODAL_ID, modal};
+    let corner = modal::drawn(&harness.ctx, MODAL_ID).expect("the modal was drawn").min;
+    let zoom = modal::zoom_of(&harness.ctx, egui::Id::new(MODAL_ID));
+    corner + (laid_out - corner) * zoom
+}
+
+/// Words in a ticket's description are selected by a drag, in both views and at every zoom of the modal.
+///
+/// `task-2317`: *"selecting text in textareas, like task description is very difficult. We need to test
+/// clicking and dragging to highlight text, at different zoom levels and different scenarios."* Each drag
+/// starts either in the well's left margin or on the first letter, and goes to the end of the first line,
+/// which takes the whole line; to its middle, which takes the first words; or out past the bottom of the
+/// well, which takes everything.
+#[test]
+fn a_drag_selects_the_words_of_a_description_at_every_zoom() {
+    let words = "alpha bravo charlie delta echo foxtrot";
+    let mut failures = Vec::new();
+    for zoom in [1.0f32, 1.5, 0.8] {
+        for view in ["raw", "markdown"] {
+            let mut harness = harness("");
+            harness.set_size(vec2(1500.0, 950.0));
+            a_ticket_open(&mut harness);
+            did(&mut harness, &format!("plugins run agent-tasks describe task-1 {words}"));
+            did(&mut harness, "plugins run agent-tasks show description raw");
+            did(&mut harness, &format!("modal zoom {zoom}"));
+            steady(&mut harness);
+            let well = harness.get_by_label("Description field").rect();
+            did(&mut harness, &format!("plugins run agent-tasks show description {view}"));
+            steady(&mut harness);
+            let line = well.top() + 20.0;
+            for (from_name, from) in [
+                ("the margin", egui::pos2(well.left() + 3.0, line)),
+                ("the first letter", egui::pos2(well.left() + 19.0, line)),
+            ] {
+                for (to_name, to, wanted) in [
+                    ("the end of the line", egui::pos2(well.right() - 4.0, line), Some(words)),
+                    ("the middle of the line", egui::pos2(well.left() + 120.0, line), None),
+                    (
+                        "below the well",
+                        egui::pos2(well.center().x, well.bottom() + 40.0),
+                        Some(words),
+                    ),
+                ] {
+                    let (screen_from, screen_to) =
+                        (on_the_screen(&harness, from), on_the_screen(&harness, to));
+                    sweep(&mut harness, screen_from, screen_to);
+                    let got = copied(&mut harness);
+                    let fine = match wanted {
+                        Some(all) => got.trim_end() == all,
+                        None => {
+                            !got.is_empty() && words.starts_with(&got) && got.len() < words.len()
+                        }
+                    };
+                    if !fine {
+                        failures.push(format!(
+                            "zoom {zoom}, {view} view, from {from_name} to {to_name}: copied {got:?}"
+                        ));
+                    }
+                    // A click somewhere else in the modal lets go of the selection before the next drag.
+                    let elsewhere =
+                        on_the_screen(&harness, egui::pos2(well.center().x, well.top() - 30.0));
+                    harness.input_mut().events.push(egui::Event::PointerMoved(elsewhere));
+                    harness.input_mut().events.push(egui::Event::PointerButton {
+                        pos: elsewhere,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: Modifiers::default(),
+                    });
+                    harness.step();
+                    harness.input_mut().events.push(egui::Event::PointerButton {
+                        pos: elsewhere,
+                        button: egui::PointerButton::Primary,
+                        pressed: false,
+                        modifiers: Modifiers::default(),
+                    });
+                    steady(&mut harness);
+                }
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} of 36 drags failed:
+{}",
+        failures.len(),
+        failures.join(
+            "
+"
+        )
+    );
+}
+
+/// Words typed into the comment box are selected by a drag that starts in its padding or on its first letter,
+/// at every zoom of the modal. `task-2317`, the same report about the other text area in the ticket.
+#[test]
+fn a_drag_selects_the_words_of_a_comment_being_written_at_every_zoom() {
+    let words = "kilo lima mike november oscar papa";
+    let mut failures = Vec::new();
+    for zoom in [1.0f32, 1.5, 0.8] {
+        let mut harness = harness("");
+        harness.set_size(vec2(1500.0, 950.0));
+        a_ticket_open(&mut harness);
+        did(&mut harness, &format!("modal zoom {zoom}"));
+        steady(&mut harness);
+        let field = harness.get_by_label("Comment field").rect();
+        let line = field.top() + 18.0;
+        let into = on_the_screen(&harness, egui::pos2(field.center().x, line));
+        harness.input_mut().events.push(egui::Event::PointerMoved(into));
+        harness.input_mut().events.push(egui::Event::PointerButton {
+            pos: into,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: Modifiers::default(),
+        });
+        harness.step();
+        harness.input_mut().events.push(egui::Event::PointerButton {
+            pos: into,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: Modifiers::default(),
+        });
+        steady(&mut harness);
+        harness.input_mut().events.push(egui::Event::Text(words.to_owned()));
+        steady(&mut harness);
+        for (from_name, from) in [
+            ("the padding", egui::pos2(field.left() - 10.0, line)),
+            ("the first letter", egui::pos2(field.left() + 1.0, line)),
+        ] {
+            for (to_name, to, all) in [
+                ("the end of the line", egui::pos2(field.right() - 6.0, line), true),
+                ("the middle of the line", egui::pos2(field.left() + 100.0, line), false),
+            ] {
+                let (screen_from, screen_to) =
+                    (on_the_screen(&harness, from), on_the_screen(&harness, to));
+                sweep(&mut harness, screen_from, screen_to);
+                let got = copied(&mut harness);
+                let fine = match all {
+                    true => got == words,
+                    false => !got.is_empty() && words.starts_with(&got) && got.len() < words.len(),
+                };
+                if !fine {
+                    failures.push(format!(
+                        "zoom {zoom}, from {from_name} to {to_name}: copied {got:?}"
+                    ));
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{} of 12 drags failed:\n{}", failures.len(), failures.join("\n"));
+}

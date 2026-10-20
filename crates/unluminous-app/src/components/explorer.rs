@@ -526,20 +526,26 @@ pub fn show(
             // space above the first drawn row and below the last is added back, so the scroll bar still
             // describes the whole tree.
             let rows = tree.rows();
-            let visible = visible_rows(ui, rows.len(), view.at(size::ROW));
+            // **The pitch is the row and the spacing egui puts after it**, because that is how far apart the
+            // drawn rows really are. Counting the rows that are not drawn as `ROW` alone made the list taller
+            // while the drawn rows were in the middle of it than once they reached its end, so at the bottom
+            // the largest offset moved every time a row came into view, egui clamped the offset to it, and
+            // the list shook while the wheel turned. `task-2317`.
+            let pitch = view.at(size::ROW) + ui.spacing().item_spacing.y;
+            let visible = visible_rows(ui, rows.len(), pitch);
             // A reveal has to work for a row that is not being drawn, which is the one thing
             // virtualisation takes away: `folder_row` and `file_row` scroll to their own rectangle, and a
             // row that was never drawn has none. So the scroll is asked for here as well, from the row's
             // place in the list, which is known whether or not it is on screen.
             if let Some((index, centre)) = revealed_row(&rows, view) {
-                let top = ui.cursor().top() + index as f32 * view.at(size::ROW);
+                let top = ui.cursor().top() + index as f32 * pitch;
                 let rect = Rect::from_min_size(
                     Pos2::new(ui.clip_rect().left(), top),
                     Vec2::new(1.0, view.at(size::ROW)),
                 );
                 ui.scroll_to_rect(rect, reveal_alignment(ui, rect, centre));
             }
-            ui.add_space(visible.start as f32 * view.at(size::ROW));
+            ui.add_space(visible.start as f32 * pitch);
             for row in &rows[visible.clone()] {
                 if row.entry.is_directory {
                     let clicked = folder_row(ui, row.entry, row.depth, view);
@@ -567,7 +573,7 @@ pub fn show(
                     clicked.apply(&mut outcome, &row.entry.path, false);
                 }
             }
-            ui.add_space((rows.len() - visible.end) as f32 * view.at(size::ROW));
+            ui.add_space((rows.len() - visible.end) as f32 * pitch);
         }
         if let Some(error) = &tree.last_error {
             ui.add_space(view.at(6.0));
@@ -1279,5 +1285,77 @@ mod tests {
             );
         }
         let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// A list scrolled to its end stays there, and the wheel turned past the end moves nothing.
+    ///
+    /// `task-2317`: *"When I scroll down in the folder view, and reach the bottom, the mouse wheel keeps
+    /// moving, and the folder view items shake rapidly up and down."* Only the rows on the screen are drawn,
+    /// and the rest are counted as `ROW` each. The drawn rows also took egui's item spacing, so the list was
+    /// taller while the drawn rows were in the middle of it than once they reached its end, and the largest
+    /// offset moved every time a row came into view at the bottom. egui clamped the offset to the shorter
+    /// list, which drew a different set of rows, which made the list longer again.
+    #[test]
+    fn a_list_scrolled_to_its_end_stays_where_it_is() {
+        let folder = std::env::temp_dir().join("unluminous-explorer-bottom-test");
+        let _ = std::fs::create_dir_all(&folder);
+        for number in 0..120 {
+            let _ = std::fs::write(folder.join(format!("file-{number:03}.txt")), "x");
+        }
+        let mut tree = crate::services::file_tree::FileTree::new(folder.clone());
+        tree.reload();
+        let given = Rect::from_min_size(Pos2::new(0.0, 0.0), Vec2::new(300.0, 400.0));
+
+        let context = egui::Context::default();
+        // The window's own spacing between widgets, which is what the rows on the screen are drawn with.
+        context.all_styles_mut(|style| style.spacing.item_spacing = Vec2::new(8.0, 6.0));
+        let mut filter = String::new();
+        let mut offsets = Vec::new();
+        for frame in 0..12 {
+            let mut input = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0))),
+                ..Default::default()
+            };
+            input.events.push(egui::Event::PointerMoved(Pos2::new(150.0, 200.0)));
+            if frame > 0 {
+                input.events.push(egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: Vec2::new(0.0, -120.0),
+                    modifiers: egui::Modifiers::NONE,
+                    phase: egui::TouchPhase::Move,
+                });
+            }
+            let output = context.run_ui(input, |ui| {
+                let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(given));
+                let view = View {
+                    current: None,
+                    selected: None,
+                    chosen: &[],
+                    outside_drag: None,
+                    keyboard: false,
+                    unsaved: false,
+                    reveal: false,
+                    reveal_selected: false,
+                    opacity: 1.0,
+                    zoom: 1.0,
+                    scroll_to: (frame == 0).then_some(100_000.0),
+                    host: Host::Node,
+                };
+                let decorate = |_: &Path| Decoration::default();
+                let outcome = show(&mut inner, given, &tree, &mut filter, view, &decorate);
+                offsets.push(outcome.scroll);
+            });
+            output.drop_without_applying_deltas();
+        }
+        let _ = std::fs::remove_dir_all(&folder);
+
+        let first = offsets[0];
+        assert!(first > 0.0, "the list was scrolled to its end: {offsets:?}");
+        for offset in &offsets {
+            assert!(
+                (offset - first).abs() < 0.5,
+                "a list at its end moved while the wheel turned: {offsets:?}",
+            );
+        }
     }
 }

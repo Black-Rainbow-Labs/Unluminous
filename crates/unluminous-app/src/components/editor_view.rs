@@ -838,7 +838,19 @@ pub fn read_pointer(
         // Where the **press** was, not where the pointer is now. egui does not call a press a drag
         // until it has moved a few points, so by the frame that says a drag started the pointer has
         // already left the letter it was put down on — and the anchor belongs on that letter.
-        let press = response.ctx.input(|input| input.pointer.press_origin()).unwrap_or(pointer);
+        //
+        // **Mapped into the layer's own points** (`task-2317`). egui gives a response's pointer in the points of
+        // the layer it is in, and the press origin in the window's. In a zoomed modal or a canvas node at any zoom
+        // but one the two differ, so the anchor landed letters away from where the drag began: at 1.5 in the
+        // ticket modal a drag from the `a` of `alpha` selected from the last `a`.
+        let press = response
+            .ctx
+            .input(|input| input.pointer.press_origin())
+            .map(|press| match response.ctx.layer_transform_from_global(response.layer_id) {
+                Some(to_layer) => to_layer * press,
+                None => press,
+            })
+            .unwrap_or(pointer);
         let from = press - text_origin;
         return Some(Selection::new(layout.offset_at(from.x, from.y), offset));
     }

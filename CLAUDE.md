@@ -2622,6 +2622,31 @@ a picture to the person's backgrounds folder and deleted it again. A window nobo
 has no backgrounds folder at all, so it draws no picture and refuses to add or remove one. In the shipped
 binary `load_settings` gives it the person's store, so nothing a person sees changed.
 
+## What `task-2317` changed, and the rules it left
+
+- **A press on something egui draws over a browser page is not a press on the page**, and neither is a press on a
+  canvas node in front of it. `services::browser::the_page_pressed` and `the_page_was_the_last_thing_pressed` take
+  the occluders and leave out `BrowserPlacement::over` (`BrowserPlacement::shows`). Counting them gave the page the
+  keyboard mid press: a tab's right click menu closed before its row saw the release, and the front node's header
+  could not be dragged.
+- **The explorer counts the rows it does not draw at the pitch it draws the others at**: `ROW` plus egui's item
+  spacing. At `ROW` alone the list's height changed as rows came into view, and at the bottom it shook.
+- **A text area's box is its whole well, with the padding as the box's margin**, so a drag begun in the padding
+  selects from the nearest letter. egui ignores `TextEdit::margin` once a frame is given, so the margin goes on the
+  frame: `Frame::NONE.inner_margin(controls::margin_between(well, inside))`. A rendered view senses its well
+  through `markdown_text::show_selectable_from`.
+- **`editor_view::read_pointer` maps the press into the layer's own points.** A response's pointer is in the
+  layer's points and `press_origin` in the window's, so in a zoomed modal or canvas node a drag selected from the
+  wrong letter.
+- **Agent-Chat's chosen folder is kept per project** (`folder.<n>.project` and `folder.<n>.path`), because the
+  configuration file is one for every window. A conversation records the folder its agent ran in, and a pane opens
+  on the newest conversation from its own folder.
+- **`Next Window` and `Previous Window`** (`File`, `Cmd`+`` ` `` on macOS, `Alt`+`` ` `` elsewhere because `Ctrl`+`` ` ``
+  is the Terminal) bring the next running Unluminous to the front, in the order the windows were started
+  (`services::other_windows`). macOS's own chord moves between one process's windows, and every project window is a
+  process. Never run them from a test against a real window: they take the keyboard.
+- **`plugins pane <pane>` says where the pane was drawn.**
+
 ## What `task-2293` changed, and the rules it left
 
 - **The background is a switch, `appearance.background.enabled`, off by default.** Off, the window is opaque and draws

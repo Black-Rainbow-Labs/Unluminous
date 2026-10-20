@@ -4693,7 +4693,7 @@ unluminous-cli plugins reload --json
 unluminous-cli plugins pane <pane> [--show] [--hide] [--side <side>]
 ```
 
-Show, hide or move a pane a plugin contributed: what its rail button and a drag on its header do. A plugin's id names its pane: `designer`, `agent-tasks`, `agent-chat`, `database`.
+Show, hide or move a pane a plugin contributed: what its rail button and a drag on its header do. A plugin's id names its pane: `designer`, `agent-tasks`, `agent-chat`, `database`. The answer says where the pane was drawn, which `panel list` says only of the built-in panels.
 
 - `pane` — The plugin's id, or `<plugin id>/<pane id>`.
 

@@ -291,8 +291,25 @@ pub fn show_selectable(
     code: Option<CodeColors>,
     id: egui::Id,
 ) -> Option<String> {
+    show_selectable_from(ui, area, area, rendered, renderer, scroll, code, id)
+}
+
+/// The same, with a press anywhere in `reach` taken as a press on the words, so a drag that begins in the
+/// padding round them selects from the nearest letter. `reach` is usually the well the words are drawn in.
+/// `task-2317`.
+#[allow(clippy::too_many_arguments)]
+pub fn show_selectable_from(
+    ui: &mut egui::Ui,
+    area: Rect,
+    reach: Rect,
+    rendered: &Rendered,
+    renderer: &TextRenderer,
+    scroll: f32,
+    code: Option<CodeColors>,
+    id: egui::Id,
+) -> Option<String> {
     let origin = Pos2::new(area.left(), area.top() - scroll);
-    let sensed = area.intersect(ui.clip_rect());
+    let sensed = reach.union(area).intersect(ui.clip_rect());
     let response = ui.interact(sensed, id.with("markdown-words"), egui::Sense::click_and_drag());
     let held = ui.ctx().data(|data| data.get_temp::<egui::Id>(selected_block())) == Some(id);
     let was: Option<unluminous_core::Selection> =

@@ -218,6 +218,8 @@ fn to_json(chat: &Conversation) -> serde_json::Value {
         // resumes that conversation natively instead of starting the agent again with none of it.
         // Missing until `task-2285`, which is the whole of what that ticket reported.
         "session": { "id": chat.session, "provider": chat.session_provider },
+        // The folder its agent ran in, so a window reopens only its own project's conversation. `task-2317`.
+        "folder": chat.folder,
         "messages": chat.messages.iter().map(|message| serde_json::json!({
             "id": message.id,
             "role": message.role.wire_name(),
@@ -265,6 +267,7 @@ fn from_json(id: &str, value: &serde_json::Value) -> Conversation {
     chat.context_window = value["context"]["window"].as_u64();
     chat.session = value["session"]["id"].as_str().unwrap_or_default().to_owned();
     chat.session_provider = value["session"]["provider"].as_str().unwrap_or_default().to_owned();
+    chat.folder = value["folder"].as_str().unwrap_or_default().to_owned();
     for one in value["messages"].as_array().map(Vec::as_slice).unwrap_or_default() {
         let role = match one["role"].as_str() {
             Some("user") => Role::User,

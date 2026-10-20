@@ -49,26 +49,31 @@ pub fn in_a_well(
     let mut text = board.description_text();
     let description_id = ui.id().with("agent-tasks-description");
     crate::components::controls::claim_the_field(ui, well, description_id, "Description field");
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inside));
-    child.set_clip_rect(inside.intersect(ui.clip_rect()));
+    // **The box is the whole well, and the well's padding is the box's own margin** (`task-2317`: *"selecting text
+    // in textareas, like task description is very difficult."*). The box used to be the room inside the padding,
+    // so a drag that began in the padding began on the well's ground, which takes a click and not a drag, and
+    // selected nothing at all. A text area a person drags across from its edge selects from the nearest letter.
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(well));
+    child.set_clip_rect(well.intersect(ui.clip_rect()));
     let font = egui::FontId::proportional(look.font_size);
     let row = ui.ctx().fonts_mut(|fonts| fonts.row_height(&font));
+    let margin = crate::components::controls::margin_between(well, inside);
     let changed = egui::ScrollArea::vertical()
         .id_salt("agent-tasks-description-scroll")
         .auto_shrink([false, false])
-        .max_height(inside.height())
+        .max_height(well.height())
         .show(&mut child, |ui| {
             let response = ui.text_box(
                 egui::TextEdit::multiline(&mut text)
                     .id(description_id)
-                    .frame(egui::Frame::NONE)
-                    .margin(egui::Margin::ZERO)
+                    // The margin is the frame's: egui ignores `TextEdit::margin` once a frame is given.
+                    .frame(egui::Frame::NONE.inner_margin(margin))
                     .hint_text(crate::components::controls::placeholder(
                         "What should be done, and how will you know it's finished?",
                         &font,
                         look.palette.text_faint,
                     ))
-                    .desired_width(inside.width())
+                    .desired_width(well.width())
                     // At least the well's own height, so a press anywhere below the last line still
                     // lands in the box and puts the caret at the end.
                     .desired_rows(((inside.height() / row.max(1.0)) as usize).max(1))
@@ -127,10 +132,12 @@ fn rendered_text(
         None,
     );
     let height = made.height();
-    // Selectable, as the chat's messages are. `task-2255`.
-    markdown_text::show_selectable(
+    // Selectable, as the chat's messages are. `task-2255`. A drag may begin anywhere in the well, its padding
+    // included, as it may in the source view (`task-2317`).
+    markdown_text::show_selectable_from(
         ui,
         inside,
+        well,
         made,
         look.renderer,
         scroll,

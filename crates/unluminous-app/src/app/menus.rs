@@ -188,6 +188,8 @@ impl UnluminousApp {
                 self.a_plugin_entry(action)
             }
             Action::NewWindow
+            | Action::NextWindow
+            | Action::PreviousWindow
             | Action::OpenFolder
             | Action::CreateProject
             | Action::OpenFile
@@ -387,6 +389,27 @@ impl UnluminousApp {
         Ok(())
     }
 
+    /// Bring the Unluminous window `step` places from this one to the front, and say what happened.
+    ///
+    /// `task-2317`. The windows are the ones running on this machine, in the order they were started; see
+    /// `services::other_windows`.
+    fn go_to_another_window(&mut self, step: isize) -> String {
+        use crate::services::other_windows;
+        let windows = other_windows::running();
+        let Some(next) = other_windows::the_one_after(&windows, std::process::id(), step) else {
+            return "There is no other Unluminous window open.".to_owned();
+        };
+        let name = next
+            .folder
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| next.folder.display().to_string());
+        match other_windows::bring_forward(next.pid) {
+            Ok(()) => format!("Went to the {name} window"),
+            Err(problem) => problem,
+        }
+    }
+
     /// Reached only from [`Self::run_action`], which is what decides that an action is one of
     /// these, so the last arm cannot happen.
     fn a_file_entry(&mut self, action: Action, ctx: &egui::Context) {
@@ -398,6 +421,10 @@ impl UnluminousApp {
             }
             Action::NewWindow => {
                 launcher::open_window(self.tree.root());
+            }
+            Action::NextWindow | Action::PreviousWindow => {
+                let step = if action == Action::NextWindow { 1 } else { -1 };
+                self.message = Some(self.go_to_another_window(step));
             }
             Action::CreateProject => {
                 self.new_project = Some(crate::components::new_project_dialog::NewProject::beside(

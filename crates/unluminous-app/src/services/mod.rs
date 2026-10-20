@@ -46,6 +46,7 @@ pub mod imports;
 pub mod input;
 pub mod issue_report;
 pub mod opened_by_the_system;
+pub mod other_windows;
 // Which chord each menu entry is on: a preset and the person's own bindings. `task-2286`.
 pub mod keymap;
 pub mod launcher;

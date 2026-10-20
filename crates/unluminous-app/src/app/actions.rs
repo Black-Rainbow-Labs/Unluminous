@@ -17,6 +17,10 @@ use crate::app::ViewMode;
 pub enum Action {
     /// Another Unluminous window, on its own project.
     NewWindow,
+    /// Bring the next Unluminous window to the front, in the order the windows were started. `task-2317`.
+    NextWindow,
+    /// The same, the other way round.
+    PreviousWindow,
     /// Choose a folder and open it in a window of its own, leaving this one as it is.
     ///
     /// A project is a window, the way the reference editor has it, so there is one entry rather than the two there
@@ -1333,6 +1337,17 @@ pub struct MenuState {
 /// `Unluminous` comes first because that is where the application's own entries belong, and because macOS puts
 /// the application menu first whatever it is called. Inside the window it is drawn first for the same
 /// reason, so the bar reads `Unluminous  File  Edit  View` on both platforms.
+/// The chord that moves to another Unluminous window: `Cmd+`` on macOS, which is the system's own chord for it,
+/// and `Alt+`` elsewhere, because `Ctrl+`` is the Terminal. With `shift`, the other way round. `task-2317`.
+pub fn window_cycle(shift: bool) -> Shortcut {
+    match cfg!(target_os = "macos") {
+        true => Shortcut { shift, ..Shortcut::command(egui::Key::Backtick) },
+        false => {
+            Shortcut { key: egui::Key::Backtick, command: false, shift, alt: true, ctrl: false }
+        }
+    }
+}
+
 pub fn menus(state: &MenuState) -> Vec<Menu> {
     let mut found = vec![unluminous_menu(), file_menu(state), edit_menu(state)];
     // `Code` is absent for a file that holds no lines, so it is pushed rather than listed.
@@ -1765,6 +1780,10 @@ fn file_menu(state: &MenuState) -> Menu {
             Action::NewWindow,
             Shortcut::command_shift(egui::Key::N),
         ),
+        // **Every project window is a process of its own**, so the system's own window switching has nothing to
+        // switch to (`task-2317`). See `services::other_windows`.
+        Entry::with_shortcut("Next Window", Action::NextWindow, window_cycle(false)),
+        Entry::with_shortcut("Previous Window", Action::PreviousWindow, window_cycle(true)),
         Entry::Separator,
         Entry::with_shortcut("Open File", Action::OpenFile, Shortcut::command(egui::Key::O)),
         Entry::item("New Jupyter Notebook", Action::NewNotebook),
@@ -3531,6 +3550,35 @@ mod tests {
         // than two that have to be kept in step.
         let annotated = MenuState { annotated: true, ..state };
         assert_eq!(names(&gutter_menu(&annotated))[0], "Close Annotations");
+    }
+
+    /// `task-2317`: `Cmd+`` on macOS and `Alt+`` elsewhere move to the next Unluminous window, with `Shift` the
+    /// other way, the two are offered by the keymap like every other entry, and `Ctrl+`` is still the Terminal.
+    #[test]
+    fn the_window_chords_move_between_windows_and_leave_the_terminal_its_own() {
+        let bar = menus(&MenuState::default());
+        let pressed = |shift: bool| {
+            let chord = window_cycle(shift);
+            egui::Modifiers { alt: chord.alt, shift: chord.shift, ..egui::Modifiers::NONE }
+                | if chord.command { egui::Modifiers::COMMAND } else { egui::Modifiers::NONE }
+        };
+        assert_eq!(
+            action_for_key(&bar, egui::Key::Backtick, &pressed(false)),
+            Some(Action::NextWindow)
+        );
+        assert_eq!(
+            action_for_key(&bar, egui::Key::Backtick, &pressed(true)),
+            Some(Action::PreviousWindow)
+        );
+        assert_eq!(
+            action_for_key(&bar, egui::Key::Backtick, &pressing_control()),
+            Some(Action::ToggleTerminal)
+        );
+        let offered: Vec<&str> =
+            crate::services::keymap::bindables().iter().map(|one| one.name.as_str()).collect();
+        assert!(offered.contains(&"next-window") && offered.contains(&"previous-window"));
+        assert_eq!(Action::from_name("next-window", None), Some(Action::NextWindow));
+        assert_eq!(Action::from_name("previous-window", None), Some(Action::PreviousWindow));
     }
 
     #[test]

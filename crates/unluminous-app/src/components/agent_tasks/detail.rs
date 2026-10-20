@@ -763,26 +763,31 @@ fn the_composer(
             .ctx()
             .input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::Enter));
     let mut draft = board.detail().draft.clone();
-    let mut child = rux.ui.new_child(egui::UiBuilder::new().max_rect(text));
-    child.set_clip_rect(text.intersect(rux.ui.clip_rect()));
+    // **The box is the well up to the resize mark, with the padding as its margin** (`task-2317`), so a drag
+    // begun in the padding selects from the nearest letter rather than landing on the well's ground.
+    let reach = Rect::from_min_max(well.min, Pos2::new(field.max.x, well.max.y));
+    let mut child = rux.ui.new_child(egui::UiBuilder::new().max_rect(reach));
+    child.set_clip_rect(reach.intersect(rux.ui.clip_rect()));
     let rows = ((text.height() / COMMENT_LINE).floor() as usize).max(1);
     let response = egui::ScrollArea::vertical()
         .id_salt("agent-tasks-comment-draft-scroll")
-        .max_height(text.height().max(1.0))
+        .max_height(reach.height().max(1.0))
         .auto_shrink([false, false])
         .show(&mut child, |ui| {
             ui.text_box(
                 egui::TextEdit::multiline(&mut draft)
                     .id(draft_id)
-                    .frame(egui::Frame::NONE)
-                    .margin(egui::Margin::ZERO)
+                    .frame(
+                        egui::Frame::NONE
+                            .inner_margin(crate::components::controls::margin_between(reach, text)),
+                    )
                     .hint_text(crate::components::controls::placeholder(
                         "Add a comment",
                         &font,
                         theme.ink.i400,
                     ))
                     .font(font.clone())
-                    .desired_width(text.width())
+                    .desired_width(reach.width())
                     .desired_rows(rows)
                     .text_color(theme.ink.i900),
             )

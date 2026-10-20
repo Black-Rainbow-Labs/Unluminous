@@ -258,10 +258,24 @@ impl UnluminousApp {
             );
         }
         let showing = self.plugin_pane_is_showing(slot);
+        // **Where the pane was drawn on the last frame**, which `panel list` gives the built-in panels and
+        // nothing gave a contributed one. `task-2317` asked for every arrangement of panes to be checked for
+        // resizing, and the Agent-Tasks board's height could not be read from outside the window at all.
+        let rect = self.panel_rects.of(panel);
+        let drawn = match showing && rect.width() > 0.0 {
+            true => format!(
+                ", at {:.0},{:.0} {:.0} x {:.0}",
+                rect.left(),
+                rect.top(),
+                rect.width(),
+                rect.height()
+            ),
+            false => String::new(),
+        };
         ok(
             request,
             format!(
-                "{pane} is {} on the {}",
+                "{pane} is {} on the {}{drawn}",
                 if showing { "showing" } else { "put away" },
                 self.panes.dock.side_of(panel).name()
             ),
@@ -269,6 +283,14 @@ impl UnluminousApp {
                 "pane": pane,
                 "showing": showing,
                 "side": self.panes.dock.side_of(panel).name(),
+                "width": self.panes.width_of(panel),
+                "height": self.panes.height_of(panel),
+                "area": {
+                    "x": rect.left(),
+                    "y": rect.top(),
+                    "width": rect.width(),
+                    "height": rect.height(),
+                },
             }),
         )
     }

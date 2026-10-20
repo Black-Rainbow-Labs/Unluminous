@@ -116,10 +116,16 @@ pub struct Configuration {
     /// The person's own system prompt, added after Unluminous's own line.
     pub system: String,
     pub history: usize,
-    /// The folder an agent run as a program starts in, or `None` for the folder the window has open
-    /// (`task-2270`). `folder` in the file. A folder that no longer exists is not used: see
-    /// [`AgentChat::working_folder`].
+    /// The folder an agent run as a program starts in **in this window**, or `None` for the folder the window
+    /// has open (`task-2270`). A folder that no longer exists is not used: see [`AgentChat::working_folder`].
+    ///
+    /// **Not written as it is.** This file is one for every window, and a single `folder` in it was every
+    /// window's folder: `task-2317` opened two projects and both chats started their agent in the first one.
+    /// What is written is [`Configuration::folders`], one row a project, and a window takes its own row.
     pub folder: Option<PathBuf>,
+    /// The folder chosen for each project, as `(project, folder)`. `folder.<n>.project` and `folder.<n>.path`
+    /// in the file. A project with no row runs its agent in the project itself.
+    pub folders: Vec<(PathBuf, PathBuf)>,
 }
 
 impl Default for Configuration {
@@ -153,6 +159,7 @@ impl Default for Configuration {
             system: String::new(),
             history: DEFAULT_HISTORY,
             folder: None,
+            folders: Vec::new(),
         }
     }
 }
@@ -244,12 +251,34 @@ impl Configuration {
         if let Some(history) = values.number("history") {
             configuration.history = history.clamp(1.0, 500.0) as usize;
         }
-        configuration.folder = values
-            .text("folder")
-            .map(str::trim)
-            .filter(|folder| !folder.is_empty())
-            .map(PathBuf::from);
+        // **The single `folder` an earlier version wrote is read as no choice at all** (`task-2317`). It applied
+        // to every window, so it was the fault itself, and nothing says which project it was chosen for.
+        let rows = values.number("folders").unwrap_or(0.0).clamp(0.0, 500.0) as usize;
+        configuration.folders = (0..rows)
+            .filter_map(|row| {
+                let project = values.text(&format!("folder.{row}.project"))?.trim().to_owned();
+                let path = values.text(&format!("folder.{row}.path"))?.trim().to_owned();
+                (!project.is_empty() && !path.is_empty())
+                    .then(|| (PathBuf::from(project), PathBuf::from(path)))
+            })
+            .collect();
         (configuration, refused)
+    }
+
+    /// The folder chosen for `project`, or `None` when its agent runs in the project itself.
+    pub fn folder_for(&self, project: Option<&Path>) -> Option<PathBuf> {
+        let project = project?;
+        self.folders.iter().find(|(one, _)| one == project).map(|(_, folder)| folder.clone())
+    }
+
+    /// Remember `folder` as the one chosen for `project`. `None`, or the project itself, takes the row away, so
+    /// the project's agent runs in the project wherever the project is later moved to.
+    pub fn keep_folder_for(&mut self, project: Option<&Path>, folder: Option<PathBuf>) {
+        let Some(project) = project else { return };
+        self.folders.retain(|(one, _)| one != project);
+        if let Some(folder) = folder.filter(|folder| folder != project) {
+            self.folders.push((project.to_path_buf(), folder));
+        }
     }
 
     /// Write it back into the plugin's folder.
@@ -275,8 +304,10 @@ impl Configuration {
         // Escaped rather than flattened, because the System box is several lines now (`task-2247`).
         values.set("system", escape_lines(&self.system));
         values.set("history", self.history.to_string());
-        if let Some(folder) = &self.folder {
-            values.set("folder", folder.display().to_string());
+        values.set("folders", self.folders.len().to_string());
+        for (row, (project, path)) in self.folders.iter().enumerate() {
+            values.set(&format!("folder.{row}.project"), project.display().to_string());
+            values.set(&format!("folder.{row}.path"), path.display().to_string());
         }
         plugin_ui::write_values(
             folder,
@@ -765,6 +796,10 @@ const FOR_A_TICKET: &str = "side-pane-ticket-";
 
 /// The id the Settings page's `Other folder...` asks the window's folder picker with. `task-2270`.
 pub const PICK_FOLDER: &str = "pick-folder:";
+
+/// How many of the newest conversations a pane opening looks through for one from its own folder. Each is one
+/// file read, once, when the pane opens. `task-2317`.
+const REOPEN_SEARCH: usize = 50;
 
 /// The plugin.
 pub struct AgentChat {
@@ -1262,6 +1297,11 @@ impl AgentChat {
         let Some(folder) = &self.folder else {
             return Ok(());
         };
+        // **The other windows' rows as the file has them now**, with this window's own put over its row, so a
+        // folder another window chose since this one last read the file is not written away. `task-2317`.
+        self.configuration.folders = Configuration::read(folder).0.folders;
+        let chosen = self.configuration.folder.clone();
+        self.configuration.keep_folder_for(self.project.as_deref(), chosen);
         let written = self.configuration.write(folder);
         self.configuration_written = Self::when_written(folder);
         written
@@ -1286,6 +1326,7 @@ impl AgentChat {
         self.configuration_written = written;
         let mut fresh = Configuration::read(&folder).0;
         fresh.providers = std::mem::take(&mut self.configuration.providers);
+        fresh.folder = fresh.folder_for(self.project.as_deref());
         self.configuration = fresh;
     }
 
@@ -1590,6 +1631,11 @@ impl AgentChat {
             crate::services::telemetry::Category::AgentChat,
             provider.wire.name(),
         );
+        // The folder this window works in is written on the conversation, so a window reopens it only when it
+        // is on that folder. `task-2317`.
+        if let Some(folder) = self.working_folder() {
+            self.session.chat.folder = folder.display().to_string();
+        }
         self.session.ask_keeping_the_id(message);
         // A new turn, so the bounds start again.
         self.calls = 0;
@@ -2365,6 +2411,8 @@ impl UiProvider for AgentChat {
                 configuration.providers = endpoints.clone();
             }
             configuration.forget_the_agents_that_are_not_installed(&Self::the_environment());
+            // This window's own row of the folders, never another project's. `task-2317`.
+            configuration.folder = configuration.folder_for(self.project.as_deref());
             self.configuration = configuration;
             self.configuration_written = Self::when_written(folder);
             if !refused.is_empty() {
@@ -2376,8 +2424,21 @@ impl UiProvider for AgentChat {
         // The newest conversation is reopened, because a pane that came back empty every time would
         // be a pane you cannot leave a question in — which is what `task-1693` asks a project to
         // remember about everything else in the window.
-        let newest = self.history.first().map(|one| one.id.clone());
-        match newest.and_then(|id| self.store.read(&id)) {
+        //
+        // **The newest one from this window's folder** (`task-2317`). The conversations are one list for every
+        // window, so taking the newest of all of them opened the first project's conversation in a window on
+        // a second project, and its agent's session belongs to the first project. A conversation an older
+        // version wrote names no folder, and is reopened only by a pane with no folder either; in a window on a
+        // project it stays in the history.
+        let mine =
+            self.working_folder().map(|folder| folder.display().to_string()).unwrap_or_default();
+        let newest = self
+            .history
+            .iter()
+            .take(REOPEN_SEARCH)
+            .filter_map(|one| self.store.read(&one.id))
+            .find(|chat| chat.folder == mine);
+        match newest {
             Some(chat) => {
                 if !chat.provider.is_empty() {
                     let _ = self.configuration.choose(&chat.provider);
@@ -2725,6 +2786,10 @@ impl UiProvider for AgentChat {
     }
 
     fn showing(&mut self, project: Option<&Path>, file: Option<&Path>) {
+        // A window whose project changed takes that project's own folder. `task-2317`.
+        if self.project.as_deref() != project {
+            self.configuration.folder = self.configuration.folder_for(project);
+        }
         self.project = project.map(Path::to_path_buf);
         self.showing = file.map(Path::to_path_buf);
     }
@@ -3589,3 +3654,5 @@ mod tests_task_2261 {
 
 #[cfg(test)]
 mod tests_task_2285;
+#[cfg(test)]
+mod tests_task_2317;

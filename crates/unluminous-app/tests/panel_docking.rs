@@ -2032,3 +2032,68 @@ fn check_one_drop(
         }
     }
 }
+
+// -------------------------------------------------------------------------------------- task-2317
+
+/// The board along the bottom grows and shrinks with the explorer, the editing area and the chat in a row
+/// above it, from anywhere along its divider and in every way the corners can be owned.
+///
+/// `task-2317`: *"If agent tasks is on bottom, and folder explorer, file editor, and agent chat are on top in a
+/// row, sometimes I can't increase the height of the agent tasks. We need thorough testing to ensure we can
+/// resize panes in all the various configurations."* The divider is grabbed near its left end, in its middle
+/// and near its right end, because "sometimes" is what a divider that only some of its length answers on
+/// looks like.
+#[test]
+fn the_board_along_the_bottom_resizes_under_a_row_of_columns() {
+    use unluminous_app::app::dock::{self, Side};
+    let corners: [(&str, &[Side]); 5] = [
+        ("no side fills", &[]),
+        ("the left fills", &[Side::Left]),
+        ("the right fills", &[Side::Right]),
+        ("both columns fill", &[Side::Left, Side::Right]),
+        ("the bottom fills", &[Side::Bottom]),
+    ];
+    for (case, fills) in corners {
+        for along in [0.04f32, 0.5, 0.96] {
+            for grow in [true, false] {
+                let mut harness = harness("");
+                let board =
+                    harness.state().plugin_ui.slot_of("agent-tasks/board").expect("the board")
+                        as u8;
+                let chat =
+                    harness.state().plugin_ui.slot_of("agent-chat/chat").expect("the chat") as u8;
+                did(&mut harness, "plugins pane agent-tasks/board --show");
+                did(&mut harness, "plugins pane agent-chat/chat --show");
+                harness.state_mut().dock_the_panel(Panel::Plugin(board), Side::Bottom, None);
+                harness.state_mut().dock_the_panel(Panel::Plugin(chat), Side::Right, None);
+                harness.state_mut().dock_the_panel(Panel::Explorer, Side::Left, None);
+                for side in fills {
+                    harness.state_mut().fill_a_side(*side, true);
+                }
+                steady(&mut harness);
+                let divider = format!("Resize {}", Panel::Plugin(board).name());
+                let before = harness.state().panel_area(Panel::Plugin(board)).height();
+                let handle = harness.get_by_label(&divider).rect();
+                let from = egui::pos2(handle.left() + handle.width() * along, handle.center().y);
+                let distance = if grow { -150.0 } else { 90.0 };
+                drag(&mut harness, from, egui::pos2(from.x, from.y + distance));
+                let after = harness.state().panel_area(Panel::Plugin(board)).height();
+                let editor = harness.state().editor_region().height();
+                if grow {
+                    assert!(
+                        after - before > 150.0 * FOLLOWED
+                            || editor <= dock::EDITOR_MIN_HEIGHT + 1.0,
+                        "the board should grow when {case}, grabbed {along} along: {before} then \
+                         {after}, the editing area {editor}"
+                    );
+                } else {
+                    assert!(
+                        before - after > 90.0 * FOLLOWED,
+                        "the board should shrink when {case}, grabbed {along} along: {before} then \
+                         {after}"
+                    );
+                }
+            }
+        }
+    }
+}

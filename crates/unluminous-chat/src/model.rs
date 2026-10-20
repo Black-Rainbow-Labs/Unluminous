@@ -294,6 +294,10 @@ pub struct Conversation {
     /// Codex Claude's id, and Codex refuses it. A turn resumes only when this is the provider being asked
     /// (`task-2285`).
     pub session_provider: String,
+    /// The folder the agent ran in, or empty before its first turn and in a conversation an older version
+    /// wrote. A window reopens only a conversation from its own folder (`task-2317`), because the agent's
+    /// session belongs to the folder it ran in and the conversation is about that project.
+    pub folder: String,
     pub usage: Usage,
     /// How many tokens of the model's context the conversation filled at the end of the last turn, and
     /// how large that context is when the agent named it. See `Reply::Context`. Written down with the
@@ -319,6 +323,7 @@ impl Conversation {
             provider: provider.into(),
             session: String::new(),
             session_provider: String::new(),
+            folder: String::new(),
             usage: Usage::default(),
             context_used: None,
             context_window: None,
@@ -373,6 +378,7 @@ impl Conversation {
             "provider": self.provider,
             "session": self.session,
             "sessionProvider": self.session_provider,
+            "folder": self.folder,
             "changed": self.changed,
             "usage": { "input": self.usage.input, "output": self.usage.output },
             "messages": self.messages.iter().map(message_json).collect::<Vec<serde_json::Value>>(),

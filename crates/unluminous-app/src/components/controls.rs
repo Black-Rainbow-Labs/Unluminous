@@ -238,6 +238,21 @@ pub fn field_takes_the_whole_rectangle_at(
 ///
 /// Those have the same fault in a milder form — the margin between the drawn frame and the box is
 /// dead — and the same answer. See [`field_takes_the_whole_rectangle`] for what it is for.
+/// The margin from `outer` in to `inner`, as a text box's frame takes it.
+///
+/// A text area whose box is the whole well, with the well's padding as its margin, takes a press anywhere in the
+/// well, so a drag begun in the padding selects from the nearest letter (`task-2317`). egui ignores
+/// `TextEdit::margin` once a frame is given, so this goes on the frame: `Frame::NONE.inner_margin(..)`.
+pub fn margin_between(outer: Rect, inner: Rect) -> egui::Margin {
+    let side = |near: f32, far: f32| (far - near).round().clamp(0.0, 127.0) as i8;
+    egui::Margin {
+        left: side(outer.left(), inner.left()),
+        right: side(inner.right(), outer.right()),
+        top: side(outer.top(), inner.top()),
+        bottom: side(inner.bottom(), outer.bottom()),
+    }
+}
+
 pub fn claim_the_field(ui: &egui::Ui, field: Rect, id: egui::Id, name: &str) -> egui::Response {
     // Every field has a right click menu, drawn from here so that a field written later has one too.
     // See [`field_menu`]. `task-2009`.

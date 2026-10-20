@@ -3918,7 +3918,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "plugins",
         verb: "pane",
-        summary: "Show, hide or move a pane a plugin contributed: what its rail button and a drag on its header do. A plugin's id names its pane: `designer`, `agent-tasks`, `agent-chat`, `database`.",
+        summary: "Show, hide or move a pane a plugin contributed: what its rail button and a drag on its header do. A plugin's id names its pane: `designer`, `agent-tasks`, `agent-chat`, `database`. The answer says where the pane was drawn, which `panel list` says only of the built-in panels.",
         arguments: &[argument("pane", true, "The plugin's id, or `<plugin id>/<pane id>`.")],
         flags: &[
             switch("show", "Show it, building the plugin's own state the first time."),

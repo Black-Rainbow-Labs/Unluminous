@@ -414,6 +414,18 @@ impl BrowserPlacement {
     pub fn whole(id: u64, area: Rect, focused: bool) -> Self {
         Self { id, area, visible: area, focused, zoom: None, over: Vec::new(), playing: false }
     }
+
+    /// Whether the page is what is showing at this point: inside the part that may be painted, and not under
+    /// a node drawn in front of it.
+    ///
+    /// `task-2317`: *"If two browser nodes are overlapping in realm, and I click the top of the one that is on
+    /// top, and its bar is overlaying the one below, i'm unable to drag the node."* A press on the front node's
+    /// header was read as a press on the page behind it, because only `visible` was asked. The page behind
+    /// then took the keyboard and the operating system's focus in the middle of the press, and the header's
+    /// drag never started.
+    pub fn shows(&self, at: egui::Pos2) -> bool {
+        self.visible.contains(at) && !self.over.iter().any(|over| over.contains(at))
+    }
 }
 
 /// The interface zoom the window is drawn at, as bits of an `f32`, for the native views to read.
@@ -1249,9 +1261,16 @@ pub enum TheFocus {
 /// again. Measured on the installed build: pressing the window's own chrome moved
 /// `pageHasTheKeyboard` to false and it was true again by the time the next command read it. What the
 /// title bar's drag needs is for `winit` to have had its `WM_SETFOCUS`, which is a frame or two later.
+///
+/// **A press on something egui draws over a page is not a press on the page** (`task-2317`), which is what
+/// `occluders` are: a menu, a dropdown or a tooltip. A press on the `New Browser Tab` row of a browser tab's
+/// own right click menu was read as a press on the page under it, the page took the operating system's
+/// keyboard, and the next frame closed every menu because a page had been clicked into, so the row never
+/// saw its release and nothing happened.
 pub fn the_page_was_the_last_thing_pressed(
     events: &[egui::Event],
     placements: &[BrowserPlacement],
+    occluders: &[Rect],
     before: bool,
 ) -> bool {
     events
@@ -1260,7 +1279,10 @@ pub fn the_page_was_the_last_thing_pressed(
             egui::Event::PointerButton { pos, pressed: true, .. } => Some(*pos),
             _ => None,
         })
-        .fold(before, |_, at| placements.iter().any(|placement| placement.visible.contains(at)))
+        .fold(before, |_, at| {
+            !occluders.iter().any(|over| over.contains(at))
+                && placements.iter().any(|placement| placement.shows(at))
+        })
 }
 
 /// The page a press this frame landed on, when egui saw the press: the last one drawn that holds the point, which is
@@ -1270,16 +1292,22 @@ pub fn the_page_was_the_last_thing_pressed(
 /// the live page takes its own clicks. That page is the one the person wants, so it is the one the view goes to.
 /// Choosing by which pane had the keyboard instead sent the view to the browser tab when the Designer's page was
 /// clicked, because the tab's pane still held the keyboard from a click on its address field.
-pub fn the_page_pressed(events: &[egui::Event], placements: &[BrowserPlacement]) -> Option<u64> {
+///
+/// A press on something egui draws over the page, such as a menu, names no page, for the reason
+/// [`the_page_was_the_last_thing_pressed`] gives.
+pub fn the_page_pressed(
+    events: &[egui::Event],
+    placements: &[BrowserPlacement],
+    occluders: &[Rect],
+) -> Option<u64> {
     let at = events.iter().rev().find_map(|event| match event {
         egui::Event::PointerButton { pos, pressed: true, .. } => Some(*pos),
         _ => None,
     })?;
-    placements
-        .iter()
-        .rev()
-        .find(|placement| placement.visible.contains(at))
-        .map(|placement| placement.id)
+    if occluders.iter().any(|over| over.contains(at)) {
+        return None;
+    }
+    placements.iter().rev().find(|placement| placement.shows(at)).map(|placement| placement.id)
 }
 
 /// Which of [`TheFocus`]'s three, from what the view holds now and what this frame asked for.
@@ -3453,20 +3481,31 @@ mod tests {
         // **A frame with no press at all leaves the answer where it was**, which is what makes it hold:
         // `placement.focused` is worked out afresh every frame, so an event would give the keyboard back
         // for exactly one frame and the next would hand it straight to the page again.
-        assert!(the_page_was_the_last_thing_pressed(&[], &placements, true));
-        assert!(!the_page_was_the_last_thing_pressed(&[], &placements, false));
+        assert!(the_page_was_the_last_thing_pressed(&[], &placements, &[], true));
+        assert!(!the_page_was_the_last_thing_pressed(&[], &placements, &[], false));
         assert!(
-            the_page_was_the_last_thing_pressed(std::slice::from_ref(&release), &placements, true),
+            the_page_was_the_last_thing_pressed(
+                std::slice::from_ref(&release),
+                &placements,
+                &[],
+                true
+            ),
             "and a release is not a press"
         );
 
-        assert!(the_page_was_the_last_thing_pressed(&[press(200.0, 200.0)], &placements, false));
-        assert!(!the_page_was_the_last_thing_pressed(&[press(20.0, 20.0)], &placements, true));
+        assert!(the_page_was_the_last_thing_pressed(
+            &[press(200.0, 200.0)],
+            &placements,
+            &[],
+            false
+        ));
+        assert!(!the_page_was_the_last_thing_pressed(&[press(20.0, 20.0)], &placements, &[], true));
         // The last press in the frame is the one that decides, which is the same rule said about a
         // frame that carried two.
         assert!(the_page_was_the_last_thing_pressed(
             &[press(20.0, 20.0), press(200.0, 200.0)],
             &placements,
+            &[],
             false
         ));
     }
@@ -3760,14 +3799,60 @@ mod tests {
             pressed: true,
             modifiers: egui::Modifiers::default(),
         };
-        assert_eq!(the_page_pressed(&[press(egui::pos2(150.0, 50.0))], &panes), Some(2));
-        assert_eq!(the_page_pressed(&[press(egui::pos2(50.0, 50.0))], &panes), Some(1));
+        assert_eq!(the_page_pressed(&[press(egui::pos2(150.0, 50.0))], &panes, &[]), Some(2));
+        assert_eq!(the_page_pressed(&[press(egui::pos2(50.0, 50.0))], &panes, &[]), Some(1));
         assert_eq!(
-            the_page_pressed(&[press(egui::pos2(110.0, 50.0))], &panes),
+            the_page_pressed(&[press(egui::pos2(110.0, 50.0))], &panes, &[]),
             None,
             "between them"
         );
-        assert_eq!(the_page_pressed(&[], &panes), None);
+        assert_eq!(the_page_pressed(&[], &panes, &[]), None);
+    }
+
+    /// `task-2317`: a press on a node drawn in front of a page is not a press on the page, so the page
+    /// behind neither takes the keyboard nor counts as the last thing pressed, and the front node's header
+    /// can be dragged.
+    #[test]
+    fn a_press_on_a_node_in_front_of_a_page_is_not_a_press_on_the_page() {
+        let behind = Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::splat(200.0));
+        let front = Rect::from_min_size(egui::pos2(100.0, 100.0), egui::Vec2::splat(200.0));
+        let mut page = BrowserPlacement::whole(1, behind, false);
+        page.over = vec![front];
+        let press = |at: egui::Pos2| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::default(),
+        };
+        let pages = [page];
+        assert_eq!(the_page_pressed(&[press(egui::pos2(150.0, 110.0))], &pages, &[]), None);
+        assert!(!the_page_was_the_last_thing_pressed(
+            &[press(egui::pos2(150.0, 110.0))],
+            &pages,
+            &[],
+            true
+        ));
+        assert_eq!(the_page_pressed(&[press(egui::pos2(50.0, 50.0))], &pages, &[]), Some(1));
+    }
+
+    /// `task-2317`: a press on a menu row drawn over a page is the menu's, so the page neither takes the
+    /// keyboard nor makes the window close the menu before the row sees its release.
+    #[test]
+    fn a_press_on_a_menu_over_a_page_is_not_a_press_on_the_page() {
+        let area = Rect::from_min_size(egui::pos2(0.0, 40.0), egui::Vec2::splat(400.0));
+        let menu = Rect::from_min_size(egui::pos2(60.0, 20.0), egui::vec2(180.0, 140.0));
+        let pages = [BrowserPlacement::whole(7, area, true)];
+        let press = |at: egui::Pos2| egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::default(),
+        };
+        let on_the_row = press(egui::pos2(120.0, 130.0));
+        assert_eq!(the_page_pressed(std::slice::from_ref(&on_the_row), &pages, &[menu]), None);
+        assert!(!the_page_was_the_last_thing_pressed(&[on_the_row], &pages, &[menu], false));
+        let beside = press(egui::pos2(300.0, 130.0));
+        assert_eq!(the_page_pressed(std::slice::from_ref(&beside), &pages, &[menu]), Some(7));
     }
 
     /// `task-2263`: the Designer's page and a browser tab side by side, and a press on the tab's address field,
