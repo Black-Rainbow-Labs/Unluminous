@@ -4142,6 +4142,8 @@ use unluminous_jupyter::nbformat::CellKind;
 /// while a name here is neither driven nor excluded.
 const EVERY_VARIANT: &[&str] = &[
     "NewWindow",
+    "NextWindow",
+    "PreviousWindow",
     "Notebook",
     "NewNotebook",
     "NewRustNotebook",
@@ -4254,6 +4256,8 @@ const EVERY_VARIANT: &[&str] = &[
 fn variant_name(action: &Action) -> &'static str {
     match action {
         Action::NewWindow => "NewWindow",
+        Action::NextWindow => "NextWindow",
+        Action::PreviousWindow => "PreviousWindow",
         Action::OpenFolder => "OpenFolder",
         Action::CreateProject => "CreateProject",
         Action::OpenFile => "OpenFile",
@@ -4542,6 +4546,14 @@ const CANNOT_BE_DRIVEN: &[(&str, &str)] = &[
         "it opens the microphone, which a test's window never does; `alt_v_presses_the_microphone_and_the_keymap_can_move_it` drives it",
     ),
     ("new-window", "it starts a second Unluminous process"),
+    (
+        "next-window",
+        "it brings another Unluminous running on this machine to the front, which takes the keyboard; `services::other_windows` tests the order",
+    ),
+    (
+        "previous-window",
+        "it brings another Unluminous running on this machine to the front, which takes the keyboard; `services::other_windows` tests the order",
+    ),
     ("open-recent", "it starts a second Unluminous process on the project it names"),
     (
         "open-folder",

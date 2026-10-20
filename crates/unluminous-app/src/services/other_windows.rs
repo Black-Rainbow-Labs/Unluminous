@@ -4,7 +4,7 @@
 //! happens. I'd expect they'd switch between the two windows."* macOS's own `Cmd+`` moves between the windows
 //! of **one process**, and every Unluminous project window is a process of its own, so the system had no other
 //! window to move to. `Next Window` and `Previous Window` are menu entries on that chord instead, and an app's
-//! own binding is what macOS hands the press to: Photoshop and the JetBrains IDEs keep `Cmd+`` for their own
+//! own binding is what macOS hands the press to: Photoshop and the reference editor keep `Cmd+`` for their own
 //! window switching the same way.
 //!
 //! The windows are the instance files every window writes for the command line (`unluminous_cli::instances`),

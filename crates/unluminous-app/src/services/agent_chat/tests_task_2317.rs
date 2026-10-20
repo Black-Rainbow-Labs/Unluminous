@@ -70,8 +70,11 @@ fn the_folder_an_earlier_version_wrote_for_every_window_is_not_used() {
     let plugin = a_folder("legacy");
     let project = a_folder("legacy-project");
     let other = a_folder("legacy-other");
-    std::fs::write(plugin.join(Configuration::FILE), format!("folder = {}\n", other.display()))
-        .expect("the file");
+    crate::services::store::write_atomically(
+        &plugin.join(Configuration::FILE),
+        format!("folder = {}\n", other.display()).as_bytes(),
+    )
+    .expect("the file");
     let chat = a_pane(&plugin, &project);
     assert_eq!(chat.working_folder(), Some(project.clone()));
     for folder in [plugin, project, other] {
