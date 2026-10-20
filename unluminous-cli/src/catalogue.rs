@@ -674,7 +674,7 @@ pub const FILE: Flag = option(
 
 /// Whether a command takes [`FILE`], so the window shows the file before running it.
 pub fn acts_on_a_named_file(command: &Command) -> bool {
-    command.flags.iter().any(|flag| *flag == FILE)
+    command.flags.contains(&FILE)
 }
 
 const fn switch(name: &'static str, help: &'static str) -> Flag {

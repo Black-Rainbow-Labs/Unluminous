@@ -139,7 +139,7 @@ mod tests {
             for (at, named) in cell.split("**").enumerate().filter(|(at, _)| at % 2 == 1) {
                 let tool = format!("unluminous_{named}");
                 assert!(
-                    tools.iter().any(|name| *name == tool),
+                    tools.contains(&tool),
                     "the skill names {named}, and there is no {tool}"
                 );
                 // The commands after a tool belong to it, up to the next tool in the cell.
