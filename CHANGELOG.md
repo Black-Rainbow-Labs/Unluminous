@@ -6,6 +6,14 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.4.0 — 2026-10-20
+
+- Agents choose and call Unluminous's commands more accurately, measured on a 52 case eval (`task-2314`)
+- Two checks use contains, which clippy asks for (`task-2314`)
+- Rustfmt (`task-2314`)
+- The refusal from showing a named file is boxed, which clippy asks for (`task-2314`)
+- Accept the pictures where tab open now opens a tab of its own, and list batch and git diff with the client's commands (`task-2314`)
+
 ## 1.3.4 — 2026-10-20
 
 - Unluminous issues v20 (`task-2270`)
