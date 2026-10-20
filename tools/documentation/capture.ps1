@@ -89,38 +89,38 @@ $Opacity = 0.83
 
 # Where the things that are clicked rather than commanded sit, for a window of the size above.
 $Menu = @{
-    File    = @{ X = 129; Y = 18 }
-    Edit    = @{ X = 179; Y = 18 }
-    Code    = @{ X = 228; Y = 18 }
-    Find    = @{ X = 279; Y = 18 }
-    View    = @{ X = 329; Y = 18 }
-    Run     = @{ X = 377; Y = 18 }
-    Git     = @{ X = 420; Y = 18 }
-    Plugins = @{ X = 478; Y = 18 }
+    File    = @{ X = 56; Y = 18 }
+    Edit    = @{ X = 102; Y = 18 }
+    Code    = @{ X = 151; Y = 18 }
+    Find    = @{ X = 202; Y = 18 }
+    View    = @{ X = 252; Y = 18 }
+    Run     = @{ X = 302; Y = 18 }
+    Git     = @{ X = 346; Y = 18 }
+    Plugins = @{ X = 398; Y = 18 }
 }
-$FButton = @{ X = 1465; Y = 18 }
+$FButton = @{ X = 1383; Y = 18 }
 $Flyout = @{
-    Bold   = @{ X = 1551; Y = 57 }
-    Italic = @{ X = 1583; Y = 57 }
-    Red    = @{ X = 1575; Y = 91 }
-    Green  = @{ X = 1601; Y = 91 }
-    Blue   = @{ X = 1627; Y = 91 }
-    Centre = @{ X = 1583; Y = 136 }
+    Bold   = @{ X = 1467; Y = 58 }
+    Italic = @{ X = 1500; Y = 58 }
+    Red    = @{ X = 1492; Y = 94 }
+    Green  = @{ X = 1517; Y = 94 }
+    Blue   = @{ X = 1544; Y = 94 }
+    Centre = @{ X = 1499; Y = 139 }
 }
 # The explorer's first row, and how far apart the rows are.
 $ExplorerRow = @{ X = 110; Y = 123; Height = 34 }
 # The Database pane's tree, at the width `Use-TheLibrary` gives it. Each level's disclosure is one
 # indent further in and one row further down, and the rows are the same 34 points apart.
 $DatabaseTree = @{
-    X = 647; Y = 161; Height = 34; Indent = 12
+    X = 1474; Y = 276; Height = 34; Indent = 12
     # Where a row's name is rather than its disclosure, for a right click; and where `Show DDL` lands
     # on the menu that opens.
-    Label = 740
-    ShowDdl = @{ X = 803; Y = 341 }
+    Label = 1600
+    ShowDdl = @{ X = 1455; Y = 472 }
 }
 # A page a plugin contributed, in the Settings window's own list. `modal open settings --page` names
 # the five Unluminous itself has; these are reached the way a person reaches them.
-$SettingsPage = @{ Database = @{ X = 520; Y = 688 } }
+$SettingsPage = @{ Database = @{ X = 147; Y = 704 } }
 
 # ---------------------------------------------------------------------------------------------
 # Driving the window.
@@ -191,6 +191,9 @@ function Start-TheWindow {
         & $Cli --instance $script:Window status *> $null
         if ($LASTEXITCODE -eq 0) {
             Q window size --width $Width --height $Height | Out-Null
+            # A fresh Unluminous draws on a bundled picture once the background is switched on, and
+            # the gallery is of the desktop showing through, so the picture is taken away.
+            Q background use | Out-Null
             Settle 1000
             Write-Output "  pid $($script:Window), $Width by $Height points"
             return
@@ -247,6 +250,7 @@ function Reset-Window {
     Try-Q panel reset
     Try-Q theme set unluminous/dark
     Try-Q settings set appearance.background.opacity $Opacity
+    Try-Q background use
     # The status bar keeps the last thing it was told, and what it was told during a reset is that
     # the panels went back where they started, which is true and is not what a picture is about.
     Try-Q window message
@@ -267,6 +271,7 @@ function Use-TheLibrary {
     Q plugins pane database/explorer --show | Out-Null
     Settle 700
     Q panel size database/explorer --width 1180 | Out-Null
+    Q plugins run database use library | Out-Null
     Q plugins run database connect library | Out-Null
     Settle 1200
 }

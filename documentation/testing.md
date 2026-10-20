@@ -4,8 +4,8 @@
 cargo test
 ```
 
-**3,424 tests** across 36 binaries, in four layers, and a change should leave all four green.
-**They run on the machine that makes the change, and nowhere else.** There is no continuous
+Thousands of tests across more than thirty binaries, in four layers, and a change should leave all four
+green. **They run on the machine that makes the change, and nowhere else.** There is no continuous
 integration here, by choice: the release scripts run the suite before they will tag anything, so a
 release cannot be made from a checkout whose tests do not pass, and that is the gate.
 
@@ -13,6 +13,21 @@ release cannot be made from a checkout whose tests do not pass, and that is the 
 once per test binary and **cleared first**, so two `cargo test` runs at once clear each other's
 fixture and the failures land on whichever tests happened to be copying at the time. On this machine
 that reads as three restore-a-project tests failing for no reason either checkout can explain.
+
+**Heavy cargo commands run on 80% of the processors.** `tools/capped.ps1` puts a command on 19 of the
+24 logical processors of the machine this is developed on, by setting an affinity mask that every child
+process inherits, and it sets `CARGO_BUILD_JOBS` and `RUST_TEST_THREADS` to match. It also takes `CC`
+out of the environment, because a `CC` naming `cl.exe` with no `INCLUDE` beside it stops SQLite from
+compiling.
+
+```sh
+pwsh tools/capped.ps1 cargo test -p unluminous-app --test '*' --no-fail-fast
+pwsh tools/capped.ps1 node tools/test.mjs
+```
+
+`UNLUMINOUS_CPU_PERCENT=100` removes the limit. A job object rate cap does not work on that machine,
+because the Microsoft Store `pwsh` lets every child leave every job, which is why the limit is an
+affinity mask. `tasks/task-2240-release-speed-tdd.md` has the measurements.
 
 ## 1. The crates with no window
 
@@ -27,7 +42,10 @@ tested at all.
 | `unluminous-git` | real repositories built in a temporary folder, with **git** asked what happened afterwards |
 | `unluminous-dap` | scripted adapters with no process behind them |
 | `unluminous-db` | a scripted PostgreSQL server on `127.0.0.1:0` replaying fixed bytes, and real SQLite files |
-| `unluminous-chat` | a scripted server replaying fixed bytes in chunked writes, and the recorded output of real runs of both agents |
+| `unluminous-lsp` | a scripted language server for each of the two adapters, and the real `rust-analyzer` and `tsserver` when they are installed |
+| `unluminous-chat` | a scripted server replaying fixed bytes in chunked writes, and the recorded output of real runs of the agents |
+| `unluminous-jupyter` | the notebook file, the percent text and the kernel. The kernel tests start a real kernel when the machine has a Python with `ipykernel` and `jupyter_client`, and print that they did nothing and pass when it has not. `UNLUMINOUS_REQUIRE_KERNEL=1` makes that a failure, and the release script sets it |
+| `unluminous-voice` | the engines and the wake word, fed recorded audio with no microphone. `UNLUMINOUS_REQUIRE_VOICE=1` makes a missing speech model a failure |
 | `unluminous-cli` | the catalogue, the wire format, the documentation tests, the tool preamble budget, and what an agent equipped with two areas is given |
 
 **Layout tests measure through a fixed width stub**, so their expected numbers are arithmetic a reader
@@ -60,7 +78,7 @@ alone.
 
 ## 3. The whole window, rendered
 
-**Fourteen binaries** under `crates/unluminous-app/tests/`, each building the entire application,
+**Seventeen binaries** under `crates/unluminous-app/tests/`, each building the entire application,
 feeding it real events, rendering it through the graphics card and writing a PNG for every test.
 
 | | |
@@ -71,6 +89,9 @@ feeding it real events, rendering it through the graphics card and writing a PNG
 | `canvas_realm.rs` | the Realm |
 | `plugins_board_and_chat.rs` | Agent-Tasks and Agent-Chat |
 | `plugins_database.rs` | the Database plugin |
+| `notebooks.rs` | Jupyter notebooks, with a real kernel when the machine has one |
+| `designer.rs` | the Designer pane, its notes and the request sent to Agent-Chat |
+| `completion_semantic.rs` | completion with a language server, driven by a scripted server, and the structural answer that needs none |
 | `syntax_and_plugins_basic.rs` | the colouring, and what each language plugin claims |
 | `command_line.rs` | the channel, driven against a real window |
 | `terminal.rs` | the grid, the tabs, the colours |
@@ -89,7 +110,7 @@ cargo test -p unluminous-app --test '*' --no-fail-fast
 UPDATE_SNAPSHOTS=1 cargo test -p unluminous-app --test '*'
 ```
 
-**`--no-fail-fast`, always.** Cargo stops at the first binary that fails, and these are fourteen
+**`--no-fail-fast`, always.** Cargo stops at the first binary that fails, and these are seventeen
 separate binaries, so a run without that flag reports one red test while two hundred are simply
 untested.
 
@@ -101,9 +122,15 @@ has the menus in the bar along the top of the screen and the window buttons at t
 both in Unluminous's own title bar, and the text is Arial rather than Helvetica because Helvetica is
 not installed there. macOS reads `tests/snapshots` and Windows `tests/snapshots/windows`.
 
-**A run leaves a receipt** in `_agent_output/window-suite/`, one file a binary naming the commit it
-ran at, written when the binary starts and deleted the instant anything in it panics. Both release
-scripts read it and refuse to publish while one is missing or names a commit HEAD is not built on. The
+**A run leaves a receipt** in `_agent_output/window-suite/` of the main checkout, one file a binary and
+commit named `<binary>@<commit>.txt`, written when the binary starts and deleted the instant anything
+in it panics. The folder is shared by every worktree, so a ticket running the suite in its own
+worktree leaves receipts the release reads after the merge, and two tickets running the suite at once
+do not overwrite each other. A version bump does not make a receipt stale, and neither does a commit
+that only ran `cargo fmt`, because `tools/window-suite.mjs` counts a `.rs` file that is exactly
+rustfmt of the receipt's version as unchanged. `agent_board` is the one binary no receipt is asked of,
+because all of its tests are ignored. Both release scripts read the receipts and refuse to publish
+while one is missing or names a commit HEAD is not built on. The
 suite stays manual, because a graphics card and a person opening a changed image are both needed and a
 script must not satisfy the second; what stops being possible is releasing from a commit the suite has
 never seen.
@@ -121,7 +148,7 @@ Each is the answer to a test failing for a reason that was not a fault in Unlumi
   time — the name is what keeps them apart.
 - **Nothing runs to quiet, anywhere.** Running to quiet gives the window four steps to settle and
   **panics** otherwise, which is right for a settled window and wrong the moment anything is still
-  being worked on. It was advice and it is a mechanism now: every one of the 1,023 places a window
+  being worked on. It was advice and it is a mechanism now: every place a window
   test draws a frame calls one helper that asks the window to run again while it keeps wanting to be
   drawn, and then returns quietly. The test's own assertion is what reports a window that never
   settled, which names what was expected rather than a step count from inside a helper.
@@ -148,7 +175,33 @@ own.
 
 The six end-to-end tests that start a real agent cost money and minutes and are `#[ignore]`d.
 `tools/nightly.ps1 -Register` schedules them on a machine that has a key, and says plainly when it
-covered nothing.
+covered nothing. It runs `tools/prune-target.ps1` after its run, whether the tests passed or failed.
+
+The live tests for restoring a conversation run the real agents and are `#[ignore]`d as well:
+`cargo test -p unluminous-app --lib live_restore -- --ignored --nocapture --test-threads=1`. They are
+run again only when the resume path or an agent's output changes.
+
+## Running only what a change reaches
+
+`node tools/test.mjs` runs clippy and the tests for the crates whose inputs have changed, and nothing
+else. Each crate has a hash of every tracked file it can read, including the files of the workspace
+crates it depends on, read as git would commit them. A crate that has already passed on exactly that
+hash is skipped. A change to `unluminous-core` changes the hash of `unluminous-core`, `unluminous-lsp`
+and `unluminous-app`, so only the crates a change can reach run again.
+
+It checks formatting first, in about a second, because formatting was the most common reason a release
+was refused. A pass is recorded in `_agent_output/test-receipts/` of the main checkout, wherever it ran,
+so running `pwsh tools/capped.ps1 node tools/test.mjs` in a worktree after committing does the
+release's testing for every crate the ticket did not touch afterwards.
+
+| | |
+|---|---|
+| `node tools/test.mjs --dry-run` | print the plan and run nothing |
+| `node tools/test.mjs --all` | every crate, whatever has passed before |
+| `node tools/test.mjs --no-clippy` | tests only |
+| `release.ps1 -FullTests` | the release runs every crate |
+
+`tasks/task-2295-release-reliability-tdd.md` lists what made releases run again.
 
 ## 4. The real application
 
@@ -234,11 +287,16 @@ pwsh tools/release.ps1       # Windows
 | `node tools/changelog.mjs --check` | the changelog is written from the ticket-prefixed commits, so it cannot fall behind |
 | `node tools/contrast.mjs --check` | every ordinary-text pair in the palette is at 4.5:1 or better, and no pair got worse |
 | `node tools/window-suite.mjs --check` | the window suite ran at this commit |
-| the test suite | |
+| `node tools/test.mjs` | clippy and the tests for every crate whose inputs changed since it last passed |
+| the macOS build | built, signed and notarised on this machine whenever its preflight passes. `-SkipMacos` turns it off |
 
 Then it bumps the version, rebuilds — which is what moves the build date the About box shows —
 reinstalls Unluminous on this machine, tags, pushes, and publishes the release with the installer
-attached.
+attached. It removes the build output cargo has superseded afterwards (`tools/prune-target.ps1`), and
+writes how long each step took to `_agent_output/release-timings/<version>.json`.
+
+A release that fails leaves the checkout clean: `Cargo.toml`, `Cargo.lock` and `CHANGELOG.md` are put
+back, so starting it again is never refused as dirty.
 
 On Windows it also runs `tools/unstick-keyboard.ps1` first, because a script that drives the real
 window presses a key by sending a key-down and releases it by sending a key-up, and Windows believes

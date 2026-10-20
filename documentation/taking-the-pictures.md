@@ -125,6 +125,18 @@ All four were found by opening every picture, which is the one step this file ca
   title bar**, which moved the `F` button — and the `F` button is one of the few things clicked by
   position. It is removed on reset, which also keeps the title bar the same in every picture.
 
+## Two things the 1.2 redesign changed, and what each one is now
+
+- **A fresh Unluminous draws on a bundled picture once the background is switched on.** `--opacity`
+  switches it on, so every picture came out with a photograph of mountains inside the window and the
+  backdrop only round its edge. The gallery is about the desktop showing through, so the window is
+  told `background use` with no name as soon as it opens, and again on every reset.
+- **The title bar, the rail and the Database pane were redrawn**, so every position the script clicks
+  moved. `$Menu`, `$FButton`, `$Flyout`, `$DatabaseTree` and `$SettingsPage` were measured again on
+  1.2.2 off a picture the script wrote, in the window's own points. The Database pictures also need
+  `plugins run database use library`, because a window now lists the Agent Tasks board as a data
+  source too, and `open` opens a table on the source the pane is pointed at.
+
 ## The one thing `Reset-Window` cannot put back
 
 The Database plugin's workspace. A grid and a console are its own tabs and no command closes them, so

@@ -27,18 +27,20 @@ values:
 
 Each of the two additions came with a check and a test rather than quietly, which is what the field
 is for. It is still the line a later version widens again, the day a plugin wants to *do* something:
-run a formatter, talk to a language server, add a tool window.
+run a formatter or add a tool window. A plugin can already ask for a language server, but only by
+naming one of the two adapters that shipped in the binary (see `language.server` below), so the plugin
+still executes nothing.
 
 ## What ships
 
-Sixteen plugins are bundled inside the binary, so an Unluminous that has just been installed colours a
+Eighteen plugins are bundled inside the binary, so an Unluminous that has just been installed colours a
 `.rs` file the first time it opens one, and so that the marketplace has something in it with no
 network involved.
 
 | kind | |
 |---|---|
 | `language` (twelve) | JavaScript, TypeScript, Rust, Python, CSS, HTML, JSON, YAML, TOML, SQL, shell, Mermaid |
-| `ui` (three) | Agent-Chat, Agent-Tasks, Database |
+| `ui` (five) | Agent-Chat, Agent-Tasks, Database, Designer, Realm |
 | `theme` (one) | Themes Bundle 1, carrying five |
 
 ## Where they come from, and in what order
@@ -98,9 +100,11 @@ editor. A list is comma separated, a flag is `true` or `false`, and a colour is 
 | `language.brace_definitions` | the one heuristic: a name followed by a brace defines something, for the method a class never puts a keyword in front of |
 | `language.export_keyword` | what makes a definition importable — `export`, `pub` |
 | `language.imports`, `.import_keywords`, `.import_extensions`, `.import_index`, `.import_omit_extension`, `.path_separator`, `.source_roots`, `.path_roots` | how an import is written in this language, for the completion inside one |
-| `language.renders` | the built-in renderer this language's files are drawn with |
-| `run.file`, `run.project` | how one file of this language runs, and which built-in project detector applies |
-| `debug.adapter` | which built-in debugger this language's files use |
+| `language.containers`, `.records`, `.enums`, `.annotation`, `.returns`, `.visibility`, `.kinds`, `.members`, `.receivers` | the structural reading: which blocks hold members and of what kind, how a type is written beside a name and after a parameter list, who may use a definition, and what reaches a member. Completion reads these to offer the members of a type and to show what a function takes and returns. Every key is optional. |
+| `language.server`, `.server_command`, `.server_args` | which language server adapter the language uses, and optionally the program and arguments that start it. `lsp` speaks the Language Server Protocol and `tsserver` speaks TypeScript's own protocol. Rust names `lsp`, which finds `rust-analyzer` in the project's toolchain, on `PATH` or from rustup. JavaScript and TypeScript name `tsserver`, which finds the project's own `node_modules/typescript` or a global one. The adapter is checked against the two that shipped in the binary. |
+| `language.renders` | the renderer, built into Unluminous, this language's files are drawn with |
+| `run.file`, `run.project` | how one file of this language runs, and which project detector built into Unluminous applies |
+| `debug.adapter` | which debugger built into Unluminous this language's files use |
 | `theme.name` | what the colour scheme is called |
 | `theme.keyword`, `.builtin`, `.function`, `.type`, `.string`, `.number`, `.comment`, `.operator`, `.text` | one colour a token. A token with no colour is left as ordinary text. This is a language plugin's own scheme, and it is what colours its files until a **theme** that names all nine is chosen. |
 
@@ -138,7 +142,7 @@ One plugin carries several.
 | `theme.<id>.name` | what a person reads in the list. Required. |
 | `theme.<id>.dark` | true unless it says otherwise. False makes a light theme, which inherits every colour it does not name from Unluminous Light, its code colours included, rather than from Unluminous Dark. |
 | `theme.<id>.icons` | which drawn icon set the rail and the explorer use — `material` or `classic` |
-| `theme.<id>.ui.<role>` | one colour a role, by the names in the palette. A role that is not named keeps the built-in theme's of the same darkness, and a role Unluminous has not got is refused with the list. |
+| `theme.<id>.ui.<role>` | one colour a role, by the names in the palette. A role that is not named keeps the colour of the theme that comes with Unluminous in the same darkness, and a role Unluminous has not got is refused with the list. |
 | `theme.<id>.syntax.<token>` | the nine token colours, which then colour every language at once. **All nine or none**: eight would leave one line of code drawn in two schemes. |
 
 ## Four keys name something built into the binary
@@ -149,7 +153,7 @@ this version does not have is refused with a message rather than loading as a la
 quietly never draw, are never noticed, or offer a Debug button that never works. The most a
 third-party manifest can do is name something that shipped in the binary, visibly.
 
-`ui.chrome` is the fifth of that shape, and `theme.<id>.icons` the sixth.
+`ui.chrome` is the fifth of that shape, `language.server` the sixth, and `theme.<id>.icons` the seventh.
 
 ## What the tokeniser does with a grammar
 
@@ -161,7 +165,9 @@ not a keyword.
 
 Those last two are a **heuristic and are meant to be one**. `Promise.all(` colours `all` as a function
 and `Promise` as a type without Unluminous understanding a single thing about JavaScript. Real
-understanding is a language server, and that is not what this is.
+understanding is a language server. Unluminous can ask one for members, signature help and
+auto import (see below), but it answers from the tokeniser first and asks the server second, so the
+colours never wait for a program that may be slow or missing.
 
 **Nothing in the editor crate knows what a colour scheme is.** A token says what a stretch of text
 *is*, and the window turns it into a colour: it runs the tokeniser, maps each token through the
@@ -225,6 +231,16 @@ plugin that claims its language — the mirror of what a fence in a Markdown doc
 `<style>` block is coloured exactly as a `.css` file is, and switching the CSS plugin off withdraws
 the colouring inside `<style>` in the same frame. One level deep: the embedded scan's own list is
 discarded.
+
+## A language server is optional, and off until it is asked for
+
+`crates/unluminous-lsp` is a client for a language server. A language plugin turns it on for its files
+with `language.server`, and the switch `Ask language servers (rust-analyzer, tsserver)` in the Suggestions card of
+`Settings -> Editor`, which is `editor.servers` (`automatic` or `off`), is the switch for the whole window. It is `off` by default, and `off` stops a server that is running. A server
+is a separate program, so it is looked for where the toolchain puts it and the window says what it
+found. It starts on the second frame after a file of its language opens, and a server that has not
+answered `initialize` in time is marked failed. `unluminous-cli status --section servers` says what
+each server is doing. Nothing is fetched from the network.
 
 ## A language that has a picture
 

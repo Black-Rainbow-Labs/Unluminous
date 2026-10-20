@@ -6,8 +6,29 @@ desktop show through its background while the text stays solid.
 
 It is also an editor you can write code in — line numbers, a tab per file, syntax colouring from
 twelve language plugins, git in full, a debugger, run configurations, completion, go to definition,
-find all references and rename across the project — and an **AI-first IDE**, which is a claim with a
+find all references and rename across the project, notebooks, a database pane and a canvas — and an
+**AI-first IDE**, which is a claim with a
 definition rather than a slogan.
+
+## What it contains
+
+- **18 plugins.** Twelve languages (CSS, HTML, JavaScript, JSON, Mermaid, Python, Rust, Shell, SQL, TOML,
+  TypeScript and YAML), five panes (Agent-Chat, Agent-Tasks, Database, Designer and Realm) and one theme
+  bundle.
+- **8 themes.** Unluminous Glass, Unluminous Dark and Unluminous Light, and the five in the bundle: Islands
+  Dracula Colorful, Material Palenight, Material Deep Ocean, Monokai Pro and One Dark.
+- **A canvas with 11 node kinds.** [The Realm](the-realm.md) is an
+  infinite canvas of terminals, web pages, folders, editors, chats, boards, pictures, sounds, videos, notes
+  and whiteboard shapes.
+- **Two agent panes and four coding agents.** [Agent-Chat and Agent-Tasks](agent-panes.md) run Claude Code,
+  Codex, OpenCode and Pi, or an address that speaks OpenAI chat completions, Anthropic messages or
+  Responses. [The Designer](designer.md) is for HTML designs and notes an agent answers.
+- **A database pane**, [the Database plugin](database.md), for PostgreSQL, SQLite and Inillucent.
+- **Jupyter notebooks** that open from `.ipynb` files, with Python and Rust kernels.
+- **Speech to text** that fills the Agent-Chat prompt, and wakes on the word "Sable".
+- **292 commands**, 29 areas and 7 commands with no area, all reachable through `unluminous-cli` and the MCP
+  server. The default MCP shape is 34 tools of about 31,478 tokens, and offering every command as its own
+  tool is 289 tools of about 81,931 tokens.
 
 ## The claim
 

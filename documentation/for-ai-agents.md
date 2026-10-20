@@ -11,7 +11,9 @@ no test is an unfinished feature. There is no lane where one of the two is optio
 
 ## Installing it into an agent
 
-`Settings -> Tools -> MCP`, then **Install for Claude Code** or **Install for Codex**. Restart the
+`Settings -> Tools -> MCP`, then **Install for Claude Code** or **Install for Codex**. OpenCode and Pi
+are connected as well by `unluminous-cli setup` (see below), and `unluminous-cli mcp config` prints the
+configuration for an agent that has no button of its own. Restart the
 agent and it can drive Unluminous: open files, read and change the text, run things in the terminal,
 search the project, work the Git menu, drive the debugger, and take a screenshot of the real window
 and look at it.
@@ -69,14 +71,17 @@ is how "everything is reachable" quietly stops being true.
 
 | | tools | tokens |
 |---|---:|---:|
-| `mcp.tools = grouped`, every area | 28 | **27,011** |
-| `mcp.tools = every`, every area | 213 | 58,579 |
-| `--areas editor,git`, grouped | 7 | **6,218** |
-| `--areas editor`, grouped | 6 | 5,439 |
+| `mcp.tools = grouped`, every area | 34 | **31,478** |
+| `mcp.tools = every`, every area | 289 | 81,931 |
+| `--areas editor,git`, grouped | 7 | **5,800** |
+| `--areas editor`, grouped | 6 | 5,068 |
 
-Offered one a command, the catalogue is 213 tool definitions in an agent's context on every
-conversation, which is every command but the one that is held back. That costs more than twice what
-28 area tools cost, and those 28 still carry every command's usage line and summary.
+These were measured on 1.2.2 with `unluminous-cli mcp tools --count`. The grouped shape is one tool for
+each of the 29 areas, one tool for the commands with no area, and four narrow tools for definition,
+references, rename and replace. Offered one a command, the catalogue is 289 tool definitions in an
+agent's context on every conversation, which is every command but the one that is held back. That
+costs more than two and a half times what the 34 grouped tools cost, and those 34 still carry every
+command's usage line and summary.
 `unluminous-cli mcp tools --count` prints both figures against the catalogue as it is now, so the
 choice is never made against a number in a comment. `mcp.tools = every` is there for a client that
 permits tools by name and would rather pay.
@@ -181,6 +186,23 @@ platform. **`input` is the last resort, not the first**: a command that names th
 
 [Taking the pictures](taking-the-pictures.md) is the whole documentation gallery driven that way,
 which is the working example.
+
+## Setting it up, and the code index
+
+`unluminous-cli setup` is the one command that connects an agent. It puts `unluminous-cli` on the path,
+adds the `unluminous` entry to Claude Code, Codex, OpenCode and Pi, names the API keys that are set, and
+starts `mcp serve` to check that it answers. Running it twice changes nothing. An entry that points at
+another program is left alone unless `--force` is given, and `--check` changes nothing. The Windows
+installer runs it, and on macOS and Linux the Set Up Unluminous dialog runs the same steps. A test never
+starts a real agent. [The command line](command-line.md#unluminous-cli-setup) has the rest.
+
+`unluminous-cli search` and the MCP tool `unluminous_search` give an agent the lines ripgrep would give,
+27 to 136 times faster, from an index kept current as files change. `search find` takes a regular
+expression or a question in plain English, `search def` and `search refs` find a name's definitions and
+uses, `search fragment` returns the function around a line, `search outline` lists a file's definitions,
+and `search files` finds files. On 121 held out tasks an agent matched ripgrep's accuracy at about the
+same token cost, so it is a faster search and not a different one. `tools/search-eval/SCORECARD.md` has
+the measurements.
 
 ## A front door of its own
 

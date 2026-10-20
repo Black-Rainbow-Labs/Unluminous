@@ -1,8 +1,8 @@
 # The Realm
 
-A fifth panel holding an infinite canvas, and ten kinds of node that can live on it: a terminal, a web
-page, a folder tree, a file editor, an agent chat, the task board, a picture, a note, a sound and a
-video. Nodes are wired to each other, and **a connection is what lets an agent running in a terminal
+A fifth panel holding an infinite canvas, and eleven kinds of node that can live on it: a terminal, a web
+page, a folder tree, a file editor, an agent chat, the task board, a picture, a note, a sound, a
+video and a whiteboard shape. Nodes are wired to each other, and **a connection is what lets an agent running in a terminal
 node act on the node it is wired to**.
 
 **A realm is a file in the project.** Each one is a `.realm` file, kept in `.realm-files/` unless it
@@ -12,7 +12,6 @@ the repository. A project can hold as many as it likes, and one of them is open 
 `View -> Realm` opens the panel, `Cmd/Ctrl+Shift+M` maximises whatever panel has the keyboard, and
 `unluminous-cli realm` drives the whole of it. [What it looks like](overview.md#the-realm) has a
 picture.
-[What it looks like](overview.md#the-realm) has a picture.
 
 ## Why it is core rather than a plugin
 
@@ -54,7 +53,21 @@ zoom is the ratio. The point it is about is remembered with it, because the poin
 glide. And `realm camera --zoom` sets both at once, because a script that had to wait out an animation
 to read back what it just set is a script with a race in it.
 
-## The ten kinds of node
+## The bar and the nodes
+
+The realm bar is 50 points tall. The open realms are pills in a carved track with the one showing raised,
+`+N more` sits at the end of the track, `New Realm` is a round chip after the last pill, and the zoom
+controls are two chips and the reading in a carved track at the right. A node is a card with 16 point
+corners in the same gradient the chat card uses. Its header has the kind's mark in a carved disc and the
+node's name. The realm manager and the Add a node dialog use the same dialog furniture as the New Data
+Source dialog.
+
+**A node's place in the stacking order belongs to the model.** `Realm::nodes` is the drawing order, and the
+node menu's `Arrange` rows and
+`realm arrange <node> front|forward|backward|back` move a node in it and write the order to the realm file.
+A click chooses a node and does not raise it, so `Send Backward` lasts until it is changed again.
+
+## The eleven kinds of node
 
 | | What it is |
 |---|---|
@@ -68,6 +81,7 @@ to read back what it just set is a script with a race in it.
 | `note` | a Markdown file, with the three view buttons in the node's header |
 | `audio` | an MP3, WAV, FLAC, OGG, M4A or AAC file, with a play button, a seek bar, the time and a volume |
 | `video` | an MP4, M4V, MOV or WebM file, played in the window's web view |
+| `shape` | a whiteboard shape with words in it, and no header |
 
 `realm add image <file>`, `realm add audio <file>` and `realm add video <file>` make one from a file in
 the project, and so does dropping a file from the explorer on the canvas. Choosing `Image`, `Audio` or
@@ -94,6 +108,16 @@ so a page can load the one file its node names and nothing else, with a `Range` 
 the video can seek. The page reports where it is by setting its own title, which the window reads.
 `realm play`, `pause`, `seek` and `volume` drive a sound or a video the same way.
 
+**A shape is a whiteboard node with no header.** There are nine outlines: rectangle, rounded, circle,
+triangle, diamond, hexagon, parallelogram, star and sticky. A shape has its words, a colour of its own or
+none (none follows the theme's card colour), how the words are aligned and their size. The words are typed
+into a text box in the shape; Escape, a click outside or `Ctrl+Enter` ends typing. The colour picker floats beside the
+shape so it can be watched while the colour is dragged, and nothing is written until Apply. The Add a node
+dialog's Shape row opens a flyout of the nine outlines. `realm add shape <kind> --text`, `realm shape <node>
+<command>` and `realm connect --from-point --to-point` are the command line half. A wire joins a point on a
+shape's outline and not a port, so a connection to a shape leaves and arrives along the way out of that
+point. A node that is not a shape has two points, input and output.
+
 **A kind this Unluminous does not know is kept.** A node a newer build wrote is drawn as a placeholder
 naming its kind, can be moved and resized, and is written back with every key it was read with.
 
@@ -113,11 +137,29 @@ is on is written down, because a canvas whose agents all reopened the newest wou
 several views of one.
 
 **A tasks node draws the window's one board**, and is deliberately not per-node: the board is one
-SQLite file with one watchdog behind it, so a second instance would be a second connection to the same
+Inillucent file with one watchdog behind it, so a second instance would be a second connection to the same
 tickets, each refreshing without the other. Two tasks nodes show the same board, which they should.
 
 **One browser node renders at a time**, because a window has one native child view. The others draw
 the toolbar and say the page is showing in another node.
+
+**A browsing session survives a restart.** The browser profile is in `<settings folder>/browser`. Session
+cookies, which the engine never writes down, are kept encrypted in `browser/session-cookies` and given back to
+a new view before it loads its page. Each tab's back and forward list is saved, a node's in the realm's
+sidecar and a tab in the editing area in `.unluminous/browser-tabs.conf`. The addresses visited in every
+project are kept in `browser-history.conf` and offered under every address field.
+
+**A browser node can show one element of its page.** The crosshair at the right of the node's toolbar, the
+page's own right click entry `Select Element` on Windows, or `realm browser <node> pick` opens a picker in the
+page. The chosen element is saved in the realm file as an address and a CSS selector. While the node is on
+that address the page shows only that element, scaled by one factor in both directions to fill the node. The
+page is given no way to call Unluminous, and Unluminous asks the picker for its answer every 150 ms while it
+is open.
+
+**While the canvas zoom moves, a browser node shows a picture of its page.** The engine lays a page out
+again after every change of zoom, which put a layout a few frames old in the wrong rectangle. On Windows the
+window takes a picture of the page when a zoom starts and draws it in the node until the camera stops. The
+page is shown again a short time after that. On macOS the live page is used as before.
 
 ## Connections
 
@@ -153,6 +195,10 @@ that makes a new one. The `View` menu and the `Realms...` dialog have `New Realm
 - **Duplicate** writes a copy with fresh ids, so two realms never share a node.
 - **Delete** goes through the explorer's delete, so on Windows the file goes to the Recycle Bin.
 
+A realm bar shows the realms that are open as tabs, saved as `realm.tabs` in `workspace.conf`. Closing a
+tab keeps its file, and the last tab cannot be closed. The folder chip at the left of the bar opens a list
+of every realm file, newest first. `realm close` and `realm files [--show|--hide]` are the command line half.
+
 Opening a `.realm` file from the explorer, from `Go to File` or with `tab open` shows it in a **realm
 tab**: a tab in the editing area with the realm bar and the canvas drawn in it, which comes back with the
 project. `realm open <name or path>` and the realm bar show it wherever the canvas is. There is one canvas,
@@ -164,6 +210,10 @@ first, stops its sounds and closes its pages. Which realm was open is `realm.cur
 
 `realm list`, `open`, `new`, `rename`, `duplicate`, `delete`, `info` and `import` are the same
 things from the command line.
+
+**A press on a wire that then moves picks the wire up by its nearer end.** Let go on a node and it connects
+there with the pipe it had. Let go anywhere else and the wire stays disconnected. A click that does not move
+leaves the wire alone.
 
 ## What is written down, and when
 

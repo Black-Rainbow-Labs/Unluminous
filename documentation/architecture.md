@@ -2,9 +2,10 @@
 
 ## The shape of it
 
-Eight crates. The editor, the terminal, git, the debug protocol, the database clients and the chat
-transport each know nothing about a window; the window knows nothing about a rope, an escape sequence
-or `--porcelain=v2`; and the command line client knows nothing about any of them but the names of the
+Eleven crates in the workspace. The editor, the terminal, git, the debug protocol, the language server
+client, the database clients, the chat transport, the notebook kernel and the speech to text engine
+each know nothing about a window; the window knows nothing about a rope, an escape sequence or
+`--porcelain=v2`; and the command line client knows nothing about any of them but the names of the
 commands.
 
 ```mermaid
@@ -15,8 +16,11 @@ flowchart TD
     term[unluminous-terminal: the terminal]
     git[unluminous-git: git]
     dap[unluminous-dap: the debug protocol]
+    lsp[unluminous-lsp: language servers]
     db[unluminous-db: the databases]
     chat[unluminous-chat: the agents]
+    jup[unluminous-jupyter: notebooks]
+    voice[unluminous-voice: speech to text]
     shared[the catalogue, the protocol, the instances]
 
     cli --> shared
@@ -25,32 +29,50 @@ flowchart TD
     app --> term
     app --> git
     app --> dap
+    app --> lsp
     app --> db
     app --> chat
+    app --> jup
+    app --> voice
+    lsp --> core
 ```
 
 An arrow is "depends on". Everything points towards the things with no user interface in them, and
-nothing points back: none of the six may mention the interface library, and `unluminous-cli` may not
-mention `unluminous-app`. That is what makes the tests of most of Unluminous run with no window, no
-graphics card and no fonts, and it is what keeps the client a small program you can run on a machine
-that has never drawn anything.
+nothing points back: none of the nine library crates may mention the interface library, and
+`unluminous-cli` may not mention `unluminous-app`. That is what makes the tests of most of Unluminous
+run with no window, no graphics card and no fonts, and it is what keeps the client a small program you
+can run on a machine that has never drawn anything.
 
 The one shared piece is the box the client and the window both point at: the catalogue of command line
 commands, the wire format, and the file a running Unluminous writes to say how to reach it. Both
 halves read the same list, so the client cannot accept a command the window has never heard of.
 
-## The eight crates
+Three dependencies come from outside this repository and are worth knowing by name.
 
-| Crate | What is in it | What must never be in it | Dependencies |
+- **`atrius-index`** is the code index. It moved to its own private repository and is taken from
+  crates.io. `unluminous-cli/src/search.rs` is the seam. `crates/unluminous-index` is the copy it was
+  made from, is still in the tree and is no longer built.
+- **`rux`** is the Black Rainbow Labs component library that draws the controls. It is a git
+  dependency pinned to a commit, and is built on the same egui and the same `vello_cpu` as the window.
+- **`egui-wgpu`** is vendored under `vendor/egui-wgpu` with one change, so that a frame can be drawn
+  into a texture and a modal's backdrop can be blurred on the graphics card. `vendor/egui-wgpu/UNLUMINOUS.md`
+  says what changed.
+
+## The eleven crates
+
+| Crate | What is in it | What must never be in it | Depends on |
 |---|---|---|---|
-| `crates/unluminous-core` | the rope, the character and paragraph formatting, the caret, layout, undo, the Markdown parser, the syntax tokeniser, folding, completion, imports, the highlight ranges, and the Mermaid reader and diagram layout | any user interface dependency | two |
-| `crates/unluminous-terminal` | the session over a pseudoterminal, the screen the painter reads, the colour palette, the key encoding, the mouse reports, and which shell to start and where | any user interface dependency | three |
-| `crates/unluminous-git` | status, blame, log, diffs, branches, every operation on the Git menu, and the thread they run on | any user interface dependency, and any decision about what a dialog looks like | **none**, because it runs the `git` program |
-| `crates/unluminous-dap` | the `Content-Length` framing, the typed messages, the session state machine, and the thread an adapter is spoken to on | any user interface dependency, and any knowledge of *which* adapter to start — where a debugger lives on this machine is knowledge about the machine | one |
-| `crates/unluminous-db` | the PostgreSQL v3 wire protocol, SCRAM-SHA-256, SQLite, Inillucent, the vector a search index stores, the values a grid draws, and the thread a query runs on | any user interface dependency | eight |
-| `crates/unluminous-chat` | the endpoints, the five provider shapes, the server-sent-event framing, the conversation, the turn state machine and the thread a turn runs on | any user interface dependency | two |
-| `crates/unluminous-app` | drawing, input, real fonts, the settings on disk, the menus, the plugin registry, and the socket the command line drives it down | editor behaviour, terminal emulation or git plumbing | the six above, plus the window |
-| `unluminous-cli` | the catalogue of commands, the wire format, and the client program. It lives beside its own documentation rather than under `crates/`, because the two are read together | anything that depends on `unluminous-app` | one |
+| `crates/unluminous-core` | the rope, the character and paragraph formatting, the caret, layout, undo, the Markdown parser, the syntax tokeniser, folding, completion, imports, the highlight ranges, and the Mermaid reader and diagram layout | any user interface dependency | `unicode-segmentation`, `unicode-width` |
+| `crates/unluminous-terminal` | the session over a pseudoterminal, the screen the painter reads, the colour palette, the key encoding, the mouse reports, and which shell to start and where | any user interface dependency | `alacritty_terminal`, `polling`, `unicode-width` |
+| `crates/unluminous-git` | status, blame, log, diffs, branches, every operation on the Git menu, and the thread they run on | any user interface dependency, and any decision about what a dialog looks like | **nothing**, because it runs the `git` program |
+| `crates/unluminous-dap` | the `Content-Length` framing, the typed messages, the session state machine, and the thread an adapter is spoken to on | any user interface dependency, and any knowledge of *which* adapter to start, because where a debugger lives on this machine is knowledge about the machine | `serde_json` |
+| `crates/unluminous-lsp` | a language server client for completion and signature help: the Language Server Protocol over stdio, TypeScript's own protocol for `tsserver`, the worker thread, the copy of each open document the worker keeps, and the rules for starting and restarting a server | any user interface dependency, and any request that blocks the caller | `serde_json`, `unluminous-core` |
+| `crates/unluminous-db` | the PostgreSQL v3 wire protocol, SCRAM-SHA-256, SQLite, Inillucent, the vector a search index stores, the values a grid draws, the statements a pending change becomes, and the thread a query runs on | any user interface dependency | `rusqlite`, `inillucent-driver`, `native-tls` and the hashing crates the protocol needs |
+| `crates/unluminous-chat` | the endpoints, the five wire shapes, the server sent event framing, the conversation, the transcript reader for a ticket's agent, the turn state machine and the thread a turn runs on | any user interface dependency | `serde_json`, `ureq` |
+| `crates/unluminous-jupyter` | the `.ipynb` file, the percent text a notebook tab edits, the kernel and its Python bridge, output parsing and the exports | any user interface dependency | `serde_json` |
+| `crates/unluminous-voice` | the microphone, the wake word detector for "Sable", the segmenter, the local Moonshine engine, the endpoint engine, and the model download | any user interface dependency | `cpal`, `tract-onnx`, `ort`, `ureq`, `rphonetic` |
+| `crates/unluminous-app` | drawing, input, real fonts, the settings on disk, the menus, the plugin registry, and the socket the command line drives it down | editor behaviour, terminal emulation or git plumbing | the nine library crates above, plus the window |
+| `unluminous-cli` | the catalogue of commands, the wire format, and the client program. It lives beside its own documentation rather than under `crates/`, because the two are read together | anything that depends on `unluminous-app` | `serde_json`, `atrius-index`, `blake3` |
 
 `unluminous-git` having **no dependencies at all** is the clearest statement of the rule: reading a
 repository is running `git` and reading what it said, in the formats git provides for being read.
@@ -203,6 +225,7 @@ would go.
 | a grammar and a token | a plugin and the tokeniser | the words of a language, and what a stretch of source *is* — never a colour |
 | a catalogue command | the client and the window | the name of a command, its arguments and its flags |
 | a decoration | a plugin's pane and the CPU rasteriser | five kinds of shape and a clip, in points, a plain value a test asserts on with no window |
+| a ticket | a language server and the window | a request returns a ticket at once, and the answer arrives on a later frame through a poll |
 | a reply | a chat provider and the pane | words, thinking, a tool call, usage and a session id, whichever of five wire shapes they came down |
 
 ## The threads, and what crosses them
@@ -222,6 +245,14 @@ to draw itself rather than wait for the next mouse move.
   passed stops where it is. That is what makes typing quick with no debounce timer, which would be
   wrong at both ends — too long on a small project and too short on a large one.
 - **The debug adapter, the database worker and a chat turn**, each on its own.
+- **A language server.** `unluminous-lsp` starts a server on the second frame after a file of its
+  language opens, and every request returns a ticket whose answer arrives later through a poll. A reply
+  for an older request is dropped when it arrives. `editor.servers` is `off` by default, and `off` stops
+  a running server.
+- **The notebook kernel.** `unluminous-jupyter` starts a Python bridge on a thread, and the Python search
+  and the kernel listing run on threads, so nothing waits on Python inside a frame.
+- **The microphone and the speech engine.** `unluminous-voice` opens the microphone only while dictating
+  or listening, and loads the wake models only while listening.
 - **The control channel.** A listener reads one JSON object a line and queues it. The thread touches
   nothing the window owns: the window drains the queue at the top of a frame.
 
@@ -342,6 +373,53 @@ the one instant a layout is both complete and cold.
 
 `cargo run --release -p unluminous-app --example layout_memory -- <file>` and
 `tools/measure-release-resources.ps1`.
+
+### The window stays smooth while the machine is busy
+
+A report said the window became jerky when an agent was running the window suite and the processors
+were 80% busy, while other programs did not. `tasks/task-2288-smoothness-tdd.md` is the design, and four
+rules came out of it.
+
+- **The window's thread runs first.** `services::scheduling` gives it `THREAD_PRIORITY_ABOVE_NORMAL`,
+  turns power throttling off for the process and the thread, asks for the one millisecond timer, and on
+  a machine with two kinds of core keeps the thread on the fast kind. On the Core Ultra 9 285 it was
+  reported on, 86% of the window's frames ran on efficient cores at 2.3 times the cost while the window
+  suite's processor share was busy. The slowest 5% of frame gaps while scrolling, hovering or dragging
+  a divider went from 22 to 24 ms to under 7.5 ms. `UNLUMINOUS_SCHEDULING=off|priority|cores` chooses,
+  and `cores` is the default. macOS needs nothing.
+- **A modal's backdrop is the previous frame blurred on the graphics card.** The vendored `egui-wgpu`
+  hands the previous frame's texture to a paint callback, which halves it, resamples it and blurs it.
+  There is no frame with the modal invisible and no screenshot read back.
+- **`rux` draws a layer as meshes, with every shadow a cached sprite.** A layer it cannot draw exactly is
+  rasterised on the processor as before, and the frame trace counts those as `rux-fallbacks`.
+  `RUX_RASTER=canvas` turns the composer off, which is how the two are measured against each other.
+- **Every `rux` state the window makes rasterises at the processor's widest SIMD level.** A screenshot
+  test pins the level instead, so a picture is the same on every machine.
+
+Opening Settings cold went from 172 ms to 10.6 ms on an idle machine and from 491 ms to 16.6 ms with the
+machine oversubscribed. `tools/perf-smooth/` is the instrument, and it measures what a person sees: how
+long the window takes to answer a message while the processors are loaded, and the gaps between frames.
+
+### What the window holds at rest
+
+With `editor.servers` and `search.embeddings` both off, a window on this repository with a large Rust
+file open held **259 MB** in Task Manager's Memory column when `task-2279` began and holds about
+**149 MB** now. An empty window holds about 87 MB. Four rules keep it small.
+
+- **No single texture upload is larger than about 2 MB.** On DX12 the driver keeps the staging memory of
+  a large upload for the rest of the process, so the background picture is sent as strips of a megabyte,
+  each in a frame of its own.
+- **Nothing the operating system can map is copied into the heap.** Font files are memory mapped.
+- **The code index lets go of what it can read again.** File contents are read from disk when a search
+  verifies a block, and the search index a plain English question builds is dropped 20 seconds after the
+  last question.
+- **The graphics device asks for no more than the window uses.** It asks for 16,384 bindings, because the
+  default of a million is a 30.6 MB descriptor heap.
+
+Both switches take effect at once. `editor.servers` is `off` by default and `off` stops a running
+server; `search.embeddings` is `off` by default and `off` stops embedding before the next batch.
+`pwsh tools/perf-memory.ps1` measures the memory, and `tools/perf-session.mjs` drives a release window
+through a whole session and sums the counters over its process tree.
 
 ## Building it
 

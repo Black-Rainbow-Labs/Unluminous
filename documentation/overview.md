@@ -1,6 +1,6 @@
 # What Unluminous looks like
 
-Thirty-seven captures of **Unluminous 0.50.0** running on Windows, taken on 2026-09-18 from the real
+Thirty-seven captures of **Unluminous 1.2.2** running on Windows, taken on 2026-10-19 from the real
 window rather than rendered offscreen, and cropped with a margin of desktop left round the edge.
 
 The margin is there on purpose. Unluminous's background is translucent, and a picture cropped tight to
@@ -13,15 +13,17 @@ The project in them is a fixture built for the purpose: a small retrieval librar
 three commits by three authors, a branch, an uncommitted change and an untracked file, and a file in
 each of several languages.
 
-`README.md` says what Unluminous is. This page is the same ground covered in pictures.
+`README.md` says what Unluminous is, with moving clips of each feature. This page is the same ground
+covered in still pictures.
 
 ---
 
 ## The window
 
-A title bar Unluminous draws itself, holding the menus at the left, the project's name and its branch
-after them, and the text options, the three Markdown view modes, the run widget and the window buttons
-at the right. Down the far left a thin rail with a button for each pane. Then the file explorer with
+A title bar Unluminous draws itself, holding the blue `U` mark and the menus at the left, the
+project's name and its branch after them as chips, and the text options, the three Markdown view
+modes, the run widget and the window buttons at the right. Down the far left a thin rail with a round
+button for each pane. Then the file explorer with
 its filter box, a tab for each open file, the line numbers, the editing area, and a status bar naming
 the file, its kind, its line endings, the caret's position, the branch and the font.
 
@@ -33,7 +35,9 @@ thing to look at in any of these pictures.
 
 ## The desktop shows through, and how far is a setting
 
-`Settings -> Appearance -> Background` is one slider from 5 per cent to 100. At the bottom of its
+`Settings -> Theme -> Background` is a switch and a slider from 5 per cent to 100. The switch is off
+on a fresh install, so the window starts opaque; turned on, the window shows the desktop or one of the
+nineteen pictures Unluminous ships with. These pictures show the desktop. At the bottom of its
 range the window is nearly all desktop and the text still reads; at the top it is a solid dark editor
 and only the margin round the window gives the wallpaper away. Text is painted at full opacity at
 every setting, so turning the background down never makes the document harder to read.
@@ -49,9 +53,8 @@ need, all of them in `services/windows_transparency.rs`.
 ## The rail, and the window's own edges
 
 Down the far left is a button for each pane: the explorer and git at the top, and at the bottom the
-things with a character grid in them. A button whose pane is showing is drawn as the same filled pill
-every list in Unluminous uses for its chosen row, so the rail says at a glance what is open. Resting on
-one names it.
+things with a character grid in them. A button whose pane is showing is drawn carved into the rail,
+so the rail says at a glance what is open. Resting on one names it.
 
 The rail is the only way a pane is put away and brought back, because it is in the same place whether
 a pane is showing or not, so it is always where you left it. Below, the explorer has been put away and
@@ -120,7 +123,7 @@ Nothing is fetched and nothing in a diagram is run.
 ## The text options are behind one button, in the title bar
 
 Bold, italic, underline and strikethrough, five colours, four alignments and three line spacings, all
-behind the `F` at the right of the title bar. The panel is four named rows with a rule between what
+behind the `Aa` button at the right of the title bar. The panel is four named rows with a rule between what
 applies to the selected text and what applies to the paragraph it is in. It stays open until the
 pointer goes elsewhere, so a colour and an alignment are two clicks rather than two visits.
 
@@ -129,7 +132,7 @@ They used to sit in a strip of their own between the title bar and the tabs. The
 changed, the tabs, the explorer and the whole editing area moved up or down by forty-four points. In
 the title bar the room is there whether the tools are in it or not.
 
-![The text options panel open under its F button, with three lines selected](images/19-text-options.jpg)
+![The text options panel open under its Aa button, with three lines selected](images/19-text-options.jpg)
 
 Below, the heading has been centred and coloured and the paragraph under it made bold, all from that
 panel. The dot on the tab, against the file in the explorer and in the status bar is how Unluminous says
@@ -139,7 +142,7 @@ there are changes that have not been saved.
 
 ## Nothing is drawn that cannot apply to the file
 
-The `F` button is drawn for prose — a `.md` file, a `.txt` file, a document that has not been saved
+The `Aa` button is drawn for prose — a `.md` file, a `.txt` file, a document that has not been saved
 anywhere yet. Unluminous saves plain text and carries no formatting to disk, so for a `.rs` or a `.json`
 file every one of those controls is a decoration that lasts until the file is reopened, and the three
 view modes would offer the Markdown parser's reading of a file that was never Markdown. So a source
@@ -152,8 +155,8 @@ that can never apply to this file.
 ## Writing code in it
 
 Line numbers down the left, a tab for each open file with the icon of the plugin that claims it, and
-syntax colouring from that plugin. Sixteen plugins ship: twelve languages, three panes and a bundle of
-five themes. Each language plugin is a folder holding a `plugin.conf` and an icon, and **nothing in
+syntax colouring from that plugin. Eighteen plugins ship: twelve languages, five panes (Agent-Chat,
+Agent-Tasks, Database, Designer and Realm) and a bundle of five themes. Each language plugin is a folder holding a `plugin.conf` and an icon, and **nothing in
 one is executed**, so installing one is copying a folder.
 
 A single click in the explorer opens a file in the tab a single click reuses, drawn faintly to say so;
@@ -162,9 +165,11 @@ a double click opens it in a tab of its own, and so does typing into a tab you w
 ![Five files open in tabs, with line numbers, folding arrows and syntax colouring](images/04-code.jpg)
 
 Type two letters of a word and a list of the names it could become appears under the caret, with
-`Ctrl+Space` asking for it by hand. Everything it offers was already in memory: this file's
-definitions and its distinct words, the other open tabs' definitions, the project's symbol index, and
-the language's own keywords, builtins and types. No new thread, no new index, no watcher.
+`Ctrl+Space` asking for it by hand. Without a language server, everything it offers was already in
+memory: this file's definitions and its distinct words, the other open tabs' definitions, the
+project's symbol index, and the language's own keywords, builtins and types. With `editor.servers`
+switched on, rust-analyzer and TypeScript's own server add members after `.` and `::`, and a model
+trained on real edits orders the list.
 
 ![The completion popup under the caret, offering four names](images/23-completion.jpg)
 
@@ -181,7 +186,9 @@ gutter. A tab is dragged along its own strip to reorder it and into another pane
 
 ## Themes
 
-A theme says what every colour in Unluminous's own palette means, and one that names the nine token
+Unluminous carries three themes of its own: Unluminous Dark, Unluminous Light, and Unluminous Glass,
+which bends the picture behind each panel the way a lens would. A theme says what every colour in
+Unluminous's own palette means, and one that names the nine token
 colours also colours code, in every language at once. `Themes Bundle 1` ships five, every number in
 them read out of the plugin jars of the reference editor they come from: Islands Dracula Colorful, Material
 Palenight, Material Deep Ocean, Monokai Pro and One Dark. Below is Islands Dracula Colorful.
@@ -204,7 +211,8 @@ is being shown.
 
 `Unluminous`, `File`, `Edit`, `Code`, `Find`, `View`, `Run`, `Git` and `Plugins`. On macOS they are in
 the bar along the top of the screen; on Windows they are drawn at the left of Unluminous's own title
-bar, and the three window buttons move to the right hand end. Both bars are built from one list, so
+bar, with the `Unluminous` menu behind the blue `U` mark, and the three window buttons move to the
+right hand end. Both bars are built from one list, so
 they hold the same entries with the same shortcuts.
 
 `Code` and `Plugins` appear when they have something to offer: `Code` for a file whose language can
@@ -299,9 +307,9 @@ it — which is the client's own work, because the protocol has no request for i
 
 ## The Realm
 
-A fifth panel holding an infinite canvas, and ten kinds of node that can live on it: a terminal, a web
-page, a folder tree, a file editor, an agent chat, the task board, a picture, a note, a sound and a
-video. Nodes are wired to each other, and a connection is what lets an agent running in a terminal node
+A fifth panel holding an infinite canvas, and eleven kinds of node that can live on it: a terminal, a
+web page, a folder tree, a file editor, an agent chat, the task board, a picture, a note, a sound, a
+video and a whiteboard shape. Nodes are wired to each other, and a connection is what lets an agent running in a terminal node
 act on the node it is wired to. Each realm is a `.realm` file in the project, so it is committed and
 shared like any other file.
 
@@ -317,18 +325,17 @@ four nodes, their sizes, and which three the first one is connected to.
 
 ## The agent panes
 
-**Agent-Chat** is a chat pane beside your work that runs the `claude` or `codex` command line already
-installed on this machine. Unluminous holds no key at all: the agent holds its own credentials, brings
+**Agent-Chat** is a chat pane beside your work that runs the `claude`, `codex`, `opencode` or `pi`
+command line already installed on this machine. Unluminous holds no key at all: the agent holds its own credentials, brings
 its own tools and its own permission model, and is started in the folder this window has open, so it
 finds that project's `CLAUDE.md` or `AGENTS.md` and the answer is about the code in front of you
-without a word of it being uploaded by Unluminous. A row can be pointed at an address instead, and five
-wire shapes are read into the same values.
+without a word of it being uploaded by Unluminous. An endpoint can be an address instead, such as
+llama.cpp or Ollama. Answers can hold charts, tables, checklists and diffs drawn as live components.
 
-The answer below came from a real `claude`. The counts under it are the tokens the server really
-reported; there is no context meter, because a URL and a model name say nothing about a context length
-and a bar there would be a fraction of a number nobody measured.
+Below, the pane as it opens: the agent that will answer, what it can see, and the conversations
+before this one. The README has a clip of it answering.
 
-![The Agent-Chat pane, mid-conversation with a real agent](images/28-agent-chat.jpg)
+![The Agent-Chat pane as it opens, naming the agent and what it can see](images/28-agent-chat.jpg)
 
 **Agent-Tasks** is a board whose tickets are worked by an agent in a terminal Unluminous owns: four
 lanes, cards with todos and comments, a terminal for each ticket, and a session resumed by the agent's
@@ -336,29 +343,31 @@ own conversation id rather than by a process that outlives the editor.
 
 ![The Agent-Tasks board, five tickets across four lanes](images/29-agent-tasks.jpg)
 
-There is a third pane, the **Database** explorer, and it has a page of its own:
-[the Database plugin in pictures](database.md).
+There are two more panes. The **Database** explorer has a page of its own,
+[the Database plugin in pictures](database.md), and so does the **Designer**, which takes notes on an
+HTML design and sends them to the agent: [the Designer](designer.md).
 
 ## Settings
 
-`Edit -> Settings`, `Unluminous -> Settings`, or command and comma. The pages are down the left under
-their headings and the chosen page is on the right, and the window is one size for every page with the
-page scrolling inside it.
+`Edit -> Settings`, `Unluminous -> Settings`, or command and comma. The pages are down the left under their headings,
+with a search box above them, and the chosen page is on the right as a column of cards. The window is
+one size for every page, with the page scrolling inside it.
 
-`Appearance` holds the font the editor draws a document in, the font the window's own text is drawn in,
-the background opacity, and whether a plugin's pane is drawn with depth.
+`Appearance` holds the font the window's own text is drawn in, and whether a plugin's pane is drawn
+with depth. The editor's font is on the `Editor` page, and the theme and the background are on the
+`Theme` page.
 
 ![The settings window on the Appearance page](images/08-settings-appearance.jpg)
 
 `Plugins` is the marketplace and the list of what is installed. Switching one off takes effect at once:
-the files it claims lose their colours and their icon on the next frame. `Install` writes a bundled
+the files it claims lose their colours and their icon on the next frame. `Customize` writes a bundled
 plugin's folder out where it can be edited by hand, and then reads it back from disk — which is what
 proves the loader works on real files rather than only on what was baked into the binary.
 
 ![The settings window on the Plugins page](images/09-settings-plugins.jpg)
 
-`Tools -> MCP` is how Unluminous is given to an AI agent: a button that writes it into Claude Code's or
-Codex's own configuration, the block to paste into anything else, and a tick box for serving the same
+`Tools -> MCP` is how Unluminous is given to an AI agent: a button each for Claude Code, Codex,
+OpenCode and Pi that writes it into that agent's own configuration, the block to paste into anything else, and a tick box for serving the same
 thing over HTTP on a port. The button needs no port and is what should be preferred; the port is off
 until it is turned on.
 

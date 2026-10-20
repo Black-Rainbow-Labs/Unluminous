@@ -9,6 +9,23 @@ Select with the mouse or with shift and an arrow key. Cut, copy and paste. Move 
 character, by word, to the start or end of a line, and to the start or end of the document. Undo and
 redo.
 
+**A double click selects by the character under the pointer.** The click is worked out against the
+character whose box holds the point and not against the nearest gap between two characters, so the
+right half of a space does not take the next word. What is selected is the run of the same kind
+round that character: a word, a run of spaces, or a run of punctuation such as `->`, and never past
+the end of a line. Every text box in the window does the same, so a double click on `com` in an
+address takes `com` and not the whole host name. The interval that makes two clicks a double click is
+the one the operating system is set to.
+
+**A selection is a line tall and centred on the letters.** A line puts its baseline a fixed distance
+from its top and adds any extra spacing below, so a rectangle laid over the whole line box had all
+of that spacing under the words. Each line's rectangle is moved up by half of the line's extra spacing,
+so its middle is the middle of the letters. Every line of a selection moves by the same amount, so a
+selection over several lines still has no gap in it. The find matches, the highlights and the code
+chips in the preview use the same function.
+
+Every text box in the window has a right click menu of Cut, Copy, Paste and Select All.
+
 **Undo restores a state rather than applying an inverse.** A snapshot holds the text, both kinds of
 formatting, the selection and the marks, and undoing swaps one in. An inverse operation for every
 command would be a second implementation of the editor, and the first one that is subtly wrong leaves
@@ -41,11 +58,20 @@ Any file holding text opens, whether Unluminous knows the type or not.
 |---|---|
 | `.md` | Markdown: the preview shows it rendered |
 | `.mmd`, `.mermaid` | a Mermaid diagram: the preview **draws** it |
+| `.ipynb` | a Jupyter notebook, in a tab of cells with their outputs under them. See [Notebooks](writing-code.md#notebooks) |
+| `.realm` | a realm: an infinite canvas of nodes. See [The Realm](the-realm.md) |
 | a picture | `.png`, `.jpg`, `.gif`, `.bmp`, `.ico`, `.webp`, `.tiff`, in a tab that shows it |
 | anything else | plain text, coloured by the plugin that claims the extension if one does |
 
 A file that is neither text nor a picture is listed in the explorer, dimmed, and says why it cannot be
 opened when the pointer rests on it. So is a file larger than 16 MB.
+
+**A file another program changed is read again.** On a timer, the tabs that are showing are
+checked against the disk, and a tab with no unsaved changes whose file changed is read again, with the
+reading position given back. A tab with unsaved changes is never touched. A file an agent creates in a
+folder nobody opened appears in `Go to File` and in the explorer, because the folders that are watched
+are the folders that are searched. `Reload from Disk` is the explicit version, and it walks the project
+as well.
 
 A picture is scaled to fit the editing area to begin with, zoomed with the keyboard, the wheel with
 the modifier held, or a pinch, dragged about with the mouse, and put back to filling the area with a
@@ -126,7 +152,8 @@ untouched.
 `Ctrl/Cmd+Shift+O` is `Go to File`, which narrows the project's files as a name is typed — a
 **subsequence**, so `mdrs` finds `markdown.rs`, with a match in the name outranking one in the folders
 above it. `Ctrl/Cmd+Shift+A` is `Find Action`, the same idea over every menu entry, ranked by the same
-scorer.
+scorer. A row that cannot run now is shown dimmed and refused with the reason, so somebody looking for
+`Redo` is told there is nothing to redo and not that there is no such command. `Enter` runs the row.
 
 **What a build wrote is not searched.** `target`, `node_modules` and `__pycache__` are left out of the
 walk that the filter box, `Go to File` and `Find in Files` all read. Three names only, and each is a
@@ -211,6 +238,14 @@ out dotted and its columns came out as rows of ticks.
 plugin's id, its name and every extension it claims, so ```` ```rs ```` and ```` ```rust ```` are one
 question and Unluminous holds no table of aliases.
 
+**Links open on a plain click.** A link in rendered Markdown opens in a browser tab, in the preview and
+in every place Unluminous draws Markdown: the chat, a ticket's description and comments, and the
+Designer's notes. `Ctrl` or `Cmd` with a click opens a web address in a file or in a terminal. Only
+`http` and `https` addresses open. A right click on a link offers `Open in Unluminous Browser`,
+`Open in Default Browser` and `Copy Link Address`. Dragging over rendered Markdown selects it, and
+`Ctrl/Cmd+C` copies the rendered words, so a heading comes back without its hashes. Zooming the
+preview with `Ctrl/Cmd` and the wheel is anchored at the pointer.
+
 **A picture is drawn when it is the whole of a line and it is a file on this machine.** One inside a
 line of prose stays its alt text, because it would need inline layout the engine has not got, and one
 with a scheme in front of it is refused, because Unluminous makes no network requests.
@@ -240,6 +275,22 @@ needs no change there.
 **Every sweep count is a constant and nothing is random**, so the same source always gives the same
 picture, which is what makes a screenshot test of a diagram possible. A subgraph is laid out on its
 own and placed as one box, recursively, so its contents cannot overlap anything outside it.
+
+**An edge that crosses a subgraph's frame crosses it once, at a port.** Laying a subgraph out as one
+box keeps its contents apart from everything else, and it used to cost the edges: the line was joined
+up afterwards by running it round the outside of the frame, so real diagrams had lines along frames,
+through titles and across three boxes to reach a fourth. Now each edge that leaves a subgraph gets a
+port, an entity of no height in a rank of its own along the side of the frame facing the other end.
+Inside, the edge gets a lane to its node. Outside, the container round it picks the edge up where the
+port ended. An edge runs straight through a rank and turns only in the gap between two, and the
+corners are rounded after the line has been cut back to the two shapes, so the last stretch before an
+arrowhead stays straight. Several edges on one side of a box leave it side by side.
+
+A labelled edge's words take room in the layout: the middle of the edge is given the size of its
+label, which reduced overlapping pairs in the diagrams of the task documents from 499 to 23. A
+subgraph's title is drawn on a panel after the edges, because the edges into a subgraph cross the top
+of its frame where the title is. A link to a subgraph's name is a link to the subgraph and is drawn to
+its frame. A written `\n` in a label is a line break, and HTML entities in a label are read.
 
 A diagram's own `style`, `classDef` and `click` directives are **read and ignored**: a document does
 not get to choose the window's colours, and nothing in a diagram is going to run. **Nothing is

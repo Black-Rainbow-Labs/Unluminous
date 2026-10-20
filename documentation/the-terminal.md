@@ -1,13 +1,17 @@
 # The terminal
 
-A tile along the bottom of the window with tabs, opened with `Ctrl` and backtick or from the `View`
-menu. It can be moved to any edge like any other panel — see [The window](the-window.md#the-panels-and-moving-them).
+A tile along the bottom of the window with tabs, opened with `Ctrl` and backtick, from the `View`
+menu, or at start with the `--terminal` switch. It can be moved to any edge like any other panel, and
+a side can be made to run its whole length. See [The window](the-window.md#the-panels-and-moving-them).
+`View -> New Terminal Tab`, `Close Terminal Tab` and `Rename Terminal Tab...` are the tab commands.
+A window that is waiting for a project starts its terminal in the home folder.
 
 ## Which shell
 
 Each tab runs a shell in the folder the explorer is showing: `$SHELL` on macOS, and on Windows
-`pwsh.exe` when it is installed and `powershell.exe` otherwise. `terminal.shell` in the settings is
-how to ask for something else, and empty means "what this machine says".
+`pwsh.exe` when it is installed and `powershell.exe` otherwise. `terminal.shell` in the settings, on
+`Settings -> Terminal`, is how to ask for something else, and empty means "what this machine says".
+`terminal.font.size` is the size of the grid's text, and zooming over any terminal tile changes it.
 
 **`COMSPEC` is not the shell**, and reading it is the fault this replaced. It names the interpreter
 that runs a batch file and says `cmd.exe` on every Windows there is, so a terminal that read it never
@@ -27,7 +31,13 @@ that have to remember is a list whose next entry will be the one that forgot.
 
 Colour including 24 bit colour, bold, italic, underline, strikethrough, inverse and dim. Wide
 characters. The alternate screen a full screen program draws on. Ten thousand lines of scrollback.
-Selecting with the mouse, copying, and mouse reporting for a program that asked for it.
+Selecting with the mouse, copying, and mouse reporting for a program that asked for it. A click with
+`Ctrl` or `Cmd` held on a web address in the output opens it, and only `http` and `https` addresses open.
+
+The grid's colours follow the theme. The ground, the text and the cursor are the theme's own editor
+colour, text colour and accent, and the sixteen colours follow whether the theme is dark or light. A
+terminal moves onto a new palette the next time it is drawn, and a program that asks the terminal for
+its background colour is told the theme's.
 
 `alacritty_terminal` supplies the escape sequence emulation and the pseudoterminal; the session, the
 screen the painter reads, the colour palette, the key encoding, the mouse reports and the decision
@@ -81,6 +91,13 @@ A terminal that was open when the window closed comes back as a fresh shell **in
 in**, with the last screenful and a bounded amount of scrollback printed back into it. What a program
 was doing cannot be brought back; what is restored is the same number of shells in the same places.
 
+This holds for the tabs of the terminal tile as well as for a terminal node on the canvas. Each tab's
+name and folder are written to `.unluminous/terminal-tabs.txt` as a numbered block, and a file with no
+`=` in it is the older format of one name on each line, so a project last opened by an older build
+keeps its names. When the strip is shorter than it was, the screens behind it are
+forgotten, so a tab opened into that place tomorrow does not replay a conversation that was never its
+own.
+
 **The screen is printed inside its own console**, and on Windows there is no other way. The console
 host clears the screen the first time the program writes and thereafter repaints the cells it believes
 it owns, so a screen written into the emulator from outside is erased — and put back later it survives
@@ -116,11 +133,28 @@ and needs no switch. Making PowerShell report it means adding to the prompt some
 which is a change to their shell rather than to this editor — so `terminal.shell_integration` is
 **off**, with a tick box on `Settings -> Terminal`.
 
+What it adds is a script started with `pwsh -NoExit -File <script>`. PowerShell processes `-File` after
+the profile, so the script wraps whatever prompt the person's profile installed and does not replace
+it. A prompt that fails is caught and the sequence is still added, because the one thing this must
+never do is leave somebody with no prompt. It applies only to a PowerShell started with no arguments of
+its own: a canvas node running `claude`, or a run configuration, was asked to run a particular thing,
+and a setting about a prompt does not change that.
+
 Three things about the reading are refusals rather than features. A folder on another machine is
 refused, because `file://build-box/C:/jason` would otherwise reopen a tab in this machine's own
 `C:\jason`. A reported path that is not a folder here is dropped, checked once a prompt on the reader
 thread rather than once a frame on the window's. And a sequence that runs past the largest one this
 reads is abandoned rather than buffered, because `OSC 52` carries a whole clipboard.
+
+## What a canvas terminal is running
+
+On Windows a pseudoconsole has no foreground process group, so the tile and the canvas find what a
+terminal is running by walking the process tree below the pseudoconsole's child. The walk stops at the
+first thing that is neither a shell nor the restore shim, because `claude` starts programs for its own
+tools and a terminal running it with a `bash` open under it would otherwise be recorded as running
+`bash`. That is what lets a node come back and offer to resume an agent's conversation. The process
+table is read once on a thread of its own every two seconds while anything asks, and never on the
+window's thread, where reading it once a second per node had stopped the window for 130 to 230 ms.
 
 ## From the command line
 
