@@ -328,7 +328,9 @@ try {
     foreach ($agent in $agentsHere) {
         $listed = Invoke-Fresh { & $agent mcp list 2>&1 | Out-String }
         Set-Content (Join-Path $out "$agent-mcp-list-after-uninstall.txt") $listed -Encoding utf8
-        Check "uninstall took Unluminous out of $agent" (-not ($listed -match 'unluminous'))
+        # The server's name as a word of its own. Pi's empty answer names its settings file, and a path under a
+        # folder called unluminous would otherwise read as the server still being there.
+        Check "uninstall took Unluminous out of $agent" (-not ($listed -match '(?im)(^|\s)unluminous(:|\s|$)'))
     }
 }
 finally {
