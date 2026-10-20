@@ -1161,7 +1161,11 @@ impl UnluminousApp {
         if wheel != 0.0 && response.contains_pointer() {
             scroll -= wheel;
         }
-        if taken.scroll_to_caret || (self.reveal_caret && focused) {
+        if self.reveal_caret && focused && self.reveal_at_the_top {
+            // The line goes to the top of the view, with the code after it below. The clamp further
+            // down keeps a line near the end of the file from scrolling past the last line.
+            scroll = self.layout().caret_at(self.document().selection().head).y;
+        } else if taken.scroll_to_caret || (self.reveal_caret && focused) {
             let caret = self.layout().caret_at(self.document().selection().head);
             if caret.y < scroll {
                 scroll = caret.y;
@@ -1171,6 +1175,7 @@ impl UnluminousApp {
         }
         if focused {
             self.reveal_caret = false;
+            self.reveal_at_the_top = false;
         }
         let overflow = (self.layout().height - view_height).max(0.0);
         let scroll = scroll.clamp(0.0, overflow);

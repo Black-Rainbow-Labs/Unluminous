@@ -1372,6 +1372,11 @@ pub struct UnluminousApp {
     /// Set when something outside the editing area moved the caret — opening a `Find in Files`
     /// result is the only one — so the next frame scrolls the file to show it.
     reveal_caret: bool,
+    /// With `reveal_caret`, put the caret's line at the **top** of the view rather than scrolling the
+    /// least amount. A link to a function in the chat asks for this, because the least scrolling puts
+    /// a line further down the file at the bottom of the screen and the function under it out of
+    /// sight (`task-2313`). Cleared with `reveal_caret`.
+    reveal_at_the_top: bool,
     /// Where the gutter's own menu is open, when it is. Held here rather than in egui's memory so
     /// that a test can open it: a screenshot test cannot press the right mouse button.
     pub gutter_menu: Option<Pos2>,
@@ -1692,6 +1697,7 @@ impl UnluminousApp {
             report: None,
             report_reaches_out: false,
             reveal_caret: false,
+            reveal_at_the_top: false,
             gutter_menu: None,
             preview_menu: None,
             gutter_menu_line: None,

@@ -620,6 +620,10 @@ impl UnluminousApp {
         // what says so, and `close_tab_without_saving` -- which `tab close --discard` already is -- is
         // how somebody closes it anyway.
         if let Err(problem) = self.save_before_closing(index) {
+            // The toast says it, so the status bar does not say it again (`task-2313`).
+            if self.message.as_deref() == Some(problem.as_str()) {
+                self.message = None;
+            }
             self.toasts.say(problem, crate::components::toast::Kind::Problem);
             return;
         }

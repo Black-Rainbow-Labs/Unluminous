@@ -528,6 +528,7 @@ impl UnluminousApp {
             offset_at(self.document().text(), line.unwrap_or(here.line), column.unwrap_or(1));
         self.document_mut().apply(unluminous_core::Command::PlaceCaret { offset, extend: false });
         self.reveal_caret = true;
+        self.reveal_at_the_top = request.switch("top");
         let at = self.caret_position();
         ok(
             request,

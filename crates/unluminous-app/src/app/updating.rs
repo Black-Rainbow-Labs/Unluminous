@@ -74,13 +74,15 @@ impl UnluminousApp {
     /// `Install & Restart` where there is something this Unluminous can install; `Open Download Page`
     /// where there is not, which is Linux, and a build run from `target/release` rather than installed.
     pub(crate) fn offer_the_update(&mut self, release: &Release) {
+        // The version is the sentence under the title and the release notes are the details under it, which
+        // the notice draws in a well of their own (`task-2313`).
         let text = format!(
-            "Unluminous {} is available. This is {}.{}",
+            "Unluminous {} is ready to install. You have {}.{}",
             release.version,
             crate::build_info::VERSION,
-            match release.notes.is_empty() {
+            match release.notes.trim().is_empty() {
                 true => String::new(),
-                false => format!(" {}", release.notes),
+                false => format!("\n{}", release.notes.trim()),
             }
         );
         let skip = ("Don't Ask Again".to_owned(), Act::SkipUpdate(release.version.clone()));
@@ -169,12 +171,13 @@ impl UnluminousApp {
         }
         let version = install.version.clone();
         let restart = install.restart;
-        self.message = Some(now.sentence(&version));
+        // What a toast says is not said again in the status bar (`task-2313`), so the bar carries only the
+        // steps along the way.
         match now {
             Progress::Failed(_) => self.toasts.say(now.sentence(&version), Kind::Problem),
             Progress::Ready { installer } if restart => self.hand_over_and_close(&installer),
             Progress::Ready { .. } => self.toasts.say(now.sentence(&version), Kind::Done),
-            _ => {}
+            _ => self.message = Some(now.sentence(&version)),
         }
         true
     }

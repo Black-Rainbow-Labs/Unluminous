@@ -262,6 +262,57 @@ pub fn program_in(folder: &Path, cmd: &str) -> PathBuf {
     path
 }
 
+/// The npm package to pin an npx agent to: the one the registry names when this machine's npm can fetch it, and
+/// otherwise the newest version npm here has (`task-2313`).
+///
+/// A Mac whose npm reads a company mirror answered `ETARGET` for the registry's
+/// `@agentclientprotocol/claude-agent-acp@0.94.0`, and every turn then failed once, ran again unpinned and said so
+/// in the conversation. Asking npm once when the agent is added is where that belongs. `None` when npm cannot be
+/// asked at all (it is not installed, or it failed for another reason), which keeps the registry's pin: a turn
+/// still copes with a missing version by itself, see [`crate::acp::run`].
+pub fn npm_version_to_pin(package: &str, environment: &crate::Environment) -> Option<String> {
+    let at = package.rfind('@').filter(|at| *at > 0)?;
+    let (name, version) = (&package[..at], &package[at + 1..]);
+    if version.is_empty() {
+        return None;
+    }
+    let npm = crate::provider::program("npm", environment)?;
+    let ask = |what: &str| -> Option<(bool, String)> {
+        let mut command = std::process::Command::new(&npm);
+        command.args(["view", what, "version"]).stdin(std::process::Stdio::null());
+        if environment.is_whole() {
+            command.env_clear();
+        }
+        command.envs(environment.variables().iter().map(|(name, value)| (name, value)));
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+        let out = command.output().ok()?;
+        let words = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        Some((
+            out.status.success() && !String::from_utf8_lossy(&out.stdout).trim().is_empty(),
+            words,
+        ))
+    };
+    let (found, said) = ask(package)?;
+    if found {
+        return Some(package.to_owned());
+    }
+    if !crate::acp::a_version_was_not_found(&said) && !said.contains("E404") {
+        return None;
+    }
+    let (found, newest) = ask(name)?;
+    let newest = newest.trim().lines().last().unwrap_or_default().trim().trim_matches(['\'', '"']);
+    (found && !newest.is_empty()).then(|| format!("{name}@{newest}"))
+}
+
 /// Download, check and unpack a binary agent into `folder`, and answer the program to run.
 ///
 /// A folder that already holds an unpacked copy is used as it is. A download whose SHA-256 is not the one the
@@ -375,6 +426,27 @@ mod tests {
     fn the_registry() -> Vec<Agent> {
         let text = include_str!("../tests/streams/acp-registry.json");
         parse(text).expect("the registry of 2026-10-19 reads")
+    }
+
+    /// Asks the machine's real npm, so it is ignored: `cargo test -p unluminous-chat --lib npm_ -- --ignored`.
+    #[test]
+    #[ignore]
+    fn npm_is_asked_which_version_of_a_package_it_can_fetch() {
+        let here = crate::Environment::of_this_process();
+        let package = "@agentclientprotocol/claude-agent-acp@0.94.0";
+        assert_eq!(
+            npm_version_to_pin(package, &here).as_deref(),
+            Some(package),
+            "a version npm has"
+        );
+        let newest = npm_version_to_pin("@agentclientprotocol/claude-agent-acp@99.0.0", &here)
+            .expect("the newest version npm has, for one it has not");
+        assert!(newest.starts_with("@agentclientprotocol/claude-agent-acp@"), "{newest}");
+        assert_ne!(newest, "@agentclientprotocol/claude-agent-acp@99.0.0");
+        assert!(
+            npm_version_to_pin("@agentclientprotocol/claude-agent-acp", &here).is_none(),
+            "nothing pinned"
+        );
     }
 
     #[test]

@@ -788,7 +788,13 @@ pub fn asking(provider: &Provider, ask: &Ask) -> Asking {
 /// **A package version the machine's npm cannot find is asked for again with no version** (`task-2308`). The
 /// registry pins each agent, and a machine whose npm reads a company mirror can be a release or two behind it:
 /// on a Mac, `npx -y @agentclientprotocol/claude-agent-acp@0.94.0` failed with `ETARGET` while the public
-/// registry had 0.94.0. Without the pin npx takes the newest version that mirror has, and the thinking says so.
+/// registry had 0.94.0. Without the pin npx takes the newest version that mirror has.
+///
+/// **Nothing about it is said in the conversation** (`task-2313`: *"I don't want to see that ... If that's an
+/// issue that claude keeps running into we should fix it on install, not show it every single time"*). Adding
+/// or updating an agent asks npm which version it can fetch and pins that one, so an agent added since does not
+/// get here at all. An endpoint added before that is retried quietly, and the pin is remembered with
+/// [`remember_npm_lacks`], so the next turn runs the unpinned package straight away rather than failing first.
 pub fn run(
     provider: &Provider,
     ask: &Ask,
@@ -798,6 +804,12 @@ pub fn run(
     on_reply: &dyn Fn(Reply) -> bool,
 ) {
     let unpinned = without_a_missing_version(provider);
+    if let Some((unpinned, pinned)) = &unpinned {
+        if npm_lacks(pinned) {
+            run_once(unpinned, ask, stopping, running, generation, on_reply);
+            return;
+        }
+    }
     let missing = std::cell::RefCell::new(None::<String>);
     let first = |reply: Reply| -> bool {
         if let (Reply::Failed(why), Some(_)) = (&reply, &unpinned) {
@@ -816,10 +828,40 @@ pub fn run(
         on_reply(Reply::Failed(why));
         return;
     }
-    on_reply(Reply::Thinking(format!(
-        "npm on this machine has no {pinned}, so the newest version it does have is used instead."
-    )));
+    remember_npm_lacks(&pinned);
     run_once(&unpinned, ask, stopping, running, generation, on_reply);
+}
+
+/// The pinned npm packages this machine's npm has been found not to have, and whether one was added since the
+/// window last asked. See [`run`].
+static NPM_LACKS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+static NPM_LACKS_ADDED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Remember that npm here cannot fetch `pinned` (`@scope/name@1.2.3`), so a turn runs the package unpinned.
+pub fn remember_npm_lacks(pinned: &str) {
+    let mut lacks = NPM_LACKS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if !lacks.iter().any(|known| known == pinned) {
+        lacks.push(pinned.to_owned());
+        NPM_LACKS_ADDED.store(true, Ordering::Relaxed);
+    }
+}
+
+/// Whether npm here has been found not to have `pinned`.
+pub fn npm_lacks(pinned: &str) -> bool {
+    NPM_LACKS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .iter()
+        .any(|known| known == pinned)
+}
+
+/// Every pin [`remember_npm_lacks`] has been told about, when one was added since the last call; `None`
+/// otherwise, which is one atomic load. The window writes them down so the next start knows them too.
+pub fn npm_lacks_if_changed() -> Option<Vec<String>> {
+    if !NPM_LACKS_ADDED.swap(false, Ordering::Relaxed) {
+        return None;
+    }
+    Some(NPM_LACKS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone())
 }
 
 /// Whether npm said a pinned version does not exist where it looked.
