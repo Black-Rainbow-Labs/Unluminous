@@ -268,8 +268,8 @@ default is left out of the settings file.
 
 ### The keymap
 
-`Settings -> Keymap` chooses a preset and records your own shortcuts on top of it. `keymap.preset` is
-`unluminous`, `vscode` or `intellij`, and a preset binds every action whose name it knows to the
+`Settings -> Keymap` chooses a preset and records your own shortcuts on top of it.
+`keymap.preset` is `unluminous`, `vscode` or `intellij`, and a preset binds every action whose name it knows to the
 chord that editor uses. A shortcut you set on an action's row is written as `keymap.key.<action>`.
 
 - **Your binding beats the preset, and the preset beats Unluminous's own.**

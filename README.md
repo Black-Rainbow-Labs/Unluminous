@@ -231,8 +231,8 @@ redraws as you type, its text selects and copies, and scrolling either half scro
 
 Find in Files, Go to File, a command palette, go to definition, find all references, rename across
 the project, split panes, code folding, a terminal with 24 bit colour, browser tabs, twelve language
-plugins, panels that dock to any edge, sessions that reopen as you left them, a keymap with VS Code
-and IntelliJ presets, and updates checked once a day.
+plugins, panels that dock to any edge, sessions that reopen as you left them, updates checked once a
+day, and a keymap with VS Code and IntelliJ presets.
 
 ---
 
