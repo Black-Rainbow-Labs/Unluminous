@@ -49,10 +49,15 @@ pub fn folder(client: Client, wanted: &Wanted) -> PathBuf {
 }
 
 /// The text written: the skill with [`MARK`] added to its frontmatter.
+///
+/// **Whatever line endings the checkout gave the file** (`task-2317`). git on Windows checks `SKILL.md` out
+/// with `\r\n`, so a binary built there began `---\r\n`, the mark was never added, and the skill it installed
+/// was one `mcp install` and `setup` could no longer recognise as their own, update or take out.
 pub fn text() -> String {
-    match SKILL.strip_prefix("---\n") {
+    let skill = SKILL.replace("\r\n", "\n");
+    match skill.strip_prefix("---\n") {
         Some(rest) => format!("---\n{MARK}\n{rest}"),
-        None => SKILL.to_owned(),
+        None => skill,
     }
 }
 
