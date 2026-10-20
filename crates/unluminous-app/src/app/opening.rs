@@ -91,11 +91,9 @@ impl UnluminousApp {
                 self.open_a_project_window(&path);
                 continue;
             }
-            if self.waiting_for_a_project {
-                if crate::services::launcher::open_window(&path).is_some() {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    continue;
-                }
+            if self.waiting_for_a_project && crate::services::launcher::open_window(&path).is_some() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                continue;
             }
             if let Err(problem) = self.open_path_permanently(&path) {
                 self.message = Some(problem);
