@@ -76,6 +76,13 @@
 .PARAMETER WhatIf
   Say what would happen and change nothing.
 
+.PARAMETER Resume
+  Carry on publishing the release whose tag is on HEAD. A release keeps a record of its finished steps in
+  `_agent_output
+elease-state\<version>.json` (`task-2312`), and starting it again carries on from the step that
+  failed without being asked: a failure before the commit reuses the installers it built from the same source,
+  and a failure after the tag skips every step that finished. `-Resume` is for a tagged release with no record.
+
 .EXAMPLE
   pwsh tools\release.ps1
   pwsh tools\release.ps1 -Part minor -Notes "task-1667: the About box and a one-command release"
@@ -97,7 +104,10 @@ param(
     # changed since they last passed (`task-2240`). For a release after a toolchain or machine change
     # that the inputs `tools/test.mjs` hashes would not see.
     [switch] $FullTests,
-    [switch] $SkipMacos
+    [switch] $SkipMacos,
+    # Carry on a release whose commit is tagged but whose publishing stopped, when there is no record of it.
+    # With a record, starting the release again carries on by itself.
+    [switch] $Resume
 )
 
 $ErrorActionPreference = 'Stop'
@@ -439,6 +449,10 @@ function Update-Main([string] $Branch) {
     }
 }
 
+# The steps that make a release safe to start again (`task-2312`), in a file of their own so
+# `tools/release-steps.test.ps1` can run them with nothing published.
+. (Join-Path $Here 'release-steps.ps1')
+
 # ---------------------------------------------------------------------------------------------
 
 Set-Location $Repo
@@ -446,31 +460,51 @@ Set-Location $Repo
 Restore-Keyboard
 
 $current = Get-CurrentVersion
-$next = if ($Version) { $Version } else { Get-NextVersion $current $Part }
-if ($next -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw "$next is not a version of the form x.y.z." }
-if (-not (Test-Higher $next $current)) {
-    throw "$next is not higher than the version already released, $current."
+$branch = (& git rev-parse --abbrev-ref HEAD).Trim()
+
+# **A release that stopped after its tag carries on from the step that failed (`task-2312`).** HEAD is then the
+# release's own commit, tagged with the version Cargo.toml already holds, and the record of the release says
+# which publishing steps are done. Starting from the beginning there would cut a second version.
+$taggedHere = @(& git tag --points-at HEAD) -contains "v$current"
+$earlier = if ($taggedHere) { Read-Journal $current } else { $null }
+$carryingOn = $taggedHere -and ($Resume -or ($earlier -and (@($earlier.steps) -notcontains 'done')))
+if ($Resume -and -not $taggedHere) {
+    throw "HEAD is not a release commit tagged v$current, so there is nothing to carry on. A release that stopped before its commit reuses what it built when it is started again, with no -Resume."
 }
 
-$branch = (& git rev-parse --abbrev-ref HEAD).Trim()
-Write-Host "Unluminous $current -> $next  on $branch"
+if ($carryingOn) {
+    $next = $current
+    Write-Host "Unluminous $next on ${branch}: carrying on the release that stopped after its tag"
+} else {
+    $next = if ($Version) { $Version } else { Get-NextVersion $current $Part }
+    if ($next -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw "$next is not a version of the form x.y.z." }
+    if (-not (Test-Higher $next $current)) {
+        throw "$next is not higher than the version already released, $current."
+    }
+    Write-Host "Unluminous $current -> $next  on $branch"
+}
 
 if ($WhatIf) {
     Write-Host ''
     Write-Host 'What would happen:' -ForegroundColor Yellow
-    Write-Host "  0. on $(Get-ProcessorSharePercent 0)% of the processors: cargo fmt --check,"
-    Write-Host "     contrast --check, node tools\test.mjs$(if ($FullTests) { ' --all' }) (clippy and tests for the crates that changed),"
-    Write-Host "     and the window suite's receipt"
+    if ($carryingOn) {
+        Write-Host "  carry on v$next from the first publishing step not yet done: $(if ($earlier) { "done so far: $(@($earlier.steps) -join ', ')" } else { 'no record, so every step is asked of its destination' })"
+        return
+    }
+    Write-Host '  0. in seconds, before anything is built: fetch origin, refuse a tag that exists, merge origin/main,'
+    Write-Host '     the GitHub credential, the macOS preflight and the window suite receipt; the public push check'
+    Write-Host '     runs in the background while the suite does'
+    Write-Host "     then, on $(Get-ProcessorSharePercent 0)% of the processors: contrast --check and node tools\test.mjs$(if ($FullTests) { ' --all' })"
     $dryRun = @((Join-Path $Repo 'tools\test.mjs'), '--dry-run')
     if ($FullTests) { $dryRun += '--all' }
     & node @dryRun | ForEach-Object { Write-Host "     $_" }
     Write-Host "  1. Cargo.toml version -> $next"
-    Write-Host "  2. installer\windows\build.ps1$(if (-not $SkipInstall) { ' -Install' })"
+    Write-Host "  2. installer\windows\build.ps1$(if (-not $SkipInstall) { ' -Install' }), unless an earlier start built it from this source"
     Write-Host "  3. releases\UnluminousSetup-$next-x64.exe"
-    if (-not $SkipMacos) { Write-Host "  3b. at the same time as 2: installer\macos\build-on-windows.ps1 -Notarize, both architectures at once, then releases\Unluminous-$next-macos.zip, if its preflight passes" }
+    if (-not $SkipMacos) { Write-Host "  3b. at the same time as 2: installer\macos\build-on-windows.ps1 -Notarize, then releases\Unluminous-$next-macos.zip" }
     Write-Host "  4. commit `"Unluminous $next`", tag v$next, push $branch"
     if (-not $SkipPublish) {
-        Write-Host "  5. gh release create v$next with the installer attached, on jasonmcaffee/unluminous"
+        Write-Host "  5. the GitHub release with the installers attached, on jasonmcaffee/unluminous"
         Write-Host "  6. node tools\publish-open-source.mjs --push --ref v$next, then the same release on $PublicRepository"
         if (-not $SkipSite) {
             $lead = '  7.'
@@ -496,7 +530,12 @@ if ($dirty) {
 # task-2294's release needed a third start. The trap puts those three back with `git checkout --` and stops
 # the macOS build this release started. It does nothing before `$script:Writing` is set, so a person's own
 # change to `Cargo.toml` is never thrown away, and nothing after the commit, when the files are the release's.
+#
+# **What was built is kept (`task-2312`).** The installers stay in `releases\` and the record of the release
+# names them with their hashes, so the next start reuses them when the source has not changed. After the tag
+# the trap says that starting again carries on from the step that failed.
 $script:Writing = $false
+$script:Tagged = $false
 $script:MacosChild = $null
 trap {
     if ($script:Writing) {
@@ -506,72 +545,14 @@ trap {
         & git -C $Repo checkout -- Cargo.toml Cargo.lock CHANGELOG.md
         Write-Host ''
         Write-Host 'The release stopped, and Cargo.toml, Cargo.lock and CHANGELOG.md were put back as they were.' -ForegroundColor Yellow
+        Write-Host 'Starting it again reuses any installer it finished building from this source.' -ForegroundColor Yellow
         $script:Writing = $false
+    } elseif ($script:Tagged) {
+        Write-Host ''
+        Write-Host "v$next is tagged and the steps that finished are recorded in $(Get-JournalPath $next)." -ForegroundColor Yellow
+        Write-Host 'Run pwsh tools/release.ps1 again: it carries on from the step that failed.' -ForegroundColor Yellow
     }
     break
-}
-
-Write-Step 'Taking the newest Inillucent'
-$script:Writing = $true
-# `task-2293`: *"Make sure our build always pulls in the latest version of inillucent."* The manifest asks for
-# `inillucent-driver` 2.x and Cargo.lock held whichever 2.x was newest the day it was last written, which had
-# fallen six releases behind. The newest compatible release is taken here, before the suite, so what is tested
-# is what ships; Cargo.lock goes into the version commit with the manifest. A new major version is a change to
-# the manifest, made by hand.
-Invoke-Checked 'cargo update' { & cargo update --manifest-path $Manifest -p inillucent-driver }
-
-Write-Step 'Running the suite'
-# `task-1922`: a release was tagged, installed and published before anything had run the tests. It is
-# the whole gate now rather than a second opinion -- `task-1928` took the continuous integration out,
-# so this is the only thing that runs the suite before a tag, and a release cannot be made from a
-# workspace whose tests do not pass.
-#
-# The screenshot suite is deliberately not here. It needs a graphics card and it needs a person to
-# open any image that changed, which is the one rule a script must not be allowed to satisfy on its
-# own -- and with no continuous integration there is nowhere else it runs either. So a release says
-# plainly that it did not run it, rather than leaving that unsaid.
-#
-# `cargo fmt --check` and `cargo clippy` are here for the same reason the tests are. `task-1928`
-# moved the suite into this script when it removed the continuous integration and left those two
-# behind, so between then and `task-1984` seven files drifted out of format and one clippy error
-# arrived, with nothing to say so.
-if (-not $SkipTests) {
-    Invoke-WithoutCc {
-        Invoke-Checked 'cargo fmt --all -- --check' {
-            & cargo fmt --manifest-path $Manifest --all -- --check
-        }
-        # No `changelog.mjs --check` (`task-2295`). Every ticket's commits put the file out of date, so it
-        # refused a release at least six times over a file that "Writing CHANGELOG.md" below rewrites from
-        # the history and commits with the version anyway.
-        Invoke-Checked 'node tools\contrast.mjs --check' {
-            & node (Join-Path $Repo 'tools\contrast.mjs') --check
-        }
-        # **Clippy and the tests, for the crates whose inputs have changed since they last passed
-        # (`task-2240`).** This used to be `cargo clippy --workspace --all-targets`, `cargo test
-        # --workspace --exclude unluminous-app` and `cargo test -p unluminous-app --lib --bins` on every
-        # release, and nine of the twenty releases from 0.64.2 to 0.73.0 changed no crate outside
-        # `crates/unluminous-app`. `tools/test.mjs` hashes what each crate's build and tests can read,
-        # skips a crate that has passed on exactly that content before (in this checkout or in a
-        # ticket's worktree), and runs clippy, the Jupyter kernel tests and the rest in three lanes at
-        # once. The commands it runs for a crate are the ones above, and the notebook kernel tests still
-        # run with UNLUMINOUS_REQUIRE_KERNEL=1, so a missing Python fails them (task-2220).
-        # `-FullTests` runs every crate.
-        $testArguments = @((Join-Path $Repo 'tools\test.mjs'))
-        if ($FullTests) { $testArguments += '--all' }
-        Invoke-Checked 'node tools\test.mjs' { & node @testArguments }
-    }
-    Write-Host 'The window through wgpu is not run here: it needs a graphics card and a person to look'
-    Write-Host "at any image that changed. Run it by hand: pwsh tools/capped.ps1 cargo test -p unluminous-app --test '*' --no-fail-fast"
-    # What is checked instead is that somebody did. `task-1984` T9: the window suite is deliberately
-    # manual and nothing recorded when it last passed, so a release could be made from a commit it
-    # had never seen.
-    Invoke-Checked 'the window suite has passed at this commit' {
-        & node (Join-Path $Repo 'tools\window-suite.mjs') --check
-    }
-} else {
-    Write-Host 'Skipped by -SkipTests.' -ForegroundColor Yellow
-    Write-Host 'Nothing has checked this build: not the suite, not cargo fmt, not clippy, and not' -ForegroundColor Yellow
-    Write-Host 'whether the window suite has ever been run against it.' -ForegroundColor Yellow
 }
 
 # Everything GitHub needs is checked here, before anything is changed, so that a missing credential
@@ -579,6 +560,7 @@ if (-not $SkipTests) {
 $gh = $null
 $token = $null
 if (-not $SkipPublish) {
+    Write-Step 'Checking GitHub'
     $gh = Get-GitHubCli
     $token = Get-GitHubToken
     $env:GH_TOKEN = $token
@@ -600,158 +582,307 @@ if (-not $SkipPublish) {
     }
 }
 
-# ---------------------------------------------------------------------------------------------
-# What this release will and will not reach, decided before anything is written.
-#
-# `task-1995`. A release publishes to six destinations - two GitHub repositories, two sites and two
-# platforms - and until now it found out one at a time, after the tag had been pushed. A tag is the
-# one step that cannot be taken back quietly, so the answers are gathered here, while the tree is
-# still untouched.
-# ---------------------------------------------------------------------------------------------
-Write-Step 'What this release will reach'
-$macosBuild = Join-Path $Repo 'installer\macos\build-on-windows.ps1'
 $macosReason = $null
-if ($SkipMacos) {
-    $macosReason = '-SkipMacos was passed'
-} elseif (-not (Test-Path $macosBuild)) {
-    $macosReason = "$macosBuild is missing"
-} else {
-    Get-TheMacosFiles
-    $answer = & pwsh -NoProfile -File $macosBuild -Preflight 2>&1
-    if ($LASTEXITCODE -ne 0) { $macosReason = ($answer | Out-String).Trim() }
-}
-$doMacos = -not $macosReason
-# **A release without macOS is not a release (`task-2295`).** A failed preflight used to print one yellow line
-# and go on, and 0.64.4 went out Windows only that way (`task-2207`). It stops here instead, before anything is
-# built, unless `-SkipMacos` says to leave macOS out.
-if (-not $doMacos -and -not $SkipMacos) {
-    throw "macOS cannot be built, so nothing was released: $macosReason`nFix that, or pass -SkipMacos to release Windows only."
-}
-
-$plan = [ordered]@{
-    'Windows installer'    = 'yes'
-    'macOS bundle'         = $(if ($doMacos) { 'yes' } else { "no - $macosReason" })
-    'GitHub (private)'     = $(if ($SkipPublish) { 'no - -SkipPublish' } else { 'yes' })
-    'GitHub (public)'      = $(if ($SkipPublish) { 'no - -SkipPublish' } else { 'yes' })
-    'unluminous.com'       = $(if ($SkipPublish -or $SkipSite) { 'no - skipped' } else { 'yes' })
-    'blackrainbowlabs.com' = $(if ($SkipPublish -or $SkipSite) { 'no - skipped' } else { 'yes' })
-}
-foreach ($destination in $plan.Keys) {
-    Write-Host ("  {0,-22} {1}" -f $destination, $plan[$destination])
-}
-
-Write-Step "Setting the version to $next"
-Set-Version $next
-
-# **The macOS half starts first and builds beside the Windows half (`task-2240`).** The two platforms
-# share the version and nothing else, and each build after an ordinary change is mostly the one
-# `unluminous-app` crate, which keeps about half of the processors busy on its own. One after another,
-# the Windows build and the two Apple architectures took 383 s after a one line change; all three at
-# once, each in its own target directory and on 80% of the processors, took 210 s. Notarisation then
-# waits on Apple while the Windows installer is compiled and installed. Its output goes to a log in
-# `_agent_output/release-logs/`, printed below when it finishes.
-$macosProcess = $null
-$macosLog = $null
-if ($doMacos) {
-    $logs = Join-Path $Repo '_agent_output\release-logs'
-    New-Item -ItemType Directory -Force -Path $logs | Out-Null
-    $macosLog = Join-Path $logs "macos-$next.log"
-    Write-Host "Started the macOS build beside the Windows one. Its log: $macosLog"
-    # **Without `CC`**, as every cargo run here is (`Invoke-WithoutCc`): the child inherits this environment, and
-    # with the person's `CC` naming `cl.exe` cc-rs compiled a C file of `stacker` for macOS with MSVC, which cannot
-    # find `windows.h` and fails both architectures (`task-2293`).
-    $macosProcess = Invoke-WithoutCc {
-        Start-Process -FilePath 'pwsh' -NoNewWindow -PassThru `
-            -ArgumentList @('-NoProfile', '-File', "`"$macosBuild`"", '-Version', $next, '-Notarize') `
-            -RedirectStandardOutput $macosLog -RedirectStandardError "$macosLog.err"
-    }
-    # Read now, so the exit code is still there to read after the process has gone.
-    $null = $macosProcess.Handle
-    $script:MacosChild = $macosProcess
-}
-
-Write-Step 'Building the installer, and installing it'
-$build = Join-Path $Repo 'installer\windows\build.ps1'
-$arguments = @('-File', $build)
-if (-not $SkipInstall) { $arguments += '-Install' }
-& powershell @arguments
-if ($LASTEXITCODE -ne 0) {
-    # The macOS build started above is this release's own child, and a release that stops here
-    # publishes nothing, so it is stopped with everything it started rather than left building.
-    if ($macosProcess -and -not $macosProcess.HasExited) { & taskkill /PID $macosProcess.Id /T /F | Out-Null }
-    throw 'installer\windows\build.ps1 failed.'
-}
-
-$setup = Join-Path $Repo "installer\dist\UnluminousSetup-$next-x64.exe"
-if (-not (Test-Path $setup)) { throw "The installer was not written to $setup." }
-New-Item -ItemType Directory -Force -Path $ReleasesDir | Out-Null
 $kept = Join-Path $ReleasesDir "UnluminousSetup-$next-x64.exe"
-Copy-Item -Path $setup -Destination $kept -Force
-Write-Host "Kept $kept"
-
-# The macOS half, when it is asked for. It is a separate script rather than a branch in here for the
-# same reason installer\windows\build.ps1 is: the two platforms share the version and nothing else.
-# The bundle is signed and notarised by that script, so what comes back is ready to attach.
 $macosZip = $null
-if ($doMacos) {
-    Write-Step 'Waiting for the macOS bundle to be built, signed and notarised'
-    $macosProcess.WaitForExit()
-    $lines = @(Get-Content -LiteralPath $macosLog -ErrorAction SilentlyContinue) + @(Get-Content -LiteralPath "$macosLog.err" -ErrorAction SilentlyContinue)
-    $lines | Where-Object { $_ -notmatch '^\s+(Compiling|Checking|Fresh|Blocking)\b' } | Select-Object -Last 40 | ForEach-Object { Write-Host "  $_" }
-    if ($macosProcess.ExitCode -ne 0) {
-        throw "installer\macos\build-on-windows.ps1 failed with exit code $($macosProcess.ExitCode). The whole log: $macosLog"
-    }
-    $macosZip = Join-Path $ReleasesDir "Unluminous-$next-macos.zip"
-    if (-not (Test-Path $macosZip)) { throw "The macOS archive was not written to $macosZip." }
-    Write-Host "Kept $macosZip"
+
+if ($carryingOn) {
+    $script:Journal = if ($earlier) { $earlier } else { @{ version = $next; steps = @('tagged'); builds = @{} } }
+    $script:Tagged = $true
+    if (-not (Test-Path -LiteralPath $kept)) { throw "The Windows installer $kept is not there, so v$next cannot be published from here." }
+    $zip = Join-Path $ReleasesDir "Unluminous-$next-macos.zip"
+    if (Test-Path -LiteralPath $zip) { $macosZip = $zip } else { $macosReason = "$zip is not there" }
 } else {
-    Write-Host ''
-    Write-Host "macOS is not in this release: $macosReason" -ForegroundColor Yellow
+    # -----------------------------------------------------------------------------------------
+    # Everything that can refuse a release in seconds, before anything slow (`task-2312`).
+    #
+    # The window suite's receipt, the public push and the macOS preflight were all asked after the suite had
+    # run, and the public push only after both GitHub releases were made. Each was found minutes into a release
+    # that then had to start again. They are asked here, in the order of how quickly they answer.
+    # -----------------------------------------------------------------------------------------
+    Write-Step 'Checking what can refuse this release before anything is built'
+    # The steps that let this release be started again are checked first, in half a second, because a release
+    # that stops after its tag depends on them to carry on.
+    $stepsTest = & pwsh -NoProfile -File (Join-Path $Here 'release-steps.test.ps1') 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        $stepsTest | ForEach-Object { Write-Host "  $_" }
+        throw 'toolselease-steps.test.ps1 failed.'
+    }
+    Invoke-WithRetry 'git fetch origin' 3 { & git fetch origin --tags --quiet }
+    if (& git rev-parse -q --verify "refs/tags/v$next") { throw "The tag v$next already exists here. Pass -Version for a different version, or delete the tag if it was never published." }
+    if (& git ls-remote --tags origin "refs/tags/v$next") { throw "The tag v$next already exists on origin." }
+
+    # **This branch takes what main has gained since it was cut.** The public source is a rewrite of the history
+    # being released, so a release whose history lacks a commit `main` already published is refused by the public
+    # push, which is how 1.3.0's push was refused after task-2310 reached `main` while it ran. Merged here, the
+    # merge is what the suite runs and what is released, and `main` moves to it by a fast forward afterwards.
+    & git merge-base --is-ancestor origin/main HEAD
+    if ($LASTEXITCODE -ne 0) {
+        $behind = (& git rev-list --count HEAD..origin/main).Trim()
+        Write-Host "origin/main has $behind commit(s) this branch has not; merging them"
+        & git merge --no-edit origin/main
+        if ($LASTEXITCODE -ne 0) {
+            & git merge --abort
+            throw 'origin/main does not merge into this branch cleanly. Merge it by hand, run the window suite if it asks, and release again.'
+        }
+    }
+
+    $macosBuild = Join-Path $Repo 'installer\macos\build-on-windows.ps1'
+    if ($SkipMacos) {
+        $macosReason = '-SkipMacos was passed'
+    } elseif (-not (Test-Path $macosBuild)) {
+        $macosReason = "$macosBuild is missing"
+    } else {
+        Get-TheMacosFiles
+        $answer = & pwsh -NoProfile -File $macosBuild -Preflight 2>&1
+        if ($LASTEXITCODE -ne 0) { $macosReason = ($answer | Out-String).Trim() }
+    }
+    # **A release without macOS is not a release (`task-2295`).** A failed preflight used to print one yellow line
+    # and go on, and 0.64.4 went out Windows only that way (`task-2207`). It stops here instead, before anything is
+    # built, unless `-SkipMacos` says to leave macOS out.
+    if ($macosReason -and -not $SkipMacos) {
+        throw "macOS cannot be built, so nothing was released: $macosReason`nFix that, or pass -SkipMacos to release Windows only."
+    }
+    $doMacos = -not $macosReason
+
+    # `task-1984` T9: the window suite is deliberately manual and nothing recorded when it last passed, so a
+    # release could be made from a commit it had never seen. It is checked first rather than after the suite,
+    # because it answers in under a second and a refusal means running the window suite, which is the longest
+    # thing a release can be sent back for.
+    if (-not $SkipTests) {
+        Invoke-Checked 'the window suite has passed at this commit' {
+            & node (Join-Path $Repo 'tools\window-suite.mjs') --check
+        }
+    }
+
+    # The public push is asked while the suite runs, because rewriting the history takes about 40 seconds.
+    $publicCheck = $null
+    $publicLog = Join-Path $Repo '_agent_output\release-logs\public-check.log'
+    if (-not $SkipPublish) {
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $publicLog) | Out-Null
+        $publicCheck = Start-Process -FilePath 'node' -NoNewWindow -PassThru `
+            -ArgumentList @("`"$(Join-Path $Repo 'tools\publish-open-source.mjs')`"", '--ref', 'HEAD', '--check-push') `
+            -RedirectStandardOutput $publicLog -RedirectStandardError "$publicLog.err"
+        $null = $publicCheck.Handle
+    }
+
+    $plan = [ordered]@{
+        'Windows installer'    = 'yes'
+        'macOS bundle'         = $(if ($doMacos) { 'yes' } else { "no - $macosReason" })
+        'GitHub (private)'     = $(if ($SkipPublish) { 'no - -SkipPublish' } else { 'yes' })
+        'GitHub (public)'      = $(if ($SkipPublish) { 'no - -SkipPublish' } else { 'yes' })
+        'unluminous.com'       = $(if ($SkipPublish -or $SkipSite) { 'no - skipped' } else { 'yes' })
+        'blackrainbowlabs.com' = $(if ($SkipPublish -or $SkipSite) { 'no - skipped' } else { 'yes' })
+    }
+    foreach ($destination in $plan.Keys) {
+        Write-Host ("  {0,-22} {1}" -f $destination, $plan[$destination])
+    }
+
+    Write-Step 'Taking the newest Inillucent'
+    $script:Writing = $true
+    # `task-2293`: *"Make sure our build always pulls in the latest version of inillucent."* The manifest asks for
+    # `inillucent-driver` 2.x and Cargo.lock held whichever 2.x was newest the day it was last written, which had
+    # fallen six releases behind. The newest compatible release is taken here, before the suite, so what is tested
+    # is what ships; Cargo.lock goes into the version commit with the manifest. A new major version is a change to
+    # the manifest, made by hand.
+    Invoke-WithRetry 'cargo update' 3 { & cargo update --manifest-path $Manifest -p inillucent-driver }
+
+    Write-Step 'Running the suite'
+    # `task-1922`: a release was tagged, installed and published before anything had run the tests. It is
+    # the whole gate now rather than a second opinion -- `task-1928` took the continuous integration out,
+    # so this is the only thing that runs the suite before a tag, and a release cannot be made from a
+    # workspace whose tests do not pass.
+    #
+    # The screenshot suite is deliberately not here. It needs a graphics card and it needs a person to
+    # open any image that changed, which is the one rule a script must not be allowed to satisfy on its
+    # own. Its receipt was checked above.
+    if (-not $SkipTests) {
+        Invoke-WithoutCc {
+            # No `changelog.mjs --check` (`task-2295`). Every ticket's commits put the file out of date, so it
+            # refused a release at least six times over a file that "Writing CHANGELOG.md" below rewrites from
+            # the history and commits with the version anyway.
+            Invoke-Checked 'node tools\contrast.mjs --check' {
+                & node (Join-Path $Repo 'tools\contrast.mjs') --check
+            }
+            # **Formatting, clippy and the tests, for the crates whose inputs have changed since they last passed
+            # (`task-2240`, `task-2295`).** `tools/test.mjs` checks formatting first, hashes what each crate's
+            # build and tests can read, skips a crate that has passed on exactly that content before (in this
+            # checkout or in a ticket's worktree), and runs clippy, the Jupyter kernel tests and the rest in three
+            # lanes at once. The notebook kernel tests run with UNLUMINOUS_REQUIRE_KERNEL=1, so a missing Python
+            # fails them (task-2220). `-FullTests` runs every crate.
+            $testArguments = @((Join-Path $Repo 'tools\test.mjs'))
+            if ($FullTests) { $testArguments += '--all' }
+            Invoke-Checked 'node tools\test.mjs' { & node @testArguments }
+        }
+    } else {
+        Write-Host 'Skipped by -SkipTests.' -ForegroundColor Yellow
+        Write-Host 'Nothing has checked this build: not the suite, not cargo fmt, not clippy, and not' -ForegroundColor Yellow
+        Write-Host 'whether the window suite has ever been run against it.' -ForegroundColor Yellow
+    }
+
+    if ($publicCheck) {
+        $publicCheck.WaitForExit()
+        if ($publicCheck.ExitCode -ne 0) {
+            Get-Content -LiteralPath $publicLog, "$publicLog.err" -ErrorAction SilentlyContinue | Select-Object -Last 15 | ForEach-Object { Write-Host "  $_" }
+            throw "The public source could not be published from this history. The whole log: $publicLog"
+        }
+        Write-Host "The push to $PublicRepository would be a fast forward."
+    }
+
+    # **The record of this release (`task-2312`).** What an earlier start built is reused when it was built from
+    # this same source: the same commit and the same Cargo.lock once the newest Inillucent was taken.
+    $source = (& git rev-parse HEAD).Trim()
+    $lock = Get-Sha256 (Join-Path $Repo 'Cargo.lock')
+    $script:Journal = Read-Journal $next
+    if (-not $script:Journal -or $script:Journal.source -ne $source -or $script:Journal.lock -ne $lock -or ($script:Journal.steps -contains 'committed')) {
+        $script:Journal = @{ version = $next; source = $source; lock = $lock; steps = @(); builds = @{} }
+    }
+    if (-not $script:Journal.builds) { $script:Journal.builds = @{} }
+    Save-Journal
+
+    Write-Step "Setting the version to $next"
+    Set-Version $next
+
+    $reusedWindows = Get-ReusedBuild 'windows'
+    $reusedMacos = if ($doMacos) { Get-ReusedBuild 'macos' } else { $null }
+
+    # **The macOS half starts first and builds beside the Windows half (`task-2240`).** The two platforms
+    # share the version and nothing else, and each build after an ordinary change is mostly the one
+    # `unluminous-app` crate, which keeps about half of the processors busy on its own. One after another,
+    # the Windows build and the two Apple architectures took 383 s after a one line change; all three at
+    # once, each in its own target directory and on 80% of the processors, took 210 s. Notarisation then
+    # waits on Apple while the Windows installer is compiled and installed. Its output goes to a log in
+    # `_agent_output/release-logs/`.
+    $macosProcess = $null
+    $macosLog = $null
+    if ($doMacos -and -not $reusedMacos) {
+        $logs = Join-Path $Repo '_agent_output\release-logs'
+        New-Item -ItemType Directory -Force -Path $logs | Out-Null
+        $macosLog = Join-Path $logs "macos-$next.log"
+        Write-Host "Started the macOS build beside the Windows one. Its log: $macosLog"
+        $macosProcess = Start-MacosBuild
+    } elseif ($reusedMacos) {
+        Write-Host "The macOS archive an earlier start built from this source is reused: $reusedMacos"
+    }
+
+    Write-Step 'Building the installer, and installing it'
+    $windowsProcess = $null
+    if ($reusedWindows) {
+        Write-Host "The Windows installer an earlier start built from this source is reused: $reusedWindows"
+    } else {
+        $build = Join-Path $Repo 'installer\windows\build.ps1'
+        $arguments = @('-NoProfile', '-File', "`"$build`"")
+        if (-not $SkipInstall) { $arguments += '-Install' }
+        $windowsProcess = Start-Process -FilePath 'powershell' -NoNewWindow -PassThru -ArgumentList $arguments
+        $null = $windowsProcess.Handle
+    }
+
+    # **Both builds are watched together, so a failure is said when it happens (`task-2312`).** The macOS build's
+    # exit code used to be read only once the Windows installer was built and installed, so its file lock, which
+    # is its first line, surfaced 4.5 to 13.8 minutes in. A macOS failure that came from a held file or the
+    # network is started again at once, and cargo has already built everything the first try finished. Any other
+    # macOS failure is printed straight away, and the Windows build carries on so the next start can reuse it.
+    $macosTries = 1
+    $macosFailure = $null
+    $windowsFailure = $null
+    while ($true) {
+        if ($macosProcess -and $macosProcess.HasExited -and $macosProcess.ExitCode -ne 0 -and -not $macosFailure) {
+            if ($macosTries -lt 3 -and (Test-TransientMacosFailure $macosLog)) {
+                Write-Host ''
+                Write-Host "The macOS build failed on something that may not happen twice; starting it again (try $($macosTries + 1))." -ForegroundColor Yellow
+                Write-MacosLogTail
+                Copy-Item -LiteralPath $macosLog -Destination "$macosLog.try$macosTries" -Force -ErrorAction SilentlyContinue
+                $macosTries += 1
+                $macosProcess = Start-MacosBuild
+            } else {
+                $macosFailure = "installer\macos\build-on-windows.ps1 failed with exit code $($macosProcess.ExitCode). The whole log: $macosLog"
+                Write-Host ''
+                Write-Host 'The macOS build failed:' -ForegroundColor Red
+                Write-MacosLogTail
+                if ($windowsProcess -and -not $windowsProcess.HasExited) {
+                    Write-Host 'The Windows build carries on, so that the next start reuses it and builds only macOS.' -ForegroundColor Yellow
+                }
+            }
+        }
+        if ($windowsProcess -and $windowsProcess.HasExited -and $windowsProcess.ExitCode -ne 0 -and -not $windowsFailure) {
+            $windowsFailure = 'installer\windows\build.ps1 failed.'
+            # The macOS build started above is this release's own child, and a release that stops here
+            # publishes nothing, so it is stopped with everything it started rather than left building.
+            if ($macosProcess -and -not $macosProcess.HasExited) { & taskkill /PID $macosProcess.Id /T /F | Out-Null }
+            throw $windowsFailure
+        }
+        $windowsDone = (-not $windowsProcess) -or $windowsProcess.HasExited
+        $macosDone = (-not $macosProcess) -or $macosProcess.HasExited
+        if ($windowsDone -and $macosDone) { break }
+        Start-Sleep -Seconds 2
+    }
+
+    if ($reusedWindows) {
+        $kept = $reusedWindows
+    } else {
+        $setup = Join-Path $Repo "installer\dist\UnluminousSetup-$next-x64.exe"
+        if (-not (Test-Path $setup)) { throw "The installer was not written to $setup." }
+        New-Item -ItemType Directory -Force -Path $ReleasesDir | Out-Null
+        Copy-Item -Path $setup -Destination $kept -Force
+        $script:Journal.builds['windows'] = @{ path = $kept; sha256 = (Get-Sha256 $kept) }
+        Save-Journal
+        Write-Host "Kept $kept"
+    }
+
+    if ($macosFailure) { throw $macosFailure }
+    if ($doMacos) {
+        if ($reusedMacos) {
+            $macosZip = $reusedMacos
+        } else {
+            Write-Step 'The macOS bundle, built, signed and notarised'
+            Write-MacosLogTail
+            $macosZip = Join-Path $ReleasesDir "Unluminous-$next-macos.zip"
+            if (-not (Test-Path $macosZip)) { throw "The macOS archive was not written to $macosZip." }
+            $script:Journal.builds['macos'] = @{ path = $macosZip; sha256 = (Get-Sha256 $macosZip) }
+            Save-Journal
+            Write-Host "Kept $macosZip"
+        }
+    } else {
+        Write-Host ''
+        Write-Host "macOS is not in this release: $macosReason" -ForegroundColor Yellow
+    }
+
+    # **The suite and the installer leave the previous build's artifacts behind, so the release takes
+    # them back (`task-2011`).** Cargo never removes anything from a target directory: every build writes
+    # a fresh hash-suffixed copy of each artifact and leaves its predecessor exactly where it is, for
+    # ever. Measured on this checkout, target had reached 153.7 GB of which 137.8 GB was copies cargo
+    # could no longer reach. Nothing cargo can still reach is removed, so the next build is not slowed.
+    #
+    # A failure here is reported and does not stop the release. The release is about what reaches the
+    # person's desktop, and disk housekeeping is not a reason to abandon a tag that is already built.
+    Write-Step 'Reclaiming superseded build output'
+    & pwsh -NoProfile -File (Join-Path $Repo 'tools\prune-target.ps1') -Quiet
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host '  the prune reported a problem -- the release is unaffected' -ForegroundColor Yellow
+    }
+
+    # **Written from the history rather than kept by hand**, so it cannot fall behind (`task-1804` §6), and
+    # told which version it is cutting (`task-1984`), because the tag does not exist yet at this point.
+    Write-Step 'Writing CHANGELOG.md'
+    & node (Join-Path $Repo 'tools\changelog.mjs') --release $next
+    if ($LASTEXITCODE -ne 0) { throw 'tools/changelog.mjs failed.' }
+
+    Write-Step "Committing and tagging v$next"
+    Invoke-Checked 'git add' { & git add -- Cargo.toml Cargo.lock CHANGELOG.md }
+    Invoke-Checked 'git commit' { & git commit -m "Unluminous $next" | Out-Null }
+    $script:Writing = $false
+    Invoke-Checked 'git tag' { & git tag -a "v$next" -m "Unluminous $next" }
+    $script:Tagged = $true
+    Add-JournalStep 'committed'
+    Add-JournalStep 'tagged'
 }
 
-# **Written from the history rather than kept by hand**, so it cannot fall behind. `task-1804` §6:
-# 201 commits and 34 minor versions with no record of what changed that a person could read. It runs
-# before the commit so the changelog for this release is in the release's own commit -- the entries
-# for the work are already in the history, and the version this makes is the boundary they sit under.
-#
-# **And it is told which version it is cutting** (`task-1984`). Without that, the tag does not exist
-# yet at this point, so the script cannot see the version it is about to make and writes everything it
-# holds under `## Unreleased` -- and the tag made three lines below then leaves the file stale from
-# that instant. 0.50.0 and 0.51.0 were both cut that way, and `--check` reported each of them one
-# release late, because what it compares is the released history and a version only joins that when it
-# is tagged.
-# **The suite and the installer leave the previous build's artifacts behind, so the release takes
-# them back (`task-2011`).** Cargo never removes anything from a target directory: every build writes
-# a fresh hash-suffixed copy of each artifact and leaves its predecessor exactly where it is, for
-# ever. Measured on this checkout, target had reached 153.7 GB of which 137.8 GB was copies cargo
-# could no longer reach, and the shape of it is this script's own suite -- fourteen screenshot-test
-# binaries at about 220 MB of executable and debug symbols apiece, written afresh every run.
-#
-# A release is the right moment to reclaim them. It is the largest single producer of them, and what
-# it has just built is the newest generation, which is the one kept. Nothing cargo can still reach is
-# removed, so the next build is not slowed by this: measured, a no-op build straight afterwards still
-# finishes in half a second having compiled nothing.
-#
-# A failure here is reported and does not stop the release. The release is about what reaches the
-# person's desktop, and disk housekeeping is not a reason to abandon a tag that is already built.
-Write-Step 'Reclaiming superseded build output'
-& pwsh -NoProfile -File (Join-Path $Repo 'tools\prune-target.ps1') -Quiet
-if ($LASTEXITCODE -ne 0) {
-    Write-Host '  the prune reported a problem -- the release is unaffected' -ForegroundColor Yellow
+if (-not (Test-JournalStep 'pushed')) {
+    Invoke-WithRetry 'git push' 3 { & git push origin $branch }
+    Invoke-WithRetry 'git push of the tag' 3 { & git push origin "v$next" }
+    Add-JournalStep 'pushed'
+    Update-Main $branch
 }
-
-Write-Step 'Writing CHANGELOG.md'
-& node (Join-Path $Repo 'tools\changelog.mjs') --release $next
-if ($LASTEXITCODE -ne 0) { throw 'tools/changelog.mjs failed.' }
-
-Write-Step "Committing and tagging v$next"
-Invoke-Checked 'git add' { & git add -- Cargo.toml Cargo.lock CHANGELOG.md }
-Invoke-Checked 'git commit' { & git commit -m "Unluminous $next" | Out-Null }
-$script:Writing = $false
-Invoke-Checked 'git tag' { & git tag -a "v$next" -m "Unluminous $next" }
-Invoke-Checked 'git push' { & git push origin $branch }
-Invoke-Checked 'git push --tags' { & git push origin "v$next" }
-Update-Main $branch
 
 if ($SkipPublish) {
     Write-Host ''
@@ -760,7 +891,6 @@ if ($SkipPublish) {
     return
 }
 
-Write-Step "Publishing the GitHub release"
 if (-not $Notes) { $Notes = (& git log -1 --pretty=%s "v$next^").Trim() }
 $body = @"
 $Notes
@@ -780,36 +910,40 @@ inside ``Unluminous.app/Contents/MacOS``.
 }
 $assets = @($kept)
 if ($macosZip) { $assets += $macosZip }
-& $gh release create "v$next" @assets --repo jasonmcaffee/unluminous --title "Unluminous $next" --notes $body
-if ($LASTEXITCODE -ne 0) {
-    throw "The tag v$next was pushed but the release was not created. Run: gh release create v$next `"$kept`" --title `"Unluminous $next`""
-}
 
+if (-not (Test-JournalStep 'private')) {
+    Write-Step "Publishing the GitHub release"
+    Invoke-WithRetry "The GitHub release v$next on jasonmcaffee/unluminous" 3 { Publish-GitHubRelease 'jasonmcaffee/unluminous' $assets $body }
+    Add-JournalStep 'private'
+}
 $url = (& $gh release view "v$next" --repo jasonmcaffee/unluminous --json url --jq .url).Trim()
 
 # **The public repository is the one anybody else can see, so it gets the same release.**
 # `tools/publish-open-source.mjs` is a pure function of the history — the same commits give the same
 # hashes every time — so this is an ordinary push that appends the new commits and the new tag, and
-# the release is then created against that tag.
+# the release is then created against that tag. Running it twice is harmless: a tag the public
+# repository already has is left alone, and a push of the same commit changes nothing.
 #
 # **It publishes the tag, not `origin/main`.** A release cut from a ticket worktree pushes the ticket's
 # branch, so `origin/main` can still be the version before; 0.84.5 was published to the public
 # repository with 0.84.4's source for that reason. The tag is this release whatever the branch.
-Write-Step "Publishing the source and the release on $PublicRepository"
-& node (Join-Path $Repo 'tools\publish-open-source.mjs') --push --ref "v$next"
-if ($LASTEXITCODE -ne 0) {
-    throw "The release v$next exists on the private repository but the public source was not pushed. Run: node tools\publish-open-source.mjs --push --ref v$next"
+if (-not (Test-JournalStep 'public-source')) {
+    Write-Step "Publishing the source on $PublicRepository"
+    Invoke-WithRetry "The public source of v$next" 3 { & node (Join-Path $Repo 'tools\publish-open-source.mjs') --push --ref "v$next" }
+    Add-JournalStep 'public-source'
 }
-& $gh release create "v$next" @assets --repo $PublicRepository --title "Unluminous $next" --notes $body
-if ($LASTEXITCODE -ne 0) {
-    throw "The public source was pushed but its release was not created. Run: gh release create v$next `"$kept`" --repo $PublicRepository --title `"Unluminous $next`""
+if (-not (Test-JournalStep 'public')) {
+    Write-Step "Publishing the release on $PublicRepository"
+    Invoke-WithRetry "The GitHub release v$next on $PublicRepository" 3 { Publish-GitHubRelease $PublicRepository $assets $body }
+    Add-JournalStep 'public'
 }
 $publicUrl = (& $gh release view "v$next" --repo $PublicRepository --json url --jq .url).Trim()
 
 # **And the sites last**, because they are the one step that can fail on somebody else's toolchain
-# and both releases above are published by the time they run. It is still a hard failure: a site a
-# release did not reach answers `update check` with the version before this one, which is worse than
-# not answering at all, and the message says exactly what to run again.
+# and both releases above are published by the time they run. A site's own check of what the edge serves
+# failed seven times on a network error that a second publish did not see, so each site is tried twice
+# before the release stops (`task-2312`). A site a release did not reach answers `update check` with the
+# version before this one, which is worse than not answering at all.
 if (-not $SkipSite) {
     # The product site takes its installers out of `releases/`, and it reads the main checkout's unless
     # told otherwise. A release cut from a ticket worktree writes them into the worktree's own
@@ -818,15 +952,14 @@ if (-not $SkipSite) {
     if (-not $env:UNLUMINOUS_RELEASES_DIR) { $env:UNLUMINOUS_RELEASES_DIR = Join-Path $Repo 'releases' }
     if (-not $env:UNLUMINOUS_CHANGELOG) { $env:UNLUMINOUS_CHANGELOG = Join-Path $Repo 'CHANGELOG.md' }
     foreach ($site in $SitePublishers) {
+        if (Test-JournalStep "site:$($site.Name)") { continue }
         Write-Step "Publishing $($site.Name)"
         $arguments = @('-NoProfile', '-File', $site.Script)
         # Only the product site is told which version: the parent page reads it out of the manifest
         # the product site has just published, which is the whole reason they go in this order.
         if ($site.Versioned) { $arguments += @('-Version', $next) }
-        & pwsh @arguments
-        if ($LASTEXITCODE -ne 0) {
-            throw "Unluminous $next is released but $($site.Name) still says the version before it. Run: pwsh $($site.Script)$(if ($site.Versioned) { " -Version $next" })"
-        }
+        Invoke-WithRetry "Publishing $($site.Name)" 2 { & pwsh @arguments }
+        Add-JournalStep "site:$($site.Name)"
     }
 } else {
     Write-Host ''
@@ -941,10 +1074,12 @@ if (-not $SkipInstall) {
 # line is still printed; only the ending changes.
 Write-StepTimes $next
 
+if ($script:MissedDestinations.Count -eq 0) { Add-JournalStep 'done' }
+
 if ($script:MissedDestinations.Count -gt 0) {
     Write-Host ''
     Write-Host "Unluminous $next did not reach $($script:MissedDestinations.Count) destination(s):" -ForegroundColor Red
     $script:MissedDestinations | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
-    Write-Host 'The tag and the releases are published; fix these and run the step again.' -ForegroundColor Red
+    Write-Host 'The tag and the releases are published; fix these and run pwsh tools/release.ps1 again, which carries on.' -ForegroundColor Red
     exit 1
 }

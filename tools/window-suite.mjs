@@ -123,6 +123,9 @@ const CHANGES_A_WINDOW = (file) =>
   file.startsWith('plugins/') ||
   file.startsWith('crates/unluminous-app/tests/snapshots/');
 
+/** The most `.rs` files a receipt's diff may hold and still have each one asked whether only its formatting moved. */
+const FORMATTING_PASS_FILES = 40;
+
 /**
  * What has changed since `commit` that could change what a window draws.
  *
@@ -134,15 +137,23 @@ const CHANGES_A_WINDOW = (file) =>
  */
 function whatMovedSince(commit) {
   try {
-    return execFileSync('git', ['-C', repo, 'diff', '--name-only', `${commit}..HEAD`], {
+    const changed = execFileSync('git', ['-C', repo, 'diff', '--name-only', `${commit}..HEAD`], {
       encoding: 'utf8',
     })
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean)
       .filter(CHANGES_A_WINDOW)
-      .filter((file) => !onlyTheVersionMoved(file, commit))
-      .filter((file) => !onlyTheFormattingMoved(file, commit));
+      .filter((file) => !onlyTheVersionMoved(file, commit));
+    // **A formatting pass is only worth asking about when few files changed (`task-2312`).** It exists for a
+    // `cargo fmt` commit after the suite ran, which touches a handful of files. A receipt dozens of
+    // files behind is stale whatever their whitespace says, and checking each one is two `git show`
+    // calls and a `rustfmt` run, so the first file that is a real change answers for the rest.
+    if (changed.filter((file) => file.endsWith('.rs')).length > FORMATTING_PASS_FILES) {
+      const real = changed.find((file) => !onlyTheFormattingMoved(file, commit));
+      return real ? changed : [];
+    }
+    return changed.filter((file) => !onlyTheFormattingMoved(file, commit));
   } catch {
     // A commit git cannot reach is already reported as stale by the ancestor check above.
     return [];
@@ -224,12 +235,25 @@ for (const binary of binaries) {
     continue;
   }
   // Any receipt that answers for HEAD will do; when none does, the newest one says why.
-  const reasons = all.map((receipt) => whyNot(binary, receipt, moved));
-  const at = reasons.indexOf(null);
-  if (at >= 0) {
-    answering.set(binary, all[at]);
+  //
+  // **Tried newest first, stopping at the first that answers (`task-2312`).** Every receipt used to be
+  // judged, and the folder keeps about thirty a binary. An old receipt is a diff of hundreds of `.rs` files,
+  // each of which `onlyTheFormattingMoved` runs through `rustfmt`, so the check took almost five minutes on
+  // every release before anything was built. The newest receipt is nearly always the one that answers.
+  let newestReason = null;
+  let found = null;
+  for (const receipt of all) {
+    const why = whyNot(binary, receipt, moved);
+    if (why === null) {
+      found = receipt;
+      break;
+    }
+    newestReason ??= why;
+  }
+  if (found) {
+    answering.set(binary, found);
   } else {
-    stale.push(reasons[0]);
+    stale.push(newestReason);
   }
 }
 // Only what moved since the receipts that were reported stale is printed below.

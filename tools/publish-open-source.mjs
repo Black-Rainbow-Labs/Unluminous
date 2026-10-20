@@ -5,6 +5,7 @@
  *     node tools/publish-open-source.mjs                 # rewrite, check, and say what it would push
  *     node tools/publish-open-source.mjs --push          # and push it
  *     node tools/publish-open-source.mjs --ref v0.49.2   # publish up to a tag rather than origin/main
+ *     node tools/publish-open-source.mjs --ref HEAD --check-push   # would a push be a fast forward
  *
  * **What it is for.** `github.com/jasonmcaffee/unluminous` is private and is where releases are cut.
  * `github.com/Black-Rainbow-Labs/Unluminous` is the public source. The two hold the same code and the
@@ -220,9 +221,10 @@ function check(where, map, order) {
 
 /** Reads the flags, with `--ref` and `--remote` taking a value and the rest being switches. */
 function readTheArguments(argv) {
-  const options = { ref: 'origin/main', remote: PUBLIC_REMOTE, push: false, work: '' };
+  const options = { ref: 'origin/main', remote: PUBLIC_REMOTE, push: false, checkPush: false, work: '' };
   for (let at = 0; at < argv.length; at += 1) {
     if (argv[at] === '--push') options.push = true;
+    else if (argv[at] === '--check-push') options.checkPush = true;
     else if (argv[at] === '--ref') options.ref = argv[++at];
     else if (argv[at] === '--remote') options.remote = argv[++at];
     else if (argv[at] === '--work') options.work = argv[++at];
@@ -264,6 +266,38 @@ function main() {
     process.exit(1);
   }
 
+  // **Whether the push would be refused, asked before a release builds anything (`task-2312`).** The public
+  // `main` is the rewrite of some earlier private commit, so a push is a fast forward only when that commit is in
+  // the history being published. 1.3.0's push was refused after both GitHub releases were made, because another
+  // ticket had reached `main` while the release ran and had been published first.
+  if (options.checkPush) {
+    const theirs = execFileSync('git', ['ls-remote', options.remote, 'refs/heads/main'], { encoding: 'utf8' }).split('	')[0].trim();
+    if (theirs) {
+      let known = true;
+      try {
+        execFileSync('git', ['-C', mirror, 'cat-file', '-e', `${theirs}^{commit}`], { stdio: 'ignore' });
+      } catch {
+        known = false;
+      }
+      let ahead = false;
+      if (known) {
+        try {
+          execFileSync('git', ['-C', mirror, 'merge-base', '--is-ancestor', theirs, map.get(head)], { stdio: 'ignore' });
+          ahead = true;
+        } catch {
+          ahead = false;
+        }
+      }
+      if (!ahead) {
+        console.error(`The public main is ${theirs.slice(0, 10)}, which is not in the history of ${options.ref}, so a push would be refused.`);
+        console.error('Merge origin/main into this branch and release again.');
+        process.exit(2);
+      }
+    }
+    console.log(`The push to ${options.remote} would be a fast forward.`);
+    if (!options.push) return;
+  }
+
   if (!options.push) {
     console.log('Checks passed. Run again with --push to publish.');
     return;
@@ -282,7 +316,31 @@ function main() {
   );
   const fresh = moved.filter(([refname]) => !published.has(refname));
   console.log(`tags       ${fresh.length} not yet on ${options.remote}`);
-  const refspecs = [`${map.get(head)}:refs/heads/main`, ...fresh.map(([refname, object]) => `${object}:${refname}`)];
+  // **A public `main` that already holds this history is left where it is (`task-2312`).** A release that is
+  // carried on after a failure publishes its tag again, and by then `main` may have moved past it; pushing the
+  // older commit to `main` would be refused as a step backwards and stop the release a second time.
+  const theirs = execFileSync('git', ['ls-remote', options.remote, 'refs/heads/main'], { encoding: 'utf8' }).split('	')[0].trim();
+  let mainHasIt = false;
+  if (theirs) {
+    try {
+      // The mirror holds only the rewrite of the history up to this ref, so the commit the public `main` is on
+      // is fetched first. The rewrite is the same every time, so everything up to here arrives already present.
+      execFileSync('git', ['-C', mirror, 'fetch', '--quiet', options.remote, 'refs/heads/main'], { stdio: 'ignore' });
+      execFileSync('git', ['-C', mirror, 'merge-base', '--is-ancestor', map.get(head), theirs], { stdio: 'ignore' });
+      mainHasIt = true;
+    } catch {
+      mainHasIt = false;
+    }
+  }
+  const refspecs = [
+    ...(mainHasIt ? [] : [`${map.get(head)}:refs/heads/main`]),
+    ...fresh.map(([refname, object]) => `${object}:${refname}`),
+  ];
+  if (refspecs.length === 0) {
+    console.log(`
+${options.remote} already has ${options.ref} and every tag; nothing to push`);
+    return;
+  }
   execFileSync('git', ['-C', mirror, 'push', options.remote, ...refspecs], { stdio: 'inherit' });
   console.log(`\npushed to ${options.remote}`);
 }

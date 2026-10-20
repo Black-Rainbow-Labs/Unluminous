@@ -214,6 +214,23 @@ needs to know:
   `unluminous-cli.exe` to `unluminous-cli.exe.<time>.old` and writes the new one beside it, because the Restart
   Manager cannot close a program with no window. Do not stop agents' servers to release.
 
+### A release refuses in seconds, retries what is transient, and carries on after a failure (`task-2312`)
+
+`tasks/task-2312-release-reliability-tdd.md` has the measurements: 123 failed starts across 51 tickets. What a
+ticket needs to know:
+
+- **Everything that can refuse a release is asked before anything is built**: the tag, the GitHub credential,
+  the macOS preflight, the window suite receipt (0.5 s now, it was 4 min 54 s) and whether the public push would
+  be a fast forward. **The release merges `origin/main` into the branch itself** when the branch lacks it.
+- **A transient failure is run again.** An Apple architecture that fails on a held file (`os error 32`) is
+  started again, and each one's output is in `_agent_output/release-logs/zigbuild-<triple>.log`. Every network
+  step is tried three times, each site twice.
+- **Never start a failed release over by hand. Run `pwsh tools/release.ps1` again.** `_agent_output/release-state/<version>.json`
+  records what finished. Before the commit, an installer built from the same source is reused. After the tag,
+  the release carries on from the step that failed with the same version. `-Resume` does that for a tagged
+  release with no record.
+- `pwsh tools/release-steps.test.ps1` checks the retry, the record and the GitHub steps with nothing published.
+
 ### A release reclaims the build output it just superseded
 
 **Cargo never removes anything from `target`.** Every build writes a fresh hash-suffixed copy of each

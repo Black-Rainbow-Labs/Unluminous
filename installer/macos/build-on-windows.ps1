@@ -250,26 +250,98 @@ function Build-AppleTargets {
         @('-p', 'unluminous-app', '--bin', 'unluminous', '-p', 'unluminous-cli', '--bin', 'unluminous-cli')
     }
 
+    # **Each architecture writes a log of its own, starts after the one before it has begun compiling, and is
+    # started again when it failed on a file another build held (`task-2312`).** cargo-zigbuild writes shared files
+    # under `%LOCALAPPDATA%\cargo-zigbuild\<version>` when it starts, and two starts together can collide on them.
+    # 1.3.0's first release lost the aarch64 build that way, with `os error 32` on its first line, and the whole
+    # release was started again from the beginning.
+    $logs = Join-Path $repo '_agent_output\release-logs'
+    New-Item -ItemType Directory -Force -Path $logs | Out-Null
     $builds = @()
     foreach ($target in $Targets) {
-        $start = [System.Diagnostics.ProcessStartInfo]::new($cargoZigbuild)
-        foreach ($argument in @('zigbuild', '--manifest-path', (Join-Path $repo 'Cargo.toml'), '--release', '--locked', '--target', $target) + $packages) {
-            $start.ArgumentList.Add($argument)
-        }
-        $start.UseShellExecute = $false
-        $start.Environment['PATH'] = "$zigDir;$env:PATH"
-        $start.Environment['CARGO_TARGET_DIR'] = Get-AppleTargetDir $target
-        $start.Environment["CARGO_TARGET_$($target.ToUpperInvariant().Replace('-', '_'))_RUSTFLAGS"] = '-C link-arg=-Wl,-headerpad_max_install_names'
-        if ($SdkRoot) { $start.Environment['SDKROOT'] = $SdkRoot }
-        Write-Host "==> $target, into $(Get-AppleTargetDir $target)"
-        $builds += [pscustomobject]@{ Target = $target; Process = [System.Diagnostics.Process]::Start($start) }
+        $build = [pscustomobject]@{ Target = $target; Log = (Join-Path $logs "zigbuild-$target.log"); Process = $null; Tries = 0 }
+        Start-AppleBuild $build $packages $SdkRoot
+        Wait-UntilCompiling $build
+        $builds += $build
     }
     $failed = @()
     foreach ($build in $builds) {
-        $build.Process.WaitForExit()
-        if ($build.Process.ExitCode -ne 0) { $failed += "$($build.Target) with $($build.Process.ExitCode)" }
+        while ($true) {
+            $build.Process.WaitForExit()
+            if ($build.Process.ExitCode -eq 0) { break }
+            $text = Get-Content -LiteralPath $build.Log -Raw -ErrorAction SilentlyContinue
+            if ($build.Tries -lt 3 -and $text -match $TransientBuildFailure) {
+                Write-Host "==> $($build.Target) failed on something another process held ($($Matches[0])), so it is started again"
+                Start-Sleep -Seconds 5
+                Start-AppleBuild $build $packages $SdkRoot
+                continue
+            }
+            Get-Content -LiteralPath $build.Log -ErrorAction SilentlyContinue |
+                Where-Object { $_ -notmatch '^\s+(Compiling|Checking|Fresh|Blocking)\b' } |
+                Select-Object -Last 40 | ForEach-Object { Write-Host "  $_" }
+            $failed += "$($build.Target) with $($build.Process.ExitCode) (log: $($build.Log))"
+            break
+        }
     }
     if ($failed.Count -gt 0) { throw "cargo-zigbuild failed for $($failed -join ', ')" }
+}
+
+# The failures that come from another process holding a file rather than from the code. A build that fails
+# with one of these is started again; any other failure is reported at once.
+$TransientBuildFailure = 'os error 32|being used by another process|os error 33|The process cannot access the file'
+
+function Start-AppleBuild {
+    <#
+    .SYNOPSIS
+        Starts one architecture's cargo-zigbuild, its output written to its own log.
+
+    .PARAMETER Build
+        The build: its triple, its log and the try it is on, which this counts.
+
+    .PARAMETER Packages
+        The cargo package and binary arguments.
+
+    .PARAMETER SdkRoot
+        The macOS SDK, or an empty string.
+    #>
+    param($Build, [string[]] $Packages, [string] $SdkRoot)
+    $target = $Build.Target
+    $arguments = @('zigbuild', '--manifest-path', (Join-Path $repo 'Cargo.toml'), '--release', '--locked', '--target', $target) + $Packages
+    # Through cmd for the redirection, because a ProcessStartInfo that redirects has to be read while it runs.
+    $line = '"' + $cargoZigbuild + '" ' + (($arguments | ForEach-Object { '"' + $_ + '"' }) -join ' ') + ' > "' + $Build.Log + '" 2>&1'
+    $start = [System.Diagnostics.ProcessStartInfo]::new($env:ComSpec)
+    # One string rather than ArgumentList, which escapes every quote and leaves cmd a line it cannot read.
+    $start.Arguments = '/d /s /c "' + $line + '"'
+    $start.UseShellExecute = $false
+    $start.Environment['PATH'] = "$zigDir;$env:PATH"
+    $start.Environment['CARGO_TARGET_DIR'] = Get-AppleTargetDir $target
+    $start.Environment["CARGO_TARGET_$($target.ToUpperInvariant().Replace('-', '_'))_RUSTFLAGS"] = '-C link-arg=-Wl,-headerpad_max_install_names'
+    if ($SdkRoot) { $start.Environment['SDKROOT'] = $SdkRoot }
+    $Build.Tries += 1
+    Write-Host "==> $target, into $(Get-AppleTargetDir $target), try $($Build.Tries), log $($Build.Log)"
+    $Build.Process = [System.Diagnostics.Process]::Start($start)
+    $null = $Build.Process.Handle
+}
+
+function Wait-UntilCompiling {
+    <#
+    .SYNOPSIS
+        Waits, for at most 30 seconds, until a build has got past cargo-zigbuild's own start.
+
+    .DESCRIPTION
+        cargo-zigbuild writes its shared files before cargo prints its first line, so a line from cargo means
+        the next architecture can start without colliding with this one.
+
+    .PARAMETER Build
+        The build that was just started.
+    #>
+    param($Build)
+    $until = (Get-Date).AddSeconds(30)
+    while ((Get-Date) -lt $until -and -not $Build.Process.HasExited) {
+        $text = Get-Content -LiteralPath $Build.Log -Raw -ErrorAction SilentlyContinue
+        if ($text -match '(Compiling|Fresh|Finished|Updating|Downloaded)') { return }
+        Start-Sleep -Milliseconds 500
+    }
 }
 
 function New-UniversalBinary {
