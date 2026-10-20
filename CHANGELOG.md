@@ -6,7 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.3.0 — 2026-10-20
+## 1.3.1 — 2026-10-20
+
+- The README sells Unluminous the way unluminous.com does, and the docs and pictures are of 1.2.2 (`task-2310`)
+- A release refuses in seconds, retries what is transient, and carries on after a failure (`task-2312`)
+- The README and the window guide name the keymap's presets on the line that says keymap, so the naming test passes on main again (`task-2312`)
+
+## 1.3.0 — 2026-10-19
 
 - Agents that speak the Agent Client Protocol, and the ACP registry (`task-2308`)
 - The acp wire's comment does not name the reference editor (`task-2308`)
