@@ -5054,6 +5054,38 @@ fn a_link_in_a_tickets_chat_opens_a_tab_and_the_ticket_steps_aside() {
     assert!(harness.query_by_label("Chat tab").is_none(), "the ticket stepped aside for the tab");
 }
 
+/// `task-2313`: *"The toast message for error messages is really ugly and not formatted well. Same for our update
+/// toast message."* A problem is a title, its first line under the title, and the program's own output in a carved
+/// well and a `Copy` chip; an update is a title, the version, its notes in a well, and the two answers as pills.
+#[test]
+fn a_problem_and_an_update_are_laid_out_as_a_title_a_sentence_and_details() {
+    use unluminous_app::components::toast::{Act, Kind};
+    let mut harness = harness("");
+    harness.set_size(vec2(1300.0, 800.0));
+    let failure = "claude stopped with exit status 1.
+
+npm error code ETARGET
+npm error notarget No matching version found for @agentclientprotocol/claude-agent-acp@0.94.0.
+npm error notarget In most cases you or one of your dependencies are requesting
+npm error notarget a package version that doesn't exist.";
+    harness.state_mut().toasts.say(failure, Kind::Problem);
+    harness.state_mut().toasts.offer(
+        "Unluminous 1.4.0 is ready to install. You have 1.3.2.
+Report an Issue, ACP agents as cards, and toasts laid out like dialogs.",
+        vec![
+            ("Don't Ask Again".to_owned(), Act::SkipUpdate("1.4.0".to_owned())),
+            ("Install & Restart".to_owned(), Act::InstallUpdate("1.4.0".to_owned())),
+        ],
+    );
+    steady(&mut harness);
+    assert!(harness.query_by_label("Copy notice 1").is_some(), "a problem can be copied whole");
+    assert!(harness.query_by_label("Install & Restart").is_some());
+    harness.snapshot(shot("toast_problem_and_update").as_str());
+    harness.get_by_label("Copy notice 1").click();
+    steady(&mut harness);
+    assert_eq!(harness.state().toasts.len(), 2, "copying keeps the notice");
+}
+
 /// `task-2263`: *"If a task fails to be created, there should be a toast message that is displayed that indicates
 /// what the error was, and it should have a close x button, and auto dismiss after 3 seconds."* The notice the ticket
 /// modal raises is drawn as the chat design's card with a cross, and is the kind that goes after three seconds.

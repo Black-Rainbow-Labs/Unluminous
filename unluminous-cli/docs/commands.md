@@ -952,7 +952,7 @@ unluminous-cli editor insert "one\ntwo"
 ### editor caret
 
 ```
-unluminous-cli editor caret [--path <file>] [--line <number>] [--column <number>]
+unluminous-cli editor caret [--path <file>] [--line <number>] [--column <number>] [--top]
 ```
 
 Read where the caret is, or move it. Lines and columns count from 1, which is what the status bar shows.
@@ -960,10 +960,12 @@ Read where the caret is, or move it. Lines and columns count from 1, which is wh
 - `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--line <number>` — The line to move to.
 - `--column <number>` — The column to move to. The start of the line when it is left out.
+- `--top` — Scroll so the caret's line is at the top of the view, as a link to a function does.
 
 ```sh
 unluminous-cli editor caret
 unluminous-cli editor caret --line 42 --column 5
+unluminous-cli editor caret --line 120 --top
 ```
 
 ### editor select

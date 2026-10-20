@@ -2214,13 +2214,17 @@ impl UnluminousApp {
             .toast_rux
             .take()
             .unwrap_or_else(|| crate::theme::rux_state(crate::theme::rux_theme()));
-        let pressed =
-            crate::components::toast::show(ui, full, &self.toasts, self.settings.font_size, &state);
+        let pressed = crate::components::toast::show(ui, full, &self.toasts, &state);
         state.end_frame();
         self.toast_rux = Some(state);
         if let Some(dismissed) = pressed {
             match dismissed {
                 crate::components::toast::Pressed::Dismissed(index) => self.toasts.dismiss(index),
+                crate::components::toast::Pressed::Copied(index) => {
+                    if let Some(notice) = self.toasts.notices().get(index) {
+                        ui.ctx().copy_text(notice.text.clone());
+                    }
+                }
                 crate::components::toast::Pressed::Acted(index, act) => {
                     self.toasts.dismiss(index);
                     self.act_on_a_notice(act);

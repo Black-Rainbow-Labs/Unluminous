@@ -1140,8 +1140,9 @@ pub const COMMANDS: &[Command] = &[
             FILE,
             whole_option("line", "number", "The line to move to."),
             whole_option("column", "number", "The column to move to. The start of the line when it is left out."),
+            switch("top", "Scroll so the caret's line is at the top of the view, as a link to a function does."),
         ],
-        examples: &["unluminous-cli editor caret", "unluminous-cli editor caret --line 42 --column 5"],
+        examples: &["unluminous-cli editor caret", "unluminous-cli editor caret --line 42 --column 5", "unluminous-cli editor caret --line 120 --top"],
         local: false,
     },
     Command {

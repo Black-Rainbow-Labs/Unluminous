@@ -34,10 +34,14 @@
 //! **No new colour.** Each card is the Agent-Chat design's card drawn with `rux` (`task-2263`), and the mark
 //! in its well is in that design's own failed, done and action colours (`rux::theme::Chat::slower`,
 //! `faster` and `sky`).
+//!
+//! **A card is laid out the way a dialog is** (`task-2313`): a title that says what kind of notice it is, the
+//! first line of the notice under it, anything after that line (a program's own output, release notes) in a
+//! carved well, and the buttons as the design's pills. A problem carries a round `Copy` chip beside its cross, so
+//! its whole text can be pasted somewhere, because the well shows at most [`DETAIL_ROWS`] lines of it. The status bar does not say
+//! the same thing again: see `Request::Notice` in `app::plugin_panes`.
 
-use egui::{Color32, CornerRadius, FontId, Pos2, Rect, Sense, Vec2};
-
-use crate::theme::color;
+use egui::{Color32, FontId, Pos2, Rect, Vec2};
 
 /// How long a confirmation stays before it fades.
 ///
@@ -55,12 +59,11 @@ pub const BRIEF_LIFE: std::time::Duration = std::time::Duration::from_secs(3);
 /// two genuinely different things to read, which is as much as anybody reads at once.
 pub const LIMIT: usize = 2;
 
-/// How wide one is, and how far in from the window's edge the stack sits.
-const WIDTH: f32 = 320.0;
+/// How wide one is, how far in from the window's edge the stack sits, and how far its contents are from its
+/// edge.
+const WIDTH: f32 = 380.0;
 const MARGIN: f32 = 12.0;
-/// What a card keeps clear on its left before its offer buttons are measured, which was the coloured edge.
-const EDGE: f32 = 3.0;
-const PAD: f32 = 10.0;
+const PAD: f32 = 14.0;
 
 /// What kind of notice this is, which decides its colour and whether it fades.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -100,6 +103,8 @@ pub enum Pressed {
     Dismissed(usize),
     /// A button on the offer at this index.
     Acted(usize, Act),
+    /// `Copy` on the problem at this index: its whole text goes on the clipboard (`task-2313`).
+    Copied(usize),
 }
 
 impl Kind {
@@ -283,21 +288,22 @@ impl Toasts {
     }
 }
 
-/// Draw the stack into the bottom right of `area`, and answer which cross was pressed.
+/// Draw the stack into the bottom right of `area`, and answer which button was pressed.
 ///
 /// Added to the `Ui` **after every pane**, for the reason the module comment gives. The stack grows
 /// upwards from just above the status bar, so a new notice appears nearest the place a person is looking
 /// and the older ones move away.
 ///
-/// **Each card is the Agent-Chat design's own card** (`task-2263`): `rux`'s raised card gradient with the
-/// floating shadow, a carved round well on the left holding the kind's mark in the kind's colour, the words
-/// in the design's ink, and the board's round chip button with a cross to dismiss it. `state` is the window's
-/// `rux` state for the notices, which the caller ends the frame on.
+/// **Each card is laid out the way a dialog is** (`task-2313`: *"The toast message for error messages is really
+/// ugly and not formatted well. Same for our update toast message"*): a heading row with the kind's mark in a
+/// carved well, a title and the round cross; the first line of the notice under the title in the quieter ink;
+/// whatever follows it, such as a command's own output, in a carved well of its own; and the buttons as the
+/// design's pills along the bottom. `state` is the window's `rux` state for the notices, which the caller ends
+/// the frame on.
 pub fn show(
     ui: &mut egui::Ui,
     area: Rect,
     toasts: &Toasts,
-    look_font: f32,
     state: &rux::RuxState,
 ) -> Option<Pressed> {
     if toasts.is_empty() {
@@ -310,11 +316,10 @@ pub fn show(
     // stack, nearest the status bar.
     let mut bottom = area.bottom() - MARGIN;
     for (index, notice) in toasts.notices().iter().enumerate().rev() {
-        let Some(card) = one_card(ui, area, bottom, notice, index, look_font, state, &mut pressed)
-        else {
+        let Some(card) = one_card(ui, area, bottom, notice, index, state, &mut pressed) else {
             break;
         };
-        bottom = card.top() - 8.0;
+        bottom = card.top() - GAP;
     }
     pressed
 }
@@ -338,44 +343,142 @@ fn ask_for_the_frame_a_notice_fades_on(ctx: &egui::Context, toasts: &Toasts) {
 const SHADOW_REACH: f32 = 72.0;
 /// How round a card is, and how big the well holding its mark is.
 const CARD_RADIUS: f32 = 18.0;
-const MARK_WELL: f32 = 28.0;
+const MARK_WELL: f32 = 30.0;
 /// The round button that dismisses a card.
 const CLOSE: f32 = 26.0;
+/// The gap between the mark's well and the words beside it, and between two cards.
+const GAP: f32 = 10.0;
+/// The type: the title, the sentence under it, and the details in their well.
+const TITLE_SIZE: f32 = 13.5;
+const BODY_SIZE: f32 = 12.5;
+const DETAIL_SIZE: f32 = 11.5;
+/// The most lines of the sentence and of the details that are drawn. Everything is still copied by `Copy`.
+const BODY_ROWS: usize = 4;
+const DETAIL_ROWS: usize = 8;
+/// How tall a button is, and how far apart two are.
+const BUTTON: f32 = 30.0;
+const BUTTON_GAP: f32 = 8.0;
+/// How far the words in the details well are from its edge.
+const WELL_PAD: f32 = 10.0;
+
+/// The title a notice is given, from what it is. The words a notice was raised with are its body, so a
+/// sentence that is long, or that carries a program's output after it, is never a heading.
+pub fn title_of(notice: &Notice) -> &'static str {
+    let about_an_update = notice.actions.iter().any(|(_, act)| {
+        matches!(act, Act::InstallUpdate(_) | Act::SkipUpdate(_) | Act::OpenPage(_))
+    });
+    let about_setup =
+        notice.actions.iter().any(|(_, act)| matches!(act, Act::RunSetup | Act::DeclineSetup));
+    match notice.kind {
+        Kind::Problem | Kind::Brief => "Something went wrong",
+        Kind::Done => "Done",
+        Kind::Offer if about_an_update => "Update available",
+        Kind::Offer if about_setup => "Finish setting up",
+        Kind::Offer => "Question",
+    }
+}
+
+/// A notice's words split into the sentence under the title and the details under that: the first line,
+/// and everything after it with its blank lines taken off the ends. A one line notice has no details.
+pub fn split_the_words(text: &str) -> (&str, &str) {
+    let text = text.trim();
+    match text.split_once('\n') {
+        Some((first, rest)) => (first.trim(), rest.trim_matches(['\n', '\r', ' '])),
+        None => (text, ""),
+    }
+}
+
+/// The buttons along the bottom of a card, which only an offer has.
+fn buttons_of(notice: &Notice) -> Vec<(String, Act)> {
+    notice.actions.clone()
+}
+
+/// Whether a card has a round `Copy` chip beside its cross, so its whole text can be pasted into a ticket or a
+/// search. A problem has, because its well shows at most [`DETAIL_ROWS`] lines.
+fn copies(notice: &Notice) -> bool {
+    matches!(notice.kind, Kind::Problem | Kind::Brief)
+}
+
+/// Lay words out wrapped at `width`, in one of the `rux` families, at most `rows` lines with a `…` at the end
+/// of the last when there were more.
+fn wrapped(
+    painter: &egui::Painter,
+    text: &str,
+    family: &str,
+    size: f32,
+    colour: Color32,
+    width: f32,
+    rows: usize,
+) -> std::sync::Arc<egui::Galley> {
+    let font = FontId::new(size, egui::FontFamily::Name(family.into()));
+    let mut job = egui::text::LayoutJob::simple(text.to_owned(), font, colour, width.max(1.0));
+    job.wrap.max_rows = rows;
+    job.wrap.overflow_character = Some('…');
+    painter.layout_job(job)
+}
 
 /// Draw one card with its bottom edge at `bottom`, and answer where it went, or `None` when it would not fit.
-#[allow(clippy::too_many_arguments)]
 fn one_card(
     ui: &mut egui::Ui,
     area: Rect,
     bottom: f32,
     notice: &Notice,
     index: usize,
-    look_font: f32,
     state: &rux::RuxState,
     pressed: &mut Option<Pressed>,
 ) -> Option<Rect> {
     let painter = ui.painter().clone();
-    // `× 3` after the sentence when it has happened more than once — see [`Toasts::say`].
-    let said = match notice.count {
-        0 | 1 => notice.text.clone(),
-        many => format!("{}  × {many}", notice.text),
-    };
-    // An offer is as wide as its row of buttons needs, and never narrower than any other notice: at a large
-    // font the two buttons are wider than the card, and they ran out of both sides of it (`task-2063`).
-    let font = FontId::proportional(look_font - 1.0);
-    let row = button_row(&painter, notice, &font);
-    let width = WIDTH.max(row.width + PAD * 2.0 + EDGE).min(area.width() - MARGIN * 2.0);
-    let ink = crate::theme::rux_theme().ink.i900;
-    let words_left = PAD + MARK_WELL + PAD;
-    let words_width = width - words_left - PAD - CLOSE - 6.0;
-    // Measured before it is placed, because a two line sentence makes a taller card and the one above it has
-    // to move up by that much.
-    let wrapped = painter.layout(said, font.clone(), ink, words_width);
-    let buttons = match notice.actions.is_empty() {
-        true => 0.0,
-        false => row.height + PAD,
-    };
-    let height = (wrapped.size().y + PAD * 2.0 + buttons).max(MARK_WELL + PAD * 2.0);
+    let ink = crate::theme::rux_theme().ink;
+    let width = WIDTH.min(area.width() - MARGIN * 2.0);
+    let inner = width - PAD * 2.0;
+    let words_left = PAD + MARK_WELL + GAP;
+    let chips = if copies(notice) { 2.0 } else { 1.0 };
+    let words_width = width - words_left - PAD - (CLOSE + 6.0) * chips - GAP;
+    let (sentence, details) = split_the_words(&notice.text);
+    // Measured before anything is placed, because a two line sentence or a well of details makes a taller
+    // card and the one above it has to move up by that much.
+    let title = painter.layout_no_wrap(
+        title_of(notice).to_owned(),
+        FontId::new(TITLE_SIZE, egui::FontFamily::Name("rux-sans-600".into())),
+        ink.i900,
+    );
+    let body =
+        wrapped(&painter, sentence, "rux-sans-400", BODY_SIZE, ink.i500, words_width, BODY_ROWS);
+    // A problem's details are a program's own output, so they are set in the code face in a carved well. An
+    // offer's are words, such as an update's release notes, and go under the sentence in the quiet ink.
+    let in_a_well = matches!(notice.kind, Kind::Problem | Kind::Brief);
+    let details = (!details.is_empty()).then(|| match in_a_well {
+        true => wrapped(
+            &painter,
+            details,
+            "rux-mono-400",
+            DETAIL_SIZE,
+            ink.i700,
+            inner - WELL_PAD * 2.0,
+            DETAIL_ROWS,
+        ),
+        false => {
+            wrapped(&painter, details, "rux-sans-400", BODY_SIZE, ink.i500, words_width, BODY_ROWS)
+        }
+    });
+    let buttons = buttons_of(notice);
+    // The heading row is the well's height; the sentence starts under the title, beside the mark.
+    let head = MARK_WELL.max(title.size().y);
+    let title_top = PAD + (MARK_WELL - title.size().y) / 2.0;
+    let body_top = title_top + title.size().y + 2.0;
+    let mut height = (body_top + body.size().y).max(PAD + head);
+    let well_top = height + if in_a_well { GAP } else { 6.0 };
+    if let Some(details) = &details {
+        height = match in_a_well {
+            true => well_top + details.size().y + WELL_PAD * 2.0,
+            false => well_top + details.size().y,
+        };
+    }
+    let buttons_top = height + GAP;
+    if !buttons.is_empty() {
+        height = buttons_top + BUTTON;
+    }
+    height += PAD;
     let card = Rect::from_min_size(
         Pos2::new(area.right() - MARGIN - width, bottom - height),
         Vec2::new(width, height),
@@ -387,12 +490,20 @@ fn one_card(
     let well =
         Rect::from_min_size(Pos2::new(card.left() + PAD, card.top() + PAD), Vec2::splat(MARK_WELL));
     let cross_at = Rect::from_center_size(
-        Pos2::new(card.right() - PAD - CLOSE / 2.0, card.top() + PAD + CLOSE / 2.0 - 2.0),
+        Pos2::new(card.right() - PAD - CLOSE / 2.0, card.top() + PAD + MARK_WELL / 2.0),
         Vec2::splat(CLOSE),
     );
+    let details_well = details.as_ref().filter(|_| in_a_well).map(|details| {
+        Rect::from_min_size(
+            Pos2::new(card.left() + PAD, card.top() + well_top),
+            Vec2::new(inner, details.size().y + WELL_PAD * 2.0),
+        )
+    });
+    let copy_at = cross_at.translate(Vec2::new(-(CLOSE + 6.0), 0.0));
     let name = format!("Dismiss notice {}", index + 1);
+    let copy_name = format!("Copy notice {}", index + 1);
     let id = ui.id().with(("toast", index));
-    let dismissed = rux::layer(ui, state, id, card.expand(SHADOW_REACH), |rux| {
+    let (dismissed, copied, chosen) = rux::layer(ui, state, id, card.expand(SHADOW_REACH), |rux| {
         let chat = rux.theme().chat;
         rux.chrome.surface(
             card,
@@ -401,90 +512,83 @@ fn one_card(
             chat.floating(),
         );
         rux.chrome.surface(well, MARK_WELL / 2.0, chat.well, chat.carved_sm());
+        if let Some(details_well) = details_well {
+            rux.chrome.surface(details_well, 12.0, chat.well, chat.carved_sm());
+        }
         let colour = notice.kind.colour(&chat);
         rux.mark(rux::Mark::new(notice.kind.mark(), 12.0).stroke(1.9), well.center(), colour);
-        rux::components::ChipButton::new(rux::Icon::X, CLOSE, &name)
+        let dismissed = rux::components::ChipButton::new(rux::Icon::X, CLOSE, &name)
             .mark(10.0, Some(1.8))
             .show(rux, cross_at)
-            .clicked()
+            .clicked();
+        let copied = copies(notice)
+            && rux::components::ChipButton::new(rux::Icon::Copy, CLOSE, &copy_name)
+                .mark(11.0, Some(1.7))
+                .show(rux, copy_at)
+                .clicked();
+        let chosen = pill_buttons(rux, card, &buttons, card.top() + buttons_top);
+        (dismissed, copied, chosen)
     });
     if dismissed {
         *pressed = Some(Pressed::Dismissed(index));
     }
-    let words_at = Pos2::new(
-        card.left() + words_left,
-        card.top()
-            + PAD
-            + ((MARK_WELL - wrapped.rows.first().map_or(0.0, |row| row.height())) / 2.0).max(0.0),
-    );
-    painter.galley(words_at, wrapped, ink);
-    if let Some(act) = offer_buttons(ui, card, notice, index, look_font) {
+    if copied {
+        *pressed = Some(Pressed::Copied(index));
+    }
+    if let Some(act) = chosen {
         *pressed = Some(Pressed::Acted(index, act));
+    }
+    // The words go after the layer, so they are drawn over the card and the well.
+    let title_at = Pos2::new(card.left() + words_left, card.top() + title_top);
+    let title_right = title_at.x + title.size().x;
+    painter.galley(title_at, title, ink.i900);
+    // `× 3` beside the title when the same notice has been raised more than once — see [`Toasts::say`].
+    if notice.count > 1 {
+        let times = painter.layout_no_wrap(
+            format!("× {}", notice.count),
+            FontId::new(BODY_SIZE, egui::FontFamily::Name("rux-sans-500".into())),
+            ink.i500,
+        );
+        let at =
+            Pos2::new(title_right + 8.0, card.top() + PAD + (MARK_WELL - times.size().y) / 2.0);
+        painter.galley(at, times, ink.i500);
+    }
+    painter.galley(Pos2::new(card.left() + words_left, card.top() + body_top), body, ink.i500);
+    match (details, details_well) {
+        (Some(details), Some(details_well)) => {
+            painter.galley(details_well.min + Vec2::splat(WELL_PAD), details, ink.i700)
+        }
+        (Some(details), None) => painter.galley(
+            Pos2::new(card.left() + words_left, card.top() + well_top),
+            details,
+            ink.i500,
+        ),
+        _ => {}
     }
     Some(card)
 }
 
-/// How much wider and taller a button on an offer is than its words.
-const BUTTON_PAD: Vec2 = Vec2::new(20.0, 10.0);
-/// The gap between two buttons.
-const BUTTON_GAP: f32 = 6.0;
-
-/// How much room an offer's row of buttons takes at `font`.
-struct Row {
-    width: f32,
-    height: f32,
-}
-
-fn button_row(painter: &egui::Painter, notice: &Notice, font: &FontId) -> Row {
-    let sizes: Vec<Vec2> = notice
-        .actions
-        .iter()
-        .map(|(label, _)| painter.layout_no_wrap(label.clone(), font.clone(), color::text()).size())
-        .collect();
-    let width = sizes.iter().map(|size| size.x + BUTTON_PAD.x).sum::<f32>()
-        + BUTTON_GAP * sizes.len().saturating_sub(1) as f32;
-    let height = sizes.iter().map(|size| size.y).fold(0.0, f32::max) + BUTTON_PAD.y;
-    Row { width, height }
-}
-
-/// Draw an offer's buttons along the bottom of its card, right aligned, with the last one filled in the
-/// accent, which is the rule `components::modal::footer` keeps for the button that does the thing.
+/// Draw a card's buttons right aligned along its bottom, as the design's pills, with the last one on the
+/// action's gradient, which is the rule `components::modal::footer` keeps for the button that does the thing.
 /// Answers the act of the one pressed.
-fn offer_buttons(
-    ui: &mut egui::Ui,
+fn pill_buttons(
+    rux: &mut rux::Rux<'_>,
     card: Rect,
-    notice: &Notice,
-    index: usize,
-    look_font: f32,
+    buttons: &[(String, Act)],
+    top: f32,
 ) -> Option<Act> {
-    let font = FontId::proportional(look_font - 1.0);
-    let row = button_row(ui.painter(), notice, &font);
     let mut right = card.right() - PAD;
-    let top = card.bottom() - PAD - row.height;
     let mut pressed = None;
-    let last = notice.actions.len().saturating_sub(1);
-    for (position, (label, act)) in notice.actions.iter().enumerate().rev() {
-        let primary = position == last;
-        let ink = match primary {
-            true => color::on_accent(),
-            false => color::text(),
+    let last = buttons.len().saturating_sub(1);
+    for (position, (label, act)) in buttons.iter().enumerate().rev() {
+        let pill = rux::components::PillButton::new(label);
+        let pill = match position == last {
+            true => pill.primary(),
+            false => pill,
         };
-        let words = ui.painter().layout_no_wrap(label.clone(), font.clone(), ink);
-        let width = words.size().x + BUTTON_PAD.x;
-        let at = Rect::from_min_size(Pos2::new(right - width, top), Vec2::new(width, row.height));
-        let id = ui.id().with(("toast-button", index, position));
-        let response = ui.interact(at, id, Sense::click());
-        let fill = match (primary, response.hovered()) {
-            (true, _) => color::accent(),
-            (false, true) => color::selected_row(),
-            (false, false) => color::control(),
-        };
-        ui.painter().rect_filled(at, CornerRadius::same(crate::theme::size::CONTROL_CORNER), fill);
-        ui.painter().galley(at.center() - words.size() / 2.0, words, ink);
-        response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label.clone())
-        });
-        if response.clicked() {
+        let width = pill.measure(rux).x.max(72.0);
+        let at = Rect::from_min_size(Pos2::new(right - width, top), Vec2::new(width, BUTTON));
+        if pill.show(rux, at).clicked() {
             pressed = Some(act.clone());
         }
         right = at.left() - BUTTON_GAP;

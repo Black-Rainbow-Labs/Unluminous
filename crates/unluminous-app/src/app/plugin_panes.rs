@@ -673,13 +673,10 @@ impl UnluminousApp {
                 self.run_cli_for_a_plugin(caller, id, request, ctx);
             }
             Request::Message(said) => self.message = Some(said),
-            // The status bar as well as the toast, so a notice is still in the one place a person looks
-            // for the last thing that happened — and so a screenshot of the status bar keeps saying what
-            // it said before this existed.
-            Request::Notice { text, kind } => {
-                self.message = Some(text.clone());
-                self.toasts.say(text, kind);
-            }
+            // **The toast and not the status bar** (`task-2313`: *"When we get an error message toast, we also
+            // show the same message at the bottom bar of the app. We don't want that."*). The toast carries the
+            // whole text and a `Copy` button.
+            Request::Notice { text, kind } => self.toasts.say(text, kind),
             Request::ShowTab => {
                 let key = self
                     .plugin_ui

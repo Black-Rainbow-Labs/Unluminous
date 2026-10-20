@@ -698,7 +698,17 @@ impl UnluminousApp {
         // A click on a link in any Markdown a pane drew: the chat, a ticket, a note. `task-2255`.
         let clicked =
             self.context.as_ref().and_then(crate::components::markdown_text::take_the_clicked_link);
+        let from_the_preview = self.link_to_open.is_some();
         let Some(target) = self.link_to_open.take().or(clicked) else { return };
+        // **A link to a file in the project opens the file**, at its line when it names one. An agent
+        // writes a function as `[name](src/x.rs:42)` or `[name](src/x.rs#L42)`, and those used to be
+        // refused as a scheme or sent to a browser as `https://src/x.rs` (`task-2313`).
+        if let Some((path, line)) = self.a_project_file_a_link_names(&target, from_the_preview) {
+            if let Err(said) = self.open_a_file_at_its_line(&path, line) {
+                self.message = Some(said);
+            }
+            return;
+        }
         match target.split_once(':') {
             Some(("http" | "https", _)) => match self.open_browser(&target) {
                 Ok(_) => self.the_modals_step_aside(),
@@ -716,6 +726,64 @@ impl UnluminousApp {
                 ));
             }
         }
+    }
+
+    /// The project file a link names and the line it points at, when it names one that is there.
+    ///
+    /// Four spellings are read, because they are the ones agents write: `path`, `path:line`,
+    /// `path:line:column` and `path#Lline`, with an optional `file://` in front. The path is read against
+    /// the project folder, and a link in the Markdown preview is also read against the document's own
+    /// folder, which is what a relative link in a document means. A path outside the project is never
+    /// opened: a link is somebody else's writing.
+    fn a_project_file_a_link_names(
+        &self,
+        target: &str,
+        from_the_preview: bool,
+    ) -> Option<(std::path::PathBuf, Option<usize>)> {
+        let (written, line) = split_a_line_off(target.trim().trim_start_matches("file://"));
+        if written.is_empty() || written.starts_with("http:") || written.starts_with("https:") {
+            return None;
+        }
+        let root = self.tree.root().to_path_buf();
+        let written = std::path::Path::new(written);
+        let mut places = vec![root.join(written)];
+        if from_the_preview {
+            if let Some(folder) =
+                self.files.active().file_on_disk().and_then(std::path::Path::parent)
+            {
+                places.push(folder.join(written));
+            }
+        }
+        let inside = |path: &std::path::Path| {
+            let plain = |p: &std::path::Path| std::fs::canonicalize(p).ok();
+            match (plain(path), plain(&root)) {
+                (Some(path), Some(root)) => path.starts_with(root),
+                _ => false,
+            }
+        };
+        places.into_iter().find(|path| path.is_file() && inside(path)).map(|path| (path, line))
+    }
+
+    /// Open a file and put its line at the top of the view, which is what a link to a function means.
+    ///
+    /// The same three things `plugins run agent-chat` asks for when a component's file row is pressed:
+    /// `tab open --permanent`, `editor caret --line --top`, and the explorer showing the file.
+    fn open_a_file_at_its_line(
+        &mut self,
+        path: &std::path::Path,
+        line: Option<usize>,
+    ) -> Result<(), String> {
+        self.open_path_permanently(path)?;
+        self.revealed = None;
+        if let Some(line) = line {
+            let offset = crate::app::cli::offset_at(self.document().text(), line.max(1), 1);
+            self.document_mut()
+                .apply(unluminous_core::Command::PlaceCaret { offset, extend: false });
+            self.reveal_caret = true;
+            self.reveal_at_the_top = true;
+        }
+        self.the_modals_step_aside();
+        Ok(())
     }
 
     /// Put away every plugin's modal, so a browser tab a link in one of them opened is seen (`task-2263`).
@@ -916,5 +984,46 @@ impl UnluminousApp {
                 }
             }
         }
+    }
+}
+
+/// A link with the line it points at taken off the end: `a.rs:42`, `a.rs:42:7` and `a.rs#L42` are all
+/// `a.rs` at line 42. A link that names no line is returned whole. A Windows drive letter is not a
+/// line, because only digits after the colon are.
+fn split_a_line_off(target: &str) -> (&str, Option<usize>) {
+    if let Some((path, anchor)) = target.split_once("#L") {
+        let digits: String = anchor.chars().take_while(char::is_ascii_digit).collect();
+        return (path, digits.parse().ok());
+    }
+    let mut path = target;
+    let mut line = None;
+    // A column after the line is read and dropped, then the line.
+    for _ in 0..2 {
+        match path.rsplit_once(':') {
+            Some((before, after))
+                if !after.is_empty() && after.bytes().all(|b| b.is_ascii_digit()) =>
+            {
+                line = after.parse().ok();
+                path = before;
+            }
+            _ => break,
+        }
+    }
+    (path, line)
+}
+
+#[cfg(test)]
+mod link_tests {
+    use super::split_a_line_off;
+
+    #[test]
+    fn a_link_to_a_line_is_read_in_every_spelling_an_agent_writes() {
+        assert_eq!(split_a_line_off("src/a.rs"), ("src/a.rs", None));
+        assert_eq!(split_a_line_off("src/a.rs:42"), ("src/a.rs", Some(42)));
+        assert_eq!(split_a_line_off("src/a.rs:42:7"), ("src/a.rs", Some(42)));
+        assert_eq!(split_a_line_off("src/a.rs#L42"), ("src/a.rs", Some(42)));
+        assert_eq!(split_a_line_off("src/a.rs#L42-L50"), ("src/a.rs", Some(42)));
+        assert_eq!(split_a_line_off("C:/x/a.rs:9"), ("C:/x/a.rs", Some(9)));
+        assert_eq!(split_a_line_off("C:/x/a.rs"), ("C:/x/a.rs", None));
     }
 }

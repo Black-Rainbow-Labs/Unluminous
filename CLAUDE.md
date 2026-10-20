@@ -471,6 +471,25 @@ comments use it. A field's right click menu puts back the selection the right cl
 `controls::close_every_menu` closes every field and text menu when the tab showing changes or a page is
 clicked into.
 
+### A link to a file opens it with its line at the top, and the explorer shows it (`task-2313`)
+
+- **A link that names a project file opens the file**: `path`, `path:line`, `path:line:column` and `path#Lline`,
+  read against the project folder and, in the Markdown preview, against the document's folder
+  (`a_project_file_a_link_names`). A path outside the project is never opened.
+- **A jump to a function puts its line at the top of the view**, not at the bottom where the least scrolling
+  leaves it. `editor caret --line N --top` is that jump (`reveal_at_the_top`), and a component's file row in the
+  chat asks for it.
+- **`tab open` re-selects the file in the explorer** even when it was already showing (`revealed = None`), and a
+  row that is off the screen is scrolled half way down the list (`explorer::reveal_alignment`). A row already on
+  the screen does not move, so switching tabs does not make the list jump.
+
+### A toast is laid out like a small dialog, and the status bar does not repeat it (`task-2313`)
+
+`components::toast` draws a title from the notice's kind (`title_of`), the first line of the notice under it, and
+the rest (`split_the_words`): a problem's in the code face in a carved well with a round `Copy notice N` chip
+beside the cross, an offer's in the quiet ink. An offer's buttons are `rux` pills, the last one primary.
+`Request::Notice` raises the toast only; it used to set the status bar as well.
+
 ### What `task-2263` changed about links and the one native view
 
 - **A link's right click menu** is drawn by `markdown_text::show_the_link_menu`, once a frame, for every place
@@ -832,9 +851,12 @@ speak it (42 on 2026-10-19, Claude's adapter among them). Six rules:
   deletes a binary agent's download. Only the released binary reads it by itself (`AcpRegistry::read_when_shown`);
   a test's window reads it only when `UNLUMINOUS_ACP_REGISTRY` names a file. `settings acp-registry`, `acp-add`,
   `acp-update` and `acp-remove` are the agent's half.
-- **An npx package version the machine's npm cannot find is run again with no version**
-  (`acp::without_a_missing_version`). npm on a machine that reads a company mirror can be a release behind the
-  public registry, and answers `ETARGET`; the thinking says which version was used instead.
+- **An npx agent is pinned to a version this machine's npm can fetch, when it is added or updated**
+  (`acp_registry::npm_version_to_pin`, `task-2313`). npm on a machine that reads a company mirror can be a release
+  behind the public registry, and answers `ETARGET`. The pin used is written to `acp-agents/npm-pins.conf` in the
+  settings folder, so the card does not offer `Update` for ever. An endpoint added before that is run again with
+  no version (`acp::without_a_missing_version`) **and nothing is said in the conversation**; the pin is remembered
+  (`acp::remember_npm_lacks`) so later turns skip the failing attempt.
 - **A binary agent is downloaded into `<settings folder>/acp-agents/<id>/<version>/`**, its SHA-256 checked
   before anything is unpacked, and unpacked with `%SystemRoot%\System32\tar.exe` on Windows.
 - **An `acp` endpoint is never a ticket's agent** (`ai_endpoints::agents`): a ticket runs in a terminal.

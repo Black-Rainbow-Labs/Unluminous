@@ -144,6 +144,47 @@ fn a_folder_with_a_long_source_file(name: &str) -> std::path::PathBuf {
     fixture(&format!("unluminous-performance/{name}"), &[("long.rs", &source)])
 }
 
+/// `task-2313`: *"When the agent chat has links to functions, the line number is at the bottom of the screen, so I have
+/// to scroll down to see the function. It should be at the top."* `editor caret --top` puts the line at the top of the
+/// view where a plain `editor caret` scrolls the least, and a link written `path:line` or `path#Lline` in a chat
+/// opens the file there too.
+#[test]
+fn a_jump_to_a_function_puts_its_line_at_the_top_of_the_view() {
+    let folder = a_folder_with_a_long_source_file("caret-at-the-top");
+    let mut harness = harness_in(&folder);
+    did(&mut harness, "tab open long.rs --permanent");
+    steady(&mut harness);
+    steady(&mut harness);
+    let top_of = |harness: &Harness<'static, UnluminousApp>, line: usize| {
+        harness.state().layout().paragraph_band(line - 1).expect("a line in the file").0
+    };
+
+    did(&mut harness, "editor caret --line 1500");
+    steady(&mut harness);
+    let least = harness.state().files.active().scroll;
+    assert!(
+        least > 0.0 && least < top_of(&harness, 1500) - 100.0,
+        "the plain caret scrolls the least, which leaves the line at the bottom: {least}"
+    );
+
+    did(&mut harness, "editor caret --line 900 --top");
+    steady(&mut harness);
+    let scroll = harness.state().files.active().scroll;
+    assert!((scroll - top_of(&harness, 900)).abs() < 2.0, "line 900 is at the top: {scroll}");
+
+    // A link in the chat's Markdown, the way an agent writes one.
+    for (link, line) in [("long.rs:2100", 2100), ("long.rs#L300", 300)] {
+        unluminous_app::components::markdown_text::ask_to_open_a_link(&harness.ctx.clone(), link);
+        steady(&mut harness);
+        steady(&mut harness);
+        assert_eq!(harness.state().files.active().name(), "long.rs");
+        let scroll = harness.state().files.active().scroll;
+        assert!((scroll - top_of(&harness, line)).abs() < 2.0, "{link}: scrolled to {scroll}");
+        let caret = did(&mut harness, "editor caret");
+        assert_eq!(caret["line"], line, "{link}: {caret}");
+    }
+}
+
 /// `task-1666`. **Dragging a selection must lay nothing out again and colour nothing again.**
 ///
 /// This is the gesture the ticket reported, and the fault behind it was that moving the caret counted

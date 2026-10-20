@@ -1618,6 +1618,9 @@ impl AgentChat {
         if let Some(line) = line {
             let mut caret = serde_json::Map::new();
             caret.insert("line".to_owned(), serde_json::Value::from(line));
+            // The line at the top of the view, so the function a link names is read downwards from
+            // it rather than starting at the bottom of the screen (`task-2313`).
+            caret.insert("top".to_owned(), serde_json::Value::Bool(true));
             asked.push(Request::RunCommand {
                 id: format!("{OPENING}{path}:{line}"),
                 command: "editor.caret".to_owned(),

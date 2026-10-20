@@ -414,7 +414,13 @@ pub struct AcpRegistry {
     folder: Option<std::path::PathBuf>,
     loading: Option<Receiver<Result<Vec<acp_registry::Agent>, String>>>,
     /// The registry id being installed, and where its endpoint will arrive.
-    installing: Option<(String, Receiver<Result<Provider, String>>)>,
+    installing: Option<(String, Receiver<Result<Installed, String>>)>,
+    /// The npm package each registry pin is run as on this machine, when npm here cannot fetch the registry's
+    /// own (`task-2313`). Kept in `acp-agents/npm-pins.conf` in the settings folder. See [`NPM_PINS`].
+    npm_pins: Vec<(String, String)>,
+    /// Whether adding an npx agent asks npm which version it can fetch. Only the released binary does, through
+    /// [`Self::read_when_shown`], so a test never runs npm.
+    asks_npm: bool,
     /// Endpoints that are ready to be added to the list, taken by [`Self::take_ready`].
     ready: Vec<Provider>,
     /// Whether showing the page reads the registry. See [`Self::read_when_shown`].
@@ -422,6 +428,17 @@ pub struct AcpRegistry {
     /// Which package runners are installed, and when that was asked. See [`Self::runners`].
     runners: Option<(std::time::Instant, Runners)>,
 }
+
+/// An agent a thread has finished installing: its endpoint, and the npm pin it was resolved to when that is not
+/// the registry's own (`registry pin`, `pin used`).
+#[derive(Debug)]
+struct Installed {
+    provider: Provider,
+    npm_pin: Option<(String, String)>,
+}
+
+/// The file in the settings folder that says which npm package each registry pin is run as here.
+const NPM_PINS: &str = "acp-agents/npm-pins.conf";
 
 /// Which of the package runners an ACP agent can be started through are on this machine.
 #[derive(Debug, Clone, Copy, Default)]
@@ -445,13 +462,61 @@ impl Runners {
 impl AcpRegistry {
     /// The registry for a window whose settings are in `folder`.
     pub fn in_folder(folder: &Path) -> Self {
-        Self { folder: Some(folder.to_path_buf()), ..Self::default() }
+        let npm_pins = read_npm_pins(&folder.join(NPM_PINS));
+        // A turn for an endpoint still pinned to a version npm here lacks runs the package unpinned straight
+        // away, rather than failing once first.
+        for (pinned, _) in &npm_pins {
+            unluminous_chat::acp::remember_npm_lacks(pinned);
+        }
+        Self { folder: Some(folder.to_path_buf()), npm_pins, ..Self::default() }
+    }
+
+    /// Record that the registry's `pinned` package is run here as `used`, and write the list down.
+    fn note_npm_pin(&mut self, pinned: &str, used: &str) {
+        match self.npm_pins.iter_mut().find(|(known, _)| known == pinned) {
+            Some(entry) if entry.1 == used => return,
+            Some(entry) => entry.1 = used.to_owned(),
+            None => self.npm_pins.push((pinned.to_owned(), used.to_owned())),
+        }
+        unluminous_chat::acp::remember_npm_lacks(pinned);
+        if let Some(folder) = &self.folder {
+            let path = folder.join(NPM_PINS);
+            let mut text = String::from(
+                "# The npm package each ACP registry pin is run as, because npm on this machine cannot fetch it.\n",
+            );
+            for (pinned, used) in &self.npm_pins {
+                text.push_str(&format!("{pinned} = {used}\n"));
+            }
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = crate::services::store::write_atomically(&path, text.as_bytes());
+        }
+    }
+
+    /// The npm package the registry's `package` is run as here.
+    fn npm_pin_for(&self, package: &str) -> String {
+        self.npm_pins
+            .iter()
+            .find(|(pinned, _)| pinned == package)
+            .map(|(_, used)| used.clone())
+            .unwrap_or_else(|| package.to_owned())
+    }
+
+    /// `distribution` with its npx package replaced by the one it is run as here.
+    fn as_run_here(&self, distribution: &acp_registry::Distribution) -> acp_registry::Distribution {
+        let mut distribution = distribution.clone();
+        if let acp_registry::Distribution::Npx { package, .. } = &mut distribution {
+            *package = self.npm_pin_for(package);
+        }
+        distribution
     }
 
     /// Let the AI Configuration page read the registry when it is shown (`task-2308`). Only the released binary
     /// calls this, so a test's window fetches nothing unless `UNLUMINOUS_ACP_REGISTRY` names a file to read.
     pub fn read_when_shown(&mut self) {
         self.read_when_shown = true;
+        self.asks_npm = true;
     }
 
     /// Which package runners are installed, asked again at most every [`RUNNERS_FRESH`] (`task-2308`). Each
@@ -525,6 +590,18 @@ impl AcpRegistry {
     /// Take what the threads have finished. Answers whether anything changed.
     pub fn poll(&mut self) -> bool {
         let mut changed = false;
+        // A turn that found npm lacked a pinned version, for an endpoint added before installs asked npm. One
+        // atomic load while nothing has been found. The package is written down as run unpinned, so the next
+        // start knows it too and the agent's card offers `Update`, which pins the version npm here has.
+        if let Some(lacks) = unluminous_chat::acp::npm_lacks_if_changed() {
+            for pinned in lacks {
+                if !self.npm_pins.iter().any(|(known, _)| *known == pinned) {
+                    let unpinned = pinned[..pinned.rfind('@').unwrap_or(pinned.len())].to_owned();
+                    self.note_npm_pin(&pinned, &unpinned);
+                    changed = true;
+                }
+            }
+        }
         if let Some(loading) = &self.loading {
             let arrived = match loading.try_recv() {
                 Ok(arrived) => Some(arrived),
@@ -553,7 +630,10 @@ impl AcpRegistry {
             };
             if let Some(arrived) = arrived {
                 match arrived {
-                    Ok(provider) => {
+                    Ok(Installed { provider, npm_pin }) => {
+                        if let Some((pinned, used)) = npm_pin {
+                            self.note_npm_pin(&pinned, &used);
+                        }
                         self.said =
                             Some(format!("Installed {id} and added it as `{}`.", provider.name));
                         self.ready.push(provider);
@@ -601,10 +681,13 @@ impl AcpRegistry {
         let Some(distribution) = acp_registry::launch_for(agent, &platform, has) else {
             return Err(format!("{} has no way to run on {platform}.", agent.name));
         };
-        if !matches!(distribution, acp_registry::Distribution::Binary { .. }) {
+        let asks_npm =
+            self.asks_npm && matches!(distribution, acp_registry::Distribution::Npx { .. });
+        if !asks_npm && !matches!(distribution, acp_registry::Distribution::Binary { .. }) {
             self.said = Some(format!("Added {} as `{name}`.", agent.id));
             self.problem = None;
-            return Ok(Some(acp_registry::provider_for(&name, distribution, None)));
+            let distribution = self.as_run_here(distribution);
+            return Ok(Some(acp_registry::provider_for(&name, &distribution, None)));
         }
         let (agent, distribution) = (agent.clone(), distribution.clone());
         self.install_on_a_thread(&agent, &distribution, name)?;
@@ -629,13 +712,22 @@ impl AcpRegistry {
         };
         let into = acp_registry::install_folder(settings, &agent.id, &agent.version);
         let distribution = distribution.clone();
+        let known = self.npm_pins.clone();
         let (send, receive) = channel();
         std::thread::Builder::new()
             .name("unluminous-acp-install".to_owned())
             .spawn(move || {
-                let installed = acp_registry::install(&distribution, &into).map(|program| {
-                    acp_registry::provider_for(&name, &distribution, Some(&program))
-                });
+                let installed = match &distribution {
+                    // **An npx agent is pinned to a version npm here can fetch** (`task-2313`), asked once
+                    // here rather than discovered by every turn.
+                    acp_registry::Distribution::Npx { package, .. } => {
+                        Ok(npx_installed(&name, &distribution, package, &known))
+                    }
+                    _ => acp_registry::install(&distribution, &into).map(|program| Installed {
+                        provider: acp_registry::provider_for(&name, &distribution, Some(&program)),
+                        npm_pin: None,
+                    }),
+                };
                 let _ = send.send(installed);
             })
             .map_err(|problem| format!("The agent could not be installed: {problem}"))?;
@@ -669,7 +761,8 @@ impl AcpRegistry {
             }
             _ => None,
         };
-        Some(acp_registry::provider_for(name, distribution, program.as_deref()))
+        let distribution = self.as_run_here(distribution);
+        Some(acp_registry::provider_for(name, &distribution, program.as_deref()))
     }
 
     /// Whether the endpoint `id` added runs another version than the registry has now (`task-2308`). Compared by
@@ -711,11 +804,14 @@ impl AcpRegistry {
         let Some(distribution) = acp_registry::launch_for(&agent, &platform, has).cloned() else {
             return Err(format!("{} has no way to run on {platform}.", agent.name));
         };
-        if matches!(distribution, acp_registry::Distribution::Binary { .. }) {
+        let asks_npm =
+            self.asks_npm && matches!(distribution, acp_registry::Distribution::Npx { .. });
+        if asks_npm || matches!(distribution, acp_registry::Distribution::Binary { .. }) {
             self.install_on_a_thread(&agent, &distribution, id.to_owned())?;
             return Ok(false);
         }
         let model = providers[index].model.clone();
+        let distribution = self.as_run_here(&distribution);
         providers[index] = acp_registry::provider_for(id, &distribution, None);
         providers[index].model = model;
         self.said = Some(format!("Updated {id} to {}.", agent.version));
@@ -752,9 +848,84 @@ impl AcpRegistry {
     }
 }
 
+/// The endpoint for an npx agent called `name`, pinned to the version of `package` npm on this machine can
+/// fetch. `known` is what an earlier install found, used when npm cannot be asked now.
+fn npx_installed(
+    name: &str,
+    distribution: &acp_registry::Distribution,
+    package: &str,
+    known: &[(String, String)],
+) -> Installed {
+    let environment = crate::services::agent_chat::AgentChat::the_environment();
+    let used = acp_registry::npm_version_to_pin(package, &environment)
+        .or_else(|| {
+            known.iter().find(|(pinned, _)| pinned == package).map(|(_, used)| used.clone())
+        })
+        .unwrap_or_else(|| package.to_owned());
+    let npm_pin = (used != package).then(|| (package.to_owned(), used.clone()));
+    let mut run_here = distribution.clone();
+    if let acp_registry::Distribution::Npx { package, .. } = &mut run_here {
+        *package = used;
+    }
+    Installed { provider: acp_registry::provider_for(name, &run_here, None), npm_pin }
+}
+
+/// The registry pins and the packages they are run as, from `acp-agents/npm-pins.conf`. A file that is not there
+/// is an empty list.
+fn read_npm_pins(path: &Path) -> Vec<(String, String)> {
+    std::fs::read_to_string(path)
+        .unwrap_or_default()
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .filter_map(|line| line.split_once(" = "))
+        .map(|(pinned, used)| (pinned.trim().to_owned(), used.trim().to_owned()))
+        .filter(|(pinned, used)| !pinned.is_empty() && !used.is_empty())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A registry pin npm here cannot fetch is run as the package written in `acp-agents/npm-pins.conf`, by an
+    /// agent added from the registry and by `Update`, and the agent is not offered `Update` for it for ever
+    /// (`task-2313`). A turn for an endpoint pinned to it is told to run the package unpinned at once.
+    #[test]
+    fn a_pin_npm_lacks_is_run_as_the_version_written_down_for_it() {
+        let folder = a_folder("npm-pins");
+        let pinned = "@agentclientprotocol/claude-agent-acp@0.94.0";
+        let used = "@agentclientprotocol/claude-agent-acp@0.91.2";
+        std::fs::create_dir_all(folder.join("acp-agents")).expect("made");
+        std::fs::write(
+            folder.join(NPM_PINS),
+            format!(
+                "# written by Unluminous
+{pinned} = {used}
+"
+            ),
+        )
+        .expect("written");
+        let mut acp = AcpRegistry::in_folder(&folder);
+        assert!(unluminous_chat::acp::npm_lacks(pinned), "a turn runs it unpinned straight away");
+        let text = include_str!("../../../unluminous-chat/tests/streams/acp-registry.json");
+        acp.use_agents(unluminous_chat::acp_registry::parse(text).expect("the registry reads"));
+        let has = |_: &str| true;
+        let added =
+            acp.add("claude-acp", None, &[], &has).expect("added").expect("at once in a test");
+        assert_eq!(added.args, vec!["-y".to_owned(), used.to_owned()]);
+        let providers = vec![added];
+        assert!(
+            !acp.can_update("claude-acp", &providers, &has),
+            "the version npm has is current here"
+        );
+
+        // And a pin a turn found missing is written down, so the next start knows it too.
+        unluminous_chat::acp::remember_npm_lacks("some-agent@1.2.3");
+        acp.poll();
+        let written = std::fs::read_to_string(folder.join(NPM_PINS)).expect("written");
+        assert!(written.contains("some-agent@1.2.3 = some-agent"), "{written}");
+        let _ = std::fs::remove_dir_all(&folder);
+    }
 
     fn a_folder(name: &str) -> std::path::PathBuf {
         let folder = std::env::temp_dir()

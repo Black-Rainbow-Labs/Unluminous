@@ -17,9 +17,10 @@
 //!
 //! It scrolls with `scroll_to_rect(row, None)`, and the `None` is the point of it: that means *scroll
 //! by the least amount that brings this rectangle into view*, so a row that is already visible does
-//! not move and the tree does not jump every time you switch tabs. `Align::Center` would put the row
-//! in the middle of the panel and throw away the reader's place in the tree for no reason. `Go to
-//! File` and `Find in Files` scroll their own lists with the same call.
+//! not move and the tree does not jump every time you switch tabs. A row that is **off** the screen is
+//! put half way down the panel with `Align::Center` (`task-2313`), so the folder the file is in can be
+//! seen above and below it; `reveal_alignment` is that rule. `Go to File` and `Find in Files` scroll
+//! their own lists with the least scrolling.
 //!
 //! Opening out the folders above the row is the window's half, because it is the tree that changes
 //! rather than the drawing. See `UnluminousApp::follow_the_open_file`.
@@ -530,15 +531,13 @@ pub fn show(
             // virtualisation takes away: `folder_row` and `file_row` scroll to their own rectangle, and a
             // row that was never drawn has none. So the scroll is asked for here as well, from the row's
             // place in the list, which is known whether or not it is on screen.
-            if let Some(index) = revealed_row(&rows, view) {
+            if let Some((index, centre)) = revealed_row(&rows, view) {
                 let top = ui.cursor().top() + index as f32 * view.at(size::ROW);
-                ui.scroll_to_rect(
-                    Rect::from_min_size(
-                        Pos2::new(ui.clip_rect().left(), top),
-                        Vec2::new(1.0, view.at(size::ROW)),
-                    ),
-                    None,
+                let rect = Rect::from_min_size(
+                    Pos2::new(ui.clip_rect().left(), top),
+                    Vec2::new(1.0, view.at(size::ROW)),
                 );
+                ui.scroll_to_rect(rect, reveal_alignment(ui, rect, centre));
             }
             ui.add_space(visible.start as f32 * view.at(size::ROW));
             for row in &rows[visible.clone()] {
@@ -1035,10 +1034,14 @@ fn file_row(
     let open = view.current == Some(path);
     let selected = view.selected == Some(path);
     let chosen = view.chosen.iter().any(|row| row == path);
-    if (open && view.reveal) || (selected && view.reveal_selected) {
-        // The least scrolling that brings the row into view, so a row already on the screen does not
-        // move. See the note at the top of this file.
+    if selected && view.reveal_selected {
+        // The least scrolling that brings the row into view, so a row the arrow keys moved onto does
+        // not move. See the note at the top of this file.
         ui.scroll_to_rect(row, None);
+    } else if open && view.reveal {
+        // The file that has just been opened goes half way down the list when it was off the screen
+        // (`task-2313`). See `reveal_alignment`.
+        ui.scroll_to_rect(row, reveal_alignment(ui, row, true));
     }
     let pill = row.shrink2(Vec2::new(view.at(8.0), 1.0));
     // The pill is the file that is **showing**. The explorer's own cursor gets the quieter fill the
@@ -1155,13 +1158,32 @@ fn visible_rows(ui: &egui::Ui, total: usize, row: f32) -> std::ops::Range<usize>
 /// `reveal` is about the file that is showing and `reveal_selected` about the explorer's own cursor, which
 /// is the same pair `file_row` and `folder_row` read. Both are one frame long, so this answers `None` on
 /// nearly every frame.
-fn revealed_row(rows: &[crate::services::file_tree::Row<'_>], view: View<'_>) -> Option<usize> {
-    let wanted = match (view.reveal, view.reveal_selected) {
-        (_, true) => view.selected?,
-        (true, false) => view.current?,
+/// The row a reveal scrolls to, and where in the list it should end up.
+///
+/// The explorer's own cursor is scrolled the least amount that brings it into view, because the arrow
+/// keys move it a row at a time. The file that has just been opened is put half way down the list
+/// (`task-2313`: *"scroll the folder explorer so that the selected file is halfway down"*), so the
+/// folder it is in is visible above and below it.
+fn revealed_row(
+    rows: &[crate::services::file_tree::Row<'_>],
+    view: View<'_>,
+) -> Option<(usize, bool)> {
+    let (wanted, centre) = match (view.reveal, view.reveal_selected) {
+        (_, true) => (view.selected?, false),
+        (true, false) => (view.current?, true),
         (false, false) => return None,
     };
-    rows.iter().position(|row| row.entry.path == wanted)
+    rows.iter().position(|row| row.entry.path == wanted).map(|index| (index, centre))
+}
+
+/// How a revealed row is scrolled to: `None` is the least scrolling that brings it into view, and a
+/// row that is already wholly on the screen is never moved, so switching between two tabs whose
+/// files are both showing does not make the list jump. A row that is off the screen and asked to be
+/// centred is put half way down the list.
+fn reveal_alignment(ui: &egui::Ui, row: Rect, centre: bool) -> Option<egui::Align> {
+    let showing = ui.clip_rect();
+    let on_the_screen = row.top() >= showing.top() && row.bottom() <= showing.bottom();
+    (centre && !on_the_screen).then_some(egui::Align::Center)
 }
 
 fn allocate_row(ui: &mut egui::Ui, height: f32) -> Rect {

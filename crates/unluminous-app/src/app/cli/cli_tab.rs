@@ -342,6 +342,10 @@ impl UnluminousApp {
         if let Err(reason) = opened {
             return no(request, code::FAILED, reason);
         }
+        // **Asked to be opened is asked to be shown**, in the explorer too, even when the file was already
+        // the one showing and the list has been scrolled away from it since. `follow_the_open_file` only
+        // reveals a file that changed, so this forgets which one it last revealed (`task-2313`).
+        self.revealed = None;
         // A design opens in a tab of the Designer pane rather than in the editing area (`task-2260`), so the answer
         // names that tab rather than the editing area's.
         if let Some(design) = self.the_design_a_file_is(&path) {
