@@ -298,24 +298,42 @@ pub struct Done {
     pub through_the_cli: bool,
 }
 
-/// Put Unluminous into a client's configuration.
+/// Put Unluminous into a client's configuration, and the Unluminous skill where that client reads
+/// skills (`super::skill`).
 pub fn install(client: Client, wanted: &Wanted) -> Result<Done, String> {
-    match client {
+    let mut done = match client {
         Client::Claude => claude_install(wanted),
         Client::Codex => codex_install(wanted),
         Client::OpenCode => opencode_install(wanted),
         Client::Pi => pi_install(wanted),
+    }?;
+    // The entry is what matters; a skill that could not be written is said, not fatal.
+    match super::skill::install_for(client, wanted) {
+        Ok(Some(file)) => {
+            done.message.push_str(&format!(" The Unluminous skill is in {}.", file.display()))
+        }
+        Ok(None) => done.message.push_str(
+            " A skill called `unluminous` that Unluminous did not write was left as it is.",
+        ),
+        Err(problem) => {
+            done.message.push_str(&format!(" The Unluminous skill was not written: {problem}."))
+        }
     }
+    Ok(done)
 }
 
-/// Take it out again.
+/// Take it out again, and the skill with it when no other agent still reads that copy.
 pub fn remove(client: Client, wanted: &Wanted) -> Result<Done, String> {
-    match client {
+    let mut done = match client {
         Client::Claude => claude_remove(wanted),
         Client::Codex => codex_remove(wanted),
         Client::OpenCode => opencode_remove(wanted),
         Client::Pi => pi_remove(wanted),
+    }?;
+    if let Ok(Some(file)) = super::skill::remove_for(client, wanted) {
+        done.message.push_str(&format!(" Removed the Unluminous skill at {}.", file.display()));
     }
+    Ok(done)
 }
 
 /// Whether a client already has a server by this name, and what it points at.

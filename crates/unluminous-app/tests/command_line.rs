@@ -271,6 +271,35 @@ fn the_command_line_moves_between_tabs_by_number_and_by_name() {
     assert_eq!(harness.state().files.active().name(), "readme.md");
 }
 
+/// **A tab a command opens is a tab of its own, and an editor command can name its file** (`task-2314`).
+/// An agent asked to open two files used to end with one, because `tab open` reused the explorer's
+/// single click tab, and every editor job was two calls because the commands acted only on the tab
+/// that was showing.
+#[test]
+fn a_command_opens_a_tab_of_its_own_and_an_editor_command_can_name_its_file() {
+    let mut harness = harness_in(&sample_folder());
+    did(&mut harness, "tab open readme.md");
+    did(&mut harness, "tab open notes.txt");
+    assert_eq!(harness.state().files.len(), 2, "two opens leave two tabs");
+    did(&mut harness, "tab open readme.md --transient");
+    did(&mut harness, "tab close readme.md --discard");
+    let reply = run(&mut harness, "editor text --path readme.md --to-line 1");
+    assert!(reply.ok, "{}", reply.message);
+    assert!(
+        reply.message.starts_with("Opened readme.md"),
+        "the answer says the file was opened: {}",
+        reply.message
+    );
+    assert_eq!(harness.state().files.active().name(), "readme.md");
+    let again = run(&mut harness, "editor status --path readme.md");
+    assert!(
+        !again.message.starts_with("Opened"),
+        "a file already showing is not opened again: {}",
+        again.message
+    );
+    assert_eq!(refused(&mut harness, "editor text --path no/such/file.md"), "not-found");
+}
+
 #[test]
 fn the_command_line_types_into_the_document_and_undoes_it() {
     let mut harness = harness_in(&sample_folder());

@@ -15,36 +15,7 @@ use super::{library, Designer, Device, Modal};
 use crate::services::plugin_ui::{argument, rest, Answer};
 
 /// Every verb, with one line each, for `plugins show designer`.
-pub const LIST: &[(&str, &str)] = &[
-    ("open-pane", "Show the Designs pane."),
-    ("designs", "The designs in the folder, with their open and resolved note counts."),
-    ("new", "Make a design from the starter page and open it: new <name>. With no name, asks for one."),
-    ("open", "Open a design in a tab of the Designer pane: open <name>."),
-    ("tabs", "The Designer pane's tabs, left to right, and which one is showing. A blank tab is null."),
-    ("new-tab", "Add a blank tab to the Designer pane and show it."),
-    ("show-tab", "Show one of the Designer pane's tabs: show-tab <number|name>, counted from 0."),
-    ("close-tab", "Close one of the Designer pane's tabs: close-tab [number|name]. With nothing, the one showing."),
-    ("device", "Change the device of the showing design: device desktop|laptop|tablet|phone|fit."),
-    ("mode", "Change the mode of the showing design: mode browse|comment."),
-    ("mode-browse", "Let the page behave as a page."),
-    ("mode-comment", "Hover to outline an element, and click it to choose it and make a note on it."),
-    ("select", "Choose an element by selector, as a click would: select <selector>."),
-    ("selection", "What is chosen: selector, tag, excerpt, the start of its HTML."),
-    ("comments", "The notes on a design: comments [open|resolved|all]."),
-    ("comment", "Make a note on an element: comment <selector> <text>. A selector with spaces in it is ended with --: comment main > h1 -- <text>."),
-    ("reply", "Reply to a note: reply <note> <text>."),
-    ("resolve", "Mark a note dealt with: resolve <note>."),
-    ("reopen", "Open a resolved note again: reopen <note>."),
-    ("delete", "Take a note away: delete <note>."),
-    ("move", "Pin a note to another element: move <note> <selector>."),
-    ("ask", "Send one note to Agent-Chat, as its button does: ask <note>."),
-    ("ask-all", "Send every open note to Agent-Chat in one message."),
-    ("prompt", "Send Agent-Chat a request about the chosen element, or the whole design: prompt <text>."),
-    ("history", "The copies taken before each request, newest first."),
-    ("restore", "Put a copy back as the design: restore <copy>, by name or by place in the list."),
-    ("reload", "Load the page again."),
-    ("source", "Open the design's file as text."),
-];
+pub const LIST: &[(&str, &str)] = unluminous_cli::plugins::DESIGNER;
 
 /// The words of a command line once the leading flags are taken off.
 struct Parsed<'a> {

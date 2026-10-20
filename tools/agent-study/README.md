@@ -52,6 +52,22 @@ node tools/agent-study/grade.mjs                         # the numbers
 Everything lands in `_agent_output/agent-study/sessions/` — one `.md` a scenario to read, one `.json`
 to grade, and the raw event stream beside them.
 
+## The eval: a number per change
+
+`run-all.mjs` is for reading transcripts. `eval.mjs` turns the same scenarios, and the cases added for
+`task-2314`, into a number that two builds can be compared on (`cases.mjs` holds a check for each, which
+reads the answer back from the window and the disk):
+
+```sh
+node tools/agent-study/eval.mjs --variant baseline --flow <folder> \
+  --window-bin <folder with unluminous and unluminous-cli> --cli <the unluminous-cli the agent runs> --reps 2
+node tools/agent-study/score.mjs <folder>
+```
+
+Each case gets a fresh window, project and settings folder (`window.mjs`), so nothing carries from one
+case to the next and the person's own windows are never touched. `documentation/agent-accuracy.md` says
+what each number means and keeps the history of them.
+
 ## What a scenario is
 
 ```json

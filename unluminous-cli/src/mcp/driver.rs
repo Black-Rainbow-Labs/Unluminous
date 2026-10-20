@@ -101,6 +101,19 @@ impl Driver for UnluminousWindows {
         if let Some(reply) = locally(command, &arguments) {
             return Ok(reply);
         }
+        // A batch is several calls, each sent down this same function, so a step is answered
+        // exactly as the same command sent on its own would be. `crate::batch` is the rules.
+        if command.wire() == "batch" {
+            let steps = match crate::batch::steps_from(&arguments) {
+                Ok(steps) => steps,
+                Err(problem) => return Ok(Reply::failed("batch", code::USAGE, problem)),
+            };
+            let keep_going = arguments.get("keep-going").and_then(Value::as_bool).unwrap_or(false);
+            return Ok(crate::batch::run(steps, keep_going, |step, given| {
+                self.run(step, given, instance)
+                    .map_err(|failure| (failure.code.to_owned(), failure.message))
+            }));
+        }
         // The code index is answered by the index host, which this server becomes when no other
         // process is: an MCP server lives as long as the conversation, so the index stays warm.
         if command.area == "search" {
@@ -120,8 +133,14 @@ impl Driver for UnluminousWindows {
             ));
         }
         let instance = self.choose(instance)?;
-        let timeout = timeout_for(command, &arguments);
+        // Answered here, in the window's project folder, because the answer is git's text and the
+        // window's own Git menu only opens a diff for a person to look at (`git_diff`).
+        if command.wire() == "git.diff" {
+            return Ok(git_diff(&instance.folder, &arguments));
+        }
         let mut arguments = arguments;
+        let shortened = shorten_the_wait(command, &mut arguments);
+        let timeout = timeout_for(command, &arguments);
         // `timeout` on a command that has no such flag is about the call rather than about the
         // command, exactly as `instance` is, so it does not go on the wire — what is sent is
         // exactly the request `unluminous-cli` would have sent, which is the rule this module is built
@@ -129,13 +148,103 @@ impl Driver for UnluminousWindows {
         if command.flag("timeout").is_none() {
             arguments.remove("timeout");
         }
-        client::ask(&instance, &command.wire(), arguments, timeout)
-            .map_err(|problem| Failure { code: problem.code, message: problem.message })
+        let mut reply = client::ask(&instance, &command.wire(), arguments, timeout)
+            .map_err(|problem| Failure { code: problem.code, message: problem.message })?;
+        if shortened {
+            let said = format!(
+                "
+
+Waited {} seconds, the longest one call waits, so the agent's own deadline for a tool call is not reached first. Ask again to wait longer.",
+                LONGEST_WAIT.as_secs()
+            );
+            reply.message.push_str(&said);
+            if let Some(failure) = reply.error.as_mut() {
+                failure.message.push_str(&said);
+            }
+        }
+        Ok(reply)
     }
 
     fn read_file(&self, path: &Path) -> Option<Vec<u8>> {
         std::fs::read(path).ok()
     }
+}
+
+/// The longest one tool call waits for something of its own, such as `terminal read --wait-for`.
+///
+/// **Shorter than an agent's own deadline for a tool call** (`task-2314`). A client gives up on a call
+/// it has waited a minute for: opencode answered `MCP error -32001: Request timed out` to a
+/// `terminal read` asked to wait two minutes for a build, and what the terminal had printed was lost
+/// with it. A wait cut to this answers with what has arrived, and says to ask again.
+const LONGEST_WAIT: Duration = Duration::from_secs(50);
+
+/// Cut a command's own wait to [`LONGEST_WAIT`]. Answers whether it did.
+fn shorten_the_wait(command: &Command, arguments: &mut Map<String, Value>) -> bool {
+    let mut shortened = false;
+    for name in ["timeout", "wait"] {
+        if command.flag(name).is_none() {
+            continue;
+        }
+        let longest = LONGEST_WAIT.as_millis() as u64;
+        if arguments.get(name).and_then(as_millis).is_some_and(|asked| asked > longest) {
+            arguments.insert(name.to_owned(), Value::from(longest));
+            shortened = true;
+        }
+    }
+    shortened
+}
+
+/// The most lines of diff one answer holds, so a change to a generated file does not fill an agent's
+/// context. The answer says how many more there were.
+const LONGEST_DIFF: usize = 400;
+
+/// `git diff`: the machine's own git, run in the window's project folder, its output as the answer.
+///
+/// **Text, because that is the question** (`task-2314`). `git action show-diff` opens a diff in the
+/// window for a person to read and answers only that it asked, so an agent asked "show me what
+/// changed" ran `git diff` in a shell every time: both reps of the agent study's git case did.
+fn git_diff(folder: &Path, arguments: &Map<String, Value>) -> Reply {
+    let mut command = std::process::Command::new("git");
+    command.arg("-C").arg(folder).args(["--no-pager", "diff", "--no-color"]);
+    if arguments.get("staged").and_then(Value::as_bool).unwrap_or(false) {
+        command.arg("--staged");
+    }
+    if let Some(path) = arguments.get("path").and_then(Value::as_str) {
+        command.arg("--").arg(path);
+    }
+    let output = match command.output() {
+        Ok(output) => output,
+        Err(problem) => {
+            return Reply::failed(
+                "git.diff",
+                code::FAILED,
+                format!("git could not be started: {problem}"),
+            )
+        }
+    };
+    if !output.status.success() {
+        return Reply::failed(
+            "git.diff",
+            code::FAILED,
+            String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+        );
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = text.lines().collect();
+    let files = lines.iter().filter(|line| line.starts_with("diff --git ")).count();
+    let mut shown = lines.iter().take(LONGEST_DIFF).copied().collect::<Vec<_>>().join("\n");
+    if lines.len() > LONGEST_DIFF {
+        shown.push_str(&format!(
+            "\n… {} more lines; name one file to see the rest of it.",
+            lines.len() - LONGEST_DIFF
+        ));
+    }
+    let said = match files {
+        0 => "No changes.".to_owned(),
+        1 => format!("1 file changed.\n\n{shown}"),
+        n => format!("{n} files changed.\n\n{shown}"),
+    };
+    Reply::done("git.diff", said, serde_json::json!({ "files": files, "lines": lines.len() }))
 }
 
 /// The commands that need no window, answered from the catalogue and the instance files.
@@ -451,5 +560,59 @@ mod tests {
         arguments.insert("timeout".to_owned(), Value::Number(500.into()));
         assert_eq!(timeout_for(list, &arguments), Duration::from_millis(500));
         assert_eq!(timeout_for(list, &Map::new()), DEFAULT_TIMEOUT);
+    }
+
+    /// `git diff` answers with git's own text for the window's folder, one file or all of them.
+    #[test]
+    fn git_diff_answers_with_the_text_of_what_changed() {
+        let folder =
+            std::env::temp_dir().join(format!("unluminous-git-diff-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).unwrap();
+        let git = |args: &[&str]| {
+            let done = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&folder)
+                .args(args)
+                .output()
+                .expect("git runs");
+            assert!(done.status.success(), "{}", String::from_utf8_lossy(&done.stderr));
+        };
+        git(&["init", "-q"]);
+        std::fs::write(
+            folder.join("a.txt"),
+            "one
+",
+        )
+        .unwrap();
+        std::fs::write(
+            folder.join("b.txt"),
+            "two
+",
+        )
+        .unwrap();
+        git(&["add", "-A"]);
+        git(&["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-qm", "first"]);
+        assert_eq!(git_diff(&folder, &Map::new()).message, "No changes.");
+        std::fs::write(
+            folder.join("a.txt"),
+            "one
+more
+",
+        )
+        .unwrap();
+        std::fs::write(
+            folder.join("b.txt"),
+            "changed
+",
+        )
+        .unwrap();
+        let all = git_diff(&folder, &Map::new());
+        assert!(all.ok && all.message.starts_with("2 files changed."), "{}", all.message);
+        assert!(all.message.contains("+more"));
+        let one = git_diff(&folder, &Map::from_iter([("path".to_owned(), Value::from("a.txt"))]));
+        assert!(one.message.starts_with("1 file changed."), "{}", one.message);
+        assert!(!one.message.contains("b.txt"));
+        let _ = std::fs::remove_dir_all(&folder);
     }
 }

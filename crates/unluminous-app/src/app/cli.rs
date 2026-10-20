@@ -996,6 +996,63 @@ impl UnluminousApp {
             Some((area, verb)) => (area, verb),
             None => ("", request.command.as_str()),
         };
+        let shown = match self.show_the_file_a_command_names(request) {
+            Ok(shown) => shown,
+            Err(refusal) => return refusal,
+        };
+        let outcome = self.run_cli_in(request, area, verb, ctx);
+        match (shown, outcome) {
+            (Some(said), Outcome::Reply(mut reply)) => {
+                reply.message = format!("{said} {}", reply.message).trim_end().to_owned();
+                Outcome::Reply(reply)
+            }
+            (_, outcome) => outcome,
+        }
+    }
+
+    /// Show the file a command's `--path` names before the command runs, opening it in a tab of its
+    /// own when it is not open (`unluminous_cli::catalogue::FILE`). Answers with the sentence to put in
+    /// front of the command's own answer, or `None` when the file was already showing or none was named.
+    fn show_the_file_a_command_names(
+        &mut self,
+        request: &Request,
+    ) -> Result<Option<String>, Outcome> {
+        let takes_it = unluminous_cli::catalogue::find(&request.command)
+            .is_some_and(unluminous_cli::catalogue::acts_on_a_named_file);
+        let Some(path) = takes_it.then(|| self.cli_path_argument(request, "path")).flatten() else {
+            return Ok(None);
+        };
+        if !path.is_file() {
+            return Err(no(
+                request,
+                code::NOT_FOUND,
+                format!("There is no file at {}", path.display()),
+            ));
+        }
+        let showing = self.files.active().path().map(unluminous_terminal::paths::native);
+        if showing.as_deref() == Some(path.as_path()) {
+            return Ok(None);
+        }
+        let was_open = self.files.index_of(&path).is_some();
+        if let Err(reason) = self.open_path_permanently(&path) {
+            return Err(no(request, code::FAILED, reason));
+        }
+        let name =
+            path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+        Ok(Some(match was_open {
+            true => format!("Showed {name} first."),
+            false => format!("Opened {name} in tab {} first.", self.files.active_index()),
+        }))
+    }
+
+    /// The dispatch behind [`Self::run_cli`], one arm an area.
+    fn run_cli_in(
+        &mut self,
+        request: &Request,
+        area: &str,
+        verb: &str,
+        ctx: &egui::Context,
+    ) -> Outcome {
         match area {
             "" => self.cli_top(request, verb, ctx),
             "window" => self.cli_window(request, verb, ctx),

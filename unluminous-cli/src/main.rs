@@ -279,6 +279,18 @@ fn locally(command: &'static Command, typed: &Typed) -> i32 {
         "setup" => setup(typed),
         "mcp.config" => configuration(typed),
         "mcp.tools" => mcp_tools(typed),
+        // The MCP driver runs these, so the command typed here and the one an agent sends are one thing.
+        "batch" | "git.diff" => {
+            use unluminous_cli::mcp::server::Driver;
+            let driver = mcp::driver::UnluminousWindows::new(typed.global.instance.clone());
+            match driver.run(command, typed.arguments.clone(), None) {
+                Ok(reply) => report(&reply, &typed.global),
+                Err(failure) => {
+                    complain(&failure.message, &typed.global);
+                    NOT_RUNNING
+                }
+            }
+        }
         other => {
             complain(&format!("`{other}` is not answered by the client."), &typed.global);
             USAGE

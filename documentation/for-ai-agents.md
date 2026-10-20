@@ -161,6 +161,15 @@ model, given only `docs/commands.md`, carries out 64 instructions phrased as a p
 and scores **100%**, five rounds running, at two temperatures. The same 64 instructions with the
 documentation withheld score **3.13%**, which is what makes the first number mean something.
 
+## How accurate an agent is, measured
+
+[Agent accuracy](agent-accuracy.md) is the eval behind the numbers: 52 requests phrased the way a person
+speaks, run through opencode on the local Qwen against a fresh window each, and graded from what the
+window holds afterwards. It records, change by change, how often the job was done, how often it was
+done with no refused call and no fall back to the agent's own shell, and how often the first call was
+right. Run it after changing anything an agent reads: a tool description, a refusal, a command's
+arguments.
+
 ## Driving the window without taking the keyboard
 
 **Never activate an Unluminous window to drive it.** Synthetic operating system input goes to whatever

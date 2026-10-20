@@ -330,10 +330,14 @@ impl UnluminousApp {
         // where no caller was going to read it. For a person that is a bug they can see; for an
         // agent it is the worst kind there is, because it is told the file is open, given a tab
         // number, and every step after it works on whatever was there before.
-        let opened = if request.switch("permanent") {
-            self.open_path_permanently(&path)
-        } else {
+        // **A tab a command opens is a tab of its own** (`task-2314`). The reused tab is the
+        // explorer's single click, a pointer gesture for glancing at a file. It was this command's
+        // default too, so an agent asked to open two files opened the first and then replaced it with
+        // the second, and the local model that was measured reported one file open instead of two.
+        let opened = if request.switch("transient") {
             self.open_path(&path)
+        } else {
+            self.open_path_permanently(&path)
         };
         if let Err(reason) = opened {
             return no(request, code::FAILED, reason);

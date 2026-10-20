@@ -47,6 +47,14 @@ it does whenever anybody runs the command, not something Unluminous asked for.
 For a client with no button of its own, `unluminous-cli mcp config` prints the block to paste. It is the
 same block the Settings page shows.
 
+**Installing also writes the Unluminous skill** (`task-2314`): `skills/unluminous/SKILL.md`, compiled into
+`unluminous-cli`, which says how a call is written, which tool does which job, and what to do when a call is
+refused. Claude Code's copy goes in `~/.claude/skills/unluminous/` and every other agent's in
+`~/.agents/skills/unluminous/`, which Codex, OpenCode and Pi all read; a project scoped install writes the
+project's own `.claude/skills` or `.agents/skills`. A skill of that name that Unluminous did not write is
+left alone, and `--remove` takes the skill out with the entry once no agent that reads it is still
+connected. `src/mcp/skill.rs` is all of it.
+
 ## What an agent is given
 
 **The tools are generated from `catalogue.rs`** — the one list of commands that `unluminous-cli` parses
@@ -80,6 +88,27 @@ also accepts equivalent camelCase and snake_case spellings, such as `wait-for`, 
 `wait_for`. The control channel applies the same normalization. The common file guesses
 `editor open`, `editor reload`, `editor save`, and `editor close` resolve to the corresponding
 `tab` commands.
+
+Two more kinds of tool are in both shapes (`task-2314`):
+
+- **A tool for each plugin that draws** — `unluminous_agent_tasks`, `unluminous_agent_chat`,
+  `unluminous_database` and `unluminous_designer` — whose `command` is an enum of the plugin's own commands
+  and whose `words` is the rest of the line. A call is `plugins run <id> <command> <words>`, down the same
+  path as before; the verbs come from `src/plugins.rs`, the table the window's plugins answer from too.
+  `unluminous_agent_chat` with `node` drives an Agent Chat node on the Realm.
+- **`unluminous_batch`**, which runs several command lines in one call, in order, and stops at the first
+  that fails unless `keep-going` says otherwise. Each step is written as its usage line shows it, so it is
+  also the way to send one command whose nesting is hard to get right.
+
+Every editor and fold command, and `tab save`, takes `path` to name the file it acts on: the window shows
+that file first, opening it in a tab of its own when it is not open, and the answer says so. `tab open` opens
+a tab of its own as well; `--transient` reuses the tab a single click in the explorer reuses.
+
+**A call is read the way it was meant** where that has one reading: a key sent beside `command` rather than
+inside `arguments` is the command's, a required argument left out takes the first word of the rest of the
+line as the command line would, and a value sent under a key the command does not have fills the one
+positional it left out. The answer says when it did any of these. A refusal ends with a call to that
+command that works, written in the shape the tool takes.
 
 Two properties are on **every** tool in both shapes, because both are about the call rather than
 about the command:

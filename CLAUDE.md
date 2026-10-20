@@ -81,6 +81,39 @@ state read back through `unluminous-cli`, rather than against what the agent sai
 when you add a feature. A feature nobody has watched an agent use is a feature nobody knows is
 reachable in practice.
 
+### Agent accuracy is a number, and a change to what an agent reads is measured (`task-2314`)
+
+`tools/agent-study/eval.mjs` runs 52 cases through opencode on the local Qwen, each in a fresh window,
+project and settings folder (`window.mjs`), grades them from the window's state (`cases.mjs`), and
+`score.mjs` prints the table. `documentation/agent-accuracy.md` says what each number means and keeps
+the history; add a row when a change touches a tool description, a refusal or a command's arguments.
+`tasks/task-2314-agent-command-accuracy-tdd.md` is the design. What it found, as rules:
+
+- **Most refusals were the server's fault**, so read a refusal in a transcript as a possible bug before
+  reading it as the model's. The grouped tools rename a command's own `command` and `arguments` to `verb`
+  and `words`; that is done only for a command that declares those names (`tools::unrename`), because
+  `realm chat` declares `verb` and was refused 21 times in one conversation.
+- **A call is read the way it was meant where there is one reading**: keys beside `command`, the first
+  word of the rest of the line for a missing positional, one value under a key the command lacks for the
+  one positional left out (`tools::shift_positionals`, `stand_in`). The answer says so.
+- **A plugin that draws has a tool of its own** generated from `unluminous-cli/src/plugins.rs`, the table
+  its provider's `commands()` returns. Add a plugin command there and it is a verb of that tool.
+- **Editor and fold commands take `--path`** (`catalogue::FILE`): the window shows that file first.
+- **An example under every command in the descriptions bought nothing** on the local model and cost
+  3,900 tokens a request; an example goes in a refusal (`tools::example_call`), which is read only when a
+  call failed.
+- **A command's own wait is cut to 50 seconds over MCP** (`driver::LONGEST_WAIT`), because a client
+  gives up on a tool call after about a minute and the output is lost with it.
+- **`mcp install` and `setup` write the Unluminous skill** (`skills/unluminous/SKILL.md`, `mcp::skill`)
+  into `~/.claude/skills` and `~/.agents/skills`. A test fails if it names a tool or verb that is not one.
+- **Only an object is sent as `structuredContent`** (`server::tool_result`). The specification asks for an
+  object there, and a client refused every answer that was a list, such as `tab list`.
+- **A narrow tool reads keys wrapped in `arguments`**, and drops a `command` that repeats its own verb,
+  because a model calls it the way it calls an area tool. Neither happens for a command that declares
+  those names itself.
+- **The tool with no area, given an area's name as `command`, sends the call on to that area's tool**, so
+  `unluminous {"command":"git","arguments":{"command":"status"}}` is `git status`.
+
 ## This repository belongs to the personal GitHub account, and `gh` is the other one
 
 `jasonmcaffee` owns `unluminous` and `inillucent`. The `gh` on this machine is logged in as

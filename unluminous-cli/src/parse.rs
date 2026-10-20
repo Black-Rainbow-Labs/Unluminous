@@ -510,6 +510,40 @@ fn edits(from: &str, to: &str) -> usize {
     row[to.len()]
 }
 
+/// Split a command line into words the way a shell would, honouring double and single quotes.
+///
+/// One reading for every place that turns a written command line into words: the catalogue examples a
+/// tool description is built from, the steps of `batch`, and the test that every example parses.
+pub fn shell_words(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut word = String::new();
+    let mut quote: Option<char> = None;
+    let mut started = false;
+    for character in line.chars() {
+        match (quote, character) {
+            (None, '"' | '\x27') => {
+                quote = Some(character);
+                started = true;
+            }
+            (Some(open), c) if c == open => quote = None,
+            (None, c) if c.is_whitespace() => {
+                if started {
+                    out.push(std::mem::take(&mut word));
+                    started = false;
+                }
+            }
+            (_, c) => {
+                word.push(c);
+                started = true;
+            }
+        }
+    }
+    if started {
+        out.push(word);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -710,27 +744,5 @@ mod tests {
                 assert!(wrong.is_empty(), "the example `{example}` would be refused: {wrong:?}");
             }
         }
-    }
-
-    /// Split a command line the way a shell would, honouring double quotes.
-    fn shell_words(line: &str) -> Vec<String> {
-        let mut out = Vec::new();
-        let mut word = String::new();
-        let mut quoted = false;
-        for character in line.chars() {
-            match character {
-                '"' => quoted = !quoted,
-                c if c.is_whitespace() && !quoted => {
-                    if !word.is_empty() {
-                        out.push(std::mem::take(&mut word));
-                    }
-                }
-                c => word.push(c),
-            }
-        }
-        if !word.is_empty() {
-            out.push(word);
-        }
-        out
     }
 }

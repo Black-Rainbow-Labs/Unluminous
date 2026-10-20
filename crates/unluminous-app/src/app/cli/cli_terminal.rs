@@ -194,7 +194,10 @@ impl UnluminousApp {
             said = format!("Sent {name}");
         }
         if let Some(text) = request.text("text") {
-            let text = unescape(&text);
+            // **Sent as written, with no escapes undone** (`task-2314`). A shell reads its own
+            // escapes, and a Windows path is full of backslashes: `cargo run -- C:\work\target` had its
+            // `\t` turned into a tab before the shell saw it, and the agent study watched a run fail
+            // three times on a path that was right. A real line break in the text still presses Enter.
             bytes.extend(text.as_bytes());
             if !request.switch("no-enter") {
                 bytes.push(b'\r');

@@ -51,6 +51,7 @@ pub mod http;
 pub mod install;
 pub mod ordered_json;
 pub mod server;
+pub mod skill;
 pub mod stdio;
 pub mod tools;
 

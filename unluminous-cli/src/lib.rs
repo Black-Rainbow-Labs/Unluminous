@@ -12,12 +12,14 @@
 //! way, so the two can never disagree about what `tab.open` is called.
 
 pub mod apply_update;
+pub mod batch;
 pub mod catalogue;
 pub mod client;
 pub mod help;
 pub mod instances;
 pub mod mcp;
 pub mod parse;
+pub mod plugins;
 pub mod protocol;
 pub mod restore;
 pub mod search;

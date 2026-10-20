@@ -186,14 +186,32 @@ impl<D: Driver> Server<D> {
             Err(problem) => return error(id, -32602, problem.0),
         };
         let ignored = call.ignored.clone();
+        let read_as = call.read_as.clone();
         match self.driver.run(call.command, call.arguments, call.instance.as_deref()) {
-            Ok(reply) => result(id, self.tool_result(call.command, &reply, &ignored)),
+            Ok(reply) => result(id, self.tool_result(call.command, &reply, &ignored, &read_as)),
             Err(problem) => result(id, refused(format!("{}: {}", problem.code, problem.message))),
         }
     }
 
     /// Turn what the window said into what an agent reads.
-    fn tool_result(&self, command: &'static Command, reply: &Reply, ignored: &[String]) -> Value {
+    fn tool_result(
+        &self,
+        command: &'static Command,
+        reply: &Reply,
+        ignored: &[String],
+        read_as: &[String],
+    ) -> Value {
+        // A key read under another name is said on every answer, worked or refused, so the next call
+        // can be written the way the command takes it (`tools::stand_in`, `tools::shift_positionals`).
+        let read_as = match read_as.is_empty() {
+            true => String::new(),
+            false => format!(
+                "
+
+Read the call as the command takes it: {}.",
+                read_as.join("; ")
+            ),
+        };
         if let Some(failure) = &reply.error {
             // A refusal names the keys that were taken out too, with the command's own usage line
             // (`task-2139`). Claude Haiku gave `search outline` its file as `target`, which is
@@ -208,9 +226,24 @@ impl<D: Driver> Server<D> {
                     command.usage(),
                 ));
             }
+            said.push_str(&read_as);
+            // **A refusal ends with a call that would work** (`task-2314`). The agent study found
+            // the model reading "Say which tab" and sending the same wrong key again; a whole example
+            // call, in the shape this tool takes, is the one thing that says how to write the next one.
+            if self.shape == super::Shape::Grouped {
+                if let Some(example) = tools::example_call(command) {
+                    said.push_str(&format!(
+                        "
+
+A call to `{}` looks like: {example}",
+                        command.typed()
+                    ));
+                }
+            }
             return refused(said);
         }
         let mut said = spoken(reply);
+        said.push_str(&read_as);
         // **Named rather than dropped in silence.** `tools::sibling_keys` takes out the keys the
         // grouped schema offered that belong to another verb of the area, so a call that would have
         // been refused runs -- but a caller that meant them has to find out, or this becomes the
@@ -241,7 +274,10 @@ impl<D: Driver> Server<D> {
         // area shapes to a token budget; a program asks for the rest with `structured`.
         let wanted = command.area != "search"
             || reply.result.get("structured").and_then(Value::as_bool).unwrap_or(false);
-        if !reply.result.is_null() && wanted {
+        // **Only an object is sent as `structuredContent`** (`task-2314`). The specification says it
+        // is a JSON object, and opencode's client checks: `plugins run database sources` answers a
+        // list, and the call failed with "expected record, received array" after the command had run.
+        if reply.result.is_object() && wanted {
             answer["structuredContent"] = reply.result.clone();
         }
         answer
@@ -286,6 +322,12 @@ impl<D: Driver> Server<D> {
 }
 
 /// What the client is told about the server before anything is called.
+///
+/// **Tools are named here by their area, never by their name** (`task-2314`). A client puts its own
+/// prefix on a server's tools (`unluminous_unluminous_search` in OpenCode, `mcp__unluminous__unluminous_search`
+/// in Claude Code), and the local model copied the bare `unluminous_search` it read here into a call
+/// written as text, which no client runs: five cases in one round of the eval ended that way, against
+/// none to two before the names were written in.
 const INSTRUCTIONS: &str = "\
 Unluminous is a text editor. These tools drive a window that is already open on this machine: they open \
 files in tabs, read and change the text, run commands in its terminals, search the project, drive \
@@ -293,7 +335,13 @@ its dialogs, change its settings, work its Git menu, and take a screenshot of th
 Three things worth knowing. A relative path is resolved against the project folder, never against \
 your working directory. A project is a window, so several Unluminous windows may be running and `instance` says \
 which one you mean. And `window screenshot` gives you the picture itself, which is how to see what \
-a command actually did.";
+a command actually did.\n\n\
+Do the project work through these tools rather than your own file tools, because the person is looking \
+at this window and a file read or written behind it misses what is typed and unsaved. The search \
+tool's `find`, `def`, `refs` and `files` replace grep and glob. The editor tool's `text` with `path` \
+reads a file, and its `insert`, `replace` and `set-text` with `path`, then the tab tool's `save`, \
+change one. The explorer tool's `files`, `tree`, `new-file` and `move` replace ls, touch and mv, and \
+the git tool's `status` and `diff` replace git in a shell.";
 
 /// The one resource: the whole written reference, for an agent that would rather read than call.
 fn resource() -> Value {
@@ -539,6 +587,23 @@ mod tests {
         assert!(text.starts_with("3 tabs"), "{text}");
         assert!(text.contains("1  CLAUDE.md"), "{text}");
         assert_eq!(back["result"]["structuredContent"]["lines"][0], json!("0  README.md"));
+    }
+
+    /// **A list answer has no `structuredContent`** (`task-2314`): the field is an object, and
+    /// opencode refused the whole call over `plugins run database sources`.
+    #[test]
+    fn an_answer_that_is_not_an_object_is_sent_as_text_alone() {
+        let server = Server::new(
+            Shape::Grouped,
+            Stub::answering(Reply::done("tab.list", "2 tabs", json!(["README.md", "CLAUDE.md"]))),
+        );
+        let back = ask(
+            &server,
+            "tools/call",
+            json!({ "name": "unluminous_tab", "arguments": { "command": "list" } }),
+        );
+        assert_eq!(back["result"]["isError"], json!(false));
+        assert!(back["result"].get("structuredContent").is_none(), "{back}");
     }
 
     #[test]

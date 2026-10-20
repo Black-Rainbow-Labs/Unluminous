@@ -74,6 +74,8 @@ pub enum Target {
     Area(&'static str),
     /// One command, named by the tool itself.
     One(&'static Command),
+    /// A plugin that draws: the call names one of its own commands, and is sent as `plugins run`.
+    Plugin(&'static crate::plugins::Plugin),
 }
 
 /// One tool, as `tools/list` describes it and as `tools/call` is resolved against.
@@ -231,6 +233,7 @@ pub fn tools_in(shape: Shape, areas: &Areas) -> Vec<Tool> {
         .filter(|tool| match tool.target {
             Target::Area(area) => areas.includes(area),
             Target::One(command) => areas.includes(command.area),
+            Target::Plugin(_) => areas.includes("plugins"),
         })
         .collect()
 }
@@ -248,6 +251,7 @@ pub fn as_json_in(shape: Shape, areas: &Areas) -> Vec<Value> {
 /// One tool an area, the verbs as an `enum` and the usage lines in the description.
 fn grouped() -> Vec<Tool> {
     let mut out = semantic_aliases();
+    out.extend(plugin_tools());
     let mut areas: Vec<&'static str> = vec![""];
     areas.extend(catalogue::areas());
     for area in areas {
@@ -405,8 +409,12 @@ fn semantic_aliases() -> Vec<Tool> {
             // default preamble, and a model that reaches for `grep` to *read* is doing something
             // harmless -- it is a model that reaches past `editor replace` to *write* that rewrites
             // a file behind a window with it open. Add it the day the study measures a miss.
-            command.area == "editor"
-                && matches!(command.verb, "definition" | "references" | "rename" | "replace")
+            (command.area == "editor"
+                && matches!(command.verb, "definition" | "references" | "rename" | "replace"))
+                // `batch` too (`task-2314`): its steps are command lines, the syntax every usage line
+                // already teaches, so a model that cannot get a call's nesting right has a second road
+                // to the same command, and one that has several to send sends them at once.
+                || command.wire() == "batch"
         })
         .map(command_tool)
         .collect()
@@ -425,13 +433,199 @@ fn area_description(area: &'static str, commands: &[&'static Command]) -> String
         out.push_str(command.summary);
         out.push('\n');
     }
-    out.push_str("\nFull catalog: run the `unluminous` tool with command `commands`.\n");
     out
+}
+
+/// The command's first catalogue example, written as the call an area tool takes: what a refusal
+/// shows so the next call can be written right.
+///
+/// **In a refusal and not in every description, which was measured** (`task-2314`). A usage line is
+/// the command line's shape, and the call is `{"command":"open","arguments":{"path":"README.md"}}`, so
+/// one real call beside each usage line looked like the translation a model needs; Anthropic measured
+/// examples raising accuracy on complex parameters from 72% to 90%. On the local model it did not
+/// help: one example under each of 214 commands cost about 3,900 tokens of every request, made each
+/// case slower (38 to 45 seconds) and moved neither `clean` nor the refusals outside their noise. The
+/// model's keys were already right on ordinary commands. A refusal is read only when a call failed,
+/// which is when an example is worth its words. It is parsed by the client's own parser, so it says
+/// exactly what `unluminous-cli` would send, and it cannot drift from the catalogue.
+pub fn example_call(command: &'static Command) -> Option<String> {
+    let parsed: Vec<Map<String, Value>> = command
+        .examples
+        .iter()
+        .filter_map(|example| {
+            let words = crate::parse::shell_words(example);
+            let typed = crate::parse::parse(words.get(1..)?).ok()?;
+            (typed.command.map(|found| found.wire()) == Some(command.wire()))
+                .then_some(typed.arguments)
+        })
+        .collect();
+    // The first example that shows an argument, because a bare verb is the one call a model
+    // already gets right.
+    let arguments = parsed.iter().find(|arguments| !arguments.is_empty()).or(parsed.first())?;
+    let mut written = Vec::new();
+    for (key, value) in arguments {
+        let value = typed_like_the_schema(command, key, value.clone());
+        written.push(format!("{}:{}", json!(offered_as(key)), value));
+    }
+    // A verb that takes nothing needs no example: the usage line already says all there is.
+    if written.is_empty() {
+        return None;
+    }
+    // Written by hand so `command` comes first, which is the order a model reads and writes it in;
+    // `serde_json`'s map sorts its keys.
+    Some(format!("{{\"command\":{},\"arguments\":{{{}}}}}", json!(command.verb), written.join(",")))
+}
+
+/// A value from a parsed command line, as the tool's schema types it: the command line has only
+/// words, and a key the schema calls an integer should be shown as one.
+fn typed_like_the_schema(command: &Command, key: &str, value: Value) -> Value {
+    let kind = command
+        .arguments
+        .iter()
+        .find(|argument| argument.name == key)
+        .map(|argument| argument.kind)
+        .or_else(|| command.flag(key).map(|flag| flag.kind));
+    let Value::String(text) = &value else { return value };
+    match kind {
+        Some(catalogue::Kind::Whole) => text.parse::<i64>().map(|n| json!(n)).unwrap_or(value),
+        Some(catalogue::Kind::Number) => text.parse::<f64>().map(|n| json!(n)).unwrap_or(value),
+        _ => value,
+    }
 }
 
 /// One tool a command, every argument and every flag a property of its own.
 fn every() -> Vec<Tool> {
-    commands().into_iter().map(command_tool).collect()
+    let mut out: Vec<Tool> = commands().into_iter().map(command_tool).collect();
+    out.extend(plugin_tools());
+    out
+}
+
+/// One tool for each plugin that draws, made from its own command table (`crate::plugins`).
+///
+/// **A plugin's commands are its tool's verbs** (`task-2314`). They were reached only through
+/// `plugins run <id> <command>`, whose `command` was a free word no description named, under a key the
+/// grouped tool renames, so an agent had to look them up with `plugins show` or guess. The agent study
+/// watched a local model fall back to the shell for the Database plugin and be refused four times on
+/// Agent-Chat. A tool named for the plugin is also what a client's tool search finds when the person
+/// says "database". The call is still `plugins run`, down the same road a menu entry takes.
+fn plugin_tools() -> Vec<Tool> {
+    crate::plugins::PLUGINS
+        .iter()
+        .map(|plugin| {
+            let mut description = format!("{}\n\nCommands:\n\n", plugin.note);
+            for (verb, summary) in plugin.commands {
+                description.push_str(&format!("  {verb}\n      {summary}\n"));
+            }
+            let first = plugin.commands.first().map(|(verb, _)| *verb).unwrap_or("view");
+            description.push_str(&format!(
+                "\nAnything a command takes after its name goes in `words`, as it would be typed after `plugins run {} <command>`. Call: {{\"command\":\"{first}\"}}\n",
+                plugin.id
+            ));
+            let verbs: Vec<Value> = plugin.commands.iter().map(|(verb, _)| json!(verb)).collect();
+            let mut properties = Map::new();
+            properties.insert(
+                "words".to_owned(),
+                json!({ "type": "string", "description": "What the command takes after its name, as one line of text." }),
+            );
+            if plugin.id == "agent-chat" {
+                properties.insert(
+                    "node".to_owned(),
+                    json!({ "type": "integer", "description": "An Agent Chat node on the Realm, from `realm list`, to drive that node's conversation rather than the pane's." }),
+                );
+            }
+            Tool {
+                name: tool_name(&plugin.id.replace('-', "_"), ""),
+                title: format!("Unluminous: {} plugin", plugin.id),
+                description,
+                schema: json!({
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "enum": verbs,
+                            "description": "Which of the plugin's commands to run.",
+                        },
+                        "arguments": {
+                            "type": "object",
+                            "properties": properties,
+                            "additionalProperties": false,
+                        },
+                        "instance": instance_property(),
+                        "timeout": timeout_property(),
+                    },
+                    "required": ["command"],
+                    "additionalProperties": false,
+                }),
+                target: Target::Plugin(plugin),
+            }
+        })
+        .collect()
+}
+
+/// A call to a plugin's tool, as the `plugins run` (or, for a chat node, the `realm chat`) it is.
+fn plugin_call(
+    plugin: &'static crate::plugins::Plugin,
+    name: &str,
+    given: &Map<String, Value>,
+    instance: Option<String>,
+) -> Result<Call, Unresolved> {
+    let verbs = || plugin.commands.iter().map(|(verb, _)| *verb).collect::<Vec<_>>().join(", ");
+    let Some(verb) = given.get("command").and_then(Value::as_str) else {
+        return Err(Unresolved(format!(
+            "`{name}` needs a `command`, which is one of: {}.",
+            verbs()
+        )));
+    };
+    if !plugin.commands.iter().any(|(known, _)| *known == verb) {
+        return Err(Unresolved(format!(
+            "`{verb}` is not one of {name}'s commands. They are: {}.",
+            verbs()
+        )));
+    }
+    let mut inside = match given.get("arguments") {
+        Some(Value::Object(map)) => catalogue::normalise_arguments(map.clone()),
+        _ => Map::new(),
+    };
+    // `words` beside `command` rather than inside `arguments` is the same `words`.
+    for key in ["words", "node"] {
+        if let Some(value) = given.get(key) {
+            inside.entry(key.to_owned()).or_insert(value.clone());
+        }
+    }
+    let words = match inside.get("words") {
+        Some(Value::String(text)) => text.trim().to_owned(),
+        Some(Value::Array(items)) => {
+            items.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(" ")
+        }
+        Some(Value::Null) | None => String::new(),
+        Some(other) => other.to_string(),
+    };
+    let node = inside
+        .get("node")
+        .and_then(|value| value.as_u64().or_else(|| value.as_str()?.parse().ok()));
+    let mut arguments = Map::new();
+    let command = match (plugin.id, node) {
+        ("agent-chat", Some(node)) => {
+            arguments.insert("node".to_owned(), json!(node));
+            arguments.insert("verb".to_owned(), json!(verb));
+            catalogue::find("realm chat").expect("the catalogue has realm chat")
+        }
+        _ => {
+            arguments.insert("id".to_owned(), json!(plugin.id));
+            arguments.insert("command".to_owned(), json!(verb));
+            catalogue::find("plugins run").expect("the catalogue has plugins run")
+        }
+    };
+    if !words.is_empty() {
+        let key = if command.verb == "chat" { "words" } else { "arguments" };
+        arguments.insert(key.to_owned(), json!(words));
+    }
+    if let Some(timeout) = given.get("timeout") {
+        arguments.insert("timeout".to_owned(), timeout.clone());
+    }
+    let ignored =
+        inside.keys().filter(|key| !matches!(key.as_str(), "words" | "node")).cloned().collect();
+    Ok(Call { command, arguments, instance, ignored, read_as: Vec::new() })
 }
 
 /// Describe one catalogue command as a narrow MCP tool with named arguments.
@@ -461,6 +655,7 @@ fn intent(command: &'static Command) -> String {
         "editor references" => "Find every place a name is used, in this project",
         "editor rename" => "Rename a symbol everywhere it is used, in this project",
         "editor replace" => "Find and replace text in the file that is open",
+        "batch" => "Run several Unluminous command lines in one call",
         _ => return format!("Unluminous: {}", command.typed()),
     };
     format!("{said} (Unluminous: {})", command.typed())
@@ -528,6 +723,11 @@ fn command_schema(command: &Command) -> Value {
 /// [`catalogue::Kind`]. Shared by `command_schema` and `grouped_schema`, so the two shapes cannot
 /// narrow a closed argument two different ways.
 fn argument_property(argument: &catalogue::Argument) -> Value {
+    // `batch`'s steps are a list. The command line takes them as one string with a step a line, and
+    // `batch::steps_from` reads either.
+    if argument.name == "steps" {
+        return json!({ "type": "array", "items": { "type": "string" } });
+    }
     if argument.values.is_empty() {
         json!({ "type": value_type(argument.kind) })
     } else {
@@ -612,6 +812,10 @@ pub struct Call {
     /// See [`sibling_keys`]. Reported in the tool's answer rather than silently dropped, because a
     /// caller that meant them should find out.
     pub ignored: Vec<String>,
+    /// Keys read under another name than the one they were sent with, said in the answer: a
+    /// positional value given under a sibling verb's key, or the first word of the rest of the line
+    /// taken as the command it names. See [`stand_in`] and [`shift_positionals`].
+    pub read_as: Vec<String>,
 }
 
 /// Turn `tools/call` into the request `unluminous-cli` would have sent.
@@ -646,10 +850,31 @@ pub fn resolve_in(
     let instance = given.get("instance").and_then(Value::as_str).map(str::to_owned);
     match tool.target {
         Target::One(command) => {
-            let mut arguments = catalogue::normalise_arguments(given.clone());
+            let mut given = given.clone();
+            // **A narrow tool's keys wrapped in `arguments` are its keys** (`task-2314`). The area
+            // tools take that shape, so a model that has just called one writes `editor_replace` the
+            // same way, and was refused three times in one case for having no arguments.
+            let declares = |name: &str| {
+                command.arguments.iter().any(|argument| argument.name == name)
+                    || command.flag(name).is_some()
+            };
+            if !declares("command")
+                && given.get("command").and_then(Value::as_str) == Some(command.verb)
+            {
+                given.remove("command");
+            }
+            if !declares("arguments") {
+                if let Some(Value::Object(inside)) = given.remove("arguments") {
+                    for (key, value) in inside {
+                        given.entry(key).or_insert(value);
+                    }
+                }
+            }
+            let mut arguments = catalogue::normalise_arguments(given);
             arguments.remove("instance");
-            Ok(Call { command, arguments, instance, ignored: Vec::new() })
+            Ok(Call { command, arguments, instance, ignored: Vec::new(), read_as: Vec::new() })
         }
+        Target::Plugin(plugin) => plugin_call(plugin, name, given, instance),
         Target::Area(area) => {
             // **Both refusals name the commands** (`task-1984` T14). The one below always did; this
             // one said only how many there were, and the agent study measured what that costs: a
@@ -667,12 +892,40 @@ pub fn resolve_in(
                     .collect::<Vec<_>>()
                     .join(", ")
             };
+            // With one whole call to copy, because the commonest way to leave `command` out is to
+            // send `arguments` alone (`task-2314`).
+            let shown = || {
+                catalogue::in_area(area)
+                    .into_iter()
+                    .filter(|command| offered(command))
+                    .find_map(example_call)
+                    .map(|call| format!(" A call looks like: {call}"))
+                    .unwrap_or_default()
+            };
             let Some(verb) = given.get("command").and_then(Value::as_str) else {
                 return Err(Unresolved(format!(
-                    "`{name}` needs a `command`, which is one of: {}.",
-                    verbs()
+                    "`{name}` needs a `command`, which is one of: {}.{}",
+                    verbs(),
+                    shown()
                 )));
             };
+            // **The tool with no area, given an area's name, is that area's tool** (`task-2314`). A
+            // model that lost track of the tool names sends `{"command":"tab","arguments":{"command":
+            // "open",...}}` to `unluminous`; there is one reading of that, so it is sent on.
+            if area.is_empty() && catalogue::find(verb).is_none() {
+                let inner = tool_name(verb, "");
+                if let Some(Value::Object(inside)) = given.get("arguments") {
+                    if inside.contains_key("command") && inner != name {
+                        let mut forwarded = inside.clone();
+                        for key in ["instance", "timeout"] {
+                            if let Some(value) = given.get(key) {
+                                forwarded.entry(key.to_owned()).or_insert(value.clone());
+                            }
+                        }
+                        return resolve_in(shape, areas, &inner, &forwarded);
+                    }
+                }
+            }
             let wanted = if area.is_empty() { verb.to_owned() } else { format!("{area}.{verb}") };
             let Some(command) = catalogue::find(&wanted).filter(|command| offered(command)) else {
                 return Err(Unresolved(format!(
@@ -730,8 +983,11 @@ pub fn resolve_in(
                 .map(|(key, value)| (key.clone(), value.clone()))
                 .collect();
             for (key, value) in catalogue::normalise_arguments(loose) {
-                let named = command.arguments.iter().any(|argument| argument.name == key)
-                    || command.flag(&key).is_some();
+                // A key is the command's by its own name or by the name this tool offers it under
+                // (`verb` for `plugins run`'s `command`), which is how the schema showed it.
+                let real = real_name(command, &key);
+                let named = command.arguments.iter().any(|argument| argument.name == real)
+                    || command.flag(real).is_some();
                 match named {
                     true => {
                         arguments.entry(key).or_insert(value);
@@ -740,13 +996,15 @@ pub fn resolve_in(
                 }
             }
             // The two names the tool used for itself, put back to what the command calls them.
-            unrename(&mut arguments);
+            unrename(command, &mut arguments);
+            let mut read_as = shift_positionals(command, &mut arguments);
+            read_as.extend(stand_in(command, &mut arguments));
             let mut ignored = sibling_keys(area, command, &mut arguments);
             ignored.extend(beside);
             if let Some(timeout) = own_timeout {
                 arguments.insert("timeout".to_owned(), timeout);
             }
-            Ok(Call { command, arguments, instance, ignored })
+            Ok(Call { command, arguments, instance, ignored, read_as })
         }
     }
 }
@@ -778,9 +1036,35 @@ fn offered_as(name: &str) -> &str {
         .unwrap_or(name)
 }
 
+/// The name a key sent to an area tool means for this command: the command's own name when the key
+/// is the name the tool offers it under, and the key itself otherwise.
+fn real_name<'a>(command: &Command, key: &'a str) -> &'a str {
+    RENAMED_IN_A_GROUPED_CALL
+        .iter()
+        .find(|(real, offered)| {
+            *offered == key && declares(command, real) && !declares(command, offered)
+        })
+        .map(|(real, _)| *real)
+        .unwrap_or(key)
+}
+
+/// Whether a command has an argument or a flag of this name.
+fn declares(command: &Command, name: &str) -> bool {
+    command.arguments.iter().any(|argument| argument.name == name) || command.flag(name).is_some()
+}
+
 /// Put the renamed keys back to what the command really calls them.
-fn unrename(arguments: &mut Map<String, Value>) {
+///
+/// **Only for a command that has an argument of the real name** (`task-2314`). The rename was applied
+/// to every command, so `realm chat`, whose own arguments are called `verb` and `words`, had its
+/// `verb` turned into `command` and then refused as not a key of `realm chat`. Every spelling an
+/// agent could send was refused: the agent study measured 21 refusals in one conversation before the
+/// model gave up and answered about the wrong chat.
+fn unrename(command: &Command, arguments: &mut Map<String, Value>) {
     for (real, offered) in RENAMED_IN_A_GROUPED_CALL {
+        if !declares(command, real) || declares(command, offered) {
+            continue;
+        }
         if arguments.contains_key(real) {
             // The caller used the real name and got away with it, which happens when the outer key
             // was not in its way. Believed as it stands -- and the alias goes with it, because a call
@@ -793,6 +1077,88 @@ fn unrename(arguments: &mut Map<String, Value>) {
             arguments.insert(real.to_owned(), value);
         }
     }
+}
+
+/// Fill a required argument that was left out from the words of the rest of the line, the way the
+/// command line reads them.
+///
+/// `plugins run <id> <command> [arguments]` typed as `plugins run agent-chat providers` gives
+/// `providers` to `command`. Sent as a tool call with `{"id":"agent-chat","words":"providers"}`, the
+/// same words were refused with "Say which command", four times in one conversation of the agent
+/// study (`task-2314`). So a required argument before the rest of the line takes the rest's first
+/// word when nothing else gave it one, which is what the same words typed would have done.
+fn shift_positionals(command: &Command, arguments: &mut Map<String, Value>) -> Vec<String> {
+    let Some(rest) = command.arguments.iter().position(|argument| argument.rest) else {
+        return Vec::new();
+    };
+    let rest_name = command.arguments[rest].name;
+    let mut said = Vec::new();
+    for argument in &command.arguments[..rest] {
+        if !argument.required || arguments.contains_key(argument.name) {
+            continue;
+        }
+        let Some(Value::String(text)) = arguments.get(rest_name).cloned() else { break };
+        let text = text.trim();
+        let (first, remainder) = text.split_once(char::is_whitespace).unwrap_or((text, ""));
+        if first.is_empty() {
+            break;
+        }
+        arguments.insert(argument.name.to_owned(), json!(first));
+        match remainder.trim().is_empty() {
+            true => arguments.remove(rest_name),
+            false => arguments.insert(rest_name.to_owned(), json!(remainder.trim())),
+        };
+        said.push(format!(
+            "read `{first}` from `{}` as `{}`",
+            offered_as(rest_name),
+            offered_as(argument.name)
+        ));
+    }
+    said
+}
+
+/// Give a required argument that was left out the value sent under a key this command does not have,
+/// when there is exactly one of each.
+///
+/// `tab show <tab>` sent as `{"path":"src/main.rs"}` names the tab perfectly well under the wrong
+/// key, and was refused with "Say which tab" (`task-2314`). The command line has no keys for
+/// positional words at all, so a value with one obvious home is put there and the answer says so.
+/// Two missing arguments or two strange keys is a guess, and is left to be refused.
+fn stand_in(command: &Command, arguments: &mut Map<String, Value>) -> Vec<String> {
+    // A required argument first; with none missing, the one positional the call left out, because
+    // `tab close {"path": "src/main.rs"}` otherwise closed the tab that was showing and said only that
+    // `path` was ignored -- the wrong file, which is worse than a refusal.
+    let absent = |required: bool| -> Vec<&str> {
+        command
+            .arguments
+            .iter()
+            // Never the rest of the line: a key that is nothing at all is a typo, and `run_cli` should
+            // refuse it by name rather than have it typed into a plugin's command.
+            .filter(|argument| argument.required == required && (required || !argument.rest))
+            .filter(|argument| !arguments.contains_key(argument.name))
+            .map(|argument| argument.name)
+            .collect()
+    };
+    let missing = match absent(true) {
+        required if !required.is_empty() => required,
+        _ => absent(false),
+    };
+    let strange: Vec<String> = arguments
+        .iter()
+        .filter(|(key, value)| !declares(command, key) && (value.is_string() || value.is_number()))
+        .map(|(key, _)| key.clone())
+        .collect();
+    if missing.len() != 1 || strange.len() != 1 {
+        return Vec::new();
+    }
+    let value = arguments.remove(&strange[0]).expect("listed above");
+    arguments.insert(missing[0].to_owned(), value);
+    vec![format!(
+        "read `{}` as `{}`, which is what `{}` takes",
+        strange[0],
+        missing[0],
+        command.typed()
+    )]
 }
 
 /// Take out the keys that belong to another verb of the same area, and say which they were.
@@ -942,6 +1308,7 @@ mod tests {
                 let reached = tools.iter().any(|tool| match tool.target {
                     Target::One(one) => one.wire() == command.wire(),
                     Target::Area(area) => area == command.area,
+                    Target::Plugin(_) => false,
                 });
                 assert!(
                     reached,
@@ -1006,6 +1373,9 @@ mod tests {
             .filter(|command| {
                 !crate::mcp::driver::ANSWERED_LOCALLY.contains(&command.wire().as_str())
             })
+            // `batch` is local because the client runs its steps, and each step reaches a window
+            // the ordinary way; `git diff` runs git in the window's folder. The driver answers both.
+            .filter(|command| !matches!(command.wire().as_str(), "batch" | "git.diff"))
             .map(|command| command.typed())
             .collect();
         assert!(
@@ -1035,6 +1405,7 @@ mod tests {
                         "{} names an area with no commands in it",
                         tool.name
                     ),
+                    Target::Plugin(plugin) => assert!(!plugin.commands.is_empty(), "{}", tool.name),
                 }
             }
         }
@@ -1062,8 +1433,14 @@ mod tests {
     #[test]
     fn every_argument_and_flag_becomes_a_property_and_a_required_argument_is_required() {
         for tool in tools(Shape::Every) {
+            // The plugin tools are one tool a plugin in both shapes (`plugin_tools`).
             let Target::One(command) = tool.target else {
-                unreachable!("the every shape is all single commands");
+                assert!(
+                    matches!(tool.target, Target::Plugin(_)),
+                    "{} is neither a command nor a plugin",
+                    tool.name
+                );
+                continue;
             };
             let properties = tool.schema["properties"].as_object().expect("properties");
             for argument in command.arguments {
@@ -1708,6 +2085,12 @@ mod tests {
         //   31,394   `task-2301` adding the `setup` area's five verbs, the Set Up Unluminous dialog. Each
         //            summary is one short sentence and one example; most of the cost is the area tool
         //            itself, which no wording removes. The ceiling moves to 32,000.
+        //   37,443   `task-2314` adding a tool for each of the four plugins that draw, generated from
+        //            their command tables (about 4,000 tokens: 140 verbs and their summaries), and
+        //            `--path` on the 29 editor and fold commands. Measured on the local model, the
+        //            plugin tools are what turned the Database, Agent-Chat and chat node cases from
+        //            failures into passes. A `Call:` example under every command was measured too and
+        //            cost 3,900 tokens for nothing, so it is not here. The ceiling moves to 38,000.
         //
         // **The number being hard to hold is itself `task-1804` §4.2's finding**, and what
         // changed with it is that there is now an answer: `mcp serve --areas` equips an agent with
@@ -1715,7 +2098,7 @@ mod tests {
         // `editor,git` rather than 18,511 for all of it. This ceiling goes on saying when the
         // *default* has grown, which is what it is for; it is no longer the only lever there is.
         assert!(
-            grouped.len() / 4 < 32_000,
+            grouped.len() / 4 < 38_000,
             "grouped MCP schema exceeded budget: {} bytes",
             grouped.len()
         );
@@ -1734,5 +2117,149 @@ mod tests {
         assert_eq!(Shape::parse("Every"), Some(Shape::Every));
         assert_eq!(Shape::parse("some"), None);
         assert_eq!(Shape::default().name(), "grouped");
+    }
+
+    fn grouped(tool: &str, given: Value) -> Call {
+        let Value::Object(given) = given else { panic!("an object") };
+        resolve(Shape::Grouped, tool, &given).expect("it resolves")
+    }
+
+    /// **A command whose own arguments are called `verb` and `words` keeps them** (`task-2314`).
+    /// `realm chat` had its `verb` renamed to `command` and refused, 21 times in one conversation.
+    #[test]
+    fn realm_chat_keeps_its_own_verb_and_words() {
+        let call = grouped(
+            "unluminous_realm",
+            json!({"command":"chat","arguments":{"node":7,"verb":"state"}}),
+        );
+        assert_eq!(call.arguments["verb"], "state");
+        assert!(!call.arguments.contains_key("command"));
+        let call = grouped(
+            "unluminous_realm",
+            json!({"command":"chat","arguments":{"node":7,"verb":"send","words":"hello there"}}),
+        );
+        assert_eq!(call.arguments["words"], "hello there");
+    }
+
+    /// The names the tool offers `plugins run`'s arguments under are its names wherever they are sent.
+    #[test]
+    fn plugins_run_takes_its_renamed_keys_beside_command_too() {
+        let call = grouped(
+            "unluminous_plugins",
+            json!({"command":"run","id":"database","verb":"add-source","words":"sample data/sample.db"}),
+        );
+        assert_eq!(call.arguments["command"], "add-source");
+        assert_eq!(call.arguments["arguments"], "sample data/sample.db");
+        assert!(call.ignored.is_empty(), "{:?}", call.ignored);
+    }
+
+    /// The first word of the rest of the line is the plugin's command, as it is when typed.
+    #[test]
+    fn a_missing_plugin_command_is_read_from_the_words() {
+        let call = grouped(
+            "unluminous_plugins",
+            json!({"command":"run","arguments":{"id":"agent-chat","words":"providers"}}),
+        );
+        assert_eq!(call.arguments["command"], "providers");
+        assert!(!call.arguments.contains_key("arguments"));
+        assert_eq!(call.read_as.len(), 1);
+        let call = grouped(
+            "unluminous_plugins",
+            json!({"command":"run","arguments":{"id":"database","words":"add-source sample data/sample.db"}}),
+        );
+        assert_eq!(call.arguments["command"], "add-source");
+        assert_eq!(call.arguments["arguments"], "sample data/sample.db");
+    }
+
+    /// One missing argument and one key the command does not have: the value is read as the argument.
+    #[test]
+    fn a_value_under_the_wrong_key_fills_the_one_argument_missing() {
+        let call =
+            grouped("unluminous_tab", json!({"command":"show","arguments":{"path":"src/main.rs"}}));
+        assert_eq!(call.arguments["tab"], "src/main.rs");
+        assert!(call.read_as[0].contains("as `tab`"), "{:?}", call.read_as);
+        // Two strange keys is a guess, and is left to be refused.
+        let call = grouped(
+            "unluminous_tab",
+            json!({"command":"show","arguments":{"path":"a.rs","file":"b.rs"}}),
+        );
+        assert!(!call.arguments.contains_key("tab"));
+    }
+
+    /// **A plugin's tool sends `plugins run` with its id and the verb**, and its verbs are its tool's
+    /// enum, so a verb the plugin does not have is refused by name before anything is sent.
+    #[test]
+    fn a_plugin_tool_is_plugins_run_with_the_plugin_named() {
+        for shape in [Shape::Grouped, Shape::Every] {
+            for plugin in crate::plugins::PLUGINS {
+                let name = tool_name(&plugin.id.replace('-', "_"), "");
+                let tool =
+                    tools(shape).into_iter().find(|tool| tool.name == name).expect("offered");
+                let verbs =
+                    tool.schema["properties"]["command"]["enum"].as_array().expect("an enum").len();
+                assert_eq!(
+                    verbs,
+                    plugin.commands.len(),
+                    "{name} offers every command its plugin has"
+                );
+            }
+        }
+        let call = grouped(
+            "unluminous_database",
+            json!({"command":"add-source","arguments":{"words":"sample data/sample.db"}}),
+        );
+        assert_eq!(call.command.typed(), "plugins run");
+        assert_eq!(call.arguments["id"], "database");
+        assert_eq!(call.arguments["command"], "add-source");
+        assert_eq!(call.arguments["arguments"], "sample data/sample.db");
+        let refused = resolve(
+            Shape::Grouped,
+            "unluminous_database",
+            &Map::from_iter([("command".to_owned(), json!("add-table"))]),
+        );
+        assert!(refused.is_err());
+    }
+
+    /// Agent-Chat's tool with `node` drives that chat node, through `realm chat`.
+    #[test]
+    fn the_agent_chat_tool_with_a_node_drives_the_node() {
+        let call = grouped(
+            "unluminous_agent_chat",
+            json!({"command":"send","arguments":{"node":7,"words":"hello there"}}),
+        );
+        assert_eq!(call.command.typed(), "realm chat");
+        assert_eq!(call.arguments["node"], 7);
+        assert_eq!(call.arguments["verb"], "send");
+        assert_eq!(call.arguments["words"], "hello there");
+        let call = grouped("unluminous_agent_chat", json!({"command":"providers"}));
+        assert_eq!(call.command.typed(), "plugins run");
+        assert_eq!(call.arguments["id"], "agent-chat");
+    }
+
+    /// **An area named as the command of the tool with no area is that area's tool** (`task-2314`).
+    #[test]
+    fn an_area_named_on_the_tool_with_no_area_is_sent_to_that_area() {
+        let call = grouped(
+            "unluminous",
+            json!({"command":"tab","arguments":{"command":"open","arguments":{"path":"README.md"}}}),
+        );
+        assert_eq!(call.command.typed(), "tab open");
+        assert_eq!(call.arguments["path"], "README.md");
+        let call = grouped("unluminous", json!({"command":"status"}));
+        assert_eq!(call.command.typed(), "status");
+    }
+
+    /// **A narrow tool's keys wrapped in `arguments` are read as its keys** (`task-2314`).
+    #[test]
+    fn a_narrow_tool_reads_keys_wrapped_the_way_an_area_tool_takes_them() {
+        let call = grouped(
+            "unluminous_editor_replace",
+            json!({"command":"replace","arguments":{"text":"teh","with":"the","all":true}}),
+        );
+        assert_eq!(call.command.typed(), "editor replace");
+        assert_eq!(call.arguments["text"], "teh");
+        assert_eq!(call.arguments["all"], true);
+        assert!(!call.arguments.contains_key("arguments"));
+        assert!(!call.arguments.contains_key("command"));
     }
 }

@@ -18,49 +18,7 @@ use crate::services::database::{ColumnForm, DatabaseExplorer, Page, Sheet, Sourc
 use crate::services::plugin_ui::{self, Answer, UiProvider};
 
 /// Every command, with the one line `plugins show database` prints for each.
-pub const LIST: &[(&str, &str)] = &[
-    ("open-pane", "Show the pane: the data source tree, with the consoles and the row editors under it."),
-    ("sources", "Every data source: where it points, whether it is connected, and where its password is. Never the password."),
-    ("add-source", "Add one. Takes a name and a `postgres://…` URL, or a name and the path of a SQLite file, and optionally the NAME of an environment variable holding the password."),
-    ("remove-source", "Take one away, by name."),
-    ("connect", "Open the connection to a data source, by name."),
-    ("disconnect", "Close it."),
-    ("use", "Which data source the tree and a new console are pointed at."),
-    ("schemas", "The schemas of a data source."),
-    ("tables", "What is in a schema: tables, views, routines and sequences."),
-    ("columns", "One table's columns, its types and its primary key."),
-    ("ddl", "The `CREATE` statement for a table or a view."),
-    ("open", "Open a grid on a table's rows. Takes `schema.table` or just `table`."),
-    ("console", "Open a query console on a data source."),
-    ("new-query", "Open a console the way the pane's `New query` button does: on the data source of the page showing, or the one the tree is pointed at. With no data sources it opens the New Data Source dialog."),
-    ("console-source", "Point the current console at another data source, by name, which is the dropdown at the right of its toolbar. The statement stays; the last result goes."),
-    ("pages", "The pages of the workspace, in the order their tabs are drawn, and which one is showing."),
-    ("show-page", "Show a page, by the number `pages` gives it."),
-    ("close-page", "Close a page, by its number, or the one showing when no number is said."),
-    ("query", "Run a statement. **Does not wait**; `state` says when it has finished and `result` has the rows."),
-    ("state", "Whether the current page is still running, and what it last said."),
-    ("result", "The columns and rows of the current page, bounded by the row limit."),
-    ("stop", "Stop what the current page's data source is doing."),
-    ("reload", "Read the current grid again."),
-    ("page", "Which page of a grid: `next`, `previous`, `first`, or a number from 1."),
-    ("filter", "The grid's `WHERE`, as a fragment of SQL. With nothing said it is cleared."),
-    ("sort", "The grid's `ORDER BY`, as a fragment of SQL. With nothing said it is cleared."),
-    ("set", "Record a pending change: a row number from 1, a column name, and the value. `--null` sets NULL."),
-    ("add-row", "Record a pending new row."),
-    ("delete-row", "Record a pending deletion, by row number from 1."),
-    ("pending", "The pending changes, and the statements they will become."),
-    ("revert", "Throw the pending changes away."),
-    ("submit", "Write them, as one transaction."),
-    ("password", "`<source> keychain <entry>` points at an entry in this machine's own credential store; `<source> none` forgets it. **There is no way to give a password here**: it would be in a shell history, a process list and an agent's transcript. Type it into the New Data Source dialog, which writes it to the credential store. Nothing is ever written to a file but the *name* of the entry."),
-    ("read-only", "`on` or `off` for a data source. Off by default. It asks the *server* for a session that cannot write, and there is no control for it in the window."),
-    ("new-table", "Make a table. `<schema.name> <column>:<type>[:pk][:notnull] …`, or just a name to open the dialog."),
-    ("drop-table", "Drop a table, by `schema.name`."),
-    ("vector", "Read one cell of the current grid as a vector: its dimensions, its length, its extremes and its values. Takes a row number from 1 and a column name."),
-    ("search", "Open a console on a search table with the statement that searches it, ready to edit. Takes `schema.table` or just `table`."),
-    ("capabilities", "What a data source's engine does and does not do, as the engine itself reports it. Only Inillucent answers."),
-    ("import", "Read a SQLite database and build an Inillucent one beside it, at the same path with `.rdb` on the end. The source is never written to."),
-    ("view", "Everything the pane and the tab are showing, as data."),
-];
+pub const LIST: &[(&str, &str)] = unluminous_cli::plugins::DATABASE;
 
 /// Run one.
 pub fn run(
@@ -253,7 +211,17 @@ fn add_source(explorer: &mut DatabaseExplorer, rest: &str) -> Result<Answer, Str
         Some((url, variable)) if is_a_variable_name(variable) => (url, Some(variable.to_owned())),
         _ => (rest.trim(), None),
     };
-    let source = Source::parse(name.trim(), url.trim()).map_err(|why| why.to_string())?;
+    // **A relative file is the project's** (`task-2314`), which is how every other command reads a
+    // relative path. It was kept as written and opened later from whatever folder the window was
+    // started in, so `add-source sample data/sample.db` was added and then could not be connected:
+    // "there is no file at data/sample.db", with the file sitting in the project.
+    let url = match (explorer.project.as_deref(), std::path::Path::new(url.trim())) {
+        (Some(project), file) if !url.contains("://") && file.is_relative() => {
+            project.join(file).to_string_lossy().into_owned()
+        }
+        _ => url.trim().to_owned(),
+    };
+    let source = Source::parse(name.trim(), &url).map_err(|why| why.to_string())?;
     // Writable, which is the same default the settings file and the dialog now use — `task-1795`
     // asks for full access and there is no tick box anywhere to clear.
     let source = Source {

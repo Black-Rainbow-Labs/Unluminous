@@ -1,0 +1,292 @@
+//! The commands of the plugins that draw, as one list the window answers and the MCP tools are made from.
+//!
+//! A `ui` plugin is reached with `plugins run <id> <command> [arguments]`, and its commands were only
+//! known to the window, in each provider's own table. An agent had to run `plugins show <id>` to learn
+//! them, or guess: the agent study (`task-2314`) measured three discovery calls and a fall back to the
+//! shell on the Database plugin, and four refusals on Agent-Chat before the right verb was found. So the
+//! tables live here, in the crate both halves depend on, as the catalogue does: the window's
+//! `UiProvider::commands` returns these, and `mcp::tools` turns each plugin into a tool whose
+//! `command` is an enum of them. A command added to a plugin is a verb of its tool the day it is added.
+
+/// One plugin that draws, and the commands `plugins run <id>` takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Plugin {
+    /// The plugin's id, which is what `plugins run` names it by.
+    pub id: &'static str,
+    /// What the plugin is, in a sentence, for its tool's description.
+    pub note: &'static str,
+    /// Every command, with the line `plugins show` prints for it.
+    pub commands: &'static [(&'static str, &'static str)],
+}
+
+/// The four bundled plugins that draw, in the order their tools are offered.
+pub const PLUGINS: &[Plugin] = &[
+    Plugin {
+        id: "agent-tasks",
+        note: "The Agent-Tasks board: tickets in lanes (new, QA failed, in progress, agent done), their todos and comments, sprints and epics, and the agent each ticket starts. A ticket is named by its key, such as task-3.",
+        commands: AGENT_TASKS,
+    },
+    Plugin {
+        id: "agent-chat",
+        note: "The Agent-Chat pane: a conversation with an AI agent or endpoint. Give `node` to drive an Agent Chat node on the Realm instead of the pane, with the same commands.",
+        commands: AGENT_CHAT,
+    },
+    Plugin {
+        id: "database",
+        note: "The Database explorer: SQLite, PostgreSQL and Inillucent data sources, their tables, consoles that run SQL, and grids of rows that can be edited. `query` does not wait: `state` says when it has finished and `result` reads the rows.",
+        commands: DATABASE,
+    },
+    Plugin {
+        id: "designer",
+        note: "The Designer: HTML designs in the project's designs folder, the notes left on their elements, and asking an agent to change them.",
+        commands: DESIGNER,
+    },
+];
+
+/// The plugin with this id, if it is one of [`PLUGINS`].
+pub fn find(id: &str) -> Option<&'static Plugin> {
+    PLUGINS.iter().find(|plugin| plugin.id == id)
+}
+
+pub const DATABASE: &[(&str, &str)] = &[
+    ("open-pane", "Show the pane: the data source tree, with the consoles and the row editors under it."),
+    ("sources", "Every data source: where it points, whether it is connected, and where its password is. Never the password."),
+    ("add-source", "Add one. Takes a name and a `postgres://…` URL, or a name and the path of a SQLite file, and optionally the NAME of an environment variable holding the password."),
+    ("remove-source", "Take one away, by name."),
+    ("connect", "Open the connection to a data source, by name."),
+    ("disconnect", "Close it."),
+    ("use", "Which data source the tree and a new console are pointed at."),
+    ("schemas", "The schemas of a data source."),
+    ("tables", "What is in a schema: tables, views, routines and sequences."),
+    ("columns", "One table's columns, its types and its primary key."),
+    ("ddl", "The `CREATE` statement for a table or a view."),
+    ("open", "Open a grid on a table's rows. Takes `schema.table` or just `table`."),
+    ("console", "Open a query console on a data source."),
+    ("new-query", "Open a console the way the pane's `New query` button does: on the data source of the page showing, or the one the tree is pointed at. With no data sources it opens the New Data Source dialog."),
+    ("console-source", "Point the current console at another data source, by name, which is the dropdown at the right of its toolbar. The statement stays; the last result goes."),
+    ("pages", "The pages of the workspace, in the order their tabs are drawn, and which one is showing."),
+    ("show-page", "Show a page, by the number `pages` gives it."),
+    ("close-page", "Close a page, by its number, or the one showing when no number is said."),
+    ("query", "Run a statement. **Does not wait**; `state` says when it has finished and `result` has the rows."),
+    ("state", "Whether the current page is still running, and what it last said."),
+    ("result", "The columns and rows of the current page, bounded by the row limit."),
+    ("stop", "Stop what the current page's data source is doing."),
+    ("reload", "Read the current grid again."),
+    ("page", "Which page of a grid: `next`, `previous`, `first`, or a number from 1."),
+    ("filter", "The grid's `WHERE`, as a fragment of SQL. With nothing said it is cleared."),
+    ("sort", "The grid's `ORDER BY`, as a fragment of SQL. With nothing said it is cleared."),
+    ("set", "Record a pending change: a row number from 1, a column name, and the value. `--null` sets NULL."),
+    ("add-row", "Record a pending new row."),
+    ("delete-row", "Record a pending deletion, by row number from 1."),
+    ("pending", "The pending changes, and the statements they will become."),
+    ("revert", "Throw the pending changes away."),
+    ("submit", "Write them, as one transaction."),
+    ("password", "`<source> keychain <entry>` points at an entry in this machine's own credential store; `<source> none` forgets it. **There is no way to give a password here**: it would be in a shell history, a process list and an agent's transcript. Type it into the New Data Source dialog, which writes it to the credential store. Nothing is ever written to a file but the *name* of the entry."),
+    ("read-only", "`on` or `off` for a data source. Off by default. It asks the *server* for a session that cannot write, and there is no control for it in the window."),
+    ("new-table", "Make a table. `<schema.name> <column>:<type>[:pk][:notnull] …`, or just a name to open the dialog."),
+    ("drop-table", "Drop a table, by `schema.name`."),
+    ("vector", "Read one cell of the current grid as a vector: its dimensions, its length, its extremes and its values. Takes a row number from 1 and a column name."),
+    ("search", "Open a console on a search table with the statement that searches it, ready to edit. Takes `schema.table` or just `table`."),
+    ("capabilities", "What a data source's engine does and does not do, as the engine itself reports it. Only Inillucent answers."),
+    ("import", "Read a SQLite database and build an Inillucent one beside it, at the same path with `.rdb` on the end. The source is never written to."),
+    ("view", "Everything the pane and the tab are showing, as data."),
+];
+
+pub const AGENT_TASKS: &[(&str, &str)] = &[
+    ("board", "The lanes, their counts and their cards. Closes whatever ticket was open."),
+    ("back", "Close the ticket that is open and show the lanes."),
+    ("open", "Open a ticket in the modal, with its description, its terminal and all of its fields."),
+    ("close", "Close the ticket modal."),
+    (
+        "create",
+        "Press `Create task` on the new ticket that is open. Refused while it has no title, and the title field          is then outlined in red; `isNew` and `titleMissing` in the ticket's JSON say which.",
+    ),
+    ("reload", "Read the board again from its file."),
+    (
+        "clear",
+        "Delete every ticket with its todos and comments, leaving the epics and the sprints. Copies the \
+         board file first and says where the copy is. Takes the word `confirm`; without it, it says what \
+         it would delete and deletes nothing.",
+    ),
+    (
+        "show",
+        "Read the open ticket's description or one of its comments as markdown or as its source: \
+         `show description markdown`, `show comment 12 raw`.",
+    ),
+    ("open-pane", "Show the board's pane."),
+    ("view", "Show one of board, backlog, completed or epics."),
+    ("task", "One ticket, with its description, its todos and its comments."),
+    (
+        "new-task",
+        "Create a ticket in New, with the rest of the line as its title, and answer its key. Nothing opens: \
+         `describe` writes its description. With no title it opens an empty ticket in the modal, which is \
+         what `+ Add Task` does.",
+    ),
+    ("edit-task", "Change a ticket's title. `describe` changes its description."),
+    (
+        "describe",
+        "Replace a ticket's description with the rest of the line, as markdown: `describe task-3 <text>`. \
+         Line breaks inside the text are kept.",
+    ),
+    (
+        "move-task",
+        "Move a ticket to a lane and a place in it. Moving a ticket whose agent is running to agent_done is \
+         refused while it has todos that are not ticked; `move-task task-3 agent_done anyway` moves it regardless.",
+    ),
+    ("delete-task", "Delete a ticket, its todos and its comments."),
+    ("priority", "Set a ticket's priority to low, medium or high."),
+    ("assign", "Assign a ticket to an AI endpoint that runs an agent, by its name, or to human."),
+    ("todo-add", "Add a todo to a ticket."),
+    ("todo-done", "Tick a ticket's nth todo."),
+    ("todo-undone", "Untick a ticket's nth todo."),
+    ("todo-remove", "Delete a ticket's nth todo."),
+    ("comment", "Post a comment on a ticket."),
+    ("comment-edit", "Change what a comment says. A person's own comments only."),
+    ("comment-send", "Post a comment and type it into the ticket's agent, starting the agent when none is running."),
+    ("heartbeat", "Record that a ticket's agent is working, with a lease in minutes."),
+    ("start", "Launch the ticket's agent and hand the ticket over."),
+    ("resume", "Bring back a retired session without changing the ticket's lane."),
+    (
+        "session",
+        "Say which conversation a ticket's agent is having, by its session id, so `resume` and the Chat tab pick          that one up: `session task-3 <uuid>`. For a Claude Code conversation started by hand. Says the current          one when asked with no id.",
+    ),
+    ("send", "Type a line into a ticket's agent, starting the agent when none is running."),
+    (
+        "terminal",
+        "What a ticket's agent has written, with whether a line is still queued for its prompt. \
+         `terminal task-1 40` for the last forty lines.",
+    ),
+    (
+        "choice",
+        "The menu a ticket's agent is waiting on in its terminal, such as Claude Code's folder trust question, with          its options numbered from 1: `choice task-1`. `choice task-1 2` presses option 2, which is what its          button in the Chat tab does.",
+    ),
+    ("interrupt", "Send Ctrl+C to a ticket's agent."),
+    ("escape", "Press Escape in a ticket's agent, which stops the turn it is on without asking it to exit."),
+    (
+        "to-side-pane",
+        "Show a ticket's conversation in the Agent-Chat side pane and close the ticket modal: `to-side-pane <key>`.",
+    ),
+    ("stop", "Close a ticket's terminal."),
+    ("search", "Tickets whose key, title or description holds the query."),
+    ("new-epic", "Create an epic. Names itself when no name is given, which is what the menu entry does."),
+    ("new-sprint", "Create a sprint and make it the active one. Names itself when no name is given."),
+    ("fold", "Open or shut a section of a ticket: its description, its agent section, its todos, its comments, or the card of fields down the right: `fold terminal shut`, `fold comments shut`. Says all five when asked with nothing."),
+    ("agent-tab", "Which tab the ticket modal's agent section shows: `agent-tab chat` or `agent-tab terminal`. Says which when asked with nothing."),
+    ("chat", "The last messages of a ticket's conversation, read from its agent's own transcript, which is what the ticket modal's Chat tab shows: `chat task-3 20`."),
+    ("description-height", "How tall the ticket modal's description is: `description-height 120`, or `auto` for the modal's own choice. Says which when asked with nothing."),
+    ("terminal-height", "How tall the ticket modal's agent terminal is: `terminal-height 300`, or `auto` for the modal's own choice. Says which when asked with nothing."),
+    ("comments-height", "How tall the ticket modal's comments are: `comments-height 200`, or `auto` for the modal's own choice. Says which when asked with nothing."),
+    ("comment-box-height", "How tall the box a comment is written in is: `comment-box-height 120`, or `auto` for three lines. Says which when asked with nothing."),
+    ("sprint-assign", "Put a ticket in a sprint, or in the backlog: `sprint-assign task-1 backlog`."),
+    ("sprint-activate", "Make one sprint the active one, which is the sprint the board shows."),
+    ("sprint-complete", "Close a sprint. Anything in it that is not in Agent Done goes to the backlog."),
+    ("sprint-rename", "Rename a sprint."),
+    ("sprint-delete", "Delete a sprint. Its tickets go to the backlog rather than with it."),
+    ("epic-rename", "Rename an epic."),
+    ("epic-colour", "Recolor an epic, as `#RRGGBB`. `epic-color` is the same command."),
+    ("epic-delete", "Delete an epic. Its tickets keep existing with no epic."),
+    ("sync", "Not implemented on this board: says so and does nothing. There is no menu entry for it."),
+    (
+        "supervisor",
+        "The board's supervisor, one agent that works QA Failed and then New a ticket at a time: `supervisor`          says whether it is running and shows its last lines, `supervisor start`, `supervisor stop`,          `supervisor send <text>` types a line into it, and `supervisor open` and `supervisor close` show and          put away the modal that holds its terminal, which is what `Chat with supervisor` opens.",
+    ),
+    ("tick", "Read every terminal and run one watchdog tick. The window does this every two minutes."),
+    ("watchdog", "The same as `tick`, named for what it is for."),
+];
+
+pub const DESIGNER: &[(&str, &str)] = &[
+    ("open-pane", "Show the Designs pane."),
+    ("designs", "The designs in the folder, with their open and resolved note counts."),
+    ("new", "Make a design from the starter page and open it: new <name>. With no name, asks for one."),
+    ("open", "Open a design in a tab of the Designer pane: open <name>."),
+    ("tabs", "The Designer pane's tabs, left to right, and which one is showing. A blank tab is null."),
+    ("new-tab", "Add a blank tab to the Designer pane and show it."),
+    ("show-tab", "Show one of the Designer pane's tabs: show-tab <number|name>, counted from 0."),
+    ("close-tab", "Close one of the Designer pane's tabs: close-tab [number|name]. With nothing, the one showing."),
+    ("device", "Change the device of the showing design: device desktop|laptop|tablet|phone|fit."),
+    ("mode", "Change the mode of the showing design: mode browse|comment."),
+    ("mode-browse", "Let the page behave as a page."),
+    ("mode-comment", "Hover to outline an element, and click it to choose it and make a note on it."),
+    ("select", "Choose an element by selector, as a click would: select <selector>."),
+    ("selection", "What is chosen: selector, tag, excerpt, the start of its HTML."),
+    ("comments", "The notes on a design: comments [open|resolved|all]."),
+    ("comment", "Make a note on an element: comment <selector> <text>. A selector with spaces in it is ended with --: comment main > h1 -- <text>."),
+    ("reply", "Reply to a note: reply <note> <text>."),
+    ("resolve", "Mark a note dealt with: resolve <note>."),
+    ("reopen", "Open a resolved note again: reopen <note>."),
+    ("delete", "Take a note away: delete <note>."),
+    ("move", "Pin a note to another element: move <note> <selector>."),
+    ("ask", "Send one note to Agent-Chat, as its button does: ask <note>."),
+    ("ask-all", "Send every open note to Agent-Chat in one message."),
+    ("prompt", "Send Agent-Chat a request about the chosen element, or the whole design: prompt <text>."),
+    ("history", "The copies taken before each request, newest first."),
+    ("restore", "Put a copy back as the design: restore <copy>, by name or by place in the list."),
+    ("reload", "Load the page again."),
+    ("source", "Open the design's file as text."),
+];
+
+pub const AGENT_CHAT: &[(&str, &str)] = &[
+            ("open-pane", "Show the chat pane."),
+            ("mic", "The microphone button inside the prompt: start or stop dictation into this prompt, `on`, `off` or nothing to toggle. The same as `voice dictate`."),
+            ("new", "Start a new conversation."),
+            (
+                "send",
+                "Add a message and start the answer. While one is arriving it is queued instead and goes when that turn ends. Does not wait; `state` says when it has finished and how many are queued.",
+            ),
+            ("stop", "Stop the answer, keeping what has arrived."),
+            (
+                "state",
+                "Idle, sending, streaming, waiting-for-tools, finished or failed.",
+            ),
+            ("messages", "The whole conversation as data."),
+            ("last", "Just the last answer, with how long it took and how many tokens it wrote."),
+            ("rerun", "Ask again the question an answer was given to: `rerun <answer id or last>`."),
+            ("attach", "Attach a picture to the message being composed."),
+            (
+                "providers",
+                "The endpoints, their URLs and models, and whether each has a key.",
+            ),
+            ("use", "Talk to one of the endpoints by name."),
+            ("history", "The conversations kept, newest first."),
+            ("open", "Open one of them by its id."),
+            ("remove", "Throw one away."),
+            (
+                "tools",
+                "`on` or `off`: whether Unluminous's own commands are offered to the model.",
+            ),
+            ("view", "Everything the pane is showing, as data, including each component an answer holds and what it shows now."),
+            (
+                "settings",
+                "`open` or `close` the Chat settings the gear opens. Answers the models offered, the one in use, and how much of the context is used.",
+            ),
+            (
+                "components",
+                "The components an answer can hold, with their fields and an example each. With a name, just that one.",
+            ),
+            (
+                "validate",
+                "Check one component's JSON before answering with it: valid, or every problem with its path.",
+            ),
+            ("gallery", "Open a conversation that shows every component."),
+            (
+                "motion",
+                "`on` or `off`: whether the components animate. Off holds every light, bar and number where it ends.",
+            ),
+            (
+                "press",
+                "Press a component's button, choice or submit: `press <message id or last> <label>`.",
+            ),
+            (
+                "tick",
+                "Toggle a checklist item: `tick <message id or last> <item words or number>`.",
+            ),
+            (
+                "set",
+                "Set a calculator input or a form field: `set <message id or last> <name> <value>`.",
+            ),
+            ("tab", "Choose a tab: `tab <message id or last> <label or number>`."),
+            (
+                "ticket",
+                "Show a ticket's conversation in place of the pane's own, which `plugins run agent-tasks to-side-pane` asks for, or go back with `ticket off`.",
+            ),
+        ];

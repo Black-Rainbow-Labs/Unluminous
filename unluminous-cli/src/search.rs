@@ -314,7 +314,29 @@ pub fn ask(
     hosting: Hosting,
 ) -> Reply {
     configure();
-    converted(atrius_index::host::ask(root, command, arguments, timeout, hosting))
+    let arguments = without_quoted_phrases(command, arguments);
+    converted(atrius_index::host::ask(root, command, &arguments, timeout, hosting))
+}
+
+/// A question in plain English with its quotation marks taken out (`task-2314`).
+///
+/// The passage search reads its words as a full text query, where a quoted phrase is query syntax,
+/// so `"retry" a failed request` was answered from the question's words alone with a note saying the
+/// passage search could not answer it, and the agent study watched the model go to grep both times.
+/// Only `find` in `semantic` mode is changed; a literal or regex search means its quotes.
+fn without_quoted_phrases(command: &str, arguments: &Map<String, Value>) -> Map<String, Value> {
+    let mut arguments = arguments.clone();
+    let semantic = arguments.get("mode").and_then(Value::as_str) == Some("semantic");
+    if command == "search.find" && semantic {
+        if let Some(Value::String(query)) = arguments.get("query") {
+            let plain = query.replace(['"', '\u{201c}', '\u{201d}'], " ");
+            arguments.insert(
+                "query".to_owned(),
+                Value::String(plain.split_whitespace().collect::<Vec<_>>().join(" ")),
+            );
+        }
+    }
+    arguments
 }
 
 /// Runs the headless host for `search serve` and does not return until it has been idle for

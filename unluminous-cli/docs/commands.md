@@ -286,7 +286,7 @@ The rest of this document is generated from the catalogue. Do not edit it by han
 
 ## Commands with no area
 
-Six commands are typed on their own, because they are about the CLI or about a whole Unluminous rather than about one part of a window.
+Commands typed on their own, because they are about the CLI or about a whole Unluminous rather than about one part of a window.
 
 ### status
 
@@ -388,6 +388,27 @@ Every command this CLI has, as data: the areas, the arguments, the flags and the
 ```sh
 unluminous-cli commands --json
 unluminous-cli commands "modal open" --json
+```
+
+Answered by the CLI itself; no Unluminous needs to be running.
+
+### batch
+
+```
+unluminous-cli batch <steps> [--keep-going]
+```
+
+Run several commands in one call, in order, and answer with what each did. Each step is a command line exactly as its usage line shows it, such as `tab open src/main.rs`. The first step that fails stops the rest unless --keep-going is given.
+
+- `steps` — The command lines to run: a JSON array of strings, or one string with a command on each line.
+
+- `--keep-going` — Run every step even when one fails, and count the failures.
+
+```sh
+unluminous-cli batch "tab open src/main.rs
+tab open src/shapes.rs
+pane split --tab 1"
+unluminous-cli batch '["highlight add src/main.rs --from-line 11","highlight add src/main.rs --from-line 23"]' --keep-going
 ```
 
 Answered by the CLI itself; no Unluminous needs to be running.
@@ -585,23 +606,24 @@ unluminous-cli browser zoom 1.5
 
 ## tab — the files that are open
 
-A tab holds a file. A relative path is resolved against the project folder, and every reply says which absolute path it used.
+Open, show, save and close files. A tab holds a file. A relative path is resolved against the project folder, and every reply says which absolute path it used.
 
 ### tab open
 
 ```
-unluminous-cli tab open <path> [--permanent]
+unluminous-cli tab open <path> [--transient] [--permanent]
 ```
 
-Open a file in a tab and show it. A picture opens as a picture; anything else opens as text.
+Open a file in a tab of its own and show it, so opening several files leaves a tab for each. A picture opens as a picture; anything else opens as text.
 
 - `path` — The file. A relative path is resolved against the project folder.
 
-- `--permanent` — Open it as a tab of its own rather than reusing the tab a single click reuses.
+- `--transient` — Show it in the tab a single click in the explorer reuses, so the next file opened this way replaces it.
+- `--permanent` — Kept for older callers: every tab this opens is already a tab of its own.
 
 ```sh
 unluminous-cli tab open README.md
-unluminous-cli tab open design/style-guide.md --permanent
+unluminous-cli tab open design/style-guide.md --transient
 ```
 
 ### tab list
@@ -706,10 +728,12 @@ unluminous-cli tab move 0 --tab notes.md --pane 1
 ### tab save
 
 ```
-unluminous-cli tab save
+unluminous-cli tab save [--path <file>]
 ```
 
 Write the tab that is showing back to its file.
+
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 
 ```sh
 unluminous-cli tab save
@@ -857,15 +881,17 @@ unluminous-cli pane unsplit-all
 
 ## editor — safely rename symbols everywhere, find every use and definitions
 
-Use this tool first for project-symbol work. If asked to find every place a name is used, call `references` with `name`; if asked where a name is defined, call `definition`; if asked to rename it everywhere, call `rename` with `name`, `new-name` and `apply: true`. Do not begin those jobs with grep, file search, reads or file edits. Unluminous's native answers combine unsaved live open tabs with the project index, distinguish code from comments and strings, and apply a role-aware project rename as one undo step per open file while safely rewriting closed files. Lines and columns count from 1.
+Read and change a file's text in the window: `text` reads it, `insert`, `replace` and `set-text` change it, `comment`, `lines`, `select` and `caret` work on lines, and every one takes `path` to name the file. Use this tool first for project-symbol work. If asked to find every place a name is used, call `references` with `name`; if asked where a name is defined, call `definition`; if asked to rename it everywhere, call `rename` with `name`, `new-name` and `apply: true`. Do not begin those jobs with grep, file search, reads or file edits. Unluminous's native answers combine unsaved live open tabs with the project index, distinguish code from comments and strings, and apply a role-aware project rename as one undo step per open file while safely rewriting closed files. Lines and columns count from 1.
 
 ### editor status
 
 ```
-unluminous-cli editor status
+unluminous-cli editor status [--path <file>]
 ```
 
 What the tab that is showing holds: its path, how many lines, where the caret is, what is selected, whether it has unsaved changes and which view mode it is in.
+
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 
 ```sh
 unluminous-cli editor status --json
@@ -874,11 +900,12 @@ unluminous-cli editor status --json
 ### editor text
 
 ```
-unluminous-cli editor text [--from-line <number>] [--to-line <number>]
+unluminous-cli editor text [--path <file>] [--from-line <number>] [--to-line <number>]
 ```
 
 Read the text of the tab that is showing.
 
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--from-line <number>` — The first line to read, counting from 1.
 - `--to-line <number>` — The last line to read, counting from 1.
 
@@ -890,13 +917,14 @@ unluminous-cli editor text --from-line 1 --to-line 20
 ### editor set-text
 
 ```
-unluminous-cli editor set-text [text] [--from-file <path>]
+unluminous-cli editor set-text [text] [--path <file>] [--from-file <path>]
 ```
 
 Replace everything in the tab that is showing. One undo puts it back.
 
 - `text` (optional) — The new text. Use --from-file instead for anything long. Everything after it on the line belongs to it.
 
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--from-file <path>` — Read the new text from this file rather than from the command line.
 
 ```sh
@@ -907,12 +935,14 @@ unluminous-cli editor set-text --from-file draft.md
 ### editor insert
 
 ```
-unluminous-cli editor insert <text>
+unluminous-cli editor insert <text> [--path <file>]
 ```
 
 Type text at the caret, replacing the selection if there is one. It types exactly what it is given: there is no auto-indent, so a line of a function body has to carry its own leading spaces.
 
 - `text` — What to type, exactly as it will appear. \n is a new line and \t is a tab. Nothing is indented for you. Everything after it on the line belongs to it.
+
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 
 ```sh
 unluminous-cli editor insert Hello
@@ -922,11 +952,12 @@ unluminous-cli editor insert "one\ntwo"
 ### editor caret
 
 ```
-unluminous-cli editor caret [--line <number>] [--column <number>]
+unluminous-cli editor caret [--path <file>] [--line <number>] [--column <number>]
 ```
 
 Read where the caret is, or move it. Lines and columns count from 1, which is what the status bar shows.
 
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--line <number>` — The line to move to.
 - `--column <number>` — The column to move to. The start of the line when it is left out.
 
@@ -938,11 +969,12 @@ unluminous-cli editor caret --line 42 --column 5
 ### editor select
 
 ```
-unluminous-cli editor select [--all] [--none] [--from-line <number>] [--from-column <number>] [--to-line <number>] [--to-column <number>]
+unluminous-cli editor select [--path <file>] [--all] [--none] [--from-line <number>] [--from-column <number>] [--to-line <number>] [--to-column <number>]
 ```
 
 Select some of the text, all of it, or none of it.
 
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--all` — Select the whole document.
 - `--none` — Drop the selection, leaving the caret where it was.
 - `--from-line <number>` — The line the selection starts on.
@@ -958,11 +990,12 @@ unluminous-cli editor select --from-line 3 --to-line 6
 ### editor indent
 
 ```
-unluminous-cli editor indent [--space]
+unluminous-cli editor indent [--path <file>] [--space]
 ```
 
 Indent each line the selection touches, or the line the caret is on when nothing is selected, by one tab at the start of the line — or one space with --space. This is what Tab and Space do over a selection in the editing area, and the selection stays over the text it covered.
 
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--space` — Indent with a space rather than a tab, which is what the Space key does.
 
 ```sh
@@ -973,11 +1006,12 @@ unluminous-cli editor indent --space
 ### editor dedent
 
 ```
-unluminous-cli editor dedent [--space]
+unluminous-cli editor dedent [--path <file>] [--space]
 ```
 
 Remove one indent from each line the selection touches, or the caret's line when nothing is selected — one tab, or one space with --space. This is what Shift+Tab and Shift+Space do over a selection. A line with none, or indented with the other unit, is left alone.
 
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--space` — Remove a space rather than a tab, which is what Shift+Space does.
 
 ```sh
@@ -988,11 +1022,12 @@ unluminous-cli editor dedent --space
 ### editor comment
 
 ```
-unluminous-cli editor comment [--toggle] [--block]
+unluminous-cli editor comment [--path <file>] [--toggle] [--block]
 ```
 
 Comment or uncomment the lines the selection touches, or the caret's line when nothing is selected, with the marker this file's language uses. It is the same command both ways. The marker comes from the plugin that claims the file, so a language that names none is refused rather than guessed at.
 
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--toggle` — Use the line comment marker, such as // or #. This is what it does when neither flag is given.
 - `--block` — Use the block comment markers instead, such as /* and */, wrapping the whole selection once rather than each line.
 
@@ -1004,13 +1039,14 @@ unluminous-cli editor comment --block
 ### editor lines
 
 ```
-unluminous-cli editor lines <duplicate|move|join|sort> [--by <number>]
+unluminous-cli editor lines <duplicate|move|join|sort> [--path <file>] [--by <number>]
 ```
 
 Edit whole lines: duplicate, move up or down, join, or sort. Each is one undo step, and each is about the lines the selection touches, or the caret's line when nothing is selected. Sort needs a selection.
 
 - `what` — duplicate, move, join or sort.
 
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--by <number>` — For move: how far and which way. -1 is up and 1 is down, which is what Alt+Up and Alt+Down send.
 
 ```sh
@@ -1023,11 +1059,12 @@ unluminous-cli editor lines sort
 ### editor bracket
 
 ```
-unluminous-cli editor bracket [--offset <bytes>] [--line <number>] [--column <number>] [--go]
+unluminous-cli editor bracket [--path <file>] [--offset <bytes>] [--line <number>] [--column <number>] [--go]
 ```
 
 The bracket answering the one beside the caret, as both byte offsets and both line and column positions. It tells a bracket in a comment or a string from one in the code, which a search for the character cannot. --go moves the caret to it.
 
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--offset <bytes>` — Ask about this position in the file rather than about the caret.
 - `--line <number>` — Ask about this line, counting from 1.
 - `--column <number>` — The column on that line. 1 when it is left out.
@@ -1041,10 +1078,12 @@ unluminous-cli editor bracket --go
 ### editor trim
 
 ```
-unluminous-cli editor trim
+unluminous-cli editor trim [--path <file>]
 ```
 
 Take the trailing whitespace off every line of the tab that is showing, as one undo step. The editor.trim setting does this on every save; this asks for it once. Refused for a Markdown file, where two trailing spaces are a line break.
+
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 
 ```sh
 unluminous-cli editor trim
@@ -1053,10 +1092,12 @@ unluminous-cli editor trim
 ### editor undo
 
 ```
-unluminous-cli editor undo
+unluminous-cli editor undo [--path <file>]
 ```
 
 Undo the last edit in the tab that is showing.
+
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 
 ```sh
 unluminous-cli editor undo
@@ -1065,10 +1106,12 @@ unluminous-cli editor undo
 ### editor redo
 
 ```
-unluminous-cli editor redo
+unluminous-cli editor redo [--path <file>]
 ```
 
 Redo the edit that was last undone.
+
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 
 ```sh
 unluminous-cli editor redo
@@ -1077,12 +1120,14 @@ unluminous-cli editor redo
 ### editor view
 
 ```
-unluminous-cli editor view <raw|side|preview>
+unluminous-cli editor view <raw|side|preview> [--path <file>]
 ```
 
 Choose how a file with a preview is shown: the source, the source and the preview side by side, or the preview. Markdown and Mermaid files have one; nothing else does, and only a file with a preview can be shown any way but raw.
 
 - `mode` — raw, side or preview.
+
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 
 ```sh
 unluminous-cli editor view preview
@@ -1092,11 +1137,12 @@ unluminous-cli editor view side
 ### editor scroll
 
 ```
-unluminous-cli editor scroll [--line <number>] [--to <points>] [--top] [--bottom] [--preview]
+unluminous-cli editor scroll [--path <file>] [--line <number>] [--to <points>] [--top] [--bottom] [--preview]
 ```
 
 Read how far the tab that is showing is scrolled, or scroll it. With no flags it reports both halves of the side by side view. In side by side the other half follows, exactly as it does when you scroll with the wheel.
 
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--line <number>` — Scroll so this line is at the top, counting from 1.
 - `--to <points>` — Scroll to this many points down the page.
 - `--top` — Scroll to the top.
@@ -1144,13 +1190,14 @@ unluminous-cli editor preview-select --from 0 --to 40
 ### editor definition
 
 ```
-unluminous-cli editor definition [name] [--offset <bytes>] [--line <number>] [--column <number>] [--open]
+unluminous-cli editor definition [name] [--path <file>] [--offset <bytes>] [--line <number>] [--column <number>] [--open]
 ```
 
 Where a name is defined, from Unluminous's live open tabs and project symbol index. Give the name directly or leave it out for the word at the caret; every candidate is printed best first and --open navigates through the editor.
 
 - `name` (optional) — The name to find. The word at the caret when it is left out.
 
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--offset <bytes>` — Ask about this position in the file rather than about the caret.
 - `--line <number>` — Ask about this line, counting from 1.
 - `--column <number>` — The column on that line. 1 when it is left out.
@@ -1165,13 +1212,14 @@ unluminous-cli editor definition --line 42 --column 9 --open
 ### editor find
 
 ```
-unluminous-cli editor find [text] [--match-case] [--whole-word] [--next] [--previous] [--close] [--limit <number>]
+unluminous-cli editor find [text] [--path <file>] [--match-case] [--whole-word] [--next] [--previous] [--close] [--limit <number>]
 ```
 
 Find text in the file that is showing, the way Ctrl+F does: the count, every match's line and column, and the one that is current selected in the window so a screenshot shows it. Use this rather than reading the whole file to locate a string. --replace turns it into an edit; without it nothing is changed.
 
 - `text` (optional) — What to look for. The bar's current search when it is left out.
 
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--match-case` — Only matches spelt with the same capitals count.
 - `--whole-word` — Only matches with no letter, digit or underscore either side of them count.
 - `--next` — Move to the match after the one that is current, wrapping round the end of the file.
@@ -1189,7 +1237,7 @@ unluminous-cli editor find --close
 ### editor replace
 
 ```
-unluminous-cli editor replace <text> <with> [--match-case] [--whole-word] [--all] [--apply]
+unluminous-cli editor replace <text> <with> [--path <file>] [--match-case] [--whole-word] [--all] [--apply]
 ```
 
 Replace text in the file that is showing. Use this for a string, a comment, a URL or a number - `editor rename` is for a symbol and is the better tool when it applies, because it knows code from comments. Without --apply it says how many matches there are and changes nothing. Applying is one undo step whether it changes one match or four hundred.
@@ -1197,6 +1245,7 @@ Replace text in the file that is showing. Use this for a string, a comment, a UR
 - `text` — What to look for.
 - `with` — What to put in its place. Give an empty string to delete it.
 
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--match-case` — Only matches spelt with the same capitals count.
 - `--whole-word` — Only matches with no letter, digit or underscore either side of them count.
 - `--all` — Replace every match rather than only the one that is current.
@@ -1211,13 +1260,14 @@ unluminous-cli editor replace 0.34.2 0.35.0 --match-case --all --apply
 ### editor references
 
 ```
-unluminous-cli editor references [name] [--timeout <milliseconds>] [--code-only]
+unluminous-cli editor references [name] [--path <file>] [--timeout <milliseconds>] [--code-only]
 ```
 
 Use this instead of grep to find every place a name is used across the project: the file, line, column and whether it is code or a word inside a comment or string. Reads unsaved open tabs as they stand and everything else from the disk.
 
 - `name` (optional) — The name to look for. The word at the caret when it is left out.
 
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--timeout <milliseconds>` — How long to wait for the search. 10000 by default.
 - `--code-only` — Leave out the matches inside comments and strings.
 
@@ -1229,13 +1279,14 @@ unluminous-cli editor references open_the_match --json
 ### editor rename
 
 ```
-unluminous-cli editor rename <new-name> [--name <text>] [--scope <file|project>] [--include <comments,strings>] [--timeout <milliseconds>] [--apply]
+unluminous-cli editor rename <new-name> [--path <file>] [--name <text>] [--scope <file|project>] [--include <comments,strings>] [--timeout <milliseconds>] [--apply]
 ```
 
 Use this instead of file edits to rename a symbol everywhere through Unluminous's role-aware references. Comments and strings stay untouched unless included; without --apply it previews. Applying edits each open tab as one undo step, leaving it with unsaved changes, and writes every file that is not open straight to the disk — the answer counts the two apart, as `wrote` and `openTabs`.
 
 - `new-name` — What to call it. It has to be a word of this language and not one of its keywords.
 
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--name <text>` — Rename this name rather than the word at the caret.
 - `--scope <file|project>` — Which files to change. The default follows what the name resolves to: a variable or a name with no known definition is this file, and a function, type, constant or module is the project.
 - `--include <comments,strings>` — Also change the matches inside comments or strings, which are left alone by default.
@@ -1251,11 +1302,12 @@ unluminous-cli editor rename total --scope project --include comments --apply
 ### editor complete
 
 ```
-unluminous-cli editor complete [--offset <bytes>] [--line <number>] [--column <number>] [--stem <text>] [--limit <number>] [--choose <name>] [--after <text>] [--wait <milliseconds>] [--explain]
+unluminous-cli editor complete [--path <file>] [--offset <bytes>] [--line <number>] [--column <number>] [--stem <text>] [--limit <number>] [--choose <name>] [--after <text>] [--wait <milliseconds>] [--explain]
 ```
 
 The names a word could become, best first, with what each row is and where it came from. By default the word is read from the document at the caret; --stem asks hypothetically without editing the document. Inside an import the rows are what can be imported instead. --choose applies a real document row exactly as Enter would, and takes the row's name rather than its position.
 
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--offset <bytes>` — Ask about this position in the file rather than about the caret.
 - `--line <number>` — Ask about this line, counting from 1.
 - `--column <number>` — The column on that line. 1 when it is left out.
@@ -1279,11 +1331,12 @@ unluminous-cli editor complete --choose ./layout
 ### editor signature
 
 ```
-unluminous-cli editor signature [--wait <milliseconds>]
+unluminous-cli editor signature [--path <file>] [--wait <milliseconds>]
 ```
 
 The function whose brackets the caret is inside, with its parameters and which one is being typed. From the language server when one runs, otherwise from the project's definitions.
 
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--wait <milliseconds>` — How long to wait for the language server. 300 by default.
 
 ```sh
@@ -1772,10 +1825,12 @@ A block that can be collapsed is a function, an `if`, a bracket that spans lines
 ### fold list
 
 ```
-unluminous-cli fold list
+unluminous-cli fold list [--path <file>]
 ```
 
 Every block in the tab that is showing that can be collapsed: which line it starts on, which line it ends on, how many lines it hides, what kind of block it is, and whether it is collapsed now.
+
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 
 ```sh
 unluminous-cli fold list --json
@@ -1784,11 +1839,12 @@ unluminous-cli fold list --json
 ### fold toggle
 
 ```
-unluminous-cli fold toggle [--line <number>] [--regions]
+unluminous-cli fold toggle [--path <file>] [--line <number>] [--regions]
 ```
 
 Collapse a block that is showing, or expand one that is collapsed. The block at the caret when no line is given. The answer is how many blocks are collapsed; --regions adds the list.
 
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--line <number>` — The line the block starts on, counting from 1. `fold list` says which lines those are.
 - `--regions` — Also answer with the list of every block and whether it is collapsed.
 
@@ -1801,11 +1857,12 @@ unluminous-cli fold toggle --regions --json
 ### fold collapse
 
 ```
-unluminous-cli fold collapse [--line <number>] [--all] [--recursive] [--regions]
+unluminous-cli fold collapse [--path <file>] [--line <number>] [--all] [--recursive] [--regions]
 ```
 
 Collapse one block, every block in the file, or one block and every block inside it. The answer is how many blocks are collapsed; --regions adds the list.
 
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--line <number>` — The line the block starts on, counting from 1.
 - `--all` — Collapse every block in the file.
 - `--recursive` — With --line, collapse that block and every block inside it rather than just that block.
@@ -1821,11 +1878,12 @@ unluminous-cli fold collapse --all --regions --json
 ### fold expand
 
 ```
-unluminous-cli fold expand [--line <number>] [--all] [--recursive] [--regions]
+unluminous-cli fold expand [--path <file>] [--line <number>] [--all] [--recursive] [--regions]
 ```
 
 Expand one block, show all again, or expand one block and every block inside it. The answer is how many blocks are collapsed; --regions adds the list.
 
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--line <number>` — The line the block starts on, counting from 1.
 - `--all` — Expand every block in the file.
 - `--recursive` — With --line, expand that block and every block inside it, opening the whole of it rather than one level.
@@ -1841,11 +1899,12 @@ unluminous-cli fold expand --all --regions --json
 ### fold others
 
 ```
-unluminous-cli fold others [--selection] [--regions]
+unluminous-cli fold others [--path <file>] [--selection] [--regions]
 ```
 
 Collapse everything that does not hold a marked passage, so only the marked parts of the file are left showing. Falls back to the selection when nothing is marked. The answer is how many blocks are collapsed; --regions adds the list.
 
+- `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--selection` — Keep what is selected rather than what is marked, even when there are marks.
 - `--regions` — Also answer with the list of every block and whether it is collapsed.
 
@@ -3754,7 +3813,7 @@ unluminous-cli debug install lldb
 
 ## explorer — create, move and inspect the live project tree
 
-For requests to create, move, delete or list project paths, start here instead of using shell file operations. Unluminous updates its live tree immediately, and `new-file` also opens the file in a tab. `explorer files` leaves out `target`, `node_modules` and `__pycache__`.
+List the project's files and folders, make, move and delete them: `files` and `tree` instead of ls or glob. For requests to create, move, delete or list project paths, start here instead of using shell file operations. Unluminous updates its live tree immediately, and `new-file` also opens the file in a tab. `explorer files` leaves out `target`, `node_modules` and `__pycache__`.
 
 ### explorer show
 
@@ -4234,12 +4293,15 @@ The names are the ones in Unluminous's own `settings.conf`, so there is one voca
 ### settings list
 
 ```
-unluminous-cli settings list
+unluminous-cli settings list [filter]
 ```
 
-Every setting, with its value, what it means and what it will accept. The names are the ones in Unluminous's own settings file.
+Every setting, with its value, what it means and what it will accept. The names are the ones in Unluminous's own settings file. Give words to see only the settings they describe.
+
+- `filter` (optional) — Words the setting's name or description has, such as `line numbers` or `font`. Everything after it on the line belongs to it.
 
 ```sh
+unluminous-cli settings list line numbers
 unluminous-cli settings list --json
 ```
 
@@ -4700,7 +4762,7 @@ unluminous-cli plugins view agent-tasks --json
 
 ## git — status, changed files and the Git menu
 
-Use this tool first when asked for git status, uncommitted work, changed files or a diff in the open project; do not begin by running git in a shell. Call `status` for the branch and exact staged, unstaged and untracked file list, then `action` with `name: show-diff` and `path` to open a changed file's diff in Unluminous. These still run the machine's real git with its credential helper, SSH agent, configuration and hooks, on a thread; `wait` holds the answer open.
+Use this tool first when asked for git status, uncommitted work, changed files or a diff in the open project; do not begin by running git in a shell. Call `status` for the branch and exact staged, unstaged and untracked file list, then `diff` for the text of what changed, one file or all of them. `action` with `name: show-diff` opens a diff in the window for the person to read. These still run the machine's real git with its credential helper, SSH agent, configuration and hooks, on a thread; `wait` holds the answer open.
 
 ### git status
 
@@ -4713,6 +4775,25 @@ What the machine's real git says about the project: the branch, whether a merge 
 ```sh
 unluminous-cli git status --json
 ```
+
+### git diff
+
+```
+unluminous-cli git diff [path] [--staged]
+```
+
+The unified diff of the project's uncommitted changes, or of one file, as text: what changed, line by line. Runs the machine's real git in the window's project folder.
+
+- `path` (optional) — One file. Every changed file when it is left out.
+
+- `--staged` — What is staged for the next commit rather than what is not.
+
+```sh
+unluminous-cli git diff src/shapes.rs
+unluminous-cli git diff --staged
+```
+
+Answered by the CLI itself; no Unluminous needs to be running.
 
 ### git actions
 

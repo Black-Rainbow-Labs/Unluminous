@@ -222,6 +222,13 @@ impl UnluminousApp {
                     )
                 }));
                 plugin_values.extend(endpoints);
+                // **Words narrow the list** (`task-2314`). The whole list is over a hundred rows, and an
+                // agent looking for the line numbers read a reply cut off before it reached them.
+                if let Some(filter) =
+                    request.text("filter").filter(|words| !words.trim().is_empty())
+                {
+                    named.retain(|(name, help)| describes(&format!("{name} {help}"), &filter));
+                }
                 let values: Vec<String> = named
                     .iter()
                     .map(|(name, _)| match plugin_values.iter().find(|(key, _)| key == name) {
@@ -1803,8 +1810,45 @@ const SETTINGS: &[SettingKey] = &[
     },
 ];
 
+/// The refusal for a setting name that is not one, with the names nearest to it.
+///
+/// **An agent guesses a key from the words of the request** (`task-2314`): `editor.line-numbers`
+/// for `editor.line_numbers`, `appearance.editor.font.size` for `appearance.font.size`. Each guess
+/// cost a refusal and then a read of the whole list. The nearest names are the ones sharing the
+/// most words with the guess, read with `.`, `-` and `_` as spaces.
 fn unknown_setting(name: &str) -> String {
-    format!("There is no setting called {name}. `settings list` names them all.")
+    let asked = words_of(name);
+    let mut scored: Vec<(usize, &str)> = SETTINGS
+        .iter()
+        .map(|key| {
+            (words_of(key.name).iter().filter(|word| asked.contains(word)).count(), key.name)
+        })
+        .filter(|(shared, _)| *shared > 0)
+        .collect();
+    scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.len().cmp(&b.1.len())));
+    let nearest: Vec<String> = scored.iter().take(3).map(|(_, key)| format!("`{key}`")).collect();
+    match nearest.is_empty() {
+        true => format!("There is no setting called {name}. `settings list <words>` finds one by what it is for."),
+        false => format!(
+            "There is no setting called {name}. The nearest are {}. `settings list <words>` finds one by what it is for.",
+            nearest.join(", ")
+        ),
+    }
+}
+
+/// A name or a sentence as lower case words, with the separators a settings key uses read as spaces.
+fn words_of(text: &str) -> Vec<String> {
+    text.to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Whether every word of `filter` is in `text`, so `line numbers` finds `editor.line_numbers`.
+fn describes(text: &str, filter: &str) -> bool {
+    let have = words_of(text);
+    words_of(filter).iter().all(|word| have.iter().any(|had| had.starts_with(word.as_str())))
 }
 
 /// What a setting is in an Unluminous that has never been run.

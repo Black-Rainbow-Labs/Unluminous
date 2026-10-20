@@ -2563,71 +2563,7 @@ impl UiProvider for AgentChat {
     }
 
     fn commands(&self) -> Vec<(&'static str, &'static str)> {
-        vec![
-            ("open-pane", "Show the chat pane."),
-            ("mic", "The microphone button inside the prompt: start or stop dictation into this prompt, `on`, `off` or nothing to toggle. The same as `voice dictate`."),
-            ("new", "Start a new conversation."),
-            (
-                "send",
-                "Add a message and start the answer. While one is arriving it is queued instead and goes when that turn ends. Does not wait; `state` says when it has finished and how many are queued.",
-            ),
-            ("stop", "Stop the answer, keeping what has arrived."),
-            (
-                "state",
-                "Idle, sending, streaming, waiting-for-tools, finished or failed.",
-            ),
-            ("messages", "The whole conversation as data."),
-            ("last", "Just the last answer, with how long it took and how many tokens it wrote."),
-            ("rerun", "Ask again the question an answer was given to: `rerun <answer id or last>`."),
-            ("attach", "Attach a picture to the message being composed."),
-            (
-                "providers",
-                "The endpoints, their URLs and models, and whether each has a key.",
-            ),
-            ("use", "Talk to one of the endpoints by name."),
-            ("history", "The conversations kept, newest first."),
-            ("open", "Open one of them by its id."),
-            ("remove", "Throw one away."),
-            (
-                "tools",
-                "`on` or `off`: whether Unluminous's own commands are offered to the model.",
-            ),
-            ("view", "Everything the pane is showing, as data, including each component an answer holds and what it shows now."),
-            (
-                "settings",
-                "`open` or `close` the Chat settings the gear opens. Answers the models offered, the one in use, and how much of the context is used.",
-            ),
-            (
-                "components",
-                "The components an answer can hold, with their fields and an example each. With a name, just that one.",
-            ),
-            (
-                "validate",
-                "Check one component's JSON before answering with it: valid, or every problem with its path.",
-            ),
-            ("gallery", "Open a conversation that shows every component."),
-            (
-                "motion",
-                "`on` or `off`: whether the components animate. Off holds every light, bar and number where it ends.",
-            ),
-            (
-                "press",
-                "Press a component's button, choice or submit: `press <message id or last> <label>`.",
-            ),
-            (
-                "tick",
-                "Toggle a checklist item: `tick <message id or last> <item words or number>`.",
-            ),
-            (
-                "set",
-                "Set a calculator input or a form field: `set <message id or last> <name> <value>`.",
-            ),
-            ("tab", "Choose a tab: `tab <message id or last> <label or number>`."),
-            (
-                "ticket",
-                "Show a ticket's conversation in place of the pane's own, which `plugins run agent-tasks to-side-pane` asks for, or go back with `ticket off`.",
-            ),
-        ]
+        unluminous_cli::plugins::AGENT_CHAT.to_vec()
     }
 
     fn view(&self) -> serde_json::Value {

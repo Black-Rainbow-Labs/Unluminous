@@ -591,13 +591,13 @@ pub fn area_title(area: &'static str) -> &'static str {
 /// before reading its commands.
 pub fn area_note(area: &'static str) -> &'static str {
     match area {
-        "" => "Six commands are typed on their own, because they are about the CLI or about a whole Unluminous rather than about one part of a window.",
+        "" => "Commands typed on their own, because they are about the CLI or about a whole Unluminous rather than about one part of a window.",
         "window" => "`window screenshot` is how to see what a command did. The picture is of the real window, so it is evidence rather than a description.",
         "input" => "For the things there is no other command for: a drag, a right click on a row, a press in a text box. Positions are the **window's own points** with 0,0 at its top left, which is what `window screenshot` writes out, so a position measured off a picture is the position to send. Nothing here brings the window to the front or moves the person's own pointer, and each command waits for the frames it asked for, so a screenshot taken straight afterwards shows what happened. Prefer a command that names the thing to a click that finds it.",
         "browser" => "Rendered tabs use the operating system browser engine. Local HTML is served from a constrained project origin, so its CSS, scripts and images work without exposing the filesystem to page JavaScript. A window renders one page at a time: every rendered tab keeps its own address, title and history, and the one view follows whichever tab is showing, so these commands act on the tab that is showing and say so when it is not a rendered one.",
-        "tab" => "A tab holds a file. A relative path is resolved against the project folder, and every reply says which absolute path it used.",
+        "tab" => "Open, show, save and close files. A tab holds a file. A relative path is resolved against the project folder, and every reply says which absolute path it used.",
         "pane" => "The editing area can be split into panes side by side, each with its own tabs, which is the reference editor's split view. `pane split` moves the tab that is showing into a new pane on the right — it moves rather than copies, because two tabs on one file would be two documents over one path. A pane holding only that tab keeps it and the new pane opens empty, ready for the next file: opening a file always lands in the pane that has the keyboard.",
-        "editor" => "Use this tool first for project-symbol work. If asked to find every place a name is used, call `references` with `name`; if asked where a name is defined, call `definition`; if asked to rename it everywhere, call `rename` with `name`, `new-name` and `apply: true`. Do not begin those jobs with grep, file search, reads or file edits. Unluminous's native answers combine unsaved live open tabs with the project index, distinguish code from comments and strings, and apply a role-aware project rename as one undo step per open file while safely rewriting closed files. Lines and columns count from 1.",
+        "editor" => "Read and change a file's text in the window: `text` reads it, `insert`, `replace` and `set-text` change it, `comment`, `lines`, `select` and `caret` work on lines, and every one takes `path` to name the file. Use this tool first for project-symbol work. If asked to find every place a name is used, call `references` with `name`; if asked where a name is defined, call `definition`; if asked to rename it everywhere, call `rename` with `name`, `new-name` and `apply: true`. Do not begin those jobs with grep, file search, reads or file edits. Unluminous's native answers combine unsaved live open tabs with the project index, distinguish code from comments and strings, and apply a role-aware project rename as one undo step per open file while safely rewriting closed files. Lines and columns count from 1.",
         "update" => "One request to unluminous.com, which is where the installer is, and to the public GitHub releases only if the site does not answer. The window asks once a day on its own unless the `update.check` setting is `off`, and offers a newer version in a notice with Install & Restart and Don't Ask Again. `update install` is that button: the installer is checked against the size and SHA-256 unluminous.com publishes before anything is run.",
         "voice" => "Engines: `local` (Moonshine, `voice install`) or `endpoint` (`voice.endpoint`). Settings are `voice.*`.",
         "report" => "The flag at the bottom right. `report send` opens a GitHub issue on Black-Rainbow-Labs/Unluminous, already written, and puts the attachments on the clipboard; the person submits it there.",
@@ -609,13 +609,13 @@ pub fn area_note(area: &'static str) -> &'static str {
         "highlight" => "A highlight is a color behind a passage of text. It stays there until it is cleared, in this file and next time the project is opened, and it moves with the text as the file is edited. These work on a file whether it is open or not, so `highlight apply` can mark twenty passages across twenty files in one call.",
         "terminal" => "`terminal send` types into the shell and presses Enter; `terminal read --wait-for` is how to wait for what it did. Both take `--tab` to name a tab other than the one showing, and naming a tab does not show it, so a build in one tab and a dev server in another can each be spoken to without the other being disturbed.",
         "run" => "A run configuration is a named command line, a folder and some environment variables, kept in the project. Starting one runs the program in a pseudoterminal, so `run output` is what it would have printed to a terminal — which is how to start a dev server, read the port out of its log, use it, and stop it, with nobody watching.",
-        "explorer" => "For requests to create, move, delete or list project paths, start here instead of using shell file operations. Unluminous updates its live tree immediately, and `new-file` also opens the file in a tab. `explorer files` leaves out `target`, `node_modules` and `__pycache__`.",
+        "explorer" => "List the project's files and folders, make, move and delete them: `files` and `tree` instead of ls or glob. For requests to create, move, delete or list project paths, start here instead of using shell file operations. Unluminous updates its live tree immediately, and `new-file` also opens the file in a tab. `explorer files` leaves out `target`, `node_modules` and `__pycache__`.",
         "modal" => "One set of commands drives all of them: open it, type in it, read its results, choose a row, accept or cancel. A modal added to Unluminous later is driven with these same commands.",
         "settings" => "The names are the ones in Unluminous's own `settings.conf`, so there is one vocabulary rather than two. A change takes effect at once, in every tab, and is written to the file.",
         "background" => "What is behind Unluminous's window: the desktop showing through, which is what it does unless something else is chosen, or a picture. A picture is **copied into Unluminous's own folder** when it is added, so the setting survives the original being moved, and `background remove` deletes that copy. `settings set appearance.background.image` reaches the same setting by name; these exist because a setting cannot say what pictures there are. How much of it shows through is `appearance.background.opacity`.",
         "theme" => "A theme says what every name in Unluminous's own palette means, which drawn icon set the rail and the explorer use, and — when it names all nine token colors — how code is colored in every language at once. Unluminous Dark names none of the nine, so each language plugin's scheme colors its files; Unluminous Light names all nine. Unluminous Glass is dark and made of glass: its raised surfaces bend the background picture behind the window, and choosing it while no picture is chosen chooses `space-milky-way-core.jpg`. `settings set appearance.theme` reaches the same code; these exist because a setting cannot say what themes there are.",
         "plugins" => "A plugin is a folder of data. A `language` one describes a language: its extensions, its keywords and a color per kind of token. A `ui` one names code that shipped in the binary and says what it contributes — a pane, a tab, a menu, a Settings page — which is how the Agent-Tasks board, the Agent-Chat pane, the Database explorer and the Designer are reached. Nothing in a plugin is executed and nothing is fetched over a network.",
-        "git" => "Use this tool first when asked for git status, uncommitted work, changed files or a diff in the open project; do not begin by running git in a shell. Call `status` for the branch and exact staged, unstaged and untracked file list, then `action` with `name: show-diff` and `path` to open a changed file's diff in Unluminous. These still run the machine's real git with its credential helper, SSH agent, configuration and hooks, on a thread; `wait` holds the answer open.",
+        "git" => "Use this tool first when asked for git status, uncommitted work, changed files or a diff in the open project; do not begin by running git in a shell. Call `status` for the branch and exact staged, unstaged and untracked file list, then `diff` for the text of what changed, one file or all of them. `action` with `name: show-diff` opens a diff in the window for the person to read. These still run the machine's real git with its credential helper, SSH agent, configuration and hooks, on a thread; `wait` holds the answer open.",
         "action" => "The escape hatch, and the guarantee: every entry on every menu has a name here, and the list is built by walking the real menus, so a menu entry added to Unluminous tomorrow can be run from the command line tomorrow.",
         "project" => "A project is a window. Opening a second project is `unluminous-cli launch <folder>`, which starts a second Unluminous; `project open` changes the folder this window is showing.",
         "mcp" => "The Model Context Protocol server, which is how an AI agent discovers and drives Unluminous without being handed a document first. Its tools are generated from this same catalog, so a command added to Unluminous is a tool the day it is added.",
@@ -657,6 +657,24 @@ const fn closed(
     values: &'static [&'static str],
 ) -> Argument {
     Argument { name, required, rest: false, help, values, kind: Kind::Text }
+}
+
+/// `--path` on a command that acts on the file that is showing (`task-2314`).
+///
+/// A job an agent is given names a file, and these commands acted only on the tab that was showing,
+/// so every job was two calls and the second was refused when the first was forgotten: `editor rename`
+/// on an empty untitled tab answered that no plugin claims the file. The agent study watched a local
+/// model skip both calls and edit the file on disk instead. With `--path` the window shows that file
+/// first, opening it in a tab of its own when it is not open, and the answer says so.
+pub const FILE: Flag = option(
+    "path",
+    "file",
+    "The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.",
+);
+
+/// Whether a command takes [`FILE`], so the window shows the file before running it.
+pub fn acts_on_a_named_file(command: &Command) -> bool {
+    command.flags.iter().any(|flag| *flag == FILE)
 }
 
 const fn switch(name: &'static str, help: &'static str) -> Flag {
@@ -748,6 +766,18 @@ pub const COMMANDS: &[Command] = &[
         arguments: &[argument("name", false, "One command, such as `terminal send`, instead of all of them.")],
         flags: NO_FLAGS,
         examples: &["unluminous-cli commands --json", "unluminous-cli commands \"modal open\" --json"],
+        local: true,
+    },
+    Command {
+        area: "",
+        verb: "batch",
+        summary: "Run several commands in one call, in order, and answer with what each did. Each step is a command line exactly as its usage line shows it, such as `tab open src/main.rs`. The first step that fails stops the rest unless --keep-going is given.",
+        arguments: &[argument("steps", true, "The command lines to run: a JSON array of strings, or one string with a command on each line.")],
+        flags: &[switch("keep-going", "Run every step even when one fails, and count the failures.")],
+        examples: &[
+            "unluminous-cli batch \"tab open src/main.rs\ntab open src/shapes.rs\npane split --tab 1\"",
+            "unluminous-cli batch '[\"highlight add src/main.rs --from-line 11\",\"highlight add src/main.rs --from-line 23\"]' --keep-going",
+        ],
         local: true,
     },
     Command {
@@ -879,10 +909,13 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "tab",
         verb: "open",
-        summary: "Open a file in a tab and show it. A picture opens as a picture; anything else opens as text.",
+        summary: "Open a file in a tab of its own and show it, so opening several files leaves a tab for each. A picture opens as a picture; anything else opens as text.",
         arguments: &[argument("path", true, "The file. A relative path is resolved against the project folder.")],
-        flags: &[switch("permanent", "Open it as a tab of its own rather than reusing the tab a single click reuses.")],
-        examples: &["unluminous-cli tab open README.md", "unluminous-cli tab open design/style-guide.md --permanent"],
+        flags: &[
+            switch("transient", "Show it in the tab a single click in the explorer reuses, so the next file opened this way replaces it."),
+            switch("permanent", "Kept for older callers: every tab this opens is already a tab of its own."),
+        ],
+        examples: &["unluminous-cli tab open README.md", "unluminous-cli tab open design/style-guide.md --transient"],
         local: false,
     },
     Command {
@@ -956,7 +989,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "save",
         summary: "Write the tab that is showing back to its file.",
         arguments: NO_ARGUMENTS,
-        flags: NO_FLAGS,
+        flags: &[FILE],
         examples: &["unluminous-cli tab save"],
         local: false,
     },
@@ -1063,7 +1096,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "status",
         summary: "What the tab that is showing holds: its path, how many lines, where the caret is, what is selected, whether it has unsaved changes and which view mode it is in.",
         arguments: NO_ARGUMENTS,
-        flags: NO_FLAGS,
+        flags: &[FILE],
         examples: &["unluminous-cli editor status --json"],
         local: false,
     },
@@ -1073,6 +1106,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "Read the text of the tab that is showing.",
         arguments: NO_ARGUMENTS,
         flags: &[
+            FILE,
             whole_option("from-line", "number", "The first line to read, counting from 1."),
             whole_option("to-line", "number", "The last line to read, counting from 1."),
         ],
@@ -1084,7 +1118,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "set-text",
         summary: "Replace everything in the tab that is showing. One undo puts it back.",
         arguments: &[rest("text", false, "The new text. Use --from-file instead for anything long.")],
-        flags: &[option("from-file", "path", "Read the new text from this file rather than from the command line.")],
+        flags: &[FILE, option("from-file", "path", "Read the new text from this file rather than from the command line.")],
         examples: &["unluminous-cli editor set-text # Notes", "unluminous-cli editor set-text --from-file draft.md"],
         local: false,
     },
@@ -1093,7 +1127,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "insert",
         summary: "Type text at the caret, replacing the selection if there is one. It types exactly what it is given: there is no auto-indent, so a line of a function body has to carry its own leading spaces.",
         arguments: &[rest("text", true, "What to type, exactly as it will appear. \\n is a new line and \\t is a tab. Nothing is indented for you.")],
-        flags: NO_FLAGS,
+        flags: &[FILE],
         examples: &["unluminous-cli editor insert Hello", "unluminous-cli editor insert \"one\\ntwo\""],
         local: false,
     },
@@ -1103,6 +1137,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "Read where the caret is, or move it. Lines and columns count from 1, which is what the status bar shows.",
         arguments: NO_ARGUMENTS,
         flags: &[
+            FILE,
             whole_option("line", "number", "The line to move to."),
             whole_option("column", "number", "The column to move to. The start of the line when it is left out."),
         ],
@@ -1115,6 +1150,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "Select some of the text, all of it, or none of it.",
         arguments: NO_ARGUMENTS,
         flags: &[
+            FILE,
             switch("all", "Select the whole document."),
             switch("none", "Drop the selection, leaving the caret where it was."),
             whole_option("from-line", "number", "The line the selection starts on."),
@@ -1130,7 +1166,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "indent",
         summary: "Indent each line the selection touches, or the line the caret is on when nothing is selected, by one tab at the start of the line — or one space with --space. This is what Tab and Space do over a selection in the editing area, and the selection stays over the text it covered.",
         arguments: NO_ARGUMENTS,
-        flags: &[switch("space", "Indent with a space rather than a tab, which is what the Space key does.")],
+        flags: &[FILE, switch("space", "Indent with a space rather than a tab, which is what the Space key does.")],
         examples: &["unluminous-cli editor indent", "unluminous-cli editor indent --space"],
         local: false,
     },
@@ -1139,7 +1175,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "dedent",
         summary: "Remove one indent from each line the selection touches, or the caret's line when nothing is selected — one tab, or one space with --space. This is what Shift+Tab and Shift+Space do over a selection. A line with none, or indented with the other unit, is left alone.",
         arguments: NO_ARGUMENTS,
-        flags: &[switch("space", "Remove a space rather than a tab, which is what Shift+Space does.")],
+        flags: &[FILE, switch("space", "Remove a space rather than a tab, which is what Shift+Space does.")],
         examples: &["unluminous-cli editor dedent", "unluminous-cli editor dedent --space"],
         local: false,
     },
@@ -1149,6 +1185,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "Comment or uncomment the lines the selection touches, or the caret's line when nothing is selected, with the marker this file's language uses. It is the same command both ways. The marker comes from the plugin that claims the file, so a language that names none is refused rather than guessed at.",
         arguments: NO_ARGUMENTS,
         flags: &[
+            FILE,
             switch("toggle", "Use the line comment marker, such as // or #. This is what it does when neither flag is given."),
             switch("block", "Use the block comment markers instead, such as /* and */, wrapping the whole selection once rather than each line."),
         ],
@@ -1160,7 +1197,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "lines",
         summary: "Edit whole lines: duplicate, move up or down, join, or sort. Each is one undo step, and each is about the lines the selection touches, or the caret's line when nothing is selected. Sort needs a selection.",
         arguments: &[closed("what", true, "duplicate, move, join or sort.", &["duplicate", "move", "join", "sort"])],
-        flags: &[whole_option("by", "number", "For move: how far and which way. -1 is up and 1 is down, which is what Alt+Up and Alt+Down send.")],
+        flags: &[FILE, whole_option("by", "number", "For move: how far and which way. -1 is up and 1 is down, which is what Alt+Up and Alt+Down send.")],
         examples: &[
             "unluminous-cli editor lines duplicate",
             "unluminous-cli editor lines move --by -1",
@@ -1175,6 +1212,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "The bracket answering the one beside the caret, as both byte offsets and both line and column positions. It tells a bracket in a comment or a string from one in the code, which a search for the character cannot. --go moves the caret to it.",
         arguments: NO_ARGUMENTS,
         flags: &[
+            FILE,
             whole_option("offset", "bytes", "Ask about this position in the file rather than about the caret."),
             whole_option("line", "number", "Ask about this line, counting from 1."),
             whole_option("column", "number", "The column on that line. 1 when it is left out."),
@@ -1188,7 +1226,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "trim",
         summary: "Take the trailing whitespace off every line of the tab that is showing, as one undo step. The editor.trim setting does this on every save; this asks for it once. Refused for a Markdown file, where two trailing spaces are a line break.",
         arguments: NO_ARGUMENTS,
-        flags: NO_FLAGS,
+        flags: &[FILE],
         examples: &["unluminous-cli editor trim"],
         local: false,
     },
@@ -1197,7 +1235,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "undo",
         summary: "Undo the last edit in the tab that is showing.",
         arguments: NO_ARGUMENTS,
-        flags: NO_FLAGS,
+        flags: &[FILE],
         examples: &["unluminous-cli editor undo"],
         local: false,
     },
@@ -1206,7 +1244,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "redo",
         summary: "Redo the edit that was last undone.",
         arguments: NO_ARGUMENTS,
-        flags: NO_FLAGS,
+        flags: &[FILE],
         examples: &["unluminous-cli editor redo"],
         local: false,
     },
@@ -1215,7 +1253,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "view",
         summary: "Choose how a file with a preview is shown: the source, the source and the preview side by side, or the preview. Markdown and Mermaid files have one; nothing else does, and only a file with a preview can be shown any way but raw.",
         arguments: &[closed("mode", true, "raw, side or preview.", &["raw", "side", "preview"])],
-        flags: NO_FLAGS,
+        flags: &[FILE],
         examples: &["unluminous-cli editor view preview", "unluminous-cli editor view side"],
         local: false,
     },
@@ -1225,6 +1263,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "Read how far the tab that is showing is scrolled, or scroll it. With no flags it reports both halves of the side by side view. In side by side the other half follows, exactly as it does when you scroll with the wheel.",
         arguments: NO_ARGUMENTS,
         flags: &[
+            FILE,
             whole_option("line", "number", "Scroll so this line is at the top, counting from 1."),
             number_option("to", "points", "Scroll to this many points down the page."),
             switch("top", "Scroll to the top."),
@@ -1272,6 +1311,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "Where a name is defined, from Unluminous's live open tabs and project symbol index. Give the name directly or leave it out for the word at the caret; every candidate is printed best first and --open navigates through the editor.",
         arguments: &[argument("name", false, "The name to find. The word at the caret when it is left out.")],
         flags: &[
+            FILE,
             whole_option("offset", "bytes", "Ask about this position in the file rather than about the caret."),
             whole_option("line", "number", "Ask about this line, counting from 1."),
             whole_option("column", "number", "The column on that line. 1 when it is left out."),
@@ -1290,6 +1330,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "Find text in the file that is showing, the way Ctrl+F does: the count, every match's line and column, and the one that is current selected in the window so a screenshot shows it. Use this rather than reading the whole file to locate a string. --replace turns it into an edit; without it nothing is changed.",
         arguments: &[argument("text", false, "What to look for. The bar's current search when it is left out.")],
         flags: &[
+            FILE,
             switch("match-case", "Only matches spelt with the same capitals count."),
             switch("whole-word", "Only matches with no letter, digit or underscore either side of them count."),
             switch("next", "Move to the match after the one that is current, wrapping round the end of the file."),
@@ -1314,6 +1355,7 @@ pub const COMMANDS: &[Command] = &[
             argument("with", true, "What to put in its place. Give an empty string to delete it."),
         ],
         flags: &[
+            FILE,
             switch("match-case", "Only matches spelt with the same capitals count."),
             switch("whole-word", "Only matches with no letter, digit or underscore either side of them count."),
             switch("all", "Replace every match rather than only the one that is current."),
@@ -1332,6 +1374,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "Use this instead of grep to find every place a name is used across the project: the file, line, column and whether it is code or a word inside a comment or string. Reads unsaved open tabs as they stand and everything else from the disk.",
         arguments: &[argument("name", false, "The name to look for. The word at the caret when it is left out.")],
         flags: &[
+            FILE,
             whole_option("timeout", "milliseconds", "How long to wait for the search. 10000 by default."),
             switch("code-only", "Leave out the matches inside comments and strings."),
         ],
@@ -1347,6 +1390,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "Use this instead of file edits to rename a symbol everywhere through Unluminous's role-aware references. Comments and strings stay untouched unless included; without --apply it previews. Applying edits each open tab as one undo step, leaving it with unsaved changes, and writes every file that is not open straight to the disk — the answer counts the two apart, as `wrote` and `openTabs`.",
         arguments: &[argument("new-name", true, "What to call it. It has to be a word of this language and not one of its keywords.")],
         flags: &[
+            FILE,
             option("name", "text", "Rename this name rather than the word at the caret."),
             option("scope", "file|project", "Which files to change. The default follows what the name resolves to: a variable or a name with no known definition is this file, and a function, type, constant or module is the project."),
             option("include", "comments,strings", "Also change the matches inside comments or strings, which are left alone by default."),
@@ -1366,6 +1410,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "The names a word could become, best first, with what each row is and where it came from. By default the word is read from the document at the caret; --stem asks hypothetically without editing the document. Inside an import the rows are what can be imported instead. --choose applies a real document row exactly as Enter would, and takes the row's name rather than its position.",
         arguments: NO_ARGUMENTS,
         flags: &[
+            FILE,
             whole_option("offset", "bytes", "Ask about this position in the file rather than about the caret."),
             whole_option("line", "number", "Ask about this line, counting from 1."),
             whole_option("column", "number", "The column on that line. 1 when it is left out."),
@@ -1392,7 +1437,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "signature",
         summary: "The function whose brackets the caret is inside, with its parameters and which one is being typed. From the language server when one runs, otherwise from the project's definitions.",
         arguments: NO_ARGUMENTS,
-        flags: &[whole_option("wait", "milliseconds", "How long to wait for the language server. 300 by default.")],
+        flags: &[FILE, whole_option("wait", "milliseconds", "How long to wait for the language server. 300 by default.")],
         examples: &["unluminous-cli editor signature --json"],
         local: false,
     },
@@ -1722,7 +1767,7 @@ pub const COMMANDS: &[Command] = &[
         verb: "list",
         summary: "Every block in the tab that is showing that can be collapsed: which line it starts on, which line it ends on, how many lines it hides, what kind of block it is, and whether it is collapsed now.",
         arguments: NO_ARGUMENTS,
-        flags: NO_FLAGS,
+        flags: &[FILE],
         examples: &["unluminous-cli fold list --json"],
         local: false,
     },
@@ -1732,6 +1777,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "Collapse a block that is showing, or expand one that is collapsed. The block at the caret when no line is given. The answer is how many blocks are collapsed; --regions adds the list.",
         arguments: NO_ARGUMENTS,
         flags: &[
+            FILE,
             whole_option("line", "number", "The line the block starts on, counting from 1. `fold list` says which lines those are."),
             switch("regions", "Also answer with the list of every block and whether it is collapsed."),
         ],
@@ -1744,6 +1790,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "Collapse one block, every block in the file, or one block and every block inside it. The answer is how many blocks are collapsed; --regions adds the list.",
         arguments: NO_ARGUMENTS,
         flags: &[
+            FILE,
             whole_option("line", "number", "The line the block starts on, counting from 1."),
             switch("all", "Collapse every block in the file."),
             switch("recursive", "With --line, collapse that block and every block inside it rather than just that block."),
@@ -1758,6 +1805,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "Expand one block, show all again, or expand one block and every block inside it. The answer is how many blocks are collapsed; --regions adds the list.",
         arguments: NO_ARGUMENTS,
         flags: &[
+            FILE,
             whole_option("line", "number", "The line the block starts on, counting from 1."),
             switch("all", "Expand every block in the file."),
             switch("recursive", "With --line, expand that block and every block inside it, opening the whole of it rather than one level."),
@@ -1772,6 +1820,7 @@ pub const COMMANDS: &[Command] = &[
         summary: "Collapse everything that does not hold a marked passage, so only the marked parts of the file are left showing. Falls back to the selection when nothing is marked. The answer is how many blocks are collapsed; --regions adds the list.",
         arguments: NO_ARGUMENTS,
         flags: &[
+            FILE,
             switch("selection", "Keep what is selected rather than what is marked, even when there are marks."),
             switch("regions", "Also answer with the list of every block and whether it is collapsed."),
         ],
@@ -3593,10 +3642,10 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "settings",
         verb: "list",
-        summary: "Every setting, with its value, what it means and what it will accept. The names are the ones in Unluminous's own settings file.",
-        arguments: NO_ARGUMENTS,
+        summary: "Every setting, with its value, what it means and what it will accept. The names are the ones in Unluminous's own settings file. Give words to see only the settings they describe.",
+        arguments: &[rest("filter", false, "Words the setting's name or description has, such as `line numbers` or `font`.")],
         flags: NO_FLAGS,
-        examples: &["unluminous-cli settings list --json"],
+        examples: &["unluminous-cli settings list line numbers", "unluminous-cli settings list --json"],
         local: false,
     },
     Command {
@@ -3932,6 +3981,15 @@ pub const COMMANDS: &[Command] = &[
         flags: NO_FLAGS,
         examples: &["unluminous-cli git status --json"],
         local: false,
+    },
+    Command {
+        area: "git",
+        verb: "diff",
+        summary: "The unified diff of the project's uncommitted changes, or of one file, as text: what changed, line by line. Runs the machine's real git in the window's project folder.",
+        arguments: &[argument("path", false, "One file. Every changed file when it is left out.")],
+        flags: &[switch("staged", "What is staged for the next commit rather than what is not.")],
+        examples: &["unluminous-cli git diff src/shapes.rs", "unluminous-cli git diff --staged"],
+        local: true,
     },
     Command {
         area: "git",
@@ -4675,7 +4733,7 @@ mod tests {
     #[test]
     fn the_usage_line_shows_required_and_optional_apart() {
         let open = find("tab open").expect("tab open");
-        assert_eq!(open.usage(), "unluminous-cli tab open <path> [--permanent]");
+        assert_eq!(open.usage(), "unluminous-cli tab open <path> [--transient] [--permanent]");
         let close = find("tab close").expect("tab close");
         assert_eq!(close.usage(), "unluminous-cli tab close [tab] [--discard]");
     }

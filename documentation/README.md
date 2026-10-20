@@ -37,6 +37,7 @@ panes it carries, then how it is built.
 | | page | what it answers |
 |---|---|---|
 | 10 | [For AI agents](for-ai-agents.md) | the contract, the three mechanisms that enforce it, what an agent is given and what it costs, and what a study found an agent actually does |
+| | [Agent accuracy](agent-accuracy.md) | how often an agent on a local model does the job with the right command first time, measured on every change, and the history of the numbers |
 | 11 | [The command line](command-line.md) | the 292 commands, the channel underneath them, and the MCP server on top |
 | | [`unluminous-cli/docs/commands.md`](../unluminous-cli/docs/commands.md) | the reference, written to be handed to an AI agent whole |
 | | [`unluminous-cli/docs/protocol.md`](../unluminous-cli/docs/protocol.md) | the socket underneath it, for a client in another language |
