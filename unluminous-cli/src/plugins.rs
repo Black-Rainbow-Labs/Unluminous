@@ -136,6 +136,7 @@ pub const AGENT_TASKS: &[(&str, &str)] = &[
     ("delete-task", "Delete a ticket, its todos and its comments."),
     ("priority", "Set a ticket's priority to low, medium or high."),
     ("assign", "Assign a ticket to an AI endpoint that runs an agent, by its name, or to human."),
+    ("project", "The folder a ticket's agent starts in: `project task-3 C:/dev/app`, or `project task-3 default` for the board's default. Says which when asked with only the key. The ticket modal's `Project` field, whose `Other folder...` opens the system's folder picker."),
     ("todo-add", "Add a todo to a ticket."),
     ("todo-done", "Tick a ticket's nth todo."),
     ("todo-undone", "Untick a ticket's nth todo."),
@@ -255,6 +256,10 @@ pub const AGENT_CHAT: &[(&str, &str)] = &[
                 "`on` or `off`: whether Unluminous's own commands are offered to the model.",
             ),
             ("view", "Everything the pane is showing, as data, including each component an answer holds and what it shows now."),
+            (
+                "folder",
+                "The folder an agent run as a program starts in. With nothing it says which; with a path it chooses that folder; with `project` it goes back to the folder the window has open. The Settings page's `Folder` row, whose `Other folder...` opens the system's folder picker.",
+            ),
             (
                 "settings",
                 "`open` or `close` the Chat settings the gear opens. Answers the models offered, the one in use, and how much of the context is used.",

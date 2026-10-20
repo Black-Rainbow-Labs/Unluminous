@@ -116,6 +116,10 @@ pub struct Configuration {
     /// The person's own system prompt, added after Unluminous's own line.
     pub system: String,
     pub history: usize,
+    /// The folder an agent run as a program starts in, or `None` for the folder the window has open
+    /// (`task-2270`). `folder` in the file. A folder that no longer exists is not used: see
+    /// [`AgentChat::working_folder`].
+    pub folder: Option<PathBuf>,
 }
 
 impl Default for Configuration {
@@ -148,6 +152,7 @@ impl Default for Configuration {
             permission: unluminous_chat::Permission::default(),
             system: String::new(),
             history: DEFAULT_HISTORY,
+            folder: None,
         }
     }
 }
@@ -239,6 +244,11 @@ impl Configuration {
         if let Some(history) = values.number("history") {
             configuration.history = history.clamp(1.0, 500.0) as usize;
         }
+        configuration.folder = values
+            .text("folder")
+            .map(str::trim)
+            .filter(|folder| !folder.is_empty())
+            .map(PathBuf::from);
         (configuration, refused)
     }
 
@@ -265,6 +275,9 @@ impl Configuration {
         // Escaped rather than flattened, because the System box is several lines now (`task-2247`).
         values.set("system", escape_lines(&self.system));
         values.set("history", self.history.to_string());
+        if let Some(folder) = &self.folder {
+            values.set("folder", folder.display().to_string());
+        }
         plugin_ui::write_values(
             folder,
             Self::FILE,
@@ -415,6 +428,8 @@ pub struct PaneState {
     pub history_open: bool,
     /// The model selector in the header, made the first time it is drawn. `task-2096`.
     pub model_select: Option<ModelSelect>,
+    /// The Chat settings' `Folder` row, whether its list is open. `task-2270`.
+    pub folder_select: rux::components::SelectState,
     /// The tool blocks somebody has opened by hand, by their call id.
     pub opened_tools: Vec<String>,
     /// The runs of tool calls somebody has opened, by `components::agent_chat::message::run_key`.
@@ -661,6 +676,8 @@ pub struct Parts<'a> {
     pub showing: Option<&'a Path>,
     /// Set when the pane shows another program's conversation. See [`Mirror`].
     pub mirror: Option<&'a Mirror>,
+    /// The folders opened in this window before, which the Chat settings' `Folder` row offers. `task-2270`.
+    pub recent_projects: &'a [PathBuf],
 }
 
 impl PaneState {
@@ -746,6 +763,9 @@ pub struct SidePaneTicket {
 /// The id a request sent on behalf of a ticket in the side pane carries, so its answer is not taken for a tool's.
 const FOR_A_TICKET: &str = "side-pane-ticket-";
 
+/// The id the Settings page's `Other folder...` asks the window's folder picker with. `task-2270`.
+pub const PICK_FOLDER: &str = "pick-folder:";
+
 /// The plugin.
 pub struct AgentChat {
     /// Set when this pane shows a conversation another program is having. See [`Mirror`].
@@ -756,6 +776,9 @@ pub struct AgentChat {
     /// noticed. See [`Self::follow_the_configuration_file`].
     configuration_written: Option<std::time::SystemTime>,
     project: Option<PathBuf>,
+    /// The folders opened in this window before, offered beside the project as the folder an agent runs in
+    /// (`task-2270`). The window hands them over at open, as it does to Agent-Tasks.
+    recent_projects: Vec<PathBuf>,
     /// The file showing in the window, which the window tells the provider — see
     /// [`UiProvider::showing`]. A chat in an editor that does not know what you are looking at is a
     /// browser tab.
@@ -907,6 +930,7 @@ impl AgentChat {
             configuration_written: None,
             project: None,
             showing: None,
+            recent_projects: Vec::new(),
             configuration: Configuration::default(),
             store: Store::at(None),
             session: Session::new(Conversation::new("", "")),
@@ -991,6 +1015,7 @@ impl AgentChat {
             project: self.project.as_deref(),
             showing: self.showing.as_deref(),
             mirror: self.mirror.as_ref(),
+            recent_projects: &self.recent_projects,
         }
     }
 
@@ -1179,6 +1204,57 @@ impl AgentChat {
     /// The endpoint in use.
     pub fn provider(&self) -> Option<&Provider> {
         self.configuration.provider()
+    }
+
+    /// The folder an agent run as a program starts in: the one chosen on the Settings page while it still
+    /// exists, and otherwise the folder the window has open. `task-2270`.
+    pub fn working_folder(&self) -> Option<PathBuf> {
+        self.configuration
+            .folder
+            .clone()
+            .filter(|folder| folder.is_dir())
+            .or_else(|| self.project.clone())
+    }
+
+    /// The folders worth offering as the one an agent runs in, the window's project first. `task-2270`.
+    pub fn known_folders(&self) -> Vec<PathBuf> {
+        self.project.iter().chain(self.recent_projects.iter()).cloned().collect()
+    }
+
+    /// `plugins run agent-chat folder [path|project]`: say which folder an agent runs in, or choose one.
+    /// `task-2270`.
+    fn choose_the_folder(&mut self, wanted: &str) -> Result<Answer, String> {
+        match wanted {
+            "" => {}
+            "project" | "default" => self.configuration.folder = None,
+            path => {
+                let path = PathBuf::from(path);
+                let path = match (path.is_absolute(), &self.project) {
+                    (false, Some(project)) => project.join(path),
+                    _ => path,
+                };
+                if !path.is_dir() {
+                    return Err(format!("There is no folder {}.", path.display()));
+                }
+                self.configuration.folder = Some(path);
+            }
+        }
+        if !wanted.is_empty() {
+            self.save_the_configuration()?;
+        }
+        let folder = self.working_folder();
+        let chosen = self.configuration.folder.clone();
+        Ok(Answer::said(match (&chosen, &folder) {
+            (Some(chosen), _) => format!("an agent runs in {}", chosen.display()),
+            (None, Some(project)) => {
+                format!("an agent runs in the folder this window has open, {}", project.display())
+            }
+            (None, None) => "an agent runs in the folder this window has open".to_owned(),
+        })
+        .with(serde_json::json!({
+            "folder": folder.map(|one| one.display().to_string()),
+            "chosen": chosen.map(|one| one.display().to_string()),
+        })))
     }
 
     /// Write the configuration back, and say so if it could not be written.
@@ -1761,8 +1837,9 @@ impl AgentChat {
             prompt,
             // **The project the window has open**, which is what makes the agent's answer about the
             // code in front of you: `claude` finds that project's `CLAUDE.md` there and `codex` its
-            // `AGENTS.md`, and every file tool either of them has is rooted in it.
-            folder: self.project.clone(),
+            // `AGENTS.md`, and every file tool either of them has is rooted in it. Or the folder chosen on
+            // the Settings page, since `task-2270`.
+            folder: self.working_folder(),
             session,
             pictures,
             permission: self.configuration.permission,
@@ -1807,7 +1884,7 @@ impl AgentChat {
         let mut lines = vec![
             "You are answering inside Unluminous, a code editor, in a pane beside the person's work. Be brief and concrete; they can see their own screen.".to_owned(),
         ];
-        if let Some(project) = &self.project {
+        if let Some(project) = &self.working_folder() {
             lines.push(format!("The project open is {}.", project.display()));
         }
         if let Some(showing) = &self.showing {
@@ -2101,6 +2178,7 @@ impl AgentChat {
             "open": self.ui.settings_open,
             "models": self.configuration.providers.iter().map(|one| one.name.clone()).collect::<Vec<String>>(),
             "chosen": self.provider().map(|one| one.name.clone()),
+            "folder": self.working_folder().map(|one| one.display().to_string()),
             "context": {
                 "used": used,
                 "window": window,
@@ -2271,6 +2349,7 @@ impl UiProvider for AgentChat {
         self.folder = context.folder.clone();
         let endpoints = context.endpoints.clone();
         self.project = context.project.clone();
+        self.recent_projects = context.recent_projects.clone();
         // **Told at open, not only when it next changes.** The window compares before it tells, so a
         // provider opened after the comparison had already settled was never told at all and its
         // system prompt said nothing about the file in front of the person until they switched tabs.
@@ -2526,6 +2605,7 @@ impl UiProvider for AgentChat {
                 let sent = self.rerun(id)?;
                 Ok(Answer::said(format!("asked again as message {sent}")).with(serde_json::json!({ "id": sent })))
             }
+            "folder" => self.choose_the_folder(rest.trim()),
             "settings" => {
                 match rest.trim() {
                     "open" => self.ui.settings_open = true,
@@ -2583,6 +2663,19 @@ impl UiProvider for AgentChat {
     }
 
     fn answered(&mut self, id: &str, answer: Result<serde_json::Value, String>) {
+        // The folder the window's picker answered with, for `Other folder...` on the Settings page. A picker
+        // somebody cancelled leaves the folder as it was. `task-2270`.
+        if id.starts_with(PICK_FOLDER) {
+            if let Some(folder) =
+                answer.ok().as_ref().and_then(crate::services::folder_choice::picked)
+            {
+                self.configuration.folder = Some(folder);
+                if let Err(problem) = self.save_the_configuration() {
+                    self.problem = Some(problem);
+                }
+            }
+            return;
+        }
         // What the board said about words typed for a ticket in this pane. A refusal is shown where the person
         // typed, as the modal's own Chat tab shows one.
         if id.starts_with(FOR_A_TICKET) {

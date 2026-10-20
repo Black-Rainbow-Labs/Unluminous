@@ -937,6 +937,24 @@ fn quiet_pill(ui: &mut egui::Ui, pill: Rect, salt: impl std::hash::Hash + std::f
     });
 }
 
+/// A row's name, cut with an ellipsis where it would run past `room` points.
+///
+/// `task-2270`: *"text bleeds outside of the highlighted area"*, with a picture of
+/// `jason-mcaffee-accomplishments-and-year-end-review.md` running past the right end of its pill to the edge of
+/// the panel. A name was laid out with no width at all, so a long one went wherever it reached. It stops a few
+/// points inside the pill now, and the whole name is still the row's accessible name and its tooltip.
+fn name_that_fits(
+    ui: &egui::Ui,
+    name: &str,
+    font: egui::FontId,
+    colour: egui::Color32,
+    room: f32,
+) -> crate::theme::crisp::Text {
+    let mut job = egui::text::LayoutJob::simple_singleline(name.to_owned(), font, colour);
+    job.wrap = egui::text::TextWrapping::truncate_at_width(room.max(1.0));
+    ui.painter().crisp_layout_job(job)
+}
+
 /// A folder row: a triangle that points down when open, then the name.
 fn folder_row(
     ui: &mut egui::Ui,
@@ -996,12 +1014,10 @@ fn folder_row(
     // See `crisp::top_centring_capitals`.
     let font = egui::FontId::proportional(view.at(12.5));
     let top = crate::theme::crisp::top_centring_capitals(ui.painter(), &font, row.center().y);
-    let galley = ui.painter().crisp_layout_no_wrap(name.to_owned(), font, color::text_control());
-    ui.painter().crisp_galley(
-        Pos2::new(name_column(x, view, mark, true), top),
-        galley,
-        color::text_control(),
-    );
+    let left = name_column(x, view, mark, true);
+    let galley =
+        name_that_fits(ui, name, font, color::text_control(), pill.right() - view.at(8.0) - left);
+    ui.painter().crisp_galley(Pos2::new(left, top), galley, color::text_control());
     // The accessible name is the folder's name, so a test can ask for it by name.
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), entry.expanded, name)
@@ -1021,10 +1037,9 @@ fn file_row(
 ) -> RowClick {
     let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     let row = allocate_row(ui, view.at(size::ROW));
-    // A file Unluminous cannot open is drawn dimmed and does not open on a click, so the tree says what is
-    // in the folder without pretending everything in it can be opened. It still takes a right click
-    // and can still be carried: renaming a picture, or moving one, has nothing to do with whether
-    // Unluminous can show its text.
+    // A file Unluminous cannot show is drawn dimmed, so the tree says what is in the folder without pretending
+    // everything in it can be read. A click still opens it, into a tab that says it cannot be shown
+    // (`task-2270`), and it takes a right click and can be carried like any other row.
     let openable = refusal.is_none();
     let response = ui.interact(row, ui.id().with(("file", path)), Sense::click_and_drag());
     if let Some(refusal) = refusal {
@@ -1054,7 +1069,7 @@ fn file_row(
         ui.painter().rect_filled(pill, pill.height() / 2.0, color::accent().gamma_multiply(0.22));
     } else if open {
         crate::components::controls::pill(ui.painter(), pill, 5);
-    } else if selected || chosen || (response.hovered() && openable) {
+    } else if selected || chosen || response.hovered() {
         quiet_pill(ui, pill, ("file", path));
     }
     // The ring says where the keyboard is, which is the whole reason the explorer has a selection of
@@ -1117,8 +1132,14 @@ fn file_row(
     // By its capitals, for the reason a folder's name is.
     let font = egui::FontId::proportional(view.at(12.5));
     let top = crate::theme::crisp::top_centring_capitals(ui.painter(), &font, row.center().y);
-    let galley = ui.painter().crisp_layout_no_wrap(name.clone(), font, tint);
-    ui.painter().crisp_galley(Pos2::new(name_column(x, view, mark, false), top), galley, tint);
+    let left = name_column(x, view, mark, false);
+    // Short of the unsaved dot when there is one, so the name never runs under it.
+    let end = match open && view.unsaved {
+        true => pill.right() - view.at(20.0),
+        false => pill.right() - view.at(8.0),
+    };
+    let galley = name_that_fits(ui, &name, font, tint, end - left);
+    ui.painter().crisp_galley(Pos2::new(left, top), galley, tint);
     if open && view.unsaved {
         ui.painter().circle_filled(
             Pos2::new(pill.right() - view.at(12.0), row.center().y),
@@ -1129,14 +1150,9 @@ fn file_row(
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), open, &name)
     });
-    let mut click = RowClick::from(&response);
-    if !openable {
-        // It cannot be opened, so a click on it opens nothing. The menu, the selection and carrying
-        // it still work.
-        click.open = false;
-        click.twice = false;
-    }
-    click
+    // **A click opens it whether or not Unluminous can show it** (`task-2270`): one that cannot be shown opens a tab
+    // saying so, with a way to open it in its own program.
+    RowClick::from(&response)
 }
 
 /// Which rows fall inside what is being drawn into, given how many there are.

@@ -789,6 +789,11 @@ pub struct Framing<'a> {
     pub landing: Option<crate::services::realm::NodeId>,
     /// What the header says when the node has not been renamed.
     pub fallback_title: &'a str,
+    /// How the tab a File Editor node is showing is viewed, and which kind of preview it has, when it is a
+    /// document with a preview (`task-2270`). `None` for every other node and every other tab, which draws no
+    /// view buttons.
+    pub file_view:
+        Option<(crate::services::realm::NoteView, crate::services::file_kind::PreviewKind)>,
 }
 
 /// Draw a node's header, its ports and its resize grips, and report what was done to it.
@@ -914,7 +919,28 @@ fn show_the_header(
                 Pos2::new(right - 10.0, header.center().y),
                 Vec2::splat(20.0),
             );
-            if note_view_button(ui, button, view, note.view == view, &name) {
+            if note_view_button(
+                ui,
+                button,
+                view,
+                note.view == view,
+                &name,
+                crate::services::file_kind::PreviewKind::Markdown,
+            ) {
+                outcome.view = Some(view);
+            }
+            right = button.left() - 2.0;
+        }
+    }
+    // **And a File Editor node's, for the tab it is showing** (`task-2270`): *"File should have preview buttons for
+    // md files, etc."* The same three, the same names, for a Markdown or a Mermaid tab, and for no other.
+    if let (Kind::Editor, Some((showing, kind))) = (node.kind(), framing.file_view) {
+        for view in crate::services::realm::NoteView::ALL.into_iter().rev() {
+            let button = Rect::from_center_size(
+                Pos2::new(right - 10.0, header.center().y),
+                Vec2::splat(20.0),
+            );
+            if note_view_button(ui, button, view, showing == view, &name, kind) {
                 outcome.view = Some(view);
             }
             right = button.left() - 2.0;
@@ -987,16 +1013,17 @@ pub fn note_view_of(mode: crate::app::ViewMode) -> crate::services::realm::NoteV
     }
 }
 
-/// One of a note node's three view buttons: the title bar's drawing, named after the note.
+/// One of a node's three view buttons: the title bar's drawing, named after the node.
 fn note_view_button(
     ui: &mut egui::Ui,
     area: Rect,
     view: crate::services::realm::NoteView,
     active: bool,
     note: &str,
+    kind: crate::services::file_kind::PreviewKind,
 ) -> bool {
     let mode = view_mode_of(view);
-    let label = mode.label_for(crate::services::file_kind::PreviewKind::Markdown);
+    let label = mode.label_for(kind);
     let name = format!("{label} in {note}");
     let response = ui.interact(area, ui.id().with(("realm-note-view", &name)), Sense::click());
     let painter = ui.painter();
@@ -1503,6 +1530,7 @@ mod tests {
                     wire_is_looking: false,
                     landing: None,
                     fallback_title: "a folder",
+                    file_view: None,
                 };
                 let outcome = frame(&mut node_ui, &node, framing, look);
                 if outcome.menu.is_some() {

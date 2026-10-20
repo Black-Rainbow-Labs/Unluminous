@@ -686,6 +686,7 @@ impl UnluminousApp {
                     wire_is_looking: wiring,
                     landing,
                     fallback_title: &title,
+                    file_view: None,
                 };
                 let point = landing_point.filter(|_| landing == Some(node.id));
                 let was_own = self.renderer.composite_through(to_global, settled);
@@ -720,6 +721,7 @@ impl UnluminousApp {
                 wire_is_looking: wiring,
                 landing,
                 fallback_title: &self.name_of_a_node(&node),
+                file_view: self.how_an_editor_node_shows_its_tab(&node),
             };
             let outcome = realm_view::frame(&mut node_ui, &node, framing, look);
             self.renderer.restore_compositing(was_own);
@@ -1079,7 +1081,7 @@ impl UnluminousApp {
             self.step_a_node_font(node.id, outcome.font_step);
         }
         if let Some(view) = outcome.view {
-            if let Err(problem) = self.set_a_notes_view(node.id, view) {
+            if let Err(problem) = self.set_a_nodes_view(node.id, view) {
                 self.message = Some(problem);
             }
             self.realm.realm.choose(Some(node.id));
@@ -1334,11 +1336,9 @@ impl UnluminousApp {
     /// the control that makes the node usable.
     fn show_a_browser_node(&mut self, ui: &mut egui::Ui, node: &Node, body: Rect, focused: bool) {
         let tab = self.realm.live.browser(node.id).cloned();
-        // **One native view a window**, so only the tab it is pointed at renders. The others say so,
-        // which is the sentence `browser_view::show` already says for a second rendered tab in
-        // another pane.
-        let showing =
-            tab.as_ref().is_none_or(|tab| self.browser.showing().is_none_or(|id| id == tab.id));
+        // **Every node's page renders**, since a page has a view of its own (`task-2270`). Only a window kept to
+        // one view says so for the others, with the sentence `browser_view::show` says for a second tab.
+        let showing = tab.as_ref().is_none_or(|tab| self.browser.renders(tab.id));
         // What is being typed lives on the node, so it survives the node scrolling off the canvas and
         // stopping being drawn. Taken out, handed over, and put back if it changed.
         let mut typed = match &node.state {
@@ -2131,7 +2131,16 @@ impl UnluminousApp {
             self.files.at_mut(index).cached.stale = true;
             self.files.at_mut(index).sized_at = asked;
         }
-        let took = self.show_editor(ui, body, focused);
+        // **A document with a preview is drawn the way a tab in a pane is** (`task-2270`), in whichever of its
+        // three views the header's buttons chose, which is what a note node already does. Any other tab is the
+        // source, as it always was.
+        let took = match self.how_an_editor_node_shows_its_tab(node) {
+            Some(_) => {
+                let divider = format!("file editor {}", self.name_of_a_node(node));
+                self.show_a_document_in(ui, body, focused, &divider)
+            }
+            None => self.show_editor(ui, body, focused),
+        };
         if took {
             self.realm.realm.choose(Some(node.id));
             self.take_the_keyboard_for_the_realm();
@@ -2139,6 +2148,28 @@ impl UnluminousApp {
         if !focused {
             self.files.restore_focus(was);
         }
+    }
+
+    /// How the tab a File Editor node is showing is viewed, and its kind of preview, when it is a document
+    /// whose kind has one: a Markdown or a Mermaid file. `None` for any other node or tab.
+    pub(crate) fn how_an_editor_node_shows_its_tab(
+        &self,
+        node: &Node,
+    ) -> Option<(crate::services::realm::NoteView, crate::services::file_kind::PreviewKind)> {
+        if node.kind() != Kind::Editor {
+            return None;
+        }
+        let file = self.files.at(self.files.tab_in_node(node.id)?);
+        let path = file.path()?;
+        let previews = file.is_a_document()
+            && file.notebook.is_none()
+            && crate::services::file_kind::preview_applies(Some(path));
+        previews.then(|| {
+            (
+                crate::components::realm::note_view_of(file.view_mode),
+                crate::services::file_kind::preview_kind(Some(path)),
+            )
+        })
     }
 
     /// Take down where one File Editor node is on the screen, and where its tabs are inside it.
@@ -3020,7 +3051,7 @@ impl UnluminousApp {
         let Some(tab) = self.realm.live.browser(node).map(|tab| tab.id) else {
             return Err(format!("Node {node} has no page open."));
         };
-        if self.browser.showing() == Some(tab) {
+        if self.browser.is_live(tab) {
             return self.browser.start_picking(tab, at);
         }
         self.realm.realm.choose(Some(node));
@@ -3053,8 +3084,8 @@ impl UnluminousApp {
                 browser.pin = Some(pin);
             }
         });
-        // Shown now when the page is showing; otherwise when the view next arrives at it.
-        if self.browser.showing() == Some(tab) {
+        // Shown now when the page has its view; otherwise when the view is made and the page loads.
+        if self.browser.is_live(tab) {
             self.browser.pin(tab, selector)?;
         } else {
             self.realm.realm.choose(Some(node));
@@ -3081,7 +3112,7 @@ impl UnluminousApp {
             }
         });
         if let Some(tab) = self.realm.live.browser(node).map(|tab| tab.id) {
-            if self.browser.showing() == Some(tab) {
+            if self.browser.is_live(tab) {
                 self.browser.unpin(tab)?;
             }
         }
@@ -4002,6 +4033,63 @@ impl UnluminousApp {
 
     /// The world point in the middle of what is showing, which is where a node with no place of its
     /// own goes.
+    /// Move the tab that is showing onto the realm that is showing, as a node of its own, in the middle of what
+    /// the canvas shows. `task-2270`: *"Right click on tab -> send to realm so the file gets added as a new node
+    /// in the current open realm."*
+    ///
+    /// A rendered tab becomes a browser node on the same address, and a picture, a sound or a video becomes the
+    /// node that shows it. Anything else becomes a File Editor node holding the tab itself, which is what
+    /// dragging the tab onto the canvas does, so unsaved changes go with it. The Realm panel is shown if it was
+    /// put away.
+    pub(crate) fn send_the_tab_to_the_realm(&mut self) -> Result<NodeId, String> {
+        if !self.realm_is_on() {
+            return Err(
+                "The Realm plugin is switched off: switch it on in Settings -> Plugins.".to_owned()
+            );
+        }
+        if let Some(why) = self.realm.realm.read_only_because() {
+            return Err(why.to_owned());
+        }
+        let index = self.files.active_index();
+        if self.files.home_of(index).node().is_some() {
+            return Err("This tab is already on the realm.".to_owned());
+        }
+        let file = self.files.at(index);
+        if file.plugin.is_some() {
+            return Err("A plugin's own tab cannot be put on the realm.".to_owned());
+        }
+        let address = file.browser.as_ref().map(|tab| tab.current_url().to_owned());
+        let media =
+            file.path().and_then(|path| match crate::app::realm_nodes::kind_for_a_file(path) {
+                Some(kind @ (Kind::Image | Kind::Audio | Kind::Video)) => {
+                    Some((kind, path.to_path_buf()))
+                }
+                _ => None,
+            });
+        self.show_a_panel(dock::Panel::Realm, true);
+        let at = self.middle_of_the_canvas();
+        let node = if let Some(address) = address {
+            let node = self.add_a_realm_node(Kind::Browser, at);
+            if address != crate::services::browser::BLANK {
+                self.open_a_realm_browser(node, &address)?;
+            }
+            self.close_tab(index);
+            node
+        } else if let Some((kind, path)) = media {
+            let node = self.add_a_file_node(kind, &path, at)?;
+            self.close_tab(index);
+            node
+        } else {
+            let node = self.add_a_realm_node(Kind::Editor, at);
+            self.files.drag_tab_to_node(index, node, 0);
+            self.remember_a_nodes_tabs(node);
+            node
+        };
+        self.focus = Focus::Realm;
+        self.realm.realm.choose(Some(node));
+        Ok(node)
+    }
+
     pub(crate) fn middle_of_the_canvas(&self) -> Pos2 {
         let body = self.realm.body;
         if body.width() < 2.0 {

@@ -289,6 +289,43 @@ fn the_command_line_opens_a_file_into_a_tab() {
     );
 }
 
+/// `task-2270`: `tab open` on a file Unluminous cannot show opens the tab that says so, and the answer says it was
+/// not rendered and why, so a script can tell.
+#[test]
+fn a_file_that_cannot_be_shown_opens_and_the_answer_says_so() {
+    let mut harness = harness_in(&sample_folder());
+    let result = did(&mut harness, "tab open bundle.zip");
+    assert_eq!(result["rendered"], false);
+    assert!(result["reason"].as_str().is_some_and(|reason| !reason.is_empty()));
+    let listed = did(&mut harness, "tab list");
+    let row = listed["tabs"]
+        .as_array()
+        .and_then(|tabs| tabs.iter().find(|tab| tab["name"] == "bundle.zip"))
+        .cloned()
+        .expect("the tab is listed");
+    assert_eq!(row["rendered"], false);
+    let readme = did(&mut harness, "tab open readme.md");
+    assert_eq!(readme["rendered"], true);
+}
+
+/// `task-2270`: the empty part of a tab strip has a menu holding `New Browser Tab`, and the action opens an empty
+/// rendered tab with its address field ready to be typed into.
+#[test]
+fn a_new_browser_tab_opens_empty_with_its_address_field_the_persons() {
+    if !unluminous_app::services::browser::SUPPORTED {
+        return;
+    }
+    let mut harness = harness_in(&sample_folder());
+    did(&mut harness, "action run new-browser-tab");
+    steady(&mut harness);
+    let app = harness.state();
+    let tab = app.files.active();
+    assert!(tab.is_browser(), "the tab showing is the new browser tab");
+    assert_eq!(tab.name(), "New Tab");
+    assert!(tab.editing_address, "what is typed is the person's from the start");
+    assert!(tab.typed_address.is_empty());
+}
+
 #[test]
 fn a_file_that_is_not_there_is_refused_with_a_code_a_script_can_match_on() {
     let mut harness = harness_in(&sample_folder());

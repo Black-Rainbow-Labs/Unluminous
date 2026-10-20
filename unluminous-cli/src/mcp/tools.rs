@@ -2091,6 +2091,8 @@ mod tests {
         //            plugin tools are what turned the Database, Agent-Chat and chat node cases from
         //            failures into passes. A `Call:` example under every command was measured too and
         //            cost 3,900 tokens for nothing, so it is not here. The ceiling moves to 38,000.
+        //   38,142   `task-2314` merged with `task-2270`, whose `folder` and `project` verbs reach the
+        //            Agent-Chat and Agent-Tasks tools as well as `plugins run`. The ceiling moves to 39,000.
         //
         // **The number being hard to hold is itself `task-1804` §4.2's finding**, and what
         // changed with it is that there is now an answer: `mcp serve --areas` equips an agent with
@@ -2098,7 +2100,7 @@ mod tests {
         // `editor,git` rather than 18,511 for all of it. This ceiling goes on saying when the
         // *default* has grown, which is what it is for; it is no longer the only lever there is.
         assert!(
-            grouped.len() / 4 < 38_000,
+            grouped.len() / 4 < 39_000,
             "grouped MCP schema exceeded budget: {} bytes",
             grouped.len()
         );

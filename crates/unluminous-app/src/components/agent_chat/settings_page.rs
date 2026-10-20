@@ -13,6 +13,7 @@
 
 use crate::components::settings_kit::{self as kit, Column};
 use crate::services::agent_chat::AgentChat;
+use crate::services::folder_choice;
 use crate::services::plugin_ui::{Look, Request};
 
 /// Draw the page inside the rectangle every page gets.
@@ -27,6 +28,14 @@ fn cards(chat: &mut AgentChat, ui: &mut egui::Ui, column: &mut Column) -> Vec<Re
     let refusals = chat.readiness();
     let mut configuration = chat.configuration().clone();
     let mut changed = false;
+    let known = chat.known_folders();
+    let project_said = match known.first() {
+        Some(project) => format!(
+            "This window's project ({})",
+            folder_choice::named(&project.display().to_string())
+        ),
+        None => "The folder this window has open".to_owned(),
+    };
 
     kit::card(ui, column, "Endpoint", None, |card| {
         let names: Vec<String> =
@@ -59,10 +68,39 @@ fn cards(chat: &mut AgentChat, ui: &mut egui::Ui, column: &mut Column) -> Vec<Re
             "Answering",
             Some(
                 "The chosen endpoint is a program on this machine, so it answers with its own tools, its own \
-                 sandbox and its own account. It runs in the project this window has open and reads that \
-                 project's own instructions.",
+                 sandbox and its own account. It runs in the folder chosen below, which is the project this \
+                 window has open unless you choose another, and reads that folder's own instructions.",
             ),
             |card| {
+                // **Where the agent runs** (`task-2270`): the folder this window has open, a folder opened
+                // before, or any folder through `Other folder...`, which asks the window for its folder picker.
+                let chosen = configuration.folder.as_ref().map(|one| one.display().to_string());
+                let rows = folder_choice::rows(chosen.as_deref(), &known);
+                let words = folder_choice::said(&rows, &project_said);
+                let selected = folder_choice::selected(&rows, chosen.as_deref());
+                card.row(
+                    "Folder",
+                    Some("The folder the agent starts in, which is where it reads the project's own instructions."),
+                    |row| {
+                        if let Some(index) = row.select("Folder", &words, selected, 300.0) {
+                            match &rows[index] {
+                                folder_choice::Row::Default => {
+                                    configuration.folder = None;
+                                    changed = true;
+                                }
+                                folder_choice::Row::Folder(folder) => {
+                                    configuration.folder = Some(std::path::PathBuf::from(folder));
+                                    changed = true;
+                                }
+                                folder_choice::Row::Other => requests.push(Request::PickFolder {
+                                    id: format!("{}settings", crate::services::agent_chat::PICK_FOLDER),
+                                    title: "The folder the agent starts in".to_owned(),
+                                    start: configuration.folder.clone(),
+                                }),
+                            }
+                        }
+                    },
+                );
                 let said = permission_said(configuration.permission);
                 let names: Vec<&str> = unluminous_chat::PERMISSIONS.to_vec();
                 let chosen = names.iter().position(|named| configuration.permission.name() == *named);

@@ -63,6 +63,54 @@ pub struct TicketTerminal {
     /// arrive in one read are a paste to a terminal user interface, not keystrokes.
     pub(super) keys: Vec<Vec<u8>>,
     pub(super) next_key_at: Option<std::time::Instant>,
+    /// The rest of a line being typed, oldest first, and when the next piece may go (`task-2270`).
+    ///
+    /// See [`pieces_of`] for why a line is not one write.
+    pub(super) pieces: Vec<Vec<u8>>,
+    pub(super) next_piece_at: Option<std::time::Instant>,
+}
+
+/// The most bytes a line is written in at once.
+///
+/// **A quarter of the smallest input queue a terminal has** (`task-2270`). On macOS a pseudoterminal holds at
+/// most 1,024 bytes of input that the program has not read yet, and the kernel does not refuse what is
+/// written past that: it **throws away everything already waiting** and keeps what comes after. The handoff
+/// is about 1,300 bytes, so on a Mac the agent was handed the last 260 of them, starting mid sentence at
+/// *"at the end; and remove one that no longer applies"*. Measured on the report's own picture, the cut was at
+/// byte 1,022 of 1,283. Windows' console takes the whole line, which is why nothing here ever saw it.
+pub(super) const PIECE: usize = 256;
+
+/// How far apart the pieces of a line are written: long enough for the program to have read the piece
+/// before, which is a few milliseconds for every agent there is, and short enough that a 1,300 byte line is
+/// typed in about a tenth of a second.
+const PIECE_EVERY: std::time::Duration = std::time::Duration::from_millis(20);
+
+/// The bytes of a line as the writes it is typed in, each at most [`PIECE`] bytes and never splitting a
+/// character.
+///
+/// **Wrapped in the bracketed paste sequences when the program asked for them**, which is what every
+/// terminal does with text a person pastes. A line typed in pieces then still arrives as one paste, however
+/// the program's reader happens to split it, rather than as several bursts a program could read as several
+/// pastes. The return is never part of it: see [`TicketTerminal::type_line`].
+pub(super) fn pieces_of(line: &str, bracketed: bool) -> Vec<Vec<u8>> {
+    let mut pieces: Vec<Vec<u8>> = Vec::new();
+    let mut piece: Vec<u8> = Vec::new();
+    for character in line.chars() {
+        let mut bytes = [0u8; 4];
+        let bytes = character.encode_utf8(&mut bytes).as_bytes();
+        if piece.len() + bytes.len() > PIECE {
+            pieces.push(std::mem::take(&mut piece));
+        }
+        piece.extend_from_slice(bytes);
+    }
+    if !piece.is_empty() {
+        pieces.push(piece);
+    }
+    if bracketed && !pieces.is_empty() {
+        pieces.insert(0, b"\x1b[200~".to_vec());
+        pieces.push(b"\x1b[201~".to_vec());
+    }
+    pieces
 }
 
 /// How far apart the keys that answer a menu are pressed.
@@ -141,6 +189,10 @@ impl TicketTerminal {
             self.quiet_since = None;
         } else if self.quiet_since.is_none() {
             self.quiet_since = Some(std::time::Instant::now());
+        }
+        // The rest of a line being typed, one piece a turn, before anything else: the return waits for it.
+        if self.write_the_next_piece() {
+            return true;
         }
         // The return owed for a line already written, first: nothing else may be typed into a prompt
         // that has not been sent, or the two would go as one message.
@@ -249,9 +301,34 @@ impl TicketTerminal {
     ///
     /// Written apart by [`SUBMIT_AFTER`] the return arrives as its own keystroke, which is what a person
     /// pasting a prompt and pressing Enter does.
+    ///
+    /// **And the line itself is several writes** (`task-2270`), [`PIECE_EVERY`] apart, for the reason
+    /// [`PIECE`] gives. The first goes now and [`TicketTerminal::pump`] writes the rest; the return is owed
+    /// from the moment the last piece has gone.
     pub fn type_line(&mut self, line: &str) {
-        self.session.send(line.as_bytes().to_vec());
-        self.submit_at = Some(std::time::Instant::now() + SUBMIT_AFTER);
+        self.pieces = pieces_of(line, self.session.mode().bracketed_paste);
+        self.next_piece_at = None;
+        self.write_the_next_piece();
+    }
+
+    /// Write one piece of the line being typed when its time has come, and answer whether any are still
+    /// waiting. The last piece is what makes the return owed.
+    fn write_the_next_piece(&mut self) -> bool {
+        if self.pieces.is_empty() {
+            return false;
+        }
+        let now = std::time::Instant::now();
+        if self.next_piece_at.is_some_and(|due| now < due) {
+            return true;
+        }
+        let piece = self.pieces.remove(0);
+        self.session.send(piece);
+        self.next_piece_at = Some(now + PIECE_EVERY);
+        if self.pieces.is_empty() {
+            self.next_piece_at = None;
+            self.submit_at = Some(now + SUBMIT_AFTER);
+        }
+        true
     }
 
     /// Send a line, or queue it when the prompt is not ready or a return is still owed.
@@ -263,7 +340,11 @@ impl TicketTerminal {
     /// keeps a second line from being written into a prompt whose return has not gone yet, which would
     /// send the two as one message.
     pub fn queue(&mut self, line: &str) -> bool {
-        match self.pending.is_empty() && self.submit_at.is_none() && self.the_prompt_is_ready() {
+        match self.pending.is_empty()
+            && self.submit_at.is_none()
+            && self.pieces.is_empty()
+            && self.the_prompt_is_ready()
+        {
             true => {
                 self.type_line(line);
                 false
@@ -272,6 +353,48 @@ impl TicketTerminal {
                 self.pending.push(line.to_owned());
                 true
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The handoff is typed in pieces no larger than [`PIECE`], which together are the line exactly, so no
+    /// write can overflow a macOS terminal's 1,024 byte input queue (`task-2270`).
+    #[test]
+    fn a_long_line_is_typed_in_pieces_that_add_up_to_the_line() {
+        let line = agent::handoff(Assignee::Claude, "task-40");
+        assert!(
+            line.len() > 1024,
+            "the handoff is longer than a macOS input queue: {}",
+            line.len()
+        );
+        let pieces = pieces_of(&line, false);
+        assert!(pieces.len() > 1);
+        assert!(pieces.iter().all(|piece| piece.len() <= PIECE));
+        assert_eq!(pieces.concat(), line.as_bytes());
+    }
+
+    /// With bracketed paste on, the pieces are one paste: the opening sequence first, the closing one last,
+    /// and the line between them unchanged.
+    #[test]
+    fn a_bracketed_line_is_one_paste_however_many_pieces_it_takes() {
+        let line = "x".repeat(700);
+        let pieces = pieces_of(&line, true);
+        assert_eq!(pieces.first().map(Vec::as_slice), Some(&b"\x1b[200~"[..]));
+        assert_eq!(pieces.last().map(Vec::as_slice), Some(&b"\x1b[201~"[..]));
+        assert_eq!(pieces[1..pieces.len() - 1].concat(), line.as_bytes());
+    }
+
+    /// A piece never ends inside a character, so a reader that decodes each write on its own still reads
+    /// every letter.
+    #[test]
+    fn a_piece_never_splits_a_character() {
+        let line = "é".repeat(400);
+        for piece in pieces_of(&line, false) {
+            assert!(std::str::from_utf8(&piece).is_ok());
         }
     }
 }

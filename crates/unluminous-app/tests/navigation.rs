@@ -2425,3 +2425,39 @@ fn a_source_file_write_that_fails_leaves_the_file_as_it_was() {
     permissions.set_readonly(false);
     std::fs::set_permissions(&second, permissions).expect("put it back");
 }
+
+/// `task-2270`: *"I should be able to scroll tabs horizontally, without a scrollbar. e.g. scroll wheel when hovered
+/// over a tab should move left to right."* With more tabs than fit and the first one showing, the last is off the
+/// strip; the wheel over the strip moves along until it is drawn, and showing a tab does not pull the strip back.
+#[test]
+fn the_tab_strip_scrolls_sideways_under_the_wheel() {
+    let folder = std::env::temp_dir().join("unluminous-tab-strip-scroll");
+    std::fs::create_dir_all(&folder).expect("a folder of its own");
+    let names: Vec<String> =
+        (0..16).map(|at| format!("a-file-with-a-fairly-long-name-{at:02}.txt")).collect();
+    for name in &names {
+        std::fs::write(folder.join(name), "words\n").expect("write a file");
+    }
+    let mut harness = harness_in(&folder);
+    for name in &names {
+        did(&mut harness, &format!("tab open {name} --permanent"));
+    }
+    did(&mut harness, &format!("tab show {}", names[0]));
+    steady(&mut harness);
+    let last = format!("Tab: {}", names[15]);
+    assert!(harness.query_by_label(&last).is_none(), "the last tab starts off the strip");
+    let over = harness.get_by_label(&format!("Tab: {}", names[0])).rect().center();
+    harness.input_mut().events.push(egui::Event::PointerMoved(over));
+    steady(&mut harness);
+    for _ in 0..40 {
+        harness.input_mut().events.push(egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0.0, -120.0),
+            phase: egui::TouchPhase::Move,
+            modifiers: egui::Modifiers::default(),
+        });
+        steady(&mut harness);
+    }
+    assert!(harness.query_by_label(&last).is_some(), "the wheel moved the strip to the last tab");
+    assert_eq!(harness.state().files.active().name(), names[0], "and showed nothing new");
+}

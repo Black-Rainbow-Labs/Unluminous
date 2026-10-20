@@ -96,6 +96,15 @@ pub fn open_in_the_default_browser(address: &str) -> Result<(), String> {
     open_with_the_system(address)
 }
 
+/// Open a file in the program the operating system opens it with, which is what a double click on it in Explorer
+/// or Finder does. `task-2270`'s `Open in Default App`, for a file Unluminous cannot show.
+pub fn open_a_file_with_the_system(path: &std::path::Path) -> Result<(), String> {
+    if !path.is_file() {
+        return Err(format!("There is no file {}.", path.display()));
+    }
+    open_with_the_system(&path.display().to_string())
+}
+
 #[cfg(windows)]
 fn open_with_the_system(address: &str) -> Result<(), String> {
     use windows_sys::Win32::UI::Shell::ShellExecuteW;

@@ -95,6 +95,10 @@ pub enum Act {
     Listen(bool),
     /// The Chat settings' `Microphone button` switch, which is `voice.button`. `task-2290`.
     MicrophoneButton(bool),
+    /// The folder an agent starts in was chosen: a folder, or `None` for the window's project. `task-2270`.
+    ChooseFolder(Option<std::path::PathBuf>),
+    /// `Other folder...` was chosen, which asks the window for its folder picker.
+    PickFolder,
 }
 
 /// Draw the pane, and act on what was pressed.
@@ -331,11 +335,52 @@ fn settings(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
     let mut button = parts.state.voice.button;
     let side = SIDE * scale;
     let foot = settings_foot(parts, look, area);
-    // `padding: 20px 20px 22px; gap: 22px`: the title row, the model, the context well and the switch that
-    // listens for "Sable" (`task-2290`).
-    let height =
-        (20.0 + 34.0 + 22.0 + 17.0 + 10.0 + 46.0 + 22.0 + 80.0 + 22.0 + 26.0 + 14.0 + 26.0 + 22.0)
-            * scale;
+    // **The folder an agent run as a program starts in** (`task-2270`), offered for such an agent only and never in
+    // a mirror, whose folder is the ticket's.
+    let folder_rows = match (parts.mirror.is_none(), parts.configuration.provider()) {
+        (true, Some(provider)) if provider.is_a_program() => {
+            let known: Vec<std::path::PathBuf> = parts
+                .project
+                .map(std::path::Path::to_path_buf)
+                .into_iter()
+                .chain(parts.recent_projects.iter().cloned())
+                .collect();
+            let chosen = parts.configuration.folder.as_ref().map(|one| one.display().to_string());
+            let rows = crate::services::folder_choice::rows(chosen.as_deref(), &known);
+            let default = match parts.project {
+                Some(project) => format!(
+                    "This window's project ({})",
+                    crate::services::folder_choice::named(&project.display().to_string())
+                ),
+                None => "The folder this window has open".to_owned(),
+            };
+            let words = crate::services::folder_choice::said(&rows, &default);
+            let selected = crate::services::folder_choice::selected(&rows, chosen.as_deref());
+            Some((rows, words, selected))
+        }
+        _ => None,
+    };
+    let folder_height = match folder_rows.is_some() {
+        true => 17.0 + 10.0 + 38.0 + 22.0,
+        false => 0.0,
+    };
+    // `padding: 20px 20px 22px; gap: 22px`: the title row, the model, the folder, the context well and the switch
+    // that listens for "Sable" (`task-2290`).
+    let height = (20.0
+        + 34.0
+        + 22.0
+        + 17.0
+        + 10.0
+        + 46.0
+        + 22.0
+        + folder_height
+        + 80.0
+        + 22.0
+        + 26.0
+        + 14.0
+        + 26.0
+        + 22.0)
+        * scale;
     // **Under the header, where the gear that opens it is** (`task-2261`), and not past the prompt box
     // while it fits above it. When it does not, which a pane zoomed to 1.6 in a window 900 points tall
     // is, it reaches over the prompt box rather than leaving its last switch drawn below its own bottom
@@ -441,6 +486,36 @@ fn settings(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
                     }
                 }
                 top = switch.bottom() + rux.z(22.0);
+                // The folder the agent starts in. `task-2270`.
+                if let Some((rows, words, selected)) = &folder_rows {
+                    let label = rux.text(rux.zs(rux::Style::sans(12.0)), "Folder", theme.ink.i500);
+                    let label_height = label.size().y;
+                    rux.painter().galley(Pos2::new(inner.left(), top), label, theme.ink.i500);
+                    top += label_height + rux.z(10.0);
+                    let chip = Rect::from_min_size(
+                        Pos2::new(inner.left(), top),
+                        Vec2::new(inner.width(), rux.z(38.0)),
+                    );
+                    let outcome = rux::components::Select::new(words, *selected)
+                        .label("Folder")
+                        .chip(rux::components::SelectLead::Mark(rux::Icon::Folder, theme.ink.i400))
+                        .show(rux, chip, &mut parts.state.folder_select);
+                    if let Some(index) = outcome.chosen.filter(|index| Some(*index) != *selected) {
+                        parts.state.folder_select.open = false;
+                        match &rows[index] {
+                            crate::services::folder_choice::Row::Default => {
+                                acts.push(Act::ChooseFolder(None))
+                            }
+                            crate::services::folder_choice::Row::Folder(folder) => {
+                                acts.push(Act::ChooseFolder(Some(std::path::PathBuf::from(folder))))
+                            }
+                            crate::services::folder_choice::Row::Other => {
+                                acts.push(Act::PickFolder)
+                            }
+                        }
+                    }
+                    top = chip.bottom() + rux.z(22.0);
+                }
                 // The context used.
                 let well = Rect::from_min_size(
                     Pos2::new(inner.left(), top),
@@ -1425,6 +1500,17 @@ fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {
                     requests.push(Request::Message(problem));
                 }
             }
+            Act::ChooseFolder(folder) => {
+                chat.configuration_mut().folder = folder;
+                if let Err(problem) = chat.save_the_configuration() {
+                    requests.push(Request::Message(problem));
+                }
+            }
+            Act::PickFolder => requests.push(Request::PickFolder {
+                id: format!("{}gear", crate::services::agent_chat::PICK_FOLDER),
+                title: "The folder the agent starts in".to_owned(),
+                start: chat.configuration().folder.clone(),
+            }),
             Act::Choose(name) => {
                 if let Err(problem) = chat.configuration_mut().choose(&name) {
                     requests.push(Request::Message(problem));

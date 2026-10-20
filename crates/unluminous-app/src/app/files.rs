@@ -247,6 +247,12 @@ pub struct OpenFile {
     /// The notebook, when this tab is a Jupyter notebook. Its document holds the cells as text; this
     /// holds what is not text — outputs, what has run, the kernel. See `app::notebook`. `task-2220`.
     pub notebook: Option<Box<crate::app::notebook::NotebookTab>>,
+    /// The file and the reason, when this tab is a file Unluminous cannot show (`task-2270`).
+    ///
+    /// *"ensure we can open nearly all file types. If not renderable, just open a tab that says 'Unable to
+    /// render this type of file'."* The tab's document is empty and has **no path**, so nothing that saves a
+    /// document can ever write it over the file; [`Self::file_on_disk`] and [`Self::name`] answer from here.
+    pub unrenderable: Option<Unrenderable>,
     /// The plugin, when this tab is a plugin's own rather than a file.
     ///
     /// The picture precedent, followed exactly. A tab is a `Document`, and a tab that holds something
@@ -305,6 +311,16 @@ pub struct OpenFile {
     pub disk: Option<DiskStamp>,
 }
 
+/// A file that exists and that Unluminous cannot show. See [`OpenFile::unrenderable`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct Unrenderable {
+    pub path: PathBuf,
+    /// Why it cannot be shown, in a sentence: it is not text, or it is too large.
+    pub reason: String,
+    /// How large it is, when it could be measured.
+    pub size: Option<u64>,
+}
+
 impl OpenFile {
     pub fn new(document: Document) -> Self {
         Self {
@@ -326,6 +342,7 @@ impl OpenFile {
             picture: None,
             notebook: None,
             plugin: None,
+            unrenderable: None,
             marked_revision: None,
             breakpoints_at: None,
             coloured_revision: None,
@@ -367,6 +384,19 @@ impl OpenFile {
         Self { picture: Some(Picture::open(path)), ..Self::new(Document::at_path(path)) }
     }
 
+    /// A tab for a file Unluminous cannot show, saying why. `task-2270`.
+    pub fn unrenderable(path: &Path, reason: &str) -> Self {
+        let size = std::fs::metadata(path).ok().map(|metadata| metadata.len());
+        Self {
+            unrenderable: Some(Unrenderable {
+                path: path.to_path_buf(),
+                reason: reason.to_owned(),
+                size,
+            }),
+            ..Self::new(Document::new())
+        }
+    }
+
     /// A permanent rendered browser tab whose native view is owned by the window's browser host.
     pub fn browser(tab: crate::services::browser::BrowserTab) -> Self {
         Self { browser: Some(tab), ..Self::new(Document::new()) }
@@ -392,6 +422,13 @@ impl OpenFile {
         }
         if let Some(browser) = &self.browser {
             return browser.name();
+        }
+        if let Some(file) = &self.unrenderable {
+            return file
+                .path
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_else(|| "file".to_owned());
         }
         self.document
             .path()
@@ -427,7 +464,10 @@ impl OpenFile {
     /// to find, so this is the question asked of the tab rather than of the one kind that was
     /// reported.
     pub fn is_a_document(&self) -> bool {
-        self.browser.is_none() && self.picture.is_none() && self.plugin.is_none()
+        self.browser.is_none()
+            && self.picture.is_none()
+            && self.plugin.is_none()
+            && self.unrenderable.is_none()
     }
 
     /// The file on disk this tab is about, which is not always its document's own path.
@@ -444,6 +484,9 @@ impl OpenFile {
     pub fn file_on_disk(&self) -> Option<&Path> {
         if let Some(browser) = &self.browser {
             return browser.location.source_path();
+        }
+        if let Some(file) = &self.unrenderable {
+            return Some(&file.path);
         }
         self.document.path()
     }
@@ -609,7 +652,10 @@ impl OpenFiles {
 
     /// Which tab holds `path`, if any.
     pub fn index_of(&self, path: &Path) -> Option<usize> {
-        self.files.iter().position(|file| file.path() == Some(path))
+        self.files.iter().position(|file| {
+            file.path() == Some(path)
+                || file.unrenderable.as_ref().is_some_and(|unrenderable| unrenderable.path == path)
+        })
     }
 
     /// The tab at `index`. Panics past the end, as `active` does: an index here always came from
@@ -1294,6 +1340,7 @@ impl OpenFiles {
                 file.transient = !permanent;
                 file.picture = None;
                 file.browser = None;
+                file.unrenderable = None;
                 // A notebook's kernel goes with its tab: dropping it shuts the kernel down.
                 file.notebook = None;
                 file.forget_git();
@@ -1358,6 +1405,7 @@ impl OpenFiles {
                 && file.path().is_none()
                 && !file.is_browser()
                 && file.plugin.is_none()
+                && file.unrenderable.is_none()
                 && file.document.text().is_empty()
                 && !file.document.is_modified()
         });

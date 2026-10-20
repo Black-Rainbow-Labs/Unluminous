@@ -458,19 +458,11 @@ fn header_row(
         }
     });
 
-    // What the board last said, in the strip under the row, where there is always room for it.
-    if !board.message().is_empty() {
-        let painter = ui.painter();
-        let said = painter.crisp_layout_no_wrap(
-            board.message().to_owned(),
-            egui::FontId::proportional(11.0 * scale),
-            look.palette.text_dim,
-        );
-        let at = Pos2::new(row.max.x - said.size().x, row.max.y + 2.0 * scale);
-        if at.x > row.min.x {
-            painter.crisp_galley(at, said, look.palette.text_dim);
-        }
-    }
+    // **What the board last said is not drawn under the header** (`task-2270`): *"When I add a new task, a label
+    // shows up under Add Task button "task-23 created". I don't want that."* A ticket being made is already on
+    // the screen as its card and its modal, so the line said nothing a person could not see. A failure still
+    // reaches them as a toast through `Request::Message`, and `plugins view agent-tasks` still reports the
+    // message for an agent.
     if chatting {
         board.supervisor_open = !board.supervisor_open;
     }

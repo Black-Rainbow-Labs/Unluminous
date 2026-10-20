@@ -5111,3 +5111,61 @@ fn a_ticket_that_was_not_created_says_why_in_a_notice_that_goes_by_itself() {
     steady(&mut harness);
     assert!(harness.state().toasts.is_empty(), "the cross dismissed it");
 }
+
+/// `task-2270`: *"In settings, allow me to select the project folder for the directory the agent chat uses ...
+/// Also allow me to select "Other" and see a folder picker where I can select the folder."* The `Folder` row on
+/// `Settings -> Agent-Chat` offers the window's project, and `Other folder...` opens the window's folder picker,
+/// whose answer becomes the folder the agent starts in. `plugins run agent-chat folder project` puts it back.
+#[test]
+fn the_chats_folder_is_the_project_or_any_folder_the_picker_chooses() {
+    agents_on_the_path();
+    let mut harness = harness("");
+    harness.state_mut().folder_picker = |_title, start| Some(start.join("chapters"));
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    did(&mut harness, "action run settings");
+    steady(&mut harness);
+    harness.get_all_by_label("Agent-Chat").last().expect("the Settings row").click();
+    steady(&mut harness);
+    harness.get_by_label("Folder").click();
+    steady(&mut harness);
+    harness.get_by_label("Other folder\u{2026}").click();
+    steady(&mut harness);
+    steady(&mut harness);
+    let said = did(&mut harness, "plugins run agent-chat folder");
+    let folder = said["folder"].as_str().expect("a folder").replace('\\', "/");
+    assert!(folder.ends_with("/chapters"), "the picker's folder is the agent's: {folder}");
+    did(&mut harness, "plugins run agent-chat folder project");
+    let said = did(&mut harness, "plugins run agent-chat folder");
+    assert!(said["chosen"].is_null(), "back to the project: {said}");
+    let folder = said["folder"].as_str().expect("the project").replace('\\', "/");
+    assert!(!folder.ends_with("/chapters"));
+}
+
+/// `task-2270`: the ticket modal's `Project` field ends with `Other folder...`, which opens the window's folder
+/// picker and writes the folder it answers with to the ticket. `plugins run agent-tasks project` is the agent's
+/// half, and `default` gives the ticket back to the board's default.
+#[test]
+fn a_tickets_project_can_be_any_folder_through_the_picker_or_the_command() {
+    let mut harness = harness("");
+    harness.state_mut().folder_picker = |_title, start| Some(start.join("drafts"));
+    did(&mut harness, "plugins pane agent-tasks/board --show");
+    did(&mut harness, "plugins run agent-tasks new-task Something to work on");
+    did(&mut harness, "plugins run agent-tasks close");
+    did(&mut harness, "plugins run agent-tasks open task-1");
+    steady(&mut harness);
+    harness.get_all_by_label("Project").last().expect("the ticket's Project field").click();
+    steady(&mut harness);
+    harness.get_by_label("Other folder\u{2026}").click();
+    steady(&mut harness);
+    steady(&mut harness);
+    let said = did(&mut harness, "plugins run agent-tasks project task-1");
+    let project = said["project"].as_str().expect("a project").replace('\\', "/");
+    assert!(project.ends_with("/drafts"), "the picker's folder is the ticket's: {project}");
+    let chapters = sample_folder().join("chapters");
+    did(&mut harness, &format!("plugins run agent-tasks project task-1 {}", chapters.display()));
+    let said = did(&mut harness, "plugins run agent-tasks project task-1");
+    assert!(said["project"].as_str().expect("a project").replace('\\', "/").ends_with("/chapters"));
+    did(&mut harness, "plugins run agent-tasks project task-1 default");
+    let said = did(&mut harness, "plugins run agent-tasks project task-1");
+    assert!(said["project"].is_null(), "back to the board's default: {said}");
+}

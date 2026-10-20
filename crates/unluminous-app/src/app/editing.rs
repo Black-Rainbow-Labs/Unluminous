@@ -596,6 +596,16 @@ impl UnluminousApp {
             }
             self.tab_menu = Some((where_, pane));
         }
+        // **The empty part of the strip has a menu of its own** (`task-2270`), and the pane it was opened on gets
+        // the keyboard first, so the new tab opens there.
+        if let Some(where_) = outcome.menu_on_the_empty_part {
+            if let Some(index) = self.files.showing_in(pane) {
+                self.show_tab(index);
+            }
+            self.focus = Focus::Editor;
+            took_the_keyboard = true;
+            self.strip_menu = Some(where_);
+        }
 
         // The editing area: the picture, the source, the preview, or both side by side.
         took_the_keyboard |= self.show_editing_area(ui, editor_rect, focused);
@@ -654,6 +664,13 @@ impl UnluminousApp {
                 self.editor_area = area;
             }
             return self.show_picture(ui, area);
+        }
+        if let Some(file) = self.files.active().unrenderable.clone() {
+            if focused {
+                self.editor_area = area;
+            }
+            self.show_an_unrenderable_file(ui, area, &file);
+            return false;
         }
         // A notebook is a document with a toolbar over it and its variables beside it. `task-2220`.
         if self.files.active().notebook.is_some() {

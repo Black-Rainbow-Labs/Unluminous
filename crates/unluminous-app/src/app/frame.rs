@@ -259,6 +259,7 @@ impl UnluminousApp {
         // painted and therefore in the next screenshot.
         self.pump_control(ui.ctx());
         crate::services::frame_trace::phase("control");
+        self.open_what_the_system_handed_over(ui.ctx());
         self.ask_git_about_the_open_file();
         crate::services::frame_trace::phase("git");
         // Everything the adapter has said since the last frame, taken beside git's own replies
@@ -1142,6 +1143,19 @@ impl UnluminousApp {
             }
         }
 
+        // The empty part of a tab strip's own menu. `task-2270`.
+        if let Some(at) = self.strip_menu {
+            let mut entries = actions::tab_strip_menu();
+            crate::services::keymap::apply_entries(&mut entries, &self.keymap);
+            let outcome = context_menu::show(ui, "tab-strip", at, &entries);
+            if let Some(chosen) = outcome.chosen {
+                *action = Some(chosen);
+            }
+            if outcome.close {
+                self.strip_menu = None;
+            }
+        }
+
         // A notebook cell's own menu, from the three dots on the cell. `task-2220`.
         if let Some(at) = self.notebook_menu {
             let entries = crate::app::notebook_actions::cell_menu();
@@ -1540,6 +1554,9 @@ impl UnluminousApp {
             }
         } else if self.files.active().is_a_plugin() {
             "Plugin"
+        } else if self.files.active().unrenderable.is_some() {
+            // A file Unluminous cannot show, which is not plain text whatever its empty document reads as.
+            "Not shown"
         } else {
             file_kind::kind_name(self.document().path())
         };
@@ -2546,6 +2563,7 @@ impl UnluminousApp {
         }
         // Which browser pages are told they are talking to, before any view is made. `task-2255`.
         self.browser.set_agent(self.settings.browser_agent);
+        self.browser.set_links_open_new_tabs(self.settings.browser_links.opens_new_tabs());
         let on_the_canvas = self.realm.live.browsers().count();
         if self.files.iter().all(|file| file.browser.is_none())
             && on_the_canvas == 0
@@ -2585,9 +2603,11 @@ impl UnluminousApp {
         // platform is asked instead: the page holds the keyboard and the pointer is over it, so somebody
         // clicked into it, and the tab or node it belongs to becomes the one with the keyboard.
         let mut clicked_into = None;
-        if !self.page_was_pressed && self.browser.the_page_was_clicked_into() {
-            self.page_was_pressed = true;
-            clicked_into = self.browser.showing();
+        if !self.page_was_pressed {
+            if let Some(id) = self.browser.the_page_clicked_into() {
+                self.page_was_pressed = true;
+                clicked_into = Some(id);
+            }
         }
         if let Some(id) = clicked_into {
             // egui never saw the click, so nothing it has open knows it was clicked outside of.
@@ -2622,8 +2642,9 @@ impl UnluminousApp {
             self.browser.cancel_picking();
         }
         // **A picture of the page the view is about to leave**, taken before the view is sent anywhere else, so
-        // switching back to that tab shows its page at once while the page loads again. `task-2255`.
-        let leaving = self.browser.showing();
+        // switching back to that tab shows its page at once while the page loads again. `task-2255`. Only while a
+        // window keeps to one view: with a view a page, nothing leaves a page (`task-2270`).
+        let leaving = self.browser.showing().filter(|_| self.browser.one_view());
         let going_to =
             crate::services::browser::going_to(&placements, leaving).map(|placement| placement.id);
         if let (Some(leaving), Some(going_to)) = (leaving, going_to) {
@@ -2646,15 +2667,18 @@ impl UnluminousApp {
                 }
             }
         }
-        let settled = self.browser.reconcile(&tabs, &placements, &occluders, ctx.clone());
-        if let Some(id) = settled.pointed_at {
-            self.page_stills.switched_to(id);
+        // A design's links stay in the design, whatever `browser.links` says. `task-2270`.
+        let links_stay: Vec<u64> = self.design_tabs.values().map(|tab| tab.id).collect();
+        let settled =
+            self.browser.reconcile(&tabs, &placements, &occluders, ctx.clone(), &links_stay);
+        for id in &settled.pointed_at {
+            self.page_stills.switched_to(*id);
         }
         // The picker's answer is asked for on a frame, so while it is open the window keeps drawing.
         // The same for a page the Designer keeps a script in: its answers are asked for on a frame. `task-2254`.
         if self.browser.picking().is_some()
             || self.pick_when_showing.is_some()
-            || self.browser.watching().is_some_and(|id| self.browser.showing() == Some(id))
+            || self.browser.watching().is_some_and(|id| self.browser.is_live(id))
         {
             ctx.request_repaint_after(std::time::Duration::from_millis(150));
         }
@@ -2662,7 +2686,7 @@ impl UnluminousApp {
         // Unluminous photographs holds one and no state in the window said whether it was drawing —
         // which is why `task-2009`'s blanked page had to be found by looking at the screen.
         self.page_is_covered = settled.covered;
-        if let Some(id) = settled.pointed_at {
+        for id in settled.pointed_at {
             self.change_browser_tab(id, |tab| tab.pointed_at());
             // **A browser node's own zoom is applied again when the one view arrives at its tab**, and
             // since `task-2004` it is applied by the placement rather than here. A window has one native

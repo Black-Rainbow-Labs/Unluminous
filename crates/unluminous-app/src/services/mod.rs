@@ -37,6 +37,7 @@ pub mod file_move;
 pub mod file_search;
 pub mod file_tree;
 pub mod find;
+pub mod folder_choice;
 pub mod frame_trace;
 pub mod graphics_memory;
 pub mod icons;
@@ -44,6 +45,7 @@ pub mod ignore;
 pub mod imports;
 pub mod input;
 pub mod issue_report;
+pub mod opened_by_the_system;
 // Which chord each menu entry is on: a preset and the person's own bindings. `task-2286`.
 pub mod keymap;
 pub mod launcher;

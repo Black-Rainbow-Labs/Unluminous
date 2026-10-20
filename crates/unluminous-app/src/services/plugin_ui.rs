@@ -509,6 +509,13 @@ pub enum Request {
     /// selection. The answer is `{ "media": …, "name": …, "data": <base64> }`, or a refusal saying
     /// there was no picture on it.
     ClipboardPicture { id: String },
+    /// The system's folder picker, opened by the window, answered through [`UiProvider::answered`] as
+    /// `{ "folder": <path> }`, or `{ "folder": null }` when the person cancelled (`task-2270`).
+    ///
+    /// **The window owns the picker** for the reason it owns the clipboard: `UnluminousApp::folder_picker` is
+    /// the one seam a test replaces, and a plugin that opened the platform's own dialog itself could not be
+    /// tested. `start` is the folder the picker opens in, the project when it is `None`.
+    PickFolder { id: String, title: String, start: Option<PathBuf> },
 }
 
 /// What a command answered.

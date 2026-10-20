@@ -1573,9 +1573,16 @@ impl UnluminousApp {
         }
     }
 
-    /// `note view`: show a note as its source, beside its preview, or as its preview. `task-2202`.
+    /// `note view`: show a note, or the Markdown or Mermaid tab a File Editor node is showing, as its source,
+    /// beside its preview, or as its preview. `task-2202`, `task-2270`.
     fn cli_realm_note(&mut self, request: &Request) -> Outcome {
-        let node = match self.a_reachable_node(request, "node", Kind::Note) {
+        let is_an_editor = self
+            .a_named_node(request, "node")
+            .ok()
+            .and_then(|node| self.realm.realm.node(node))
+            .is_some_and(|found| found.kind() == Kind::Editor);
+        let kind = if is_an_editor { Kind::Editor } else { Kind::Note };
+        let node = match self.a_reachable_node(request, "node", kind) {
             Ok(node) => node,
             Err(outcome) => return *outcome,
         };
@@ -1585,7 +1592,7 @@ impl UnluminousApp {
         else {
             return no(request, code::USAGE, "Say raw, side or preview.");
         };
-        match self.set_a_notes_view(node, view) {
+        match self.set_a_nodes_view(node, view) {
             Ok(()) => ok(
                 request,
                 format!(

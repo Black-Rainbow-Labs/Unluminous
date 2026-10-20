@@ -7,7 +7,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 use std::time::{Duration, Instant};
@@ -27,6 +27,10 @@ pub enum BrowserLocation {
     Local { path: PathBuf, root: PathBuf },
     Remote { url: String },
 }
+
+/// The address a new, empty browser tab is on, before anything has been typed into its address field.
+/// `task-2270`'s `New Browser Tab`.
+pub const BLANK: &str = "about:blank";
 
 impl BrowserLocation {
     /// Resolve a web address or HTML path against the project and validate it before a tab exists.
@@ -339,6 +343,9 @@ impl BrowserTab {
         if !self.title.trim().is_empty() {
             return self.title.clone();
         }
+        if self.current_url() == BLANK {
+            return "New Tab".to_owned();
+        }
         if let Some(path) = self.location.source_path() {
             return path
                 .file_name()
@@ -609,16 +616,35 @@ fn read_the_pick(id: u64, json: &str) -> Option<BrowserEvent> {
     }
 }
 
-/// The one native browser view a window owns, and the local roots its tabs read under.
+/// How many native views a window keeps, the hidden ones included (`task-2270`).
 ///
-/// **A window has at most one native view, however many rendered tabs are open**, and the view is
-/// pointed at whichever tab is showing. That is a platform limit found by measurement on
-/// `task-1756`, not a simplification: creating a second WebView2 controller while another view lives
-/// on the same thread blocks inside a nested Windows message pump on a completion that never
-/// arrives, and the window never draws again — no crash, no error, no way back. It is also the
-/// cheaper answer. A tab costs its remembered state and nothing else, and the whole feature costs
-/// one browser: measured at 197 MB with no rendered tab open, 521 MB with one, and **521 MB with
-/// three**.
+/// A view that is not showing is kept so that switching back to its tab shows the page at once rather than
+/// loading it again; past this many, the one hidden longest is dropped and made again when it is next shown.
+/// Measured on `task-1756`, a view costs about 330 MB with its engine processes, and hidden views at
+/// WebView2's low memory target cost a fraction of that.
+pub const MOST_LIVE_VIEWS: usize = 6;
+
+/// The script that makes a link a person clicks open in a new tab (`task-2270`).
+///
+/// *"Click on page links should open new tabs by default."* It listens for a plain left click on a link to
+/// another page and asks the browser for a new window with `window.open`, which the view's new window handler
+/// turns into [`BrowserEvent::OpenRequested`]. **It gives the page nothing to call**: it uses the browser's own
+/// new window mechanism, so the rule that a page has no host bridge stands. A click with a modifier, a link to a
+/// place on the same page, a `download` link and an address that is not a page are left to the page.
+pub const LINKS_IN_NEW_TABS: &str = include_str!("browser_links.js");
+
+/// The native browser views a window owns, and the local roots its tabs read under.
+///
+/// **One native view a rendered tab, since `task-2270`.** *"we need to be able to show more than one window at a
+/// time. right now only one web page renders at a time."* Until then a window had one view, pointed at whichever
+/// tab was showing, because `task-1756` measured a second WebView2 controller hanging the window in a nested
+/// message pump. That measurement was taken while views were still made inside the egui pass; `task-1756` then
+/// moved the making to before the pass, and the two view case was not measured again. `task-2270` measured it with
+/// views made before the pass, one a frame, and two editing panes and three browser nodes all rendered at once with
+/// no hang: `tasks/task-2270-unluminous-issues-v20-tdd.md` §5 has the numbers.
+///
+/// `UNLUMINOUS_BROWSER_VIEWS=one` keeps a window to one view at a time, which is what it was before, so the two
+/// can be compared on one build.
 pub struct BrowserHost {
     next_id: u64,
     profile: Option<PathBuf>,
@@ -633,18 +659,23 @@ pub struct BrowserHost {
     /// Whether an answer has been asked for and not yet given, so two are never in flight.
     asking: Arc<std::sync::atomic::AtomicBool>,
     last_ask: Instant,
-    /// The tab a [`Watch`] is kept on, and the script. Only the tab the view is pointed at is asked.
+    /// The tab a [`Watch`] is kept on, and the script.
     watching: Option<(u64, Watch)>,
     /// Whether the watch's script has to be put in the page again, because the page just loaded.
     install_due: bool,
     /// Whether the watch has asked a question and not had its answer, with when it asked.
     watch_asking: Arc<std::sync::atomic::AtomicBool>,
     watch_asked_at: Instant,
-    /// What the page's own right click menu offers. See [`PageMenu`].
-    menu: Arc<Mutex<PageMenu>>,
+    /// What each page's own right click menu offers, by tab. See [`PageMenu`].
+    menus: Arc<Mutex<HashMap<u64, PageMenu>>>,
     resources: LocalResourceStore,
-    /// The tab the one native view is pointed at, shared with the engine's own callbacks.
-    showing: Arc<AtomicU64>,
+    /// The page with the keyboard, or the one used last: what the picker, the page's menu and a click into a
+    /// page are about. `0` is none.
+    showing: u64,
+    /// Whether a window keeps to one view at a time. See [`BrowserHost`].
+    one_view: bool,
+    /// Whether a link a person clicks opens a new tab. `browser.links`. `task-2270`.
+    links_open_new_tabs: bool,
     sender: std::sync::mpsc::Sender<BrowserEvent>,
     receiver: std::sync::mpsc::Receiver<BrowserEvent>,
     native: native::NativeHost,
@@ -670,9 +701,11 @@ impl BrowserHost {
             install_due: false,
             watch_asking: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             watch_asked_at: Instant::now(),
-            menu: Arc::new(Mutex::new(PageMenu::default())),
+            menus: Arc::new(Mutex::new(HashMap::new())),
             resources: LocalResourceStore::new(),
-            showing: Arc::new(AtomicU64::new(0)),
+            showing: 0,
+            one_view: std::env::var("UNLUMINOUS_BROWSER_VIEWS").is_ok_and(|views| views == "one"),
+            links_open_new_tabs: true,
             sender,
             receiver,
             native: native::NativeHost::new(),
@@ -683,9 +716,9 @@ impl BrowserHost {
 
     /// Say which browser pages are told they are talking to.
     ///
-    /// The engine takes its `User-Agent` when the view is made, so a change drops the view, and the next frame
-    /// makes it again with the new one and puts the page that was showing back in it. Comparing the setting is
-    /// all a frame that changed nothing costs.
+    /// The engine takes its `User-Agent` when a view is made, so a change drops the views, and the next frames
+    /// make them again with the new one and put each page back in its own. Comparing the setting is all a frame
+    /// that changed nothing costs.
     pub fn set_agent(&mut self, agent: crate::settings::BrowserAgent) {
         if agent == self.agent {
             return;
@@ -694,13 +727,31 @@ impl BrowserHost {
         self.native.set_user_agent(agent.header());
         if self.native.has_view() {
             self.native.forget();
-            self.showing.store(0, Ordering::Relaxed);
+            self.showing = 0;
         }
     }
 
     /// Which browser pages are told they are talking to.
     pub fn agent(&self) -> crate::settings::BrowserAgent {
         self.agent
+    }
+
+    /// Say whether a link a person clicks opens in a new tab. A view takes it when it is made, so a change
+    /// drops the views, the way a change of `User-Agent` does. `task-2270`.
+    pub fn set_links_open_new_tabs(&mut self, new_tabs: bool) {
+        if new_tabs == self.links_open_new_tabs {
+            return;
+        }
+        self.links_open_new_tabs = new_tabs;
+        if self.native.has_view() {
+            self.native.forget();
+            self.showing = 0;
+        }
+    }
+
+    /// Whether a window keeps to one view at a time, which `UNLUMINOUS_BROWSER_VIEWS=one` asks for.
+    pub fn one_view(&self) -> bool {
+        self.one_view
     }
 
     /// Keep browser cookies and caches in Unluminous's per-user settings folder.
@@ -712,17 +763,16 @@ impl BrowserHost {
         }
     }
 
-    /// Say what the page's own right click menu offers for the page that is showing.
-    pub fn set_page_menu(&self, menu: PageMenu) {
-        if let Ok(mut held) = self.menu.lock() {
-            *held = menu;
+    /// Say what tab `id`'s page offers on its own right click menu.
+    pub fn set_page_menu(&self, id: u64, menu: PageMenu) {
+        if let Ok(mut held) = self.menus.lock() {
+            held.insert(id, menu);
         }
     }
 
-    /// Open the element picker in the page tab `id` is showing, starting at a point in the page's own pixels.
+    /// Open the element picker in tab `id`'s page, starting at a point in the page's own pixels.
     pub fn start_picking(&mut self, id: u64, at: Option<(f64, f64)>) -> Result<(), String> {
-        self.for_the_showing_tab(id)?;
-        self.native.evaluate(&start_the_picker(at))?;
+        self.native.evaluate(id, &start_the_picker(at))?;
         if let Ok(mut picking) = self.picking.lock() {
             *picking = Some(id);
         }
@@ -739,11 +789,9 @@ impl BrowserHost {
     /// Put the picker away without choosing anything.
     pub fn cancel_picking(&mut self) {
         let Some(id) = self.picking() else { return };
-        if self.showing() == Some(id) {
-            let _ = self
-                .native
-                .evaluate("window.__unluminousPicker && window.__unluminousPicker.cancel();");
-        }
+        let _ = self
+            .native
+            .evaluate(id, "window.__unluminousPicker && window.__unluminousPicker.cancel();");
         if let Ok(mut picking) = self.picking.lock() {
             *picking = None;
         }
@@ -786,13 +834,13 @@ impl BrowserHost {
     /// seconds rather than silencing the watch for good.
     fn ask_the_watch(&mut self) {
         let Some(id) = self.watching() else { return };
-        if self.showing() != Some(id) || !self.native.has_view() {
+        if !self.native.has_view_for(id) {
             return;
         }
         if self.install_due {
             let install = self.watching.as_ref().map(|(_, watch)| watch.install.clone());
             if let Some(install) = install {
-                if self.native.evaluate(&install).is_ok() {
+                if self.native.evaluate(id, &install).is_ok() {
                     self.install_due = false;
                 }
             }
@@ -806,7 +854,7 @@ impl BrowserHost {
         self.watch_asked_at = Instant::now();
         let take = self.watching.as_ref().map(|(_, watch)| watch.take.clone()).unwrap_or_default();
         let (sender, asking) = (self.sender.clone(), self.watch_asking.clone());
-        let asked = self.native.evaluate_with_callback(&take, move |json| {
+        let asked = self.native.evaluate_with_callback(id, &take, move |json| {
             asking.store(false, Ordering::Relaxed);
             if json.contains("\"kind\"") {
                 let _ = sender.send(BrowserEvent::Reported { id, json });
@@ -817,23 +865,21 @@ impl BrowserHost {
         }
     }
 
-    /// Show only the element `selector` finds, in the page tab `id` is showing.
+    /// Show only the element `selector` finds, in tab `id`'s page.
     pub fn pin(&self, id: u64, selector: &str) -> Result<(), String> {
-        self.for_the_showing_tab(id)?;
-        self.native.evaluate(&pin_script(selector))
+        self.native.evaluate(id, &pin_script(selector))
     }
 
     /// Show the whole page again.
     pub fn unpin(&self, id: u64) -> Result<(), String> {
-        self.for_the_showing_tab(id)?;
-        self.native.evaluate(UNPIN_SCRIPT)
+        self.native.evaluate(id, UNPIN_SCRIPT)
     }
 
     /// Ask the picker for its answer, at most once every [`PICK_POLL`] and never twice at once.
     fn ask_the_picker(&mut self) {
         let Some(id) = self.picking() else { return };
-        if self.showing() != Some(id) {
-            // The view went to another tab, so the page the picker was on is not there to answer.
+        if !self.native.has_view_for(id) {
+            // The page the picker was on has no view any more, so it is not there to answer.
             if let Ok(mut picking) = self.picking.lock() {
                 *picking = None;
             }
@@ -846,7 +892,7 @@ impl BrowserHost {
         self.last_ask = Instant::now();
         let (sender, picking, asking) =
             (self.sender.clone(), self.picking.clone(), self.asking.clone());
-        let asked = self.native.evaluate_with_callback(TAKE_THE_PICK, move |json| {
+        let asked = self.native.evaluate_with_callback(id, TAKE_THE_PICK, move |json| {
             asking.store(false, Ordering::Relaxed);
             if let Some(event) = read_the_pick(id, &json) {
                 if let Ok(mut open) = picking.lock() {
@@ -908,15 +954,20 @@ impl BrowserHost {
         self.native.page_holds_the_keyboard()
     }
 
-    /// Whether somebody has clicked into the page: it holds the operating system's keyboard and the pointer
+    /// The tab whose page somebody has clicked into: it holds the operating system's keyboard and the pointer
     /// is over it. See `UnluminousApp::settle_the_native_views_before_the_pass`. `task-2255`.
-    pub fn the_page_was_clicked_into(&self) -> bool {
-        self.native.page_holds_the_keyboard() && self.native.pointer_is_over_the_page()
+    pub fn the_page_clicked_into(&self) -> Option<u64> {
+        self.native.the_page_clicked_into()
     }
 
-    /// Whether the native view exists, which is what decides if there is anything to settle.
+    /// Whether any native view exists, which is what decides if there is anything to settle.
     pub fn has_views(&self) -> bool {
         self.native.has_view()
+    }
+
+    /// How many native views there are, the hidden ones included, which `browser status` reports.
+    pub fn view_count(&self) -> usize {
+        self.native.count()
     }
 
     /// Remember the window a child view is created inside, which is the one thing reconciling needs
@@ -925,12 +976,24 @@ impl BrowserHost {
         self.native.remember_window(frame);
     }
 
-    /// The tab the native view is pointed at, which is the only one that can be driven.
+    /// The page with the keyboard, or the one used last, which is what the picker and the page's own menu are
+    /// about.
     pub fn showing(&self) -> Option<u64> {
-        match self.showing.load(Ordering::Relaxed) {
+        match self.showing {
             0 => None,
             id => Some(id),
         }
+    }
+
+    /// Whether tab `id`'s page has a native view of its own, which is what a command that drives the page needs.
+    pub fn is_live(&self, id: u64) -> bool {
+        self.native.has_view_for(id)
+    }
+
+    /// Whether tab `id`'s page is drawn live where it is placed, rather than as a picture or a sentence. Every
+    /// placed page is, unless the window keeps to one view, and then only the one showing is.
+    pub fn renders(&self, id: u64) -> bool {
+        !self.one_view || self.showing().is_none_or(|showing| showing == id)
     }
 
     /// The videos the realm's video nodes play. `task-2202`.
@@ -938,14 +1001,9 @@ impl BrowserHost {
         self.resources.media()
     }
 
-    /// Run a script in the page the native view is showing, when it is showing tab `id`. Refused otherwise,
-    /// because a script meant for one page must not run in another. `task-2202`: how `realm play` reaches a
-    /// video that is showing.
+    /// Run a script in tab `id`'s page. `task-2202`: how `realm play` reaches a video.
     pub fn evaluate(&self, id: u64, script: &str) -> Result<(), String> {
-        if self.showing() != Some(id) {
-            return Err("That page is not the one showing.".to_owned());
-        }
-        self.native.evaluate(script)
+        self.native.evaluate(id, script)
     }
 
     /// Allocate a stable id and register any local root before the page can request an asset.
@@ -958,70 +1016,91 @@ impl BrowserHost {
         BrowserTab::new(id, location)
     }
 
-    /// Release everything local that belonged to a closed tab, and the view once none are left.
+    /// Release everything that belonged to a closed tab: its local root, its watch, its menu and its view.
     pub fn close_tab(&mut self, id: u64) {
         self.resources.unregister(id);
         self.watch(id, None);
+        self.native.forget_one(id);
+        if let Ok(mut menus) = self.menus.lock() {
+            menus.remove(&id);
+        }
         if self.showing() == Some(id) {
-            self.showing.store(0, Ordering::Relaxed);
+            self.showing = 0;
         }
     }
 
-    /// Move the view that is showing to where this frame drew its page, at the end of the frame.
+    /// The placements that get a view this frame: every one, or only the one chosen when the window keeps to
+    /// one view. A tab drawn twice in one frame is placed where it was drawn last.
+    fn the_pages_to_show<'a>(
+        &self,
+        placements: &'a [BrowserPlacement],
+        occluders: &[egui::Rect],
+    ) -> Vec<&'a BrowserPlacement> {
+        if self.one_view {
+            return choose(placements, occluders, CAN_CUT_A_PAGE, self.showing())
+                .into_iter()
+                .collect();
+        }
+        let mut shown: Vec<&BrowserPlacement> = Vec::with_capacity(placements.len());
+        for placement in placements {
+            shown.retain(|earlier| earlier.id != placement.id);
+            shown.push(placement);
+        }
+        shown
+    }
+
+    /// Move every view to where this frame drew its page, at the end of the frame.
     ///
     /// `task-2207`: *"Web browser node contents dont zoom at the same time as everything else. seems to be
-    /// delayed in catching up."* [`Self::reconcile`] runs before the egui pass and so places the view where
+    /// delayed in catching up."* [`Self::reconcile`] runs before the egui pass and so places a view where
     /// the **previous** frame drew its node: during a pan or a zoom of the canvas the page was always one
     /// frame behind the node around it, on top of whatever the engine itself takes to lay the page out at a
     /// new zoom. This moves it again once the frame that drew the node has finished, so the page and its
     /// node are presented together.
     ///
-    /// **Only a move.** Making the view and pointing it at another page stay before the pass, because making
-    /// one waits in a nested message pump that the pass must not be inside; moving one, zooming it and
-    /// setting its crop return at once. Nothing is done unless the placement chosen this frame is for the
-    /// page the view already shows.
+    /// **Only a move.** Making a view stays before the pass, because making one waits in a nested message
+    /// pump that the pass must not be inside; moving one, zooming it and setting its crop return at once.
     pub fn follow(&mut self, placements: &[BrowserPlacement], occluders: &[egui::Rect]) {
-        let Some(showing) = self.showing() else { return };
-        let Some(chosen) = choose(placements, occluders, CAN_CUT_A_PAGE, Some(showing)) else {
-            return;
-        };
-        if chosen.id == showing {
-            self.native.follow(chosen, occluders);
-        }
+        let shown = self.the_pages_to_show(placements, occluders);
+        self.native.follow(&shown, occluders);
     }
 
-    /// Create, point, place and hide the native view. Called before the egui pass, never inside it.
+    /// Make, place and hide the native views. Called before the egui pass, never inside it.
+    ///
+    /// `links_stay` are the tabs whose links stay where they are whatever `browser.links` says, which are the
+    /// Designer's pages.
     pub fn reconcile(
         &mut self,
         tabs: &[BrowserTab],
         placements: &[BrowserPlacement],
         occluders: &[egui::Rect],
         repaint: egui::Context,
+        links_stay: &[u64],
     ) -> Settled {
         let live: HashSet<u64> = tabs.iter().map(|tab| tab.id).collect();
         self.resources.retain(&live);
+        if let Ok(mut menus) = self.menus.lock() {
+            menus.retain(|id, _| live.contains(id));
+        }
         self.ask_the_picker();
         self.ask_the_watch();
         // Read once more just before the last view goes, because nothing will read them afterwards.
         self.keep_the_session(tabs.is_empty());
         if tabs.is_empty() {
             self.native.forget();
-            self.showing.store(0, Ordering::Relaxed);
+            self.showing = 0;
             return Settled::default();
         }
-        let chosen = choose(placements, occluders, CAN_CUT_A_PAGE, self.showing());
-        let Some(placement) = chosen else {
+        let chosen = going_to(placements, self.showing()).map(|placement| placement.id);
+        let shown = self.the_pages_to_show(placements, occluders);
+        if shown.is_empty() {
             self.native.hide();
             // **A page that is there and is not being drawn**, which is what `browser status` reports
             // and the only way anything can be asked whether a menu is covering one. `task-2009`.
             return Settled { covered: !placements.is_empty(), ..Settled::default() };
-        };
-        let covered = covers_any_of(occluders, placement.visible);
-        let Some(tab) = tabs.iter().find(|tab| tab.id == placement.id) else {
-            return Settled::default();
-        };
-        let was = self.showing();
-        // The session cookies are read from the file once, when there is about to be a view to give them to.
+        }
+        let covered = shown.iter().any(|placement| covers_any_of(occluders, placement.visible));
+        // The session cookies are read from the file once, when there is about to be a first view to give them to.
         let cookies = match (self.native.has_view(), &self.session) {
             (false, Some(session)) => session.read(),
             _ => Vec::new(),
@@ -1030,45 +1109,44 @@ impl BrowserHost {
             self.cookies_written = Some(cookies.clone());
             self.cookies_due = Some(Instant::now() + COOKIES_EVERY);
         }
-        let problems = self.native.settle(native::Settle {
-            tab,
-            placement,
-            showing: &self.showing,
+        let (problems, made) = self.native.settle(native::Settle {
+            tabs,
+            placements: &shown,
             cookies: &cookies,
-            menu: self.menu.clone(),
+            menus: self.menus.clone(),
             profile: self.profile.clone(),
             resources: self.resources.clone(),
             sender: self.sender.clone(),
             occluders,
             repaint,
+            most: if self.one_view { 1 } else { MOST_LIVE_VIEWS },
+            links_open_new_tabs: self.links_open_new_tabs,
+            links_stay,
         });
-        let pointed_at = (was != self.showing()).then(|| self.showing()).flatten();
-        Settled { problems, pointed_at, covered }
+        if let Some(chosen) = chosen {
+            self.showing = chosen;
+        }
+        Settled { problems, pointed_at: made, covered }
     }
 
-    /// Send the view to an address on behalf of the tab that is showing.
+    /// Send tab `id`'s view to an address on behalf of that tab.
     pub fn navigate(&self, id: u64, url: &str) -> Result<(), String> {
-        self.for_the_showing_tab(id)?;
-        self.native.navigate(url)
+        self.native.navigate(id, url)
     }
 
-    /// Reload the page the showing tab is on.
+    /// Reload tab `id`'s page.
     pub fn reload(&self, id: u64) -> Result<(), String> {
-        self.for_the_showing_tab(id)?;
-        self.native.reload()
+        self.native.reload(id)
     }
 
-    /// How big the tab that is showing draws its page.
-    ///
-    /// A window has one native view, so only the tab it is pointed at can be zoomed — which is why a
-    /// node's zoom is remembered in `realm::live::Live` and applied again when the view moves to it.
+    /// How big tab `id` draws its page. A tab whose view is still to be made takes the zoom from its placement
+    /// when it is made, which is why a node's zoom is remembered in `realm::live::Live`.
     pub fn zoom(&self, id: u64, factor: f64) -> Result<(), String> {
-        self.for_the_showing_tab(id)?;
-        self.native.zoom(factor)
+        self.native.zoom(id, factor)
     }
 
-    /// A picture of the page the tab is showing, as it is on the screen now, or `None` when the view is on
-    /// another tab or the platform cannot take one in the moment it is asked.
+    /// A picture of tab `id`'s page, as it is on the screen now, or `None` when it has no view or the platform
+    /// cannot take one in the moment it is asked.
     ///
     /// `task-2253`: *"In realm view, the web browser content adjusts as I zoom in and out, however, it's very
     /// jagged/jittery and isn't smooth. Often the content will be a bit smaller than the node as I'm zooming
@@ -1080,18 +1158,7 @@ impl BrowserHost {
     ///
     /// @param id - the tab
     pub fn photograph(&self, id: u64) -> Option<egui::ColorImage> {
-        if self.showing() != Some(id) {
-            return None;
-        }
-        self.native.photograph()
-    }
-
-    /// Refuse to drive a tab that the one native view is not pointed at.
-    fn for_the_showing_tab(&self, id: u64) -> Result<(), String> {
-        match self.showing() == Some(id) {
-            true => Ok(()),
-            false => Err("That rendered tab is not the one showing.".to_owned()),
-        }
+        self.native.photograph(id)
     }
 
     /// Drain browser callbacks at the top of a frame.
@@ -1120,13 +1187,13 @@ impl BrowserHost {
     }
 }
 
-/// What settling the one native view did this frame.
+/// What settling the native views did this frame.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Settled {
     /// Anything the platform could not do, against the tab that asked for it.
     pub problems: Vec<(u64, String)>,
-    /// The tab the view was pointed at, when that changed this frame.
-    pub pointed_at: Option<u64>,
+    /// The tabs whose view was made this frame, and is loading the tab's own address.
+    pub pointed_at: Vec<u64>,
     /// Whether there is a page to draw and an egui surface is over some of it.
     ///
     /// A page is a native child view, so nothing Unluminous photographs holds one and no state in the
@@ -1807,9 +1874,10 @@ fn local_url(id: u64, relative: &Path) -> String {
 #[cfg(any(windows, target_os = "macos"))]
 mod native {
     use std::borrow::Cow;
+    use std::collections::HashMap;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
     use wry::raw_window_handle::{HandleError, HasWindowHandle, RawWindowHandle, WindowHandle};
     use wry::{
@@ -1819,21 +1887,29 @@ mod native {
     use super::{BrowserEvent, BrowserPlacement, BrowserTab, LocalResourceStore, PageMenu};
     use crate::services::browser_session::KeptCookie;
 
-    /// Everything needed to settle the native view on one tab for one frame.
+    /// Everything needed to settle the native views for one frame.
     pub struct Settle<'a> {
-        pub tab: &'a BrowserTab,
-        pub placement: &'a BrowserPlacement,
+        /// Every rendered tab there is. A view whose tab is not among them is dropped.
+        pub tabs: &'a [BrowserTab],
+        /// The pages to show this frame, in the order they were drawn. A view whose tab has no placement here
+        /// is hidden, and kept.
+        pub placements: &'a [&'a BrowserPlacement],
         /// The session cookies to give a view that is about to be made, before its first page. `task-2203`.
         pub cookies: &'a [KeptCookie],
-        /// What the page's own right click menu offers. Read by the menu callback when the menu opens.
-        pub menu: std::sync::Arc<std::sync::Mutex<PageMenu>>,
-        /// What egui is drawing over the page this frame, in the window's own points.
+        /// What each page's own right click menu offers, by tab. Read by the menu callback when a menu opens.
+        pub menus: Arc<Mutex<HashMap<u64, PageMenu>>>,
+        /// What egui is drawing over the pages this frame, in the window's own points.
         pub occluders: &'a [egui::Rect],
-        pub showing: &'a Arc<AtomicU64>,
         pub profile: Option<PathBuf>,
         pub resources: LocalResourceStore,
         pub sender: std::sync::mpsc::Sender<BrowserEvent>,
         pub repaint: egui::Context,
+        /// How many views may be kept, the hidden ones included. See [`super::MOST_LIVE_VIEWS`].
+        pub most: usize,
+        /// Whether a link a person clicks opens in a new tab, and the tabs whose links stay where they are
+        /// whatever that says, which are the Designer's. `task-2270`.
+        pub links_open_new_tabs: bool,
+        pub links_stay: &'a [u64],
     }
 
     /// The window a child view is created inside, remembered by its handle.
@@ -1863,6 +1939,7 @@ mod native {
         over: Vec<egui::Rect>,
     }
 
+    /// One page's native child view, which belongs to one rendered tab for as long as it lives.
     struct NativeView {
         webview: WebView,
         bounds: Option<wry::Rect>,
@@ -1872,28 +1949,36 @@ mod native {
         clip: Option<Clip>,
         /// The zoom [`place`] last sent, so a frame that did not move it costs no call into the engine.
         zoom: Option<f64>,
+        /// The same zoom, shared with the page's right click menu so a point it reports in the view's own
+        /// units can be turned into the page's pixels. Stored as the bits of an `f64`.
+        zoom_bits: Arc<AtomicU64>,
         visible: bool,
         /// Whether the page holds the **operating system's** keyboard focus. See [`super::TheFocus`].
         has_the_focus: bool,
+        /// The frame this view was last placed on, so the one hidden longest goes first when there are too
+        /// many.
+        placed_at: u64,
+        /// The address a new view goes to once WebKit has stored the session cookies it was given.
+        #[cfg(target_os = "macos")]
+        first_page: Mutex<Option<cookies::FirstPage>>,
     }
 
     /// The platform objects, kept behind this module so the rest of Unluminous stays portable and testable.
+    ///
+    /// **One native view a rendered tab** (`task-2270`), made the first time the tab's page is placed and kept,
+    /// hidden at WebView2's low memory target, while the tab is not showing. See [`super::BrowserHost`] for
+    /// what was measured.
     pub struct NativeHost {
         context: Option<WebContext>,
-        view: Option<NativeView>,
+        views: HashMap<u64, NativeView>,
         parent: Option<Parent>,
-        /// The zoom the page was last given, shared with the menu callback so a point it reports in the
-        /// view's own units can be turned into the page's pixels. Stored as the bits of an `f64`.
-        zoom: Arc<AtomicU64>,
+        /// How many times the views have been settled, which is what [`NativeView::placed_at`] counts in.
+        frame: u64,
         /// The `User-Agent` a view is made with, or `None` for the engine's own.
         user_agent: Option<String>,
         /// The session cookies read by [`Self::ask_for_session_cookies`], until they are taken.
         #[cfg(windows)]
         answered: Option<Vec<KeptCookie>>,
-        /// The address a new view goes to once WebKit has stored the session cookies it was given.
-        /// Behind a lock because [`Self::navigate`] takes `&self` and a newer address replaces it.
-        #[cfg(target_os = "macos")]
-        first_page: std::sync::Mutex<Option<cookies::FirstPage>>,
         /// The read of the session cookies WebKit answers on a later turn of the run loop.
         #[cfg(target_os = "macos")]
         reading: cookies::Reading,
@@ -1904,14 +1989,12 @@ mod native {
         pub fn new() -> Self {
             Self {
                 context: None,
-                view: None,
+                views: HashMap::new(),
                 parent: None,
-                zoom: Arc::new(AtomicU64::new(1f64.to_bits())),
+                frame: 0,
                 user_agent: None,
                 #[cfg(windows)]
                 answered: None,
-                #[cfg(target_os = "macos")]
-                first_page: std::sync::Mutex::new(None),
                 #[cfg(target_os = "macos")]
                 reading: cookies::Reading::default(),
             }
@@ -1922,27 +2005,32 @@ mod native {
             self.user_agent = agent;
         }
 
-        /// Run a script in the page and hand its answer, as JSON, to `answer` when the engine has it.
+        /// The view tab `id`'s page is in, or the sentence a command that needed one answers with.
+        fn view_for(&self, id: u64) -> Result<&NativeView, String> {
+            self.views.get(&id).ok_or_else(|| "The browser tab is not ready yet.".to_owned())
+        }
+
+        /// Run a script in tab `id`'s page and hand its answer, as JSON, to `answer` when the engine has it.
         pub fn evaluate_with_callback(
             &self,
+            id: u64,
             script: &str,
             answer: impl Fn(String) + Send + 'static,
         ) -> Result<(), String> {
-            let view =
-                self.view.as_ref().ok_or_else(|| "The browser tab is not ready yet.".to_owned())?;
-            view.webview
+            self.view_for(id)?
+                .webview
                 .evaluate_script_with_callback(script, answer)
                 .map_err(|problem| format!("The page could not be asked: {problem}"))
         }
 
         /// Ask the engine for the cookies with no expiry it holds now. The answer is
-        /// [`Self::take_session_cookies`].
+        /// [`Self::take_session_cookies`]. Every view shares one profile, so any of them answers for all.
         ///
         /// **On Windows this waits on the engine with a nested message pump**, so it is called from before
         /// the egui pass and nowhere else. See `BrowserHost::keep_the_session`.
         #[cfg(windows)]
         pub fn ask_for_session_cookies(&mut self) {
-            let Some(view) = self.view.as_ref() else { return };
+            let Some(view) = self.views.values().next() else { return };
             let Ok(cookies) = view.webview.cookies() else { return };
             self.answered = Some(session_only(
                 cookies.iter().filter(|cookie| cookie.expires_datetime().is_none()).map(|cookie| {
@@ -1966,7 +2054,7 @@ mod native {
         /// run loop and nothing waits for it. See [`cookies`].
         #[cfg(target_os = "macos")]
         pub fn ask_for_session_cookies(&mut self) {
-            if let Some(view) = self.view.as_ref() {
+            if let Some(view) = self.views.values().next() {
                 self.reading.ask(&view.webview);
             }
         }
@@ -1979,24 +2067,38 @@ mod native {
             return self.reading.take();
         }
 
-        /// Whether the native view exists.
+        /// Whether any native view exists.
         pub fn has_view(&self) -> bool {
-            self.view.is_some()
+            !self.views.is_empty()
         }
 
-        /// Whether the page holds the operating system's keyboard focus.
+        /// Whether tab `id` has a view of its own.
+        pub fn has_view_for(&self, id: u64) -> bool {
+            self.views.contains_key(&id)
+        }
+
+        /// How many views there are, the hidden ones included.
+        pub fn count(&self) -> usize {
+            self.views.len()
+        }
+
+        /// Whether a page holds the operating system's keyboard focus.
         ///
         /// **Asked of the platform, not of the flag.** `view.has_the_focus` records what Unluminous
         /// last *did* about the focus, and a `WebView2` takes it on its own the moment it is created
         /// — see [`the_page_really_has_the_keyboard`]. `task-2009`.
         pub fn page_holds_the_keyboard(&self) -> bool {
-            self.view.as_ref().is_some_and(page_has_it)
+            self.views.values().any(page_has_it)
         }
 
-        /// Whether the pointer is over the page's own window now, asked of the platform because a page's
-        /// window takes the pointer's events and egui never hears of them.
-        pub fn pointer_is_over_the_page(&self) -> bool {
-            self.view.as_ref().is_some_and(|view| view.visible && pointer_over(view))
+        /// The tab whose page somebody has clicked into: it holds the operating system's keyboard and the
+        /// pointer is over it, asked of the platform because a page's window takes the pointer's events and
+        /// egui never hears of them.
+        pub fn the_page_clicked_into(&self) -> Option<u64> {
+            self.views
+                .iter()
+                .find(|(_, view)| view.visible && page_has_it(view) && pointer_over(view))
+                .map(|(id, _)| *id)
         }
 
         /// Take the window's handle while the frame that has one is in scope.
@@ -2006,102 +2108,150 @@ mod native {
             }
         }
 
-        /// Drop the view and everything it holds, which is what closing the last rendered tab means.
+        /// Drop every view and everything it holds, which is what closing the last rendered tab means.
         ///
-        /// **The focus is handed back before the view goes.** Windows moves a destroyed window's focus
+        /// **The focus is handed back before a view goes.** Windows moves a destroyed window's focus
         /// to its parent by itself, but it does so through `WM_KILLFOCUS`/`WM_SETFOCUS` ordering that
         /// nothing here can assert; asking `wry` is one call and it is the same call the other two
         /// routes make. See [`super::TheFocus`].
         pub fn forget(&mut self) {
-            if let Some(view) = &mut self.view {
+            for view in self.views.values_mut() {
                 give_the_focus_back(view);
             }
-            self.view = None;
-            #[cfg(target_os = "macos")]
-            cookies::replace(&self.first_page, None);
+            self.views.clear();
         }
 
-        /// Take the view off the screen and lower its memory target, keeping it ready.
+        /// Drop tab `id`'s view, which is what closing that tab means.
+        pub fn forget_one(&mut self, id: u64) {
+            if let Some(mut view) = self.views.remove(&id) {
+                give_the_focus_back(&mut view);
+            }
+        }
+
+        /// Take every view off the screen and lower its memory target, keeping it ready.
         pub fn hide(&mut self) {
-            if let Some(view) = &mut self.view {
+            for view in self.views.values_mut() {
                 give_the_focus_back(view);
                 set_visible(view, false);
             }
         }
 
-        /// Create the view if there is none, point it at this tab, and place it in the pane.
-        pub fn settle(&mut self, request: Settle<'_>) -> Vec<(u64, String)> {
-            let id = request.tab.id;
-            if self.view.is_none() {
-                if let Err(problem) = self.create(&request) {
-                    return vec![(id, problem)];
+        /// Make a view for each placed page that has none, at most one a frame, place every placed page, and
+        /// hide every view whose page is not placed. Answers what could not be done and the tabs whose view
+        /// was made this frame.
+        ///
+        /// **One view is made a frame**, because making one waits in a nested message pump, and two waits in
+        /// one frame are two chances for the window to stop drawing for the length of a page's start. A page
+        /// whose view is still to be made draws its picture or its sentence for that frame.
+        pub fn settle(&mut self, request: Settle<'_>) -> (Vec<(u64, String)>, Vec<u64>) {
+            self.frame += 1;
+            let mut problems = Vec::new();
+            let mut made = Vec::new();
+            self.views.retain(|id, _| request.tabs.iter().any(|tab| tab.id == *id));
+            for placement in request.placements {
+                if self.views.contains_key(&placement.id) || !made.is_empty() {
+                    continue;
                 }
-                request.showing.store(id, Ordering::Relaxed);
-            } else if request.showing.load(Ordering::Relaxed) != id {
-                // The tab that is showing changed, so the one view follows it to that tab's address.
-                request.showing.store(id, Ordering::Relaxed);
-                #[cfg(target_os = "macos")]
-                cookies::replace(&self.first_page, None);
-                if let Some(view) = &mut self.view {
-                    let _ = view.webview.load_url(&super::engine_url(request.tab.current_url()));
-                    // The zoom belongs to the tab, so what was sent for the last one says nothing about
-                    // this one and the next placement has to be believed.
-                    view.zoom = None;
+                let Some(tab) = request.tabs.iter().find(|tab| tab.id == placement.id) else {
+                    continue;
+                };
+                match self.create(tab, &request) {
+                    Ok(()) => made.push(tab.id),
+                    Err(problem) => problems.push((tab.id, problem)),
+                }
+            }
+            let placed: Vec<u64> =
+                request.placements.iter().map(|placement| placement.id).collect();
+            for (id, view) in &mut self.views {
+                if !placed.contains(id) {
+                    give_the_focus_back(view);
+                    set_visible(view, false);
                 }
             }
             #[cfg(target_os = "macos")]
-            if let Some(view) = &self.view {
-                cookies::load_the_first_page_when_due(&self.first_page, &view.webview);
+            for view in self.views.values() {
+                cookies::load_the_first_page_when_due(&view.first_page, &view.webview);
             }
-            if let Some(view) = &mut self.view {
-                place(view, request.placement, request.occluders);
-                self.zoom.store(view.zoom.unwrap_or(1.0).to_bits(), Ordering::Relaxed);
+            // **The pages that are not focused first, and the focused one last**, because handing the keyboard
+            // back from a page asks the window to take it: done after the focused page was given it, that
+            // would take it straight off the page again.
+            let frame = self.frame;
+            for focused in [false, true] {
+                for placement in request.placements.iter().filter(|one| one.focused == focused) {
+                    if let Some(view) = self.views.get_mut(&placement.id) {
+                        place(view, placement, request.occluders);
+                        view.zoom_bits.store(view.zoom.unwrap_or(1.0).to_bits(), Ordering::Relaxed);
+                        view.placed_at = frame;
+                    }
+                }
             }
-            Vec::new()
+            self.keep_the_number_of_views_down(request.most, &placed);
+            (problems, made)
         }
 
-        /// Move the view that is already showing to where this frame drew its node, at the end of the
+        /// Drop the views hidden longest until there are no more than `most`. A view placed this frame is
+        /// never dropped.
+        fn keep_the_number_of_views_down(&mut self, most: usize, placed: &[u64]) {
+            while self.views.len() > most.max(1) {
+                let oldest = self
+                    .views
+                    .iter()
+                    .filter(|(id, _)| !placed.contains(id))
+                    .min_by_key(|(_, view)| view.placed_at)
+                    .map(|(id, _)| *id);
+                let Some(oldest) = oldest else { return };
+                self.forget_one(oldest);
+            }
+        }
+
+        /// Move every placed page that already has a view to where this frame drew it, at the end of the
         /// frame. See [`super::BrowserHost::follow`].
-        pub fn follow(&mut self, placement: &BrowserPlacement, occluders: &[egui::Rect]) {
-            if let Some(view) = &mut self.view {
+        pub fn follow(&mut self, placements: &[&BrowserPlacement], occluders: &[egui::Rect]) {
+            for placement in placements {
+                let Some(view) = self.views.get_mut(&placement.id) else { continue };
                 if view.visible {
                     let showing = move_to(view, placement, occluders);
                     set_visible(view, showing);
-                    self.zoom.store(view.zoom.unwrap_or(1.0).to_bits(), Ordering::Relaxed);
+                    view.zoom_bits.store(view.zoom.unwrap_or(1.0).to_bits(), Ordering::Relaxed);
                 }
             }
         }
 
-        /// Build the one native view, with no host bridge and callbacks that report browser state.
+        /// Build tab `tab`'s native view, with no host bridge and callbacks that report its browser state.
         ///
-        /// The callbacks read which tab the view is pointed at rather than closing over one, because
-        /// the view outlives any single tab.
-        fn create(&mut self, request: &Settle<'_>) -> Result<(), String> {
+        /// Every callback names the tab the view belongs to, because a view never moves to another tab.
+        fn create(&mut self, tab: &BrowserTab, request: &Settle<'_>) -> Result<(), String> {
             let Some(parent) = &self.parent else {
                 return Err("Unluminous has not finished opening its window yet.".to_owned());
             };
+            let id = tab.id;
             let context =
                 self.context.get_or_insert_with(|| WebContext::new(request.profile.clone()));
             let repaint = request.repaint.clone();
             let title_sender = request.sender.clone();
-            let title_showing = request.showing.clone();
             let load_sender = request.sender.clone();
-            let load_showing = request.showing.clone();
             let load_repaint = request.repaint.clone();
             let popup_sender = request.sender.clone();
-            let popup_showing = request.showing.clone();
+            let popup_repaint = request.repaint.clone();
             let resources = request.resources.clone();
-            let protocol_showing = request.showing.clone();
+            let zoom_bits = Arc::new(AtomicU64::new(1f64.to_bits()));
             // **Built with no address**, so the session cookies can be given to it before its first request
             // goes. Built with the address, the request starts inside `build` and the page arrives signed
             // out. `task-2203`.
-            let first = super::engine_url(request.tab.current_url());
+            let first = super::engine_url(tab.current_url());
             let mut builder = WebViewBuilder::new_with_web_context(context);
             if let Some(agent) = &self.user_agent {
                 builder = builder.with_user_agent(agent);
             }
+            // **A link a person clicks opens a new tab** (`task-2270`), unless the setting says otherwise or the
+            // page is a design. See [`super::LINKS_IN_NEW_TABS`].
+            if request.links_open_new_tabs && !request.links_stay.contains(&id) {
+                builder = builder.with_initialization_script(super::LINKS_IN_NEW_TABS);
+            }
             let webview = builder
-                .with_id("unluminous-browser")
+                // **Each view its own id**, because wry's macOS half keeps a view's state in a map keyed by it,
+                // and two views with one id overwrite each other's custom protocol. `task-2270`.
+                .with_id(&format!("unluminous-browser-{id}"))
                 .with_visible(false)
                 .with_clipboard(true)
                 // `Ctrl`/`Cmd` with the wheel or with plus and minus zooms the page while the page has the
@@ -2112,17 +2262,15 @@ mod native {
                 .with_download_started_handler(|_, _| false)
                 .with_navigation_handler(allowed_navigation)
                 .with_new_window_req_handler(move |url, _| {
-                    let source = popup_showing.load(Ordering::Relaxed);
-                    let _ = popup_sender.send(BrowserEvent::OpenRequested { source, url });
+                    let _ = popup_sender.send(BrowserEvent::OpenRequested { source: id, url });
+                    popup_repaint.request_repaint();
                     NewWindowResponse::Deny
                 })
                 .with_document_title_changed_handler(move |title| {
-                    let id = title_showing.load(Ordering::Relaxed);
                     let _ = title_sender.send(BrowserEvent::Title { id, title });
                     repaint.request_repaint();
                 })
                 .with_on_page_load_handler(move |event, url| {
-                    let id = load_showing.load(Ordering::Relaxed);
                     let event = match event {
                         PageLoadEvent::Started => BrowserEvent::LoadStarted { id, url },
                         PageLoadEvent::Finished => BrowserEvent::LoadFinished { id, url },
@@ -2131,7 +2279,7 @@ mod native {
                     load_repaint.request_repaint();
                 })
                 .with_custom_protocol("unluminous".to_owned(), move |_, request| {
-                    protocol_response(&resources, protocol_showing.load(Ordering::Relaxed), request)
+                    protocol_response(&resources, id, request)
                 })
                 .build_as_child(parent)
                 .map_err(|problem| format!("Unluminous could not start the browser: {problem}"))?;
@@ -2142,83 +2290,86 @@ mod native {
             #[cfg(windows)]
             context_menu::offer(
                 &webview,
-                request.menu.clone(),
-                request.showing.clone(),
-                self.zoom.clone(),
+                request.menus.clone(),
+                id,
+                zoom_bits.clone(),
                 request.sender.clone(),
                 request.repaint.clone(),
             );
             // macOS has no host hook into WKWebView's own menu that `wry` exposes; the toolbar's button is the
             // way in there. See the design, §3.2.
             #[cfg(not(windows))]
-            let _ = (&request.menu, &self.zoom);
+            let _ = &request.menus;
             #[cfg(windows)]
             let _ = webview.load_url(&first);
             // **On macOS the first page waits for WebKit to store the cookies**, which it says on a later turn
             // of the run loop. `settle` sends it when every cookie is stored, or after
             // [`cookies::FIRST_PAGE_WAITS`] if WebKit never says.
             #[cfg(target_os = "macos")]
-            {
+            let first_page = {
                 self.reading.repaint = Some(request.repaint.clone());
                 let page = cookies::give(&webview, request.cookies, first, request.repaint.clone());
-                cookies::replace(&self.first_page, Some(page));
-            }
-            self.view = Some(NativeView {
-                webview,
-                bounds: None,
-                clip: None,
-                zoom: None,
-                visible: false,
-                has_the_focus: false,
-            });
+                Mutex::new(Some(page))
+            };
+            self.views.insert(
+                id,
+                NativeView {
+                    webview,
+                    bounds: None,
+                    clip: None,
+                    zoom: None,
+                    zoom_bits,
+                    visible: false,
+                    has_the_focus: false,
+                    placed_at: self.frame,
+                    #[cfg(target_os = "macos")]
+                    first_page,
+                },
+            );
             Ok(())
         }
 
-        /// Send the view to an address, which is what this tab's own history asked for.
-        pub fn navigate(&self, url: &str) -> Result<(), String> {
-            let view =
-                self.view.as_ref().ok_or_else(|| "The browser tab is not ready yet.".to_owned())?;
+        /// Send tab `id`'s view to an address, which is what that tab's own history asked for.
+        pub fn navigate(&self, id: u64, url: &str) -> Result<(), String> {
+            let view = self.view_for(id)?;
             #[cfg(target_os = "macos")]
-            cookies::replace(&self.first_page, None);
+            cookies::replace(&view.first_page, None);
             view.webview
                 .load_url(&super::engine_url(url))
                 .map_err(|problem| format!("The browser could not navigate: {problem}"))
         }
 
-        /// Run a script in the page the view is on.
-        pub fn evaluate(&self, script: &str) -> Result<(), String> {
-            let view =
-                self.view.as_ref().ok_or_else(|| "The browser tab is not ready yet.".to_owned())?;
-            view.webview
+        /// Run a script in tab `id`'s page.
+        pub fn evaluate(&self, id: u64, script: &str) -> Result<(), String> {
+            self.view_for(id)?
+                .webview
                 .evaluate_script(script)
                 .map_err(|problem| format!("The page could not be asked: {problem}"))
         }
 
-        /// Reload the page the view is on.
-        pub fn reload(&self) -> Result<(), String> {
-            let view =
-                self.view.as_ref().ok_or_else(|| "The browser tab is not ready yet.".to_owned())?;
-            view.webview
+        /// Reload tab `id`'s page.
+        pub fn reload(&self, id: u64) -> Result<(), String> {
+            self.view_for(id)?
+                .webview
                 .reload()
                 .map_err(|problem| format!("The browser could not reload: {problem}"))
         }
 
-        /// How big the page is drawn.
+        /// How big tab `id`'s page is drawn.
         ///
         /// **The engine's number rather than Unluminous's drawing.** `task-1905` asks that the modifier
         /// wheel over a node zoom that node, and for a browser node the thing that decides how big a page
         /// is is the page's own zoom — nothing Unluminous paints is involved.
-        pub fn zoom(&self, factor: f64) -> Result<(), String> {
-            let view =
-                self.view.as_ref().ok_or_else(|| "The browser tab is not ready yet.".to_owned())?;
-            view.webview
+        pub fn zoom(&self, id: u64, factor: f64) -> Result<(), String> {
+            self.view_for(id)?
+                .webview
                 .zoom(factor)
                 .map_err(|problem| format!("The browser could not be zoomed: {problem}"))
         }
 
-        /// A picture of the page as it is on the screen now. See [`super::BrowserHost::photograph`].
-        pub fn photograph(&self) -> Option<egui::ColorImage> {
-            photograph(self.view.as_ref()?)
+        /// A picture of tab `id`'s page as it is on the screen now. See [`super::BrowserHost::photograph`].
+        pub fn photograph(&self, id: u64) -> Option<egui::ColorImage> {
+            photograph(self.views.get(&id)?)
         }
     }
 
@@ -2542,6 +2693,7 @@ mod native {
     /// button is then the way in.
     #[cfg(windows)]
     mod context_menu {
+        use std::collections::HashMap;
         use std::sync::atomic::{AtomicU64, Ordering};
         use std::sync::{Arc, Mutex};
 
@@ -2562,8 +2714,8 @@ mod native {
         /// Register the menu callback on a view that has just been made.
         pub fn offer(
             webview: &wry::WebView,
-            menu: Arc<Mutex<PageMenu>>,
-            showing: Arc<AtomicU64>,
+            menus: Arc<Mutex<HashMap<u64, PageMenu>>>,
+            id: u64,
             zoom: Arc<AtomicU64>,
             sender: std::sync::mpsc::Sender<BrowserEvent>,
             repaint: egui::Context,
@@ -2572,11 +2724,14 @@ mod native {
             let handler =
                 ContextMenuRequestedEventHandler::create(Box::new(move |sender_view, args| {
                     let (Some(view), Some(args)) = (sender_view, args) else { return Ok(()) };
-                    let offered = menu.lock().map(|held| *held).unwrap_or_default();
+                    let offered = menus
+                        .lock()
+                        .ok()
+                        .and_then(|held| held.get(&id).copied())
+                        .unwrap_or_default();
                     if !offered.pickable {
                         return Ok(());
                     }
-                    let id = showing.load(Ordering::Relaxed);
                     let mut at = POINT::default();
                     // Safety: every call here is on the engine's own thread, inside its own callback.
                     unsafe {
@@ -2651,20 +2806,22 @@ mod native {
 
     /// Allow ordinary web navigation and Unluminous's one local resource origin.
     fn allowed_navigation(url: String) -> bool {
-        Url::parse(&url)
-            .ok()
-            .is_some_and(|url| matches!(url.scheme(), "http" | "https" | "unluminous"))
+        // The one page of the `about` scheme that is allowed is the empty one a new tab starts on (`task-2270`).
+        url == super::BLANK
+            || Url::parse(&url)
+                .ok()
+                .is_some_and(|url| matches!(url.scheme(), "http" | "https" | "unluminous"))
     }
 
     /// Convert a constrained resource reply into the response Wry expects.
     fn protocol_response(
         resources: &LocalResourceStore,
-        showing: u64,
+        tab: u64,
         request: wry::http::Request<Vec<u8>>,
     ) -> wry::http::Response<Cow<'static, [u8]>> {
         let range = request.headers().get("range").and_then(|value| value.to_str().ok());
         let reply =
-            resources.serve(showing, request.method().as_str(), &request.uri().to_string(), range);
+            resources.serve(tab, request.method().as_str(), &request.uri().to_string(), range);
         let mut response = wry::http::Response::builder()
             .status(reply.status)
             .header("Content-Type", reply.mime)
@@ -3025,25 +3182,27 @@ mod native {
 
 #[cfg(not(any(windows, target_os = "macos")))]
 mod native {
-    use std::sync::atomic::AtomicU64;
-    use std::sync::Arc;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
 
     use super::{BrowserEvent, BrowserPlacement, BrowserTab, LocalResourceStore, PageMenu};
     use crate::services::browser_session::KeptCookie;
 
     /// The same input on a platform without an embedded engine.
     pub struct Settle<'a> {
-        pub tab: &'a BrowserTab,
-        pub placement: &'a BrowserPlacement,
+        pub tabs: &'a [BrowserTab],
+        pub placements: &'a [&'a BrowserPlacement],
         pub cookies: &'a [KeptCookie],
-        pub menu: Arc<std::sync::Mutex<PageMenu>>,
-        /// What egui is drawing over the page this frame, in the window's own points.
+        pub menus: Arc<Mutex<HashMap<u64, PageMenu>>>,
+        /// What egui is drawing over the pages this frame, in the window's own points.
         pub occluders: &'a [egui::Rect],
-        pub showing: &'a Arc<AtomicU64>,
         pub profile: Option<std::path::PathBuf>,
         pub resources: LocalResourceStore,
         pub sender: std::sync::mpsc::Sender<BrowserEvent>,
         pub repaint: egui::Context,
+        pub most: usize,
+        pub links_open_new_tabs: bool,
+        pub links_stay: &'a [u64],
     }
 
     /// A portable stub that keeps the workspace compiling and returns one clear refusal.
@@ -3060,13 +3219,21 @@ mod native {
         pub fn has_view(&self) -> bool {
             false
         }
+        /// For any tab.
+        pub fn has_view_for(&self, _id: u64) -> bool {
+            false
+        }
+        /// So it has none to count.
+        pub fn count(&self) -> usize {
+            0
+        }
         /// And so never holds the keyboard.
         pub fn page_holds_the_keyboard(&self) -> bool {
             false
         }
         /// And has no page for the pointer to be over.
-        pub fn pointer_is_over_the_page(&self) -> bool {
-            false
+        pub fn the_page_clicked_into(&self) -> Option<u64> {
+            None
         }
         /// There is no view to give a `User-Agent` to.
         pub fn set_user_agent(&mut self, _agent: Option<String>) {}
@@ -3074,39 +3241,50 @@ mod native {
         pub fn remember_window(&mut self, _frame: &eframe::Frame) {}
         /// There is nothing to drop.
         pub fn forget(&mut self) {}
+        /// Nor one view of it.
+        pub fn forget_one(&mut self, _id: u64) {}
         /// There is nothing to hide.
         pub fn hide(&mut self) {}
         /// Nothing to move where there is no view.
-        pub fn follow(&mut self, _placement: &BrowserPlacement, _occluders: &[egui::Rect]) {}
-        /// Report one clear platform refusal for the tab that would have been shown.
-        pub fn settle(&mut self, request: Settle<'_>) -> Vec<(u64, String)> {
+        pub fn follow(&mut self, _placements: &[&BrowserPlacement], _occluders: &[egui::Rect]) {}
+        /// Report one clear platform refusal for each page that would have been shown.
+        pub fn settle(&mut self, request: Settle<'_>) -> (Vec<(u64, String)>, Vec<u64>) {
             let _ = (
-                request.placement,
-                request.showing,
+                request.tabs,
                 request.cookies,
-                request.menu,
+                request.menus,
+                request.occluders,
                 request.profile,
                 request.resources,
                 request.sender,
                 request.repaint,
+                request.most,
+                request.links_open_new_tabs,
+                request.links_stay,
             );
-            vec![(request.tab.id, UNSUPPORTED.to_owned())]
+            let problems = request
+                .placements
+                .iter()
+                .map(|placement| (placement.id, UNSUPPORTED.to_owned()))
+                .collect();
+            (problems, Vec::new())
         }
         /// Refuse navigation where there is no embedded engine.
-        pub fn navigate(&self, _url: &str) -> Result<(), String> {
+        pub fn navigate(&self, _id: u64, _url: &str) -> Result<(), String> {
             Err(UNSUPPORTED.to_owned())
         }
         /// Refuse reloading for the same reason.
-        pub fn reload(&self) -> Result<(), String> {
+        pub fn reload(&self, _id: u64) -> Result<(), String> {
             Err(UNSUPPORTED.to_owned())
         }
-
-        pub fn evaluate(&self, _script: &str) -> Result<(), String> {
+        /// And a script.
+        pub fn evaluate(&self, _id: u64, _script: &str) -> Result<(), String> {
             Err(UNSUPPORTED.to_owned())
         }
         /// Refuse a script with an answer for the same reason.
         pub fn evaluate_with_callback(
             &self,
+            _id: u64,
             _script: &str,
             _answer: impl Fn(String) + Send + 'static,
         ) -> Result<(), String> {
@@ -3119,11 +3297,11 @@ mod native {
             None
         }
         /// And zooming, which is the engine's own number.
-        pub fn zoom(&self, _factor: f64) -> Result<(), String> {
+        pub fn zoom(&self, _id: u64, _factor: f64) -> Result<(), String> {
             Err(UNSUPPORTED.to_owned())
         }
         /// There is no page to take a picture of.
-        pub fn photograph(&self) -> Option<egui::ColorImage> {
+        pub fn photograph(&self, _id: u64) -> Option<egui::ColorImage> {
             None
         }
     }

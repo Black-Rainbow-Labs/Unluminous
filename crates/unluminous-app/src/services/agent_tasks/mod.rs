@@ -1566,6 +1566,8 @@ impl AgentTasks {
             quiet_since: None,
             keys: Vec::new(),
             next_key_at: None,
+            pieces: Vec::new(),
+            next_piece_at: None,
         });
         Ok(())
     }
@@ -2782,6 +2784,10 @@ impl AgentTasks {
     }
 }
 
+/// The id the ticket modal's `Other folder...` asks the window's folder picker with, followed by the ticket's
+/// id. `task-2270`.
+pub const PICK_FOLDER: &str = "pick-folder:";
+
 impl UiProvider for AgentTasks {
     fn id(&self) -> &'static str {
         "agent-tasks"
@@ -2992,6 +2998,22 @@ impl UiProvider for AgentTasks {
 
     fn asking(&mut self) -> Vec<Request> {
         std::mem::take(&mut self.asking)
+    }
+
+    /// The folder the window's picker answered with, for a ticket's `Other folder...`. A picker somebody
+    /// cancelled leaves the ticket as it was. `task-2270`.
+    fn answered(&mut self, id: &str, answer: Result<serde_json::Value, String>) {
+        let Some(task) = id.strip_prefix(PICK_FOLDER).and_then(|task| task.parse::<i64>().ok())
+        else {
+            return;
+        };
+        let Some(folder) = answer.ok().as_ref().and_then(crate::services::folder_choice::picked)
+        else {
+            return;
+        };
+        if let Err(problem) = self.edit_field(task, Field::Project(folder.display().to_string())) {
+            self.message = problem;
+        }
     }
 
     fn catch_up(&mut self) -> bool {

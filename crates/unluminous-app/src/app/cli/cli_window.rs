@@ -341,6 +341,10 @@ impl UnluminousApp {
                     "url": tab.current_url(),
                     "loading": tab.loading,
                     "showing": self.browser.showing() == Some(tab.id),
+                    // Whether this page has a native view of its own, and how many there are in the window,
+                    // since every rendered tab has one (`task-2270`).
+                    "live": self.browser.is_live(tab.id),
+                    "views": self.browser.view_count(),
                     // **Whether the page is being drawn right now.** A menu, a dropdown or a modal
                     // over a page hides it, because a native child view paints above everything egui
                     // draws — and nothing Unluminous photographs holds a page, so this is the only

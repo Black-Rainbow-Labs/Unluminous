@@ -4662,3 +4662,83 @@ fn a_whiteboard_under_the_glass_theme() {
     harness.snapshot(shot("realm_shapes_glass").as_str());
     std::fs::remove_dir_all(&folder).ok();
 }
+
+/// `task-2270`: *"File should have preview buttons for md files, etc."* A File Editor node showing a Markdown file
+/// has the three view buttons a note has, named after the node, and pressing `Markdown preview` shows the tab's
+/// preview. `realm note view` reaches the same node.
+#[test]
+fn a_file_editor_node_showing_markdown_has_the_view_buttons_and_previews() {
+    let mut harness = harness("");
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add editor --x 40 --y 40")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm editor {node} readme.md"));
+    steady(&mut harness);
+    harness.get_by_label("Markdown preview in readme.md").click_accesskit();
+    steady(&mut harness);
+    let tab = harness.state().files.tab_in_node(node).expect("the node holds the tab");
+    assert_eq!(harness.state().files.at(tab).view_mode, unluminous_app::app::ViewMode::Preview);
+    did(&mut harness, &format!("realm note view {node} side"));
+    steady(&mut harness);
+    let tab = harness.state().files.tab_in_node(node).expect("the node holds the tab");
+    assert_eq!(harness.state().files.at(tab).view_mode, unluminous_app::app::ViewMode::SideBySide);
+}
+
+/// A File Editor node showing a file with no preview draws no view buttons, and `realm note view` says why.
+#[test]
+fn a_file_editor_node_showing_text_with_no_preview_has_no_view_buttons() {
+    let mut harness = harness("");
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add editor --x 40 --y 40")["node"].as_u64().expect("id");
+    did(&mut harness, &format!("realm editor {node} notes.txt"));
+    steady(&mut harness);
+    assert!(harness.query_by_label("Markdown preview in notes.txt").is_none());
+    assert_eq!(refused(&mut harness, &format!("realm note view {node} preview")), "refused");
+}
+
+/// `task-2270`: *"Right click on tab -> send to realm so the file gets added as a new node in the current open
+/// realm."* The tab moves onto a new File Editor node, and the editing area no longer holds it.
+#[test]
+fn send_to_realm_moves_the_tab_showing_onto_a_node_of_its_own() {
+    let folder = sample_folder();
+    let mut harness = harness("");
+    did(&mut harness, "tab open readme.md --permanent");
+    steady(&mut harness);
+    let before = harness.state().realm.realm.nodes.len();
+    did(&mut harness, "action run send-tab-to-realm");
+    steady(&mut harness);
+    assert_eq!(harness.state().realm.realm.nodes.len(), before + 1, "a node was added");
+    let opened = harness.state().files.index_of(&folder.join("readme.md")).expect("still open");
+    let node = harness.state().files.home_of(opened).node().expect("on a node now");
+    assert!(harness.state().realm.realm.node(node).is_some());
+    assert!(harness.state().realm.visible, "the Realm panel is showing");
+}
+
+/// `task-2270`: *"Click on page links should open new tabs by default."* A link clicked in a browser node's page
+/// opens a new browser node to the right of it, on the address the link named.
+#[test]
+fn a_link_in_a_browser_nodes_page_opens_a_node_beside_it() {
+    if !unluminous_app::services::browser::SUPPORTED {
+        return;
+    }
+    let mut harness = harness("");
+    did(&mut harness, "realm show");
+    let node = did(&mut harness, "realm add browser --url https://example.com/ --x 40 --y 40")
+        ["node"]
+        .as_u64()
+        .expect("id");
+    steady(&mut harness);
+    let tab = harness.state().realm.live.browser(node).map(|tab| tab.id).expect("a page");
+    let before = harness.state().realm.realm.nodes.len();
+    harness
+        .state_mut()
+        .open_a_page_a_link_asked_for(tab, "https://example.org/")
+        .expect("it opens");
+    steady(&mut harness);
+    let app = harness.state();
+    assert_eq!(app.realm.realm.nodes.len(), before + 1);
+    let made = app.realm.realm.nodes.last().expect("the new node");
+    let first = app.realm.realm.node(node).expect("the first node");
+    assert!(made.rect().left() > first.rect().right(), "to the right of the node the link was in");
+    let page = app.realm.live.browser(made.id).expect("its page");
+    assert!(page.current_url().starts_with("https://example.org"));
+}

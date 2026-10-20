@@ -432,6 +432,24 @@ impl UnluminousApp {
         file.preview_scroll = preview_scroll;
     }
 
+    /// The tab for a file Unluminous cannot show, and what its two buttons ask for. `task-2270`.
+    pub(crate) fn show_an_unrenderable_file(
+        &mut self,
+        ui: &mut egui::Ui,
+        area: Rect,
+        file: &crate::app::files::Unrenderable,
+    ) {
+        let outcome = crate::components::unrenderable_view::show(ui, area, file);
+        if outcome.open_with_the_system {
+            if let Err(problem) = crate::services::links::open_a_file_with_the_system(&file.path) {
+                self.message = Some(problem);
+            }
+        }
+        if outcome.reveal && !crate::services::launcher::reveal(&file.path) {
+            self.message = Some(format!("{} could not be shown", file.path.display()));
+        }
+    }
+
     pub(crate) fn show_picture(&mut self, ui: &mut egui::Ui, area: Rect) -> bool {
         let name = self.files.active().name();
         let Some(picture) = self.files.active_mut().picture.as_mut() else {

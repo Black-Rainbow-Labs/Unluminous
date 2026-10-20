@@ -95,6 +95,8 @@ pub struct TabsOutcome {
     pub pane_dragging: Option<Pos2>,
     /// The pane drag ended on this frame.
     pub pane_dropped: bool,
+    /// The empty part of the strip was right clicked: where the pointer was. `task-2270`.
+    pub menu_on_the_empty_part: Option<Pos2>,
     /// Where this strip drew itself and each of its tabs, so the window can say which strip a
     /// pointer is over and where between two tabs it fell.
     pub strip: Strip,
@@ -216,7 +218,7 @@ pub fn show(
     );
 
     let widths: Vec<f32> = tabs.iter().map(|tab| tab_width(ui, tab)).collect();
-    let offset = shift(&widths, active, row.width());
+    let offset = scroll_the_strip(ui, area, &widths, active, row.width(), pane);
 
     // **Over the whole strip, and added first, so it is left with exactly the part no tab wanted.** egui
     // gives a pointer to the *last* widget that asked for it, so a widget added before the tabs is one the
@@ -234,6 +236,9 @@ pub fn show(
         egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Tab strip empty part")
     });
     outcome.twice_on_the_empty_part = empty.double_clicked();
+    if empty.secondary_clicked() {
+        outcome.menu_on_the_empty_part = empty.interact_pointer_pos();
+    }
     if empty.dragged() || empty.drag_stopped() {
         outcome.pane_dragging = empty.interact_pointer_pos();
         outcome.pane_dropped = empty.drag_stopped();
@@ -297,6 +302,74 @@ fn glass_tab(painter: &egui::Painter, rect: Rect, active: bool, focused: bool, p
         );
     } else if pointed {
         painter.rect_filled(chip, CornerRadius::same(RADIUS as u8), controls::hover_fill());
+    }
+}
+
+/// How far along the strip is scrolled this frame, which is remembered from the last frame.
+///
+/// `task-2270`: *"I should be able to scroll tabs horizontally, without a scrollbar. e.g. scroll wheel when
+/// hovered over a tab should move left to right, same with swiping on trackpad."* The strip used to be shifted
+/// by [`shift`] alone, which is worked out from the tab that is showing, so a tab off the end could be reached
+/// only by showing it some other way. Now the offset is kept in egui's memory under the strip's pane, and:
+///
+/// - **The wheel or a swipe over the strip moves it**, whichever way the larger part of the movement went, so
+///   a mouse wheel turned downwards moves along to the right and a sideways swipe moves the way the fingers
+///   went. What is used is taken out of the frame, so the editing area under the strip does not scroll too.
+/// - **A tab that becomes the one showing is brought into view**, the least distance that shows all of it,
+///   which is what [`shift`] did on every frame. Asked only when the tab showing or the number of tabs
+///   changed, so a scrolled strip is not pulled back on the next frame.
+///
+/// There is no scrollbar, and nothing is drawn for the scroll at all.
+fn scroll_the_strip(
+    ui: &egui::Ui,
+    area: Rect,
+    widths: &[f32],
+    active: usize,
+    available: f32,
+    pane: usize,
+) -> f32 {
+    let id = ui.id().with(("tab-strip-scroll", pane));
+    let total: f32 = widths.iter().map(|width| width + GAP).sum();
+    let most = (total - GAP - available).max(0.0);
+    let remembered: Option<(f32, usize, usize)> = ui.data(|data| data.get_temp(id));
+    let mut offset = match remembered {
+        Some((offset, was_active, was_count))
+            if was_active == active && was_count == widths.len() =>
+        {
+            offset
+        }
+        Some((offset, ..)) => keep_in_view(widths, active, available, offset),
+        None => shift(widths, active, available),
+    };
+    let over = crate::components::controls::pointer_in(ui).is_some_and(|at| area.contains(at))
+        && ui.ctx().pointer_hover_pos().is_some();
+    if over && most > 0.0 {
+        let delta = ui.input(|input| input.smooth_scroll_delta);
+        let along = match delta.x.abs() > delta.y.abs() {
+            true => delta.x,
+            false => delta.y,
+        };
+        if along != 0.0 {
+            offset -= along;
+            ui.ctx().input_mut(|input| input.smooth_scroll_delta = Vec2::ZERO);
+        }
+    }
+    let offset = offset.clamp(0.0, most);
+    ui.data_mut(|data| data.insert_temp(id, (offset, active, widths.len())));
+    offset
+}
+
+/// The least change to `offset` that puts the whole of the tab at `active` inside `available` points.
+fn keep_in_view(widths: &[f32], active: usize, available: f32, offset: f32) -> f32 {
+    let Some(width) = widths.get(active) else { return offset };
+    let left: f32 = widths.iter().take(active).map(|width| width + GAP).sum();
+    let right = left + width;
+    if left < offset {
+        left
+    } else if right > offset + available {
+        (right - available).min(left)
+    } else {
+        offset
     }
 }
 
@@ -564,5 +637,20 @@ mod tests {
     #[test]
     fn an_index_past_the_end_shifts_nothing() {
         assert_eq!(shift(&[100.0, 100.0, 100.0], 9, 50.0), 0.0);
+    }
+
+    /// `task-2270`: a strip scrolled by the wheel stays where it was put while the tab showing is in view, and
+    /// moves the least distance that shows a tab once it is chosen.
+    #[test]
+    fn a_tab_that_is_chosen_is_brought_into_view_the_least_distance() {
+        let widths = [100.0, 100.0, 100.0, 100.0, 100.0];
+        // The second tab is in view at an offset of 50, so nothing moves.
+        assert_eq!(keep_in_view(&widths, 1, 250.0, 50.0), 50.0);
+        // The first tab is partly off the left, so the strip moves back to its left edge.
+        assert_eq!(keep_in_view(&widths, 0, 250.0, 50.0), 0.0);
+        // The fourth tab ends at 406, past 50 + 250, so the strip moves just far enough to show its right edge.
+        assert_eq!(keep_in_view(&widths, 3, 250.0, 50.0), 156.0);
+        // A tab wider than the strip is shown from its left edge.
+        assert_eq!(keep_in_view(&[600.0], 0, 250.0, 0.0), 0.0);
     }
 }

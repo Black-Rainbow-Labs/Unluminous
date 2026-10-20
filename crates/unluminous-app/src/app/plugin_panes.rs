@@ -667,6 +667,19 @@ impl UnluminousApp {
                     provider.answered(&id, answer);
                 }
             }
+            // The system's folder picker, through the one seam a test replaces. `task-2270`.
+            Request::PickFolder { id, title, start } => {
+                let start = start
+                    .filter(|folder| folder.is_dir())
+                    .unwrap_or_else(|| self.tree.root().to_path_buf());
+                let chosen = (self.folder_picker)(&title, &start);
+                let answer = serde_json::json!({
+                    "folder": chosen.map(|folder| unluminous_terminal::paths::plain(&folder).display().to_string()),
+                });
+                if let Some(provider) = self.plugin_ui.provider(plugin) {
+                    provider.answered(&id, Ok(answer));
+                }
+            }
             Request::RunCommand { id, command, arguments } => {
                 let request = unluminous_cli::protocol::Request::new("", &command, arguments);
                 let caller = crate::app::cli::ToolCaller::Plugin(plugin.to_owned());

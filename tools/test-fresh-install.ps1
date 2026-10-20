@@ -86,7 +86,7 @@ $keys = [ordered]@{
     progid     = 'HKCU\Software\Classes\Unluminous.Document'
     application = 'HKCU\Software\Classes\Applications\unluminous.exe'
 }
-$extensions = '.md', '.markdown', '.txt', '.rs', '.js', '.ts', '.json', '.toml', '.yml', '.yaml'
+$extensions = '*', '.md', '.markdown', '.txt', '.rs', '.js', '.ts', '.json', '.toml', '.yml', '.yaml'
 $shortcuts = @(
     (Join-Path ([Environment]::GetFolderPath('Programs')) 'Unluminous.lnk'),
     (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Unluminous.lnk')
@@ -328,7 +328,9 @@ try {
     foreach ($agent in $agentsHere) {
         $listed = Invoke-Fresh { & $agent mcp list 2>&1 | Out-String }
         Set-Content (Join-Path $out "$agent-mcp-list-after-uninstall.txt") $listed -Encoding utf8
-        Check "uninstall took Unluminous out of $agent" (-not ($listed -match 'unluminous'))
+        # The server's name as a word of its own. Pi's empty answer names its settings file, and a path under a
+        # folder called unluminous would otherwise read as the server still being there.
+        Check "uninstall took Unluminous out of $agent" (-not ($listed -match '(?im)(^|\s)unluminous(:|\s|$)'))
     }
 }
 finally {

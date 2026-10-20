@@ -120,7 +120,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "addtopath"; Description: "Add Unluminous to the PATH, so that ""unluminous"" opens a folder and ""unluminous-cli"" drives it from a terminal"; GroupDescription: "Other:"
 Name: "contextfile"; Description: "Add ""Open with Unluminous"" to the right click menu of a file"; GroupDescription: "Other:"
 Name: "contextfolder"; Description: "Add ""Open with Unluminous"" to the right click menu of a folder"; GroupDescription: "Other:"
-Name: "associate"; Description: "Offer Unluminous in ""Open with"" for text, Markdown and source files"; GroupDescription: "Other:"
+Name: "associate"; Description: "Offer Unluminous in ""Open with"" for every file"; GroupDescription: "Other:"
 ; `task-2278`. Runs `unluminous-cli setup`, which connects every coding agent it finds (Claude Code, Codex,
 ; OpenCode, Pi) to Unluminous's MCP server and leaves alone an entry that already points at another
 ; Unluminous. On by default, so a silent install with no /TASKS does it too. An upgrade from a version
@@ -186,17 +186,11 @@ Root: HKA; Subkey: "Software\Classes\{#ProgId}\shell\open\command"; ValueType: s
 Root: HKA; Subkey: "Software\Classes\Applications\{#ExeName}"; ValueType: string; ValueName: "FriendlyAppName"; ValueData: "{#AppName}"; Flags: uninsdeletekey; Tasks: associate
 Root: HKA; Subkey: "Software\Classes\Applications\{#ExeName}\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#ExeName}"" ""%1"""; Tasks: associate
 
-Root: HKA; Subkey: "Software\Classes\Applications\{#ExeName}\SupportedTypes"; ValueType: string; ValueName: ".md"; ValueData: ""; Tasks: associate
-Root: HKA; Subkey: "Software\Classes\Applications\{#ExeName}\SupportedTypes"; ValueType: string; ValueName: ".markdown"; ValueData: ""; Tasks: associate
-Root: HKA; Subkey: "Software\Classes\Applications\{#ExeName}\SupportedTypes"; ValueType: string; ValueName: ".txt"; ValueData: ""; Tasks: associate
-Root: HKA; Subkey: "Software\Classes\Applications\{#ExeName}\SupportedTypes"; ValueType: string; ValueName: ".rs"; ValueData: ""; Tasks: associate
-Root: HKA; Subkey: "Software\Classes\Applications\{#ExeName}\SupportedTypes"; ValueType: string; ValueName: ".js"; ValueData: ""; Tasks: associate
-Root: HKA; Subkey: "Software\Classes\Applications\{#ExeName}\SupportedTypes"; ValueType: string; ValueName: ".ts"; ValueData: ""; Tasks: associate
-Root: HKA; Subkey: "Software\Classes\Applications\{#ExeName}\SupportedTypes"; ValueType: string; ValueName: ".json"; ValueData: ""; Tasks: associate
-Root: HKA; Subkey: "Software\Classes\Applications\{#ExeName}\SupportedTypes"; ValueType: string; ValueName: ".toml"; ValueData: ""; Tasks: associate
-Root: HKA; Subkey: "Software\Classes\Applications\{#ExeName}\SupportedTypes"; ValueType: string; ValueName: ".yml"; ValueData: ""; Tasks: associate
-Root: HKA; Subkey: "Software\Classes\Applications\{#ExeName}\SupportedTypes"; ValueType: string; ValueName: ".yaml"; ValueData: ""; Tasks: associate
 
+; `task-2270`: every file, so Unluminous is in the Open with list of nearly any file. A file Unluminous cannot
+; show opens a tab saying so. The SupportedTypes list that stood here limited "Choose another app" to the ten
+; extensions below, so it is gone; an upgrade's uninstall entry for it is the key's own uninsdeletekey.
+Root: HKA; Subkey: "Software\Classes\*\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
 Root: HKA; Subkey: "Software\Classes\.md\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
 Root: HKA; Subkey: "Software\Classes\.markdown\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
 Root: HKA; Subkey: "Software\Classes\.txt\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue; Tasks: associate
