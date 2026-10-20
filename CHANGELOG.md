@@ -6,7 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.3.2 — 2026-10-20
+## 1.3.3 — 2026-10-20
+
+- Chat links put the line at the top, the explorer follows them, ACP pins a version npm has, toasts redesigned (`task-2313`)
+- The npm pins file is written atomically (`task-2313`)
+- Accept the pictures where the explorer now centres the opened file (`task-2313`)
+
+## 1.3.2 — 2026-10-19
 
 - The ACP registry is cards with Add, Update and Uninstall, and a missing npx version runs the newest one npm has (`task-2308`)
 
