@@ -6,7 +6,14 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.3.3 — 2026-10-20
+## 1.3.4 — 2026-10-20
+
+- Unluminous issues v20 (`task-2270`)
+- One if for a file handed over to a window waiting for a project (`task-2270`)
+- Rustfmt (`task-2270`)
+- The fresh install test reads the server's name, not a path that contains it (`task-2270`)
+
+## 1.3.3 — 2026-10-19
 
 - Chat links put the line at the top, the explorer follows them, ACP pins a version npm has, toasts redesigned (`task-2313`)
 - The npm pins file is written atomically (`task-2313`)
