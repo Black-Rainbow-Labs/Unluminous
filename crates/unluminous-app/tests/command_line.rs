@@ -1739,6 +1739,9 @@ const CANNOT_BE_MADE_TO_SUCCEED: &[(&str, &str)] = &[
     ("setup", "the client answers it, by connecting every agent on this machine; `unluminous-cli`'s own tests and tools/test-fresh-install.ps1 drive it"),
     ("mcp.config", "the client answers it, out of the catalog and this machine's paths"),
     ("mcp.tools", "the client answers it, out of the catalog it already holds"),
+    // `task-2314`: the MCP driver answers these, and the client hands them to the same driver.
+    ("batch", "the MCP driver answers it, by sending each step to the window as its own request; `batch::tests` drive it"),
+    ("git.diff", "the MCP driver answers it, by running the machine's git in the project folder; `driver::tests::git_diff_answers_with_the_text_of_what_changed` drives it"),
     // And the four that do reach the window and must not be allowed to finish.
     ("quit", "it ends the window, and the walk has the rest of the catalog still to drive"),
     // It is on a thread since `task-1984` L1, so the coverage walk sees a hold rather than a reply
