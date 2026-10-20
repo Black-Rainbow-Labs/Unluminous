@@ -138,10 +138,7 @@ mod tests {
             let cell = line.split('|').nth(2).expect("a second cell");
             for (at, named) in cell.split("**").enumerate().filter(|(at, _)| at % 2 == 1) {
                 let tool = format!("unluminous_{named}");
-                assert!(
-                    tools.contains(&tool),
-                    "the skill names {named}, and there is no {tool}"
-                );
+                assert!(tools.contains(&tool), "the skill names {named}, and there is no {tool}");
                 // The commands after a tool belong to it, up to the next tool in the cell.
                 let after = cell.split("**").nth(at + 1).unwrap_or_default();
                 let verbs = after.split(" or ").next().unwrap_or_default();
