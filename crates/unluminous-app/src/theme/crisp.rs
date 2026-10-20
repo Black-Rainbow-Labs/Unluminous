@@ -237,6 +237,13 @@ fn sharpen(ctx: &egui::Context, shape: &mut egui::Shape, scale: f32) {
             }
             job.first_row_min_height *= scale;
             let mut larger = ctx.fonts_mut(|fonts| fonts.layout_job(job));
+            // **Only while zoomed in.** Below one, each glyph snapped to a whole pixel on its own spaced a word
+            // unevenly at the few pixels a letter is tall there (`Typ ean address` at 45%, measured in the canvas's
+            // pictures), and a caret that far out is not something anybody types at.
+            if scale > 1.0 {
+                let pixels_per_point = larger.pixels_per_point;
+                keep_the_original_places(&text.galley, &mut larger, scale, pixels_per_point);
+            }
             carry_the_selection(&text.galley, &mut larger, scale);
             let mut sharp = TextShape {
                 galley: larger,
@@ -252,6 +259,63 @@ fn sharpen(ctx: &egui::Context, shape: &mut egui::Shape, scale: f32) {
         }
         egui::Shape::Vec(shapes) => shapes.iter_mut().for_each(|one| sharpen(ctx, one, scale)),
         _ => {}
+    }
+}
+
+/// Move every row and every glyph of `larger` to where `original` has it, `scale` times further out.
+///
+/// `task-2270`: *"Task modal description. at some zoom levels the cursor isn't aligned with the text line."*
+/// The caret is drawn from `original`, which the text box measured, and the words were drawn from `larger`. A
+/// font's advances and line heights are rounded to whole pixels at each size, so a line laid out at 13 × 1.6
+/// points is not 1.6 times the line laid out at 13: across a long line the letters drifted from the caret by
+/// most of a character, and down a paragraph each row drifted a little more than the one above it.
+///
+/// So the sharp glyphs are put at the places the caret and the selection are measured from. Each glyph keeps
+/// its own sharp bitmap and only moves, by less than a pixel at the start of a line and by the drift at its
+/// end. A galley whose rows or glyphs do not pair up, which a different wrap would make, is left as it was
+/// laid out.
+fn keep_the_original_places(
+    original: &egui::Galley,
+    larger: &mut std::sync::Arc<egui::Galley>,
+    scale: f32,
+    pixels_per_point: f32,
+) {
+    let pairs_up = original.rows.len() == larger.rows.len()
+        && original
+            .rows
+            .iter()
+            .zip(larger.rows.iter())
+            .all(|(was, now)| was.row.glyphs.len() == now.row.glyphs.len());
+    if !pairs_up {
+        return;
+    }
+    let galley = std::sync::Arc::make_mut(larger);
+    for (was, now) in original.rows.iter().zip(galley.rows.iter_mut()) {
+        now.pos =
+            ((was.pos.to_vec2() * scale * pixels_per_point).round() / pixels_per_point).to_pos2();
+        let row = std::sync::Arc::make_mut(&mut now.row);
+        let glyph_vertices = row.visuals.glyph_vertex_range.clone();
+        for (from, glyph) in was.row.glyphs.iter().zip(row.glyphs.iter_mut()) {
+            let shift = from.pos.x * scale - glyph.pos.x;
+            glyph.pos.x += shift;
+            if glyph.uv_rect.is_nothing() {
+                continue;
+            }
+            // The ink lands on a whole pixel, as `epaint` put it there: the left edge of the quad is the third
+            // vertex for an upright glyph and a slanted one alike.
+            let first = glyph.first_vertex as usize;
+            let Some(left) = row.visuals.mesh.vertices.get(first + 2).map(|vertex| vertex.pos.x)
+            else {
+                continue;
+            };
+            let snapped = ((left + shift) * pixels_per_point).round() / pixels_per_point - left;
+            for index in first..(first + 4).min(glyph_vertices.end) {
+                if let Some(vertex) = row.visuals.mesh.vertices.get_mut(index) {
+                    vertex.pos.x += snapped;
+                }
+            }
+        }
+        row.visuals.mesh_bounds = row.visuals.mesh.calc_bounds();
     }
 }
 
@@ -645,5 +709,72 @@ mod tests {
             fresh.rows[0].row.visuals.mesh.vertices.len(),
             "and text with nothing selected gains nothing"
         );
+    }
+    /// `task-2270`: the words a zoomed text box shows are where its caret is measured from. Laid out again at
+    /// 13 × 1.37 points a paragraph's letters drifted from the original layout by most of a character along a
+    /// line and further down every row, and the caret, which is drawn from the original, stood beside the
+    /// wrong letter. Every glyph is now within a pixel of where the original put it, scaled.
+    #[test]
+    fn the_sharper_words_stay_where_the_caret_was_measured_from() {
+        let context = egui::Context::default();
+        let mut output = context.run_ui(egui::RawInput::default(), |_| {});
+        output.textures_delta.clear();
+        let painter = Painter::new(context.clone(), egui::LayerId::background(), Rect::EVERYTHING);
+        let words = "Above and beyond what the role asked for, dozens of engineers worked across teams                      to ship the release on time, and the review says so in plain words."
+            .to_owned();
+        for scale in [1.1_f32, 1.37, 1.6, 2.3] {
+            let plain =
+                painter.layout(words.clone(), FontId::proportional(13.0), Color32::WHITE, 260.0);
+            assert!(plain.rows.len() > 1, "the paragraph wraps");
+            let mut shape =
+                egui::Shape::Text(TextShape::new(Pos2::ZERO, plain.clone(), Color32::WHITE));
+            sharpen(&context, &mut shape, scale);
+            let egui::Shape::Text(sharp) = shape else { panic!("still text") };
+            // The sharp shape is drawn `scale` times smaller, so its rows and glyphs are back in the original's
+            // points, and a pixel on the screen is `1 / scale` of them.
+            let pixel = 1.0 / scale + 0.001;
+            for (was, now) in plain.rows.iter().zip(sharp.galley.rows.iter()) {
+                // Where each glyph's ink starts, which is the left edge of its quad: what the original drew and
+                // what the sharp shape draws. `TextShape::transform` scales the mesh and leaves `Glyph::pos` alone.
+                let lefts = |row: &egui::epaint::text::PlacedRow| -> Vec<f32> {
+                    row.row
+                        .glyphs
+                        .iter()
+                        .filter(|glyph| !glyph.uv_rect.is_nothing())
+                        .filter_map(|glyph| {
+                            let vertex = row
+                                .row
+                                .visuals
+                                .mesh
+                                .vertices
+                                .get(glyph.first_vertex as usize + 2)?;
+                            Some(row.pos.x + vertex.pos.x)
+                        })
+                        .collect()
+                };
+                // The caret is placed at a glyph's own position, so that is where the sharp glyph has to be.
+                for (from, to) in was.row.glyphs.iter().zip(now.row.glyphs.iter()) {
+                    let (expected, drawn) = (from.pos.x, to.pos.x / scale);
+                    assert!(
+                        (expected - drawn).abs() < 0.01,
+                        "at {scale} a glyph placed for the caret at {expected} is at {drawn}"
+                    );
+                }
+                // The ink differs only by the font's own rounding of a glyph's side bearing to a whole pixel at
+                // each size: up to one point of the original's, which put its own ink on a whole point, and one
+                // pixel of the sharp layout's.
+                for (expected, drawn) in lefts(was).into_iter().zip(lefts(now)) {
+                    assert!(
+                        (expected - drawn).abs() < 1.0 + pixel,
+                        "at {scale} a glyph's ink meant for {expected} was drawn at {drawn}"
+                    );
+                }
+                let (expected, drawn) = (was.pos.y, now.pos.y);
+                assert!(
+                    (expected - drawn).abs() < pixel,
+                    "at {scale} a row meant for {expected} is at {drawn}"
+                );
+            }
+        }
     }
 }

@@ -317,13 +317,8 @@ impl UnluminousApp {
                 format!("{} is a folder. `project open` shows a folder.", path.display()),
             );
         }
-        if let Err(refusal) = file_kind::openable(&path) {
-            return no(
-                request,
-                code::NOT_APPLICABLE,
-                format!("Unluminous cannot open {}: {}", path.display(), refusal.reason()),
-            );
-        }
+        // A file Unluminous cannot show is opened all the same, into a tab that says so, and the answer says it
+        // was not rendered (`task-2270`).
         // **The answer is what happened, not what was attempted.** `task-1804` §7.2 measured
         // the alternative: on a file that exists and cannot be decoded this replied `ok: true`,
         // `tab: 0`, exit 0, while `tab list` showed no such tab and the reason sat in the status bar
@@ -352,13 +347,26 @@ impl UnluminousApp {
                 json!({ "designerTab": tab, "design": design.to_string_lossy(), "path": path.to_string_lossy() }),
             );
         }
+        // **Whether the tab can show the file** (`task-2270`): one Unluminous cannot show still opens, into a tab that
+        // says so, and the answer says it with the reason.
+        let unrenderable = self.files.active().unrenderable.clone();
         ok(
             request,
-            format!("Opened {} in tab {}", path.display(), self.files.active_index()),
+            match &unrenderable {
+                Some(file) => format!(
+                    "Opened {} in tab {}, which says it cannot be shown: {}",
+                    path.display(),
+                    self.files.active_index(),
+                    file.reason
+                ),
+                None => format!("Opened {} in tab {}", path.display(), self.files.active_index()),
+            },
             json!({
                 "tab": self.files.active_index(),
                 "path": path.to_string_lossy(),
                 "picture": self.files.active().is_picture(),
+                "rendered": unrenderable.is_none(),
+                "reason": unrenderable.map(|file| file.reason),
             }),
         )
     }
@@ -531,6 +539,7 @@ impl UnluminousApp {
                 "modified": file.document.is_modified(),
                 "picture": file.is_picture(),
                 "browser": file.is_browser(),
+                "rendered": file.unrenderable.is_none(),
                 "transient": file.transient,
                 "viewMode": view_mode_name(file.view_mode),
                 "pane": file.home.pane(),

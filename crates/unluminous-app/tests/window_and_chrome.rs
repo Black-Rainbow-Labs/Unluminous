@@ -1234,17 +1234,26 @@ fn opening_a_folder_clears_the_filter_and_brings_the_explorer_back() {
     assert!(harness.state().explorer_visible, "opening a folder shows the explorer");
 }
 
+/// `task-2270`: *"ensure we can open nearly all file types. If not renderable, just open a tab that says 'Unable to
+/// render this type of file'."* A click on a file that is not text opens a tab saying so, named after the file,
+/// which nothing can save over it.
 #[test]
-fn a_file_that_is_not_text_is_listed_and_does_nothing_when_clicked() {
+fn a_file_that_is_not_text_opens_a_tab_that_says_it_cannot_be_shown() {
     let mut harness = harness("");
-    let before = harness.state().document().text().to_string();
     harness.get_by_label_contains("bundle.zip").click();
     steady(&mut harness);
-    assert_eq!(
-        harness.state().document().text().to_string(),
-        before,
-        "clicking a file that is not text should do nothing"
+    let app = harness.state();
+    assert_eq!(app.files.active().name(), "bundle.zip");
+    assert!(
+        app.files.active().unrenderable.is_some(),
+        "the tab is the one that says it cannot be shown"
     );
+    assert!(!app.files.active().is_a_document(), "and it is not a document anything can type into");
+    assert!(harness.query_by_label_contains("Unable to render this type of file").is_some());
+    did(&mut harness, "action run save");
+    steady(&mut harness);
+    let bytes = std::fs::read(sample_folder().join("bundle.zip")).expect("the file is still there");
+    assert_eq!(bytes, [0x50, 0x4B, 0x03, 0x04, 0], "saving wrote nothing over it");
     harness.snapshot(shot("unopenable_file"));
 }
 
@@ -4167,6 +4176,8 @@ const EVERY_VARIANT: &[&str] = &[
     "GoToMatchingBracket",
     "CommandPalette",
     "ReopenClosedTab",
+    "NewBrowserTab",
+    "SendTabToRealm",
     "OpenRecent",
     "ForgetRecent",
     "Save",
@@ -4272,6 +4283,8 @@ fn variant_name(action: &Action) -> &'static str {
         Action::GoToMatchingBracket => "GoToMatchingBracket",
         Action::CommandPalette => "CommandPalette",
         Action::ReopenClosedTab => "ReopenClosedTab",
+        Action::NewBrowserTab => "NewBrowserTab",
+        Action::SendTabToRealm => "SendTabToRealm",
         Action::OpenRecent(_) => "OpenRecent",
         Action::ForgetRecent => "ForgetRecent",
         Action::Save => "Save",
@@ -5031,6 +5044,8 @@ fn every_step() -> Vec<Step> {
         Step::new(Action::CommandPalette),
         Step::new(Action::ReopenClosedTab)
             .after(&["tab open src/other.rs --permanent", "tab close"]),
+        Step::new(Action::NewBrowserTab),
+        Step::new(Action::SendTabToRealm).after(&["tab open src/other.rs --permanent"]),
         Step::new(Action::ForgetRecent).ready_with(a_project_that_has_been_open_before),
         Step::new(Action::Save).after(&["editor insert x"]),
         Step::new(Action::Settings),
@@ -6816,4 +6831,24 @@ mod setup_dialog {
         let reply = harness.state_mut().run_command_line("setup project", &ctx).expect("an answer");
         assert!(!reply.ok, "a window with a project has none to choose");
     }
+}
+
+/// `task-2270`: a browser toolbar narrower than its three buttons draws no address well, rather than a well of
+/// negative width, which `rux` refused with a panic that closed the window.
+#[test]
+fn a_browser_tab_in_a_pane_narrower_than_its_toolbar_draws_without_a_panic() {
+    if !unluminous_app::services::browser::SUPPORTED {
+        return;
+    }
+    let mut harness = harness("");
+    did(&mut harness, "browser open https://example.com/");
+    steady(&mut harness);
+    for _ in 0..8 {
+        did(&mut harness, "pane split");
+        did(&mut harness, "browser open https://example.com/");
+        steady(&mut harness);
+    }
+    harness.state_mut().explorer_visible = true;
+    steady(&mut harness);
+    assert!(harness.state().files.pane_count() > 4, "the editing area is cut into narrow panes");
 }

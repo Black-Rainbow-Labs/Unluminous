@@ -1817,11 +1817,14 @@ fn field_column(
     // The projects this window knows about, which is the list `File -> Open Recent` draws. A ticket may still
     // name one this window has never opened, so whatever the row says is kept in the list the way a model is.
     let project = task.project.clone().unwrap_or_default();
-    let projects: Vec<(String, String)> = board
+    let mut projects: Vec<(String, String)> = board
         .known_projects(task.project.as_deref())
         .into_iter()
-        .map(|path| (path.clone(), crate::services::paths::the_useful_end_of(&path)))
+        .map(|path| (path.clone(), crate::services::folder_choice::named(&path)))
         .collect();
+    // **And any other folder at all** (`task-2270`), last, through the window's folder picker. The row's value is
+    // not a path, so it can never be written to the ticket as one.
+    projects.push((OTHER_FOLDER.to_owned(), crate::services::folder_choice::OTHER.to_owned()));
     if let Some(chosen) = choice(
         rux,
         selects,
@@ -1835,7 +1838,14 @@ fn field_column(
         Some("The folder this window has open"),
         gap,
     ) {
-        requests.extend(write(board, task, Field::Project(chosen)));
+        match chosen == OTHER_FOLDER {
+            true => requests.push(Request::PickFolder {
+                id: format!("{}{}", crate::services::agent_tasks::PICK_FOLDER, task.id),
+                title: format!("The folder {}'s agent starts in", task.key),
+                start: task.project.as_ref().map(std::path::PathBuf::from),
+            }),
+            false => requests.extend(write(board, task, Field::Project(chosen))),
+        }
     }
 
     let epics: Vec<(String, String)> =
@@ -2007,6 +2017,9 @@ fn choice(
         Some(value.as_str()) != selected.and_then(|at| values.get(at)).map(String::as_str)
     })
 }
+
+/// The value of the Project field's `Other folder...` row, which no folder can be named.
+const OTHER_FOLDER: &str = "\u{1}other-folder";
 
 /// Write one field, and report what could not be written.
 fn write(board: &mut AgentTasks, task: &Task, field: Field) -> Vec<Request> {

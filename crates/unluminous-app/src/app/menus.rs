@@ -200,6 +200,7 @@ impl UnluminousApp {
             | Action::SaveAs
             | Action::CloseWindow
             | Action::ReopenClosedTab
+            | Action::NewBrowserTab
             | Action::Quit => self.a_file_entry(action, ctx),
             Action::ToggleLineComment
             | Action::ToggleBlockComment
@@ -260,6 +261,7 @@ impl UnluminousApp {
             | Action::Dock { .. }
             | Action::FillSide(_)
             | Action::ResetPanelLayout
+            | Action::SendTabToRealm
             | Action::Realm(_) => self.a_view_entry(action),
             Action::Run(_) | Action::Debug(_) => self.a_run_entry(action),
             // A notebook's own, which go down the same function the command line's `notebook`
@@ -389,6 +391,11 @@ impl UnluminousApp {
     /// these, so the last arm cannot happen.
     fn a_file_entry(&mut self, action: Action, ctx: &egui::Context) {
         match action {
+            Action::NewBrowserTab => {
+                if let Err(problem) = self.open_a_new_browser_tab() {
+                    self.message = Some(problem);
+                }
+            }
             Action::NewWindow => {
                 launcher::open_window(self.tree.root());
             }
@@ -455,6 +462,11 @@ impl UnluminousApp {
                 if let Some(store) = &self.store {
                     let _ = std::fs::remove_file(store.recent_path());
                 }
+            }
+            Action::Save | Action::SaveAs if self.files.active().unrenderable.is_some() => {
+                self.message = Some(
+                    "Unluminous cannot show this file, so there is nothing to save.".to_owned(),
+                );
             }
             Action::Save | Action::SaveAs if self.files.active().is_browser() => {
                 self.message = Some("A rendered page has no editable source to save.".to_owned());
@@ -788,6 +800,10 @@ impl UnluminousApp {
     /// these, so the last arm cannot happen.
     fn a_view_entry(&mut self, action: Action) {
         match action {
+            Action::SendTabToRealm => match self.send_the_tab_to_the_realm() {
+                Ok(node) => self.message = Some(format!("Sent to the realm as node {node}")),
+                Err(problem) => self.message = Some(problem),
+            },
             Action::SetViewMode(mode) => self.set_view_mode(mode),
             // Both of the rules this used to state -- leave a maximise, and never leave the window
             // with nothing in it -- are in `show_a_panel` now, where `unluminous-cli explorer show`

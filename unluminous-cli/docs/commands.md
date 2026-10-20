@@ -486,7 +486,7 @@ unluminous-cli window message Ready for the next step
 
 ## browser — rendered web pages in Unluminous tabs
 
-Rendered tabs use the operating system browser engine. Local HTML is served from a constrained project origin, so its CSS, scripts and images work without exposing the filesystem to page JavaScript. A window renders one page at a time: every rendered tab keeps its own address, title and history, and the one view follows whichever tab is showing, so these commands act on the tab that is showing and say so when it is not a rendered one.
+Rendered tabs use the operating system browser engine. Local HTML is served from a constrained project origin, so its CSS, scripts and images work without exposing the filesystem to page JavaScript. Every rendered tab and every browser node has a view of its own, so several pages render at once, each with its own address, title and history. These commands act on the tab that is showing in the editing area and say so when it is not a rendered one. A link clicked in a page opens a new tab beside it, or a new browser node beside a node, unless `browser.links` is `same-tab`.
 
 ### browser open
 
@@ -512,7 +512,7 @@ unluminous-cli browser open --system https://example.com
 unluminous-cli browser status
 ```
 
-Read the address, title, loading state, whether this is the tab the one view is pointed at, and the history directions of the rendered tab that is showing.
+Read the address, title, loading state, whether the page has its own view yet (`live`) and how many views the window has (`views`), whether it holds the keyboard (`showing`), and the history directions of the rendered tab that is showing.
 
 ```sh
 unluminous-cli browser status --json
@@ -2501,7 +2501,7 @@ unluminous-cli realm address 9 https://example.com/
 unluminous-cli realm browser <node> <go|back|forward|reload|url|shot|pick|pin|unpin|pinned> [--url <address>] [--selector <css>] [--from <node>] [--path <file>]
 ```
 
-Drive a browser node: `go` to an address, `back`, `forward`, `reload`, `url` to read where it is, and `shot` to write a picture of the node to a file. `pin --selector <css>` makes the node show only that element of the page, scaled to fill the node without being stretched; `unpin` shows the whole page again; `pinned` says what is pinned; `pick` opens the element picker in the page for a person to click an element, which is what `Select Element` on the page's right click menu does. A pin belongs to the address it was made on and is kept in the realm file. A window renders one page at a time, so the node acted on is shown first. **`shot` photographs the node as Unluminous drew it and not the page inside it**: a rendered page is a native child window the operating system composites on top, and no picture taken from inside Unluminous contains one. Use it to see the node, its address bar and where it is on the canvas; use `url` to read the address, and the agent's own tools to read what a page says.
+Drive a browser node: `go` to an address, `back`, `forward`, `reload`, `url` to read where it is, and `shot` to write a picture of the node to a file. `pin --selector <css>` makes the node show only that element of the page, scaled to fill the node without being stretched; `unpin` shows the whole page again; `pinned` says what is pinned; `pick` opens the element picker in the page for a person to click an element, which is what `Select Element` on the page's right click menu does. A pin belongs to the address it was made on and is kept in the realm file. Every node's page renders in a view of its own, so the node acted on is driven where it is. **`shot` photographs the node as Unluminous drew it and not the page inside it**: a rendered page is a native child window the operating system composites on top, and no picture taken from inside Unluminous contains one. Use it to see the node, its address bar and where it is on the canvas; use `url` to read the address, and the agent's own tools to read what a page says.
 
 - `node` — The browser node's id.
 - `command` — go, back, forward, reload, url, shot, pick, pin, unpin or pinned.
@@ -2560,10 +2560,10 @@ unluminous-cli realm editor 13 src/main.rs --from 7
 unluminous-cli realm note <view> <node> <raw|side|preview> [--from <node>]
 ```
 
-Show a note node as its Markdown source (raw), as the source beside its preview (side), or as the preview alone (preview). The same three buttons are at the right of the note's header. The view is written in the realm file, because it is how the note is meant to be read.
+Show a note node, or the Markdown or Mermaid file a File Editor node is showing, as its source (raw), as the source beside its preview (side), or as the preview alone (preview). The same three buttons are at the right of the node's header. A note's view is written in the realm file, because it is how the note is meant to be read; a File Editor node's is kept on its tab, as a tab in a pane keeps it.
 
 - `command` — view.
-- `node` — The note node's id.
+- `node` — The note node's id, or a File Editor node's.
 - `view` — raw, side or preview.
 
 - `--from <node>` — Which node is asking. It must be wired to the one it names.

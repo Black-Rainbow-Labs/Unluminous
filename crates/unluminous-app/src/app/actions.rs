@@ -117,6 +117,10 @@ pub enum Action {
     /// Dimmed when nothing has been closed, which is `Undo`'s shape: it is a control that could be
     /// used in a moment rather than one that can never apply.
     ReopenClosedTab,
+    /// Open an empty rendered tab with its address field holding the keyboard. `task-2270`.
+    NewBrowserTab,
+    /// Move the tab that is showing onto the realm that is showing, as a node of its own. `task-2270`.
+    SendTabToRealm,
     /// Open a project that has been open before, in a window of its own.
     OpenRecent(PathBuf),
     /// Forget the recent projects.
@@ -1766,6 +1770,7 @@ fn file_menu(state: &MenuState) -> Menu {
         Entry::item("New Jupyter Notebook", Action::NewNotebook),
         Entry::item("New Rust Notebook", Action::NewRustNotebook),
         Entry::item("Open Web Address...", Action::OpenWebAddress),
+        Entry::item("New Browser Tab", Action::NewBrowserTab),
         // Searching the project rather than the disk, which is what `task-1659` asks for and what
         // The reference editor puts on this key. It took the shortcut `Open Folder` used to have, because two
         // menu items claiming one key equivalent is a fault on macOS and there is a test for it;
@@ -2346,7 +2351,15 @@ pub fn tab_menu(state: &MenuState) -> Vec<Entry> {
     let mut entries = vec![
         Entry::item("Close", Action::CloseTab).enabled(state.open_files > 1),
         Entry::item("Select Opened File", Action::SelectOpenFile),
+        Entry::Separator,
+        Entry::item("New Browser Tab", Action::NewBrowserTab),
     ];
+    // **Absent while the Realm plugin is off**, and dimmed on a tab that already lives on a node (`task-2270`).
+    if state.realm_available {
+        entries.push(
+            Entry::item("Send to Realm", Action::SendTabToRealm).enabled(!state.tab_is_on_a_node),
+        );
+    }
     // **The split rows are absent on a node's tab**, because every one of them is about the editing area's
     // row of panes — see `MenuState::tab_is_on_a_node`.
     if !state.tab_is_on_a_node {
@@ -2354,6 +2367,12 @@ pub fn tab_menu(state: &MenuState) -> Vec<Entry> {
         entries.extend(split_menu(state));
     }
     entries
+}
+
+/// What the empty part of a tab strip's right click menu holds: a new tab of the kind that has no file to come
+/// from. `task-2270`: *"Right click in top space or on existing tab -> open new browser tab."*
+pub fn tab_strip_menu() -> Vec<Entry> {
+    vec![Entry::item("New Browser Tab", Action::NewBrowserTab)]
 }
 
 /// What a terminal tab's right click menu holds.
@@ -2402,6 +2421,9 @@ pub fn realm_menu(state: &MenuState) -> Vec<Entry> {
     entries.push(
         Entry::item("Delete Realm", Action::Realm(RealmAction::DeleteRealm))
             .enabled(state.realm_views > 0),
+    );
+    entries.push(
+        Entry::item("Send Tab to Realm", Action::SendTabToRealm).enabled(!state.tab_is_on_a_node),
     );
     entries.push(Entry::Separator);
     entries.push(

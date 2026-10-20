@@ -675,6 +675,41 @@ impl ValueTooltip {
     }
 }
 
+/// Where a link a person clicks in a web page opens (`task-2270`): *"Click on page links should open new tabs by
+/// default."*
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BrowserLinks {
+    /// In a new tab beside the page, or a new browser node beside the node.
+    #[default]
+    NewTab,
+    /// In the page itself, as a browser does with no modifier held.
+    SameTab,
+}
+
+impl BrowserLinks {
+    /// The word the settings file, the command line and a test spell it with.
+    pub fn name(self) -> &'static str {
+        match self {
+            BrowserLinks::NewTab => "new-tab",
+            BrowserLinks::SameTab => "same-tab",
+        }
+    }
+
+    /// Read a value, or nothing when the file holds something this version does not have.
+    pub fn parse(name: &str) -> Option<Self> {
+        match name.trim().to_lowercase().as_str() {
+            "new-tab" => Some(BrowserLinks::NewTab),
+            "same-tab" => Some(BrowserLinks::SameTab),
+            _ => None,
+        }
+    }
+
+    /// Whether a link opens a new tab.
+    pub fn opens_new_tabs(self) -> bool {
+        self == BrowserLinks::NewTab
+    }
+}
+
 /// One page of the Settings window, and the group it is listed under.
 ///
 /// The list on the left of the window is built from this, so adding a page is one variant and one match
@@ -1303,6 +1338,8 @@ settings! {
         value_tooltip: ValueTooltip = ValueTooltip::Automatic => "debug.value_tooltip", "automatic or manual";
         /// Which browser a page is told it is talking to. See [`BrowserAgent`]. `task-2255`.
         browser_agent: BrowserAgent = BrowserAgent::Default => "browser.user_agent", "default, chrome, firefox, safari or edge";
+        /// Where a link a person clicks in a page opens. See [`BrowserLinks`]. `task-2270`.
+        browser_links: BrowserLinks = BrowserLinks::NewTab => "browser.links", "new-tab or same-tab";
         /// How many tools the catalogue is cut into for an agent. See `unluminous_cli::mcp::tools`.
         mcp_tools: unluminous_cli::mcp::Shape = unluminous_cli::mcp::Shape::default() => "mcp.tools", "grouped or every";
         /// Which engine dictation uses. See [`VoiceEngine`].
@@ -1972,6 +2009,7 @@ mod tests {
             "update.skip",
             "debug.value_tooltip",
             "browser.user_agent",
+            "browser.links",
             "mcp.tools",
             "mcp.port",
             "appearance.background.image",
@@ -2094,6 +2132,7 @@ mod tests {
             exclude: "dist/, vendor/".to_owned(),
             value_tooltip: ValueTooltip::Manual,
             browser_agent: BrowserAgent::Firefox,
+            browser_links: BrowserLinks::SameTab,
             plugin_chrome: false,
             mcp_enabled: true,
             mcp_port: 9001,

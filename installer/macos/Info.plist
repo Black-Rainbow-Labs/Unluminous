@@ -100,6 +100,23 @@
                 <string>public.yaml</string>
             </array>
         </dict>
+        <!-- `task-2270`: any other file, so Unluminous is offered for nearly every file in Finder's Open With.
+             A file Unluminous cannot show opens a tab saying so, with a button that opens it in its own
+             program. Alternate and Viewer, like the rest, so it is never the default for anything. -->
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Any File</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.data</string>
+                <string>public.content</string>
+                <string>public.item</string>
+            </array>
+        </dict>
         <dict>
             <key>CFBundleTypeName</key>
             <string>Folder</string>

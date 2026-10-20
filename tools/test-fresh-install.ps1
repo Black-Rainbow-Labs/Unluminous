@@ -86,7 +86,7 @@ $keys = [ordered]@{
     progid     = 'HKCU\Software\Classes\Unluminous.Document'
     application = 'HKCU\Software\Classes\Applications\unluminous.exe'
 }
-$extensions = '.md', '.markdown', '.txt', '.rs', '.js', '.ts', '.json', '.toml', '.yml', '.yaml'
+$extensions = '*', '.md', '.markdown', '.txt', '.rs', '.js', '.ts', '.json', '.toml', '.yml', '.yaml'
 $shortcuts = @(
     (Join-Path ([Environment]::GetFolderPath('Programs')) 'Unluminous.lnk'),
     (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Unluminous.lnk')

@@ -82,5 +82,6 @@ pub mod title_bar;
 /// Dismissible notices over the bottom right of the window: what a plugin sends when somebody has to
 /// see it, rather than the status bar's running commentary.
 pub mod toast;
+pub mod unrenderable_view;
 pub mod value_tooltip;
 pub mod voice_page;

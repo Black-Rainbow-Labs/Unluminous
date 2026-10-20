@@ -355,6 +355,9 @@ fn main() -> eframe::Result {
     // egui's own marks in the frame trace, in a build made for it - `task-2288`.
     #[cfg(feature = "diagnostic-spans")]
     unluminous_app::services::span_trace::start();
+    // The files Finder hands over, which reach no window unless something answers macOS's open documents event.
+    // Before the event loop, so the file a launch was asked to open is not missed - `task-2270`.
+    unluminous_app::services::opened_by_the_system::listen();
 
     eframe::run_native(
         "Unluminous",
@@ -370,6 +373,7 @@ fn main() -> eframe::Result {
             }
             unluminous_app::services::frame_trace::mark("app-new");
             app.prepare(&cc.egui_ctx);
+            unluminous_app::services::opened_by_the_system::wake_with(&cc.egui_ctx);
             unluminous_app::services::frame_trace::mark("prepare");
             // The settings, the pane sizes and the recent projects come from disk here rather than in
             // `UnluminousApp::new`, so that a test never reads or writes the settings of the person running it.

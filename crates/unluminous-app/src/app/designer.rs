@@ -350,7 +350,7 @@ impl UnluminousApp {
         if self.browser.watching() != Some(id) {
             self.browser.watch(id, Some(page::watch()));
         }
-        if self.browser.showing() != Some(id) {
+        if !self.browser.is_live(id) {
             return;
         }
         let calls = match self.designer() {

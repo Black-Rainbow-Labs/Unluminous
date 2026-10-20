@@ -79,6 +79,30 @@ impl UnluminousApp {
         }
     }
 
+    /// Open what the operating system asked this window to open, which on macOS is the files Finder hands over
+    /// (`task-2270`, `services::opened_by_the_system`).
+    ///
+    /// A folder opens in a window of its own, which is `Open Folder`. A file opens in a tab of this window, or, in a
+    /// window still waiting for a project, the way `unluminous <file>` opens one: in a window on the file's folder,
+    /// which then replaces this one.
+    pub(crate) fn open_what_the_system_handed_over(&mut self, ctx: &egui::Context) {
+        for path in crate::services::opened_by_the_system::take_for_the_window() {
+            if path.is_dir() {
+                self.open_a_project_window(&path);
+                continue;
+            }
+            if self.waiting_for_a_project {
+                if crate::services::launcher::open_window(&path).is_some() {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    continue;
+                }
+            }
+            if let Err(problem) = self.open_path_permanently(&path) {
+                self.message = Some(problem);
+            }
+        }
+    }
+
     /// Read the recent projects again when another window has changed them.
     ///
     /// The other half of [`Self::open_a_project_window`]: every Unluminous window is a process of its own and
@@ -204,10 +228,15 @@ impl UnluminousApp {
             let relative = crate::services::project_state::relative(self.tree.root(), path);
             return self.open_a_realm_in_a_tab(&relative);
         }
+        // **A file that exists and cannot be shown opens a tab that says so** (`task-2270`), rather than being
+        // refused with a line in the status bar. One already open is shown again.
         if let Err(refusal) = file_kind::openable(path) {
-            let reason = format!("{}: {}", path.display(), refusal.reason());
-            self.message = Some(reason.clone());
-            return Err(reason);
+            if !path.is_file() {
+                let reason = format!("{}: {}", path.display(), refusal.reason());
+                self.message = Some(reason.clone());
+                return Err(reason);
+            }
+            return self.open_an_unrenderable_file(path, refusal.reason(), permanent);
         }
         // A file that is already open is shown rather than read from disk again, so switching back
         // to a tab does not throw away what has been typed into it.
@@ -264,6 +293,12 @@ impl UnluminousApp {
                 self.forget_layout();
                 Ok(())
             }
+            // A file that exists and could not be read as text opens the tab that says so (`task-2270`). Nothing
+            // that was open is thrown away.
+            Err(error) if path.is_file() => {
+                eprintln!("Unluminous could not open {}: {error}", path.display());
+                self.open_an_unrenderable_file(path, &error.to_string(), permanent)
+            }
             Err(error) => {
                 // Nothing is thrown away: the document that was open stays open, and the reason is said in
                 // the status bar rather than only on the error output.
@@ -273,6 +308,23 @@ impl UnluminousApp {
                 Err(reason)
             }
         }
+    }
+
+    /// Open a tab for a file Unluminous cannot show, saying why, or show the one already open. `task-2270`.
+    fn open_an_unrenderable_file(
+        &mut self,
+        path: &Path,
+        reason: &str,
+        permanent: bool,
+    ) -> Result<(), String> {
+        if let Some(index) = self.files.index_of(path) {
+            self.show_tab(index);
+            return Ok(());
+        }
+        self.files.open_file(files::OpenFile::unrenderable(path, reason), permanent);
+        self.message = None;
+        self.forget_layout();
+        Ok(())
     }
 
     /// Open a file at a match found by `Find in Files`, with the match itself selected.
@@ -759,6 +811,12 @@ impl UnluminousApp {
         if self.files.active().is_picture() {
             self.message =
                 Some("A picture cannot be edited, so there is nothing to save.".to_owned());
+            return;
+        }
+        // Nor can a file Unluminous cannot show, whose tab holds an empty document. `task-2270`.
+        if self.files.active().unrenderable.is_some() {
+            self.message =
+                Some("Unluminous cannot show this file, so there is nothing to save.".to_owned());
             return;
         }
         // A tab a plugin draws holds an empty document with no path, so saving it would write an empty

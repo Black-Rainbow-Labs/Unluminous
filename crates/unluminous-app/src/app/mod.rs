@@ -1404,6 +1404,8 @@ pub struct UnluminousApp {
     /// menu shows the tab it was opened on first. The editing area's own menu already sets that
     /// precedent: a right click outside the selection puts the caret there before opening.
     pub tab_menu: Option<(Pos2, usize)>,
+    /// Where the menu of the empty part of a tab strip is open, which holds `New Browser Tab`. `task-2270`.
+    pub strip_menu: Option<Pos2>,
     /// The Pythons on this machine, looked for once on a thread the first time a notebook needs a
     /// kernel. See `app::notebook_kernel`. `task-2220`.
     pub(crate) pythons: notebook_kernel::Pythons,
@@ -1705,6 +1707,7 @@ impl UnluminousApp {
             run_to: None,
             text_menu: None,
             tab_menu: None,
+            strip_menu: None,
             pythons: notebook_kernel::Pythons::default(),
             notebook_wanted: None,
             notebook_menu: None,

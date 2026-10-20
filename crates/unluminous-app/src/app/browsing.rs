@@ -1,8 +1,8 @@
 //! The browser tabs' half of the window.
 //!
-//! A window has **one** native child view whatever the tab count, and it is pointed at the tab that
-//! is showing — `services::browser` records what creating a second one costs. Everything here either
-//! decides which tab that is or carries a command to it.
+//! Since `task-2270` every rendered tab has a native child view of its own, made the first time its page is
+//! placed; `services::browser` records what was measured. Everything here either places a page or carries a
+//! command to one.
 
 use egui::Rect;
 
@@ -39,9 +39,9 @@ pub struct PageStills {
     areas: std::collections::HashMap<u64, Rect>,
     /// The tab being held, and why.
     held: Option<Held>,
-    /// The page a popup is over, with the picture taken of it just before the popup was cut out of it.
+    /// The pages a popup is over, each with the picture taken of it just before the popup was cut out of it.
     /// See [`UnluminousApp::stand_a_picture_under_what_covers_the_page`].
-    covered: Option<(u64, egui::TextureHandle)>,
+    covered: std::collections::HashMap<u64, egui::TextureHandle>,
 }
 
 /// One tab whose picture is standing in for its page.
@@ -65,14 +65,12 @@ impl PageStills {
 
     /// Whether a picture is standing under a popup over `tab`'s page, which a test can ask.
     pub fn under_a_popup(&self, tab: u64) -> bool {
-        self.covered.as_ref().is_some_and(|(covered, _)| *covered == tab)
+        self.covered.contains_key(&tab)
     }
 
     /// Forget a closed tab.
     pub fn forget(&mut self, tab: u64) {
-        if self.under_a_popup(tab) {
-            self.covered = None;
-        }
+        self.covered.remove(&tab);
         self.pictures.remove(&tab);
         self.areas.remove(&tab);
         if self.held.as_ref().is_some_and(|held| held.tab == tab) {
@@ -135,7 +133,7 @@ impl UnluminousApp {
         // keyboard, so the tab and the Designer's page were both focused placements and the tab, drawn first,
         // took the one native view back on the frame after a click on the Designer.
         let focused = focused && matches!(self.focus, Focus::Editor);
-        let showing = self.browser.showing().is_none_or(|id| id == tab.id);
+        let showing = self.browser.renders(tab.id);
         // Taken off the tab, handed over, and put back — the same borrow a browser node does, and for the
         // same reason: a tab that is not showing is not drawn.
         let mut typed = std::mem::take(&mut self.files.active_mut().typed_address);
@@ -191,7 +189,7 @@ impl UnluminousApp {
     /// page that is not live shows the picture taken of it as the view left it, and pressing it moves the live
     /// view there, so both panes show their page and the one being used is the live one.
     pub(crate) fn paint_a_page_not_showing(&self, ui: &egui::Ui, tab: u64, area: Rect) -> bool {
-        if self.browser.showing().is_none_or(|id| id == tab) {
+        if self.browser.renders(tab) {
             return false;
         }
         let Some(picture) = self.page_stills.pictures.get(&tab) else { return false };
@@ -346,30 +344,34 @@ impl UnluminousApp {
         ctx: &egui::Context,
         occluders: &[Rect],
     ) {
-        let showing = self.browser.showing();
-        let page = self.browser_placements.iter().find(|placement| Some(placement.id) == showing);
-        let Some(page) = page.filter(|page| {
-            crate::services::browser::covers_any_of(occluders, page.visible)
-                && !self.page_stills.holding(page.id)
-        }) else {
-            self.page_stills.covered = None;
-            return;
-        };
-        let (id, visible) = (page.id, page.visible);
-        if !self.page_stills.under_a_popup(id) {
-            let Some(picture) = self.browser.photograph(id) else { return };
-            let texture =
-                ctx.load_texture("covered-page-still", picture, egui::TextureOptions::LINEAR);
-            self.page_stills.covered = Some((id, texture));
+        // **Every page a popup is over**, since every placed page is live (`task-2270`).
+        let covered: Vec<(u64, Rect)> = self
+            .browser_placements
+            .iter()
+            .filter(|page| {
+                self.browser.renders(page.id)
+                    && crate::services::browser::covers_any_of(occluders, page.visible)
+                    && !self.page_stills.holding(page.id)
+            })
+            .map(|page| (page.id, page.visible))
+            .collect();
+        self.page_stills.covered.retain(|id, _| covered.iter().any(|(page, _)| page == id));
+        for (id, visible) in covered {
+            if !self.page_stills.under_a_popup(id) {
+                let Some(picture) = self.browser.photograph(id) else { continue };
+                let texture =
+                    ctx.load_texture("covered-page-still", picture, egui::TextureOptions::LINEAR);
+                self.page_stills.covered.insert(id, texture);
+            }
+            let Some(picture) = self.page_stills.covered.get(&id) else { continue };
+            let (place, part) = a_picture_at_its_own_shape(picture.size_vec2(), visible);
+            ctx.layer_painter(egui::LayerId::background()).with_clip_rect(visible).image(
+                picture.id(),
+                place,
+                part,
+                egui::Color32::WHITE,
+            );
         }
-        let Some((_, picture)) = self.page_stills.covered.as_ref() else { return };
-        let (place, part) = a_picture_at_its_own_shape(picture.size_vec2(), visible);
-        ctx.layer_painter(egui::LayerId::background()).with_clip_rect(visible).image(
-            picture.id(),
-            place,
-            part,
-            egui::Color32::WHITE,
-        );
     }
 
     /// Make the tab or node holding page `id` the one with the keyboard, because somebody clicked into the page.
@@ -468,6 +470,34 @@ impl UnluminousApp {
         Ok(id)
     }
 
+    /// Open an empty rendered tab in the pane with the keyboard, with its address field holding the keyboard.
+    ///
+    /// `task-2270`: *"Right click in top space or on existing tab -> open new browser tab."* The tab is on
+    /// [`crate::services::browser::BLANK`] and its field is the person's from the start, so what is typed is
+    /// never overwritten by the page's own address.
+    pub fn open_a_new_browser_tab(&mut self) -> Result<u64, String> {
+        if !crate::services::browser::SUPPORTED {
+            return Err("Rendered web tabs are available on Windows and macOS.".to_owned());
+        }
+        let tab = self
+            .browser
+            .open_tab(BrowserLocation::Remote { url: crate::services::browser::BLANK.to_owned() });
+        let id = tab.id;
+        self.files.open_file(files::OpenFile::browser(tab), true);
+        self.files.active_mut().typed_address.clear();
+        self.files.active_mut().editing_address = true;
+        self.show_the_editing_area_for_a_tab();
+        self.focus = Focus::Editor;
+        if let Some(ctx) = &self.context {
+            let field = egui::Id::new(("browser-address", id));
+            ctx.data_mut(|data| {
+                data.insert_temp(crate::components::controls::wants_the_keyboard(), field)
+            });
+        }
+        self.message = Some("Opened a new browser tab".to_owned());
+        Ok(id)
+    }
+
     /// Open the browser tabs a project left open, each in its pane and with the addresses it had been at.
     ///
     /// `task-2203`: *"we don't seem to be retaining session history."* A browser tab in the editing area was
@@ -549,6 +579,34 @@ impl UnluminousApp {
         }
     }
 
+    /// Open the page a link in page `source` asked for, in a new tab: beside that tab in its own pane, or, for a
+    /// page on a browser node, in a new browser node to the right of that node. `task-2270`: *"Click on page links
+    /// should open new tabs by default."* A link with `target="_blank"` and `window.open` arrive the same way.
+    pub fn open_a_page_a_link_asked_for(&mut self, source: u64, url: &str) -> Result<(), String> {
+        if let Some(node) = self.realm.live.node_of_browser(source) {
+            let beside = self
+                .realm
+                .realm
+                .node(node)
+                .map(|found| found.rect())
+                .map(|rect| egui::pos2(rect.right() + 32.0, rect.top()))
+                .unwrap_or_else(|| self.middle_of_the_canvas());
+            let made = self.add_a_realm_node(crate::services::realm::Kind::Browser, beside);
+            self.open_a_realm_browser(made, url)?;
+            self.realm.realm.choose(Some(made));
+            return Ok(());
+        }
+        // The pane the link was clicked in is the pane the new tab opens in.
+        let index = self
+            .files
+            .iter()
+            .position(|file| file.browser.as_ref().is_some_and(|tab| tab.id == source));
+        if let Some(index) = index {
+            self.show_tab(index);
+        }
+        self.open_browser(url).map(|_| ())
+    }
+
     /// The rendered tab with this id, wherever it is open.
     ///
     /// **Two places, asked in one function**, which is `follow_the_open_file`'s rule: a tab is either in
@@ -580,15 +638,19 @@ impl UnluminousApp {
         }
         let arrived = self.browser.take_events();
         self.act_on_browser_events(arrived);
-        // What the page's own right click menu offers, for the page showing now. `task-2203`.
-        let node = self.browser.showing().and_then(|id| self.realm.live.node_of_browser(id));
-        let pinned = node.is_some_and(|node| self.a_nodes_pin(node).is_some());
-        self.browser
-            .set_page_menu(crate::services::browser::PageMenu { pickable: node.is_some(), pinned });
-        // A pick asked for while another page held the one view, opened once the view is on this node's page.
+        // What each browser node's page offers on its own right click menu. `task-2203`. A tab in the editing area
+        // offers nothing, which is the menu's default.
+        let nodes: Vec<u64> = self.realm.live.browsers().map(|tab| tab.id).collect();
+        for id in nodes {
+            let Some(node) = self.realm.live.node_of_browser(id) else { continue };
+            let pinned = self.a_nodes_pin(node).is_some();
+            self.browser
+                .set_page_menu(id, crate::services::browser::PageMenu { pickable: true, pinned });
+        }
+        // A pick asked for before the node's page had a view, opened once it has one and has loaded.
         if let Some((node, at)) = self.pick_when_showing {
             match self.realm.live.browser(node) {
-                Some(tab) if self.browser.showing() == Some(tab.id) && !tab.loading => {
+                Some(tab) if self.browser.is_live(tab.id) && !tab.loading => {
                     self.pick_when_showing = None;
                     if let Err(problem) = self.browser.start_picking(tab.id, at) {
                         self.message = Some(problem);
@@ -608,8 +670,10 @@ impl UnluminousApp {
     pub fn act_on_browser_events(&mut self, events: Vec<BrowserEvent>) {
         for event in events {
             match event {
-                BrowserEvent::OpenRequested { url, .. } => {
-                    let _ = self.open_browser(&url);
+                BrowserEvent::OpenRequested { source, url } => {
+                    if let Err(problem) = self.open_a_page_a_link_asked_for(source, &url) {
+                        self.message = Some(problem);
+                    }
                 }
                 BrowserEvent::PickAsked { id, at } => {
                     if let Some(node) = self.realm.live.node_of_browser(id) {

@@ -324,11 +324,11 @@ behind it.
   Windows needs before the desktop will show through the window.
 - `theme/` — the palette, the measurements and the drawn icons.
 
-## Browser tabs are one native child, and three rules keep it from hanging the window
+## Every browser tab has a native child of its own, and three rules keep them from hanging the window
 
-`services/browser.rs` owns WebView2 on Windows and WKWebView on macOS through Wry. The native view
+`services/browser.rs` owns WebView2 on Windows and WKWebView on macOS through Wry. A native view
 never lives in `OpenFile`. An `OpenFile` holds only a testable `BrowserTab`, while one lazy
-`BrowserHost` owns the browser profile, the view and the constrained local resource roots. Keep that
+`BrowserHost` owns the browser profile, the views and the constrained local resource roots. Keep that
 split: everything about a tab that can be tested with no window is in `BrowserTab`.
 
 Local HTML uses an `unluminous://` project origin. Resolve every requested resource under the registered
@@ -336,19 +336,19 @@ canonical root, refuse traversal and write methods, and expose no JavaScript hos
 scripts and images are remembered, so a changed resource reloads the page that used it and an
 untouched project costs nothing.
 
-Three things were each measured on `task-1756` after they had hung or blanked the window, and each is
-a rule rather than a preference:
+Three things were each measured after they had hung or blanked the window, and each is a rule rather than
+a preference:
 
-- **A window has ONE native view, whatever the tab count, and it is pointed at the tab that is
-  showing.** Creating a second WebView2 controller while another view lives on the thread blocks in a
-  nested Windows message pump on a completion that never arrives — no crash, no error, and no frame
-  ever drawn again, though the process still pumps messages. Every other explanation was eliminated
-  (shared environment, shared data folder, custom protocol, every builder handler, focus, visibility,
-  the transparent DirectComposition window, `run_and_return`), and a minimal eframe + wry probe with
-  all of them matched creates two views happily. Do not "improve" this into a view per tab without
-  measuring it again. Because of it, a tab's history lives in `BrowserTab` — otherwise one tab's
-  `Back` would land on another's page.
-- **The view is created before the egui pass, from `raw_input_hook`, never inside `App::ui`.** The
+- **Every rendered tab and browser node has a native view of its own, made before the egui pass, one a
+  frame** (`task-2270`). `task-1756` measured a second WebView2 controller hanging the window in a nested
+  message pump and kept a window to one view, pointed at the tab that was showing. That was measured while
+  views were still made inside the egui pass. `task-2270` measured two editing panes and three browser nodes,
+  each with its own view, made from `raw_input_hook` one a frame: no command timed out, and all five pages
+  were drawn at once (214 MB for the window against 210 MB with one view). A view whose page is not placed is
+  hidden at WebView2's low memory target and kept, up to `MOST_LIVE_VIEWS` (six). `UNLUMINOUS_BROWSER_VIEWS=one`
+  keeps a window to one view, so the two can be measured against each other again. Each view has its own wry id,
+  because wry's macOS half keys a view's state by it.
+- **A view is created before the egui pass, from `raw_input_hook`, never inside `App::ui`.** The
   creation blocks in a message pump, and inside the pass there is a pass for a dispatched message to
   re-enter. The placements it uses are the ones the last frame drew, which is where the view already
   is.
@@ -357,11 +357,12 @@ a rule rather than a preference:
   `Navigate`, where an unknown scheme is refused in silence: the pane keeps showing the old page while
   the toolbar says it is loading the new one, which no state Unluminous reports would ever show you.
 
-The pane reports the native child's bounds after drawing its Unluminous-owned toolbar, and the view is
-hidden while an egui modal, popup or context menu is open — `egui::Popup::is_any_open` covers the menu
-bar and every dropdown in one answer — because a native child paints above egui. A hidden view uses
-WebView2's low-memory target, and closing the last rendered tab drops the view and its processes
-entirely: 197 MB with none open, 527 MB with one, 531 MB with four. Toolbar navigation and
+The pane reports the native child's bounds after drawing its Unluminous-owned toolbar, and a view is cut
+around whatever egui draws over it, because a native child paints above egui. A hidden view uses
+WebView2's low-memory target, and closing a rendered tab drops its view. **A link a person clicks opens a new
+tab** beside the page, or a new browser node beside a node (`BrowserHost::LINKS_IN_NEW_TABS`, an
+initialization script that calls `window.open`, so the page still has nothing to call), unless
+`browser.links` is `same-tab`; a design's links stay in the design. Toolbar navigation and
 `unluminous-cli browser` both go through `UnluminousApp::run_browser_command`.
 
 ### A browsing session survives a restart (`task-2203`)
@@ -1490,10 +1491,9 @@ agent run `env`. So the name an agent guesses is the name that works, and `--ins
 ticket's agent all use, and the `realm` preamble in the catalogue says the bare command now, because the
 catalogue is what an agent reads.
 
-**One browser node renders at a time**, because a window has one native child view: the others draw the
-toolbar and say the page is showing in another node, which is the sentence `browser_view::show` already
-says for a second rendered tab in another pane. The canvas's tabs are reconciled in the same list the
-editing area's are, in `raw_input_hook`, for the same reason.
+**Every browser node renders its page**, in a native view of its own since `task-2270` (it was one at a time
+before). The canvas's tabs are reconciled in the same list the editing area's are, in `raw_input_hook`, so a
+node's view is made the way a tab's is.
 
 **And no screenshot Unluminous takes contains a page.** A rendered page is a native child window the
 operating system composites on top of the surface `ViewportCommand::Screenshot` captures, so `window
@@ -6725,6 +6725,36 @@ left, a menu, a Settings page and `explorer.shows = .designs`. Six rules to keep
   `components::markdown_text`. The mocks the screenshot tests were compared with are in
   `_agent_output/task-2254-designer/mocks/`. `designer_tab`, `designer_tab_phone`, `designer_composer`,
   `designer_pane`, `designer_settings`, `designer_history` and `designer_tab_light` are the pictures.
+
+## What `task-2270` changed
+
+`tasks/task-2270-unluminous-issues-v20-tdd.md` is the design. The rules to keep:
+
+- **A line typed into a ticket's agent is written in pieces of at most 256 bytes, as one bracketed paste**
+  (`agent_tasks::terminal::pieces_of`). A macOS pseudoterminal holds 1,024 bytes of unread input and throws away
+  what it was holding when more arrives, so a 1,283 byte handoff reached a Mac agent from byte 1,022 on.
+- **Sharpened text keeps the original layout's glyph and row positions** (`crisp::keep_the_original_places`). Laid
+  out again at the zoomed size, the glyphs drifted from where the caret is measured, so the caret in a zoomed
+  ticket description stood beside the wrong letter.
+- **A File Editor node showing a Markdown or Mermaid tab has the three view buttons a note has**, and draws the tab
+  through `show_a_document_in`. `realm note view` reaches it.
+- **The tab strip remembers how far it is scrolled** (`file_tabs::scroll_the_strip`): the wheel or a swipe over it
+  moves it, and a tab that becomes the one showing is brought into view the least distance.
+- **`New Browser Tab`** (tab menu, the strip's empty part, `File`) and **`Send to Realm`** (tab menu,
+  `View -> Realm`) are actions, so `action run new-browser-tab` and `action run send-tab-to-realm` reach them.
+- **A plugin asks the window for the folder picker with `Request::PickFolder`** and is answered through
+  `UiProvider::answered` as `{ "folder": <path or null> }`, so a test replaces the picker with
+  `UnluminousApp::folder_picker`. `services::folder_choice` is the list Agent Chat's `Folder` row and the ticket
+  modal's `Project` field both offer, ending with `Other folder…`. `plugins run agent-chat folder` and
+  `plugins run agent-tasks project <key>` are the agent's half.
+- **A file that exists and cannot be shown opens a tab saying so** (`OpenFile::unrenderable`), whose document is
+  empty and has no path, so nothing can save over the file. `tab open` answers `"rendered": false`.
+- **On macOS the files Finder hands over arrive through `services::opened_by_the_system`**, an open documents Apple
+  event handler installed when AppKit posts `NSApplicationWillFinishLaunchingNotification`, because winit's
+  delegate does not answer the event and AppKit then refused every file with "cannot open files in the ... format".
+  Only the released binary listens. `Info.plist` and the Windows installer offer Unluminous for every file.
+- **A name in the explorer stops inside its pill with an ellipsis**, and the board no longer draws its last message
+  under the header.
 
 ## The documents
 

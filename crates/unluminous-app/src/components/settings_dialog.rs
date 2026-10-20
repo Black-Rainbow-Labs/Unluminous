@@ -1208,6 +1208,19 @@ fn editor_page(
                 }
             },
         );
+        // `task-2270`: *"Click on page links should open new tabs by default."*
+        let mut new_tabs = settings.browser_links.opens_new_tabs();
+        if card.switch(
+            "Open links in a new tab",
+            Some("A link clicked in a page opens a new tab beside it, or a new browser node beside a node. Off, it opens in the page itself. A link clicked with a modifier is left to the page either way."),
+            &mut new_tabs,
+        ) {
+            settings.browser_links = match new_tabs {
+                true => crate::settings::BrowserLinks::NewTab,
+                false => crate::settings::BrowserLinks::SameTab,
+            };
+            changed = true;
+        }
     });
     // `task-1804` §7.1. What a file is written back with, and what the index leaves out.
     kit::card(ui, &mut column, "Files", None, |card| {

@@ -208,8 +208,8 @@ pub fn show(
     };
     let page = ui.interact(browser, ui.id().with(("browser-page", tab.id)), Sense::click());
     outcome.took_focus |= page.clicked();
-    // A window has one native view, so a second rendered tab beside this one in a split pane has
-    // nothing to draw here. It says so rather than showing an empty rectangle.
+    // A window kept to one native view (`UNLUMINOUS_BROWSER_VIEWS=one`) has nothing to draw here for a second
+    // rendered tab. It says so rather than showing an empty rectangle. Every page renders otherwise (`task-2270`).
     if !showing {
         ui.painter().rect_filled(browser, CornerRadius::ZERO, color::editor());
         // Wrapped to the pane and clipped to it, because a split pane can be narrower than the sentence and the
@@ -257,6 +257,16 @@ fn address_field(
             strip.center().y + WELL_HEIGHT / 2.0,
         ),
     );
+    // **No well where there is no room for one** (`task-2270`). A toolbar narrower than its three buttons, which a
+    // narrow split pane or a small node gives it, made the well's width negative, and `rux` panics on a surface
+    // narrower than nothing: measured on a window with two panes and three browser nodes, the process closed with
+    // `min > max ... max = -46.5` in `Sprites::tidy`. What the tab says is still kept in step below.
+    if well.width() < WELL_HEIGHT * 2.0 {
+        if !toolbar.editing() {
+            *toolbar.typed = toolbar.address().to_owned();
+        }
+        return;
+    }
     let chat = rux.theme().chat;
     let ink = rux.theme().ink;
     rux.chrome.surface(well, well.height() / 2.0, chat.well, chat.carved_sm());

@@ -63,6 +63,7 @@ pub const LIST: &[(&str, &str)] = &[
     ("delete-task", "Delete a ticket, its todos and its comments."),
     ("priority", "Set a ticket's priority to low, medium or high."),
     ("assign", "Assign a ticket to an AI endpoint that runs an agent, by its name, or to human."),
+    ("project", "The folder a ticket's agent starts in: `project task-3 C:/dev/app`, or `project task-3 default` for the board's default. Says which when asked with only the key. The ticket modal's `Project` field, whose `Other folder...` opens the system's folder picker."),
     ("todo-add", "Add a todo to a ticket."),
     ("todo-done", "Tick a ticket's nth todo."),
     ("todo-undone", "Untick a ticket's nth todo."),
@@ -651,6 +652,31 @@ fn task_commands(
             tasks.refresh()?;
             let said = endpoint.unwrap_or_else(|| assignee.name().to_owned());
             Ok(Answer::said(format!("{} is {said}'s", task.key)))
+        })(),
+        // The folder a ticket's agent starts in (`task-2270`), through the same `edit_field` the modal's field
+        // writes with.
+        "project" => (|| {
+            let task = tasks.by_key(argument(0))?;
+            let wanted = rest(1);
+            match wanted.trim() {
+                "" => {}
+                "default" | "none" => {
+                    tasks.edit_field(task.id, super::Field::Project(String::new()))?
+                }
+                folder => {
+                    if !std::path::Path::new(folder).is_dir() {
+                        return Err(format!("There is no folder {folder}."));
+                    }
+                    tasks.edit_field(task.id, super::Field::Project(folder.to_owned()))?;
+                }
+            }
+            let task = tasks.by_key(argument(0))?;
+            let folder = tasks.working_folder(&task).ok().map(|one| one.display().to_string());
+            Ok(Answer::said(match &task.project {
+                Some(project) => format!("{}'s agent starts in {project}", task.key),
+                None => format!("{}'s agent starts in the board's default folder", task.key),
+            })
+            .with(json!({ "task": task.key, "project": task.project, "folder": folder })))
         })(),
         _ => return None,
     })

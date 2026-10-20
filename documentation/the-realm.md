@@ -140,8 +140,8 @@ several views of one.
 Inillucent file with one watchdog behind it, so a second instance would be a second connection to the same
 tickets, each refreshing without the other. Two tasks nodes show the same board, which they should.
 
-**One browser node renders at a time**, because a window has one native child view. The others draw
-the toolbar and say the page is showing in another node.
+**Every browser node renders its page**, each in a native view of its own, and a link clicked in a node's page
+opens a new browser node beside it.
 
 **A browsing session survives a restart.** The browser profile is in `<settings folder>/browser`. Session
 cookies, which the engine never writes down, are kept encrypted in `browser/session-cookies` and given back to

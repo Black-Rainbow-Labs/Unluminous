@@ -528,11 +528,7 @@ impl UnluminousApp {
         // video stopped with it. It is the page reporting that it plays, and that the view is still on it,
         // that keeps it; another page that is chosen still takes the view, because there is only one.
         let playing = self.realm.live.video_report(node.id).is_some_and(|(_, playing, _)| playing)
-            && self
-                .realm
-                .live
-                .browser(node.id)
-                .is_some_and(|tab| self.browser.showing() == Some(tab.id));
+            && self.realm.live.browser(node.id).is_some_and(|tab| self.browser.is_live(tab.id));
         if (chosen || playing) && crate::services::browser::SUPPORTED {
             match self.a_video_tab(node.id, false) {
                 Ok(tab) => {
@@ -716,12 +712,24 @@ impl UnluminousApp {
         }
     }
 
-    /// Show a note as its source, beside its preview, or as its preview. The header's buttons and
-    /// `realm note view` both come here, so the two cannot disagree.
-    pub(crate) fn set_a_notes_view(&mut self, node: u64, view: NoteView) -> Result<(), String> {
+    /// Show a note, or the Markdown or Mermaid tab a File Editor node is showing, as its source, beside its
+    /// preview, or as its preview. The header's buttons and `realm note view` both come here, so the two cannot
+    /// disagree. A File Editor node keeps the view on its tab, which is where a tab in a pane keeps it
+    /// (`task-2270`).
+    pub(crate) fn set_a_nodes_view(&mut self, node: u64, view: NoteView) -> Result<(), String> {
         match self.realm.realm.node(node).map(|found| found.kind()) {
             Some(Kind::Note) => {}
-            Some(_) => return Err(format!("Node {node} is not a note.")),
+            Some(Kind::Editor) => {
+                let shown = self.realm.realm.node(node).cloned();
+                let previews =
+                    shown.as_ref().and_then(|found| self.how_an_editor_node_shows_its_tab(found));
+                if previews.is_none() {
+                    return Err(format!(
+                        "Node {node} is not showing a file with a preview: only Markdown and Mermaid files have one."
+                    ));
+                }
+            }
+            Some(_) => return Err(format!("Node {node} is not a note or a File Editor node.")),
             None => return Err(format!("There is no node {node}.")),
         }
         self.realm.realm.change(node, |state| {
