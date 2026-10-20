@@ -6,7 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.3.1 — 2026-10-20
+## 1.3.2 — 2026-10-20
+
+- The ACP registry is cards with Add, Update and Uninstall, and a missing npx version runs the newest one npm has (`task-2308`)
+
+## 1.3.1 — 2026-10-19
 
 - The README sells Unluminous the way unluminous.com does, and the docs and pictures are of 1.2.2 (`task-2310`)
 - A release refuses in seconds, retries what is transient, and carries on after a failure (`task-2312`)
