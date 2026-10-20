@@ -388,6 +388,8 @@ fn main() -> eframe::Result {
             app.allow_language_servers();
             // And open the microphone for dictation and for "Sable", which a test's window never does.
             app.allow_the_microphone();
+            // And read the ACP registry when the AI Configuration page is shown, which a test's window does not.
+            app.endpoints.acp.read_when_shown();
             // The Background grid's thumbnails for every picture already there, on a thread, so the grid opens
             // at once (`task-2293`). A test's window makes them only when its grid asks.
             app.make_the_missing_background_thumbnails(&cc.egui_ctx);

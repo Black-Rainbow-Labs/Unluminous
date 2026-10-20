@@ -793,9 +793,15 @@ speak it (42 on 2026-10-19, Claude's adapter among them). Six rules:
 - **Unluminous offers no file system and no terminal**, so the agent uses its own tools, and any request it did
   not offer is answered `-32601`. A permission request is answered from `chat.permission` by the tool call's
   `kind`, and a refusal is said in the thinking.
-- **Nothing is fetched until asked.** `Settings -> AI Configuration` has an `ACP Registry` card with `Load
-  registry`; `settings acp-registry` and `settings acp-add <id>` are the agent's half, held until the thread
-  answers. `UNLUMINOUS_ACP_REGISTRY` names a file or address instead, which the tests use.
+- **The registry is read when `Settings -> AI Configuration` is shown, and not before.** Its `ACP Registry` card
+  lists the agents as cards, three or four a row: `Add` on the action's blue, and on an agent already added
+  `Update` (when it runs another version than the registry has) and a trash button, `Uninstall <id>`, which also
+  deletes a binary agent's download. Only the released binary reads it by itself (`AcpRegistry::read_when_shown`);
+  a test's window reads it only when `UNLUMINOUS_ACP_REGISTRY` names a file. `settings acp-registry`, `acp-add`,
+  `acp-update` and `acp-remove` are the agent's half.
+- **An npx package version the machine's npm cannot find is run again with no version**
+  (`acp::without_a_missing_version`). npm on a machine that reads a company mirror can be a release behind the
+  public registry, and answers `ETARGET`; the thinking says which version was used instead.
 - **A binary agent is downloaded into `<settings folder>/acp-agents/<id>/<version>/`**, its SHA-256 checked
   before anything is unpacked, and unpacked with `%SystemRoot%\System32\tar.exe` on Windows.
 - **An `acp` endpoint is never a ticket's agent** (`ai_endpoints::agents`): a ticket runs in a terminal.
@@ -804,6 +810,12 @@ speak it (42 on 2026-10-19, Claude's adapter among them). Six rules:
 adapter. `UNLUMINOUS_ACP_TRACE=1` writes every message both ways to standard error. Agent Chat now reads its
 settings file again when something else changed it (`follow_the_configuration_file`), which the live run found:
 `settings set plugins.agent-chat.permission read` used to reach only the next window.
+
+**On macOS a browser page with nothing left to show is hidden, not masked to nothing** (`task-2308`). A page's crop
+there is a mask on the view's layer, and AppKit sends the pointer and the keyboard to a view by its frame, so a
+Designer or browser page cut away under the Settings dialog still took the wheel over its rectangle and took the
+keyboard from fields above it. A window region on Windows cuts the hits with the picture. A page partly covered,
+by a menu or a node in front of it, is still masked, and on macOS it still takes the pointer under that cover.
 
 ### A modal's backdrop is a blurred photograph of the window (`task-2247`)
 

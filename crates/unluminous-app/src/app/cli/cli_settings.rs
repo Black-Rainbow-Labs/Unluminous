@@ -313,7 +313,13 @@ impl UnluminousApp {
                 self.endpoints.acp.load(request.switch("refresh"));
                 let filter = request.text("filter").unwrap_or_default().trim().to_owned();
                 let until = waits_for(request, "timeout", ACP_REGISTRY_WAIT);
-                Outcome::Hold(Waiting::Acp { add: None, filter, started: false, until })
+                Outcome::Hold(Waiting::Acp {
+                    add: None,
+                    update: false,
+                    filter,
+                    started: false,
+                    until,
+                })
             }
             "acp-add" => {
                 let Some(id) = request.text("id").map(|id| id.trim().to_owned()) else {
@@ -328,10 +334,52 @@ impl UnluminousApp {
                 let until = waits_for(request, "timeout", ACP_INSTALL_WAIT);
                 Outcome::Hold(Waiting::Acp {
                     add: Some((id, name)),
+                    update: false,
                     filter: String::new(),
                     started: false,
                     until,
                 })
+            }
+            "acp-update" => {
+                let Some(id) = request.text("id").map(|id| id.trim().to_owned()) else {
+                    return no(
+                        request,
+                        code::USAGE,
+                        "Name the agent, as `settings acp-registry` lists it.",
+                    );
+                };
+                self.endpoints.acp.load(false);
+                let until = waits_for(request, "timeout", ACP_INSTALL_WAIT);
+                Outcome::Hold(Waiting::Acp {
+                    add: Some((id, None)),
+                    update: true,
+                    filter: String::new(),
+                    started: false,
+                    until,
+                })
+            }
+            "acp-remove" => {
+                let Some(id) = request.text("id").map(|id| id.trim().to_owned()) else {
+                    return no(
+                        request,
+                        code::USAGE,
+                        "Name the agent, as `settings acp-registry` lists it.",
+                    );
+                };
+                let mut providers = std::mem::take(&mut self.endpoints.providers);
+                let removed = self.endpoints.acp.remove(&id, &mut providers);
+                self.endpoints.providers = providers;
+                match removed {
+                    Ok(()) => {
+                        self.the_endpoints_changed();
+                        ok(
+                            request,
+                            format!("Removed the ACP agent {id}: its endpoint, and anything downloaded for it."),
+                            json!({ "removed": id }),
+                        )
+                    }
+                    Err(why) => no(request, code::REFUSED, why),
+                }
             }
             "keymap" => self.cli_settings_keymap(request),
             "bind" => self.cli_settings_bind(request),
@@ -425,11 +473,68 @@ impl UnluminousApp {
         ))
     }
 
+    /// The answer to `settings acp-update`, once the registry has been read and any new download has finished
+    /// (`task-2308`). `None` while either is still going on.
+    pub(crate) fn acp_update_answer(
+        &mut self,
+        request: &Request,
+        add: &Option<(String, Option<String>)>,
+        started: &mut bool,
+    ) -> Option<Reply> {
+        if self.endpoints.acp.is_loading() {
+            return None;
+        }
+        let Some((id, _)) = add else {
+            return Some(Reply::failed(&request.command, code::USAGE, "Name the agent."));
+        };
+        if self.endpoints.acp.agents.is_none() {
+            let why = self
+                .endpoints
+                .acp
+                .problem
+                .clone()
+                .unwrap_or_else(|| "The ACP registry could not be read.".to_owned());
+            return Some(Reply::failed(&request.command, code::REFUSED, why));
+        }
+        if !*started {
+            *started = true;
+            let environment = crate::services::agent_chat::AgentChat::the_environment();
+            let has =
+                |program: &str| unluminous_chat::provider::program(program, &environment).is_some();
+            let mut providers = std::mem::take(&mut self.endpoints.providers);
+            let updated = self.endpoints.acp.update(id, &mut providers, &has);
+            self.endpoints.providers = providers;
+            match updated {
+                Ok(true) => self.the_endpoints_changed(),
+                Ok(false) => return None,
+                Err(why) => return Some(Reply::failed(&request.command, code::REFUSED, why)),
+            }
+        } else if self.endpoints.acp.installing().is_some() {
+            return None;
+        } else if let Some(problem) = self.endpoints.acp.problem.clone() {
+            return Some(Reply::failed(&request.command, code::REFUSED, problem));
+        }
+        let provider = self.endpoints.providers.iter().find(|one| one.name == *id)?;
+        let said = format!(
+            "Updated the ACP agent {id}, which now runs {} {}.",
+            provider.command,
+            unluminous_chat::provider::join_arguments(&provider.args)
+        );
+        Some(Reply::done(
+            &request.command,
+            said,
+            json!({ "endpoint": id, "command": provider.command, "args": provider.args }),
+        ))
+    }
+
     /// Every agent in the ACP registry whose id or name holds `filter`, as lines and as data.
     fn acp_registry_reply(&self, request: &Request, filter: &str) -> Reply {
         let agents = self.endpoints.acp.agents.clone().unwrap_or_default();
         let platform = unluminous_chat::acp_registry::platform();
         let wanted = filter.to_lowercase();
+        let environment = crate::services::agent_chat::AgentChat::the_environment();
+        let has =
+            |program: &str| unluminous_chat::provider::program(program, &environment).is_some();
         let mut shown = Vec::new();
         let mut said = Vec::new();
         for agent in agents.iter().filter(|agent| {
@@ -446,15 +551,18 @@ impl UnluminousApp {
             let runs_here =
                 unluminous_chat::acp_registry::launch_for(agent, &platform, &|_| true).is_some();
             let added = self.endpoints.providers.iter().any(|one| one.name == agent.id);
+            let can_update =
+                self.endpoints.acp.can_update(&agent.id, &self.endpoints.providers, &has);
             said.push(format!(
                 "{}  {}  {}  ({}){}: {}",
                 agent.id,
                 agent.version,
                 agent.name,
                 kinds.join(", "),
-                match (added, runs_here) {
-                    (true, _) => ", added",
-                    (false, false) => ", not for this machine",
+                match (added, can_update, runs_here) {
+                    (true, true, _) => ", added, a newer version is in the registry",
+                    (true, false, _) => ", added",
+                    (false, _, false) => ", not for this machine",
                     _ => "",
                 },
                 agent.description
@@ -468,6 +576,7 @@ impl UnluminousApp {
                 "distributions": kinds,
                 "runsHere": runs_here,
                 "added": added,
+                "canUpdate": can_update,
             }));
         }
         let message = format!("{} of {} agents in the ACP registry", shown.len(), agents.len());

@@ -2065,7 +2065,8 @@ mod native {
         pub fn follow(&mut self, placement: &BrowserPlacement, occluders: &[egui::Rect]) {
             if let Some(view) = &mut self.view {
                 if view.visible {
-                    move_to(view, placement, occluders);
+                    let showing = move_to(view, placement, occluders);
+                    set_visible(view, showing);
                     self.zoom.store(view.zoom.unwrap_or(1.0).to_bits(), Ordering::Relaxed);
                 }
             }
@@ -2680,8 +2681,8 @@ mod native {
     /// viewport as well as its position, so cutting it is what reflows a responsive page — see
     /// [`clip_to_the_visible_part`], which takes the part that may be painted off the same placement.
     fn place(view: &mut NativeView, placement: &BrowserPlacement, occluders: &[egui::Rect]) {
-        move_to(view, placement, occluders);
-        set_visible(view, true);
+        let showing = move_to(view, placement, occluders);
+        set_visible(view, showing);
         // **What the platform says, not what this last did.** See [`the_page_really_has_the_keyboard`].
         match super::the_focus(page_has_it(view), placement.focused) {
             super::TheFocus::LeaveIt => {}
@@ -2696,7 +2697,19 @@ mod native {
     /// Put the view where a placement says, at its zoom and cut to what may be painted. Nothing else: not
     /// whether it is showing and not where the keyboard is, so it is safe at the end of a frame as well as
     /// before one. See [`NativeHost::follow`].
-    fn move_to(view: &mut NativeView, placement: &BrowserPlacement, occluders: &[egui::Rect]) {
+    ///
+    /// Answers whether the view should be on the screen. **On macOS a page with nothing left to show is hidden
+    /// rather than masked to nothing** (`task-2308`). The mask is on the view's layer, and AppKit sends the
+    /// pointer and the keyboard to a view by its frame, never by its layer's mask, so a page cut away under the
+    /// Settings dialog still took the wheel over its rectangle and took the keyboard from a field it was
+    /// under: *"some sections of the screen don't have wheel scroll detection working"* and *"I'm unable to
+    /// type in the Find field"*. A window region on Windows cuts the hits with the picture, so there the view
+    /// stays as it was.
+    fn move_to(
+        view: &mut NativeView,
+        placement: &BrowserPlacement,
+        occluders: &[egui::Rect],
+    ) -> bool {
         // **In the window's own logical points, which egui's are not once the interface is zoomed**
         // (`task-2280`): `wry` and the window region both measure from the system's scale alone, so every
         // rectangle egui reports is multiplied by the zoom before it reaches them.
@@ -2746,6 +2759,7 @@ mod native {
             clip_to_the_visible_part(view, area, visible, &over);
             view.clip = wanted;
         }
+        !cfg!(target_os = "macos") || !super::pieces_of(visible.intersect(area), &over).is_empty()
     }
 
     /// Whether the engine's own window holds the operating system's keyboard focus **right now**.

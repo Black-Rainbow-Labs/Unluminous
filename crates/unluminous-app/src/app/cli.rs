@@ -192,7 +192,14 @@ pub enum Waiting {
     /// `settings acp-registry` and `settings acp-add` waiting for the ACP registry, and for a binary agent to be
     /// downloaded, both on threads (`task-2308`). `add` is the agent and the endpoint name; `started` says the
     /// add has been asked for.
-    Acp { add: Option<(String, Option<String>)>, filter: String, started: bool, until: Instant },
+    Acp {
+        add: Option<(String, Option<String>)>,
+        /// `settings acp-update`: the agent named in `add` is brought up to the registry's version.
+        update: bool,
+        filter: String,
+        started: bool,
+        until: Instant,
+    },
     /// `notebook run --wait` waiting for every cell it ran to finish or be skipped. The notebook is
     /// named by its path, so a tab switched away from still answers. `task-2220`.
     NotebookRun { path: Option<PathBuf>, cells: Vec<String>, until: Instant },
@@ -595,11 +602,14 @@ impl UnluminousApp {
                 let tag = *tag;
                 self.voice_transcribe_answer(request, tag)
             }
-            Waiting::Acp { add, filter, started, .. } => {
+            Waiting::Acp { add, update, filter, started, .. } => {
                 // The threads' answers are read here as well as once a frame, so the reply is not a frame late.
                 self.take_the_acp_agents_that_arrived(ctx);
-                let (add, filter) = (add.clone(), filter.clone());
-                let answer = self.acp_answer(request, &add, &filter, started);
+                let (add, filter, update) = (add.clone(), filter.clone(), *update);
+                let answer = match update {
+                    true => self.acp_update_answer(request, &add, started),
+                    false => self.acp_answer(request, &add, &filter, started),
+                };
                 if answer.is_none() {
                     ctx.request_repaint_after(Duration::from_millis(100));
                 }

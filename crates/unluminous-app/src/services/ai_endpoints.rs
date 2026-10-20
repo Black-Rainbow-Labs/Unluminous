@@ -393,9 +393,13 @@ impl Readiness {
 /// The ACP registry as the window holds it: the agents once they have been read, and an agent being installed
 /// (`task-2308`).
 ///
-/// **Nothing is fetched until somebody asks**, by pressing `Load registry` or running `settings acp-registry`.
+/// **Nothing is fetched until somebody asks**, by opening `Settings -> AI Configuration` or running
+/// `settings acp-registry`.
 /// The fetch and a binary agent's download each run on a thread of their own, and the window asks [`Self::poll`]
 /// once a frame, which costs two channel reads while nothing is happening.
+/// How long [`AcpRegistry::runners`] keeps its answer. An install in a terminal shows on the page this soon after.
+const RUNNERS_FRESH: std::time::Duration = std::time::Duration::from_secs(5);
+
 #[derive(Debug, Default)]
 pub struct AcpRegistry {
     /// The agents, once read.
@@ -413,12 +417,65 @@ pub struct AcpRegistry {
     installing: Option<(String, Receiver<Result<Provider, String>>)>,
     /// Endpoints that are ready to be added to the list, taken by [`Self::take_ready`].
     ready: Vec<Provider>,
+    /// Whether showing the page reads the registry. See [`Self::read_when_shown`].
+    read_when_shown: bool,
+    /// Which package runners are installed, and when that was asked. See [`Self::runners`].
+    runners: Option<(std::time::Instant, Runners)>,
+}
+
+/// Which of the package runners an ACP agent can be started through are on this machine.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Runners {
+    pub npx: bool,
+    pub uvx: bool,
+}
+
+impl Runners {
+    /// Whether `program` is one of them and is installed. Anything else is answered yes, which is what
+    /// [`acp_registry::launch_for`] needs: it asks only about `npx` and `uvx`.
+    pub fn has(&self, program: &str) -> bool {
+        match program {
+            "npx" => self.npx,
+            "uvx" => self.uvx,
+            _ => true,
+        }
+    }
 }
 
 impl AcpRegistry {
     /// The registry for a window whose settings are in `folder`.
     pub fn in_folder(folder: &Path) -> Self {
         Self { folder: Some(folder.to_path_buf()), ..Self::default() }
+    }
+
+    /// Let the AI Configuration page read the registry when it is shown (`task-2308`). Only the released binary
+    /// calls this, so a test's window fetches nothing unless `UNLUMINOUS_ACP_REGISTRY` names a file to read.
+    pub fn read_when_shown(&mut self) {
+        self.read_when_shown = true;
+    }
+
+    /// Which package runners are installed, asked again at most every [`RUNNERS_FRESH`] (`task-2308`). Each
+    /// card on the page asks, and looking a program up walks `PATH`: asked afresh, forty agents did that eighty
+    /// times a frame.
+    pub fn runners(&mut self) -> Runners {
+        if let Some((asked, runners)) = self.runners {
+            if asked.elapsed() < RUNNERS_FRESH {
+                return runners;
+            }
+        }
+        let environment = crate::services::agent_chat::AgentChat::the_environment();
+        let has =
+            |program: &str| unluminous_chat::provider::program(program, &environment).is_some();
+        let runners = Runners { npx: has("npx"), uvx: has("uvx") };
+        self.runners = Some((std::time::Instant::now(), runners));
+        runners
+    }
+
+    /// Read the registry because the page that lists it is showing, when this window may.
+    pub fn shown(&mut self) {
+        if self.read_when_shown || std::env::var_os("UNLUMINOUS_ACP_REGISTRY").is_some() {
+            self.load(false);
+        }
     }
 
     /// Read the registry on a thread, unless it is already being read. `again` reads it even when it has been.
@@ -549,9 +606,22 @@ impl AcpRegistry {
             self.problem = None;
             return Ok(Some(acp_registry::provider_for(&name, distribution, None)));
         }
+        let (agent, distribution) = (agent.clone(), distribution.clone());
+        self.install_on_a_thread(&agent, &distribution, name)?;
+        Ok(None)
+    }
+
+    /// Download and unpack a binary agent on a thread; its endpoint, called `name`, arrives through
+    /// [`Self::poll`] and [`Self::take_ready`], which replaces an endpoint of that name or adds one.
+    fn install_on_a_thread(
+        &mut self,
+        agent: &acp_registry::Agent,
+        distribution: &acp_registry::Distribution,
+        name: String,
+    ) -> Result<(), String> {
         if self.installing.is_some() {
             return Err(
-                "Another agent is being installed. Add this one when it has finished.".to_owned()
+                "Another agent is being installed. Try this one when it has finished.".to_owned()
             );
         }
         let Some(settings) = &self.folder else {
@@ -572,7 +642,113 @@ impl AcpRegistry {
         self.installing = Some((agent.id.clone(), receive));
         self.problem = None;
         self.said = Some(format!("Installing {}.", agent.id));
-        Ok(None)
+        Ok(())
+    }
+
+    /// The registry's agent `id`, once the registry has been read.
+    fn agent(&self, id: &str) -> Option<&acp_registry::Agent> {
+        self.agents.as_ref().and_then(|agents| agents.iter().find(|one| one.id == id))
+    }
+
+    /// The endpoint the registry's current version of `agent` would make, called `name`, for comparing with
+    /// the one that is there. `None` when it has no way to run here.
+    fn current_endpoint(
+        &self,
+        agent: &acp_registry::Agent,
+        name: &str,
+        has: &dyn Fn(&str) -> bool,
+    ) -> Option<Provider> {
+        let platform = acp_registry::platform();
+        let distribution = acp_registry::launch_for(agent, &platform, has)?;
+        let program = match (distribution, &self.folder) {
+            (acp_registry::Distribution::Binary { cmd, .. }, Some(settings)) => {
+                Some(acp_registry::program_in(
+                    &acp_registry::install_folder(settings, &agent.id, &agent.version),
+                    cmd,
+                ))
+            }
+            _ => None,
+        };
+        Some(acp_registry::provider_for(name, distribution, program.as_deref()))
+    }
+
+    /// Whether the endpoint `id` added runs another version than the registry has now (`task-2308`). Compared by
+    /// what it runs, so a binary in an older version's folder and an npx package pinned to an older version are
+    /// both found, and an agent that was never added is not out of date.
+    pub fn can_update(&self, id: &str, providers: &[Provider], has: &dyn Fn(&str) -> bool) -> bool {
+        let Some(agent) = self.agent(id) else {
+            return false;
+        };
+        let Some(there) = providers.iter().find(|one| one.wire == Wire::Acp && one.name == id)
+        else {
+            return false;
+        };
+        match self.current_endpoint(agent, id, has) {
+            Some(current) => current.command != there.command || current.args != there.args,
+            None => false,
+        }
+    }
+
+    /// Bring the endpoint `id` added up to the registry's version. A package runner's endpoint is changed at once
+    /// and answers true; a binary is downloaded first, answers false, and arrives through [`Self::take_ready`].
+    /// The endpoint's model is kept.
+    pub fn update(
+        &mut self,
+        id: &str,
+        providers: &mut [Provider],
+        has: &dyn Fn(&str) -> bool,
+    ) -> Result<bool, String> {
+        let Some(agent) = self.agent(id).cloned() else {
+            return Err(format!("The ACP registry has no agent `{id}`."));
+        };
+        let Some(index) = providers.iter().position(|one| one.wire == Wire::Acp && one.name == id)
+        else {
+            return Err(format!(
+                "There is no endpoint `{id}` to update. Add it with `settings acp-add {id}`."
+            ));
+        };
+        let platform = acp_registry::platform();
+        let Some(distribution) = acp_registry::launch_for(&agent, &platform, has).cloned() else {
+            return Err(format!("{} has no way to run on {platform}.", agent.name));
+        };
+        if matches!(distribution, acp_registry::Distribution::Binary { .. }) {
+            self.install_on_a_thread(&agent, &distribution, id.to_owned())?;
+            return Ok(false);
+        }
+        let model = providers[index].model.clone();
+        providers[index] = acp_registry::provider_for(id, &distribution, None);
+        providers[index].model = model;
+        self.said = Some(format!("Updated {id} to {}.", agent.version));
+        self.problem = None;
+        Ok(true)
+    }
+
+    /// Take away the endpoint `id` added, and the binary agent downloaded for it (`task-2308`). The last endpoint
+    /// is never taken away, because a list with no row has nowhere to type a new one.
+    pub fn remove(&mut self, id: &str, providers: &mut Vec<Provider>) -> Result<(), String> {
+        let gone = providers.iter().filter(|one| one.wire == Wire::Acp && one.name == id).count();
+        if gone == 0 {
+            return Err(format!("There is no endpoint `{id}` to remove."));
+        }
+        if gone == providers.len() {
+            return Err("The last endpoint cannot be removed. Add another first.".to_owned());
+        }
+        providers.retain(|one| !(one.wire == Wire::Acp && one.name == id));
+        if let Some(settings) = &self.folder {
+            if let Some(folder) = acp_registry::install_folder(settings, id, "version").parent() {
+                if folder.is_dir() {
+                    std::fs::remove_dir_all(folder).map_err(|problem| {
+                        format!(
+                            "Removed the endpoint `{id}`, but not its download at {}: {problem}",
+                            folder.display()
+                        )
+                    })?;
+                }
+            }
+        }
+        self.said = Some(format!("Removed {id}."));
+        self.problem = None;
+        Ok(())
     }
 }
 

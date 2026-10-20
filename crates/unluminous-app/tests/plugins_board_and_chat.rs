@@ -3234,14 +3234,19 @@ fn the_chats_settings_page_scrolls_to_its_last_row() {
     did(&mut harness, "modal open settings --page ai");
     steady(&mut harness);
 
-    // The first endpoint's `Remove` button, near the top of the scrolling area.
+    // The first endpoint's trash button, `Remove <name>`, near the top of the scrolling area.
     let where_it_is = |harness: &mut Harness<'_, UnluminousApp>| -> f32 {
-        harness.get_all_by_label("Remove").next().expect("an endpoint row").rect().top()
+        harness.get_all_by_label_contains("Remove ").next().expect("an endpoint row").rect().top()
     };
     let before = where_it_is(&mut harness);
 
     // A wheel with the pointer over that row: the page takes a wheel only while the pointer is inside it.
-    let over = harness.get_all_by_label("Remove").next().expect("an endpoint row").rect().center();
+    let over = harness
+        .get_all_by_label_contains("Remove ")
+        .next()
+        .expect("an endpoint row")
+        .rect()
+        .center();
     harness.input_mut().events.push(egui::Event::PointerMoved(over));
     steady(&mut harness);
     harness.input_mut().events.push(egui::Event::MouseWheel {
@@ -3259,6 +3264,70 @@ fn the_chats_settings_page_scrolls_to_its_last_row() {
         "the page moved up: it was at {before} and is at {after}. Without `allocate_space` the scrolling \
          area is told the contents are zero tall and nothing moves at all."
     );
+}
+
+/// `task-2308`: the ACP registry is read when the AI Configuration page opens, each agent is a card, `Add` makes
+/// an endpoint and the trash takes it away again. Read from the copy of the registry the chat crate's tests keep,
+/// so nothing is fetched.
+#[test]
+fn the_acp_registry_is_cards_that_add_and_remove_an_agent() {
+    agents_on_the_path();
+    let registry = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../unluminous-chat/tests/streams/acp-registry.json");
+    std::env::set_var("UNLUMINOUS_ACP_REGISTRY", &registry);
+    let mut harness = harness("");
+    did(&mut harness, "modal open settings --page ai");
+    // The registry is read on a thread; a few frames are enough for a file.
+    for _ in 0..20 {
+        steady(&mut harness);
+        if harness.query_by_label("Add claude-acp").is_some() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(
+        harness.query_by_label("Add claude-acp").is_some(),
+        "the registry was read when the page opened"
+    );
+
+    // Scrolled until Claude's card is in view, which is where a person presses it: a control outside the
+    // page's view is clipped and takes no press. The wheel is turned over the first endpoint, inside the view.
+    let over =
+        harness.get_all_by_label_contains("Remove ").next().expect("an endpoint").rect().center();
+    harness.input_mut().events.push(egui::Event::PointerMoved(over));
+    steady(&mut harness);
+    // One turn of exactly the distance needed, because every frame of a page of forty cards is slow in a
+    // test build.
+    let below = harness.get_by_label("Add claude-acp").rect().bottom() - 600.0;
+    harness.input_mut().events.push(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: vec2(0.0, -below.max(0.0)),
+        phase: egui::TouchPhase::Move,
+        modifiers: Modifiers::default(),
+    });
+    steady(&mut harness);
+    assert!(
+        harness.get_by_label("Add claude-acp").rect().bottom() < 680.0,
+        "the page scrolled to the cards"
+    );
+    harness.snapshot(shot("acp_registry_cards").as_str());
+
+    // `Add` makes an endpoint named after the agent, and its card then offers the trash rather than `Add`.
+    harness.get_by_label("Add claude-acp").click();
+    steady(&mut harness);
+    steady(&mut harness);
+    let listed = did(&mut harness, "settings acp-registry claude-acp");
+    assert_eq!(listed["agents"][0]["added"], true, "{listed}");
+    assert!(harness.query_by_label("Add claude-acp").is_none());
+    assert!(harness.query_by_label("Up to date claude-acp").is_some());
+
+    // The trash takes it away again.
+    harness.get_by_label("Uninstall claude-acp").click();
+    steady(&mut harness);
+    steady(&mut harness);
+    let listed = did(&mut harness, "settings acp-registry claude-acp");
+    assert_eq!(listed["agents"][0]["added"], false, "{listed}");
+    assert!(harness.query_by_label("Add claude-acp").is_some());
 }
 
 /// A notice from a plugin becomes a toast the window draws and a person can dismiss.
@@ -3357,7 +3426,7 @@ fn the_ai_configuration_page_lists_the_endpoints_and_an_agent_can_change_them() 
     let mut harness = harness("");
     did(&mut harness, "modal open settings --page ai");
     steady(&mut harness);
-    assert_eq!(harness.get_all_by_label("Remove").count(), 5, "one card an endpoint");
+    assert_eq!(harness.get_all_by_label_contains("Remove ").count(), 5, "one card an endpoint");
     harness.snapshot(shot("ai_configuration").as_str());
 
     did(&mut harness, "settings set ai.provider.3.model llama-local/local");

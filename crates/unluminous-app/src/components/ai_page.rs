@@ -83,29 +83,47 @@ pub(crate) fn show(
                 let only_one = providers.len() == 1;
                 let mut removing: Option<usize> = None;
                 let mut pen = column.pen;
-                for index in 0..providers.len() {
-                    // **A child `Ui` an endpoint, carrying its own id salt.** Every field and button here is
-                    // named by its word, so three rows each holding a `Remove` and an `openai` would be three
-                    // widgets sharing one id, which makes the second row's buttons unclickable.
-                    let mut child =
-                        rux.ui.new_child(egui::UiBuilder::new().id_salt(("ai-endpoint", index)));
-                    let mut inner = Rux { ui: &mut child, state: rux.state, chrome: rux.chrome };
-                    let at = EndpointRow {
-                        left: column.left,
-                        right: column.right,
-                        top: pen,
-                        index,
-                        why_not: refusals.get(index).cloned().flatten(),
-                        shapes: &shapes,
-                        only_one,
-                    };
-                    let (bottom, act) = endpoint(&mut inner, providers, at);
-                    pen = bottom + 14.0;
-                    match act {
-                        Some(Act::Remove) => removing = Some(index),
-                        Some(Act::Changed) => changed = true,
-                        None => {}
+                // **Two endpoints a row** (`task-2308`), or one where the dialog is too narrow for two. A row is
+                // as tall as the taller of its cards, so the cards beside each other line up.
+                let room = column.right - column.left;
+                let across = match room >= 2.0 * ENDPOINT_LEAST + ENDPOINT_COLUMN_GAP {
+                    true => 2,
+                    false => 1,
+                };
+                let width = (room - ENDPOINT_COLUMN_GAP * (across - 1) as f32) / across as f32;
+                let mut index = 0;
+                while index < providers.len() {
+                    let pair = (index..(index + across).min(providers.len())).collect::<Vec<_>>();
+                    let height = pair
+                        .iter()
+                        .map(|one| endpoint_height(&providers[*one]))
+                        .fold(0.0, f32::max);
+                    for (place, one) in pair.iter().copied().enumerate() {
+                        // **A child `Ui` an endpoint, carrying its own id salt.** Every field and button here is
+                        // named by its word, so three rows each holding an `openai` would be three widgets sharing
+                        // one id, which makes the second row's controls unclickable.
+                        let mut child =
+                            rux.ui.new_child(egui::UiBuilder::new().id_salt(("ai-endpoint", one)));
+                        let mut inner = Rux { ui: &mut child, state: rux.state, chrome: rux.chrome };
+                        let left = column.left + place as f32 * (width + ENDPOINT_COLUMN_GAP);
+                        let at = EndpointRow {
+                            left,
+                            right: left + width,
+                            top: pen,
+                            height,
+                            index: one,
+                            why_not: refusals.get(one).cloned().flatten(),
+                            shapes: &shapes,
+                            only_one,
+                        };
+                        match endpoint(&mut inner, providers, at) {
+                            Some(Act::Remove) => removing = Some(one),
+                            Some(Act::Changed) => changed = true,
+                            None => {}
+                        }
                     }
+                    pen += height + 14.0;
+                    index += across;
                 }
                 // The last one is never taken away: there would then be no row to type a new one into.
                 if let Some(index) = removing {
@@ -125,8 +143,7 @@ pub(crate) fn show(
             });
         },
     );
-    if let Some(new) = registry_card(ui, &mut column, providers, acp) {
-        providers.push(new);
+    if registry_card(ui, &mut column, providers, acp) {
         changed = true;
     }
     if changed {
@@ -135,54 +152,64 @@ pub(crate) fn show(
     drawn(area.top(), &column, changed)
 }
 
-/// How tall one agent of the registry is in its list.
-const AGENT_ROW: f32 = 58.0;
+/// The gap between two endpoint cards side by side, and between two agent cards.
+const ENDPOINT_COLUMN_GAP: f32 = 14.0;
+/// The narrowest an endpoint card may be before the endpoints go one a row.
+const ENDPOINT_LEAST: f32 = 330.0;
+const AGENT_GAP: f32 = 12.0;
+/// How tall one agent of the registry is, and the narrowest an agent card may be before a row holds fewer.
+const AGENT_CARD: f32 = 156.0;
+const AGENT_LEAST: f32 = 180.0;
+/// The buttons along the bottom of an agent card.
+const AGENT_BUTTON: f32 = 30.0;
 
-/// The `ACP Registry` card (`task-2308`): read the published list of ACP agents when asked, and add one as an
-/// `acp` endpoint. Answers an endpoint to add now; a binary agent arrives later through `AcpRegistry::poll`,
-/// once it has been downloaded.
+/// What a press on an agent card asked for.
+enum AgentAct {
+    Add,
+    Update,
+    Remove,
+}
+
+/// The `ACP Registry` card (`task-2308`): the published list of ACP agents as cards, read when the page is first
+/// shown. `Add` makes an `acp` endpoint, `Update` brings an added one to the registry's version and the trash
+/// takes it away. A binary agent arrives later through `AcpRegistry::poll`, once it has been downloaded.
+/// Answers whether the endpoints changed.
 fn registry_card(
     ui: &mut egui::Ui,
     column: &mut Column,
-    providers: &[Provider],
+    providers: &mut Vec<Provider>,
     acp: &mut AcpRegistry,
-) -> Option<Provider> {
-    let mut added = None;
+) -> bool {
+    // **Read when the page is shown** (`task-2308`): *"The registry should load by default, not make me press
+    // read."* Opening this page is the request, so a window that never shows it fetches nothing.
+    acp.shown();
+    let mut changed = false;
     kit::card(
         ui,
         column,
         "ACP Registry",
-        Some(
-            "Agents that speak the Agent Client Protocol, from the registry at agentclientprotocol.com. Nothing is \
-             read from it until you press Load registry. Add makes an acp endpoint: an npx or uvx agent runs through \
-             that package runner, and a binary agent is downloaded into the settings folder and its checksum \
-             checked. Each agent signs in with its own account.",
-        ),
+        Some("Agents that speak the Agent Client Protocol, from the registry at agentclientprotocol.com."),
         |card| {
             let loading = acp.is_loading();
-            let status = match (&acp.problem, &acp.said, &acp.agents) {
+            let status = match (&acp.problem, &acp.agents) {
                 _ if loading => "Reading the registry".to_owned(),
-                (Some(problem), _, _) => problem.clone(),
-                (None, Some(said), _) => said.clone(),
-                (None, None, Some(agents)) => format!("{} agents", agents.len()),
-                (None, None, None) => "Not read yet".to_owned(),
+                (Some(problem), _) => problem.clone(),
+                (None, Some(agents)) => format!("{} agents", agents.len()),
+                (None, None) => String::new(),
             };
-            card.row("Registry", None, |row| {
-                let word = match acp.agents.is_some() {
-                    true => "Read again",
-                    false => "Load registry",
-                };
-                if row.button(word) && !loading {
+            // The count and any problem are plain words beside the field, with no status mark in front of them.
+            card.row("Find", None, |row| {
+                row.text("Find an agent", &mut acp.filter, "a name or an id", 260.0);
+                if !status.is_empty() {
+                    row.suffix(&status);
+                }
+                if acp.agents.is_some() && row.ghost("Read again") && !loading {
                     acp.load(true);
                 }
-                row.status(&status);
             });
             let Some(agents) = acp.agents.clone() else {
                 return;
             };
-            card.row("Find", None, |row| {
-                row.text("Find an agent", &mut acp.filter, "a name or an id", 260.0);
-            });
             let wanted = acp.filter.trim().to_lowercase();
             let shown: Vec<&Agent> = agents
                 .iter()
@@ -193,89 +220,154 @@ fn registry_card(
                 })
                 .collect();
             let platform = acp_registry::platform();
+            let runners = acp.runners();
+            let has = |program: &str| runners.has(program);
             card.grow(|rux, column| {
+                // Three or four a row, as many as fit at the narrowest an agent card reads well.
+                let across = (((column.right - column.left + AGENT_GAP) / (AGENT_LEAST + AGENT_GAP))
+                    .floor() as usize)
+                    .clamp(1, 4);
+                let width = (column.right - column.left - AGENT_GAP * (across - 1) as f32)
+                    / across as f32;
                 let mut pen = column.pen;
-                for agent in shown {
-                    let rect = Rect::from_min_size(
-                        Pos2::new(column.left, pen),
-                        Vec2::new(column.right - column.left, AGENT_ROW),
-                    );
-                    if let Some(pressed) = agent_row(rux, rect, agent, providers, acp, &platform) {
-                        let environment = crate::services::agent_chat::AgentChat::the_environment();
-                        let has = |program: &str| {
-                            unluminous_chat::provider::program(program, &environment).is_some()
-                        };
-                        match acp.add(&pressed, None, providers, &has) {
-                            Ok(Some(provider)) => added = Some(provider),
-                            Ok(None) => {}
-                            Err(why) => acp.problem = Some(why),
-                        }
+                for (at, agent) in shown.iter().enumerate() {
+                    let left = column.left + (at % across) as f32 * (width + AGENT_GAP);
+                    if at > 0 && at % across == 0 {
+                        pen += AGENT_CARD + AGENT_GAP;
                     }
-                    pen = rect.bottom() + 8.0;
+                    let rect =
+                        Rect::from_min_size(Pos2::new(left, pen), Vec2::new(width, AGENT_CARD));
+                    let state = AgentState {
+                        added: providers.iter().any(|one| one.wire == Wire::Acp && one.name == agent.id),
+                        installing: acp.installing() == Some(agent.id.as_str()),
+                        runs_here: acp_registry::launch_for(agent, &platform, &|_| true).is_some(),
+                        newer: acp.can_update(&agent.id, providers, &has),
+                    };
+                    let outcome = match agent_card(rux, rect, agent, state) {
+                        Some(AgentAct::Add) => acp
+                            .add(&agent.id, None, providers, &has)
+                            .map(|added| added.map(|provider| providers.push(provider)).is_some()),
+                        Some(AgentAct::Update) => acp.update(&agent.id, providers, &has),
+                        Some(AgentAct::Remove) => acp.remove(&agent.id, providers).map(|()| true),
+                        None => Ok(false),
+                    };
+                    match outcome {
+                        Ok(true) => changed = true,
+                        Ok(false) => {}
+                        Err(why) => acp.problem = Some(why),
+                    }
                 }
-                ((), pen)
+                let bottom = match shown.is_empty() {
+                    true => pen,
+                    false => pen + AGENT_CARD,
+                };
+                ((), bottom)
             });
         },
     );
-    added
+    changed
 }
 
-/// One agent of the registry: its name, version and how it runs, its description, and `Add`. Answers the id when
-/// `Add` was pressed.
-fn agent_row(
-    rux: &mut Rux<'_>,
-    rect: Rect,
-    agent: &Agent,
-    providers: &[Provider],
-    acp: &AcpRegistry,
-    platform: &str,
-) -> Option<String> {
+/// What an agent card needs to know about the agent beyond the registry's own words.
+#[derive(Debug, Clone, Copy)]
+struct AgentState {
+    /// It is already an endpoint.
+    added: bool,
+    /// It is being downloaded now.
+    installing: bool,
+    /// The registry offers a way to run it on this machine.
+    runs_here: bool,
+    /// It is an endpoint that runs another version than the registry has now.
+    newer: bool,
+}
+
+/// One agent of the registry as a card: its name, its version and how it runs, three lines of what it is, and
+/// what can be done with it. `Add` on the action's blue when it is not an endpoint; `Update` and the trash when
+/// it is.
+fn agent_card(rux: &mut Rux<'_>, rect: Rect, agent: &Agent, state: AgentState) -> Option<AgentAct> {
     let theme = rux.theme();
     let chat = theme.chat;
-    rux.chrome.surface(rect, 16.0, chat.well, chat.carved_sm());
+    rux.chrome.surface(rect, 18.0, chat.well, chat.carved_sm());
     let left = rect.left() + 14.0;
+    let right = rect.right() - 14.0;
+    let room = right - left;
+    let galley = rux.elided(Style::sans(13.0).semibold(), &agent.name, theme.ink.i900, room);
+    rux::text::draw_left_capitals(
+        rux.painter(),
+        Pos2::new(left, rect.top() + 22.0),
+        galley,
+        Style::sans(13.0).semibold(),
+        theme.ink.i900,
+    );
     let mut kinds: Vec<&str> = Vec::new();
     for kind in agent.distributions.iter().map(|one| one.kind()) {
         if !kinds.contains(&kind) {
             kinds.push(kind);
         }
     }
-    let runs_here = acp_registry::launch_for(agent, platform, &|_| true).is_some();
-    let installing = acp.installing() == Some(agent.id.as_str());
-    let added = providers.iter().any(|one| one.wire == Wire::Acp && one.name == agent.id);
-    let (word, kind) = match (added, installing, runs_here) {
-        (true, _, _) => ("Added", ButtonKind::Ghost),
-        (false, true, _) => ("Installing", ButtonKind::Ghost),
-        (false, false, false) => ("Not for this machine", ButtonKind::Ghost),
-        (false, false, true) => ("Add", ButtonKind::Chip),
-    };
-    let width = kit::button_width(rux, word, false);
-    let button = Rect::from_min_size(
-        Pos2::new(rect.right() - 12.0 - width, rect.center().y - 15.0),
-        Vec2::new(width, 30.0),
-    );
-    let words_right = button.left() - 12.0;
-    let title = format!("{}  {}  \u{00B7}  {}", agent.name, agent.version, kinds.join(", "));
-    let galley =
-        rux.elided(Style::sans(12.5).semibold(), &title, theme.ink.i900, words_right - left);
-    rux::text::draw_left_capitals(
-        rux.painter(),
-        Pos2::new(left, rect.top() + 19.0),
-        galley,
-        Style::sans(12.5).semibold(),
-        theme.ink.i900,
-    );
-    let galley =
-        rux.elided(Style::sans(11.5), &agent.description, theme.ink.i400, words_right - left);
+    let line = format!("{}  \u{00B7}  {}", agent.version, kinds.join(", "));
+    let galley = rux.elided(Style::sans(11.0), &line, theme.ink.i400, room);
     rux::text::draw_left_capitals(
         rux.painter(),
         Pos2::new(left, rect.top() + 40.0),
         galley,
-        Style::sans(11.5),
+        Style::sans(11.0),
         theme.ink.i400,
     );
-    let pressed = kit::button_named(rux, button, word, &format!("{word} {}", agent.id), kind);
-    (pressed && word == "Add").then(|| agent.id.clone())
+    let mut job = egui::text::LayoutJob::simple(
+        agent.description.clone(),
+        Style::sans(11.5).font(),
+        theme.ink.i500,
+        room,
+    );
+    job.wrap.max_rows = 3;
+    let galley = rux.ui.fonts_mut(|fonts| fonts.layout_job(job));
+    rux.painter().galley(Pos2::new(left, rect.top() + 52.0), galley, theme.ink.i500);
+
+    let top = rect.bottom() - 12.0 - AGENT_BUTTON;
+    if !state.added {
+        let (word, live) = match (state.installing, state.runs_here) {
+            (true, _) => ("Installing", false),
+            (false, false) => ("Not for this machine", false),
+            (false, true) => ("Add", true),
+        };
+        if !live {
+            let galley = rux.elided(Style::sans(11.5), word, theme.ink.i400, room);
+            rux::text::draw_left_capitals(
+                rux.painter(),
+                Pos2::new(left, top + AGENT_BUTTON / 2.0),
+                galley,
+                Style::sans(11.5),
+                theme.ink.i400,
+            );
+            return None;
+        }
+        let button = Rect::from_min_size(Pos2::new(left, top), Vec2::new(76.0, AGENT_BUTTON));
+        return kit::primary(rux, button, "Add", &format!("Add {}", agent.id))
+            .then_some(AgentAct::Add);
+    }
+    let mut act = None;
+    let trash = Rect::from_min_size(
+        Pos2::new(right - AGENT_BUTTON, top),
+        Vec2::new(AGENT_BUTTON, AGENT_BUTTON),
+    );
+    // `Uninstall`, because the endpoint it made has its own trash called `Remove <name>` and two controls must
+    // not share a name.
+    if kit::trash_button(rux, trash, &format!("Uninstall {}", agent.id)) {
+        act = Some(AgentAct::Remove);
+    }
+    let (word, kind) = match (state.installing, state.newer) {
+        (true, _) => ("Updating", ButtonKind::Ghost),
+        (false, true) => ("Update", ButtonKind::Chip),
+        (false, false) => ("Up to date", ButtonKind::Ghost),
+    };
+    let width = kit::button_width(rux, word, false);
+    let button = Rect::from_min_size(Pos2::new(left, top), Vec2::new(width, AGENT_BUTTON));
+    let named = format!("{word} {}", agent.id);
+    if kit::button_named(rux, button, word, &named, kind) && word == "Update" {
+        act = Some(AgentAct::Update);
+    }
+    act
 }
 
 /// What one endpoint's card reported.
@@ -290,13 +382,15 @@ struct EndpointRow<'a> {
     right: f32,
     /// How far down the page this card starts.
     top: f32,
+    /// How tall it is drawn: the taller of the two endpoints on its row.
+    height: f32,
     /// Which of the endpoints this card is.
     index: usize,
     /// Why this endpoint cannot be reached right now, if it cannot.
     why_not: Option<String>,
     /// Which wire shapes could be used on this machine. See [`Readiness::shapes`].
     shapes: &'a [&'static str],
-    /// Whether this is the only endpoint there is, in which case there is no `Remove`.
+    /// Whether this is the only endpoint there is, in which case there is no trash button.
     only_one: bool,
 }
 
@@ -317,28 +411,27 @@ fn fields_of(provider: &Provider) -> Vec<(&'static str, f32)> {
     }
 }
 
-/// One endpoint: its name, what it speaks, where it is, and whether it can answer. Answers where it ended.
-///
-/// Carved into the card. Which endpoint a pane uses is that pane's own choice, so this card says nothing
-/// about being in use.
-fn endpoint(
-    rux: &mut Rux<'_>,
-    providers: &mut [Provider],
-    at: EndpointRow<'_>,
-) -> (f32, Option<Act>) {
-    let EndpointRow { left, right, top, index, why_not, shapes, only_one } = at;
-    let theme = rux.theme();
-    let chat = theme.chat;
-    let mut act = None;
-    let fields = fields_of(&providers[index]);
-    let rows = 1 + fields.len();
-    let height = ENDPOINT_PAD_Y * 2.0
+/// How tall an endpoint's card is for the fields it draws.
+fn endpoint_height(provider: &Provider) -> f32 {
+    let rows = 1 + fields_of(provider).len();
+    ENDPOINT_PAD_Y * 2.0
         + ENDPOINT_HEAD
         + ENDPOINT_GAP
         + rows as f32 * ENDPOINT_ROW
         + (rows - 1) as f32 * ENDPOINT_ROW_GAP
         + ENDPOINT_GAP
-        + ENDPOINT_STATUS;
+        + ENDPOINT_STATUS
+}
+
+/// One endpoint: its name, what it speaks, where it is, and whether it can answer.
+///
+/// Carved into the card. Which endpoint a pane uses is that pane's own choice, so this card says nothing
+/// about being in use.
+fn endpoint(rux: &mut Rux<'_>, providers: &mut [Provider], at: EndpointRow<'_>) -> Option<Act> {
+    let EndpointRow { left, right, top, height, index, why_not, shapes, only_one } = at;
+    let theme = rux.theme();
+    let chat = theme.chat;
+    let mut act = None;
     let card = Rect::from_min_max(Pos2::new(left, top), Pos2::new(right, top + height));
     rux.chrome.surface(card, ENDPOINT_RADIUS, chat.well, chat.carved_sm());
     let inside_left = card.left() + ENDPOINT_PAD_X;
@@ -347,7 +440,10 @@ fn endpoint(
 
     // The name, and the two things that can be done to the row, on one line.
     let mut name = providers[index].name.clone();
-    let name_at = Rect::from_min_size(Pos2::new(inside_left, pen), Vec2::new(140.0, ENDPOINT_HEAD));
+    let name_at = Rect::from_min_size(
+        Pos2::new(inside_left, pen),
+        Vec2::new(180.0_f32.min(inside_right - inside_left - 44.0).max(0.0), ENDPOINT_HEAD),
+    );
     if kit::text_well_styled(
         rux,
         name_at,
@@ -363,10 +459,9 @@ fn endpoint(
         act = Some(Act::Changed);
     }
     if !only_one {
-        let width = kit::button_width(rux, "Remove", false) - 6.0;
         let remove =
-            Rect::from_min_size(Pos2::new(inside_right - width, pen + 2.0), Vec2::new(width, 30.0));
-        if kit::button(rux, remove, "Remove", ButtonKind::Ghost) {
+            Rect::from_min_size(Pos2::new(inside_right - 30.0, pen + 2.0), Vec2::new(30.0, 30.0));
+        if kit::trash_button(rux, remove, &format!("Remove {}", providers[index].name)) {
             act = Some(Act::Remove);
         }
     }
@@ -387,7 +482,9 @@ fn endpoint(
     // sizes that fits rather than running past the card's edge. **With seven (`task-2302`) none of the three
     // fits on a card of the usual width**, and the last shape was drawn past the edge where it could not be
     // pressed, so a card too narrow for the track offers the shapes as a dropdown instead.
-    let room = inside_right - controls_left;
+    // **Never less than nothing** (`task-2308`). In a window small enough that the dialog is squeezed, the room
+    // beside the labels came out negative, and a surface with a negative width stopped the window in `rux`.
+    let room = (inside_right - controls_left).max(0.0);
     let size = [11.0, 10.0, 9.0]
         .into_iter()
         .find(|size| kit::segmented_width(rux, &offered, 0.0, true, *size) <= room);
@@ -439,7 +536,7 @@ fn endpoint(
         label(rux, Pos2::new(inside_left, pen + ENDPOINT_ROW / 2.0), field);
         let at = Rect::from_min_size(
             Pos2::new(controls_left, pen),
-            Vec2::new(width.min(inside_right - controls_left), ENDPOINT_ROW),
+            Vec2::new(width.min(room), ENDPOINT_ROW),
         );
         let provider = &mut providers[index];
         let (mut value, hint) = match field {
@@ -524,7 +621,7 @@ fn endpoint(
         Style::sans(11.5),
         theme.ink.i400,
     );
-    (card.bottom(), act)
+    act
 }
 
 /// A word in an endpoint's label column, centred on its row.

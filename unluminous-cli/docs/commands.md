@@ -4382,6 +4382,36 @@ unluminous-cli settings acp-add claude-acp
 unluminous-cli settings acp-add gemini --name gemini-acp --json
 ```
 
+### settings acp-update
+
+```
+unluminous-cli settings acp-update <id> [--timeout <milliseconds>]
+```
+
+Bring an agent added from the ACP registry up to the version the registry has now. An npx or uvx agent's endpoint is changed at once; a binary agent is downloaded and checked first. The endpoint keeps its name and its model. `settings acp-registry` says which agents are out of date.
+
+- `id` — The agent's id, which is the endpoint's name, such as claude-acp.
+
+- `--timeout <milliseconds>` — How long to wait, including a download. 600000 by default.
+
+```sh
+unluminous-cli settings acp-update claude-acp
+```
+
+### settings acp-remove
+
+```
+unluminous-cli settings acp-remove <id>
+```
+
+Take away an agent added from the ACP registry: its endpoint, and the files downloaded for a binary agent. The last endpoint cannot be removed.
+
+- `id` — The agent's id, which is the endpoint's name, such as claude-acp.
+
+```sh
+unluminous-cli settings acp-remove claude-acp
+```
+
 ### settings fonts
 
 ```

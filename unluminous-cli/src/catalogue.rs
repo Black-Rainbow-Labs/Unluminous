@@ -188,7 +188,7 @@ impl Command {
             // lengthens. `task-2220`.
             ("notebook", "run") => Some(NOTEBOOK_WAIT_MS),
             // Adding an agent from the ACP registry, which may download one (`task-2308`).
-            ("settings", "acp-add") => Some(BUILD_WAIT_MS),
+            ("settings", "acp-add" | "acp-update") => Some(BUILD_WAIT_MS),
             _ => None,
         }
     }
@@ -219,7 +219,7 @@ impl Command {
                 | ("terminal", "read")
                 | ("run", "output")
                 | ("update", "check")
-                | ("settings", "acp-registry" | "acp-add")
+                | ("settings", "acp-registry" | "acp-add" | "acp-update")
                 | ("voice", "transcribe")
                 | ("report", "screenshot")
                 | (
@@ -3710,6 +3710,24 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         area: "settings",
+        verb: "acp-update",
+        summary: "Bring an agent added from the ACP registry up to the version the registry has now. An npx or uvx agent's endpoint is changed at once; a binary agent is downloaded and checked first. The endpoint keeps its name and its model. `settings acp-registry` says which agents are out of date.",
+        arguments: &[argument("id", true, "The agent's id, which is the endpoint's name, such as claude-acp.")],
+        flags: &[whole_option("timeout", "milliseconds", "How long to wait, including a download. 600000 by default.")],
+        examples: &["unluminous-cli settings acp-update claude-acp"],
+        local: false,
+    },
+    Command {
+        area: "settings",
+        verb: "acp-remove",
+        summary: "Take away an agent added from the ACP registry: its endpoint, and the files downloaded for a binary agent. The last endpoint cannot be removed.",
+        arguments: &[argument("id", true, "The agent's id, which is the endpoint's name, such as claude-acp.")],
+        flags: NO_FLAGS,
+        examples: &["unluminous-cli settings acp-remove claude-acp"],
+        local: false,
+    },
+    Command {
+        area: "settings",
         verb: "fonts",
         summary: "The font families this machine has that the editor can be set to.",
         arguments: NO_ARGUMENTS,
@@ -4239,8 +4257,10 @@ mod tests {
             // `notebook run --wait` is the one long wait that is not a pause: a cell runs for as long
             // as its code takes, so it says how long the window waits too. `task-2220`.
             let runs = command.wire() == "notebook.run" && command.flag("wait").is_some();
-            // `settings acp-add` may download a binary agent first, which takes as long as it takes. `task-2308`.
-            let downloads = command.wire() == "settings.acp-add";
+            // `settings acp-add` and `acp-update` may download a binary agent first, which takes as long as it takes.
+            // `task-2308`.
+            let downloads =
+                matches!(command.wire().as_str(), "settings.acp-add" | "settings.acp-update");
             assert_eq!(
                 pauses || runs || downloads,
                 command.waits_for().is_some(),

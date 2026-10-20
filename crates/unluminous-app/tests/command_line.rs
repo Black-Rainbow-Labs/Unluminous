@@ -2224,6 +2224,11 @@ fn drive_the_modals_and_the_settings(coverage: &mut Coverage) {
     c.works(&mut harness, "settings acp-registry claude --json");
     c.works(&mut harness, "settings acp-add claude-acp --name acp-walk");
     c.refuses(&mut harness, "settings acp-add no-such-agent");
+    c.works(&mut harness, "settings acp-add gemini");
+    c.works(&mut harness, "settings acp-update gemini");
+    c.refuses(&mut harness, "settings acp-update no-such-agent");
+    c.works(&mut harness, "settings acp-remove gemini");
+    c.refuses(&mut harness, "settings acp-remove gemini");
 
     // The backgrounds, which are files in Unluminous's own folder rather than a setting on its own.
     // Added from a picture this walk writes, so nothing depends on what is on the machine.
@@ -3304,6 +3309,27 @@ fn an_acp_agent_from_the_registry_becomes_an_endpoint_that_runs_it() {
     did(&mut harness, &format!("settings set ai.provider.{index}.args -y another-package --acp"));
     let args = did(&mut harness, &format!("settings get ai.provider.{index}.args"));
     assert!(args.to_string().contains("-y another-package --acp"), "{args}");
+
+    // An endpoint that runs something other than the registry's version can be updated, and the update keeps
+    // its model and puts the registry's arguments back (`task-2308`).
+    let listed = did(&mut harness, "settings acp-registry claude-acp");
+    assert_eq!(listed["agents"][0]["canUpdate"], true, "{listed}");
+    did(&mut harness, &format!("settings set ai.provider.{index}.model sonnet"));
+    let updated = did(&mut harness, "settings acp-update claude-acp");
+    assert_eq!(
+        updated["args"],
+        serde_json::json!(["-y", "@agentclientprotocol/claude-agent-acp@0.94.0"])
+    );
+    let model = did(&mut harness, &format!("settings get ai.provider.{index}.model"));
+    assert!(model.to_string().contains("sonnet"), "{model}");
+    let listed = did(&mut harness, "settings acp-registry claude-acp");
+    assert_eq!(listed["agents"][0]["canUpdate"], false, "{listed}");
+
+    // And it can be taken away again, after which the registry says it is not added.
+    did(&mut harness, "settings acp-remove claude-acp");
+    let listed = did(&mut harness, "settings acp-registry claude-acp");
+    assert_eq!(listed["agents"][0]["added"], false);
+    refused(&mut harness, "settings acp-remove claude-acp");
 }
 
 /// A picture on disk for `background add` to copy in, written once.

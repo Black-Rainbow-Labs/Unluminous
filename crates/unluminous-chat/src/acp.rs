@@ -784,7 +784,80 @@ pub fn asking(provider: &Provider, ask: &Ask) -> Asking {
 
 /// Run one turn against an ACP agent, handing each reply to `on_reply`. The same shape as
 /// [`crate::agent::run`], which hands an `acp` row here.
+///
+/// **A package version the machine's npm cannot find is asked for again with no version** (`task-2308`). The
+/// registry pins each agent, and a machine whose npm reads a company mirror can be a release or two behind it:
+/// on a Mac, `npx -y @agentclientprotocol/claude-agent-acp@0.94.0` failed with `ETARGET` while the public
+/// registry had 0.94.0. Without the pin npx takes the newest version that mirror has, and the thinking says so.
 pub fn run(
+    provider: &Provider,
+    ask: &Ask,
+    stopping: &AtomicBool,
+    running: &Running,
+    generation: u64,
+    on_reply: &dyn Fn(Reply) -> bool,
+) {
+    let unpinned = without_a_missing_version(provider);
+    let missing = std::cell::RefCell::new(None::<String>);
+    let first = |reply: Reply| -> bool {
+        if let (Reply::Failed(why), Some(_)) = (&reply, &unpinned) {
+            if a_version_was_not_found(why) {
+                *missing.borrow_mut() = Some(why.clone());
+                return true;
+            }
+        }
+        on_reply(reply)
+    };
+    run_once(provider, ask, stopping, running, generation, &first);
+    let (Some(why), Some((unpinned, pinned))) = (missing.into_inner(), unpinned) else {
+        return;
+    };
+    if stopping.load(Ordering::Relaxed) {
+        on_reply(Reply::Failed(why));
+        return;
+    }
+    on_reply(Reply::Thinking(format!(
+        "npm on this machine has no {pinned}, so the newest version it does have is used instead."
+    )));
+    run_once(&unpinned, ask, stopping, running, generation, on_reply);
+}
+
+/// Whether npm said a pinned version does not exist where it looked.
+pub fn a_version_was_not_found(words: &str) -> bool {
+    words.contains("ETARGET") || words.contains("No matching version found")
+}
+
+/// The same endpoint with its npx package's version taken off, and the pinned package it named, or `None`
+/// when it runs no pinned npm package.
+pub fn without_a_missing_version(provider: &Provider) -> Option<(Provider, String)> {
+    let program = std::path::Path::new(provider.command.trim())
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if program != "npx" {
+        return None;
+    }
+    let mut changed = provider.clone();
+    for argument in changed.args.iter_mut() {
+        if argument.starts_with('-') {
+            continue;
+        }
+        // `@scope/name@1.2.3` or `name@1.2.3`: the version is after the last `@` that is not the first character.
+        let Some(at) = argument.rfind('@').filter(|at| *at > 0) else { continue };
+        let version = &argument[at + 1..];
+        if version.is_empty() || !version.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+            continue;
+        }
+        let pinned = argument.clone();
+        argument.truncate(at);
+        return Some((changed, pinned));
+    }
+    None
+}
+
+/// One run of an agent's turn. See [`run`].
+fn run_once(
     provider: &Provider,
     ask: &Ask,
     stopping: &AtomicBool,
@@ -911,6 +984,38 @@ fn leave(child: &mut Child) -> Option<std::process::ExitStatus> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_missing_npx_version_is_taken_off_the_package_and_nothing_else() {
+        let mut provider = Provider::defaults()[0].clone();
+        provider.wire = crate::provider::Wire::Acp;
+        provider.command = "npx".to_owned();
+        provider.args =
+            vec!["-y".to_owned(), "@agentclientprotocol/claude-agent-acp@0.94.0".to_owned()];
+        let (unpinned, pinned) =
+            super::without_a_missing_version(&provider).expect("a pinned package");
+        assert_eq!(pinned, "@agentclientprotocol/claude-agent-acp@0.94.0");
+        assert_eq!(unpinned.args, vec!["-y", "@agentclientprotocol/claude-agent-acp"]);
+
+        provider.args = vec!["-y".to_owned(), "@agentclientprotocol/claude-agent-acp".to_owned()];
+        assert!(super::without_a_missing_version(&provider).is_none(), "nothing pinned");
+        provider.args = vec!["some-agent@1.2.3".to_owned()];
+        assert_eq!(super::without_a_missing_version(&provider).unwrap().0.args, vec!["some-agent"]);
+        provider.command = "uvx".to_owned();
+        assert!(super::without_a_missing_version(&provider).is_none(), "only npx");
+
+        let said = "npx stopped with exit status: 1.
+
+npm error code ETARGET
+npm error notarget No matching version found for @agentclientprotocol/claude-agent-acp@0.94.0.";
+        assert!(super::a_version_was_not_found(said));
+        assert!(!super::a_version_was_not_found(
+            "npx stopped with exit status: 1.
+
+npm error code E404"
+        ));
+    }
+
     use super::*;
 
     fn asking(session: &str, permission: Permission) -> Asking {

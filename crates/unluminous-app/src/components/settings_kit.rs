@@ -691,7 +691,10 @@ pub fn text_well_styled(
 ) -> egui::Response {
     let theme = rux.theme();
     let chat = theme.chat;
-    rux.chrome.surface(rect, rect.height() / 2.0, chat.well, chat.carved_sm());
+    // No surface in a rectangle with no room, which `rux` cannot draw (`task-2308`), as `button_named` says.
+    if rect.width() >= 1.0 && rect.height() >= 1.0 {
+        rux.chrome.surface(rect, rect.height() / 2.0, chat.well, chat.carved_sm());
+    }
     let font = style.font();
     let id = rux.ui.id().with(("settings-field", name));
     let inset = (rect.height() * 0.42).min(16.0);
@@ -987,6 +990,70 @@ pub fn button_named(rux: &mut Rux<'_>, rect: Rect, label: &str, name: &str, kind
         galley = rux.elided(Style::sans(12.0).medium(), label, ink, room);
     }
     rux::text::draw_centred(rux.painter(), rect, galley, ink);
+    let named = name.to_owned();
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, named.clone()));
+    response.clicked()
+}
+
+/// The button that does the thing, on the action's gradient with words in the colour that reads on it: the New
+/// Data Source dialog's `Save`, and a registry agent's `Add` (`task-2308`). `name` is what a test and a screen
+/// reader call it, because a list of agents has an `Add` on each one.
+pub fn primary(rux: &mut Rux<'_>, rect: Rect, label: &str, name: &str) -> bool {
+    if rect.width() < 1.0 || rect.height() < 1.0 {
+        return false;
+    }
+    let chat = rux.theme().chat;
+    let response = rux.ui.interact(
+        rect,
+        rux.ui.id().with(("settings-primary", name, rect.min.x.to_bits(), rect.min.y.to_bits())),
+        Sense::click(),
+    );
+    if response.hovered() {
+        rux.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    let (gradient, elevation) = match (response.is_pointer_button_down_on(), response.hovered()) {
+        (true, _) => (chat.action, chat.action_pressed()),
+        (false, true) => (chat.action_hover, chat.action_raised()),
+        (false, false) => (chat.action, chat.action_raised()),
+    };
+    rux.chrome.surface(rect, rect.height() / 2.0, Fill::gradient(gradient, rect), elevation);
+    let ink = crate::theme::color::on_accent();
+    let galley = rux.text(Style::sans(12.5).semibold(), label, ink);
+    rux::text::draw_centred(rux.painter(), rect, galley, ink);
+    let named = name.to_owned();
+    response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, named.clone()));
+    response.clicked()
+}
+
+/// A round chip with a trash can on it, red while the pointer is over it, for taking something away: an
+/// endpoint, or an agent added from the registry (`task-2308`). `name` is what it is called, such as
+/// `Remove claude-acp`.
+pub fn trash_button(rux: &mut Rux<'_>, rect: Rect, name: &str) -> bool {
+    if rect.width() < 1.0 || rect.height() < 1.0 {
+        return false;
+    }
+    let theme = rux.theme();
+    let chat = theme.chat;
+    let response = rux.ui.interact(
+        rect,
+        rux.ui.id().with(("settings-trash", name, rect.min.x.to_bits(), rect.min.y.to_bits())),
+        Sense::click(),
+    );
+    if response.hovered() {
+        rux.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    let elevation = match response.is_pointer_button_down_on() {
+        true => chat.carved_sm(),
+        false => chat.raised_chip(),
+    };
+    rux.chrome.surface(rect, rect.height() / 2.0, Fill::gradient(chat.chip, rect), elevation);
+    let ink = match response.hovered() {
+        true => chat.slower,
+        false => theme.ink.i500,
+    };
+    rux.mark(Mark::new(Icon::Trash, 14.0), rect.center(), ink);
     let named = name.to_owned();
     response
         .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, named.clone()));

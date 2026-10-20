@@ -1020,9 +1020,14 @@ impl UnluminousApp {
         if arrived.is_empty() {
             return;
         }
-        for provider in arrived {
-            if !self.endpoints.providers.iter().any(|one| one.name == provider.name) {
-                self.endpoints.providers.push(provider);
+        // An update arrives under the name of the endpoint it replaces, and keeps that endpoint's model.
+        for mut provider in arrived {
+            match self.endpoints.providers.iter().position(|one| one.name == provider.name) {
+                Some(index) => {
+                    provider.model = self.endpoints.providers[index].model.clone();
+                    self.endpoints.providers[index] = provider;
+                }
+                None => self.endpoints.providers.push(provider),
             }
         }
         self.the_endpoints_changed();

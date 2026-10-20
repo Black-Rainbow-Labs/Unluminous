@@ -273,7 +273,37 @@ board. `a_permission_set_while_the_pane_is_open_is_the_one_the_next_turn_uses` i
 - **The registry changes shape.** Unknown fields are ignored and an agent with no distribution Unluminous
   understands is listed without `Add`.
 
+## 7.1 What Jason found in 1.3.0, and what changed
+
+Reported on the ticket after the release, from a Mac:
+
+- **Claude's adapter failed with `npm error code ETARGET`, `No matching version found for
+  @agentclientprotocol/claude-agent-acp@0.94.0`.** The public registry has 0.94.0 (it is the `latest` tag), so
+  that Mac's npm reads a mirror that lags. `acp::run` now runs a turn that fails that way again with the
+  package's version taken off, and says so in the thinking. It only ever drops a version npx could not find.
+- **The page could not be scrolled in places, and the Find field took no typing.** Neither reproduced on Windows,
+  where synthetic wheel and key events reached every part of the page on both the old and the new layout. The
+  cause found is macOS only: a browser or Designer page under the Settings dialog is cropped to nothing with a
+  layer mask, and AppKit hit tests a view by its frame, so the invisible page still received the wheel and, once
+  clicked, the keyboard. `browser::move_to` now hides a page with nothing left to show on macOS.
+- **The registry is cards**, three or four a row, with `Add` on the action's blue (`settings_kit::primary`).
+  An added agent shows `Update` when its endpoint runs something other than the registry's current version, and
+  a trash button that removes the endpoint and deletes a binary agent's download (`AcpRegistry::update` and
+  `remove`, and `settings acp-update` and `acp-remove`).
+- **The registry is read when the page is shown**, the `Added claude-acp` line and its status mark are gone,
+  and the card's help is one sentence.
+- **Endpoints are two a row**, one a row when the dialog is narrower than two cards of 330 points, and their
+  `Remove` is a trash button named `Remove <name>`.
+- **A narrow window closed when the page opened.** With the dialog squeezed by a 690 point window, a field in a
+  half width card was handed a negative width, and `rux` panics on a surface with a negative size. Every width on
+  an endpoint card is at least zero, and `settings_kit::text_well` draws no surface into an empty rectangle.
+- **Each card asked whether npx and uvx are installed, every frame**, which walks `PATH`. `AcpRegistry::runners`
+  keeps the answer for five seconds.
+
 ## 8. Left for later
+
+- On macOS, a page partly covered (a menu over it, a node in front of it) is masked but still takes the pointer
+  under the cover. The full answer is a hit test on the view that agrees with the mask.
 
 - Keeping one agent process between turns, with `session/cancel` for Stop. Measure the second per turn first.
 - Asking the person about a permission in the pane, with the agent's own options as buttons. The ticket's Chat
