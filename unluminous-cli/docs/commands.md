@@ -1528,7 +1528,7 @@ unluminous-cli voice install
 unluminous-cli voice microphone [ask|open-settings]
 ```
 
-Microphone access; `ask` asks the system, `open-settings` opens its privacy page.
+Microphone access and every input device, with the one dictation uses; choose another with `settings set voice.microphone <name>`. `ask` asks the system for access, `open-settings` opens its privacy page.
 
 - `action` (optional) — ask or open-settings
 

@@ -2081,7 +2081,10 @@ impl UnluminousApp {
         // only when they are named separately.
         // Asked only while the Voice page is the one showing, because it reads the disk and the registry.
         let voice_facts = match self.settings_window.page {
-            crate::settings::Page::Voice => self.voice_facts(),
+            crate::settings::Page::Voice => {
+                self.keep_the_microphone_list_fresh();
+                self.voice_facts()
+            }
             _ => crate::components::voice_page::VoiceFacts::default(),
         };
         let page_look = crate::services::plugin_ui::Look::of(&self.settings, &self.renderer);

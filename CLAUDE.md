@@ -2637,6 +2637,13 @@ binary `load_settings` gives it the person's store, so nothing a person sees cha
   default goes back the first time the view is sent to a page, because a page with no background of its own
   is drawn on that colour. The picture under a popup over a page is taken even when the page is one colour
   (`photograph_even_if_plain`), so the hole round a right click menu shows the page.
+- **`voice.microphone` chooses the input device** dictation and "Sable" listen through, by the name the
+  system gives it; empty is the system's default. `Settings -> Voice -> Microphone` lists the devices, read on a
+  thread every three seconds while the page shows (`keep_the_microphone_list_fresh`, never in a test's window),
+  and `voice microphone` lists them for an agent. A named device that is unplugged falls back to the default and
+  says so. Choosing another device while the microphone is open closes it and opens the new one.
+- **Pasted text in a zsh prompt is drawn in reverse video by zsh itself** (`zle_highlight`, `paste:standout`),
+  and it stays until the line is edited. The terminal draws what zsh sends, so this is not a fault to fix here.
 - **A tab has no hint under the pointer**: it only repeated the name on the tab. The find bar's `Aa` and
   `ab` have one each, saying what they do (`controls::choice_button_hinted`).
 

@@ -1191,6 +1191,9 @@ settings! {
         /// The language sent to the endpoint, such as `en`. Empty lets the endpoint decide. The local model is
         /// English.
         voice_language = "en".to_owned() => "voice.language", "a language code such as en, or empty";
+        /// The input device dictation and "Sable" listen through, by the name the system gives it. Empty is
+        /// the system's default, which follows the system when the default changes (`task-2320`).
+        voice_microphone = String::new() => "voice.microphone", "an input device's name from `voice microphone`, or empty for the system's default";
     }
 
     text_raw {
@@ -2017,6 +2020,7 @@ mod tests {
             "voice.endpoint_model",
             "voice.endpoint_key",
             "voice.language",
+            "voice.microphone",
             "voice.wake_sensitivity",
             "voice.model_idle",
             "voice.send_pause",
@@ -2150,6 +2154,7 @@ mod tests {
             voice_endpoint_model: "whisper-large".to_owned(),
             voice_endpoint_key: "OPENAI_API_KEY".to_owned(),
             voice_language: "fr".to_owned(),
+            voice_microphone: "Headset Microphone (USB Audio)".to_owned(),
             voice_wake_sensitivity: 0.75,
             voice_model_idle: 300.0,
             voice_send_pause: 3.5,

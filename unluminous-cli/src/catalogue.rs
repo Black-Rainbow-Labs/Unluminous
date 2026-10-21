@@ -1582,7 +1582,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "voice",
         verb: "microphone",
-        summary: "Microphone access; `ask` asks the system, `open-settings` opens its privacy page.",
+        summary: "Microphone access and every input device, with the one dictation uses; choose another with `settings set voice.microphone <name>`. `ask` asks the system for access, `open-settings` opens its privacy page.",
         arguments: &[closed("action", false, "ask or open-settings", &["ask", "open-settings"])],
         flags: NO_FLAGS,
         examples: &["unluminous-cli voice microphone"],

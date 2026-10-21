@@ -159,14 +159,48 @@ impl UnluminousApp {
             _ => {}
         }
         let access = unluminous_voice::access::status();
-        let said = match &access {
+        // Every input device, and which one `voice.microphone` chooses, so an agent can choose another with
+        // `settings set voice.microphone <name>`. `task-2320`.
+        let devices = unluminous_voice::capture::device_names();
+        let default = unluminous_voice::capture::default_device_name();
+        let chosen = self.settings.voice_microphone.clone();
+        let connected = chosen.is_empty() || devices.contains(&chosen);
+        let in_use = match connected && !chosen.is_empty() {
+            true => Some(chosen.clone()),
+            false => default.clone(),
+        };
+        let mut said = match &access {
             unluminous_voice::access::Access::Refused(why) => why.clone(),
             other => format!("Microphone access: {}.", other.name()),
         };
+        match (&in_use, connected) {
+            (Some(name), true) => said.push_str(&format!(" Listening through {name}.")),
+            (Some(name), false) => {
+                said.push_str(&format!(" {chosen} is not connected, so {name} is used."))
+            }
+            (None, _) => said.push_str(" No microphone is connected."),
+        }
+        let listed: Vec<Value> = devices
+            .iter()
+            .map(|name| {
+                json!({
+                    "name": name,
+                    "default": default.as_deref() == Some(name.as_str()),
+                    "chosen": *name == chosen,
+                })
+            })
+            .collect();
         ok(
             request,
             said,
-            json!({ "access": access.name(), "device": unluminous_voice::capture::default_device_name() }),
+            json!({
+                "access": access.name(),
+                "device": in_use,
+                "default": default,
+                "chosen": (!chosen.is_empty()).then_some(chosen),
+                "connected": connected,
+                "devices": listed,
+            }),
         )
     }
 

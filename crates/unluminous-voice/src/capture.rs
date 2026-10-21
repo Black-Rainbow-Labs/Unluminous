@@ -1,4 +1,5 @@
-//! The microphone: cpal's default input device, converted to 16 kHz mono on the way in.
+//! The microphone: the input device `voice.microphone` names, or cpal's default when it names none, converted
+//! to 16 kHz mono on the way in.
 //!
 //! A cpal stream is made and dropped on a thread of its own, because on macOS it may not move between
 //! threads, and the thread holds it until the `Microphone` is dropped. That drop is what turns the system's
@@ -54,16 +55,36 @@ pub fn default_device_name() -> Option<String> {
     device.name().ok()
 }
 
-/// Opens the default microphone. `deliver` is called on cpal's own thread with every block, already 16 kHz
-/// mono, so it must be quick: sending on a channel is what it is for.
+/// The names of every input device on this machine, in the order the system lists them. A name is what
+/// `voice.microphone` holds (`task-2320`).
+pub fn device_names() -> Vec<String> {
+    let Ok(devices) = cpal::default_host().input_devices() else {
+        return Vec::new();
+    };
+    #[allow(deprecated)]
+    let mut names: Vec<String> = devices.filter_map(|device| device.name().ok()).collect();
+    names.dedup();
+    names
+}
+
+/// Opens the microphone named `device`, or the default one when `device` is empty. A named device that is
+/// not connected falls back to the default, and the description says so, because dictation that stops
+/// working when a headset is unplugged is worse than dictation from the laptop's own microphone.
+/// `deliver` is called on cpal's own thread with every block, already 16 kHz mono, so it must be quick:
+/// sending on a channel is what it is for.
+/// @param device - the device's name, or empty for the default
 /// @param deliver - receives the audio
-pub fn open(deliver: impl FnMut(Vec<i16>) + Send + 'static) -> Result<Microphone, String> {
+pub fn open(
+    device: &str,
+    deliver: impl FnMut(Vec<i16>) + Send + 'static,
+) -> Result<Microphone, String> {
+    let device = device.to_owned();
     let stop = Arc::new(AtomicBool::new(false));
     let flag = stop.clone();
     let (ready_tx, ready_rx) = std::sync::mpsc::channel();
     std::thread::Builder::new()
         .name("unluminous-voice-microphone".into())
-        .spawn(move || match build(deliver) {
+        .spawn(move || match build(&device, deliver) {
             Ok((stream, description)) => {
                 let _ = ready_tx.send(Ok(description));
                 while !flag.load(Ordering::Relaxed) {
@@ -82,11 +103,33 @@ pub fn open(deliver: impl FnMut(Vec<i16>) + Send + 'static) -> Result<Microphone
     Ok(Microphone { stop, description })
 }
 
+/// The device named `wanted`, or the default one, and a note when the named one was not there.
+/// @param wanted - the device's name, or empty for the default
+fn choose(wanted: &str) -> Result<(cpal::Device, Option<String>), String> {
+    let host = cpal::default_host();
+    if !wanted.is_empty() {
+        #[allow(deprecated)]
+        let named = host.input_devices().ok().and_then(|mut devices| {
+            devices.find(|device| device.name().ok().as_deref() == Some(wanted))
+        });
+        if let Some(device) = named {
+            return Ok((device, None));
+        }
+    }
+    let device = host.default_input_device().ok_or("this machine has no microphone")?;
+    let note =
+        (!wanted.is_empty()).then(|| format!("{wanted} is not connected, so the default is used"));
+    Ok((device, note))
+}
+
 /// Builds and starts the stream, in whichever sample format the device prefers.
+/// @param wanted - the device's name, or empty for the default
 /// @param deliver - receives the audio
-fn build(deliver: impl FnMut(Vec<i16>) + Send + 'static) -> Result<(cpal::Stream, String), String> {
-    let device =
-        cpal::default_host().default_input_device().ok_or("this machine has no microphone")?;
+fn build(
+    wanted: &str,
+    deliver: impl FnMut(Vec<i16>) + Send + 'static,
+) -> Result<(cpal::Stream, String), String> {
+    let (device, note) = choose(wanted)?;
     let supported = device
         .default_input_config()
         .map_err(|e| format!("the microphone could not be read: {e}"))?;
@@ -94,7 +137,11 @@ fn build(deliver: impl FnMut(Vec<i16>) + Send + 'static) -> Result<(cpal::Stream
     let config = supported.config();
     #[allow(deprecated)]
     let name = device.name().unwrap_or_else(|_| "the default microphone".into());
-    let description = format!("{name}, {} Hz, {} channels", config.sample_rate, config.channels);
+    let mut description =
+        format!("{name}, {} Hz, {} channels", config.sample_rate, config.channels);
+    if let Some(note) = note {
+        description = format!("{description} ({note})");
+    }
     let mut converter = Converter {
         resampler: Resampler::new(config.sample_rate, RATE),
         channels: usize::from(config.channels),

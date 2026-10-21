@@ -37,6 +37,9 @@ pub struct Config {
     /// Whether the microphone may be opened at all. The window's released binary says yes; a window a test
     /// builds says no, so a test never listens to the room it runs in. A file can always be transcribed.
     pub microphone: bool,
+    /// The input device to open, by name, or empty for the system's default. `voice.microphone`
+    /// (`task-2320`).
+    pub device: String,
 }
 
 impl Default for Config {
@@ -50,6 +53,7 @@ impl Default for Config {
             model_idle: Duration::from_secs(60),
             send_pause: Duration::from_millis(1_500),
             microphone: false,
+            device: String::new(),
         }
     }
 }
@@ -377,6 +381,15 @@ impl Worker {
         if config.always_listen && !self.config.always_listen {
             self.refused = None;
         }
+        // **Another microphone chosen closes the one that is open**, and `settle` below opens the new one
+        // if it is still wanted, so a dictation in progress carries on from the device just chosen.
+        if config.device != self.config.device {
+            self.refused = None;
+            if self.microphone.take().is_some() {
+                self.generation += 1;
+                self.level = 0.0;
+            }
+        }
         // **Always listen switched off lets the speech model go at once** rather than after `model_idle`,
         // unless a dictation is still using it: everything "Sable" loaded is released with the switch.
         if !config.always_listen && self.config.always_listen && self.dictation.is_none() {
@@ -429,7 +442,7 @@ impl Worker {
         self.generation += 1;
         let generation = self.generation;
         let inputs = self.inputs.clone();
-        match capture::open(move |samples| {
+        match capture::open(&self.config.device, move |samples| {
             let _ = inputs.send(Input::Audio { generation, samples });
         }) {
             Ok(microphone) => {

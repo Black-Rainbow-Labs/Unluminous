@@ -1,7 +1,7 @@
 //! `Settings -> Voice`: speech to text for the Agent-Chat prompt. `task-2290`.
 //!
-//! Four cards in the Settings design's language, built from `components::settings_kit`: the engine, the
-//! endpoint, the microphone, and always listen for "Sable". Every value is one of the `voice.*` settings, so
+//! Five cards in the Settings design's language, built from `components::settings_kit`: the engine, the
+//! endpoint, the microphone (which device, and access), the microphone button, and always listen for "Sable". Every value is one of the `voice.*` settings, so
 //! the page, `settings set` and the Chat settings' switch are three ways of writing the same line.
 //!
 //! What the page cannot know on its own (whether the model is on disk, how far a download has got, whether
@@ -25,7 +25,33 @@ pub struct VoiceFacts {
     pub microphone: String,
     /// Whether the system refuses the microphone, which is when the page offers its settings page.
     pub refused: bool,
+    /// The input devices on this machine, by name, which the Microphone dropdown offers after the
+    /// system's default (`task-2320`).
+    pub microphones: Vec<String>,
 }
+
+/// What the Microphone dropdown offers: the system's default first, then every device, then the chosen one
+/// when it is not connected, so the dropdown still says what is chosen. Answers the words and which is chosen.
+/// @param devices - the devices on this machine
+/// @param chosen - `voice.microphone`, empty for the default
+pub fn microphone_choices(devices: &[String], chosen: &str) -> (Vec<String>, usize) {
+    let mut words = vec![DEFAULT_MICROPHONE.to_owned()];
+    words.extend(devices.iter().cloned());
+    let index = match chosen.is_empty() {
+        true => 0,
+        false => match devices.iter().position(|device| device == chosen) {
+            Some(at) => at + 1,
+            None => {
+                words.push(format!("{chosen} (not connected)"));
+                words.len() - 1
+            }
+        },
+    };
+    (words, index)
+}
+
+/// The first row of the Microphone dropdown.
+pub const DEFAULT_MICROPHONE: &str = "System default";
 
 /// What the page asked for that is not a setting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,6 +142,19 @@ pub(crate) fn show(
             );
     });
     kit::card(ui, &mut column, "Microphone", None, |card| {
+        let (choices, chosen) = microphone_choices(&facts.microphones, &settings.voice_microphone);
+        card.row("Input", Some("The microphone dictation and \"Sable\" listen through. System default follows the system when its default device changes; a device that is unplugged falls back to the default until it is back."), |row| {
+            if let Some(index) = row.select("Microphone", &choices, Some(chosen), 300.0) {
+                let wanted = match index {
+                    0 => String::new(),
+                    at => facts.microphones.get(at - 1).cloned().unwrap_or_else(|| settings.voice_microphone.clone()),
+                };
+                if wanted != settings.voice_microphone {
+                    settings.voice_microphone = wanted;
+                    changed = true;
+                }
+            }
+        });
         card.row("Access", Some("The microphone is open only while dictating or while always listen is on, so the system's microphone light is off otherwise."), |row| {
             row.status(&facts.microphone);
             if facts.refused && row.button("Open Microphone Settings") {
@@ -155,4 +194,33 @@ pub(crate) fn show(
         );
     });
     VoicePage { drawn: drawn(area.top(), &column, changed), ask }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn devices() -> Vec<String> {
+        vec!["MacBook Pro Microphone".to_owned(), "Headset (USB Audio)".to_owned()]
+    }
+
+    #[test]
+    fn the_system_default_is_first_and_chosen_when_nothing_is_named() {
+        let (words, chosen) = microphone_choices(&devices(), "");
+        assert_eq!(words, ["System default", "MacBook Pro Microphone", "Headset (USB Audio)"]);
+        assert_eq!(chosen, 0);
+    }
+
+    #[test]
+    fn a_named_device_is_chosen_by_its_place_after_the_default() {
+        let (_, chosen) = microphone_choices(&devices(), "Headset (USB Audio)");
+        assert_eq!(chosen, 2);
+    }
+
+    #[test]
+    fn a_device_that_is_unplugged_stays_in_the_list_and_says_so() {
+        let (words, chosen) = microphone_choices(&devices(), "Blue Yeti");
+        assert_eq!(words.last().map(String::as_str), Some("Blue Yeti (not connected)"));
+        assert_eq!(chosen, words.len() - 1);
+    }
 }

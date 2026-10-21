@@ -78,6 +78,9 @@ pub struct VoiceState {
     /// What the Voice page shows instead of asking this machine, for a screenshot test whose picture must
     /// not depend on whether the machine running it has the model or a microphone.
     pub facts: Option<VoiceFacts>,
+    /// The input devices the Voice page offers, read on a thread. See
+    /// [`UnluminousApp::keep_the_microphone_list_fresh`].
+    microphones: MicrophoneList,
     /// The dictation whose message is sent once its last words are in, because it was stopped with `--send`,
     /// which is what a second press of the microphone does.
     send_when_done: Option<u64>,
@@ -86,6 +89,19 @@ pub struct VoiceState {
     pub listening_here: bool,
     claim_asked: Option<std::time::Instant>,
 }
+
+/// The input devices on this machine, as the Voice page last saw them.
+#[derive(Default)]
+struct MicrophoneList {
+    names: Vec<String>,
+    /// When the list was last asked for, so it is read again a few seconds later and a headset plugged in
+    /// while the page is open appears.
+    asked: Option<std::time::Instant>,
+    arriving: Option<std::sync::mpsc::Receiver<Vec<String>>>,
+}
+
+/// How often the Voice page reads the list of input devices again while it is showing.
+const MICROPHONE_LIST_EVERY: Duration = Duration::from_secs(3);
 
 /// The engine's configuration for these settings.
 /// @param settings - the window's settings
@@ -107,6 +123,7 @@ pub fn config_for(settings: &Settings, microphone: bool) -> Config {
         model_idle: Duration::from_secs_f32(settings.voice_model_idle),
         send_pause: Duration::from_secs_f32(settings.voice_send_pause),
         microphone,
+        device: settings.voice_microphone.clone(),
     }
 }
 
@@ -488,6 +505,42 @@ impl UnluminousApp {
         }
     }
 
+    /// Read the list of input devices again, on a thread, while the Voice page is showing.
+    ///
+    /// Listing the devices asks the system's audio service, which takes tens of milliseconds, so it is never
+    /// done on the window's thread. A window a test builds never reads the machine's devices, which keeps
+    /// its pictures the same on every machine. `task-2320`.
+    pub(crate) fn keep_the_microphone_list_fresh(&mut self) {
+        if !self.voice.microphone_allowed {
+            return;
+        }
+        let list = &mut self.voice.microphones;
+        if let Some(arriving) = &list.arriving {
+            if let Ok(names) = arriving.try_recv() {
+                list.names = names;
+                list.arriving = None;
+            }
+            return;
+        }
+        if list.asked.is_some_and(|at| at.elapsed() < MICROPHONE_LIST_EVERY) {
+            return;
+        }
+        list.asked = Some(std::time::Instant::now());
+        let (send, receive) = std::sync::mpsc::channel();
+        let repaint = self.context.clone();
+        let started = std::thread::Builder::new().name("unluminous-microphone-list".into()).spawn(
+            move || {
+                let _ = send.send(unluminous_voice::capture::device_names());
+                if let Some(ctx) = repaint {
+                    ctx.request_repaint();
+                }
+            },
+        );
+        if started.is_ok() {
+            list.arriving = Some(receive);
+        }
+    }
+
     /// What the Voice settings page shows.
     pub(crate) fn voice_facts(&self) -> VoiceFacts {
         if let Some(facts) = self.voice.facts.clone() {
@@ -513,7 +566,12 @@ impl UnluminousApp {
             }
         };
         let access = unluminous_voice::access::status();
-        let device = unluminous_voice::capture::default_device_name();
+        let names = &self.voice.microphones.names;
+        let chosen = &self.settings.voice_microphone;
+        let device = match chosen.is_empty() || !names.contains(chosen) {
+            true => unluminous_voice::capture::default_device_name(),
+            false => Some(chosen.clone()),
+        };
         let microphone = match (&access, device) {
             (unluminous_voice::access::Access::Refused(why), _) => why.clone(),
             (_, None) => "No microphone is connected".to_owned(),
@@ -527,6 +585,7 @@ impl UnluminousApp {
             may_download: !installed.is_complete() && self.download_progress().is_none(),
             microphone,
             refused: !access.may_open(),
+            microphones: names.clone(),
         }
     }
 
