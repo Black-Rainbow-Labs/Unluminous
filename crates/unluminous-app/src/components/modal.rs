@@ -494,17 +494,24 @@ fn show_framed<R>(
             // layer's points is larger than that, so the intersection left the edges of the window uncovered.
             let mut covering = ui.painter().clone();
             covering.set_clip_rect(window);
+            // **Rounded as the window is** (`task-2323`: *"when the modal is open, the rounded corners of the
+            // main window become square"*). The window paints itself as a rounded rectangle on a transparent
+            // surface, so a square backdrop filled the four corners the window leaves clear. The radius is in
+            // the layer's own points, so a zoomed modal still rounds the window's corners by the window's radius.
+            let corners = window_corners(zoom);
             if let Some((texture, uv)) = backdrop.image {
-                covering.image(
-                    texture,
-                    window,
-                    uv,
-                    Color32::WHITE, // any ground: a white tint draws the picture in its own colours
+                covering.add(
+                    egui::epaint::RectShape::filled(
+                        window,
+                        corners,
+                        Color32::WHITE, // any ground: a white tint draws the picture in its own colours
+                    )
+                    .with_texture(texture, uv),
                 );
             }
             // Clipped to the window rather than to the area, whose clip is the window measured in the
             // layer's own points: at a zoom below one that left the top and the left of the window uncovered.
-            covering.rect_filled(window, CornerRadius::ZERO, color::scrim());
+            covering.rect_filled(window, corners, color::scrim());
             let (area, _) = ui.allocate_exact_size(laid_out, Sense::hover());
             // The window in the layer's own points, for the reason the backdrop gives above. The area's clip
             // is the window in the window's points, and at a zoom below one intersecting with it cut the
@@ -566,6 +573,15 @@ fn show_framed<R>(
         remember_placement(ctx, id, placement);
     }
     (inner, should_close || escaped)
+}
+
+/// The window's own corner radius, in the points of a modal's layer at `zoom`, for the backdrop that covers the
+/// window.
+///
+/// @param zoom - the modal's zoom
+fn window_corners(zoom: f32) -> CornerRadius {
+    let radius = f32::from(size::WINDOW_CORNER) / zoom.max(0.01);
+    CornerRadius::same(radius.round().clamp(0.0, 255.0) as u8)
 }
 
 /// What a modal's backdrop draws on this frame: a picture once there is one, as a texture and the part of it
