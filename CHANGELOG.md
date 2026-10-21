@@ -6,7 +6,19 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.6.0 — 2026-10-21
+## 1.7.0 — 2026-10-21
+
+- Three crashes, the find bar's toggles and list, tab hints, and a browser tab's ground (`task-2320`)
+- Record the rules in CLAUDE.md and the covered page comment (`task-2320`)
+- Accept the two tab drag pictures, which no longer show the tab's name under the pointer (`task-2320`)
+- Choose the microphone dictation uses (`task-2320`)
+- Settings set and get know voice.microphone, and the Voice page test chooses a device (`task-2320`)
+- The settings list test knows voice.microphone's help (`task-2320`)
+- Send to Realm keeps the tab open, and a dragged browser tab is a browser node (`task-2320`)
+- Clippy (`task-2320`)
+- A restored node shows its own tab of a file the editing area also has open (`task-2320`)
+
+## 1.6.0 — 2026-10-20
 
 - Text editing gaps, terminal undo, modal zoom clip, input coordinates and CLI listing fixes (`task-2318`)
 - More editing keys, window points everywhere, and CLI wording (`task-2318`)
