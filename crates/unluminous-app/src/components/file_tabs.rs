@@ -31,7 +31,6 @@
 use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 
 use crate::components::controls;
-use crate::components::controls::WithHint as _;
 use crate::theme::crisp::CrispPainter;
 use crate::theme::{color, icon};
 
@@ -411,9 +410,10 @@ fn draw_tab(
     let name = format!("Tab: {}", tab.name);
     // A tab senses a drag as well as a click, which is how it is rearranged. egui only calls a press
     // a drag once the pointer has moved far enough, so a click is still a click.
-    let response = ui
-        .interact(rect, ui.id().with(("file-tab", at.pane, index)), Sense::click_and_drag())
-        .with_hint(&name);
+    //
+    // No hint under the pointer: it only said the name the tab already shows (`task-2320`).
+    let response =
+        ui.interact(rect, ui.id().with(("file-tab", at.pane, index)), Sense::click_and_drag());
     if response.dragged() || response.drag_stopped() {
         if let Some(pointer) = response.interact_pointer_pos() {
             outcome.dragging = Some((index, pointer));
@@ -495,9 +495,8 @@ fn draw_tab(
         // what the style guide forbids and what the screenshot tests find controls by -- a test
         // closing a file by name closed whichever egui walked first.
         let shut_name = format!("Close tab {}", tab.name);
-        let shut_response = ui
-            .interact(shut, ui.id().with(("file-tab-close", at.pane, index)), Sense::click())
-            .with_hint(&shut_name);
+        let shut_response =
+            ui.interact(shut, ui.id().with(("file-tab-close", at.pane, index)), Sense::click());
         icon::cross(ui.painter(), shut.center(), color::text_dim());
         shut_response
             .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &shut_name));

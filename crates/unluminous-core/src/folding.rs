@@ -398,7 +398,10 @@ fn tag_region(text: &str, lines: &LineIndex, from: usize, to: usize) -> Option<R
     if close <= head {
         return None;
     }
-    let after = &text[to.min(text.len())..lines.starts[close + 1].min(text.len() + 1) - 1];
+    // An end tag still being typed, `</div` with no `>`, runs on to the line break, so `to` can be
+    // past the end of its own line. What follows it on that line is then nothing.
+    let line_end = lines.starts[close + 1].min(text.len() + 1) - 1;
+    let after = text.get(to.min(line_end)..line_end).unwrap_or("");
     let trailing_word = after.chars().any(|c| c.is_alphanumeric() || c == '_');
     let end = if trailing_word { close } else { close + 1 };
     Some(Region { head, body: head + 1..end, kind: Kind::Block })
@@ -1010,6 +1013,28 @@ mod tests {
         let source = "<script>\na < b\nb > a\n</script>\n";
         let found = regions(source, Reading::Code(&html()));
         assert_eq!(heads(&found), vec![(0, 3, "block")]);
+    }
+
+    #[test]
+    fn every_prefix_of_a_document_being_typed_folds_without_panicking() {
+        // task-2320: typing `</div` on the line after `<div>` read the end tag as running on to the
+        // line break, and slicing what came after it on that line panicked with `begin > end`.
+        let source = "<html><head><title>Three</title></head></html>
+
+<div>
+</div>
+<p>
+</p
+";
+        for end in 0..=source.len() {
+            if source.is_char_boundary(end) {
+                regions(&source[..end], Reading::Code(&html()));
+            }
+        }
+        let typed = "<div>
+</div
+";
+        assert_eq!(heads(&regions(typed, Reading::Code(&html()))), vec![(0, 1, "block")]);
     }
 
     #[test]

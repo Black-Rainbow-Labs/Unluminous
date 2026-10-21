@@ -270,8 +270,9 @@ impl UnluminousApp {
                 None => {
                     // The picture is taken from the page as it is, on the first frame of the resize.
                     if let Some(picture) = self.browser.photograph(tab.id) {
-                        let texture = ui.ctx().load_texture(
-                            "pane-page-still",
+                        let texture = crate::services::picture::upload(
+                            ui.ctx(),
+                            "pane-page-still".to_owned(),
                             picture,
                             egui::TextureOptions::LINEAR,
                         );
@@ -358,9 +359,18 @@ impl UnluminousApp {
         self.page_stills.covered.retain(|id, _| covered.iter().any(|(page, _)| page == id));
         for (id, visible) in covered {
             if !self.page_stills.under_a_popup(id) {
-                let Some(picture) = self.browser.photograph(id) else { continue };
-                let texture =
-                    ctx.load_texture("covered-page-still", picture, egui::TextureOptions::LINEAR);
+                // A page that cannot be photographed (macOS) gets the editing area's own ground, opaque,
+                // so the hole round the popup never shows the background picture through it, and the
+                // page is not asked again on every frame the popup is open. `task-2320`.
+                let picture = self.browser.photograph_even_if_plain(id).unwrap_or_else(|| {
+                    egui::ColorImage::new([1, 1], vec![crate::theme::color::editor().to_opaque()])
+                });
+                let texture = crate::services::picture::upload(
+                    ctx,
+                    "covered-page-still".to_owned(),
+                    picture,
+                    egui::TextureOptions::LINEAR,
+                );
                 self.page_stills.covered.insert(id, texture);
             }
             let Some(picture) = self.page_stills.covered.get(&id) else { continue };

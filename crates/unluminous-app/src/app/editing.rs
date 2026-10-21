@@ -1283,7 +1283,11 @@ impl UnluminousApp {
         // Whether a character reached the document this frame, which is the one thing the automatic
         // trigger fires on. Read before the input is handled, because handling it is what consumes
         // the events. A paste, an undo and a command line edit are all deliberately not typing.
+        //
+        // A text box with the keyboard, such as the find bar's, takes the frame's text itself, so a
+        // letter typed there is not typing in the file. `task-2320`: typing a search opened the list.
         let typed = has_keyboard
+            && !crate::app::text_box_has_the_keyboard(ui.ctx())
             && ui.input(|input| {
                 input.events.iter().any(|event| {
                     matches!(event, egui::Event::Text(text) if !text.chars().any(char::is_control))

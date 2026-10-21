@@ -528,6 +528,34 @@ fn the_find_bar_counts_the_matches_and_marks_every_one_of_them() {
     assert_eq!(harness.state().document().selection().start(), stopped);
 }
 
+/// Typing a search into the bar is not typing in the file, so no completion list opens over it.
+///
+/// `task-2320`: the letters typed into `Find text` were still in the frame when the editing area read
+/// it, and the editing area took them as typing at the caret, which the bar had put on a match.
+#[test]
+fn typing_in_the_find_bar_opens_no_completion_list() {
+    let mut harness = code_harness("layout.rs");
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_action(Action::Find, &ctx);
+    steady(&mut harness);
+    // Each letter is read while the caret is still on the match the letters before it found. The
+    // first match of `Layou` is the `Layout` in code, where a list can open, and `x` then matches
+    // nothing, so the selection stays where it was and a list that opened stays open, which is what
+    // the report's screenshot shows.
+    for letter in ["L", "a", "y", "o", "u", "x"] {
+        // A real key's text, the event the editing area reads, rather than an accessibility edit.
+        harness.event(egui::Event::Text(letter.to_owned()));
+        steady(&mut harness);
+        assert!(
+            harness.state().completion().is_none(),
+            "no list opened after typing {letter} into the find bar"
+        );
+    }
+    assert_eq!(harness.state().find.as_ref().expect("the bar").needle, "Layoux");
+    let text = harness.state().document().text().to_string();
+    assert!(!harness.state().document().is_modified(), "nothing was typed into the file: {text}");
+}
+
 /// `Ctrl+H` opens the same bar with the Replace row on it, and Replace All is one undo step.
 ///
 /// The undo is the assertion worth having: replacing forty occurrences one at a time would be forty

@@ -1170,7 +1170,18 @@ impl BrowserHost {
     ///
     /// @param id - the tab
     pub fn photograph(&self, id: u64) -> Option<egui::ColorImage> {
-        self.native.photograph(id)
+        self.native.photograph(id, false)
+    }
+
+    /// The same picture, kept even when the page is one colour all over.
+    ///
+    /// A new tab's empty page is one colour, which [`Self::photograph`] reads as a capture that did not
+    /// work. Under a popup a picture of one colour is exactly what is wanted, and with none the hole the
+    /// popup is cut out of showed the background picture (`task-2320`).
+    ///
+    /// @param id - the tab
+    pub fn photograph_even_if_plain(&self, id: u64) -> Option<egui::ColorImage> {
+        self.native.photograph(id, true)
     }
 
     /// Drain browser callbacks at the top of a frame.
@@ -1904,7 +1915,7 @@ mod native {
     use std::borrow::Cow;
     use std::collections::HashMap;
     use std::path::PathBuf;
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::sync::{Arc, Mutex};
 
     use wry::raw_window_handle::{HandleError, HasWindowHandle, RawWindowHandle, WindowHandle};
@@ -1981,6 +1992,11 @@ mod native {
         /// units can be turned into the page's pixels. Stored as the bits of an `f64`.
         zoom_bits: Arc<AtomicU64>,
         visible: bool,
+        /// Whether the view was built on the editing area's ground rather than the engine's white,
+        /// which a new tab's empty page is, so it does not flash white as it opens (`task-2320`). The
+        /// white goes back the first time the view is sent to a page, because a page that names no
+        /// background of its own is drawn on this colour.
+        on_the_editor_ground: AtomicBool,
         /// Whether the page holds the **operating system's** keyboard focus. See [`super::TheFocus`].
         has_the_focus: bool,
         /// The frame this view was last placed on, so the one hidden longest goes first when there are too
@@ -2268,6 +2284,10 @@ mod native {
             // out. `task-2203`.
             let first = super::engine_url(tab.current_url());
             let mut builder = WebViewBuilder::new_with_web_context(context);
+            let blank = tab.current_url() == super::BLANK;
+            if blank {
+                builder = builder.with_background_color(editor_ground());
+            }
             if let Some(agent) = &self.user_agent {
                 builder = builder.with_user_agent(agent);
             }
@@ -2348,6 +2368,7 @@ mod native {
                     zoom: None,
                     zoom_bits,
                     visible: false,
+                    on_the_editor_ground: AtomicBool::new(blank),
                     has_the_focus: false,
                     placed_at: self.frame,
                     #[cfg(target_os = "macos")]
@@ -2362,6 +2383,9 @@ mod native {
             let view = self.view_for(id)?;
             #[cfg(target_os = "macos")]
             cookies::replace(&view.first_page, None);
+            if url != super::BLANK && view.on_the_editor_ground.swap(false, Ordering::Relaxed) {
+                let _ = view.webview.set_background_color((255, 255, 255, 255));
+            }
             view.webview
                 .load_url(&super::engine_url(url))
                 .map_err(|problem| format!("The browser could not navigate: {problem}"))
@@ -2396,8 +2420,8 @@ mod native {
         }
 
         /// A picture of tab `id`'s page as it is on the screen now. See [`super::BrowserHost::photograph`].
-        pub fn photograph(&self, id: u64) -> Option<egui::ColorImage> {
-            photograph(self.views.get(&id)?)
+        pub fn photograph(&self, id: u64, plain: bool) -> Option<egui::ColorImage> {
+            photograph(self.views.get(&id)?, plain)
         }
     }
 
@@ -2405,9 +2429,10 @@ mod native {
     /// `PW_RENDERFULLCONTENT`, which is the flag for content a compositor draws. Measured on `task-2253`
     /// against a 640 by 352 point page: the picture held the page, and it took 11 to 18 ms. It is asked once,
     /// on the frame a zoom starts. A picture that came back all one colour is a capture that did not work,
-    /// and is answered `None` so the live page is used instead.
+    /// and is answered `None` so the live page is used instead, unless `plain` says one colour is a
+    /// picture too.
     #[cfg(windows)]
-    fn photograph(view: &NativeView) -> Option<egui::ColorImage> {
+    fn photograph(view: &NativeView, plain: bool) -> Option<egui::ColorImage> {
         use windows_sys::Win32::Foundation::{HWND, RECT};
         use windows_sys::Win32::Graphics::Gdi::{
             CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits,
@@ -2474,7 +2499,7 @@ mod native {
             pixel[3] = 255;
         }
         let first = [pixels[0], pixels[1], pixels[2]];
-        if pixels.chunks_exact(4).all(|pixel| pixel[..3] == first) {
+        if !plain && pixels.chunks_exact(4).all(|pixel| pixel[..3] == first) {
             return None;
         }
         Some(egui::ColorImage::from_rgba_unmultiplied([width as usize, height as usize], &pixels))
@@ -2483,7 +2508,7 @@ mod native {
     /// **On macOS there is no picture yet**, because `WKWebView` takes one only asynchronously, and the
     /// canvas then uses the live page during a zoom as it always did.
     #[cfg(target_os = "macos")]
-    fn photograph(_view: &NativeView) -> Option<egui::ColorImage> {
+    fn photograph(_view: &NativeView, _plain: bool) -> Option<egui::ColorImage> {
         None
     }
 
@@ -2830,6 +2855,12 @@ mod native {
             // Safety: as above.
             unsafe { item.add_CustomItemSelected(&handler, &mut token) }
         }
+    }
+
+    /// The editing area's ground, opaque, in the form the engine takes a background colour in.
+    fn editor_ground() -> wry::RGBA {
+        let ground = crate::theme::color::editor().to_opaque();
+        (ground.r(), ground.g(), ground.b(), 255)
     }
 
     /// Allow ordinary web navigation and Unluminous's one local resource origin.
@@ -3329,7 +3360,7 @@ mod native {
             Err(UNSUPPORTED.to_owned())
         }
         /// There is no page to take a picture of.
-        pub fn photograph(&self, _id: u64) -> Option<egui::ColorImage> {
+        pub fn photograph(&self, _id: u64, _plain: bool) -> Option<egui::ColorImage> {
             None
         }
     }

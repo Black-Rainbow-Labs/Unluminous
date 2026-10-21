@@ -2663,8 +2663,12 @@ impl UnluminousApp {
                     || self.design_tabs.values().any(|tab| tab.id == leaving))
             {
                 if let Some(picture) = self.browser.photograph(leaving) {
-                    let texture =
-                        ctx.load_texture("pane-page-still", picture, egui::TextureOptions::LINEAR);
+                    let texture = crate::services::picture::upload(
+                        ctx,
+                        "pane-page-still".to_owned(),
+                        picture,
+                        egui::TextureOptions::LINEAR,
+                    );
                     self.page_stills.keep(leaving, texture);
                 }
             }

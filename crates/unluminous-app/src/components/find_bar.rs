@@ -28,6 +28,13 @@ pub const ROW: f32 = 34.0;
 /// How far in from the top right corner of the editing area it sits.
 const INSET: f32 = 10.0;
 
+/// What the `Aa` toggle says under the pointer.
+pub const MATCH_CASE_HINT: &str =
+    "Match case: when lit, find only text whose capital letters match, so \"Draw\" does not find \"draw\".";
+/// What the `ab` toggle says under the pointer.
+pub const WHOLE_WORD_HINT: &str =
+    "Whole word: when lit, find only whole words, so \"he\" does not find \"head\".";
+
 /// What was pressed.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Outcome {
@@ -124,16 +131,32 @@ fn find_row(ui: &mut egui::Ui, row: Rect, find: &mut Find, outcome: &mut Outcome
 
     // The two toggles, drawn as the words every editor draws: `Aa` for case, `ab` underlined for a
     // whole word. Words rather than drawn marks because these two are conventions a person already
-    // knows, and a mark of our own would have to be learnt.
+    // knows, and a mark of our own would have to be learnt. Not everybody knows them, though
+    // (`task-2320`: "I do not understand what Aa and ab do"), so each says what it does under the
+    // pointer, and lit means on.
     let word =
         Rect::from_min_size(Pos2::new(right - 30.0, row.top() + 3.0), Vec2::new(30.0, ROW - 6.0));
-    if controls::choice_button_named(ui, word, "ab", "Whole word", find.whole_word) {
+    if controls::choice_button_hinted(
+        ui,
+        word,
+        "ab",
+        "Whole word",
+        find.whole_word,
+        WHOLE_WORD_HINT,
+    ) {
         find.whole_word = !find.whole_word;
     }
     right -= 34.0;
     let case =
         Rect::from_min_size(Pos2::new(right - 30.0, row.top() + 3.0), Vec2::new(30.0, ROW - 6.0));
-    if controls::choice_button_named(ui, case, "Aa", "Match case", find.match_case) {
+    if controls::choice_button_hinted(
+        ui,
+        case,
+        "Aa",
+        "Match case",
+        find.match_case,
+        MATCH_CASE_HINT,
+    ) {
         find.match_case = !find.match_case;
     }
     right -= 34.0;

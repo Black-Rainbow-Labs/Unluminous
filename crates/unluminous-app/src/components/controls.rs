@@ -1274,6 +1274,31 @@ pub fn choice_button_over(
     active: bool,
     ground: bool,
 ) -> bool {
+    choice_button_response(ui, area, label, announced, active, ground).clicked()
+}
+
+/// A [`choice_button_named`] whose short word needs explaining, with `hint` shown while the pointer
+/// rests on it. The find bar's `Aa` and `ab` are the case (`task-2320`).
+pub fn choice_button_hinted(
+    ui: &mut egui::Ui,
+    area: Rect,
+    label: &str,
+    announced: &str,
+    active: bool,
+    hint: &str,
+) -> bool {
+    choice_button_response(ui, area, label, announced, active, true).with_hint(hint).clicked()
+}
+
+/// Draw a choice button and answer with its response, which the two above read.
+fn choice_button_response(
+    ui: &mut egui::Ui,
+    area: Rect,
+    label: &str,
+    announced: &str,
+    active: bool,
+    ground: bool,
+) -> egui::Response {
     let response = ui.interact(area, ui.id().with(("choice", announced)), Sense::click());
     let painter = ui.painter();
     if !ground {
@@ -1309,7 +1334,7 @@ pub fn choice_button_over(
     response.widget_info(|| {
         egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), active, announced)
     });
-    response.clicked()
+    response
 }
 
 /// A heading beside a row of controls in a flyout, naming what the row is for.

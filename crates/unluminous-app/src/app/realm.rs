@@ -1485,8 +1485,11 @@ impl UnluminousApp {
             _ if !moving => return placement,
             _ => {
                 let Some(picture) = self.browser.photograph(tab) else { return placement };
-                let texture = ui.ctx().load_texture(
-                    "realm-page-still",
+                // Through `picture::upload`, because a node zoomed in is a page wider than the card's
+                // largest texture, and wgpu ended the program on 9067 pixels (`task-2320`).
+                let texture = crate::services::picture::upload(
+                    ui.ctx(),
+                    "realm-page-still".to_owned(),
                     picture,
                     egui::TextureOptions::LINEAR,
                 );

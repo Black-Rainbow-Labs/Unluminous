@@ -1130,6 +1130,16 @@ impl UnluminousApp {
         self.completion = None;
     }
 
+    /// Whether the popup belongs to the tab that is showing, and its stem is still inside that tab's
+    /// text. Everything that reads the stem out of the document asks this first.
+    pub(crate) fn completion_is_for_the_showing_tab(&self) -> bool {
+        let Some(state) = self.completion.as_ref() else {
+            return false;
+        };
+        self.files.active().path() == Some(state.path.as_path())
+            && state.stem.end <= self.document().text().len_bytes()
+    }
+
     /// True while the popup is open, which is what the key routing and the drawing both ask.
     pub fn completion_is_open(&self) -> bool {
         self.completion.is_some()
@@ -1230,6 +1240,12 @@ impl UnluminousApp {
         {
             return;
         }
+        // The stem is a range in the tab the list was opened on. With another tab showing, such as a
+        // browser tab whose document is empty, reading it panicked. `task-2320`.
+        if !self.completion_is_for_the_showing_tab() {
+            self.close_the_completion();
+            return;
+        }
         // `Enter` on the row that is exactly the word already typed would change nothing, so it is left
         // for the editing area as the new line it means and the list goes. `task-2231` offers that
         // row, as the reference editor does, where `task-1678` used to drop it.
@@ -1308,6 +1324,10 @@ impl UnluminousApp {
     /// `whole_word` is `Tab`: the range is the identifier the caret is inside rather than the stem,
     /// so `dra│wing` completed to `draw_frame` does not leave `wing` dangling behind the caret.
     pub fn accept_the_completion(&mut self, whole_word: bool) -> bool {
+        if !self.completion_is_for_the_showing_tab() {
+            self.close_the_completion();
+            return false;
+        }
         let Some(state) = self.completion.take() else {
             return false;
         };
@@ -2181,6 +2201,21 @@ mod tests {
             "Enter is left for the new line"
         );
         assert!(app.completion().is_none(), "and the list goes");
+        std::fs::remove_dir_all(&folder).ok();
+    }
+
+    #[test]
+    fn a_key_after_the_list_s_tab_was_left_for_a_browser_tab_closes_the_list() {
+        // task-2320: the list was open on a file and a browser tab was opened. The key routing read
+        // the stem's range out of the browser tab's empty document and panicked.
+        let (folder, mut app) = a_window("unluminous-completion-left-for-a-browser-tab");
+        typing(&mut app, "dr");
+        assert!(app.completion().is_some(), "the list is open on the file");
+        app.open_browser("https://example.com/").expect("a browser tab opens");
+        assert!(app.files.active().path().is_none(), "the browser tab is showing");
+        pressing(&mut app, egui::Key::ArrowDown, egui::Modifiers::NONE);
+        assert!(app.completion().is_none(), "the list went with its tab");
+        assert!(!app.accept_the_completion(false));
         std::fs::remove_dir_all(&folder).ok();
     }
 

@@ -21,7 +21,6 @@ use unluminous_terminal::session::{SelectionKind, SessionSettings, Size};
 use unluminous_terminal::Tabs;
 
 use crate::components::controls;
-use crate::components::controls::WithHint as _;
 use crate::components::file_tabs;
 use crate::components::splitter;
 use crate::services::text_renderer::TextRenderer;
@@ -257,9 +256,8 @@ fn draw_tab(
     );
     // A tab senses a drag as well as a click, which is how it is rearranged. egui only calls a press a
     // drag once the pointer has moved far enough, so a click is still a click.
-    let response = ui
-        .interact(tab, ui.id().with(("terminal-tab", index)), Sense::click_and_drag())
-        .with_hint(format!("Terminal tab: {name}"));
+    // No hint under the pointer: it only said the name the tab already shows (`task-2320`).
+    let response = ui.interact(tab, ui.id().with(("terminal-tab", index)), Sense::click_and_drag());
     if response.dragged() || response.drag_stopped() {
         if let Some(pointer) = response.interact_pointer_pos() {
             hit.dragging = Some((index, pointer));
@@ -294,9 +292,7 @@ fn draw_tab(
     );
     let shut =
         Rect::from_center_size(Pos2::new(tab.right() - 12.0, tab.center().y), Vec2::splat(16.0));
-    let shut_response = ui
-        .interact(shut, ui.id().with(("terminal-close", index)), Sense::click())
-        .with_hint(format!("Close terminal {name}"));
+    let shut_response = ui.interact(shut, ui.id().with(("terminal-close", index)), Sense::click());
     icon::cross(&painter, shut.center(), color::text_dim());
     shut_response.widget_info(|| {
         // Prefixed for `no_two_controls_share_a_name`'s reason -- see `file_tabs::show`.
