@@ -6,6 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.5.0 — 2026-10-21
+
+- Menus and nodes over a page, the explorer's last rows, text area drags, a chat per project, and moving between windows (`task-2317`)
+- The window walk excludes Next and Previous Window, the reference editor is not named, and a test writes atomically (`task-2317`)
+- The skill gets its installed-by mark whatever line endings the checkout gave SKILL.md (`task-2317`)
+- Accept the pictures with Next Window and Previous Window, the explorer list ending at its last row, and the description's placeholder a pixel to the right (`task-2317`)
+
 ## 1.4.0 — 2026-10-20
 
 - Agents choose and call Unluminous's commands more accurately, measured on a 52 case eval (`task-2314`)
