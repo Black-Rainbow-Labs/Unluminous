@@ -55,7 +55,7 @@ impl UnluminousApp {
         let copy = source.document.copy_for_another_view(source.document.selection());
         let mut view = OpenFile::new(copy);
         view.view_mode = source.view_mode;
-        view.disk = source.disk.clone();
+        view.disk = source.disk;
         view.follows = Some(followed(source));
         self.files.add_to_node(view, node)
     }
