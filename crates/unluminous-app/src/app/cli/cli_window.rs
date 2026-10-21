@@ -440,18 +440,6 @@ fn window_point(at: egui::Pos2, zoom: f32) -> egui::Pos2 {
     egui::pos2(at.x / zoom, at.y / zoom)
 }
 
-#[cfg(test)]
-mod window_points {
-    use super::*;
-
-    #[test]
-    fn a_point_off_a_screenshot_is_divided_by_the_interface_zoom() {
-        assert_eq!(window_point(egui::pos2(500.0, 125.0), 1.25), egui::pos2(400.0, 100.0));
-        assert_eq!(window_point(egui::pos2(30.0, 40.0), 1.0), egui::pos2(30.0, 40.0));
-        assert_eq!(window_point(egui::pos2(30.0, 40.0), 0.0), egui::pos2(30.0, 40.0));
-    }
-}
-
 /// The modifiers an `input` command was given, as `egui` counts them.
 ///
 /// `command` is the key a menu shortcut names — the Apple key on macOS and control on Windows — which is
@@ -465,5 +453,17 @@ fn input_modifiers(request: &Request) -> egui::Modifiers {
         shift: request.switch("shift"),
         mac_cmd: command && cfg!(target_os = "macos"),
         command: command || request.switch("ctrl"),
+    }
+}
+
+#[cfg(test)]
+mod window_points {
+    use super::*;
+
+    #[test]
+    fn a_point_off_a_screenshot_is_divided_by_the_interface_zoom() {
+        assert_eq!(window_point(egui::pos2(500.0, 125.0), 1.25), egui::pos2(400.0, 100.0));
+        assert_eq!(window_point(egui::pos2(30.0, 40.0), 1.0), egui::pos2(30.0, 40.0));
+        assert_eq!(window_point(egui::pos2(30.0, 40.0), 0.0), egui::pos2(30.0, 40.0));
     }
 }

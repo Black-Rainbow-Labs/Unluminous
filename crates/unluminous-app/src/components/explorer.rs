@@ -1157,6 +1157,79 @@ fn allocate_row(ui: &mut egui::Ui, height: f32) -> Rect {
     rect
 }
 
+/// The filter box at the top of the explorer, with the text box that types into it.
+fn filter_box(
+    ui: &mut egui::Ui,
+    painter: &egui::Painter,
+    filter_rect: Rect,
+    view: &View<'_>,
+    filter: &mut String,
+) {
+    // Under glass the box is the carved well Agent-Chat's prompt is (`task-2287`), rather than a dark field
+    // with a hairline round it.
+    match crate::theme::is_glass() {
+        true => {
+            crate::components::chrome_kit::layer(ui, "explorer-filter", filter_rect, 6.0, |rux| {
+                let chat = rux.theme().chat;
+                rux.chrome.surface(
+                    filter_rect,
+                    filter_rect.height() / 2.0,
+                    chat.well,
+                    chat.carved(),
+                );
+            })
+        }
+        false => {
+            painter.rect(
+                filter_rect,
+                CornerRadius::same(size::CONTROL_CORNER),
+                color::field(),
+                Stroke::new(1.0, color::divider()),
+                egui::StrokeKind::Inside,
+            );
+        }
+    }
+    icon::magnifier_at(
+        painter,
+        Pos2::new(filter_rect.left() + view.at(13.0), filter_rect.center().y),
+        color::text_faint(),
+        view.zoom,
+    );
+    let filter_id = ui.id().with("explorer-filter");
+    let inside = crate::components::controls::field_takes_the_whole_rectangle(
+        ui,
+        filter_rect,
+        view.at(26.0),
+        filter_id,
+        "Filter field",
+    );
+    // **The size comes from the box's own height, not from `appearance.ui.font.size`** - `task-2004`.
+    // It used to be the interface's size times this pane's zoom, and the rows under it are
+    // `view.at(12.5)` whatever the interface is set to: on a machine with a large interface `Filter
+    // files` came out more than twice the height of the file names beside it, and the caret, whose
+    // height is the row that font occupies, stood proud of the 24 point box at both ends.
+    // `controls::field_font_size` is a fraction of the field's own height, and the field is
+    // `view.at(24.0)` - so it is `view.at(12.5)` at every zoom, which is exactly the rows.
+    let mut field = ui.new_child(egui::UiBuilder::new().max_rect(inside.rect));
+    let response = field.text_box(
+        egui::TextEdit::singleline(filter)
+            .id(filter_id)
+            .hint_text(crate::components::controls::placeholder(
+                "Filter files",
+                &inside.font,
+                color::text_faint(),
+            ))
+            .font(inside.font.clone())
+            .frame(egui::Frame::NONE)
+            .desired_width(inside.rect.width())
+            .text_color(color::text_control()),
+    );
+    // Named, because a test finds a control by its name and egui names a text box after what is typed in it.
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Filter files")
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1301,77 +1374,4 @@ mod tests {
             );
         }
     }
-}
-
-/// The filter box at the top of the explorer, with the text box that types into it.
-fn filter_box(
-    ui: &mut egui::Ui,
-    painter: &egui::Painter,
-    filter_rect: Rect,
-    view: &View<'_>,
-    filter: &mut String,
-) {
-    // Under glass the box is the carved well Agent-Chat's prompt is (`task-2287`), rather than a dark field
-    // with a hairline round it.
-    match crate::theme::is_glass() {
-        true => {
-            crate::components::chrome_kit::layer(ui, "explorer-filter", filter_rect, 6.0, |rux| {
-                let chat = rux.theme().chat;
-                rux.chrome.surface(
-                    filter_rect,
-                    filter_rect.height() / 2.0,
-                    chat.well,
-                    chat.carved(),
-                );
-            })
-        }
-        false => {
-            painter.rect(
-                filter_rect,
-                CornerRadius::same(size::CONTROL_CORNER),
-                color::field(),
-                Stroke::new(1.0, color::divider()),
-                egui::StrokeKind::Inside,
-            );
-        }
-    }
-    icon::magnifier_at(
-        &painter,
-        Pos2::new(filter_rect.left() + view.at(13.0), filter_rect.center().y),
-        color::text_faint(),
-        view.zoom,
-    );
-    let filter_id = ui.id().with("explorer-filter");
-    let inside = crate::components::controls::field_takes_the_whole_rectangle(
-        ui,
-        filter_rect,
-        view.at(26.0),
-        filter_id,
-        "Filter field",
-    );
-    // **The size comes from the box's own height, not from `appearance.ui.font.size`** - `task-2004`.
-    // It used to be the interface's size times this pane's zoom, and the rows under it are
-    // `view.at(12.5)` whatever the interface is set to: on a machine with a large interface `Filter
-    // files` came out more than twice the height of the file names beside it, and the caret, whose
-    // height is the row that font occupies, stood proud of the 24 point box at both ends.
-    // `controls::field_font_size` is a fraction of the field's own height, and the field is
-    // `view.at(24.0)` - so it is `view.at(12.5)` at every zoom, which is exactly the rows.
-    let mut field = ui.new_child(egui::UiBuilder::new().max_rect(inside.rect));
-    let response = field.text_box(
-        egui::TextEdit::singleline(filter)
-            .id(filter_id)
-            .hint_text(crate::components::controls::placeholder(
-                "Filter files",
-                &inside.font,
-                color::text_faint(),
-            ))
-            .font(inside.font.clone())
-            .frame(egui::Frame::NONE)
-            .desired_width(inside.rect.width())
-            .text_color(color::text_control()),
-    );
-    // Named, because a test finds a control by its name and egui names a text box after what is typed in it.
-    response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Filter files")
-    });
 }
