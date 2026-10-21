@@ -2678,7 +2678,14 @@ impl UnluminousApp {
             // The one that was showing, and where in it the reader was.
             let wanted = paths.get(showing.min(paths.len().saturating_sub(1))).cloned();
             if let Some(wanted) = wanted {
-                if let Some(index) = self.files.index_of(&wanted) {
+                // Among this node's own tabs, because the file may be open in the editing area as well and
+                // `index_of` answers that view (`task-2320`).
+                let on_the_node = self
+                    .files
+                    .tabs_in_node(node)
+                    .into_iter()
+                    .find(|index| self.files.at(*index).path() == Some(wanted.as_path()));
+                if let Some(index) = on_the_node {
                     self.files.show(index);
                     let end = self.files.at(index).document.text().len_bytes();
                     self.files.at_mut(index).document.apply(unluminous_core::Command::PlaceCaret {
