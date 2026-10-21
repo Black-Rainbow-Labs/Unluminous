@@ -73,7 +73,14 @@ pub struct Session {
     /// When the question that started this turn went out, and how many tokens the conversation had
     /// been written before it, so the answer can say how long it took and what it wrote.
     asked: Option<(std::time::Instant, u64)>,
+    /// When each call the agent is running itself was announced, by its id, so its answer can say how long
+    /// it took (`task-2321`). An agent's stream says when a call starts and when it answers and gives no
+    /// duration, so the card under a run of commands read `0.0s` whatever they cost.
+    calls_started: Vec<(String, std::time::Instant)>,
 }
+
+/// How many calls' start times are remembered. A call is answered long before this many more are made.
+const CALLS_TIMED: usize = 256;
 
 impl Session {
     pub fn new(chat: Conversation) -> Self {
@@ -85,6 +92,7 @@ impl Session {
             round: 0,
             turn: Usage::default(),
             asked: None,
+            calls_started: Vec::new(),
         }
     }
 
@@ -179,6 +187,10 @@ impl Session {
             // other is what goes back up. See `Message::reasoning`.
             Reply::Reasoning(block) => self.answer().reasoning.push(block),
             Reply::ToolCall { id, name, arguments } => {
+                self.calls_started.push((id.clone(), std::time::Instant::now()));
+                if self.calls_started.len() > CALLS_TIMED {
+                    self.calls_started.remove(0);
+                }
                 self.answer().tools.push(ToolCall::new(id, name, arguments));
             }
             // **The agent's own session, kept on the conversation**, so a second question carries
@@ -205,9 +217,13 @@ impl Session {
                 let answered = self.chat.messages.iter_mut().rev().find_map(|message| {
                     message.tools.iter_mut().rev().find(|call| call.id == id && call.is_running())
                 });
+                let started = self.calls_started.iter().rposition(|(called, _)| *called == id);
+                let took =
+                    started.map(|at| self.calls_started.remove(at).1.elapsed().as_millis() as u64);
                 if let Some(call) = answered {
                     call.answer = Some(answer);
                     call.failed = failed;
+                    call.took = call.took.or(took);
                 }
             }
             Reply::Usage { input, output } => {
@@ -435,6 +451,25 @@ mod tests {
         let mut session = Session::new(Conversation::new("c1", "claude"));
         session.ask(Message::said(0, Role::User, "Why?"));
         session
+    }
+
+    /// `task-2321`: a tool the agent ran itself is timed from its call to its answer.
+    #[test]
+    fn a_tool_the_agent_ran_itself_says_how_long_it_took() {
+        let mut session = a_session();
+        session.reply(Reply::ToolCall {
+            id: "t1".to_owned(),
+            name: "Bash".to_owned(),
+            arguments: r#"{"command":"sleep"}"#.to_owned(),
+        });
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        session.reply(Reply::ToolAnswer {
+            id: "t1".to_owned(),
+            answer: "done".to_owned(),
+            failed: false,
+        });
+        let took = session.chat.last().expect("the answer").tools[0].took;
+        assert!(took.is_some_and(|ms| ms >= 30), "{took:?}");
     }
 
     #[test]

@@ -270,9 +270,19 @@ fn sharpen(ctx: &egui::Context, shape: &mut egui::Shape, scale: f32) {
 /// points is not 1.6 times the line laid out at 13: across a long line the letters drifted from the caret by
 /// most of a character, and down a paragraph each row drifted a little more than the one above it.
 ///
-/// So the sharp glyphs are put at the places the caret and the selection are measured from. Each glyph keeps
-/// its own sharp bitmap and only moves, by less than a pixel at the start of a line and by the drift at its
-/// end. A galley whose rows or glyphs do not pair up, which a different wrap would make, is left as it was
+/// So each row of the sharp glyphs is stretched to the width of the original row and started where the
+/// original row starts, which takes the drift out, and each glyph keeps its own sharp bitmap.
+///
+/// **The spacing between two letters is the sharp layout's, never the original's** (`task-2321`: *"the letters
+/// seem to be pressed too closely together"*). `epaint` puts each glyph's quad on a whole pixel and keeps the
+/// rest of its position as a sub-pixel offset inside the bitmap, so the original's `Glyph::pos` is its pen
+/// position rounded down at the unzoomed size. Putting every sharp glyph at that position times the zoom moved
+/// each letter by up to one unzoomed pixel, which is 1.6 pixels at a zoom of 1.6, and by a different amount
+/// for each letter: `d` and `i` in `edit` ended up touching. A uniform stretch moves neighbouring letters by
+/// almost the same amount, so their gap is the font's own to within the one pixel each quad is rounded to.
+///
+/// `Glyph::pos` itself is still set to the original's, scaled, because that is the number a caret is measured
+/// from. A galley whose rows or glyphs do not pair up, which a different wrap would make, is left as it was
 /// laid out.
 fn keep_the_original_places(
     original: &egui::Galley,
@@ -295,9 +305,15 @@ fn keep_the_original_places(
             ((was.pos.to_vec2() * scale * pixels_per_point).round() / pixels_per_point).to_pos2();
         let row = std::sync::Arc::make_mut(&mut now.row);
         let glyph_vertices = row.visuals.glyph_vertex_range.clone();
+        let (was_start, was_end) = row_extent(&was.row.glyphs);
+        let (now_start, now_end) = row_extent(&row.glyphs);
+        let stretch = match now_end - now_start > 0.0 {
+            true => (was_end - was_start) * scale / (now_end - now_start),
+            false => 1.0,
+        };
         for (from, glyph) in was.row.glyphs.iter().zip(row.glyphs.iter_mut()) {
-            let shift = from.pos.x * scale - glyph.pos.x;
-            glyph.pos.x += shift;
+            let ink_shift = was_start * scale + (glyph.pos.x - now_start) * stretch - glyph.pos.x;
+            glyph.pos.x = from.pos.x * scale;
             if glyph.uv_rect.is_nothing() {
                 continue;
             }
@@ -308,7 +324,7 @@ fn keep_the_original_places(
             else {
                 continue;
             };
-            let snapped = ((left + shift) * pixels_per_point).round() / pixels_per_point - left;
+            let snapped = ((left + ink_shift) * pixels_per_point).round() / pixels_per_point - left;
             for index in first..(first + 4).min(glyph_vertices.end) {
                 if let Some(vertex) = row.visuals.mesh.vertices.get_mut(index) {
                     vertex.pos.x += snapped;
@@ -316,6 +332,14 @@ fn keep_the_original_places(
             }
         }
         row.visuals.mesh_bounds = row.visuals.mesh.calc_bounds();
+    }
+}
+
+/// Where a row's glyphs start and where its last one's advance ends, in the row's own points.
+fn row_extent(glyphs: &[egui::epaint::text::Glyph]) -> (f32, f32) {
+    match (glyphs.first(), glyphs.last()) {
+        (Some(first), Some(last)) => (first.pos.x, last.pos.x + last.advance_width),
+        _ => (0.0, 0.0),
     }
 }
 
@@ -775,6 +799,60 @@ mod tests {
                     "at {scale} a row meant for {expected} is at {drawn}"
                 );
             }
+        }
+    }
+
+    /// Where each inked glyph of a row starts, in the row's own points.
+    fn ink_lefts(row: &egui::epaint::text::PlacedRow) -> Vec<f32> {
+        row.row
+            .glyphs
+            .iter()
+            .filter(|glyph| !glyph.uv_rect.is_nothing())
+            .filter_map(|glyph| {
+                let vertex = row.row.visuals.mesh.vertices.get(glyph.first_vertex as usize + 2)?;
+                Some(row.pos.x + vertex.pos.x)
+            })
+            .collect()
+    }
+
+    /// `task-2321`: *"the letters seem to be pressed too closely together"* in a zoomed ticket description. The
+    /// gap between two neighbouring letters of the sharp words is the gap the font gives them at the size they
+    /// are seen at, to within the one pixel each glyph is rounded to. It used to be the unzoomed layout's gap
+    /// times the zoom, which is off by up to a whole unzoomed pixel for each letter on its own.
+    #[test]
+    fn neighbouring_letters_keep_the_fonts_own_spacing_at_the_zoom() {
+        let context = egui::Context::default();
+        let mut output = context.run_ui(egui::RawInput::default(), |_| {});
+        output.textures_delta.clear();
+        let painter = Painter::new(context.clone(), egui::LayerId::background(), Rect::EVERYTHING);
+        let words =
+            "add an edit button that lists the pending edits, and a dim little iii lilt".to_owned();
+        for scale in [1.1_f32, 1.25, 1.37, 1.6, 1.9, 2.3] {
+            let plain =
+                painter.layout_no_wrap(words.clone(), FontId::proportional(13.0), Color32::WHITE);
+            let mut shape =
+                egui::Shape::Text(TextShape::new(Pos2::ZERO, plain.clone(), Color32::WHITE));
+            sharpen(&context, &mut shape, scale);
+            let egui::Shape::Text(sharp) = shape else { panic!("still text") };
+            let fresh = context.fonts_mut(|fonts| {
+                let mut job = (*plain.job).clone();
+                job.sections[0].format.font_id.size *= scale;
+                fonts.layout_job(job)
+            });
+            // The sharp shape is drawn `scale` times smaller, so its ink is measured back in pixels at the zoom.
+            let drawn: Vec<f32> =
+                ink_lefts(&sharp.galley.rows[0]).into_iter().map(|left| left * scale).collect();
+            let natural = ink_lefts(&fresh.rows[0]);
+            assert_eq!(drawn.len(), natural.len());
+            let worst = drawn
+                .windows(2)
+                .zip(natural.windows(2))
+                .map(|(seen, font)| ((seen[1] - seen[0]) - (font[1] - font[0])).abs())
+                .fold(0.0_f32, f32::max);
+            assert!(
+                worst <= 1.1,
+                "at {scale} two letters' gap was off the font's by {worst} pixels"
+            );
         }
     }
 }

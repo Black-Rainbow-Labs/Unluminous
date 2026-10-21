@@ -48,10 +48,16 @@ pub struct Transcript {
     new_prompts: Vec<String>,
     /// Whether this is Pi's session file rather than Claude Code's transcript (`task-2302`).
     pi: bool,
+    /// When each tool call was made, in milliseconds since 1970, by its id, so its answer can say how long it
+    /// took (`task-2321`). Neither file records a duration; both stamp every line with the time it was written.
+    calls_started: Vec<(String, u64)>,
 }
 
 /// How many recent model message ids are remembered.
 const GATHERED: usize = 16;
+
+/// How many calls' start times are remembered. A call is answered long before this many more are made.
+const CALLS_TIMED: usize = 256;
 
 impl Transcript {
     pub fn new() -> Self {
@@ -118,11 +124,12 @@ impl Transcript {
             serde_json::Value::Array(blocks) => {
                 for block in blocks {
                     match block["type"].as_str().unwrap_or_default() {
-                        "tool_result" => answer(
+                        "tool_result" => self.answer(
                             chat,
                             block["tool_use_id"].as_str().unwrap_or_default(),
                             crate::agent::text_of(&block["content"]),
                             block["is_error"].as_bool().unwrap_or(false),
+                            written_at(value),
                         ),
                         "text" => {
                             if !said.is_empty() {
@@ -200,6 +207,7 @@ impl Transcript {
         let Some(into) = chat.messages.iter_mut().rev().find(|message| message.id == ours) else {
             return;
         };
+        let at = written_at(value);
         for block in message["content"].as_array().into_iter().flatten() {
             match block["type"].as_str().unwrap_or_default() {
                 "text" => {
@@ -212,11 +220,15 @@ impl Transcript {
                 "thinking" => {
                     into.thinking.push_str(block["thinking"].as_str().unwrap_or_default())
                 }
-                "tool_use" => into.tools.push(ToolCall::new(
-                    block["id"].as_str().unwrap_or_default(),
-                    block["name"].as_str().unwrap_or_default(),
-                    block["input"].to_string(),
-                )),
+                "tool_use" => {
+                    let id = block["id"].as_str().unwrap_or_default();
+                    note_the_start(&mut self.calls_started, id, at);
+                    into.tools.push(ToolCall::new(
+                        id,
+                        block["name"].as_str().unwrap_or_default(),
+                        block["input"].to_string(),
+                    ))
+                }
                 _ => {}
             }
         }
@@ -262,11 +274,12 @@ impl Transcript {
                 self.new_prompts.push(said);
             }
             "assistant" => self.pi_assistant(chat, message),
-            "toolResult" => answer(
+            "toolResult" => self.answer(
                 chat,
                 message["toolCallId"].as_str().unwrap_or_default(),
                 crate::agent::text_of(&message["content"]),
                 message["isError"].as_bool().unwrap_or(false),
+                pi_written_at(value),
             ),
             _ => {}
         }
@@ -286,6 +299,7 @@ impl Transcript {
         }
         let id = chat.next_id();
         let mut into = Message::new(id, Role::Assistant);
+        let at = message["timestamp"].as_u64().or_else(|| iso_milliseconds(&message["timestamp"]));
         for block in message["content"].as_array().into_iter().flatten() {
             match block["type"].as_str().unwrap_or_default() {
                 "text" => {
@@ -298,11 +312,15 @@ impl Transcript {
                 "thinking" => {
                     into.thinking.push_str(block["thinking"].as_str().unwrap_or_default())
                 }
-                "toolCall" => into.tools.push(ToolCall::new(
-                    block["id"].as_str().unwrap_or_default(),
-                    block["name"].as_str().unwrap_or_default(),
-                    block["arguments"].to_string(),
-                )),
+                "toolCall" => {
+                    let id = block["id"].as_str().unwrap_or_default();
+                    note_the_start(&mut self.calls_started, id, at);
+                    into.tools.push(ToolCall::new(
+                        id,
+                        block["name"].as_str().unwrap_or_default(),
+                        block["arguments"].to_string(),
+                    ))
+                }
                 _ => {}
             }
         }
@@ -325,15 +343,78 @@ impl Transcript {
     }
 }
 
-/// File `answer` under the newest call with `id` that has not been answered.
-fn answer(chat: &mut Conversation, id: &str, answer: String, failed: bool) {
-    let call = chat.messages.iter_mut().rev().find_map(|message| {
-        message.tools.iter_mut().rev().find(|call| call.id == id && call.is_running())
-    });
-    if let Some(call) = call {
-        call.answer = Some(answer);
-        call.failed = failed;
+impl Transcript {
+    /// File `answer` under the newest call with `id` that has not been answered, with how long it took when
+    /// both its call and its answer say when they were written.
+    fn answer(
+        &mut self,
+        chat: &mut Conversation,
+        id: &str,
+        answer: String,
+        failed: bool,
+        at: Option<u64>,
+    ) {
+        let started = self.calls_started.iter().rposition(|(called, _)| called == id);
+        let started = started.map(|position| self.calls_started.remove(position).1);
+        let call = chat.messages.iter_mut().rev().find_map(|message| {
+            message.tools.iter_mut().rev().find(|call| call.id == id && call.is_running())
+        });
+        if let Some(call) = call {
+            call.answer = Some(answer);
+            call.failed = failed;
+            if let (Some(started), Some(at)) = (started, at) {
+                call.took = Some(at.saturating_sub(started));
+            }
+        }
     }
+}
+
+/// Remember when the call `id` was made, when the line says.
+fn note_the_start(started: &mut Vec<(String, u64)>, id: &str, at: Option<u64>) {
+    let Some(at) = at else { return };
+    started.push((id.to_owned(), at));
+    if started.len() > CALLS_TIMED {
+        started.remove(0);
+    }
+}
+
+/// When a Claude Code transcript line was written: its `timestamp`, in milliseconds since 1970.
+fn written_at(line: &serde_json::Value) -> Option<u64> {
+    iso_milliseconds(&line["timestamp"])
+}
+
+/// When a Pi session line was written: its message's `timestamp`, which Pi writes in milliseconds, or the
+/// line's own.
+fn pi_written_at(line: &serde_json::Value) -> Option<u64> {
+    line["message"]["timestamp"].as_u64().or_else(|| iso_milliseconds(&line["timestamp"]))
+}
+
+/// A UTC time written the way both agents write one, `2026-10-19T10:47:49.708Z`, in milliseconds since 1970.
+///
+/// Only that form: a time with an offset or without the `Z` answers `None`, and the call is then left with no
+/// duration rather than a wrong one.
+pub fn iso_milliseconds(value: &serde_json::Value) -> Option<u64> {
+    let text = value.as_str()?.strip_suffix('Z')?;
+    let (date, time) = text.split_once('T')?;
+    let mut date = date.splitn(3, '-').map(str::parse::<i64>);
+    let (year, month, day) = (date.next()?.ok()?, date.next()?.ok()?, date.next()?.ok()?);
+    let (clock, fraction) = time.split_once('.').unwrap_or((time, ""));
+    let mut clock = clock.splitn(3, ':').map(str::parse::<i64>);
+    let (hour, minute, second) = (clock.next()?.ok()?, clock.next()?.ok()?, clock.next()?.ok()?);
+    let fraction: String = fraction.chars().chain("000".chars()).take(3).collect();
+    let milliseconds: i64 = fraction.parse().ok()?;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    // Days from 1970-01-01 to the date, by Howard Hinnant's days_from_civil.
+    let year = if month <= 2 { year - 1 } else { year };
+    let era = year.div_euclid(400);
+    let of_era = year - era * 400;
+    let of_year = (153 * ((month + 9) % 12) + 2) / 5 + day - 1;
+    let of_era_days = of_era * 365 + of_era / 4 - of_era / 100 + of_year;
+    let days = era * 146_097 + of_era_days - 719_468;
+    let total = ((days * 24 + hour) * 60 + minute) * 60 + second;
+    u64::try_from(total * 1000 + milliseconds).ok()
 }
 
 /// A line typed in one burst as Claude Code records it: inside `<pasted_content id="..">` and its closing tag,
@@ -701,5 +782,44 @@ mod tests {
         );
         assert_eq!(find_pi_transcript(&home, project, "../x"), None);
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// `task-2321`: a call's time is the gap between the line that made it and the line that answered it, so a
+    /// run of commands no longer reads `0.0s`.
+    #[test]
+    fn a_tool_call_takes_the_time_between_its_call_and_its_answer() {
+        let (chat, _) = read(&[
+            r#"{"type":"user","message":{"role":"user","content":"Look"}}"#,
+            r#"{"type":"assistant","timestamp":"2026-10-19T10:47:49.708Z","message":{"id":"m1","role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"cargo build"}}],"stop_reason":"tool_use"}}"#,
+            r#"{"type":"user","timestamp":"2026-10-19T10:48:02.208Z","message":{"role":"user","content":[{"tool_use_id":"t1","type":"tool_result","content":"ok","is_error":false}]}}"#,
+            r#"{"type":"assistant","message":{"id":"m2","role":"assistant","content":[{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"ls"}}],"stop_reason":"tool_use"}}"#,
+            r#"{"type":"user","timestamp":"2026-10-19T10:48:03.000Z","message":{"role":"user","content":[{"tool_use_id":"t2","type":"tool_result","content":"ok","is_error":false}]}}"#,
+        ]);
+        let calls: Vec<&ToolCall> =
+            chat.messages.iter().flat_map(|message| &message.tools).collect();
+        assert_eq!(calls[0].took, Some(12_500));
+        assert_eq!(calls[1].took, None, "a call whose line has no time is left with no time");
+
+        let mut chat = Conversation::new("ticket", "pi");
+        let mut transcript = Transcript::for_pi();
+        transcript.line(
+            &mut chat,
+            r#"{"type":"message","message":{"role":"assistant","timestamp":1792412639639,"stopReason":"toolUse","content":[{"type":"toolCall","id":"c1","name":"bash","arguments":{"command":"ls"}}]}}"#,
+        );
+        transcript.line(
+            &mut chat,
+            r#"{"type":"message","message":{"role":"toolResult","toolCallId":"c1","timestamp":1792412640039,"isError":true,"content":"no"}}"#,
+        );
+        assert_eq!(chat.messages[0].tools[0].took, Some(400));
+    }
+
+    #[test]
+    fn a_utc_time_is_read_to_the_millisecond() {
+        let time = |text: &str| iso_milliseconds(&serde_json::Value::from(text));
+        assert_eq!(time("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(time("2000-03-01T00:00:00.5Z"), Some(951_868_800_500));
+        assert_eq!(time("2026-10-19T12:23:59.489Z"), Some(1_792_412_639_489));
+        assert_eq!(time("2026-10-19T12:23:59+01:00"), None);
+        assert_eq!(time("yesterday"), None);
     }
 }

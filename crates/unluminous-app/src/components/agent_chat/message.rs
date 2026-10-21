@@ -1018,13 +1018,35 @@ pub fn run_key(tools: &[&ToolCall]) -> String {
     tools.first().map(|tool| format!("run-{}", tool.id)).unwrap_or_default()
 }
 
-/// What a run's status well says: running while any call is, failed when any failed, and done.
-fn run_status(tools: &[&ToolCall]) -> rux::components::Status {
+/// What a run's status well says: running while any call is, failed when every call failed, and done.
+///
+/// `task-2321`: a run of seventeen commands with one that failed is a run that finished, so it is the green
+/// tick and the detail line says `1 failed`. A red cross over the whole run said the agent's work had failed,
+/// which an agent trying a command and then another is not. A single call that failed is still the cross,
+/// because there every call failed.
+pub fn run_status(tools: &[&ToolCall]) -> rux::components::Status {
     use rux::components::Status;
-    match (tools.iter().any(|tool| tool.is_running()), tools.iter().any(|tool| tool.failed)) {
+    match (tools.iter().any(|tool| tool.is_running()), tools.iter().all(|tool| tool.failed)) {
         (true, _) => Status::Running,
-        (false, true) => Status::Failed,
-        (false, false) => Status::Done,
+        (false, true) if !tools.is_empty() => Status::Failed,
+        (false, _) => Status::Done,
+    }
+}
+
+/// The line under a finished run's title: the time every call took added up, and how many failed.
+///
+/// A run whose calls carry no time at all, such as one saved before calls were timed, says only how many
+/// failed, or `Done`, rather than `0.0s`.
+pub fn run_detail(tools: &[&ToolCall]) -> String {
+    let timed: Vec<u64> = tools.iter().filter_map(|tool| tool.took).collect();
+    let failed = tools.iter().filter(|tool| tool.failed).count();
+    let time = (!timed.is_empty()).then(|| took(timed.iter().sum()));
+    let failures = (failed > 0).then(|| format!("{failed} failed"));
+    match (time, failures) {
+        (Some(time), Some(failures)) => format!("{time} \u{00B7} {failures}"),
+        (Some(time), None) => time,
+        (None, Some(failures)) => failures,
+        (None, None) => "Done".to_owned(),
     }
 }
 
@@ -1231,15 +1253,7 @@ pub fn run_show(
     };
     let detail = match tools.iter().find(|tool| tool.is_running()) {
         Some(tool) => format!("Running {}", tool_name(tool)),
-        None => {
-            let total: u64 = tools.iter().filter_map(|tool| tool.took).sum();
-            let failed = tools.iter().filter(|tool| tool.failed).count();
-            match failed {
-                0 => took(total),
-                1 => format!("{} \u{00B7} 1 failed", took(total)),
-                count => format!("{} \u{00B7} {count} failed", took(total)),
-            }
-        }
+        None => run_detail(tools),
     };
     let pad = CARD_PAD * scale;
     let header = Rect::from_min_size(
@@ -1328,7 +1342,8 @@ pub fn run_show(
                 rux.mark(rux::Mark::new(icon, rux.z(16.0)), centre, colour);
                 let time = match tool.took {
                     Some(ms) => took(ms),
-                    None => "running".to_owned(),
+                    None if tool.is_running() => "running".to_owned(),
+                    None => String::new(),
                 };
                 let time = rux.text(rux.zs(rux::Style::sans(11.0)), &time, theme.ink.i400);
                 let right = line.right() - rux.z(WELL_PAD_X);
@@ -1413,7 +1428,7 @@ fn read_card(
         1 => "Read 1 file".to_owned(),
         count => format!("Read {count} files"),
     };
-    let total: u64 = tools.iter().filter_map(|tool| tool.took).sum();
+    let detail = run_detail(tools);
     let pad = CARD_PAD * scale;
     let header = Rect::from_min_size(
         rect.min + Vec2::splat(pad),
@@ -1429,7 +1444,7 @@ fn read_card(
                 header,
                 rux::components::Lead::Status(rux::components::Status::Done),
                 &title,
-                &took(total),
+                &detail,
                 None,
             );
             let mut pressed = None;
@@ -1876,6 +1891,36 @@ mod tests {
         assert_eq!(answer_figures(&answer), "310 tokens");
         assert_eq!(compact_count(41_234), "41k");
         assert_eq!(compact_count(1_200_000), "1.2M");
+    }
+
+    /// `task-2321`: a run with one failed command is done, says how many failed, and adds up every call's time.
+    #[test]
+    fn a_run_with_a_failed_command_is_done_and_adds_up_its_time() {
+        use rux::components::Status;
+        let call = |id: &str, failed: bool, took: Option<u64>| {
+            let mut call = ToolCall::new(id, "Bash", r#"{"command":"ls"}"#);
+            call.answer = Some("...".into());
+            call.failed = failed;
+            call.took = took;
+            call
+        };
+        let (a, b, c) =
+            (call("a", false, Some(1_200)), call("b", true, Some(300)), call("c", false, None));
+        let run = [&a, &b, &c];
+        assert_eq!(run_status(&run), Status::Done);
+        assert_eq!(run_detail(&run), "1.5s \u{00B7} 1 failed");
+        assert_eq!(
+            run_status(&[&b]),
+            Status::Failed,
+            "a single call that failed is still a failure"
+        );
+        assert_eq!(run_detail(&[&c]), "Done", "a run with no times does not say 0.0s");
+        let (d, e) = (call("d", true, None), call("e", true, None));
+        assert_eq!(run_status(&[&d, &e]), Status::Failed);
+        assert_eq!(run_detail(&[&d, &e]), "2 failed");
+        let mut running = call("f", false, None);
+        running.answer = None;
+        assert_eq!(run_status(&[&a, &running]), Status::Running);
     }
 
     /// A run of reads that all finished is the `Read 4 files` card; anything else in it is not.
