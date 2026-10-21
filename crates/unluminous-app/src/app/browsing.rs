@@ -336,7 +336,9 @@ impl UnluminousApp {
     /// picture is painted on the background layer at the end of the frame, over the pane and under every popup.
     /// It is taken again the next time a popup arrives, so it is never older than the popup over it.
     ///
-    /// Where the platform cannot photograph a page (macOS, `photograph` answers `None`) nothing changes.
+    /// A page that is one colour all over, such as a new tab's empty page, is kept as its picture too
+    /// (`task-2320`). Where the platform cannot photograph a page (macOS), the editing area's ground is
+    /// painted there instead, so the hole round the popup never shows the background picture.
     ///
     /// @param ctx - the frame's context
     /// @param occluders - what egui is drawing over the native views this frame

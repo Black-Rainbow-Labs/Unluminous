@@ -2622,6 +2622,24 @@ a picture to the person's backgrounds folder and deleted it again. A window nobo
 has no backgrounds folder at all, so it draws no picture and refuses to add or remove one. In the shipped
 binary `load_settings` gives it the person's store, so nothing a person sees changed.
 
+## What `task-2320` changed, and the rules it left
+
+- **The completion list belongs to one tab, and nothing reads its stem until that tab is showing**
+  (`completion_is_for_the_showing_tab`). The key routing read the stem of a list opened on a file after a
+  browser tab had been opened, and the empty document behind the browser tab panicked in `rope.rs`.
+- **A letter typed into a text box is not typing in the file.** `typed` in `take_the_editors_input` asks
+  `text_box_has_the_keyboard`, so typing in the find bar no longer opens the list at the match it found.
+- **An end tag still being typed can run past its line**, so `folding::tag_region` reads what follows it
+  with `get` and stops at the line break.
+- **A picture of a page goes to the card through `picture::upload`**, which shrinks it to the largest
+  texture the card takes. A browser node zoomed in made a 9,067 pixel wide picture and wgpu ended the program.
+- **A new tab's empty page is built on the editing area's ground** (`with_background_color`), and the white
+  default goes back the first time the view is sent to a page, because a page with no background of its own
+  is drawn on that colour. The picture under a popup over a page is taken even when the page is one colour
+  (`photograph_even_if_plain`), so the hole round a right click menu shows the page.
+- **A tab has no hint under the pointer**: it only repeated the name on the tab. The find bar's `Aa` and
+  `ab` have one each, saying what they do (`controls::choice_button_hinted`).
+
 ## What `task-2318` changed, and the rules it left
 
 - **Every position and size on the wire is in the window's own points**, which is what `window screenshot` writes
