@@ -4830,6 +4830,7 @@ fn send_to_realm_keeps_a_browser_tab_and_adds_a_browser_node_on_its_address() {
         return;
     }
     let mut harness = harness("");
+    did(&mut harness, "realm show");
     did(&mut harness, "browser open https://example.com/");
     steady(&mut harness);
     let tabs = harness.state().files.len();
@@ -4840,6 +4841,18 @@ fn send_to_realm_keeps_a_browser_tab_and_adds_a_browser_node_on_its_address() {
     assert_eq!(made.kind(), unluminous_app::services::realm::Kind::Browser);
     let page = harness.state().realm.live.browser(made.id).expect("the node has a page");
     assert!(page.current_url().starts_with("https://example.com"), "{}", page.current_url());
+    // And it arrives inside what the canvas shows, so the page is not mostly off the canvas.
+    let app = harness.state();
+    let body = app.realm.body;
+    let camera = app.realm.realm.camera;
+    let seen = egui::Rect::from_two_pos(
+        camera.to_world(body.min, body.min),
+        camera.to_world(body.min, body.max),
+    );
+    let smallest = made.kind().smallest();
+    if seen.width() > smallest.x && seen.height() > smallest.y {
+        assert!(seen.contains_rect(made.rect()), "{:?} inside {seen:?}", made.rect());
+    }
 }
 
 /// `task-2320`: a browser tab dragged onto the canvas becomes a browser node on its address, and the tab goes,

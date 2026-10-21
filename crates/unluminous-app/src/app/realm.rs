@@ -4108,9 +4108,37 @@ impl UnluminousApp {
             self.remember_a_nodes_tabs(node);
             node
         };
+        self.fit_a_sent_node_into_the_view(node);
         self.focus = Focus::Realm;
         self.realm.realm.choose(Some(node));
         Ok(node)
+    }
+
+    /// Size a node that was just sent to the canvas to what the canvas shows, and centre it there.
+    ///
+    /// `task-2320`: a browser tab sent to the Realm arrived as a 900 by 620 point node with its top left corner
+    /// near the middle of the view, so at the canvas's usual size most of the page was off the canvas and the
+    /// node read as drawn wrongly. It keeps its own size when that fits, and is never made smaller than its
+    /// kind allows. Nothing happens while the canvas has not been laid out yet.
+    /// @param node - the node that was just made
+    fn fit_a_sent_node_into_the_view(&mut self, node: NodeId) {
+        let body = self.realm.body;
+        let Some(found) = self.realm.realm.node(node) else { return };
+        if body.width() < 2.0 || body.height() < 2.0 {
+            return;
+        }
+        let camera = self.realm.realm.camera;
+        let seen = egui::Rect::from_two_pos(
+            camera.to_world(body.min, body.min),
+            camera.to_world(body.min, body.max),
+        );
+        let smallest = found.kind().smallest();
+        let size = Vec2::new(
+            found.rect().width().min(seen.width() * 0.9).max(smallest.x),
+            found.rect().height().min(seen.height() * 0.9).max(smallest.y),
+        );
+        let rect = egui::Rect::from_center_size(seen.center(), size);
+        self.realm.realm.place_node(node, rect);
     }
 
     /// A browser node at `at`, on `address` unless it is the empty page a new tab starts on.
