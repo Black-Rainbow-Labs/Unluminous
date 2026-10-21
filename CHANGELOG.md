@@ -6,7 +6,14 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.5.0 — 2026-10-21
+## 1.6.0 — 2026-10-21
+
+- Text editing gaps, terminal undo, modal zoom clip, input coordinates and CLI listing fixes (`task-2318`)
+- More editing keys, window points everywhere, and CLI wording (`task-2318`)
+- Window size in window points, area help, search follows the named window, and accepted pictures (`task-2318`)
+- Clippy, test module last and no extra borrow of the painter (`task-2318`)
+
+## 1.5.0 — 2026-10-20
 
 - Menus and nodes over a page, the explorer's last rows, text area drags, a chat per project, and moving between windows (`task-2317`)
 - The window walk excludes Next and Previous Window, the reference editor is not named, and a test writes atomically (`task-2317`)
