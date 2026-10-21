@@ -117,10 +117,16 @@ impl Driver for UnluminousWindows {
         // The code index is answered by the index host, which this server becomes when no other
         // process is: an MCP server lives as long as the conversation, so the index stays warm.
         if command.area == "search" {
+            // A window named by `instance` is a question about that window's project, so its folder is
+            // the root before this server's own. It searched the folder the server was started in.
+            let named = instance
+                .and_then(|named| self.choose(Some(named)).ok())
+                .map(|window| window.folder.to_string_lossy().into_owned());
             let given = arguments
                 .get("root")
                 .and_then(Value::as_str)
                 .map(str::to_owned)
+                .or(named)
                 .or_else(|| self.preference.as_ref().map(|p| p.to_string_lossy().into_owned()));
             let root = crate::search::project_root(given.as_deref());
             let timeout = timeout_for(command, &arguments);

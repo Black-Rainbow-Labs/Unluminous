@@ -898,7 +898,7 @@ impl UnluminousApp {
         };
         let mode = match name.trim() {
             "raw" | "source" => ViewMode::Raw,
-            "side" | "side-by-side" => ViewMode::SideBySide,
+            "side" | "side-by-side" | "split" => ViewMode::SideBySide,
             "preview" => ViewMode::Preview,
             other => {
                 return no(

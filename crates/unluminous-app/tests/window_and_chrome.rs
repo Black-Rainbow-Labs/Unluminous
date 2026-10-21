@@ -3601,7 +3601,9 @@ fn a_window_button_holds_the_keyboard(
 #[test]
 fn typing_a_space_after_a_tab_or_an_arrow_key_cannot_close_or_minimise_the_window() {
     let mut harness = javascript_harness();
-    type_and_paint(&mut harness, "class Person {\n");
+    // The line ends in a closed pair, so the new line starts at the margin (`task-2318` indents
+    // after an opening brace) and the arrows below move over the same columns they always did.
+    type_and_paint(&mut harness, "class Person {}\n");
 
     // Each of these is pressed and then a space is typed, which is what pressing a focused button
     // takes. The arrows are in it because egui moves focus on those as well as on `Tab`, and an arrow
@@ -3655,7 +3657,7 @@ fn typing_a_space_after_a_tab_or_an_arrow_key_cannot_close_or_minimise_the_windo
     // matters is that every one of these keys still reached the document: the class was typed, `Tab`
     // still put a tab in and the spaces still went in as spaces.
     let text = harness.state().document().text().to_string();
-    assert!(text.contains("Person {"), "what was typed is still there: {text:?}");
+    assert!(text.contains("Person {}"), "what was typed is still there: {text:?}");
     assert!(text.contains('\t'), "Tab still types a tab: {text:?}");
     assert!(text.contains(' '), "and a space is still a space: {text:?}");
 }

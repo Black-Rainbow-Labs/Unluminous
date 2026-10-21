@@ -231,15 +231,20 @@ impl UnluminousApp {
         }
     }
 
+    /// `window size`. **In the window's own points**, which is what `window screenshot` writes out and what
+    /// `input` takes. egui's points are those divided by the interface size's zoom, 1.12 at the default, so
+    /// the window measured 982 by 643 while its screenshot was 1100 by 720, and `--width 1100` made it 1232
+    /// pixels wide.
     fn cli_window_size(&mut self, request: &Request, ctx: &egui::Context) -> Outcome {
-        let screen = ctx.content_rect();
+        let zoom = ctx.zoom_factor();
+        let screen = in_window_points(ctx.content_rect(), zoom);
         let width = request.number("width").map(|value| value as f32);
         let height = request.number("height").map(|value| value as f32);
         if width.is_none() && height.is_none() {
             return ok(
                 request,
-                format!("{} by {} points", screen.width(), screen.height()),
-                json!({ "width": screen.width(), "height": screen.height() }),
+                format!("{:.0} by {:.0} points", screen.width(), screen.height()),
+                json!({ "width": screen.width().round(), "height": screen.height().round() }),
             );
         }
         // Clamped to the size the window is *built* with rather than to a second, smaller pair of
@@ -250,32 +255,37 @@ impl UnluminousApp {
             width.unwrap_or(screen.width()).max(smallest.x),
             height.unwrap_or(screen.height()).max(smallest.y),
         );
-        ctx.send_viewport_cmd(ViewportCommand::InnerSize(wanted));
+        ctx.send_viewport_cmd(ViewportCommand::InnerSize(wanted / zoom));
         ok(
             request,
-            format!("Set the window to {} by {} points", wanted.x, wanted.y),
+            format!("Set the window to {:.0} by {:.0} points", wanted.x, wanted.y),
             json!({ "width": wanted.x, "height": wanted.y }),
         )
     }
 
+    /// `window position`, in the window's own points for the reason `window size` gives.
     fn cli_window_position(&mut self, request: &Request, ctx: &egui::Context) -> Outcome {
-        let outer = ctx.input(|input| input.viewport().outer_rect);
+        let zoom = ctx.zoom_factor();
+        let outer =
+            ctx.input(|input| input.viewport().outer_rect).map(|rect| in_window_points(rect, zoom));
         let x = request.number("x").map(|value| value as f32);
         let y = request.number("y").map(|value| value as f32);
+        let at = outer.map(|rect| rect.min).unwrap_or(egui::Pos2::ZERO);
         if x.is_none() && y.is_none() {
-            let at = outer.map(|rect| rect.min).unwrap_or(egui::Pos2::ZERO);
             return ok(
                 request,
-                format!("The window is at {}, {}", at.x, at.y),
-                json!({ "x": at.x, "y": at.y, "known": outer.is_some() }),
+                format!("The window is at {:.0}, {:.0}", at.x, at.y),
+                json!({ "x": at.x.round(), "y": at.y.round(), "known": outer.is_some() }),
             );
         }
-        let at = outer.map(|rect| rect.min).unwrap_or(egui::Pos2::ZERO);
         let wanted = egui::Pos2::new(x.unwrap_or(at.x), y.unwrap_or(at.y));
-        ctx.send_viewport_cmd(ViewportCommand::OuterPosition(wanted));
+        ctx.send_viewport_cmd(ViewportCommand::OuterPosition(egui::pos2(
+            wanted.x / zoom,
+            wanted.y / zoom,
+        )));
         ok(
             request,
-            format!("Moved the window to {}, {}", wanted.x, wanted.y),
+            format!("Moved the window to {:.0}, {:.0}", wanted.x, wanted.y),
             json!({ "x": wanted.x, "y": wanted.y }),
         )
     }

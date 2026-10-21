@@ -4005,8 +4005,10 @@ fn a_modal_zoomed_out_is_drawn_to_its_right_and_bottom_edges() {
     let near_left = at(dialog.left() + 40.0, dialog.top() + 12.0);
     let near_right = at(dialog.right() - 40.0, dialog.top() + 12.0);
     let outside = at((dialog.right() + 6.0).min(WINDOW[0] - 1.0), dialog.top() + 12.0);
+    // The surface is a gradient, so its two ends are not one shade; what matters is that the right end is
+    // the surface and not the darkened window around the dialog, which is what showed there before.
     assert!(
-        (near_left - near_right).abs() < 12,
+        near_left - outside > 15 && near_right - outside > 15,
         "the right of the dialog is its surface: {near_left} on the left, {near_right} on the right, \
          {outside} outside, in {dialog:?}"
     );

@@ -74,6 +74,13 @@ fn run(words: &[String]) -> i32 {
     if let Some(plan) = unluminous_cli::apply_update::asked_for(words) {
         return unluminous_cli::apply_update::run(&plan);
     }
+    // `tab --help` is the area's help, the way `tab open --help` is the command's.
+    if let Some(area) = help::only_an_area(words) {
+        if words.iter().any(|word| word == "--help" || word == "-h") {
+            print!("{}", help::for_area(area));
+            return OK;
+        }
+    }
     let typed = match parse::parse(words) {
         Ok(typed) => typed,
         Err(problem) => {
@@ -114,8 +121,16 @@ fn run(words: &[String]) -> i32 {
 /// A `search` command: run the index host for `search serve`, and otherwise ask the host of the
 /// checkout, starting one when none is running, so the next command finds it warm.
 fn searched(command: &'static Command, typed: &Typed) -> i32 {
-    let root =
-        unluminous_cli::search::project_root(typed.arguments.get("root").and_then(Value::as_str));
+    // `--instance` names a window, and a search beside it is about that window's project. It searched
+    // the checkout the shell was standing in whatever window was named.
+    let named = typed
+        .global
+        .instance
+        .as_deref()
+        .and_then(|named| client::choose(Some(named)).ok())
+        .map(|window| window.folder.to_string_lossy().into_owned());
+    let given = typed.arguments.get("root").and_then(Value::as_str).map(str::to_owned).or(named);
+    let root = unluminous_cli::search::project_root(given.as_deref());
     if command.verb == "serve" {
         return unluminous_cli::search::serve(&root);
     }
@@ -862,6 +877,16 @@ mod tests {
         assert!(!asked("status --section keyboard --json"));
         assert!(!asked("status --section keyboard --quiet"));
         assert!(!asked("tab list"));
+    }
+
+    #[test]
+    fn an_area_on_its_own_with_help_prints_the_area() {
+        assert_eq!(run(&words("tab --help")), OK);
+        assert_eq!(run(&words("tab")), USAGE, "an area alone is still not a command");
+        let help = help::for_area("tab");
+        assert!(help.contains("unluminous-cli tab open"), "{help}");
+        assert_eq!(help::only_an_area(&words("run --help")), Some("run"));
+        assert_eq!(help::only_an_area(&words("run start --help")), None);
     }
 
     #[test]

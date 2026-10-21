@@ -2622,6 +2622,29 @@ a picture to the person's backgrounds folder and deleted it again. A window nobo
 has no backgrounds folder at all, so it draws no picture and refuses to add or remove one. In the shipped
 binary `load_settings` gives it the person's store, so nothing a person sees changed.
 
+## What `task-2318` changed, and the rules it left
+
+- **Every position and size on the wire is in the window's own points**, which is what `window screenshot` writes
+  out. egui's points are those divided by the interface size's zoom (1.12 at the default of 14), so `input`
+  divides what it is given by `Context::zoom_factor` (`cli_window::window_point`), and every rectangle a command
+  reports goes through `cli::in_window_points`: `panel list`, `plugins pane`, `modal state`, and `window size`
+  and `position` both ways, as do `modal move` and `modal size`. A click measured off a screenshot missed by an
+  eighth of its distance from the corner. A test window is at zoom 1, so no test sees the difference; a new
+  command that reports or takes a place has to go through the same two functions.
+- **A document edit's chord never acts while a terminal or a text box has the keyboard**
+  (`Action::edits_the_document`). `Ctrl+Z` in a terminal undid the file behind it.
+- **The editing area has the keys every editor has**: `Ctrl+Delete`, `Ctrl+Backspace` at a line start, `Delete
+  Line` (`Ctrl+Shift+Backspace`, `editor lines delete`), `Ctrl+Y` as a second chord for `Redo`, copy and cut of
+  the caret's line with nothing selected, smart `Home`, `Ctrl+Home` and `Ctrl+End`, `PageUp` and `PageDown`,
+  `Enter` after an opening bracket, and `Shift+Tab` with nothing selected. `F2` renames a row in the explorer.
+- **A whole number below nought is refused** unless it is a direction (`catalogue::SIGNED_WHOLE_NUMBERS`), because
+  `Request::whole` reads it as nothing given.
+- **A command's words name only flags it takes** (`every_flag_a_command_mentions_is_one_it_takes`), and a listing
+  pads with `cli::column`, which always leaves a space before the next column.
+- **`search` with `--instance` searches that window's project**, in the CLI and in the MCP server.
+- **Code on a File Editor node is coloured** (`colour_the_open_file`), and `tab open` of a file on a node shows the
+  canvas and that node.
+
 ## What `task-2317` changed, and the rules it left
 
 - **A press on something egui draws over a browser page is not a press on the page**, and neither is a press on a

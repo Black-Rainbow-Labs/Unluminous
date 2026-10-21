@@ -56,6 +56,28 @@ pub fn overall() -> String {
     out
 }
 
+/// The help for one area: its commands, each with its usage and the first sentence of its summary.
+/// What `unluminous-cli tab --help` prints, which used to be "There is no command called `tab`".
+pub fn for_area(area: &str) -> String {
+    let mut out = format!("unluminous-cli {area} <verb> [arguments]\n\nCommands:\n");
+    for command in catalogue::in_area(area) {
+        out.push_str(&format!(
+            "  {}\n      {}\n",
+            command.usage(),
+            first_sentence(command.summary)
+        ));
+    }
+    out.push_str(&format!("\n`unluminous-cli {area} <verb> --help` explains one of them.\n"));
+    out
+}
+
+/// The area a command line names and nothing else, when it does, flags aside: `tab --help`.
+pub fn only_an_area(words: &[String]) -> Option<&'static str> {
+    let named: Vec<&String> = words.iter().filter(|word| !word.starts_with('-')).collect();
+    let [only] = named[..] else { return None };
+    catalogue::areas().into_iter().find(|area| *area == only.as_str())
+}
+
 /// The help for one command.
 pub fn for_command(command: &Command) -> String {
     let mut out = String::new();

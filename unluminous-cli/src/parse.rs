@@ -462,10 +462,12 @@ fn unknown(first: &str, second: Option<&String>) -> String {
         _ => first.to_owned(),
     };
     let mut message = format!("There is no command called `{typed}`.");
-    if let Some(near) = nearest(&typed) {
+    let an_area = catalogue::areas().contains(&first);
+    // A guess is no help when the word is an area: `run` alone was answered "Did you mean `quit`?".
+    if let Some(near) = nearest(&typed).filter(|_| !(an_area && second.is_none())) {
         message.push_str(&format!(" Did you mean `{}`?", near.typed()));
     }
-    if catalogue::areas().contains(&first) {
+    if an_area {
         let verbs: Vec<String> =
             catalogue::in_area(first).iter().map(|command| command.verb.to_owned()).collect();
         message.push_str(&format!(" `{first}` holds: {}.", verbs.join(", ")));
