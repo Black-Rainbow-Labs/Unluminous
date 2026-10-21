@@ -1060,6 +1060,7 @@ const SETTINGS_HELP: &[&str] = &[
     "The `model` field sent to the transcription endpoint. `whisper-1` by default.",
     "The name of the environment variable that holds the transcription endpoint's key, never the key itself. Empty for an endpoint that needs none.",
     "The language sent to the transcription endpoint, such as `en`. Empty lets the endpoint decide. The local model is English.",
+    "The input device dictation and \"Sable\" listen through, by the name `voice microphone` lists. Empty is the system's default. A device that is not connected falls back to the default.",
     "Whether the window listens for \"Sable\" and then takes dictation into the Agent-Chat prompt. `false` by default. The same switch as `voice listen` and the Chat settings' Listen for \"Sable\".",
     "Whether a dictation \"Sable\" started sends its message at the first pause after something was said. `true` by default.",
     "Whether the Agent-Chat prompt has its microphone button. `true` by default; `false` removes it.",
