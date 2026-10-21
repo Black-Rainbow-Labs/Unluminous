@@ -639,9 +639,25 @@ fn remotely(command: &'static Command, typed: Typed) -> i32 {
     };
     let timeout = client_timeout(&typed);
     match client::ask(&instance, &command.wire(), typed.arguments.clone(), timeout) {
-        Ok(reply) => report(&reply, &typed.global),
+        Ok(reply) => {
+            let code = report(&reply, &typed.global);
+            if asked_for_a_section(command, &typed) && reply.error.is_none() {
+                println!("{}", serde_json::to_string_pretty(&reply.result).unwrap_or_default());
+            }
+            code
+        }
         Err(problem) => unreachable_to_code(&problem, &typed.global),
     }
+}
+
+/// Whether this is `status --section` printed for a person. The window's one line sentence is about
+/// the whole window whatever was asked for, so without the section itself printed under it
+/// `status --section keyboard` answered a person with nothing about the keyboard at all.
+fn asked_for_a_section(command: &Command, typed: &Typed) -> bool {
+    command.wire() == "status"
+        && typed.arguments.get("section").is_some()
+        && !typed.global.json
+        && !typed.global.quiet
 }
 
 /// How long the client waits for an answer.
@@ -833,6 +849,19 @@ mod tests {
         assert_eq!(client_timeout(&typed), Duration::from_millis(500));
         let quiet = parse::parse(&words("tab list")).expect("parses");
         assert_eq!(client_timeout(&quiet), DEFAULT_TIMEOUT);
+    }
+
+    #[test]
+    fn a_section_of_status_is_printed_for_a_person_and_left_alone_for_a_program() {
+        let asked = |line: &str| {
+            let typed = parse::parse(&words(line)).expect("parses");
+            asked_for_a_section(typed.command.expect("a command"), &typed)
+        };
+        assert!(asked("status --section keyboard"));
+        assert!(!asked("status"));
+        assert!(!asked("status --section keyboard --json"));
+        assert!(!asked("status --section keyboard --quiet"));
+        assert!(!asked("tab list"));
     }
 
     #[test]

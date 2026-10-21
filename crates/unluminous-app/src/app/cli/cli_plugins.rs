@@ -44,10 +44,10 @@ impl UnluminousApp {
             .iter()
             .map(|plugin| {
                 format!(
-                    "{}{:<14}{:<10}{}",
+                    "{}{}{}{}",
                     if plugin.enabled { "*" } else { " " },
-                    plugin.id,
-                    plugin.version,
+                    column(&plugin.id, 14),
+                    column(&plugin.version, 10),
                     plugin.name
                 )
             })

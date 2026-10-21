@@ -93,6 +93,8 @@ pub enum Action {
     ToggleBlockComment,
     /// Copy the lines the selection touches in below themselves.
     DuplicateLines,
+    /// Delete the lines the selection touches, or the caret's line.
+    DeleteLines,
     /// Move the lines the selection touches up or down, carrying the selection with them.
     ///
     /// **The one pair here with no menu entry**, so `Alt+Up` and `Alt+Down` are read from the
@@ -486,6 +488,25 @@ impl Action {
     /// control and S in a search box saves the file, as it does in every other editor.
     pub fn belongs_to_a_focused_text_box(&self) -> bool {
         matches!(self, Action::Undo | Action::Redo | Action::SelectAll)
+    }
+
+    /// True for an entry that changes the text of the tab that is showing. Its chord must not act
+    /// while a terminal or a text box has the keyboard, because the key was pressed at that, not at
+    /// the document. `Ctrl+Z` in a terminal is how a program is suspended, and it used to undo the
+    /// last edit to the file behind the terminal as well, where nobody was looking.
+    pub fn edits_the_document(&self) -> bool {
+        self.belongs_to_a_focused_text_box()
+            || matches!(
+                self,
+                Action::ToggleLineComment
+                    | Action::ToggleBlockComment
+                    | Action::DuplicateLines
+                    | Action::DeleteLines
+                    | Action::MoveLines { .. }
+                    | Action::JoinLines
+                    | Action::SortLines
+                    | Action::TrimTrailingWhitespace
+            )
     }
 }
 
@@ -1943,7 +1964,15 @@ pub fn navigation_entries(state: &MenuState) -> Vec<Entry> {
 ///
 /// A menu row shows one shortcut. These are the ones a person may already have in their fingers from
 /// before a row's chord changed, and each still has to find its entry enabled to do anything.
-pub const SECOND_CHORDS: [(Shortcut, Action); 2] = [
+///
+/// `Ctrl+Y` is `Redo` in Notepad, Word, VS Code and nearly everything else on Windows, so a person
+/// coming from any of them presses it first. It is a second chord rather than the menu's, because
+/// the menu row shows `Ctrl+Shift+Z`, which is the chord on every platform.
+pub const SECOND_CHORDS: [(Shortcut, Action); 3] = [
+    (
+        Shortcut { key: egui::Key::Y, command: true, shift: false, alt: false, ctrl: false },
+        Action::Redo,
+    ),
     (
         Shortcut { key: egui::Key::ArrowLeft, command: true, shift: false, alt: true, ctrl: false },
         Action::NavigateBack,
@@ -1996,6 +2025,13 @@ fn line_edit_entries(state: &MenuState) -> Vec<Entry> {
         "Duplicate Line",
         Action::DuplicateLines,
         Shortcut::command_shift(egui::Key::D),
+    ));
+    // Not `Cmd+Shift+K`, which is the Git menu's `Push...`, and not `Cmd+Y`, which is `Redo` on
+    // Windows (`SECOND_CHORDS`). The two keymap presets give it their own chords.
+    entries.push(Entry::with_shortcut(
+        "Delete Line",
+        Action::DeleteLines,
+        Shortcut::command_shift(egui::Key::Backspace),
     ));
     entries.push(Entry::with_shortcut(
         "Join Lines",

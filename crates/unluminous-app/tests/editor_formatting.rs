@@ -382,6 +382,93 @@ fn cut_and_paste_move_text_through_the_clipboard() {
     assert_eq!(harness.state().document().text().to_string(), " secondfirst");
 }
 
+/// With nothing selected a copy takes the caret's whole line and a cut removes it, which is what
+/// the reference editor does. Both used to do nothing at all.
+#[test]
+fn a_cut_with_nothing_selected_takes_the_whole_line() {
+    let mut harness = harness("one\ntwo\nthree");
+    harness.state_mut().command(Command::PlaceCaret { offset: 5, extend: false });
+    steady(&mut harness);
+    harness.input_mut().events.push(egui::Event::Copy);
+    assert_eq!(copied_over_a_few_frames(&mut harness), "two\n");
+    steady(&mut harness);
+    assert_eq!(harness.state().document().text().to_string(), "one\ntwo\nthree");
+    harness.input_mut().events.push(egui::Event::Cut);
+    assert_eq!(copied_over_a_few_frames(&mut harness), "two\n");
+    steady(&mut harness);
+    assert_eq!(harness.state().document().text().to_string(), "one\nthree");
+}
+
+/// What the window put on the clipboard in the next few frames.
+fn copied_over_a_few_frames(harness: &mut Harness<'static, UnluminousApp>) -> String {
+    for _ in 0..4 {
+        harness.step();
+        let found =
+            harness.output().platform_output.commands.iter().find_map(|command| match command {
+                egui::OutputCommand::CopyText(text) => Some(text.clone()),
+                _ => None,
+            });
+        if let Some(text) = found {
+            return text;
+        }
+    }
+    String::new()
+}
+
+/// `Ctrl+Delete` deletes the word after the caret. It used to delete one character, because the
+/// editing area only knew the backward half of the pair.
+#[test]
+fn control_and_delete_deletes_the_word_after_the_caret() {
+    let mut harness = harness("hello world again");
+    harness.state_mut().command(Command::PlaceCaret { offset: 6, extend: false });
+    steady(&mut harness);
+    harness.key_press_modifiers(Modifiers::CTRL, egui::Key::Delete);
+    steady(&mut harness);
+    assert_eq!(harness.state().document().text().to_string(), "hello  again");
+}
+
+/// `Delete Line` on the Edit menu, and `Ctrl+Y` as the second chord for `Redo` that every Windows
+/// program has.
+#[test]
+fn delete_line_and_control_y_redo() {
+    let mut harness = harness("one\ntwo\nthree");
+    harness.state_mut().menu_placement = MenuPlacement::InWindow;
+    harness.state_mut().command(Command::PlaceCaret { offset: 5, extend: false });
+    steady(&mut harness);
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, egui::Key::Backspace);
+    steady(&mut harness);
+    assert_eq!(harness.state().document().text().to_string(), "one\nthree");
+    harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::Z);
+    steady(&mut harness);
+    assert_eq!(harness.state().document().text().to_string(), "one\ntwo\nthree");
+    harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::Y);
+    steady(&mut harness);
+    assert_eq!(harness.state().document().text().to_string(), "one\nthree", "Ctrl+Y redoes");
+}
+
+/// `Ctrl+Z` in a terminal is how a program is suspended. It used to undo the last edit to the file
+/// behind the terminal as well, because the menu's keyboard watcher acted on it before the terminal
+/// had it.
+#[test]
+fn undo_pressed_in_a_terminal_leaves_the_document_alone() {
+    let mut harness = harness("original");
+    harness.state_mut().menu_placement = MenuPlacement::InWindow;
+    harness.input_mut().events.push(egui::Event::Text("typed ".to_owned()));
+    steady(&mut harness);
+    let typed = harness.state().document().text().to_string();
+    assert_ne!(typed, "original");
+    harness.state_mut().new_detached_terminal_tab(8, 60);
+    harness.state_mut().focus = unluminous_app::app::Focus::Terminal;
+    steady(&mut harness);
+    for modifiers in [Modifiers::COMMAND, Modifiers::COMMAND | Modifiers::SHIFT] {
+        harness.key_press_modifiers(modifiers, egui::Key::Z);
+        steady(&mut harness);
+    }
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, egui::Key::Backspace);
+    steady(&mut harness);
+    assert_eq!(harness.state().document().text().to_string(), typed);
+}
+
 #[test]
 fn copy_leaves_the_document_alone() {
     let mut harness = harness("unchanged text");

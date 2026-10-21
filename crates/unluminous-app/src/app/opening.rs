@@ -177,9 +177,23 @@ impl UnluminousApp {
     ) -> Result<(), String> {
         let opened = self.open_path_without_showing_the_editing_area(path, permanent, as_text);
         if opened.is_ok() {
-            self.show_the_editing_area_for_a_tab();
+            match self.files.home_of(self.files.active_index()) {
+                files::Home::Node(node) => self.show_the_node_a_tab_is_on(node),
+                files::Home::Pane(_) => self.show_the_editing_area_for_a_tab(),
+            }
         }
         opened
+    }
+
+    /// **A file already open on a File Editor node is shown on that node.** `tab open` of such a file
+    /// answered "Opened ... in tab 3" while the canvas was put away, and nothing on the screen changed,
+    /// because the tab it showed lives on the node rather than in a pane.
+    fn show_the_node_a_tab_is_on(&mut self, node: u64) {
+        if !self.realm.visible {
+            self.show_a_panel(crate::app::dock::Panel::Realm, true);
+        }
+        self.realm.realm.choose(Some(node));
+        self.take_the_keyboard_for_the_realm();
     }
 
     /// Open a file into a tab and leave the editing area as it is.

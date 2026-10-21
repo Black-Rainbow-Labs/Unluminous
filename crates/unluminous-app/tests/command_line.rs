@@ -417,6 +417,27 @@ fn the_caret_lands_where_a_line_and_a_column_say() {
     assert_eq!(far["column"], serde_json::json!(6), "the end of `alpha`");
 }
 
+/// A negative line was read as no line at all, so `editor caret --line -3` answered where the caret
+/// was and reported success; and `editor select --all --none` selected everything. Both are refused.
+#[test]
+fn a_negative_line_and_two_selections_at_once_are_refused() {
+    let mut harness = harness_in(&sample_folder());
+    did(&mut harness, "tab open notes.txt --permanent");
+    did(&mut harness, "editor set-text alpha\\nbravo\\ncharlie");
+    assert_eq!(refused(&mut harness, "editor caret --line -3"), "usage");
+    assert_eq!(refused(&mut harness, "editor select --all --none"), "usage");
+    assert_eq!(refused(&mut harness, "editor select --none --from-line 1"), "usage");
+    // `--by` is a direction, so a negative one is still a move up.
+    did(&mut harness, "editor caret --line 2");
+    let moved = did(&mut harness, "editor lines move --by -1");
+    assert_eq!(moved["moved"], serde_json::json!(true));
+    assert_eq!(harness.state().document().text().to_string(), "bravo\nalpha\ncharlie");
+    // And the line commands have the delete the keys have.
+    let deleted = did(&mut harness, "editor lines delete");
+    assert_eq!(deleted["lines"], serde_json::json!(1));
+    assert_eq!(harness.state().document().text().to_string(), "alpha\ncharlie");
+}
+
 #[test]
 fn the_command_line_replaces_the_whole_document_in_one_undo_step() {
     let mut harness = harness_in(&sample_folder());

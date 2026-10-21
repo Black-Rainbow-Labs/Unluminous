@@ -1305,10 +1305,10 @@ impl UnluminousApp {
                     .iter()
                     .map(|theme| {
                         format!(
-                            "{}{:<28}{:<18}{}",
+                            "{}{}{}{}",
                             if theme.key == active { "*" } else { " " },
-                            theme.key,
-                            theme.plugin,
+                            column(&theme.key, 28),
+                            column(&theme.plugin, 18),
                             theme.name
                         )
                     })

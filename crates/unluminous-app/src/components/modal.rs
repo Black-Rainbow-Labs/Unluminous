@@ -506,7 +506,10 @@ fn show_framed<R>(
             // layer's own points: at a zoom below one that left the top and the left of the window uncovered.
             covering.rect_filled(window, CornerRadius::ZERO, color::scrim());
             let (area, _) = ui.allocate_exact_size(laid_out, Sense::hover());
-            let window_clip = ui.clip_rect();
+            // The window in the layer's own points, for the reason the backdrop gives above. The area's clip
+            // is the window in the window's points, and at a zoom below one intersecting with it cut the
+            // dialog off at the right and the bottom, the zoom's share short of its frame.
+            let window_clip = window;
             // **The surface is the redesign's** (`task-2276`): the pane's own ground, thirty points round, with
             // the one long shadow a layer over the window casts, which is what the dialogs that paint their own
             // surface already draw. Reserved before the contents, so everything a dialog draws is over it.

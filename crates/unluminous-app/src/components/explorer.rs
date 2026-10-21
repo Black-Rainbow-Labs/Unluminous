@@ -393,78 +393,21 @@ pub fn show(
 
     // The filter box.
     let filter_rect = filter_field(area, &view, heading);
-    // Under glass the box is the carved well Agent-Chat's prompt is (`task-2287`), rather than a dark field
-    // with a hairline round it.
-    match crate::theme::is_glass() {
-        true => {
-            crate::components::chrome_kit::layer(ui, "explorer-filter", filter_rect, 6.0, |rux| {
-                let chat = rux.theme().chat;
-                rux.chrome.surface(
-                    filter_rect,
-                    filter_rect.height() / 2.0,
-                    chat.well,
-                    chat.carved(),
-                );
-            })
-        }
-        false => {
-            painter.rect(
-                filter_rect,
-                CornerRadius::same(size::CONTROL_CORNER),
-                color::field(),
-                Stroke::new(1.0, color::divider()),
-                egui::StrokeKind::Inside,
-            );
-        }
-    }
-    icon::magnifier_at(
-        &painter,
-        Pos2::new(filter_rect.left() + view.at(13.0), filter_rect.center().y),
-        color::text_faint(),
-        view.zoom,
-    );
-    let filter_id = ui.id().with("explorer-filter");
-    let inside = crate::components::controls::field_takes_the_whole_rectangle(
-        ui,
-        filter_rect,
-        view.at(26.0),
-        filter_id,
-        "Filter field",
-    );
-    // **The size comes from the box's own height, not from `appearance.ui.font.size`** - `task-2004`.
-    // It used to be the interface's size times this pane's zoom, and the rows under it are
-    // `view.at(12.5)` whatever the interface is set to: on a machine with a large interface `Filter
-    // files` came out more than twice the height of the file names beside it, and the caret, whose
-    // height is the row that font occupies, stood proud of the 24 point box at both ends.
-    // `controls::field_font_size` is a fraction of the field's own height, and the field is
-    // `view.at(24.0)` - so it is `view.at(12.5)` at every zoom, which is exactly the rows.
-    let mut field = ui.new_child(egui::UiBuilder::new().max_rect(inside.rect));
-    let response = field.text_box(
-        egui::TextEdit::singleline(filter)
-            .id(filter_id)
-            .hint_text(crate::components::controls::placeholder(
-                "Filter files",
-                &inside.font,
-                color::text_faint(),
-            ))
-            .font(inside.font.clone())
-            .frame(egui::Frame::NONE)
-            .desired_width(inside.rect.width())
-            .text_color(color::text_control()),
-    );
-    // Named, because a test finds a control by its name and egui names a text box after what is typed in it.
-    response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Filter files")
-    });
-
-    // The rows: either the tree, or a flat list of what matches the filter.
-    let list_top = filter_rect.bottom() + view.at(12.0);
     let footer_top = match view.host {
         Host::Panel => area.bottom() - view.at(size::EXPLORER_FOOTER),
         // A node has no footer: the strip that counts the project's files belongs to the panel, and a
         // node is as tall as somebody dragged it.
         Host::Node => area.bottom(),
     };
+    // **A panel too short for the box draws none**, rather than half of one: with the canvas docked
+    // under the explorer the panel was the heading and the footer, and the footer was painted over the
+    // bottom half of the box, so what showed was the top of a field and the tops of its letters.
+    if filter_rect.bottom() <= footer_top {
+        filter_box(ui, &painter, filter_rect, &view, filter);
+    }
+
+    // The rows: either the tree, or a flat list of what matches the filter.
+    let list_top = filter_rect.bottom() + view.at(12.0);
     let list_rect =
         Rect::from_min_max(Pos2::new(area.left(), list_top), Pos2::new(area.right(), footer_top));
     let filtering = !filter.trim().is_empty();
@@ -1358,4 +1301,77 @@ mod tests {
             );
         }
     }
+}
+
+/// The filter box at the top of the explorer, with the text box that types into it.
+fn filter_box(
+    ui: &mut egui::Ui,
+    painter: &egui::Painter,
+    filter_rect: Rect,
+    view: &View<'_>,
+    filter: &mut String,
+) {
+    // Under glass the box is the carved well Agent-Chat's prompt is (`task-2287`), rather than a dark field
+    // with a hairline round it.
+    match crate::theme::is_glass() {
+        true => {
+            crate::components::chrome_kit::layer(ui, "explorer-filter", filter_rect, 6.0, |rux| {
+                let chat = rux.theme().chat;
+                rux.chrome.surface(
+                    filter_rect,
+                    filter_rect.height() / 2.0,
+                    chat.well,
+                    chat.carved(),
+                );
+            })
+        }
+        false => {
+            painter.rect(
+                filter_rect,
+                CornerRadius::same(size::CONTROL_CORNER),
+                color::field(),
+                Stroke::new(1.0, color::divider()),
+                egui::StrokeKind::Inside,
+            );
+        }
+    }
+    icon::magnifier_at(
+        &painter,
+        Pos2::new(filter_rect.left() + view.at(13.0), filter_rect.center().y),
+        color::text_faint(),
+        view.zoom,
+    );
+    let filter_id = ui.id().with("explorer-filter");
+    let inside = crate::components::controls::field_takes_the_whole_rectangle(
+        ui,
+        filter_rect,
+        view.at(26.0),
+        filter_id,
+        "Filter field",
+    );
+    // **The size comes from the box's own height, not from `appearance.ui.font.size`** - `task-2004`.
+    // It used to be the interface's size times this pane's zoom, and the rows under it are
+    // `view.at(12.5)` whatever the interface is set to: on a machine with a large interface `Filter
+    // files` came out more than twice the height of the file names beside it, and the caret, whose
+    // height is the row that font occupies, stood proud of the 24 point box at both ends.
+    // `controls::field_font_size` is a fraction of the field's own height, and the field is
+    // `view.at(24.0)` - so it is `view.at(12.5)` at every zoom, which is exactly the rows.
+    let mut field = ui.new_child(egui::UiBuilder::new().max_rect(inside.rect));
+    let response = field.text_box(
+        egui::TextEdit::singleline(filter)
+            .id(filter_id)
+            .hint_text(crate::components::controls::placeholder(
+                "Filter files",
+                &inside.font,
+                color::text_faint(),
+            ))
+            .font(inside.font.clone())
+            .frame(egui::Frame::NONE)
+            .desired_width(inside.rect.width())
+            .text_color(color::text_control()),
+    );
+    // Named, because a test finds a control by its name and egui names a text box after what is typed in it.
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, "Filter files")
+    });
 }

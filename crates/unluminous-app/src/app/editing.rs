@@ -165,6 +165,15 @@ impl UnluminousApp {
                 self.colour_the_file(index);
             }
         }
+        // **And the file on each File Editor node** while the canvas is showing. Only the panes were
+        // asked, so Rust on a node was drawn in one colour while the same file in a pane was coloured.
+        if self.realm.visible {
+            for index in 0..self.files.len() {
+                if matches!(self.files.home_of(index), crate::app::files::Home::Node(_)) {
+                    self.colour_the_file(index);
+                }
+            }
+        }
     }
 
     /// Colour one file. One in each pane is asked about every frame, because every pane is drawing.

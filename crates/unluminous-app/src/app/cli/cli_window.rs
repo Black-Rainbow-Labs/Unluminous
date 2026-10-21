@@ -37,8 +37,17 @@ impl UnluminousApp {
     pub(crate) fn cli_input(&mut self, request: &Request, verb: &str) -> Outcome {
         use crate::services::input;
         let modifiers = input_modifiers(request);
+        // **A position is the window's own point, which is the screenshot's, not egui's.** The
+        // interface size is egui's zoom (`task-2280`), 1.12 at the default of 14 points, and egui's
+        // points are the window's divided by it. Read as egui's, `input click 430 135` landed at 482,
+        // so every click an agent measured off a screenshot missed by an eighth of the distance from
+        // the window's top left corner.
+        let zoom = self.context.as_ref().map_or(1.0, egui::Context::zoom_factor);
         let at = |name: &str, down: &str| -> Option<egui::Pos2> {
-            Some(egui::Pos2::new(request.number(name)? as f32, request.number(down)? as f32))
+            Some(window_point(
+                egui::Pos2::new(request.number(name)? as f32, request.number(down)? as f32),
+                zoom,
+            ))
         };
         let steps = match verb {
             "move" => {
@@ -411,6 +420,25 @@ impl UnluminousApp {
             Some(problem) => no(request, code::NOT_APPLICABLE, problem),
             None => done(request, format!("Sent {verb} to browser tab {id}")),
         }
+    }
+}
+
+/// A point in the window's own points, which is what `window screenshot` writes out, as one of egui's,
+/// which the interface size has zoomed by `zoom`.
+fn window_point(at: egui::Pos2, zoom: f32) -> egui::Pos2 {
+    let zoom = if zoom.is_finite() && zoom > 0.0 { zoom } else { 1.0 };
+    egui::pos2(at.x / zoom, at.y / zoom)
+}
+
+#[cfg(test)]
+mod window_points {
+    use super::*;
+
+    #[test]
+    fn a_point_off_a_screenshot_is_divided_by_the_interface_zoom() {
+        assert_eq!(window_point(egui::pos2(500.0, 125.0), 1.25), egui::pos2(400.0, 100.0));
+        assert_eq!(window_point(egui::pos2(30.0, 40.0), 1.0), egui::pos2(30.0, 40.0));
+        assert_eq!(window_point(egui::pos2(30.0, 40.0), 0.0), egui::pos2(30.0, 40.0));
     }
 }
 

@@ -131,6 +131,18 @@ impl UnluminousApp {
         lines
     }
 
+    /// Delete the lines the selection touches, or the caret's line. Answers how many lines went,
+    /// which is none only in an empty document.
+    pub(crate) fn delete_lines(&mut self) -> usize {
+        let lines = self.lines_the_selection_touches();
+        if !self.document_mut().apply(Command::DeleteLines) {
+            return 0;
+        }
+        self.forget_layout();
+        self.reveal_caret = true;
+        lines
+    }
+
     /// Move the lines the selection touches up or down, carrying the selection with them.
     ///
     /// Answers whether anything moved, because a block already against the top or the bottom of the

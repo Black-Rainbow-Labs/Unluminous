@@ -299,6 +299,27 @@ fn a_node_is_arranged_in_the_stacking_order_and_a_click_leaves_the_order_alone()
     assert_eq!(rows, vec!["Bring to Front", "Bring Forward", "Send Backward", "Send to Back"]);
 }
 
+/// A Rust file on a File Editor node is coloured as it is in a pane. Only the tab showing in each pane
+/// was asked to colour itself, so code on a node was drawn in the one text colour.
+#[test]
+fn code_on_a_file_editor_node_is_coloured() {
+    let mut harness = harness("");
+    did(&mut harness, "realm show");
+    let made = did(&mut harness, "realm add editor --x 40 --y 40");
+    let node = made["node"].as_u64().expect("a node id");
+    did(&mut harness, &format!("realm editor {node} program.rs"));
+    steady(&mut harness);
+    let index = harness.state().files.tab_in_node(node).expect("the tab lives on the node");
+    let document = &harness.state().files.at(index).document;
+    let mut colours = Vec::new();
+    for (_, style) in document.chars().spans() {
+        if !colours.contains(&style.color) {
+            colours.push(style.color);
+        }
+    }
+    assert!(colours.len() > 1, "`fn main() {{}}` is in more than one colour: {colours:?}");
+}
+
 /// A File Editor node is an ordinary tab whose home is that node.
 ///
 /// Which is what makes it the editing area rather than a second editor: the same `Document`, the same

@@ -176,7 +176,10 @@ impl UnluminousApp {
             match count {
                 0 => format!("Nothing matches '{needle}' in this file"),
                 1 => format!("1 match for '{needle}'"),
-                many => format!("{many} matches for '{needle}', on {}", index.unwrap_or(1)),
+                many => format!(
+                    "{many} matches for '{needle}', and match {} is current",
+                    index.unwrap_or(1)
+                ),
             },
             rows,
             json!({
@@ -538,6 +541,17 @@ impl UnluminousApp {
     }
 
     fn cli_editor_select(&mut self, request: &Request) -> Outcome {
+        // Two answers to one question are refused rather than one of them winning in silence: `--all
+        // --none` used to select everything.
+        let ways = ["all", "none"].iter().filter(|name| request.switch(name)).count()
+            + usize::from(request.has("from-line"));
+        if ways > 1 {
+            return no(
+                request,
+                code::USAGE,
+                "Say one of --all, --none or --from-line, not more than one.",
+            );
+        }
         if request.switch("all") {
             self.document_mut().apply(unluminous_core::Command::SelectAll);
         } else if request.switch("none") {
@@ -706,7 +720,7 @@ impl UnluminousApp {
         )
     }
 
-    /// `unluminous-cli editor lines <what>` -- duplicate, move, join and sort, through the four
+    /// `unluminous-cli editor lines <what>` -- duplicate, delete, move, join and sort, through the five
     /// `Command` variants the menu entries use.
     ///
     /// One verb with a word after it rather than four verbs, because they are one family and an
@@ -724,7 +738,7 @@ impl UnluminousApp {
             );
         }
         let Some(what) = request.text("what") else {
-            return no(request, code::USAGE, "Say duplicate, move, join or sort.");
+            return no(request, code::USAGE, "Say duplicate, delete, move, join or sort.");
         };
         match what.trim().to_lowercase().as_str() {
             "duplicate" => {
@@ -748,12 +762,27 @@ impl UnluminousApp {
                 ok(
                     request,
                     match moved {
-                        true => format!("Moved {} line{where_to}", by.abs()),
+                        true => format!(
+                            "Moved the lines {} line{} {where_to}",
+                            by.abs(),
+                            if by.abs() == 1 { "" } else { "s" }
+                        ),
                         false => format!(
                             "Nothing moved: those lines are already as far {where_to} as they go"
                         ),
                     },
                     json!({ "moved": moved, "by": by }),
+                )
+            }
+            "delete" => {
+                let lines = self.delete_lines();
+                ok(
+                    request,
+                    match lines {
+                        0 => "There was no line to delete".to_owned(),
+                        _ => format!("Deleted {lines} line{}", if lines == 1 { "" } else { "s" }),
+                    },
+                    json!({ "lines": lines }),
                 )
             }
             "join" => {
@@ -777,7 +806,7 @@ impl UnluminousApp {
                 request,
                 code::USAGE,
                 format!(
-                    "There is no line command called {other}. It is duplicate, move, join or sort."
+                    "There is no line command called {other}. It is duplicate, delete, move, join or sort."
                 ),
             ),
         }
@@ -1283,10 +1312,10 @@ impl UnluminousApp {
             .iter()
             .map(|row| {
                 format!(
-                    "{:<32}{:<10}{:<10}{}",
-                    row.name,
-                    row.kind.map_or("", |kind| kind.name()),
-                    row.source.name(),
+                    "{}{}{}{}",
+                    column(&row.name, 32),
+                    column(row.kind.map_or("", |kind| kind.name()), 10),
+                    column(row.source.name(), 10),
                     row.detail
                 )
             })

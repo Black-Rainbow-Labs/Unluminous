@@ -207,6 +207,7 @@ impl UnluminousApp {
             Action::ToggleLineComment
             | Action::ToggleBlockComment
             | Action::DuplicateLines
+            | Action::DeleteLines
             | Action::MoveLines { .. }
             | Action::JoinLines
             | Action::SortLines
@@ -607,6 +608,11 @@ impl UnluminousApp {
             }
             Action::DuplicateLines => {
                 self.duplicate_lines();
+            }
+            Action::DeleteLines => {
+                if self.delete_lines() == 0 {
+                    self.message = Some("There is no line here to delete.".to_owned());
+                }
             }
             Action::MoveLines { down } => {
                 if !self.move_lines(if down { 1 } else { -1 }) {

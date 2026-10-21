@@ -32,10 +32,10 @@ impl UnluminousApp {
                     .iter()
                     .map(|entry| {
                         format!(
-                            "{}{:<24}{:<18}{}",
+                            "{}{}{}{}",
                             if entry.enabled { " " } else { "-" },
-                            entry.name,
-                            entry.shortcut,
+                            column(&entry.name, 24),
+                            column(&entry.shortcut, 18),
                             entry.menu
                         )
                     })
@@ -90,10 +90,10 @@ impl UnluminousApp {
             .iter()
             .map(|row| {
                 format!(
-                    "{}{:<24}{:<18}{}",
+                    "{}{}{}{}",
                     if row.command.enabled { " " } else { "-" },
-                    row.command.name,
-                    row.command.shortcut,
+                    column(&row.command.name, 24),
+                    column(&row.command.shortcut, 18),
                     row.command.menu
                 )
             })

@@ -28,8 +28,10 @@ pub enum Command {
     DeleteBackward,
     /// Delete forwards: delete the selection, or the cluster after the caret.
     DeleteForward,
-    /// Delete the word before the caret.
+    /// Delete the word before the caret, or the line break when the caret starts a line.
     DeleteWordBackward,
+    /// Delete the word after the caret, or the line break when the caret ends a line.
+    DeleteWordForward,
     MoveLeft {
         extend: bool,
     },
@@ -122,6 +124,9 @@ pub enum Command {
     /// The selection stays on the lines it was on rather than moving to the copy, which is
     /// [`Command::Indent`]'s promise: pressing the key again duplicates the same lines again.
     DuplicateLines,
+    /// Delete the lines the selection touches, line breaks and all, as one undo step. With nothing
+    /// selected it is the caret's line. This is also what a cut with nothing selected does.
+    DeleteLines,
     /// Move the lines the selection touches up or down, carrying the selection with them.
     ///
     /// `by` is a direction and a count: `-1` and `1` are what the two key chords send. A block
@@ -1067,15 +1072,38 @@ impl Document {
             Command::DeleteBackward => self.delete_backward(),
             Command::DeleteForward => self.delete_forward(),
             Command::DeleteWordBackward => self.delete_word_backward(),
+            Command::DeleteWordForward => self.delete_word_forward(),
             Command::MoveLeft { extend } => self.move_horizontally(-1, extend, false),
             Command::MoveRight { extend } => self.move_horizontally(1, extend, false),
             Command::MoveWordLeft { extend } => self.move_horizontally(-1, extend, true),
             Command::MoveWordRight { extend } => self.move_horizontally(1, extend, true),
             // **The rope already has both of these numbers** (`task-1984` C5). Both used to build a
             // window -- a copy of the whole line -- and then throw the text away to keep an offset.
+            // **Smart Home**: the first press goes to the first character on the line that is not a
+            // space or a tab, and a press already there goes to the very start, which is what every
+            // code editor does. On a line with no indentation the two are the same place.
             Command::MoveLineStart { extend } => {
-                let line = self.text.byte_to_line(self.selection.head);
-                self.selection.move_to(self.text.line_range(line).start, extend);
+                let head = self.selection.head;
+                let line = self.text.byte_to_line(head);
+                let range = self.text.line_range(line);
+                // Counted a piece at a time rather than by copying the line, which C5 below is about.
+                let (mut indent, mut blank) = (0, true);
+                self.text.for_each_slice(range.clone(), |piece| {
+                    if blank {
+                        let leading = piece
+                            .bytes()
+                            .take_while(|byte| *byte == b' ' || *byte == b'\t')
+                            .count();
+                        indent += leading;
+                        blank = leading == piece.len();
+                    }
+                });
+                let words = range.start + indent;
+                let target = match head == words {
+                    true => range.start,
+                    false => words,
+                };
+                self.selection.move_to(target, extend);
                 self.desired_x = None;
                 self.caret_moved(selection_before);
             }
@@ -1112,6 +1140,7 @@ impl Document {
             Command::ToggleLineComment { marker } => self.toggle_line_comment(&marker),
             Command::ToggleBlockComment { open, close } => self.toggle_block_comment(&open, &close),
             Command::DuplicateLines => self.duplicate_lines(),
+            Command::DeleteLines => self.delete_lines(),
             Command::MoveLines { by } => self.move_lines(by),
             Command::JoinLines => self.join_lines(),
             Command::SortLines => self.sort_lines(),
@@ -1823,6 +1852,43 @@ impl Document {
         self.finish_the_line_edit();
     }
 
+    /// Delete the lines the selection touches. [`Command::DeleteLines`].
+    ///
+    /// The line break goes with them, so the line below moves up into their place. The last line of
+    /// a file has no break after it, so for that one the break before it goes instead, or deleting
+    /// it would leave an empty line behind. The caret lands at the start of the line that took their
+    /// place.
+    fn delete_lines(&mut self) {
+        let (first, last) = self.touched_lines();
+        let mut block = self.block_of(first, last);
+        if !self.line_ends_in_a_break(last) && block.start > 0 {
+            block.start -= 1;
+        }
+        if block.is_empty() {
+            return;
+        }
+        let at = match self.line_ends_in_a_break(last) {
+            true => block.start,
+            false => self.text.line_to_byte(first.saturating_sub(1)).min(block.start),
+        };
+        self.push_undo(EditKind::Other);
+        self.remove_range(block);
+        self.selection.set_caret(at.min(self.text.len_bytes()));
+        self.finish_the_line_edit();
+    }
+
+    /// The whole lines the selection touches, with the line break that ends them, which is what a
+    /// copy or a cut with nothing selected takes. A last line with no break after it is given one,
+    /// so pasting it puts in a line rather than joining it to the line the caret is on.
+    pub fn touched_lines_text(&self) -> String {
+        let (first, last) = self.touched_lines();
+        let mut text = self.text.byte_slice(self.block_of(first, last));
+        if !text.ends_with('\n') {
+            text.push('\n');
+        }
+        text
+    }
+
     /// Move the lines the selection touches up or down. [`Command::MoveLines`].
     fn move_lines(&mut self, by: i32) {
         if by == 0 {
@@ -2224,18 +2290,49 @@ impl Document {
     }
 
     fn delete_word_backward(&mut self) {
-        self.push_undo(EditKind::Other);
-        if !self.selection.is_empty() {
-            let range = self.selection.range();
-            self.remove_range(range);
-        } else {
-            let (window, base) = self.line_window(self.selection.head);
-            let from = cursor::prev_word(&window, base, self.selection.head);
-            if from == self.selection.head {
-                return;
+        let range = match self.selection.is_empty() {
+            false => self.selection.range(),
+            true => {
+                let head = self.selection.head;
+                let (window, base) = self.line_window(head);
+                let from = cursor::prev_word(&window, base, head);
+                // At the start of a line there is no word before the caret on it, and the line
+                // break is what goes, as it does in every editor. It used to do nothing at all.
+                match from == head {
+                    true if head == base && head > 0 => head - 1..head,
+                    true => return,
+                    false => from..head,
+                }
             }
-            self.remove_range(from..self.selection.head);
-        }
+        };
+        // The snapshot is taken only once there is something to delete, so a press that deletes
+        // nothing leaves no empty step on the undo stack.
+        self.push_undo(EditKind::Other);
+        self.remove_range(range);
+        self.desired_x = None;
+        self.mark_changed();
+    }
+
+    /// `Ctrl+Delete` (`Alt+Delete` on macOS): the word after the caret, to the end of that word, the
+    /// way `Ctrl+Right` moves. At the end of a line it takes the line break, as `Delete` does.
+    fn delete_word_forward(&mut self) {
+        let range = match self.selection.is_empty() {
+            false => self.selection.range(),
+            true => {
+                let head = self.selection.head;
+                let (window, base) = self.line_window(head);
+                let to = cursor::next_word(&window, base, head);
+                match to == head {
+                    true if head == base + window.len() && head < self.text.len_bytes() => {
+                        head..head + 1
+                    }
+                    true => return,
+                    false => head..to,
+                }
+            }
+        };
+        self.push_undo(EditKind::Other);
+        self.remove_range(range);
         self.desired_x = None;
         self.mark_changed();
     }
@@ -2824,6 +2921,8 @@ the fourth line",
             Command::DeleteBackward,
             Command::DeleteForward,
             Command::DeleteWordBackward,
+            Command::DeleteWordForward,
+            Command::DeleteLines,
             Command::MoveLeft { extend: false },
             Command::MoveLeft { extend: true },
             Command::MoveRight { extend: false },
@@ -2979,6 +3078,74 @@ the fourth line",
     }
 
     #[test]
+    fn delete_word_forward_takes_the_word_after_the_caret() {
+        // `foo.bar` is one word under Unicode's word rules, which is also where `Ctrl+Right` stops.
+        let mut document = typed("hello world foo.bar baz");
+        document.apply(Command::PlaceCaret { offset: 12, extend: false });
+        assert!(document.apply(Command::DeleteWordForward));
+        assert_eq!(document.text().to_string(), "hello world  baz");
+        document.apply(Command::PlaceCaret { offset: 5, extend: false });
+        document.apply(Command::DeleteWordForward);
+        assert_eq!(document.text().to_string(), "hello  baz", "the space and the word go");
+        document.apply(Command::Undo);
+        assert_eq!(document.text().to_string(), "hello world  baz");
+    }
+
+    #[test]
+    fn a_word_delete_at_the_edge_of_a_line_takes_the_line_break() {
+        let mut document = typed("one\ntwo");
+        document.apply(Command::PlaceCaret { offset: 3, extend: false });
+        document.apply(Command::DeleteWordForward);
+        assert_eq!(document.text().to_string(), "onetwo");
+        let mut document = typed("one\ntwo");
+        document.apply(Command::PlaceCaret { offset: 4, extend: false });
+        document.apply(Command::DeleteWordBackward);
+        assert_eq!(document.text().to_string(), "onetwo");
+        assert_eq!(document.selection(), Selection::caret(3));
+    }
+
+    #[test]
+    fn a_word_delete_with_nothing_to_delete_leaves_no_undo_step() {
+        let mut document = Document::new();
+        document.apply(Command::DeleteWordBackward);
+        document.apply(Command::DeleteWordForward);
+        assert!(!document.can_undo(), "nothing was deleted, so there is nothing to undo");
+    }
+
+    #[test]
+    fn delete_lines_takes_the_caret_line_and_its_break() {
+        let mut document = typed("one\ntwo\nthree");
+        document.apply(Command::PlaceCaret { offset: 5, extend: false });
+        assert!(document.apply(Command::DeleteLines));
+        assert_eq!(document.text().to_string(), "one\nthree");
+        assert_eq!(document.selection(), Selection::caret(4));
+        document.apply(Command::Undo);
+        assert_eq!(document.text().to_string(), "one\ntwo\nthree");
+    }
+
+    #[test]
+    fn delete_lines_on_the_last_line_takes_the_break_before_it() {
+        let mut document = typed("one\ntwo\nthree");
+        document.apply(Command::PlaceCaret { offset: 10, extend: false });
+        document.apply(Command::DeleteLines);
+        assert_eq!(document.text().to_string(), "one\ntwo");
+        let mut document = typed("one\ntwo\nthree");
+        document.apply(Command::PlaceCaret { offset: 1, extend: false });
+        document.apply(Command::PlaceCaret { offset: 5, extend: true });
+        document.apply(Command::DeleteLines);
+        assert_eq!(document.text().to_string(), "three", "both touched lines go");
+    }
+
+    #[test]
+    fn the_touched_lines_text_always_ends_in_a_line_break() {
+        let mut document = typed("one\ntwo");
+        document.apply(Command::PlaceCaret { offset: 1, extend: false });
+        assert_eq!(document.touched_lines_text(), "one\n");
+        document.apply(Command::PlaceCaret { offset: 6, extend: false });
+        assert_eq!(document.touched_lines_text(), "two\n");
+    }
+
+    #[test]
     fn delete_forward_at_the_end_of_a_line_pulls_the_next_line_up() {
         let mut document = typed("one\ntwo");
         document.apply(Command::PlaceCaret { offset: 3, extend: false });
@@ -3024,6 +3191,21 @@ the fourth line",
         assert_eq!(document.selection().head, 3, "moved over the line break");
         document.apply(Command::MoveLeft { extend: false });
         assert_eq!(document.selection().head, 2);
+    }
+
+    #[test]
+    fn home_goes_to_the_first_word_and_then_to_the_start_of_the_line() {
+        let mut document = typed("one\n    two three");
+        document.apply(Command::PlaceCaret { offset: 12, extend: false });
+        document.apply(Command::MoveLineStart { extend: false });
+        assert_eq!(document.selection().head, 8, "first to `two`");
+        document.apply(Command::MoveLineStart { extend: false });
+        assert_eq!(document.selection().head, 4, "then to the very start");
+        document.apply(Command::MoveLineStart { extend: false });
+        assert_eq!(document.selection().head, 8, "and back to `two`");
+        document.apply(Command::PlaceCaret { offset: 6, extend: false });
+        document.apply(Command::MoveLineStart { extend: true });
+        assert_eq!(document.selected_text(), "  ", "inside the indentation it goes to the words");
     }
 
     #[test]

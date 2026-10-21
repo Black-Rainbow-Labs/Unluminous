@@ -370,6 +370,15 @@ pub(crate) fn done(request: &Request, message: impl Into<String>) -> Outcome {
     ok(request, message, Value::Null)
 }
 
+/// One column of a listing: `text` padded to `width`, and always followed by at least one space, so a
+/// value as long as its column never runs into the next one. `themes-bundle-1` is fifteen characters
+/// and `plugins list` gave it fourteen, so the listing read `themes-bundle-11.0.0`.
+pub(crate) fn column(text: impl std::fmt::Display, width: usize) -> String {
+    let text = text.to_string();
+    let width = width.max(text.chars().count() + 1);
+    format!("{text:<width$}")
+}
+
 /// A reply whose data is a list of lines the client prints as they are.
 pub(crate) fn lines(
     request: &Request,
@@ -1663,6 +1672,13 @@ impl UnluminousApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_column_always_leaves_a_space_before_the_next() {
+        assert_eq!(column("rust", 6), "rust  ");
+        assert_eq!(column("themes-bundle-1", 14), "themes-bundle-1 ");
+        assert_eq!(column("", 3), "   ");
+    }
 
     #[test]
     fn a_command_line_is_split_the_way_a_shell_splits_one() {

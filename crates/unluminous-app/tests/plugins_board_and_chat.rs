@@ -3982,6 +3982,37 @@ fn the_settings_modal_zoomed() {
     did(&mut harness, "modal zoom reset");
 }
 
+/// A modal zoomed below one is drawn to its frame. Its contents were clipped to the window measured in the
+/// window's points rather than the layer's, so at 0.85 the Settings window stopped short of its right and
+/// bottom edges by the zoom's share, and the backdrop showed where the dialog should have been.
+#[test]
+fn a_modal_zoomed_out_is_drawn_to_its_right_and_bottom_edges() {
+    use unluminous_app::components::modal;
+    let mut harness = harness("");
+    did(&mut harness, "modal open settings");
+    steady(&mut harness);
+    did(&mut harness, "modal zoom 0.8");
+    steady(&mut harness);
+    let dialog = modal::drawn(&harness.ctx, "unluminous-settings").expect("the dialog was drawn");
+    let image = harness.render().expect("paint the frame");
+    let scale = harness.ctx.pixels_per_point();
+    let at = |x: f32, y: f32| {
+        let pixel = image.get_pixel((x * scale) as u32, (y * scale) as u32);
+        pixel.0[..3].iter().map(|&v| v as i32).sum::<i32>()
+    };
+    // The dialog's own surface along its top, near its left and near its right, against the backdrop just
+    // outside its right edge, which is the window darkened by the scrim.
+    let near_left = at(dialog.left() + 40.0, dialog.top() + 12.0);
+    let near_right = at(dialog.right() - 40.0, dialog.top() + 12.0);
+    let outside = at((dialog.right() + 6.0).min(WINDOW[0] - 1.0), dialog.top() + 12.0);
+    assert!(
+        (near_left - near_right).abs() < 12,
+        "the right of the dialog is its surface: {near_left} on the left, {near_right} on the right, \
+         {outside} outside, in {dialog:?}"
+    );
+    did(&mut harness, "modal zoom reset");
+}
+
 /// *"When I press Delete task it should just delete, not prompt me again."*
 #[test]
 fn delete_task_deletes_the_ticket_on_one_press() {

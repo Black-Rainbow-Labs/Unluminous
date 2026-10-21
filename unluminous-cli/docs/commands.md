@@ -1041,18 +1041,19 @@ unluminous-cli editor comment --block
 ### editor lines
 
 ```
-unluminous-cli editor lines <duplicate|move|join|sort> [--path <file>] [--by <number>]
+unluminous-cli editor lines <duplicate|delete|move|join|sort> [--path <file>] [--by <number>]
 ```
 
-Edit whole lines: duplicate, move up or down, join, or sort. Each is one undo step, and each is about the lines the selection touches, or the caret's line when nothing is selected. Sort needs a selection.
+Edit whole lines: duplicate, delete, move up or down, join, or sort. Each is one undo step, and each is about the lines the selection touches, or the caret's line when nothing is selected. Sort needs a selection.
 
-- `what` — duplicate, move, join or sort.
+- `what` — duplicate, delete, move, join or sort.
 
 - `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 - `--by <number>` — For move: how far and which way. -1 is up and 1 is down, which is what Alt+Up and Alt+Down send.
 
 ```sh
 unluminous-cli editor lines duplicate
+unluminous-cli editor lines delete
 unluminous-cli editor lines move --by -1
 unluminous-cli editor lines join
 unluminous-cli editor lines sort
@@ -1217,7 +1218,7 @@ unluminous-cli editor definition --line 42 --column 9 --open
 unluminous-cli editor find [text] [--path <file>] [--match-case] [--whole-word] [--next] [--previous] [--close] [--limit <number>]
 ```
 
-Find text in the file that is showing, the way Ctrl+F does: the count, every match's line and column, and the one that is current selected in the window so a screenshot shows it. Use this rather than reading the whole file to locate a string. --replace turns it into an edit; without it nothing is changed.
+Find text in the file that is showing, the way Ctrl+F does: the count, every match's line and column, and the one that is current selected in the window so a screenshot shows it. Use this rather than reading the whole file to locate a string. It changes nothing; `editor replace` is the edit.
 
 - `text` (optional) — What to look for. The bar's current search when it is left out.
 

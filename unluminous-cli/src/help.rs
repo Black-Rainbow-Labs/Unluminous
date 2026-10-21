@@ -32,13 +32,13 @@ pub fn overall() -> String {
     }
     out.push_str("\nCommands with no area:\n");
     for command in catalogue::in_area("") {
-        out.push_str(&format!("  {:<22}{}\n", command.verb, first_sentence(command.summary)));
+        out.push_str(&row(command.verb, 22, first_sentence(command.summary)));
     }
     out.push_str("\nAreas:\n");
     for area in catalogue::areas() {
         let verbs: Vec<&str> =
             catalogue::in_area(area).iter().map(|command| command.verb).collect();
-        out.push_str(&format!("  {:<22}{}\n", area, verbs.join(", ")));
+        out.push_str(&row(area, 22, &verbs.join(", ")));
     }
     out.push_str("\nFlags that work on every command:\n");
     for (name, value, help) in GLOBAL_FLAGS {
@@ -46,7 +46,7 @@ pub fn overall() -> String {
             Some(value) => format!("--{name} <{value}>"),
             None => format!("--{name}"),
         };
-        out.push_str(&format!("  {spelled:<26}{help}\n"));
+        out.push_str(&row(&spelled, 26, help));
     }
     out.push_str(
         "\n`unluminous-cli commands --json` prints every command as data, which is what to give a\n\
@@ -75,7 +75,7 @@ pub fn for_command(command: &Command) -> String {
             } else {
                 format!("[{}]", argument.name)
             };
-            out.push_str(&format!("  {name:<20}{}\n", argument.help));
+            out.push_str(&row(&name, 20, argument.help));
         }
         out.push('\n');
     }
@@ -86,7 +86,7 @@ pub fn for_command(command: &Command) -> String {
                 Some(value) => format!("--{} <{value}>", flag.name),
                 None => format!("--{}", flag.name),
             };
-            out.push_str(&format!("  {spelled:<26}{}\n", flag.help));
+            out.push_str(&row(&spelled, 26, flag.help));
         }
         out.push('\n');
     }
@@ -136,6 +136,14 @@ fn one(command: &Command) -> Value {
     })
 }
 
+/// One line of a listing: the label indented two spaces and padded to `width`, then the text. A
+/// label as long as the column or longer still gets two spaces before the text, so the two never run
+/// together, which `--instance <pid|port|path>` did at exactly the column's width.
+fn row(label: &str, width: usize, text: &str) -> String {
+    let width = width.max(label.chars().count() + 2);
+    format!("  {label:<width$}{text}\n")
+}
+
 /// The first sentence of a summary, for the one-line listing.
 fn first_sentence(summary: &str) -> &str {
     match summary.find(". ") {
@@ -157,6 +165,20 @@ mod tests {
         for command in catalogue::in_area("") {
             assert!(help.contains(command.verb), "the help should name {}", command.verb);
         }
+    }
+
+    #[test]
+    fn a_label_never_runs_into_its_text() {
+        let mut every = overall();
+        for command in catalogue::COMMANDS {
+            every.push_str(&for_command(command));
+        }
+        for line in every.lines() {
+            if let Some(rest) = line.strip_prefix("  --") {
+                assert!(rest.contains("  "), "a flag runs into its help: {line}");
+            }
+        }
+        assert!(overall().contains("--instance <pid|port|path>  Which"));
     }
 
     #[test]

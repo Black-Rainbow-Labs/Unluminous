@@ -178,6 +178,16 @@ pub fn handle_input(
                 outcome.changed |= document.apply(Command::DeleteBackward);
                 outcome.scroll_to_caret = true;
             }
+            // With nothing selected, a copy or a cut takes the caret's whole line, line break and
+            // all, as it does in the reference editor. They used to do nothing at all.
+            egui::Event::Copy if !document.text().is_empty() => {
+                outcome.copy = Some(document.touched_lines_text());
+            }
+            egui::Event::Cut if !document.text().is_empty() => {
+                outcome.copy = Some(document.touched_lines_text());
+                outcome.changed |= document.apply(Command::DeleteLines);
+                outcome.scroll_to_caret = true;
+            }
             egui::Event::Key { key, pressed: true, modifiers, .. } => {
                 let shift = modifiers.shift;
                 // `command` is the Apple key on macOS and the control key on Windows, which is what
@@ -218,6 +228,7 @@ pub fn handle_input(
                     egui::Key::End => document.apply(Command::MoveLineEnd { extend: shift }),
                     egui::Key::Backspace if word => document.apply(Command::DeleteWordBackward),
                     egui::Key::Backspace => document.apply(Command::DeleteBackward),
+                    egui::Key::Delete if word => document.apply(Command::DeleteWordForward),
                     egui::Key::Delete => document.apply(Command::DeleteForward),
                     // A new line, and the indentation of the line it was started from with it —
                     // **as one `Command::Insert`**, so a new line and its indentation are one thing

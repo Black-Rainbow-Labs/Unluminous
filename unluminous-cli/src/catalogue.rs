@@ -428,9 +428,9 @@ pub fn kind_of(command: &Command, name: &str) -> Option<Kind> {
 /// spelled, including as text, since a person typing `--line 42` and a program sending `42` mean the
 /// same thing. A `null` is an absent value everywhere else on this wire and is one here too.
 ///
-/// A number that is the wrong *shape* — a negative count, a fraction where a line belongs — is
-/// deliberately not refused. `Request::whole` has always read those by clamping or truncating, and
-/// this is about the value that could not be read at all.
+/// A fraction where a line belongs is not refused, because `Request::whole` truncates it. A negative
+/// whole number is, other than one in [`SIGNED_WHOLE_NUMBERS`]: `Request::whole` reads a negative as
+/// no value at all, so `editor caret --line -3` was answered as a question about where the caret was.
 pub fn wrong_numbers(command: &Command, arguments: &Map<String, Value>) -> Vec<(String, String)> {
     let mut out = Vec::new();
     for (key, value) in arguments {
@@ -442,12 +442,20 @@ pub fn wrong_numbers(command: &Command, arguments: &Map<String, Value>) -> Vec<(
         // **`is_finite` as well as `is_ok`** (`task-1984` L10). `f64::parse` accepts `nan`, `inf`
         // and `-inf`, so `input move nan nan` fed a NaN pointer position to egui: nothing is
         // hovered, nothing is clicked, and nothing anywhere says why.
-        let readable = match value {
-            Value::Number(number) => number.as_f64().is_some_and(f64::is_finite),
-            Value::String(text) => text.trim().parse::<f64>().is_ok_and(f64::is_finite),
-            Value::Null => true,
-            _ => false,
+        let read = match value {
+            Value::Number(number) => number.as_f64(),
+            Value::String(text) => text.trim().parse::<f64>().ok(),
+            Value::Null => Some(0.0),
+            _ => None,
         };
+        // **A whole number below nought is refused too**, except for the one that is a direction.
+        // `Request::whole` reads a negative as nothing given, so `editor caret --line -3` read the
+        // caret and answered as though no line had been named.
+        let signed = SIGNED_WHOLE_NUMBERS.contains(&name.as_str());
+        let readable = read.is_some_and(|read| {
+            read.is_finite()
+                && (signed || read >= 0.0 || kind_of(command, &name) != Some(Kind::Whole))
+        });
         if !readable {
             out.push((name, as_written(value)));
         }
@@ -455,10 +463,28 @@ pub fn wrong_numbers(command: &Command, arguments: &Map<String, Value>) -> Vec<(
     out
 }
 
+/// The whole numbers that may be below nought, because they say which way as well as how far:
+/// `editor lines move --by -1` is up.
+const SIGNED_WHOLE_NUMBERS: [&str; 1] = ["by"];
+
 #[cfg(test)]
 mod not_a_number {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_negative_count_is_refused_and_a_direction_is_not() {
+        let caret = find("editor caret").expect("editor caret");
+        let negative: Map<String, Value> = json!({ "line": "-3" }).as_object().unwrap().clone();
+        assert_eq!(wrong_numbers(caret, &negative), vec![("line".to_owned(), "-3".to_owned())]);
+        let lines = find("editor lines").expect("editor lines");
+        let up: Map<String, Value> =
+            json!({ "what": "move", "by": -1 }).as_object().unwrap().clone();
+        assert!(wrong_numbers(lines, &up).is_empty());
+        let size = find("window size").expect("window size");
+        let fraction: Map<String, Value> = json!({ "width": "900.5" }).as_object().unwrap().clone();
+        assert!(wrong_numbers(size, &fraction).is_empty());
+    }
 
     /// `nan` and `inf` are refused, because `f64::parse` accepts them.
     ///
@@ -1196,11 +1222,12 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "editor",
         verb: "lines",
-        summary: "Edit whole lines: duplicate, move up or down, join, or sort. Each is one undo step, and each is about the lines the selection touches, or the caret's line when nothing is selected. Sort needs a selection.",
-        arguments: &[closed("what", true, "duplicate, move, join or sort.", &["duplicate", "move", "join", "sort"])],
+        summary: "Edit whole lines: duplicate, delete, move up or down, join, or sort. Each is one undo step, and each is about the lines the selection touches, or the caret's line when nothing is selected. Sort needs a selection.",
+        arguments: &[closed("what", true, "duplicate, delete, move, join or sort.", &["duplicate", "delete", "move", "join", "sort"])],
         flags: &[FILE, whole_option("by", "number", "For move: how far and which way. -1 is up and 1 is down, which is what Alt+Up and Alt+Down send.")],
         examples: &[
             "unluminous-cli editor lines duplicate",
+            "unluminous-cli editor lines delete",
             "unluminous-cli editor lines move --by -1",
             "unluminous-cli editor lines join",
             "unluminous-cli editor lines sort",
@@ -1328,7 +1355,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "editor",
         verb: "find",
-        summary: "Find text in the file that is showing, the way Ctrl+F does: the count, every match's line and column, and the one that is current selected in the window so a screenshot shows it. Use this rather than reading the whole file to locate a string. --replace turns it into an edit; without it nothing is changed.",
+        summary: "Find text in the file that is showing, the way Ctrl+F does: the count, every match's line and column, and the one that is current selected in the window so a screenshot shows it. Use this rather than reading the whole file to locate a string. It changes nothing; `editor replace` is the edit.",
         arguments: &[argument("text", false, "What to look for. The bar's current search when it is left out.")],
         flags: &[
             FILE,
@@ -4270,6 +4297,38 @@ pub const COMMANDS: &[Command] = &[
 mod tests {
     use super::*;
 
+    /// **A command's words name only flags it has.** `editor find`'s summary said "--replace turns it
+    /// into an edit", and `editor find` has no `--replace`: an agent that read it sent one and was
+    /// refused. A mention of another command's flag is listed here with the command it is written in.
+    #[test]
+    fn every_flag_a_command_mentions_is_one_it_takes() {
+        const ABOUT_ANOTHER_COMMAND: [(&str, &str); 1] = [("realm here", "from")];
+        let global: Vec<&str> =
+            crate::parse::GLOBAL_FLAGS.iter().map(|(name, _, _)| *name).collect();
+        for command in COMMANDS {
+            let mut words = vec![command.summary];
+            words.extend(command.arguments.iter().map(|argument| argument.help));
+            words.extend(command.flags.iter().map(|flag| flag.help));
+            for text in words {
+                for (at, _) in text.match_indices("--") {
+                    let name: String = text[at + 2..]
+                        .chars()
+                        .take_while(|c| c.is_ascii_lowercase() || *c == '-')
+                        .collect();
+                    if name.is_empty()
+                        || command.flags.iter().any(|flag| flag.name == name)
+                        || global.contains(&name.as_str())
+                        || ABOUT_ANOTHER_COMMAND
+                            .contains(&(command.typed().as_str(), name.as_str()))
+                    {
+                        continue;
+                    }
+                    panic!("`{}` mentions --{name}, which it does not take", command.typed());
+                }
+            }
+        }
+    }
+
     /// **A client never gives up before the window does.** `task-1922` B11.
     ///
     /// The window's own wait for `debug start --wait-for-pause` is thirty seconds, or ten minutes
@@ -4501,16 +4560,14 @@ mod tests {
         );
     }
 
-    /// Fractional where a line belongs, and negative where a count does, are deliberately left alone.
-    ///
-    /// [`crate::protocol::Request::whole`] has always read those by truncating or by answering
-    /// nothing, and `wrong_numbers` is about the value that could not be read at all. Narrowing them
-    /// as well would refuse values that work today, which is a separate decision.
+    /// A fraction where a line belongs is left alone, because [`crate::protocol::Request::whole`]
+    /// truncates it to a line that exists. A negative count is refused (`task-2318`): `whole` answers
+    /// nothing for one, so `editor caret --line -2` read the caret and reported that it had worked.
     #[test]
     fn a_number_of_the_wrong_shape_is_still_a_number() {
         let caret = find("editor caret").expect("editor caret");
         assert!(wrong_numbers(caret, &given(json!({ "line": 4.5 }))).is_empty());
-        assert!(wrong_numbers(caret, &given(json!({ "line": -2 }))).is_empty());
+        assert!(!wrong_numbers(caret, &given(json!({ "line": -2 }))).is_empty());
     }
 
     /// A name holds a number or it holds text, and both halves of that are asserted here.

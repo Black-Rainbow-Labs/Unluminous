@@ -447,7 +447,9 @@ impl UnluminousApp {
                 .iter()
                 .take(limit)
                 .enumerate()
-                .map(|(at, row)| format!("{at:<4}{:<32}{}", row.command.label, row.command.menu))
+                .map(|(at, row)| {
+                    format!("{at:<4}{}{}", column(&row.command.label, 32), row.command.menu)
+                })
                 .collect();
             return Reply::done(
                 &request.command,
@@ -481,7 +483,7 @@ impl UnluminousApp {
                 .iter()
                 .take(limit)
                 .enumerate()
-                .map(|(at, found)| format!("{at:<4}{:<32}{}", found.name, found.folder))
+                .map(|(at, found)| format!("{at:<4}{}{}", column(&found.name, 32), found.folder))
                 .collect();
             return Reply::done(
                 &request.command,

@@ -768,7 +768,7 @@ impl UnluminousApp {
                     let Some(chosen) = actions::action_for_key(menus, *key, modifiers) else {
                         return true;
                     };
-                    if in_a_text_box && chosen.belongs_to_a_focused_text_box() {
+                    if (in_a_text_box || in_a_terminal) && chosen.edits_the_document() {
                         return true;
                     }
                     let a_bracket = matches!(key, egui::Key::OpenBracket | egui::Key::CloseBracket);
