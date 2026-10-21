@@ -6,6 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.7.2 — 2026-10-21
+
+- A run of tool calls is done when one failed, adds up its time, and zoomed text keeps the font's spacing (`task-2321`)
+- Accept the four pictures the change moved (`task-2321`)
+
 ## 1.7.1 — 2026-10-21
 
 - A node sent to the Realm is centred in the view and sized to fit it (`task-2320`)
