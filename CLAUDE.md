@@ -2642,6 +2642,16 @@ binary `load_settings` gives it the person's store, so nothing a person sees cha
   thread every three seconds while the page shows (`keep_the_microphone_list_fresh`, never in a test's window),
   and `voice microphone` lists them for an agent. A named device that is unplugged falls back to the default and
   says so. Choosing another device while the microphone is open closes it and opens the new one.
+- **Send to Realm leaves the tab where it is.** A browser tab gets a browser node on the same address, a
+  picture, a sound or a video the node that shows it, and a text file a File Editor node showing **the same
+  document** (`app::twins`, Jason's choice of one document in two views). One view holds the `Document` and its
+  undo history; the other (`OpenFile::follows`) holds `Document::copy_for_another_view`, made again when the
+  first one's text, saved state or folds change. The view with the keyboard takes the document over before
+  any key is read (`keep_the_twins_in_step`, right after `pump_control`), `index_of` answers the view holding the
+  document, closing one view writes nothing (`hand_over_before_closing`), and `open_in_a_realm_node` makes a
+  second view of a file open in a pane rather than moving it. A notebook and a tab with no file still move.
+  **Dragging** a tab onto the canvas still moves it, and a browser tab dragged there is a browser node now; it
+  used to land in a File Editor node, which cannot draw a page.
 - **Pasted text in a zsh prompt is drawn in reverse video by zsh itself** (`zle_highlight`, `paste:standout`),
   and it stays until the line is edited. The terminal draws what zsh sends, so this is not a fault to fix here.
 - **A tab has no hint under the pointer**: it only repeated the name on the tab. The find bar's `Aa` and

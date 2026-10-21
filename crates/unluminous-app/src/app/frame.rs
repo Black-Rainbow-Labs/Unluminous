@@ -259,6 +259,9 @@ impl UnluminousApp {
         // painted and therefore in the next screenshot.
         self.pump_control(ui.ctx());
         crate::services::frame_trace::phase("control");
+        // After the commands and before any key is read, so the view with the keyboard holds the document
+        // that the keys go into. `task-2320`.
+        self.keep_the_twins_in_step();
         self.open_what_the_system_handed_over(ui.ctx());
         self.ask_git_about_the_open_file();
         crate::services::frame_trace::phase("git");
@@ -354,6 +357,7 @@ impl UnluminousApp {
         ctx.request_repaint_after(HEARTBEAT);
         crate::services::wake::a_frame_was_drawn();
         self.pump_control(ctx);
+        self.keep_the_twins_in_step();
         self.take_the_debug_replies(ctx);
         self.hear_from_the_kernels();
         self.let_the_plugins_catch_up(ctx);

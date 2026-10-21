@@ -78,6 +78,7 @@ pub mod setup;
 pub mod symbols;
 pub mod telemetry;
 mod terminals;
+mod twins;
 mod updating;
 pub mod voice;
 mod zooming;

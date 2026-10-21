@@ -309,6 +309,22 @@ pub struct OpenFile {
     ///
     /// `None` for a tab that has never been saved, and for one whose file could not be measured.
     pub disk: Option<DiskStamp>,
+    /// Set on the second view of a file that is open in two places, the File Editor node a file was sent
+    /// to and the editing area it stayed open in. `task-2320`. This tab's document is a copy of the other
+    /// view's, with no undo history, made again whenever the other one changes. See `app::twins`.
+    pub follows: Option<Followed>,
+}
+
+/// What a second view last copied from the view holding the document. See [`OpenFile::follows`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Followed {
+    /// The original's text revision when it was copied, which is also this copy's text revision until
+    /// something edits the copy itself.
+    pub text: u64,
+    /// Whether the original had unsaved changes then, so a save is copied across too.
+    pub modified: bool,
+    /// The original's fold revision then.
+    pub folds: u64,
 }
 
 /// A file that exists and that Unluminous cannot show. See [`OpenFile::unrenderable`].
@@ -353,6 +369,7 @@ impl OpenFile {
             shown_at: 0,
             cached: Cached::fresh(),
             disk: None,
+            follows: None,
         }
     }
 
@@ -651,11 +668,41 @@ impl OpenFiles {
     }
 
     /// Which tab holds `path`, if any.
+    ///
+    /// The view holding the document rather than a second view of it, when the file is open in two places
+    /// (`task-2320`), so a command that names a path edits the document with its undo history.
     pub fn index_of(&self, path: &Path) -> Option<usize> {
-        self.files.iter().position(|file| {
+        let holds = |file: &OpenFile| {
             file.path() == Some(path)
                 || file.unrenderable.as_ref().is_some_and(|unrenderable| unrenderable.path == path)
-        })
+        };
+        self.files
+            .iter()
+            .position(|file| holds(file) && file.follows.is_none())
+            .or_else(|| self.files.iter().position(holds))
+    }
+
+    /// Add a second view of an open file to a node, showing there. Answers its index. See `app::twins`.
+    pub fn add_to_node(&mut self, mut file: OpenFile, node: u64) -> usize {
+        file.home = Home::Node(node);
+        file.transient = false;
+        self.files.push(file);
+        let index = self.files.len() - 1;
+        self.stamp(index);
+        self.focus = Home::Node(node);
+        self.tidy();
+        index
+    }
+
+    /// Exchange the documents of two tabs, which is how the view with the keyboard comes to hold the
+    /// document and its undo history. See `app::twins`.
+    pub fn swap_documents(&mut self, one: usize, other: usize) {
+        if one == other || one >= self.files.len() || other >= self.files.len() {
+            return;
+        }
+        let (low, high) = (one.min(other), one.max(other));
+        let (left, right) = self.files.split_at_mut(high);
+        std::mem::swap(&mut left[low].document, &mut right[0].document);
     }
 
     /// The tab at `index`. Panics past the end, as `active` does: an index here always came from

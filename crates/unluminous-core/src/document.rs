@@ -645,6 +645,69 @@ impl Document {
         self.path = Some(path);
     }
 
+    /// This document as a second view of the same open file holds it: the text, its formatting, the
+    /// marked passages, the folds and the breakpoints, the saved state and the revisions, with **no undo
+    /// history** and `selection` in place of this document's own.
+    ///
+    /// `task-2320`: a file sent to the Realm stays open in the editing area and shows in a File Editor
+    /// node too, as one document. The view with the keyboard holds the history; the other holds this
+    /// copy, made again whenever the text changes. Cloning the history as well would copy every undo
+    /// snapshot on every keystroke. The colouring is read again from the start, because what changed
+    /// since this copy's own text was last coloured is not what changed since the original's was.
+    ///
+    /// @param selection - where the caret is in the view that gets the copy, kept inside the text
+    pub fn copy_for_another_view(&self, selection: Selection) -> Document {
+        Document {
+            text: self.text.clone(),
+            chars: self.chars.clone(),
+            paragraphs: self.paragraphs.clone(),
+            highlights: self.highlights.clone(),
+            folds: self.folds.clone(),
+            breakpoints: self.breakpoints.clone(),
+            selection: self.inside(selection),
+            pending: self.pending.clone(),
+            desired_x: None,
+            undo: Vec::new(),
+            redo: Vec::new(),
+            last_edit: self.last_edit,
+            path: self.path.clone(),
+            line_ending: self.line_ending,
+            encoding: self.encoding,
+            history_revision: self.history_revision,
+            saved_history_revision: self.saved_history_revision,
+            next_history_revision: self.next_history_revision,
+            revision: self.revision,
+            text_revision: self.text_revision,
+            syntax_dirt: Dirt::Whole,
+            touching: None,
+            touched: self.touched.clone(),
+            fold_revision: self.fold_revision,
+        }
+    }
+
+    /// Put the selection somewhere, kept inside the text and on character boundaries. Not an edit and not
+    /// an undo step: what a second view of a file does when it takes the document over and keeps its own
+    /// caret (`task-2320`).
+    /// @param selection - where it goes
+    pub fn place_the_selection(&mut self, selection: Selection) {
+        self.selection = self.inside(selection);
+        self.desired_x = None;
+        self.revision += 1;
+    }
+
+    /// `selection` moved back onto the text: no further than its end, and onto a character boundary.
+    fn inside(&self, selection: Selection) -> Selection {
+        let end = self.text.len_bytes();
+        let onto = |at: usize| {
+            let mut at = at.min(end);
+            while at > 0 && !self.text.is_char_boundary(at) {
+                at -= 1;
+            }
+            at
+        };
+        Selection { anchor: onto(selection.anchor), head: onto(selection.head) }
+    }
+
     /// True when the current history state is not the one last opened or successfully saved.
     pub fn is_modified(&self) -> bool {
         self.history_revision != self.saved_history_revision

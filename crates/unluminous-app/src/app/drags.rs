@@ -157,9 +157,14 @@ impl UnluminousApp {
             .intersect(self.realm.body)
     }
 
-    /// A tab let go on the empty canvas: a File Editor node of its own, with that tab in it.
+    /// A tab let go on the empty canvas: a node of its own, with that tab in it.
     ///
     /// `task-1914`: *"I should be able to drag tabs onto the canvas and it break out into a new node."*
+    ///
+    /// A browser tab becomes a browser node on its address, and a picture, a sound or a video the node that
+    /// shows it; the tab is then closed, because a drag moves it (`task-2320`: a browser tab used to land in a
+    /// File Editor node, which has no way to draw a page). Anything else becomes a File Editor node holding the
+    /// tab itself.
     ///
     /// **The one place that happens**, so the pointer and a test reach it the same way — which is
     /// `run_cli`'s rule about a command and a menu entry. Answers the node it made.
@@ -169,12 +174,42 @@ impl UnluminousApp {
         at: Pos2,
     ) -> crate::services::realm::NodeId {
         let world = self.where_a_node_dropped_at_would_go(at);
+        if let Some(node) = self.a_node_that_shows_the_tab(file, world) {
+            self.close_tab(file);
+            self.focus = Focus::Realm;
+            self.realm.realm.choose(Some(node));
+            return node;
+        }
         let node = self.add_a_realm_node(crate::services::realm::Kind::Editor, world);
         self.files.drag_tab_to_node(file, node, 0);
         self.remember_a_nodes_tabs(node);
         self.focus = Focus::Realm;
         self.realm.realm.choose(Some(node));
         node
+    }
+
+    /// For a browser tab or a tab showing a picture, a sound or a video, the node that shows the same thing at
+    /// `world`. `None` for every other tab, and when the node could not be made.
+    fn a_node_that_shows_the_tab(
+        &mut self,
+        file: usize,
+        world: Pos2,
+    ) -> Option<crate::services::realm::NodeId> {
+        use crate::services::realm::Kind;
+        let tab = self.files.get(file)?;
+        if let Some(address) = tab.browser.as_ref().map(|tab| tab.current_url().to_owned()) {
+            return match self.a_browser_node_for(&address, world) {
+                Ok(node) => Some(node),
+                Err(problem) => {
+                    self.message = Some(problem);
+                    None
+                }
+            };
+        }
+        let path = tab.path()?.to_path_buf();
+        let kind = crate::app::realm_nodes::kind_for_a_file(&path)
+            .filter(|kind| matches!(kind, Kind::Image | Kind::Audio | Kind::Video))?;
+        self.add_a_file_node(kind, &path, world).ok()
     }
 
     /// A file let go on the canvas: onto a File Editor node as a new tab, or onto the empty canvas as a

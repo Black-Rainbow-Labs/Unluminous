@@ -3178,6 +3178,19 @@ impl UnluminousApp {
         // **The one place a file is opened**, so a node's editor and the editing area's read a file
         // the same way, refuse it the same way, and answer the same thing when they cannot. It does not
         // bring the editing area back, because the tab is about to leave it. `task-2294`.
+        // **A file open in the editing area stays there** and the node shows the same document as well
+        // (`task-2320`), rather than the tab being moved out of the editing area.
+        if let Some(open) = self.files.index_of(path).filter(|open| {
+            self.files.home_of(*open).pane().is_some() && self.may_have_a_second_view(*open)
+        }) {
+            self.put_a_second_view_on_a_node(open, node);
+            if !matches!(found.state, State::Note(_)) {
+                self.remember_a_nodes_tabs(node);
+            }
+            self.focus = Focus::Realm;
+            self.realm.realm.choose(Some(node));
+            return Ok(());
+        }
         self.open_path_without_showing_the_editing_area(path, true, false)?;
         let Some(index) = self.files.index_of(path) else {
             return Err(format!("{} did not open.", path.display()));
@@ -4036,14 +4049,15 @@ impl UnluminousApp {
 
     /// The world point in the middle of what is showing, which is where a node with no place of its
     /// own goes.
-    /// Move the tab that is showing onto the realm that is showing, as a node of its own, in the middle of what
+    /// Show the tab that is showing on the realm that is showing too, as a node of its own, in the middle of what
     /// the canvas shows. `task-2270`: *"Right click on tab -> send to realm so the file gets added as a new node
     /// in the current open realm."*
     ///
-    /// A rendered tab becomes a browser node on the same address, and a picture, a sound or a video becomes the
-    /// node that shows it. Anything else becomes a File Editor node holding the tab itself, which is what
-    /// dragging the tab onto the canvas does, so unsaved changes go with it. The Realm panel is shown if it was
-    /// put away.
+    /// **The tab stays open where it is** (`task-2320`: *"When I send a file or browser to realm, it should
+    /// stay open in the file editor, and also show up in the realm."*). A rendered tab becomes a browser node on
+    /// the same address, and a picture, a sound or a video becomes the node that shows it. A text file becomes a
+    /// File Editor node showing the same document, see `app::twins`. A tab with no file, or a notebook, still
+    /// moves onto the node, because there is nothing to show twice. The Realm panel is shown if it was put away.
     pub(crate) fn send_the_tab_to_the_realm(&mut self) -> Result<NodeId, String> {
         if !self.realm_is_on() {
             return Err(
@@ -4071,16 +4085,15 @@ impl UnluminousApp {
             });
         self.show_a_panel(dock::Panel::Realm, true);
         let at = self.middle_of_the_canvas();
+        let second_view = self.may_have_a_second_view(index);
         let node = if let Some(address) = address {
-            let node = self.add_a_realm_node(Kind::Browser, at);
-            if address != crate::services::browser::BLANK {
-                self.open_a_realm_browser(node, &address)?;
-            }
-            self.close_tab(index);
-            node
+            self.a_browser_node_for(&address, at)?
         } else if let Some((kind, path)) = media {
-            let node = self.add_a_file_node(kind, &path, at)?;
-            self.close_tab(index);
+            self.add_a_file_node(kind, &path, at)?
+        } else if second_view {
+            let node = self.add_a_realm_node(Kind::Editor, at);
+            self.put_a_second_view_on_a_node(index, node);
+            self.remember_a_nodes_tabs(node);
             node
         } else {
             let node = self.add_a_realm_node(Kind::Editor, at);
@@ -4090,6 +4103,17 @@ impl UnluminousApp {
         };
         self.focus = Focus::Realm;
         self.realm.realm.choose(Some(node));
+        Ok(node)
+    }
+
+    /// A browser node at `at`, on `address` unless it is the empty page a new tab starts on.
+    /// @param address - the page
+    /// @param at - the node's top left corner, in world points
+    pub(crate) fn a_browser_node_for(&mut self, address: &str, at: Pos2) -> Result<NodeId, String> {
+        let node = self.add_a_realm_node(Kind::Browser, at);
+        if address != crate::services::browser::BLANK {
+            self.open_a_realm_browser(node, address)?;
+        }
         Ok(node)
     }
 

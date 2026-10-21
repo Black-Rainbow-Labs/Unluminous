@@ -679,6 +679,12 @@ impl UnluminousApp {
         // Written down **before** it is closed, because afterwards there is no tab to ask where it
         // was. `task-1922` WP4.
         self.remember_a_closed_tab(index);
+        // **A file open in another view too is not written**, because that view keeps the document and
+        // its unsaved changes. `task-2320`.
+        if self.hand_over_before_closing(index) {
+            self.files.close(index);
+            return;
+        }
         // **A tab whose save failed is not closed.** `task-1984` A3: the write's failure went into the
         // status bar and the next line closed the tab anyway, so a read only file, a full disk or a
         // file in an encoding Unluminous only reads took the typing with it. A notice that stays is
@@ -713,6 +719,10 @@ impl UnluminousApp {
     pub fn save_every_modified_tab(&mut self) -> Vec<String> {
         let mut refused = Vec::new();
         for index in 0..self.files.len() {
+            // A second view of a file holds a copy; the view it copies is the one written. `task-2320`.
+            if self.files.at(index).follows.is_some() {
+                continue;
+            }
             if let Err(problem) = self.save_before_closing(index) {
                 refused.push(problem);
             }
@@ -796,6 +806,7 @@ impl UnluminousApp {
         // A tab closed with `--discard` is still a tab somebody may want back, and what reopening it
         // means is reading the file again — which is what it would have meant either way.
         self.remember_a_closed_tab(index);
+        self.hand_over_before_closing(index);
         self.files.close(index);
         // **The tab shown next keeps what was laid out for it and where it was scrolled** (`task-2269`: *"When I
         // have a .md file open, then click a link on it, it opens a browser tab. if i close that browser tab and end

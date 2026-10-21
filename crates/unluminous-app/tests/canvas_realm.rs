@@ -4735,11 +4735,16 @@ fn a_file_editor_node_showing_text_with_no_preview_has_no_view_buttons() {
     assert_eq!(refused(&mut harness, &format!("realm note view {node} preview")), "refused");
 }
 
-/// `task-2270`: *"Right click on tab -> send to realm so the file gets added as a new node in the current open
-/// realm."* The tab moves onto a new File Editor node, and the editing area no longer holds it.
+/// `task-2320`: *"When I send a file or browser to realm, it should stay open in the file editor, and also show up
+/// in the realm."* The tab stays in the editing area, a File Editor node shows the same document, and it is one
+/// document: typing in either view shows in both, one undo takes back what was typed in either, and closing the
+/// node writes nothing.
 #[test]
-fn send_to_realm_moves_the_tab_showing_onto_a_node_of_its_own() {
+fn send_to_realm_keeps_the_tab_and_shows_the_same_document_on_a_node() {
+    use unluminous_core::Command;
     let folder = sample_folder();
+    let path = folder.join("readme.md");
+    let on_disk = std::fs::read_to_string(&path).expect("the file");
     let mut harness = harness("");
     did(&mut harness, "tab open readme.md --permanent");
     steady(&mut harness);
@@ -4747,10 +4752,120 @@ fn send_to_realm_moves_the_tab_showing_onto_a_node_of_its_own() {
     did(&mut harness, "action run send-tab-to-realm");
     steady(&mut harness);
     assert_eq!(harness.state().realm.realm.nodes.len(), before + 1, "a node was added");
-    let opened = harness.state().files.index_of(&folder.join("readme.md")).expect("still open");
-    let node = harness.state().files.home_of(opened).node().expect("on a node now");
-    assert!(harness.state().realm.realm.node(node).is_some());
     assert!(harness.state().realm.visible, "the Realm panel is showing");
+    let views: Vec<usize> = (0..harness.state().files.len())
+        .filter(|index| harness.state().files.at(*index).path() == Some(path.as_path()))
+        .collect();
+    assert_eq!(views.len(), 2, "the file is open in two places");
+    let pane = *views
+        .iter()
+        .find(|index| harness.state().files.home_of(**index).pane().is_some())
+        .expect("still in a pane");
+    let node_tab = *views
+        .iter()
+        .find(|index| harness.state().files.home_of(**index).node().is_some())
+        .expect("and on a node");
+    let node = harness.state().files.home_of(node_tab).node().expect("a node");
+    assert!(harness.state().realm.realm.node(node).is_some());
+
+    // Typed on the node, which has the keyboard after a send, and seen in the editing area.
+    harness
+        .state_mut()
+        .files
+        .at_mut(node_tab)
+        .document
+        .apply(Command::PlaceCaret { offset: 0, extend: false });
+    harness.state_mut().files.at_mut(node_tab).document.apply(Command::Insert("Node. ".to_owned()));
+    steady(&mut harness);
+    assert!(harness.state().files.at(pane).document.text().to_string().starts_with("Node. "));
+
+    // Typed in the editing area once it has the keyboard, and seen on the node.
+    harness.state_mut().files.focus_pane(0);
+    harness.state_mut().focus = unluminous_app::app::Focus::Editor;
+    steady(&mut harness);
+    harness
+        .state_mut()
+        .files
+        .at_mut(pane)
+        .document
+        .apply(Command::PlaceCaret { offset: 0, extend: false });
+    harness.state_mut().files.at_mut(pane).document.apply(Command::Insert("Pane. ".to_owned()));
+    steady(&mut harness);
+    assert!(harness
+        .state()
+        .files
+        .at(node_tab)
+        .document
+        .text()
+        .to_string()
+        .starts_with("Pane. Node. "));
+
+    // One undo history: two undos in the editing area take back what was typed in both places.
+    harness.state_mut().files.at_mut(pane).document.apply(Command::Undo);
+    harness.state_mut().files.at_mut(pane).document.apply(Command::Undo);
+    steady(&mut harness);
+    assert_eq!(harness.state().files.at(pane).document.text().to_string(), on_disk);
+    assert_eq!(harness.state().files.at(node_tab).document.text().to_string(), on_disk);
+
+    // Closing the node closes that view only, and writes nothing.
+    harness.state_mut().files.at_mut(pane).document.apply(Command::Insert("Kept. ".to_owned()));
+    steady(&mut harness);
+    harness.state_mut().close_tab(node_tab);
+    steady(&mut harness);
+    let left = harness.state().files.index_of(&path).expect("the editing area still has it");
+    assert!(harness.state().files.home_of(left).pane().is_some());
+    assert!(
+        harness.state().files.at(left).document.is_modified(),
+        "the unsaved change is still there"
+    );
+    assert!(harness.state().files.at(left).follows.is_none(), "and it is the only view");
+    assert_eq!(std::fs::read_to_string(&path).expect("the file"), on_disk, "nothing was written");
+    harness.state_mut().files.at_mut(left).document.apply(Command::Undo);
+}
+
+/// `task-2320`: a browser tab sent to the Realm stays open, and a browser node shows the same address.
+#[test]
+fn send_to_realm_keeps_a_browser_tab_and_adds_a_browser_node_on_its_address() {
+    if !unluminous_app::services::browser::SUPPORTED {
+        return;
+    }
+    let mut harness = harness("");
+    did(&mut harness, "browser open https://example.com/");
+    steady(&mut harness);
+    let tabs = harness.state().files.len();
+    did(&mut harness, "action run send-tab-to-realm");
+    steady(&mut harness);
+    assert_eq!(harness.state().files.len(), tabs, "the browser tab is still open");
+    let made = harness.state().realm.realm.nodes.last().expect("a node").clone();
+    assert_eq!(made.kind(), unluminous_app::services::realm::Kind::Browser);
+    let page = harness.state().realm.live.browser(made.id).expect("the node has a page");
+    assert!(page.current_url().starts_with("https://example.com"), "{}", page.current_url());
+}
+
+/// `task-2320`: a browser tab dragged onto the canvas becomes a browser node on its address, and the tab goes,
+/// because a drag moves it. It used to land in a File Editor node, which cannot draw a page.
+#[test]
+fn a_browser_tab_dropped_on_the_canvas_becomes_a_browser_node() {
+    if !unluminous_app::services::browser::SUPPORTED {
+        return;
+    }
+    let mut harness = harness("");
+    did(&mut harness, "realm show");
+    did(&mut harness, "browser open https://example.com/");
+    steady(&mut harness);
+    let carried = harness.state().files.active_index();
+    assert!(harness.state().files.at(carried).browser.is_some());
+    let middle = harness.state().realm.body.center();
+    let node = harness.state_mut().break_a_tab_out_onto_the_canvas(carried, middle);
+    steady(&mut harness);
+    let made = harness.state().realm.realm.node(node).cloned().expect("the node");
+    assert_eq!(made.kind(), unluminous_app::services::realm::Kind::Browser);
+    let page = harness.state().realm.live.browser(node).expect("the node has a page");
+    assert!(page.current_url().starts_with("https://example.com"));
+    assert!(
+        !harness.state().files.iter().any(|file| file.browser.is_some()),
+        "the browser tab moved onto the canvas"
+    );
 }
 
 /// `task-2270`: *"Click on page links should open new tabs by default."* A link clicked in a browser node's page
