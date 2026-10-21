@@ -1497,6 +1497,19 @@ fn delete_means_the_file_in_the_explorer_and_the_letter_in_the_editor() {
     assert!(question.note.contains("readme.md"));
 }
 
+/// `F2` on a row asks for its new name, which is what it does in a file manager. It did nothing.
+#[test]
+fn f2_in_the_explorer_renames_the_row() {
+    let folder = scratch_folder("f2");
+    let mut harness = harness_in(&folder);
+    did(&mut harness, &format!("explorer select {}", folder.join("readme.md").display()));
+    harness.key_press(egui::Key::F2);
+    steady(&mut harness);
+    let modal = did(&mut harness, "modal state");
+    assert_eq!(modal["open"], "rename", "the rename question is open: {modal}");
+    did(&mut harness, "modal cancel");
+}
+
 #[test]
 fn the_arrow_keys_walk_the_selection_and_a_letter_hands_the_keyboard_back() {
     let folder = scratch_folder("arrows");

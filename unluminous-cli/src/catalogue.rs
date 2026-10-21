@@ -1739,7 +1739,7 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "highlight",
         verb: "add",
-        summary: "Mark a passage in a colour. Give it lines and columns, or --text to mark every occurrence of some words. The file need not be open.",
+        summary: "Mark a passage in a color. Give it lines and columns, or --text to mark every occurrence of some words. The file need not be open.",
         arguments: &[argument("path", false, "The file to mark. The tab that is showing when it is left out.")],
         flags: &[
             whole_option("from-line", "number", "The line the passage starts on, counting from 1."),

@@ -1767,7 +1767,7 @@ unluminous-cli highlight list --all --json
 unluminous-cli highlight add [path] [--from-line <number>] [--from-column <number>] [--to-line <number>] [--to-column <number>] [--text <words>] [--color <name>]
 ```
 
-Mark a passage in a colour. Give it lines and columns, or --text to mark every occurrence of some words. The file need not be open.
+Mark a passage in a color. Give it lines and columns, or --text to mark every occurrence of some words. The file need not be open.
 
 - `path` (optional) — The file to mark. The tab that is showing when it is left out.
 

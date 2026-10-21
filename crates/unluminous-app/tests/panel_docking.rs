@@ -351,6 +351,9 @@ fn a_panels_zoom_is_set_and_read_from_the_command_line() {
     // Named the way the rest of the command line names a contributed pane, rather than by its slot.
     did(&mut harness, "panel zoom agent-chat/chat 2.0");
     assert!((harness.state().panes.zoom_of(Panel::Plugin(0)) - 2.0).abs() < 0.001);
+    // And by the plugin's id alone, which is what `plugins pane agent-chat` takes.
+    did(&mut harness, "panel zoom agent-chat 1.5");
+    assert!((harness.state().panes.zoom_of(Panel::Plugin(0)) - 1.5).abs() < 0.001);
     // A tile answers with the one number that decides its size, and says which kind of answer it is.
     let tile = did(&mut harness, "panel zoom terminal");
     assert_eq!(tile["kind"], "font size");

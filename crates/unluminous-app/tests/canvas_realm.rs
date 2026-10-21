@@ -299,6 +299,25 @@ fn a_node_is_arranged_in_the_stacking_order_and_a_click_leaves_the_order_alone()
     assert_eq!(rows, vec!["Bring to Front", "Bring Forward", "Send Backward", "Send to Back"]);
 }
 
+/// `status --section keyboard` names a node only while the canvas has the keys. It named the chosen node
+/// whatever held them, beside `holder: editor`.
+#[test]
+fn the_keyboard_is_in_a_node_only_while_the_canvas_holds_it() {
+    let mut harness = harness("");
+    did(&mut harness, "realm show");
+    let made = did(&mut harness, "realm add editor --x 40 --y 40");
+    let node = made["node"].as_u64().expect("a node id");
+    did(&mut harness, &format!("realm focus {node}"));
+    let held = did(&mut harness, "status --section keyboard")["keyboard"].clone();
+    assert_eq!(held["holder"], "realm");
+    assert_eq!(held["node"], serde_json::json!(node));
+    did(&mut harness, "realm hide");
+    did(&mut harness, "pane focus 0");
+    let held = did(&mut harness, "status --section keyboard")["keyboard"].clone();
+    assert_eq!(held["holder"], "editor");
+    assert_eq!(held["node"], serde_json::Value::Null, "the keys are not in a node: {held}");
+}
+
 /// A Rust file on a File Editor node is coloured as it is in a pane. Only the tab showing in each pane
 /// was asked to colour itself, so code on a node was drawn in the one text colour.
 #[test]

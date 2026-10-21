@@ -91,10 +91,18 @@ pub fn for_command(command: &Command) -> String {
         out.push('\n');
     }
     if command.local {
-        out.push_str("Answered by the CLI itself; no Unluminous needs to be running.\n");
+        out.push_str(match DRIVES_A_WINDOW_FROM_THE_CLI.contains(&command.typed().as_str()) {
+            true => "Run by the CLI itself, which sends each command on to a running Unluminous.\n",
+            false => "Answered by the CLI itself; no Unluminous needs to be running.\n",
+        });
     }
     out
 }
+
+/// The commands the CLI runs itself that still reach a window: `batch` sends every step to one, and
+/// `mcp serve` answers each tool call by driving one. Their help said no Unluminous needed to be
+/// running, and a `batch` with none running refuses every step.
+const DRIVES_A_WINDOW_FROM_THE_CLI: [&str; 2] = ["batch", "mcp serve"];
 
 /// Every command as data, or one of them.
 pub fn as_json(only: Option<&str>) -> Value {
@@ -179,6 +187,17 @@ mod tests {
             }
         }
         assert!(overall().contains("--instance <pid|port|path>  Which"));
+    }
+
+    #[test]
+    fn a_command_that_reaches_a_window_never_says_none_is_needed() {
+        let batch = for_command(catalogue::find("batch").expect("batch"));
+        assert!(!batch.contains("no Unluminous needs to be running"), "{batch}");
+        let version = for_command(catalogue::find("version").expect("version"));
+        assert!(version.contains("no Unluminous needs to be running"));
+        for name in DRIVES_A_WINDOW_FROM_THE_CLI {
+            assert!(catalogue::find(name).is_some_and(|command| command.local), "{name}");
+        }
     }
 
     #[test]

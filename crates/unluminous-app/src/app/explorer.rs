@@ -75,6 +75,7 @@ impl UnluminousApp {
                     egui::Key::Enter,
                     egui::Key::Escape,
                     egui::Key::Delete,
+                    egui::Key::F2,
                 ]
                 .into_iter()
                 .find(|key| input.key_pressed(*key))
@@ -104,6 +105,11 @@ impl UnluminousApp {
             egui::Key::Escape => self.focus = Focus::Editor,
             egui::Key::Delete => {
                 return self.selected.clone().map(Action::DeletePath);
+            }
+            // `F2` renames the row, which is what it does in every file manager on Windows. It did
+            // nothing, so renaming was only on the right click menu.
+            egui::Key::F2 => {
+                return self.selected.clone().map(Action::RenamePath);
             }
             _ => {}
         }

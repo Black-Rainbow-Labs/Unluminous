@@ -1040,7 +1040,7 @@ impl UnluminousApp {
                     settings.accent = value.trim().to_uppercase();
                 } else {
                     return Err(format!(
-                        "{value} is not a colour. Write one as #RRGGBB, or leave it empty for the theme's own."
+                        "{value} is not a color. Write one as #RRGGBB, or leave it empty for the theme's own."
                     ));
                 }
             }
@@ -1434,7 +1434,7 @@ impl UnluminousApp {
                         return no(
                             request,
                             code::USAGE,
-                            format!("{accent} is not a colour. Write one as #RRGGBB, or `none` for the theme's own."),
+                            format!("{accent} is not a color. Write one as #RRGGBB, or `none` for the theme's own."),
                         );
                     }
                 }

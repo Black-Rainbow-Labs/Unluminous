@@ -635,7 +635,7 @@ impl UnluminousApp {
                         .realm
                         .change_shape(node, |held| held.fill = Some(colour))
                         .map(|()| format!("Colored it {}.", colour.to_hex())),
-                    None => Err(format!("{value} is not a colour. Write #RRGGBB, #RRGGBBAA or theme.")),
+                    None => Err(format!("{value} is not a color. Write #RRGGBB, #RRGGBBAA or theme.")),
                 },
             },
             "align" => match Align::from_name(&value) {
@@ -757,7 +757,7 @@ impl UnluminousApp {
             }
             "apply" => {
                 self.finish_the_colour_picker(true);
-                Ok("Kept the colour.".to_owned())
+                Ok("Kept the color.".to_owned())
             }
             "cancel" => {
                 self.finish_the_colour_picker(false);
@@ -765,7 +765,7 @@ impl UnluminousApp {
             }
             written => {
                 let Some(colour) = unluminous_core::Rgba::parse(written) else {
-                    return Err(format!("{written} is not a colour. Write #RRGGBB or #RRGGBBAA."));
+                    return Err(format!("{written} is not a color. Write #RRGGBB or #RRGGBBAA."));
                 };
                 if !open {
                     self.open_the_colour_picker(node)?;

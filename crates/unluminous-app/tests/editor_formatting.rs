@@ -415,6 +415,68 @@ fn copied_over_a_few_frames(harness: &mut Harness<'static, UnluminousApp>) -> St
     String::new()
 }
 
+/// `Enter` between a pair of braces opens a block: the new line one indent further in, and the closer
+/// on a line of its own. It used to give the new line the old indentation and leave the closer beside
+/// the caret.
+#[test]
+fn enter_between_braces_opens_an_indented_block() {
+    let mut harness = harness("    fn x() {}");
+    harness.state_mut().command(Command::PlaceCaret { offset: 12, extend: false });
+    steady(&mut harness);
+    harness.key_press(egui::Key::Enter);
+    steady(&mut harness);
+    assert_eq!(harness.state().document().text().to_string(), "    fn x() {\n    \t\n    }");
+    assert_eq!(harness.state().document().selection().head, 18, "the caret is on the inner line");
+    harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::Z);
+    steady(&mut harness);
+    assert_eq!(harness.state().document().text().to_string(), "    fn x() {}", "one undo step");
+}
+
+/// `Ctrl+Home` and `Ctrl+End` go to the ends of the document, with shift selecting to them. They used
+/// to stop at the ends of the line the caret was on.
+#[test]
+fn control_home_and_end_go_to_the_ends_of_the_document() {
+    let mut harness = harness("one\ntwo\nthree");
+    harness.state_mut().command(Command::PlaceCaret { offset: 5, extend: false });
+    steady(&mut harness);
+    harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::End);
+    steady(&mut harness);
+    assert_eq!(harness.state().document().selection().head, 13);
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, egui::Key::Home);
+    steady(&mut harness);
+    assert_eq!(harness.state().document().selected_text(), "one\ntwo\nthree");
+}
+
+/// `PageDown` and `PageUp` move the caret a screenful at a time. They did nothing at all.
+#[test]
+fn page_down_and_page_up_move_a_screenful() {
+    let text: String = (1..=300).map(|n| format!("line {n}\n")).collect();
+    let mut harness = harness(&text);
+    harness.state_mut().command(Command::PlaceCaret { offset: 0, extend: false });
+    steady(&mut harness);
+    harness.key_press(egui::Key::PageDown);
+    steady(&mut harness);
+    let down = harness.state().caret_position().line;
+    assert!(down > 10, "a page is many lines, and it went to line {down}");
+    harness.key_press(egui::Key::PageDown);
+    steady(&mut harness);
+    assert!(harness.state().caret_position().line > down, "and the next page is further on");
+    harness.key_press(egui::Key::PageUp);
+    steady(&mut harness);
+    assert_eq!(harness.state().caret_position().line, down, "and PageUp comes back a page");
+}
+
+/// `Shift+Tab` with nothing selected takes an indent off the caret's line. It typed a tab.
+#[test]
+fn shift_tab_with_nothing_selected_dedents_the_line() {
+    let mut harness = harness("\tindented");
+    harness.state_mut().command(Command::PlaceCaret { offset: 3, extend: false });
+    steady(&mut harness);
+    harness.key_press_modifiers(Modifiers::SHIFT, egui::Key::Tab);
+    steady(&mut harness);
+    assert_eq!(harness.state().document().text().to_string(), "indented");
+}
+
 /// `Ctrl+Delete` deletes the word after the caret. It used to delete one character, because the
 /// editing area only knew the backward half of the pair.
 #[test]

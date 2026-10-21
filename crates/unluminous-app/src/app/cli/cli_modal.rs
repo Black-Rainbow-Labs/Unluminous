@@ -96,7 +96,9 @@ impl UnluminousApp {
             return json!({ "open": Value::Null });
         };
         let id = modal_id(&name);
-        let rect = id.and_then(|id| modal::drawn(ctx, id));
+        let rect = id
+            .and_then(|id| modal::drawn(ctx, id))
+            .map(|rect| in_window_points(rect, ctx.zoom_factor()));
         let mut value = json!({
             "open": name,
             "rect": rect.map(|rect| json!({
@@ -779,17 +781,20 @@ impl UnluminousApp {
             return done(request, format!("Put {name} back in the middle."));
         }
         let mut placement = modal::placement(ctx, id);
+        // In the window's points, which `modal state` reports, and divided by the interface's zoom on
+        // the way in. See `in_window_points`.
+        let zoom = ctx.zoom_factor();
+        let read = |name: &str| request.number(name).map(|value| value as f32 / zoom);
         let message = if verb == "move" {
-            let x = request.number("x").map(|value| value as f32).unwrap_or(rect.min.x);
-            let y = request.number("y").map(|value| value as f32).unwrap_or(rect.min.y);
+            let x = read("x").unwrap_or(rect.min.x);
+            let y = read("y").unwrap_or(rect.min.y);
             placement.offset += egui::Pos2::new(x, y) - rect.min;
-            format!("Moved {name} to {x}, {y}")
+            format!("Moved {name} to {:.0}, {:.0}", x * zoom, y * zoom)
         } else {
-            let width = request.number("width").map(|value| value as f32).unwrap_or(rect.width());
-            let height =
-                request.number("height").map(|value| value as f32).unwrap_or(rect.height());
+            let width = read("width").unwrap_or(rect.width());
+            let height = read("height").unwrap_or(rect.height());
             placement.grown += egui::Vec2::new(width, height) - rect.size();
-            format!("Made {name} {width} by {height}")
+            format!("Made {name} {:.0} by {:.0}", width * zoom, height * zoom)
         };
         modal::set_placement(ctx, id, placement);
         ctx.request_repaint();

@@ -2162,6 +2162,25 @@ impl Document {
         indentation_for_a_new_line(&window, self.selection.head - base).to_owned()
     }
 
+    /// Whether the line ends in an opening bracket just before the caret, and whether its closer is
+    /// the next thing after the caret, which is what `Enter` asks to indent the new line one step
+    /// further and to put the closer on a line of its own. Both false with a selection.
+    pub fn a_block_opens_at_the_caret(&self) -> (bool, bool) {
+        if !self.selection.is_empty() {
+            return (false, false);
+        }
+        let head = self.selection.head;
+        let (window, base) = self.line_window(head);
+        let (before, after) = window.split_at((head - base).min(window.len()));
+        let closer = match before.trim_end().chars().last() {
+            Some('{') => '}',
+            Some('[') => ']',
+            Some('(') => ')',
+            _ => return (false, false),
+        };
+        (true, after.trim_start().starts_with(closer))
+    }
+
     /// The byte at `at`, when a whole character starts and ends around it — so a byte in the middle
     /// of a multi-byte character answers nothing rather than answering about half of one.
     fn ascii_at(&self, at: usize) -> Option<u8> {
@@ -3191,6 +3210,18 @@ the fourth line",
         assert_eq!(document.selection().head, 3, "moved over the line break");
         document.apply(Command::MoveLeft { extend: false });
         assert_eq!(document.selection().head, 2);
+    }
+
+    #[test]
+    fn a_block_opens_at_the_caret_after_an_opening_bracket() {
+        let mut document = typed("fn x() {}");
+        document.apply(Command::PlaceCaret { offset: 8, extend: false });
+        assert_eq!(document.a_block_opens_at_the_caret(), (true, true));
+        document.apply(Command::PlaceCaret { offset: 9, extend: false });
+        assert_eq!(document.a_block_opens_at_the_caret(), (false, false));
+        let mut document = typed("let v = [ ");
+        document.apply(Command::MoveDocumentEnd { extend: false });
+        assert_eq!(document.a_block_opens_at_the_caret(), (true, false));
     }
 
     #[test]

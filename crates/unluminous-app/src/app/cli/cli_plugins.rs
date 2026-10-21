@@ -261,7 +261,7 @@ impl UnluminousApp {
         // **Where the pane was drawn on the last frame**, which `panel list` gives the built-in panels and
         // nothing gave a contributed one. `task-2317` asked for every arrangement of panes to be checked for
         // resizing, and the Agent-Tasks board's height could not be read from outside the window at all.
-        let rect = self.panel_rects.of(panel);
+        let rect = in_window_points(self.panel_rects.of(panel), self.interface_zoom());
         let drawn = match showing && rect.width() > 0.0 {
             true => format!(
                 ", at {:.0},{:.0} {:.0} x {:.0}",

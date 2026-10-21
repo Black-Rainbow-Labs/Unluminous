@@ -90,18 +90,30 @@ pub struct ViewOutcome {
 /// keystroke arrives as a field here rather than as an eighth argument. Its `Default` is what
 /// Unluminous did before any of it existed: a tab types a tab, and a new line starts at the left
 /// margin — which is what makes a test that does not care about either say nothing about it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Typing {
     /// What the `Tab` key types where nothing is selected. `settings.indent.text()`.
     pub indent: String,
     /// Whether a new line starts with the indentation of the line it was started from.
     pub auto_indent: bool,
+    /// How tall the editing area is, in points, which is how far `PageUp` and `PageDown` move.
+    pub page_height: f32,
 }
 
 impl Default for Typing {
     fn default() -> Self {
-        Self { indent: "\t".to_owned(), auto_indent: false }
+        Self { indent: "\t".to_owned(), auto_indent: false, page_height: 0.0 }
     }
+}
+
+/// How many lines one `PageUp` or `PageDown` moves: as many as fit in the editing area, less one so
+/// the line at the edge stays on the screen, and at least one.
+fn lines_in_a_page(layout: &Layout, page_height: f32) -> i32 {
+    let height = layout.lines.first().map_or(0.0, |line| line.height);
+    if height <= 0.0 || page_height <= 0.0 {
+        return 1;
+    }
+    ((page_height / height).floor() as i32 - 1).max(1)
 }
 
 pub fn handle_input(
@@ -222,8 +234,27 @@ pub fn handle_input(
                     egui::Key::ArrowDown if shortcut => {
                         document.apply(Command::MoveDocumentEnd { extend: shift })
                     }
+                    // A page at a time, keeping the column, as the arrows do. They did nothing.
+                    egui::Key::PageUp => document.move_vertically(
+                        layout,
+                        -lines_in_a_page(layout, typing.page_height),
+                        shift,
+                    ),
+                    egui::Key::PageDown => document.move_vertically(
+                        layout,
+                        lines_in_a_page(layout, typing.page_height),
+                        shift,
+                    ),
                     egui::Key::ArrowUp => document.move_vertically(layout, -1, shift),
                     egui::Key::ArrowDown => document.move_vertically(layout, 1, shift),
+                    // `Ctrl+Home` and `Ctrl+End` are the ends of the document on Windows and Linux,
+                    // and `Cmd` with them on macOS. They used to stop at the ends of the line.
+                    egui::Key::Home if shortcut => {
+                        document.apply(Command::MoveDocumentStart { extend: shift })
+                    }
+                    egui::Key::End if shortcut => {
+                        document.apply(Command::MoveDocumentEnd { extend: shift })
+                    }
                     egui::Key::Home => document.apply(Command::MoveLineStart { extend: shift }),
                     egui::Key::End => document.apply(Command::MoveLineEnd { extend: shift }),
                     egui::Key::Backspace if word => document.apply(Command::DeleteWordBackward),
@@ -238,7 +269,27 @@ pub fn handle_input(
                             true => document.indentation_for_a_new_line(),
                             false => String::new(),
                         };
-                        document.apply(Command::Insert(format!("\n{indent}")))
+                        // After an opening bracket the new line is one indent further in, and a
+                        // closer straight after the caret goes down to a line of its own at the
+                        // old indent, as one undo step, so `{|}` becomes a block to type into.
+                        let (opens, closes) = match typing.auto_indent {
+                            true => document.a_block_opens_at_the_caret(),
+                            false => (false, false),
+                        };
+                        match (opens, closes) {
+                            (true, true) => {
+                                let inner = format!("\n{indent}{}", typing.indent);
+                                let changed =
+                                    document.apply(Command::Insert(format!("{inner}\n{indent}")));
+                                let caret = document.selection().head - 1 - indent.len();
+                                document
+                                    .apply(Command::PlaceCaret { offset: caret, extend: false });
+                                changed
+                            }
+                            (true, false) => document
+                                .apply(Command::Insert(format!("\n{indent}{}", typing.indent))),
+                            _ => document.apply(Command::Insert(format!("\n{indent}"))),
+                        }
                     }
                     // A bare Tab. With control held it belongs to `Next Tab` and `Previous Tab` on
                     // the View menu, and finding the action there does not consume the key press, so
@@ -253,7 +304,20 @@ pub fn handle_input(
                         // is, inside the run of typing. `Shift+Tab` dedents instead — the reverse
                         // half of the same key, removing one tab from each touched line rather than
                         // adding one.
-                        if document.selection().is_empty() {
+                        if document.selection().is_empty() && shift {
+                            // `Shift+Tab` with nothing selected takes one indent off the caret's
+                            // line, as it does over a selection. It used to type a tab. An indent of
+                            // spaces is several characters, and `Dedent` takes one at a time.
+                            let (unit, times) = match typing.indent.starts_with(' ') {
+                                true => (IndentUnit::Space, typing.indent.len()),
+                                false => (IndentUnit::Tab, 1),
+                            };
+                            let mut changed = false;
+                            for _ in 0..times {
+                                changed |= document.apply(Command::Dedent { unit });
+                            }
+                            changed
+                        } else if document.selection().is_empty() {
                             // What one indent is, which `editor.indent` decides and which is a tab
                             // unless somebody has said otherwise.
                             document.apply(Command::Insert(typing.indent.clone()))

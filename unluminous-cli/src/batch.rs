@@ -156,9 +156,14 @@ pub fn run(
                 "batch",
                 &failure,
                 format!(
-                    "Step {} of {total} failed, so the {} after it did not run: {message}\n\n{}",
+                    "Step {} of {total} failed{}: {message}\n\n{}",
                     at + 1,
-                    total - at - 1,
+                    // Nothing is said about the steps after it when there are none.
+                    match total - at - 1 {
+                        0 => String::new(),
+                        1 => ", so the 1 after it did not run".to_owned(),
+                        left => format!(", so the {left} after it did not run"),
+                    },
                     lines.join("\n")
                 ),
             );
@@ -227,7 +232,27 @@ mod tests {
         assert_eq!(sent.len(), 2, "the third step does not run");
         assert!(!reply.ok);
         assert!(reply.message.starts_with("Step 2 of 3 failed"), "{}", reply.message);
+        assert!(reply.message.contains("the 1 after it did not run"), "{}", reply.message);
         assert_eq!(reply.result["ran"], 2);
+    }
+
+    /// The last step failing has no steps after it to speak of. It said "the 0 after it did not run".
+    #[test]
+    fn a_failing_last_step_says_nothing_about_steps_after_it() {
+        let steps = steps_from(&given(json!(["tab list", "tab show 9"]))).unwrap();
+        let mut n = 0;
+        let reply = run(steps, false, |command, _| {
+            n += 1;
+            Ok(match n {
+                2 => Reply::failed(&command.wire(), code::NOT_FOUND, "There is no tab 9."),
+                _ => Reply::done(&command.wire(), "1 open", Value::Null),
+            })
+        });
+        assert!(
+            reply.message.starts_with("Step 2 of 2 failed: There is no tab 9."),
+            "{}",
+            reply.message
+        );
     }
 
     #[test]

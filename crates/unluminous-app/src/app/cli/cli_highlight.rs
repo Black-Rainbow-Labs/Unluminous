@@ -274,7 +274,7 @@ impl UnluminousApp {
                         request,
                         code::USAGE,
                         format!(
-                            "{name} is not a colour. Say one of {}, or #rrggbb or #rrggbbaa.",
+                            "{name} is not a color. Say one of {}, or #rrggbb or #rrggbbaa.",
                             HighlightColor::names()
                         ),
                     )

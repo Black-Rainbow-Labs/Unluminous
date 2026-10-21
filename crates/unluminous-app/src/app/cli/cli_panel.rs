@@ -47,7 +47,20 @@ impl UnluminousApp {
         if let Some(panel) = dock::Panel::from_name(&name) {
             return Some(panel);
         }
-        self.plugin_ui.slot_of(&name).map(|slot| dock::Panel::Plugin(slot as u8))
+        if let Some(slot) = self.plugin_ui.slot_of(&name) {
+            return Some(dock::Panel::Plugin(slot as u8));
+        }
+        // **A plugin's id names its pane when it has one**, which is what `plugins pane agent-chat`
+        // already accepts. `panel zoom agent-chat` was refused with a list holding `agent-chat/chat`.
+        let prefix = format!("{name}/");
+        let mut keys =
+            self.plugin_ui.pane_keys().into_iter().filter(|key| key.starts_with(&prefix));
+        match (keys.next(), keys.next()) {
+            (Some(only), None) => {
+                self.plugin_ui.slot_of(&only).map(|slot| dock::Panel::Plugin(slot as u8))
+            }
+            _ => None,
+        }
     }
 
     /// Set a panel's zoom outright, which is what `panel zoom` does and what a test drives.
@@ -133,7 +146,7 @@ impl UnluminousApp {
         let rows: Vec<String> = dock::Panel::ALL
             .into_iter()
             .map(|panel| {
-                let rect = self.panel_rects.of(panel);
+                let rect = in_window_points(self.panel_rects.of(panel), self.interface_zoom());
                 format!(
                     "{}{:<9} {:<7} {}  {:>4} x {:<4}  {}",
                     if self.panel_is_showing(panel) { "*" } else { " " },
@@ -158,7 +171,7 @@ impl UnluminousApp {
         let panels: Vec<Value> = dock::Panel::ALL
             .into_iter()
             .map(|panel| {
-                let rect = self.panel_rects.of(panel);
+                let rect = in_window_points(self.panel_rects.of(panel), self.interface_zoom());
                 json!({
                     // The name a caller can ask this panel by. For a contributed pane that
                     // is its `<plugin id>/<pane id>`, not `plugin-2`, which would make an
@@ -179,7 +192,7 @@ impl UnluminousApp {
                 })
             })
             .collect();
-        let editor = self.panel_rects.editor;
+        let editor = in_window_points(self.panel_rects.editor, self.interface_zoom());
         let filling: Vec<&str> = dock::Side::ALL
             .into_iter()
             .filter(|side| self.panes.dock.fills(*side))

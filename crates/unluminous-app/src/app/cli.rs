@@ -379,6 +379,25 @@ pub(crate) fn column(text: impl std::fmt::Display, width: usize) -> String {
     format!("{text:<width$}")
 }
 
+/// A rectangle of egui's, in the window's own points, which is what `window screenshot` writes out and
+/// what `input` takes. The interface size is egui's zoom (`task-2280`), so the two differ by it: 1.12 at
+/// the default size. Every rectangle a command reports goes through here, so a place read off one
+/// answer can be clicked with `input` and found in a screenshot.
+pub(crate) fn in_window_points(rect: Rect, zoom: f32) -> Rect {
+    let zoom = if zoom.is_finite() && zoom > 0.0 { zoom } else { 1.0 };
+    Rect::from_min_max(
+        egui::pos2(rect.min.x * zoom, rect.min.y * zoom),
+        egui::pos2(rect.max.x * zoom, rect.max.y * zoom),
+    )
+}
+
+impl UnluminousApp {
+    /// How much egui's points are zoomed by the interface size. One in a test window.
+    pub(crate) fn interface_zoom(&self) -> f32 {
+        self.context.as_ref().map_or(1.0, egui::Context::zoom_factor)
+    }
+}
+
 /// A reply whose data is a list of lines the client prints as they are.
 pub(crate) fn lines(
     request: &Request,
@@ -1473,7 +1492,12 @@ impl crate::app::UnluminousApp {
             },
             "textBox": crate::app::text_box_has_the_keyboard(ctx),
             "modal": crate::app::a_modal_has_the_keyboard(ctx),
-            "node": self.realm.chosen(),
+            // Only while the canvas has the keys. It was the chosen node whatever held them, so a window
+            // typing into the editing area answered `holder: editor` beside a node the keys were not in.
+            "node": match self.focus {
+                crate::app::Focus::Realm => self.realm.chosen(),
+                _ => None,
+            },
             "pane": self.files.focus().pane(),
         })
     }
@@ -1672,6 +1696,16 @@ impl UnluminousApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_rectangle_is_reported_in_the_windows_points() {
+        let rect = Rect::from_min_size(egui::pos2(40.0, 20.0), egui::vec2(100.0, 50.0));
+        assert_eq!(
+            in_window_points(rect, 1.25),
+            Rect::from_min_size(egui::pos2(50.0, 25.0), egui::vec2(125.0, 62.5))
+        );
+        assert_eq!(in_window_points(rect, 1.0), rect);
+    }
 
     #[test]
     fn a_column_always_leaves_a_space_before_the_next() {

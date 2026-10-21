@@ -1294,6 +1294,7 @@ impl UnluminousApp {
         let typing = editor_view::Typing {
             indent: self.indent_text(),
             auto_indent: self.settings.auto_indent,
+            page_height: response.rect.height(),
         };
         // Taken apart by field, because the input handlers want the document mutably while the
         // layout they measure against is borrowed at the same time, and a method on `self` would
