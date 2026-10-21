@@ -2752,6 +2752,7 @@ fn the_voice_page_with_no_model_has_room_for_its_download_button() {
         may_download: true,
         microphone: "Unluminous is not allowed to use the microphone in System Settings, Privacy and Security, Microphone.".to_owned(),
         refused: true,
+        microphones: Vec::new(),
     });
     did(&mut harness, "modal open settings --page voice");
     steady(&mut harness);
@@ -2875,10 +2876,26 @@ fn the_voice_settings_page() {
         may_download: true,
         microphone: "The default microphone: allowed".to_owned(),
         refused: false,
+        microphones: vec![
+            "Microphone Array (Realtek)".to_owned(),
+            "Headset (USB Audio)".to_owned(),
+        ],
     });
     did(&mut harness, "modal open settings --page voice");
     steady(&mut harness);
     assert!(harness.query_by_label("Speech to text engine").is_some());
+    // `task-2320`: the input device dictation listens through, chosen on this page.
+    assert!(harness.query_by_label("Microphone").is_some(), "the page has a microphone dropdown");
+    did(&mut harness, "settings set voice.microphone \"Headset (USB Audio)\"");
+    steady(&mut harness);
+    assert_eq!(harness.state().settings.voice_microphone, "Headset (USB Audio)");
+    assert_eq!(
+        unluminous_app::app::voice::config_for(&harness.state().settings, false).device,
+        "Headset (USB Audio)",
+        "the engine is told the device"
+    );
+    did(&mut harness, "settings set voice.microphone \"\"");
+    steady(&mut harness);
     assert!(harness.query_by_label("Transcription endpoint").is_some());
     harness.snapshot(shot("settings_voice").as_str());
     did(&mut harness, "settings set voice.engine endpoint");

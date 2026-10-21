@@ -1082,6 +1082,10 @@ impl UnluminousApp {
             "voice.endpoint_model" => settings.voice_endpoint_model = value.trim().to_owned(),
             "voice.endpoint_key" => settings.voice_endpoint_key = value.trim().to_owned(),
             "voice.language" => settings.voice_language = value.trim().to_lowercase(),
+            // A device's name as `voice microphone` lists it, not checked against the machine, because a
+            // headset that is unplugged now is still a fine thing to choose; the engine falls back to the
+            // default until it is back. `task-2320`.
+            "voice.microphone" => settings.voice_microphone = value.trim().to_owned(),
             // A version, or empty to offer every version again. Not checked against the releases,
             // because declining a version that has not been published yet is harmless.
             "update.skip" => settings.update_skip = value.trim().trim_start_matches('v').to_owned(),
@@ -1617,6 +1621,10 @@ const SETTINGS: &[SettingKey] = &[
         help: "The language sent to the transcription endpoint, such as `en`. Empty lets the endpoint decide. The local model is English.",
     },
     SettingKey {
+        name: "voice.microphone",
+        help: "The input device dictation and \"Sable\" listen through, by the name `voice microphone` lists. Empty is the system's default. A device that is not connected falls back to the default.",
+    },
+    SettingKey {
         name: "voice.always_listen",
         help: "Whether the window listens for \"Sable\" and then takes dictation into the Agent-Chat prompt. `false` by default. The same switch as `voice listen` and the Chat settings' Listen for \"Sable\".",
     },
@@ -1908,6 +1916,7 @@ fn voice_setting(settings: &crate::settings::Settings, name: &str) -> String {
         "voice.endpoint_model" => settings.voice_endpoint_model.clone(),
         "voice.endpoint_key" => settings.voice_endpoint_key.clone(),
         "voice.language" => settings.voice_language.clone(),
+        "voice.microphone" => settings.voice_microphone.clone(),
         "voice.always_listen" => settings.voice_always_listen.to_string(),
         "voice.send_after_wake" => settings.voice_send_after_wake.to_string(),
         "voice.button" => settings.voice_button.to_string(),
