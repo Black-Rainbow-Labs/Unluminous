@@ -527,10 +527,13 @@ const LAYOUT_FILE: &str = "layout.conf";
 ///
 /// @param root - the project
 /// @param plugin_panes - the names of the panes the plugins contributed, in slot order
-pub fn load_layout(root: &Path, plugin_panes: &[String]) -> Option<crate::settings::Panes> {
+pub fn load_layout(
+    root: &Path,
+    plugin_panes: &[String],
+) -> Option<(crate::settings::Panes, Values)> {
     let text = std::fs::read_to_string(folder(root).join(LAYOUT_FILE)).ok()?;
     let values = Values::parse(&text);
-    Some(crate::settings::Panes::read_from_with(&values, plugin_panes))
+    Some((crate::settings::Panes::read_from_with(&values, plugin_panes), values))
 }
 
 /// Write the pane sizes and docking `root` has now. Nothing is written when the file already says the same.

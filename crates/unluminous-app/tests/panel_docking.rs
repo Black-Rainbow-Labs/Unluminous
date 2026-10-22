@@ -2100,3 +2100,47 @@ fn the_board_along_the_bottom_resizes_under_a_row_of_columns() {
         }
     }
 }
+
+/// A project that was opened before keeps its layout in `.unluminous/layout.conf`, and a plugin pane switched on
+/// in it is drawn, where that file says it was left.
+///
+/// `task-2327`, reported against 1.8.2 on macOS and then on Windows: Agent-Tasks, the Database and the Designer
+/// lit their rail buttons and drew nothing. `restore_project` replaced the window's panes with the ones read from
+/// the project's file (`task-2322`), and the dock read from it knew no contributed panes, so every one of them was
+/// on no side and given no room. A project opened for the first time has no such file, which is why a test on a
+/// fresh folder never saw it. `plugins pane` without a flag refuses a pane that has no room, so `did` is the check.
+#[test]
+fn a_plugin_pane_is_drawn_in_a_project_whose_layout_was_written_before() {
+    use unluminous_app::app::dock::Side;
+    let folder =
+        copy_out_of_the_repository(&sample_folder(), "unluminous-screenshot-project-layout-panes");
+    let written = folder.join(".unluminous");
+    std::fs::create_dir_all(&written).expect("make .unluminous");
+    std::fs::write(
+        written.join("layout.conf"),
+        "panes.agent-chat/chat.side = left\npanes.agent-chat/chat.order = 1\npanes.agent-chat/chat.width = 360\n",
+    )
+    .expect("write layout.conf");
+    let mut harness = harness_in(&folder);
+    harness.state_mut().restore_project();
+    steady(&mut harness);
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    steady(&mut harness);
+    let answer = did(&mut harness, "plugins pane agent-chat/chat");
+    let width = answer["area"]["width"].as_f64().unwrap_or(0.0);
+    assert!(width > 100.0, "the chat pane was given room, and it is {width} wide: {answer}");
+    let slot = (0..harness.state().plugin_ui.pane_count())
+        .find(|slot| {
+            harness.state().plugin_ui.pane_key(*slot).as_deref() == Some("agent-chat/chat")
+        })
+        .expect("the chat pane has a slot");
+    assert_eq!(
+        harness.state().panes.dock.side_of(Panel::Plugin(slot as u8)),
+        Side::Left,
+        "and it is on the side the project's own file left it on"
+    );
+    let chat = harness.state().panel_area(Panel::Plugin(slot as u8));
+    let explorer = harness.state().panel_area(Panel::Explorer);
+    assert!(chat.width() > 100.0 && chat.height() > 100.0, "drawn at {chat:?}");
+    assert!(chat.left() >= explorer.right() - 1.0, "beside the file panel, on the left: {chat:?}");
+}

@@ -1157,27 +1157,39 @@ impl UnluminousApp {
     /// the layout means exactly the opposite, because "back where they started" for a contributed
     /// pane is where its **manifest** asked it to go.
     pub(crate) fn place_the_plugin_panes(&mut self, keep_where_they_were_left: bool) {
+        // A pane whose side the settings file already records keeps where it was left; one it has not
+        // spoken about goes where its manifest asked. Where somebody dragged a pane wins over what its
+        // manifest wanted, which is the rule every panel already follows.
+        let recorded = match keep_where_they_were_left {
+            true => self.store.as_ref().map(|store| store.read_values()),
+            false => None,
+        };
+        self.place_the_plugin_panes_recorded_in(recorded.as_ref());
+    }
+
+    /// Tell the dock about the contributed panes, keeping where `recorded` says each one was left.
+    ///
+    /// `task-2327`: a project's own `layout.conf` replaces the whole of `self.panes`, and the `Layout` read
+    /// from it knew no contributed panes, so every plugin pane was switched on and given no room in any project
+    /// that had been opened before. `restore_project` calls this with the project's file, so a pane the project
+    /// recorded stays where the project left it and one it did not goes where its manifest asked.
+    ///
+    /// @param recorded - the values a pane's `panes.<key>.side` is looked up in, or `None` for the manifests'
+    pub(crate) fn place_the_plugin_panes_recorded_in(
+        &mut self,
+        recorded: Option<&crate::services::store::Values>,
+    ) {
         let count = self.plugin_ui.pane_count();
         let sides: Vec<dock::Side> = (0..count)
             .map(|slot| {
                 self.plugin_ui.pane(slot).map(|pane| pane.side).unwrap_or(dock::Side::Right)
             })
             .collect();
-        // A pane whose side the settings file already records keeps where it was left; one it has not
-        // spoken about goes where its manifest asked. Where somebody dragged a pane wins over what its
-        // manifest wanted, which is the rule every panel already follows.
         let keys = self.plugin_ui.pane_keys();
         let placed: Vec<bool> = keys
             .iter()
             .map(|key| {
-                keep_where_they_were_left
-                    && self
-                        .store
-                        .as_ref()
-                        .map(|store| {
-                            store.read_values().text(&format!("panes.{key}.side")).is_some()
-                        })
-                        .unwrap_or(false)
+                recorded.is_some_and(|values| values.text(&format!("panes.{key}.side")).is_some())
             })
             .collect();
         self.panes.dock.set_plugin_panes(&sides, &placed);

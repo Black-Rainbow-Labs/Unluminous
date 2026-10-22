@@ -484,6 +484,9 @@ impl Layout {
         plugin_panes: &[String],
     ) -> Layout {
         let mut layout = Layout::read_built_in(values);
+        // The panes it was told the names of exist, so the dock lays them out. A layout read with names and left
+        // knowing none is the fault `task-2327` found: every plugin pane switched on and drawn nowhere.
+        layout.plugin_panes = plugin_panes.len().min(PLUGIN_PANES) as u8;
         for (slot, key) in plugin_panes.iter().enumerate().take(PLUGIN_PANES) {
             let panel = Panel::Plugin(slot as u8);
             if let Some(name) = values.text(&format!("panes.{key}.side")) {

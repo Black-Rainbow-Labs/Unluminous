@@ -2399,6 +2399,12 @@ update.check.chosen = true
     fn pane_sizes_survive_being_written_and_read_back() {
         let mut dock = crate::app::dock::Layout::new();
         dock.dock(crate::app::dock::Panel::Terminal, crate::app::dock::Side::Right, None);
+        // The two contributed panes named below are in the dock, which is what reading them back gives
+        // (`task-2327`): a layout read with pane names that knew none of them laid none of them out.
+        dock.set_plugin_panes(
+            &[crate::app::dock::Side::Right, crate::app::dock::Side::Bottom],
+            &[false, false],
+        );
         let panes = Panes {
             // Two contributed panes are named below, so only the first two slots are remembered; a
             // slot no plugin is in keeps its default, because there is no pane whose size to record.

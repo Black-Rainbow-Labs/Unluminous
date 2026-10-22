@@ -2028,10 +2028,15 @@ impl UnluminousApp {
         let state = project_state::load(self.tree.root());
         // The layout this project was left with, when it was left with one: each project keeps its own, so a
         // window of project tabs gives each tab the layout it had (`task-2322`).
-        if let Some(panes) =
+        //
+        // The dock read from that file knows no contributed panes until it is told them, so it is told them here
+        // (`task-2327`). Without it every plugin pane was switched on, drawn nowhere, and reported as having no
+        // room, in every project opened before.
+        if let Some((panes, recorded)) =
             project_state::load_layout(self.tree.root(), &self.plugin_ui.pane_keys())
         {
             self.panes = panes;
+            self.place_the_plugin_panes_recorded_in(Some(&recorded));
         }
         for folder in &state.expanded_folders {
             self.tree.expand(folder);
