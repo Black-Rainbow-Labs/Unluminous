@@ -2405,6 +2405,7 @@ update.check.chosen = true
             &[crate::app::dock::Side::Right, crate::app::dock::Side::Bottom],
             &[false, false],
         );
+        dock.dock(crate::app::dock::Panel::Plugin(1), crate::app::dock::Side::Bottom, None);
         let panes = Panes {
             // Two contributed panes are named below, so only the first two slots are remembered; a
             // slot no plugin is in keeps its default, because there is no pane whose size to record.
