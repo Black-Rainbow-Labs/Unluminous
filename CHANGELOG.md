@@ -6,7 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.8.2 — 2026-10-22
+## 1.8.3 — 2026-10-22
+
+- Plugin panes are drawn again in a project that has a saved layout (`task-2327`)
+- The round trip test docks its second plugin pane the way a drag would (`task-2327`)
+
+## 1.8.2 — 2026-10-21
 
 - Project tabs keep the window's size, the status bar branch switches branch, Realm links stay in their node (`task-2325`)
 - A tab in the terminal is drawn as a space (`task-2325`)
