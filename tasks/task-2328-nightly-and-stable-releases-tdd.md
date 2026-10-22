@@ -126,10 +126,14 @@ Check for Updates  >  Stable   >  Latest (1.8.3)
                                   1.8.3   (ticked: the one running)
                                   1.8.2
                                   ...five in all
+                                  ------------
+                                  Follow This Channel   (ticked when followed)
                       Nightly  >  Latest (1.9.0)
                                   ------------
                                   1.9.0
                                   ...
+                                  ------------
+                                  Follow This Channel
                       ------------
                       Check Now
 ```
@@ -140,6 +144,8 @@ Check for Updates  >  Stable   >  Latest (1.8.3)
 - The row for the version that is running is ticked and dimmed, because installing it again does
   nothing useful.
 - `Check Now` is the old `Check for Updates` entry, with the same action name, `check-for-updates`.
+- `Follow This Channel` is ticked on the channel `update.channel` names, and pressing it on the other channel
+  changes the setting, which is the Settings page's `Channel` row from the menu.
 - Until the list has been fetched each channel shows one dimmed row, `Loading versions...`, or the
   reason it could not be fetched, plus `Load Versions`. `Latest` works either way: it fetches the
   channel and installs the newest.
