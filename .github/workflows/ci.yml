@@ -1,0 +1,75 @@
+# What every pull request has to pass before anybody reads it (task-2326).
+#
+# This is the part of the release gate that runs anywhere. `tools/release.ps1` runs the whole of it,
+# clippy and the window suite included, on a machine with a graphics card before anything is published;
+# what runs here is what needs no graphics card and no private checkout:
+#
+# - **Format.** `cargo fmt --all -- --check`, with the toolchain `rust-toolchain.toml` names, so it means
+#   the same thing here as on every machine that builds Unluminous.
+# - **Scripts.** The node tests for the pull request check in `.github/scripts`.
+# - **Headless tests.** The crates that have no user interface dependency and whose tests run with no
+#   window, no graphics card and no fonts: the editor, the terminal, git, the debugger protocol and the
+#   chat client. On Windows, because that is where the release gate runs them too.
+#
+# The window suite is not here: it renders through `wgpu` and needs a graphics card, so a change to
+# what the window draws carries its accepted pictures and the sentence that they were opened instead.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  scripts:
+    name: Scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test the pull request check
+        run: node --test .github/scripts/check-pull-request.test.mjs
+
+  headless:
+    name: Headless tests
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@v2
+      - name: Give git an identity for the repositories the tests build
+        run: |
+          git config --global user.name "Unluminous CI"
+          git config --global user.email "ci@unluminous.invalid"
+      - name: Test the crates with no user interface
+        run: cargo test -p unluminous-core -p unluminous-terminal -p unluminous-git -p unluminous-dap -p unluminous-chat

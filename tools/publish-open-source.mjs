@@ -1,6 +1,7 @@
 /**
  * Publishes this repository's history to the public one, with the agent attribution taken out and
- * every commit under one spelling of Jason McAffee's name.
+ * every commit under one spelling of Jason McAffee's name, except that a commit landed from a pull
+ * request keeps its contributor as its author.
  *
  *     node tools/publish-open-source.mjs                 # rewrite, check, and say what it would push
  *     node tools/publish-open-source.mjs --push          # and push it
@@ -33,8 +34,24 @@ import { fileURLToPath } from 'node:url';
 const REPOSITORY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC_REMOTE = 'https://github.com/Black-Rainbow-Labs/Unluminous.git';
 
-/** The one name and address every published commit is authored and committed under. */
+/** The one name and address every commit of Jason McAffee's is published under. */
 const JASON = 'Jason McAffee <jasonlmcaffee@gmail.com>';
+
+/**
+ * The trailer `tools/land-pull-request.mjs` writes on a commit it lands from a pull request.
+ *
+ * **A contributor's name is kept (`task-2326`).** A pull request to the public repository is landed in
+ * this one with its author's own name on the commit, and a publish that rewrote every author to Jason
+ * would take the credit for that work away from the person who did it. So the author of a commit that
+ * carries this trailer is published as it is; its committer, who is whoever landed it, is still
+ * rewritten.
+ *
+ * It is keyed on the trailer rather than on the name because every commit already published must
+ * rewrite to exactly the hash it was published as. One of them was committed by `GitHub
+ * <noreply@github.com>` through the web editor; a rule that kept every name that is not Jason's would
+ * keep that one, change its hash and every hash after it, and make the next push a refused one.
+ */
+const LANDED = /^Landed-from: \S+#\d+\s*$/m;
 
 /**
  * The lines that come out of a message, each matched against a WHOLE line from its start.
@@ -117,6 +134,7 @@ function rewriteHistory(where, head) {
     const { headers, message } = readCommit(git(where, 'cat-file', 'commit', old));
     const rebuilt = withoutFoldedSignature(headers).map((header) => {
       if (header.startsWith('parent ')) return `parent ${map.get(header.slice(7))}`;
+      if (header.startsWith('author ') && LANDED.test(message)) return header;
       if (header.startsWith('author ') || header.startsWith('committer ')) return underOneName(header);
       return header;
     });
@@ -188,8 +206,8 @@ function rewriteTags(where, map) {
  * Checks the rewritten history against the one it came from and returns what it found.
  *
  * Three things are asserted rather than assumed: that not one file changed, that every commit is
- * Jason McAffee's, and that no message still carries a banned line. A publish that cannot say all
- * three is a publish that should not happen.
+ * Jason McAffee's apart from the authors of landed pull requests, and that no message still carries a
+ * banned line. A publish that cannot say all three is a publish that should not happen.
  *
  * @param where - the bare repository holding both histories
  * @param map - old commit to new commit
@@ -208,15 +226,20 @@ function check(where, map, order) {
     if (before.get(old) !== after.get(map.get(old))) problems.push(`${old.slice(0, 10)} the tree changed`);
   }
 
-  const identities = [...new Set(git(where, 'log', '--format=%an <%ae>%n%cn <%ce>', head).trim().split('\n'))];
+  // A landed commit's author is the contributor and is meant to survive, so it is left out of the
+  // identities that must all be Jason's and is reported on a line of its own.
+  const rows = git(where, 'log', '--format=%an <%ae>%x09%cn <%ce>%x09%(trailers:key=Landed-from,valueonly,separator=%x20)', head)
+    .trim().split('\n').map((row) => row.split('\t'));
+  const identities = [...new Set(rows.flatMap(([author, committer, landed]) => (landed?.trim() ? [committer] : [author, committer])))];
   for (const identity of identities) if (identity !== JASON) problems.push(`an identity survived: ${identity}`);
+  const contributors = [...new Set(rows.filter(([, , landed]) => landed?.trim()).map(([author]) => author))];
 
   const messages = git(where, 'log', '--format=%B', head).split('\n');
   for (const line of messages) {
     if (BANNED_LINE.some((pattern) => pattern.test(line.trim()))) problems.push(`a banned line survived: ${line}`);
   }
 
-  return { problems, identities };
+  return { problems, identities, contributors };
 }
 
 /** Reads the flags, with `--ref` and `--remote` taking a value and the rest being switches. */
@@ -252,11 +275,12 @@ function main() {
 
   const { map, order, messagesChanged } = rewriteHistory(mirror, head);
   const moved = rewriteTags(mirror, map);
-  const { problems, identities } = check(mirror, map, order);
+  const { problems, identities, contributors } = check(mirror, map, order);
 
   console.log(`commits    ${order.length} rewritten, ${messagesChanged} whose message changed`);
   console.log(`tags       ${moved.length} moved`);
   console.log(`identity   ${identities.join(' | ')}`);
+  console.log(`landed     ${contributors.length === 0 ? 'no pull requests' : contributors.join(' | ')}`);
   console.log(`head       ${head.slice(0, 10)} -> ${map.get(head).slice(0, 10)}`);
   console.log(`trees      ${problems.some((p) => p.includes('tree')) ? 'CHANGED' : 'every one identical'}\n`);
 

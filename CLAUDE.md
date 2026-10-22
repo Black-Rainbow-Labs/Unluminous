@@ -308,6 +308,33 @@ build converges rather than oscillating. `tools/prune-target.test.ps1` builds a 
 directory and checks both halves, the removals and the survivals, with no cargo and no toolchain
 behind it.
 
+### A pull request from outside is landed, not merged (`task-2326`)
+
+Contributors open pull requests on the public `Black-Rainbow-Labs/Unluminous`, which
+`tools/publish-open-source.mjs` publishes from this repository by a push that must be a fast forward. A pull
+request merged on GitHub would put a commit there that this repository has never had and stop every later
+publish. Five rules:
+
+- **Never press Merge on the public repository.** Land it: `node tools/land-pull-request.mjs <n> --dry-run`,
+  then without `--dry-run` on the ticket's branch, release, then `node tools/land-pull-request.mjs <n>
+  --close`, which comments with the published commit and closes the pull request.
+- **The landed commit is authored by the contributor** and carries `Landed-from: Black-Rainbow-Labs/Unluminous#<n>`.
+  The publisher keeps the author of a commit with that trailer and rewrites every other identity to Jason's.
+  It is keyed on the trailer, not on the name, because one published commit was committed by `GitHub
+  <noreply@github.com>` and keeping that name would change its hash and refuse the next push.
+- **`.github/pull_request_template.md` is the standard for a description**, and the `PR description` workflow
+  (`.github/scripts/check-pull-request.mjs`) enforces it: every section written, a platform and every checklist
+  box ticked, a picture or video under `Evidence` when `components/`, `theme/`, `design/`, `installer/icon/` or
+  an accepted screenshot changed, and a test or a `No new test:` line when Rust code changed. It runs from
+  `pull_request_target` with `main`'s copy of the script and never checks out the pull request.
+  `node --test .github/scripts/check-pull-request.test.mjs` is its test; change the template and the script
+  together.
+- **CI (`.github/workflows/ci.yml`) runs `Format` and `Headless tests`** (the five crates with no interface, on
+  Windows). Clippy and the window suite stay on this machine's release gate.
+- **The public `main` has a ruleset** (`main: pull requests and checks`): a pull request with the three checks is
+  required, and force pushes and deletion are refused, with the repository admin role as the bypass so the
+  publisher's push still goes through. CONTRIBUTING.md is what a contributor reads.
+
 ### A release uses 80% of the processors and tests only what changed (`task-2240`)
 
 `tasks/task-2240-release-speed-tdd.md` has the measurements. What a ticket needs to know:

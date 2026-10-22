@@ -101,6 +101,67 @@ Beyond that:
 
 ## Opening a pull request
 
-Say what changed and why, and say how you checked it. A claim about speed or memory carries the numbers
-and the command that produced them. A change to the rendering carries the accepted images, and the
-sentence that you opened them.
+Pull requests go to [`Black-Rainbow-Labs/Unluminous`](https://github.com/Black-Rainbow-Labs/Unluminous).
+For anything larger than a fix, open an issue first and say what you intend, so that nobody spends a
+week on a change that cannot be taken.
+
+When you open one, GitHub fills the description in from
+[`.github/pull_request_template.md`](.github/pull_request_template.md). **Every section is required.**
+The template's guidance is inside `<!-- -->` comments, which are ignored, so a section you did not write
+in reads as empty.
+
+| section | what it holds |
+|---|---|
+| Overview | The problem or the feature, and why it matters. `Closes #N` for the issue it closes. |
+| Details | How the change works and which files to read first. A Mermaid diagram where data moves between parts of the program or there is a state machine. What you weighed and rejected. |
+| Agent parity | How an agent reaches what you added: the menu entry, or the catalogue row, the arm in `app/cli.rs` and the section in `docs/commands.md`. "No new control." when there is nothing a person can do. |
+| Test coverage | The tests you added, by name, and what each would catch. Which of the four test layers you ran. |
+| Evidence | Proof it works that a reviewer can see without building your branch. A video, preferably, or screenshots before and after, for anything visible; the command and its output otherwise; numbers and the command that produced them for speed or memory. |
+| Platforms | Every platform you built and ran it on. |
+| AI disclosure | Which agent and model you used and for what, or "None". |
+| Checklist | Every box ticked. |
+
+### What the standard for tests is
+
+- **A change to Rust code adds a test.** If it genuinely cannot have one, a line under `Test coverage`
+  starting `No new test:` says why. A rename of a private function is a reason; "it is a small change" is
+  not.
+- **Behaviour is tested where it lives.** The six crates with no user interface have unit tests that run
+  with no window. A test in `unluminous-app` is for what only the window can show.
+- **A change to what the window draws has a screenshot test**, and its accepted picture is in the pull
+  request. Say that you opened it.
+- **A new command is reached from a test the way a person reaches it**, through `run_cli` or
+  `run_action`, rather than by calling the function underneath.
+- **A test asserts the work, not the clock.** See "A performance change is measured, not asserted" above.
+
+### What is checked, and by what
+
+Three checks run on every pull request, and a pull request is not landed while any of them fails:
+
+- **PR description** reads the description against the template and keeps one comment on the pull
+  request saying exactly what is missing. Edit the description and it runs again. It also asks for a
+  video or screenshots when the change touches `components/`, `theme/`, `design/`, the application icon
+  or an accepted screenshot, and for a test or a `No new test:` line when the change touches Rust code.
+  It runs from `main`, so a pull request cannot change the check that judges it.
+- **Format** runs `cargo fmt --all -- --check` with the toolchain `rust-toolchain.toml` names.
+- **Headless tests** runs the tests of `unluminous-core`, `unluminous-terminal`, `unluminous-git`,
+  `unluminous-dap` and `unluminous-chat` on Windows.
+
+Clippy and the window suite need the whole workspace and a graphics card, so they are run on the
+maintainer's machine before a release rather than here. Run them yourself before you open the pull
+request; the checklist asks you to.
+
+### How a pull request is landed
+
+**A pull request is landed rather than merged, so it will show as closed rather than merged.** The public
+repository is published from a private one where releases are cut, by a push that has to be a fast
+forward, and a merge made on GitHub would put a commit on the public `main` that the private repository
+does not have. So a maintainer applies your change there with `tools/land-pull-request.mjs`, which
+commits it **with you as the author** and every other author of your commits as a co-author, releases
+it, and closes the pull request with a comment naming the commit it became. The commit carries a
+`Landed-from: Black-Rainbow-Labs/Unluminous#N` trailer, which is what keeps your name on it when the
+history is published.
+
+Keep your branch to one change. It is landed as one commit, so the pull request's title becomes the
+commit's subject and its `Overview` becomes the commit's body: write both so that they still make sense
+in `git log` a year from now.
