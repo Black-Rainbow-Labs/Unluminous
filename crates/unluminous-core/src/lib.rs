@@ -59,3 +59,4 @@ pub use style::{
 };
 pub use symbols::{Confidence, Definition, Occurrence, Role, SymbolKind};
 pub use syntax::{highlight, CompletionKeys, Grammar, ImportStyle, PathRoot, Token};
+// A line added by the task-2326 test of the pull request check. This pull request is closed, never landed.
