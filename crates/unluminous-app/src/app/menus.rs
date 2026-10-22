@@ -321,6 +321,7 @@ impl UnluminousApp {
             | Action::CheckForUpdates
             | Action::InstallVersion { .. }
             | Action::LoadVersions
+            | Action::FollowChannel(_)
             | Action::ReportIssue
             | Action::OpenSetup => self.an_unluminous_entry(action),
             // The microphone, as a chord: the same toggle the button is, and a second press sends.
@@ -1112,6 +1113,14 @@ impl UnluminousApp {
                         self.toasts.say(problem, crate::components::toast::Kind::Problem)
                     }
                 }
+            }
+            Action::FollowChannel(channel) => {
+                self.settings.update_channel = channel;
+                self.unsaved_settings = true;
+                self.message = Some(format!(
+                    "Unluminous now follows the {} channel. Check Now asks it.",
+                    channel.name()
+                ));
             }
             Action::LoadVersions => {
                 self.message = Some("Loading the stable and nightly versions...".to_owned());

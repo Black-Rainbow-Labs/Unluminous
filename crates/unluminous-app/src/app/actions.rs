@@ -74,6 +74,8 @@ pub enum Action {
     },
     /// Fetch both channels' version lists, which the submenu shows. `task-2328`.
     LoadVersions,
+    /// Make the window follow a release channel: the `update.channel` setting, from the menu. `task-2328`.
+    FollowChannel(crate::services::update::Channel),
     /// `Unluminous -> Set Up Unluminous...`: the dialog that finishes setting Unluminous up. `task-2301`.
     OpenSetup,
     /// Open the Find bar over the file that is showing. `task-1804` §3.1.
@@ -1873,12 +1875,15 @@ fn updates_menu(updates: &UpdateMenu) -> Vec<Entry> {
     let mut entries: Vec<Entry> = crate::services::update::Channel::ALL
         .into_iter()
         .map(|channel| {
-            // The channel the window follows says so, because that is the one the daily check offers.
-            let name = match channel == updates.following {
-                true => format!("{} (following)", channel.label()),
-                false => channel.label().to_owned(),
-            };
-            Entry::Submenu { name, entries: channel_menu(channel, updates.rows(channel)) }
+            let mut entries = channel_menu(channel, updates.rows(channel));
+            // Which channel the daily check asks, ticked, and the way to change it. At the bottom, because
+            // `Latest` is the row the menu is for.
+            entries.push(Entry::Separator);
+            entries.push(
+                Entry::item("Follow This Channel", Action::FollowChannel(channel))
+                    .checked(channel == updates.following),
+            );
+            Entry::Submenu { name: channel.label().to_owned(), entries }
         })
         .collect();
     entries.push(Entry::Separator);
@@ -3861,9 +3866,16 @@ mod tests {
         let bar = menus(&state);
         let app = find(&bar, "Unluminous");
         let updates = submenu_in(&app.entries, "Check for Updates");
-        assert_eq!(names(updates), vec!["Stable", "Nightly (following)", "Check Now"]);
+        assert_eq!(names(updates), vec!["Stable", "Nightly", "Check Now"]);
         let stable = submenu_in(updates, "Stable");
-        assert_eq!(names(stable), vec!["Latest (1.8.3)", "1.8.3", "1.8.2"]);
+        assert_eq!(names(stable), vec!["Latest (1.8.3)", "1.8.3", "1.8.2", "Follow This Channel"]);
+        let followed = |entries: &[Entry]| {
+            entries.iter().any(|entry| {
+                matches!(entry, Entry::Item { action: Action::FollowChannel(_), checked: true, .. })
+            })
+        };
+        assert!(!followed(stable), "the window follows nightly here");
+        assert!(followed(submenu_in(updates, "Nightly")));
         assert!(stable.iter().any(|entry| matches!(
             entry,
             Entry::Item {
@@ -3876,7 +3888,7 @@ mod tests {
             Entry::Item { action: Action::InstallVersion { version: Some(v), .. }, .. } if v == "1.8.2"
         )));
         let nightly = submenu_in(updates, "Nightly");
-        assert_eq!(names(nightly), vec!["Latest", "Loading versions..."]);
+        assert_eq!(names(nightly), vec!["Latest", "Loading versions...", "Follow This Channel"]);
         assert!(updates
             .iter()
             .any(|entry| matches!(entry, Entry::Item { action: Action::CheckForUpdates, .. })));

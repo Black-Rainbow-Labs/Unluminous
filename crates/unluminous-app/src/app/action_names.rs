@@ -54,6 +54,7 @@ impl Action {
             // because a name is lower case and hyphenated and a version has dots in it. `task-2328`.
             Action::InstallVersion { channel, .. } => format!("install-{}", channel.name()),
             Action::LoadVersions => "load-versions".to_owned(),
+            Action::FollowChannel(channel) => format!("follow-{}", channel.name()),
             Action::OpenSetup => "set-up-unluminous".to_owned(),
             Action::Find => "find".to_owned(),
             Action::Replace => "replace".to_owned(),
@@ -169,6 +170,9 @@ impl Action {
     pub fn from_name(name: &str, path: Option<PathBuf>) -> Option<Action> {
         if let Some(rest) = name.strip_prefix("git-") {
             return GitAction::from_name(rest, path).map(Action::Git);
+        }
+        if let Some(rest) = name.strip_prefix("follow-") {
+            return crate::services::update::Channel::from_name(rest).map(Action::FollowChannel);
         }
         if let Some(rest) = name.strip_prefix("install-") {
             let channel = crate::services::update::Channel::from_name(rest)?;
