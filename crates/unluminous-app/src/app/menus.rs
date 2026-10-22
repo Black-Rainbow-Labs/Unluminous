@@ -27,6 +27,7 @@ impl UnluminousApp {
     /// What the menus need to know about the window.
     pub fn menu_state(&self) -> MenuState {
         MenuState {
+            updates: self.update_menu(),
             realm_visible: self.was_showing(dock::Panel::Realm, self.realm.visible),
             realm_available: self.realm_is_on(),
             realm_node: self.realm.chosen().and_then(|node| {
@@ -316,9 +317,12 @@ impl UnluminousApp {
             | Action::DeletePath(_)
             | Action::RevealPath(_)
             | Action::ReloadPath(_) => self.an_explorer_entry(action, ctx),
-            Action::About | Action::CheckForUpdates | Action::ReportIssue | Action::OpenSetup => {
-                self.an_unluminous_entry(action)
-            }
+            Action::About
+            | Action::CheckForUpdates
+            | Action::InstallVersion { .. }
+            | Action::LoadVersions
+            | Action::ReportIssue
+            | Action::OpenSetup => self.an_unluminous_entry(action),
             // The microphone, as a chord: the same toggle the button is, and a second press sends.
             Action::Dictate => self.press_the_microphone(),
             // The Git menu is `run_git`, which was already the one place a git action turns into
@@ -1100,6 +1104,19 @@ impl UnluminousApp {
                 self.about = Some(About::current());
             }
             Action::CheckForUpdates => self.check_for_updates(),
+            // A row of `Check for Updates -> Stable` or `-> Nightly` (`task-2328`).
+            Action::InstallVersion { channel, version } => {
+                match self.install_a_version(channel, version, true) {
+                    Ok(said) => self.message = Some(said),
+                    Err(problem) => {
+                        self.toasts.say(problem, crate::components::toast::Kind::Problem)
+                    }
+                }
+            }
+            Action::LoadVersions => {
+                self.message = Some("Loading the stable and nightly versions...".to_owned());
+                self.fetch_the_version_lists();
+            }
             Action::ReportIssue => self.open_the_report(),
             Action::OpenSetup => self.open_the_setup(),
             other => unreachable!("{other:?} is not handled by an_unluminous_entry"),

@@ -96,6 +96,7 @@ $assets = @((Join-Path $FixtureRoot 'UnluminousSetup-9.9.9-x64.exe'), (Join-Path
 
 Publish-GitHubRelease 'owner/repo' $assets 'notes'
 Assert-That 'a release that is not there is created' ((Get-Content -LiteralPath $log -Raw) -match 'release create v9\.9\.9')
+Assert-That 'a release is created as a prerelease, a nightly until it is promoted' ((Get-Content -LiteralPath $log -Raw) -match 'release create v9\.9\.9 .*--prerelease')
 
 Remove-Item -LiteralPath $log
 Set-Content -LiteralPath $state -Value 'UnluminousSetup-9.9.9-x64.exe'

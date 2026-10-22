@@ -1624,6 +1624,12 @@ impl UnluminousApp {
         if self.take_the_update_answer() {
             ui.ctx().request_repaint();
         }
+        // And both channels' version lists, for the Check for Updates submenu, fetched when it opens.
+        // `task-2328`.
+        self.fetch_the_lists_when_the_menu_opens(ui.ctx());
+        if self.take_the_version_lists() {
+            ui.ctx().request_repaint();
+        }
         // The daily check, when it is due, and how far an install has got. `task-2063`.
         let now = ui.input(|input| input.time);
         self.ask_on_a_schedule(now);

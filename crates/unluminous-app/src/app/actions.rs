@@ -63,7 +63,17 @@ pub enum Action {
     /// Open the `Find in Files` modal: search every file in the project for some text.
     FindInFiles,
     /// Ask the releases page whether a newer Unluminous exists. `task-1804` §6.
+    ///
+    /// `Check for Updates -> Check Now` since `task-2328`, and it asks the channel `update.channel` names.
     CheckForUpdates,
+    /// Install a version from one channel and start it again: `Check for Updates -> Stable -> Latest` and
+    /// the version rows under it. `None` is the newest on the channel. `task-2328`.
+    InstallVersion {
+        channel: crate::services::update::Channel,
+        version: Option<String>,
+    },
+    /// Fetch both channels' version lists, which the submenu shows. `task-2328`.
+    LoadVersions,
     /// `Unluminous -> Set Up Unluminous...`: the dialog that finishes setting Unluminous up. `task-2301`.
     OpenSetup,
     /// Open the Find bar over the file that is showing. `task-1804` §3.1.
@@ -1197,6 +1207,37 @@ pub struct Menu {
     pub entries: Vec<Entry>,
 }
 
+/// What one channel's submenu lists under `Latest`. `task-2328`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum ChannelRows {
+    /// Nothing has been asked for yet.
+    #[default]
+    NotLoaded,
+    /// The lists are being fetched.
+    Loading,
+    /// The versions, newest first, at most `update::SHOWN` of them.
+    Listed(Vec<String>),
+    /// Why the channel could not be read.
+    Failed(String),
+}
+
+/// What the `Check for Updates` submenu shows: both channels' versions and which one the window follows.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UpdateMenu {
+    pub stable: ChannelRows,
+    pub nightly: ChannelRows,
+    pub following: crate::services::update::Channel,
+}
+
+impl UpdateMenu {
+    fn rows(&self, channel: crate::services::update::Channel) -> &ChannelRows {
+        match channel {
+            crate::services::update::Channel::Stable => &self.stable,
+            crate::services::update::Channel::Nightly => &self.nightly,
+        }
+    }
+}
+
 /// What the menus need to know about the window to say what can be done and what is switched on.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct MenuState {
@@ -1258,6 +1299,8 @@ pub struct MenuState {
     /// and `Resume session` mean nothing on a web page, which is Unluminous's rule that a control
     /// which cannot apply is not drawn at all.
     pub realm_node: Option<(crate::services::realm::Kind, bool)>,
+    /// The two release channels' versions, for `Unluminous -> Check for Updates`. `task-2328`.
+    pub updates: UpdateMenu,
     /// The program the chosen terminal node was left running, when it was left running one.
     ///
     /// **A separate field rather than a third item in the tuple above**, because it answers a different
@@ -1398,7 +1441,7 @@ pub fn project_tab_cycle(back: bool) -> Shortcut {
 }
 
 pub fn menus(state: &MenuState) -> Vec<Menu> {
-    let mut found = vec![unluminous_menu(), file_menu(state), edit_menu(state)];
+    let mut found = vec![unluminous_menu(state), file_menu(state), edit_menu(state)];
     // `Code` is absent for a file that holds no lines, so it is pushed rather than listed.
     found.extend(code_menu(state));
     found.extend([find_menu(state), view_menu(state), run_menu(state), git_menu(state)]);
@@ -1797,7 +1840,7 @@ pub fn git_submenu(state: &MenuState, path: &std::path::Path) -> Vec<Entry> {
     ]
 }
 
-fn unluminous_menu() -> Menu {
+fn unluminous_menu(state: &MenuState) -> Menu {
     Menu {
         name: "Unluminous".to_owned(),
         // Settings is in two menus on purpose. `tasks/improvements.md` names both `Unluminous -> Settings` and
@@ -1806,10 +1849,13 @@ fn unluminous_menu() -> Menu {
         // only, because two menu items claiming one key equivalent is a fault on macOS.
         entries: vec![
             Entry::item("About Unluminous", Action::About),
-            // **A person asking**, which is the only thing that makes Unluminous send anything on its
-            // own behalf. `update.check` is off until somebody turns it on, and this entry works
-            // either way. See `services::update`. `task-1804` §6.
-            Entry::item("Check for Updates", Action::CheckForUpdates),
+            // **A person asking**, which works whatever `update.check` says. See `services::update`.
+            // `task-1804` §6. Since `task-2328` it is a submenu: each release channel lists `Latest` and the
+            // newest versions on it, any of which installs and restarts, and `Check Now` is the old entry.
+            Entry::Submenu {
+                name: crate::app::updating::UPDATES_SUBMENU.to_owned(),
+                entries: updates_menu(&state.updates),
+            },
             // The dialog that opens by itself while setup is not finished. `task-2301`.
             Entry::item("Set Up Unluminous...", Action::OpenSetup),
             // The flag at the bottom right of the window is the same entry. `task-2276`.
@@ -1820,6 +1866,67 @@ fn unluminous_menu() -> Menu {
             Entry::with_shortcut("Quit Unluminous", Action::Quit, Shortcut::command(egui::Key::Q)),
         ],
     }
+}
+
+/// `Unluminous -> Check for Updates`: a submenu a channel, and `Check Now`. `task-2328`.
+fn updates_menu(updates: &UpdateMenu) -> Vec<Entry> {
+    let mut entries: Vec<Entry> = crate::services::update::Channel::ALL
+        .into_iter()
+        .map(|channel| {
+            // The channel the window follows says so, because that is the one the daily check offers.
+            let name = match channel == updates.following {
+                true => format!("{} (following)", channel.label()),
+                false => channel.label().to_owned(),
+            };
+            Entry::Submenu { name, entries: channel_menu(channel, updates.rows(channel)) }
+        })
+        .collect();
+    entries.push(Entry::Separator);
+    entries.push(Entry::item("Check Now", Action::CheckForUpdates));
+    entries
+}
+
+/// One channel's rows: `Latest`, then the versions, newest first, the one running ticked and dimmed.
+///
+/// `Latest` is there before the list has arrived, because installing it fetches the list first; what
+/// stands in for the versions until then says why there are none.
+fn channel_menu(channel: crate::services::update::Channel, rows: &ChannelRows) -> Vec<Entry> {
+    let running = crate::build_info::VERSION;
+    let latest = match rows {
+        ChannelRows::Listed(found) if !found.is_empty() => format!("Latest ({})", found[0]),
+        _ => "Latest".to_owned(),
+    };
+    let mut entries = vec![
+        Entry::item(&latest, Action::InstallVersion { channel, version: None }),
+        Entry::Separator,
+    ];
+    let quiet = |text: &str| Entry::item(text, Action::LoadVersions).enabled(false);
+    match rows {
+        ChannelRows::Listed(found) => {
+            for version in found {
+                let here = version == running;
+                entries.push(
+                    Entry::item(
+                        version,
+                        Action::InstallVersion { channel, version: Some(version.clone()) },
+                    )
+                    .checked(here)
+                    .enabled(!here),
+                );
+            }
+            if found.is_empty() {
+                entries.push(quiet("No versions published"));
+            }
+        }
+        ChannelRows::Loading => entries.push(quiet("Loading versions...")),
+        ChannelRows::NotLoaded => entries.push(Entry::item("Load Versions", Action::LoadVersions)),
+        ChannelRows::Failed(problem) => {
+            let short: String = problem.chars().take(60).collect();
+            entries.push(quiet(&format!("Could not load: {short}")));
+            entries.push(Entry::item("Load Versions", Action::LoadVersions));
+        }
+    }
+    entries
 }
 
 fn file_menu(state: &MenuState) -> Menu {
@@ -3723,6 +3830,83 @@ mod tests {
         let opens: Vec<&String> =
             file.iter().filter(|name| name.starts_with("Open Folder")).collect();
         assert_eq!(opens, vec![&"Open Folder".to_owned()]);
+    }
+
+    /// The submenu a name names, in a list of entries.
+    fn submenu_in<'a>(entries: &'a [Entry], wanted: &str) -> &'a [Entry] {
+        entries
+            .iter()
+            .find_map(|entry| match entry {
+                Entry::Submenu { name, entries } if name.starts_with(wanted) => {
+                    Some(entries.as_slice())
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("there is no {wanted} submenu in {:?}", names(entries)))
+    }
+
+    /// `Check for Updates` is a submenu of the two channels and `Check Now`, and each channel starts
+    /// with `Latest`. `task-2328`.
+    #[test]
+    fn check_for_updates_lists_both_channels_and_check_now() {
+        use crate::services::update::Channel;
+        let state = MenuState {
+            updates: UpdateMenu {
+                stable: ChannelRows::Listed(vec!["1.8.3".to_owned(), "1.8.2".to_owned()]),
+                nightly: ChannelRows::Loading,
+                following: Channel::Nightly,
+            },
+            ..MenuState::default()
+        };
+        let bar = menus(&state);
+        let app = find(&bar, "Unluminous");
+        let updates = submenu_in(&app.entries, "Check for Updates");
+        assert_eq!(names(updates), vec!["Stable", "Nightly (following)", "Check Now"]);
+        let stable = submenu_in(updates, "Stable");
+        assert_eq!(names(stable), vec!["Latest (1.8.3)", "1.8.3", "1.8.2"]);
+        assert!(stable.iter().any(|entry| matches!(
+            entry,
+            Entry::Item {
+                action: Action::InstallVersion { channel: Channel::Stable, version: None },
+                ..
+            }
+        )));
+        assert!(stable.iter().any(|entry| matches!(
+            entry,
+            Entry::Item { action: Action::InstallVersion { version: Some(v), .. }, .. } if v == "1.8.2"
+        )));
+        let nightly = submenu_in(updates, "Nightly");
+        assert_eq!(names(nightly), vec!["Latest", "Loading versions..."]);
+        assert!(updates
+            .iter()
+            .any(|entry| matches!(entry, Entry::Item { action: Action::CheckForUpdates, .. })));
+    }
+
+    /// The version running is ticked and cannot be pressed; nothing loaded offers `Load Versions`; a
+    /// failure says why.
+    #[test]
+    fn a_channel_ticks_the_version_running_and_says_why_it_has_none() {
+        use crate::services::update::Channel;
+        let running = crate::build_info::VERSION.to_owned();
+        let listed = channel_menu(
+            Channel::Nightly,
+            &ChannelRows::Listed(vec!["999.0.0".to_owned(), running.clone()]),
+        );
+        let here = listed
+            .iter()
+            .find(|entry| matches!(entry, Entry::Item { name, .. } if *name == running))
+            .expect("the running version is listed");
+        assert!(matches!(here, Entry::Item { checked: true, enabled: false, .. }));
+        let other = listed
+            .iter()
+            .find(|entry| matches!(entry, Entry::Item { name, .. } if name == "999.0.0"))
+            .expect("the other is listed");
+        assert!(matches!(other, Entry::Item { checked: false, enabled: true, .. }));
+
+        let nothing = channel_menu(Channel::Stable, &ChannelRows::NotLoaded);
+        assert_eq!(names(&nothing), vec!["Latest", "Load Versions"]);
+        let failed = channel_menu(Channel::Stable, &ChannelRows::Failed("answered 404".to_owned()));
+        assert_eq!(names(&failed), vec!["Latest", "Could not load: answered 404", "Load Versions"]);
     }
 
     #[test]

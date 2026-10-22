@@ -1337,6 +1337,9 @@ settings! {
         line_endings: LineEndings = LineEndings::Keep => "editor.line_ending", "keep, lf or crlf";
         /// Whether the window asks for a newer version as it opens. See [`UpdateCheck`].
         update_check: UpdateCheck = UpdateCheck::Daily => "update.check", "off, start or daily";
+        /// Which releases the window follows: the promoted ones, or every one. See
+        /// `services::update::Channel`. `task-2328`.
+        update_channel: crate::services::update::Channel = crate::services::update::Channel::Stable => "update.channel", "stable or nightly";
         /// Whether the debugger's value tooltip arrives when the pointer rests on a name.
         value_tooltip: ValueTooltip = ValueTooltip::Automatic => "debug.value_tooltip", "automatic or manual";
         /// Which browser a page is told it is talking to. See [`BrowserAgent`]. `task-2255`.
@@ -2009,6 +2012,7 @@ mod tests {
             "editor.indent",
             "editor.line_ending",
             "update.check",
+            "update.channel",
             "update.skip",
             "debug.value_tooltip",
             "browser.user_agent",
@@ -2132,6 +2136,7 @@ mod tests {
             servers: Servers::Automatic,
             line_endings: LineEndings::Crlf,
             update_check: UpdateCheck::Start,
+            update_channel: crate::services::update::Channel::Nightly,
             update_skip: "0.99.0".to_owned(),
             exclude: "dist/, vendor/".to_owned(),
             value_tooltip: ValueTooltip::Manual,

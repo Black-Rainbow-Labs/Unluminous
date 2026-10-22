@@ -218,6 +218,26 @@ eight more frameworks and zig ships a stub for `libSystem` alone; `installer/REA
 SDK comes from and what Apple's licence says about keeping one there. It is off by default for that
 reason, and `installer/macos/build.sh` is unchanged and still the route on a Mac.
 
+### Every release is a nightly, and a person promotes one to stable (`task-2328`)
+
+`tasks/task-2328-nightly-and-stable-releases-tdd.md` is the design. Five rules:
+
+- **`tools/release.ps1` publishes to the nightly channel.** Its GitHub releases are prereleases and unluminous.com
+  adds the version to `/releases/nightly.json` only. The page, `/releases/latest.json` and GitHub's latest release
+  stay on the stable version, so every window following stable, and every Unluminous released before the channels,
+  is not offered it. Releasing a finished ticket is still done without asking.
+- **`pwsh tools/promote.ps1 [-Version x.y.z]` makes a nightly stable**, after Jason has used it. Nothing is built:
+  the site publishes the files the nightly published, checked against the sizes and hashes it recorded. An agent
+  does not promote unless Jason asks.
+- **`releases/channels.json` in the site checkout is the record** of which versions are on which channel, written by
+  `scripts/sync-release.mjs --channel`, not committed, seeded from `public/downloads/` when missing.
+- **`update.channel` (`stable` by default, or `nightly`) is what a window's checks ask.** `Unluminous -> Check for
+  Updates` lists both channels, `Latest` and the newest five versions each, and any row installs that version and
+  restarts, older ones included. The lists are fetched when the in-window submenu opens (`controls::submenus_drawn_open`)
+  and with every check; `update versions` and `update install <version> --channel` are the agent's half.
+- **`UNLUMINOUS_RELEASES_STABLE` and `UNLUMINOUS_RELEASES_NIGHTLY`** point a test's window at a scripted server for
+  one channel; `UNLUMINOUS_RELEASES` still names both.
+
 ### A release from a ticket worktree needs two gitignored things from the main checkout (`task-2207`)
 
 `installer/macos/notarize.env` names the sealed Developer ID key, its certificate, the sealed notary key and

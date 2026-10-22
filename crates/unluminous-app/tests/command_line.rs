@@ -3298,6 +3298,122 @@ fn update_check_answers_with_what_the_releases_page_said() {
     let _ = served.join();
 }
 
+/// A scripted unluminous.com serving both channels' manifests, answering `count` requests by path.
+fn two_channels(count: usize) -> (u16, std::thread::JoinHandle<()>) {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+    let port = listener.local_addr().expect("the address").port();
+    let manifest = |channel: &str, versions: &[&str]| {
+        let entry = |version: &str| {
+            serde_json::json!({
+                "version": version,
+                "notes": format!("{channel} {version}"),
+                "installer": format!("http://127.0.0.1:{port}/downloads/UnluminousSetup-{version}-x64.exe"),
+                "installerBytes": 12,
+                "installerSha256": "a".repeat(64),
+                "macos": format!("http://127.0.0.1:{port}/downloads/Unluminous-{version}-macos.zip"),
+                "macosBytes": 12,
+                "macosSha256": "b".repeat(64),
+            })
+        };
+        let mut top = entry(versions[0]);
+        top["channel"] = serde_json::json!(channel);
+        top["versions"] = versions.iter().map(|version| entry(version)).collect();
+        top.to_string()
+    };
+    let stable = manifest("stable", &["90.1.0", "90.0.0"]);
+    let nightly = manifest("nightly", &["91.2.0", "91.1.0", "90.1.0"]);
+    let served = std::thread::spawn(move || {
+        for _ in 0..count {
+            let Ok((mut stream, _)) = listener.accept() else { return };
+            use std::io::{Read as _, Write as _};
+            let mut buffer = [0u8; 4096];
+            let read = stream.read(&mut buffer).unwrap_or(0);
+            let asked = String::from_utf8_lossy(&buffer[..read]).to_string();
+            let body = if asked.contains("/nightly.json") { &nightly } else { &stable };
+            let _ = stream.write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\
+                     connection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            );
+        }
+    });
+    (port, served)
+}
+
+/// `update versions` lists both channels, and the `Check for Updates` submenu lists the same versions under
+/// `Latest`. `update install` refuses a version neither channel lists and a channel that does not exist.
+/// `task-2328`.
+#[test]
+fn update_versions_lists_both_channels_and_the_menu_shows_them() {
+    let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|held| held.into_inner());
+    let (port, served) = two_channels(2);
+    std::env::set_var(
+        "UNLUMINOUS_RELEASES_STABLE",
+        format!("http://127.0.0.1:{port}/releases/stable.json"),
+    );
+    std::env::set_var(
+        "UNLUMINOUS_RELEASES_NIGHTLY",
+        format!("http://127.0.0.1:{port}/releases/nightly.json"),
+    );
+
+    let mut harness = harness("# a file\n");
+    let ctx = harness.ctx.clone();
+    assert!(
+        harness.state_mut().run_command_line("update versions --timeout 20000", &ctx).is_none(),
+        "the lists are fetched on a thread, so the answer belongs to a later frame"
+    );
+    settle(&mut harness, "both channels to be listed", |app| {
+        matches!(
+            app.menu_state().updates.nightly,
+            unluminous_app::app::actions::ChannelRows::Listed(_)
+        )
+    });
+
+    // Loaded now, so the command answers at once.
+    let listed = did(&mut harness, "update versions --json");
+    let versions = |channel: &str| -> Vec<String> {
+        listed[channel]["versions"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{channel} lists versions: {listed}"))
+            .iter()
+            .map(|one| one["version"].as_str().unwrap_or_default().to_owned())
+            .collect()
+    };
+    assert_eq!(versions("stable"), ["90.1.0", "90.0.0"]);
+    assert_eq!(versions("nightly"), ["91.2.0", "91.1.0", "90.1.0"]);
+    assert_eq!(listed["following"], "stable", "a window follows stable unless told otherwise");
+
+    // The menu reads the same lists: `Latest` names the newest, and every version is a row that installs it.
+    let menus = unluminous_app::app::actions::menus(&harness.state().menu_state());
+    let app_menu =
+        menus.iter().find(|menu| menu.name == "Unluminous").expect("the Unluminous menu");
+    let rows = format!("{:?}", app_menu.entries);
+    for wanted in ["Latest (90.1.0)", "Latest (91.2.0)", "91.1.0", "90.0.0", "Check Now"] {
+        assert!(rows.contains(wanted), "the submenu has {wanted}: {rows}");
+    }
+
+    let not_listed = run(&mut harness, "update install 0.0.1 --channel stable --no-restart");
+    assert!(!not_listed.ok, "a version on no channel is refused");
+    assert!(
+        not_listed.message.contains("not one of the stable versions"),
+        "{}",
+        not_listed.message
+    );
+    let said = refusal(&mut harness, "update install --channel beta");
+    assert!(said.contains("stable and nightly"), "{said}");
+
+    // And the setting reaches the channel the checks ask.
+    did(&mut harness, "settings set update.channel nightly");
+    assert_eq!(did(&mut harness, "update status --json")["channel"], "nightly");
+
+    std::env::remove_var("UNLUMINOUS_RELEASES_STABLE");
+    std::env::remove_var("UNLUMINOUS_RELEASES_NIGHTLY");
+    let _ = served.join();
+}
+
 /// A newer version is offered in a notice with two buttons, and `Don't Ask Again` declines that one
 /// version. `task-2063`.
 ///

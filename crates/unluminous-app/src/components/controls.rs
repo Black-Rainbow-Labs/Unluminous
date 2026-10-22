@@ -1458,6 +1458,27 @@ fn tall(entries: &[Entry], gap: f32) -> f32 {
 ///
 /// It is egui's own submenu, so the menu it is in stays open while the list beside it is used, and the
 /// list is the same raised card as the menu.
+/// Where [`submenus_drawn_open`] finds what [`submenu`] wrote down.
+fn open_submenus_id() -> egui::Id {
+    egui::Id::new("unluminous-submenus-drawn-open")
+}
+
+/// Write down that a submenu was drawn open this frame.
+fn note_a_submenu_drawn_open(ctx: &egui::Context, name: &str) {
+    ctx.data_mut(|data| {
+        data.get_temp_mut_or_default::<Vec<String>>(open_submenus_id()).push(name.to_owned())
+    });
+}
+
+/// The names of the submenus drawn open since this was last asked, and forget them.
+///
+/// A menu is drawn inside a popup and nothing outside it learns that one of its submenus opened, so a
+/// submenu whose contents are fetched when it opens, which is `Check for Updates` (`task-2328`), is found
+/// here. Asked once a frame by the window; what it answers is at most a frame old.
+pub fn submenus_drawn_open(ctx: &egui::Context) -> Vec<String> {
+    ctx.data_mut(|data| data.remove_temp::<Vec<String>>(open_submenus_id())).unwrap_or_default()
+}
+
 fn submenu(ui: &mut egui::Ui, name: &str, entries: &[Entry], indent: f32) -> Option<Action> {
     let enabled = !entries.is_empty();
     let sense = if enabled { Sense::click() } else { Sense::hover() };
@@ -1501,6 +1522,9 @@ fn submenu(ui: &mut egui::Ui, name: &str, entries: &[Entry], indent: f32) -> Opt
         .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, enabled, open, name));
     if !enabled {
         return None;
+    }
+    if open {
+        note_a_submenu_drawn_open(ui.ctx(), name);
     }
     // egui frames a submenu with `Frame::menu` of the style it is shown from, so the style is the menu frame's.
     let frame = menu_frame(ui);

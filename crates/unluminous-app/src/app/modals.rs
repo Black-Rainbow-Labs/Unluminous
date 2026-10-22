@@ -27,7 +27,12 @@ impl UnluminousApp {
         }
         self.message = Some("Asking whether there is a newer Unluminous...".to_owned());
         self.update_asked_by_a_person = true;
-        self.update = Some(crate::services::update::Check::start(self.thread_waker()));
+        self.update = Some(crate::services::update::Check::start(
+            self.settings.update_channel,
+            self.thread_waker(),
+        ));
+        // The lists the submenu shows are fetched beside it, so they say what the check just found.
+        self.fetch_the_version_lists();
     }
 
     /// Take in the answer, if one has arrived.

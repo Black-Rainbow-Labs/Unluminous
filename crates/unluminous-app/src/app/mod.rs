@@ -1297,6 +1297,16 @@ pub struct UnluminousApp {
     pub(crate) update_looked_at: f64,
     /// A newer version being downloaded and checked, when `Install & Restart` was pressed.
     pub(crate) install: Option<crate::services::update_install::Install>,
+    /// Both channels' lists being fetched, for `Check for Updates -> Stable` and `-> Nightly`. `task-2328`.
+    pub(crate) update_listing: Option<crate::services::update::Listing>,
+    /// What both channels listed the last time they were fetched.
+    pub(crate) update_versions: Option<crate::services::update::Versions>,
+    /// When the lists were last asked for, so opening the menu again within `updating::LISTS_KEPT` asks
+    /// nothing.
+    pub(crate) update_versions_asked_at: Option<std::time::Instant>,
+    /// A version a menu row or `update install` named before its channel's list had arrived: installed
+    /// as soon as the list does. The channel, and the version or `None` for the newest.
+    pub(crate) install_when_listed: Option<(crate::services::update::Channel, Option<String>)>,
     /// Whether the settings folder had no settings file when this window was given its store, which is
     /// what a first start on a machine looks like (`task-2278`).
     pub(crate) fresh_install: bool,
@@ -1690,6 +1700,10 @@ impl UnluminousApp {
             update_asked_by_a_person: false,
             update_looked_at: 0.0,
             install: None,
+            update_listing: None,
+            update_versions: None,
+            update_versions_asked_at: None,
+            install_when_listed: None,
             fresh_install: false,
             setup: setup::SetupState::default(),
             voice: voice::VoiceState::default(),

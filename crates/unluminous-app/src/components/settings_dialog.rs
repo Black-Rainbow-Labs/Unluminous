@@ -1263,6 +1263,21 @@ fn editor_page(
             settings.update_check = if on { UpdateCheck::Daily } else { UpdateCheck::Off };
             changed = true;
         }
+        // `task-2328`: which releases the check offers. Every finished ticket is a nightly; a nightly that has
+        // held up is promoted to stable.
+        let channels = crate::services::update::Channel::ALL;
+        let names: Vec<&str> = channels.iter().map(|channel| channel.label()).collect();
+        let chosen = channels.iter().position(|channel| *channel == settings.update_channel);
+        card.row(
+            "Channel",
+            Some("Stable offers the versions that were promoted after being used as a nightly. Nightly offers every release, so a fix arrives sooner and so does a bug. Check for Updates on the Unluminous menu lists both and installs any version on either."),
+            |row| {
+                if let Some(index) = row.segmented("Update channel", &names, chosen, 80.0, false) {
+                    settings.update_channel = channels[index];
+                    changed = true;
+                }
+            },
+        );
     });
     // `task-2271`: on by default, and this is how it stops. See `services::telemetry`.
     kit::card(ui, &mut column, "Usage statistics", None, |card| {

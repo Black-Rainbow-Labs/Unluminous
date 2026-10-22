@@ -4166,6 +4166,8 @@ const EVERY_VARIANT: &[&str] = &[
     "GoToFile",
     "FindInFiles",
     "CheckForUpdates",
+    "InstallVersion",
+    "LoadVersions",
     "Find",
     "Replace",
     "FindNext",
@@ -4283,6 +4285,8 @@ fn variant_name(action: &Action) -> &'static str {
         Action::GoToFile => "GoToFile",
         Action::FindInFiles => "FindInFiles",
         Action::CheckForUpdates => "CheckForUpdates",
+        Action::InstallVersion { .. } => "InstallVersion",
+        Action::LoadVersions => "LoadVersions",
         Action::Find => "Find",
         Action::Replace => "Replace",
         Action::FindNext => "FindNext",
@@ -4606,6 +4610,15 @@ const CANNOT_BE_DRIVEN: &[(&str, &str)] = &[
         "check-for-updates",
         "it asks GitHub for the latest release, and a test does not reach the network",
     ),
+    (
+        "install-stable",
+        "it downloads an installer from unluminous.com and installs it over this Unluminous",
+    ),
+    (
+        "install-nightly",
+        "it downloads an installer from unluminous.com and installs it over this Unluminous",
+    ),
+    ("load-versions", "it asks unluminous.com for the release lists, and a test does not reach the network"),
     ("debug-install", "it downloads and installs a debug adapter onto this machine"),
     (
         "paste",

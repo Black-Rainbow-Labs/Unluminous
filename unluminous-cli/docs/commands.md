@@ -1372,35 +1372,41 @@ unluminous-cli editor navigate-forward
 
 ## update — whether a newer Unluminous has been released, and installing it
 
-One request to unluminous.com, which is where the installer is, and to the public GitHub releases only if the site does not answer. The window asks once a day on its own unless the `update.check` setting is `off`, and offers a newer version in a notice with Install & Restart and Don't Ask Again. `update install` is that button: the installer is checked against the size and SHA-256 unluminous.com publishes before anything is run.
+Releases are on two channels. Every release is a nightly; a nightly that has held up is promoted to stable, the same build. `update.channel` says which one this window follows, stable by default. One request to unluminous.com, which is where the installer is, and to the public GitHub releases only for stable and only if the site does not answer. The window asks once a day on its own unless the `update.check` setting is `off`, and offers a newer version in a notice with Install & Restart and Don't Ask Again. `update versions` lists the newest versions on both channels and `update install <version>` installs any of them, older ones included: the installer is checked against the size and SHA-256 unluminous.com publishes before anything is run.
 
 ### update check
 
 ```
-unluminous-cli update check [--timeout <milliseconds>]
+unluminous-cli update check [--channel <name>] [--timeout <milliseconds>]
 ```
 
-Whether a newer Unluminous has been released. One request to unluminous.com, then the public GitHub releases if the site does not answer. Reports; `update install` installs.
+Whether a newer Unluminous has been released on a channel: stable, the promoted versions, or nightly, every release. One request to unluminous.com, then the public GitHub releases for stable if the site does not answer. Reports; `update install` installs.
 
+- `--channel <name>` — stable or nightly. The `update.channel` setting by default.
 - `--timeout <milliseconds>` — How long to wait for the answer. 15000 by default.
 
 ```sh
 unluminous-cli update check --json
+unluminous-cli update check --channel nightly
 ```
 
 ### update install
 
 ```
-unluminous-cli update install [--no-restart]
+unluminous-cli update install [version] [--channel <name>] [--no-restart]
 ```
 
-Install & Restart: download the newer version the last check found, check its size and SHA-256, install it, and reopen. Answers at once; `update status` says how far it got.
+Install & Restart: download a version, check its size and SHA-256, install it, and reopen. With a version or `--channel`, that version or the newest on that channel, older ones included; with neither, the newer version the last check found. Answers at once; `update status` says how far it got.
 
+- `version` (optional) — A version `update versions` lists, such as 1.9.0.
+
+- `--channel <name>` — stable or nightly: the channel the version is on, or whose newest to install. `update.channel` by default.
 - `--no-restart` — Download and check it, and install nothing.
 
 ```sh
 unluminous-cli update install
-unluminous-cli update install --no-restart --json
+unluminous-cli update install 1.8.2 --channel stable
+unluminous-cli update install --channel nightly --no-restart --json
 ```
 
 ### update skip
@@ -1423,10 +1429,26 @@ unluminous-cli update skip 0.55.0
 unluminous-cli update status
 ```
 
-The last check's answer, an install's progress, the declined version, and the offer showing with its buttons.
+The last check's answer, an install's progress, the declined version, and the offer showing with its buttons, the channel followed and the versions loaded.
 
 ```sh
 unluminous-cli update status --json
+```
+
+### update versions
+
+```
+unluminous-cli update versions [--refresh] [--timeout <milliseconds>]
+```
+
+The newest versions on the stable and nightly channels, what `Check for Updates -> Stable` and `-> Nightly` list, with the one running marked. Fetched from unluminous.com when none are loaded or with `--refresh`.
+
+- `--refresh` — Fetch them again even if they are loaded.
+- `--timeout <milliseconds>` — How long to wait for unluminous.com. 15000 by default.
+
+```sh
+unluminous-cli update versions --json
+unluminous-cli update versions --refresh
 ```
 
 ## voice — speech to text in the Agent-Chat prompt, and listening for "Sable"

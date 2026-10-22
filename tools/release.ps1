@@ -25,9 +25,16 @@
     6. Creates the GitHub release with the installer attached, on BOTH repositories: the private one
        where releases are cut, and the public Black-Rainbow-Labs one, whose history it publishes
        first with tools/publish-open-source.mjs.
-    7. Publishes both sites. unluminous.com gets the new installer, the page that prints its size and
-       hash, and the manifest at /releases/latest.json that the update check asks before it asks
-       anything else; blackrainbowlabs.com then reads that manifest for the version it prints.
+    7. Publishes both sites. unluminous.com gets the new installer and puts the version at the top of
+       the nightly channel, /releases/nightly.json; blackrainbowlabs.com reads /releases/latest.json for
+       the version it prints.
+
+  **Every release is a nightly (task-2328).** The GitHub releases are created as prereleases and the
+  site adds the version to the nightly channel only, so the page, /releases/latest.json and GitHub's
+  latest release stay on the stable version. A window following stable, which is every window unless
+  somebody chose nightly, is not offered this release until `pwsh tools/promote.ps1 -Version <version>`
+  promotes it, with the same installer and nothing built again.
+  `tasks/task-2328-nightly-and-stable-releases-tdd.md` is the design.
 
   Steps 6 and 7 are both there because of `task-1993`, which found that every address the update
   check knew named the private repository and therefore answered 404 to everybody but Jason. The
@@ -283,72 +290,7 @@ function Set-Version([string] $New) {
     Invoke-Checked 'cargo metadata' { & cargo metadata --no-deps --format-version 1 --manifest-path $Manifest | Out-Null }
 }
 
-<#
-.SYNOPSIS
-  The GitHub CLI, installing it with winget the first time.
-.DESCRIPTION
-  The same choice installer\windows\build.ps1 makes about Inno Setup: the one thing this needs that a
-  machine able to build Unluminous does not already have is installed here rather than described in a
-  document. It is looked for on the PATH first, then where the MSI puts it, because a shell opened
-  before the install will not have the new PATH.
-#>
-function Get-GitHubCli {
-    $onPath = Get-Command 'gh' -ErrorAction SilentlyContinue
-    if ($onPath) { return $onPath.Source }
-    $candidates = @(
-        (Join-Path $env:ProgramFiles 'GitHub CLI\gh.exe'),
-        (Join-Path ${env:ProgramFiles(x86)} 'GitHub CLI\gh.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Programs\GitHub CLI\gh.exe')
-    )
-    foreach ($candidate in $candidates) {
-        if (Test-Path $candidate) { return $candidate }
-    }
-
-    Write-Step 'Installing the GitHub CLI, which is not on this machine'
-    $winget = Get-Command 'winget' -ErrorAction SilentlyContinue
-    if (-not $winget) {
-        throw 'gh is not installed and winget is not available to install it. Install it from https://cli.github.com and run this again.'
-    }
-    & winget install --id GitHub.cli --exact --silent `
-        --accept-source-agreements --accept-package-agreements --disable-interactivity
-    foreach ($candidate in $candidates) {
-        if (Test-Path $candidate) { return $candidate }
-    }
-    throw 'The GitHub CLI was installed but gh.exe could not be found afterwards.'
-}
-
-<#
-.SYNOPSIS
-  A GitHub token, from the credential helper git is already using.
-.DESCRIPTION
-  Pushing to this repository already works, which means a credential for github.com is already
-  stored, and `git credential fill` is the supported way to ask for it. Using it means there is no
-  second credential to set up and nothing new written to disk. GH_TOKEN wins if it is already set,
-  which is how a machine with its own token keeps using it.
-
-  Nothing here is printed or returned into the transcript beyond a yes or no.
-#>
-function Get-GitHubToken {
-    if ($env:GH_TOKEN) { return $env:GH_TOKEN }
-    if ($env:GITHUB_TOKEN) { return $env:GITHUB_TOKEN }
-    # The request goes in through a file rather than a pipe. Windows PowerShell 5.1 does not deliver a
-    # piped string to a native program's standard input in a form `git credential` accepts — it
-    # answers `refusing to work with credential missing protocol field` — and a redirection from a
-    # file does. The file holds the protocol and the host and no secret; the answer, which does hold
-    # one, is only ever in memory.
-    $ask = Join-Path ([System.IO.Path]::GetTempPath()) ("unluminous-credential-" + [guid]::NewGuid().ToString('N') + ".txt")
-    try {
-        Set-Content -Path $ask -Value "protocol=https`nhost=github.com`n" -NoNewline -Encoding ascii
-        $answer = & cmd /c "git credential fill < `"$ask`"" 2>$null
-    } finally {
-        Remove-Item -Path $ask -Force -ErrorAction SilentlyContinue
-    }
-    $line = $answer | Where-Object { $_ -like 'password=*' } | Select-Object -First 1
-    if (-not $line) {
-        throw 'No GitHub credential is stored for github.com. Run `gh auth login` (or set GH_TOKEN) and run this again.'
-    }
-    return $line.Substring('password='.Length)
-}
+# `Get-GitHubCli` and `Get-GitHubToken` are in `release-steps.ps1`, which `tools/promote.ps1` loads too.
 
 <#
 .SYNOPSIS
@@ -509,7 +451,7 @@ if ($WhatIf) {
         if (-not $SkipSite) {
             $lead = '  7.'
             foreach ($site in $SitePublishers) {
-                Write-Host "$lead pwsh $($site.Script)$(if ($site.Versioned) { " -Version $next" })"
+                Write-Host "$lead pwsh $($site.Script)$(if ($site.Versioned) { " -Version $next -Channel nightly" })"
                 $lead = '    '
             }
         }
@@ -956,8 +898,9 @@ if (-not $SkipSite) {
         Write-Step "Publishing $($site.Name)"
         $arguments = @('-NoProfile', '-File', $site.Script)
         # Only the product site is told which version: the parent page reads it out of the manifest
-        # the product site has just published, which is the whole reason they go in this order.
-        if ($site.Versioned) { $arguments += @('-Version', $next) }
+        # the product site has just published, which is the whole reason they go in this order. It is
+        # told the nightly channel, so the page and latest.json stay on the stable version (task-2328).
+        if ($site.Versioned) { $arguments += @('-Version', $next, '-Channel', 'nightly') }
         Invoke-WithRetry "Publishing $($site.Name)" 2 { & pwsh @arguments }
         Add-JournalStep "site:$($site.Name)"
     }
@@ -965,7 +908,7 @@ if (-not $SkipSite) {
     Write-Host ''
     Write-Host 'The sites were not published, so update check still answers with the version before this one.' -ForegroundColor Yellow
     foreach ($site in $SitePublishers) {
-        Write-Host "Run: pwsh $($site.Script)$(if ($site.Versioned) { " -Version $next" })" -ForegroundColor Yellow
+        Write-Host "Run: pwsh $($site.Script)$(if ($site.Versioned) { " -Version $next -Channel nightly" })" -ForegroundColor Yellow
     }
 }
 
@@ -1026,9 +969,11 @@ if (-not $SkipSite) {
     # failed to copy and this would have said the site was fine. And a 200 says a file is there, not
     # that it is this release's: the manifest states each artifact's size, so the size the server
     # actually serves is what decides.
-    Test-Destination 'unluminous.com' {
-        $manifest = (Invoke-WebRequest -Uri 'https://unluminous.com/releases/latest.json' -UseBasicParsing -TimeoutSec 30).Content | ConvertFrom-Json
-        if ($manifest.version -ne $next) { return "the manifest says $($manifest.version)" }
+    # The nightly channel, which is where a release goes (task-2328). The page and latest.json are the
+    # stable version's, and `tools/promote.ps1` checks those when it promotes one.
+    Test-Destination 'unluminous.com, nightly' {
+        $manifest = (Invoke-WebRequest -Uri 'https://unluminous.com/releases/nightly.json' -UseBasicParsing -TimeoutSec 30).Content | ConvertFrom-Json
+        if ($manifest.version -ne $next) { return "the nightly manifest says $($manifest.version)" }
 
         $platforms = @(@{ Platform = 'Windows'; Url = $manifest.installer; Bytes = $manifest.installerBytes })
         if ($macosZip) {
@@ -1048,12 +993,6 @@ if (-not $SkipSite) {
         }
         $null
     }
-    Test-Destination 'unluminous.com, page' {
-        $page = (Invoke-WebRequest -Uri 'https://unluminous.com/' -UseBasicParsing -TimeoutSec 30).Content
-        if ($page -notlike "*UnluminousSetup-$next-x64.exe*") { return "the page does not link the $next Windows installer" }
-        if ($macosZip -and $page -notlike "*Unluminous-$next-macos.zip*") { return "the page does not link the $next macOS archive" }
-        $null
-    }
 }
 Write-Host ("  {0,-24} {1}" -f 'macOS in this release', $(if ($macosZip) { 'yes, signed and notarised' } else { "no - $macosReason" }))
 
@@ -1061,7 +1000,8 @@ Write-Host ''
 Write-Host "Unluminous $next is released: $url" -ForegroundColor Green
 Write-Host "Public source and release:   $publicUrl" -ForegroundColor Green
 if (-not $SkipSite) {
-    Write-Host 'Download and update check:   https://unluminous.com/#install' -ForegroundColor Green
+    Write-Host 'Nightly channel:             https://unluminous.com/releases/nightly.json' -ForegroundColor Green
+    Write-Host "Promote it to stable:        pwsh tools/promote.ps1 -Version $next" -ForegroundColor Green
 }
 if (-not $SkipInstall) {
     Write-Host "Installed at $(Join-Path $env:LOCALAPPDATA 'Programs\Unluminous\unluminous.exe')" -ForegroundColor Green

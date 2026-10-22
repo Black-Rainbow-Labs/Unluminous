@@ -189,6 +189,8 @@ pub enum Waiting {
     DebugHover { id: u64, expand: Option<String>, until: Instant },
     /// `update check` waiting for the releases endpoint, which is on a thread. `task-1984` L1.
     UpdateCheck { until: Instant },
+    /// `update versions` waiting for both channels' lists, which are fetched on a thread. `task-2328`.
+    UpdateVersions { until: Instant },
     /// `settings acp-registry` and `settings acp-add` waiting for the ACP registry, and for a binary agent to be
     /// downloaded, both on threads (`task-2308`). `add` is the agent and the endpoint name; `started` says the
     /// add has been asked for.
@@ -263,6 +265,7 @@ impl Waiting {
             | Waiting::References { until, .. }
             | Waiting::Git { until, .. }
             | Waiting::UpdateCheck { until }
+            | Waiting::UpdateVersions { until }
             | Waiting::Acp { until, .. }
             | Waiting::ReportShot { until, .. }
             | Waiting::NotebookRun { until, .. }
@@ -649,6 +652,11 @@ impl UnluminousApp {
                 // replies -- so by the time this is asked the answer is on the window.
                 (!check.is_asking()).then(|| self.update_check_reply(request))
             }
+            Waiting::UpdateVersions { .. } => {
+                let loading =
+                    self.update_listing.as_ref().is_some_and(|listing| listing.is_asking());
+                (!loading).then(|| self.update_versions_reply(request))
+            }
             Waiting::References { .. } => {
                 let modal = self.references.as_ref()?;
                 (!modal.is_searching()).then(|| self.references_reply(request, waiting))
@@ -806,6 +814,10 @@ impl UnluminousApp {
             Waiting::UpdateCheck { .. } => (
                 "update.check",
                 "The releases page had not answered when the time ran out.".to_owned(),
+            ),
+            Waiting::UpdateVersions { .. } => (
+                "update.versions",
+                "unluminous.com had not answered with the version lists when the time ran out.".to_owned(),
             ),
             Waiting::NotebookRun { .. } => (
                 "notebook.run",

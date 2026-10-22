@@ -218,7 +218,7 @@ impl Command {
                 | ("modal", "results")
                 | ("terminal", "read")
                 | ("run", "output")
-                | ("update", "check")
+                | ("update", "check" | "versions")
                 | ("settings", "acp-registry" | "acp-add" | "acp-update")
                 | ("voice", "transcribe")
                 | ("report", "screenshot")
@@ -624,7 +624,7 @@ pub fn area_note(area: &'static str) -> &'static str {
         "tab" => "Open, show, save and close files. A tab holds a file. A relative path is resolved against the project folder, and every reply says which absolute path it used.",
         "pane" => "The editing area can be split into panes side by side, each with its own tabs, which is the reference editor's split view. `pane split` moves the tab that is showing into a new pane on the right — it moves rather than copies, because two tabs on one file would be two documents over one path. A pane holding only that tab keeps it and the new pane opens empty, ready for the next file: opening a file always lands in the pane that has the keyboard.",
         "editor" => "Read and change a file's text in the window: `text` reads it, `insert`, `replace` and `set-text` change it, `comment`, `lines`, `select` and `caret` work on lines, and every one takes `path` to name the file. Use this tool first for project-symbol work. If asked to find every place a name is used, call `references` with `name`; if asked where a name is defined, call `definition`; if asked to rename it everywhere, call `rename` with `name`, `new-name` and `apply: true`. Do not begin those jobs with grep, file search, reads or file edits. Unluminous's native answers combine unsaved live open tabs with the project index, distinguish code from comments and strings, and apply a role-aware project rename as one undo step per open file while safely rewriting closed files. Lines and columns count from 1.",
-        "update" => "One request to unluminous.com, which is where the installer is, and to the public GitHub releases only if the site does not answer. The window asks once a day on its own unless the `update.check` setting is `off`, and offers a newer version in a notice with Install & Restart and Don't Ask Again. `update install` is that button: the installer is checked against the size and SHA-256 unluminous.com publishes before anything is run.",
+        "update" => "Releases are on two channels. Every release is a nightly; a nightly that has held up is promoted to stable, the same build. `update.channel` says which one this window follows, stable by default. One request to unluminous.com, which is where the installer is, and to the public GitHub releases only for stable and only if the site does not answer. The window asks once a day on its own unless the `update.check` setting is `off`, and offers a newer version in a notice with Install & Restart and Don't Ask Again. `update versions` lists the newest versions on both channels and `update install <version>` installs any of them, older ones included: the installer is checked against the size and SHA-256 unluminous.com publishes before anything is run.",
         "voice" => "Engines: `local` (Moonshine, `voice install`) or `endpoint` (`voice.endpoint`). Settings are `voice.*`.",
         "report" => "The flag at the bottom right. `report send` opens a GitHub issue on Black-Rainbow-Labs/Unluminous, already written, and puts the attachments on the clipboard; the person submits it there.",
         "setup" => "Read `setup status` first. `unluminous-cli setup` with no second word is a different command: it runs in your terminal.",
@@ -1491,19 +1491,29 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "update",
         verb: "check",
-        summary: "Whether a newer Unluminous has been released. One request to unluminous.com, then the public GitHub releases if the site does not answer. Reports; `update install` installs.",
+        summary: "Whether a newer Unluminous has been released on a channel: stable, the promoted versions, or nightly, every release. One request to unluminous.com, then the public GitHub releases for stable if the site does not answer. Reports; `update install` installs.",
         arguments: NO_ARGUMENTS,
-        flags: &[whole_option("timeout", "milliseconds", "How long to wait for the answer. 15000 by default.")],
-        examples: &["unluminous-cli update check --json"],
+        flags: &[
+            option("channel", "name", "stable or nightly. The `update.channel` setting by default."),
+            whole_option("timeout", "milliseconds", "How long to wait for the answer. 15000 by default."),
+        ],
+        examples: &["unluminous-cli update check --json", "unluminous-cli update check --channel nightly"],
         local: false,
     },
     Command {
         area: "update",
         verb: "install",
-        summary: "Install & Restart: download the newer version the last check found, check its size and SHA-256, install it, and reopen. Answers at once; `update status` says how far it got.",
-        arguments: NO_ARGUMENTS,
-        flags: &[switch("no-restart", "Download and check it, and install nothing.")],
-        examples: &["unluminous-cli update install", "unluminous-cli update install --no-restart --json"],
+        summary: "Install & Restart: download a version, check its size and SHA-256, install it, and reopen. With a version or `--channel`, that version or the newest on that channel, older ones included; with neither, the newer version the last check found. Answers at once; `update status` says how far it got.",
+        arguments: &[argument("version", false, "A version `update versions` lists, such as 1.9.0.")],
+        flags: &[
+            option("channel", "name", "stable or nightly: the channel the version is on, or whose newest to install. `update.channel` by default."),
+            switch("no-restart", "Download and check it, and install nothing."),
+        ],
+        examples: &[
+            "unluminous-cli update install",
+            "unluminous-cli update install 1.8.2 --channel stable",
+            "unluminous-cli update install --channel nightly --no-restart --json",
+        ],
         local: false,
     },
     Command {
@@ -1518,10 +1528,22 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "update",
         verb: "status",
-        summary: "The last check's answer, an install's progress, the declined version, and the offer showing with its buttons.",
+        summary: "The last check's answer, an install's progress, the declined version, and the offer showing with its buttons, the channel followed and the versions loaded.",
         arguments: NO_ARGUMENTS,
         flags: NO_FLAGS,
         examples: &["unluminous-cli update status --json"],
+        local: false,
+    },
+    Command {
+        area: "update",
+        verb: "versions",
+        summary: "The newest versions on the stable and nightly channels, what `Check for Updates -> Stable` and `-> Nightly` list, with the one running marked. Fetched from unluminous.com when none are loaded or with `--refresh`.",
+        arguments: NO_ARGUMENTS,
+        flags: &[
+            switch("refresh", "Fetch them again even if they are loaded."),
+            whole_option("timeout", "milliseconds", "How long to wait for unluminous.com. 15000 by default."),
+        ],
+        examples: &["unluminous-cli update versions --json", "unluminous-cli update versions --refresh"],
         local: false,
     },
     // ------------------------------------------------------------------ speech to text

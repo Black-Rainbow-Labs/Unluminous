@@ -59,6 +59,22 @@
 //! source fails, the refusal names each host and what it said, because *which* of them was down is
 //! the whole of what somebody can act on.
 //!
+//! ## Two channels, and `latest.json` is the stable one (`task-2328`)
+//!
+//! Every finished ticket used to be offered to every window the next day, so a release with a bad bug
+//! in it reached everybody before anybody had used it. Releases are now on one of two channels:
+//! `tools/release.ps1` publishes every ticket to **nightly**, and `tools/promote.ps1` makes a nightly
+//! that has held up **stable**, without building it again. unluminous.com publishes
+//! `/releases/stable.json` and `/releases/nightly.json`, each the newest version on that channel in the
+//! shape [`read`] already reads, plus a `versions` list of the newest ten. `/releases/latest.json`
+//! means the newest stable version, so every Unluminous released before this only offers promoted
+//! builds. `update.channel` says which channel a window follows, stable by default.
+//!
+//! A stable check asks `stable.json`, then `latest.json`, then GitHub, whose `releases/latest` never
+//! answers with a prerelease and nightlies are published as prereleases. A nightly check asks
+//! `nightly.json` only: the newest GitHub release is the stable one, and calling it the newest nightly
+//! would be wrong. `tasks/task-2328-nightly-and-stable-releases-tdd.md` is the design.
+//!
 //! ## The transport is the chat pane's
 //!
 //! `unluminous_chat::client::tls_config`, verbatim, rather than a second one. That function is where
@@ -72,12 +88,67 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-/// The manifest unluminous.com publishes, which is where the installer a person downloads is.
+/// The manifest unluminous.com publishes, which is where the installer a person downloads is. It names
+/// the newest stable version, which is what every Unluminous before `task-2328` reads.
 const SITE: &str = "https://unluminous.com/releases/latest.json";
+/// The stable channel's manifest, with the newest ten stable versions in it.
+const STABLE: &str = "https://unluminous.com/releases/stable.json";
+/// The nightly channel's manifest: every release, the newest ten of them listed.
+const NIGHTLY: &str = "https://unluminous.com/releases/nightly.json";
 /// The public repository, asked when the site does not answer. Never the private one: it is 404.
 const GITHUB: &str = "https://api.github.com/repos/Black-Rainbow-Labs/Unluminous/releases/latest";
-/// Where a check asks, in order. The first that answers with a version is the answer.
-pub const SOURCES: [&str; 2] = [SITE, GITHUB];
+/// Where a stable check asks, in order. The first that answers with a version is the answer.
+/// `latest.json` is second so a site not yet rebuilt with the channel manifests still answers.
+pub const SOURCES: [&str; 3] = [STABLE, SITE, GITHUB];
+/// Where a nightly check asks. Only the site: GitHub's latest release is the stable one.
+pub const NIGHTLY_SOURCES: [&str; 1] = [NIGHTLY];
+/// How many versions of each channel the menu offers under `Latest`.
+pub const SHOWN: usize = 5;
+
+/// Which builds a window follows. `task-2328`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Channel {
+    /// Versions somebody promoted after using them as a nightly. What a window follows by default.
+    #[default]
+    Stable,
+    /// Every release, which is every finished ticket.
+    Nightly,
+}
+
+impl Channel {
+    pub const ALL: [Channel; 2] = [Channel::Stable, Channel::Nightly];
+
+    /// The word the settings file, the command line and the manifest's file name use.
+    pub fn name(self) -> &'static str {
+        match self {
+            Channel::Stable => "stable",
+            Channel::Nightly => "nightly",
+        }
+    }
+
+    /// The word a menu shows.
+    pub fn label(self) -> &'static str {
+        match self {
+            Channel::Stable => "Stable",
+            Channel::Nightly => "Nightly",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Channel> {
+        Channel::ALL.into_iter().find(|channel| channel.name() == name.trim().to_ascii_lowercase())
+    }
+
+    /// [`Channel::from_name`] under the name the settings table reads a coded value with.
+    pub fn parse(name: &str) -> Option<Channel> {
+        Channel::from_name(name)
+    }
+
+    /// Where this channel is asked, in order: [`SOURCES`] or [`NIGHTLY_SOURCES`], unless the
+    /// environment names others. See [`releases_endpoints`].
+    pub fn sources(self) -> Vec<String> {
+        releases_endpoints(self)
+    }
+}
 /// Where a person goes to get one. The Install section of the site, which holds the installer.
 pub const RELEASES_PAGE: &str = "https://unluminous.com/#install";
 /// GitHub refuses a request with no `user-agent` outright, so it names the program and nothing else.
@@ -168,9 +239,9 @@ pub struct Check {
 }
 
 impl Check {
-    /// Start asking. `wake` asks the window to draw again when the answer lands.
-    pub fn start(wake: Arc<dyn Fn() + Send + Sync>) -> Self {
-        Self::start_for(TIMEOUT, wake)
+    /// Start asking `channel`. `wake` asks the window to draw again when the answer lands.
+    pub fn start(channel: Channel, wake: Arc<dyn Fn() + Send + Sync>) -> Self {
+        Self::start_for(channel, TIMEOUT, wake)
     }
 
     /// The same, with a wait the caller chose.
@@ -178,9 +249,13 @@ impl Check {
     /// `unluminous-cli update check --timeout` (`task-1984` L1). The catalogue has declared that flag
     /// since the command was written and nothing read it: the wait was a constant, and the number the
     /// documentation gave was not the number the code used.
-    pub fn start_for(timeout: Duration, wake: Arc<dyn Fn() + Send + Sync>) -> Self {
+    pub fn start_for(
+        channel: Channel,
+        timeout: Duration,
+        wake: Arc<dyn Fn() + Send + Sync>,
+    ) -> Self {
         let (sender, answers) = std::sync::mpsc::channel();
-        let urls = releases_endpoints();
+        let urls = channel.sources();
         std::thread::Builder::new()
             .name("unluminous-update-check".to_owned())
             .spawn(move || {
@@ -224,7 +299,8 @@ impl Check {
     }
 }
 
-/// Where a check asks, which is [`SOURCES`] unless something in the environment says otherwise.
+/// Where a check on `channel` asks, which is [`SOURCES`] or [`NIGHTLY_SOURCES`] unless something in
+/// the environment says otherwise.
 ///
 /// `UNLUMINOUS_RELEASES` is a test seam of the shape `UNLUMINOUS_HOME`, `UNLUMINOUS_INSTANCES` and
 /// `UNLUMINOUS_CLI_BIN` already are: a scripted server on loopback stands in for the real ones, so
@@ -236,11 +312,27 @@ impl Check {
 /// ordering the real thing has — a first source that fails and a second that answers — rather than
 /// only the single-source case. One address is still one address, which is what every test written
 /// before that ticket passes.
-fn releases_endpoints() -> Vec<String> {
+///
+/// `UNLUMINOUS_RELEASES_STABLE` and `UNLUMINOUS_RELEASES_NIGHTLY` name one channel's sources and win
+/// over `UNLUMINOUS_RELEASES`, which names both (`task-2328`).
+fn releases_endpoints(channel: Channel) -> Vec<String> {
+    let own = format!("UNLUMINOUS_RELEASES_{}", channel.name().to_ascii_uppercase());
+    if let Ok(named) = std::env::var(own) {
+        return sources_from(&named);
+    }
     match std::env::var("UNLUMINOUS_RELEASES") {
         Ok(named) => sources_from(&named),
-        Err(_) => SOURCES.iter().map(|&url| url.to_owned()).collect(),
+        Err(_) => defaults(channel),
     }
+}
+
+/// The addresses a released Unluminous asks for `channel`.
+fn defaults(channel: Channel) -> Vec<String> {
+    let sources: &[&str] = match channel {
+        Channel::Stable => &SOURCES,
+        Channel::Nightly => &NIGHTLY_SOURCES,
+    };
+    sources.iter().map(|&url| url.to_owned()).collect()
 }
 
 /// The addresses a comma-separated list names, with the blanks and the spacing taken out.
@@ -262,9 +354,9 @@ fn host_of(url: &str) -> &str {
     after_scheme.split(['/', '?']).next().unwrap_or(after_scheme)
 }
 
-/// Ask the real releases endpoints, in order. Runs on the worker thread.
-pub fn ask() -> Answer {
-    ask_each(&releases_endpoints(), TIMEOUT)
+/// Ask the real releases endpoints of `channel`, in order. Runs on the worker thread.
+pub fn ask(channel: Channel) -> Answer {
+    ask_each(&channel.sources(), TIMEOUT)
 }
 
 /// Ask each address in turn, and answer with the first that answers.
@@ -306,6 +398,21 @@ pub fn ask_at(url: &str) -> Answer {
 
 /// The same, with a wait the caller chose. See [`Check::start_for`].
 pub fn ask_within(url: &str, timeout: Duration) -> Answer {
+    let body = match fetch(url, timeout) {
+        Ok(body) => body,
+        Err(problem) => return Answer::Failed(problem),
+    };
+    match read(&body) {
+        Some(release) => match is_newer(crate::build_info::VERSION, &release.version) {
+            true => Answer::Newer(release),
+            false => Answer::Current(release.version),
+        },
+        None => Answer::Failed("answered something this version cannot read".to_owned()),
+    }
+}
+
+/// The body one address answers with, or what went wrong in the server's own words.
+pub fn fetch(url: &str, timeout: Duration) -> Result<String, String> {
     let config = ureq::Agent::config_builder()
         .tls_config(unluminous_chat::client::tls_config())
         // The body of a 403 is where GitHub says *why* -- a rate limit, usually -- and that is the
@@ -327,7 +434,7 @@ pub fn ask_within(url: &str, timeout: Duration) -> Answer {
         .call();
     let mut reply = match sent {
         Ok(reply) => reply,
-        Err(problem) => return Answer::Failed(problem.to_string()),
+        Err(problem) => return Err(problem.to_string()),
     };
     let status = reply.status().as_u16();
     let body = reply.body_mut().read_to_string().unwrap_or_default();
@@ -340,14 +447,130 @@ pub fn ask_within(url: &str, timeout: Duration) -> Answer {
             .ok()
             .and_then(|value| value.get("message")?.as_str().map(str::to_owned))
             .unwrap_or_else(|| format!("answered {status}"));
-        return Answer::Failed(said);
+        return Err(said);
     }
-    match read(&body) {
-        Some(release) => match is_newer(crate::build_info::VERSION, &release.version) {
-            true => Answer::Newer(release),
-            false => Answer::Current(release.version),
-        },
-        None => Answer::Failed("answered something this version cannot read".to_owned()),
+    Ok(body)
+}
+
+/// Every version a channel's manifest lists, newest first.
+///
+/// `stable.json` and `nightly.json` carry a `versions` list beside the newest version (`task-2328`).
+/// `latest.json` and GitHub's answer carry only the newest, which is then a list of one, so a stable
+/// list still comes back while the site has not been rebuilt with the channel manifests. A version that
+/// is listed twice is kept once, where it first appears.
+pub fn versions_in(body: &str) -> Option<Vec<Release>> {
+    let value: serde_json::Value = serde_json::from_str(body).ok()?;
+    let mut found: Vec<Release> = match value.get("versions").and_then(|listed| listed.as_array()) {
+        Some(listed) => listed.iter().filter_map(release_from).collect(),
+        None => vec![release_from(&value)?],
+    };
+    let mut seen = std::collections::HashSet::new();
+    found.retain(|release| seen.insert(release.version.clone()));
+    (!found.is_empty()).then_some(found)
+}
+
+/// Ask each address in turn for a channel's list, and answer with the first that gives one.
+///
+/// The same order and the same shared budget as [`ask_each`], and the same rule that only a failure
+/// falls through.
+pub fn list_each(urls: &[String], timeout: Duration) -> Result<Vec<Release>, String> {
+    let deadline = Instant::now() + timeout;
+    let mut refusals: Vec<String> = Vec::new();
+    for (index, url) in urls.iter().enumerate() {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let share = left / (urls.len() - index) as u32;
+        if share.is_zero() {
+            refusals.push(format!("{}: the wait ran out before it could be asked", host_of(url)));
+            continue;
+        }
+        match fetch(url, share) {
+            Ok(body) => match versions_in(&body) {
+                Some(found) => return Ok(found),
+                None => refusals
+                    .push(format!("{}: answered something this version cannot read", host_of(url))),
+            },
+            Err(problem) => refusals.push(format!("{}: {problem}", host_of(url))),
+        }
+    }
+    match refusals.is_empty() {
+        true => Err("there is nowhere to ask".to_owned()),
+        false => Err(refusals.join("; ")),
+    }
+}
+
+/// What both channels list, or why one could not be read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Versions {
+    pub stable: Result<Vec<Release>, String>,
+    pub nightly: Result<Vec<Release>, String>,
+}
+
+impl Versions {
+    /// One channel's list.
+    pub fn of(&self, channel: Channel) -> &Result<Vec<Release>, String> {
+        match channel {
+            Channel::Stable => &self.stable,
+            Channel::Nightly => &self.nightly,
+        }
+    }
+
+    /// The release a channel lists under `version`, with its installer.
+    pub fn find(&self, channel: Channel, version: &str) -> Option<&Release> {
+        self.of(channel).as_ref().ok()?.iter().find(|release| release.version == version)
+    }
+
+    /// The newest release a channel lists.
+    pub fn newest(&self, channel: Channel) -> Option<&Release> {
+        self.of(channel).as_ref().ok()?.first()
+    }
+}
+
+/// Both channels' lists being fetched on a thread, and the answer when it arrives.
+///
+/// Arranged as [`Check`] is. The two channels are asked at once, so the wait is the slower of the two
+/// rather than their sum.
+pub struct Listing {
+    answers: Receiver<Versions>,
+    asking: bool,
+}
+
+impl Listing {
+    /// Start fetching both channels. `wake` asks the window to draw again when the lists land.
+    pub fn start(timeout: Duration, wake: Arc<dyn Fn() + Send + Sync>) -> Self {
+        let (sender, answers) = std::sync::mpsc::channel();
+        let (stable, nightly) = (Channel::Stable.sources(), Channel::Nightly.sources());
+        std::thread::Builder::new()
+            .name("unluminous-update-versions".to_owned())
+            .spawn(move || {
+                let versions = std::thread::scope(|scope| {
+                    let stable = scope.spawn(|| list_each(&stable, timeout));
+                    let nightly = scope.spawn(|| list_each(&nightly, timeout));
+                    let stopped = |_| Err("the request stopped".to_owned());
+                    Versions {
+                        stable: stable.join().unwrap_or_else(stopped),
+                        nightly: nightly.join().unwrap_or_else(stopped),
+                    }
+                });
+                let _ = sender.send(versions);
+                wake();
+            })
+            .ok();
+        Self { answers, asking: true }
+    }
+
+    /// The lists, once. `None` while they are still being fetched.
+    pub fn poll(&mut self) -> Option<Versions> {
+        match self.answers.try_recv() {
+            Ok(versions) => {
+                self.asking = false;
+                Some(versions)
+            }
+            Err(_) => None,
+        }
+    }
+
+    pub fn is_asking(&self) -> bool {
+        self.asking
     }
 }
 
@@ -360,7 +583,12 @@ pub fn ask_within(url: &str, timeout: Duration) -> Answer {
 ///
 /// Pure, so every shape it has to survive is a test with no socket behind it.
 pub fn read(body: &str) -> Option<Release> {
-    let value: serde_json::Value = serde_json::from_str(body).ok()?;
+    release_from(&serde_json::from_str(body).ok()?)
+}
+
+/// One release out of a JSON object in either shape. [`read`] for an object already parsed, which is
+/// what each entry of a channel's `versions` list is.
+pub fn release_from(value: &serde_json::Value) -> Option<Release> {
     let said = |keys: [&str; 2]| -> Option<&str> {
         keys.into_iter().find_map(|key| value.get(key)?.as_str())
     };
@@ -381,7 +609,7 @@ pub fn read(body: &str) -> Option<Release> {
         .find(|line| !line.is_empty())
         .unwrap_or_default()
         .to_owned();
-    let download = download_in(&value, PLATFORM_FIELD);
+    let download = download_in(value, PLATFORM_FIELD);
     Some(Release { version, url, notes, download })
 }
 
@@ -638,9 +866,13 @@ mod tests {
     /// not once have succeeded for a person who installed Unluminous from the site.
     #[test]
     fn the_addresses_asked_are_public_ones_and_the_site_is_asked_first() {
-        assert_eq!(SOURCES[0], SITE);
-        assert_eq!(SOURCES[1], GITHUB);
-        for address in [SITE, GITHUB, RELEASES_PAGE] {
+        assert_eq!(
+            SOURCES,
+            [STABLE, SITE, GITHUB],
+            "the stable manifest, then latest.json, then GitHub"
+        );
+        assert_eq!(NIGHTLY_SOURCES, [NIGHTLY], "a nightly is never answered by GitHub's latest");
+        for address in [STABLE, NIGHTLY, SITE, GITHUB, RELEASES_PAGE] {
             assert!(
                 !address.contains("jasonmcaffee"),
                 "{address} names the private repository, which is 404 anonymously"
@@ -666,10 +898,106 @@ mod tests {
     /// With nothing named, a check asks [`SOURCES`] — which is what a released Unluminous does.
     #[test]
     fn nothing_in_the_environment_means_the_real_sources() {
-        if std::env::var("UNLUMINOUS_RELEASES").is_ok() {
+        if ["UNLUMINOUS_RELEASES", "UNLUMINOUS_RELEASES_STABLE", "UNLUMINOUS_RELEASES_NIGHTLY"]
+            .iter()
+            .any(|name| std::env::var(name).is_ok())
+        {
             return;
         }
-        assert_eq!(releases_endpoints(), SOURCES.to_vec());
+        assert_eq!(releases_endpoints(Channel::Stable), SOURCES.to_vec());
+        assert_eq!(releases_endpoints(Channel::Nightly), NIGHTLY_SOURCES.to_vec());
+    }
+
+    #[test]
+    fn a_channel_is_read_back_from_its_name() {
+        for channel in Channel::ALL {
+            assert_eq!(Channel::from_name(channel.name()), Some(channel));
+        }
+        assert_eq!(Channel::from_name(" Nightly "), Some(Channel::Nightly));
+        assert_eq!(Channel::from_name("beta"), None);
+        assert_eq!(Channel::default(), Channel::Stable, "a window follows stable unless told");
+    }
+
+    /// A channel manifest: the newest at the top level, as `latest.json` has it, and the list beside it.
+    fn channel_manifest(versions: &[&str]) -> String {
+        let entry = |version: &str| {
+            serde_json::json!({
+                "version": version,
+                "notes": format!("notes for {version}"),
+                "installer": format!("https://unluminous.com/downloads/UnluminousSetup-{version}-x64.exe"),
+                "installerBytes": 100,
+                "installerSha256": "a".repeat(64),
+                "macos": format!("https://unluminous.com/downloads/Unluminous-{version}-macos.zip"),
+                "macosBytes": 200,
+                "macosSha256": "b".repeat(64),
+            })
+        };
+        let mut top = entry(versions[0]);
+        top["channel"] = serde_json::json!("nightly");
+        top["versions"] = versions.iter().map(|version| entry(version)).collect();
+        top.to_string()
+    }
+
+    #[test]
+    fn a_channel_manifest_lists_its_versions_newest_first() {
+        let body = channel_manifest(&["1.9.2", "1.9.1", "1.9.0"]);
+        let found = versions_in(&body).expect("it reads");
+        let names: Vec<&str> = found.iter().map(|release| release.version.as_str()).collect();
+        assert_eq!(names, ["1.9.2", "1.9.1", "1.9.0"]);
+        assert_eq!(found[1].notes, "notes for 1.9.1");
+        if PLATFORM_FIELD.is_some() {
+            assert!(
+                found.iter().all(|release| release.download.is_some()),
+                "each has its installer"
+            );
+        }
+        // And the top level is still what an older Unluminous reads.
+        assert_eq!(read(&body).expect("it reads").version, "1.9.2");
+    }
+
+    #[test]
+    fn a_manifest_with_no_list_is_a_list_of_one() {
+        let found = versions_in(r#"{"version": "1.8.3"}"#).expect("it reads");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].version, "1.8.3");
+        assert_eq!(versions_in("{}"), None);
+        assert_eq!(versions_in(r#"{"versions": []}"#), None);
+    }
+
+    #[test]
+    fn a_version_listed_twice_is_kept_once() {
+        let found = versions_in(&channel_manifest(&["1.9.1", "1.9.1", "1.9.0"])).expect("it reads");
+        assert_eq!(found.len(), 2);
+    }
+
+    /// The stable list while the site has not been rebuilt: `stable.json` is 404 and `latest.json`
+    /// answers with one version.
+    #[test]
+    fn a_stable_list_falls_through_to_latest_json() {
+        let sources =
+            vec![scripted(404, "<html>Not Found</html>"), scripted(200, r#"{"version": "1.8.3"}"#)];
+        let found = list_each(&sources, TIMEOUT).expect("the second answers");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].version, "1.8.3");
+    }
+
+    #[test]
+    fn a_list_nobody_answers_names_each_source() {
+        let sources = vec!["http://127.0.0.1:1/x".to_owned(), scripted(404, "nope")];
+        let refused = list_each(&sources, TIMEOUT).expect_err("nobody answers");
+        assert!(refused.contains("127.0.0.1:1") && refused.contains("404"), "{refused}");
+    }
+
+    #[test]
+    fn both_lists_are_fetched_and_a_version_is_found_by_name() {
+        let versions = Versions {
+            stable: versions_in(&channel_manifest(&["1.8.3", "1.8.2"])).ok_or_else(String::new),
+            nightly: Err("down".to_owned()),
+        };
+        assert_eq!(versions.newest(Channel::Stable).map(|r| r.version.as_str()), Some("1.8.3"));
+        assert!(versions.find(Channel::Stable, "1.8.2").is_some());
+        assert!(versions.find(Channel::Stable, "1.0.0").is_none());
+        assert!(versions.newest(Channel::Nightly).is_none());
     }
 
     #[test]

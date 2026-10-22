@@ -6,7 +6,8 @@
 .DESCRIPTION
   `task-2312`. Dot-sourced by `tools/release.ps1`, and by `tools/release-steps.test.ps1`, which runs them against
   a temporary folder and a stand-in for `gh`. They read `$Repo`, `$next`, `$gh`, `$macosBuild` and `$macosLog`
-  from the script that loads them.
+  from the script that loads them. `tools/promote.ps1` loads them for `Invoke-WithRetry` and the two GitHub
+  helpers, which call `Write-Step` from the script that loads them.
 #>
 
 <#
@@ -155,7 +156,10 @@ function Publish-GitHubRelease([string] $Repository, [string[]] $Assets, [string
         & $gh release upload "v$next" @missing --repo $Repository --clobber
         return
     }
-    & $gh release create "v$next" @Assets --repo $Repository --title "Unluminous $next" --notes $Body
+    # A prerelease, because every release is a nightly until `tools/promote.ps1` makes it stable, and GitHub's
+    # `releases/latest`, which an Unluminous asks when unluminous.com does not answer, never answers with one
+    # (task-2328).
+    & $gh release create "v$next" @Assets --repo $Repository --title "Unluminous $next" --notes $Body --prerelease
 }
 
 <#
@@ -195,4 +199,71 @@ function Start-MacosBuild {
 function Write-MacosLogTail {
     $lines = @(Get-Content -LiteralPath $macosLog -ErrorAction SilentlyContinue) + @(Get-Content -LiteralPath "$macosLog.err" -ErrorAction SilentlyContinue)
     $lines | Where-Object { $_ -notmatch '^\s+(Compiling|Checking|Fresh|Blocking)\b' } | Select-Object -Last 40 | ForEach-Object { Write-Host "  $_" }
+}
+
+<#
+.SYNOPSIS
+  The GitHub CLI, installing it with winget the first time.
+.DESCRIPTION
+  The same choice installer\windows\build.ps1 makes about Inno Setup: the one thing this needs that a
+  machine able to build Unluminous does not already have is installed here rather than described in a
+  document. It is looked for on the PATH first, then where the MSI puts it, because a shell opened
+  before the install will not have the new PATH.
+#>
+function Get-GitHubCli {
+    $onPath = Get-Command 'gh' -ErrorAction SilentlyContinue
+    if ($onPath) { return $onPath.Source }
+    $candidates = @(
+        (Join-Path $env:ProgramFiles 'GitHub CLI\gh.exe'),
+        (Join-Path ${env:ProgramFiles(x86)} 'GitHub CLI\gh.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\GitHub CLI\gh.exe')
+    )
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) { return $candidate }
+    }
+
+    Write-Step 'Installing the GitHub CLI, which is not on this machine'
+    $winget = Get-Command 'winget' -ErrorAction SilentlyContinue
+    if (-not $winget) {
+        throw 'gh is not installed and winget is not available to install it. Install it from https://cli.github.com and run this again.'
+    }
+    & winget install --id GitHub.cli --exact --silent `
+        --accept-source-agreements --accept-package-agreements --disable-interactivity
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) { return $candidate }
+    }
+    throw 'The GitHub CLI was installed but gh.exe could not be found afterwards.'
+}
+
+<#
+.SYNOPSIS
+  A GitHub token, from the credential helper git is already using.
+.DESCRIPTION
+  Pushing to this repository already works, which means a credential for github.com is already
+  stored, and `git credential fill` is the supported way to ask for it. Using it means there is no
+  second credential to set up and nothing new written to disk. GH_TOKEN wins if it is already set,
+  which is how a machine with its own token keeps using it.
+
+  Nothing here is printed or returned into the transcript beyond a yes or no.
+#>
+function Get-GitHubToken {
+    if ($env:GH_TOKEN) { return $env:GH_TOKEN }
+    if ($env:GITHUB_TOKEN) { return $env:GITHUB_TOKEN }
+    # The request goes in through a file rather than a pipe. Windows PowerShell 5.1 does not deliver a
+    # piped string to a native program's standard input in a form `git credential` accepts — it
+    # answers `refusing to work with credential missing protocol field` — and a redirection from a
+    # file does. The file holds the protocol and the host and no secret; the answer, which does hold
+    # one, is only ever in memory.
+    $ask = Join-Path ([System.IO.Path]::GetTempPath()) ("unluminous-credential-" + [guid]::NewGuid().ToString('N') + ".txt")
+    try {
+        Set-Content -Path $ask -Value "protocol=https`nhost=github.com`n" -NoNewline -Encoding ascii
+        $answer = & cmd /c "git credential fill < `"$ask`"" 2>$null
+    } finally {
+        Remove-Item -Path $ask -Force -ErrorAction SilentlyContinue
+    }
+    $line = $answer | Where-Object { $_ -like 'password=*' } | Select-Object -First 1
+    if (-not $line) {
+        throw 'No GitHub credential is stored for github.com. Run `gh auth login` (or set GH_TOKEN) and run this again.'
+    }
+    return $line.Substring('password='.Length)
 }

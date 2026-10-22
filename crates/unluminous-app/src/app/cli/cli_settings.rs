@@ -10,6 +10,16 @@
 
 use super::*;
 
+/// The channel `--channel` names, `None` when it names none, or the refusal for one that is not a channel.
+fn channel_asked(request: &Request) -> Result<Option<crate::services::update::Channel>, String> {
+    let Some(named) = request.text("channel").filter(|named| !named.trim().is_empty()) else {
+        return Ok(None);
+    };
+    crate::services::update::Channel::from_name(&named)
+        .map(Some)
+        .ok_or_else(|| format!("There is no {named} channel. The channels are stable and nightly."))
+}
+
 impl UnluminousApp {
     /// A contributed pane's three settings keys, resolved to the slot and the measurement they name.
     ///
@@ -100,10 +110,41 @@ impl UnluminousApp {
             "check" => {}
             "install" => {
                 let restart = !request.switch("no-restart");
-                return Outcome::Reply(match self.install_the_update(restart) {
+                let channel = match channel_asked(request) {
+                    Ok(channel) => channel,
+                    Err(refused) => {
+                        return Outcome::Reply(Reply::failed(
+                            &request.command,
+                            code::USAGE,
+                            refused,
+                        ))
+                    }
+                };
+                let version = request.text("version").filter(|named| !named.trim().is_empty());
+                // A version or a channel names what to install (`task-2328`); with neither it is the
+                // notice's button, the newer version the last check found.
+                let installed = match (version, channel) {
+                    (None, None) => self.install_the_update(restart),
+                    (version, channel) => self.install_a_version(
+                        channel.unwrap_or(self.settings.update_channel),
+                        version,
+                        restart,
+                    ),
+                };
+                return Outcome::Reply(match installed {
                     Ok(said) => Reply::done(&request.command, said, self.update_status_value()),
                     Err(problem) => Reply::failed(&request.command, code::REFUSED, problem),
                 });
+            }
+            "versions" => {
+                let loaded = self.update_versions.is_some();
+                if loaded && !request.switch("refresh") {
+                    return Outcome::Reply(self.update_versions_reply(request));
+                }
+                self.update_versions = None;
+                self.fetch_the_version_lists();
+                let until = waits_for(request, "timeout", crate::services::update::TIMEOUT);
+                return Outcome::Hold(Waiting::UpdateVersions { until });
             }
             "skip" => {
                 let named = request
@@ -148,11 +189,47 @@ impl UnluminousApp {
         // The check itself is given the same budget, so the request that is still in flight when the
         // command gives up is one that has given up too.
         let asking = until.saturating_duration_since(Instant::now());
-        self.update = Some(crate::services::update::Check::start_for(asking, self.thread_waker()));
+        let channel = match channel_asked(request) {
+            Ok(channel) => channel.unwrap_or(self.settings.update_channel),
+            Err(refused) => {
+                return Outcome::Reply(Reply::failed(&request.command, code::USAGE, refused))
+            }
+        };
+        self.update =
+            Some(crate::services::update::Check::start_for(channel, asking, self.thread_waker()));
         self.update_answer = None;
         // An agent asking is somebody asking, so what it finds is offered in the window as well.
         self.update_asked_by_a_person = true;
         Outcome::Hold(Waiting::UpdateCheck { until })
+    }
+
+    /// The reply `update versions` makes once both channels' lists are on the window. `task-2328`.
+    pub(crate) fn update_versions_reply(&self, request: &Request) -> Reply {
+        let value = self.update_versions_value();
+        let line = |channel: crate::services::update::Channel| {
+            let listed = self.update_versions.as_ref().map(|versions| versions.of(channel));
+            let words = match listed {
+                Some(Ok(found)) => found
+                    .iter()
+                    .take(crate::services::update::SHOWN)
+                    .map(|release| match release.version == crate::build_info::VERSION {
+                        true => format!("{} (running)", release.version),
+                        false => release.version.clone(),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                Some(Err(problem)) => format!("could not be read: {problem}"),
+                None => "not loaded".to_owned(),
+            };
+            format!("{}: {words}", channel.label())
+        };
+        let said = format!(
+            "{}. {}. Following {}.",
+            line(crate::services::update::Channel::Stable),
+            line(crate::services::update::Channel::Nightly),
+            self.settings.update_channel.name()
+        );
+        Reply::done(&request.command, said, value)
     }
 
     /// The reply `update check` makes once the answer has come back.
@@ -926,6 +1003,7 @@ impl UnluminousApp {
             "editor.servers" => self.settings.servers.name().to_owned(),
             "editor.line_ending" => self.settings.line_endings.name().to_owned(),
             "update.check" => self.settings.update_check.name().to_owned(),
+            "update.channel" => self.settings.update_channel.name().to_owned(),
             "update.skip" => self.settings.update_skip.clone(),
             "editor.exclude" => self.settings.exclude.clone(),
             "debug.value_tooltip" => self.settings.value_tooltip.name().to_owned(),
@@ -1733,6 +1811,10 @@ const SETTINGS: &[SettingKey] = &[
         help: "Whether Unluminous asks unluminous.com for a newer version on its own: `daily`, the default, asks at most once a day across every window; `start` asks whenever a window opens; `off` asks nothing until somebody presses Check for Updates or runs `update check`. A newer version is offered in a notice with Install & Restart and Don't Ask Again, and nothing is installed until that is pressed.",
     },
     SettingKey {
+        name: "update.channel",
+        help: "Which releases this window follows. `stable`, the default, is the versions somebody promoted after using them as a nightly. `nightly` is every release, which is every finished ticket, so a fix arrives a day sooner and so does a bug. The daily check, Check for Updates and `update check` ask this channel; `Unluminous -> Check for Updates` lists both and installs any version on either.",
+    },
+    SettingKey {
         name: "telemetry.enabled",
         help: "Whether Unluminous sends anonymous usage statistics to Google Analytics: when a window is open and for how long, which panels and kinds of tab are showing, and how often each menu entry and command is used. Never a path, a file name, a project name or anything typed. `true` by default; `false` stops counting and sending at once. `settings telemetry` says what it has sent.",
     },
@@ -1884,6 +1966,7 @@ fn fresh_value(name: &str, fresh: &crate::settings::Settings) -> String {
         "editor.servers" => fresh.servers.name().to_owned(),
         "editor.line_ending" => fresh.line_endings.name().to_owned(),
         "update.check" => fresh.update_check.name().to_owned(),
+        "update.channel" => fresh.update_channel.name().to_owned(),
         "update.skip" => fresh.update_skip.clone(),
         "editor.exclude" => fresh.exclude.clone(),
         "debug.value_tooltip" => fresh.value_tooltip.name().to_owned(),

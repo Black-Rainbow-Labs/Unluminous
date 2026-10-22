@@ -401,7 +401,8 @@ payload="$(mktemp)"
 trap 'rm -f "$payload"' EXIT
 python3 - "$next" "$body" > "$payload" <<'PY'
 import json, sys
-print(json.dumps({"tag_name": "v" + sys.argv[1], "name": "Unluminous " + sys.argv[1], "body": sys.argv[2]}))
+# A prerelease: every release is a nightly until tools/promote.ps1 makes it stable (task-2328).
+print(json.dumps({"tag_name": "v" + sys.argv[1], "name": "Unluminous " + sys.argv[1], "body": sys.argv[2], "prerelease": True}))
 PY
 
 # One release on one repository, with the image attached, printing the page it made. Two repositories

@@ -50,6 +50,10 @@ impl Action {
             Action::GoToFile => "go-to-file".to_owned(),
             Action::FindInFiles => "find-in-files".to_owned(),
             Action::CheckForUpdates => "check-for-updates".to_owned(),
+            // The version goes down the argument channel, the way a run configuration's name does,
+            // because a name is lower case and hyphenated and a version has dots in it. `task-2328`.
+            Action::InstallVersion { channel, .. } => format!("install-{}", channel.name()),
+            Action::LoadVersions => "load-versions".to_owned(),
             Action::OpenSetup => "set-up-unluminous".to_owned(),
             Action::Find => "find".to_owned(),
             Action::Replace => "replace".to_owned(),
@@ -166,6 +170,13 @@ impl Action {
         if let Some(rest) = name.strip_prefix("git-") {
             return GitAction::from_name(rest, path).map(Action::Git);
         }
+        if let Some(rest) = name.strip_prefix("install-") {
+            let channel = crate::services::update::Channel::from_name(rest)?;
+            let version = path
+                .map(|named| named.to_string_lossy().trim().to_owned())
+                .filter(|named| !named.is_empty());
+            return Some(Action::InstallVersion { channel, version });
+        }
         if let Some(rest) = name.strip_prefix("run-") {
             // The argument names a **configuration** here rather than a file, which is the one
             // place `argument` is not a path. `run start <name>` on the command line is what
@@ -241,6 +252,7 @@ impl Action {
             "go-to-file" => Action::GoToFile,
             "find-in-files" => Action::FindInFiles,
             "check-for-updates" => Action::CheckForUpdates,
+            "load-versions" => Action::LoadVersions,
             "set-up-unluminous" => Action::OpenSetup,
             "find" => Action::Find,
             "replace" => Action::Replace,
@@ -566,6 +578,8 @@ mod tests {
                 // The second of the two, and for the same reason: `debug start <name>` names a
                 // configuration rather than a file, down the same channel.
                 Action::Debug(what) => what.configuration().map(PathBuf::from),
+                // And the version a `Check for Updates` row installs. `task-2328`.
+                Action::InstallVersion { version, .. } => version.clone().map(PathBuf::from),
                 _ => None,
             };
             assert_eq!(
