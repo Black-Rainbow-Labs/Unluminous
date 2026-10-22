@@ -1,0 +1,42 @@
+# Checks that a pull request's description fills in `.github/pull_request_template.md` (task-2326).
+#
+# `pull_request_target` rather than `pull_request`, for two reasons. The workflow and the script it
+# runs come from `main`, so a pull request cannot edit the check that judges it. And it runs for a pull
+# request from a fork with a token that can write the one comment that says what is missing, which a
+# fork's `pull_request` token cannot.
+#
+# That is safe only because nothing from the pull request is checked out or run. The checkout below is
+# `main`, and the description and the changed files are read through the API. Do not add a step that
+# checks out `github.event.pull_request.head`.
+name: PR description
+
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pull-request-description-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  description:
+    name: PR description
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+          sparse-checkout: .github
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check the description against the template
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .github/scripts/check-pull-request.mjs

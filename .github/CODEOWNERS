@@ -1,0 +1,3 @@
+# Who is asked to review a pull request (task-2326). GitHub requests a review from the owner of the
+# files a pull request changes, so every pull request reaches the person who lands it.
+* @jasonmcaffee

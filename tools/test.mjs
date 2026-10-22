@@ -62,6 +62,7 @@ const APP = 'unluminous-app';
 // compile them.
 const NEVER_READ_BY_A_BUILD = [
   '.claude/',
+  '.github/',
   'tasks/',
   'design/',
   'releases/',
