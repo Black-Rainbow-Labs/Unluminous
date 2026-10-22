@@ -6,6 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.9.0 — 2026-10-22
+
+- Nightly and stable release channels, and Check for Updates lists both (`task-2328`)
+- The settings list test knows update.channel's help (`task-2328`)
+- Each channel says whether the window follows it, and Follow This Channel switches it (`task-2328`)
+- The TDD shows Follow This Channel (`task-2328`)
+
 ## 1.8.3 — 2026-10-22
 
 - Plugin panes are drawn again in a project that has a saved layout (`task-2327`)
