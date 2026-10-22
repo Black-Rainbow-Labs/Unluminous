@@ -184,9 +184,13 @@ fn saying_sable_twice_in_real_time_ends_both_dictations_ready_to_send() {
     }
 }
 
-/// Waits up to two seconds for the snapshot to say `wanted`.
+/// Waits up to ten seconds for the snapshot to say `wanted`.
+///
+/// Two seconds was not always long enough to load the wake models while the release ran every other crate's
+/// tests on the same processors, and the release stopped on it twice in `task-2323`. A snapshot that arrives
+/// sooner still returns at once.
 fn until(voice: &Voice, wanted: impl Fn(&unluminous_voice::Snapshot) -> bool) -> bool {
-    let deadline = Instant::now() + Duration::from_secs(2);
+    let deadline = Instant::now() + Duration::from_secs(10);
     while Instant::now() < deadline {
         if wanted(&voice.snapshot()) {
             return true;
