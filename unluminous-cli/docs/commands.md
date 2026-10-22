@@ -369,7 +369,7 @@ Answered by the CLI itself; no Unluminous needs to be running.
 unluminous-cli quit
 ```
 
-Close the window. Its settings and what it had open are written down first, as they are when it is closed by hand.
+Close the window, every project tab in it. Its settings and what each tab had open are written down first, as they are when it is closed by hand. `project tab-close` closes one tab.
 
 ```sh
 unluminous-cli quit
@@ -4912,7 +4912,7 @@ unluminous-cli action run about
 
 ## project — the folder this window is showing
 
-A project is a window. Opening a second project is `unluminous-cli launch <folder>`, which starts a second Unluminous; `project open` changes the folder this window is showing.
+A window holds one or more projects, a project tab each, switched by the pills at the top left. Each project tab is the whole window for its project: its own files, explorer, terminals, Agent Chat, Agent Tasks and realm. `project tab-open <folder>` opens another project in a new tab of this window, `project tabs` lists them, and `project tab-show` and `project tab-close` switch and close them. Each tab answers on a port of its own, which `--instance` takes, and a process id names the tab the window is showing. `unluminous-cli launch <folder>` starts a second window instead; `project open` changes the folder this tab is showing.
 
 ### project open
 
@@ -4938,6 +4938,61 @@ The projects that have been open, newest first.
 
 ```sh
 unluminous-cli project recent --json
+```
+
+### project tabs
+
+```
+unluminous-cli project tabs
+```
+
+The window's project tabs: each one's number, folder and port, and which one is showing. Each tab is a whole project with its own files, terminals, Agent Chat and Agent Tasks.
+
+```sh
+unluminous-cli project tabs --json
+```
+
+### project tab-open
+
+```
+unluminous-cli project tab-open <folder>
+```
+
+Open a folder as a new project tab of this window and show it, or show the tab that already has it. The tab is the whole window for that project, as a second window would be.
+
+- `folder` — The project folder to open.
+
+```sh
+unluminous-cli project tab-open C:\jason\dev\inillucent
+```
+
+### project tab-show
+
+```
+unluminous-cli project tab-show <tab>
+```
+
+Show one of the window's project tabs, named by its number from `project tabs` or by part of its folder.
+
+- `tab` — The tab's number, counted from 0, or part of its folder's path.
+
+```sh
+unluminous-cli project tab-show 1
+unluminous-cli project tab-show inillucent
+```
+
+### project tab-close
+
+```
+unluminous-cli project tab-close [tab]
+```
+
+Close one of the window's project tabs, the one showing when none is named. What was open in it is written down first and its terminals and programs are stopped. The window's only tab is not closed; `quit` closes the window.
+
+- `tab` (optional) — The tab's number, counted from 0, or part of its folder's path.
+
+```sh
+unluminous-cli project tab-close 2
 ```
 
 ## mcp — the server an AI agent drives Unluminous through

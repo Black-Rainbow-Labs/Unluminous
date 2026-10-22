@@ -1,5 +1,10 @@
-//! The branch button in the title bar: a branch icon, the branch the repository is on, and a flyout
-//! that lists the local branches and switches to one.
+//! The branch button that was in the title bar: a branch icon, the branch the repository is on, and a
+//! flyout that lists the local branches and switches to one.
+//!
+//! **`task-2322` took it out of the title bar**, to give the room to the project tabs: *"move the git branch
+//! selector to the bottom right, where the branch is shown again, but has no ability to click on and switch
+//! branches."* The status bar names the branch, and nothing draws this component now. `UnluminousApp::branch_state`
+//! still answers what it would draw, which `tests/git.rs` reads.
 //!
 //! `task-1848`: "Add a branch selector/indicator at the top bar, similar to the reference editor's".
 //! `tasks/task-1848-reported-issues-tdd.md` §10 is the design, and three things in it are decisions

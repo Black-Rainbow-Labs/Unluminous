@@ -313,6 +313,9 @@ pub fn answered(command: &'static Command, arguments: &Map<String, Value>) -> Op
                         "port": instance.port,
                         "folder": instance.folder.to_string_lossy(),
                         "started": instance.started,
+                        // A window holds a project a tab, and each tab is listed. `task-2322`.
+                        "tab": instance.tab,
+                        "showing": instance.showing,
                     })
                 })
                 .collect();

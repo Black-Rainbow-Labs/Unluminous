@@ -1459,11 +1459,14 @@ fn browser_tabs_open_through_the_shared_cli_and_action_paths() {
 
     // Closing a rendered tab is an ordinary tab close: it neither asks to save nor leaves its root
     // registered, and the tab that is showing goes back to being a document.
+    // The id is read rather than assumed: browser tab ids are one counter for the whole process since
+    // `task-2322`, so a test that runs beside others is not handed id 2.
+    let closing = harness.state().files.active().browser.as_ref().map(|tab| tab.id);
     let closed = over_the_wire(&mut harness, "tab.close", serde_json::json!({}));
     assert!(closed.ok, "a rendered tab closes: {:?}", closed.error);
     assert!(
         !harness.state().files.active().is_browser()
-            || harness.state().files.active().browser.as_ref().map(|tab| tab.id) != Some(2)
+            || harness.state().files.active().browser.as_ref().map(|tab| tab.id) != closing
     );
 }
 
@@ -2879,6 +2882,41 @@ fn drive_the_project(coverage: &mut Coverage) {
     coverage.refuses(&mut harness, "project open no-such-folder-anywhere");
     let second = fixture("unluminous-dispatch-coverage-second", &[("second.md", "# Second\n")]);
     coverage.works(&mut harness, &format!("project open {}", second.display()));
+    // A window of one project, which is what this harness is, has no tabs to change and says so.
+    coverage.works(&mut harness, "project tabs");
+    coverage.refuses(&mut harness, &format!("project tab-open {}", second.display()));
+    coverage.refuses(&mut harness, "project tab-show 1");
+    coverage.refuses(&mut harness, "project tab-close");
+    drive_the_project_tabs(coverage, &second);
+}
+
+/// The project tab commands in a window of project tabs, which is a `ProjectWindow` rather than the
+/// `UnluminousApp` every other drive here is made against. `tests/project_tabs.rs` is where they are tested;
+/// this is the walk's record that they were driven. `task-2322`.
+fn drive_the_project_tabs(coverage: &mut Coverage, second: &std::path::Path) {
+    let first = dispatch_folder();
+    let mut harness =
+        builder().with_size(egui::vec2(WINDOW[0], WINDOW[1])).build_eframe(move |cc| {
+            let mut app = UnluminousApp::new(first);
+            app.prepare(&cc.egui_ctx);
+            app.draw_deterministically();
+            unluminous_app::app::project_tabs::ProjectWindow::new(app)
+        });
+    let _ = harness.try_run();
+    let ctx = harness.ctx.clone();
+    let mut drive = |line: String, want: bool| {
+        let reply = harness.state_mut().run_command_line(&line, &ctx).expect("answered at once");
+        note_a_drive(&reply.command, reply.ok);
+        if reply.ok != want {
+            coverage.faults.push(format!("`{line}` answered {} when {want} was wanted", reply.ok));
+        }
+    };
+    drive(format!("project tab-open {}", second.display()), true);
+    drive("project tab-open no-such-folder-anywhere".to_owned(), false);
+    drive("project tab-show 0".to_owned(), true);
+    drive("project tab-show 9".to_owned(), false);
+    drive("project tab-close 1".to_owned(), true);
+    drive("project tab-close".to_owned(), false);
 }
 
 // =================================================================================================

@@ -26,6 +26,33 @@ pub fn command_for(program: &Path, folder: &Path) -> Command {
 /// The new process is not waited for and its output is left where this one's goes. Failing to start it is
 /// reported and otherwise ignored, because the window that asked is still working.
 pub fn open_window(folder: &Path) -> Option<u32> {
+    open_window_with_tabs(folder, &[], 0)
+}
+
+/// The command that starts another Unluminous on `folder` with `tabs` as further project tabs, showing tab
+/// `showing` (`task-2322`). What restoring a session of windows with several tabs each starts.
+pub fn command_with_tabs(
+    program: &Path,
+    folder: &Path,
+    tabs: &[std::path::PathBuf],
+    showing: usize,
+) -> Command {
+    let mut command = command_for(program, folder);
+    for tab in tabs {
+        command.arg("--tab").arg(tab);
+    }
+    if showing > 0 {
+        command.arg("--show-tab").arg(showing.to_string());
+    }
+    command
+}
+
+/// Start another Unluminous on `folder` with `tabs` as further project tabs, showing tab `showing`.
+pub fn open_window_with_tabs(
+    folder: &Path,
+    tabs: &[std::path::PathBuf],
+    showing: usize,
+) -> Option<u32> {
     let program = match std::env::current_exe() {
         Ok(program) => program,
         Err(problem) => {
@@ -35,7 +62,7 @@ pub fn open_window(folder: &Path) -> Option<u32> {
             return None;
         }
     };
-    match command_for(&program, folder).spawn() {
+    match command_with_tabs(&program, folder, tabs, showing).spawn() {
         // **The process id, which restoring a session needs.** `task-1912`: the window that restores a session
         // writes the whole session down itself, and a row is the window that has that project open — so the
         // windows it starts have to be identified as it starts them, which is the one moment anything knows.
@@ -151,6 +178,29 @@ pub fn file_manager_name() -> &'static str {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    /// `task-2322`: a window of several project tabs is started with its first project, `--tab` for each of the
+    /// others in order, and `--show-tab` when it was showing another than the first.
+    #[test]
+    fn a_window_of_project_tabs_is_started_with_each_tab_named() {
+        let tabs = [PathBuf::from("/p/two"), PathBuf::from("/p/three")];
+        let command = command_with_tabs(Path::new("unluminous"), Path::new("/p/one"), &tabs, 2);
+        let arguments: Vec<String> =
+            command.get_args().map(|arg| arg.to_string_lossy().to_string()).collect();
+        let two = PathBuf::from("/p/two").display().to_string();
+        let three = PathBuf::from("/p/three").display().to_string();
+        let one = PathBuf::from("/p/one").display().to_string();
+        assert_eq!(
+            arguments,
+            vec![one, "--tab".into(), two, "--tab".into(), three, "--show-tab".into(), "2".into()]
+        );
+        let alone = command_with_tabs(Path::new("unluminous"), Path::new("/p/one"), &[], 0);
+        assert_eq!(
+            alone.get_args().count(),
+            1,
+            "a window of one project is started as it always was"
+        );
+    }
 
     #[test]
     fn revealing_a_file_asks_the_platform_for_its_own_file_manager() {

@@ -134,6 +134,26 @@ impl UnluminousApp {
         self.voice.microphone_allowed = true;
     }
 
+    /// Stop listening, because this project tab has stopped showing (`task-2322`).
+    ///
+    /// Every project tab of a window is one process, so the claim on "Sable" in `voice/listening.pid` names all
+    /// of them at once and each would answer the same word. A tab that is not showing therefore stops any
+    /// dictation it was doing and listens for nothing. `follow_the_voice` takes the microphone up again on the
+    /// first frame the tab is shown.
+    pub(crate) fn let_go_of_the_microphone(&mut self) {
+        if self.voice.dictating.is_some() {
+            self.stop_dictation(false);
+        }
+        self.voice.listening_here = false;
+        self.voice.claim_asked = None;
+        if let Some(engine) = self.voice.engine.as_ref() {
+            let mut config = config_for(&self.settings, self.voice.microphone_allowed);
+            config.always_listen = false;
+            engine.configure(config.clone());
+            self.voice.applied = Some(config);
+        }
+    }
+
     /// Once a frame: start or configure the engine, act on what it heard, and tell every chat what it needs
     /// to draw. Cheap when nothing is happening: no engine is started unless always listen is on.
     pub(crate) fn follow_the_voice(&mut self, ctx: &egui::Context) {

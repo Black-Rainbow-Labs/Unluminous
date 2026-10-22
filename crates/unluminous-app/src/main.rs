@@ -187,8 +187,9 @@ fn main() -> eframe::Result {
     // `services::launcher` records as a deliberate decision.
     let restoring = arguments.path.is_none()
         && unluminous_app::started_from_the_desktop(&current_directory, program.as_deref());
-    let mut session = match restoring {
-        true => store.open_windows(),
+    // A window of the last session is its project tabs in order and the one it was showing (`task-2322`).
+    let mut session: Vec<(Vec<PathBuf>, usize)> = match restoring {
+        true => store.open_window_groups(),
         false => Vec::new(),
     };
     // A project that already has a window is left alone. Two Unluminous windows on one folder would be two
@@ -209,12 +210,23 @@ fn main() -> eframe::Result {
     if !session.is_empty() {
         let already_open: Vec<PathBuf> =
             unluminous_cli::client::running().into_iter().map(|instance| instance.folder).collect();
-        session.retain(|folder| !already_open.iter().any(|open| open == folder));
+        for (folders, showing) in session.iter_mut() {
+            let shown = folders.get(*showing).cloned();
+            folders.retain(|folder| !already_open.iter().any(|open| open == folder));
+            *showing = shown
+                .and_then(|shown| folders.iter().position(|folder| *folder == shown))
+                .unwrap_or(0);
+        }
+        session.retain(|(folders, _)| !folders.is_empty());
     }
     unluminous_app::services::frame_trace::mark("running-instances");
     let mine = session.pop();
 
-    let most_recent = mine.as_deref().or_else(|| recent.first().map(PathBuf::as_path));
+    let most_recent = mine
+        .as_ref()
+        .and_then(|(folders, _)| folders.first())
+        .map(PathBuf::as_path)
+        .or_else(|| recent.first().map(PathBuf::as_path));
     let fallback =
         unluminous_app::starting_folder(&current_directory, program.as_deref(), most_recent);
     let (folder, file) = unluminous_app::resolve_target(arguments.path.as_deref(), &fallback);
@@ -248,22 +260,51 @@ fn main() -> eframe::Result {
     // restoring does, and nothing outside the tests called it — so the list only ever grew. Writing it here,
     // where every one of those process ids is known, also means no restored window has to append a row of its
     // own, which is the read-modify-write three windows starting at once would have raced over.
-    if !session.is_empty() {
-        let mut restored: Vec<(u32, PathBuf)> = Vec::new();
-        for other in &session {
-            if *other == folder {
+    //
+    // **A window of several project tabs comes back as one window**, started with its first project and
+    // `--tab` for each of the others (`task-2322`).
+    // The project tabs this window opens after its first: the ones the window restored here held, then the ones
+    // named with `--tab`, and which of them to show.
+    let (mut other_tabs, mut show_tab) = match (&mine, waiting) {
+        (Some((folders, showing)), false) if folders.first() == Some(&folder) => {
+            (folders[1..].to_vec(), *showing)
+        }
+        _ => (Vec::new(), 0),
+    };
+    if !waiting {
+        other_tabs.extend(arguments.tabs.iter().cloned());
+        if let Some(wanted) = arguments.show_tab {
+            show_tab = wanted;
+        }
+    }
+    // A window started with `--tab` by the one restoring a session was written down by that one already.
+    let restored_tabs_here = mine.as_ref().is_some_and(|(folders, _)| folders.len() > 1);
+    if !session.is_empty() || restored_tabs_here {
+        let mut restored: Vec<(u32, PathBuf, bool)> = Vec::new();
+        for (folders, showing) in &session {
+            if folders.first() == Some(&folder) {
                 continue;
             }
-            if let Some(pid) = unluminous_app::services::launcher::open_window(other) {
-                restored.push((pid, other.clone()));
+            let started = unluminous_app::services::launcher::open_window_with_tabs(
+                &folders[0],
+                &folders[1..],
+                *showing,
+            );
+            if let Some(pid) = started {
+                for (index, tab) in folders.iter().enumerate() {
+                    restored.push((pid, tab.clone(), index == *showing));
+                }
             }
         }
-        // This window's own row last, because the list is oldest first and this is the one that is opening
-        // now. `session` has had this window's project taken off it by `pop` above, so it is added here
+        // This window's own rows last, because the list is oldest first and this is the one that is opening
+        // now. `session` has had this window's projects taken off it by `pop` above, so they are added here
         // rather than looked for — and it is what lets every window started here find itself in the file,
         // which is what `remember_open_window` needs to know the session is not over.
-        restored.push((std::process::id(), folder.clone()));
-        store.write_session(&restored);
+        restored.push((std::process::id(), folder.clone(), show_tab == 0));
+        for (index, tab) in other_tabs.iter().enumerate() {
+            restored.push((std::process::id(), tab.clone(), show_tab == index + 1));
+        }
+        store.write_session_tabs(&restored);
     }
 
     // Where this project's window was left, which `task-1693` asks for and which has to be known
@@ -442,8 +483,12 @@ fn main() -> eframe::Result {
             if arguments.control {
                 app.open_control_channel(&cc.egui_ctx);
             }
+            // **A window of project tabs** (`task-2322`): this project is its first tab, and the others it was
+            // restored with or named with `--tab` open after it, each set up the way this one has just been.
+            let mut window = unluminous_app::app::project_tabs::ProjectWindow::new(app);
+            window.open_the_other_tabs(&other_tabs, show_tab, &cc.egui_ctx);
             unluminous_app::services::frame_trace::mark("ready");
-            Ok(Box::new(app))
+            Ok(Box::new(window))
         }),
     )
 }

@@ -35,6 +35,13 @@ impl Action {
             Action::NewWindow => "new-window".to_owned(),
             Action::NextWindow => "next-window".to_owned(),
             Action::PreviousWindow => "previous-window".to_owned(),
+            Action::NewProjectTab => "new-project-tab".to_owned(),
+            Action::OpenInProjectTab(_) => "open-in-project-tab".to_owned(),
+            Action::CloseProjectTab => "close-project-tab".to_owned(),
+            Action::CloseOtherProjectTabs => "close-other-project-tabs".to_owned(),
+            Action::OpenProjectTabInNewWindow => "open-project-tab-in-new-window".to_owned(),
+            Action::NextProjectTab => "next-project-tab".to_owned(),
+            Action::PreviousProjectTab => "previous-project-tab".to_owned(),
             Action::OpenFolder => "open-folder".to_owned(),
             Action::CreateProject => "create-project".to_owned(),
             Action::OpenFile => "open-file".to_owned(),
@@ -214,6 +221,13 @@ impl Action {
             "new-window" => Action::NewWindow,
             "next-window" => Action::NextWindow,
             "previous-window" => Action::PreviousWindow,
+            "new-project-tab" => Action::NewProjectTab,
+            "open-in-project-tab" => Action::OpenInProjectTab(with_path()),
+            "close-project-tab" => Action::CloseProjectTab,
+            "close-other-project-tabs" => Action::CloseOtherProjectTabs,
+            "open-project-tab-in-new-window" => Action::OpenProjectTabInNewWindow,
+            "next-project-tab" => Action::NextProjectTab,
+            "previous-project-tab" => Action::PreviousProjectTab,
             "open-folder" => Action::OpenFolder,
             "create-project" => Action::CreateProject,
             "open-file" => Action::OpenFile,
@@ -498,6 +512,8 @@ mod tests {
         // walked as well, because `task-1664` puts `Split Right` on it and the rule the tests keep is
         // that anything a menu can ask for can be asked for from the command line.
         walk(&actions::tab_menu(&state), &mut out);
+        // And a project tab's own menu, `task-2322`.
+        walk(&actions::project_tab_menu(&state), &mut out);
         // And a panel's own menu, for the same reason: `task-1697` puts the four `Move to` rows
         // there rather than on the View menu, and the rule the tests keep is that anything a menu
         // can ask for can be asked for from the command line.

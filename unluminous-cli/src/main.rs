@@ -240,9 +240,16 @@ fn locally(command: &'static Command, typed: &Typed) -> i32 {
                 println!("No Unluminous is running.");
             } else {
                 for instance in &running {
+                    // A window's project tabs share its process id, so the tab and whether it is the one
+                    // showing are said beside it. `task-2322`.
+                    let showing = match instance["showing"].as_bool() {
+                        Some(false) => "",
+                        _ => "  (showing)",
+                    };
                     println!(
-                        "pid {:<8} port {:<6} {}",
+                        "pid {:<8} tab {:<3} port {:<6} {}{showing}",
                         instance["pid"],
+                        instance["tab"],
                         instance["port"],
                         instance["folder"].as_str().unwrap_or_default()
                     );
@@ -785,6 +792,9 @@ fn describe(instance: &Instance) -> Value {
         "port": instance.port,
         "folder": instance.folder.to_string_lossy(),
         "started": instance.started,
+        // Which project tab of its window this is, and whether the window is showing it. `task-2322`.
+        "tab": instance.tab,
+        "showing": instance.showing,
     })
 }
 

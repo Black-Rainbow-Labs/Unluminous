@@ -144,7 +144,8 @@ pub fn how_to_reach_this_window(over: &[(String, String)]) -> Vec<(String, Strin
     let cli = beside_this_program("unluminous-cli");
     let mut carried = vec![
         (agent::ENV_CLI.to_owned(), cli.clone()),
-        (agent::ENV_INSTANCE.to_owned(), std::process::id().to_string()),
+        // The project tab that started the child, which is a port when the window holds several. `task-2322`.
+        (agent::ENV_INSTANCE.to_owned(), crate::services::control::this_tab()),
     ];
     let existing = over
         .iter()
@@ -2677,8 +2678,15 @@ const TAIL_LINES: usize = 60;
 /// the lease expired it would strike and reclaim work still running in the other window. The process id is
 /// enough to tell the two apart, and [`owner_is_gone`] is what asks whether the window that took a claim is
 /// still running.
+///
+/// **And the project tab, when the window holds several** (`task-2322`). Every tab of a window is one process
+/// with a board of its own over the same file, so a card claimed in one tab read as this window's own in the
+/// next, which had no terminal for it and would strike it. The first tab writes the claim it always wrote.
 fn owner() -> String {
-    format!("pid:{}", std::process::id())
+    match crate::services::control::this_tab_number() {
+        0 => format!("pid:{}", std::process::id()),
+        tab => format!("pid:{}:{tab}", std::process::id()),
+    }
 }
 
 /// True when the window that took this claim is no longer running.
@@ -2691,6 +2699,15 @@ fn owner_is_gone(recorded: Option<&str>) -> bool {
     let Some(pid) = recorded.and_then(|owner| owner.strip_prefix("pid:")) else {
         return true;
     };
+    // A claim taken in a project tab after a window's first carries the tab after the process id, and a tab
+    // of this window that has been closed is as gone as a window that has.
+    let (pid, tab) = match pid.split_once(':') {
+        Some((pid, tab)) => (pid, tab.parse::<u32>().unwrap_or(0)),
+        None => (pid, 0),
+    };
+    if pid == std::process::id().to_string() {
+        return !crate::services::control::tab_is_open(tab);
+    }
     let Ok(pid) = pid.parse::<i32>() else {
         return true;
     };

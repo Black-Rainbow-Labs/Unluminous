@@ -657,8 +657,14 @@ pub const LINKS_IN_NEW_TABS: &str = include_str!("browser_links.js");
 ///
 /// `UNLUMINOUS_BROWSER_VIEWS=one` keeps a window to one view at a time, which is what it was before, so the two
 /// can be compared on one build.
+/// The id the next browser tab opened in this process is given.
+///
+/// **One counter for the process, not one a host** (`task-2322`). A window holds one `UnluminousApp` a project
+/// tab and each has a host of its own, and a tab id is what a native view, a local resource root and every
+/// browser event are keyed by. Two hosts counting from one each would give two projects the same ids.
+static NEXT_TAB_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
 pub struct BrowserHost {
-    next_id: u64,
     profile: Option<PathBuf>,
     /// The session cookies kept beside the profile, read back when a view is made. `task-2203`.
     session: Option<crate::services::browser_session::SessionCookies>,
@@ -701,7 +707,6 @@ impl BrowserHost {
     pub fn new() -> Self {
         let (sender, receiver) = std::sync::mpsc::channel();
         Self {
-            next_id: 1,
             profile: None,
             session: None,
             cookies_written: None,
@@ -1020,12 +1025,19 @@ impl BrowserHost {
 
     /// Allocate a stable id and register any local root before the page can request an asset.
     pub fn open_tab(&mut self, location: BrowserLocation) -> BrowserTab {
-        let id = self.next_id;
-        self.next_id = self.next_id.saturating_add(1);
+        let id = NEXT_TAB_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         if let BrowserLocation::Local { root, .. } = &location {
             self.resources.register(id, root.clone());
         }
         BrowserTab::new(id, location)
+    }
+
+    /// Take every page of this host off the screen, keeping each view ready to be shown again.
+    ///
+    /// What a project tab that stops showing asks for (`task-2322`): its pages are native child windows, so a
+    /// page left visible would be drawn over the project tab that took its place.
+    pub fn hide_every_view(&mut self) {
+        self.native.hide();
     }
 
     /// Release everything that belonged to a closed tab: its local root, its watch, its menu and its view.

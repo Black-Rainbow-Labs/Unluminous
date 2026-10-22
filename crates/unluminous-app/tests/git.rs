@@ -298,8 +298,13 @@ fn every_git_operation_can_be_driven_from_the_window() {
 /// The indicator half of the ask, against a real repository built in a temporary folder — which is how
 /// every `unluminous-git` test works, and the only way to know the branch reported is git's own answer
 /// rather than a value the test put there itself.
+///
+/// **`task-2322` took the branch button out of the title bar**, to give the room to the project tabs: *"move
+/// the git branch selector to the bottom right, where the branch is shown again, but has no ability to click
+/// on and switch branches."* So the branch is named in the status bar and nothing in the window is called
+/// `Branch`. `Git -> Branches...` and `unluminous-cli git switch` are how a branch is switched.
 #[test]
-fn the_branch_widget_names_the_branch_the_repository_is_on() {
+fn the_status_bar_names_the_branch_and_the_title_bar_has_no_branch_button() {
     let mut harness = git_harness("unluminous-branch-widget");
     // The branch list arrives from the worker a round trip after the status does.
     for _ in 0..600 {
@@ -316,9 +321,9 @@ fn the_branch_widget_names_the_branch_the_repository_is_on() {
         "and main is in the list, got {:?}",
         state.locals
     );
-    assert!(state.applies(), "so the widget is drawn");
-    // The button is reachable by name, which is what makes it testable at all.
-    harness.get_by_label("Branch");
+    let said = harness.state().git.as_ref().and_then(|git| git.status_label()).unwrap_or_default();
+    assert!(said.starts_with("main"), "the status bar says the branch, and said {said:?}");
+    assert!(harness.query_by_label("Branch").is_none(), "and the title bar has no branch button");
 }
 
 /// Unluminous's rule for a control that can never apply, and the same rule that hides the Git menu
@@ -342,7 +347,7 @@ fn the_branch_widget_is_absent_outside_a_repository() {
 }
 
 /// **Choosing a branch asks the worker to check it out**, through the one path a switch already takes —
-/// so a switch from the title bar and a switch from `Git -> Branches...` are the same git command.
+/// so a switch from `Git -> Branches...` and from `unluminous-cli git switch` are the same git command.
 #[test]
 fn choosing_a_branch_asks_the_worker_to_check_it_out() {
     let mut harness = git_harness("unluminous-branch-switch");
@@ -420,9 +425,10 @@ const _: () = assert!(
     "and high enough that a small project never sees a field"
 );
 
-/// The picture, which is what a person reads to see whether it looks like the bar it sits in.
+/// The picture, which is what a person reads to see whether it looks like the bar it sits in. Since `task-2322`
+/// the branch is at the right hand end of the status bar and the title bar holds the project tabs.
 #[test]
-fn branch_widget_in_the_title_bar() {
+fn the_branch_in_the_status_bar() {
     let mut harness = git_harness("unluminous-branch-picture");
     for _ in 0..600 {
         if !harness.state().branch_state().locals.is_empty() {
@@ -484,6 +490,7 @@ fn the_flyout_offers_every_local_branch_and_marks_the_one_checked_out() {
         "no remote branch is offered: {:?}",
         state.locals
     );
-    // The button is reachable, which is what a person presses to see the rows above.
-    harness.get_by_label("Branch");
+    // The rows are what `branch_state` answers; nothing draws them as a button since `task-2322`, which put
+    // the branch in the status bar and the project tabs where the button was.
+    assert!(harness.query_by_label("Branch").is_none());
 }

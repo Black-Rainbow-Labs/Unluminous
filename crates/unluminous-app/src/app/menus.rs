@@ -91,6 +91,7 @@ impl UnluminousApp {
             trimming_applies: self.line_edits_apply_here()
                 && file_kind::trimming_applies(self.document().path()),
             can_reopen_tab: !self.closed_tabs.is_empty(),
+            project_tabs: self.project_tabs().tabs.len(),
             finding: self.find.is_some(),
             recent: self.recent.clone(),
             view_mode: self.view_mode(),
@@ -187,6 +188,13 @@ impl UnluminousApp {
             Action::PluginPane { .. } | Action::PluginTab { .. } | Action::PluginCommand { .. } => {
                 self.a_plugin_entry(action)
             }
+            Action::NewProjectTab
+            | Action::OpenInProjectTab(_)
+            | Action::CloseProjectTab
+            | Action::CloseOtherProjectTabs
+            | Action::OpenProjectTabInNewWindow
+            | Action::NextProjectTab
+            | Action::PreviousProjectTab => self.a_project_tab_entry(action),
             Action::NewWindow
             | Action::NextWindow
             | Action::PreviousWindow
@@ -524,14 +532,8 @@ impl UnluminousApp {
             },
             Action::CloseWindow | Action::Quit => {
                 // As the cross in the title bar does: every modified tab is written first and the
-                // window stays when one of them could not be (`task-1984` A2).
-                if self.may_the_window_close() {
-                    self.closing = true;
-                    self.closed_by_hand = true;
-                    self.write_settings();
-                    self.remember_the_project(None);
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                }
+                // window stays when one of them could not be (`task-1984` A2), in every project tab.
+                self.close_the_window(ctx);
             }
             other => unreachable!("{other:?} is not handled by a_file_entry"),
         }

@@ -25,7 +25,7 @@ use crate::components::title_bar::MenuPlacement;
 /// The one line that says what the program takes, quoted by `--help` and by the module comment.
 pub const USAGE: &str = "Usage: unluminous [path] [--opacity N] [--view raw|side|preview] \
                          [--menu-bar native|in-window] [--terminal] [--control on|off] \
-                         [--background] [--print-menus] [--setup-voice] [--version]";
+                         [--background] [--tab folder]... [--show-tab N] [--print-menus] \n                         [--setup-voice] [--version]";
 
 /// The settings a window opens with, once the command line has been read.
 #[derive(Debug, Clone, PartialEq)]
@@ -58,6 +58,11 @@ pub struct Arguments {
     /// `--setup-voice`: download what speech to text needs and ask about the microphone, and stop. The
     /// installer runs it, and so does `unluminous-cli setup`. `task-2290`.
     pub setup_voice: bool,
+    /// `--tab <folder>`, as many as were given: more projects to open as project tabs of this window, after
+    /// the one `path` names. `task-2322`: a restored window of several tabs is started this way.
+    pub tabs: Vec<PathBuf>,
+    /// `--show-tab N`: which project tab to show once they are all open, counted from 0.
+    pub show_tab: Option<usize>,
 }
 
 impl Default for Arguments {
@@ -74,6 +79,8 @@ impl Default for Arguments {
             control: true,
             background: false,
             setup_voice: false,
+            tabs: Vec::new(),
+            show_tab: None,
         }
     }
 }
@@ -162,6 +169,21 @@ pub fn read(arguments: impl IntoIterator<Item = String>, control_setting: Option
             "--background" | "--no-activate" => settings.background = true,
             "--print-menus" => settings.print_menus = true,
             "--setup-voice" => settings.setup_voice = true,
+            "--tab" => match value_after(&mut rest, "--tab", "a folder to open as a project tab") {
+                Ok(value) => settings.tabs.push(PathBuf::from(value)),
+                Err(refusal) => return refusal,
+            },
+            "--show-tab" => {
+                let wanted = "which project tab to show, counted from 0";
+                let value = match value_after(&mut rest, "--show-tab", wanted) {
+                    Ok(value) => value,
+                    Err(refusal) => return refusal,
+                };
+                settings.show_tab = match value.parse::<usize>() {
+                    Ok(number) => Some(number),
+                    Err(_) => return refuse("--show-tab", &value, wanted),
+                };
+            }
             "--version" | "-V" => return Start::Answer(version()),
             "--help" | "-h" => return Start::Answer(help()),
             // A switch nobody here knows. Said as a sentence, with the one command that lists the
@@ -232,6 +254,8 @@ pub fn help() -> String {
         "  --terminal      open the terminal at the bottom",
         "  --control WHICH on to let unluminous-cli drive this window, off to close the channel. On by default.",
         "  --background    open the window without taking the keyboard from whatever is in front",
+        "  --tab FOLDER    open another project as a tab of this window; give it once a project",
+        "  --show-tab N    which project tab to show, counted from 0",
         "  --print-menus   print the menus and their shortcuts, and stop",
         "  --setup-voice   download the speech model, ask about the microphone, and stop",
         "  --version       print the version and the build date, and stop",
@@ -289,6 +313,19 @@ mod tests {
         assert_eq!(settings.path.unwrap(), PathBuf::from("/a/project"));
     }
 
+    /// `task-2322`: a window of several project tabs is started with each tab after the first named by `--tab`,
+    /// in order, and the one to show by `--show-tab`.
+    #[test]
+    fn the_project_tabs_a_window_starts_with_are_read_in_order() {
+        let settings =
+            window(&["/a/first", "--tab", "/a/second", "--tab", "/a/third", "--show-tab", "2"]);
+        assert_eq!(settings.path, Some(PathBuf::from("/a/first")));
+        assert_eq!(settings.tabs, vec![PathBuf::from("/a/second"), PathBuf::from("/a/third")]);
+        assert_eq!(settings.show_tab, Some(2));
+        assert!(matches!(read_line(&["--show-tab", "two"]), Start::Refuse(_)));
+        assert!(matches!(read_line(&["--tab"]), Start::Refuse(_)));
+    }
+
     #[test]
     fn control_is_open_by_default_and_the_switch_beats_the_environment() {
         assert!(window(&[]).control);
@@ -327,6 +364,8 @@ mod tests {
             "--terminal",
             "--control",
             "--background",
+            "--tab",
+            "--show-tab",
             "--print-menus",
             "--version",
         ] {

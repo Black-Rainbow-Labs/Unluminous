@@ -68,6 +68,76 @@ use std::time::{Duration, Instant};
 use unluminous_cli::instances::{self, Instance};
 use unluminous_cli::protocol::{code, Reply, Request};
 
+thread_local! {
+    /// How a child started by the code running now reaches the project tab that started it. See
+    /// [`running_for`].
+    static RUNNING_FOR: std::cell::RefCell<Option<(String, u32)>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Say which project tab's code is about to run on this thread, until the answer is dropped (`task-2322`).
+///
+/// **A window holds a project a tab, and every tab is one process**, so the process id that
+/// `UNLUMINOUS_INSTANCE` carried names every tab of the window at once. An agent started by Agent Chat in a
+/// tab that is not showing, told the process id, would drive the tab that is. So `ProjectWindow` names the
+/// tab it is about to run, by its command channel's port, before it runs any of that tab's code, and
+/// [`this_tab`] is what `agent_tasks::how_to_reach_this_window` reads. Every child a tab starts is started
+/// from that tab's own turn on the window's thread, which is what makes a thread local the right place.
+///
+/// `tab` is the tab's number in its window, which the Agent Tasks board writes into a claim so that two tabs
+/// sharing one board and one process can tell whose agent a card is (`agent_tasks::owner`).
+pub fn running_for(address: Option<String>, tab: u32) -> RunningFor {
+    let before = RUNNING_FOR.with(|cell| cell.replace(address.map(|address| (address, tab))));
+    RunningFor { before }
+}
+
+/// What [`running_for`] answers: the tab named until it is dropped, and the one named before it after.
+pub struct RunningFor {
+    before: Option<(String, u32)>,
+}
+
+impl Drop for RunningFor {
+    fn drop(&mut self) {
+        let before = self.before.take();
+        RUNNING_FOR.with(|cell| *cell.borrow_mut() = before);
+    }
+}
+
+/// How a child of the code running now names its window to `unluminous-cli`: the tab's port when a
+/// `ProjectWindow` said which tab this is, and the process id otherwise, which is what it always was.
+pub fn this_tab() -> String {
+    RUNNING_FOR
+        .with(|cell| cell.borrow().as_ref().map(|(address, _)| address.clone()))
+        .unwrap_or_else(|| std::process::id().to_string())
+}
+
+/// The project tabs of this window that are open. Empty until a `ProjectWindow` says, and then the first tab
+/// is the only one there is.
+static OPEN_TABS: std::sync::Mutex<Vec<u32>> = std::sync::Mutex::new(Vec::new());
+
+/// Record which project tabs of this window are open. `ProjectWindow` calls it whenever a tab opens or closes.
+pub fn set_open_tabs(tabs: &[u32]) {
+    if let Ok(mut open) = OPEN_TABS.lock() {
+        *open = tabs.to_vec();
+    }
+}
+
+/// Whether project tab `tab` of this window is open.
+pub fn tab_is_open(tab: u32) -> bool {
+    OPEN_TABS
+        .lock()
+        .map(|open| match open.is_empty() {
+            true => tab == 0,
+            false => open.contains(&tab),
+        })
+        .unwrap_or(tab == 0)
+}
+
+/// The number of the project tab whose code is running now: 0 for a window's first tab, and for any code a
+/// `ProjectWindow` did not start.
+pub fn this_tab_number() -> u32 {
+    RUNNING_FOR.with(|cell| cell.borrow().as_ref().map(|(_, tab)| *tab).unwrap_or(0))
+}
+
 /// How long the listener will hold a connection open waiting for the window to answer.
 ///
 /// Longer than any command's own wait, because the command's own timeout is the one that should
@@ -284,6 +354,16 @@ impl Server {
     /// to start is reported and returns `None`: an Unluminous that cannot open a port is still a text
     /// editor, and refusing to start would be the wrong trade.
     pub fn start(folder: PathBuf, wake: Arc<dyn Fn() + Send + Sync>) -> Option<Self> {
+        Self::start_for_tab(folder, wake, 0)
+    }
+
+    /// The same, for project tab `tab` of this window (`task-2322`). Each tab of a window has a channel and
+    /// an instance file of its own; the first tab's is the file a window always wrote.
+    pub fn start_for_tab(
+        folder: PathBuf,
+        wake: Arc<dyn Fn() + Send + Sync>,
+        tab: u32,
+    ) -> Option<Self> {
         let listener = match bind() {
             Ok(listener) => listener,
             Err(problem) => {
@@ -304,6 +384,8 @@ impl Server {
             token: token(),
             folder,
             started: instances::now(),
+            tab,
+            showing: true,
         };
         let file = match advertise(&instance) {
             Ok(file) => file,
@@ -332,6 +414,23 @@ impl Server {
     /// The token a request has to carry, for a test.
     pub fn token(&self) -> &str {
         &self.instance.token
+    }
+
+    /// Say in the instance file whether the window is showing this project tab, which is how a process id that
+    /// names every tab of a window is read as the one on the screen (`task-2322`). Writes only when it moved.
+    pub fn set_showing(&mut self, showing: bool) {
+        if self.instance.showing == showing {
+            return;
+        }
+        self.instance.showing = showing;
+        if let Err(problem) = advertise(&self.instance) {
+            eprintln!("Unluminous could not write its instance file: {problem}");
+        }
+    }
+
+    /// What this channel advertises in its instance file.
+    pub fn instance(&self) -> &Instance {
+        &self.instance
     }
 
     /// Everything that has arrived and not been answered yet.

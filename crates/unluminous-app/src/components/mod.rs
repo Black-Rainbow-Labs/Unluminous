@@ -59,6 +59,8 @@ pub mod new_project_dialog;
 pub mod notebook_view;
 pub mod picture_view;
 pub mod plugins_page;
+/// The project tabs in the title bar and the dropdown the plus opens - `task-2322`.
+pub mod project_tabs;
 pub mod prompt_dialog;
 /// The Realm — `task-1904`.
 pub mod realm;

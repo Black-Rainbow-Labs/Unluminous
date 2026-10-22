@@ -29,6 +29,14 @@ impl UnluminousApp {
             // are written against its own name rather than being lost when Unluminous closes.
             settings::save_with(store, &self.settings, &self.panes, &self.plugin_ui.pane_keys());
         }
+        // And the project's own copy of the layout, while the window remembers its project (`task-2322`).
+        if self.written_project.is_some() && !self.waiting_for_a_project {
+            crate::services::project_state::save_layout(
+                self.tree.root(),
+                &self.panes,
+                &self.plugin_ui.pane_keys(),
+            );
+        }
         self.unsaved_settings = false;
     }
 

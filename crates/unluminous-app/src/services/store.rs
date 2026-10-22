@@ -163,6 +163,30 @@ pub fn this_window_joins_the_session() -> bool {
 /// way the window does; see `unluminous_core::manifest`.
 pub use unluminous_core::manifest::Values;
 
+/// One line of the session file: the window, the project, and whether the window was showing that project's
+/// tab. See [`Store::open_window_groups`].
+#[derive(Debug, Clone, PartialEq)]
+struct SessionRow {
+    pid: u32,
+    path: PathBuf,
+    showing: bool,
+}
+
+/// How many windows the session rows hold, a window being one process id and a line with none being one of
+/// its own.
+fn windows_in(rows: &[SessionRow]) -> usize {
+    let mut windows: Vec<u32> = Vec::new();
+    let mut alone = 0;
+    for row in rows {
+        match row.pid {
+            0 => alone += 1,
+            pid if !windows.contains(&pid) => windows.push(pid),
+            _ => {}
+        }
+    }
+    windows.len() + alone
+}
+
 /// The folder Unluminous keeps its settings in, and the two files inside it.
 #[derive(Debug, Clone)]
 pub struct Store {
@@ -216,38 +240,80 @@ impl Store {
     /// one out of the menu.
     pub fn open_windows(&self) -> Vec<PathBuf> {
         let mut out: Vec<PathBuf> = Vec::new();
-        for (_, path) in self.session_rows() {
-            if out.contains(&path) || !path.is_dir() {
+        for row in self.session_rows() {
+            if out.contains(&row.path) || !row.path.is_dir() {
                 continue;
             }
-            out.push(path);
+            out.push(row.path);
         }
         out.truncate(SESSION_LIMIT);
         out
     }
 
-    /// The session file as it is written: which window wrote each line, and which project it was on.
+    /// The windows of the last session, oldest first, each as its project tabs in order and the one it was
+    /// showing (`task-2322`).
+    ///
+    /// A window that holds several projects writes a line a project tab, every line with the window's process
+    /// id, so the lines of one process id are one window. The line of the tab the window was showing carries a
+    /// `*` after the process id. A line with no process id is a window of its own, which is what a file written
+    /// by an older Unluminous holds. A folder that is no longer there is left out, and a window left with no
+    /// folders is left out with it.
+    pub fn open_window_groups(&self) -> Vec<(Vec<PathBuf>, usize)> {
+        let mut groups: Vec<(u32, Vec<PathBuf>, usize)> = Vec::new();
+        let mut seen: Vec<PathBuf> = Vec::new();
+        for row in self.session_rows() {
+            if seen.contains(&row.path) || !row.path.is_dir() {
+                continue;
+            }
+            seen.push(row.path.clone());
+            let group = match row.pid {
+                0 => None,
+                pid => groups.iter_mut().find(|(id, _, _)| *id == pid),
+            };
+            match group {
+                Some((_, folders, showing)) => {
+                    if row.showing {
+                        *showing = folders.len();
+                    }
+                    folders.push(row.path);
+                }
+                None => groups.push((row.pid, vec![row.path], 0)),
+            }
+        }
+        let start = groups.len().saturating_sub(SESSION_LIMIT);
+        groups.drain(..start);
+        groups.into_iter().map(|(_, folders, showing)| (folders, showing)).collect()
+    }
+
+    /// The session file as it is written: which window wrote each line, which project it was on, and whether
+    /// the window was showing that project's tab.
     ///
     /// **A line with no process id in front of it is a path with a dead window**, which is what a file written
     /// by an older Unluminous looks like. It reads, and the first launch after this version arrives finds
     /// nothing alive in it and begins a session — so an accumulated file corrects itself rather than needing
     /// anybody to delete one.
-    fn session_rows(&self) -> Vec<(u32, PathBuf)> {
+    fn session_rows(&self) -> Vec<SessionRow> {
         let Ok(text) = std::fs::read_to_string(self.session_path()) else {
             return Vec::new();
         };
         text.lines()
             .map(str::trim)
             .filter(|line| !line.is_empty())
-            .map(|line| match line.split_once(' ') {
-                Some((first, rest)) => match first.parse::<u32>() {
-                    Ok(pid) => (pid, PathBuf::from(rest.trim())),
+            .map(|line| {
+                let Some((first, rest)) = line.split_once(' ') else {
+                    return SessionRow { pid: 0, path: PathBuf::from(line), showing: false };
+                };
+                let (number, showing) = match first.strip_suffix('*') {
+                    Some(number) => (number, true),
+                    None => (first, false),
+                };
+                match number.parse::<u32>() {
+                    Ok(pid) => SessionRow { pid, path: PathBuf::from(rest.trim()), showing },
                     // A path with a space in it and no id, which is most of the paths on this machine.
-                    Err(_) => (0, PathBuf::from(line)),
-                },
-                None => (0, PathBuf::from(line)),
+                    Err(_) => SessionRow { pid: 0, path: PathBuf::from(line), showing: false },
+                }
             })
-            .map(|(pid, path)| (pid, unluminous_terminal::paths::plain(&path)))
+            .map(|row| SessionRow { path: unluminous_terminal::paths::plain(&row.path), ..row })
             .collect()
     }
 
@@ -267,6 +333,9 @@ impl Store {
     /// Newest **last**, which is the other way round from `recent.txt`: the list is restored in
     /// order and the last entry is the one the restoring process opens itself, so oldest-first is
     /// also what makes truncating the front of the list drop the oldest.
+    ///
+    /// A project tab opened in a window that is already in the session is a line of its own with the same
+    /// process id (`task-2322`), which is how the tabs come back together.
     pub fn remember_open_window(&self, folder: &Path, pid: u32, alive: &dyn Fn(u32) -> bool) {
         let folder = plain_absolute(folder);
         let mut rows = self.session_rows();
@@ -278,45 +347,89 @@ impl Store {
         // down with the process id of each window it started, so every one of them finds itself in the file
         // and none of them can decide the session is over and throw the others away. Asking the instance list
         // instead would depend on when each window got round to writing its instance file.
-        if !rows.iter().any(|(id, _)| *id != 0 && (*id == pid || alive(*id))) {
-            self.write_session(&[(pid, folder)]);
+        if !rows.iter().any(|row| row.pid != 0 && (row.pid == pid || alive(row.pid))) {
+            self.write_session_rows(&[SessionRow { pid, path: folder, showing: true }]);
             return;
         }
         // A project that is already listed writes nothing at all, which is what keeps three windows starting
         // at once from fighting over the file: restoring a session opens two or three processes within a few
         // hundred milliseconds and every one of them reads this list and writes it back.
-        if rows.iter().any(|(_, path)| *path == folder) {
+        if rows.iter().any(|row| row.path == folder) {
             return;
         }
-        rows.push((pid, folder));
-        while rows.len() > SESSION_LIMIT {
-            rows.remove(0);
+        rows.push(SessionRow { pid, path: folder, showing: false });
+        // The cap counts windows, so a window of several tabs is one of them.
+        while windows_in(&rows) > SESSION_LIMIT {
+            let oldest = rows[0].pid;
+            match oldest {
+                0 => {
+                    rows.remove(0);
+                }
+                _ => rows.retain(|row| row.pid != oldest),
+            }
         }
-        self.write_session(&rows);
+        self.write_session_rows(&rows);
     }
 
     /// Take this window out of the session because a person closed it, unless it is the only window open.
     ///
     /// `task-2253`: *"When I close a project/window by hand with X button click, I don't want that project to
     /// reopen next time I open Unluminous, unless it's the only project window."* So when another listed window
-    /// is still running, this window's line goes and the others are left as they are. When none is, this was the
-    /// last window of the session and the file becomes this one line: the windows that were closed by hand
-    /// before it have already gone, and a line left by a window that crashed is dropped with them.
+    /// is still running, this window's lines go and the others are left as they are. When none is, this was
+    /// the last window of the session and the file becomes this window's lines, one a project tab it held
+    /// (`task-2322`): the windows that were closed by hand before it have already gone, and a line left by a
+    /// window that crashed is dropped with them.
     ///
     /// `alive` is the question [`Self::remember_open_window`] asks, for the same reason.
     pub fn forget_open_window(&self, folder: &Path, pid: u32, alive: &dyn Fn(u32) -> bool) {
         let folder = plain_absolute(folder);
         let rows = self.session_rows();
-        let mine = |id: u32, path: &PathBuf| id == pid || *path == folder;
-        let others_running =
-            rows.iter().any(|(id, path)| !mine(*id, path) && *id != 0 && alive(*id));
+        let mine = |row: &SessionRow| row.pid == pid || row.path == folder;
+        let others_running = rows.iter().any(|row| !mine(row) && row.pid != 0 && alive(row.pid));
         match others_running {
             true => {
-                let left: Vec<(u32, PathBuf)> =
-                    rows.into_iter().filter(|(id, path)| !mine(*id, path)).collect();
-                self.write_session(&left);
+                let left: Vec<SessionRow> = rows.into_iter().filter(|row| !mine(row)).collect();
+                self.write_session_rows(&left);
             }
-            false => self.write_session(&[(pid, folder)]),
+            false => {
+                let mut kept: Vec<SessionRow> =
+                    rows.into_iter().filter(|row| row.pid == pid && row.pid != 0).collect();
+                if !kept.iter().any(|row| row.path == folder) {
+                    let showing = kept.is_empty();
+                    kept.insert(0, SessionRow { pid, path: folder, showing });
+                }
+                self.write_session_rows(&kept);
+            }
+        }
+    }
+
+    /// Take one project tab of a window out of the session, because a person closed the tab (`task-2322`).
+    ///
+    /// The window stays in the session with its other tabs, so only this project's line goes.
+    pub fn forget_open_tab(&self, folder: &Path, pid: u32) {
+        let folder = plain_absolute(folder);
+        let rows = self.session_rows();
+        let left: Vec<SessionRow> =
+            rows.into_iter().filter(|row| !(row.pid == pid && row.path == folder)).collect();
+        self.write_session_rows(&left);
+    }
+
+    /// Mark which project tab window `pid` is showing, so the window comes back showing it (`task-2322`).
+    /// Writes nothing when the mark is already there.
+    pub fn mark_the_showing_tab(&self, folder: &Path, pid: u32) {
+        let folder = plain_absolute(folder);
+        let mut rows = self.session_rows();
+        if !rows.iter().any(|row| row.pid == pid && row.path == folder) {
+            return;
+        }
+        let mut moved = false;
+        for row in rows.iter_mut().filter(|row| row.pid == pid) {
+            let showing = row.path == folder;
+            moved |= row.showing != showing;
+            row.showing = showing;
+        }
+        if moved {
+            self.write_session_rows(&rows);
         }
     }
 
@@ -326,8 +439,34 @@ impl Store {
     /// growing for ever — and it is called now, by `main`, which is half of `task-1912`'s first report: this
     /// function's own comment said that was its purpose while nothing outside the tests called it.
     pub fn write_session(&self, windows: &[(u32, PathBuf)]) {
-        let text: String =
-            windows.iter().map(|(pid, path)| format!("{pid} {}\n", path.display())).collect();
+        let rows: Vec<SessionRow> = windows
+            .iter()
+            .map(|(pid, path)| SessionRow { pid: *pid, path: path.clone(), showing: false })
+            .collect();
+        self.write_session_rows(&rows);
+    }
+
+    /// The same, with the project tab each window is showing marked. See [`Self::open_window_groups`].
+    pub fn write_session_tabs(&self, windows: &[(u32, PathBuf, bool)]) {
+        let rows: Vec<SessionRow> = windows
+            .iter()
+            .map(|(pid, path, showing)| SessionRow {
+                pid: *pid,
+                path: path.clone(),
+                showing: *showing,
+            })
+            .collect();
+        self.write_session_rows(&rows);
+    }
+
+    fn write_session_rows(&self, rows: &[SessionRow]) {
+        let text: String = rows
+            .iter()
+            .map(|row| match row.showing {
+                true => format!("{}* {}\n", row.pid, row.path.display()),
+                false => format!("{} {}\n", row.pid, row.path.display()),
+            })
+            .collect();
         if let Err(problem) = self.write(&self.session_path(), &text) {
             eprintln!("Unluminous could not write its open windows: {problem}");
         }
@@ -689,6 +828,57 @@ mod tests {
             windows.first().is_some_and(|first| first.ends_with("project-3")),
             "the three oldest fell off the front, and the list is {windows:?}"
         );
+    }
+
+    /// `task-2322`: the lines of one process id are one window's project tabs, in order, and the `*` says which
+    /// one it was showing.
+    #[test]
+    fn the_project_tabs_of_one_window_come_back_together_showing_the_one_it_showed() {
+        let folder = temporary("unluminous-store-session-tabs");
+        let store = Store::at(&folder);
+        let names = ["alpha", "beta", "gamma", "delta"];
+        let projects: Vec<PathBuf> = names.iter().map(|name| folder.join(name)).collect();
+        for project in &projects {
+            std::fs::create_dir_all(project).expect("make a project");
+        }
+        store.write_session_tabs(&[
+            (11, projects[0].clone(), false),
+            (12, projects[1].clone(), false),
+            (12, projects[2].clone(), true),
+            (12, projects[3].clone(), false),
+        ]);
+        let groups = store.open_window_groups();
+        assert_eq!(groups.len(), 2, "two windows: {groups:?}");
+        assert_eq!(groups[0], (vec![projects[0].clone()], 0));
+        assert_eq!(
+            groups[1],
+            (vec![projects[1].clone(), projects[2].clone(), projects[3].clone()], 1),
+            "the second window's tabs, in order, showing gamma"
+        );
+
+        store.mark_the_showing_tab(&projects[3], 12);
+        assert_eq!(store.open_window_groups()[1].1, 2, "the mark moved to delta");
+
+        store.forget_open_tab(&projects[1], 12);
+        assert_eq!(
+            store.open_window_groups()[1],
+            (vec![projects[2].clone(), projects[3].clone()], 1),
+            "closing a tab takes its line out and leaves the window's other tabs"
+        );
+    }
+
+    /// A window of several tabs closed by hand while no other window runs keeps every one of its tabs.
+    #[test]
+    fn the_last_window_closed_by_hand_keeps_every_project_tab() {
+        let folder = temporary("unluminous-store-session-tabs-last");
+        let store = Store::at(&folder);
+        let one = folder.join("one");
+        let two = folder.join("two");
+        std::fs::create_dir_all(&one).expect("make a project");
+        std::fs::create_dir_all(&two).expect("make a project");
+        store.write_session_tabs(&[(21, one.clone(), false), (21, two.clone(), true)]);
+        store.forget_open_window(&one, 21, &nothing_is_alive);
+        assert_eq!(store.open_window_groups(), vec![(vec![one, two], 1)]);
     }
 
     /// A project that is no longer on disk is left out, for the reason one is left out of the recent

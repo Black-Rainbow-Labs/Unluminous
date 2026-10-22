@@ -15,7 +15,6 @@ use egui::{CornerRadius, Pos2, Rect, Vec2};
 
 use crate::components::about_dialog::{self};
 use crate::components::activity_bar;
-use crate::components::branch_widget;
 use crate::components::context_menu;
 use crate::components::debug_panel::{self};
 use crate::components::explorer;
@@ -520,34 +519,41 @@ impl UnluminousApp {
         let (tools_width, run_width) = (places.tools_width, places.run_width);
         let run_state = &places.run_state;
 
-        // The branch the repository is on and the local branches, for the widget beside the project's
-        // name. Worked out before the bar is drawn because the bar needs the width to leave room for it.
-        let branch_state = self.branch_state();
-        let branch_width = branch_widget::width(&branch_state, ui.painter());
+        // The project tabs, a pill a project in this window with the one showing raised, where the project's
+        // name and the branch widget used to be (`task-2322`). The branch is in the status bar.
+        let tabs = self.project_tabs();
+        let names: Vec<String> = tabs.tabs.iter().map(|tab| tab.name.clone()).collect();
 
         // The title bar.
         let outcome = title_bar::show(
             ui,
             title_rect,
-            self.folder_name().as_deref(),
+            &names,
+            tabs.showing,
             self.settings.window_opacity(),
             self.menu_placement,
             menus,
             tools_width,
             run_width,
-            branch_width,
         );
+        if outcome.tabs.plus_rect != Rect::NOTHING {
+            self.project_plus_rect = Some(outcome.tabs.plus_rect);
+        }
+        if let Some(index) = outcome.tabs.show {
+            self.ask_the_window(crate::app::project_tabs::Ask::Show(index));
+        }
+        if let Some((at, index)) = outcome.tabs.menu {
+            self.project_tab_menu = Some((at, index));
+        }
+        if outcome.tabs.plus {
+            self.open_the_project_dropdown();
+        }
         if outcome.close {
             // Every modified tab is written first, and the window does not go when one of them could
             // not be (`task-1984` A2). `may_the_window_close` is the one function the three ways of
-            // closing ask, so none of them can be the one that forgets.
-            if self.may_the_window_close() {
-                self.closing = true;
-                self.closed_by_hand = true;
-                self.write_settings();
-                self.remember_the_project(None);
-                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-            }
+            // closing ask, so none of them can be the one that forgets. A window of several project tabs
+            // asks every tab (`task-2322`).
+            self.close_the_window(ui.ctx());
         }
         if outcome.minimise {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Minimized(true));
@@ -615,19 +621,6 @@ impl UnluminousApp {
             let chosen = {
                 let mut run_ui = ui.new_child(egui::UiBuilder::new().max_rect(run_rect));
                 run_widget::show(&mut run_ui, run_rect, run_state)
-            };
-            if let Some(chosen) = chosen {
-                *action = Some(chosen);
-            }
-        }
-
-        // The branch widget, over the bar for the reason the run widget and the tools are: the bar takes
-        // drags over the room between the menus and the buttons to move the window, and a control added
-        // earlier would sit underneath that and never be pressed.
-        if branch_width > 0.0 && outcome.branch_rect.width() > 4.0 {
-            let chosen = {
-                let mut bar_ui = ui.new_child(egui::UiBuilder::new().max_rect(outcome.branch_rect));
-                branch_widget::show(&mut bar_ui, outcome.branch_rect, &branch_state)
             };
             if let Some(chosen) = chosen {
                 *action = Some(chosen);
@@ -1133,6 +1126,9 @@ impl UnluminousApp {
                 self.explorer_menu = None;
             }
         }
+
+        // A project tab's own menu and the plus's dropdown. `task-2322`.
+        self.show_the_project_tab_menus(ui, action);
 
         // A tab's own menu, drawn after the panes so it sits over them rather than under one.
         if let Some((at, _)) = self.tab_menu {

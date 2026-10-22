@@ -21,6 +21,21 @@ pub enum Action {
     NextWindow,
     /// The same, the other way round.
     PreviousWindow,
+    /// Open the dropdown under the title bar's plus, which opens a recent project or a chosen folder in a new
+    /// project tab of this window. `task-2322`.
+    NewProjectTab,
+    /// Open this folder in a new project tab of this window, or show the tab it is already open in.
+    OpenInProjectTab(PathBuf),
+    /// Close a project tab: the one whose menu was opened, or the one showing. Dimmed while there is one.
+    CloseProjectTab,
+    /// Close every project tab but the one whose menu was opened, or the one showing.
+    CloseOtherProjectTabs,
+    /// Close a project tab here and open its project in a window of its own.
+    OpenProjectTabInNewWindow,
+    /// Show the project tab after the one showing, going round from the last to the first.
+    NextProjectTab,
+    /// The same, the other way round.
+    PreviousProjectTab,
     /// Choose a folder and open it in a window of its own, leaving this one as it is.
     ///
     /// A project is a window, the way the reference editor has it, so there is one entry rather than the two there
@@ -1207,6 +1222,8 @@ pub struct MenuState {
     /// True when a tab has been closed that could be opened again, which is what dims
     /// `Reopen Closed Tab`. Dimmed rather than absent, because it is `Undo`'s shape.
     pub can_reopen_tab: bool,
+    /// How many project tabs the window holds, which dims `Close Project Tab` on the only one. `task-2322`.
+    pub project_tabs: usize,
     /// True while the Find bar is open, which is what decides whether Find Next can be used.
     /// `task-1804`.
     pub finding: bool,
@@ -1367,6 +1384,17 @@ pub fn window_cycle(shift: bool) -> Shortcut {
             Shortcut { key: egui::Key::Backtick, command: false, shift, alt: true, ctrl: false }
         }
     }
+}
+
+/// The chord that shows the next project tab, or the one before it: the command key and `Alt` with
+/// `PageDown` or `PageUp`. `task-2322`. `Ctrl+PageDown` alone is the browsers' next tab, and the editing area
+/// has file tabs of its own, so the project tabs take the chord with one more modifier.
+pub fn project_tab_cycle(back: bool) -> Shortcut {
+    let key = match back {
+        true => egui::Key::PageUp,
+        false => egui::Key::PageDown,
+    };
+    Shortcut { alt: true, ..Shortcut::command(key) }
 }
 
 pub fn menus(state: &MenuState) -> Vec<Menu> {
@@ -1805,6 +1833,29 @@ fn file_menu(state: &MenuState) -> Menu {
         // switch to (`task-2317`). See `services::other_windows`.
         Entry::with_shortcut("Next Window", Action::NextWindow, window_cycle(false)),
         Entry::with_shortcut("Previous Window", Action::PreviousWindow, window_cycle(true)),
+        // **Several projects in one window**, a project tab each (`task-2322`). One submenu rather than four
+        // rows, because four more rows made the File menu taller than a 740 point window. The plus at the end of
+        // the title bar's tabs is `New Project Tab...`.
+        Entry::Submenu {
+            name: "Project Tabs".to_owned(),
+            entries: vec![
+                Entry::item("New Project Tab...", Action::NewProjectTab),
+                Entry::item("Close Project Tab", Action::CloseProjectTab)
+                    .enabled(state.project_tabs > 1),
+                Entry::with_shortcut(
+                    "Next Project Tab",
+                    Action::NextProjectTab,
+                    project_tab_cycle(false),
+                )
+                .enabled(state.project_tabs > 1),
+                Entry::with_shortcut(
+                    "Previous Project Tab",
+                    Action::PreviousProjectTab,
+                    project_tab_cycle(true),
+                )
+                .enabled(state.project_tabs > 1),
+            ],
+        },
         Entry::Separator,
         Entry::with_shortcut("Open File", Action::OpenFile, Shortcut::command(egui::Key::O)),
         Entry::item("New Jupyter Notebook", Action::NewNotebook),
@@ -2422,6 +2473,21 @@ pub fn tab_menu(state: &MenuState) -> Vec<Entry> {
         entries.extend(split_menu(state));
     }
     entries
+}
+
+/// What a project tab's right click menu holds (`task-2322`): close it, close the others, or move it to a window
+/// of its own. Every entry is about the tab the menu was opened on, which the window keeps beside the menu.
+///
+/// `Close Project Tab` is dimmed on the only tab: a window with no project is not something a tab menu makes, and
+/// the window's own close button is how a window goes.
+pub fn project_tab_menu(state: &MenuState) -> Vec<Entry> {
+    let several = state.project_tabs > 1;
+    vec![
+        Entry::item("Close Project Tab", Action::CloseProjectTab).enabled(several),
+        Entry::item("Close Other Project Tabs", Action::CloseOtherProjectTabs).enabled(several),
+        Entry::Separator,
+        Entry::item("Open in New Window", Action::OpenProjectTabInNewWindow).enabled(several),
+    ]
 }
 
 /// What the empty part of a tab strip's right click menu holds: a new tab of the kind that has no file to come

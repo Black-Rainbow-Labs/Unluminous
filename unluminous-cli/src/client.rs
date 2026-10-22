@@ -88,7 +88,13 @@ pub fn choose(wanted: Option<&str>) -> Result<Instance, Unreachable> {
     // is what a person typing in that shell after the window closed should get.
     let wanted = wanted.map(str::to_owned).or_else(|| {
         crate::parse::the_window_that_started_this_process()
-            .filter(|said| alive.iter().any(|instance| instance.pid.to_string() == *said))
+            // A process id, or a port: a window's project tabs share a process, so a child of a tab is told
+            // that tab's port (`task-2322`).
+            .filter(|said| {
+                alive.iter().any(|instance| {
+                    instance.pid.to_string() == *said || instance.port.to_string() == *said
+                })
+            })
     });
     let Some(wanted) = wanted.as_deref() else {
         return match alive.len() {
@@ -97,6 +103,7 @@ pub fn choose(wanted: Option<&str>) -> Result<Instance, Unreachable> {
                 "No Unluminous is running. Start one with `unluminous-cli launch <folder>`.",
             )),
             1 => Ok(alive.into_iter().next().expect("one")),
+            _ if one_window(&alive).is_some() => Ok(one_window(&alive).expect("just asked")),
             _ => Err(Unreachable::new(
                 code::SEVERAL,
                 format!(
@@ -131,11 +138,30 @@ pub fn choose(wanted: Option<&str>) -> Result<Instance, Unreachable> {
             format!("No running Unluminous matches --instance {wanted}."),
         )),
         1 => Ok(matched.into_iter().next().expect("one")),
+        _ if one_window(&matched).is_some() => Ok(one_window(&matched).expect("just asked")),
         _ => Err(Unreachable::new(
             code::SEVERAL,
             format!("--instance {wanted} matches {} running Unluminous windows.", matched.len()),
         )),
     }
+}
+
+/// The project tab a person means when every instance in `found` is a tab of one window: the one that window
+/// is showing, or its first tab when none says so (`task-2322`).
+///
+/// A window holds a project a tab, and each tab advertises itself, so a process id names every tab of its
+/// window. The tab on the screen is the one a person looking at the window means. Instances of more than one
+/// window answer nothing, because guessing which window was meant is the mistake [`choose`] refuses to make.
+pub fn one_window(found: &[Instance]) -> Option<Instance> {
+    let first = found.first()?;
+    if found.iter().any(|instance| instance.pid != first.pid) {
+        return None;
+    }
+    found
+        .iter()
+        .find(|instance| instance.showing)
+        .or_else(|| found.iter().min_by_key(|instance| instance.tab))
+        .cloned()
 }
 
 /// Send one command to one instance.
@@ -237,6 +263,33 @@ pub fn launch(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn tab(pid: u32, tab: u32, showing: bool) -> Instance {
+        Instance {
+            pid,
+            port: 40000 + tab as u16,
+            token: "t".to_owned(),
+            folder: std::path::PathBuf::from(format!("/p/{pid}/{tab}")),
+            started: 0,
+            tab,
+            showing,
+        }
+    }
+
+    /// `task-2322`: a process id names every project tab of its window, and the tab the window is showing is the
+    /// one meant. Tabs of two windows are not one window, and nothing is guessed.
+    #[test]
+    fn the_tabs_of_one_window_answer_with_the_one_showing() {
+        let tabs = [tab(5, 0, false), tab(5, 1, true), tab(5, 2, false)];
+        assert_eq!(one_window(&tabs).map(|found| found.tab), Some(1));
+        let none_showing = [tab(5, 2, false), tab(5, 1, false)];
+        assert_eq!(
+            one_window(&none_showing).map(|found| found.tab),
+            Some(1),
+            "the first tab there is"
+        );
+        assert_eq!(one_window(&[tab(5, 0, true), tab(6, 0, true)]), None);
+    }
 
     #[test]
     fn the_program_beside_this_one_is_preferred_and_can_be_named() {

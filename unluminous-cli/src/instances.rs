@@ -131,6 +131,13 @@ pub struct Instance {
     pub folder: PathBuf,
     /// Seconds since the epoch, so the newest window can be told from the oldest.
     pub started: u64,
+    /// Which project tab of its window this is: 0 for the first project a window opened, counting up for
+    /// each tab opened after it (`task-2322`). A window holds a project a tab, and each tab has a command
+    /// channel and an instance file of its own.
+    pub tab: u32,
+    /// Whether this tab is the one its window is showing. A process id names every tab of its window, and
+    /// this is how [`crate::client::choose`] picks one.
+    pub showing: bool,
 }
 
 impl Instance {
@@ -144,6 +151,10 @@ impl Instance {
         let mut token = None;
         let mut folder = None;
         let mut started = 0;
+        let mut tab = 0;
+        // A file written before project tabs had no `showing` line, and its window had one project, which
+        // it was showing.
+        let mut showing = true;
         for line in text.lines() {
             let line = line.trim();
             if line.starts_with('#') {
@@ -159,6 +170,8 @@ impl Instance {
                 "token" => token = Some(value.to_owned()),
                 "folder" => folder = Some(PathBuf::from(value)),
                 "started" => started = value.parse().unwrap_or(0),
+                "tab" => tab = value.parse().unwrap_or(0),
+                "showing" => showing = value != "false",
                 _ => {}
             }
         }
@@ -168,6 +181,8 @@ impl Instance {
             token: token?,
             folder: folder.unwrap_or_default(),
             started,
+            tab,
+            showing,
         })
     }
 
@@ -178,19 +193,27 @@ impl Instance {
              folder = {}\n\
              pid = {}\n\
              port = {}\n\
+             showing = {}\n\
              started = {}\n\
+             tab = {}\n\
              token = {}\n",
             self.folder.display(),
             self.pid,
             self.port,
+            self.showing,
             self.started,
+            self.tab,
             self.token
         )
     }
 
-    /// Where this instance's file goes.
+    /// Where this instance's file goes: `<pid>.conf` for a window's first project tab, which is the name it
+    /// always had, and `<pid>-<tab>.conf` for each tab after it.
     pub fn path_in(&self, folder: &Path) -> PathBuf {
-        folder.join(format!("{}.conf", self.pid))
+        match self.tab {
+            0 => folder.join(format!("{}.conf", self.pid)),
+            tab => folder.join(format!("{}-{tab}.conf", self.pid)),
+        }
     }
 }
 
@@ -289,8 +312,36 @@ mod tests {
             token: "4f1abc".to_owned(),
             folder: PathBuf::from("/projects/book"),
             started: 1756139112,
+            tab: 2,
+            showing: false,
         };
         assert_eq!(Instance::parse(&instance.to_text()), Some(instance));
+    }
+
+    /// `task-2322`: a window's first project tab keeps the file name it always had, and every tab after it has
+    /// one of its own, so two tabs of one window never write over each other.
+    #[test]
+    fn each_project_tab_of_a_window_has_a_file_of_its_own() {
+        let mut instance = Instance {
+            pid: 7,
+            port: 1,
+            token: "t".to_owned(),
+            folder: PathBuf::from("/p"),
+            started: 0,
+            tab: 0,
+            showing: true,
+        };
+        let folder = Path::new("/instances");
+        assert_eq!(instance.path_in(folder), folder.join("7.conf"));
+        instance.tab = 3;
+        assert_eq!(instance.path_in(folder), folder.join("7-3.conf"));
+    }
+
+    /// A file an older Unluminous wrote has no `tab` and no `showing`, and it is a first tab that is showing.
+    #[test]
+    fn a_file_from_before_project_tabs_is_a_first_tab_that_is_showing() {
+        let read = Instance::parse("pid = 1\nport = 2\ntoken = t\n").expect("an instance");
+        assert_eq!((read.tab, read.showing), (0, true));
     }
 
     #[test]
@@ -313,6 +364,8 @@ mod tests {
                 token: "t".to_owned(),
                 folder: PathBuf::from("/p"),
                 started,
+                tab: 0,
+                showing: true,
             };
             std::fs::write(instance.path_in(&folder), instance.to_text()).expect("write");
         }

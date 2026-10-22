@@ -15,6 +15,8 @@
 //!   they belong to the project rather than to the person: `services::run_configurations`.
 //! - `.unluminous/open-files.txt` — one path a line, in tab order.
 //! - `.unluminous/expanded-folders.txt` — one path a line.
+//! - `.unluminous/layout.conf` — the pane sizes and where each panel is docked, which since `task-2322` are
+//!   the project's own rather than only the person's: see [`load_layout`].
 //!
 //! The two lists are files of their own rather than numbered names in the conf, because that is what
 //! `recent.txt` already does with a list of paths and because a list of paths reads better one to a line
@@ -510,6 +512,44 @@ pub fn wait_for_the_writes() {
     let sent = writer.lock().ok().map(|tx| tx.send(WriterJob::Flush(done)).is_ok());
     if sent == Some(true) {
         let _ = finished.recv_timeout(std::time::Duration::from_secs(2));
+    }
+}
+
+/// The pane sizes and where each panel is docked, the project's own (`task-2322`).
+const LAYOUT_FILE: &str = "layout.conf";
+
+/// The pane sizes and docking `root` was left with, when it has been left with any.
+///
+/// `task-2322`: *"We want the ability to open N projects in a window, where each project gets its own custom
+/// layout."* A window of project tabs holds a layout a tab, and this is where a project keeps its own between one
+/// start and the next. The settings file keeps the person's, which is what a project opened for the first time
+/// starts from. It is the same names the settings file uses, read by the same function.
+///
+/// @param root - the project
+/// @param plugin_panes - the names of the panes the plugins contributed, in slot order
+pub fn load_layout(root: &Path, plugin_panes: &[String]) -> Option<crate::settings::Panes> {
+    let text = std::fs::read_to_string(folder(root).join(LAYOUT_FILE)).ok()?;
+    let values = Values::parse(&text);
+    Some(crate::settings::Panes::read_from_with(&values, plugin_panes))
+}
+
+/// Write the pane sizes and docking `root` has now. Nothing is written when the file already says the same.
+///
+/// @param root - the project
+/// @param panes - the layout
+/// @param plugin_panes - the names of the panes the plugins contributed, in slot order
+pub fn save_layout(root: &Path, panes: &crate::settings::Panes, plugin_panes: &[String]) {
+    let mut values = Values::new();
+    panes.write_into_with(&mut values, plugin_panes);
+    let text = values.to_text();
+    let path = folder(root).join(LAYOUT_FILE);
+    if std::fs::read_to_string(&path).is_ok_and(|was| was == text) {
+        return;
+    }
+    if let Err(problem) = std::fs::create_dir_all(folder(root))
+        .and_then(|_| crate::services::store::write_atomically(&path, text.as_bytes()))
+    {
+        eprintln!("Unluminous could not write {}: {problem}", path.display());
     }
 }
 

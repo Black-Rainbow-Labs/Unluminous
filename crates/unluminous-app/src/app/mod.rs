@@ -69,6 +69,8 @@ pub mod signature;
 // The window's side of the UI plugins: which providers are open, and which of their panes are showing.
 pub mod plugin_panes;
 mod preview;
+// Several projects in one window, a project tab each. `task-2322`.
+pub mod project_tabs;
 pub mod realm;
 pub mod realm_files;
 pub mod realm_nodes;
@@ -1524,6 +1526,21 @@ pub struct UnluminousApp {
     /// True while a popup `Debug -> Show Value` asked for is waiting to be told where the caret
     /// ended up on the screen — `completion_anchor`'s problem, solved in the same place.
     pub(crate) caret_tooltip: bool,
+    /// What the window holding this tab says about its project tabs, set before this tab runs. `task-2322`.
+    pub(crate) project_tabs: project_tabs::ProjectTabs,
+    /// What this tab asked its window to do about the tabs, taken by the window once the frame is drawn.
+    pub(crate) project_tab_asked: Vec<project_tabs::Ask>,
+    /// A project tab's own menu, open where the right click was and about that tab. Held here for the reason
+    /// the other menus are: a screenshot test cannot press the right mouse button.
+    pub project_tab_menu: Option<(Pos2, usize)>,
+    /// The plus's dropdown, while it is open.
+    pub project_dropdown: Option<crate::components::project_tabs::DropdownState>,
+    /// Where the plus was drawn last frame, which the dropdown hangs from.
+    pub(crate) project_plus_rect: Option<Rect>,
+    /// This tab's number in its window, which names its instance file. 0 for a window's first.
+    pub(crate) project_tab_number: u32,
+    /// Set by `draw_deterministically`, so a project tab a test opens is drawn the same way.
+    pub(crate) drawn_deterministically: bool,
 }
 
 impl UnluminousApp {
@@ -1739,6 +1756,13 @@ impl UnluminousApp {
             followed_stop: None,
             hover_rest: None,
             caret_tooltip: false,
+            project_tabs: project_tabs::ProjectTabs::default(),
+            project_tab_asked: Vec::new(),
+            project_tab_menu: None,
+            project_dropdown: None,
+            project_plus_rect: None,
+            project_tab_number: 0,
+            drawn_deterministically: false,
         }
     }
 
@@ -1757,11 +1781,24 @@ impl UnluminousApp {
     /// instance file into the person's settings folder, or leave a listener behind when it ends. A
     /// window with no channel is an ordinary window in every other respect.
     pub fn open_control_channel(&mut self, ctx: &egui::Context) {
+        self.open_control_channel_for_tab(ctx, self.project_tab_number);
+    }
+
+    /// The same, for project tab `tab` of its window (`task-2322`). Each tab has a channel of its own, and only
+    /// a window's first hosts the MCP endpoint, which listens on one fixed port.
+    pub(crate) fn open_control_channel_for_tab(&mut self, ctx: &egui::Context, tab: u32) {
         let folder = self.tree.root().to_path_buf();
         // The context rather than `thread_waker`, because this is called before the first frame and
         // the window has not yet been given one to wake.
         let context = ctx.clone();
-        self.control = control::Server::start(folder, Arc::new(move || context.request_repaint()));
+        self.control = control::Server::start_for_tab(
+            folder,
+            Arc::new(move || context.request_repaint()),
+            tab,
+        );
+        if tab != 0 {
+            return;
+        }
         if let Some(server) = &self.control {
             self.message = Some(format!(
                 "Unluminous {} \u{00B7} the command line is listening on port {}",
@@ -1783,6 +1820,7 @@ impl UnluminousApp {
     /// machine with a different processor, for a reason that is not a fault in Unluminous. The screenshot tests
     /// call this and the released binary does not, because in the window the fastest is what is wanted.
     pub fn draw_deterministically(&mut self) {
+        self.drawn_deterministically = true;
         self.canvases = crate::services::vello_canvas::Canvases::deterministic();
         // **At the design's own interface size**, so an accepted picture is a picture of the design rather
         // than of whatever the default is this year. `task-2280` raised the default to make a fresh
@@ -1988,6 +2026,13 @@ impl UnluminousApp {
         // breakpoint that appeared a frame after its file did would be a dot that arrived late.
         self.breakpoints = BreakpointStore::load(self.tree.root());
         let state = project_state::load(self.tree.root());
+        // The layout this project was left with, when it was left with one: each project keeps its own, so a
+        // window of project tabs gives each tab the layout it had (`task-2322`).
+        if let Some(panes) =
+            project_state::load_layout(self.tree.root(), &self.plugin_ui.pane_keys())
+        {
+            self.panes = panes;
+        }
         for folder in &state.expanded_folders {
             self.tree.expand(folder);
         }
@@ -2671,7 +2716,28 @@ impl eframe::App for UnluminousApp {
         }
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        self.before_the_frame(ui, frame);
+        UnluminousApp::ui(self, ui);
+        self.after_the_frame(frame);
+    }
+
+    /// Write the settings, the pane sizes and what was open in the project before the window goes,
+    /// and stop everything that is running.
+    ///
+    /// Nothing ever orphans a child on purpose: `Session`'s own drop shuts a pseudoterminal down,
+    /// and this is the same path taken deliberately so it happens while the window is still here to
+    /// wait for it.
+    fn on_exit(&mut self) {
+        self.exit();
+    }
+}
+
+impl UnluminousApp {
+    /// What a frame asks of the real window before anything is drawn: its transparency, what Windows says
+    /// about the keyboard, and the edges Windows resizes it by. `ProjectWindow` asks it of the tab it draws
+    /// (`task-2322`).
+    pub(crate) fn before_the_frame(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         // Nothing on macOS: the compositor there takes the surface's alpha on its own.
         #[cfg(windows)]
         crate::services::windows_transparency::keep_transparent(_frame);
@@ -2691,7 +2757,10 @@ impl eframe::App for UnluminousApp {
         crate::services::windows_resize::settle(_frame, &mut self.unlatch, now);
         // The one thing reconciling needs from the frame, taken while there is a frame to ask.
         self.browser.remember_window(_frame);
-        UnluminousApp::ui(self, ui);
+    }
+
+    /// What a frame records about itself once it is drawn, for the frame trace.
+    pub(crate) fn after_the_frame(&mut self, _frame: &mut eframe::Frame) {
         // What eframe says the **previous** frame cost on this thread, egui's own layout and tessellation
         // included and the graphics card's painting not: the half of `outside` that is processor time.
         if let Some(seconds) = _frame.info().cpu_usage {
@@ -2719,13 +2788,8 @@ impl eframe::App for UnluminousApp {
         }
     }
 
-    /// Write the settings, the pane sizes and what was open in the project before the window goes,
-    /// and stop everything that is running.
-    ///
-    /// Nothing ever orphans a child on purpose: `Session`'s own drop shuts a pseudoterminal down,
-    /// and this is the same path taken deliberately so it happens while the window is still here to
-    /// wait for it.
-    fn on_exit(&mut self) {
+    /// What `eframe::App::on_exit` does, which a `ProjectWindow` also asks of a tab it closes.
+    pub(crate) fn exit(&mut self) {
         // **What each node holds, asked one last time before anything is killed.** It is read from the
         // pseudoterminal, the native view and the chat's own thread, all three of which answer nothing once
         // they have been stopped. `realm::Reading::OnTheWayOut` says which of the six values this moment can
@@ -2787,7 +2851,7 @@ impl eframe::App for UnluminousApp {
 
 /// Whether a process id is an Unluminous window that is still running: a **listed instance** with that id,
 /// because an id the operating system has handed to something else would otherwise read as a window still open.
-fn window_is_running(pid: u32) -> bool {
+pub(crate) fn window_is_running(pid: u32) -> bool {
     unluminous_cli::instances::listed().iter().any(|instance| instance.pid == pid)
         && unluminous_cli::instances::is_running(pid)
 }

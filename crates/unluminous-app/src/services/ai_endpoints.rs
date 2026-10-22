@@ -519,6 +519,12 @@ impl AcpRegistry {
         self.asks_npm = true;
     }
 
+    /// Whether [`Self::read_when_shown`] was called, so a project tab opened later in the window is given the
+    /// same leave (`task-2322`).
+    pub fn is_read_when_shown(&self) -> bool {
+        self.read_when_shown
+    }
+
     /// Which package runners are installed, asked again at most every [`RUNNERS_FRESH`] (`task-2308`). Each
     /// card on the page asks, and looking a program up walks `PATH`: asked afresh, forty agents did that eighty
     /// times a frame.

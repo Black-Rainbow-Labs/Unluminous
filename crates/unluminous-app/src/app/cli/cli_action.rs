@@ -221,8 +221,145 @@ impl UnluminousApp {
                     json!({ "recent": rows }),
                 )
             }
+            "tabs" => {
+                let tabs = self.project_tabs();
+                let rows: Vec<String> = tabs
+                    .tabs
+                    .iter()
+                    .enumerate()
+                    .map(|(index, tab)| {
+                        let showing = if index == tabs.showing { "  (showing)" } else { "" };
+                        format!("{index}  {}  {}{showing}", tab.name, tab.folder.display())
+                    })
+                    .collect();
+                lines(
+                    request,
+                    match rows.len() {
+                        1 => "1 project tab".to_owned(),
+                        many => format!("{many} project tabs"),
+                    },
+                    rows,
+                    self.project_tabs_value(),
+                )
+            }
+            "tab-open" => {
+                let Some(folder) = self.cli_path_argument(request, "folder") else {
+                    return no(request, code::USAGE, "Say which folder to open in a new tab.");
+                };
+                if !folder.is_dir() {
+                    return no(
+                        request,
+                        code::NOT_FOUND,
+                        format!("{} is not a folder.", folder.display()),
+                    );
+                }
+                if let Some(refused) = self.refuse_without_a_window(request) {
+                    return refused;
+                }
+                let tabs = self.project_tabs();
+                let already = tabs.tabs.iter().position(|tab| tab.folder == folder);
+                self.ask_the_window(crate::app::project_tabs::Ask::Open(folder.clone()));
+                let said = match already {
+                    Some(index) => format!(
+                        "{} is already open in tab {index}, so it is shown",
+                        folder.display()
+                    ),
+                    None => format!("Opening {} in a new project tab", folder.display()),
+                };
+                ok(request, said, json!({ "folder": folder.to_string_lossy(), "already": already }))
+            }
+            "tab-show" | "tab-close" => {
+                if let Some(refused) = self.refuse_without_a_window(request) {
+                    return refused;
+                }
+                let tabs = self.project_tabs();
+                let index = match request.text("tab") {
+                    None => tabs.showing,
+                    Some(named) => match self.project_tab_named(&named) {
+                        Ok(index) => index,
+                        Err(why) => return no(request, code::NOT_FOUND, why),
+                    },
+                };
+                let name = tabs.tabs[index].name.clone();
+                if verb == "tab-show" {
+                    self.ask_the_window(crate::app::project_tabs::Ask::Show(index));
+                    return ok(request, format!("Showing {name}"), json!({ "tab": index }));
+                }
+                if tabs.tabs.len() < 2 {
+                    return no(
+                        request,
+                        code::FAILED,
+                        "This is the window's only project tab. `quit` closes the window.",
+                    );
+                }
+                self.ask_the_window(crate::app::project_tabs::Ask::Close(index));
+                ok(request, format!("Closing {name}"), json!({ "tab": index }))
+            }
             _ => unknown(request),
         }
+    }
+
+    /// A refusal for a project tab command in a window no `ProjectWindow` holds, which is a test's.
+    fn refuse_without_a_window(&self, request: &Request) -> Option<Outcome> {
+        match self.project_tabs.in_a_window {
+            true => None,
+            false => Some(no(
+                request,
+                code::FAILED,
+                "This window was not opened as a window of project tabs, so it cannot open another.",
+            )),
+        }
+    }
+
+    /// Which tab `named` is: its number, or a part of its folder's path that names one tab.
+    pub(crate) fn project_tab_named(&self, named: &str) -> Result<usize, String> {
+        let tabs = self.project_tabs();
+        if let Ok(index) = named.trim().parse::<usize>() {
+            return match index < tabs.tabs.len() {
+                true => Ok(index),
+                false => Err(format!(
+                    "There is no project tab {index}. There are {} of them, counted from 0.",
+                    tabs.tabs.len()
+                )),
+            };
+        }
+        let wanted = named.to_lowercase();
+        let found: Vec<usize> = tabs
+            .tabs
+            .iter()
+            .enumerate()
+            .filter(|(_, tab)| tab.folder.to_string_lossy().to_lowercase().contains(&wanted))
+            .map(|(index, _)| index)
+            .collect();
+        match found.as_slice() {
+            [index] => Ok(*index),
+            [] => {
+                Err(format!("No project tab's folder holds `{named}`. `project tabs` lists them."))
+            }
+            several => Err(format!(
+                "`{named}` is in {} project tabs' folders. Name one by its number.",
+                several.len()
+            )),
+        }
+    }
+
+    /// The window's project tabs as a value: each tab's number, name, folder and port, which one is showing, and
+    /// whether a tab's menu or the plus's dropdown is open. `status` and `project tabs` answer with it.
+    pub(crate) fn project_tabs_value(&self) -> Value {
+        let tabs = self.project_tabs();
+        json!({
+            "count": tabs.tabs.len(),
+            "showing": tabs.showing,
+            "tabs": tabs.tabs.iter().enumerate().map(|(index, tab)| json!({
+                "tab": index,
+                "name": tab.name,
+                "folder": tab.folder.to_string_lossy(),
+                "port": tab.port,
+                "showing": index == tabs.showing,
+            })).collect::<Vec<Value>>(),
+            "menuOpenOn": self.project_tab_menu.map(|(_, index)| index),
+            "dropdownOpen": self.project_dropdown.is_some(),
+        })
     }
 }
 

@@ -2622,6 +2622,44 @@ a picture to the person's backgrounds folder and deleted it again. A window nobo
 has no backgrounds folder at all, so it draws no picture and refuses to add or remove one. In the shipped
 binary `load_settings` gives it the person's store, so nothing a person sees changed.
 
+## Several projects in one window, a project tab each (`task-2322`)
+
+`tasks/task-2322-multi-project-tabs-tdd.md` is the design. *"Open N projects in a window, where each project gets
+its own custom layout (same behavior as if they were open in different windows)."* The rules:
+
+- **A project tab is a whole `UnluminousApp`.** `app::project_tabs::ProjectWindow` holds one a tab, draws the one
+  showing, and is what `main.rs` hands to eframe. Agent Chat, Agent Tasks, the terminals, the realm, the run
+  configurations, the debugger and the code index are each tab's own because they always were each window's own.
+  A screenshot test still builds an `UnluminousApp` on its own, which is a window of one project.
+- **A tab that is not showing keeps working**: the window gives it `keep_working_while_hidden` every frame, so its
+  command channel is answered and its plugins have their turn. Its pages are hidden
+  (`BrowserHost::hide_every_view`) and it lets go of the microphone (`let_go_of_the_microphone`).
+- **The settings follow the tab that is showing** (`take_the_screen_from` gives it the outgoing tab's settings).
+  **The layout does not**: pane sizes and docking are each tab's own, and a project keeps its own in
+  `.unluminous/layout.conf` (`project_state::save_layout`, read by `restore_project`).
+- **A tab asks the window for anything about the tabs** through `UnluminousApp::ask_the_window` (`Ask`), and the
+  window acts after the frame. The close button, `Close Window` and `Quit` go through `close_the_window`, which in a
+  window of several tabs asks every tab to save first.
+- **Each tab has a command channel of its own.** Its instance file is `<pid>-<tab>.conf` (the first tab keeps
+  `<pid>.conf`) and says `tab` and `showing`; a process id names the tab the window is showing
+  (`client::one_window`). A child of a tab is told the tab's **port** in `UNLUMINOUS_INSTANCE`, because the window
+  runs each tab under `control::running_for`. Only the first tab hosts the MCP HTTP endpoint.
+- **An Agent Tasks claim names the tab** (`agent_tasks::owner`, `pid:<pid>:<tab>`), or a card claimed in one tab
+  read as the next tab's own and was struck for having no terminal there.
+- **Browser tab ids are one counter for the process** (`NEXT_TAB_ID`), because every tab has a host of its own.
+- **The title bar draws the tabs where the project's chip was**, as the Realm bar's pills and `+` chip
+  (`components::project_tabs`), shrinking to share the room before any is left out. The branch widget is gone
+  from the title bar; the status bar names the branch. The `+` opens a dropdown of recent projects with a folder
+  chip that opens the platform's folder picker (`UnluminousApp::folder_picker`, which a test replaces).
+- **The first tab is drawn with the ids it always had**; every other is drawn inside `ui.push_id(("project-tab",
+  key))`, so its scroll areas and text boxes keep state of their own.
+- **The session file has a line a tab**, `<pid>[*] <folder>`, the `*` on the tab showing. `Store::open_window_groups`
+  reads windows back, `main.rs` restores the last window's tabs itself and starts each other window with `--tab`
+  and `--show-tab`. Closing a tab takes its line out (`Store::forget_open_tab`).
+- `project tabs`, `tab-open`, `tab-show` and `tab-close`, and the File menu's `New Project Tab...`, `Close Project
+  Tab`, `Next Project Tab` and `Previous Project Tab` (`Ctrl`/`Cmd`+`Alt`+`PageDown`/`PageUp`) are the agent's half.
+  `tests/project_tabs.rs` is the tests.
+
 ## What `task-2320` changed, and the rules it left
 
 - **The completion list belongs to one tab, and nothing reads its stem until that tab is showing**

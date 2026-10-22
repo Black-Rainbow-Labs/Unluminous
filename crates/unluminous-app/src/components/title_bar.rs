@@ -14,7 +14,9 @@
 //!
 //! **The project's name comes after the menus**, which is what `task-1658` asks for — after `Git`, the
 //! last of them, and on macOS after the window buttons and the Unluminous mark, where there are no menus here
-//! to follow (`task-2258`).
+//! to follow (`task-2258`). Since `task-2322` it is the first of the window's **project tabs**, a pill a project
+//! with the one showing raised and a `+` after the last, drawn by `components::project_tabs`. The branch widget
+//! that followed the project's chip was taken out to make room for them: the status bar names the branch.
 //!
 //! **The open file's name is not here at all.** It used to be centred, with its folder after it and an
 //! amber dot for unsaved changes, and all three are now somewhere better: the file's name is on its tab,
@@ -38,7 +40,6 @@ use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 use crate::app::actions::{Action, Menu};
 use crate::components::controls::WithHint as _;
 use crate::components::menu_bar;
-use crate::theme::crisp::CrispPainter;
 use crate::theme::{color, size};
 
 /// How wide each of the three window buttons is on Windows: the whole height of the bar and 46 points
@@ -73,7 +74,7 @@ impl MenuPlacement {
 }
 
 /// What the user asked the window to do.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub struct TitleBarOutcome {
     pub close: bool,
     pub minimise: bool,
@@ -85,35 +86,17 @@ pub struct TitleBarOutcome {
     pub toggle_fullscreen: bool,
     /// Something chosen from a menu in the bar.
     pub action: Option<Action>,
-    /// Where the branch widget goes: after the project's chip, which is the only control here whose
-    /// position depends on how long another control's text turned out to be.
+    /// What the project tabs reported: a tab pressed or right clicked, or the plus pressed. `task-2322`.
     ///
-    /// The bar reports it rather than drawing it, for the reason it reports `tools_rect` and `run_rect`
-    /// rather than drawing those: a control added to the `Ui` before the bar's own drag area sits
-    /// underneath it and is never pressed, so the window draws all three over the top afterwards.
-    ///
-    /// `Rect::NOTHING` when there is no branch widget.
-    pub branch_rect: Rect,
+    /// The branch widget that used to sit here is gone: the status bar names the branch, and `task-2322` asks
+    /// for the room to go to the tabs.
+    pub tabs: crate::components::project_tabs::StripOutcome,
     /// True on the frame the bar asked the operating system to move the window, so the window can
     /// check a moment later that `winit` was not left stuck. See `services::windows_resize`.
     pub dragged: bool,
 }
 
-impl Default for TitleBarOutcome {
-    fn default() -> Self {
-        Self {
-            close: false,
-            minimise: false,
-            toggle_maximise: false,
-            toggle_fullscreen: false,
-            action: None,
-            branch_rect: Rect::NOTHING,
-            dragged: false,
-        }
-    }
-}
-
-/// The three window buttons, left to right, with the rectangle each one takes.
+// The three window buttons, left to right, with the rectangle each one takes.
 ///
 /// On Windows each is a strip the whole height of the bar at its right hand end, in the order Windows puts
 /// them; on macOS they are the three lights at its left, in the order macOS puts them.
@@ -171,20 +154,20 @@ pub fn run_rect(area: Rect, placement: MenuPlacement, run_width: f32) -> Rect {
 
 /// Draw the title bar into `area`.
 ///
-/// `project` is the name of the folder that is open; `tools_width` and `run_width` are how much
-/// room to leave clear at the right for the text tools and the run widget, which the window draws
-/// over the top afterwards.
+/// `tabs` is the name of each project tab and `showing` the one that is drawn (`task-2322`); `tools_width` and
+/// `run_width` are how much room to leave clear at the right for the text tools and the run widget, which the
+/// window draws over the top afterwards.
 #[allow(clippy::too_many_arguments)]
 pub fn show(
     ui: &mut egui::Ui,
     area: Rect,
-    project: Option<&str>,
+    tabs: &[String],
+    showing: usize,
     opacity: f32,
     placement: MenuPlacement,
     menus: &[Menu],
     tools_width: f32,
     run_width: f32,
-    branch_width: f32,
 ) -> TitleBarOutcome {
     let mut outcome = TitleBarOutcome::default();
     let painter = ui.painter_at(area);
@@ -239,21 +222,12 @@ pub fn show(
         Some(left) => left - 12.0,
         None => drag_to,
     };
-    if let Some(project) = project {
-        if let Some(chip) = project_chip(ui, area, project, name_from, name_to) {
-            name_from = chip.right();
-        }
-    }
-
-    // The branch widget, after the project's chip.
-    outcome.branch_rect = Rect::from_min_max(
-        Pos2::new(name_from + 8.0, area.top()),
-        Pos2::new((name_from + 8.0 + branch_width).min(name_to), area.bottom()),
-    );
-    if branch_width > 0.0 && outcome.branch_rect.width() > 0.0 {
-        // The drag area stops before it, so pressing the branch button never begins a drag of the
-        // window behind it.
-        name_from = outcome.branch_rect.right();
+    // The project tabs and the plus, where the project's chip and the branch widget used to be. `task-2322`.
+    if !tabs.is_empty() {
+        outcome.tabs = crate::components::project_tabs::show_the_strip(
+            ui, area, tabs, showing, name_from, name_to,
+        );
+        name_from = name_from.max(outcome.tabs.right);
     }
 
     // Dragging anywhere else on the bar moves the window, which is what a title bar is for. It stops
@@ -338,39 +312,7 @@ fn pressed_past_a_modal(ctx: &egui::Context, area: Rect) -> bool {
     area.contains(at) && !over_the_dialog
 }
 
-/// The project's name in a carved pill with a folder before it, answering the rectangle it took.
-///
-/// `height: 30px; padding: 0 14px 0 11px; gap: 7px`, the folder at 14 points in the quiet ink and the name
-/// in 12 point words. Cut short with an ellipsis rather than run underneath the controls on the right.
-fn project_chip(ui: &mut egui::Ui, area: Rect, project: &str, from: f32, to: f32) -> Option<Rect> {
-    let room = to - from;
-    if room < 60.0 {
-        return None;
-    }
-    let font = egui::FontId::proportional(12.0);
-    let chat = crate::components::chrome_kit::chat();
-    let ink = crate::theme::rux_theme().ink;
-    let (shown, _) =
-        crate::components::controls::elide(project, room - 11.0 - 14.0 - 7.0 - 14.0, |words| {
-            ui.painter().layout_no_wrap(words.to_owned(), font.clone(), ink.i700).size().x
-        });
-    let galley = ui.painter().crisp_layout_no_wrap(shown, font.clone(), ink.i700);
-    let width = 11.0 + 14.0 + 7.0 + galley.size().x + 14.0;
-    let chip = Rect::from_min_size(Pos2::new(from, area.center().y - 15.0), Vec2::new(width, 30.0));
-    crate::components::chrome_kit::layer(ui, "project-chip", chip, 0.0, |rux| {
-        rux.chrome.surface(chip, 15.0, chat.well, chat.carved_sm());
-        rux.mark(
-            rux::Mark::new(rux::Icon::Project, 14.0).stroke(1.8),
-            Pos2::new(chip.left() + 11.0 + 7.0, chip.center().y),
-            ink.i400,
-        );
-    });
-    let top = crate::theme::crisp::top_centring_capitals(ui.painter(), &font, chip.center().y);
-    ui.painter().crisp_galley(Pos2::new(chip.left() + 11.0 + 14.0 + 7.0, top), galley, ink.i700);
-    Some(chip)
-}
-
-/// The three window buttons Windows draws: flat strips the height of the bar with a thin mark in each, a wash
+// The three window buttons Windows draws: flat strips the height of the bar with a thin mark in each, a wash
 /// under the pointer and the close button's red under the pointer on the last.
 fn windows_buttons(
     ui: &mut egui::Ui,

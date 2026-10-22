@@ -1345,6 +1345,8 @@ impl UnluminousApp {
             "pid": std::process::id(),
             "port": self.control.as_ref().map(|server| server.port()),
             "project": self.tree.root().to_string_lossy(),
+            // The window's project tabs, and whether their menu or the plus's dropdown is open. `task-2322`.
+            "projectTabs": self.project_tabs_value(),
             // **`focused` is the operating system's answer, not Unluminous's own.**
             // `status --section keyboard` says which surface *inside* the window Unluminous gave the
             // keys to; this says whether the window is the one the platform is sending keys to at all.
@@ -1537,7 +1539,7 @@ const STATUS_SECTIONS: &[(&str, &[&str])] = &[
             "lastResizeAsked",
         ],
     ),
-    ("project", &["project"]),
+    ("project", &["project", "projectTabs"]),
     ("message", &["message"]),
 ];
 
