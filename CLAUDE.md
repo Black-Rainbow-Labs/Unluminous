@@ -2676,6 +2676,11 @@ its own custom layout (same behavior as if they were open in different windows).
   node's tab), and a `target="_blank"` link or `window.open` from one goes through `send_a_realm_browser_to`,
   which keeps the node's history. `browser.links` (Settings -> Editor -> Web pages, on by default) is about the
   browser tabs in the editing area only.
+- **A tab in a terminal is drawn as a space.** `alacritty_terminal` writes `'	'` into the cell a tab starts from
+  so a copied selection keeps it, and `Session::cell_of` turns it into a space for the painter, which drew a
+  missing glyph box after every name macOS `ls` printed. Windows never showed it, because ConPTY turns tabs
+  into spaces before the terminal sees them, so a terminal fault that only one platform shows may be one the
+  other platform's console host hides.
 
 ## What `task-2320` changed, and the rules it left
 

@@ -1043,7 +1043,15 @@ impl Session {
             std::mem::swap(&mut foreground, &mut background);
         }
         ScreenCell {
-            character: cell.c,
+            // **A tab is a space on the screen** (`task-2325`). `alacritty_terminal` writes the tab character
+            // itself into the cell a tab starts from, so that a selection copied across it comes back as a tab,
+            // and leaves drawing nothing there to the painter. The painter has no glyph for it and drew a box:
+            // macOS `ls` lines its columns up with tabs, so every name had a box after it. Copying still reads
+            // the grid, not this, and keeps the tab.
+            character: match cell.c {
+                '\t' => ' ',
+                other => other,
+            },
             marks: cell.zerowidth().map(<[char]>::to_vec).unwrap_or_default(),
             foreground,
             background,
@@ -1249,6 +1257,21 @@ mod tests {
     /// Sixteen rows of forty columns, which is enough for anything these tests draw.
     fn detached() -> Session {
         Session::detached(Size::new(16, 40))
+    }
+
+    /// macOS `ls` separates its columns with tabs. A tab moves to the next stop and leaves nothing to draw, so
+    /// the screen shows spaces there rather than a tab character the font has no glyph for (`task-2325`).
+    #[test]
+    fn a_tab_moves_to_the_next_stop_and_draws_nothing() {
+        let mut session = detached();
+        session.feed(b"README.md\tsrc\t\ttasks");
+        let screen = session.snapshot();
+        assert_eq!(screen.row_text(0), "README.md       src             tasks");
+        assert!(
+            (0..screen.columns)
+                .all(|column| screen.cell(0, column).is_some_and(|cell| cell.character != '\t')),
+            "no cell is drawn with a tab character in it"
+        );
     }
 
     #[test]
