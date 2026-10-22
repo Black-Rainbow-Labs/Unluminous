@@ -17,8 +17,10 @@
 //! are the answers to the tools the agent ran. An `assistant` line holds **one** content block, and the blocks of
 //! one model message share `message.id`, so the lines are gathered back into one message by that id. Lines marked
 //! `isMeta` are what Claude Code expanded a slash command into, and lines marked `isSidechain` belong to a
-//! sub-agent; neither is drawn. Every other kind of line (attachments, file snapshots, permission modes, costs)
-//! says nothing a chat shows.
+//! sub-agent; neither is drawn. A `queued_command` attachment is a message the person sent while the agent was
+//! working, which Claude Code hands to the running turn and never writes as a `user` line, so it is read as a
+//! prompt. Every other kind of line (other attachments, file snapshots, permission modes, costs) says nothing a
+//! chat shows.
 //!
 //! ## Pi's session file is read the same way (`task-2302`)
 //!
@@ -97,6 +99,7 @@ impl Transcript {
         match value["type"].as_str().unwrap_or_default() {
             "user" => self.user(chat, &value),
             "assistant" => self.assistant(chat, &value),
+            "attachment" => self.attachment(chat, &value),
             "system" => match value["subtype"].as_str().unwrap_or_default() {
                 "turn_duration" => self.turn_open = false,
                 "compact_boundary" => {
@@ -112,6 +115,42 @@ impl Transcript {
             },
             _ => {}
         }
+    }
+
+    /// An `attachment` line. The one a chat shows is `queued_command`: a message the person sent while the
+    /// agent was working, which Claude Code hands the agent inside the turn that is running and never records
+    /// as a `user` line (`task-2323`). It is drawn where the agent took it, and it is a prompt like any other,
+    /// so the chat stops showing it as waiting. Read as nothing, it stayed at the bottom of the chat as a
+    /// queued message while every tool call the agent made in answer to it was drawn above it.
+    fn attachment(&mut self, chat: &mut Conversation, value: &serde_json::Value) {
+        let attachment = &value["attachment"];
+        if attachment["type"].as_str() != Some("queued_command") {
+            return;
+        }
+        if attachment["commandMode"].as_str().is_some_and(|mode| mode != "prompt") {
+            return;
+        }
+        if attachment["origin"]["kind"].as_str().is_some_and(|kind| kind != "human") {
+            return;
+        }
+        let said = match &attachment["prompt"] {
+            serde_json::Value::String(text) => text.clone(),
+            serde_json::Value::Array(blocks) => blocks
+                .iter()
+                .filter_map(|block| block["text"].as_str())
+                .collect::<Vec<_>>()
+                .join("\n\n"),
+            _ => String::new(),
+        };
+        if said.trim().is_empty() {
+            return;
+        }
+        let said = unwrap_a_paste(&said);
+        let id = chat.next_id();
+        chat.push(Message::said(id, Role::User, said.clone()));
+        self.turn_open = true;
+        self.prompts += 1;
+        self.new_prompts.push(said);
     }
 
     /// A `user` line: a prompt, or the answers to tools.
@@ -563,6 +602,37 @@ mod tests {
         r#"{"type":"assistant","message":{"model":"claude-opus-5-5","id":"msg_3","role":"assistant","content":[{"type":"text","text":"The branch is clean."}],"stop_reason":"end_turn"}}"#,
         r#"{"type":"system","subtype":"turn_duration","durationMs":12000}"#,
     ];
+
+    /// `task-2323`: a message sent while the agent was working is recorded as a `queued_command` attachment,
+    /// and is drawn as said where the agent took it, before the tool calls it led to.
+    #[test]
+    fn a_message_sent_while_the_agent_works_is_drawn_where_it_was_taken() {
+        let (chat, mut transcript) = read(&[
+            r#"{"type":"user","message":{"role":"user","content":"look at the tests"}}"#,
+            r#"{"type":"assistant","message":{"id":"msg_1","role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"ls"}}],"stop_reason":"tool_use"}}"#,
+            r#"{"type":"queue-operation","operation":"enqueue","content":"and run them"}"#,
+            r#"{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_1","type":"tool_result","content":"tests"}]}}"#,
+            r#"{"type":"attachment","attachment":{"type":"queued_command","prompt":"and run them","commandMode":"prompt","origin":{"kind":"human"}}}"#,
+            r#"{"type":"assistant","message":{"id":"msg_2","role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"Bash","input":{"command":"cargo test"}}],"stop_reason":"tool_use"}}"#,
+            r#"{"type":"attachment","attachment":{"type":"queued_command","prompt":"a background task finished","commandMode":"task-notification","origin":{"kind":"task"}}}"#,
+        ]);
+        let said: Vec<(Role, String, usize)> = chat
+            .messages
+            .iter()
+            .map(|message| (message.role, message.text(), message.tools.len()))
+            .collect();
+        assert_eq!(
+            said,
+            [
+                (Role::User, "look at the tests".to_owned(), 0),
+                (Role::Assistant, String::new(), 1),
+                (Role::User, "and run them".to_owned(), 0),
+                (Role::Assistant, String::new(), 1),
+            ]
+        );
+        assert_eq!(transcript.take_new_prompts(), ["look at the tests", "and run them"]);
+        assert!(transcript.turn_open());
+    }
 
     fn read(lines: &[&str]) -> (Conversation, Transcript) {
         let mut chat = Conversation::new("ticket", "claude");

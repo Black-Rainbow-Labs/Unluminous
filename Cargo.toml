@@ -6,7 +6,7 @@ members = ["crates/unluminous-core", "crates/unluminous-chat", "crates/unluminou
 exclude = ["vendor"]
 
 [workspace.package]
-version = "1.7.2"
+version = "1.7.3"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
@@ -26,7 +26,7 @@ unluminous-voice = { path = "crates/unluminous-voice" }
 # The code index is Atrius, its own product since task-2172: the engine, the index host and the wire
 # protocol. `unluminous-cli/src/search.rs` is the seam. `crates/unluminous-index` is the copy it was
 # made from and is no longer built.
-atrius-index = "0.3.0"
+atrius-index = "0.3.1"
 # The command catalogue and the wire format the CLI and the window share. It lives beside the client
 # it belongs to rather than under `crates`, because `unluminous-cli/` holds the CLI's documentation as
 # well as its code and the two are read together.
