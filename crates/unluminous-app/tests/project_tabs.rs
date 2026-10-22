@@ -164,6 +164,30 @@ fn each_tab_keeps_its_own_files_panels_and_layout_and_the_settings_follow_the_on
     assert!(window.app().terminal.visible);
 }
 
+/// Opening project tabs leaves the interface size alone (`task-2325`: *"When i open a new project tab, the entire
+/// window fonts and icons will either get bigger, or get smaller, and toggle back and forth between big and small
+/// with each new project i open."*). The size is egui's zoom, one for the window, and a new tab's setup used to
+/// ask for 1.0 on it in the same frame the tab's own size was asked for, which egui then dropped.
+#[test]
+fn opening_project_tabs_keeps_the_interface_size() {
+    let [alpha, beta, gamma] = projects();
+    let mut harness = window_on(&alpha);
+    drive(&mut harness, "settings set appearance.ui.font.size 20");
+    assert_eq!(harness.ctx.zoom_factor(), 1.6, "20 points is a zoom of 1.6");
+    for folder in [&beta, &gamma] {
+        open_tab(&mut harness, folder);
+        assert_eq!(
+            harness.ctx.zoom_factor(),
+            1.6,
+            "the window kept its size after opening {}",
+            folder.display()
+        );
+    }
+    drive(&mut harness, "project tab-show 0");
+    assert_eq!(harness.ctx.zoom_factor(), 1.6, "and after going back to the first tab");
+    assert_eq!(harness.state().app().settings.ui_font_size, 20.0);
+}
+
 /// A tab that is not showing still answers the command line, which is what lets an agent started in it drive
 /// it while the person looks at another project.
 #[test]

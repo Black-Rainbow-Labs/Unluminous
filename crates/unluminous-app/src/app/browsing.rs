@@ -591,22 +591,16 @@ impl UnluminousApp {
         }
     }
 
-    /// Open the page a link in page `source` asked for, in a new tab: beside that tab in its own pane, or, for a
-    /// page on a browser node, in a new browser node to the right of that node. `task-2270`: *"Click on page links
-    /// should open new tabs by default."* A link with `target="_blank"` and `window.open` arrive the same way.
+    /// Open the page a link in page `source` asked for: in a new tab beside that tab in its own pane, or, for a
+    /// page on a browser node, in that node itself. `task-2270`: *"Click on page links should open new tabs by
+    /// default."* A link with `target="_blank"` and `window.open` arrive the same way.
+    ///
+    /// **A browser node never opens another node for a link** (`task-2325`: *"in Realm, a browser link press should
+    /// not open a new node, instead, just navigate like normal. new tab opening should only be for file editor view
+    /// browser tabs."*). The node goes to the page the way its own address bar sends it, so Back returns.
     pub fn open_a_page_a_link_asked_for(&mut self, source: u64, url: &str) -> Result<(), String> {
         if let Some(node) = self.realm.live.node_of_browser(source) {
-            let beside = self
-                .realm
-                .realm
-                .node(node)
-                .map(|found| found.rect())
-                .map(|rect| egui::pos2(rect.right() + 32.0, rect.top()))
-                .unwrap_or_else(|| self.middle_of_the_canvas());
-            let made = self.add_a_realm_node(crate::services::realm::Kind::Browser, beside);
-            self.open_a_realm_browser(made, url)?;
-            self.realm.realm.choose(Some(made));
-            return Ok(());
+            return self.send_a_realm_browser_to(node, url);
         }
         // The pane the link was clicked in is the pane the new tab opens in.
         let index = self

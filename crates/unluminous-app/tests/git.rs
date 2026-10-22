@@ -1,4 +1,4 @@
-//! Git: the menu, the commit panel, the branches, blame, and the branch widget in the title bar.
+//! Git: the menu, the commit panel, the branches, blame, and the branch menu in the status bar.
 //!
 //! Every one of these builds a real repository in a temporary folder and runs the machine's real
 //! `git`, which is `unluminous-git`'s own rule — a push from Unluminous has to be the same push a
@@ -299,12 +299,12 @@ fn every_git_operation_can_be_driven_from_the_window() {
 /// every `unluminous-git` test works, and the only way to know the branch reported is git's own answer
 /// rather than a value the test put there itself.
 ///
-/// **`task-2322` took the branch button out of the title bar**, to give the room to the project tabs: *"move
-/// the git branch selector to the bottom right, where the branch is shown again, but has no ability to click
-/// on and switch branches."* So the branch is named in the status bar and nothing in the window is called
-/// `Branch`. `Git -> Branches...` and `unluminous-cli git switch` are how a branch is switched.
+/// **`task-2322` took the branch button out of the title bar**, to give the room to the project tabs, and
+/// **`task-2325` made the branch in the status bar the button**: *"The bottom right git branch is supposed to let
+/// me click it and provide a menu where I can switch branches."* So the one control called `Branch` is in the
+/// status bar, along the bottom of the window.
 #[test]
-fn the_status_bar_names_the_branch_and_the_title_bar_has_no_branch_button() {
+fn the_status_bar_names_the_branch_and_is_the_branch_button() {
     let mut harness = git_harness("unluminous-branch-widget");
     // The branch list arrives from the worker a round trip after the status does.
     for _ in 0..600 {
@@ -323,7 +323,13 @@ fn the_status_bar_names_the_branch_and_the_title_bar_has_no_branch_button() {
     );
     let said = harness.state().git.as_ref().and_then(|git| git.status_label()).unwrap_or_default();
     assert!(said.starts_with("main"), "the status bar says the branch, and said {said:?}");
-    assert!(harness.query_by_label("Branch").is_none(), "and the title bar has no branch button");
+    steady(&mut harness);
+    let button = harness.get_by_label("Branch").rect();
+    assert!(
+        button.top() > WINDOW[1] - 40.0,
+        "the branch button is in the status bar at the bottom, and is at {button:?}"
+    );
+    assert!(button.left() > WINDOW[0] / 2.0, "at its right hand end, and is at {button:?}");
 }
 
 /// Unluminous's rule for a control that can never apply, and the same rule that hides the Git menu
@@ -443,15 +449,9 @@ fn the_branch_in_the_status_bar() {
 
 /// The rows the flyout offers, asserted against the state it builds them from.
 ///
-/// **The popup is not opened by a synthesised click**, and that is a harness limit rather than a fault:
-/// `harness.get_by_label("Branch").click()` reaches the button — the button is in the tree and answers —
-/// and no row appears in the next frame's tree at all. `egui::Popup` decides whether it is open from the
-/// response id of the frame that toggled it, and driving that offscreen does not settle. The same is
-/// true of the run widget's own flyout, which is why there is no picture of that one open either.
-///
-/// So what is asserted is what the rows are built from, which is where every decision in them lives:
-/// which branches are offered, that the checked one is the branch the repository is really on, and that
-/// a remote's branch is not offered. Opening it is layer 4.
+/// What is asserted is what the rows are built from, which is where every decision in them lives: which
+/// branches are offered, that the checked one is the branch the repository is really on, and that a remote's
+/// branch is not offered. Opening the menu and choosing a row is the next test.
 #[test]
 fn the_flyout_offers_every_local_branch_and_marks_the_one_checked_out() {
     let mut harness = git_harness("unluminous-branch-flyout");
@@ -490,7 +490,61 @@ fn the_flyout_offers_every_local_branch_and_marks_the_one_checked_out() {
         "no remote branch is offered: {:?}",
         state.locals
     );
-    // The rows are what `branch_state` answers; nothing draws them as a button since `task-2322`, which put
-    // the branch in the status bar and the project tabs where the button was.
-    assert!(harness.query_by_label("Branch").is_none());
+}
+
+/// **The branch in the status bar opens the flyout, and a row in it switches** (`task-2325`). A click on the
+/// branch opens the list above the bar, the local branches are rows in it, and choosing one checks it out
+/// through `GitAction::Switch`, the path `Git -> Branches...` and `unluminous-cli git switch` take.
+#[test]
+fn the_branch_in_the_status_bar_opens_a_menu_that_switches_branch() {
+    let mut harness = git_harness("unluminous-branch-status-menu");
+    let root = harness.state().tree.root().to_path_buf();
+    let git = |arguments: &[&str]| {
+        let outcome = unluminous_git::command::run(&root, arguments);
+        assert!(outcome.ok, "git {arguments:?}: {}", outcome.message());
+    };
+    git(&["add", "-A"]);
+    git(&["commit", "-m", "first"]);
+    git(&["branch", "a-branch-from-the-menu"]);
+    harness.state_mut().refresh_repository();
+    for _ in 0..600 {
+        if harness.state().branch_state().locals.iter().any(|name| name == "a-branch-from-the-menu")
+        {
+            break;
+        }
+        pump(&mut harness);
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    steady(&mut harness);
+    assert!(harness.query_by_label("a-branch-from-the-menu").is_none(), "the menu starts shut");
+
+    harness.get_by_label("Branch").click();
+    steady(&mut harness);
+    let row = harness.get_by_label("a-branch-from-the-menu").rect();
+    let button = harness.get_by_label("Branch").rect();
+    assert!(
+        row.bottom() <= button.top(),
+        "the menu opens above the status bar: {row:?} over {button:?}"
+    );
+    harness.get_by_label("All Branches...");
+    harness.snapshot(shot("branch_menu_from_the_status_bar"));
+
+    harness.get_by_label("a-branch-from-the-menu").click();
+    for _ in 0..600 {
+        if harness.state().branch_state().current.as_deref() == Some("a-branch-from-the-menu") {
+            break;
+        }
+        pump(&mut harness);
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    assert_eq!(
+        harness.state().branch_state().current.as_deref(),
+        Some("a-branch-from-the-menu"),
+        "the repository is really on the branch chosen from the menu"
+    );
+    steady(&mut harness);
+    assert!(
+        harness.query_by_label("All Branches...").is_none(),
+        "and the menu shut once a branch was chosen"
+    );
 }

@@ -1212,7 +1212,7 @@ fn editor_page(
         let mut new_tabs = settings.browser_links.opens_new_tabs();
         if card.switch(
             "Open links in a new tab",
-            Some("A link clicked in a page opens a new tab beside it, or a new browser node beside a node. Off, it opens in the page itself. A link clicked with a modifier is left to the page either way."),
+            Some("A link clicked in a browser tab opens a new tab beside it. Off, it opens in the page itself. A browser node in Realm always opens a link in itself, and a link clicked with a modifier is left to the page either way."),
             &mut new_tabs,
         ) {
             settings.browser_links = match new_tabs {

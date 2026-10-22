@@ -1003,8 +1003,39 @@ pub fn color32(color: unluminous_core::Rgba) -> Color32 {
 /// `interface_scale` is the interface font size as a multiple of egui's own default — `appearance.ui.font.size`
 /// divided by the size egui sets a body of text in — which is the reference editor's `Use custom font` and is 1.0 until
 /// somebody asks for something else.
+///
+/// **This keeps the zoom the window already has** (`task-2325`). It used to ask for 1.0, and `prepare` calls
+/// it on a project tab opened into a window that is already drawn, on the context every tab shares. egui
+/// takes a new zoom at the start of the next pass, so that 1.0 was still waiting when the tab's own size was
+/// asked for a moment later, and `apply_scaled` compared the size against the zoom in effect, found them
+/// equal and asked for nothing. The 1.0 won, and the next tab opened found the window at 1.0 and put it back,
+/// so the whole window grew and shrank with every project tab opened.
 pub fn apply(ctx: &egui::Context) {
-    apply_scaled(ctx, 1.0);
+    apply_scaled(ctx, interface_zoom(ctx));
+}
+
+/// The zoom the window last asked egui for, which is the one in effect unless a request is still waiting for
+/// the next pass. 1.0 on a context nothing has asked anything of.
+pub fn interface_zoom(ctx: &egui::Context) -> f32 {
+    ctx.data(|data| data.get_temp::<f32>(asked_zoom_id())).unwrap_or_else(|| ctx.zoom_factor())
+}
+
+/// Where [`interface_zoom`] is kept: egui's memory of the context, because the zoom is the window's and every
+/// project tab draws into the one context.
+fn asked_zoom_id() -> egui::Id {
+    egui::Id::new("unluminous-interface-zoom")
+}
+
+/// Ask egui for `zoom` when it is not the zoom in effect. Only when it moves, because egui repaints on every
+/// change.
+///
+/// egui ignores a request for the zoom already in effect even while a different one is waiting, and offers no
+/// way to take a waiting one back. So a request it dropped is made again at the top of the next frame, by
+/// [`keep_egui_on_the_theme`], which compares against [`interface_zoom`].
+fn ask_for_the_zoom(ctx: &egui::Context, zoom: f32) {
+    if (ctx.zoom_factor() - zoom).abs() > 0.0001 {
+        ctx.set_zoom_factor(zoom);
+    }
 }
 
 /// The same, with the interface set larger or smaller.
@@ -1138,10 +1169,9 @@ pub fn apply_scaled(ctx: &egui::Context, interface_scale: f32) {
     // explorer, the tabs and the status bar are drawn at the style guide's own sizes. A zoom reaches every one
     // of them, and their icons, rows and gaps with them, so the interface grows as one piece. The text
     // renderer takes it back out of the editor's and the terminal's sizes; see
-    // `TextRenderer::follow_the_interface`. Set only when it moves, because egui repaints on every change.
-    if (ctx.zoom_factor() - scale).abs() > 0.0001 {
-        ctx.set_zoom_factor(scale);
-    }
+    // `TextRenderer::follow_the_interface`. Written down first, so a request egui drops is made again.
+    ctx.data_mut(|data| data.insert_temp(asked_zoom_id(), scale));
+    ask_for_the_zoom(ctx, scale);
 }
 
 /// Put egui back on the style that matches the active theme, if something has moved it.
@@ -1157,6 +1187,10 @@ pub fn keep_egui_on_the_theme(ctx: &egui::Context) {
     };
     if ctx.theme() != wanted {
         ctx.set_theme(wanted);
+    }
+    // And the zoom the window asked for, in case egui dropped the request. See `ask_for_the_zoom`.
+    if let Some(asked) = ctx.data(|data| data.get_temp::<f32>(asked_zoom_id())) {
+        ask_for_the_zoom(ctx, asked);
     }
 }
 
@@ -1669,6 +1703,43 @@ mod tests {
         apply_scaled(&context, 1.0);
         pass(&context);
         assert_eq!(context.zoom_factor(), 1.0, "and one is no zoom at all");
+    }
+
+    /// Setting up a second project tab on a window that is already zoomed leaves the zoom alone, and a
+    /// request egui drops is made again on the next frame (`task-2325`).
+    ///
+    /// egui takes a new zoom at the start of the next pass and ignores a request for the zoom in effect,
+    /// even while a different one is waiting. `apply` asked for 1.0 inside `prepare`, the tab's own size
+    /// was then dropped as already in effect, and the window shrank, then grew again on the next tab.
+    #[test]
+    fn a_zoom_survives_a_second_tab_being_set_up_and_a_dropped_request_is_made_again() {
+        let context = egui::Context::default();
+        let pass = |context: &egui::Context| {
+            let mut output = context.run_ui(egui::RawInput::default(), |_| {});
+            output.textures_delta.clear();
+        };
+        apply_scaled(&context, 1.6);
+        pass(&context);
+        assert_eq!(context.zoom_factor(), 1.6);
+
+        // What `prepare` and then the tab's settings do in one frame.
+        apply(&context);
+        apply_scaled(&context, 1.6);
+        pass(&context);
+        assert_eq!(context.zoom_factor(), 1.6, "setting a tab up does not reset the window's zoom");
+
+        // A request egui drops: something asks for 1.0 behind `apply_scaled`'s back, and 1.6 is in effect.
+        context.set_zoom_factor(1.0);
+        apply_scaled(&context, 1.6);
+        pass(&context);
+        assert_eq!(
+            context.zoom_factor(),
+            1.0,
+            "egui dropped the second request, which is the fault"
+        );
+        keep_egui_on_the_theme(&context);
+        pass(&context);
+        assert_eq!(context.zoom_factor(), 1.6, "and the top of the next frame asks again");
     }
 
     #[test]

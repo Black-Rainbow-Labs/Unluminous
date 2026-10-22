@@ -4881,10 +4881,11 @@ fn a_browser_tab_dropped_on_the_canvas_becomes_a_browser_node() {
     );
 }
 
-/// `task-2270`: *"Click on page links should open new tabs by default."* A link clicked in a browser node's page
-/// opens a new browser node to the right of it, on the address the link named.
+/// `task-2325`: *"in Realm, a browser link press should not open a new node, instead, just navigate like normal."* A
+/// link a browser node's page asks to open, which is a `target="_blank"` link or `window.open`, takes that node to
+/// the address, and no node is added.
 #[test]
-fn a_link_in_a_browser_nodes_page_opens_a_node_beside_it() {
+fn a_link_in_a_browser_nodes_page_navigates_that_node() {
     if !unluminous_app::services::browser::SUPPORTED {
         return;
     }
@@ -4903,10 +4904,8 @@ fn a_link_in_a_browser_nodes_page_opens_a_node_beside_it() {
         .expect("it opens");
     steady(&mut harness);
     let app = harness.state();
-    assert_eq!(app.realm.realm.nodes.len(), before + 1);
-    let made = app.realm.realm.nodes.last().expect("the new node");
-    let first = app.realm.realm.node(node).expect("the first node");
-    assert!(made.rect().left() > first.rect().right(), "to the right of the node the link was in");
-    let page = app.realm.live.browser(made.id).expect("its page");
-    assert!(page.current_url().starts_with("https://example.org"));
+    assert_eq!(app.realm.realm.nodes.len(), before, "no node was added");
+    let page = app.realm.live.browser(node).expect("the node's page");
+    assert_eq!(page.id, tab, "the node kept its tab, and with it its history");
+    assert!(page.current_url().starts_with("https://example.org"), "and went to the link");
 }

@@ -1570,7 +1570,7 @@ impl UnluminousApp {
             None => kind.to_owned(),
         };
         let kind = kind.as_str();
-        let report = status_bar::show(
+        let outcome = status_bar::show(
             ui,
             status_rect,
             &status_bar::Status {
@@ -1598,8 +1598,17 @@ impl UnluminousApp {
             );
         }
         // The flag is the menu entry's twin, so it goes through `run_action` like a press of the entry.
-        if report {
+        if outcome.reported {
             self.run_action(Action::ReportIssue, ui.ctx());
+        }
+        // The branch opens the list of local branches, and a row is a `GitAction::Switch` like the one
+        // `Git -> Branches...` and `unluminous-cli git switch` send. `task-2325`.
+        if let Some(button) = outcome.branch {
+            let chosen =
+                crate::components::branch_widget::menu_above(ui, &button, || self.branch_state());
+            if let Some(action) = chosen {
+                self.run_action(action, ui.ctx());
+            }
         }
     }
 
@@ -2676,8 +2685,14 @@ impl UnluminousApp {
                 }
             }
         }
-        // A design's links stay in the design, whatever `browser.links` says. `task-2270`.
-        let links_stay: Vec<u64> = self.design_tabs.values().map(|tab| tab.id).collect();
+        // A design's links stay in the design, whatever `browser.links` says. `task-2270`. So do a browser
+        // node's: `browser.links` is about the browser tabs in the editing area. `task-2325`.
+        let links_stay: Vec<u64> = self
+            .design_tabs
+            .values()
+            .map(|tab| tab.id)
+            .chain(self.realm.live.browsers().map(|tab| tab.id))
+            .collect();
         let settled =
             self.browser.reconcile(&tabs, &placements, &occluders, ctx.clone(), &links_stay);
         for id in &settled.pointed_at {

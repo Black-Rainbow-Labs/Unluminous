@@ -1,10 +1,10 @@
-//! The branch button that was in the title bar: a branch icon, the branch the repository is on, and a
-//! flyout that lists the local branches and switches to one.
+//! The branch selector: a flyout that lists the local branches and switches to one.
 //!
-//! **`task-2322` took it out of the title bar**, to give the room to the project tabs: *"move the git branch
-//! selector to the bottom right, where the branch is shown again, but has no ability to click on and switch
-//! branches."* The status bar names the branch, and nothing draws this component now. `UnluminousApp::branch_state`
-//! still answers what it would draw, which `tests/git.rs` reads.
+//! **`task-2322` took the button out of the title bar**, to give the room to the project tabs, and
+//! **`task-2325` put the selector in the status bar**: *"The bottom right git branch is supposed to let me click
+//! it and provide a menu where I can switch branches, similar to how the git branch at the top (which we removed)
+//! used to."* The status bar draws the button (`status_bar::branch_button`) and [`menu_above`] opens these rows
+//! above it. [`show`] is the title bar's button, which nothing draws now.
 //!
 //! `task-1848`: "Add a branch selector/indicator at the top bar, similar to the reference editor's".
 //! `tasks/task-1848-reported-issues-tdd.md` §10 is the design, and three things in it are decisions
@@ -144,6 +144,31 @@ pub fn show(ui: &mut egui::Ui, area: Rect, state: &BranchState) -> Option<Action
         |panel| rows(panel, state),
     )
     .flatten()
+}
+
+/// The list opened from the branch in the status bar, above it and against its right hand end, because the
+/// bar is at the bottom of the window. `state` is asked only while the list is open, so a closed list costs
+/// nothing a frame. A choice shuts the list.
+pub fn menu_above(
+    ui: &egui::Ui,
+    button: &egui::Response,
+    state: impl FnOnce() -> BranchState,
+) -> Option<Action> {
+    let popup_id = egui::Popup::default_response_id(button);
+    let chosen = egui::Popup::from_toggle_button_response(button)
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .align(egui::RectAlign::TOP_END)
+        .frame(controls::menu_frame(ui))
+        .width(PANEL)
+        .show(|ui| {
+            controls::set_in_the_list_size(ui);
+            rows(ui, &state())
+        })
+        .and_then(|inner| inner.inner);
+    if chosen.is_some() {
+        egui::Popup::close_id(ui.ctx(), popup_id);
+    }
+    chosen
 }
 
 /// The rows of the flyout: the branches, then the way to the full list.

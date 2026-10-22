@@ -2649,7 +2649,7 @@ its own custom layout (same behavior as if they were open in different windows).
 - **Browser tab ids are one counter for the process** (`NEXT_TAB_ID`), because every tab has a host of its own.
 - **The title bar draws the tabs where the project's chip was**, as the Realm bar's pills and `+` chip
   (`components::project_tabs`), shrinking to share the room before any is left out. The branch widget is gone
-  from the title bar; the status bar names the branch. The `+` opens a dropdown of recent projects with a folder
+  from the title bar; the status bar's branch is the button now (`task-2325`). The `+` opens a dropdown of recent projects with a folder
   chip that opens the platform's folder picker (`UnluminousApp::folder_picker`, which a test replaces).
 - **The first tab is drawn with the ids it always had**; every other is drawn inside `ui.push_id(("project-tab",
   key))`, so its scroll areas and text boxes keep state of their own.
@@ -2659,6 +2659,23 @@ its own custom layout (same behavior as if they were open in different windows).
 - `project tabs`, `tab-open`, `tab-show` and `tab-close`, and the File menu's `New Project Tab...`, `Close Project
   Tab`, `Next Project Tab` and `Previous Project Tab` (`Ctrl`/`Cmd`+`Alt`+`PageDown`/`PageUp`) are the agent's half.
   `tests/project_tabs.rs` is the tests.
+
+## What `task-2325` changed, and the rules it left
+
+- **The interface zoom is the window's, and a project tab's setup leaves it alone.** egui takes a new zoom at the
+  start of the next pass and ignores a request for the zoom in effect even while a different one is waiting. A
+  new tab's `prepare` asked for 1.0 on the context every tab shares, the tab's own size was then dropped as
+  already in effect, and the window shrank, then grew back with the next tab. `theme::apply` keeps
+  `theme::interface_zoom` now, `apply_scaled` writes the zoom it wants into the context's memory, and
+  `keep_egui_on_the_theme` asks again at the top of a frame if egui dropped it. Never call `set_zoom_factor`
+  anywhere else.
+- **The branch in the status bar is the branch selector.** `status_bar::show` answers an `Outcome` with the
+  button's response, and `branch_widget::menu_above` opens the local branches above the bar. A row is
+  `GitAction::Switch`, the path `Git -> Branches...` and `unluminous-cli git switch` take.
+- **A browser node opens a link in itself.** Its pages never get the new tab script (`links_stay` holds every
+  node's tab), and a `target="_blank"` link or `window.open` from one goes through `send_a_realm_browser_to`,
+  which keeps the node's history. `browser.links` (Settings -> Editor -> Web pages, on by default) is about the
+  browser tabs in the editing area only.
 
 ## What `task-2320` changed, and the rules it left
 

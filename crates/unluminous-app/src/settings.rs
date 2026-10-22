@@ -679,7 +679,7 @@ impl ValueTooltip {
 /// default."*
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BrowserLinks {
-    /// In a new tab beside the page, or a new browser node beside the node.
+    /// In a new tab beside the page. A browser node always opens a link in itself (`task-2325`).
     #[default]
     NewTab,
     /// In the page itself, as a browser does with no modifier held.

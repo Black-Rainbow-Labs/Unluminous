@@ -11,6 +11,10 @@
 //! The flag at the far right opens the Report an Issue modal (`task-2276`): the bottom right corner is
 //! where the ticket asked for it, and a control that is always in the same place is a control a person
 //! finds again without looking for it.
+//!
+//! The branch is a button (`task-2325`): pressed, it opens `branch_widget`'s list of local branches above the
+//! bar. This file draws it and answers its response, and the window opens the list, because the list needs
+//! the repository's branches and choosing one is an `Action` the window runs.
 
 use egui::{CornerRadius, Pos2, Rect};
 
@@ -68,8 +72,17 @@ pub struct Status<'a> {
 const FLAG_INSET: f32 = 22.0;
 const FLAG_HIT: f32 = 22.0;
 
-/// Draw the status bar into `area`. Answers whether the flag that reports an issue was pressed.
-pub fn show(ui: &egui::Ui, area: Rect, status: &Status<'_>, opacity: f32) -> bool {
+/// What happened in the status bar this frame.
+pub struct Outcome {
+    /// Whether the flag that reports an issue was pressed.
+    pub reported: bool,
+    /// The branch button's response, which the window opens the branch list from. Absent outside a
+    /// repository, where there is no branch to draw.
+    pub branch: Option<egui::Response>,
+}
+
+/// Draw the status bar into `area`, and say what was pressed in it.
+pub fn show(ui: &egui::Ui, area: Rect, status: &Status<'_>, opacity: f32) -> Outcome {
     let Status { name, unsaved, kind, encoding, position, detail, message, git } = *status;
     let painter = ui.painter_at(area);
     // The bottom two corners are rounded to match the window.
@@ -127,15 +140,11 @@ pub fn show(ui: &egui::Ui, area: Rect, status: &Status<'_>, opacity: f32) -> boo
     let galley = painter.layout_no_wrap(detail.to_owned(), font.clone(), color::text_dim());
     let mut right = area.right() - FLAG_INSET - FLAG_HIT / 2.0 - 12.0 - galley.size().x;
     painter.galley(Pos2::new(right, middle - galley.size().y / 2.0), galley, color::text_dim());
+    let mut branch = None;
     if let Some(git) = git {
         let galley = painter.layout_no_wrap(git.to_owned(), font.clone(), color::text_control());
         right -= 18.0 + galley.size().x;
-        crate::theme::icon::branch(&painter, Pos2::new(right - 12.0, middle), color::text_dim());
-        painter.galley(
-            Pos2::new(right, middle - galley.size().y / 2.0),
-            galley,
-            color::text_control(),
-        );
+        branch = Some(branch_button(ui, &painter, area, right, galley));
     }
 
     // A message, when there is one, sits after the caret position and **before whatever the right
@@ -158,7 +167,53 @@ pub fn show(ui: &egui::Ui, area: Rect, status: &Status<'_>, opacity: f32) -> boo
             );
         }
     }
-    reported
+    Outcome { reported, branch }
+}
+
+/// The branch icon and the branch's words, drawn as a button whose words start at `words_from`.
+///
+/// The words are what the status label says, which is the branch and anything half-finished, and the button
+/// is called `Branch` because a test or a screen reader asking for the branch's own name would be asking for
+/// somebody's repository. The hover wash and the pointing hand say it can be pressed, which the bar's other
+/// words cannot.
+fn branch_button(
+    ui: &egui::Ui,
+    painter: &egui::Painter,
+    area: Rect,
+    words_from: f32,
+    galley: std::sync::Arc<egui::Galley>,
+) -> egui::Response {
+    use crate::components::controls::WithHint as _;
+    let middle = area.center().y;
+    let hit = Rect::from_min_max(
+        Pos2::new(words_from - 22.0, middle - 10.0),
+        Pos2::new(words_from + galley.size().x + 6.0, middle + 10.0),
+    );
+    let response = ui
+        .interact(hit, ui.id().with("status-bar-branch"), egui::Sense::click())
+        .with_hint("Switch branch");
+    let open = egui::Popup::is_id_open(ui.ctx(), egui::Popup::default_response_id(&response));
+    let tint = match open || response.hovered() {
+        true => {
+            painter.rect_filled(
+                hit,
+                CornerRadius::same(size::CONTROL_CORNER),
+                crate::components::controls::hover_fill(),
+            );
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            color::text_strong()
+        }
+        false => color::text_dim(),
+    };
+    crate::theme::icon::branch(painter, Pos2::new(words_from - 12.0, middle), tint);
+    painter.galley(
+        Pos2::new(words_from, middle - galley.size().y / 2.0),
+        galley,
+        color::text_control(),
+    );
+    response
+        .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, open, "Branch"));
+    response
 }
 
 /// The flag at the far right: the Report an Issue modal's way in. A round place under the pointer and
