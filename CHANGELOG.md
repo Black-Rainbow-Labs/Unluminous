@@ -6,6 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.7.3 — 2026-10-22
+
+- A message sent while a ticket's agent works is drawn where it was taken, a modal keeps the window's corners round, and Atrius 0.3.1 never reads a large file whole (`task-2323`)
+- Accept the pictures where a modal now leaves the window's corners round (`task-2323`)
+- The Sable memory test waits ten seconds for the wake models, which loading under the release's test load could exceed two (`task-2323`)
+
 ## 1.7.2 — 2026-10-21
 
 - A run of tool calls is done when one failed, adds up its time, and zoomed text keeps the font's spacing (`task-2321`)
