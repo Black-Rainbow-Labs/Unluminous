@@ -206,9 +206,9 @@ pub fn show_the_strip(
                 true => chat.sky,
                 false => ink,
             };
-            // A pill shrunk below [`MARKED_LEAST`] gives the mark's room to the name, which is what tells two
-            // narrow pills apart.
-            let marked = width >= MARKED_LEAST;
+            // A pill shrunk below its own width and below [`MARKED_LEAST`] gives the mark's room to the
+            // name, which is what tells two narrow pills apart.
+            let marked = width >= MARKED_LEAST || width >= widths[index] - 0.5;
             if marked {
                 rux.mark(
                     Mark::new(Icon::Project, MARK).stroke(1.7),
