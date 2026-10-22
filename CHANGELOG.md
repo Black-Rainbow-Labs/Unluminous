@@ -6,7 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.8.1 — 2026-10-22
+## 1.8.2 — 2026-10-22
+
+- Project tabs keep the window's size, the status bar branch switches branch, Realm links stay in their node (`task-2325`)
+- A tab in the terminal is drawn as a space (`task-2325`)
+
+## 1.8.1 — 2026-10-21
 
 - A pull request template, the checks that enforce it, and a way to land one (`task-2326`)
 
