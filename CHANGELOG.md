@@ -6,7 +6,11 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.8.0 — 2026-10-22
+## 1.8.1 — 2026-10-22
+
+- A pull request template, the checks that enforce it, and a way to land one (`task-2326`)
+
+## 1.8.0 — 2026-10-21
 
 - Several projects in one window, a project tab each (`task-2322`)
 - Pills shrink further and drop their mark, a closing tab answers what it held (`task-2322`)
