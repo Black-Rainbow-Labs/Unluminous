@@ -326,6 +326,30 @@ impl UnluminousApp {
         }
     }
 
+    /// Answer every command this tab is holding, because the tab is closing and its channel goes with it.
+    ///
+    /// A click that closed the tab is the usual one: `input click` is answered once its steps have been fed,
+    /// which is after the frame the click closed the tab on, and without this the caller was told the request
+    /// was dropped. Input that was fed is answered as done; anything else as not finished.
+    pub(crate) fn answer_what_is_held_before_closing(&mut self) {
+        for (pending, _) in std::mem::take(&mut self.cli_waiting) {
+            let command = pending.command().to_owned();
+            let reply = match command.starts_with("input.") {
+                true => unluminous_cli::protocol::Reply::done(
+                    &command,
+                    "Done. The project tab it was sent to has closed.",
+                    serde_json::Value::Null,
+                ),
+                false => unluminous_cli::protocol::Reply::failed(
+                    &command,
+                    unluminous_cli::protocol::code::FAILED,
+                    "The project tab this was sent to closed before it finished.",
+                ),
+            };
+            pending.answer(reply);
+        }
+    }
+
     /// The address this tab's children are told: its port when it has a command channel.
     fn address_for_children(&self) -> Option<String> {
         self.control.as_ref().map(|server| server.port().to_string())
@@ -514,6 +538,7 @@ impl ProjectWindow {
         {
             let _named = control::running_for(tab.app.address_for_children(), tab.key);
             tab.app.put_the_project_tab_away();
+            tab.app.answer_what_is_held_before_closing();
             tab.app.closing = true;
             // The session line is this tab's alone, and the window keeps its own.
             tab.app.closed_by_hand = false;

@@ -33,7 +33,9 @@ const MORE: f32 = 62.0;
 /// The widest a pill grows, so one long folder name cannot take the whole bar.
 const PILL_MOST: f32 = 220.0;
 /// The narrowest a pill shrinks to when the bar is crowded: the mark and a few letters of the name.
-const PILL_LEAST: f32 = 92.0;
+const PILL_LEAST: f32 = 66.0;
+/// Below this width a pill draws its name with no folder mark in front of it.
+const MARKED_LEAST: f32 = 96.0;
 /// The folder mark at the start of every pill, and the room it takes.
 const MARK: f32 = 13.0;
 
@@ -131,10 +133,30 @@ pub fn show_the_strip(
     to: f32,
 ) -> StripOutcome {
     let mut outcome = StripOutcome { right: from, plus_rect: Rect::NOTHING, ..Default::default() };
-    if to - from < TRACK_PAD * 2.0 + PLUS + PLUS_GAP + 64.0 {
+    let middle = area.center().y;
+    // **A bar with no room for a pill still has a way to the tabs.** A narrow window at a large interface size
+    // fills the bar with the menus and the tools, and the tabs vanishing there would leave a window whose other
+    // projects nobody can reach. So the strip becomes one round chip that opens the dropdown, which lists every
+    // project open here and shows one when it is pressed.
+    if to - from < TRACK_PAD * 2.0 + PILL_LEAST + PLUS + PLUS_GAP {
+        if to - from < PLUS {
+            return outcome;
+        }
+        let chip = Rect::from_min_size(Pos2::new(from, middle - PLUS / 2.0), Vec2::splat(PLUS));
+        let name = format!("Project tabs, {} open", names.len());
+        crate::components::chrome_kit::layer(ui, "project-tabs-compact", chip, 16.0, |rux| {
+            if rux::components::ChipButton::new(Icon::Project, PLUS, &name)
+                .mark(13.0, Some(1.7))
+                .show(rux, chip)
+                .clicked()
+            {
+                outcome.plus = true;
+            }
+        });
+        outcome.plus_rect = chip;
+        outcome.right = chip.right();
         return outcome;
     }
-    let middle = area.center().y;
     let style = Style::sans(12.0).medium();
     let strip = Rect::from_min_max(Pos2::new(from, area.top()), Pos2::new(to, area.bottom()));
     crate::components::chrome_kit::layer(ui, "project-tabs", strip, 16.0, |rux| {
@@ -184,13 +206,22 @@ pub fn show_the_strip(
                 true => chat.sky,
                 false => ink,
             };
-            rux.mark(
-                Mark::new(Icon::Project, MARK).stroke(1.7),
-                Pos2::new(chip.left() + 12.0 + MARK / 2.0, middle),
-                mark_ink,
-            );
+            // A pill shrunk below [`MARKED_LEAST`] gives the mark's room to the name, which is what tells two
+            // narrow pills apart.
+            let marked = width >= MARKED_LEAST;
+            if marked {
+                rux.mark(
+                    Mark::new(Icon::Project, MARK).stroke(1.7),
+                    Pos2::new(chip.left() + 12.0 + MARK / 2.0, middle),
+                    mark_ink,
+                );
+            }
+            let words_from = match marked {
+                true => chip.left() + 12.0 + MARK + 7.0,
+                false => chip.left() + 12.0,
+            };
             let words = Rect::from_min_max(
-                Pos2::new(chip.left() + 12.0 + MARK + 7.0, chip.top()),
+                Pos2::new(words_from, chip.top()),
                 Pos2::new(chip.right() - 12.0, chip.bottom()),
             );
             let galley = rux.elided(style, name, ink, words.width());
@@ -610,11 +641,11 @@ mod tests {
     /// When even the least does not fit, the first are drawn, and the showing tab is always one of them.
     #[test]
     fn the_showing_tab_is_drawn_however_many_are_left_out() {
-        let widths = [150.0; 8];
-        let laid = lay_the_tabs_out(&widths, 7, 0.0, 600.0);
+        let widths = [150.0; 12];
+        let laid = lay_the_tabs_out(&widths, 11, 0.0, 600.0);
         let drawn: Vec<usize> = laid.iter().map(|(index, _)| *index).collect();
-        assert!(drawn.len() < widths.len(), "not all eight fit in 600 points: {drawn:?}");
-        assert!(drawn.contains(&7), "the tab that is showing is drawn: {drawn:?}");
+        assert!(drawn.len() < widths.len(), "not all twelve fit in 600 points: {drawn:?}");
+        assert!(drawn.contains(&11), "the tab that is showing is drawn: {drawn:?}");
         assert!(drawn.contains(&0), "and the first are still there: {drawn:?}");
     }
 
