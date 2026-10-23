@@ -6,6 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.11.0 — 2026-10-23
+
+- Draw every diagram type Mermaid documents, C4 included, and fix what photographing Mermaid's own examples found (`task-2339`)
+- Format the audit example (`task-2339`)
+- The sample folder's explorer grew by thirteen files, and an unknown first word now owns the not drawn picture (`task-2339`)
+- Format the window test (`task-2339`)
+
 ## 1.10.0 — 2026-10-23
 
 - Browser node zoom keys, file templates, a Save dialog for tabs with no file, steady text in zoomed modals, readable tool calls (`task-2336`)
