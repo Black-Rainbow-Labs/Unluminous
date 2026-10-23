@@ -6768,6 +6768,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "unluminous-word"
+version = "1.11.0"
+dependencies = [
+ "crc32fast",
+ "flate2",
+ "roxmltree",
+ "serde_json",
+ "unicode-segmentation",
+ "unluminous-core",
+]
+
+[[package]]
 name = "ureq"
 version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

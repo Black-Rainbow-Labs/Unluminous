@@ -1,0 +1,20 @@
+[package]
+name = "unluminous-word"
+description = "Word documents: the .docx file, its styles and lists, editing, pagination and the exports. No user interface dependency."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+# The zip container a .docx file is. Both were already in the lock file through other crates.
+flate2.workspace = true
+crc32fast.workspace = true
+# Reading XML. Writing is done by hand with one escaping function, in `xml.rs`.
+roxmltree.workspace = true
+# Text is measured through `FontMetrics`, so the layout tests run on `FixedMetrics` and the window passes
+# its real fonts. Line breaking and grapheme clusters come from the same crates the editor uses.
+unluminous-core.workspace = true
+unicode-segmentation.workspace = true
+# `plugins run word read` answers as data, and the agent's arguments arrive as JSON.
+serde_json.workspace = true
