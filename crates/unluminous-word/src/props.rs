@@ -204,6 +204,8 @@ pub struct RunLook {
     pub spacing: f32,
     /// Horizontal scale, 1.0 for none.
     pub scale: f32,
+    /// `w:kern`: the size in points from which pairs of letters are kerned, or `None` for no kerning.
+    pub kern: Option<f32>,
 }
 
 impl Default for RunLook {
@@ -226,6 +228,7 @@ impl Default for RunLook {
             position: 0.0,
             spacing: 0.0,
             scale: 1.0,
+            kern: None,
         }
     }
 }
@@ -550,6 +553,9 @@ pub fn apply_run(look: &mut RunLook, el: &El, theme: &crate::styles::Theme) {
     }
     if let Some(scale) = el.val_of("w:w").and_then(number) {
         look.scale = (scale / 100.0) as f32;
+    }
+    if let Some(kern) = el.val_of("w:kern").and_then(number) {
+        look.kern = (kern > 0.0).then_some((kern / 2.0) as f32);
     }
 }
 

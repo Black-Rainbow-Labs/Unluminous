@@ -6655,6 +6655,7 @@ dependencies = [
  "unluminous-lsp",
  "unluminous-terminal",
  "unluminous-voice",
+ "unluminous-word",
  "ureq",
  "url",
  "vello_cpu",
@@ -6771,10 +6772,13 @@ dependencies = [
 name = "unluminous-word"
 version = "1.11.0"
 dependencies = [
+ "ab_glyph",
  "crc32fast",
  "flate2",
+ "fontdb",
  "roxmltree",
  "serde_json",
+ "ttf-parser",
  "unicode-segmentation",
  "unluminous-core",
 ]

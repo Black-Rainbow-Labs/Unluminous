@@ -35,6 +35,8 @@ unluminous-dap.workspace = true
 unluminous-lsp.workspace = true
 # Jupyter notebooks: the .ipynb file, the text a notebook tab edits, and the kernel. `task-2220`.
 unluminous-jupyter.workspace = true
+# Word documents: the .docx file, its styles and lists, editing, pagination and the exports. `task-2341`.
+unluminous-word.workspace = true
 unluminous-git.workspace = true
 unluminous-terminal.workspace = true
 # The Agent-Chat plugin's half with no window in it: the endpoints, the two wire shapes, the
@@ -182,5 +184,7 @@ naga = { version = "30", features = ["wgsl-in"] }
 unluminous-dap.workspace = true
 # Jupyter notebooks: the .ipynb file, the text a notebook tab edits, and the kernel. `task-2220`.
 unluminous-jupyter.workspace = true
+# Word documents: the .docx file, its styles and lists, editing, pagination and the exports. `task-2341`.
+unluminous-word.workspace = true
 unluminous-git.workspace = true
 image.workspace = true

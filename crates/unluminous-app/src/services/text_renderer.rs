@@ -503,7 +503,7 @@ impl Atlas {
 }
 
 /// The bytes of a font file, mapped or held, shared by every face read from it.
-type FaceBytes = Arc<dyn AsRef<[u8]> + Send + Sync>;
+pub(crate) type FaceBytes = Arc<dyn AsRef<[u8]> + Send + Sync>;
 
 /// A parsed face and the bytes it was parsed from.
 ///
@@ -512,6 +512,8 @@ type FaceBytes = Arc<dyn AsRef<[u8]> + Send + Sync>;
 pub(crate) struct Face {
     font: FontRef<'static>,
     _bytes: FaceBytes,
+    /// Which face of its file it is, for [`TextRenderer::face_file`].
+    index: u32,
 }
 
 impl Face {
@@ -525,7 +527,7 @@ impl Face {
         let data: &'static [u8] =
             unsafe { std::mem::transmute::<&[u8], &'static [u8]>((*bytes).as_ref()) };
         let font = FontRef::try_from_slice_and_index(data, index).ok()?;
-        Some(Self { font, _bytes: bytes })
+        Some(Self { font, _bytes: bytes, index })
     }
 }
 
@@ -1086,6 +1088,13 @@ impl FontMetrics for TextRenderer {
         Some(self.ascii_table(&self.unzoomed(style)))
     }
 
+    fn kerning(&self, left: char, right: char, style: &CharStyle) -> f32 {
+        let style = &*self.unzoomed(style);
+        let Some(face) = self.face_for(style) else { return 0.0 };
+        let scaled = face.as_scaled(PxScale::from(style.size));
+        scaled.kern(face.glyph_id(left), face.glyph_id(right))
+    }
+
     fn line_metrics(&self, style: &CharStyle) -> LineMetrics {
         let style = &*self.unzoomed(style);
         let id = self.resolve_id(style);
@@ -1142,6 +1151,18 @@ impl TextRenderer {
             .and_then(|face| Some(face.height_unscaled() / face.units_per_em()?))
             .filter(|ratio| ratio.is_finite() && *ratio > 0.2)
             .unwrap_or(1.0)
+    }
+
+    /// The file a style's face was read from and which face of it, for a caller that reads a table the renderer
+    /// does not. The Word plugin reads the GPOS kerning pairs this way (`task-2341`).
+    pub fn face_file(&self, style: &CharStyle) -> Option<(FaceBytes, u32)> {
+        let face = self.face_for(&self.unzoomed(style))?;
+        Some((Arc::clone(&face._bytes), face.index))
+    }
+
+    /// The glyph a character is drawn with in a style's face.
+    pub fn glyph_index(&self, character: char, style: &CharStyle) -> u16 {
+        self.face_for(&self.unzoomed(style)).map_or(0, |face| face.glyph_id(character).0)
     }
 
     /// Add every font in a folder, for a plugin whose documents name families the system does not list.

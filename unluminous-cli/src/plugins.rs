@@ -19,7 +19,7 @@ pub struct Plugin {
     pub commands: &'static [(&'static str, &'static str)],
 }
 
-/// The four bundled plugins that draw, in the order their tools are offered.
+/// The bundled plugins that draw, in the order their tools are offered.
 pub const PLUGINS: &[Plugin] = &[
     Plugin {
         id: "agent-tasks",
@@ -40,6 +40,11 @@ pub const PLUGINS: &[Plugin] = &[
         id: "designer",
         note: "The Designer: HTML designs in the project's designs folder, the notes left on their elements, and asking an agent to change them.",
         commands: DESIGNER,
+    },
+    Plugin {
+        id: "word",
+        note: "Microsoft Word documents (.docx): read a document as paragraphs with their styles, type and replace text, format it, build lists, tables and a table of contents, add comments and footnotes, track and accept changes, set the page, and save or export it. Commands act on the document showing, or the one chosen with `use`. A paragraph is numbered from 1 in document order, table cells included, as `read` lists them.",
+        commands: WORD,
     },
 ];
 
@@ -224,6 +229,44 @@ pub const DESIGNER: &[(&str, &str)] = &[
     ("restore", "Put a copy back as the design: restore <copy>, by name or by place in the list."),
     ("reload", "Load the page again."),
     ("source", "Open the design's file as text."),
+];
+
+pub const WORD: &[(&str, &str)] = &[
+    ("new", "Make a new, empty document and open it: new [path.docx]. With a path it is saved there at once."),
+    ("open", "Open a .docx file in a tab: open <path>."),
+    ("docs", "The open documents: key, path, whether each has unsaved changes, and its page count."),
+    ("use", "Choose which open document the other commands act on: use <key or path>."),
+    ("save", "Save the document: save [path]. A path is Save As."),
+    ("close", "Close the document's tab, saving it first when it has changes."),
+    ("read", "The paragraphs, numbered from 1, with style, list label, table cell and text: read [from] [to] [--runs]. --runs adds each run's formatting."),
+    ("text", "The whole document as plain text."),
+    ("outline", "The headings, with their level and page."),
+    ("stats", "Pages, words, characters, paragraphs and lines, as Word's Word Count counts them."),
+    ("pages", "How many pages, and the paragraph and text each page starts with."),
+    ("select", "Put the caret or a selection: select <paragraph> [offset] [to-paragraph] [to-offset], or select all, or select text <words> for the first match."),
+    ("selection", "Where the caret and the selection are, and the selected text."),
+    ("type", "Type text at the selection, replacing it: type <text>. A \\n in the text starts a new paragraph and \\t is a tab."),
+    ("insert", "Insert at the caret: insert paragraph|page-break|line-break|column-break|section-break [next-page|continuous] | table <rows> <columns> | picture <path> [width-in-points] | footnote <text> | endnote <text> | toc | field <code> | link <url> [text] | bookmark <name> | date | page-number | symbol <character>."),
+    ("delete", "Delete the selection, or with nothing selected the character before the caret: delete [forward] [word]."),
+    ("find", "Every match of some text, as paragraph and offset: find <text> [--case] [--word]."),
+    ("replace", "Replace text: replace <find> -- <with> [--case] [--word] [--all]. Without --all only the first match."),
+    ("format", "Format the selection: format bold|italic|underline|strike|double-strike|superscript|subscript|small-caps|caps|hidden [on|off], or format font <name>, size <points>, color <RRGGBB|auto>, highlight <name|none>, underline <style>, spacing <points>, clear."),
+    ("paragraph", "Format the selected paragraphs: paragraph align left|center|right|justify, indent-left|indent-right|first-line|hanging <points>, before|after <points>, line <multiple> | line exact|at-least <points>, keep-next|keep-lines|page-break-before on|off."),
+    ("style", "Apply a style by name or id: style Heading 1. style list [paragraph|character] lists the document's styles."),
+    ("list", "list bullet|number to make the selected paragraphs a list (again to stop), list deeper|shallower, list restart [start]."),
+    ("table", "At the caret's table: table row-above|row-below|column-left|column-right|delete-row|delete-column|delete-table|merge-right|merge-down|split|header-row, table width <points> for the caret's column, table shade <RRGGBB|none>, table cell <row> <column> to put the caret in a cell."),
+    ("section", "The caret's section: section size letter|a4|legal|<w>x<h>, orientation portrait|landscape, margins normal|narrow|moderate|wide|<top> <bottom> <left> <right>, columns <n>, header|footer <text> (with {PAGE} and {NUMPAGES}), header-first|footer-first <text>, page-numbers."),
+    ("comment", "comment add <text> on the selection, comment reply <id> <text>, comment resolve|reopen|delete <id>, comment list."),
+    ("track", "Track Changes: track on|off, track list, track accept|reject [all]. Without all, the changes the selection touches."),
+    ("fields", "Update the fields: the table of contents, the date and the time."),
+    ("undo", "Undo the last change."),
+    ("redo", "Redo the change undone."),
+    ("export", "Export the document: export pdf|html|md|txt [path]. Without a path, beside the document."),
+    ("properties", "The document's title, subject, author and keywords: properties [name] [value] to read or set one."),
+    ("view", "The view: view zoom <percent>, view marks on|off, view navigation on|off."),
+    ("panel", "Open the format panel at a level: panel text|paragraph|styles|lists|insert|page|references|review|document, or panel close."),
+    ("action", "Run any command the Ctrl+/ search offers, by its id: action <id>. action list names them all."),
+    ("load", "Read a document into a tab key. The window sends this when it opens a .docx file: load <key> <path>."),
 ];
 
 pub const AGENT_CHAT: &[(&str, &str)] = &[

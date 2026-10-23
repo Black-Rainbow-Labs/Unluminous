@@ -289,7 +289,17 @@ fn push_text(ctx: &Ctx, look: &Look, index: usize, text: &str, start: usize, end
         };
         let small = look.run.small_caps && grapheme.chars().any(char::is_lowercase);
         let drawn = if caps { grapheme.to_uppercase() } else { (*grapheme).to_owned() };
-        let width = measure(ctx, look, &drawn, small);
+        let mut width = measure(ctx, look, &drawn, small);
+        // A pair is kerned when the run asks for it at its size, which Word's default style does from one
+        // point up. The adjustment belongs to the left letter of the pair.
+        if look.run.kern.is_some_and(|from| look.run.size >= from) {
+            if let (Some(left), Some(next)) = (drawn.chars().last(), graphemes.get(position + 1)) {
+                let right = if caps { next.1.to_uppercase().chars().next() } else { next.1.chars().next() };
+                if let Some(right) = right {
+                    width += ctx.metrics.kerning(left, right, &look.style) * look.run.scale;
+                }
+            }
+        }
         let space = *grapheme == " " || *grapheme == "\u{3000}";
         let next = graphemes.get(position + 1).map(|(_, g)| *g);
         let opportunity = space

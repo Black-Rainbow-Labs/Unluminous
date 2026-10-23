@@ -62,6 +62,14 @@ pub trait FontMetrics {
     fn strikethrough_offset(&self, style: &CharStyle) -> f32 {
         self.line_metrics(style).ascent * 0.32
     }
+
+    /// How much closer the font sets `right` after `left` than their advances say, as a negative number
+    /// when they tuck together. None by default: the editor never kerns, and a Word document kerns only when
+    /// it asks to (`w:kern`, `task-2341`).
+    fn kerning(&self, left: char, right: char, style: &CharStyle) -> f32 {
+        let _ = (left, right, style);
+        0.0
+    }
 }
 
 /// A stub for tests: every cluster is the same width and every line is the same height, whatever the

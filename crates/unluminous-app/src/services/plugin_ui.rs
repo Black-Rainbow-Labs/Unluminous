@@ -516,6 +516,13 @@ pub enum Request {
     /// the one seam a test replaces, and a plugin that opened the platform's own dialog itself could not be
     /// tested. `start` is the folder the picker opens in, the project when it is `None`.
     PickFolder { id: String, title: String, start: Option<PathBuf> },
+    /// Open a tab for a file the provider already holds, keyed `key` and named `label` (`task-2341`): a new,
+    /// untitled Word document has no path for `OpenFile` to open.
+    OpenKeyedTab { key: String, label: String },
+    /// Rename the keyed tab, after a Save As gave its document a new name.
+    RenameTab { key: String, label: String },
+    /// Close the keyed tab, saving it first when it has changes, as closing any tab does.
+    CloseKeyedTab { key: String },
 }
 
 /// What a command answered.

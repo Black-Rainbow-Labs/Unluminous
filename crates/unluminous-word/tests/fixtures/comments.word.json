@@ -218,25 +218,25 @@
   "endnotes": [],
   "comments": [
     {
-      "author": "Jason McAffee",
+      "author": "Oracle",
       "text": "First comment from the oracle.",
       "scope": "Commented p",
       "done": false
     },
     {
-      "author": "Jason McAffee",
+      "author": "Oracle",
       "text": "Second comment, resolved.",
       "scope": "Commented p",
       "done": true
     },
     {
-      "author": "Jason McAffee",
+      "author": "Oracle",
       "text": "Third comment with a reply.",
       "scope": "Commented p",
       "done": false
     },
     {
-      "author": "Jason McAffee",
+      "author": "Oracle",
       "text": "A reply to the third comment.",
       "scope": "Commented p",
       "done": false
@@ -252,7 +252,7 @@
   "properties": {
     "title": "",
     "subject": "",
-    "author": "Jason McAffee",
+    "author": "Oracle",
     "keywords": ""
   }
 }

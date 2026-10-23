@@ -29,10 +29,14 @@
       "outlineLevel": 10,
       "page": 1,
       "inTable": false,
-      "runs": null
+      "lineCount": 0,
+      "top": 72.0,
+      "left": 72.0,
+      "lastTop": 72.0,
+      "runs": []
     }
   ],
-  "tables": null,
+  "tables": [],
   "sections": [
     {
       "pageWidth": 612.0,
@@ -73,7 +77,7 @@
   "properties": {
     "title": "",
     "subject": "",
-    "author": "Jason McAffee",
+    "author": "Oracle",
     "keywords": ""
   }
 }

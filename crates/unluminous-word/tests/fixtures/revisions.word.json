@@ -210,17 +210,17 @@
   "revisions": [
     {
       "type": 1,
-      "author": "Jason McAffee",
+      "author": "Oracle",
       "text": " [inserted words]"
     },
     {
       "type": 2,
-      "author": "Jason McAffee",
+      "author": "Oracle",
       "text": "some words that will be deleted "
     },
     {
       "type": 3,
-      "author": "Jason McAffee",
+      "author": "Oracle",
       "text": "part of its text"
     }
   ],
@@ -233,7 +233,7 @@
   "properties": {
     "title": "",
     "subject": "",
-    "author": "Jason McAffee",
+    "author": "Oracle",
     "keywords": ""
   }
 }

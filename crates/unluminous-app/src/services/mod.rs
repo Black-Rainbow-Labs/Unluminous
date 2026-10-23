@@ -86,6 +86,7 @@ pub mod update;
 pub mod update_install;
 pub mod vello_canvas;
 pub mod wake;
+pub mod word;
 
 // What Windows says about this window's keyboard focus, which is not always what `winit` says. It is
 // compiled everywhere, because the decision it rests on is a rule with tests over it and only the act

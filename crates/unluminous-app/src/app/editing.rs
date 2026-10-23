@@ -537,17 +537,21 @@ impl UnluminousApp {
             .into_iter()
             .map(|path| self.plugin_icon(ui.ctx(), path.as_deref()))
             .collect();
+        // A Word tab's unsaved changes are its provider's to say (`task-2341`).
+        let plugin_modified: Vec<bool> =
+            indices.iter().map(|index| self.plugin_tab_is_modified(*index)).collect();
         let tabs: Vec<TabView> = indices
             .iter()
             .zip(icons)
-            .map(|(index, icon)| {
+            .zip(plugin_modified)
+            .map(|((index, icon), plugin_modified)| {
                 let file = self.files.at(*index);
                 TabView {
                     name: file.name(),
                     // Only a tab holding a document can have unsaved changes: a browser, picture or plugin tab
                     // holds an empty document nobody can save, and a dot on it read as a page with unsaved work
                     // (`task-2255`).
-                    modified: file.is_a_document() && file.document.is_modified(),
+                    modified: (file.is_a_document() && file.document.is_modified()) || plugin_modified,
                     transient: file.transient,
                     marker: file.path().map(theme::file_marker).unwrap_or(color::file_text()),
                     icon,

@@ -734,6 +734,10 @@ impl UnluminousApp {
                     provider.keyboard(taking);
                 }
             }
+            // A keyed tab, which is one a provider that draws a tab for each file asks for (`task-2341`).
+            Request::OpenKeyedTab { key, label } => self.open_a_word_tab(&key, &label),
+            Request::RenameTab { key, label } => self.rename_a_plugin_tab(&key, &label),
+            Request::CloseKeyedTab { key } => self.close_a_plugin_tab(&key),
             // `services::launcher` is the one place Unluminous asks the operating system to open something.
             Request::Reveal(path) => {
                 if !crate::services::launcher::reveal(&path) {
@@ -1431,7 +1435,7 @@ impl UnluminousApp {
                     let mut tab_ui = ui.new_child(egui::UiBuilder::new().max_rect(area));
                     tab_ui.set_clip_rect(area);
                     match self.plugin_ui.provider(&tab.plugin) {
-                        Some(provider) => provider.tab(&mut tab_ui, &look),
+                        Some(provider) => provider.tab_keyed(&tab.key, &mut tab_ui, &look),
                         None => Vec::new(),
                     }
                 }

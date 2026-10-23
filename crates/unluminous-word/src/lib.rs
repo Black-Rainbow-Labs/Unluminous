@@ -13,13 +13,17 @@
 
 pub mod builtin;
 pub mod edit;
+pub mod export;
+pub mod kern;
 pub mod layout;
+pub mod media;
 pub mod model;
 pub mod new;
 pub mod numbering;
 pub mod ops;
 pub mod order;
 pub mod package;
+pub mod pdf;
 pub mod position;
 pub mod props;
 pub mod read;

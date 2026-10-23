@@ -241,6 +241,11 @@ impl UnluminousApp {
             let relative = crate::services::project_state::relative(self.tree.root(), path);
             return self.open_a_realm_in_a_tab(&relative);
         }
+        // **A Word document opens as pages, in a tab of the Word plugin** (`task-2341`), and as a file that
+        // cannot be shown when the plugin is switched off.
+        if self.plugins.opens_elsewhere(path) == Some("word") {
+            return self.open_a_word_document(path);
+        }
         // **A file that exists and cannot be shown opens a tab that says so** (`task-2270`), rather than being
         // refused with a line in the status bar. One already open is shown again.
         if let Err(refusal) = file_kind::openable(path) {
@@ -676,6 +681,22 @@ impl UnluminousApp {
             self.browser.close_tab(id);
             self.page_stills.forget(id);
         }
+        // **A Word document is saved as it closes, like a text file** (`task-2341`). One that has never been
+        // saved asks where to go; cancelling that keeps the tab open.
+        if self.keyed_plugin_tab(index).is_some() {
+            if self.plugin_tab_is_modified(index) {
+                if let Err(problem) = self.save_a_plugin_tab(index, None) {
+                    if problem != "not saved" {
+                        self.toasts.say(problem, crate::components::toast::Kind::Problem);
+                    }
+                    return;
+                }
+            }
+            self.a_plugin_tab_closed(index);
+            self.remember_a_closed_tab(index);
+            self.files.close(index);
+            return;
+        }
         // **A tab with no file and changes in it asks where to save them** (`task-2336`): *"If I close the tab
         // before saving where to save it, it should prompt me with the pop up."* It used to close and say the
         // text was not saved. The dialog's `Don't Save` closes it, through `close_tab_without_saving`.
@@ -731,6 +752,15 @@ impl UnluminousApp {
     pub fn save_every_modified_tab(&mut self) -> Vec<String> {
         let mut refused = Vec::new();
         for index in 0..self.files.len() {
+            // A Word tab is saved by its provider (`task-2341`).
+            if self.keyed_plugin_tab(index).is_some() {
+                if self.plugin_tab_is_modified(index) {
+                    if let Err(problem) = self.save_a_plugin_tab(index, None) {
+                        refused.push(problem);
+                    }
+                }
+                continue;
+            }
             // A second view of a file holds a copy; the view it copies is the one written. `task-2320`.
             if self.files.at(index).follows.is_some() {
                 continue;
@@ -818,6 +848,7 @@ impl UnluminousApp {
         // A tab closed with `--discard` is still a tab somebody may want back, and what reopening it
         // means is reading the file again — which is what it would have meant either way.
         self.remember_a_closed_tab(index);
+        self.a_plugin_tab_closed(index);
         self.hand_over_before_closing(index);
         self.files.close(index);
         // **The tab shown next keeps what was laid out for it and where it was scrolled** (`task-2269`: *"When I

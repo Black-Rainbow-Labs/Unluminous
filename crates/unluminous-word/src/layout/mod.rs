@@ -636,7 +636,10 @@ impl<'a> Flow<'a> {
         let after = if same { 0.0 } else { self.pending_after };
         let before = if same { 0.0 } else { laid.space_before };
         // Space before a paragraph at the top of a page is dropped, except on the first page.
-        let gap = if self.at_top() && self.pages.len() > 1 { 0.0 } else { after + before };
+        // Word keeps the larger of the space after one paragraph and the space before the next, rather
+        // than both: measured against Word 16, a 6 line paragraph and the heading under it are 8 points
+        // apart, which is the larger of the two 8s and not their sum.
+        let gap = if self.at_top() && self.pages.len() > 1 { 0.0 } else { after.max(before) };
         let count = laid.lines.len();
         let first_lines: f32 = laid.lines.iter().take(if laid.widow_control { 2 } else { 1 }).map(|l| l.height).sum();
         let whole: f32 = laid.lines.iter().map(|l| l.height).sum();
@@ -786,7 +789,7 @@ pub(crate) fn lay_out_blocks(
         match block {
             Block::Paragraph(paragraph) => {
                 let laid = paragraph::lay_out(ctx, counters, paragraph, story, prefix, width, table_style);
-                let gap = *pending_after + laid.space_before;
+                let gap = pending_after.max(laid.space_before);
                 for (line_index, mut line) in laid.lines.into_iter().enumerate() {
                     if line_index == 0 && gap > 0.0 {
                         line.shift(0.0, gap);

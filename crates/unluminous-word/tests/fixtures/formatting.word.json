@@ -40,7 +40,7 @@
           "bold": false,
           "italic": false,
           "underline": 0,
-          "color": "#FFBF00",
+          "color": "#104862",
           "highlight": 0,
           "strike": false,
           "doubleStrike": false,
@@ -3093,7 +3093,7 @@
   "properties": {
     "title": "",
     "subject": "",
-    "author": "Jason McAffee",
+    "author": "Oracle",
     "keywords": ""
   }
 }

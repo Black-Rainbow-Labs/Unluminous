@@ -2,7 +2,7 @@
 //!
 //! The machine's own fonts through `fontdb`, plus Office's cloud fonts (`Aptos` lives there on a machine
 //! with Microsoft 365), measured at their em size: a 12 point font is 12 points from em edge to em edge,
-//! which is what Word means by the size.
+//! which is what Word means by the size. Kerning comes from the font's GPOS pairs, as Word's does.
 
 #![allow(dead_code)]
 
@@ -12,10 +12,13 @@ use std::sync::Arc;
 
 use ab_glyph::{Font, FontArc, PxScale, ScaleFont};
 use unluminous_core::{CharStyle, FontMetrics, LineMetrics};
+use unluminous_word::kern::PairKerning;
+
+type Loaded = Option<(FontArc, Option<Arc<PairKerning>>)>;
 
 pub struct RealFonts {
     database: fontdb::Database,
-    faces: RefCell<HashMap<(String, bool, bool), Option<FontArc>>>,
+    faces: RefCell<HashMap<(String, bool, bool), Loaded>>,
 }
 
 impl RealFonts {
@@ -31,7 +34,7 @@ impl RealFonts {
         RealFonts { database, faces: RefCell::new(HashMap::new()) }
     }
 
-    fn face(&self, style: &CharStyle) -> Option<FontArc> {
+    fn loaded(&self, style: &CharStyle) -> Loaded {
         let key = (style.family.to_string(), style.bold, style.italic);
         if let Some(found) = self.faces.borrow().get(&key) {
             return found.clone();
@@ -45,11 +48,28 @@ impl RealFonts {
         };
         let face = self.database.query(&query).and_then(|id| {
             self.database
-                .with_face_data(id, |data, index| ab_glyph::FontVec::try_from_vec_and_index(data.to_vec(), index).ok().map(FontArc::new))
+                .with_face_data(id, |data, index| {
+                    let font = ab_glyph::FontVec::try_from_vec_and_index(data.to_vec(), index).ok().map(FontArc::new)?;
+                    Some((font, PairKerning::read(data, index).map(Arc::new)))
+                })
                 .flatten()
         });
         self.faces.borrow_mut().insert(key, face.clone());
         face
+    }
+
+    /// Whether a family is installed, for the tests that are about real fonts and say so when it is not.
+    pub fn has(&self, family: &str) -> bool {
+        let query = fontdb::Query { families: &[fontdb::Family::Name(family)], ..Default::default() };
+        let found = self.database.query(&query).is_some();
+        if !found {
+            println!("{family} is not installed, so this test checked nothing");
+        }
+        found
+    }
+
+    fn face(&self, style: &CharStyle) -> Option<FontArc> {
+        self.loaded(style).map(|(font, _)| font)
     }
 
     fn scale(font: &FontArc, size: f32) -> PxScale {
@@ -75,5 +95,14 @@ impl FontMetrics for RealFonts {
 
     fn ascii_advances(&self, _style: &CharStyle) -> Option<Arc<[f32; 128]>> {
         None
+    }
+
+    fn kerning(&self, left: char, right: char, style: &CharStyle) -> f32 {
+        let Some((font, pairs)) = self.loaded(style) else { return 0.0 };
+        let (a, b) = (font.glyph_id(left), font.glyph_id(right));
+        match pairs {
+            Some(pairs) => pairs.points(a.0, b.0, style.size),
+            None => font.as_scaled(Self::scale(&font, style.size)).kern(a, b),
+        }
     }
 }

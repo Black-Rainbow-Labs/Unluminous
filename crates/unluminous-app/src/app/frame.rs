@@ -765,6 +765,22 @@ impl UnluminousApp {
             // and the menu's use of the pair for going back and forward (`task-2063`) must not take
             // either away from a program.
             let in_a_terminal = self.a_terminal_has_the_keyboard();
+            // **A plugin tab holding the keyboard keeps the chords it claims** (`task-2341`): in a Word tab
+            // `Ctrl+B` is bold and `Ctrl+Z` undoes in the document, whatever the menus give them to.
+            let claimed: Vec<(egui::Key, egui::Modifiers)> = ui
+                .input(|input| {
+                    input
+                        .events
+                        .iter()
+                        .filter_map(|event| match event {
+                            egui::Event::Key { key, pressed: true, modifiers, .. } => Some((*key, *modifiers)),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .into_iter()
+                .filter(|(key, modifiers)| self.a_plugin_tab_claims(*key, modifiers))
+                .collect();
             // **The press an entry acted on is taken out of the frame** (`task-2286`), except while a terminal
             // has the keyboard, where a program has always been sent the chord as well. Left in, a chord
             // the keymap gives to a menu entry would also reach whatever reads that key itself: with the
@@ -777,6 +793,9 @@ impl UnluminousApp {
                         return true;
                     };
                     if found.is_some() {
+                        return true;
+                    }
+                    if claimed.iter().any(|(k, m)| k == key && m == modifiers) {
                         return true;
                     }
                     let Some(chosen) = actions::action_for_key(menus, *key, modifiers) else {
