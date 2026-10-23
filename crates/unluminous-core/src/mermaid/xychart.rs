@@ -30,6 +30,8 @@ const RULES: usize = 5;
 struct Series {
     name: String,
     values: Vec<f32>,
+    /// The words written after each value, `540 "PaLM"`, empty where there are none.
+    notes: Vec<String>,
     bars: bool,
 }
 
@@ -133,17 +135,25 @@ fn read_series(rest: &str, bars: bool, line: &super::source::Line) -> Result<Ser
     };
     let name = source::label(&rest[..open]);
     let mut values = Vec::new();
-    for piece in rest[open + 1..close].split(',') {
+    let mut notes = Vec::new();
+    for piece in source::split_outside_quotes(&rest[open + 1..close], ',') {
         let piece = piece.trim();
         if piece.is_empty() {
             continue;
         }
-        let Ok(value) = piece.parse::<f32>() else {
+        // A value may carry a label after it, `540 "PaLM"`, which is drawn beside its point
+        // (`task-2339`).
+        let (number, note) = match piece.find(char::is_whitespace) {
+            Some(at) => (&piece[..at], source::label(&piece[at..])),
+            None => (piece, String::new()),
+        };
+        let Ok(value) = number.parse::<f32>() else {
             return Err(Problem::at(line, format!("`{piece}` is not a number")));
         };
         values.push(value);
+        notes.push(note);
     }
-    Ok(Series { name, values, bars })
+    Ok(Series { name, values, notes, bars })
 }
 
 fn draw(chart: &Chart, source: &Source, options: &Options) -> Scene {
@@ -156,7 +166,7 @@ fn draw(chart: &Chart, source: &Source, options: &Options) -> Scene {
     let top = parts::title(&mut scene, &titled, options, width);
     let plot = Rect::new(parts::MARGIN + GUTTER, top + parts::MARGIN, PLOT_ACROSS, PLOT_DOWN);
     if chart.series.is_empty() {
-        scene.claim(Rect::new(0.0, 0.0, width, plot.bottom() + FOOTER));
+        scene.claim(Rect::new(0.0, 0.0, width, plot.bottom() + footer(chart, options)));
         parts::finish(&mut scene);
         return scene;
     }
@@ -167,9 +177,26 @@ fn draw(chart: &Chart, source: &Source, options: &Options) -> Scene {
     draw_categories(&mut scene, chart, plot, steps, options);
     draw_series(&mut scene, chart, plot, low, high, steps, options);
     draw_axis_titles(&mut scene, chart, plot, options);
-    scene.claim(Rect::new(0.0, 0.0, width, plot.bottom() + FOOTER));
+    scene.claim(Rect::new(0.0, 0.0, width, plot.bottom() + footer(chart, options)));
     parts::finish(&mut scene);
     scene
+}
+
+/// The words written after a value, just above `above`, when there are any.
+fn draw_note(scene: &mut Scene, series: &Series, at: usize, above: Point, options: &Options) {
+    let Some(note) = series.notes.get(at).filter(|note| !note.is_empty()) else {
+        return;
+    };
+    let style = options.style(0.75, false);
+    let label = text::measure_unwrapped(note, &style, options.metrics);
+    parts::one_line(
+        scene,
+        note,
+        Point::new(above.x, above.y - label.height),
+        &parts::text_style(options, 0.75, false, options.theme.text),
+        Anchor::Middle,
+        label.width,
+    );
 }
 
 /// The range every series is drawn against.
@@ -297,6 +324,12 @@ fn draw_series(
                 fill: Some(Paint::solid(options.theme.series(index))),
                 stroke: None,
             });
+            let tip = if chart.horizontal {
+                Point::new(rect.right() + 4.0, rect.centre().y + 4.0)
+            } else {
+                Point::new(rect.centre().x, rect.top() - 4.0)
+            };
+            draw_note(scene, series, at, tip, options);
         }
     }
     for (index, series) in chart.series.iter().enumerate().filter(|(_, s)| !s.bars) {
@@ -326,13 +359,14 @@ fn draw_series(
             stroke: Stroke::new(options.theme.series(index), parts::THICK * 0.8),
             dash: Dash::Solid,
         });
-        for point in points {
+        for (at, point) in points.iter().enumerate() {
             scene.add(Item::Circle {
-                centre: point,
+                centre: *point,
                 radius: 4.0,
                 fill: Some(Paint::solid(options.theme.series(index))),
                 stroke: None,
             });
+            draw_note(scene, series, at, Point::new(point.x, point.y - 8.0), options);
         }
     }
     // A legend, but only when the series were named: an unnamed one has nothing to say.
@@ -348,6 +382,16 @@ fn draw_series(
     }
 }
 
+/// How much room under the plot the category labels and the horizontal axis's title take. The title
+/// has a line of its own under the labels (`task-2339`: it was written over them).
+fn footer(chart: &Chart, options: &Options) -> f32 {
+    if chart.x_title.trim().is_empty() {
+        FOOTER
+    } else {
+        FOOTER + options.style(0.85, true).size * 1.4
+    }
+}
+
 /// The two axis titles, under the plot and above it.
 fn draw_axis_titles(scene: &mut Scene, chart: &Chart, plot: Rect, options: &Options) {
     let style = parts::text_style(options, 0.85, true, options.theme.dim);
@@ -357,7 +401,7 @@ fn draw_axis_titles(scene: &mut Scene, chart: &Chart, plot: Rect, options: &Opti
         parts::one_line(
             scene,
             &chart.x_title,
-            Point::new(plot.centre().x, plot.bottom() + FOOTER - measure.size - 2.0),
+            Point::new(plot.centre().x, plot.bottom() + FOOTER),
             &style,
             Anchor::Middle,
             width,

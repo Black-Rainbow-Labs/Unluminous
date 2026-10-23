@@ -1,0 +1,28 @@
+zenuml
+    title Booking a table
+    @Actor Customer
+    @Boundary App
+    @Database Store
+    Customer->App: Open the booking page
+    tables = App.findTables(date, size) {
+      rows = Store.query(date)
+      if(rows.isEmpty) {
+        return none
+      } else {
+        return rows
+      }
+    }
+    // The customer picks one of the tables offered.
+    try {
+      booking = App.book(table) {
+        Store.insert(booking)
+      }
+    } catch {
+      App->Customer: That table has just gone
+    } finally {
+      App.release(lock)
+    }
+    par {
+      App->Customer: Confirmation e-mail
+      App->Store: Audit record
+    }

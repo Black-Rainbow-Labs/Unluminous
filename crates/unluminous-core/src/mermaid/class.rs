@@ -27,6 +27,8 @@ use super::{Options, Problem};
 
 /// How tall a member row is, as a multiple of the font's own line height.
 const ROW_SPACING: f32 = 1.35;
+/// The radius of an interface drawn as a lollipop.
+const LOLLIPOP: f32 = 8.0;
 
 /// One class.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -39,6 +41,11 @@ struct Class {
     /// Members with brackets in them.
     methods: Vec<String>,
     group: Option<usize>,
+    /// Written as `()` beside a relationship, `bar ()-- foo`: an interface drawn as a small circle
+    /// with its name under it, the UML lollipop (`task-2339`).
+    lollipop: bool,
+    /// A note rather than a class: its `name` is the note's words.
+    note: bool,
 }
 
 /// One relationship.
@@ -63,6 +70,8 @@ struct Diagram {
     by_name: HashMap<String, usize>,
     relations: Vec<Relation>,
     namespaces: Vec<String>,
+    /// The namespace each namespace is written inside, for `namespace A { namespace B { … } }`.
+    namespace_parents: Vec<Option<usize>>,
     direction: Direction,
 }
 
@@ -73,6 +82,9 @@ pub fn render(source: &Source, options: &Options) -> Result<Scene, Problem> {
 
 fn read(source: &Source) -> Result<Diagram, Problem> {
     let mut diagram = Diagram::default();
+    // The namespaces open round the line being read, innermost last (`task-2339`: a namespace inside
+    // a namespace closed the outer one at its own `}` and was drawn as a frame of its own).
+    let mut open_namespaces: Vec<usize> = Vec::new();
     let mut namespace: Option<usize> = None;
     // The class a `{` block belongs to, while its members are being read.
     let mut open_class: Option<usize> = None;
@@ -80,7 +92,8 @@ fn read(source: &Source) -> Result<Diagram, Problem> {
         let text = line.text.trim();
         if text == "}" {
             if open_class.take().is_none() {
-                namespace = None;
+                open_namespaces.pop();
+                namespace = open_namespaces.last().copied();
             }
             continue;
         }
@@ -93,7 +106,9 @@ fn read(source: &Source) -> Result<Diagram, Problem> {
         }
         if let Some(rest) = line.after_word("namespace") {
             diagram.namespaces.push(namespace_title(rest));
+            diagram.namespace_parents.push(namespace);
             namespace = Some(diagram.namespaces.len() - 1);
+            open_namespaces.extend(namespace);
             continue;
         }
         if let Some(rest) = line.after_word("direction") {
@@ -103,6 +118,12 @@ fn read(source: &Source) -> Result<Diagram, Problem> {
             continue;
         }
         if is_decoration(line) {
+            continue;
+        }
+        // `note "text"` and `note for Duck "text"`: a note, joined to its class by a dotted line
+        // (`task-2339`). They used to be read and thrown away with the colours.
+        if let Some(rest) = line.after_word("note") {
+            read_note(&mut diagram, rest, namespace);
             continue;
         }
         if let Some(rest) = line.after_word("class") {
@@ -142,7 +163,7 @@ fn read(source: &Source) -> Result<Diagram, Problem> {
 
 /// True for a line about colour or about clicking, which is read and thrown away.
 fn is_decoration(line: &Line) -> bool {
-    ["style", "classDef", "cssClass", "click", "callback", "link", "note"]
+    ["style", "classDef", "cssClass", "click", "callback", "link"]
         .iter()
         .any(|word| line.starts_with_word(word))
 }
@@ -223,14 +244,77 @@ fn split_annotation(piece: &str) -> (&str, Option<String>) {
 /// Find or make the class of this name.
 fn class_of(diagram: &mut Diagram, name: &str, namespace: Option<usize>) -> usize {
     let name = source::unquote(name.trim());
-    // A generic — `List~int~` — keeps its type, shown the way a reader writes it.
-    let shown = name.replace('~', "");
-    if let Some(&known) = diagram.by_name.get(&name) {
+    // A name with spaces or punctuation in it is written between backticks, which are not part of it.
+    let name = match name.strip_prefix('`').and_then(|rest| rest.strip_suffix('`')) {
+        Some(inner) => inner.to_owned(),
+        None => name,
+    };
+    // A generic — `Square~Shape~` — is the class `Square`, shown as `Square<Shape>` the way a reader
+    // writes it (`task-2339`). The tildes used to be dropped, so `Square~Shape~ {` and a later
+    // `Square : member` were two classes, one called `SquareShape`.
+    let key = name.split('~').next().unwrap_or(&name).trim().to_owned();
+    let shown = generic(&name);
+    if let Some(&known) = diagram.by_name.get(&key) {
+        if shown.len() > diagram.classes[known].name.len() && diagram.classes[known].name == key {
+            diagram.classes[known].name = shown;
+        }
         return known;
     }
     diagram.classes.push(Class { name: shown, group: namespace, ..Class::default() });
-    diagram.by_name.insert(name, diagram.classes.len() - 1);
+    diagram.by_name.insert(key, diagram.classes.len() - 1);
     diagram.classes.len() - 1
+}
+
+/// A note, and for `note for X` a dotted line from it to its class.
+fn read_note(diagram: &mut Diagram, rest: &str, namespace: Option<usize>) {
+    let (target, words) = match rest.strip_prefix("for ") {
+        Some(after) => match after.trim().split_once(char::is_whitespace) {
+            Some((target, words)) => (Some(target.trim().to_owned()), words),
+            None => (Some(after.trim().to_owned()), ""),
+        },
+        None => (None, rest),
+    };
+    diagram.classes.push(Class {
+        name: source::label(words),
+        group: namespace,
+        note: true,
+        ..Class::default()
+    });
+    let note = diagram.classes.len() - 1;
+    if let Some(target) = target {
+        let to = class_of(diagram, &target, namespace);
+        diagram.relations.push(Relation {
+            from: note,
+            to,
+            tail: Ending::None,
+            head: Ending::None,
+            dashed: true,
+            label: String::new(),
+            from_count: String::new(),
+            to_count: String::new(),
+        });
+    }
+}
+
+/// Mermaid's tildes turned into angle brackets: `List~List~int~~` is `List<List<int>>`.
+///
+/// A tilde that comes before a word opens a type argument and any other closes one.
+fn generic(text: &str) -> String {
+    let characters: Vec<char> = text.chars().collect();
+    characters
+        .iter()
+        .enumerate()
+        .map(|(at, character)| match character {
+            '~' if characters
+                .get(at + 1)
+                .is_some_and(|next| next.is_alphanumeric() || *next == '_') =>
+            {
+                '<'
+            }
+            '~' => '>',
+            other => *other,
+        })
+        .collect()
 }
 
 /// Put a member in the right compartment: brackets make it a method, and nothing else does.
@@ -243,7 +327,7 @@ fn add_member(class: &mut Class, text: &str) {
         class.annotation = Some(annotation);
         return;
     }
-    let shown = text.replace('~', "");
+    let shown = generic(text);
     if text.contains('(') {
         class.methods.push(shown);
     } else {
@@ -286,6 +370,15 @@ fn read_relation(
     let after = &head[at + line_length..];
     let (before, tail) = take_ending(before, LEFT_ENDINGS, true);
     let (after, head_ending) = take_ending(after, RIGHT_ENDINGS, false);
+    // `bar ()-- foo` and `Class01 --() bar`: the side with `()` is an interface drawn as a lollipop.
+    let (before, from_lollipop) = match before.trim_end().strip_suffix("()") {
+        Some(rest) => (rest, true),
+        None => (before, false),
+    };
+    let (after, to_lollipop) = match after.trim_start().strip_prefix("()") {
+        Some(rest) => (rest, true),
+        None => (after, false),
+    };
     let (from_name, from_count) = split_count(before, true);
     let (to_name, to_count) = split_count(after, false);
     if from_name.is_empty() || to_name.is_empty() {
@@ -293,6 +386,8 @@ fn read_relation(
     }
     let from = class_of(diagram, &from_name, namespace);
     let to = class_of(diagram, &to_name, namespace);
+    diagram.classes[from].lollipop |= from_lollipop;
+    diagram.classes[to].lollipop |= to_lollipop;
     diagram.relations.push(Relation {
         from,
         to,
@@ -391,11 +486,12 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
         .collect();
 
     let mut graph = layered::Graph { direction: diagram.direction, ..layered::Graph::default() };
-    for name in &diagram.namespaces {
+    for (index, name) in diagram.namespaces.iter().enumerate() {
         let title = text::measure_unwrapped(name, &options.style(0.95, true), options.metrics);
-        graph
-            .groups
-            .push(GroupSpec { title: Size::new(title.width, title.height + 6.0), parent: None });
+        graph.groups.push(GroupSpec {
+            title: Size::new(title.width, title.height + 6.0),
+            parent: diagram.namespace_parents.get(index).copied().flatten(),
+        });
     }
     for (index, class) in diagram.classes.iter().enumerate() {
         graph.add_node(boxes[index].size, class.group);
@@ -430,8 +526,11 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
     let mut scene = Scene::new();
     let top = parts::title(&mut scene, source, options, placed.size.width);
     let origin = Point::new(parts::MARGIN, top + parts::MARGIN);
-    draw_namespaces(&mut scene, diagram, &placed, origin, options);
+    draw_namespaces(&mut scene, diagram, &placed, origin, options, false);
     draw_relations(&mut scene, diagram, &placed, origin, &labels, options);
+    // The titles go on after the lines, on a panel, because a line into a namespace crosses the top
+    // of its frame where the title is (`task-2339`).
+    draw_namespaces(&mut scene, diagram, &placed, origin, options, true);
     for (index, class) in diagram.classes.iter().enumerate() {
         draw_class(
             &mut scene,
@@ -464,6 +563,35 @@ fn measure(class: &Class, options: &Options) -> Measured {
         .map(|words| text::measure_unwrapped(words, &member_style, options.metrics))
         .collect();
 
+    if class.note {
+        let words = text::measure(&class.name, &member_style, options.metrics, text::WRAP);
+        return Measured {
+            size: Size::new(
+                words.width + parts::PADDING_X * 2.0 + 10.0,
+                words.height + parts::PADDING_Y * 2.0,
+            ),
+            name: words,
+            annotation: None,
+            attributes: Vec::new(),
+            methods: Vec::new(),
+            name_height: 0.0,
+            attribute_height: 0.0,
+        };
+    }
+    if class.lollipop {
+        return Measured {
+            size: Size::new(
+                name.width.max(LOLLIPOP * 2.0) + 8.0,
+                LOLLIPOP * 2.0 + 4.0 + name.height,
+            ),
+            name,
+            annotation: None,
+            attributes: Vec::new(),
+            methods: Vec::new(),
+            name_height: 0.0,
+            attribute_height: 0.0,
+        };
+    }
     let row = member_style.size * ROW_SPACING;
     let widest = [name.width]
         .into_iter()
@@ -505,6 +633,38 @@ fn draw_class(
 ) {
     let theme = &options.theme;
     let stroke = Stroke::new(theme.node_stroke, parts::LINE);
+    if class.note {
+        super::shapes::Shape::NotchedRect.draw(
+            scene,
+            rect,
+            Paint::faded(theme.series(2), 36),
+            Stroke::new(theme.series(2), parts::LINE),
+        );
+        parts::centred_label(
+            scene,
+            &measured.name,
+            rect,
+            &parts::text_style(options, 0.85, false, theme.text),
+        );
+        return;
+    }
+    if class.lollipop {
+        scene.add(Item::Circle {
+            centre: Point::new(rect.centre().x, rect.top() + LOLLIPOP),
+            radius: LOLLIPOP,
+            fill: Some(theme.node_fill),
+            stroke: Some(Stroke::new(theme.line, parts::LINE)),
+        });
+        parts::one_line(
+            scene,
+            &class.name,
+            Point::new(rect.centre().x, rect.top() + LOLLIPOP * 2.0 + 4.0),
+            &parts::text_style(options, 1.0, true, theme.text),
+            Anchor::Middle,
+            measured.name.width,
+        );
+        return;
+    }
     scene.add(Item::Rect {
         rect,
         radius: parts::CORNER,
@@ -564,19 +724,30 @@ fn draw_namespaces(
     placed: &layered::Placed,
     origin: Point,
     options: &Options,
+    titles: bool,
 ) {
     for (index, name) in diagram.namespaces.iter().enumerate() {
         let frame = placed.groups[index].moved(origin.x, origin.y);
         if frame.width <= 0.0 {
             continue;
         }
-        scene.add(Item::Rect {
-            rect: frame,
-            radius: parts::CORNER,
-            fill: Some(options.theme.group_fill),
-            stroke: Some(Stroke::new(options.theme.group_stroke, parts::LINE)),
-        });
+        if !titles {
+            scene.add(Item::Rect {
+                rect: frame,
+                radius: parts::CORNER,
+                fill: Some(options.theme.group_fill),
+                stroke: Some(Stroke::new(options.theme.group_stroke, parts::LINE)),
+            });
+            continue;
+        }
         let width = text::width_of(name, &options.style(0.95, true), options.metrics);
+        let height = options.metrics.line_metrics(&options.style(0.95, true)).height();
+        scene.add(Item::Rect {
+            rect: Rect::new(frame.left() + 8.0, frame.top() + 5.0, width + 8.0, height + 2.0),
+            radius: 3.0,
+            fill: Some(Paint::solid(options.theme.node_fill.color)),
+            stroke: None,
+        });
         parts::one_line(
             scene,
             name,
@@ -606,11 +777,16 @@ fn draw_relations(
         if path.len() < 2 {
             continue;
         }
-        let path = parts::edge_path(
-            &path,
-            &Outline::Rect(placed.nodes[relation.from].moved(origin.x, origin.y)),
-            &Outline::Rect(placed.nodes[relation.to].moved(origin.x, origin.y)),
-        );
+        let outline = |index: usize| {
+            let rect = placed.nodes[index].moved(origin.x, origin.y);
+            match diagram.classes[index].lollipop {
+                true => {
+                    Outline::Circle(Point::new(rect.centre().x, rect.top() + LOLLIPOP), LOLLIPOP)
+                }
+                false => Outline::Rect(rect),
+            }
+        };
+        let path = parts::edge_path(&path, &outline(relation.from), &outline(relation.to));
         let last = path.len() - 1;
         let stroke = Stroke::new(theme.line, parts::LINE);
         let dash = if relation.dashed { parts::DASH } else { Dash::Solid };
@@ -788,6 +964,17 @@ mod tests {
     }
 
     #[test]
+    fn a_namespace_inside_a_namespace_is_drawn_inside_it() {
+        let text = "classDiagram\n namespace Platform {\n  namespace Auth {\n   class UserService\n  }\n  class Gateway\n }\n class Outside\n";
+        let diagram = read(&Source::read(text).unwrap()).unwrap();
+        assert_eq!(diagram.namespace_parents, vec![None, Some(0)]);
+        let group_of = |name: &str| diagram.classes[diagram.by_name[name]].group;
+        assert_eq!(group_of("UserService"), Some(1));
+        assert_eq!(group_of("Gateway"), Some(0));
+        assert_eq!(group_of("Outside"), None);
+    }
+
+    #[test]
     fn a_namespace_groups_the_classes_declared_in_it() {
         let text =
             "classDiagram\n namespace Shapes {\n class Square\n class Circle\n }\n class Loose\n";
@@ -799,10 +986,43 @@ mod tests {
     }
 
     #[test]
-    fn a_generic_keeps_its_type_without_the_tildes() {
-        let diagram = diagram("classDiagram\n class Box~T~ {\n +List~int~ items\n }\n");
-        assert_eq!(diagram.classes[0].name, "BoxT");
-        assert_eq!(diagram.classes[0].attributes, vec!["+Listint items"]);
+    fn a_generic_is_shown_in_angle_brackets_and_is_one_class() {
+        let diagram = diagram(
+            "classDiagram\n class Box~T~ {\n +List~int~ items\n }\n Box : +nested() List~List~int~~\n",
+        );
+        assert_eq!(diagram.classes.len(), 1, "Box~T~ and Box are one class");
+        assert_eq!(diagram.classes[0].name, "Box<T>");
+        assert_eq!(diagram.classes[0].attributes, vec!["+List<int> items"]);
+        assert_eq!(diagram.classes[0].methods, vec!["+nested() List<List<int>>"]);
+    }
+
+    #[test]
+    fn a_note_is_drawn_and_a_note_for_a_class_is_joined_to_it() {
+        let diagram = diagram("classDiagram\n note \"From Duck till Zebra\"\n note for Duck \"can fly<br>can swim\"\n class Duck\n");
+        assert!(diagram.classes[0].note);
+        assert_eq!(diagram.classes[0].name, "From Duck till Zebra");
+        assert_eq!(diagram.classes[1].name, "can fly\ncan swim");
+        assert_eq!(diagram.relations.len(), 1);
+        assert!(diagram.relations[0].dashed);
+        assert_eq!(diagram.classes[diagram.relations[0].to].name, "Duck");
+    }
+
+    #[test]
+    fn a_name_in_backticks_loses_them() {
+        let diagram =
+            diagram("classDiagram\n class `Animal Class!`\n `Animal Class!` --> `Car Class`\n");
+        assert_eq!(diagram.classes[0].name, "Animal Class!");
+        assert_eq!(diagram.classes.len(), 2);
+    }
+
+    #[test]
+    fn a_lollipop_interface_is_read_on_either_side() {
+        let diagram =
+            diagram("classDiagram\n class Class01\n Class01 --() bar\n foo ()-- Class01\n");
+        let named = |name: &str| diagram.classes.iter().find(|class| class.name == name).unwrap();
+        assert!(named("bar").lollipop);
+        assert!(named("foo").lollipop);
+        assert!(!named("Class01").lollipop);
     }
 
     #[test]

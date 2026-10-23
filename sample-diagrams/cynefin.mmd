@@ -1,0 +1,27 @@
+cynefin-beta
+  title Incident Response
+
+  complex
+    "Investigate root cause"
+    "Run a chaos experiment"
+    "Watch how users react"
+
+  complicated
+    "Analyse performance data"
+    "Expert review needed"
+
+  clear
+    "Restart the service"
+    "Apply the known fix"
+
+  chaotic
+    "Page the on-call engineer immediately"
+
+  confusion
+    "Unknown failure mode"
+    "Conflicting reports"
+
+  complex --> complicated : "Pattern identified"
+  complicated --> clear : "Best practice codified"
+  clear --> chaotic : "Complacency"
+  chaotic --> complex : "Stabilized"

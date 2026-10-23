@@ -20,6 +20,9 @@ use super::text::{self, Label};
 use super::{Options, Problem};
 
 /// How far apart two columns are, at the least.
+/// How far a note over two or more columns reaches past the outer two when its words are narrower
+/// than the span between them.
+const NOTE_SPAN_MARGIN: f32 = 14.0;
 const COLUMN_GAP: f32 = 40.0;
 /// How tall a participant's box is.
 const HEAD_HEIGHT: f32 = 38.0;
@@ -39,6 +42,9 @@ struct Arrow {
     head: Ending,
     /// `<<->>` and `<<-->>` point both ways.
     both: bool,
+    /// `Alice()->>()John`: a small circle on the lifeline at the start and at the end, which is
+    /// Mermaid's central connection (`task-2339`).
+    circles: (bool, bool),
 }
 
 /// One thing that happens, in the order it was written.
@@ -80,8 +86,11 @@ enum Side {
 #[derive(Debug, Clone, PartialEq)]
 struct Participant {
     label: String,
-    /// True for `actor`, which is drawn as a figure rather than as a box.
+    /// True for `actor` and for every `type` in `@{ … }`, which are drawn as a figure above the name
+    /// rather than as a box.
     is_actor: bool,
+    /// Which figure, when `is_actor` is true.
+    symbol: Symbol,
     /// The `box` it was declared inside, if any.
     band: Option<usize>,
 }
@@ -177,6 +186,42 @@ fn band_title(rest: &str) -> String {
     }
 }
 
+/// The figure a participant is drawn as: `actor`, or the `type` in `participant A@{ "type": … }`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum Symbol {
+    #[default]
+    Actor,
+    Boundary,
+    Control,
+    Entity,
+    Database,
+    Collections,
+    Queue,
+}
+
+impl Symbol {
+    fn named(word: &str) -> Option<Symbol> {
+        Some(match word {
+            "actor" => Symbol::Actor,
+            "boundary" => Symbol::Boundary,
+            "control" => Symbol::Control,
+            "entity" => Symbol::Entity,
+            "database" => Symbol::Database,
+            "collections" => Symbol::Collections,
+            "queue" => Symbol::Queue,
+            _ => return None,
+        })
+    }
+}
+
+/// The value of `"key": "value"` inside a participant's `@{ … }` block.
+fn metadata_value(block: &str, key: &str) -> Option<String> {
+    let at = block.find(&format!("\"{key}\""))? + key.len() + 2;
+    let rest = block[at..].trim_start().strip_prefix(':')?.trim_start();
+    let rest = rest.strip_prefix('"')?;
+    Some(rest[..rest.find('"')?].to_owned())
+}
+
 /// Read `participant A as Alice`, `actor B`, `create participant C` and `destroy C`.
 ///
 /// Returns true when the line was one of those. `create` and `destroy` change when a participant's
@@ -214,6 +259,25 @@ fn strip_word<'a>(text: &'a str, word: &str) -> Option<&'a str> {
 /// Find or make the participant a piece of text names, reading `A as Alice` when it is there.
 fn participant(diagram: &mut Diagram, text: &str, is_actor: bool, band: Option<usize>) -> usize {
     let text = text.trim();
+    // `participant API@{ "type": "boundary", "alias": "Public API" } as Shown` gives the participant a
+    // figure and a name. The block comes out before the name is read, so `API` is one participant
+    // however it is written (`task-2339`: the block was read as part of the name, which made a
+    // second column for every participant declared this way).
+    let mut symbol = is_actor.then_some(Symbol::Actor);
+    let mut alias = None;
+    let joined;
+    let text = match (text.find("@{"), text.find('}')) {
+        (Some(open), Some(close)) if close > open => {
+            let block = &text[open + 2..close];
+            if let Some(kind) = metadata_value(block, "type").as_deref().and_then(Symbol::named) {
+                symbol = Some(kind);
+            }
+            alias = metadata_value(block, "alias");
+            joined = format!("{} {}", text[..open].trim(), text[close + 1..].trim());
+            joined.trim()
+        }
+        _ => text,
+    };
     // An inline configuration object — `participant Alice, "alias": "A"` — is read for its name and
     // nothing else, because everything in it is about colour. Only a comma followed by a quote or a
     // brace starts one: `participant B as Backend loop (abortable, disconnect-aware)` is a name with a
@@ -224,15 +288,24 @@ fn participant(diagram: &mut Diagram, text: &str, is_actor: bool, band: Option<u
     };
     let (id, label) = match split_alias(text) {
         Some((id, label)) => (id.to_owned(), source::label(label)),
-        None => (source::unquote(text), source::label(text)),
+        None => (
+            source::unquote(text),
+            alias.as_deref().map_or_else(|| source::label(text), source::label),
+        ),
     };
     if let Some(&known) = diagram.by_id.get(&id) {
-        if is_actor {
+        if let Some(symbol) = symbol {
             diagram.participants[known].is_actor = true;
+            diagram.participants[known].symbol = symbol;
         }
         return known;
     }
-    diagram.participants.push(Participant { label, is_actor, band });
+    diagram.participants.push(Participant {
+        label,
+        is_actor: symbol.is_some(),
+        symbol: symbol.unwrap_or_default(),
+        band,
+    });
     diagram.by_id.insert(id, diagram.participants.len() - 1);
     diagram.participants.len() - 1
 }
@@ -331,6 +404,8 @@ fn read_message(diagram: &mut Diagram, line: &Line, band: Option<usize>) -> Resu
     let (token, dotted, head_ending, both) = *form;
     let from = head[..at].trim();
     let mut to = head[at + token.len()..].trim();
+    let from_circle = from.ends_with("()");
+    let from = from.trim_end_matches("()").trim();
     // `->>+` activates the receiver and `-->>-` deactivates the sender, which is the short way of
     // writing `activate` and `deactivate` round a message.
     let mut activates = false;
@@ -343,6 +418,8 @@ fn read_message(diagram: &mut Diagram, line: &Line, band: Option<usize>) -> Resu
         }
         to = rest.trim();
     }
+    let to_circle = to.starts_with("()");
+    let to = to.trim_start_matches("()").trim();
     if from.is_empty() || to.is_empty() {
         return Err(Problem::at(line, "a message needs somebody at each end of it"));
     }
@@ -354,7 +431,7 @@ fn read_message(diagram: &mut Diagram, line: &Line, band: Option<usize>) -> Resu
     diagram.events.push(Event::Message {
         from,
         to,
-        arrow: Arrow { dotted, head: head_ending, both },
+        arrow: Arrow { dotted, head: head_ending, both, circles: (from_circle, to_circle) },
         text: words,
     });
     if activates {
@@ -475,6 +552,8 @@ fn measure_frame(
     // How far left of the first column a note beside it reaches, so the columns can start far enough
     // in for the whole of it to be inside the diagram rather than cut off at its left edge.
     let mut lead = 0.0_f32;
+    // How far right of the last column a note over it reaches.
+    let mut trail = 0.0_f32;
     for (index, event) in diagram.events.iter().enumerate() {
         // **A note beside a column needs the room between that column and its neighbour**, the way a
         // message to oneself does (`task-2194`): it is drawn there, and in a gap sized only for the
@@ -498,7 +577,35 @@ fn measure_frame(
                         }
                     }
                 }
-                Side::Over => {}
+                // **A note over columns reaches past the outer two by half of whatever it is wider
+                // than the span between them** (`task-2339`). With no room kept for that, a note over
+                // the first column, or over two columns written right to left, began left of the
+                // diagram and was cut off.
+                Side::Over => {
+                    let left = over.iter().copied().min().unwrap_or(0);
+                    let right = over.iter().copied().max().unwrap_or(0);
+                    let spanned: f32 = (left..right)
+                        .map(|at| gaps[at] + (widths[at] + widths[at + 1]) / 2.0)
+                        .sum();
+                    let note = messages[index].width + parts::PADDING_X * 2.0;
+                    let overhang = ((note - spanned) / 2.0).max(NOTE_SPAN_MARGIN);
+                    if left == 0 {
+                        lead = lead.max(overhang - widths[0] / 2.0);
+                    } else {
+                        let room = gaps[left - 1] + widths[left - 1] / 2.0;
+                        if overhang > room {
+                            gaps[left - 1] += overhang - room;
+                        }
+                    }
+                    if right + 1 == widths.len() {
+                        trail = trail.max(overhang - widths[right] / 2.0);
+                    } else {
+                        let room = gaps[right] + widths[right + 1] / 2.0;
+                        if overhang > room {
+                            gaps[right] += overhang - room;
+                        }
+                    }
+                }
             }
             continue;
         }
@@ -536,7 +643,7 @@ fn measure_frame(
         columns.push(at + width / 2.0);
         at += width + gaps.get(index).copied().unwrap_or(0.0);
     }
-    let width = at + parts::MARGIN;
+    let width = at + trail.max(0.0) + parts::MARGIN;
     let top = title + parts::MARGIN;
     // **Every box is as tall as the tallest name needs** (`task-2277`): a name that wraps, or has a line
     // break in it, ran out of a box one line tall. One height for every box, so their bottoms line up
@@ -693,7 +800,11 @@ fn draw_heads(
                 // The figure goes above the name at the top of the diagram and below it at the
                 // bottom, so it is always on the outside and never lands inside the last block frame.
                 let figure = if at_the_top { rect.y - HEAD_HEIGHT } else { rect.bottom() };
-                draw_actor(scene, Rect::new(rect.x, figure, rect.width, HEAD_HEIGHT), options);
+                let place = Rect::new(rect.x, figure, rect.width, HEAD_HEIGHT);
+                match who.symbol {
+                    Symbol::Actor => draw_actor(scene, place, options),
+                    symbol => draw_symbol(scene, symbol, place, options),
+                }
             } else {
                 scene.add(Item::Rect {
                     rect,
@@ -735,6 +846,123 @@ fn draw_actor(scene: &mut Scene, rect: Rect, options: &Options) {
         vec![Point::new(centre.x + arm, foot), Point::new(centre.x, foot - arm)],
     ] {
         scene.add(Item::Line { points, stroke, dash: Dash::Solid });
+    }
+}
+
+/// Points round an ellipse.
+fn ellipse(centre: Point, across: f32, down: f32) -> Vec<Point> {
+    (0..32)
+        .map(|step| {
+            let angle = step as f32 / 32.0 * std::f32::consts::TAU;
+            Point::new(centre.x + across * angle.cos(), centre.y + down * angle.sin())
+        })
+        .collect()
+}
+
+/// The UML figures Mermaid draws for a participant's `type`: a boundary, a control, an entity, a
+/// database, a stack of collections and a queue, each in the space an actor's figure takes.
+fn draw_symbol(scene: &mut Scene, symbol: Symbol, rect: Rect, options: &Options) {
+    let stroke = Stroke::new(options.theme.line, parts::LINE);
+    let fill = Some(options.theme.node_fill);
+    let centre = rect.centre();
+    let radius = rect.height * 0.32;
+    let line = |scene: &mut Scene, points: Vec<Point>| {
+        scene.add(Item::Line { points, stroke, dash: Dash::Solid });
+    };
+    match symbol {
+        Symbol::Actor => draw_actor(scene, rect, options),
+        Symbol::Boundary => {
+            let left = centre.x - radius * 2.0;
+            line(
+                scene,
+                vec![Point::new(left, centre.y - radius), Point::new(left, centre.y + radius)],
+            );
+            line(scene, vec![Point::new(left, centre.y), Point::new(centre.x - radius, centre.y)]);
+            scene.add(Item::Circle { centre, radius, fill, stroke: Some(stroke) });
+        }
+        Symbol::Control => {
+            scene.add(Item::Circle { centre, radius, fill, stroke: Some(stroke) });
+            let top = centre.y - radius;
+            line(
+                scene,
+                vec![
+                    Point::new(centre.x + 5.0, top - 4.0),
+                    Point::new(centre.x, top),
+                    Point::new(centre.x + 5.0, top + 4.0),
+                ],
+            );
+        }
+        Symbol::Entity => {
+            let at = Point::new(centre.x, centre.y - 2.0);
+            scene.add(Item::Circle { centre: at, radius, fill, stroke: Some(stroke) });
+            let under = at.y + radius + 3.0;
+            line(
+                scene,
+                vec![Point::new(centre.x - radius, under), Point::new(centre.x + radius, under)],
+            );
+        }
+        Symbol::Database => {
+            let (half, lip) = (radius * 1.1, radius * 0.35);
+            let (top, bottom) = (centre.y - radius + lip, centre.y + radius - lip);
+            scene.add(Item::Polygon {
+                points: ellipse(Point::new(centre.x, bottom), half, lip),
+                fill,
+                stroke: Some(stroke),
+            });
+            scene.add(Item::Rect {
+                rect: Rect::new(centre.x - half, top, half * 2.0, bottom - top),
+                radius: 0.0,
+                fill,
+                stroke: None,
+            });
+            for x in [centre.x - half, centre.x + half] {
+                line(scene, vec![Point::new(x, top), Point::new(x, bottom)]);
+            }
+            scene.add(Item::Polygon {
+                points: ellipse(Point::new(centre.x, top), half, lip),
+                fill,
+                stroke: Some(stroke),
+            });
+        }
+        Symbol::Collections => {
+            let (width, height) = (radius * 2.4, radius * 1.5);
+            for offset in [4.0, 0.0] {
+                scene.add(Item::Rect {
+                    rect: Rect::new(
+                        centre.x - width / 2.0 + offset,
+                        centre.y - height / 2.0 - offset,
+                        width,
+                        height,
+                    ),
+                    radius: 2.0,
+                    fill,
+                    stroke: Some(stroke),
+                });
+            }
+        }
+        Symbol::Queue => {
+            let (half, lip, down) = (radius * 1.4, radius * 0.35, radius * 0.7);
+            let (left, right) = (centre.x - half + lip, centre.x + half - lip);
+            scene.add(Item::Polygon {
+                points: ellipse(Point::new(right, centre.y), lip, down),
+                fill,
+                stroke: Some(stroke),
+            });
+            scene.add(Item::Rect {
+                rect: Rect::new(left, centre.y - down, right - left, down * 2.0),
+                radius: 0.0,
+                fill,
+                stroke: None,
+            });
+            for y in [centre.y - down, centre.y + down] {
+                line(scene, vec![Point::new(left, y), Point::new(right, y)]);
+            }
+            scene.add(Item::Polygon {
+                points: ellipse(Point::new(left, centre.y), lip, down),
+                fill,
+                stroke: Some(stroke),
+            });
+        }
     }
 }
 
@@ -827,6 +1055,16 @@ fn draw_message(
             theme.node_fill,
         );
     }
+    for (wanted, x) in [(arrow.circles.0, start), (arrow.circles.1, finish)] {
+        if wanted {
+            scene.add(Item::Circle {
+                centre: Point::new(x, y),
+                radius: 4.0,
+                fill: Some(theme.node_fill),
+                stroke: Some(stroke),
+            });
+        }
+    }
     if label.is_empty() && number.is_none() {
         return;
     }
@@ -896,7 +1134,7 @@ fn draw_note(
         Side::Over => {
             let left = frame.columns[first].min(frame.columns[last]);
             let right = frame.columns[first].max(frame.columns[last]);
-            let across = (right - left + width).max(width);
+            let across = (right - left + NOTE_SPAN_MARGIN * 2.0).max(width);
             Rect::new((left + right) / 2.0 - across / 2.0, y - height / 2.0, across, height)
         }
     };
@@ -946,6 +1184,20 @@ fn draw_blocks(
                         + (FRAME_INSET + 10.0) * 2.0,
                     frame.rows[index] - frame.rows[start] + FRAME_HEADER,
                 );
+                // `rect rgb(191, 223, 255)` is a band of colour behind its messages with no frame and
+                // no words, which is what Mermaid draws (`task-2339`: it was drawn as a frame with the
+                // colour written in its tab). The colour is laid over the diagram faintly, so a light
+                // colour chosen for a white page does not hide the words on a dark one.
+                if kind == "rect" {
+                    let colour = rgb_of(&label).unwrap_or(theme.group_stroke);
+                    scene.add(Item::Rect {
+                        rect,
+                        radius: parts::CORNER,
+                        fill: Some(Paint::faded(colour, 40)),
+                        stroke: None,
+                    });
+                    continue;
+                }
                 scene.add(Item::Rect {
                     rect,
                     radius: parts::CORNER,
@@ -979,6 +1231,14 @@ fn draw_blocks(
             _ => {}
         }
     }
+}
+
+/// The colour in `rgb(191, 223, 255)` or `rgba(0, 0, 255, .1)`.
+fn rgb_of(text: &str) -> Option<super::super::style::Color> {
+    let inside = text.trim().split_once('(')?.1.split_once(')')?.0;
+    let mut numbers = inside.split(',').map(|part| part.trim().parse::<f32>().ok());
+    let mut next = || numbers.next().flatten().map(|value| value.clamp(0.0, 255.0) as u8);
+    Some(super::super::style::Color { r: next()?, g: next()?, b: next()? })
 }
 
 /// The little tab in a block's top left corner saying what kind of block it is.
@@ -1018,6 +1278,40 @@ fn draw_block_tab(
         Anchor::Start,
         measured.width,
     );
+}
+
+#[cfg(test)]
+mod symbols {
+    use super::*;
+
+    #[test]
+    fn a_central_connection_names_the_participant_without_its_brackets() {
+        let text = "sequenceDiagram\n participant Alice\n participant John\n Alice->>()John: Hello\n Alice()->>John: How are you?\n John()->>()Alice: Great!\n";
+        let diagram = read(&Source::read(text).unwrap()).unwrap();
+        assert_eq!(diagram.participants.len(), 2);
+        let circles: Vec<(bool, bool)> = diagram
+            .events
+            .iter()
+            .filter_map(|event| match event {
+                Event::Message { arrow, .. } => Some(arrow.circles),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(circles, vec![(false, true), (true, false), (true, true)]);
+    }
+
+    #[test]
+    fn metadata_gives_a_participant_a_figure_and_makes_no_second_column() {
+        let text = "sequenceDiagram\n participant API@{ \"type\": \"boundary\" } as Public API\n participant DB@{ \"type\": \"database\", \"alias\": \"User Database\" }\n participant Q@{ \"type\" : \"queue\" }\n API->>DB: Query\n DB->>Q: Push\n";
+        let diagram = read(&Source::read(text).unwrap()).unwrap();
+        assert_eq!(diagram.participants.len(), 3);
+        assert_eq!(diagram.participants[0].label, "Public API");
+        assert_eq!(diagram.participants[0].symbol, Symbol::Boundary);
+        assert_eq!(diagram.participants[1].label, "User Database");
+        assert_eq!(diagram.participants[1].symbol, Symbol::Database);
+        assert_eq!(diagram.participants[2].label, "Q");
+        assert!(diagram.participants.iter().all(|who| who.is_actor));
+    }
 }
 
 #[cfg(test)]

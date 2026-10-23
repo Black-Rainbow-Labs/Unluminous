@@ -130,7 +130,10 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
     let top = parts::title(&mut scene, &titled, options, width);
     let has_sections = !diagram.sections.is_empty();
     let band = top + parts::MARGIN;
-    let axis = band + if has_sections { SECTION_HEIGHT + 10.0 } else { 0.0 };
+    // A section's band is as tall as its longest title, which can be two lines (`task-2339`: a title
+    // written with `<br>` ran out of the band and under the axis).
+    let section_height = section_height(diagram, options);
+    let axis = band + if has_sections { section_height + 10.0 } else { 0.0 };
 
     let mut lefts = Vec::with_capacity(widths.len());
     let mut at = parts::MARGIN;
@@ -139,13 +142,23 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
         at += width + PERIOD_GAP;
     }
     if has_sections {
-        draw_sections(&mut scene, diagram, &lefts, &widths, band, options);
+        draw_sections(&mut scene, diagram, &lefts, &widths, band, section_height, options);
     }
     draw_axis(&mut scene, axis, parts::MARGIN, width - parts::MARGIN, options);
     let bottom = draw_periods(&mut scene, diagram, &names, &events, &lefts, &widths, axis, options);
     scene.claim(Rect::new(0.0, 0.0, width, bottom));
     parts::finish(&mut scene);
     scene
+}
+
+/// How tall the section bands are: one line, or as many lines as the longest title has.
+fn section_height(diagram: &Diagram, options: &Options) -> f32 {
+    let style = options.style(0.95, true);
+    diagram
+        .sections
+        .iter()
+        .map(|name| text::measure_unwrapped(name, &style, options.metrics).height + 12.0)
+        .fold(SECTION_HEIGHT, f32::max)
 }
 
 /// Draw the coloured band over each section's run of periods.
@@ -155,6 +168,7 @@ fn draw_sections(
     lefts: &[f32],
     widths: &[f32],
     band: f32,
+    height: f32,
     options: &Options,
 ) {
     for (index, name) in diagram.sections.iter().enumerate() {
@@ -164,26 +178,19 @@ fn draw_sections(
         let (Some(&first), Some(&last)) = (members.first(), members.last()) else {
             continue;
         };
-        let rect = Rect::new(
-            lefts[first],
-            band,
-            lefts[last] + widths[last] - lefts[first],
-            SECTION_HEIGHT,
-        );
+        let rect = Rect::new(lefts[first], band, lefts[last] + widths[last] - lefts[first], height);
         scene.add(Item::Rect {
             rect,
             radius: parts::CORNER,
             fill: Some(options.theme.wash(index, 60)),
             stroke: None,
         });
-        let width = text::width_of(name, &options.style(0.95, true), options.metrics);
-        parts::one_line(
+        let label = text::measure_unwrapped(name, &options.style(0.95, true), options.metrics);
+        parts::centred_label(
             scene,
-            name,
-            Point::new(rect.centre().x, rect.centre().y - options.base.size * 0.6),
+            &label,
+            rect,
             &parts::text_style(options, 0.95, true, options.theme.text),
-            Anchor::Middle,
-            width,
         );
     }
 }

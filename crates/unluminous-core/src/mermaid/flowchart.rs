@@ -68,29 +68,29 @@ pub struct Link {
 
 /// One node, once it has been read.
 #[derive(Debug, Clone, PartialEq)]
-struct Node {
-    id: String,
-    label: String,
-    shape: Shape,
-    group: Option<usize>,
+pub(super) struct Node {
+    pub(super) id: String,
+    pub(super) label: String,
+    pub(super) shape: Shape,
+    pub(super) group: Option<usize>,
 }
 
 /// A whole flowchart, read but not yet placed.
 #[derive(Debug, Clone, PartialEq, Default)]
-struct Chart {
-    nodes: Vec<Node>,
-    by_id: HashMap<String, usize>,
-    links: Vec<(usize, usize, Link)>,
-    groups: Vec<Group>,
-    direction: Direction,
+pub(super) struct Chart {
+    pub(super) nodes: Vec<Node>,
+    pub(super) by_id: HashMap<String, usize>,
+    pub(super) links: Vec<(usize, usize, Link)>,
+    pub(super) groups: Vec<Group>,
+    pub(super) direction: Direction,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct Group {
+pub(super) struct Group {
     /// The name a link uses for it: `app` in `subgraph app["The app"]`.
-    id: String,
-    title: String,
-    parent: Option<usize>,
+    pub(super) id: String,
+    pub(super) title: String,
+    pub(super) parent: Option<usize>,
 }
 
 pub fn render(source: &Source, options: &Options) -> Result<Scene, Problem> {
@@ -98,15 +98,113 @@ pub fn render(source: &Source, options: &Options) -> Result<Scene, Problem> {
     Ok(draw(&chart, source, options))
 }
 
+/// Draw a flowchart with some of its subgraphs folded down to one node each.
+///
+/// Agentflow's `@{ view: collapsed }` asks for exactly this (`task-2339`): the flow is drawn as a
+/// single box with its name, and every edge that crossed its frame ends at that box instead.
+pub fn render_collapsing(
+    source: &Source,
+    options: &Options,
+    collapsed: &[String],
+) -> Result<Scene, Problem> {
+    let mut chart = read(source)?;
+    for id in collapsed {
+        collapse(&mut chart, id);
+    }
+    Ok(draw(&chart, source, options))
+}
+
+/// Fold the subgraph called `id` and everything inside it into one node of the same name.
+fn collapse(chart: &mut Chart, id: &str) {
+    let Some(target) = chart.groups.iter().position(|group| group.id == id) else {
+        return;
+    };
+    let inside = |mut group: Option<usize>| {
+        while let Some(at) = group {
+            if at == target {
+                return true;
+            }
+            group = chart.groups[at].parent;
+        }
+        false
+    };
+    let removed_groups: Vec<bool> = (0..chart.groups.len()).map(|at| inside(Some(at))).collect();
+    let removed_nodes: Vec<bool> = chart.nodes.iter().map(|node| inside(node.group)).collect();
+    // The new numbers of the groups that stay.
+    let mut group_number = vec![None; chart.groups.len()];
+    let mut groups = Vec::new();
+    for (at, group) in chart.groups.iter().enumerate() {
+        if !removed_groups[at] {
+            group_number[at] = Some(groups.len());
+            groups.push(group.clone());
+        }
+    }
+    for group in &mut groups {
+        group.parent = group.parent.and_then(|parent| group_number[parent]);
+    }
+    let folded_parent = chart.groups[target].parent.and_then(|parent| group_number[parent]);
+    let mut node_number = vec![usize::MAX; chart.nodes.len()];
+    let mut nodes = Vec::new();
+    for (at, node) in chart.nodes.iter().enumerate() {
+        if !removed_nodes[at] {
+            node_number[at] = nodes.len();
+            let mut node = node.clone();
+            node.group = node.group.and_then(|group| group_number[group]);
+            nodes.push(node);
+        }
+    }
+    let folded = nodes.len();
+    nodes.push(Node {
+        id: id.to_owned(),
+        label: chart.groups[target].title.clone(),
+        shape: Shape::Subroutine,
+        group: folded_parent,
+    });
+    let mut links = Vec::new();
+    for (from, to, link) in &chart.links {
+        let mut link = link.clone();
+        let end = |index: usize, is_group: &mut bool| match *is_group {
+            true if removed_groups[index] => {
+                *is_group = false;
+                folded
+            }
+            true => group_number[index].unwrap_or(0),
+            false if removed_nodes[index] => folded,
+            false => node_number[index],
+        };
+        let from = end(*from, &mut link.from_group);
+        let to = end(*to, &mut link.to_group);
+        if from != folded || to != folded || link.from_group || link.to_group {
+            links.push((from, to, link));
+        }
+    }
+    chart.groups = groups;
+    chart.by_id = nodes.iter().enumerate().map(|(at, node)| (node.id.clone(), at)).collect();
+    chart.nodes = nodes;
+    chart.links = links;
+}
+
 /// Read the whole diagram.
-fn read(source: &Source) -> Result<Chart, Problem> {
+pub(super) fn read(source: &Source) -> Result<Chart, Problem> {
     let mut chart = Chart {
         direction: Direction::parse(&source.header).unwrap_or(Direction::Down),
         ..Chart::default()
     };
     // Which subgraph the lines being read are inside. A stack, because they nest.
     let mut open: Vec<usize> = Vec::new();
-    for line in source.statements() {
+    // A `;` ends a statement as a line break does: `A --> B; B --> C`, and the `;` many diagrams
+    // put at the end of every line, which was refused when it followed a shape (`task-2339`).
+    let lines: Vec<Line> = source
+        .statements()
+        .into_iter()
+        .flat_map(|line| {
+            statements_in(&line.text)
+                .into_iter()
+                .map(|text| Line { text, ..line.clone() })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    for line in &lines {
         if line.starts_with_word("end") {
             open.pop();
             continue;
@@ -136,6 +234,36 @@ fn read(source: &Source) -> Result<Chart, Problem> {
     }
     point_links_at_subgraphs(&mut chart);
     Ok(chart)
+}
+
+/// A line split at every `;` that is outside quotes, brackets and a link's `|label|`.
+fn statements_in(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut current = String::new();
+    let mut quoted = false;
+    let mut depth = 0_i32;
+    let mut barred = false;
+    for character in text.chars() {
+        match character {
+            '"' => quoted = !quoted,
+            '[' | '(' | '{' if !quoted => depth += 1,
+            ']' | ')' | '}' if !quoted => depth -= 1,
+            '|' if !quoted && depth <= 0 => barred = !barred,
+            ';' if !quoted && depth <= 0 && !barred => {
+                if !current.trim().is_empty() {
+                    out.push(current.trim().to_owned());
+                }
+                current.clear();
+                continue;
+            }
+            _ => {}
+        }
+        current.push(character);
+    }
+    if !current.trim().is_empty() {
+        out.push(current.trim().to_owned());
+    }
+    out
 }
 
 /// Turn a link to a subgraph's name into a link to the subgraph.
@@ -212,7 +340,16 @@ fn is_decoration(line: &Line) -> bool {
 
 /// Read one statement: a run of nodes with links between them.
 fn read_statement(chart: &mut Chart, line: &Line, group: Option<usize>) -> Result<(), Problem> {
-    let pieces = split_into_links(&line.text);
+    if is_edge_settings(&line.text) {
+        return Ok(());
+    }
+    let mut pieces = split_into_links(&line.text);
+    // `A e1@--> B` gives the link an id for `e1@{ animate: true }` to name. The id is not drawn, so
+    // it is taken off the node in front of it (`task-2339`).
+    let linked = pieces.links.len();
+    for part in pieces.parts.iter_mut().take(linked) {
+        *part = without_edge_id(part).to_owned();
+    }
     if pieces.links.is_empty() {
         // No link on the line, so it is a node being introduced or relabelled on its own.
         for part in source::split_outside_brackets(&pieces.parts[0], '&') {
@@ -243,6 +380,43 @@ fn read_statement(chart: &mut Chart, line: &Line, group: Option<usize>) -> Resul
         previous = here;
     }
     Ok(())
+}
+
+/// The node in front of a link, with an edge id such as the `e1@` of `A e1@--> B` taken off.
+fn without_edge_id(part: &str) -> &str {
+    let trimmed = part.trim_end();
+    let Some(before) = trimmed.strip_suffix('@') else {
+        return part;
+    };
+    let start = before
+        .rfind(|c: char| !(c.is_alphanumeric() || c == '_' || c == '-'))
+        .map_or(0, |at| at + 1);
+    if start == before.len() {
+        return part;
+    }
+    // Only when the id is a word of its own after the node, never the end of the node's name.
+    if start == 0 || !before[..start].ends_with(char::is_whitespace) {
+        return part;
+    }
+    &before[..start]
+}
+
+/// True for `e1@{ animate: true }` and the like: settings for an edge, which draw nothing.
+fn is_edge_settings(text: &str) -> bool {
+    let Some(at) = text.find("@{") else {
+        return false;
+    };
+    let id = text[..at].trim();
+    if id.is_empty() || !id.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-') {
+        return false;
+    }
+    let inner = &text[at + 2..];
+    let keys: Vec<String> = source::split_outside_quotes(inner.trim_end_matches('}'), ',')
+        .iter()
+        .filter_map(|part| part.split_once(':').map(|(key, _)| key.trim().to_ascii_lowercase()))
+        .collect();
+    !keys.is_empty()
+        && keys.iter().all(|key| matches!(key.as_str(), "animate" | "animation" | "curve"))
 }
 
 /// A statement split into the node specifications and the links between them.
@@ -490,12 +664,33 @@ fn node_of(
             chart.nodes[known].label = label;
             chart.nodes[known].shape = shape;
         }
+        // **A node mentioned inside a subgraph belongs to it**, even when it was first written
+        // outside every subgraph, which is Mermaid's rule and its documentation's own example
+        // (`task-2339`): `c1-->a2` at the top and then `c1-->c2` inside `three` puts `c1` in `three`.
+        // A node already inside a subgraph moves only into a subgraph nested inside that one.
+        if let Some(inner) = group {
+            if chart.nodes[known].group.is_none_or(|outer| encloses(chart, outer, inner)) {
+                chart.nodes[known].group = Some(inner);
+            }
+        }
         return Ok(known);
     }
     let label = label.unwrap_or_else(|| id.clone());
     chart.nodes.push(Node { id: id.clone(), label, shape, group });
     chart.by_id.insert(id, chart.nodes.len() - 1);
     Ok(chart.nodes.len() - 1)
+}
+
+/// True when subgraph `inner` is `outer` or is nested somewhere inside it.
+fn encloses(chart: &Chart, outer: usize, inner: usize) -> bool {
+    let mut group = Some(inner);
+    while let Some(at) = group {
+        if at == outer {
+            return true;
+        }
+        group = chart.groups[at].parent;
+    }
+    false
 }
 
 /// Read one node specification: its name, the words in it, and its shape.
@@ -566,6 +761,9 @@ fn read_curly_node(id: &str, rest: &str) -> (String, Option<String>, Shape) {
     let inner = rest.trim_start_matches("@{").trim_end_matches('}');
     let mut label = None;
     let mut shape = Shape::Rect;
+    // An icon or a picture would need a font of icons or a file fetched, so it is a rounded tile
+    // holding the label, or the icon's name when there is no label (`task-2339`).
+    let mut stands_for = None;
     for part in source::split_outside_quotes(inner, ',') {
         let Some((key, value)) = part.split_once(':') else {
             continue;
@@ -573,7 +771,16 @@ fn read_curly_node(id: &str, rest: &str) -> (String, Option<String>, Shape) {
         match key.trim() {
             "label" => label = Some(source::label(value)),
             "shape" => shape = named_shape(&source::unquote(value)),
+            "icon" | "img" => {
+                shape = Shape::Round;
+                stands_for = Some(source::unquote(value.trim()));
+            }
             _ => {}
+        }
+    }
+    if label.as_deref().is_none_or(|words| words.trim().is_empty()) {
+        if let Some(name) = stands_for {
+            label = Some(name);
         }
     }
     (id.to_owned(), label, shape)
@@ -581,10 +788,14 @@ fn read_curly_node(id: &str, rest: &str) -> (String, Option<String>, Shape) {
 
 /// Mermaid's shape names, as the `@{ shape: ... }` form uses them.
 fn named_shape(name: &str) -> Shape {
-    match name.trim() {
-        "rounded" | "rounded-rect" | "event" => Shape::Round,
+    // Every short name and alias in Mermaid's `rendering-elements/shapes.ts` (`task-2339`). Matched
+    // without regard to case, because `roundedRect` is how agentflow's documentation spells one.
+    match name.trim().to_ascii_lowercase().as_str() {
+        "rounded" | "rounded-rect" | "roundedrect" | "event" => Shape::Round,
         "stadium" | "pill" | "terminal" => Shape::Stadium,
-        "subprocess" | "subroutine" | "framed-rectangle" => Shape::Subroutine,
+        "fr-rect" | "subprocess" | "subproc" | "subroutine" | "framed-rectangle" => {
+            Shape::Subroutine
+        }
         "cylinder" | "database" | "db" | "cyl" => Shape::Cylinder,
         "circle" | "circ" => Shape::Circle,
         "double-circle" | "dbl-circ" => Shape::DoubleCircle,
@@ -592,9 +803,56 @@ fn named_shape(name: &str) -> Shape {
         "hexagon" | "hex" | "prepare" => Shape::Hexagon,
         "lean-r" | "lean-right" | "in-out" => Shape::Parallelogram,
         "lean-l" | "lean-left" | "out-in" => Shape::ParallelogramAlt,
-        "trap-b" | "trapezoid-bottom" | "priority" => Shape::Trapezoid,
-        "trap-t" | "trapezoid-top" | "manual" => Shape::TrapezoidAlt,
-        "odd" | "flag" => Shape::Asymmetric,
+        "trap-b" | "trapezoid-bottom" | "trapezoid" | "priority" => Shape::Trapezoid,
+        "trap-t" | "trapezoid-top" | "inv-trapezoid" | "manual" => Shape::TrapezoidAlt,
+        "odd" => Shape::Asymmetric,
+        "bang" => Shape::Bang,
+        "cloud" => Shape::Cloud,
+        "doc" | "document" => Shape::Document,
+        "lin-doc" | "lined-document" => Shape::LinedDocument,
+        "docs" | "documents" | "st-doc" | "stacked-document" => Shape::Documents,
+        "notch-rect" | "card" | "notched-rectangle" => Shape::NotchedRect,
+        "lin-rect" | "lined-rectangle" | "lined-process" | "lin-proc" | "shaded-process" => {
+            Shape::LinedRect
+        }
+        "st-rect" | "procs" | "processes" | "stacked-rectangle" => Shape::StackedRect,
+        "bolt" | "com-link" | "lightning-bolt" => Shape::Bolt,
+        "delay" | "half-rounded-rectangle" => Shape::Delay,
+        "h-cyl" | "das" | "horizontal-cylinder" => Shape::HorizontalCylinder,
+        "lin-cyl" | "disk" | "lined-cylinder" => Shape::LinedCylinder,
+        "curv-trap" | "curved-trapezoid" | "display" => Shape::Display,
+        "div-rect" | "div-proc" | "divided-rectangle" | "divided-process" => Shape::DividedRect,
+        "tri" | "extract" | "triangle" => Shape::Triangle,
+        "flip-tri" | "manual-file" | "flipped-triangle" => Shape::FlippedTriangle,
+        "win-pane" | "internal-storage" | "window-pane" => Shape::WindowPane,
+        "f-circ" | "junction" | "filled-circle" => Shape::FilledCircle,
+        "sm-circ" | "start" | "small-circle" => Shape::SmallCircle,
+        "fr-circ" | "stop" | "framed-circle" => Shape::FramedCircle,
+        "cross-circ" | "summary" | "crossed-circle" => Shape::CrossedCircle,
+        "sl-rect" | "manual-input" | "sloped-rectangle" => Shape::SlopedRect,
+        "hourglass" | "collate" => Shape::Hourglass,
+        "brace" | "comment" | "brace-l" => Shape::Brace,
+        "brace-r" => Shape::BraceRight,
+        "braces" => Shape::Braces,
+        "text" => Shape::Text,
+        "notch-pent" | "loop-limit" | "notched-pentagon" => Shape::NotchedPentagon,
+        "fork" | "join" => Shape::Fork,
+        "tag-rect" | "tagged-rectangle" | "tag-proc" | "tagged-process" => Shape::TaggedRect,
+        "tag-doc" | "tagged-document" => Shape::TaggedDocument,
+        "bow-rect" | "stored-data" | "bow-tie-rectangle" => Shape::BowTie,
+        "flag" | "paper-tape" => Shape::Flag,
+        "datastore" | "data-store" => Shape::DataStore,
+        "folder" | "directory" => Shape::Folder,
+        "bucket" => Shape::Bucket,
+        "console" => Shape::Console,
+        "browser" => Shape::Browser,
+        "person" => Shape::Person,
+        // Agentflow's six aliases, so its rewritten text reads as an ordinary flowchart.
+        "task" => Shape::Round,
+        "tool" => Shape::Subroutine,
+        "input" => Shape::Parallelogram,
+        "refdoc" => Shape::LinedDocument,
+        "action" => Shape::Hexagon,
         _ => Shape::Rect,
     }
 }
@@ -638,7 +896,7 @@ fn draw(chart: &Chart, source: &Source, options: &Options) -> Scene {
     let labels: Vec<Label> = chart
         .nodes
         .iter()
-        .map(|node| text::measure(&node.label, &style, options.metrics, text::WRAP))
+        .map(|node| text::measure(&node.label, &style, options.metrics, wrap_for(node.shape)))
         .collect();
     let link_style = options.style(0.85, false);
     let link_labels: Vec<Label> = chart
@@ -662,6 +920,22 @@ fn draw(chart: &Chart, source: &Source, options: &Options) -> Scene {
     draw_group_titles(&mut scene, chart, &placed, origin, options);
     parts::finish(&mut scene);
     scene
+}
+
+/// How wide a node's words may get before they wrap.
+///
+/// Narrower for the shapes that are twice their words across (`task-2339`): a circle or a diamond
+/// holding one long line came out as wide as the line and as tall again, and the documentation's
+/// own examples were half a screen of empty shape.
+pub(super) fn wrap_for(shape: Shape) -> f32 {
+    match shape {
+        Shape::Circle
+        | Shape::DoubleCircle
+        | Shape::Diamond
+        | Shape::Triangle
+        | Shape::FlippedTriangle => 120.0,
+        _ => text::WRAP,
+    }
 }
 
 /// Turn the chart into the graph the layered layout takes.
@@ -767,7 +1041,9 @@ fn draw_nodes(
     for (index, node) in chart.nodes.iter().enumerate() {
         let rect = placed.nodes[index].moved(origin.x, origin.y);
         node.shape.draw(scene, rect, theme.node_fill, Stroke::new(theme.node_stroke, parts::LINE));
-        parts::centred_label(scene, &labels[index], rect, &style);
+        if node.shape.shows_label() {
+            parts::centred_label(scene, &labels[index], node.shape.text_area(rect), &style);
+        }
     }
 }
 
@@ -908,6 +1184,17 @@ mod tests {
             .find(|(a, b, _)| *a == from && *b == to)
             .map(|(_, _, link)| link.clone())
             .unwrap_or_else(|| panic!("no link from {from} to {to}"))
+    }
+
+    #[test]
+    fn a_node_mentioned_in_a_subgraph_moves_into_it() {
+        let chart = chart(
+            "flowchart TB\n c1-->a2\n subgraph one\n a1-->a2\n end\n subgraph three\n c1-->c2\n end\n",
+        );
+        let group_of = |id: &str| chart.nodes[chart.by_id[id]].group;
+        assert_eq!(group_of("a2"), Some(0));
+        assert_eq!(group_of("c1"), Some(1));
+        assert_eq!(group_of("c2"), Some(1));
     }
 
     #[test]
@@ -1163,5 +1450,17 @@ mod drawing {
         // Unluminous has not learnt yet should still draw with its words in it rather than refuse.
         let scene = check::drawn("flowchart LR\n A[|weird|] --> B\n", &options(), &["|weird|"]);
         assert!(!scene.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod empty_subgraph {
+    use super::super::{check, Options};
+    use crate::metrics::FixedMetrics;
+
+    #[test]
+    fn a_subgraph_with_nothing_in_it_draws_rather_than_panicking() {
+        let options = Options::new(Box::leak(Box::new(FixedMetrics::default())));
+        check::drawn("flowchart TD\n subgraph A\n end\n", &options, &[]);
     }
 }

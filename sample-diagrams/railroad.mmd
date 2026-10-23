@@ -1,0 +1,14 @@
+railroad-ebnf-beta
+title "Expression Grammar"
+
+(* A small arithmetic grammar with numbers, calls and identifiers. *)
+expression = term ( ( "+" | "-" ) term )* ;
+term = factor ( ( "*" | "/" ) factor )* ;
+factor = number | call | identifier | "(" expression ")" | "-" factor ;
+call = identifier "(" [ expression ( "," expression )* ] ")" ;
+identifier = letter ( letter | digit | "_" )* ;
+number = digit+ [ "." digit+ ] ;
+letter = "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" ;
+digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+reserved = ? any keyword ? - identifier ;
+statement = "let" identifier "=" expression ";" "print" expression ";" "return" expression ";" "end" "of" "block" ;

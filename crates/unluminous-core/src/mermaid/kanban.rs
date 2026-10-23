@@ -62,7 +62,13 @@ fn read(source: &Source) -> Result<Board, Problem> {
         // A column and a card are both written as a flowchart node would be, so they are read
         // through the same function rather than through a second copy of the bracket table.
         let (id, shown, _) = super::flowchart::read_block_shape(head);
-        let label = shown.unwrap_or(id);
+        let mut label = shown.unwrap_or(id);
+        // `[Create Documentation]` with no id in front is a card whose words are in the brackets,
+        // which the documentation's full example writes (`task-2339`).
+        if let Some(inner) = label.trim().strip_prefix('[').and_then(|rest| rest.strip_suffix(']'))
+        {
+            label = source::label(inner);
+        }
         if label.is_empty() {
             continue;
         }
@@ -285,6 +291,13 @@ mod tests {
         assert_eq!(card.assigned, "Jason");
         assert_eq!(card.ticket, "UNLUMINOUS-12");
         assert_eq!(card.priority, "High");
+    }
+
+    #[test]
+    fn brackets_with_no_id_in_front_hold_the_words() {
+        let board = board("kanban\n  [In progress]\n    [Create Documentation]\n");
+        assert_eq!(board.columns[0].label, "In progress");
+        assert_eq!(board.columns[0].cards[0].label, "Create Documentation");
     }
 
     #[test]

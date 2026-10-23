@@ -457,6 +457,19 @@ fn draw_commits(
             }
         }
         let width = text::width_of(&commit.id, &id_measure, options.metrics);
+        // On a panel, because the line into a merge commit arrives from below it and ran through the
+        // words (`task-2339`).
+        scene.add(Item::Rect {
+            rect: Rect::new(
+                at.x - width / 2.0 - 3.0,
+                at.y + DOT + 4.0,
+                width + 6.0,
+                id_measure.size * 1.35,
+            ),
+            radius: 3.0,
+            fill: Some(Paint::faded(options.theme.node_fill.color, 235)),
+            stroke: None,
+        });
         parts::one_line(
             scene,
             &commit.id,

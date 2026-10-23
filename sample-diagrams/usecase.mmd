@@ -1,0 +1,23 @@
+usecase-beta
+direction LR
+actor Customer("Customer")
+actor Staff("Order staff")@{ type: hollow, business: true } <<Employee>>
+systemBoundary ordering["Ordering System"]@{ type: package }
+  Browse("Browse products")
+  Checkout("Checkout") <<Core>>
+  Payment("Process payment")
+  Coupon("Apply coupon")
+  Review[Review order]
+end
+json OrderData@{
+  "status": "pending",
+  "items": [{ "name": "Book", "quantity": 1 }],
+  "total": 29.95
+}
+note for Checkout "Validates the cart before payment"
+Customer -- "places order" ---> Checkout
+Customer --> Browse
+Checkout ..> : include Payment
+Coupon ..> : extend Checkout
+Staff --> Review
+Review --> OrderData

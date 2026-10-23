@@ -46,9 +46,20 @@ enum Kind {
 
 #[derive(Debug, Clone, PartialEq)]
 struct State {
+    /// The name it is written as, empty for a start or an end marker.
+    id: String,
     label: String,
     kind: Kind,
     group: Option<usize>,
+}
+
+/// A composite state, `state Name { ... }`, drawn as a frame round what is inside it.
+#[derive(Debug, Clone, PartialEq)]
+struct Composite {
+    id: String,
+    title: String,
+    /// The composite this one is inside, if any.
+    parent: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -72,7 +83,7 @@ struct Diagram {
     states: Vec<State>,
     by_id: HashMap<String, usize>,
     transitions: Vec<Transition>,
-    composites: Vec<String>,
+    composites: Vec<Composite>,
     notes: Vec<Note>,
     direction: Direction,
 }
@@ -88,6 +99,11 @@ fn read(source: &Source) -> Result<Diagram, Problem> {
     // A `note ... end note` block collects its lines until the terminator.
     let mut note: Option<(usize, bool, Vec<String>)> = None;
     for line in source.statements() {
+        // `Still:::notMoving` gives a state a class, which is styling, and `Moving --> Still %% why`
+        // ends with a comment; neither is part of what is drawn (`task-2339`).
+        let mut line = line.clone();
+        line.text = without_classes(without_comment(&line.text));
+        let line = &line;
         let text = line.text.trim();
         if let Some((about, left, words)) = note.as_mut() {
             if text.eq_ignore_ascii_case("end note") {
@@ -108,7 +124,9 @@ fn read(source: &Source) -> Result<Diagram, Problem> {
             continue;
         }
         if let Some(rest) = line.after_word("direction") {
-            if let Some(direction) = Direction::parse(rest) {
+            // Only the diagram's own `direction`: one inside a subgraph is about that subgraph, and
+            // taking it turned a whole left to right diagram on its side (`task-2339`).
+            if let Some(direction) = Direction::parse(rest).filter(|_| open.is_empty()) {
                 diagram.direction = direction;
             }
             continue;
@@ -140,6 +158,35 @@ fn read(source: &Source) -> Result<Diagram, Problem> {
         }
     }
     Ok(diagram)
+}
+
+/// The text before a `%%` that is not inside quotes.
+fn without_comment(text: &str) -> &str {
+    let mut quoted = false;
+    for (at, character) in text.char_indices() {
+        match character {
+            '"' => quoted = !quoted,
+            '%' if !quoted && text[at..].starts_with("%%") => return text[..at].trim_end(),
+            _ => {}
+        }
+    }
+    text
+}
+
+/// The text with every `:::className` taken out.
+fn without_classes(text: &str) -> String {
+    let mut kept = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(":::") {
+        kept.push_str(&rest[..at]);
+        let after = &rest[at + 3..];
+        let end = after
+            .find(|c: char| !(c.is_alphanumeric() || c == '_' || c == '-'))
+            .unwrap_or(after.len());
+        rest = &after[end..];
+    }
+    kept.push_str(rest);
+    kept
 }
 
 fn is_decoration(line: &Line) -> bool {
@@ -181,11 +228,18 @@ fn read_state(diagram: &mut Diagram, rest: &str, open: &mut Vec<usize>) -> Resul
     // `state Name { ... }` — a composite state, which becomes a group.
     if let Some(name) = rest.strip_suffix('{') {
         let name = name.trim();
-        let title = match split_alias(name) {
-            Some((_, shown)) => source::label(shown),
-            None => source::label(name),
+        let (id, title) = match split_alias(name) {
+            Some((shown, id)) => (source::unquote(id), source::label(shown)),
+            None => (source::unquote(name), source::label(name)),
         };
-        diagram.composites.push(title);
+        // **A composite state is a state**, so an arrow to its name is an arrow to its frame
+        // (`task-2339`: it was drawn twice, as a frame and as a separate box the arrows went to).
+        // `state First { ... }` written a second time adds to the frame it already has.
+        if let Some(known) = diagram.composites.iter().position(|composite| composite.id == id) {
+            open.push(known);
+            return Ok(());
+        }
+        diagram.composites.push(Composite { id, title, parent: open.last().copied() });
         open.push(diagram.composites.len() - 1);
         return Ok(());
     }
@@ -255,7 +309,7 @@ fn read_transition(
 /// markers, not one node every finishing state is dragged towards.
 fn marker_or_state(diagram: &mut Diagram, name: &str, group: Option<usize>, which: Kind) -> usize {
     if name.trim() == "[*]" {
-        diagram.states.push(State { label: String::new(), kind: which, group });
+        diagram.states.push(State { id: String::new(), label: String::new(), kind: which, group });
         return diagram.states.len() - 1;
     }
     state_of(diagram, name, group)
@@ -266,7 +320,7 @@ fn state_of(diagram: &mut Diagram, name: &str, group: Option<usize>) -> usize {
     if let Some(&known) = diagram.by_id.get(&id) {
         return known;
     }
-    diagram.states.push(State { label: id.clone(), kind: Kind::State, group });
+    diagram.states.push(State { id: id.clone(), label: id.clone(), kind: Kind::State, group });
     diagram.by_id.insert(id, diagram.states.len() - 1);
     diagram.states.len() - 1
 }
@@ -286,23 +340,30 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
         .collect();
 
     let mut graph = layered::Graph { direction: diagram.direction, ..layered::Graph::default() };
-    for title in &diagram.composites {
-        let measured = text::measure_unwrapped(title, &options.style(0.95, true), options.metrics);
+    for composite in &diagram.composites {
+        let measured =
+            text::measure_unwrapped(&composite.title, &options.style(0.95, true), options.metrics);
         graph.groups.push(GroupSpec {
             title: Size::new(measured.width, measured.height + 6.0),
-            parent: None,
+            parent: composite.parent,
         });
     }
+    let ends = Ends::of(diagram);
     for (index, state) in diagram.states.iter().enumerate() {
-        graph.add_node(size_of(state.kind, labels[index].size()), state.group);
+        if ends.absorbed[index].is_none() {
+            graph.add_node(size_of(state.kind, labels[index].size()), state.group);
+        }
     }
     for (index, transition) in diagram.transitions.iter().enumerate() {
+        let (from, from_group) = ends.end(transition.from);
+        let (to, to_group) = ends.end(transition.to);
         graph.edges.push(EdgeSpec {
-            from: transition.from,
-            to: transition.to,
+            from,
+            to,
             label: transitions[index].size(),
             span: 1,
-            ..EdgeSpec::new(0, 0)
+            from_group,
+            to_group,
         });
     }
     let placed = layered::layout(&graph);
@@ -310,20 +371,78 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
     let mut scene = Scene::new();
     let top = parts::title(&mut scene, source, options, placed.size.width);
     let origin = Point::new(parts::MARGIN, top + parts::MARGIN);
-    draw_composites(&mut scene, diagram, &placed, origin, options);
-    draw_transitions(&mut scene, diagram, &placed, origin, &transitions, options);
+    draw_composites(&mut scene, diagram, &placed, origin, options, false);
+    draw_transitions(&mut scene, diagram, &ends, &placed, origin, &transitions, options);
     for (index, state) in diagram.states.iter().enumerate() {
+        let Some(node) = ends.node[index] else {
+            continue;
+        };
         draw_state(
             &mut scene,
             state,
             &labels[index],
-            placed.nodes[index].moved(origin.x, origin.y),
+            placed.nodes[node].moved(origin.x, origin.y),
             options,
         );
     }
-    draw_notes(&mut scene, diagram, &placed, origin, placed_width(&placed, origin), options);
+    // The titles again, on top: an arrow into a composite arrives across the top of its frame,
+    // which is where its title is.
+    draw_composites(&mut scene, diagram, &placed, origin, options, true);
+    draw_notes(&mut scene, &ends, diagram, &placed, origin, placed_width(&placed, origin), options);
     parts::finish(&mut scene);
     scene
+}
+
+/// Where each state is in the laid out graph: a node of its own, or the frame of the composite
+/// state it names.
+struct Ends {
+    /// The composite a state's name belongs to, when it has one.
+    absorbed: Vec<Option<usize>>,
+    /// The state's node in the graph, when it is not a composite.
+    node: Vec<Option<usize>>,
+}
+
+impl Ends {
+    fn of(diagram: &Diagram) -> Ends {
+        let absorbed: Vec<Option<usize>> = diagram
+            .states
+            .iter()
+            .map(|state| {
+                if state.kind != Kind::State || state.id.is_empty() {
+                    return None;
+                }
+                diagram.composites.iter().position(|composite| composite.id == state.id)
+            })
+            .collect();
+        let mut next = 0;
+        let node = absorbed
+            .iter()
+            .map(|group| {
+                group.is_none().then(|| {
+                    next += 1;
+                    next - 1
+                })
+            })
+            .collect();
+        Ends { absorbed, node }
+    }
+
+    /// The index the layout knows a state by, and whether that index is a group.
+    fn end(&self, state: usize) -> (usize, bool) {
+        match (self.absorbed[state], self.node[state]) {
+            (Some(group), _) => (group, true),
+            (None, Some(node)) => (node, false),
+            (None, None) => (0, false),
+        }
+    }
+
+    /// Where a state is drawn: its own box, or its composite's frame.
+    fn rect(&self, placed: &layered::Placed, state: usize, origin: Point) -> Rect {
+        match self.end(state) {
+            (group, true) => placed.groups[group].moved(origin.x, origin.y),
+            (node, false) => placed.nodes[node].moved(origin.x, origin.y),
+        }
+    }
 }
 
 /// How big a state of this kind is.
@@ -396,19 +515,31 @@ fn draw_composites(
     placed: &layered::Placed,
     origin: Point,
     options: &Options,
+    titles: bool,
 ) {
-    for (index, title) in diagram.composites.iter().enumerate() {
+    for (index, composite) in diagram.composites.iter().enumerate() {
+        let title = &composite.title;
         let frame = placed.groups[index].moved(origin.x, origin.y);
         if frame.width <= 0.0 {
             continue;
         }
-        scene.add(Item::Rect {
-            rect: frame,
-            radius: parts::CORNER * 2.0,
-            fill: Some(options.theme.group_fill),
-            stroke: Some(Stroke::new(options.theme.group_stroke, parts::LINE)),
-        });
         let width = text::width_of(title, &options.style(0.95, true), options.metrics);
+        if !titles {
+            scene.add(Item::Rect {
+                rect: frame,
+                radius: parts::CORNER * 2.0,
+                fill: Some(options.theme.group_fill),
+                stroke: Some(Stroke::new(options.theme.group_stroke, parts::LINE)),
+            });
+            continue;
+        }
+        let size = options.style(0.95, true).size;
+        scene.add(Item::Rect {
+            rect: Rect::new(frame.left() + 8.0, frame.top() + 4.0, width + 8.0, size * 1.35),
+            radius: 3.0,
+            fill: Some(options.theme.group_fill),
+            stroke: None,
+        });
         parts::one_line(
             scene,
             title,
@@ -424,6 +555,7 @@ fn draw_composites(
 fn draw_transitions(
     scene: &mut Scene,
     diagram: &Diagram,
+    ends: &Ends,
     placed: &layered::Placed,
     origin: Point,
     labels: &[Label],
@@ -440,8 +572,8 @@ fn draw_transitions(
         }
         let path = parts::edge_path(
             &path,
-            &outline(diagram, placed, origin, transition.from),
-            &outline(diagram, placed, origin, transition.to),
+            &outline(diagram, ends, placed, origin, transition.from),
+            &outline(diagram, ends, placed, origin, transition.to),
         );
         let last = path.len() - 1;
         let stroke = Stroke::new(theme.line, parts::LINE);
@@ -483,11 +615,15 @@ fn draw_transitions(
 
 fn outline(
     diagram: &Diagram,
+    ends: &Ends,
     placed: &layered::Placed,
     origin: Point,
     index: usize,
 ) -> parts::Outline {
-    let rect = placed.nodes[index].moved(origin.x, origin.y);
+    let rect = ends.rect(placed, index, origin);
+    if ends.absorbed[index].is_some() {
+        return parts::Outline::Rect(rect);
+    }
     match diagram.states[index].kind {
         Kind::Start | Kind::End => parts::Outline::Circle(rect.centre(), MARKER / 2.0),
         Kind::Choice => Shape::Diamond.outline(rect),
@@ -497,7 +633,12 @@ fn outline(
 
 /// The right hand edge of everything that has been placed, which is where the notes go.
 fn placed_width(placed: &layered::Placed, origin: Point) -> f32 {
-    placed.nodes.iter().map(|rect| rect.right() + origin.x).fold(origin.x, f32::max)
+    placed
+        .nodes
+        .iter()
+        .chain(&placed.groups)
+        .map(|rect| rect.right() + origin.x)
+        .fold(origin.x, f32::max)
 }
 
 /// Draw the notes, in a column down the right of the whole diagram.
@@ -506,8 +647,10 @@ fn placed_width(placed: &layered::Placed, origin: Point) -> f32 {
 /// note put directly next to its state lands on top of whatever the layout put there — which is
 /// exactly what the state diagram's first picture showed — and the layout has no way to know a note
 /// is coming, because a note is not a node and must not be ranked as one.
+#[allow(clippy::too_many_arguments)]
 fn draw_notes(
     scene: &mut Scene,
+    ends: &Ends,
     diagram: &Diagram,
     placed: &layered::Placed,
     origin: Point,
@@ -516,7 +659,7 @@ fn draw_notes(
 ) {
     let style = options.style(0.85, false);
     for note in &diagram.notes {
-        let rect = placed.nodes[note.about].moved(origin.x, origin.y);
+        let rect = ends.rect(placed, note.about, origin);
         if rect.width <= 0.0 {
             continue;
         }
@@ -609,8 +752,37 @@ mod tests {
             [*] --> First\n\
             state First {\n  [*] --> second\n  second --> [*]\n }\n";
         let diagram = diagram(text);
-        assert_eq!(diagram.composites, vec!["First"]);
+        assert_eq!(diagram.composites[0].title, "First");
         assert_eq!(diagram.states[diagram.by_id["second"]].group, Some(0));
+    }
+
+    #[test]
+    fn a_composite_state_is_one_state_and_an_arrow_to_it_goes_to_its_frame() {
+        let text = "stateDiagram-v2\n [*] --> First\n state First {\n  [*] --> second\n  state Inner {\n   [*] --> deep\n  }\n }\n First --> Done\n";
+        let diagram = diagram(text);
+        assert_eq!(diagram.composites.len(), 2);
+        assert_eq!(diagram.composites[1].parent, Some(0));
+        let ends = Ends::of(&diagram);
+        let first = diagram.by_id["First"];
+        assert_eq!(ends.end(first), (0, true));
+        assert!(ends.node[first].is_none());
+        let scene = check::drawn(text, &options(), &["First", "second", "Done", "Inner", "deep"]);
+        assert_eq!(scene.texts().iter().filter(|text| **text == "First").count(), 1);
+    }
+
+    #[test]
+    fn classes_and_comments_are_not_part_of_a_state() {
+        let diagram = diagram(
+            "stateDiagram-v2\n [*] --> Still:::notMoving\n Still --> Moving %% a comment\n Moving --> Crash:::movement : hit\n",
+        );
+        let names: Vec<&str> = diagram
+            .states
+            .iter()
+            .map(|state| state.id.as_str())
+            .filter(|id| !id.is_empty())
+            .collect();
+        assert_eq!(names, vec!["Still", "Moving", "Crash"]);
+        assert_eq!(diagram.transitions[2].label, "hit");
     }
 
     #[test]

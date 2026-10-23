@@ -12,7 +12,7 @@
 //! already has, because a diagram and a picture are the same kind of thing to a reader.
 
 use egui::{Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
-use unluminous_core::mermaid::scene::{Anchor, Dash, Item, Paint, Point, Scene};
+use unluminous_core::mermaid::scene::{self, Anchor, Dash, Item, Paint, Point, Scene};
 
 use crate::theme::color;
 use crate::theme::crisp::CrispPainter;
@@ -163,11 +163,21 @@ pub fn paint(ui: &egui::Ui, scene: &Scene, origin: Pos2, scale: f32) {
             }
             Item::Polygon { points, fill, stroke } => {
                 let drawn: Vec<Pos2> = points.iter().map(at).collect();
-                painter.add(egui::Shape::convex_polygon(
-                    drawn,
-                    paint_of(fill),
-                    stroke_of(stroke, scale),
-                ));
+                if scene::is_convex(points) {
+                    painter.add(egui::Shape::convex_polygon(
+                        drawn,
+                        paint_of(fill),
+                        stroke_of(stroke, scale),
+                    ));
+                } else {
+                    paint_concave(
+                        painter,
+                        points,
+                        &drawn,
+                        paint_of(fill),
+                        stroke_of(stroke, scale),
+                    );
+                }
             }
             Item::Line { points, stroke, dash } => {
                 let drawn: Vec<Pos2> = points.iter().map(at).collect();
@@ -227,6 +237,31 @@ fn scaled_words(
 /// egui has no dashed line of its own that takes a polyline, so a dashed line is drawn as a run of
 /// short solid ones. Worked out here rather than in `unluminous-core` because how long a mark should be
 /// depends on how large the diagram is being drawn, which only this side knows.
+/// Fill a concave outline by its triangles, then stroke it as a closed line.
+///
+/// `egui::Shape::convex_polygon` fills as a fan, which paints outside a concave shape (`task-2339`).
+fn paint_concave(
+    painter: &egui::Painter,
+    points: &[Point],
+    drawn: &[Pos2],
+    fill: Color32,
+    stroke: Stroke,
+) {
+    if fill != Color32::TRANSPARENT {
+        let mut mesh = egui::Mesh::default();
+        for position in drawn {
+            mesh.colored_vertex(*position, fill);
+        }
+        for [a, b, c] in scene::triangles(points) {
+            mesh.add_triangle(a as u32, b as u32, c as u32);
+        }
+        painter.add(egui::Shape::mesh(mesh));
+    }
+    if stroke.width > 0.0 {
+        painter.add(egui::Shape::closed_line(drawn.to_vec(), stroke));
+    }
+}
+
 fn paint_line(
     painter: &egui::Painter,
     points: &[Pos2],

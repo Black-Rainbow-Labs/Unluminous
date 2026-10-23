@@ -1,0 +1,14 @@
+venn-beta
+  title What makes a good feature
+  set Desirable["Desirable"]:20
+    text D1["User interviews"]
+    text D2["Clear need"]
+  set Feasible["Feasible"]:16
+    text F1["Fits the architecture"]
+  set Viable["Viable"]:14
+    text V1["Pays for itself"]
+  union Desirable,Feasible["Buildable"]
+  union Feasible,Viable["Sustainable"]
+  union Desirable,Viable["Marketable"]
+  union Desirable,Feasible,Viable["Ship it"]
+    text S1["Worth the risk"]

@@ -192,7 +192,11 @@ fn fences(text: &str) -> Vec<String> {
 fn has_markup(text: &str) -> bool {
     let lower = text.to_ascii_lowercase();
     let tag = lower.char_indices().any(|(at, c)| {
+        // `List<int>` is a generic, which a class diagram draws with its angle brackets; a tag never
+        // follows a letter.
+        let generic = lower[..at].chars().next_back().is_some_and(|before| before.is_alphanumeric());
         c == '<'
+            && !generic
             && lower[at + 1..]
                 .chars()
                 .next()

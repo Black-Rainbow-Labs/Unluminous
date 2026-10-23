@@ -1,0 +1,49 @@
+wardley-beta
+title Online Shop Value Chain
+size [1100, 600]
+
+evolution Genesis / Concept@0.2 -> Custom / Emerging@0.45 -> Product / Converging@0.75 -> Commodity / Accepted
+
+anchor Customer [0.95, 0.60]
+anchor Business [0.95, 0.30]
+
+component Online Shop [0.82, 0.55] (build)
+component Checkout [0.70, 0.62] (inertia)
+component Recommendations [0.68, 0.30]
+component Catalogue [0.58, 0.48] (buy)
+component Payments [0.50, 0.78] (outsource)
+component Search [0.45, 0.35]
+component Hosting [0.22, 0.72] (market)
+component Compute [0.12, 0.90]
+component Database [0.32, 0.60]
+
+pipeline Database {
+  component "File System" [0.25]
+  component "SQL DB" [0.60]
+  component "Cloud DB" [0.85]
+}
+
+Customer -> Online Shop
+Business -> Recommendations
+Online Shop -> Checkout
+Online Shop -> Recommendations
+Checkout -> Payments
+Online Shop +> Catalogue
+Catalogue -> Search
+Checkout +'orders'> Database
+Search -.-> Database
+Payments -> Hosting; runs on
+Hosting -> Compute
+
+evolve Recommendations 0.55
+evolve Search 0.65
+evolve Hosting 0.88
+
+accelerator "Open standards" [0.40, 0.88]
+deaccelerator "Vendor lock in" [0.08, 0.55]
+
+note "Payments is bought, not built" [0.56, 0.84]
+
+annotations [0.20, 0.03]
+annotation 1,[0.82, 0.46] "The shop is where customers spend time"
+annotation 2,[0.50, 0.70] "Payment rules differ by country"

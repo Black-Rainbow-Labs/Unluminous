@@ -78,8 +78,10 @@ sequenceDiagram
 
 - **Not pixel-identical to `mermaid.js`.** §2.4 says what is given up and why. The bar is correct and
   readable.
-- **Not all thirty diagram types.** Twenty are drawn; the other ten are *named* rather than
-  mis-drawn (§7), and that distinction is itself tested.
+- **Every diagram type is drawn now.** Twenty were drawn when this was written and ten were *named*
+  rather than mis-drawn (§7). `task-2339` drew those ten and three newer ones, so all thirty three
+  types in Mermaid's documentation are drawn; `tasks/task-2339-mermaid-every-type-tdd.md` is that
+  design. The panel that names a type is kept for a type Mermaid adds later.
 - **Not a control surface.** `click`, `href` and callbacks are read and ignored (§13).
 - **Not a second theme.** A document does not get to choose the window's colours (§13).
 - **Not a network client.** There is no path through any of this that opens a socket. This is the one
@@ -340,10 +342,10 @@ wants to know and it is not always obvious from the name.
 | `radar`, `radar-beta` | A polygon graticule with an axis per label and a closed curve per series, with a legend. |
 | `treemap`, `treemap-beta` | Squarified rectangles, sized by value and nested by section, with the labels laid inside them. |
 
-Ten are **named and not drawn**: `c4Diagram`, `zenuml`, `architecture`, `swimlanes`,
-`eventModeling`, `venn`, `ishikawa`, `wardley`, `cynefin`, `treeView`. Each is either a large grammar
-of its own serving a narrow audience, or is new enough that its syntax is still moving. Naming them
-is the honest answer, and it is what makes adding one later a small change rather than a discovery.
+Ten were **named and not drawn** when this was written: `c4Diagram`, `zenuml`, `architecture`,
+`swimlanes`, `eventModeling`, `venn`, `ishikawa`, `wardley`, `cynefin`, `treeView`. `task-2339` drew
+all ten, and `agentflow`, `railroad` and `usecase` beside them; `tasks/task-2339-mermaid-every-type-tdd.md`
+says how each is laid out.
 
 ---
 

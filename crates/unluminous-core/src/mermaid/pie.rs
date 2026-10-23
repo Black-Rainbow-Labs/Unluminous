@@ -109,10 +109,14 @@ fn draw(chart: &Chart, source: &Source, options: &Options) -> Scene {
         .map(|slice| text::width_of(&slice.label, &legend_style, options.metrics))
         .fold(0.0_f32, f32::max);
     let legend_width = legend_style.size * 0.9 + 8.0 + widest;
-    let width = parts::MARGIN + RADIUS * 2.0 + 32.0 + legend_width;
+    // A share that will not fit on its slice is written outside the pie (`task-2339`), so the pie
+    // moves over and the legend moves out by as much as those words need on each side.
+    let (left_room, right_room, above, below) = outside_room(chart, total, options);
+    let width = parts::MARGIN + left_room + RADIUS * 2.0 + right_room + 32.0 + legend_width;
 
     let top = parts::title(&mut scene, &titled, options, width);
-    let centre = Point::new(parts::MARGIN + RADIUS, top + parts::MARGIN + RADIUS);
+    let centre =
+        Point::new(parts::MARGIN + left_room + RADIUS, top + parts::MARGIN + above + RADIUS);
 
     draw_slices(&mut scene, chart, total, centre, options);
     let entries: Vec<(String, super::super::style::Color)> = chart
@@ -124,13 +128,61 @@ fn draw(chart: &Chart, source: &Source, options: &Options) -> Scene {
     parts::legend(
         &mut scene,
         &entries,
-        Point::new(centre.x + RADIUS + 32.0, centre.y - RADIUS + 10.0),
+        Point::new(centre.x + RADIUS + right_room + 32.0, centre.y - RADIUS + 10.0),
         options,
     );
-    scene.claim(Rect::new(0.0, 0.0, width, centre.y + RADIUS));
+    scene.claim(Rect::new(0.0, 0.0, width, centre.y + RADIUS + below));
     parts::finish(&mut scene);
     scene
 }
+
+/// The words written for one slice's share.
+fn share_words(chart: &Chart, slice: &Slice, total: f32) -> String {
+    if chart.show_values {
+        format_number(slice.value)
+    } else {
+        format!("{:.0}%", slice.value / total * 100.0)
+    }
+}
+
+/// True when a share `width` wide fits across its slice where it is written.
+fn fits(sweep: f32, width: f32) -> bool {
+    let chord = 2.0 * RADIUS * LABEL_AT * (sweep.min(std::f32::consts::PI) / 2.0).sin();
+    sweep >= 0.12 && chord >= width + 10.0
+}
+
+/// How much room the shares written outside the pie need on its left, on its right, above it and
+/// below it.
+fn outside_room(chart: &Chart, total: f32, options: &Options) -> (f32, f32, f32, f32) {
+    let style = options.style(0.9, true);
+    let (mut left, mut right, mut above, mut below) = (0.0_f32, 0.0_f32, 0.0_f32, 0.0_f32);
+    let mut angle = 0.0_f32;
+    for slice in &chart.slices {
+        let sweep = slice.value / total * std::f32::consts::TAU;
+        let width = text::width_of(&share_words(chart, slice, total), &style, options.metrics);
+        if !fits(sweep, width) {
+            let middle = angle + sweep / 2.0;
+            let reach = width + OUTSIDE + 4.0;
+            if middle.sin() >= 0.0 {
+                right = right.max(reach);
+            } else {
+                left = left.max(reach);
+            }
+            // How far past the top or the bottom of the circle the words reach.
+            let past = (RADIUS + OUTSIDE) * middle.cos().abs() + style.size * 1.3 - RADIUS;
+            if middle.cos() >= 0.0 {
+                above = above.max(past);
+            } else {
+                below = below.max(past);
+            }
+        }
+        angle += sweep;
+    }
+    (left, right, above, below)
+}
+
+/// How far outside the pie a share that did not fit is written.
+const OUTSIDE: f32 = 14.0;
 
 /// Draw every wedge, and the share on it.
 fn draw_slices(scene: &mut Scene, chart: &Chart, total: f32, centre: Point, options: &Options) {
@@ -144,7 +196,24 @@ fn draw_slices(scene: &mut Scene, chart: &Chart, total: f32, centre: Point, opti
             fill: Some(Paint::solid(options.theme.series(index))),
             stroke: Some(Stroke::new(options.theme.node_fill.color, parts::LINE)),
         });
-        draw_share(scene, chart, slice, total, centre, angle + sweep / 2.0, sweep, options);
+        angle += sweep;
+    }
+    // The shares go on after every wedge, so a share written outside is never under a later wedge.
+    let mut angle = 0.0_f32;
+    let mut outside: Vec<Rect> = Vec::new();
+    for slice in &chart.slices {
+        let sweep = slice.value / total * std::f32::consts::TAU;
+        draw_share(
+            scene,
+            chart,
+            slice,
+            total,
+            centre,
+            angle + sweep / 2.0,
+            sweep,
+            options,
+            &mut outside,
+        );
         angle += sweep;
     }
 }
@@ -160,23 +229,48 @@ fn draw_share(
     middle: f32,
     sweep: f32,
     options: &Options,
+    outside: &mut Vec<Rect>,
 ) {
-    // A slice thinner than about seven degrees has nowhere to put a number that would not run over
-    // its neighbours, so it is left to the legend.
-    if sweep < 0.12 {
+    let words = share_words(chart, slice, total);
+    let style = options.style(0.9, true);
+    let width = text::width_of(&words, &style, options.metrics);
+    if !fits(sweep, width) {
+        // Outside the pie on a short line from the slice, moved down past any share already
+        // written there so two thin neighbours do not write over each other.
+        let right = middle.sin() >= 0.0;
+        let edge = Point::new(
+            centre.x + RADIUS * 0.92 * middle.sin(),
+            centre.y - RADIUS * 0.92 * middle.cos(),
+        );
+        let mut at = Point::new(
+            centre.x + (RADIUS + OUTSIDE) * middle.sin(),
+            centre.y - (RADIUS + OUTSIDE) * middle.cos() - style.size / 2.0,
+        );
+        let height = style.size * 1.3;
+        let left = if right { at.x + 4.0 } else { at.x - 4.0 - width };
+        while outside.iter().any(|taken| taken.overlaps(&Rect::new(left, at.y, width, height))) {
+            at.y += height;
+        }
+        outside.push(Rect::new(left, at.y, width, height));
+        scene.add(Item::Line {
+            points: vec![edge, Point::new(at.x, at.y + style.size / 2.0)],
+            stroke: Stroke::new(options.theme.dim, 1.0),
+            dash: super::scene::Dash::Solid,
+        });
+        parts::one_line(
+            scene,
+            &words,
+            Point::new(if right { at.x + 4.0 } else { at.x - 4.0 }, at.y),
+            &parts::text_style(options, 0.9, true, options.theme.text),
+            if right { Anchor::Start } else { Anchor::End },
+            width,
+        );
         return;
     }
-    let words = if chart.show_values {
-        format_number(slice.value)
-    } else {
-        format!("{:.0}%", slice.value / total * 100.0)
-    };
     let at = Point::new(
         centre.x + RADIUS * LABEL_AT * middle.sin(),
         centre.y - RADIUS * LABEL_AT * middle.cos(),
     );
-    let style = options.style(0.9, true);
-    let width = text::width_of(&words, &style, options.metrics);
     parts::one_line(
         scene,
         &words,

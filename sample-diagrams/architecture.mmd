@@ -1,0 +1,21 @@
+architecture-beta
+    group edge(internet)[Edge]
+    group api(cloud)[API]
+    group data(database)[Data]
+
+    service gateway(internet)[Gateway] in edge
+    service cdn(cloud)[Content cache] in edge
+    service server(server)[API server] in api
+    service worker(server)[Worker] in api
+    service db(database)[Primary database] in data
+    service replica(database)[Replica] in data
+    service disk(disk)[Object storage] in data
+    junction fork in api
+
+    gateway:R --> L:server
+    cdn:B -- T:gateway
+    server:R -- L:fork
+    fork:R --> L:worker
+    fork:B --> T:db
+    db:R --> L:replica
+    worker:B --> T:disk

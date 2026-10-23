@@ -171,12 +171,26 @@ fn draw_fields(scene: &mut Scene, diagram: &Diagram, grid_top: f32, options: &Op
                 fill: Some(options.theme.wash(index, 80)),
                 stroke: Some(Stroke::new(options.theme.series(index), parts::LINE)),
             });
-            let label = text::measure(&field.label, &style, options.metrics, rect.width - 6.0);
+            // A field a bit or two wide cannot hold its name at the usual size, so the words are made
+            // smaller until they fit, down to half the size (`task-2339`: the TCP header's flags ran
+            // into each other).
+            let wide = text::width_of(&field.label, &style, options.metrics);
+            let scale = if wide > rect.width - 4.0 {
+                (0.78 * (rect.width - 4.0) / wide).max(0.42)
+            } else {
+                0.78
+            };
+            let label = text::measure(
+                &field.label,
+                &options.style(scale, false),
+                options.metrics,
+                rect.width - 4.0,
+            );
             parts::centred_label(
                 scene,
                 &label,
                 rect,
-                &parts::text_style(options, 0.78, false, options.theme.text),
+                &parts::text_style(options, scale, false, options.theme.text),
             );
             at = piece_end + 1;
         }

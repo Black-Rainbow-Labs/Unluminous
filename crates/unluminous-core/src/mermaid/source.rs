@@ -56,11 +56,10 @@ impl Line {
 
 /// The text after `word` when `text` begins with it, ignoring case. `None` when it does not.
 fn take_word<'a>(text: &'a str, word: &str) -> Option<&'a str> {
-    if text.len() < word.len() {
-        return None;
-    }
-    let (head, rest) = text.split_at(word.len());
-    head.eq_ignore_ascii_case(word).then_some(rest)
+    // `get` rather than `split_at`: the byte at `word.len()` can be inside a character such as `❤`,
+    // and splitting there panicked on an ER diagram from Mermaid's own documentation.
+    let head = text.get(..word.len())?;
+    head.eq_ignore_ascii_case(word).then(|| &text[word.len()..])
 }
 
 /// A diagram's source, read into lines with the wrapping removed.
@@ -88,6 +87,8 @@ impl Source {
         let mut front_matter_seen = false;
         // Whether the last line left a quoted label open, so this one is the rest of it.
         let mut continuing = false;
+        // Whether the lines are inside a multi line `accDescr { … }` block.
+        let mut in_description = false;
 
         for (index, raw) in text.split('\n').enumerate() {
             let number = index + 1;
@@ -132,6 +133,15 @@ impl Source {
                 continue;
             }
             if body.starts_with("accDescr") {
+                // `accDescr {` opens a description over several lines that ends at a `}` of its own
+                // (`task-2339`). Left in, its sentences were read as statements of the diagram.
+                in_description = body.trim_end().ends_with('{') && !body.contains('}');
+                continue;
+            }
+            if in_description {
+                if body.starts_with('}') {
+                    in_description = false;
+                }
                 continue;
             }
             // **A quoted label left open carries on over the next lines** (`task-2063`), which Mermaid
@@ -139,7 +149,11 @@ impl Source {
             // lines under it. Read as separate statements, the first line was a bracket with no end and
             // the diagram was refused. The lines are joined with a space, as Mermaid shows them.
             if let Some(open) = source.lines.last_mut().filter(|_| continuing) {
-                open.text.push(' ');
+                // A markdown string, "`…`", keeps its line breaks, which is what Mermaid does with
+                // one (`task-2339`); any other quoted label is joined with a space.
+                let markdown =
+                    open.text.rfind('"').is_some_and(|at| open.text[at + 1..].starts_with('`'));
+                open.text.push(if markdown { '\n' } else { ' ' });
                 open.text.push_str(body);
                 continuing = opens_a_quoted_label(&open.text);
                 continue;
@@ -212,7 +226,8 @@ pub fn unquote(text: &str) -> String {
 /// Four things happen, and all four are Mermaid's own rules:
 ///
 /// - the quotes come off, including the backtick pair inside them that marks a markdown string,
-///   whose `**bold**` is then shown as it was written because a diagram label is set in one style;
+///   whose `**bold**` and `*italic*` markers then come off and leave their words (`task-2339`),
+///   because a diagram label is set in one style and the markers written out read as a fault;
 /// - `<br>`, `<br/>` and `<br />` become line breaks, and so does a written `\n`, which is how a
 ///   great many diagrams in this repository's own documents break a label (`task-2194`) and which
 ///   nobody writing a label means as a backslash followed by an `n`;
@@ -227,9 +242,91 @@ pub fn unquote(text: &str) -> String {
 /// A tag this does not know, such as the placeholder in `GET /jobs/<id>`, is left as it was written.
 /// Mermaid's own sanitiser would remove it, and with it the word the person meant to show.
 pub fn label(text: &str) -> String {
-    let text = unquote(text);
+    label_of(text)
+}
+
+/// A markdown string's words with the `**`, `*`, `__` and `_` that mark bold and italic taken off in
+/// pairs.
+///
+/// Only in pairs, and a single `*` only where it opens against a word and closes against one, so
+/// `2 * 3` and a lone asterisk stay as they were written.
+pub(super) fn without_emphasis(text: &str) -> String {
+    let characters: Vec<char> = text.chars().collect();
+    let mut kept = String::with_capacity(text.len());
+    let mut index = 0;
+    while index < characters.len() {
+        let mark = characters[index];
+        let width = if matches!(mark, '*' | '_') && characters.get(index + 1) == Some(&mark) {
+            2
+        } else {
+            1
+        };
+        // An underscore only opens at the start of a word, so `snake_case` stays as it was written.
+        let at_word = index == 0 || !characters[index - 1].is_alphanumeric();
+        let opens = matches!(mark, '*' | '_')
+            && (mark == '*' || at_word)
+            && characters
+                .get(index + width)
+                .is_some_and(|next| !next.is_whitespace() && *next != mark);
+        if opens {
+            let closes = (index + width + 1..characters.len()).find(|&at| {
+                characters[at] == mark
+                    && !characters[at - 1].is_whitespace()
+                    && (width == 1 || characters.get(at + 1) == Some(&mark))
+                    && (mark == '*'
+                        || characters.get(at + width).is_none_or(|next| !next.is_alphanumeric()))
+            });
+            if let Some(close) = closes {
+                kept.extend(&characters[index + width..close]);
+                index = close + width;
+                continue;
+            }
+        }
+        kept.push(characters[index]);
+        index += 1;
+    }
+    kept
+}
+
+/// A label with its Font Awesome icons, `fa:fa-twitter` and `fab:fa-github`, taken out.
+///
+/// An icon would need the icon font, which Unluminous does not carry, and written out as its name it
+/// read as part of the label (`task-2339`).
+fn without_icons(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    // The icons' own names, for a label that is nothing but an icon: `(fa:fa-spinner)` is drawn as
+    // `spinner` rather than as an empty box (`task-2339`).
+    let mut names: Vec<&str> = Vec::new();
+    let mut rest = text;
+    while !rest.is_empty() {
+        let at_word = out.is_empty() || out.ends_with(char::is_whitespace);
+        let prefix = ["fa:fa-", "fab:fa-", "fas:fa-", "far:fa-", "fal:fa-", "fad:fa-", "fak:fa-"]
+            .into_iter()
+            .find(|prefix| rest.starts_with(prefix));
+        if let (true, Some(prefix)) = (at_word, prefix) {
+            let after = &rest[prefix.len()..];
+            let end = after
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
+                .unwrap_or(after.len());
+            names.push(&after[..end]);
+            rest = after[end..].trim_start_matches(' ');
+            continue;
+        }
+        let character = rest.chars().next().unwrap_or(' ');
+        out.push(character);
+        rest = &rest[character.len_utf8()..];
+    }
+    if out.trim().is_empty() && !names.is_empty() {
+        return names.join(" ");
+    }
+    out
+}
+
+/// The body of [`label`].
+fn label_of(text: &str) -> String {
+    let text = without_icons(&unquote(text));
     let text = match text.strip_prefix('`').and_then(|rest| rest.strip_suffix('`')) {
-        Some(inner) => inner.to_owned(),
+        Some(inner) => without_emphasis(inner),
         None => text,
     };
     let mut out = String::with_capacity(text.len());
@@ -328,6 +425,35 @@ fn strip_entity(rest: &str) -> Option<(char, &str)> {
         "colon" => ':',
         "semi" => ';',
         "hash" | "num" => '#',
+        // The named characters people write in diagrams, which Mermaid's documentation uses
+        // (`#infin;`) and which a browser knows (`task-2339`).
+        "infin" => '∞',
+        "hearts" => '♥',
+        "copy" => '©',
+        "reg" => '®',
+        "trade" => '™',
+        "deg" => '°',
+        "plusmn" => '±',
+        "times" => '×',
+        "divide" => '÷',
+        "middot" => '·',
+        "bull" => '•',
+        "hellip" => '…',
+        "ndash" => '–',
+        "mdash" => '—',
+        "larr" => '←',
+        "rarr" => '→',
+        "uarr" => '↑',
+        "darr" => '↓',
+        "harr" => '↔',
+        "check" => '✓',
+        "le" => '≤',
+        "ge" => '≥',
+        "ne" => '≠',
+        "euro" => '€',
+        "pound" => '£',
+        "laquo" => '«',
+        "raquo" => '»',
         digits => {
             let value = match digits.strip_prefix('x').or_else(|| digits.strip_prefix('X')) {
                 Some(hex) => u32::from_str_radix(hex, 16).ok()?,
@@ -539,7 +665,16 @@ mod tests {
     fn a_markdown_string_keeps_its_words_and_loses_its_backticks() {
         // Unluminous sets a diagram label in one style, so the marks inside are shown as written rather
         // than dropped: dropping them would silently change what the label says.
-        assert_eq!(label("\"`**bold** text`\""), "**bold** text");
+        assert_eq!(label("\"`**bold** text`\""), "bold text");
+        assert_eq!(
+            label("\"`This is _Markdown_ and snake_case`\""),
+            "This is Markdown and snake_case"
+        );
+        assert_eq!(label("fa:fa-twitter for peace"), "for peace");
+        assert_eq!(label("fa:fa-spinner"), "spinner");
+        assert_eq!(label("A fa:fa-camera-retro perhaps?"), "A perhaps?");
+        assert_eq!(label("sofa:fa-cushion"), "sofa:fa-cushion", "only a whole word is an icon");
+        assert_eq!(label("\"`*italic* and 2 * 3`\""), "italic and 2 * 3");
     }
 
     #[test]

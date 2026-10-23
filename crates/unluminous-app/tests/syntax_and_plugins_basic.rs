@@ -548,7 +548,7 @@ fn diagram_harness(name: &str, mode: ViewMode) -> Harness<'static, UnluminousApp
 
 #[test]
 fn every_diagram_type_is_drawn_in_the_real_window() {
-    // Twenty images, one a diagram type. **Look at them**: this is the test that says an arrowhead
+    // Thirty three images, one a diagram type. **Look at them**: this is the test that says an arrowhead
     // points the right way and that nothing overlaps anything, which no assertion about a scene
     // graph can tell you.
     let mut results = SnapshotResults::new();
@@ -573,6 +573,20 @@ fn every_diagram_type_is_drawn_in_the_real_window() {
         "kanban",
         "radar",
         "treemap",
+        // `task-2339`: the thirteen that used to be named in a panel rather than drawn.
+        "c4",
+        "architecture",
+        "venn",
+        "ishikawa",
+        "wardley",
+        "cynefin",
+        "treeview",
+        "eventmodeling",
+        "swimlane",
+        "railroad",
+        "zenuml",
+        "agentflow",
+        "usecase",
     ] {
         let mut harness = diagram_harness(&format!("{name}.mmd"), ViewMode::Preview);
         assert!(
@@ -644,19 +658,6 @@ fn a_diagram_that_will_not_parse_says_which_line_rather_than_drawing_nothing() {
     harness.state_mut().set_view_mode(ViewMode::Preview);
     steady(&mut harness);
     harness.snapshot(shot("mermaid_problem"));
-}
-
-#[test]
-fn a_diagram_type_unluminous_does_not_draw_is_named_rather_than_left_blank() {
-    let folder = diagram_folder();
-    let path = folder.join("wardley.mmd");
-    std::fs::write(&path, "wardley\n  title A value chain\n  anchor Customer [0.9, 0.8]\n")
-        .expect("write the sample");
-    let mut harness = harness_in(&folder);
-    harness.state_mut().open_path_permanently(&path).expect("the file opens");
-    harness.state_mut().set_view_mode(ViewMode::Preview);
-    steady(&mut harness);
-    harness.snapshot(shot("mermaid_not_drawn"));
 }
 
 #[test]

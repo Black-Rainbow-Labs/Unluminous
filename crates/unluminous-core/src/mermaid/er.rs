@@ -57,8 +57,21 @@ struct Attribute {
 
 #[derive(Debug, Clone, PartialEq)]
 struct Entity {
+    /// The name it is written as, which a subgraph of the same name stands for.
+    id: String,
     name: String,
     attributes: Vec<Attribute>,
+    /// The subgraph it was first mentioned in.
+    group: Option<usize>,
+}
+
+/// A subgraph: a frame round the entities first mentioned inside it (`task-2339`).
+#[derive(Debug, Clone, PartialEq)]
+struct Group {
+    /// The name a relationship refers to it by: `subgraph id[Title]` or `subgraph id`.
+    id: String,
+    title: String,
+    parent: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -77,7 +90,10 @@ struct Diagram {
     entities: Vec<Entity>,
     by_name: HashMap<String, usize>,
     relationships: Vec<Relationship>,
+    groups: Vec<Group>,
     direction: Direction,
+    /// The subgraph the lines being read are inside, while they are read.
+    current: Option<usize>,
 }
 
 pub fn render(source: &Source, options: &Options) -> Result<Scene, Problem> {
@@ -91,10 +107,31 @@ fn read(source: &Source) -> Result<Diagram, Problem> {
         ..Diagram::default()
     };
     let mut open: Option<usize> = None;
-    for line in source.statements() {
+    let mut groups: Vec<usize> = Vec::new();
+    let cleaned: Vec<Line> = source
+        .statements()
+        .into_iter()
+        .map(|line| Line { text: without_classes(&line.text), ..line.clone() })
+        .collect();
+    for line in &cleaned {
         let text = line.text.trim();
         if text == "}" {
             open = None;
+            continue;
+        }
+        if open.is_none() && line.starts_with_word("end") {
+            groups.pop();
+            diagram.current = groups.last().copied();
+            continue;
+        }
+        if let Some(rest) = line.after_word("subgraph").filter(|_| open.is_none()) {
+            diagram.groups.push(Group {
+                id: group_id(rest),
+                title: group_title(rest),
+                parent: groups.last().copied(),
+            });
+            groups.push(diagram.groups.len() - 1);
+            diagram.current = groups.last().copied();
             continue;
         }
         if let Some(entity) = open {
@@ -104,7 +141,9 @@ fn read(source: &Source) -> Result<Diagram, Problem> {
             continue;
         }
         if let Some(rest) = line.after_word("direction") {
-            if let Some(direction) = Direction::parse(rest) {
+            // Only the diagram's own `direction`: one inside a subgraph is about that subgraph, and
+            // taking it turned a whole left to right diagram on its side (`task-2339`).
+            if let Some(direction) = Direction::parse(rest).filter(|_| diagram.current.is_none()) {
                 diagram.direction = direction;
             }
             continue;
@@ -126,6 +165,44 @@ fn read(source: &Source) -> Result<Diagram, Problem> {
         }
     }
     Ok(diagram)
+}
+
+/// A line with every `:::class` outside quotes taken off: `CAR:::someclass {` is `CAR {`.
+fn without_classes(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut quoted = false;
+    let mut rest = text;
+    while let Some(character) = rest.chars().next() {
+        if character == '"' {
+            quoted = !quoted;
+        }
+        if !quoted && rest.starts_with(":::") {
+            let after = &rest[3..];
+            let end = after
+                .find(|c: char| !(c.is_alphanumeric() || c == '_' || c == '-' || c == ','))
+                .unwrap_or(after.len());
+            rest = &after[end..];
+            continue;
+        }
+        out.push(character);
+        rest = &rest[character.len_utf8()..];
+    }
+    out
+}
+
+/// `subgraph title`, `subgraph "Customer Domain"` and `subgraph id["Title"]`.
+/// The name a subgraph is referred to by: what comes before its brackets.
+fn group_id(rest: &str) -> String {
+    let rest = rest.trim();
+    let id = rest.find('[').map_or(rest, |open| &rest[..open]);
+    source::unquote(id).trim().to_owned()
+}
+
+fn group_title(rest: &str) -> String {
+    match (rest.find('['), rest.rfind(']')) {
+        (Some(open), Some(close)) if close > open => source::label(&rest[open + 1..close]),
+        _ => source::label(rest),
+    }
 }
 
 fn is_decoration(line: &Line) -> bool {
@@ -174,6 +251,9 @@ fn entity_of(diagram: &mut Diagram, text: &str) -> usize {
         }
         _ => (text, source::label(text)),
     };
+    // Mermaid sets an entity's name as markdown, so `**is**` and `_Markdown_` lose their marks
+    // (`task-2339`).
+    let shown = source::without_emphasis(&shown);
     let id = source::unquote(id).trim().to_owned();
     if let Some(&known) = diagram.by_name.get(&id) {
         if shown != id {
@@ -181,17 +261,28 @@ fn entity_of(diagram: &mut Diagram, text: &str) -> usize {
         }
         return known;
     }
-    diagram.entities.push(Entity { name: shown, attributes: Vec::new() });
+    diagram.entities.push(Entity {
+        id: id.clone(),
+        name: shown,
+        attributes: Vec::new(),
+        group: diagram.current,
+    });
     diagram.by_name.insert(id, diagram.entities.len() - 1);
     diagram.entities.len() - 1
 }
 
 /// The left-hand markers, longest first so `}o` is never read as `}` and a stray `o`.
+///
+/// Each side also takes the other side's spelling, `PERSON o{--|| HOUSE`, which Mermaid's own
+/// documentation writes (`task-2339`).
 const LEFT_COUNTS: &[(&str, Count)] = &[
     ("|o", Count::ZeroOrOne),
     ("||", Count::ExactlyOne),
     ("}o", Count::ZeroOrMore),
     ("}|", Count::OneOrMore),
+    ("o|", Count::ZeroOrOne),
+    ("o{", Count::ZeroOrMore),
+    ("|{", Count::OneOrMore),
 ];
 /// The right-hand markers, which are the mirror images.
 const RIGHT_COUNTS: &[(&str, Count)] = &[
@@ -199,6 +290,9 @@ const RIGHT_COUNTS: &[(&str, Count)] = &[
     ("||", Count::ExactlyOne),
     ("o{", Count::ZeroOrMore),
     ("|{", Count::OneOrMore),
+    ("|o", Count::ZeroOrOne),
+    ("}o", Count::ZeroOrMore),
+    ("}|", Count::OneOrMore),
 ];
 
 /// Read `CUSTOMER ||--o{ ORDER : places`.
@@ -208,7 +302,7 @@ fn read_relationship(diagram: &mut Diagram, line: &Line) -> Result<Option<Relati
         None => (line.text.as_str(), String::new()),
     };
     let Some((at, length, identifying)) = find_line(head) else {
-        return Ok(None);
+        return Ok(read_words(diagram, head, label));
     };
     let before = head[..at].trim_end();
     let after = head[at + length..].trim_start();
@@ -230,6 +324,53 @@ fn read_relationship(diagram: &mut Diagram, line: &Line) -> Result<Option<Relati
     let from = entity_of(diagram, from_name);
     let to = entity_of(diagram, to_name);
     Ok(Some(Relationship { from, to, from_count, to_count, identifying, label }))
+}
+
+/// The words a cardinality may be written as, and what each means (`task-2339`).
+///
+/// Longest first, so `one or more` is never read as a trailing `1`.
+const WORDS: &[(&str, Count)] = &[
+    ("zero or more", Count::ZeroOrMore),
+    ("zero or many", Count::ZeroOrMore),
+    ("one or more", Count::OneOrMore),
+    ("one or many", Count::OneOrMore),
+    ("one or zero", Count::ZeroOrOne),
+    ("zero or one", Count::ZeroOrOne),
+    ("only one", Count::ExactlyOne),
+    ("many(1)", Count::OneOrMore),
+    ("many(0)", Count::ZeroOrMore),
+    ("1+", Count::OneOrMore),
+    ("0+", Count::ZeroOrMore),
+    ("1", Count::ExactlyOne),
+];
+
+/// `MANUFACTURER only one to zero or more CAR`, the relationship written in words: a cardinality,
+/// `to` (identifying) or `optionally to` (not), and another cardinality.
+fn read_words(diagram: &mut Diagram, head: &str, label: String) -> Option<Relationship> {
+    let (left, right, identifying) = match head.find(" optionally to ") {
+        Some(at) => (&head[..at], &head[at + " optionally to ".len()..], false),
+        None => {
+            let at = head.find(" to ")?;
+            (&head[..at], &head[at + " to ".len()..], true)
+        }
+    };
+    let lower_left = left.to_ascii_lowercase();
+    let lower_right = right.trim_start().to_ascii_lowercase();
+    let (from_name, from_count) = WORDS.iter().find_map(|(words, count)| {
+        let rest = lower_left.strip_suffix(words)?;
+        rest.ends_with(' ').then(|| (left[..rest.len()].trim(), *count))
+    })?;
+    let right = right.trim_start();
+    let (to_name, to_count) = WORDS.iter().find_map(|(words, count)| {
+        let rest = lower_right.strip_prefix(words)?;
+        rest.starts_with(' ').then(|| (right[words.len()..].trim(), *count))
+    })?;
+    if from_name.is_empty() || to_name.is_empty() {
+        return None;
+    }
+    let from = entity_of(diagram, from_name);
+    let to = entity_of(diagram, to_name);
+    Some(Relationship { from, to, from_count, to_count, identifying, label })
 }
 
 /// Where the `--` or `..` is, how long it is, and whether it is the identifying kind.
@@ -287,39 +428,149 @@ fn draw(diagram: &Diagram, source: &Source, options: &Options) -> Scene {
         .collect();
 
     let mut graph = layered::Graph { direction: diagram.direction, ..layered::Graph::default() };
-    for measured in &boxes {
-        graph.add_node(measured.size, None);
+    let title_style = options.style(0.95, true);
+    for group in &diagram.groups {
+        let title = text::measure_unwrapped(&group.title, &title_style, options.metrics);
+        graph.groups.push(layered::GroupSpec {
+            title: Size::new(title.width, title.height + 6.0),
+            parent: group.parent,
+        });
+    }
+    // **A subgraph's name is the subgraph**: `title1 ||--|| title2` joins two frames, which is
+    // Mermaid's own example, and an entity of that name is not drawn a second time (`task-2339`).
+    let ends = Ends::of(diagram);
+    for (index, measured) in boxes.iter().enumerate() {
+        if ends.node[index].is_some() {
+            graph.add_node(measured.size, diagram.entities[index].group);
+        }
     }
     for (index, relationship) in diagram.relationships.iter().enumerate() {
         // The room asked for is the label **plus both sets of markers**. The crow's foot, the bar
         // and the circle all reach back from the entity's edge, so a gap sized for the words alone
         // leaves the two ends' markers touching each other in the middle.
         let wanted = Size::new(labels[index].width + MARK * 4.0, labels[index].height + MARK * 2.0);
-        graph.edges.push(EdgeSpec {
-            from: relationship.from,
-            to: relationship.to,
-            label: wanted,
-            span: 1,
-            ..EdgeSpec::new(0, 0)
-        });
+        let (from, from_group) = ends.end(relationship.from);
+        let (to, to_group) = ends.end(relationship.to);
+        graph.edges.push(EdgeSpec { from, to, label: wanted, span: 1, from_group, to_group });
     }
     let placed = layered::layout(&graph);
 
     let mut scene = Scene::new();
     let top = parts::title(&mut scene, source, options, placed.size.width);
     let origin = Point::new(parts::MARGIN, top + parts::MARGIN);
-    draw_relationships(&mut scene, diagram, &placed, origin, &labels, options);
+    draw_groups(&mut scene, diagram, &placed, origin, options, false);
+    draw_relationships(&mut scene, diagram, &ends, &placed, origin, &labels, options);
+    // The titles go on after the lines, on a panel, because a line into a subgraph crosses the top
+    // of its frame where the title is.
+    draw_groups(&mut scene, diagram, &placed, origin, options, true);
     for (index, entity) in diagram.entities.iter().enumerate() {
+        let Some(node) = ends.node[index] else {
+            continue;
+        };
         draw_entity(
             &mut scene,
             entity,
             &boxes[index],
-            placed.nodes[index].moved(origin.x, origin.y),
+            placed.nodes[node].moved(origin.x, origin.y),
             options,
         );
     }
     parts::finish(&mut scene);
     scene
+}
+
+/// Where each entity is in the laid out graph: a node of its own, or the frame of the subgraph of the
+/// same name.
+struct Ends {
+    absorbed: Vec<Option<usize>>,
+    node: Vec<Option<usize>>,
+}
+
+impl Ends {
+    fn of(diagram: &Diagram) -> Ends {
+        let absorbed: Vec<Option<usize>> = diagram
+            .entities
+            .iter()
+            .map(|entity| {
+                // Only an entity with nothing of its own; one with attributes is a real table.
+                if !entity.attributes.is_empty() {
+                    return None;
+                }
+                diagram.groups.iter().position(|group| group.id == entity.id)
+            })
+            .collect();
+        let mut next = 0;
+        let node = absorbed
+            .iter()
+            .map(|group| {
+                group.is_none().then(|| {
+                    next += 1;
+                    next - 1
+                })
+            })
+            .collect();
+        Ends { absorbed, node }
+    }
+
+    fn end(&self, entity: usize) -> (usize, bool) {
+        match (self.absorbed[entity], self.node[entity]) {
+            (Some(group), _) => (group, true),
+            (None, Some(node)) => (node, false),
+            (None, None) => (0, false),
+        }
+    }
+
+    fn rect(&self, placed: &layered::Placed, entity: usize, origin: Point) -> Rect {
+        match self.end(entity) {
+            (group, true) => placed.groups[group].moved(origin.x, origin.y),
+            (node, false) => placed.nodes[node].moved(origin.x, origin.y),
+        }
+    }
+}
+
+/// Each subgraph's frame, or with `titles` each one's title on a panel of its own.
+fn draw_groups(
+    scene: &mut Scene,
+    diagram: &Diagram,
+    placed: &layered::Placed,
+    origin: Point,
+    options: &Options,
+    titles: bool,
+) {
+    let theme = &options.theme;
+    for (index, group) in diagram.groups.iter().enumerate() {
+        let frame = placed.groups[index].moved(origin.x, origin.y);
+        if frame.width <= 0.0 {
+            continue;
+        }
+        if !titles {
+            scene.add(Item::Rect {
+                rect: frame,
+                radius: parts::CORNER,
+                fill: Some(theme.group_fill),
+                stroke: Some(Stroke::new(theme.group_stroke, parts::LINE)),
+            });
+            continue;
+        }
+        let style = options.style(0.95, true);
+        let width = text::width_of(&group.title, &style, options.metrics);
+        let height = options.metrics.line_metrics(&style).height();
+        let at = Point::new(frame.left() + 12.0, frame.top() + 6.0);
+        scene.add(Item::Rect {
+            rect: Rect::new(at.x - 4.0, at.y - 1.0, width + 8.0, height + 2.0),
+            radius: 3.0,
+            fill: Some(Paint::solid(theme.node_fill.color)),
+            stroke: None,
+        });
+        parts::one_line(
+            scene,
+            &group.title,
+            at,
+            &parts::text_style(options, 0.95, true, theme.text),
+            Anchor::Start,
+            width,
+        );
+    }
 }
 
 /// Measure an entity's box: its title and its three columns of attributes.
@@ -447,6 +698,7 @@ fn draw_entity(
 fn draw_relationships(
     scene: &mut Scene,
     diagram: &Diagram,
+    ends: &Ends,
     placed: &layered::Placed,
     origin: Point,
     labels: &[Label],
@@ -466,8 +718,8 @@ fn draw_relationships(
         // after the border can already be round the bend, and the marks leant with it.
         let sharp = parts::clipped(
             &path,
-            &Outline::Rect(placed.nodes[relationship.from].moved(origin.x, origin.y)),
-            &Outline::Rect(placed.nodes[relationship.to].moved(origin.x, origin.y)),
+            &Outline::Rect(ends.rect(placed, relationship.from, origin)),
+            &Outline::Rect(ends.rect(placed, relationship.to, origin)),
         );
         let path = parts::rounded(&sharp, parts::BEND, MARK);
         let sharp_last = sharp.len() - 1;
@@ -557,6 +809,74 @@ fn draw_count(scene: &mut Scene, count: Count, at: Point, towards: Point, stroke
                 stroke: Some(stroke),
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod words_and_subgraphs {
+    use super::*;
+
+    fn diagram(text: &str) -> Diagram {
+        read(&Source::read(text).expect("a diagram")).expect("it should read")
+    }
+
+    #[test]
+    fn a_relationship_to_a_subgraph_s_name_joins_the_frame() {
+        let text = "erDiagram\n subgraph title1\n  A1 ||--|| A2 : links\n end\n subgraph title2\n  B1 ||--|| B2 : links\n end\n title1 ||--|| title2 : links\n \"This **is** _Markdown_\"\n";
+        let diagram = diagram(text);
+        let ends = Ends::of(&diagram);
+        assert_eq!(ends.end(diagram.by_name["title1"]), (0, true));
+        assert_eq!(ends.end(diagram.by_name["title2"]), (1, true));
+        assert_eq!(diagram.entities.last().unwrap().name, "This is Markdown");
+        let options = Options::new(Box::leak(Box::new(crate::metrics::FixedMetrics::default())));
+        let scene = super::super::check::drawn(text, &options, &["A1", "B2", "title1", "title2"]);
+        assert_eq!(scene.texts().iter().filter(|text| **text == "title1").count(), 1);
+    }
+
+    #[test]
+    fn a_direction_inside_a_subgraph_leaves_the_diagram_s_alone() {
+        let diagram = diagram(
+            "erDiagram\n direction LR\n subgraph TOP\n  direction TB\n  A ||--|| B : links\n end\n",
+        );
+        assert_eq!(diagram.direction, Direction::Right);
+    }
+
+    #[test]
+    fn a_relationship_written_in_words_is_read() {
+        let diagram = diagram(
+            "erDiagram\n MANUFACTURER only one to zero or more CAR : makes\n PERSON many(0) optionally to 0+ NAMED-DRIVER : is\n",
+        );
+        let first = &diagram.relationships[0];
+        assert_eq!(diagram.entities[first.from].name, "MANUFACTURER");
+        assert_eq!(diagram.entities[first.to].name, "CAR");
+        assert_eq!((first.from_count, first.to_count), (Count::ExactlyOne, Count::ZeroOrMore));
+        assert!(first.identifying);
+        let second = &diagram.relationships[1];
+        assert!(!second.identifying);
+        assert_eq!(second.to_count, Count::ZeroOrMore);
+        assert_eq!(diagram.entities.len(), 4, "the words are not entities");
+    }
+
+    #[test]
+    fn a_subgraph_holds_the_entities_first_mentioned_in_it() {
+        let diagram = diagram(
+            "erDiagram\n subgraph title1\n  CUSTOMER\n end\n subgraph title2\n  CAR ||--o{ NAMED-DRIVER : allows\n  subgraph \"Person Domain\"\n   PERSON\n  end\n end\n",
+        );
+        assert_eq!(diagram.groups.len(), 3);
+        assert_eq!(diagram.groups[2].title, "Person Domain");
+        assert_eq!(diagram.groups[2].parent, Some(1));
+        assert_eq!(diagram.entities[0].group, Some(0));
+        assert_eq!(diagram.entities[1].group, Some(1));
+        assert_eq!(diagram.entities[3].group, Some(2));
+        assert!(!diagram.entities.iter().any(|entity| entity.name == "end"));
+    }
+
+    #[test]
+    fn a_class_on_an_entity_is_read_and_ignored() {
+        let diagram = diagram("erDiagram\n CAR:::someclass {\n string model\n }\n PERSON:::foo ||--|| CAR : owns\n PERSON o{--|| HOUSE:::bar : has\n");
+        let names: Vec<&str> = diagram.entities.iter().map(|entity| entity.name.as_str()).collect();
+        assert_eq!(names, vec!["CAR", "PERSON", "HOUSE"]);
+        assert_eq!(diagram.relationships[1].label, "has");
     }
 }
 

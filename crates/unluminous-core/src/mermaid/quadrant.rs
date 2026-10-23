@@ -166,10 +166,17 @@ fn draw_quadrants(scene: &mut Scene, chart: &Chart, plot: Rect, options: &Option
             continue;
         }
         let label = text::measure(words, &options.style(0.95, true), options.metrics, half - 20.0);
+        // With points on the chart the title goes at the top of its quadrant, which is where Mermaid
+        // puts it, so a point in the middle of a quadrant does not land on it (`task-2339`).
+        let y = if chart.spots.is_empty() {
+            rect.centre().y - label.height / 2.0
+        } else {
+            rect.top() + 10.0
+        };
         parts::label_at(
             scene,
             &label,
-            Point::new(rect.centre().x, rect.centre().y - label.height / 2.0),
+            Point::new(rect.centre().x, y),
             &parts::text_style(options, 0.95, true, options.theme.text),
             Anchor::Middle,
         );
@@ -226,6 +233,9 @@ fn draw_axes(scene: &mut Scene, chart: &Chart, plot: Rect, options: &Options) {
             continue;
         }
         let label = text::measure(words, &measure, options.metrics, GUTTER * 2.0);
+        // The lower title ends at the bottom of the square however many lines it takes, so its second
+        // line does not run into the horizontal axis's titles below the square.
+        let y = if y > plot.centre().y { plot.bottom() - label.height - 2.0 } else { y };
         parts::label_at(scene, &label, Point::new(2.0, y), &style, anchor);
     }
 }
@@ -255,14 +265,19 @@ fn draw_spots(scene: &mut Scene, chart: &Chart, plot: Rect, options: &Options) {
         } else {
             (Anchor::Start, at.x + spot.radius + 6.0)
         };
-        parts::one_line(
-            scene,
-            &spot.label,
-            Point::new(x, at.y - measure.size * 0.6),
-            &style,
-            anchor,
-            width,
-        );
+        // A name that would sit in the strip at the top of a quadrant, where its title is, goes under
+        // the point instead (`task-2339`: a point near the top wrote its name into the title).
+        let title_band = measure.size * 1.5 + 12.0;
+        let mut y = at.y - measure.size * 0.6;
+        let in_band = |top: f32| {
+            [plot.top(), plot.centre().y]
+                .iter()
+                .any(|band| top < band + title_band && top + measure.size > *band)
+        };
+        if !chart.quadrants.iter().all(|words| words.trim().is_empty()) && in_band(y) {
+            y = at.y + spot.radius + 2.0;
+        }
+        parts::one_line(scene, &spot.label, Point::new(x, y), &style, anchor, width);
     }
 }
 

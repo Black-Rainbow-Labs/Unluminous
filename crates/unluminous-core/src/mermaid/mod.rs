@@ -13,10 +13,15 @@
 //!
 //! ## What is drawn
 //!
-//! Twenty diagram types. Ten more are **named rather than drawn** — a panel saying which type it is,
-//! above the source — because each is either a large grammar serving a narrow audience or is new
-//! enough that its syntax is still moving. That distinction is deliberate and is tested: a
-//! `c4Diagram` must be named, not quietly mis-parsed as something else and drawn wrongly.
+//! Every diagram type in Mermaid's own documentation: thirty three of them since `task-2339` added
+//! the thirteen that were named but not drawn (C4, architecture, Venn, Ishikawa, Wardley, Cynefin,
+//! tree view, event modelling, swimlanes, railroad, ZenUML, agentflow and use case). Three of those
+//! are another type's grammar under a different keyword, and are rewritten into that type rather than
+//! drawn a second way: ZenUML into a sequence diagram, agentflow into a flowchart, and swimlanes into a
+//! flowchart's nodes laid out in lanes. `tasks/task-2339-mermaid-every-type-tdd.md` is the design.
+//!
+//! [`Kind::NotDrawn`] stays for a type Mermaid adds later: such a keyword is named in a panel rather
+//! than quietly mis-parsed as something else and drawn wrongly.
 //!
 //! ## The bar these are held to
 //!
@@ -71,6 +76,20 @@ pub mod timeline;
 pub mod treemap;
 pub mod xychart;
 
+pub mod agentflow;
+pub mod architecture;
+pub mod c4;
+pub mod cynefin;
+pub mod eventmodeling;
+pub mod ishikawa;
+pub mod railroad;
+pub mod swimlane;
+pub mod treeview;
+pub mod usecase;
+pub mod venn;
+pub mod wardley;
+pub mod zenuml;
+
 use crate::metrics::FontMetrics;
 use crate::style::CharStyle;
 
@@ -109,6 +128,19 @@ pub enum Kind {
     Kanban,
     Radar,
     Treemap,
+    C4,
+    Architecture,
+    Venn,
+    Ishikawa,
+    Wardley,
+    Cynefin,
+    TreeView,
+    EventModeling,
+    Swimlane,
+    Railroad,
+    ZenUml,
+    Agentflow,
+    UseCase,
     /// A Mermaid diagram type this version of Unluminous does not draw. It carries the name to say so
     /// with, which is the whole reason it is a variant rather than an error.
     NotDrawn(&'static str),
@@ -138,6 +170,19 @@ impl Kind {
             Kind::Kanban => "kanban",
             Kind::Radar => "radar",
             Kind::Treemap => "treemap",
+            Kind::C4 => "C4",
+            Kind::Architecture => "architecture",
+            Kind::Venn => "Venn",
+            Kind::Ishikawa => "Ishikawa",
+            Kind::Wardley => "Wardley",
+            Kind::Cynefin => "Cynefin",
+            Kind::TreeView => "tree view",
+            Kind::EventModeling => "event modelling",
+            Kind::Swimlane => "swimlane",
+            Kind::Railroad => "railroad",
+            Kind::ZenUml => "ZenUML",
+            Kind::Agentflow => "agentflow",
+            Kind::UseCase => "use case",
             Kind::NotDrawn(name) => name,
         }
     }
@@ -175,19 +220,21 @@ pub fn kind_of(keyword: &str) -> Option<Kind> {
         "kanban" => Kind::Kanban,
         "radar" | "radar-beta" => Kind::Radar,
         "treemap" | "treemap-beta" => Kind::Treemap,
-        // Named rather than drawn. Each is either a grammar of its own serving a narrow audience or
-        // is new enough that its syntax is still moving, and naming it is the honest answer.
-        "c4diagram" | "c4context" | "c4container" | "c4component" | "c4dynamic"
-        | "c4deployment" => Kind::NotDrawn("C4"),
-        "zenuml" => Kind::NotDrawn("ZenUML"),
-        "architecture" | "architecture-beta" => Kind::NotDrawn("architecture"),
-        "swimlanes" | "swimlane" => Kind::NotDrawn("swimlanes"),
-        "eventmodeling" => Kind::NotDrawn("event modelling"),
-        "venn" | "venn-beta" => Kind::NotDrawn("Venn"),
-        "ishikawa" | "fishbone" => Kind::NotDrawn("Ishikawa"),
-        "wardley" | "wardley-beta" => Kind::NotDrawn("Wardley"),
-        "cynefin" | "cynefin-beta" => Kind::NotDrawn("Cynefin"),
-        "treeview" => Kind::NotDrawn("tree view"),
+        "c4context" | "c4container" | "c4component" | "c4dynamic" | "c4deployment"
+        | "c4diagram" => Kind::C4,
+        "architecture" | "architecture-beta" => Kind::Architecture,
+        "venn" | "venn-beta" => Kind::Venn,
+        "ishikawa" | "ishikawa-beta" | "fishbone" => Kind::Ishikawa,
+        "wardley" | "wardley-beta" => Kind::Wardley,
+        "cynefin" | "cynefin-beta" => Kind::Cynefin,
+        "treeview" | "treeview-beta" => Kind::TreeView,
+        "eventmodeling" | "eventmodelling" => Kind::EventModeling,
+        "swimlane" | "swimlane-beta" | "swimlanes" => Kind::Swimlane,
+        "railroad" | "railroad-beta" | "railroad-ebnf-beta" | "railroad-abnf-beta"
+        | "railroad-peg-beta" => Kind::Railroad,
+        "zenuml" => Kind::ZenUml,
+        "agentflow" | "agentflow-beta" => Kind::Agentflow,
+        "usecase" | "usecase-beta" => Kind::UseCase,
         _ => return None,
     };
     Some(kind)
@@ -316,6 +363,19 @@ pub fn render(text: &str, options: &Options) -> Result<Scene, Problem> {
         Kind::Kanban => kanban::render(&source, options),
         Kind::Radar => radar::render(&source, options),
         Kind::Treemap => treemap::render(&source, options),
+        Kind::C4 => c4::render(&source, options),
+        Kind::Architecture => architecture::render(&source, options),
+        Kind::Venn => venn::render(&source, options),
+        Kind::Ishikawa => ishikawa::render(&source, options),
+        Kind::Wardley => wardley::render(&source, options),
+        Kind::Cynefin => cynefin::render(&source, options),
+        Kind::TreeView => treeview::render(&source, options),
+        Kind::EventModeling => eventmodeling::render(&source, options),
+        Kind::Swimlane => swimlane::render(&source, options),
+        Kind::Railroad => railroad::render(&source, options),
+        Kind::ZenUml => zenuml::render(&source, options),
+        Kind::Agentflow => agentflow::render(&source, options),
+        Kind::UseCase => usecase::render(&source, options),
         Kind::NotDrawn(name) => Err(Problem::not_drawn(name)),
     }
 }
@@ -370,6 +430,24 @@ mod tests {
             "cynefin",
             "treeView",
             "swimlanes",
+            "C4Context",
+            "C4Container",
+            "C4Component",
+            "C4Dynamic",
+            "C4Deployment",
+            "architecture-beta",
+            "venn-beta",
+            "ishikawa-beta",
+            "wardley-beta",
+            "cynefin-beta",
+            "treeView-beta",
+            "swimlane-beta",
+            "railroad-beta",
+            "railroad-ebnf-beta",
+            "railroad-abnf-beta",
+            "railroad-peg-beta",
+            "agentflow-beta",
+            "usecase-beta",
         ];
         for keyword in all {
             assert!(kind_of(keyword).is_some(), "{keyword} should be recognised");
@@ -377,22 +455,28 @@ mod tests {
     }
 
     #[test]
-    fn the_ten_unluminous_does_not_draw_are_named_rather_than_mistaken_for_something_else() {
+    fn every_type_mermaid_documents_is_drawn() {
+        // `task-2339`: the thirteen that used to be named in a panel are drawn now, so nothing in
+        // Mermaid's own list is left over.
         for keyword in [
             "c4Diagram",
+            "C4Context",
             "zenuml",
-            "architecture",
-            "swimlanes",
+            "architecture-beta",
+            "swimlane-beta",
             "eventModeling",
-            "venn",
-            "ishikawa",
-            "wardley",
-            "cynefin",
-            "treeView",
+            "venn-beta",
+            "ishikawa-beta",
+            "wardley-beta",
+            "cynefin-beta",
+            "treeView-beta",
+            "railroad-ebnf-beta",
+            "agentflow-beta",
+            "usecase-beta",
         ] {
             let kind = kind_of(keyword).expect("recognised");
-            assert!(!kind.is_drawn(), "{keyword} is not drawn");
-            assert!(!kind.name().is_empty(), "{keyword} still has a name to say");
+            assert!(kind.is_drawn(), "{keyword} is drawn");
+            assert!(!kind.name().is_empty(), "{keyword} has a name to say");
         }
     }
 
@@ -419,9 +503,9 @@ mod tests {
 
     #[test]
     fn a_type_unluminous_does_not_draw_is_a_problem_that_names_it() {
-        let metrics = FixedMetrics::default();
-        let problem =
-            render("wardley\nvalue chain\n", &Options::new(&metrics)).expect_err("not drawn");
+        // No keyword reaches this today; the problem is still the one a type Mermaid adds later is
+        // given, so it is checked directly.
+        let problem = Problem::not_drawn("Wardley");
         assert!(problem.unsupported, "this is Unluminous's limitation, not the author's fault");
         assert!(problem.reason.contains("Wardley"), "it says which type: {}", problem.reason);
     }
@@ -547,6 +631,71 @@ pub const SAMPLES: &[(&str, &str, &[&str])] = &[
         "treemap-beta\n\"Editing\"\n  \"Undo\": 30\n  \"Search\": 12\n\"Panes\": 22\n",
         &["Editing", "Undo", "Panes"],
     ),
+    (
+        "C4",
+        "C4Container\n Person(customer, \"Customer\", \"Uses the bank\")\n Container_Boundary(c1, \"Internet Banking\") {\n  Container(spa, \"Single-Page App\", \"Angular\", \"The banking pages\")\n  ContainerDb(db, \"Database\", \"SQL\")\n }\n Rel(customer, spa, \"Uses\", \"HTTPS\")\n Rel(spa, db, \"Reads\")\n",
+        &["Customer", "Internet Banking", "Single-Page App", "[Angular]", "Database", "Uses", "[HTTPS]"],
+    ),
+    (
+        "architecture",
+        "architecture-beta\n group api(cloud)[API]\n service db(database)[Database] in api\n service server(server)[Server] in api\n db:L -- R:server\n",
+        &["API", "Database", "Server"],
+    ),
+    (
+        "venn",
+        "venn-beta\n title Overlap\n set A[\"Alpha\"]\n set B[\"Beta\"]\n union A,B[\"Both\"]\n",
+        &["Overlap", "Alpha", "Beta", "Both"],
+    ),
+    (
+        "ishikawa",
+        "ishikawa-beta\n Blurry Photo\n Process\n  Out of focus\n User\n  Shaky hands\n",
+        &["Blurry Photo", "Process", "Out of focus", "Shaky hands"],
+    ),
+    (
+        "wardley",
+        "wardley-beta\n title Tea\n anchor Business [0.95, 0.63]\n component Cup of Tea [0.79, 0.61]\n component Kettle [0.43, 0.35]\n Business -> Cup of Tea\n Cup of Tea -> Kettle\n evolve Kettle 0.62\n",
+        &["Tea", "Business", "Cup of Tea", "Kettle"],
+    ),
+    (
+        "cynefin",
+        "cynefin-beta\n title Response\n complex\n  \"Investigate\"\n clear\n  \"Restart service\"\n complex --> complicated : \"Pattern\"\n",
+        &["Response", "Complex", "Investigate", "Restart service", "Pattern"],
+    ),
+    (
+        "treeView",
+        "treeView-beta\n src/\n  index.js ## entry point\n package.json\n",
+        &["src/", "index.js", "entry point", "package.json"],
+    ),
+    (
+        "eventmodeling",
+        "eventmodeling\n tf 01 ui CartUI\n tf 02 cmd AddItem { description: string }\n tf 03 evt ItemAdded\n",
+        &["CartUI", "AddItem", "ItemAdded"],
+    ),
+    (
+        "swimlane",
+        "swimlane-beta LR\n subgraph Customer\n  order[Place order]\n end\n subgraph Store\n  pack[Pack items]\n end\n order -->|paid| pack\n",
+        &["Customer", "Store", "Place order", "Pack items", "paid"],
+    ),
+    (
+        "railroad",
+        "railroad-ebnf-beta\n title Numbers\n number = digit+ ;\n digit = \"0\" | \"1\" ;\n",
+        &["Numbers", "number", "digit", "0", "1"],
+    ),
+    (
+        "zenuml",
+        "zenuml\n title Demo\n Alice->Bob: Hello\n Bob.answer() {\n  return fine\n }\n",
+        &["Demo", "Alice", "Bob", "Hello", "answer()", "fine"],
+    ),
+    (
+        "agentflow",
+        "agentflow-beta TB\n flow writer[\"Writer\"]\n  draft[\"Draft\"]@{ shape: task }\n  tool[\"spell_check\"]@{ shape: tool }\n  draft --> tool\n end\n",
+        &["Writer", "Draft", "spell_check"],
+    ),
+    (
+        "usecase",
+        "usecase-beta\n actor Customer\n systemBoundary Shop\n  Checkout(\"Check out\")\n end\n Customer --> Checkout\n",
+        &["Customer", "Shop", "Check out"],
+    ),
 ];
 
 #[cfg(test)]
@@ -583,12 +732,25 @@ mod every_type {
             "kanban",
             "radar-beta",
             "treemap-beta",
+            "C4Container",
+            "architecture-beta",
+            "venn-beta",
+            "ishikawa-beta",
+            "wardley-beta",
+            "cynefin-beta",
+            "treeView-beta",
+            "eventmodeling",
+            "swimlane-beta",
+            "railroad-ebnf-beta",
+            "zenuml",
+            "agentflow-beta",
+            "usecase-beta",
         ]
         .into_iter()
         .filter(|keyword| kind_of(keyword).is_some_and(|kind| kind.is_drawn()))
         .collect();
-        assert_eq!(drawn.len(), 20, "twenty types are drawn");
-        assert_eq!(SAMPLES.len(), 20, "and every one of them has a sample");
+        assert_eq!(drawn.len(), 33, "thirty three types are drawn");
+        assert_eq!(SAMPLES.len(), 33, "and every one of them has a sample");
     }
 
     #[test]
@@ -639,34 +801,6 @@ mod every_type {
             for count in 0..lines.len() {
                 let _ = render(&lines[..count].join("\n"), &options());
             }
-        }
-    }
-
-    #[test]
-    fn a_type_unluminous_does_not_draw_is_named_rather_than_mis_parsed() {
-        for keyword in [
-            "c4Diagram",
-            "zenuml",
-            "architecture",
-            "swimlanes",
-            "eventModeling",
-            "venn",
-            "ishikawa",
-            "wardley",
-            "cynefin",
-            "treeView",
-        ] {
-            let source = format!("{keyword}\n  something\n  something else\n");
-            let problem = render(&source, &options()).expect_err("it should not be drawn");
-            assert!(
-                problem.unsupported,
-                "{keyword} is Unluminous's limitation, not the author's fault"
-            );
-            assert!(
-                problem.reason.contains("does not draw"),
-                "{keyword} should say so plainly: {}",
-                problem.reason
-            );
         }
     }
 }

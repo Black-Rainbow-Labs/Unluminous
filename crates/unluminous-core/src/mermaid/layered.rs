@@ -184,7 +184,14 @@ pub struct Placed {
 /// Lay `graph` out.
 pub fn layout(graph: &Graph) -> Placed {
     if graph.nodes.is_empty() {
-        return Placed::default();
+        // Still one entry for each group and each edge, because every caller indexes these by the
+        // number it gave them: a subgraph with nothing in it panicked the flowchart (`task-2339`).
+        return Placed {
+            groups: vec![Rect::default(); graph.groups.len()],
+            edges: vec![Vec::new(); graph.edges.len()],
+            labels: vec![Point::default(); graph.edges.len()],
+            ..Placed::default()
+        };
     }
     // Everything is worked out as though the diagram ran downwards, and turned at the end. For a
     // left-to-right diagram the node sizes go in turned as well, because in that layout a node's

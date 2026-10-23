@@ -10,8 +10,10 @@
 //! that convert a civil date to a day number and back, which is enough because nothing here needs
 //! time zones, leap seconds or locales — only "how many days apart are these two dates".
 //!
-//! `dateFormat` is read and only `YYYY-MM-DD` is honoured, which is its default and the overwhelming
-//! majority of what is written. A chart whose dates will not parse is **still drawn**: the tasks are
+//! `dateFormat` decides how a date is read: `YYYY-MM-DD` and the other calendar formats as days, a
+//! format of hours and minutes (`HH:mm`) as a time of day, and `X` or `x` as plain numbers
+//! (`task-2339`; only the calendar form was read before, so a chart of times came out as a heap of
+//! zero length bars). A chart whose dates will not parse is **still drawn**: the tasks are
 //! laid out one after another by their durations alone, with no axis. Losing the calendar is much
 //! better than losing the chart.
 //!
@@ -41,6 +43,83 @@ const PLOT: f32 = 520.0;
 /// How much room the axis takes above the first row.
 const AXIS_HEIGHT: f32 = 26.0;
 
+/// What `dateFormat` says a date is written as.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum Format {
+    /// A calendar date, `2024-01-31`, read as a day number.
+    #[default]
+    Calendar,
+    /// A time of day, `17:49`, read as a fraction of a day.
+    Clock,
+    /// A plain number, `71`, kept as it is.
+    Number,
+}
+
+impl Format {
+    fn of(text: &str) -> Format {
+        let text = text.trim();
+        if text == "X" || text == "x" {
+            Format::Number
+        } else if text.contains("HH") && !text.contains("YY") && !text.contains("DD") {
+            Format::Clock
+        } else {
+            Format::Calendar
+        }
+    }
+
+    /// One date as this format writes it.
+    fn parse(self, text: &str) -> Option<f64> {
+        match self {
+            Format::Calendar => parse_date(text),
+            Format::Clock => parse_clock(text),
+            Format::Number => text.trim().parse::<f64>().ok(),
+        }
+    }
+
+    /// A position on the axis, written the way this format writes a date.
+    fn write(self, value: f64, first: f64) -> String {
+        match self {
+            Format::Calendar => format_date(value),
+            Format::Clock => {
+                let minutes = (value * 1_440.0).round() as i64;
+                format!(
+                    "{:02}:{:02}",
+                    minutes.div_euclid(60).rem_euclid(24),
+                    minutes.rem_euclid(60)
+                )
+            }
+            Format::Number => {
+                let _ = first;
+                parts_number(value)
+            }
+        }
+    }
+}
+
+/// A number with no decimal point when it does not need one.
+fn parts_number(value: f64) -> String {
+    if (value - value.round()).abs() < 0.005 {
+        format!("{}", value.round() as i64)
+    } else {
+        format!("{value:.1}")
+    }
+}
+
+/// `HH:mm` or `HH:mm:ss` as a fraction of a day.
+fn parse_clock(text: &str) -> Option<f64> {
+    let mut parts = text.trim().split(':');
+    let hours: f64 = parts.next()?.trim().parse().ok()?;
+    let minutes: f64 = parts.next()?.trim().parse().ok()?;
+    let seconds: f64 = match parts.next() {
+        Some(seconds) => seconds.trim().parse().ok()?,
+        None => 0.0,
+    };
+    if parts.next().is_some() || !(0.0..24.0).contains(&hours) || !(0.0..60.0).contains(&minutes) {
+        return None;
+    }
+    Some((hours * 3_600.0 + minutes * 60.0 + seconds) / 86_400.0)
+}
+
 /// How a task is shaded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum Shade {
@@ -68,6 +147,8 @@ struct Task {
     id: String,
     shade: Shade,
     milestone: bool,
+    /// `vert`: a line down the whole chart at the task's start (`task-2339`).
+    vert: bool,
     start: When,
     /// An explicit finish date.
     finish: Option<f64>,
@@ -87,6 +168,7 @@ struct Chart {
     title: Option<String>,
     /// True when every date in the chart parsed, so an axis of real dates can be drawn.
     dated: bool,
+    format: Format,
 }
 
 pub fn render(source: &Source, options: &Options) -> Result<Scene, Problem> {
@@ -108,9 +190,12 @@ fn read(source: &Source) -> Result<Chart, Problem> {
             section = Some(chart.sections.len() - 1);
             continue;
         }
+        if let Some(rest) = line.after_word("dateFormat") {
+            chart.format = Format::of(rest);
+            continue;
+        }
         // Everything else about the axis is about wording rather than about position.
         if [
-            "dateFormat",
             "axisFormat",
             "excludes",
             "includes",
@@ -120,6 +205,8 @@ fn read(source: &Source) -> Result<Chart, Problem> {
             "inclusiveEndDates",
             "topAxis",
             "displayMode",
+            "weekend",
+            "click",
         ]
         .iter()
         .any(|word| line.starts_with_word(word))
@@ -132,7 +219,13 @@ fn read(source: &Source) -> Result<Chart, Problem> {
                 "a task looks like `Design : des1, 2024-01-01, 5d` — a name, a colon, then when it happens.",
             ));
         };
-        chart.tasks.push(read_task(source::label(name), rest, section, &mut chart.dated));
+        chart.tasks.push(read_task(
+            source::label(name),
+            rest,
+            section,
+            &mut chart.dated,
+            chart.format,
+        ));
     }
     Ok(chart)
 }
@@ -142,12 +235,19 @@ fn read(source: &Source) -> Result<Chart, Problem> {
 /// The pieces are read by what they *are* rather than by where they are, because Mermaid allows them
 /// in several orders and an author writing `crit, after des1, 5d` means the same as
 /// `after des1, crit, 5d`.
-fn read_task(name: String, rest: &str, section: Option<usize>, dated: &mut bool) -> Task {
+fn read_task(
+    name: String,
+    rest: &str,
+    section: Option<usize>,
+    dated: &mut bool,
+    format: Format,
+) -> Task {
     let mut task = Task {
         name,
         id: String::new(),
         shade: Shade::Ordinary,
         milestone: false,
+        vert: false,
         start: When::Unsaid,
         finish: None,
         length: None,
@@ -177,6 +277,11 @@ fn read_task(name: String, rest: &str, section: Option<usize>, dated: &mut bool)
                 task.milestone = true;
                 continue;
             }
+            "vert" => {
+                task.vert = true;
+                task.milestone = true;
+                continue;
+            }
             _ => {}
         }
         if let Some(after) = strip_word(piece, "after") {
@@ -187,7 +292,7 @@ fn read_task(name: String, rest: &str, section: Option<usize>, dated: &mut bool)
             task.until = until.split_whitespace().map(str::to_owned).collect();
             continue;
         }
-        if let Some(day) = parse_date(piece) {
+        if let Some(day) = format.parse(piece) {
             if matches!(task.start, When::Unsaid) {
                 task.start = When::On(day);
             } else {
@@ -451,8 +556,16 @@ fn span(chart: &Chart) -> (f64, f64) {
     if !first.is_finite() || !last.is_finite() {
         return (0.0, 1.0);
     }
-    if (last - first).abs() < 0.5 {
-        return (first, first + 1.0);
+    // Half a day is too short for a calendar chart and is the whole of a chart of times, so only a
+    // calendar chart is widened to a day.
+    let shortest = if chart.format == Format::Calendar { 0.5 } else { 1e-9 };
+    if (last - first).abs() < shortest {
+        let one = if chart.format == Format::Calendar {
+            1.0
+        } else {
+            (last - first).abs().max(1.0 / 24.0)
+        };
+        return (first, first + one);
     }
     (first, last)
 }
@@ -484,7 +597,11 @@ fn draw_axis(
             dash: parts::DASH,
         });
         let day = first + (last - first) * share as f64;
-        let words = if chart.dated { format_date(day) } else { format!("{:.0}", day - first) };
+        let words = if chart.dated {
+            chart.format.write(day, first)
+        } else {
+            format!("{:.0}", day - first)
+        };
         let width = text::width_of(&words, &measure, options.metrics);
         parts::one_line(
             scene,
@@ -516,7 +633,7 @@ fn draw_rows(
     rows_top: f32,
     options: &Options,
 ) {
-    let across = (last - first).max(1.0);
+    let across = (last - first).max(1e-9);
     let at = |day: f64| plot_left + PLOT * ((day - first) / across) as f32;
     for (row, entry) in rows.iter().enumerate() {
         let y = rows_top + (ROW + ROW_GAP) * row as f32;
@@ -549,6 +666,23 @@ fn draw_rows(
             Anchor::Start,
         );
         let (start, finish) = task.placed.unwrap_or((first, first));
+        if task.vert {
+            // A line down the whole chart, in the task's colour, with a small mark in its own row.
+            let x = at(start);
+            let bottom = rows_top + (ROW + ROW_GAP) * rows.len() as f32 - ROW_GAP;
+            scene.add(Item::Line {
+                points: vec![Point::new(x, rows_top), Point::new(x, bottom)],
+                stroke: Stroke::new(colour, 2.0),
+                dash: parts::DASH,
+            });
+            scene.add(Item::Circle {
+                centre: Point::new(x, y + ROW / 2.0),
+                radius: 4.0,
+                fill: Some(Paint::solid(colour)),
+                stroke: None,
+            });
+            continue;
+        }
         if task.milestone {
             let centre = Point::new(at(start), y + ROW / 2.0);
             let arm = ROW * 0.36;
@@ -590,6 +724,42 @@ fn shade_colour(task: &Task, index: usize, options: &Options) -> crate::style::C
     match task.shade {
         Shade::Critical => options.theme.accent,
         _ => options.theme.series(task.section.unwrap_or(index)),
+    }
+}
+
+#[cfg(test)]
+mod formats {
+    use super::super::{check, Options};
+    use super::*;
+    use crate::metrics::FixedMetrics;
+
+    fn options() -> Options<'static> {
+        Options::new(Box::leak(Box::new(FixedMetrics::default())))
+    }
+
+    #[test]
+    fn a_chart_of_times_of_day_is_placed_by_its_minutes_and_its_axis_says_the_time() {
+        let text = "gantt\n dateFormat HH:mm\n axisFormat %H:%M\n Initial milestone : milestone, m1, 17:49, 2m\n Task A : 10m\n Task B : 5m\n Final vert : vert, v2, 18:08, 4m\n";
+        let mut chart = read(&Source::read(text).unwrap()).unwrap();
+        resolve(&mut chart);
+        let (start, finish) = chart.tasks[1].placed.unwrap();
+        assert!(((finish - start) * 1_440.0 - 10.0).abs() < 0.01, "ten minutes long");
+        assert!(chart.tasks[3].vert);
+        let scene = check::drawn(text, &options(), &["Task A", "Final vert"]);
+        assert!(
+            scene.texts().iter().any(|text| text.starts_with("17:") || text.starts_with("18:")),
+            "{:?}",
+            scene.texts()
+        );
+    }
+
+    #[test]
+    fn a_chart_of_plain_numbers_starts_each_bar_where_it_says() {
+        let text = "gantt\n dateFormat X\n axisFormat %s\n section A\n 71 : 0, 71\n section B\n 36 : 0, 36\n";
+        let mut chart = read(&Source::read(text).unwrap()).unwrap();
+        resolve(&mut chart);
+        assert_eq!(chart.tasks[0].placed, Some((0.0, 71.0)));
+        assert_eq!(chart.tasks[1].placed, Some((0.0, 36.0)));
     }
 }
 

@@ -3252,9 +3252,9 @@ and `target` had been eating that budget before the source was reached.
 ## Mermaid is drawn in Rust, and the painter knows nothing about diagrams
 
 A `.mmd` file opens as a **drawn diagram** with the same three view modes a `.md` file has, and a
-```mermaid fence inside a Markdown document is drawn in its preview. Twenty of Mermaid's thirty
-diagram types are drawn; the other ten are **named** rather than mis-drawn, and that distinction has a
-test of its own.
+```mermaid fence inside a Markdown document is drawn in its preview. Every one of the thirty three
+diagram types in Mermaid's documentation is drawn (`task-2339`, below); a keyword Mermaid adds later is
+**named** in a panel rather than mis-drawn.
 
 **None of it runs `mermaid.js`.** `tasks/unluminous-mermaid-plugin-tdd.md` §2 weighs the three ways of
 doing that — `mermaid-cli` needs Node and a headless Chromium, embedding a JavaScript engine means
@@ -3321,6 +3321,60 @@ present. The fifth, that laying the same source out twice gives an identical sce
 images rest on. `sample-diagrams/` holds one file per type, and it is what both the screenshot tests
 and a person read; `cargo run --example mermaid_check` lays every one of them out and says what came
 of it, which is the quickest way to see that a layout change has broken nothing.
+
+### Every type Mermaid documents is drawn, and the corpus is Mermaid's own documentation (`task-2339`)
+
+`tasks/task-2339-mermaid-every-type-tdd.md` is the design. The thirteen types that were named and not
+drawn are modules of their own: `c4`, `architecture`, `venn`, `ishikawa`, `wardley`, `cynefin`,
+`treeview`, `eventmodeling`, `swimlane`, `railroad`, `zenuml`, `agentflow` and `usecase`. Six rules:
+
+- **The corpus is Mermaid's own documentation**, every page under `packages/mermaid/src/docs/syntax/`, 548
+  blocks. `mermaid_audit` over it must report no refusals and no markup left in text, and the gallery test
+  photographs every block for a person to read. Download the pages again when Mermaid adds a type.
+- **A type that is another type's grammar is rewritten into that type, not drawn a second way.** ZenUML
+  becomes sequence diagram text, agentflow becomes flowchart text (`flowchart::render_collapsing` folds a
+  collapsed flow into one node), and swimlanes are read by `flowchart::read` and laid out in a lane grid.
+- **C4 and use case are laid out by the layered layout**, not by Mermaid's rows of four, because Mermaid's
+  C4 placement draws lines through boxes; C4 stacks the elements no relation touches into rows of four
+  with edges the layout reads and nothing draws.
+- **Architecture is a grid built from the sides an edge names**, one container at a time from the inside
+  out, so a group's frame can only hold its own services.
+- **The painter fills a concave polygon by its triangles** (`scene::is_convex`, `scene::triangles`).
+  `egui::Shape::convex_polygon` fills as a fan, which painted outside every concave outline: the
+  asymmetric node, the mindmap cloud, a document's wavy foot, the Cynefin quadrants.
+- **`@{ shape: … }` knows all of Mermaid's named shapes** (`shapes::Shape`, `flowchart::named_shape`),
+  each with a `text_area` its words are centred in. The symbols Mermaid draws without words (`fork`,
+  the small circles, `bolt`, `hourglass`) have a `fixed_size` and no label.
+- **Words that a line can cross sit on a panel drawn after the lines**: a git commit's id, a subgraph's,
+  a namespace's, a boundary's and a group's title. Photographing the corpus found every one of them
+  crossed by a line before.
+
+Reading the photographs also found faults in the types that already drew, each fixed with a test: a node
+mentioned inside a subgraph moves into it (`flowchart::encloses`), a gantt chart reads `dateFormat` as a
+calendar, a time of day or a plain number (`gantt::Format`), class diagrams have generics, lollipop
+interfaces and notes, ER diagrams have word relationships (`only one to zero or more`) and subgraphs, a
+pie share too small for its words is labelled outside the circle, a block diagram sizes each block to its
+words, a kanban card may be written as bare brackets, and a markdown string keeps its line breaks and
+loses its `_` and `*` marks.
+
+Three of them changed how a type is modelled, and each is a rule now:
+
+- **A composite state is a state.** `state First { ... }` is a frame, and an arrow to `First` goes to the
+  frame (`state::Ends`, `EdgeSpec::to_group`). It used to be drawn twice, as a frame and as a separate box
+  the arrows pointed at. Composites nest through `GroupSpec::parent`.
+- **A sequence participant's `@{ "type": … }` is read, not kept in its name.** `boundary`, `control`,
+  `entity`, `database`, `collections` and `queue` are drawn as their UML figures above the name, the way an
+  actor is (`sequence::Symbol`), and `"alias"` names it. `Alice()->>()John` draws the small circles of a
+  central connection, and `rect rgb(…)` is a faint band of that colour with no frame and no words.
+- **Words that do not fit get smaller or move, never overflow.** A packet field a bit or two wide shrinks
+  its words to fit, a pie share too small for its slice is written outside with room reserved above and
+  below the circle, a quadrant's title moves to the top of its quadrant when the chart has points, a
+  timeline section band is as tall as its title, and an xy chart's axis title has a line of its own under
+  the category labels.
+
+`:::class` is taken off names everywhere a type allows it (state, requirement, ER, treemap), a trailing
+`%%` comment is dropped in a state diagram, and the named HTML entities people write (`#infin;`,
+`#hearts;`, `#rarr;` and twenty more) are read as the characters they name.
 
 ## Where a name is defined is read from the tokeniser, and nothing is executed to find out
 

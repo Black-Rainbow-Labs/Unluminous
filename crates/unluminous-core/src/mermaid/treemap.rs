@@ -57,6 +57,9 @@ fn read(source: &Source) -> Result<Tree, Problem> {
         if text.starts_with("classDef") || text.starts_with(":::") {
             continue;
         }
+        // `"Section":::class` and `"Leaf": 20:::class`: the class comes off first, wherever it is,
+        // or its colons were read as the value's (`task-2339`).
+        let text = without_class(text);
         // `"Leaf": 12` — the value comes after the last colon that is outside the quotes.
         let (label, value) = match split_value(text) {
             Some((label, value)) => {
@@ -106,6 +109,19 @@ fn split_value(text: &str) -> Option<(&str, &str)> {
         }
     }
     None
+}
+
+/// A row with a `:::class` outside the quotes cut off it.
+fn without_class(text: &str) -> &str {
+    let mut quoted = false;
+    for (at, character) in text.char_indices() {
+        match character {
+            '"' => quoted = !quoted,
+            ':' if !quoted && text[at..].starts_with(":::") => return text[..at].trim_end(),
+            _ => {}
+        }
+    }
+    text
 }
 
 /// `"Leaf":::className` — the class is read and ignored.
@@ -191,6 +207,11 @@ fn draw_leaf(scene: &mut Scene, node: &Node, value: f32, rect: Rect, options: &O
         return;
     }
     let label = text::measure(&node.label, &style, options.metrics, rect.width - 8.0);
+    // A word longer than the rectangle is wide, or more lines than it is tall, would be written over
+    // its neighbours, so a rectangle that small shows no words, as Mermaid's own does (`task-2339`).
+    if label.width > rect.width - 8.0 || label.height > rect.height - 8.0 {
+        return;
+    }
     parts::label_at(
         scene,
         &label,
@@ -205,6 +226,9 @@ fn draw_leaf(scene: &mut Scene, node: &Node, value: f32, rect: Rect, options: &O
     }
     let words = super::pie::format_number(value);
     let width = text::width_of(&words, &style, options.metrics);
+    if width > rect.width - 8.0 {
+        return;
+    }
     parts::one_line(
         scene,
         &words,
@@ -221,10 +245,22 @@ fn draw_section_title(scene: &mut Scene, label: &str, rect: Rect, options: &Opti
         return;
     }
     let style = options.style(0.82, true);
-    let width = text::width_of(label, &style, options.metrics);
+    // Cut short with an ellipsis when the section is narrower than its name (`task-2339`: the name ran
+    // out of its rectangle and across the next).
+    let room = rect.width - 10.0;
+    let mut shown = label.to_owned();
+    while text::width_of(&shown, &style, options.metrics) > room && shown.chars().count() > 1 {
+        let mut cut: String = shown.trim_end_matches('…').chars().collect();
+        cut.pop();
+        shown = format!("{}…", cut.trim_end());
+    }
+    let width = text::width_of(&shown, &style, options.metrics);
+    if width > room {
+        return;
+    }
     parts::one_line(
         scene,
-        label,
+        &shown,
         Point::new(rect.left() + 5.0, rect.top() + 3.0),
         &parts::text_style(options, 0.82, true, options.theme.text),
         Anchor::Start,

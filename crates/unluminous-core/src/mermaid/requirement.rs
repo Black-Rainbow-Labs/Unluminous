@@ -78,7 +78,10 @@ fn read(source: &Source) -> Result<Diagram, Problem> {
         }
         if let Some(node) = open {
             if let Some((key, value)) = text.split_once(':') {
-                diagram.nodes[node].fields.push((key.trim().to_owned(), source::label(value)));
+                // Mermaid sets a requirement's fields as markdown, so `*italic*` and `**bold**` lose
+                // their marks (`task-2339`).
+                let value = source::without_emphasis(&source::label(value));
+                diagram.nodes[node].fields.push((key.trim().to_owned(), value));
             }
             continue;
         }
@@ -96,6 +99,10 @@ fn read(source: &Source) -> Result<Diagram, Problem> {
             continue;
         }
         if read_relation(&mut diagram, line)? {
+            continue;
+        }
+        // `test_elem:::myClass` on a line of its own only gives a class, which is styling.
+        if text.contains(":::") {
             continue;
         }
     }
@@ -124,7 +131,11 @@ fn read_block(diagram: &mut Diagram, line: &Line) -> Option<usize> {
 }
 
 fn node_of(diagram: &mut Diagram, name: &str) -> usize {
-    let name = source::unquote(name.trim()).trim().to_owned();
+    // `test_req:::important` gives the requirement a class, which is styling and not part of its name,
+    // and a name is set as markdown like the fields are (`task-2339`).
+    let name = name.trim();
+    let name = name.split_once(":::").map_or(name, |(name, _)| name);
+    let name = source::without_emphasis(source::unquote(name).trim());
     if let Some(&known) = diagram.by_name.get(&name) {
         return known;
     }
@@ -424,6 +435,26 @@ mod tests {
         let diagram = diagram(text);
         let kinds: Vec<&str> = diagram.relations.iter().map(|r| r.kind.as_str()).collect();
         assert_eq!(kinds, RELATIONS.to_vec());
+    }
+
+    #[test]
+    fn markdown_and_classes_are_taken_off_names_and_fields() {
+        let diagram = diagram(
+            "requirementDiagram
+requirement \"__test_req__\" {
+ id: 1
+ text: \"*italic* **bold**\"
+}
+requirement other:::important {
+ id: 2
+}
+other:::myClass
+",
+        );
+        assert_eq!(diagram.nodes[0].name, "test_req");
+        assert_eq!(diagram.nodes[0].fields[1].1, "italic bold");
+        assert_eq!(diagram.nodes[1].name, "other");
+        assert_eq!(diagram.nodes.len(), 2);
     }
 
     #[test]

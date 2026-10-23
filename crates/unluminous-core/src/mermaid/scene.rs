@@ -264,6 +264,91 @@ impl Item {
     }
 }
 
+/// True when a closed shape turns the same way at every corner, so it can be filled as a fan.
+///
+/// The painter asks this first because a fan is what every graphics library fills a polygon with,
+/// and a fan of a concave outline paints outside it: `task-2339` found the Cynefin quadrants'
+/// wavy edges, a document's wavy foot and the asymmetric node all filled wrongly that way.
+pub fn is_convex(points: &[Point]) -> bool {
+    let count = points.len();
+    if count < 4 {
+        return true;
+    }
+    let mut sign = 0.0_f32;
+    for index in 0..count {
+        let a = points[index];
+        let b = points[(index + 1) % count];
+        let c = points[(index + 2) % count];
+        let turn = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+        if turn.abs() < 1e-4 {
+            continue;
+        }
+        if sign == 0.0 {
+            sign = turn.signum();
+        } else if turn.signum() != sign {
+            return false;
+        }
+    }
+    true
+}
+
+/// Cut a simple closed shape, convex or not, into triangles, as indices into `points`.
+///
+/// Ear clipping: a corner whose triangle turns the way the whole shape winds and holds no other
+/// corner is cut off, and that is repeated until three corners are left. Quadratic in the number of
+/// corners, which is a few hundred at most for anything a diagram draws. A shape that crosses itself
+/// has no clean answer, so when no ear can be found the rest is filled as a fan rather than lost.
+pub fn triangles(points: &[Point]) -> Vec<[usize; 3]> {
+    let count = points.len();
+    if count < 3 {
+        return Vec::new();
+    }
+    let area: f32 = (0..count)
+        .map(|index| {
+            let (a, b) = (points[index], points[(index + 1) % count]);
+            a.x * b.y - b.x * a.y
+        })
+        .sum();
+    let winding = area.signum();
+    let cross =
+        |a: Point, b: Point, c: Point| (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+    let mut left: Vec<usize> = (0..count).collect();
+    let mut out = Vec::with_capacity(count - 2);
+    while left.len() > 3 {
+        let size = left.len();
+        let ear = (0..size).find(|&at| {
+            let (a, b, c) = (left[(at + size - 1) % size], left[at], left[(at + 1) % size]);
+            let turn = cross(points[a], points[b], points[c]);
+            if turn * winding <= 0.0 {
+                return false;
+            }
+            left.iter().all(|&other| {
+                if other == a || other == b || other == c {
+                    return true;
+                }
+                let p = points[other];
+                // A corner on the edge of the candidate counts as inside it: cutting that ear off
+                // would leave the rest of the shape touching itself at a point.
+                let inside = cross(points[a], points[b], p) * winding >= 0.0
+                    && cross(points[b], points[c], p) * winding >= 0.0
+                    && cross(points[c], points[a], p) * winding >= 0.0;
+                !inside
+            })
+        });
+        match ear {
+            Some(at) => {
+                out.push([left[(at + size - 1) % size], left[at], left[(at + 1) % size]]);
+                left.remove(at);
+            }
+            None => break,
+        }
+    }
+    for at in 1..left.len().saturating_sub(1) {
+        out.push([left[0], left[at], left[at + 1]]);
+    }
+    out
+}
+
 /// The smallest rectangle holding every point.
 fn bounds_of(points: &[Point]) -> Rect {
     let Some(first) = points.first() else {
@@ -451,6 +536,41 @@ mod tests {
             Item::Text { at, .. } => assert_eq!(*at, Point::new(100.0, 50.0)),
             other => panic!("expected the text, found {other:?}"),
         }
+    }
+
+    #[test]
+    fn a_concave_shape_is_cut_into_triangles_that_cover_exactly_its_area() {
+        // An L: two squares of a hundred each, joined. Its triangles must add up to its area, which
+        // a fan from the first corner does not, because it paints across the missing square.
+        let l_shape = vec![
+            Point::new(0.0, 0.0),
+            Point::new(20.0, 0.0),
+            Point::new(20.0, 10.0),
+            Point::new(10.0, 10.0),
+            Point::new(10.0, 20.0),
+            Point::new(0.0, 20.0),
+        ];
+        assert!(!is_convex(&l_shape));
+        let area: f32 = triangles(&l_shape)
+            .iter()
+            .map(|[a, b, c]| {
+                let (a, b, c) = (l_shape[*a], l_shape[*b], l_shape[*c]);
+                ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)).abs() / 2.0
+            })
+            .sum();
+        assert!((area - 300.0).abs() < 0.01, "the triangles cover {area}, not 300");
+        assert_eq!(triangles(&l_shape).len(), 4);
+    }
+
+    #[test]
+    fn a_square_is_convex() {
+        let square = [
+            Point::new(0.0, 0.0),
+            Point::new(1.0, 0.0),
+            Point::new(1.0, 1.0),
+            Point::new(0.0, 1.0),
+        ];
+        assert!(is_convex(&square));
     }
 
     #[test]
