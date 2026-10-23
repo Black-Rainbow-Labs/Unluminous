@@ -12,6 +12,7 @@
 //!
 //! `tasks/task-2338-spreadsheet-tdd.md` is the design.
 
+pub mod calc;
 pub mod coord;
 pub mod dates;
 pub mod eval;
@@ -22,6 +23,7 @@ pub mod model;
 pub mod numfmt;
 pub mod styles;
 pub mod value;
+pub mod xlsx;
 pub mod zip;
 
 pub use coord::{CellRef, Range};

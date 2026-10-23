@@ -261,6 +261,9 @@ pub struct Formula {
     pub array: Option<Range>,
     /// Part of a legacy array formula whose top left cell is elsewhere.
     pub array_member: Option<CellRef>,
+    /// Not recalculated: it names a workbook outside this one or a function this version does not have,
+    /// so the value the file saved is the best answer there is until the cell is edited.
+    pub frozen: bool,
 }
 
 impl Formula {
@@ -274,13 +277,14 @@ impl Formula {
             dynamic: true,
             array: None,
             array_member: None,
+            frozen: false,
         })
     }
 
     /// Parse text exactly as it stands, keeping it as the formula's text: what reading a file does.
     pub fn parse_kept(text: &str) -> Result<Self, String> {
         let expr = super::parser::parse(text)?;
-        Ok(Self { text: Arc::from(text), expr: Arc::new(expr), dynamic: true, array: None, array_member: None })
+        Ok(Self { text: Arc::from(text), expr: Arc::new(expr), dynamic: true, array: None, array_member: None, frozen: false })
     }
 
     /// A formula from a tree, printing the text.
@@ -291,6 +295,7 @@ impl Formula {
             dynamic,
             array: None,
             array_member: None,
+            frozen: false,
         }
     }
 

@@ -132,12 +132,15 @@ pub struct Ctx<'a> {
     pub env: &'a Env,
     /// Set when OFFSET or INDIRECT was used, which makes the formula's precedents unknown in advance.
     pub dynamic: bool,
+    /// A formula from a file written before dynamic arrays: a range given where one value is wanted is
+    /// reduced to the cell in the formula's own row or column, rather than lifted over.
+    pub legacy: bool,
     depth: u32,
 }
 
 impl<'a> Ctx<'a> {
     pub fn new(book: &'a Workbook, sheet: usize, at: CellRef, env: &'a Env) -> Self {
-        Self { book, sheet, at, scope: Vec::new(), env, dynamic: false, depth: 0 }
+        Self { book, sheet, at, scope: Vec::new(), env, dynamic: false, legacy: false, depth: 0 }
     }
 
     pub fn date1904(&self) -> bool {
@@ -491,6 +494,16 @@ impl<'a> Ctx<'a> {
     }
 
     pub fn lift_vals(&mut self, vals: Vec<Val>, f: impl Fn(&mut Ctx, &[Value]) -> Value) -> Val {
+        let vals: Vec<Val> = if self.legacy {
+            vals.into_iter()
+                .map(|v| match v {
+                    Val::Ref(area) if area.range.len() > 1 => Val::Value(self.intersect(Val::Ref(area))),
+                    other => other,
+                })
+                .collect()
+        } else {
+            vals
+        };
         let mut rows = 1;
         let mut cols = 1;
         for v in &vals {

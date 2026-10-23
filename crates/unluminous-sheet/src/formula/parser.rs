@@ -507,8 +507,15 @@ impl Parser {
         // A function call.
         if self.peek() == Some('(') {
             self.at += 1;
-            let args = self.arguments()?;
-            return Ok(Expr::Call(Arc::from(canonical_function(&word).as_str()), args));
+            let mut args = self.arguments()?;
+            let name = canonical_function(&word);
+            // A file writes `A1#` and `@A1:A9` as these two functions.
+            match (name.as_str(), args.len()) {
+                ("ANCHORARRAY", 1) => return Ok(Expr::Spill(Box::new(args.remove(0)))),
+                ("SINGLE", 1) => return Ok(Expr::Implicit(Box::new(args.remove(0)))),
+                _ => {}
+            }
+            return Ok(Expr::Call(Arc::from(name.as_str()), args));
         }
         // A sheet name: `Sheet1!A1`, or the first of a 3D span `Sheet1:Sheet3!A1`.
         if self.peek() == Some('!') {

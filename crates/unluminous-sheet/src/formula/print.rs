@@ -123,9 +123,19 @@ impl Printer {
                 }
                 out.push(')');
             }
+            Expr::Spill(e) if self.for_file => {
+                out.push_str("_xlfn.ANCHORARRAY(");
+                self.expr(e, out, 0);
+                out.push(')');
+            }
             Expr::Spill(e) => {
                 self.expr(e, out, 10);
                 out.push('#');
+            }
+            Expr::Implicit(e) if self.for_file => {
+                out.push_str("_xlfn.SINGLE(");
+                self.expr(e, out, 0);
+                out.push(')');
             }
             Expr::Implicit(e) => {
                 out.push('@');

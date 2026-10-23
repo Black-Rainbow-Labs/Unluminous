@@ -34,6 +34,13 @@ pub struct Workbook {
     pub circular: Option<(usize, CellRef)>,
     /// The macros of an `.xlsm`, which are kept and never run.
     pub has_macros: bool,
+    /// The attributes of the first `workbookView`, written back with `activeTab` updated.
+    pub view_attrs: Vec<(String, String)>,
+    /// The `cm` index that marks a dynamic array formula, when the file's own metadata part is kept
+    /// because it holds more than that.
+    pub dynamic_cm: Option<u32>,
+    /// The path of the workbook part, `xl/workbook.xml` in every file Excel writes.
+    pub part: String,
 }
 
 /// The calculation settings in `calcPr`.
@@ -149,6 +156,8 @@ pub struct Cell {
     pub style: u32,
     /// Rich text runs as read, written back while the text is unchanged.
     pub rich: Option<Arc<str>>,
+    /// Cell attributes this version does not model, such as `vm` for a picture in a cell, kept.
+    pub extra: Option<Arc<str>>,
 }
 
 impl Cell {
@@ -384,6 +393,16 @@ pub struct Sheet {
     pub raw: SheetRaw,
     /// The legacy array formulas: a range sharing one formula entered with Ctrl+Shift+Enter.
     pub array_formulas: Vec<Range>,
+    /// A chart sheet, a dialog sheet or a macro sheet, kept as its part and shown as a tab with no grid.
+    pub kept_part: Option<KeptSheet>,
+}
+
+/// A sheet that is not a worksheet: its part, its relationship type and its content type.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KeptSheet {
+    pub part: String,
+    pub kind: String,
+    pub content_type: String,
 }
 
 /// What a sheet's formulas spilled: each anchor cell and the size of what it spilled.
@@ -439,7 +458,7 @@ pub struct SheetRaw {
 
 impl Sheet {
     pub fn new(name: impl Into<String>) -> Self {
-        Self { name: name.into(), zoom: 100, show_grid: true, default_row_height: 15.0, ..Default::default() }
+        Self { name: name.into(), zoom: 100, show_grid: true, default_row_height: 14.25, ..Default::default() }
     }
 
     pub fn cell(&self, at: CellRef) -> Option<&Cell> {

@@ -199,7 +199,7 @@ pub struct Font {
 impl Default for Font {
     fn default() -> Self {
         Self {
-            name: "Calibri".to_owned(),
+            name: "Aptos Narrow".to_owned(),
             size: 11.0,
             bold: false,
             italic: false,
