@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/unluminous-core", "crates/unluminous-chat", "crates/unluminous-db", "crates/unluminous-dap", "crates/unluminous-lsp", "crates/unluminous-git", "crates/unluminous-terminal", "crates/unluminous-jupyter", "crates/unluminous-voice", "crates/unluminous-app", "unluminous-cli"]
+members = ["crates/unluminous-core", "crates/unluminous-chat", "crates/unluminous-db", "crates/unluminous-dap", "crates/unluminous-lsp", "crates/unluminous-git", "crates/unluminous-terminal", "crates/unluminous-jupyter", "crates/unluminous-sheet", "crates/unluminous-voice", "crates/unluminous-app", "unluminous-cli"]
 # A crate taken from crates.io and changed here, through `[patch.crates-io]` below. Not a member, so the
 # workspace's lints, tests and formatting leave it as its authors wrote it.
 exclude = ["vendor"]
@@ -20,6 +20,14 @@ unluminous-lsp = { path = "crates/unluminous-lsp" }
 unluminous-git = { path = "crates/unluminous-git" }
 unluminous-terminal = { path = "crates/unluminous-terminal" }
 unluminous-jupyter = { path = "crates/unluminous-jupyter" }
+# Excel workbooks for the Spreadsheet plugin: the model, the .xlsx file, formulas and their evaluator.
+# `task-2338`.
+unluminous-sheet = { path = "crates/unluminous-sheet" }
+# The zip container and the XML reader the workbook needs. All three were already in the lock file
+# through other crates, so naming them here adds nothing.
+flate2 = "1.1"
+crc32fast = "1.5"
+roxmltree = "0.20"
 # Speech to text for the Agent-Chat prompt: the microphone, the "Sable" wake word, the local Moonshine model
 # and an OpenAI compatible endpoint. `task-2290`.
 unluminous-voice = { path = "crates/unluminous-voice" }

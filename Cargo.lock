@@ -6740,6 +6740,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "unluminous-sheet"
+version = "1.11.0"
+dependencies = [
+ "crc32fast",
+ "flate2",
+ "roxmltree",
+ "serde_json",
+]
+
+[[package]]
 name = "unluminous-terminal"
 version = "1.11.0"
 dependencies = [

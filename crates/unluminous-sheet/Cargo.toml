@@ -1,0 +1,19 @@
+[package]
+name = "unluminous-sheet"
+description = "Excel workbooks: the model, the .xlsx file, the formula language and its evaluator, number formats, CSV and every editing operation. No user interface dependency."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+# The zip container an .xlsx file is. Both crates are already in the tree through other users, so the
+# container costs nothing new; the zip format itself is read and written in `zip.rs`.
+flate2.workspace = true
+crc32fast.workspace = true
+# Reading SpreadsheetML. Already in the tree. XML is written by hand with one escaping function.
+roxmltree.workspace = true
+
+[dev-dependencies]
+# The oracle's answers are JSON lines written by PowerShell.
+serde_json.workspace = true
