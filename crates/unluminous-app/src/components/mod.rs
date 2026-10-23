@@ -70,6 +70,7 @@ pub mod resize_edges;
 pub mod run_dialog;
 pub mod run_panel;
 pub mod run_widget;
+pub mod save_dialog;
 pub mod scrollbar;
 pub mod settings_dialog;
 pub mod settings_kit;

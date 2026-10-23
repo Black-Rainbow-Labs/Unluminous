@@ -281,6 +281,9 @@ impl UnluminousApp {
         if name.is_empty() {
             return;
         }
+        if self.answer_a_template_prompt(&prompt.purpose, &name) {
+            return;
+        }
         match prompt.purpose {
             Purpose::OpenWebAddress => {
                 if let Err(problem) = self.open_browser(&name) {
@@ -377,6 +380,11 @@ impl UnluminousApp {
                     self.message = Some(format!("That node is called {name}"));
                 }
             }
+            // Answered by `answer_a_template_prompt` above. `task-2336`.
+            Purpose::NewFromTemplate { .. }
+            | Purpose::NewUntitledTab(_)
+            | Purpose::TemplateVariable { .. }
+            | Purpose::SaveAsTemplate(_) => {}
             Purpose::GoToLine => match self.go_to_line(&name) {
                 Ok((line, column)) => self.message = Some(format!("Line {line}, column {column}")),
                 Err(problem) => self.message = Some(problem),

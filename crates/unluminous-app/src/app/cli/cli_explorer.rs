@@ -67,7 +67,10 @@ impl UnluminousApp {
                     ),
                 }
             }
+            "new-file" if request.has("template") => self.cli_explorer_new_from_template(request),
             "new-file" => self.cli_explorer_new(request, false),
+            "templates" => self.cli_explorer_templates(request),
+            "save-template" => self.cli_explorer_save_template(request),
             "new-folder" => self.cli_explorer_new(request, true),
             "new-project" => self.cli_explorer_new_project(request),
             "reload" => {
@@ -240,6 +243,98 @@ impl UnluminousApp {
     ///
     /// The folders above are made too, which is what anybody typing a path with a slash in it means.
     /// A path that is already there is refused rather than emptied.
+    /// `explorer new-file <path> --template <name> [--set KEY=VALUE]`: `New -> <type>` with no prompts.
+    /// The template's extension is added to the path when it does not end with it. `task-2336`.
+    fn cli_explorer_new_from_template(&mut self, request: &Request) -> Outcome {
+        let Some(path) = self.cli_path_argument(request, "path") else {
+            return no(request, code::USAGE, "Say where the file goes.");
+        };
+        let template = request.text("template").unwrap_or_default();
+        let given = match super::cli_tab::template_values(request) {
+            Ok(given) => given,
+            Err(problem) => return no(request, code::USAGE, problem),
+        };
+        if let Some(missing) = self.a_template_variable_not_given(&template, &given) {
+            return no(request, code::USAGE, missing);
+        }
+        let templates = self.file_templates();
+        let path = match crate::services::file_templates::find(&templates, &template) {
+            Some(found) => {
+                let name =
+                    path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                path.with_file_name(crate::services::file_templates::file_name_for(found, &name))
+            }
+            None => path,
+        };
+        match self.make_a_file_from_a_template(&path, &template, &given) {
+            Ok(made) => ok(
+                request,
+                format!("Made {} from {template}", made.display()),
+                json!({ "path": made.to_string_lossy(), "template": template }),
+            ),
+            Err(problem) => no(request, code::REFUSED, problem),
+        }
+    }
+
+    /// `explorer templates`: every template, where it came from and what it asks for. `task-2336`.
+    fn cli_explorer_templates(&mut self, request: &Request) -> Outcome {
+        let project = self.tree.root().to_path_buf();
+        let settings = self.templates_settings_folder();
+        let templates = self.file_templates();
+        let rows: Vec<Value> = templates
+            .iter()
+            .map(|template| {
+                let includes = crate::services::file_templates::includes_for(template.scope, &project, settings.as_deref());
+                json!({
+                    "name": template.name,
+                    "slug": template.slug(),
+                    "extension": template.extension,
+                    "scope": template.scope.name(),
+                    "asks": crate::services::file_templates::variables_asked(&template.body, includes.as_deref()),
+                })
+            })
+            .collect();
+        let printed: Vec<String> = templates
+            .iter()
+            .map(|template| {
+                format!(
+                    "{}{}.{}",
+                    column(&template.name, 24),
+                    column(template.scope.name(), 10),
+                    template.extension
+                )
+            })
+            .collect();
+        lines(
+            request,
+            format!("{} templates", templates.len()),
+            printed,
+            json!({
+                "templates": rows,
+                "user": settings.map(|folder| crate::services::file_templates::user_folder(&folder).to_string_lossy().into_owned()),
+                "project": crate::services::file_templates::project_folder(&project).to_string_lossy(),
+            }),
+        )
+    }
+
+    /// `explorer save-template <path> --name <name> [--project]`: `Save File as Template`. `task-2336`.
+    fn cli_explorer_save_template(&mut self, request: &Request) -> Outcome {
+        let Some(path) = self.cli_path_argument(request, "path") else {
+            return no(request, code::USAGE, "Say which file the template is made from.");
+        };
+        let name = request.text("name").unwrap_or_else(|| {
+            path.file_stem().map(|stem| stem.to_string_lossy().to_string()).unwrap_or_default()
+        });
+        match self.save_a_file_as_a_template(&path, &name, request.switch("project")) {
+            Ok(saved) => ok(
+                request,
+                format!("Saved the template {}", saved.display()),
+                json!({ "template": saved.to_string_lossy(), "name": name }),
+            ),
+            Err(problem) => no(request, code::REFUSED, problem),
+        }
+    }
+
     fn cli_explorer_new(&mut self, request: &Request, directory: bool) -> Outcome {
         let what = if directory { "folder" } else { "file" };
         let Some(path) = self.cli_path_argument(request, "path") else {

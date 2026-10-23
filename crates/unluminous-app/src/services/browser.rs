@@ -547,6 +547,13 @@ pub enum BrowserEvent {
         id: u64,
         json: String,
     },
+    /// The page was asked to zoom with `Ctrl`/`Cmd` and the wheel or the keys, and posted that instead of
+    /// zooming itself: one step in for a positive `steps`, out for a negative one, and back to its own size
+    /// for `0`. `task-2336`. See [`ZOOM_GESTURES`].
+    ZoomAsked {
+        id: u64,
+        steps: i32,
+    },
 }
 
 /// A script the host keeps in a page and asks for its answers, the way it asks the picker.
@@ -644,6 +651,31 @@ pub const MOST_LIVE_VIEWS: usize = 6;
 /// new window mechanism, so the rule that a page has no host bridge stands. A click with a modifier, a link to a
 /// place on the same page, a `download` link and an address that is not a page are left to the page.
 pub const LINKS_IN_NEW_TABS: &str = include_str!("browser_links.js");
+
+/// The script that hands `Ctrl`/`Cmd` with the wheel, plus, minus and zero to Unluminous (`task-2336`).
+///
+/// *"When hovering over browser node, CMD + and - should zoom/enlarge the web browser content … Same with CMD +
+/// scroll."* The engine zoomed the page itself, and nothing told Unluminous: a browser node's page is drawn at
+/// its node's zoom times the canvas's, so the next move of the canvas sent that product again and threw the
+/// person's zoom away. On macOS `wry` cannot turn the engine's zoom on at all, so the wheel did nothing.
+///
+/// **This is the one message a page can send the host**, through `window.ipc.postMessage`, and
+/// [`zoom_message`] reads only the three words it posts. Anything else a page posts is ignored. It is put in
+/// every page, which is the only way the gesture reaches Unluminous while the page holds the pointer.
+pub const ZOOM_GESTURES: &str = include_str!("browser_zoom.js");
+
+/// What a page's post asked for: `Some(1)` one step in, `Some(-1)` one out, `Some(0)` its own size again,
+/// and `None` for anything that is not one of [`ZOOM_GESTURES`]'s three messages.
+///
+/// @param message - what the page posted
+pub fn zoom_message(message: &str) -> Option<i32> {
+    match message {
+        "unluminous-zoom:in" => Some(1),
+        "unluminous-zoom:out" => Some(-1),
+        "unluminous-zoom:reset" => Some(0),
+        _ => None,
+    }
+}
 
 /// The native browser views a window owns, and the local roots its tabs read under.
 ///
@@ -2289,6 +2321,8 @@ mod native {
             let load_repaint = request.repaint.clone();
             let popup_sender = request.sender.clone();
             let popup_repaint = request.repaint.clone();
+            let zoom_sender = request.sender.clone();
+            let zoom_repaint = request.repaint.clone();
             let resources = request.resources.clone();
             let zoom_bits = Arc::new(AtomicU64::new(1f64.to_bits()));
             // **Built with no address**, so the session cookies can be given to it before its first request
@@ -2308,6 +2342,7 @@ mod native {
             if request.links_open_new_tabs && !request.links_stay.contains(&id) {
                 builder = builder.with_initialization_script(super::LINKS_IN_NEW_TABS);
             }
+            builder = builder.with_initialization_script(super::ZOOM_GESTURES);
             let webview = builder
                 // **Each view its own id**, because wry's macOS half keeps a view's state in a map keyed by it,
                 // and two views with one id overwrite each other's custom protocol. `task-2270`.
@@ -2321,6 +2356,13 @@ mod native {
                 .with_permission_handler(|_| PermissionResponse::Deny)
                 .with_download_started_handler(|_, _| false)
                 .with_navigation_handler(allowed_navigation)
+                // The page's modifier wheel and zoom keys, which [`super::ZOOM_GESTURES`] posts. `task-2336`.
+                .with_ipc_handler(move |message| {
+                    if let Some(steps) = super::zoom_message(message.body()) {
+                        let _ = zoom_sender.send(BrowserEvent::ZoomAsked { id, steps });
+                        zoom_repaint.request_repaint();
+                    }
+                })
                 .with_new_window_req_handler(move |url, _| {
                     let _ = popup_sender.send(BrowserEvent::OpenRequested { source: id, url });
                     popup_repaint.request_repaint();
@@ -3381,6 +3423,24 @@ mod native {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `task-2336`: a page can post exactly three words to the host, and everything else it posts is ignored.
+    #[test]
+    fn a_page_can_ask_for_a_zoom_and_for_nothing_else() {
+        assert_eq!(zoom_message("unluminous-zoom:in"), Some(1));
+        assert_eq!(zoom_message("unluminous-zoom:out"), Some(-1));
+        assert_eq!(zoom_message("unluminous-zoom:reset"), Some(0));
+        for other in
+            ["", "unluminous-zoom:", "unluminous-zoom:in ", "open file:///c:/", "{\"zoom\":1}"]
+        {
+            assert_eq!(zoom_message(other), None, "{other:?}");
+        }
+        // The script posts those words and nothing else, so the two halves cannot drift apart unnoticed.
+        for word in ["in", "out", "reset"] {
+            assert!(ZOOM_GESTURES.contains(&format!("'{word}'")), "the script posts {word}");
+        }
+        assert!(ZOOM_GESTURES.contains("'unluminous-zoom:' + which"));
+    }
 
     /// `task-2203`: a node left on a local page wrote `unluminous://tab-3/page.html`, and the next run refused
     /// the scheme, so the node came back with no page. Both of the forms an engine reports are read as the

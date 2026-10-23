@@ -2707,6 +2707,39 @@ its own custom layout (same behavior as if they were open in different windows).
   Tab`, `Next Project Tab` and `Previous Project Tab` (`Ctrl`/`Cmd`+`Alt`+`PageDown`/`PageUp`) are the agent's half.
   `tests/project_tabs.rs` is the tests.
 
+## What `task-2336` changed, and the rules it left
+
+`tasks/task-2336-unluminous-issues-v28-tdd.md` is the design. Five rules:
+
+- **A page reports its own zoom gesture, through the one message a page can send.** `services/browser_zoom.js`
+  is put in every page. It catches `Ctrl`/`Cmd` with the wheel, and `Ctrl` with `=`, `-` and `0` (not on macOS,
+  where the menu bar takes them first), after the page's own handlers and only when none of them took it, and
+  posts `unluminous-zoom:in`, `out` or `reset` through `window.ipc.postMessage`. `browser::zoom_message` reads
+  those three words and nothing else, and `BrowserEvent::ZoomAsked` reaches `zoom_the_page_that_asked`, which
+  steps a node through `zoom_a_node` and a pane's tab through `step_the_page_zoom`. The engine used to zoom the
+  page itself, and a browser node's next camera move put it back, because the node's zoom was never told.
+- **The zoom keys go to the browser node under the pointer** while the canvas has the keyboard
+  (`the_keys_zoom_a_browser_node`). The pointer is asked of the operating system (`system_files::pointer`),
+  because egui is told nothing while it is over a native page.
+- **A file template is a `<Name>.<extension>.ft` file**, IntelliJ's shape, in `<settings>/templates` or the
+  project's `.unluminous/templates`, and `services::file_templates` holds all of it with no window. The five
+  common types are built in templates, so one of a person's own with the same name replaces it. `${NAME}` and
+  the other standard variables, `#set` and `#parse` are filled in; any other `${Variable}` is asked for, one
+  prompt each, and `$word` with no braces and no value is left alone because it is code. A template's action is
+  named by its slug: `new-file-from-html-file`, `new-untitled-tab-rust-file`.
+- **A tab with no file has a proposed name** (`OpenFile::proposed`), which names the tab and decides its
+  language through `OpenFile::language_path`. Ask that rather than `path()` wherever the question is "what
+  language is this".
+- **Save on a tab with no file opens the Save dialog** (`components::save_dialog`, `app::saving`), and so does
+  closing one with changes in it, with `Don't Save` as a third answer. Nothing writes `untitled.md` into the
+  project any more. `modal type <name> --folder <folder>`, `modal choose`, `modal accept [--discard]` drive it,
+  and `tab save-as` still saves with no dialog.
+
+Tool calls in the chat are laid out by `components::agent_chat::tool_view`: a command in a `sh` fence under its
+description, an edit as a `diff`, written content in its file's language, short values as a list of bold names and code values,
+and the answer under `Result`, cut at 400 lines. It is Markdown the chat already renders, built by pure
+functions with tests over each tool's real arguments.
+
 ## What `task-2325` changed, and the rules it left
 
 - **The interface zoom is the window's, and a project tab's setup leaves it alone.** egui takes a new zoom at the

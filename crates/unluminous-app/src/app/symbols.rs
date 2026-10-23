@@ -266,8 +266,10 @@ impl UnluminousApp {
             .as_ref()
             .is_some_and(|read| read.revision == revision);
         if !fresh {
-            let grammar =
-                self.grammar_for(self.files.at(index).path()).cloned().unwrap_or_default();
+            let grammar = self
+                .grammar_for(self.files.at(index).language_path().as_deref())
+                .cloned()
+                .unwrap_or_default();
             let text = self.files.at(index).document.text().to_string();
             // Off the colouring's own tokens when they describe this revision, which is the tab that
             // is showing on every frame after it was coloured: one pass over the rules per keystroke
@@ -1067,7 +1069,10 @@ impl UnluminousApp {
             return;
         }
         let wanted = modal.new_name.trim().to_owned();
-        let grammar = self.grammar_for(self.files.active().path()).cloned().unwrap_or_default();
+        let grammar = self
+            .grammar_for(self.files.active().language_path().as_deref())
+            .cloned()
+            .unwrap_or_default();
         let refusal = symbols::check_name(&wanted, &grammar).err();
         let warning = refusal.is_none().then(|| self.collision(&wanted)).flatten();
         if let Some(modal) = self.references.as_mut() {

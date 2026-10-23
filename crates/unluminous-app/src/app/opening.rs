@@ -676,6 +676,18 @@ impl UnluminousApp {
             self.browser.close_tab(id);
             self.page_stills.forget(id);
         }
+        // **A tab with no file and changes in it asks where to save them** (`task-2336`): *"If I close the tab
+        // before saving where to save it, it should prompt me with the pop up."* It used to close and say the
+        // text was not saved. The dialog's `Don't Save` closes it, through `close_tab_without_saving`.
+        if self.files.get(index).is_some_and(|file| {
+            file.path().is_none()
+                && file.document.is_modified()
+                && file.is_a_document()
+                && file.follows.is_none()
+        }) {
+            self.ask_where_to_save(index, true);
+            return;
+        }
         // Written down **before** it is closed, because afterwards there is no tab to ask where it
         // was. `task-1922` WP4.
         self.remember_a_closed_tab(index);
@@ -854,14 +866,10 @@ impl UnluminousApp {
             return;
         }
         if self.document().path().is_none() {
-            // With no file to save to, write into the folder the explorer is showing rather than silently
-            // doing nothing.
-            let target = self.tree.root().join("untitled.md");
-            if self.document_mut().save_as(&target).is_ok() {
-                self.files.active_mut().note_what_is_on_disk();
-                self.tree.reload();
-                self.the_project_changed_on_disk();
-            }
+            // **With no file to save to, ask where** (`task-2336`): *"When I save the file, it should prompt me
+            // with a pop up that allows me to see a folder explorer … and let me choose which dir to save in."*
+            // It used to write `untitled.md` into the project folder without asking.
+            self.ask_where_to_save(self.files.active_index(), false);
             return;
         }
         // `editor.trim`, before the bytes are written and as an ordinary `Command`, so it is one undo

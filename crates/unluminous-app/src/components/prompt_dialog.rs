@@ -29,6 +29,23 @@ pub enum Purpose {
     NewFile(PathBuf),
     /// Make a folder inside this one, with the name that is typed.
     NewFolder(PathBuf),
+    /// Make a file in this folder from the template with this name, called what is typed. `task-2336`.
+    NewFromTemplate { folder: PathBuf, template: String },
+    /// Open a tab with no file from the template with this name (none when empty), called what is typed.
+    NewUntitledTab(String),
+    /// The value of one variable a template asks for, on the way to making what [`Made`] says.
+    TemplateVariable {
+        made: Made,
+        template: String,
+        /// The values given so far, the variable's name and what was typed.
+        given: Vec<(String, String)>,
+        /// The variable this prompt asks for.
+        asking: String,
+        /// The ones still to ask for after it.
+        remaining: Vec<String>,
+    },
+    /// Make a template from this file, called what is typed.
+    SaveAsTemplate(PathBuf),
     /// Rename this file or folder to the name that is typed.
     Rename(PathBuf),
     /// Start a branch with the name that is typed, from the current one.
@@ -67,6 +84,15 @@ pub enum Purpose {
     /// of its own because it is exactly what this modal is: one line of text, a note saying what
     /// will happen, and a button that does it.
     GoToLine,
+}
+
+/// What a template is being expanded into once its variables are known. `task-2336`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Made {
+    /// A file at this path.
+    File(PathBuf),
+    /// A tab with no file, going to be called this.
+    Tab(String),
 }
 
 /// A prompt the window is showing.

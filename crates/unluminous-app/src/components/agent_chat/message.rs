@@ -921,57 +921,25 @@ fn tool_body_height(state: &mut PaneState, look: &Look<'_>, tool: &ToolCall, wid
         state,
         look,
         &format!("tool-args-{}", tool.id),
-        &fenced(&tool.arguments),
+        &super::tool_view::arguments_markdown(tool),
         inside,
     );
     if let Some(answer) = &tool.answer {
-        height += rendered_height(
-            state,
-            look,
-            &format!("tool-answer-{}", tool.id),
-            &fenced(answer),
-            inside,
-        );
+        height += ANSWER_GAP
+            + rendered_height(
+                state,
+                look,
+                &format!("tool-answer-{}", tool.id),
+                &super::tool_view::answer_markdown(tool, answer),
+                inside,
+            );
     }
     height + 6.0
 }
 
-/// A tool's arguments or its answer, as a fenced block so the markdown renderer sets it in the code
-/// font and puts it in a well.
-///
-/// **JSON is laid out over several lines and fenced as `json`.** `task-2060`: *"The formatting of
-/// the agent commands needs to be improved. Pretty print, better text coloring (keyword highlights,
-/// etc."* A tool call's arguments arrive as one long line of JSON, and a fence with no language
-/// after it names nothing, so the plugin that would colour it is never asked and the whole block
-/// is drawn in the one code colour. Named, the JSON plugin tells its strings, its numbers and its
-/// three literal values apart, exactly as it does in a `.json` file.
-///
-/// Anything that is not JSON is left exactly as it arrived, in a fence naming no language: a shell
-/// command's output is not JSON, and colouring it as though it were would be colouring it wrongly.
-fn fenced(text: &str) -> String {
-    let trimmed = text.trim();
-    match laid_out_json(trimmed) {
-        Some(pretty) => format!("```json\n{pretty}\n```"),
-        None => format!("```\n{trimmed}\n```"),
-    }
-}
-
-/// `text` laid out over several lines when it is JSON worth laying out, and [`None`] when it is not.
-///
-/// An object or an array only. A bare string, a number or `null` is JSON too and is already one
-/// line, so laying it out would change nothing and the fence would claim a language for a word.
-///
-/// The limit is not tidiness: this runs whenever the block is rendered again, and a tool can answer
-/// with a great deal. `shorten_for_a_model` cuts what goes back up the wire at eight thousand
-/// characters and this is the same order of size, some way above it.
-fn laid_out_json(text: &str) -> Option<String> {
-    const LIMIT: usize = 64_000;
-    if text.len() > LIMIT || !text.starts_with(['{', '[']) {
-        return None;
-    }
-    let value: serde_json::Value = serde_json::from_str(text).ok()?;
-    serde_json::to_string_pretty(&value).ok()
-}
+/// The room between what a call was asked and what it answered, so `Result` reads as the start of a section
+/// rather than the next line of the arguments. `task-2336`.
+const ANSWER_GAP: f32 = 10.0;
 
 /// The line under a question that is waiting its turn behind an answer.
 ///
@@ -1467,7 +1435,7 @@ fn read_card(
     acts
 }
 
-/// What a call was asked and what it answered, as fenced blocks, from the top of `area`.
+/// What a call was asked and what it answered, laid out by `tool_view`, from the top of `area`.
 fn tool_body(
     tool: &ToolCall,
     state: &mut PaneState,
@@ -1476,13 +1444,14 @@ fn tool_body(
     area: Rect,
 ) {
     let code = in_a_well(look);
-    let arguments = fenced(&tool.arguments);
+    let arguments = super::tool_view::arguments_markdown(tool);
     let made = rendered(state, look, &format!("tool-args-{}", tool.id), &arguments, area.width());
     let used = made.height();
     crate::components::markdown_text::show_with(ui, area, made, look.renderer, 0.0, Some(code));
     if let Some(answer) = &tool.answer {
-        let below = Rect::from_min_max(Pos2::new(area.left(), area.top() + used), area.max);
-        let text = fenced(answer);
+        let below =
+            Rect::from_min_max(Pos2::new(area.left(), area.top() + used + ANSWER_GAP), area.max);
+        let text = super::tool_view::answer_markdown(tool, answer);
         let made = rendered(state, look, &format!("tool-answer-{}", tool.id), &text, below.width());
         crate::components::markdown_text::show_with(
             ui,
@@ -2028,25 +1997,16 @@ mod tests {
         assert_eq!(Piece::Block { segment: 1, height: 42.0 }.height(), 42.0);
     }
 
-    /// `task-2060`: a tool call's arguments are laid out and fenced as JSON so a plugin colours them.
+    /// `task-2060`: an answer that is JSON is laid out and fenced as JSON so a plugin colours it, and
+    /// one that is not is left as it came. `task-2336` moved this into `tool_view`.
     #[test]
-    fn a_tools_arguments_are_laid_out_and_named_as_json() {
-        // One long line of JSON becomes several lines, and the fence names the language — which is
-        // what makes the JSON plugin colour its strings, its numbers and its three literals.
-        assert_eq!(fenced("  {\"a\":1} "), "```json\n{\n  \"a\": 1\n}\n```");
-        assert_eq!(fenced("[1,2]"), "```json\n[\n  1,\n  2\n]\n```", "an array is laid out too");
-        // Anything that is not JSON arrives as it is, in a fence naming nothing: a shell command's
-        // output is not JSON and colouring it as though it were would colour it wrongly.
-        assert_eq!(fenced(" total 12\ndrwx "), "```\ntotal 12\ndrwx\n```");
-        assert_eq!(
-            fenced("{\"path\": "),
-            "```\n{\"path\":\n```",
-            "arguments cut off mid-stream are not JSON and are shown as they came"
-        );
-        // A bare string or a number is JSON and is already one line, so it is left alone rather than
-        // fenced as a document of one word.
-        assert_eq!(fenced("\"ok\""), "```\n\"ok\"\n```");
-        assert_eq!(laid_out_json("12"), None);
+    fn a_tools_answer_is_laid_out_as_json_only_when_it_is_json() {
+        let tool = ToolCall::new("1", "x", "{}");
+        let answer = |text: &str| super::super::tool_view::answer_markdown(&tool, text);
+        assert_eq!(answer("  {\"a\":1} "), "**Result**\n\n```json\n{\n  \"a\": 1\n}\n```");
+        assert_eq!(answer(" total 12\ndrwx "), "**Result**\n\n```\n total 12\ndrwx\n```");
+        assert_eq!(answer("\"ok\""), "**Result**\n\n```\n\"ok\"\n```");
+        assert_eq!(super::super::tool_view::laid_out_json("12"), None);
     }
 
     /// A block of words sits in the middle of the room reserved for it, not at the top of it.

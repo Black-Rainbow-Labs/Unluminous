@@ -305,14 +305,26 @@ fn keep_the_original_places(
             ((was.pos.to_vec2() * scale * pixels_per_point).round() / pixels_per_point).to_pos2();
         let row = std::sync::Arc::make_mut(&mut now.row);
         let glyph_vertices = row.visuals.glyph_vertex_range.clone();
-        let (was_start, was_end) = row_extent(&was.row.glyphs);
-        let (now_start, now_end) = row_extent(&row.glyphs);
-        let stretch = match now_end - now_start > 0.0 {
-            true => (was_end - was_start) * scale / (now_end - now_start),
-            false => 1.0,
-        };
+        let (was_start, _) = row_extent(&was.row.glyphs);
+        let (now_start, _) = row_extent(&row.glyphs);
+        // **How far the sharp letters have drifted from the caret's places, followed from the left only**
+        // (`task-2336`: *"while typing in some fields … the previous text slightly shifts"*). This used to be one
+        // stretch for the whole row, the original row's width over the sharp row's, and that ratio changes with
+        // every letter typed at the end: measured at a modal zoom of 1.1 and 1.25, typing into the 20 point ticket
+        // title moved letters already typed by 11 to 160 pixels' worth of columns. Each letter is now moved by a
+        // running average of the drift up to and including itself, so what comes after it cannot move it, the
+        // gap between two neighbours stays within a fraction of a pixel of the font's own, and the ink stays
+        // within about a pixel of the caret's places.
+        let mut drift: Option<f32> = None;
         for (from, glyph) in was.row.glyphs.iter().zip(row.glyphs.iter_mut()) {
-            let ink_shift = was_start * scale + (glyph.pos.x - now_start) * stretch - glyph.pos.x;
+            let sharp = was_start * scale + (glyph.pos.x - now_start);
+            let off = from.pos.x * scale - sharp;
+            let followed = match drift {
+                None => off,
+                Some(before) => before + FOLLOW_THE_DRIFT * (off - before),
+            };
+            drift = Some(followed);
+            let ink_shift = sharp + followed - glyph.pos.x;
             glyph.pos.x = from.pos.x * scale;
             if glyph.uv_rect.is_nothing() {
                 continue;
@@ -334,6 +346,12 @@ fn keep_the_original_places(
         row.visuals.mesh_bounds = row.visuals.mesh.calc_bounds();
     }
 }
+
+/// How much of the difference between a letter's sharp place and the caret's place for it is taken up at each
+/// letter, in [`keep_the_original_places`]. Higher follows the caret more closely and lets a neighbouring gap
+/// wander more; `the_sharper_words_stay_where_the_caret_was_measured_from` and
+/// `neighbouring_letters_keep_the_fonts_own_spacing_at_the_zoom` hold the two ends of it.
+const FOLLOW_THE_DRIFT: f32 = 0.35;
 
 /// Where a row's glyphs start and where its last one's advance ends, in the row's own points.
 fn row_extent(glyphs: &[egui::epaint::text::Glyph]) -> (f32, f32) {
@@ -798,6 +816,43 @@ mod tests {
                     (expected - drawn).abs() < pixel,
                     "at {scale} a row meant for {expected} is at {drawn}"
                 );
+            }
+        }
+    }
+
+    /// `task-2336`: a letter typed at the end of a line does not move the letters before it. The whole row used to
+    /// be stretched by one ratio of its two widths, which every new letter changed.
+    #[test]
+    fn a_letter_added_at_the_end_leaves_the_sharp_letters_before_it_where_they_were() {
+        let context = egui::Context::default();
+        let mut output = context.run_ui(egui::RawInput::default(), |_| {});
+        output.textures_delta.clear();
+        let painter = Painter::new(context.clone(), egui::LayerId::background(), Rect::EVERYTHING);
+        let words = "The quick brown fox jumps; Wavy AV pull 0.5 tij";
+        for size in [13.0_f32, 20.0] {
+            for scale in [1.1_f32, 1.25, 1.6] {
+                let mut before: Option<Vec<f32>> = None;
+                for end in 1..=words.len() {
+                    let plain = painter.layout_no_wrap(
+                        words[..end].to_owned(),
+                        FontId::proportional(size),
+                        Color32::WHITE,
+                    );
+                    let mut shape =
+                        egui::Shape::Text(TextShape::new(Pos2::ZERO, plain, Color32::WHITE));
+                    sharpen(&context, &mut shape, scale);
+                    let egui::Shape::Text(sharp) = shape else { panic!("still text") };
+                    let now = ink_lefts(&sharp.galley.rows[0]);
+                    if let Some(was) = &before {
+                        for (index, (a, b)) in was.iter().zip(now.iter()).enumerate() {
+                            assert!(
+                                (a - b).abs() < 0.001,
+                                "at {size} points and {scale}, typing letter {end} moved letter {index} from {a} to {b}"
+                            );
+                        }
+                    }
+                    before = Some(now);
+                }
             }
         }
     }

@@ -190,7 +190,8 @@ impl UnluminousApp {
             self.colour_the_notebook(index);
             return;
         }
-        let Some(path) = self.files.at(index).path().map(Path::to_path_buf) else {
+        // The name a new tab is going to have counts, so `notes.rs` is Rust before it is saved. `task-2336`.
+        let Some(path) = self.files.at(index).language_path() else {
             self.files.at_mut(index).coloured_revision = Some(revision);
             return;
         };

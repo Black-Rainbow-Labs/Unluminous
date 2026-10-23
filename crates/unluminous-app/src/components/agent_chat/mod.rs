@@ -34,6 +34,7 @@ pub mod composer;
 pub mod kit;
 pub mod message;
 pub mod settings_page;
+pub mod tool_view;
 pub mod welcome;
 
 use egui::{CornerRadius, Pos2, Rect, Stroke, Vec2};

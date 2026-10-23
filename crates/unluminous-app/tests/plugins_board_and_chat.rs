@@ -5421,3 +5421,148 @@ fn a_drag_selects_the_words_of_a_comment_being_written_at_every_zoom() {
     }
     assert!(failures.is_empty(), "{} of 12 drags failed:\n{}", failures.len(), failures.join("\n"));
 }
+
+/// `task-2336`: *"In task modal for agent tasks, I see oddness while typing in some fields, where the previous text
+/// slightly shifts. We need to deeply evaluate our text inputs at different zooms, with different content."*
+///
+/// Types a sentence into each of the ticket's text fields one character at a time, at several display densities
+/// and modal zooms, and photographs the window after every character. Typing a character changes the pixels
+/// from where the previous character began, rightwards: the caret leaves, the new letter lands, the caret
+/// arrives. **Any change left of that point is the text that was already there moving**, which is what was
+/// reported, and the test counts it.
+#[test]
+fn typing_in_a_ticket_never_moves_the_text_already_typed() {
+    // Kerned pairs, a semicolon, digits and narrow letters, which are where a rounding shows.
+    let words = "Wavy AV fox; pull 0.5 tij";
+    let mut moved: Vec<String> = Vec::new();
+    let mut measured = 0;
+    // Measured before the fix: the title moved at a modal zoom of 1.1 and 1.25 and at no density alone.
+    for (density, zoom) in [(1.0, 1.0), (1.5, 1.0), (1.0, 1.1), (1.0, 1.25), (1.5, 0.9)] {
+        for field in ["Ticket title", "Comment"] {
+            let mut harness = harness("");
+            harness.set_pixels_per_point(density);
+            did(&mut harness, "plugins pane agent-tasks/board --show");
+            did(&mut harness, "plugins run agent-tasks new-task Shift");
+            did(&mut harness, "plugins run agent-tasks close");
+            did(&mut harness, "plugins run agent-tasks open task-1");
+            steady(&mut harness);
+            if zoom != 1.0 {
+                let ctx = harness.ctx.clone();
+                let modal = unluminous_app::components::modal::the_open_one(&ctx)
+                    .expect("the ticket modal");
+                unluminous_app::components::modal::set_zoom(&ctx, modal, zoom);
+                steady(&mut harness);
+            }
+            // The field rather than the button of the same name beside the comment box.
+            let box_of = |harness: &Harness<'static, UnluminousApp>| {
+                harness
+                    .query_all_by_label(field)
+                    .find(|node| node.value().is_some())
+                    .map(|node| node.rect())
+                    .expect("the field")
+            };
+            harness
+                .query_all_by_label(field)
+                .find(|node| node.value().is_some())
+                .expect("the field")
+                .click();
+            steady(&mut harness);
+            if field == "Ticket title" {
+                // Empty the title first, so what is measured is typing from the start of the line.
+                harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+                harness.key_press(egui::Key::Backspace);
+                steady(&mut harness);
+            }
+            let area = box_of(&harness);
+            let pixels = |x: f32| (x * density).round() as i64;
+            let (left, right) = (pixels(area.left()), pixels(area.right()));
+            let (top, bottom) = (pixels(area.top()), pixels(area.bottom()));
+            let mut before = harness.render().expect("a picture");
+            let mut previous_start: Option<i64> = None;
+            for (at, letter) in words.chars().enumerate() {
+                harness.input_mut().events.push(egui::Event::Text(letter.to_string()));
+                steady(&mut harness);
+                let after = harness.render().expect("a picture");
+                let mut leftmost: Option<i64> = None;
+                for x in left.max(0)..right.min(after.width() as i64) {
+                    let changed = (top.max(0)..bottom.min(after.height() as i64)).any(|y| {
+                        before.get_pixel(x as u32, y as u32) != after.get_pixel(x as u32, y as u32)
+                    });
+                    if changed {
+                        leftmost = Some(x);
+                        break;
+                    }
+                }
+                measured += 1;
+                if let (Some(now), Some(was)) = (leftmost, previous_start) {
+                    if now + 1 < was {
+                        moved.push(format!(
+                            "{field} at density {density} zoom {zoom}: typing {letter:?} (character {at}) changed pixels {} px left of where the previous character began",
+                            was - now
+                        ));
+                    }
+                }
+                previous_start = leftmost.or(previous_start);
+                before = after;
+            }
+        }
+    }
+    eprintln!("measured {measured} keystrokes; {} moved earlier text", moved.len());
+    for line in &moved {
+        eprintln!("  {line}");
+    }
+    assert!(
+        moved.is_empty(),
+        "{} of {measured} keystrokes moved text already typed:\n{}",
+        moved.len(),
+        moved.join("\n")
+    );
+}
+
+/// `task-2336`: *"The tool calls show json, but the json formatting is ugly and hard to read."* An open shell
+/// call shows its command under what it is for and its answer under `Result`; an open edit shows a diff and the
+/// file it is about in a table.
+#[test]
+fn an_open_tool_call_is_laid_out_rather_than_shown_as_json() {
+    let mut harness = harness("");
+    did(&mut harness, "plugins pane agent-chat/chat --show");
+    did(&mut harness, "plugins run agent-chat use local");
+    steady(&mut harness);
+    with_the_chat(&mut harness, |chat| {
+        let session = chat.session_mut();
+        let id = session.chat.next_id();
+        session.chat.push(unluminous_chat::Message::said(
+            id,
+            unluminous_chat::Role::User,
+            "Build it and rename the helper.",
+        ));
+        let id = session.chat.next_id();
+        let mut building =
+            unluminous_chat::Message::said(id, unluminous_chat::Role::Assistant, "Building first.");
+        let mut bash = unluminous_chat::ToolCall::new(
+            "t1",
+            "Bash",
+            r#"{"command":"cargo build --release -p unluminous-app","description":"Build the window in release","timeout":600000}"#,
+        );
+        bash.answer = Some("   Compiling unluminous-app v1.9.0\n    Finished `release` profile [optimized] in 41.2s".to_owned());
+        bash.took = Some(41_200);
+        building.tools.push(bash);
+        session.chat.push(building);
+        let id = session.chat.next_id();
+        let mut editing =
+            unluminous_chat::Message::said(id, unluminous_chat::Role::Assistant, "Now the rename.");
+        let mut edit = unluminous_chat::ToolCall::new(
+            "t2",
+            "Edit",
+            r#"{"file_path":"src/app/zoom.rs","old_string":"fn step(zoom: f32) -> f32 {\n    zoom * 1.1\n}","new_string":"fn step_the_zoom(zoom: f32) -> f32 {\n    zoom * 1.1\n}"}"#,
+        );
+        edit.answer = Some("The file src/app/zoom.rs has been updated.".to_owned());
+        edit.took = Some(12);
+        editing.tools.push(edit);
+        session.chat.push(editing);
+        chat.ui.opened_tools.push("t1".to_owned());
+        chat.ui.opened_tools.push("t2".to_owned());
+    });
+    steady(&mut harness);
+    harness.snapshot(shot("agent_chat_tool_laid_out").as_str());
+}

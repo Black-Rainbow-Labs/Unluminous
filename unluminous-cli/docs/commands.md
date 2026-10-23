@@ -725,13 +725,30 @@ unluminous-cli tab move 0
 unluminous-cli tab move 0 --tab notes.md --pane 1
 ```
 
+### tab new
+
+```
+unluminous-cli tab new [--name <name>] [--template <name>] [--set <KEY=VALUE>]
+```
+
+Open a tab with no file behind it, empty or from a file template: New Tab on the editor's right click menu.
+
+- `--name <name>` — What it is called, such as notes.md, which decides its language.
+- `--template <name>` — A template's name or slug.
+- `--set <KEY=VALUE>` — Values for the template's variables, separated by ;.
+
+```sh
+unluminous-cli tab new --name notes.md
+unluminous-cli tab new --name page --template html-file
+```
+
 ### tab save
 
 ```
 unluminous-cli tab save [--path <file>]
 ```
 
-Write the tab that is showing back to its file.
+Write the tab that is showing back to its file. A tab with no file opens the Save dialog.
 
 - `--path <file>` — The file to act on. It is shown first, and opened in a tab of its own when it is not open. The tab that is showing when it is left out.
 
@@ -4059,15 +4076,50 @@ unluminous-cli explorer move src/app/layout.ts src/draw --dry-run --json
 ### explorer new-file
 
 ```
-unluminous-cli explorer new-file <path>
+unluminous-cli explorer new-file <path> [--template <name>] [--set <KEY=VALUE>]
 ```
 
-Make an empty file, create its parent folders, update Unluminous's live tree and open it in a tab. The same thing New -> File on the explorer's right click menu does, without the dialog.
+Make a file, its parent folders too, and open it in a tab: New on the explorer's right click menu without the dialog. Empty, or from a file template.
 
 - `path` — Where the file goes, relative to the project or absolute.
 
+- `--template <name>` — A template's name or slug, as `explorer templates` lists them. Its extension is added when the path has none.
+- `--set <KEY=VALUE>` — Values for the variables the template asks for, separated by ;.
+
 ```sh
 unluminous-cli explorer new-file notes/today.md
+unluminous-cli explorer new-file site/index --template html-file
+unluminous-cli explorer new-file src/card --template react-component --set Author=Jason
+```
+
+### explorer templates
+
+```
+unluminous-cli explorer templates
+```
+
+Every file template, built in, yours or the project's, with its extension and the variables it asks for.
+
+```sh
+unluminous-cli explorer templates
+unluminous-cli explorer templates --json
+```
+
+### explorer save-template
+
+```
+unluminous-cli explorer save-template <path> [--name <name>] [--project]
+```
+
+Make a file template from a file: Save File as Template on the explorer's right click menu.
+
+- `path` — The file it is made from.
+
+- `--name <name>` — What it is called. The file's name when left out.
+- `--project` — Keep it in the project rather than with your settings.
+
+```sh
+unluminous-cli explorer save-template src/card.tsx --name Card
 ```
 
 ### explorer new-folder
@@ -4182,7 +4234,7 @@ unluminous-cli modal state --json
 ### modal type
 
 ```
-unluminous-cli modal type [text] [--match-case]
+unluminous-cli modal type [text] [--match-case] [--folder <folder>]
 ```
 
 Put text in the box of the modal that is open, as though it had been typed.
@@ -4190,10 +4242,12 @@ Put text in the box of the modal that is open, as though it had been typed.
 - `text` (optional) — What to put in the box. The box is cleared when this is left out. Everything after it on the line belongs to it.
 
 - `--match-case` — Turn on Find in Files' match case tick box while typing.
+- `--folder <folder>` — The Save dialog's folder.
 
 ```sh
 unluminous-cli modal type unluminous-cli
 unluminous-cli modal type --match-case Unluminous
+unluminous-cli modal type notes.md --folder docs
 ```
 
 ### modal results
@@ -4229,16 +4283,19 @@ unluminous-cli modal choose 2
 ### modal accept
 
 ```
-unluminous-cli modal accept [index]
+unluminous-cli modal accept [index] [--discard]
 ```
 
 Do what pressing Enter in the modal does: open the chosen file, jump to the chosen match, or press the modal's main button.
 
 - `index` (optional) — Choose this row first.
 
+- `--discard` — The Save dialog's Don't Save.
+
 ```sh
 unluminous-cli modal accept
 unluminous-cli modal accept 0
+unluminous-cli modal accept --discard
 ```
 
 ### modal cancel

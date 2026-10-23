@@ -284,6 +284,44 @@ impl UnluminousApp {
         }
     }
 
+    /// The browser node the zoom keys step, when the keys are the canvas's and a browser node is what
+    /// they are about. See [`Self::browser_node_the_zoom_keys_are_for`].
+    pub(crate) fn the_keys_zoom_a_browser_node(&self) -> Option<crate::services::realm::NodeId> {
+        if self.the_pane_the_keys_zoom() != Some(dock::Panel::Realm) || !self.realm.visible {
+            return None;
+        }
+        self.browser_node_the_zoom_keys_are_for()
+    }
+
+    /// The browser node the canvas's zoom keys are about, or `None` when they are about the camera.
+    ///
+    /// The node under the pointer when it is a browser node, and otherwise the chosen node when it is one
+    /// and its page holds the keyboard. **The pointer is asked of the operating system** when egui has none,
+    /// because a page is a native window of its own and egui is told nothing while the pointer is over it,
+    /// which is exactly where somebody zooming a page has it. `task-2336`.
+    pub(crate) fn browser_node_the_zoom_keys_are_for(
+        &self,
+    ) -> Option<crate::services::realm::NodeId> {
+        let realm = &self.realm.realm;
+        let is_a_browser = |node: &crate::services::realm::NodeId| {
+            realm
+                .node(*node)
+                .is_some_and(|found| found.kind() == crate::services::realm::Kind::Browser)
+        };
+        let pointer = self.context.as_ref().and_then(|context| {
+            context.pointer_hover_pos().or_else(|| crate::services::system_files::pointer(context))
+        });
+        let under = pointer
+            .filter(|at| self.realm.body.contains(*at))
+            .and_then(|at| realm.node_at(realm.camera.to_world(self.realm.body.min, at)));
+        match under {
+            Some(node) => Some(node).filter(is_a_browser),
+            None => realm
+                .chosen()
+                .filter(|node| is_a_browser(node) && self.browser.page_holds_the_keyboard()),
+        }
+    }
+
     /// Which panel the zoom keys are about, or `None` when they are about the editing area.
     pub(crate) fn the_pane_the_keys_zoom(&self) -> Option<dock::Panel> {
         // **A picture is the one exception, and it is not a nicety.** `task-1658` asks that control and

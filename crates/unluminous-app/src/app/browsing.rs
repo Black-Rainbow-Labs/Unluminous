@@ -239,6 +239,29 @@ impl UnluminousApp {
         self.change_browser_tab(id, |tab| tab.zoom = 1.0);
     }
 
+    /// Zoom the page that posted its modifier wheel or zoom keys (`task-2336`): the node it is on, through
+    /// [`Self::zoom_a_node`] as the modifier wheel over the node's toolbar does, or the tab in a pane.
+    ///
+    /// @param id - the browser tab whose page asked
+    /// @param steps - steps in when positive, out when negative, and back to its own size at `0`
+    pub(crate) fn zoom_the_page_that_asked(&mut self, id: u64, steps: i32) {
+        match (self.realm.live.node_of_browser(id), steps) {
+            // The placement sends the node's zoom times the camera's on the next frame, so only the node's
+            // own number is set here.
+            (Some(node), 0) => self.realm.live.set_page_zoom(node, 1.0),
+            (Some(node), steps) => self.zoom_a_node(node, steps),
+            (None, 0) => self.reset_the_page_zoom(id),
+            (None, steps) => {
+                for _ in 0..steps.unsigned_abs() {
+                    self.step_the_page_zoom(id, steps > 0);
+                }
+            }
+        }
+        if let Some(context) = &self.context {
+            context.request_repaint();
+        }
+    }
+
     /// How large a browser tab draws its page.
     pub fn browser_zoom_of(&self, id: u64) -> f64 {
         self.browser_tab(id).map(|tab| tab.zoom).unwrap_or(1.0)
@@ -706,6 +729,8 @@ impl UnluminousApp {
                     }
                 }
                 BrowserEvent::PickCancelled { .. } => {}
+                // The page's own modifier wheel or zoom keys. `task-2336`.
+                BrowserEvent::ZoomAsked { id, steps } => self.zoom_the_page_that_asked(id, steps),
                 // What a design's overlay script said, which the Designer reads. `task-2254`.
                 BrowserEvent::Reported { id, json } => {
                     self.the_page_of_a_design_reported(id, &json)

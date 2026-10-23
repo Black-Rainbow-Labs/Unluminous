@@ -1012,8 +1012,21 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         area: "tab",
+        verb: "new",
+        summary: "Open a tab with no file behind it, empty or from a file template: New Tab on the editor's right click menu.",
+        arguments: NO_ARGUMENTS,
+        flags: &[
+            option("name", "name", "What it is called, such as notes.md, which decides its language."),
+            option("template", "name", "A template's name or slug."),
+            option("set", "KEY=VALUE", "Values for the template's variables, separated by ;."),
+        ],
+        examples: &["unluminous-cli tab new --name notes.md", "unluminous-cli tab new --name page --template html-file"],
+        local: false,
+    },
+    Command {
+        area: "tab",
         verb: "save",
-        summary: "Write the tab that is showing back to its file.",
+        summary: "Write the tab that is showing back to its file. A tab with no file opens the Save dialog.",
         arguments: NO_ARGUMENTS,
         flags: &[FILE],
         examples: &["unluminous-cli tab save"],
@@ -3494,10 +3507,38 @@ pub const COMMANDS: &[Command] = &[
     Command {
         area: "explorer",
         verb: "new-file",
-        summary: "Make an empty file, create its parent folders, update Unluminous's live tree and open it in a tab. The same thing New -> File on the explorer's right click menu does, without the dialog.",
+        summary: "Make a file, its parent folders too, and open it in a tab: New on the explorer's right click menu without the dialog. Empty, or from a file template.",
         arguments: &[argument("path", true, "Where the file goes, relative to the project or absolute.")],
+        flags: &[
+            option("template", "name", "A template's name or slug, as `explorer templates` lists them. Its extension is added when the path has none."),
+            option("set", "KEY=VALUE", "Values for the variables the template asks for, separated by ;."),
+        ],
+        examples: &[
+            "unluminous-cli explorer new-file notes/today.md",
+            "unluminous-cli explorer new-file site/index --template html-file",
+            "unluminous-cli explorer new-file src/card --template react-component --set Author=Jason",
+        ],
+        local: false,
+    },
+    Command {
+        area: "explorer",
+        verb: "templates",
+        summary: "Every file template, built in, yours or the project's, with its extension and the variables it asks for.",
+        arguments: NO_ARGUMENTS,
         flags: NO_FLAGS,
-        examples: &["unluminous-cli explorer new-file notes/today.md"],
+        examples: &["unluminous-cli explorer templates", "unluminous-cli explorer templates --json"],
+        local: false,
+    },
+    Command {
+        area: "explorer",
+        verb: "save-template",
+        summary: "Make a file template from a file: Save File as Template on the explorer's right click menu.",
+        arguments: &[argument("path", true, "The file it is made from.")],
+        flags: &[
+            option("name", "name", "What it is called. The file's name when left out."),
+            switch("project", "Keep it in the project rather than with your settings."),
+        ],
+        examples: &["unluminous-cli explorer save-template src/card.tsx --name Card"],
         local: false,
     },
     Command {
@@ -3603,8 +3644,15 @@ pub const COMMANDS: &[Command] = &[
         verb: "type",
         summary: "Put text in the box of the modal that is open, as though it had been typed.",
         arguments: &[rest("text", false, "What to put in the box. The box is cleared when this is left out.")],
-        flags: &[switch("match-case", "Turn on Find in Files' match case tick box while typing.")],
-        examples: &["unluminous-cli modal type unluminous-cli", "unluminous-cli modal type --match-case Unluminous"],
+        flags: &[
+            switch("match-case", "Turn on Find in Files' match case tick box while typing."),
+            option("folder", "folder", "The Save dialog's folder."),
+        ],
+        examples: &[
+            "unluminous-cli modal type unluminous-cli",
+            "unluminous-cli modal type --match-case Unluminous",
+            "unluminous-cli modal type notes.md --folder docs",
+        ],
         local: false,
     },
     Command {
@@ -3633,8 +3681,8 @@ pub const COMMANDS: &[Command] = &[
         verb: "accept",
         summary: "Do what pressing Enter in the modal does: open the chosen file, jump to the chosen match, or press the modal's main button.",
         arguments: &[whole("index", false, "Choose this row first.")],
-        flags: NO_FLAGS,
-        examples: &["unluminous-cli modal accept", "unluminous-cli modal accept 0"],
+        flags: &[switch("discard", "The Save dialog's Don't Save.")],
+        examples: &["unluminous-cli modal accept", "unluminous-cli modal accept 0", "unluminous-cli modal accept --discard"],
         local: false,
     },
     Command {

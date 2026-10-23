@@ -35,6 +35,7 @@ pub mod file_kind;
 pub mod file_marks;
 pub mod file_move;
 pub mod file_search;
+pub mod file_templates;
 pub mod file_tree;
 pub mod find;
 pub mod folder_choice;

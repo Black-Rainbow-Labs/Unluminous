@@ -66,6 +66,7 @@ mod panels;
 pub mod report;
 pub mod servers;
 pub mod signature;
+mod templates;
 // The window's side of the UI plugins: which providers are open, and which of their panes are showing.
 pub mod plugin_panes;
 mod preview;
@@ -75,6 +76,7 @@ pub mod realm;
 pub mod realm_files;
 pub mod realm_nodes;
 mod running;
+mod saving;
 mod settings_changes;
 pub mod setup;
 pub mod symbols;
@@ -1254,6 +1256,8 @@ pub struct UnluminousApp {
     window_place: Option<project_state::WindowPlace>,
     /// The text prompt, when one is open.
     pub prompt: Option<Prompt>,
+    /// The Save dialog, for a tab with no file, when it is open. `task-2336`, `app::saving`.
+    pub save_dialog: Option<crate::components::save_dialog::SaveDialog>,
     /// `File -> Create Project...` while it is open. See `components::new_project_dialog`.
     pub new_project: Option<crate::components::new_project_dialog::NewProject>,
     /// The Background grid while it is open, holding why the last thing asked for was refused.
@@ -1688,6 +1692,7 @@ impl UnluminousApp {
             clipboard: FileClipboard::new(),
             explorer_menu: None,
             prompt: None,
+            save_dialog: None,
             new_project: None,
             background_grid: None,
             background_thumbnails: std::collections::HashMap::new(),

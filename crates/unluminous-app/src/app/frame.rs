@@ -143,6 +143,7 @@ impl UnluminousApp {
         // The modals, newest first: the one a person asked for most recently belongs on top of the
         // older ones.
         self.show_the_prompt(ui);
+        self.show_the_save_dialog(ui.ctx());
         self.show_the_new_project_dialog(ui);
         self.show_the_background_grid(ui);
         self.show_the_command_palette(ui);
@@ -1109,8 +1110,10 @@ impl UnluminousApp {
         // The explorer's own menu, drawn after the explorer and the editing area so it sits over
         // both rather than under either.
         if let Some((at, path, directory, aimed)) = self.explorer_menu.clone() {
+            let state =
+                actions::MenuState { templates: self.custom_template_names(), ..self.menu_state() };
             let mut entries = actions::explorer_menu_with_git(
-                &self.menu_state(),
+                &state,
                 &path,
                 directory,
                 self.something_to_paste(),
@@ -1197,7 +1200,8 @@ impl UnluminousApp {
         // The editing area's own menu, which is where a passage is marked. Drawn after the editing
         // area for the same reason the other two are: it has to sit over what it was opened on.
         if let Some(menu) = self.text_menu.clone() {
-            let state = self.menu_state();
+            let state =
+                actions::MenuState { templates: self.custom_template_names(), ..self.menu_state() };
             let mut above = actions::text_menu(&state);
             crate::services::keymap::apply_entries(&mut above, &self.keymap);
             let mut below = actions::clear_highlight_menu(&state);

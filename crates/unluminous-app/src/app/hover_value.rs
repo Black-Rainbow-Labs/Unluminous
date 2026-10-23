@@ -152,7 +152,7 @@ impl UnluminousApp {
     /// One function, so the pointer, `Debug -> Show Value` and `unluminous-cli debug hover` cannot come to
     /// three different conclusions about what a point in a file is a question about.
     pub fn expression_at(&mut self, index: usize, offset: usize) -> Option<Range<usize>> {
-        let grammar = self.grammar_for(self.files.at(index).path())?.clone();
+        let grammar = self.grammar_for(self.files.at(index).language_path().as_deref())?.clone();
         let text = self.files.at(index).document.text().to_string();
         let symbols = &self.tab_symbols(index).read;
         unluminous_core::expressions::at(&text, symbols, &grammar, offset)

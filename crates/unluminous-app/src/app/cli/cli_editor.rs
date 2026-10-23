@@ -1488,7 +1488,10 @@ impl UnluminousApp {
                 }
             },
         };
-        let grammar = self.grammar_for(self.files.active().path()).cloned().unwrap_or_default();
+        let grammar = self
+            .grammar_for(self.files.active().language_path().as_deref())
+            .cloned()
+            .unwrap_or_default();
         if let Err(reason) = unluminous_core::symbols::check_name(to.trim(), &grammar) {
             return no(request, code::USAGE, reason);
         }

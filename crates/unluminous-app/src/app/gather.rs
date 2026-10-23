@@ -258,7 +258,7 @@ impl UnluminousApp {
     /// @param text - the text to read
     /// @param word_start - where the word starts in it
     pub(crate) fn asked_in(&self, text: &str, word_start: usize) -> Asked {
-        let Some(grammar) = self.grammar_for(self.files.active().path()) else {
+        let Some(grammar) = self.grammar_for(self.files.active().language_path().as_deref()) else {
             return Asked::default();
         };
         let place = place::at(text, word_start, grammar);

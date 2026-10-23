@@ -66,6 +66,9 @@ impl UnluminousApp {
         if let Some(prompt) = &self.prompt {
             return Some(prompt_name(prompt).to_owned());
         }
+        if self.save_dialog.is_some() {
+            return Some("save".to_owned());
+        }
         if self.new_project.is_some() {
             return Some("create-project".to_owned());
         }
@@ -137,6 +140,15 @@ impl UnluminousApp {
             map.insert("note".to_owned(), json!(prompt.note));
             map.insert("query".to_owned(), json!(prompt.value));
             map.insert("confirm".to_owned(), json!(prompt.confirm));
+        }
+        if let Some(dialog) = &self.save_dialog {
+            map.insert("tab".to_owned(), json!(dialog.tab_name));
+            map.insert("folder".to_owned(), json!(dialog.folder.to_string_lossy()));
+            map.insert("query".to_owned(), json!(dialog.name));
+            map.insert("target".to_owned(), json!(dialog.target().to_string_lossy()));
+            map.insert("closing".to_owned(), json!(dialog.closing));
+            map.insert("refused".to_owned(), json!(dialog.refusal()));
+            map.insert("results".to_owned(), json!(dialog.rows().len()));
         }
         if let Some(question) = &self.confirmation {
             map.insert("title".to_owned(), json!(question.title));
@@ -407,6 +419,26 @@ impl UnluminousApp {
             prompt.value = text.clone();
             return ok(request, format!("Put {text} in the box"), json!({ "query": text }));
         }
+        // The Save dialog's name, and with `--folder` the folder it goes in. `task-2336`.
+        let folder = request.text("folder").map(|folder| self.cli_path(&folder));
+        if let Some(dialog) = &mut self.save_dialog {
+            if !text.is_empty() {
+                dialog.name = text.clone();
+                dialog.problem = None;
+            }
+            if let Some(folder) = folder {
+                if let Err(problem) = dialog.choose(&folder) {
+                    return no(request, code::NOT_FOUND, problem);
+                }
+            }
+            let target = dialog.target().to_string_lossy().into_owned();
+            let refused = dialog.refusal();
+            return ok(
+                request,
+                format!("Save would write {target}"),
+                json!({ "query": dialog.name, "target": target, "refused": refused }),
+            );
+        }
         no(request, code::NOT_APPLICABLE, "No modal with a box in it is open.")
     }
 
@@ -427,6 +459,32 @@ impl UnluminousApp {
 
     /// What `modal results` answers, once there is something to answer with.
     pub(crate) fn modal_results_reply(&self, request: &Request, limit: usize) -> Reply {
+        // The Save dialog's folder tree, as it is opened. `task-2336`.
+        if let Some(dialog) = &self.save_dialog {
+            let rows = dialog.rows();
+            let shown: Vec<(usize, String, usize)> = rows
+                .iter()
+                .take(limit)
+                .enumerate()
+                .map(|(at, (folder, depth))| (at, folder.to_string_lossy().into_owned(), *depth))
+                .collect();
+            return Reply::done(
+                &request.command,
+                format!(
+                    "{} folders are showing; {} is chosen",
+                    rows.len(),
+                    dialog.folder.display()
+                ),
+                json!({
+                    "results": shown.iter().map(|(at, folder, depth)| json!({
+                        "index": at, "folder": folder, "depth": depth,
+                        "chosen": Path::new(folder) == dialog.folder,
+                    })).collect::<Vec<Value>>(),
+                    "total": rows.len(),
+                    "lines": shown.iter().map(|(at, folder, depth)| format!("{at:<4}{}{folder}", "  ".repeat(*depth))).collect::<Vec<String>>(),
+                }),
+            );
+        }
         if let Some(palette) = &self.palette {
             let rows: Vec<Value> = palette
                 .results()
@@ -588,6 +646,23 @@ impl UnluminousApp {
             find.chosen = index;
             return ok(request, format!("Chose row {index}"), json!({ "chosen": index }));
         }
+        // A row of the Save dialog's tree is a folder, and choosing it opens it too. `task-2336`.
+        if let Some(dialog) = &mut self.save_dialog {
+            let Some((folder, _)) = dialog.rows().get(index).cloned() else {
+                return no(
+                    request,
+                    code::NOT_FOUND,
+                    format!("There is no row {index}; there are {}.", dialog.rows().len()),
+                );
+            };
+            dialog.folder = folder.clone();
+            dialog.open(&folder);
+            return ok(
+                request,
+                format!("Chose {}", folder.display()),
+                json!({ "chosen": index, "folder": folder.to_string_lossy() }),
+            );
+        }
         no(request, code::NOT_APPLICABLE, "No modal with a list in it is open.")
     }
 
@@ -704,6 +779,17 @@ impl UnluminousApp {
                 json!({ "value": value, "message": self.message }),
             );
         }
+        // The Save dialog: Save, or `--discard` for its `Don't Save`. Through the function its buttons call.
+        if let Some(dialog) = self.save_dialog.take() {
+            let answer = match request.switch("discard") {
+                true => crate::components::save_dialog::Answer::DontSave,
+                false => crate::components::save_dialog::Answer::Save,
+            };
+            return match self.answer_the_save_dialog(dialog, answer) {
+                Ok(said) => ok(request, said.clone(), json!({ "message": said })),
+                Err(problem) => no(request, code::REFUSED, problem),
+            };
+        }
         if let Some(question) = self.confirmation.take() {
             // Through the same function the dialog's button goes through, so a question answered
             // from a script and one answered by hand are the same answer.
@@ -746,6 +832,7 @@ impl UnluminousApp {
         self.setup.showing = false;
         self.settings_window.open = false;
         self.prompt = None;
+        self.save_dialog = None;
         self.new_project = None;
         self.background_grid = None;
         self.confirmation = None;
@@ -862,6 +949,10 @@ const MODALS: &[(&str, &str)] = &[
         "File -> Create Project: a name, a location and whether to start a git repository. Takes --query for the name and --path for the location. `explorer new-project` does the whole thing with no dialog.",
     ),
     ("rename", "Rename a file or a folder. Takes --path."),
+    (
+        "save",
+        "The Save dialog for a tab with no file: a folder tree and a name. Opened by `tab save` or by closing such a tab; `modal type <name> --folder <folder>` fills it and `modal accept` saves, `--discard` closes without saving.",
+    ),
 ];
 
 /// The egui id a modal is drawn under, which is what its placement is remembered against.
@@ -875,6 +966,7 @@ fn modal_id(name: &str) -> Option<&'static str> {
         "report" => crate::components::report_dialog::ID,
         "setup" => crate::components::setup_dialog::ID,
         "new-file" | "rename" | "prompt" => "unluminous-prompt",
+        "save" => crate::components::save_dialog::ID,
         "create-project" => "unluminous-new-project",
         "background" => "unluminous-background",
         "confirmation" => "unluminous-confirmation",

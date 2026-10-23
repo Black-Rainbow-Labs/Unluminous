@@ -69,6 +69,7 @@ impl UnluminousApp {
             }
             "move" => self.cli_tab_move(request),
             "save" => self.cli_tab_save(request),
+            "new" => self.cli_tab_new(request),
             "save-as" => self.cli_tab_save_as(request),
             "reload" => self.cli_tab_reload(request),
             _ => unknown(request),
@@ -392,7 +393,42 @@ impl UnluminousApp {
         } else {
             self.close_tab(index);
         }
+        // A tab with no file and changes in it asks where to save them rather than closing. `task-2336`.
+        if self.save_dialog.as_ref().is_some_and(|dialog| dialog.closing) {
+            return ok(
+                request,
+                format!("{name} has changes and no file, so the Save Changes dialog is open. `modal accept` saves, `modal accept --discard` closes without saving, `modal cancel` keeps it open."),
+                json!({ "closed": Value::Null, "dialog": "save", "tab": name }),
+            );
+        }
         ok(request, format!("Closed {name}"), json!({ "closed": name, "tabs": self.files.len() }))
+    }
+
+    /// `unluminous-cli tab new [--name <name>] [--template <name>] [--set KEY=VALUE]...`: the editor's `New Tab`
+    /// menu with no prompts. A tab with no file, holding a template or nothing. `task-2336`.
+    fn cli_tab_new(&mut self, request: &Request) -> Outcome {
+        let template = request.text("template");
+        let name = request.text("name").unwrap_or_else(|| "untitled".to_owned());
+        let given = match template_values(request) {
+            Ok(given) => given,
+            Err(problem) => return no(request, code::USAGE, problem),
+        };
+        if let Some(template) = &template {
+            if let Some(missing) = self.a_template_variable_not_given(template, &given) {
+                return no(request, code::USAGE, missing);
+            }
+        }
+        match self.open_an_untitled_tab(&name, template.as_deref(), &given) {
+            Ok(index) => {
+                let named = self.files.at(index).name();
+                ok(
+                    request,
+                    format!("Opened {named}, with no file yet"),
+                    json!({ "tab": index, "name": named }),
+                )
+            }
+            Err(problem) => no(request, code::REFUSED, problem),
+        }
     }
 
     fn cli_tab_save(&mut self, request: &Request) -> Outcome {
@@ -410,11 +446,15 @@ impl UnluminousApp {
                 "A picture cannot be edited, so there is nothing to save.",
             );
         }
+        // A tab with no file opens the Save dialog, as File -> Save does (`task-2336`). `tab save-as <path>`
+        // saves one with no dialog.
         if self.files.active().path().is_none() {
-            return no(
+            self.save();
+            let name = self.files.active().name();
+            return ok(
                 request,
-                code::NOT_APPLICABLE,
-                "This tab has never been saved. Use `tab save-as <path>`.",
+                format!("{name} has no file yet, so the Save dialog is open. Fill it with `modal type <name> --folder <folder>` and `modal accept`, or use `tab save-as <path>`."),
+                json!({ "dialog": "save", "tab": name }),
             );
         }
         self.save();
@@ -554,4 +594,43 @@ impl UnluminousApp {
             }))
             .collect::<Vec<Value>>())
     }
+}
+
+/// The values `--set` gives a template's variables (`task-2336`): `KEY=VALUE`, several of them separated by `;`
+/// or by new lines, or from a program a list of those or an object of names and values.
+///
+/// @param request - the command, whose `set` is read
+pub(crate) fn template_values(request: &Request) -> Result<Vec<(String, String)>, String> {
+    let pair = |text: &str| -> Result<Option<(String, String)>, String> {
+        let text = text.trim();
+        if text.is_empty() {
+            return Ok(None);
+        }
+        let (key, value) = text
+            .split_once('=')
+            .ok_or_else(|| format!("--set takes KEY=VALUE, and {text} has no =."))?;
+        Ok(Some((key.trim().to_owned(), value.to_owned())))
+    };
+    let mut given = Vec::new();
+    match request.arguments.get("set") {
+        None | Some(Value::Null) => {}
+        Some(Value::String(text)) => {
+            for one in text.split([';', '\n']) {
+                given.extend(pair(one)?);
+            }
+        }
+        Some(Value::Array(items)) => {
+            for item in items {
+                given.extend(pair(item.as_str().unwrap_or_default())?);
+            }
+        }
+        Some(Value::Object(fields)) => {
+            for (key, value) in fields {
+                let value = value.as_str().map(str::to_owned).unwrap_or_else(|| value.to_string());
+                given.push((key.clone(), value));
+            }
+        }
+        Some(other) => return Err(format!("--set takes KEY=VALUE, not {other}.")),
+    }
+    Ok(given)
 }

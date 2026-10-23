@@ -27,6 +27,7 @@ impl UnluminousApp {
     /// What the menus need to know about the window.
     pub fn menu_state(&self) -> MenuState {
         MenuState {
+            templates: Vec::new(),
             updates: self.update_menu(),
             realm_visible: self.was_showing(dock::Panel::Realm, self.realm.visible),
             realm_available: self.realm_is_on(),
@@ -307,6 +308,13 @@ impl UnluminousApp {
             Action::ConvertToPython(path) => {
                 self.convert_between_a_notebook_and_python(&path, false)
             }
+            // Templates and tabs with no file. `task-2336`.
+            Action::NewFileFromTemplate { folder, template } => {
+                self.ask_for_a_file_from_a_template(folder, &template)
+            }
+            Action::SaveAsTemplate(path) => self.ask_to_save_as_template(path),
+            Action::OpenTemplatesFolder => self.open_the_templates_folder(),
+            Action::NewUntitledTab(template) => self.ask_for_an_untitled_tab(&template),
             Action::NewFile(_)
             | Action::NewFolder(_)
             | Action::CutPath(_)
@@ -878,6 +886,19 @@ impl UnluminousApp {
             Action::ChangeFontSize { larger }
                 if self.the_zoom_keys_go_to_a_modal(Some(if larger { 1 } else { -1 })) => {}
             Action::ResetFontSize if self.the_zoom_keys_go_to_a_modal(None) => {}
+            // **A browser node under the pointer takes the canvas's zoom keys** (`task-2336`): *"When hovering over
+            // browser node, CMD + and - should zoom/enlarge the web browser content."* The step the modifier wheel
+            // over the node takes, through `zoom_a_node`, and `Reset Font Size` puts the page back at its own size.
+            Action::ChangeFontSize { larger } if self.the_keys_zoom_a_browser_node().is_some() => {
+                if let Some(node) = self.the_keys_zoom_a_browser_node() {
+                    self.zoom_a_node(node, if larger { 1 } else { -1 });
+                }
+            }
+            Action::ResetFontSize if self.the_keys_zoom_a_browser_node().is_some() => {
+                if let Some(node) = self.the_keys_zoom_a_browser_node() {
+                    self.realm.live.set_page_zoom(node, 1.0);
+                }
+            }
             // A browser tab's keys zoom its page. `task-2255`.
             Action::ChangeFontSize { larger }
                 if self.the_pane_the_keys_zoom().is_none() && self.files.active().is_browser() =>

@@ -286,6 +286,19 @@ pub enum Action {
     RenameTerminalTab,
     /// Make an empty file in this folder. The name is asked for first.
     NewFile(PathBuf),
+    /// Make a file in this folder from the template with this name, a built in type or one of a person's
+    /// own. The name is asked for first, then any variable the template asks for. `task-2336`.
+    NewFileFromTemplate {
+        folder: PathBuf,
+        template: String,
+    },
+    /// Make a template from this file: the reference editor's `Save File as Template`. Its name is asked for first.
+    SaveAsTemplate(PathBuf),
+    /// Show the folder a person's own templates are kept in, making it when it is missing.
+    OpenTemplatesFolder,
+    /// A new tab with no file behind it, holding the template with this name, or nothing when it is
+    /// empty. Its name is asked for first, and Save asks where it goes. `task-2336`.
+    NewUntitledTab(String),
     /// Make a folder inside this one. The name is asked for first.
     NewFolder(PathBuf),
     /// Hold this path to be moved when something is pasted.
@@ -1243,6 +1256,9 @@ impl UpdateMenu {
 /// What the menus need to know about the window to say what can be done and what is switched on.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct MenuState {
+    /// The names of a person's own file templates, which `New -> Templates` and `New Tab` list. Read only
+    /// for the two right click menus that show them. `task-2336`.
+    pub templates: Vec<String>,
     /// The menus the plugins that are switched on contributed, in the order the plugins are listed.
     ///
     /// Worked out from `plugins::Surfaces` when the plugins are read rather than once a frame, so a menu
@@ -2865,15 +2881,28 @@ pub fn explorer_menu(
     // absent is Unluminous's rule for a control that can never apply, and every one of these is live the
     // instant the pointer is over a row.
     let on_a_row = aimed == Aim::AtARow;
+    // The common types and the templates are `task-2336`: *"I want to see new file options for common types,
+    // such as rust file, text, js, html, css … custom templates, similar to the reference editor … a sub menu option called
+    // templates."* The templates themselves are added by [`explorer_menu_with_git`], which has the state.
+    let mut new = vec![
+        Entry::item("File", Action::NewFile(folder.clone())),
+        Entry::item("Folder", Action::NewFolder(folder.clone())),
+        Entry::Separator,
+    ];
+    new.extend(crate::services::file_templates::built_in().into_iter().map(|template| {
+        Entry::item(
+            &template.name,
+            Action::NewFileFromTemplate { folder: folder.clone(), template: template.name.clone() },
+        )
+    }));
+    new.push(Entry::item("Jupyter Notebook", Action::NewNotebookIn(folder.clone())));
+    new.push(Entry::Separator);
+    new.push(Entry::Submenu {
+        name: "Templates".to_owned(),
+        entries: templates_submenu(None, Some(path).filter(|_| on_a_row && !directory)),
+    });
     let mut entries = vec![
-        Entry::Submenu {
-            name: "New".to_owned(),
-            entries: vec![
-                Entry::item("File", Action::NewFile(folder.clone())),
-                Entry::item("Folder", Action::NewFolder(folder.clone())),
-                Entry::item("Jupyter Notebook", Action::NewNotebookIn(folder.clone())),
-            ],
-        },
+        Entry::Submenu { name: "New".to_owned(), entries: new },
         Entry::Separator,
         Entry::with_shortcut(
             "Cut",
@@ -2939,6 +2968,61 @@ pub fn explorer_menu(
     entries
 }
 
+/// What `New -> Templates` holds: each of a person's own templates, then `Save File as Template...` and
+/// `Open Templates Folder`. `task-2336`.
+///
+/// @param custom - the folder a file would go in and the names of the templates that are not built in, when the
+///   window has read them
+/// @param file - the file that was right clicked, which is what `Save File as Template...` is about
+pub fn templates_submenu(
+    custom: Option<(&std::path::Path, &[String])>,
+    file: Option<&std::path::Path>,
+) -> Vec<Entry> {
+    let mut entries = Vec::new();
+    if let Some((folder, names)) = custom {
+        entries.extend(names.iter().map(|name| {
+            Entry::item(
+                name,
+                Action::NewFileFromTemplate {
+                    folder: folder.to_path_buf(),
+                    template: name.clone(),
+                },
+            )
+        }));
+    }
+    if entries.is_empty() {
+        entries.push(Entry::item("No Templates Yet", Action::OpenTemplatesFolder).enabled(false));
+    }
+    entries.push(Entry::Separator);
+    let save = file.map(std::path::Path::to_path_buf).unwrap_or_default();
+    entries.push(
+        Entry::item("Save File as Template...", Action::SaveAsTemplate(save))
+            .enabled(file.is_some()),
+    );
+    entries.push(Entry::item("Open Templates Folder", Action::OpenTemplatesFolder));
+    entries
+}
+
+/// What the editor's `New Tab` submenu holds: an empty untitled tab, the common types and a person's own
+/// templates, each a tab with no file behind it until it is saved. `task-2336`: *"When I right click in file
+/// editor blank space I should be able to see options for creating a new tab with the file name and type."*
+///
+/// @param templates - the names of the templates that are not built in
+pub fn new_tab_menu(templates: &[String]) -> Vec<Entry> {
+    let mut entries =
+        vec![Entry::item("Untitled File", Action::NewUntitledTab(String::new())), Entry::Separator];
+    entries.extend(crate::services::file_templates::built_in().into_iter().map(|template| {
+        Entry::item(&template.name, Action::NewUntitledTab(template.name.clone()))
+    }));
+    if !templates.is_empty() {
+        entries.push(Entry::Separator);
+        entries.extend(
+            templates.iter().map(|name| Entry::item(name, Action::NewUntitledTab(name.clone()))),
+        );
+    }
+    entries
+}
+
 /// The explorer's menu with the `Git` submenu on the end, which is what is actually shown.
 ///
 /// Split from [`explorer_menu`] so the entries that have nothing to do with git can be tested
@@ -2951,6 +3035,19 @@ pub fn explorer_menu_with_git(
     aimed: Aim,
 ) -> Vec<Entry> {
     let mut entries = explorer_menu(path, directory, can_paste, aimed);
+    // A person's own templates, which only the window can read, at the top of `New -> Templates`.
+    let folder = match directory {
+        true => path.to_path_buf(),
+        false => {
+            path.parent().map(std::path::Path::to_path_buf).unwrap_or_else(|| path.to_path_buf())
+        }
+    };
+    let file = Some(path).filter(|_| aimed == Aim::AtARow && !directory);
+    if let Some(Entry::Submenu { entries: new, .. }) = entries.first_mut() {
+        if let Some(Entry::Submenu { entries: templates, .. }) = new.last_mut() {
+            *templates = templates_submenu(Some((&folder, &state.templates)), file);
+        }
+    }
     entries.push(Entry::Separator);
     let mut git = git_submenu(state, path);
     if aimed == Aim::AtEmptySpace {
@@ -3083,6 +3180,11 @@ pub fn text_menu(state: &MenuState) -> Vec<Entry> {
         entries.push(Entry::Separator);
         entries.extend(symbols);
     }
+    entries.push(Entry::Separator);
+    entries.push(Entry::Submenu {
+        name: "New Tab".to_owned(),
+        entries: new_tab_menu(&state.templates),
+    });
     entries
 }
 
@@ -3510,6 +3612,81 @@ mod tests {
             new.iter().any(|entry| matches!(entry, Entry::Item { action, .. } if makes(action))),
             "Folder makes one inside the folder that was clicked"
         );
+    }
+
+    /// `task-2336`: the explorer's `New` submenu holds the five common types, each a template, and a `Templates`
+    /// submenu with a person's own templates above `Save File as Template...` and `Open Templates Folder`. The
+    /// editor's right click menu has `New Tab` with the same list.
+    #[test]
+    fn new_holds_the_common_types_and_the_templates() {
+        let file = std::path::PathBuf::from("/project/src/card.tsx");
+        let folder = std::path::PathBuf::from("/project/src");
+        let state =
+            MenuState { templates: vec!["React Component".to_owned()], ..MenuState::default() };
+        let entries = explorer_menu_with_git(&state, &file, false, false, Aim::AtARow);
+        let Some(Entry::Submenu { name, entries: new }) = entries.first() else {
+            panic!("New is first")
+        };
+        assert_eq!(name, "New");
+        let names: Vec<String> = new
+            .iter()
+            .filter_map(|entry| match entry {
+                Entry::Item { name, .. } => Some(name.clone()),
+                Entry::Submenu { name, .. } => Some(format!("{name} >")),
+                Entry::Separator => None,
+            })
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "File",
+                "Folder",
+                "Rust File",
+                "Text File",
+                "JavaScript File",
+                "HTML File",
+                "CSS File",
+                "Jupyter Notebook",
+                "Templates >"
+            ]
+        );
+        let html = new.iter().find_map(|entry| match entry {
+            Entry::Item { name, action, .. } if name == "HTML File" => Some(action.clone()),
+            _ => None,
+        });
+        assert_eq!(
+            html,
+            Some(Action::NewFileFromTemplate {
+                folder: folder.clone(),
+                template: "HTML File".to_owned()
+            }),
+            "a file goes beside the file that was clicked"
+        );
+        let Some(Entry::Submenu { entries: templates, .. }) = new.last() else {
+            panic!("Templates is last")
+        };
+        let actions: Vec<Action> = templates
+            .iter()
+            .filter_map(|entry| match entry {
+                Entry::Item { action, .. } => Some(action.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            actions,
+            vec![
+                Action::NewFileFromTemplate { folder, template: "React Component".to_owned() },
+                Action::SaveAsTemplate(file),
+                Action::OpenTemplatesFolder,
+            ]
+        );
+        let text = text_menu(&state);
+        let Some(Entry::Submenu { name, entries: tabs }) = text.last() else {
+            panic!("New Tab is last")
+        };
+        assert_eq!(name, "New Tab");
+        assert!(tabs.iter().any(|entry| matches!(entry, Entry::Item { action: Action::NewUntitledTab(t), .. } if t.is_empty())));
+        assert!(tabs.iter().any(|entry| matches!(entry, Entry::Item { action: Action::NewUntitledTab(t), .. } if t == "React Component")));
     }
 
     /// `task-1756`: only HTML rows offer the rendered-tab action, and it keeps the selected path.

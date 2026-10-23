@@ -22,6 +22,16 @@ use std::path::PathBuf;
 use crate::app::actions::{Action, DebugAction, FoldAction, GitAction, HighlightColor, RunAction};
 use crate::app::ViewMode;
 
+/// The name a built in template has when `slug` is its slug, so a menu entry read back from its name is the
+/// same entry; any other slug is kept as it is, and the window finds a person's own template by it.
+fn template_named(slug: &str) -> String {
+    crate::services::file_templates::built_in()
+        .into_iter()
+        .find(|template| template.slug() == slug)
+        .map(|template| template.name)
+        .unwrap_or_else(|| slug.to_owned())
+}
+
 impl Action {
     /// The name the command line calls this action.
     pub fn name(&self) -> String {
@@ -138,6 +148,18 @@ impl Action {
             Action::CloseTerminalTab => "close-terminal-tab".to_owned(),
             Action::RenameTerminalTab => "rename-terminal-tab".to_owned(),
             Action::NewFile(_) => "new-file".to_owned(),
+            // The template is in the name, as a slug, and the folder goes down the path channel. `task-2336`.
+            Action::NewFileFromTemplate { template, .. } => {
+                format!("new-file-from-{}", crate::services::file_templates::slug(template))
+            }
+            Action::SaveAsTemplate(_) => "save-as-template".to_owned(),
+            Action::OpenTemplatesFolder => "open-templates-folder".to_owned(),
+            Action::NewUntitledTab(template) if template.is_empty() => {
+                "new-untitled-tab".to_owned()
+            }
+            Action::NewUntitledTab(template) => {
+                format!("new-untitled-tab-{}", crate::services::file_templates::slug(template))
+            }
             Action::NewFolder(_) => "new-folder".to_owned(),
             Action::CutPath(_) => "cut-path".to_owned(),
             Action::CopyPath(_) => "copy-path".to_owned(),
@@ -168,6 +190,17 @@ impl Action {
     /// is a different failure, reported by [`Action::wants_a_path`], because "there is no such
     /// action" and "that action needs a path" are two different things to be told.
     pub fn from_name(name: &str, path: Option<PathBuf>) -> Option<Action> {
+        // A template is named by its slug, and the window finds it again by that. `task-2336`.
+        if let Some(template) = name.strip_prefix("new-file-from-") {
+            let folder = path.unwrap_or_default();
+            return Some(Action::NewFileFromTemplate {
+                folder,
+                template: template_named(template),
+            });
+        }
+        if let Some(template) = name.strip_prefix("new-untitled-tab-") {
+            return Some(Action::NewUntitledTab(template_named(template)));
+        }
         if let Some(rest) = name.strip_prefix("git-") {
             return GitAction::from_name(rest, path).map(Action::Git);
         }
@@ -324,6 +357,9 @@ impl Action {
             "close-terminal-tab" => Action::CloseTerminalTab,
             "rename-terminal-tab" => Action::RenameTerminalTab,
             "new-file" => Action::NewFile(with_path()),
+            "save-as-template" => Action::SaveAsTemplate(with_path()),
+            "open-templates-folder" => Action::OpenTemplatesFolder,
+            "new-untitled-tab" => Action::NewUntitledTab(String::new()),
             "new-folder" => Action::NewFolder(with_path()),
             "cut-path" => Action::CutPath(with_path()),
             "copy-path" => Action::CopyPath(with_path()),
@@ -560,6 +596,8 @@ mod tests {
             let path = match &action {
                 Action::OpenRecent(path)
                 | Action::NewFile(path)
+                | Action::NewFileFromTemplate { folder: path, .. }
+                | Action::SaveAsTemplate(path)
                 | Action::NewFolder(path)
                 | Action::CutPath(path)
                 | Action::CopyPath(path)

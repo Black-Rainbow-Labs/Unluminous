@@ -4236,6 +4236,10 @@ const EVERY_VARIANT: &[&str] = &[
     "CloseTerminalTab",
     "RenameTerminalTab",
     "NewFile",
+    "NewFileFromTemplate",
+    "SaveAsTemplate",
+    "OpenTemplatesFolder",
+    "NewUntitledTab",
     "NewFolder",
     "CutPath",
     "CopyPath",
@@ -4362,6 +4366,10 @@ fn variant_name(action: &Action) -> &'static str {
         Action::CloseTerminalTab => "CloseTerminalTab",
         Action::RenameTerminalTab => "RenameTerminalTab",
         Action::NewFile(_) => "NewFile",
+        Action::NewFileFromTemplate { .. } => "NewFileFromTemplate",
+        Action::SaveAsTemplate(_) => "SaveAsTemplate",
+        Action::OpenTemplatesFolder => "OpenTemplatesFolder",
+        Action::NewUntitledTab(_) => "NewUntitledTab",
         Action::NewFolder(_) => "NewFolder",
         Action::CutPath(_) => "CutPath",
         Action::CopyPath(_) => "CopyPath",
@@ -4603,6 +4611,10 @@ const CANNOT_BE_DRIVEN: &[(&str, &str)] = &[
     ),
     ("quit", "it closes the window, and the walk has the rest of the actions still to run"),
     ("close-window", "the same: it closes the window"),
+    (
+        "open-templates-folder",
+        "it hands the templates folder to the operating system's own file manager, which opens a window on          this machine; `file_templates` tests the folder it makes",
+    ),
     (
         "reveal-path",
         "it hands the path to the operating system's own file manager, which opens a window on \
@@ -5152,6 +5164,12 @@ fn every_step() -> Vec<Step> {
         Step::new(Action::CloseTerminalTab).ready_with(a_terminal_tab),
         Step::new(Action::RenameTerminalTab).ready_with(a_terminal_tab),
         Step::new(Action::NewFile(folder.join("docs"))),
+        Step::new(Action::NewFileFromTemplate {
+            folder: folder.join("docs"),
+            template: "Rust File".to_owned(),
+        }),
+        Step::new(Action::SaveAsTemplate(readme.clone())),
+        Step::new(Action::NewUntitledTab("HTML File".to_owned())),
         Step::new(Action::NewFolder(folder.join("docs"))),
         Step::new(Action::CutPath(readme.clone())),
         Step::new(Action::CopyPath(readme.clone())),
@@ -6909,4 +6927,39 @@ fn a_browser_tab_in_a_pane_narrower_than_its_toolbar_draws_without_a_panic() {
     harness.state_mut().explorer_visible = true;
     steady(&mut harness);
     assert!(harness.state().files.pane_count() > 4, "the editing area is cut into narrow panes");
+}
+
+/// `task-2336`: *"When I save the file, it should prompt me with a pop up that allows me to see a folder explorer,
+/// like our pane, and let me choose which dir to save in. If I close the tab before saving where to save it, it
+/// should prompt me with the pop up."* Save on a new tab with no file opens the Save dialog on the project's
+/// folders; closing it with changes opens the same dialog with Don't Save.
+#[test]
+fn a_tab_with_no_file_asks_where_to_save_it() {
+    let mut harness = harness("");
+    let ctx = harness.ctx.clone();
+    let index =
+        harness.state_mut().open_an_untitled_tab("index", Some("HTML File"), &[]).expect("a tab");
+    steady(&mut harness);
+    harness.state_mut().run_action(Action::Save, &ctx);
+    steady(&mut harness);
+    let dialog = harness.state().save_dialog.clone().expect("Save opens the dialog");
+    assert_eq!(dialog.name, "index.html");
+    assert!(!dialog.closing);
+    assert!(harness.query_by_label("Don't Save").is_none(), "only closing a tab offers Don't Save");
+    harness.snapshot(shot("save_dialog"));
+
+    harness.key_press(egui::Key::Escape);
+    steady(&mut harness);
+    assert!(harness.state().save_dialog.is_none(), "Escape cancels it");
+    harness.state_mut().close_tab(index);
+    steady(&mut harness);
+    assert!(harness.state().save_dialog.as_ref().is_some_and(|dialog| dialog.closing));
+    harness.snapshot(shot("save_changes_dialog"));
+    harness.get_by_label("Don't Save").click();
+    steady(&mut harness);
+    assert!(harness.state().save_dialog.is_none());
+    assert!(
+        harness.state().files.iter().all(|file| file.name() != "index.html"),
+        "the tab is closed"
+    );
 }

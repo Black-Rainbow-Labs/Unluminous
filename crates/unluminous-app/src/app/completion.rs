@@ -246,6 +246,7 @@ impl UnluminousApp {
     fn a_modal_is_open(&self) -> bool {
         self.settings_window.open
             || self.prompt.is_some()
+            || self.save_dialog.is_some()
             || self.go_to_file.is_some()
             || self.find_in_files.is_some()
             || self.references.is_some()
@@ -367,7 +368,7 @@ impl UnluminousApp {
         // grammar that is not markup offers all three lists, as it always did, and the position is
         // never asked, so the document is never read for it — the question is what costs a read,
         // and it is asked only where it can change the answer.
-        if let Some(grammar) = self.grammar_for(self.files.active().path()) {
+        if let Some(grammar) = self.grammar_for(self.files.active().language_path().as_deref()) {
             let lists: Vec<(&Vec<String>, &str)> = if grammar.markup {
                 // `None` here is an offset the document cannot answer for; all three lists is the
                 // safe offer when the position is unknown.
@@ -854,7 +855,9 @@ impl UnluminousApp {
 
     /// The grammar reading the file that is showing, or an empty one.
     fn completion_grammar(&self) -> Grammar {
-        self.grammar_for(self.files.active().path()).cloned().unwrap_or_default()
+        self.grammar_for(self.files.active().language_path().as_deref())
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// Work the popup for a frame: close it when it has stopped being an answer, and refilter it

@@ -313,6 +313,10 @@ pub struct OpenFile {
     /// to and the editing area it stayed open in. `task-2320`. This tab's document is a copy of the other
     /// view's, with no undo history, made again whenever the other one changes. See `app::twins`.
     pub follows: Option<Followed>,
+    /// What a tab with no file is going to be called, typed when it was made from the editor's `New Tab`
+    /// menu: `notes.rs`. The tab is named by it and coloured as its language, and the Save dialog offers it.
+    /// `None` for every tab that has a file, and for a plain untitled one. `task-2336`.
+    pub proposed: Option<String>,
 }
 
 /// What a second view last copied from the view holding the document. See [`OpenFile::follows`].
@@ -370,6 +374,7 @@ impl OpenFile {
             cached: Cached::fresh(),
             disk: None,
             follows: None,
+            proposed: None,
         }
     }
 
@@ -451,7 +456,17 @@ impl OpenFile {
             .path()
             .and_then(|path| path.file_name())
             .map(|name| name.to_string_lossy().to_string())
+            .or_else(|| self.proposed.clone())
             .unwrap_or_else(|| "untitled".to_owned())
+    }
+
+    /// The path the tab's language is read from: its file, or the name it is going to have when it has no file
+    /// yet, so a new `notes.rs` tab is coloured as Rust before it is saved. `task-2336`.
+    pub fn language_path(&self) -> Option<PathBuf> {
+        self.document
+            .path()
+            .map(Path::to_path_buf)
+            .or_else(|| self.proposed.as_ref().map(PathBuf::from))
     }
 
     /// True when this tab holds a plugin's own contents rather than a file.
@@ -1455,6 +1470,7 @@ impl OpenFiles {
                 && file.unrenderable.is_none()
                 && file.document.text().is_empty()
                 && !file.document.is_modified()
+                && file.proposed.is_none()
         });
         if permanent {
             empty

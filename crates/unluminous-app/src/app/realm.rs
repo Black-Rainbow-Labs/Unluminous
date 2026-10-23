@@ -4792,4 +4792,29 @@ mod tests {
             "the node is chosen so the view moves to it"
         );
     }
+
+    /// `task-2336`: a node's page that posts its modifier wheel or zoom keys zooms that node's page, one step a
+    /// message, and a reset puts it back at its own size, whatever the canvas's camera is.
+    #[test]
+    fn a_zoom_asked_for_by_a_nodes_page_steps_that_nodes_page() {
+        use crate::services::browser::BrowserEvent;
+        let mut app = a_window("browser-zoom-asked");
+        let node = app.new_detached_realm_node(Kind::Browser, Pos2::ZERO);
+        let tab = app.new_detached_realm_page(node, "https://example.com/").expect("a tab");
+        app.realm.realm.camera.zoom = 0.5;
+        app.act_on_browser_events(vec![BrowserEvent::ZoomAsked { id: tab, steps: 1 }]);
+        let once = app.realm.live.page_zoom_of(node);
+        assert!(once > 1.0, "one step in: {once}");
+        app.act_on_browser_events(vec![
+            BrowserEvent::ZoomAsked { id: tab, steps: 1 },
+            BrowserEvent::ZoomAsked { id: tab, steps: -1 },
+        ]);
+        assert!((app.realm.live.page_zoom_of(node) - once).abs() < 0.001, "in and out again");
+        app.act_on_browser_events(vec![BrowserEvent::ZoomAsked { id: tab, steps: -1 }]);
+        app.act_on_browser_events(vec![BrowserEvent::ZoomAsked { id: tab, steps: -1 }]);
+        assert!(app.realm.live.page_zoom_of(node) < 1.0, "out past its own size");
+        app.act_on_browser_events(vec![BrowserEvent::ZoomAsked { id: tab, steps: 0 }]);
+        assert_eq!(app.realm.live.page_zoom_of(node), 1.0, "a reset is its own size");
+        assert_eq!(app.realm.realm.camera.zoom, 0.5, "the canvas did not move");
+    }
 }
