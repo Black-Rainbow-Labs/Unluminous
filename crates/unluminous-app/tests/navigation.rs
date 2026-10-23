@@ -1583,7 +1583,7 @@ fn closing_a_tab_that_was_edited_writes_it_and_an_untitled_one_is_not_written() 
     steady(&mut harness);
     let said = did(&mut harness, "tab close");
     steady(&mut harness);
-    assert_eq!(said["result"]["dialog"], "save", "closing asks: {said}");
+    assert_eq!(said["dialog"], "save", "closing asks: {said}");
     assert!(!folder.join("untitled.md").exists(), "nothing is written while it asks");
     did(&mut harness, "modal accept --discard");
     steady(&mut harness);
