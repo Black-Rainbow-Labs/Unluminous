@@ -1278,8 +1278,8 @@ fn a_rust_file_opens_as_plain_text() {
 
 #[test]
 fn save_as_and_save_are_reachable_without_the_menu() {
-    // `Save` on a document that has never been saved writes into the folder the explorer is showing, which
-    // is the behaviour the status bar reports. This checks the action rather than the dialog.
+    // `Save` on a document that has never been saved asks where it goes (`task-2336`), offering `untitled.md` in
+    // the project folder, and answering the dialog writes it there. This checks the action and the answer.
     let folder = std::env::temp_dir().join("unluminous-save-action");
     std::fs::create_dir_all(&folder).expect("make the folder");
     let text = "saved through the File menu";
@@ -1298,6 +1298,14 @@ fn save_as_and_save_are_reachable_without_the_menu() {
     harness.state_mut().run_action(Action::Save, &ctx);
     steady(&mut harness);
     let written = folder.join("untitled.md");
+    assert!(!written.exists(), "Save asks before it writes anything");
+    let dialog = harness.state_mut().save_dialog.take().expect("Save opens the Save dialog");
+    assert_eq!(dialog.target(), written);
+    harness
+        .state_mut()
+        .answer_the_save_dialog(dialog, unluminous_app::components::save_dialog::Answer::Save)
+        .expect("saved");
+    steady(&mut harness);
     assert!(written.is_file(), "Save should have written {}", written.display());
     assert_eq!(std::fs::read_to_string(&written).expect("read it back"), text);
     std::fs::remove_dir_all(&folder).ok();
@@ -2255,7 +2263,13 @@ fn the_rest_of_the_menu_still_works_while_a_text_box_has_the_keyboard() {
     harness.key_press_modifiers(Modifiers::COMMAND, egui::Key::S);
     steady(&mut harness);
 
+    // The chord reached Save, which for a document with no file is the Save dialog (`task-2336`).
+    let dialog = harness.state_mut().save_dialog.take().expect("Save still reached the document");
     let written = folder.join("untitled.md");
+    harness
+        .state_mut()
+        .answer_the_save_dialog(dialog, unluminous_app::components::save_dialog::Answer::Save)
+        .expect("saved");
     assert!(written.is_file(), "Save should still have written {}", written.display());
     assert_eq!(std::fs::read_to_string(&written).expect("read it back"), text);
     std::fs::remove_dir_all(&folder).ok();

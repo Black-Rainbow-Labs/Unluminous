@@ -1576,19 +1576,19 @@ fn the_arrow_keys_walk_the_selection_and_a_letter_hands_the_keyboard_back() {
 fn closing_a_tab_that_was_edited_writes_it_and_an_untitled_one_is_not_written() {
     let folder = scratch_folder("save-on-close");
     let mut harness = harness_in(&folder);
-    // A window opens with one untitled tab, which is the case that has nowhere to be written. It is
-    // closed as it always was and says so, rather than putting `untitled.md` in somebody's project
-    // because they shut a scratch buffer.
+    // A window opens with one untitled tab, which is the case that has nowhere to be written. Closing it with
+    // something typed in it asks where to save it (`task-2336`), and nothing is written until that is answered:
+    // `Don't Save` closes it without putting `untitled.md` in somebody's project.
     harness.input_mut().events.push(egui::Event::Text("scratch".to_owned()));
     steady(&mut harness);
-    did(&mut harness, "tab close");
+    let said = did(&mut harness, "tab close");
     steady(&mut harness);
-    assert!(
-        harness.state().message.clone().unwrap_or_default().contains("without saving"),
-        "it says what it did: {:?}",
-        harness.state().message
-    );
-    assert!(!folder.join("untitled.md").exists(), "and wrote nothing into the project");
+    assert_eq!(said["result"]["dialog"], "save", "closing asks: {said}");
+    assert!(!folder.join("untitled.md").exists(), "nothing is written while it asks");
+    did(&mut harness, "modal accept --discard");
+    steady(&mut harness);
+    assert!(harness.state().save_dialog.is_none());
+    assert!(!folder.join("untitled.md").exists(), "and Don't Save wrote nothing into the project");
 
     did(&mut harness, &format!("tab open {}", folder.join("readme.md").display()));
     harness.state_mut().command(unluminous_core::Command::PlaceCaret { offset: 0, extend: false });

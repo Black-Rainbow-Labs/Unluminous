@@ -2219,6 +2219,14 @@ fn drive_the_panels_and_the_explorer(coverage: &mut Coverage) {
     c.refuses(&mut harness, "explorer new-folder made");
     c.works(&mut harness, "explorer new-file made/today.md");
     c.refuses(&mut harness, "explorer new-file made/today.md");
+    // File templates, `task-2336`.
+    c.works(&mut harness, "explorer new-file made/page --template html-file");
+    c.refuses(&mut harness, "explorer new-file made/other --template no-such-template");
+    c.works(&mut harness, "explorer templates");
+    c.works(&mut harness, "explorer save-template made/today.md --name Today --project");
+    c.refuses(&mut harness, "explorer save-template no-such-file.md");
+    c.works(&mut harness, "tab new --name scratch.md");
+    c.refuses(&mut harness, "tab new --template no-such-template");
     c.works(&mut harness, "explorer move made/today.md docs");
     c.refuses(&mut harness, "explorer move no-such-file.md docs");
     c.works(&mut harness, "explorer delete docs/today.md");
