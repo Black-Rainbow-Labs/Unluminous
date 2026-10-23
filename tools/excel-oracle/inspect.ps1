@@ -60,7 +60,9 @@ try {
         $notes = @(); foreach ($c in $sheet.Comments) { $notes += "$($c.Parent.Address($false, $false))|$($c.Text())" }
         $tables = @(); foreach ($t in $sheet.ListObjects) { $tables += "$($t.Name)|$($t.Range.Address($false, $false))" }
         $charts = @(); foreach ($c in $sheet.ChartObjects()) { $charts += "$($c.Chart.ChartType)|$(if ($c.Chart.HasTitle) { $c.Chart.ChartTitle.Text })" }
-        $validations = @(); foreach ($cell in $used.Cells) { try { $t = $cell.Validation.Type; $validations += "$($cell.Address($false, $false))|$t|$($cell.Validation.Formula1)" } catch {} }
+        $validations = @()
+        try { $checked = $sheet.Cells.SpecialCells(-4174) } catch { $checked = $null }
+        if ($checked) { foreach ($cell in $checked.Cells) { $validations += "$($cell.Address($false, $false))|$($cell.Validation.Type)|$($cell.Validation.Formula1)" } }
         $features = [pscustomobject]@{
             visible = $sheet.Visible
             tab = $sheet.Tab.Color

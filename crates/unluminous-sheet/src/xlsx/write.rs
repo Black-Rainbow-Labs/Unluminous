@@ -559,7 +559,12 @@ impl<'a> Writer<'a> {
             Value::Empty => (None, None),
             Value::Number(n) => (None, Some(number_text(*n))),
             Value::Bool(b) => (Some("b"), Some(if *b { "1" } else { "0" }.to_owned())),
-            Value::Error(e) => (Some("e"), Some(e.text().to_owned())),
+            // The newer errors are written as #VALUE!, which is what Excel writes beside the rich value that
+            // carries the real one; Excel works the real one out again when it calculates.
+            Value::Error(e) => (Some("e"), Some(match e {
+                crate::value::ErrorKind::Spill | crate::value::ErrorKind::Calc | crate::value::ErrorKind::GettingData => "#VALUE!".to_owned(),
+                other => other.text().to_owned(),
+            })),
             Value::Text(t) => {
                 if cell.formula.is_some() || spilled {
                     (Some("str"), Some(escape(t)))
