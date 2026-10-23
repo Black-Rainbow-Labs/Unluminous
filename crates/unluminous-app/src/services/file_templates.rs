@@ -146,7 +146,7 @@ pub fn all(project: &Path, user: Option<&Path>) -> Vec<Template> {
             }
         }
     }
-    custom.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    custom.sort_by_key(|template| template.name.to_lowercase());
     templates.extend(custom);
     templates
 }
