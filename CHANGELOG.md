@@ -6,6 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.10.0 — 2026-10-23
+
+- Browser node zoom keys, file templates, a Save dialog for tabs with no file, steady text in zoomed modals, readable tool calls (`task-2336`)
+- Sort templates by key, as clippy asks (`task-2336`)
+- Tests follow the Save dialog, drive the new commands, and accept the changed menus and zoomed modals (`task-2336`)
+- Read the close reply's dialog where did() puts it (`task-2336`)
+
 ## 1.9.0 — 2026-10-22
 
 - Nightly and stable release channels, and Check for Updates lists both (`task-2328`)
