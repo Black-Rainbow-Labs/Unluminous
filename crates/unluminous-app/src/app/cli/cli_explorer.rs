@@ -69,7 +69,10 @@ impl UnluminousApp {
             }
             "new-file" if request.has("template") => self.cli_explorer_new_from_template(request),
             "new-file" => self.cli_explorer_new(request, false),
+            "templates" if request.has("name") => self.cli_explorer_template(request),
             "templates" => self.cli_explorer_templates(request),
+            "template-set" => self.cli_explorer_template_set(request),
+            "template-remove" => self.cli_explorer_template_remove(request),
             "save-template" => self.cli_explorer_save_template(request),
             "new-folder" => self.cli_explorer_new(request, true),
             "new-project" => self.cli_explorer_new_project(request),
@@ -315,6 +318,162 @@ impl UnluminousApp {
                 "project": crate::services::file_templates::project_folder(&project).to_string_lossy(),
             }),
         )
+    }
+
+    /// The draft the Templates manager would hold for `name`, in the project's templates with `--project` and the
+    /// person's otherwise, among the includes with `--include`, with its place in `drafts`.
+    fn a_template_draft(
+        &self,
+        request: &Request,
+        name: &str,
+    ) -> (Vec<crate::services::file_templates::Draft>, Option<usize>) {
+        use crate::services::file_templates::{self, Scope};
+        let drafts =
+            file_templates::drafts(self.tree.root(), self.templates_settings_folder().as_deref());
+        let project = request.switch("project");
+        let include = request.switch("include");
+        let at = drafts.iter().position(|draft| {
+            !draft.removed
+                && draft.include == include
+                && (draft.template.scope == Scope::Project) == project
+                && (draft.template.name.eq_ignore_ascii_case(name.trim())
+                    || draft.template.slug() == file_templates::slug(name))
+        });
+        (drafts, at)
+    }
+
+    /// `explorer templates <name> [--project] [--include]`: one template in full, as the manager shows it.
+    /// `task-2336`.
+    fn cli_explorer_template(&mut self, request: &Request) -> Outcome {
+        let name = request.text("name").unwrap_or_default();
+        let (drafts, at) = self.a_template_draft(request, &name);
+        let Some(draft) = at.map(|at| &drafts[at]) else {
+            return no(
+                request,
+                code::NOT_FOUND,
+                format!("There is no template called {name} there."),
+            );
+        };
+        let template = &draft.template;
+        ok(
+            request,
+            template.body.clone(),
+            json!({
+                "name": template.name,
+                "extension": template.extension,
+                "fileName": template.file_name,
+                "body": template.body,
+                "scope": template.scope.name(),
+                "include": draft.include,
+                "builtIn": draft.is_built_in(),
+                "changed": draft.differs_from_the_original(),
+                "asks": crate::services::file_templates::variables_asked(&template.body, None),
+            }),
+        )
+    }
+
+    /// `explorer template-set <name> [--extension] [--body] [--file-name] [--rename] [--project] [--include]`: the
+    /// manager's fields with no dialog. A template that is not there is made. `task-2336`.
+    fn cli_explorer_template_set(&mut self, request: &Request) -> Outcome {
+        use crate::services::file_templates::{self, Draft, Scope};
+        let name = request.text("name").unwrap_or_default();
+        let (mut drafts, at) = self.a_template_draft(request, &name);
+        let at = match at {
+            Some(at) => at,
+            None => {
+                let scope = if request.switch("project") { Scope::Project } else { Scope::User };
+                drafts.push(Draft::new(name.trim(), scope, request.switch("include")));
+                drafts.len() - 1
+            }
+        };
+        let template = &mut drafts[at].template;
+        if let Some(extension) = request.text("extension") {
+            template.extension = extension.trim().trim_start_matches('.').to_owned();
+        }
+        if let Some(body) = request.text("body") {
+            template.body = body;
+        }
+        if let Some(file) = request.text("body-file") {
+            match std::fs::read_to_string(self.cli_path(&file)) {
+                Ok(text) => template.body = text.replace("\r\n", "\n"),
+                Err(problem) => {
+                    return no(
+                        request,
+                        code::NOT_FOUND,
+                        format!("Unluminous could not read {file}: {problem}"),
+                    )
+                }
+            }
+        }
+        if let Some(pattern) = request.text("file-name") {
+            template.file_name = pattern.trim().to_owned();
+        }
+        if let Some(renamed) = request.text("rename") {
+            if drafts[at].is_built_in() {
+                return no(
+                    request,
+                    code::REFUSED,
+                    "A built in template keeps its name. Copy it to make one of your own.",
+                );
+            }
+            drafts[at].template.name = renamed.trim().to_owned();
+        }
+        let named = drafts[at].template.name.clone();
+        match file_templates::apply(
+            &drafts,
+            self.tree.root(),
+            self.templates_settings_folder().as_deref(),
+        ) {
+            Ok(changed) => {
+                self.tree.reload();
+                ok(
+                    request,
+                    format!("Saved the template {named}"),
+                    json!({ "name": named, "changed": changed }),
+                )
+            }
+            Err(problem) => no(request, code::REFUSED, problem),
+        }
+    }
+
+    /// `explorer template-remove <name> [--project] [--include]`: the manager's `Remove`, or `Reset` for a built in
+    /// template, which is put back as Unluminous ships it. `task-2336`.
+    fn cli_explorer_template_remove(&mut self, request: &Request) -> Outcome {
+        use crate::services::file_templates;
+        let name = request.text("name").unwrap_or_default();
+        let (mut drafts, at) = self.a_template_draft(request, &name);
+        let Some(at) = at else {
+            return no(
+                request,
+                code::NOT_FOUND,
+                format!("There is no template called {name} there."),
+            );
+        };
+        let reset = drafts[at].is_built_in();
+        match reset {
+            true => match file_templates::original(&drafts[at].template.name) {
+                Some(shipped) => drafts[at].template = shipped,
+                None => {
+                    return no(request, code::NOT_FOUND, format!("There is no built in {name}."))
+                }
+            },
+            false => drafts[at].removed = true,
+        }
+        match file_templates::apply(
+            &drafts,
+            self.tree.root(),
+            self.templates_settings_folder().as_deref(),
+        ) {
+            Ok(_) => {
+                self.tree.reload();
+                let said = match reset {
+                    true => format!("Put {name} back as Unluminous ships it"),
+                    false => format!("Removed the template {name}"),
+                };
+                ok(request, said, json!({ "name": name, "reset": reset }))
+            }
+            Err(problem) => no(request, code::REFUSED, problem),
+        }
     }
 
     /// `explorer save-template <path> --name <name> [--project]`: `Save File as Template`. `task-2336`.

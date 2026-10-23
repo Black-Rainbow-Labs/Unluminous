@@ -69,6 +69,9 @@ impl UnluminousApp {
         if self.save_dialog.is_some() {
             return Some("save".to_owned());
         }
+        if self.template_manager.is_some() {
+            return Some("templates".to_owned());
+        }
         if self.new_project.is_some() {
             return Some("create-project".to_owned());
         }
@@ -141,6 +144,24 @@ impl UnluminousApp {
             map.insert("query".to_owned(), json!(prompt.value));
             map.insert("confirm".to_owned(), json!(prompt.confirm));
         }
+        if let Some(dialog) = &self.template_manager {
+            let chosen = dialog.chosen.map(|at| &dialog.drafts[at]);
+            map.insert("scope".to_owned(), json!(dialog.scope.name()));
+            map.insert("includes".to_owned(), json!(dialog.include));
+            map.insert("chosen".to_owned(), json!(chosen.map(|draft| draft.template.name.clone())));
+            map.insert(
+                "templates".to_owned(),
+                json!(dialog
+                    .showing()
+                    .iter()
+                    .map(|&at| dialog.drafts[at].template.name.clone())
+                    .collect::<Vec<_>>()),
+            );
+            map.insert(
+                "refused".to_owned(),
+                json!(crate::services::file_templates::refusal(&dialog.drafts)),
+            );
+        }
         if let Some(dialog) = &self.save_dialog {
             map.insert("tab".to_owned(), json!(dialog.tab_name));
             map.insert("folder".to_owned(), json!(dialog.folder.to_string_lossy()));
@@ -177,6 +198,17 @@ impl UnluminousApp {
                     request,
                     format!("Find Action is open with {found} results"),
                     json!({ "open": "command-palette", "results": found }),
+                )
+            }
+            // The Templates manager, on the template `--query` names when it names one. `task-2336`.
+            "templates" => {
+                let chosen = Some(query.as_str()).filter(|name| !name.trim().is_empty());
+                self.open_the_template_manager(false, chosen);
+                let showing = self.template_manager.as_ref().map(|dialog| dialog.showing().len());
+                ok(
+                    request,
+                    "The Templates manager is open. `explorer template-set` changes a template with no dialog.",
+                    json!({ "open": "templates", "results": showing }),
                 )
             }
             "go-to-file" => {
@@ -779,6 +811,21 @@ impl UnluminousApp {
                 json!({ "value": value, "message": self.message }),
             );
         }
+        // The Templates manager: `OK`, which writes every change and closes it. `task-2336`.
+        if let Some(dialog) = self.template_manager.take() {
+            self.answer_the_template_manager(
+                dialog,
+                crate::components::templates_dialog::Answer::Ok,
+            );
+            return match self.template_manager.as_ref().and_then(|dialog| dialog.said.clone()) {
+                Some((problem, true)) => no(request, code::REFUSED, problem),
+                _ => ok(
+                    request,
+                    self.message.clone().unwrap_or_else(|| "Saved the templates".to_owned()),
+                    json!({ "message": self.message }),
+                ),
+            };
+        }
         // The Save dialog: Save, or `--discard` for its `Don't Save`. Through the function its buttons call.
         if let Some(dialog) = self.save_dialog.take() {
             let answer = match request.switch("discard") {
@@ -833,6 +880,7 @@ impl UnluminousApp {
         self.settings_window.open = false;
         self.prompt = None;
         self.save_dialog = None;
+        self.template_manager = None;
         self.new_project = None;
         self.background_grid = None;
         self.confirmation = None;
@@ -950,6 +998,10 @@ const MODALS: &[(&str, &str)] = &[
     ),
     ("rename", "Rename a file or a folder. Takes --path."),
     (
+        "templates",
+        "The Templates manager: every file template and include, the person's and the project's. Takes --query for the one to choose. `explorer template-set` and `template-remove` change one with no dialog.",
+    ),
+    (
         "save",
         "The Save dialog for a tab with no file: a folder tree and a name. Opened by `tab save` or by closing such a tab; `modal type <name> --folder <folder>` fills it and `modal accept` saves, `--discard` closes without saving.",
     ),
@@ -967,6 +1019,7 @@ fn modal_id(name: &str) -> Option<&'static str> {
         "setup" => crate::components::setup_dialog::ID,
         "new-file" | "rename" | "prompt" => "unluminous-prompt",
         "save" => crate::components::save_dialog::ID,
+        "templates" => crate::components::templates_dialog::ID,
         "create-project" => "unluminous-new-project",
         "background" => "unluminous-background",
         "confirmation" => "unluminous-confirmation",

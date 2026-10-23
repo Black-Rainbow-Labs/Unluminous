@@ -247,6 +247,7 @@ impl UnluminousApp {
         self.settings_window.open
             || self.prompt.is_some()
             || self.save_dialog.is_some()
+            || self.template_manager.is_some()
             || self.go_to_file.is_some()
             || self.find_in_files.is_some()
             || self.references.is_some()

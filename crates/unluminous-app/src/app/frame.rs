@@ -144,6 +144,7 @@ impl UnluminousApp {
         // older ones.
         self.show_the_prompt(ui);
         self.show_the_save_dialog(ui.ctx());
+        self.show_the_template_manager(ui.ctx());
         self.show_the_new_project_dialog(ui);
         self.show_the_background_grid(ui);
         self.show_the_command_palette(ui);
@@ -1135,7 +1136,9 @@ impl UnluminousApp {
 
         // A tab's own menu, drawn after the panes so it sits over them rather than under one.
         if let Some((at, _)) = self.tab_menu {
-            let mut entries = actions::tab_menu(&self.menu_state());
+            let state =
+                actions::MenuState { templates: self.custom_template_names(), ..self.menu_state() };
+            let mut entries = actions::tab_menu(&state);
             crate::services::keymap::apply_entries(&mut entries, &self.keymap);
             let outcome = context_menu::show(ui, "tab", at, &entries);
             if let Some(chosen) = outcome.chosen {
@@ -1148,7 +1151,9 @@ impl UnluminousApp {
 
         // The empty part of a tab strip's own menu. `task-2270`.
         if let Some(at) = self.strip_menu {
-            let mut entries = actions::tab_strip_menu();
+            let state =
+                actions::MenuState { templates: self.custom_template_names(), ..self.menu_state() };
+            let mut entries = actions::tab_strip_menu(&state);
             crate::services::keymap::apply_entries(&mut entries, &self.keymap);
             let outcome = context_menu::show(ui, "tab-strip", at, &entries);
             if let Some(chosen) = outcome.chosen {

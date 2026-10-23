@@ -308,3 +308,64 @@ an open Bash call and an open Edit call.
 
 5, 1, 2, 3, 4. Each is built, installed and launched before the next, as `CLAUDE.md` asks, and the
 whole is released once at the end with `tools/release.ps1 -Part minor`.
+
+## QA pass: a Templates manager, and New Tab on the tab menus
+
+Jason's comment on 1.10.0: *"The templates is not sufficient. there should be a templates manager that allows me to
+create new templates, edit existing ones, etc with variable name placement ... I don't understand open templates
+folder option ... If I right click the editor space thats not filled with tabs, or right click a tab, I don't see the
+new file options I asked for."*
+
+### What the reference editor's page has, and what was taken from it
+
+`Settings | Editor | File and Code Templates` (jetbrains.com/help/idea/settings-file-and-code-templates.html and
+file-template-variables.html) has a **scheme** (Default, kept with the IDE, and Project, kept in `.idea/fileTemplates`),
+four tabs (Files, Includes, Code, Other), a toolbar (Create Template, Create Child Template File, Remove, Copy, Revert to
+Original), and per template a Name, an Extension, a **File name** (a hard coded name or one built from variables, such
+as `../${NAME}`, which skips the name prompt when it does not use `${NAME}`), the body editor, Reformat according to
+style and Enable Live Templates. The variables are `${DATE}`, `${DAY}`, `${DIR_PATH}`, `${DS}`, `${FILE_NAME}`,
+`${HOUR}`, `${MINUTE}`, `${SECOND}`, `${MONTH}`, `${MONTH_NAME_FULL}`, `${MONTH_NAME_SHORT}`, `${NAME}`,
+`${PACKAGE_NAME}`, `${PRODUCT_NAME}`, `${PROJECT_NAME}`, `${TIME}`, `${USER}` and `${YEAR}`, usable in the body and the
+file name; a variable with no value is asked for; `#set` gives one a value; and since the engine is Velocity a value can
+call Java string methods, `${NAME.toUpperCase()}`.
+
+Taken: the two scopes, Files and Includes, New, Copy, Remove and Reset (Revert), Name, Extension, File name, the body,
+every variable but `PACKAGE_NAME` (Java's), and the string methods `toUpperCase`, `toLowerCase`, `trim`, `length` and
+`substring`. Left out: the Code and Other tabs (they are Java's own generated snippets), child templates, reformatting
+and live templates, and `#if`.
+
+### The design
+
+- `services::file_templates::Draft` is one template or include as the manager edits it, with the file it was read from
+  and whether it is to be removed. `drafts(project, settings)` reads everything the manager lists; `refusal` says why a
+  list cannot be written (an empty name, a name that is not a file name, two of one name in one place); `apply` writes
+  it: each changed body and file name pattern, a renamed one out of its old file, a removed one to the Recycle Bin, and a
+  built in template that says what ships again with its copy removed. `apply` is a pure function over the folders and is
+  tested with no window.
+- `components::templates_dialog` is the dialog: the two pairs of tabs, the list with its four buttons (a built in
+  template shows `built in` or `changed`, and Remove is dimmed on one), and on the right Name and Extension (shown, not
+  editable, for a built in template), File name, the text in the code face, and the variables, each a row with what it
+  holds; pressing one inserts it at the text box's caret. `Cancel`, `Apply` and `OK`, with `Ctrl`/`Cmd`+`Enter` for OK
+  because Enter is a new line in the text.
+- The Templates submenu is the person's templates, then `New Template...`, `Manage Templates...` and `Save File as
+  Template...`. `Open Templates Folder` is removed.
+- A file name pattern is used when a file is made: `${NAME}_test` makes `parser_test.rs` from `parser`, and a pattern
+  without `${NAME}` makes its file with no prompt.
+- `explorer templates <name>` shows one template in full, `explorer template-set <name> [--extension] [--body]
+  [--body-file] [--file-name] [--rename] [--project] [--include]` makes or changes one, and `explorer template-remove`
+  removes one or resets a built in one. `modal open templates [--query <name>]` opens the manager and `modal accept` is
+  its OK.
+
+### New Tab on the tab menus
+
+The tab menu and the menu of the empty part of a tab strip now hold the same `New Tab` submenu the editor's right click
+menu has (Untitled File, the five types, your templates, Manage Templates...). The empty strip's menu had only `New
+Browser Tab`, which is what the screenshot on the ticket shows.
+
+### Tests
+
+`file_templates` tests the methods, the file name pattern, and `apply` writing, renaming, removing and resetting;
+`templates_dialog` tests the tabs and the four buttons; `new_holds_the_common_types_and_the_templates` checks both tab
+menus; `the_templates_manager_lists_edits_and_writes_templates` drives the dialog in a window, inserts a variable by
+clicking it, writes with `modal accept` and makes a file from the new template; and the command line coverage test
+drives the three commands to a success and a refusal. The picture is `templates_manager`.

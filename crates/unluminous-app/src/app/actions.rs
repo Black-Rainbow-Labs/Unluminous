@@ -294,8 +294,11 @@ pub enum Action {
     },
     /// Make a template from this file: the reference editor's `Save File as Template`. Its name is asked for first.
     SaveAsTemplate(PathBuf),
-    /// Show the folder a person's own templates are kept in, making it when it is missing.
-    OpenTemplatesFolder,
+    /// Open the Templates manager, where every template is made, changed, copied, removed and reset.
+    /// `task-2336`.
+    ManageTemplates,
+    /// Open the Templates manager on a new template.
+    NewTemplate,
     /// A new tab with no file behind it, holding the template with this name, or nothing when it is
     /// empty. Its name is asked for first, and Save asks where it goes. `task-2336`.
     NewUntitledTab(String),
@@ -2586,6 +2589,8 @@ pub fn tab_menu(state: &MenuState) -> Vec<Entry> {
         Entry::item("Close", Action::CloseTab).enabled(state.open_files > 1),
         Entry::item("Select Opened File", Action::SelectOpenFile),
         Entry::Separator,
+        // The editor's `New Tab` list, here too (`task-2336`).
+        Entry::Submenu { name: "New Tab".to_owned(), entries: new_tab_menu(&state.templates) },
         Entry::item("New Browser Tab", Action::NewBrowserTab),
     ];
     // **Absent while the Realm plugin is off**, and dimmed on a tab that already lives on a node (`task-2270`).
@@ -2619,9 +2624,16 @@ pub fn project_tab_menu(state: &MenuState) -> Vec<Entry> {
 }
 
 /// What the empty part of a tab strip's right click menu holds: a new tab of the kind that has no file to come
-/// from. `task-2270`: *"Right click in top space or on existing tab -> open new browser tab."*
-pub fn tab_strip_menu() -> Vec<Entry> {
-    vec![Entry::item("New Browser Tab", Action::NewBrowserTab)]
+/// from. `task-2270`: *"Right click in top space or on existing tab -> open new browser tab."* And since
+/// `task-2336`, the `New Tab` submenu: *"If I right click the editor space thats not filled with tabs, or right
+/// click a tab, I don't see the new file options I asked for."*
+///
+/// @param state - what the menus know, whose `templates` are listed
+pub fn tab_strip_menu(state: &MenuState) -> Vec<Entry> {
+    vec![
+        Entry::Submenu { name: "New Tab".to_owned(), entries: new_tab_menu(&state.templates) },
+        Entry::item("New Browser Tab", Action::NewBrowserTab),
+    ]
 }
 
 /// What a terminal tab's right click menu holds.
@@ -2990,16 +3002,16 @@ pub fn templates_submenu(
             )
         }));
     }
-    if entries.is_empty() {
-        entries.push(Entry::item("No Templates Yet", Action::OpenTemplatesFolder).enabled(false));
+    if !entries.is_empty() {
+        entries.push(Entry::Separator);
     }
-    entries.push(Entry::Separator);
+    entries.push(Entry::item("New Template...", Action::NewTemplate));
+    entries.push(Entry::item("Manage Templates...", Action::ManageTemplates));
     let save = file.map(std::path::Path::to_path_buf).unwrap_or_default();
     entries.push(
         Entry::item("Save File as Template...", Action::SaveAsTemplate(save))
             .enabled(file.is_some()),
     );
-    entries.push(Entry::item("Open Templates Folder", Action::OpenTemplatesFolder));
     entries
 }
 
@@ -3020,6 +3032,8 @@ pub fn new_tab_menu(templates: &[String]) -> Vec<Entry> {
             templates.iter().map(|name| Entry::item(name, Action::NewUntitledTab(name.clone()))),
         );
     }
+    entries.push(Entry::Separator);
+    entries.push(Entry::item("Manage Templates...", Action::ManageTemplates));
     entries
 }
 
@@ -3676,10 +3690,23 @@ mod tests {
             actions,
             vec![
                 Action::NewFileFromTemplate { folder, template: "React Component".to_owned() },
+                Action::NewTemplate,
+                Action::ManageTemplates,
                 Action::SaveAsTemplate(file),
-                Action::OpenTemplatesFolder,
             ]
         );
+        // The tab menu and the empty part of the strip offer the same `New Tab` list.
+        for menu in [tab_menu(&state), tab_strip_menu(&state)] {
+            let new_tab = menu.iter().find_map(|entry| match entry {
+                Entry::Submenu { name, entries } if name == "New Tab" => Some(entries.clone()),
+                _ => None,
+            });
+            let new_tab = new_tab.expect("a New Tab submenu");
+            assert!(new_tab.iter().any(|entry| matches!(entry, Entry::Item { action: Action::NewUntitledTab(t), .. } if t == "Rust File")));
+            assert!(new_tab
+                .iter()
+                .any(|entry| matches!(entry, Entry::Item { action: Action::ManageTemplates, .. })));
+        }
         let text = text_menu(&state);
         let Some(Entry::Submenu { name, entries: tabs }) = text.last() else {
             panic!("New Tab is last")
