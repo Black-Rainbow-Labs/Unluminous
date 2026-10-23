@@ -656,9 +656,13 @@ fn a_first_word_that_names_no_diagram_type_says_so_rather_than_drawing_nothing()
     let folder = std::env::temp_dir().join("unluminous-mermaid-unknown-type");
     std::fs::create_dir_all(&folder).expect("make the folder");
     let path = folder.join("unknown.mmd");
-    std::fs::write(&path, "banana split
+    std::fs::write(
+        &path,
+        "banana split
   A --> B
-").expect("write the sample");
+",
+    )
+    .expect("write the sample");
     let mut harness = harness_in(&folder);
     harness.state_mut().open_path_permanently(&path).expect("the file opens");
     harness.state_mut().set_view_mode(ViewMode::Preview);
