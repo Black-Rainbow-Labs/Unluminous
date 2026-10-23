@@ -647,6 +647,25 @@ fn side_by_side_shows_a_mermaid_source_and_its_diagram_at_once() {
     harness.snapshot(shot("mermaid_side_by_side"));
 }
 
+/// Every type Mermaid documents is drawn now (`task-2339`), so the picture that showed a type named
+/// and not drawn shows a first word that names no type at all, which says so in the same panel.
+#[test]
+fn a_first_word_that_names_no_diagram_type_says_so_rather_than_drawing_nothing() {
+    // A folder of its own, because the samples' folder is shared and a file added to it would change
+    // the explorer in every other test's picture.
+    let folder = std::env::temp_dir().join("unluminous-mermaid-unknown-type");
+    std::fs::create_dir_all(&folder).expect("make the folder");
+    let path = folder.join("unknown.mmd");
+    std::fs::write(&path, "banana split
+  A --> B
+").expect("write the sample");
+    let mut harness = harness_in(&folder);
+    harness.state_mut().open_path_permanently(&path).expect("the file opens");
+    harness.state_mut().set_view_mode(ViewMode::Preview);
+    steady(&mut harness);
+    harness.snapshot(shot("mermaid_not_drawn"));
+}
+
 #[test]
 fn a_diagram_that_will_not_parse_says_which_line_rather_than_drawing_nothing() {
     let folder = diagram_folder();
