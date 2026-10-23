@@ -564,6 +564,7 @@ pub fn pane_icon(name: &str) -> fn(&egui::Painter, Pos2, egui::Color32) {
         "database" => icon::database,
         "table" => icon::table,
         "design" => icon::design,
+        "document" => icon::document,
         _ => icon::board,
     }
 }

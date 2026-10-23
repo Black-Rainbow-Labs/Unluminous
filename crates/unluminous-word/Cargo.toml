@@ -18,3 +18,9 @@ unluminous-core.workspace = true
 unicode-segmentation.workspace = true
 # `plugins run word read` answers as data, and the agent's arguments arrive as JSON.
 serde_json.workspace = true
+
+[dev-dependencies]
+# Real fonts for the tests that compare pages with Word's (`tests/pagination.rs`). Both are already in the
+# workspace through the window.
+fontdb.workspace = true
+ab_glyph.workspace = true

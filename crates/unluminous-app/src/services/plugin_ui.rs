@@ -653,6 +653,44 @@ pub trait UiProvider: std::fmt::Debug {
         self.pane(ui, look)
     }
 
+    /// Draw the tab whose key is `key`, for a provider that draws one tab for each file it opens.
+    ///
+    /// The default is [`Self::tab`], which is right for a provider with one tab. The Word plugin opens a tab
+    /// for each document, keyed `word:<path>`, and has to know which one it is drawing (`task-2341`;
+    /// `task-2338` adds the same for workbooks).
+    fn tab_keyed(&mut self, key: &str, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request> {
+        let _ = key;
+        self.tab(ui, look)
+    }
+
+    /// Whether the tab keyed `key` has changes that are not saved, which draws the tab's unsaved dot and
+    /// makes closing it save first. False by default.
+    fn modified(&self, key: &str) -> bool {
+        let _ = key;
+        false
+    }
+
+    /// Save the tab keyed `key` to its file, or to `to` when one is given, which is Save As. The default
+    /// refuses, because a provider with nothing to save has nowhere to save it.
+    fn save(&mut self, key: &str, to: Option<&std::path::Path>) -> Result<(), String> {
+        let _ = (key, to);
+        Err(format!("{} has nothing to save", self.id()))
+    }
+
+    /// The tab keyed `key` was closed, so whatever the provider held for it can go.
+    fn tab_closed(&mut self, key: &str) {
+        let _ = key;
+    }
+
+    /// Whether this provider takes a key chord itself while its tab holds the keyboard, rather than the
+    /// window's menus taking it first. The Word plugin takes `Ctrl+B` and `Ctrl+Z` and the rest of Word's
+    /// own chords, so they format the document rather than doing what the menus give them to. False by
+    /// default.
+    fn claims_key(&self, key: egui::Key, modifiers: &egui::Modifiers) -> bool {
+        let _ = (key, modifiers);
+        false
+    }
+
     /// Draw the Settings page inside the rectangle every page gets.
     fn settings(&mut self, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request>;
 
@@ -922,6 +960,7 @@ pub fn provider(name: &str) -> Option<Box<dyn UiProvider>> {
         "agent-chat" => Some(Box::new(crate::services::agent_chat::AgentChat::new())),
         "database" => Some(Box::new(crate::services::database::DatabaseExplorer::new())),
         "designer" => Some(Box::new(crate::services::designer::Designer::new())),
+        "word" => Some(Box::new(crate::services::word::Word::new())),
         // Drawn by the window itself — see `plugins::CORE_PROVIDERS`.
         "realm" => None,
         _ => None,

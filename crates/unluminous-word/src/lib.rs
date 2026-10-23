@@ -11,14 +11,19 @@
 //! **No user interface dependency**, for the reason `unluminous-core` has none: the tests run with no
 //! window, no graphics card and no fonts. Text is measured through `unluminous_core::FontMetrics`.
 
+pub mod builtin;
+pub mod edit;
 pub mod layout;
 pub mod model;
+pub mod new;
 pub mod numbering;
+pub mod ops;
 pub mod order;
 pub mod package;
 pub mod position;
 pub mod props;
 pub mod read;
+pub mod session;
 pub mod styles;
 pub mod write;
 pub mod xml;

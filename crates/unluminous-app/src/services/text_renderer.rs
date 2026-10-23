@@ -539,7 +539,9 @@ impl std::ops::Deref for Face {
 
 /// Fonts, measurements and rasterised glyphs.
 pub struct TextRenderer {
-    database: fontdb::Database,
+    /// In a cell so a plugin can add a folder of fonts after the window has started
+    /// ([`TextRenderer::add_font_folder`]); everything else only reads it.
+    database: RefCell<fontdb::Database>,
     /// Families that are installed, in the order the toolbar shows them.
     families: Vec<String>,
     /// Faces already read from disk. An entry holding `None` is a face this system does not have, kept
@@ -602,7 +604,7 @@ impl TextRenderer {
             .collect();
         let families = with_every_other_family(installed, &database);
         Self {
-            database,
+            database: RefCell::new(database),
             families,
             faces: RefCell::new(HashMap::new()),
             fallbacks: RefCell::new(HashMap::new()),
@@ -656,9 +658,8 @@ impl TextRenderer {
             style: if key.italic { fontdb::Style::Italic } else { fontdb::Style::Normal },
             stretch: fontdb::Stretch::Normal,
         };
-        let loaded = self
-            .database
-            .query(&query)
+        let found = self.database.borrow().query(&query);
+        let loaded = found
             .and_then(|id| {
                 let (bytes, index) = self.shared_bytes(id)?;
                 Face::new(bytes, index)
@@ -903,7 +904,7 @@ impl TextRenderer {
             style: fontdb::Style::Normal,
             stretch: fontdb::Stretch::Normal,
         };
-        let id = self.database.query(&query)?;
+        let id = self.database.borrow().query(&query)?;
         let (bytes, index) = self.shared_bytes(id)?;
         // egui holds a font's bytes as `'static`, and a face it was given is kept until the fonts are
         // replaced, which this window does when the interface font changes. So the mapping is kept for the
@@ -927,8 +928,12 @@ impl TextRenderer {
     ///
     /// @param id - the face in the database
     fn shared_bytes(&self, id: fontdb::ID) -> Option<(FaceBytes, u32)> {
-        let face = self.database.face(id)?;
-        let bytes: FaceBytes = match &face.source {
+        let (source, face_index) = {
+            let database = self.database.borrow();
+            let face = database.face(id)?;
+            (face.source.clone(), face.index)
+        };
+        let bytes: FaceBytes = match &source {
             fontdb::Source::Binary(data) => data.clone(),
             fontdb::Source::SharedFile(_, data) => data.clone(),
             fontdb::Source::File(path) => {
@@ -939,7 +944,7 @@ impl TextRenderer {
                 Arc::new(unsafe { memmap2::Mmap::map(&file) }.ok()?)
             }
         };
-        Some((bytes, face.index))
+        Some((bytes, face_index))
     }
 
     /// The size of one cell of the terminal grid, at `size` points.
@@ -1098,6 +1103,13 @@ impl FontMetrics for TextRenderer {
 impl TextRenderer {
     /// What [`FontMetrics::line_metrics`] answers, asking the font.
     fn measure_line_metrics(&self, style: &CharStyle) -> LineMetrics {
+        let mut metrics = self.font_metrics_unzoomed(style);
+        metrics.line_gap += style.size * READING_LEADING;
+        metrics
+    }
+
+    /// A face's own ascent, descent and line gap, with none of the reading leading the editor adds.
+    fn font_metrics_unzoomed(&self, style: &CharStyle) -> LineMetrics {
         let Some(face) = self.face_for(style) else {
             return LineMetrics { ascent: style.size, descent: style.size * 0.25, line_gap: 0.0 };
         };
@@ -1106,8 +1118,44 @@ impl TextRenderer {
             ascent: scaled.ascent(),
             // ab_glyph reports the descent as a negative number, below the baseline.
             descent: -scaled.descent(),
-            line_gap: scaled.line_gap() + style.size * READING_LEADING,
+            line_gap: scaled.line_gap(),
         }
+    }
+
+    /// The line metrics the font itself gives, without the editor's reading leading.
+    ///
+    /// **A Word document is laid out on these** (`task-2341`): Word's single line is exactly the font's
+    /// ascent, descent and gap, and the leading that makes code easier to read would make every page of a
+    /// document come out longer than Word's.
+    pub fn font_line_metrics(&self, style: &CharStyle) -> LineMetrics {
+        self.font_metrics_unzoomed(&self.unzoomed(style))
+    }
+
+    /// How much taller a face's line is than its em, which is what a point size is multiplied by to give
+    /// the size this renderer is asked for.
+    ///
+    /// The renderer scales a face so that its ascent to descent is the size asked for, which is what makes
+    /// every monospaced face fill the same line in the editor. Word's size is the em, so a 12 point Aptos
+    /// is asked for here as 14.6 (`task-2341`).
+    pub fn em_ratio(&self, style: &CharStyle) -> f32 {
+        self.face_for(&self.unzoomed(style))
+            .and_then(|face| Some(face.height_unscaled() / face.units_per_em()?))
+            .filter(|ratio| ratio.is_finite() && *ratio > 0.2)
+            .unwrap_or(1.0)
+    }
+
+    /// Add every font in a folder, for a plugin whose documents name families the system does not list.
+    ///
+    /// The Word plugin adds Office's cloud fonts this way, when a document is first opened, so a window
+    /// that never opens one never reads them (`task-2341`). A face that was looked for before and not
+    /// found is looked for again. Answers how many faces were added.
+    pub fn add_font_folder(&self, folder: &std::path::Path) -> usize {
+        let before = self.database.borrow().len();
+        self.database.borrow_mut().load_fonts_dir(folder);
+        self.faces.borrow_mut().retain(|_, face| face.is_some());
+        self.fallbacks.borrow_mut().clear();
+        *self.memo.borrow_mut() = None;
+        self.database.borrow().len() - before
     }
 
     /// The ASCII advances of `style`'s face at its size, measured the first time they are asked for.

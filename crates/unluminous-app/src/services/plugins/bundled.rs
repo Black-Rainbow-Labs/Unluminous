@@ -62,6 +62,13 @@ pub const ALL: &[(&str, &str, Option<&[u8]>)] = &[
         include_str!("../../../plugins/designer/plugin.conf"),
         Some(include_bytes!("../../../plugins/designer/icon.png")),
     ),
+    // Word documents, `task-2341`. A `ui` plugin that claims `.docx`, `.dotx` and `.docm` and opens each in a tab of
+    // its own, drawn as pages. Switched off, those files open as "cannot be shown" and no Word code runs.
+    (
+        "word",
+        include_str!("../../../plugins/word/plugin.conf"),
+        Some(include_bytes!("../../../plugins/word/icon.png")),
+    ),
     // The Realm, `task-2202`. A `ui` plugin whose provider is the window itself: it claims `.realm`, gives
     // those files this icon, shows `.realm-files/` in the explorer, and is the switch for the Realm panel.
     (

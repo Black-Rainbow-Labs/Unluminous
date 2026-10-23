@@ -292,7 +292,11 @@ fn ordinal_text(value: i64) -> String {
 }
 
 fn capitalise(text: &str) -> String {
-    crate::styles::display_name(text)
+    let mut characters = text.chars();
+    match characters.next() {
+        Some(first) => first.to_uppercase().chain(characters).collect(),
+        None => String::new(),
+    }
 }
 
 /// A bullet written in a symbol font's private use area, as the character it is drawn as.
