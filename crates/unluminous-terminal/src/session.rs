@@ -2088,7 +2088,9 @@ Start-Sleep -Seconds 900"
     /// machine a program that prints one line ends before that thread has run. This makes the order
     /// certain rather than likely, which is what lets a test say what happens then.
     #[cfg(windows)]
-    fn a_loop_started_after_the_program_ended(command: &str) -> (Receiver<Event>, Arc<FairMutex<Term<Proxy>>>) {
+    fn a_loop_started_after_the_program_ended(
+        command: &str,
+    ) -> (Receiver<Event>, Arc<FairMutex<Term<Proxy>>>) {
         use windows_sys::Win32::System::Threading::WaitForSingleObject;
         let options = alacritty_terminal::tty::Options {
             shell: Some(alacritty_terminal::tty::Shell::new(
@@ -2101,7 +2103,8 @@ Start-Sleep -Seconds 900"
             escape_args: true,
         };
         let size = Size::new(8, 60);
-        let pty = alacritty_terminal::tty::new(&options, size.into(), 0).expect("start the program");
+        let pty =
+            alacritty_terminal::tty::new(&options, size.into(), 0).expect("start the program");
         // SAFETY: the handle is the pseudoterminal's own and the pseudoterminal is alive here.
         let ended = unsafe { WaitForSingleObject(pty.child_watcher().raw_handle(), 30_000) };
         assert_eq!(ended, 0, "the program did not end in thirty seconds");
@@ -2111,8 +2114,10 @@ Start-Sleep -Seconds 900"
         let (sender, events) = std::sync::mpsc::channel();
         let proxy = Proxy { events: sender, waker: Arc::new(|| {}) };
         let term = Arc::new(FairMutex::new(Term::new(config(), &size, proxy.clone())));
-        let pty = Watching::new(pty, crate::reported::Scanner::new(crate::reported::Reported::new()));
-        let event_loop = EventLoop::new(term.clone(), proxy, pty, true, false).expect("make the loop");
+        let pty =
+            Watching::new(pty, crate::reported::Scanner::new(crate::reported::Reported::new()));
+        let event_loop =
+            EventLoop::new(term.clone(), proxy, pty, true, false).expect("make the loop");
         event_loop.spawn();
         (events, term)
     }
@@ -2149,7 +2154,10 @@ Start-Sleep -Seconds 900"
             events.recv_timeout(deadline.saturating_duration_since(std::time::Instant::now())),
             Ok(Event::ChildExit(_))
         ) {
-            assert!(std::time::Instant::now() < deadline, "the loop never said the program had ended");
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the loop never said the program had ended"
+            );
         }
         // The loop drains before it says the program ended, and sends the exit after; wait for it to
         // have let go of the grid.
@@ -2158,7 +2166,8 @@ Start-Sleep -Seconds 900"
         let text: String = (0..term.screen_lines())
             .map(|line| {
                 let row = &term.grid()[Line(line as i32)];
-                (0..term.columns()).map(|column| row[Column(column)].c).collect::<String>() + "
+                (0..term.columns()).map(|column| row[Column(column)].c).collect::<String>()
+                    + "
 "
             })
             .collect();
@@ -2208,8 +2217,17 @@ Start-Sleep -Seconds 900"
         let mut read = std::collections::VecDeque::new();
         let started = std::time::Instant::now();
         let quiet = std::time::Duration::from_millis(200);
-        read_until_quiet(&mut reader, &mut read, quiet, std::time::Duration::from_millis(300), 1 << 16);
-        assert!(started.elapsed() < std::time::Duration::from_secs(2), "a stream that never stops is cut off");
+        read_until_quiet(
+            &mut reader,
+            &mut read,
+            quiet,
+            std::time::Duration::from_millis(300),
+            1 << 16,
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "a stream that never stops is cut off"
+        );
         read.clear();
         read_until_quiet(&mut reader, &mut read, quiet, std::time::Duration::from_secs(30), 25);
         assert!(read.len() < 40, "and so is one larger than the most it may hold");
