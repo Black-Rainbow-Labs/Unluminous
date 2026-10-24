@@ -934,7 +934,8 @@ fn read_sheet(
                                     formula = Some(made);
                                 }
                                 Some("dataTable") => {
-                                    let cell = |name: &str| f.attribute(name).and_then(CellRef::parse);
+                                    let cell =
+                                        |name: &str| f.attribute(name).and_then(CellRef::parse);
                                     sheet.data_tables.push(DataTable {
                                         range: f
                                             .attribute("ref")
@@ -944,7 +945,10 @@ fn read_sheet(
                                         row_input: bool_attr(f, "dtr"),
                                         r1: cell("r1"),
                                         r2: cell("r2"),
-                                        attrs: attrs_of(f, &["t", "ref", "dt2D", "dtr", "r1", "r2"]),
+                                        attrs: attrs_of(
+                                            f,
+                                            &["t", "ref", "dt2D", "dtr", "r1", "r2"],
+                                        ),
                                     });
                                 }
                                 _ => {

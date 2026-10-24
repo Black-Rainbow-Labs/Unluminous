@@ -505,7 +505,8 @@ impl Styles {
                 next.fill = Self::intern(&mut self.fills, fill);
             }
             StyleChange::Border(edit) => {
-                let mut border = self.borders.get(next.border as usize).cloned().unwrap_or_default();
+                let mut border =
+                    self.borders.get(next.border as usize).cloned().unwrap_or_default();
                 edit.apply(&mut border);
                 next.border = Self::intern(&mut self.borders, border);
             }

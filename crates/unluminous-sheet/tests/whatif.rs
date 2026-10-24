@@ -63,7 +63,12 @@ fn goal_seek_reaches_the_value_excel_reaches_in_every_case() {
         checked += 1;
     }
     assert!(checked >= 20, "{checked} cases");
-    assert!(wrong.is_empty(), "{} of {checked} cases differ from Excel:\n{}", wrong.len(), wrong.join("\n"));
+    assert!(
+        wrong.is_empty(),
+        "{} of {checked} cases differ from Excel:\n{}",
+        wrong.len(),
+        wrong.join("\n")
+    );
 }
 
 #[test]
@@ -147,8 +152,12 @@ fn creating_a_data_table_fills_the_cells_excel_fills() {
     let ours = &s.book.sheets[0].data_tables;
     let theirs = &excel.sheets[0].data_tables;
     for t in theirs {
-        let mine = ours.iter().find(|m| m.range == t.range).unwrap_or_else(|| panic!("{:?}", t.range));
-        assert_eq!((mine.two_d, mine.row_input, mine.r1, mine.r2), (t.two_d, t.row_input, t.r1, t.r2));
+        let mine =
+            ours.iter().find(|m| m.range == t.range).unwrap_or_else(|| panic!("{:?}", t.range));
+        assert_eq!(
+            (mine.two_d, mine.row_input, mine.r1, mine.r2),
+            (t.two_d, t.row_input, t.r1, t.r2)
+        );
         assert_eq!(mine.formula(), t.formula());
     }
     // The shown formula is Excel's.
@@ -198,8 +207,28 @@ fn scenario_session(name: &str) -> Session {
 
 fn build_scenarios(s: &mut Session) {
     let two = [rg("B1:B2")];
-    s.add_scenario(0, "Base", &two, Some(&[Value::Number(10.0), Value::Number(100.0)]), None, "Fixture Author", true, false).unwrap();
-    s.add_scenario(0, "Best", &two, Some(&[Value::Number(12.0), Value::Number(150.0)]), Some("Optimistic case"), "Fixture Author", true, false).unwrap();
+    s.add_scenario(
+        0,
+        "Base",
+        &two,
+        Some(&[Value::Number(10.0), Value::Number(100.0)]),
+        None,
+        "Fixture Author",
+        true,
+        false,
+    )
+    .unwrap();
+    s.add_scenario(
+        0,
+        "Best",
+        &two,
+        Some(&[Value::Number(12.0), Value::Number(150.0)]),
+        Some("Optimistic case"),
+        "Fixture Author",
+        true,
+        false,
+    )
+    .unwrap();
     s.add_scenario(
         0,
         "Worst",
@@ -220,7 +249,8 @@ fn adding_scenarios_writes_what_excel_writes() {
     let excel = read_fixture(LANE, "scenarios-added.xlsx");
     assert_eq!(undated(s.scenarios(0)), undated(excel.sheets[0].scenarios()));
     // And the file round trips.
-    let back = unluminous_sheet::xlsx::read(&unluminous_sheet::xlsx::write(&s.book).unwrap()).unwrap();
+    let back =
+        unluminous_sheet::xlsx::read(&unluminous_sheet::xlsx::write(&s.book).unwrap()).unwrap();
     assert_eq!(undated(back.sheets[0].scenarios()), undated(excel.sheets[0].scenarios()));
 }
 
@@ -238,7 +268,16 @@ fn showing_a_scenario_sets_the_cells_and_the_marks_excel_sets() {
 fn editing_and_deleting_scenarios_does_what_excel_does() {
     let mut s = scenario_session("scenarios-added.xlsx");
     s.show_scenario(0, "Base").unwrap();
-    s.edit_scenario(0, "Best", None, Some(&[rg("B1:B2"), rg("B5")]), Some(&[Value::Number(13.0), Value::Number(160.0), Value::Number(0.5)]), None, "Fixture Author").unwrap();
+    s.edit_scenario(
+        0,
+        "Best",
+        None,
+        Some(&[rg("B1:B2"), rg("B5")]),
+        Some(&[Value::Number(13.0), Value::Number(160.0), Value::Number(0.5)]),
+        None,
+        "Fixture Author",
+    )
+    .unwrap();
     let excel = read_fixture(LANE, "scenarios-edited.xlsx");
     assert_eq!(undated(s.scenarios(0)), undated(excel.sheets[0].scenarios()));
     s.delete_scenario(0, "Worst").unwrap();
@@ -264,10 +303,20 @@ fn layout(book: &Workbook, sheet: usize) -> Vec<String> {
     }
     for c in &s.columns {
         for col in c.first..=c.last {
-            out.push(format!("col {} w={:?} outline={} hidden={}", col + 1, c.width, c.outline, c.hidden));
+            out.push(format!(
+                "col {} w={:?} outline={} hidden={}",
+                col + 1,
+                c.width,
+                c.outline,
+                c.hidden
+            ));
         }
     }
-    out.push(format!("grid={} sheetPr={}", s.show_grid, s.raw.elements.iter().any(|(n, x)| n == "sheetPr" && x.contains("summaryBelow=\"0\""))));
+    out.push(format!(
+        "grid={} sheetPr={}",
+        s.show_grid,
+        s.raw.elements.iter().any(|(n, x)| n == "sheetPr" && x.contains("summaryBelow=\"0\""))
+    ));
     out
 }
 
@@ -282,7 +331,7 @@ fn summary_lines(book: &Workbook, sheet: usize) -> Vec<String> {
 #[test]
 fn a_scenario_summary_is_the_sheet_excel_builds() {
     let mut s = scenario_session("scenarios-summary-input.xlsx");
-    let at_index = s.scenario_summary(0, &[rg("B3"), rg("B5")], "Fixture Author").unwrap();
+    let at_index = s.scenario_summary(0, &[rg("B3"), rg("B5")]).unwrap();
     assert_eq!(at_index, 0);
     let excel = read_fixture(LANE, "scenarios-summary.xlsx");
     assert_eq!(s.book.sheets[0].name, "Scenario Summary");
@@ -302,15 +351,15 @@ fn a_scenario_summary_is_the_sheet_excel_builds() {
 #[test]
 fn a_second_summary_is_numbered_and_names_are_used_for_labels() {
     let mut s = scenario_session("scenarios-summary-input.xlsx");
-    s.scenario_summary(0, &[rg("B3"), rg("B5")], "Fixture Author").unwrap();
-    s.scenario_summary(1, &[rg("B3")], "Fixture Author").unwrap();
+    s.scenario_summary(0, &[rg("B3"), rg("B5")]).unwrap();
+    s.scenario_summary(1, &[rg("B3")]).unwrap();
     let excel = read_fixture(LANE, "scenarios-summary-twice.xlsx");
     let names: Vec<&str> = s.book.sheets.iter().map(|x| x.name.as_str()).collect();
     assert_eq!(names, ["Scenario Summary", "Scenario Summary 2", "Model"]);
     assert_eq!(summary_lines(&s.book, 1), summary_lines(&excel, 1));
 
     let mut s = scenario_session("scenarios-names-input.xlsx");
-    s.scenario_summary(0, &[rg("B3"), rg("B5")], "Fixture Author").unwrap();
+    s.scenario_summary(0, &[rg("B3"), rg("B5")]).unwrap();
     let excel = read_fixture(LANE, "scenarios-names-summary.xlsx");
     let ours = summary_lines(&s.book, 0);
     let theirs = summary_lines(&excel, 0);
@@ -321,12 +370,20 @@ fn a_second_summary_is_numbered_and_names_are_used_for_labels() {
 #[test]
 fn scenario_operations_refuse_what_excel_refuses() {
     let mut s = scenario_session("scenarios-added.xlsx");
-    assert!(s.add_scenario(0, "Base", &[rg("B1")], None, None, "x", true, false).is_err(), "a name in use");
-    assert!(s.add_scenario(0, "Many", &[rg("A1:A40")], None, None, "x", true, false).is_err(), "more than 32 cells");
-    assert!(s.add_scenario(0, "Few", &[rg("B1:B2")], Some(&[Value::Number(1.0)]), None, "x", true, false).is_err());
+    assert!(
+        s.add_scenario(0, "Base", &[rg("B1")], None, None, "x", true, false).is_err(),
+        "a name in use"
+    );
+    assert!(
+        s.add_scenario(0, "Many", &[rg("A1:A40")], None, None, "x", true, false).is_err(),
+        "more than 32 cells"
+    );
+    assert!(s
+        .add_scenario(0, "Few", &[rg("B1:B2")], Some(&[Value::Number(1.0)]), None, "x", true, false)
+        .is_err());
     assert!(s.delete_scenario(0, "Nope").is_err());
     let mut empty = scenario_session("scenarios-input.xlsx");
-    assert!(empty.scenario_summary(0, &[rg("B3")], "x").is_err());
+    assert!(empty.scenario_summary(0, &[rg("B3")]).is_err());
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -353,7 +410,7 @@ fn excel_opens_data_tables_and_scenarios_unluminous_writes_and_computes_the_same
     s.add_scenario(0, "Base", &[rg("B1:B2")], None, None, who, true, false).unwrap();
     let nine_eight = [Value::Number(9.0), Value::Number(8.0)];
     s.add_scenario(0, "Big", &[rg("B1:B2")], Some(&nine_eight), None, who, true, false).unwrap();
-    s.scenario_summary(0, &[rg("B3")], who).unwrap();
+    s.scenario_summary(0, &[rg("B3")]).unwrap();
     let folder = scratch("whatif");
     let path = folder.join("built.xlsx");
     std::fs::write(&path, unluminous_sheet::xlsx::write(&s.book).unwrap()).unwrap();
@@ -370,7 +427,10 @@ fn excel_opens_data_tables_and_scenarios_unluminous_writes_and_computes_the_same
                 _ => theirs.to_owned(),
             };
             if ours != theirs {
-                wrong.push(format!("{}!{a}: ours {ours}, Excel {theirs}", s.book.sheets[index].name));
+                wrong.push(format!(
+                    "{}!{a}: ours {ours}, Excel {theirs}",
+                    s.book.sheets[index].name
+                ));
             }
         }
     }

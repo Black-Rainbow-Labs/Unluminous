@@ -31,9 +31,9 @@ pub const LOCKED_CELL: &str = "The cell or chart you're trying to change is on a
 /// What Excel says when a command is used that a protected sheet does not allow.
 pub const COMMAND_REFUSED: &str = "You cannot use this command on a protected sheet. To use this command, you must first unprotect the sheet (Review tab, Protect group, Unprotect Sheet button). You may be prompted for a password.";
 
-/// What Excel says when the structure of a workbook is locked and a sheet is added, deleted, renamed,
-/// moved, hidden or shown.
-pub const STRUCTURE_LOCKED: &str = "The workbook structure is protected, so sheets cannot be added, deleted, renamed, moved, hidden or unhidden. Unprotect the workbook (Review tab, Protect group, Protect Workbook button) to make this change.";
+/// What Excel says when the structure of a workbook is locked and a sheet is copied. Adding, deleting,
+/// renaming, moving, hiding and colouring a sheet are refused in the same circumstances.
+pub const STRUCTURE_LOCKED: &str = "Workbook is protected and cannot be changed.";
 
 /// A password as a file holds it: never the password itself.
 #[derive(Debug, Clone, PartialEq)]
@@ -276,10 +276,16 @@ fn read_secret(node: roxmltree::Node, prefix: &str, legacy: &str) -> Option<Secr
     };
     if let Some(hash) = node.attribute(name("hashValue").as_str()) {
         return Some(Secret::Hashed {
-            algorithm: node.attribute(name("algorithmName").as_str()).unwrap_or("SHA-512").to_owned(),
+            algorithm: node
+                .attribute(name("algorithmName").as_str())
+                .unwrap_or("SHA-512")
+                .to_owned(),
             hash: hash.to_owned(),
             salt: node.attribute(name("saltValue").as_str()).unwrap_or("").to_owned(),
-            spin: node.attribute(name("spinCount").as_str()).and_then(|v| v.parse().ok()).unwrap_or(0),
+            spin: node
+                .attribute(name("spinCount").as_str())
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0),
         });
     }
     node.attribute(legacy).filter(|v| !v.is_empty()).map(|v| Secret::Legacy(v.to_owned()))
@@ -306,7 +312,8 @@ fn secret_attrs(secret: &Option<Secret>, prefix: &str, legacy: &str) -> Vec<(Str
     }
 }
 
-const SECRET_NAMES: [&str; 5] = ["algorithmName", "hashValue", "saltValue", "spinCount", "password"];
+const SECRET_NAMES: [&str; 5] =
+    ["algorithmName", "hashValue", "saltValue", "spinCount", "password"];
 
 impl SheetProtection {
     /// Read a `sheetProtection` element.
@@ -317,8 +324,12 @@ impl SheetProtection {
         for (i, (name, default)) in ALLOW_ATTRS.iter().enumerate() {
             allow.set(i, !flag(node.attribute(*name), *default));
         }
-        let skip: Vec<&str> =
-            ALLOW_ATTRS.iter().map(|(n, _)| *n).chain(SECRET_NAMES).chain(["sheet", "objects", "scenarios"]).collect();
+        let skip: Vec<&str> = ALLOW_ATTRS
+            .iter()
+            .map(|(n, _)| *n)
+            .chain(SECRET_NAMES)
+            .chain(["sheet", "objects", "scenarios"])
+            .collect();
         Some(Self {
             secret: read_secret(node, "", "password"),
             sheet: flag(node.attribute("sheet"), false),
@@ -336,7 +347,9 @@ impl SheetProtection {
     /// The element as Excel writes it: a flag only when it differs from the schema's default.
     pub fn to_xml(&self) -> String {
         let mut attrs = secret_attrs(&self.secret, "", "password");
-        for (name, on) in [("sheet", self.sheet), ("objects", self.objects), ("scenarios", self.scenarios)] {
+        for (name, on) in
+            [("sheet", self.sheet), ("objects", self.objects), ("scenarios", self.scenarios)]
+        {
             if on {
                 attrs.push((name.to_owned(), "1".to_owned()));
             }
@@ -429,7 +442,13 @@ pub struct WorkbookProtection {
 
 impl Default for WorkbookProtection {
     fn default() -> Self {
-        Self { secret: None, lock_structure: true, lock_windows: false, lock_revision: false, other: Vec::new() }
+        Self {
+            secret: None,
+            lock_structure: true,
+            lock_windows: false,
+            lock_revision: false,
+            other: Vec::new(),
+        }
     }
 }
 
@@ -585,7 +604,9 @@ mod tests {
         assert!(p.allow.format_cells && p.allow.sort && p.allow.pivot_tables);
         assert!(p.allow.select_locked_cells && p.allow.select_unlocked_cells);
         assert_eq!(p.to_xml(), xml);
-        let strict = SheetProtection::parse(r#"<sheetProtection sheet="1" selectLockedCells="1"/>"#).unwrap();
+        let strict =
+            SheetProtection::parse(r#"<sheetProtection sheet="1" selectLockedCells="1"/>"#)
+                .unwrap();
         assert!(!strict.allow.select_locked_cells && !strict.allow.format_cells);
     }
 

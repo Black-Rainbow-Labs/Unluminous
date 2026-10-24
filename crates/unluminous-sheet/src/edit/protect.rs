@@ -56,7 +56,9 @@ pub enum Guard<'a> {
 impl Session {
     /// Whether a change is allowed on a sheet, and Excel's message when it is not.
     pub fn allowed(&self, sheet: usize, guard: Guard) -> Result<(), String> {
-        let Some(p) = self.book.sheets.get(sheet).and_then(|s| s.protection()) else { return Ok(()) };
+        let Some(p) = self.book.sheets.get(sheet).and_then(|s| s.protection()) else {
+            return Ok(());
+        };
         if !p.sheet && !p.objects && !p.scenarios {
             return Ok(());
         }
@@ -89,7 +91,9 @@ impl Session {
             }
             Guard::Filter => flag(p.allow.auto_filter),
             Guard::Pivot => flag(p.allow.pivot_tables),
-            Guard::Table => Err("Table features aren't available because the sheet is protected.".to_owned()),
+            Guard::Table => {
+                Err("Table features aren't available because the sheet is protected.".to_owned())
+            }
             Guard::Forbidden => Err(COMMAND_REFUSED.to_owned()),
         }
     }
@@ -161,11 +165,18 @@ impl Session {
         }
         let s = &self.book.sheets[sheet];
         let locked = |style: u32| self.book.styles.xf(style).locked.unwrap_or(true);
-        let rows_with_style =
-            s.rows.range(range.first.row..=range.last.row).filter(|(_, i)| i.style.is_some()).count();
-        for (&(row, col), cell) in s.cells.range((range.first.row, 0)..=(range.last.row, MAX_COLS)) {
+        let rows_with_style = s
+            .rows
+            .range(range.first.row..=range.last.row)
+            .filter(|(_, i)| i.style.is_some())
+            .count();
+        for (&(row, col), cell) in s.cells.range((range.first.row, 0)..=(range.last.row, MAX_COLS))
+        {
             let inside = col >= range.first.col && col <= range.last.col;
-            if inside && locked(cell.style) && !open.iter().any(|r| r.contains(CellRef::new(row, col))) {
+            if inside
+                && locked(cell.style)
+                && !open.iter().any(|r| r.contains(CellRef::new(row, col)))
+            {
                 return true;
             }
         }
@@ -391,8 +402,5 @@ fn whole_rows(r: Range) -> Range {
 
 /// A range stretched to every row of its columns.
 fn whole_columns(r: Range) -> Range {
-    Range::new(
-        CellRef::new(0, r.first.col),
-        CellRef::new(crate::coord::MAX_ROWS - 1, r.last.col),
-    )
+    Range::new(CellRef::new(0, r.first.col), CellRef::new(crate::coord::MAX_ROWS - 1, r.last.col))
 }

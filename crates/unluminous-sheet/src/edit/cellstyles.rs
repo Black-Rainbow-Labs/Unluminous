@@ -18,7 +18,8 @@ impl Session {
     /// The name of the style a cell uses (`Range.Style.Name`).
     pub fn style_of(&self, sheet: usize, at: CellRef) -> String {
         let Some(s) = self.book.sheets.get(sheet) else { return "Normal".to_owned() };
-        let xf = s.cell(at).map_or_else(|| super::inherited_style(s, (at.row, at.col)), |c| c.style);
+        let xf =
+            s.cell(at).map_or_else(|| super::inherited_style(s, (at.row, at.col)), |c| c.style);
         self.book.styles.style_name_of(xf)
     }
 
@@ -67,8 +68,9 @@ impl Session {
             Some((sheet, at)) => {
                 self.check_sheet(sheet)?;
                 let s = &self.book.sheets[sheet];
-                let style =
-                    s.cell(at).map_or_else(|| super::inherited_style(s, (at.row, at.col)), |c| c.style);
+                let style = s
+                    .cell(at)
+                    .map_or_else(|| super::inherited_style(s, (at.row, at.col)), |c| c.style);
                 self.book.styles.xf(style)
             }
             None => self.book.styles.style_xfs.first().cloned().unwrap_or_default(),
@@ -97,7 +99,11 @@ impl Session {
         let Some(index) = styles.ensure_style(name) else {
             return Err(format!("There is no style named {name}."));
         };
-        let old = styles.style_xfs.get(styles.cell_styles[index].xf_id as usize).cloned().unwrap_or_default();
+        let old = styles
+            .style_xfs
+            .get(styles.cell_styles[index].xf_id as usize)
+            .cloned()
+            .unwrap_or_default();
         let kept = includes.unwrap_or_else(|| Includes::of(&old));
         let mut xf = old;
         for change in changes {
@@ -109,7 +115,11 @@ impl Session {
     }
 
     fn is_built_in_style(&self, name: &str) -> bool {
-        self.book.styles.style_gallery().iter().any(|s| s.name.eq_ignore_ascii_case(name) && s.builtin_id.is_some())
+        self.book
+            .styles
+            .style_gallery()
+            .iter()
+            .any(|s| s.name.eq_ignore_ascii_case(name) && s.builtin_id.is_some())
     }
 
     /// Delete a style. Cells that used it return to Normal. Normal cannot be deleted.

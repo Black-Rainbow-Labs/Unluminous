@@ -479,7 +479,11 @@ impl Session {
         if what != Clear::Formats {
             let s = &mut self.book.sheets[sheet];
             s.array_formulas.retain(|r| !ranges.iter().any(|range| range.contains(r.first)));
-            s.data_tables.retain(|t| !ranges.iter().any(|range| range.contains(t.range.first) && range.contains(t.range.last)));
+            s.data_tables.retain(|t| {
+                !ranges
+                    .iter()
+                    .any(|range| range.contains(t.range.first) && range.contains(t.range.last))
+            });
         }
         self.recalculate();
         Ok(())
@@ -1079,6 +1083,7 @@ impl Session {
         color: Option<crate::styles::Color>,
     ) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allow_structure_change()?;
         self.remember_whole("Tab color");
         self.book.sheets[sheet].tab_color = color;
         Ok(())
@@ -2407,7 +2412,9 @@ impl Session {
             }
         }
         for t in &self.book.sheets[sheet].data_tables {
-            if t.range.intersects(&range) && !(range.contains(t.range.first) && range.contains(t.range.last)) {
+            if t.range.intersects(&range)
+                && !(range.contains(t.range.first) && range.contains(t.range.last))
+            {
                 return Err(whatif::DATA_TABLE_PART.to_owned());
             }
         }

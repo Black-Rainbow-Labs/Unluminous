@@ -6,9 +6,7 @@ use crate::coord::{CellRef, Range};
 use crate::model::{Cell, DataTable, RowInfo, Sheet, Workbook};
 use crate::styles::{Alignment, Border, Color, Edge, Fill, Font, Xf};
 use crate::value::Value;
-use crate::whatif::{
-    seek, InputCell, Scenario, Scenarios, DEFAULT_MAX_CHANGE,
-};
+use crate::whatif::{seek, InputCell, Scenario, Scenarios, DEFAULT_MAX_CHANGE};
 
 use super::{Guard, Session};
 
@@ -127,10 +125,8 @@ impl Session {
         if row_input.is_none() && col_input.is_none() {
             return Err(BAD_INPUT.to_owned());
         }
-        let results = Range::new(
-            CellRef::new(range.first.row + 1, range.first.col + 1),
-            range.last,
-        );
+        let results =
+            Range::new(CellRef::new(range.first.row + 1, range.first.col + 1), range.last);
         if [row_input, col_input].into_iter().flatten().any(|c| range.contains(c)) {
             return Err(BAD_INPUT.to_owned());
         }
@@ -219,9 +215,7 @@ impl Session {
             return Err("Enter the cells the scenario changes.".to_owned());
         }
         if cells.len() > MOST_CHANGING_CELLS {
-            return Err(format!(
-                "A scenario can change at most {MOST_CHANGING_CELLS} cells."
-            ));
+            return Err(format!("A scenario can change at most {MOST_CHANGING_CELLS} cells."));
         }
         Ok(cells)
     }
@@ -268,9 +262,7 @@ impl Session {
             locked,
             hidden,
             user: Some(user.to_owned()),
-            comment: Some(
-                comment.map_or_else(|| self.stamp("Created", user), str::to_owned),
-            ),
+            comment: Some(comment.map_or_else(|| self.stamp("Created", user), str::to_owned)),
             cells: cells
                 .iter()
                 .zip(texts)
@@ -325,7 +317,8 @@ impl Session {
         self.check_sheet(sheet)?;
         self.allowed(sheet, Guard::Forbidden)?;
         let mut scenarios = self.scenarios(sheet);
-        let Some(index) = scenarios.list.iter().position(|s| s.name.eq_ignore_ascii_case(name)) else {
+        let Some(index) = scenarios.list.iter().position(|s| s.name.eq_ignore_ascii_case(name))
+        else {
             return Err(format!("There is no scenario named {name}."));
         };
         if scenarios.list[index].locked {
@@ -342,7 +335,11 @@ impl Session {
         if let Some(new) = new_name {
             let new = new.trim();
             if new.is_empty()
-                || scenarios.list.iter().enumerate().any(|(i, s)| i != index && s.name.eq_ignore_ascii_case(new))
+                || scenarios
+                    .list
+                    .iter()
+                    .enumerate()
+                    .any(|(i, s)| i != index && s.name.eq_ignore_ascii_case(new))
             {
                 return Err(format!("A scenario named {new} already exists."));
             }
@@ -357,7 +354,13 @@ impl Session {
         s.cells = cells
             .iter()
             .zip(texts)
-            .map(|(at, value)| InputCell { at: *at, value, deleted: false, undone: false, num_fmt_id: None })
+            .map(|(at, value)| InputCell {
+                at: *at,
+                value,
+                deleted: false,
+                undone: false,
+                num_fmt_id: None,
+            })
             .collect();
         s.comment = Some(match comment {
             Some(c) => c.to_owned(),
@@ -375,7 +378,8 @@ impl Session {
         self.check_sheet(sheet)?;
         self.allowed(sheet, Guard::Forbidden)?;
         let mut scenarios = self.scenarios(sheet);
-        let Some(index) = scenarios.list.iter().position(|s| s.name.eq_ignore_ascii_case(name)) else {
+        let Some(index) = scenarios.list.iter().position(|s| s.name.eq_ignore_ascii_case(name))
+        else {
             return Err(format!("There is no scenario named {name}."));
         };
         if scenarios.list[index].locked {
@@ -393,7 +397,8 @@ impl Session {
     pub fn show_scenario(&mut self, sheet: usize, name: &str) -> Result<(), String> {
         self.check_sheet(sheet)?;
         let mut scenarios = self.scenarios(sheet);
-        let Some(index) = scenarios.list.iter().position(|s| s.name.eq_ignore_ascii_case(name)) else {
+        let Some(index) = scenarios.list.iter().position(|s| s.name.eq_ignore_ascii_case(name))
+        else {
             return Err(format!("There is no scenario named {name}."));
         };
         let cells: Vec<Range> =
@@ -403,7 +408,8 @@ impl Session {
         self.remember_whole("Show scenario");
         for input in scenarios.list[index].cells.clone() {
             let value = crate::input::read(&input.value, self.book.date1904, self.this_year).value;
-            let cell = self.book.sheets[sheet].cells.entry((input.at.row, input.at.col)).or_default();
+            let cell =
+                self.book.sheets[sheet].cells.entry((input.at.row, input.at.col)).or_default();
             cell.value = value;
             cell.formula = None;
             self.engine.changed(&self.book, sheet, input.at);
@@ -418,12 +424,7 @@ impl Session {
     /// Scenario Manager, Summary (`Scenarios.CreateSummary` with the standard summary): a new sheet before
     /// this one listing each changing cell and each result cell under every scenario. Answers the index of
     /// the new sheet, which becomes the sheet showing.
-    pub fn scenario_summary(
-        &mut self,
-        sheet: usize,
-        results: &[Range],
-        user: &str,
-    ) -> Result<usize, String> {
+    pub fn scenario_summary(&mut self, sheet: usize, results: &[Range]) -> Result<usize, String> {
         self.check_sheet(sheet)?;
         self.allow_structure_change()?;
         let mut scenarios = self.scenarios(sheet);
@@ -431,13 +432,9 @@ impl Session {
             return Err("There are no scenarios on this sheet to summarize.".to_owned());
         }
         let result_cells = Self::result_cells(results)?;
-        let _ = user;
         let report = SummaryData::collect(self, sheet, &scenarios, &result_cells);
         self.remember_whole("Scenario summary");
-        let name = (0..)
-            .map(|n| if n == 0 { "Scenario Summary".to_owned() } else { format!("Scenario Summary {}", n + 1) })
-            .find(|n| self.book.sheet_index(n).is_none())
-            .unwrap_or_default();
+        let name = self.next_summary_name();
         let built = report.build(&mut self.book, &name);
         self.book.sheets.insert(sheet, built);
         self.reindex_after_sheet_move(|i| if i >= sheet { i + 1 } else { i });
@@ -447,6 +444,17 @@ impl Session {
         self.engine.rebuild(&self.book);
         self.recalculate_all();
         Ok(sheet)
+    }
+
+    /// `Scenario Summary`, or the first `Scenario Summary 2`, `Scenario Summary 3` that is free.
+    fn next_summary_name(&self) -> String {
+        (1..)
+            .map(|n| match n {
+                1 => "Scenario Summary".to_owned(),
+                n => format!("Scenario Summary {n}"),
+            })
+            .find(|n| self.book.sheet_index(n).is_none())
+            .unwrap_or_default()
     }
 
     fn result_cells(results: &[Range]) -> Result<Vec<CellRef>, String> {
@@ -460,10 +468,8 @@ impl Session {
 
 /// What a summary report shows, worked out before the sheet is built.
 struct SummaryData {
-    /// The sheet the scenarios are on, for the labels that name a cell.
+    /// How each changing cell and then each result cell is named in the report.
     labels: Vec<String>,
-    changing: Vec<CellRef>,
-    results: Vec<CellRef>,
     names: Vec<String>,
     comments: Vec<String>,
     /// For each changing cell, its current value and the value in each scenario (`None` where the scenario
@@ -511,10 +517,12 @@ impl SummaryData {
         let labels = all.map(|at| Self::label(book, sheet, *at)).collect();
         Self {
             labels,
-            changing,
-            results: result_cells.to_vec(),
             names: scenarios.list.iter().map(|s| s.name.clone()).collect(),
-            comments: scenarios.list.iter().map(|s| s.comment.clone().unwrap_or_default()).collect(),
+            comments: scenarios
+                .list
+                .iter()
+                .map(|s| s.comment.clone().unwrap_or_default())
+                .collect(),
             changing_values,
             result_values: result_cells
                 .iter()
@@ -549,8 +557,10 @@ impl SummaryData {
                 engine.changed(&scratch, sheet, *at);
             }
             for input in &scenario.cells {
-                let value = crate::input::read(&input.value, scratch.date1904, session.this_year).value;
-                let cell = scratch.sheets[sheet].cells.entry((input.at.row, input.at.col)).or_default();
+                let value =
+                    crate::input::read(&input.value, scratch.date1904, session.this_year).value;
+                let cell =
+                    scratch.sheets[sheet].cells.entry((input.at.row, input.at.col)).or_default();
                 cell.value = value;
                 cell.formula = None;
                 engine.changed(&scratch, sheet, input.at);
@@ -569,9 +579,9 @@ impl SummaryData {
         let absolute = format!("${}${}", crate::coord::column_name(at.col), at.row + 1);
         let wanted = format!("{own}!{absolute}").to_lowercase();
         let named = |scope: Option<usize>| {
-            book.names.iter().find(|n| {
-                n.scope == scope && n.formula.replace('\'', "").to_lowercase() == wanted
-            })
+            book.names
+                .iter()
+                .find(|n| n.scope == scope && n.formula.replace('\'', "").to_lowercase() == wanted)
         };
         named(Some(sheet)).or_else(|| named(None)).map_or(absolute, |n| n.name.clone())
     }
@@ -601,6 +611,34 @@ impl SummaryData {
 
     /// Build the report sheet, adding the formats it uses to the workbook's styles.
     fn build(&self, book: &mut Workbook, name: &str) -> Sheet {
+        let mut report = Report::new(self, book, name);
+        report.title_and_headings();
+        report.comments_row();
+        report.section("Changing Cells:");
+        report.changing_rows(book);
+        report.section("Result Cells:");
+        report.result_rows(book);
+        report.notes();
+        report.columns();
+        report.sheet
+    }
+}
+
+/// The report sheet being built, row by row. Rows and columns are 0 based, the report starts in column B.
+struct Report<'a> {
+    data: &'a SummaryData,
+    sheet: Sheet,
+    looks: Looks,
+    /// The last column with a scenario in it.
+    last_col: u32,
+    /// The next row to write.
+    row: u32,
+    /// Which of the data's formats and labels the next changing or result cell uses.
+    item: usize,
+}
+
+impl<'a> Report<'a> {
+    fn new(data: &'a SummaryData, book: &mut Workbook, name: &str) -> Self {
         let mut sheet = Sheet::new(name);
         sheet.show_grid = false;
         sheet.raw.elements.push((
@@ -611,132 +649,164 @@ impl SummaryData {
             ("outlineLevelRow".to_owned(), "1".to_owned()),
             ("outlineLevelCol".to_owned(), "1".to_owned()),
         ];
-        let looks = Looks::new(book);
-        let scenarios = self.names.len();
-        let last_col = 3 + scenarios as u32;
-        let put = |sheet: &mut Sheet, row: u32, col: u32, value: Value, style: u32| {
-            sheet.set(CellRef::new(row, col), Cell { value, style, ..Default::default() });
-        };
-        // Title and column headings.
-        sheet.rows.insert(0, RowInfo { height: Some(15.0), attrs: vec![("thickBot".into(), "1".into())], ..Default::default() });
-        sheet.rows.insert(1, RowInfo { height: Some(15.75), ..Default::default() });
-        put(&mut sheet, 1, 1, Value::text("Scenario Summary"), looks.title_left);
-        put(&mut sheet, 1, 2, Value::Empty, looks.title_left);
-        for col in 3..=last_col {
-            put(&mut sheet, 1, col, Value::Empty, looks.title_right);
+        Self {
+            data,
+            sheet,
+            looks: Looks::new(book),
+            last_col: 3 + data.names.len() as u32,
+            row: 0,
+            item: 0,
         }
-        sheet.rows.insert(2, RowInfo { height: Some(15.75), collapsed: true, ..Default::default() });
-        put(&mut sheet, 2, 1, Value::Empty, looks.head_left);
-        put(&mut sheet, 2, 2, Value::Empty, looks.head_left);
-        put(&mut sheet, 2, 3, Value::text("Current Values:"), looks.head_right);
-        for (i, n) in self.names.iter().enumerate() {
-            put(&mut sheet, 2, 4 + i as u32, Value::text(n), looks.head_right);
+    }
+
+    fn put(&mut self, row: u32, col: u32, value: Value, style: u32) {
+        self.sheet.set(CellRef::new(row, col), Cell { value, style, ..Default::default() });
+    }
+
+    fn row_info(&mut self, row: u32, info: RowInfo) {
+        self.sheet.rows.insert(row, info);
+    }
+
+    /// Rows 1 to 3: the title bar and the headings with the scenarios' names.
+    fn title_and_headings(&mut self) {
+        let thick = vec![("thickBot".to_owned(), "1".to_owned())];
+        self.row_info(0, RowInfo { height: Some(15.0), attrs: thick, ..Default::default() });
+        self.row_info(1, RowInfo { height: Some(15.75), ..Default::default() });
+        let l = &self.looks;
+        let (title_left, title_right, head_left, head_right) =
+            (l.title_left, l.title_right, l.head_left, l.head_right);
+        self.put(1, 1, Value::text("Scenario Summary"), title_left);
+        self.put(1, 2, Value::Empty, title_left);
+        for col in 3..=self.last_col {
+            self.put(1, col, Value::Empty, title_right);
         }
-        // The comments, in a row that starts hidden.
-        let lines = self.comments.iter().map(|c| Self::lines_of(c)).max().unwrap_or(1);
-        sheet.rows.insert(
+        let collapsed = RowInfo { height: Some(15.75), collapsed: true, ..Default::default() };
+        self.row_info(2, collapsed);
+        self.put(2, 1, Value::Empty, head_left);
+        self.put(2, 2, Value::Empty, head_left);
+        self.put(2, 3, Value::text("Current Values:"), head_right);
+        for (i, n) in self.data.names.iter().enumerate() {
+            self.put(2, 4 + i as u32, Value::text(n), head_right);
+        }
+    }
+
+    /// Row 4: the scenarios' comments, in a row that starts hidden and as tall as the longest comment.
+    fn comments_row(&mut self) {
+        let lines = self.data.comments.iter().map(|c| SummaryData::lines_of(c)).max().unwrap_or(1);
+        let height = (lines as f64 * 11.25).max(15.0);
+        self.row_info(
             3,
-            RowInfo {
-                height: Some((lines as f64 * 11.25).max(15.0)),
-                hidden: true,
-                outline: 1,
-                ..Default::default()
-            },
+            RowInfo { height: Some(height), hidden: true, outline: 1, ..Default::default() },
         );
-        put(&mut sheet, 3, 1, Value::Empty, looks.item_left);
-        put(&mut sheet, 3, 2, Value::Empty, looks.item_left);
-        put(&mut sheet, 3, 3, Value::Empty, looks.plain);
-        for (i, c) in self.comments.iter().enumerate() {
-            put(&mut sheet, 3, 4 + i as u32, Value::text(c), looks.comment);
+        let (item_left, plain, comment) =
+            (self.looks.item_left, self.looks.plain, self.looks.comment);
+        self.put(3, 1, Value::Empty, item_left);
+        self.put(3, 2, Value::Empty, item_left);
+        self.put(3, 3, Value::Empty, plain);
+        for (i, c) in self.data.comments.iter().enumerate() {
+            self.put(3, 4 + i as u32, Value::text(c), comment);
         }
-        let mut row = 4u32;
-        let mut format_index = 0usize;
-        // Changing cells.
-        row = self.section(&mut sheet, &looks, row, "Changing Cells:", last_col);
-        for (i, at) in self.changing.iter().enumerate() {
-            let format = looks.value(book, &self.formats[format_index], false, false);
-            let gray = looks.value(book, &self.formats[format_index], true, false);
-            let (current, per) = &self.changing_values[i];
-            sheet.rows.insert(row, RowInfo { height: Some(15.0), outline: 1, ..Default::default() });
-            put(&mut sheet, row, 1, Value::Empty, looks.item_left);
-            put(&mut sheet, row, 2, Value::text(&self.labels[format_index]), looks.item_left);
-            put(&mut sheet, row, 3, current.clone(), format);
+        self.row = 4;
+    }
+
+    /// A section heading row ("Changing Cells:") across the report.
+    fn section(&mut self, title: &str) {
+        let row = self.row;
+        self.row_info(row, RowInfo { height: Some(15.0), ..Default::default() });
+        let (left, right) = (self.looks.section_left, self.looks.section_right);
+        self.put(row, 1, Value::text(title), left);
+        self.put(row, 2, Value::Empty, left);
+        for col in 3..=self.last_col {
+            self.put(row, col, Value::Empty, right);
+        }
+        self.row += 1;
+    }
+
+    /// One line per changing cell: its label, its current value and its value in each scenario, gray where
+    /// the scenario changes the cell.
+    fn changing_rows(&mut self, book: &mut Workbook) {
+        for (current, per) in &self.data.changing_values {
+            let row = self.row;
+            let code = &self.data.formats[self.item];
+            let plain = self.looks.value(book, code, false, false);
+            let gray = self.looks.value(book, code, true, false);
+            self.row_info(row, RowInfo { height: Some(15.0), outline: 1, ..Default::default() });
+            let left = self.looks.item_left;
+            self.put(row, 1, Value::Empty, left);
+            self.put(row, 2, Value::text(&self.data.labels[self.item]), left);
+            self.put(row, 3, current.clone(), plain);
             for (j, value) in per.iter().enumerate() {
                 let (shown, style) = match value {
                     Some(v) => (v.clone(), gray),
-                    None => (current.clone(), format),
+                    None => (current.clone(), plain),
                 };
-                put(&mut sheet, row, 4 + j as u32, shown, style);
+                self.put(row, 4 + j as u32, shown, style);
             }
-            let _ = at;
-            row += 1;
-            format_index += 1;
+            self.row += 1;
+            self.item += 1;
         }
-        // Result cells.
-        row = self.section(&mut sheet, &looks, row, "Result Cells:", last_col);
-        for (i, _) in self.results.iter().enumerate() {
-            let last = i + 1 == self.results.len();
-            let format = looks.value(book, &self.formats[format_index], false, last);
-            let (current, per) = &self.result_values[i];
-            let left = if last { looks.item_last_left } else { looks.item_left };
-            sheet.rows.insert(
-                row,
-                RowInfo {
-                    height: Some(if last { 15.75 } else { 15.0 }),
-                    outline: 1,
-                    attrs: if last { vec![("thickBot".into(), "1".into())] } else { Vec::new() },
-                    ..Default::default()
-                },
-            );
-            put(&mut sheet, row, 1, Value::Empty, left);
-            put(&mut sheet, row, 2, Value::text(&self.labels[format_index]), left);
-            put(&mut sheet, row, 3, current.clone(), format);
+    }
+
+    /// One line per result cell: its label, its current value and its value under each scenario. The last
+    /// has the medium line under it that ends the report.
+    fn result_rows(&mut self, book: &mut Workbook) {
+        let count = self.data.result_values.len();
+        for (i, (current, per)) in self.data.result_values.iter().enumerate() {
+            let last = i + 1 == count;
+            let row = self.row;
+            let style = self.looks.value(book, &self.data.formats[self.item], false, last);
+            let left = if last { self.looks.item_last_left } else { self.looks.item_left };
+            let attrs =
+                if last { vec![("thickBot".to_owned(), "1".to_owned())] } else { Vec::new() };
+            let height = Some(if last { 15.75 } else { 15.0 });
+            self.row_info(row, RowInfo { height, outline: 1, attrs, ..Default::default() });
+            self.put(row, 1, Value::Empty, left);
+            self.put(row, 2, Value::text(&self.data.labels[self.item]), left);
+            self.put(row, 3, current.clone(), style);
             for (j, v) in per.iter().enumerate() {
-                put(&mut sheet, row, 4 + j as u32, v.clone(), format);
+                self.put(row, 4 + j as u32, v.clone(), style);
             }
-            row += 1;
-            format_index += 1;
+            self.row += 1;
+            self.item += 1;
         }
+    }
+
+    /// The three lines of notes under the report.
+    fn notes(&mut self) {
         for note in [
             "Notes:  Current Values column represents values of changing cells at",
             "time Scenario Summary Report was created.  Changing cells for each",
             "scenario are highlighted in gray.",
         ] {
-            put(&mut sheet, row, 1, Value::text(note), 0);
-            row += 1;
+            let row = self.row;
+            self.put(row, 1, Value::text(note), 0);
+            self.row += 1;
         }
-        // Columns: the labels fit, the values are 12.125 wide and can be collapsed.
-        if self.labels.iter().all(|l| l.starts_with('$') && l.len() <= 4) {
-            sheet.edit_column(2, |c| {
+    }
+
+    /// The label column fits its labels when they are all short addresses, and the value columns are
+    /// 12.125 wide and can be collapsed with the outline.
+    fn columns(&mut self) {
+        if self.data.labels.iter().all(|l| l.starts_with('$') && l.len() <= 4) {
+            self.sheet.edit_column(2, |c| {
                 c.width = Some(5.25);
                 c.best_fit = true;
                 c.custom_width = true;
             });
         }
-        for col in 3..=last_col {
-            sheet.edit_column(col, |c| {
+        for col in 3..=self.last_col {
+            self.sheet.edit_column(col, |c| {
                 c.width = Some(12.125);
                 c.best_fit = true;
                 c.custom_width = true;
                 c.outline = 1;
             });
         }
-        sheet
-    }
-
-    /// A section heading row ("Changing Cells:") across the report. Answers the row after it.
-    fn section(&self, sheet: &mut Sheet, looks: &Looks, row: u32, title: &str, last_col: u32) -> u32 {
-        sheet.rows.insert(row, RowInfo { height: Some(15.0), ..Default::default() });
-        sheet.set(CellRef::new(row, 1), Cell { value: Value::text(title), style: looks.section_left, ..Default::default() });
-        sheet.set(CellRef::new(row, 2), Cell { style: looks.section_left, ..Default::default() });
-        for col in 3..=last_col {
-            sheet.set(CellRef::new(row, col), Cell { style: looks.section_right, ..Default::default() });
-        }
-        row + 1
     }
 }
 
-/// The formats a summary report uses, made in the workbook's styles on first use.
+/// The formats a summary report uses, made in the workbook's styles on first use. Each is an index into
+/// the workbook's cell formats; the fonts, fills and borders are the ones Excel's report uses.
 struct Looks {
     title_left: u32,
     title_right: u32,
@@ -748,14 +818,61 @@ struct Looks {
     section_right: u32,
     comment: u32,
     plain: u32,
+    /// The fill of a changing cell in the scenario that changes it.
     gray: u32,
+    /// The border under the last row of the report.
     last_edge: u32,
-    last_gray_edge: u32,
+}
+
+/// Add an item to a list unless an equal one is there. Answers its index.
+fn intern<T: PartialEq>(list: &mut Vec<T>, item: T) -> u32 {
+    crate::styles::Styles::intern(list, item)
 }
 
 impl Looks {
     fn new(book: &mut Workbook) -> Self {
         let styles = &mut book.styles;
+        let fonts = Self::fonts(styles);
+        let fills = [(20, 24), (22, 24), (22, 7)].map(|(fg, bg)| {
+            let fill = Fill {
+                pattern: "solid".to_owned(),
+                fg: Color::Indexed(fg),
+                bg: Color::Indexed(bg),
+                raw: None,
+            };
+            intern(&mut styles.fills, fill)
+        });
+        let edge = |s: &str| Edge::line(s, Color::Indexed(64));
+        let borders = [
+            Border { top: edge("medium"), ..Default::default() },
+            Border { bottom: edge("medium"), ..Default::default() },
+            Border { bottom: edge("thin"), ..Default::default() },
+            Border { top: edge("thin"), bottom: edge("thin"), ..Default::default() },
+        ]
+        .map(|b| intern(&mut styles.borders, b));
+        let align = |h: &str| Alignment { horizontal: Some(h.to_owned()), ..Default::default() };
+        let wrap = Alignment { vertical: Some("top".to_owned()), wrap: true, ..Default::default() };
+        let mut make = |font: u32, fill: u32, border: u32, align: Alignment| {
+            intern(&mut styles.xfs, Xf { font, fill, border, align, ..Default::default() })
+        };
+        Looks {
+            title_left: make(fonts[0], fills[0], borders[0], align("left")),
+            title_right: make(fonts[3], fills[0], borders[0], align("right")),
+            head_left: make(fonts[0], fills[0], borders[2], align("left")),
+            head_right: make(fonts[3], fills[0], borders[2], align("right")),
+            item_left: make(fonts[1], fills[1], 0, align("left")),
+            item_last_left: make(fonts[1], fills[1], borders[1], align("left")),
+            section_left: make(fonts[2], fills[1], borders[3], align("left")),
+            section_right: make(0, 0, borders[3], Alignment::default()),
+            comment: make(fonts[4], 0, 0, wrap),
+            plain: make(0, 0, 0, Alignment::default()),
+            gray: fills[2],
+            last_edge: borders[1],
+        }
+    }
+
+    /// The five fonts of the report, set in the workbook's body font.
+    fn fonts(styles: &mut crate::styles::Styles) -> [u32; 5] {
         let face = styles.theme_font.clone().unwrap_or_else(|| Font::default().name);
         let font = |bold: bool, size: f64, color: Color, family: Option<u32>| Font {
             name: face.clone(),
@@ -766,52 +883,14 @@ impl Looks {
             scheme: Some("minor".to_owned()),
             ..Font::default()
         };
-        let fonts = [
+        [
             font(true, 12.0, Color::Indexed(9), Some(2)),
             font(true, 11.0, Color::Indexed(8), Some(2)),
             font(true, 11.0, Color::Indexed(18), Some(2)),
             font(false, 10.0, Color::Indexed(9), Some(2)),
             font(false, 8.0, Color::Theme(1, 0.0), None),
         ]
-        .map(|f| Styles_intern(&mut styles.fonts, f));
-        let solid = |fg: u32, bg: u32| Fill {
-            pattern: "solid".to_owned(),
-            fg: Color::Indexed(fg),
-            bg: Color::Indexed(bg),
-            raw: None,
-        };
-        let fills = [solid(20, 24), solid(22, 24), solid(22, 7)].map(|f| Styles_intern(&mut styles.fills, f));
-        let edge = |s: &str| Edge::line(s, Color::Indexed(64));
-        let borders = [
-            Border { top: edge("medium"), ..Default::default() },
-            Border { bottom: edge("medium"), ..Default::default() },
-            Border { bottom: edge("thin"), ..Default::default() },
-            Border { top: edge("thin"), bottom: edge("thin"), ..Default::default() },
-        ]
-        .map(|b| Styles_intern(&mut styles.borders, b));
-        let left = Alignment { horizontal: Some("left".to_owned()), ..Default::default() };
-        let right = Alignment { horizontal: Some("right".to_owned()), ..Default::default() };
-        let wrap = Alignment { vertical: Some("top".to_owned()), wrap: true, ..Default::default() };
-        let mut make = |num_fmt: u32, font: u32, fill: u32, border: u32, align: Alignment| {
-            let xf = Xf { num_fmt, font, fill, border, align, ..Default::default() };
-            Styles_intern(&mut styles.xfs, xf)
-        };
-        let _ = &fills;
-        Looks {
-            title_left: make(0, fonts[0], fills[0], borders[0], left.clone()),
-            title_right: make(0, fonts[3], fills[0], borders[0], right.clone()),
-            head_left: make(0, fonts[0], fills[0], borders[2], left.clone()),
-            head_right: make(0, fonts[3], fills[0], borders[2], right),
-            item_left: make(0, fonts[1], fills[1], 0, left.clone()),
-            item_last_left: make(0, fonts[1], fills[1], borders[1], left.clone()),
-            section_left: make(0, fonts[2], fills[1], borders[3], left.clone()),
-            section_right: make(0, 0, 0, borders[3], Alignment::default()),
-            comment: make(0, fonts[4], 0, 0, wrap),
-            plain: make(0, 0, 0, 0, Alignment::default()),
-            gray: fills[2],
-            last_edge: borders[1],
-            last_gray_edge: borders[1],
-        }
+        .map(|f| intern(&mut styles.fonts, f))
     }
 
     /// The format of a value cell: the source cell's number format, a gray fill where a scenario changes the
@@ -824,13 +903,6 @@ impl Looks {
             border: if last { self.last_edge } else { 0 },
             ..Default::default()
         };
-        let _ = self.last_gray_edge;
-        Styles_intern(&mut book.styles.xfs, xf)
+        intern(&mut book.styles.xfs, xf)
     }
-}
-
-/// Add an item to a list of formats unless an equal one is there. Answers its index.
-#[allow(non_snake_case)]
-fn Styles_intern<T: PartialEq>(list: &mut Vec<T>, item: T) -> u32 {
-    crate::styles::Styles::intern(list, item)
 }

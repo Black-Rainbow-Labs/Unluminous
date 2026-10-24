@@ -296,7 +296,9 @@ impl Scenarios {
                         Some(InputCell {
                             at: CellRef::parse(c.attribute("r")?)?,
                             value: unescape_office(c.attribute("val").unwrap_or("")),
-                            deleted: c.attribute("deleted").is_some_and(|v| v == "1" || v == "true"),
+                            deleted: c
+                                .attribute("deleted")
+                                .is_some_and(|v| v == "1" || v == "true"),
                             undone: c.attribute("undone").is_some_and(|v| v == "1" || v == "true"),
                             num_fmt_id: c.attribute("numFmtId").and_then(|v| v.parse().ok()),
                         })
@@ -404,7 +406,9 @@ mod tests {
         .unwrap();
         assert!(out.found);
         // The points Excel visited, in order (the probe at 1.01 above the start is not an iterate).
-        for expected in [1.01, 1.11, 1.31, 1.4273140495867769, 1.4137148076023127, 1.4142112625265164] {
+        for expected in
+            [1.01, 1.11, 1.31, 1.4273140495867769, 1.4137148076023127, 1.4142112625265164]
+        {
             assert!(
                 tried.iter().any(|x| (x - expected).abs() < 1e-12),
                 "{expected} was not tried: {tried:?}"

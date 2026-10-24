@@ -39,9 +39,8 @@ impl Includes {
 
     /// The groups a style's format includes: all of them but the ones its `apply` flags switch off.
     pub fn of(xf: &Xf) -> Includes {
-        let on = |flag: &str| {
-            !xf.applies.iter().any(|(k, v)| k == flag && (v == "0" || v == "false"))
-        };
+        let on =
+            |flag: &str| !xf.applies.iter().any(|(k, v)| k == flag && (v == "0" || v == "false"));
         Includes {
             number: on("applyNumberFormat"),
             font: on("applyFont"),
@@ -295,11 +294,8 @@ impl Styles {
         if style.builtin_id == Some(0) {
             return Err("You can't delete the Normal style.".to_owned());
         }
-        let normal_id = self
-            .cell_styles
-            .iter()
-            .find(|s| s.builtin_id == Some(0))
-            .map_or(0, |s| s.xf_id);
+        let normal_id =
+            self.cell_styles.iter().find(|s| s.builtin_id == Some(0)).map_or(0, |s| s.xf_id);
         let old = self.style_xfs.get(style.xf_id as usize).cloned().unwrap_or_default();
         let normal = self.style_xfs.get(normal_id as usize).cloned().unwrap_or_default();
         for cell in self.xfs.iter_mut().filter(|x| x.xf_id == style.xf_id) {

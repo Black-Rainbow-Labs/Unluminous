@@ -105,7 +105,8 @@ impl<'a> Writer<'a> {
         let mut workbook_rels: Vec<Relationship> = book.kept.workbook_rels.clone();
         // A sheet made in this session gets a part name no existing sheet uses, wherever it sits among them.
         for sheet in &book.sheets {
-            let existing = sheet.kept_part.as_ref().map_or(sheet.raw.part.as_str(), |k| k.part.as_str());
+            let existing =
+                sheet.kept_part.as_ref().map_or(sheet.raw.part.as_str(), |k| k.part.as_str());
             if !existing.is_empty() {
                 self.taken.insert(existing.to_owned());
             }

@@ -3,8 +3,8 @@
 
 use crate::model::Relationship;
 use crate::theme::{
-    built_in, read_colors, read_fonts, write_colors, write_fonts, ThemeColor, ThemeColors,
-    ThemeFonts, SLOTS,
+    built_in, color_scheme, font_scheme, read_colors, read_fonts, write_colors, write_fonts,
+    ThemeColor, ThemeColors, ThemeFonts, SLOTS,
 };
 use crate::xlsx::{next_id, resolve, write::DEFAULT_THEME_XML, CT_THEME, REL_THEME};
 
@@ -39,13 +39,12 @@ impl Session {
 
     /// The theme part as text: the workbook's, or Excel's Office theme when the workbook has none yet.
     pub fn theme_xml(&self) -> String {
-        let part = self
-            .book
-            .kept
-            .workbook_rels
-            .iter()
-            .find(|r| r.kind == REL_THEME)
-            .map(|r| resolve(if self.book.part.is_empty() { "xl/workbook.xml" } else { &self.book.part }, &r.target));
+        let part = self.book.kept.workbook_rels.iter().find(|r| r.kind == REL_THEME).map(|r| {
+            resolve(
+                if self.book.part.is_empty() { "xl/workbook.xml" } else { &self.book.part },
+                &r.target,
+            )
+        });
         part.and_then(|p| self.book.kept.get(&p).map(|b| String::from_utf8_lossy(b).into_owned()))
             .unwrap_or_else(|| DEFAULT_THEME_XML.to_owned())
     }
@@ -65,6 +64,9 @@ impl Session {
         let part = self.ensure_theme_part();
         crate::xlsx::read::read_theme(&xml, &mut self.book.styles);
         self.book.styles.refresh_scheme_fonts();
+        // `defaultThemeVersion` says the theme is the Office theme of that year, and Excel shows that
+        // theme whatever the part holds. Excel drops the attribute when a workbook's theme is changed.
+        self.book.workbook_pr.retain(|(k, _)| k != "defaultThemeVersion");
         self.book.kept.set(&part, xml.into_bytes());
     }
 
@@ -77,22 +79,27 @@ impl Session {
         Ok(())
     }
 
-    /// Take only the colours of another theme (Page Layout, Colors).
+    /// Take a colour scheme from Page Layout, Colors (`Blue Warm`, `Grayscale`), or the colours of a theme.
     pub fn apply_theme_colors(&mut self, from: &str) -> Result<(), String> {
-        let theme = built_in(from).ok_or_else(|| format!("There is no theme named {from}."))?;
-        let colors = read_colors(theme.xml).ok_or("that theme has no colours")?;
+        let colors =
+            color_scheme(from).ok_or_else(|| format!("There is no colour scheme named {from}."))?;
         self.remember_whole("Theme colors");
         let xml = write_colors(&self.theme_xml(), &colors);
         self.put_theme(xml);
         Ok(())
     }
 
-    /// Take only the fonts of another theme (Page Layout, Fonts).
+    /// Take a font scheme from Page Layout, Fonts (`Arial`, `Calibri-Cambria`), or the fonts of a theme.
     pub fn apply_theme_fonts(&mut self, from: &str) -> Result<(), String> {
-        let theme = built_in(from).ok_or_else(|| format!("There is no theme named {from}."))?;
-        let fonts = read_fonts(theme.xml).ok_or("that theme has no fonts")?;
+        let fonts =
+            font_scheme(from).ok_or_else(|| format!("There is no font scheme named {from}."))?;
         self.remember_whole("Theme fonts");
-        let xml = write_fonts(&self.theme_xml(), Some(&fonts.major), Some(&fonts.minor), Some(&fonts.name));
+        let xml = write_fonts(
+            &self.theme_xml(),
+            Some(&fonts.major),
+            Some(&fonts.minor),
+            Some(&fonts.name),
+        );
         self.put_theme(xml);
         Ok(())
     }
@@ -121,7 +128,11 @@ impl Session {
     }
 
     /// Change the heading font and the body font of the theme (Page Layout, Fonts, Customize Fonts).
-    pub fn set_theme_fonts(&mut self, major: Option<&str>, minor: Option<&str>) -> Result<(), String> {
+    pub fn set_theme_fonts(
+        &mut self,
+        major: Option<&str>,
+        minor: Option<&str>,
+    ) -> Result<(), String> {
         if major.is_none() && minor.is_none() {
             return Err("Name a heading font, a body font or both.".to_owned());
         }

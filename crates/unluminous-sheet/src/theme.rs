@@ -68,7 +68,10 @@ pub fn built_in(name: &str) -> Option<&'static BuiltInTheme> {
 pub enum ThemeColor {
     Rgb(u32),
     /// `windowText` and `window`, the system colours Office's dark 1 and light 1 are.
-    System { name: String, last: u32 },
+    System {
+        name: String,
+        last: u32,
+    },
 }
 
 impl ThemeColor {
@@ -94,6 +97,62 @@ pub struct ThemeFonts {
     pub name: String,
     pub major: String,
     pub minor: String,
+}
+
+/// The colour schemes of Page Layout, Colors, as `Name|twelve colours` lines (see
+/// `tools/excel-oracle/export-theme-schemes.ps1`).
+const COLOR_SCHEMES: &str = include_str!("themes/color-schemes.txt");
+
+/// The font schemes of Page Layout, Fonts, as `Name|major|minor|major panose|minor panose` lines.
+const FONT_SCHEMES: &str = include_str!("themes/font-schemes.txt");
+
+/// The names of the colour schemes Excel offers.
+pub fn color_scheme_names() -> Vec<String> {
+    COLOR_SCHEMES.lines().filter_map(|l| l.split('|').next()).map(str::to_owned).collect()
+}
+
+/// The names of the font schemes Excel offers.
+pub fn font_scheme_names() -> Vec<String> {
+    FONT_SCHEMES.lines().filter_map(|l| l.split('|').next()).map(str::to_owned).collect()
+}
+
+/// A colour scheme of Excel's Colors gallery, or the colours of a built in theme of that name.
+pub fn color_scheme(name: &str) -> Option<ThemeColors> {
+    let name = name.trim();
+    for line in COLOR_SCHEMES.lines() {
+        let Some((n, colors)) = line.split_once('|') else { continue };
+        if !n.eq_ignore_ascii_case(name) {
+            continue;
+        }
+        let slots: Vec<ThemeColor> = colors
+            .split(',')
+            .map(|c| match c.strip_prefix("sys:").and_then(|s| s.split_once(':')) {
+                Some((sys, last)) => ThemeColor::System {
+                    name: sys.to_owned(),
+                    last: u32::from_str_radix(last, 16).unwrap_or(0),
+                },
+                None => ThemeColor::Rgb(u32::from_str_radix(c, 16).unwrap_or(0)),
+            })
+            .collect();
+        return (slots.len() == 12).then(|| ThemeColors { name: n.to_owned(), slots });
+    }
+    built_in(name).and_then(|t| read_colors(t.xml))
+}
+
+/// A font scheme of Excel's Fonts gallery, or the fonts of a built in theme of that name.
+pub fn font_scheme(name: &str) -> Option<ThemeFonts> {
+    let name = name.trim();
+    for line in FONT_SCHEMES.lines() {
+        let f: Vec<&str> = line.split('|').collect();
+        if f.len() >= 3 && f[0].eq_ignore_ascii_case(name) {
+            return Some(ThemeFonts {
+                name: f[0].to_owned(),
+                major: f[1].to_owned(),
+                minor: f[2].to_owned(),
+            });
+        }
+    }
+    built_in(name).and_then(|t| read_fonts(t.xml))
 }
 
 /// The name of a theme (`<a:theme name="...">`).
@@ -167,14 +226,24 @@ pub fn read_fonts(xml: &str) -> Option<ThemeFonts> {
 
 /// Replace the Latin typeface of the heading font or the body font, and the font scheme's name. The
 /// typeface's panose number describes the old font, so it is dropped.
-pub fn write_fonts(xml: &str, major: Option<&str>, minor: Option<&str>, name: Option<&str>) -> String {
+pub fn write_fonts(
+    xml: &str,
+    major: Option<&str>,
+    minor: Option<&str>,
+    name: Option<&str>,
+) -> String {
     let mut out = xml.to_owned();
     for (group, face) in [("majorFont", major), ("minorFont", minor)] {
         let Some(face) = face else { continue };
         let Some(group_at) = out.find(&format!("<a:{group}>")) else { continue };
-        let Some(latin_at) = out[group_at..].find("<a:latin ").map(|i| group_at + i) else { continue };
+        let Some(latin_at) = out[group_at..].find("<a:latin ").map(|i| group_at + i) else {
+            continue;
+        };
         let Some(end) = out[latin_at..].find("/>").map(|i| latin_at + i + 2) else { continue };
-        out.replace_range(latin_at..end, &format!("<a:latin typeface=\"{}\"/>", crate::xlsx::escape(face)));
+        out.replace_range(
+            latin_at..end,
+            &format!("<a:latin typeface=\"{}\"/>", crate::xlsx::escape(face)),
+        );
     }
     if let Some(name) = name {
         if let Some(at) = out.find("<a:fontScheme name=\"") {
@@ -194,7 +263,8 @@ mod tests {
     #[test]
     fn every_built_in_theme_has_twelve_colours_and_two_fonts() {
         for theme in BUILT_IN {
-            let colors = read_colors(theme.xml).unwrap_or_else(|| panic!("{} has colours", theme.name));
+            let colors =
+                read_colors(theme.xml).unwrap_or_else(|| panic!("{} has colours", theme.name));
             assert_eq!(colors.slots.len(), 12, "{}", theme.name);
             let fonts = read_fonts(theme.xml).unwrap_or_else(|| panic!("{} has fonts", theme.name));
             assert!(!fonts.major.is_empty() && !fonts.minor.is_empty(), "{}", theme.name);
@@ -219,7 +289,11 @@ mod tests {
         colors.slots[4] = ThemeColor::Rgb(0xFF0000);
         let changed = write_colors(office.xml, &colors);
         assert_eq!(read_colors(&changed).unwrap().slots[4], ThemeColor::Rgb(0xFF0000));
-        assert_eq!(read_colors(&changed).unwrap().slots[0], colors.slots[0], "the system colour stays");
+        assert_eq!(
+            read_colors(&changed).unwrap().slots[0],
+            colors.slots[0],
+            "the system colour stays"
+        );
         let fonts = write_fonts(&changed, Some("Georgia"), Some("Courier New"), None);
         let read = read_fonts(&fonts).unwrap();
         assert_eq!((read.major.as_str(), read.minor.as_str()), ("Georgia", "Courier New"));
