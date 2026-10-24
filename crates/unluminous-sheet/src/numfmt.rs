@@ -681,15 +681,19 @@ fn render_numeric(section: &Section, value: f64, width: usize) -> (String, Optio
     for (k, t) in tokens.iter().enumerate() {
         let in_int = point.is_none_or(|p| k < p);
         match t {
-            Token::Digit(_) if in_int && !int_written => {
-                out.push_str(&int_text);
-                int_written = true;
+            Token::Digit(_) if in_int => {
+                if !int_written {
+                    out.push_str(&int_text);
+                    int_written = true;
+                }
             }
-            Token::Digit(_) if !dec_written => {
-                let take: String = dec_out.iter().skip(dec_index).collect();
-                out.push_str(&take);
-                dec_index = dec_out.len();
-                dec_written = true;
+            Token::Digit(_) => {
+                if !dec_written {
+                    let take: String = dec_out.iter().skip(dec_index).collect();
+                    out.push_str(&take);
+                    dec_index = dec_out.len();
+                    dec_written = true;
+                }
             }
             Token::Point => out.push('.'),
             Token::Group => {}
@@ -792,9 +796,11 @@ fn render_scientific(section: &Section, v: f64, e_at: usize) -> String {
     let mut placed = false;
     for t in mantissa_tokens {
         match t {
-            Token::Digit(_) | Token::Point if !placed => {
-                out.push_str(&text);
-                placed = true;
+            Token::Digit(_) | Token::Point => {
+                if !placed {
+                    out.push_str(&text);
+                    placed = true;
+                }
             }
             Token::Literal(l) => out.push_str(l),
             Token::Space => out.push(' '),
@@ -867,11 +873,13 @@ fn render_fraction(section: &Section, v: f64, slash: usize) -> String {
         let mut wrote = false;
         for t in &before[..numerator_start] {
             match t {
-                Token::Digit(_) if !wrote => {
-                    if whole != 0.0 || num == 0.0 {
-                        out.push_str(&format!("{}", whole as u64));
+                Token::Digit(_) => {
+                    if !wrote {
+                        if whole != 0.0 || num == 0.0 {
+                            out.push_str(&format!("{}", whole as u64));
+                        }
+                        wrote = true;
                     }
-                    wrote = true;
                 }
                 Token::Literal(l) => {
                     if whole != 0.0 || num == 0.0 {
