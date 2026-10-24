@@ -70,6 +70,10 @@ pub struct Kept {
     pub package_rels: Vec<Relationship>,
     /// The workbook's relationships other than sheets, styles, shared strings, theme and metadata.
     pub workbook_rels: Vec<Relationship>,
+    /// What a binary workbook (`.xls`, `.xlsb`) holds that this version reads no further: the macro
+    /// project, the pictures and charts, and the document properties, by their path in the file. They are
+    /// kept so a later version can use them, and they are not written to an `.xlsx` file.
+    pub legacy: Vec<(String, Arc<Vec<u8>>)>,
 }
 
 impl Kept {

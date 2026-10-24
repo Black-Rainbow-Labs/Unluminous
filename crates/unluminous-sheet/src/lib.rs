@@ -23,17 +23,21 @@
 )]
 
 pub mod calc;
+pub mod cfb;
 pub mod coord;
 pub mod dates;
 pub mod edit;
 pub mod eval;
 pub mod formula;
+pub mod ftab;
 pub mod functions;
 pub mod input;
 pub mod model;
 pub mod numfmt;
 pub mod styles;
 pub mod value;
+pub mod xls;
+pub mod xlsb;
 pub mod xlsx;
 pub mod zip;
 
@@ -47,6 +51,10 @@ pub mod csv;
 pub enum FileKind {
     Xlsx,
     Xlsm,
+    /// Excel 97 to 2003 (BIFF8). Read only.
+    Xls,
+    /// Excel binary workbook. Read only.
+    Xlsb,
     Csv,
     Tsv,
 }
@@ -60,8 +68,8 @@ impl FileKind {
             "xlsm" => Ok(FileKind::Xlsm),
             "csv" => Ok(FileKind::Csv),
             "tsv" | "tab" => Ok(FileKind::Tsv),
-            "xls" => Err("This is an Excel 97-2003 workbook (.xls), a binary format this version does not read. Excel can save it as .xlsx.".to_owned()),
-            "xlsb" => Err("This is an Excel binary workbook (.xlsb), which this version does not read. Excel can save it as .xlsx.".to_owned()),
+            "xls" => Ok(FileKind::Xls),
+            "xlsb" => Ok(FileKind::Xlsb),
             "ods" => Err("This is an OpenDocument spreadsheet (.ods), which this version does not read. Excel or LibreOffice can save it as .xlsx.".to_owned()),
             other => Err(format!("A .{other} file is not a workbook this version opens.")),
         }
@@ -71,7 +79,10 @@ impl FileKind {
 /// Read a workbook from a file's bytes.
 pub fn open(bytes: &[u8], kind: FileKind, name: &str, this_year: i64) -> Result<Workbook, String> {
     match kind {
+        FileKind::Xlsx | FileKind::Xlsm if cfb::is_compound(bytes) => xls::read(bytes),
         FileKind::Xlsx | FileKind::Xlsm => xlsx::read(bytes),
+        FileKind::Xls => xls::read(bytes),
+        FileKind::Xlsb => xlsb::read(bytes),
         FileKind::Csv | FileKind::Tsv => {
             let text = String::from_utf8(bytes.to_vec()).unwrap_or_else(|_| {
                 bytes.iter().map(|b| crate::functions::text::windows_1252(*b)).collect()
@@ -85,6 +96,9 @@ pub fn open(bytes: &[u8], kind: FileKind, name: &str, this_year: i64) -> Result<
 pub fn save(book: &Workbook, kind: FileKind) -> Result<Vec<u8>, String> {
     match kind {
         FileKind::Xlsx | FileKind::Xlsm => xlsx::write(book),
+        FileKind::Xls | FileKind::Xlsb => Err(
+            "Excel saves a workbook in an older format only when it is asked to; this version saves it as .xlsx beside the original. Use Save As and choose .xlsx.".to_owned(),
+        ),
         FileKind::Csv => Ok(csv::write(book, book.active_sheet, ',').into_bytes()),
         FileKind::Tsv => Ok(csv::write(book, book.active_sheet, '\t').into_bytes()),
     }
