@@ -22,6 +22,7 @@ pub mod info;
 pub mod logical;
 pub mod lookup;
 pub mod math;
+pub mod securities;
 pub mod stats;
 pub mod text;
 
@@ -90,6 +91,7 @@ const CATEGORIES: &[(&str, &[Function])] = &[
     ("Text", text::FUNCTIONS),
     ("Date and time", date::FUNCTIONS),
     ("Financial", financial::FUNCTIONS),
+    ("Financial", securities::FUNCTIONS),
     ("Information", info::FUNCTIONS),
     ("Engineering", engineering::FUNCTIONS),
 ];

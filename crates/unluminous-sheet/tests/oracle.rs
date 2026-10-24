@@ -42,7 +42,11 @@ struct Wrong {
 /// Functions Excel answers by iterating to a tolerance of its own, so its last digits are where its
 /// iteration stopped rather than the root. Measured: XIRR of -100 and 110 a year apart is
 /// 0.09999999403953552 in Excel, where the root is exactly 0.1.
-const ITERATIVE: &[&str] = &["IRR", "XIRR", "RATE"];
+///
+/// YIELD and ODDFYIELD solve for the yield by iteration in Excel too, and stop where their price is within
+/// a tolerance of the price asked for, so the yield is exact only to about eight digits. The names end in
+/// an opening bracket so that YIELDDISC and YIELDMAT, which are closed forms, stay at full precision.
+const ITERATIVE: &[&str] = &["IRR", "XIRR", "RATE", "YIELD(", "ODDFYIELD("];
 
 fn agrees(kind: &str, excel: &str, ours: &Value, tolerance: f64) -> bool {
     match (kind, ours) {
@@ -75,7 +79,9 @@ fn corpus_lines() -> Vec<String> {
     files.sort();
     files
         .iter()
-        .flat_map(|p| std::fs::read_to_string(p).unwrap().lines().map(str::to_owned).collect::<Vec<_>>())
+        .flat_map(|p| {
+            std::fs::read_to_string(p).unwrap().lines().map(str::to_owned).collect::<Vec<_>>()
+        })
         .filter(|l| !l.trim().is_empty())
         .collect()
 }
