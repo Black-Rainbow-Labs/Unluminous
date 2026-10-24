@@ -43,6 +43,19 @@ pub fn split(bytes: &[u8]) -> Vec<Record<'_>> {
     out
 }
 
+/// Read up to `count` items, stopping at the first that cannot be read. A count in a damaged file can be
+/// billions, and the items it counts cannot be more than the bytes there are.
+pub fn many<T>(count: u32, r: &mut Reader, mut item: impl FnMut(&mut Reader) -> Option<T>) -> Vec<T> {
+    let mut out = Vec::new();
+    for _ in 0..count {
+        match item(r) {
+            Some(value) => out.push(value),
+            None => break,
+        }
+    }
+    out
+}
+
 /// A string with a 32 bit length in characters, then UTF-16.
 pub fn wide_string(r: &mut Reader) -> Option<String> {
     let cch = r.u32()? as usize;
@@ -99,8 +112,11 @@ pub mod id {
     pub const END_FILTER_COLUMN: u16 = 164;
     pub const BEGIN_FILTERS: u16 = 165;
     pub const FILTER: u16 = 167;
-    pub const BEGIN_CUSTOM_FILTERS: u16 = 170;
-    pub const CUSTOM_FILTER: u16 = 171;
+    pub const COLOR_FILTER: u16 = 168;
+    pub const TOP10_FILTER: u16 = 170;
+    pub const DYNAMIC_FILTER: u16 = 171;
+    pub const BEGIN_CUSTOM_FILTERS: u16 = 172;
+    pub const CUSTOM_FILTER: u16 = 174;
     pub const MERGE_CELL: u16 = 176;
     pub const BEGIN_CF: u16 = 461;
     pub const BEGIN_CF_RULE: u16 = 463;

@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use super::records::{id, nullable_string, split, wide_string, Reader, Record};
+use super::records::{id, many, nullable_string, split, wide_string, Reader, Record};
 use super::styles::color;
 use crate::coord::{CellRef, Range};
 use crate::formula::print::number;
@@ -35,6 +35,8 @@ struct RuleInProgress {
     rule: CfRule,
     template: u32,
     kind: u32,
+    flags: u16,
+    param: i32,
     percent_icon: Option<(u32, u16)>,
     thresholds: Vec<Cfvo>,
     colors: Vec<Color>,
@@ -54,12 +56,12 @@ struct State {
     filter_column: Option<u32>,
     filter_values: Vec<String>,
     filter_conditions: Vec<(String, String)>,
+    filter_other: Option<String>,
     filter_and: bool,
     columns: BTreeMap<u32, FilterCriteria>,
     protection: Option<String>,
     frozen: bool,
     pane: Option<(u32, u32)>,
-    validation_flags: u32,
 }
 
 /// Read a sheet part.
@@ -76,12 +78,12 @@ pub fn read(bytes: &[u8], sheet: &mut Sheet, ctx: &Context) {
         filter_column: None,
         filter_values: Vec::new(),
         filter_conditions: Vec::new(),
+        filter_other: None,
         filter_and: false,
         columns: BTreeMap::new(),
         protection: None,
         frozen: false,
         pane: None,
-        validation_flags: 0,
     };
     for record in split(bytes) {
         record_in_sheet(&record, sheet, ctx, &mut state);
@@ -164,6 +166,9 @@ fn record_in_sheet(record: &Record, sheet: &mut Sheet, ctx: &Context, state: &mu
         }
         id::BEGIN_CUSTOM_FILTERS => state.filter_and = u32_at(data, 0).is_some_and(|v| v != 0),
         id::CUSTOM_FILTER => custom_filter(data, state),
+        id::TOP10_FILTER | id::COLOR_FILTER | id::DYNAMIC_FILTER => {
+            state.filter_other = other_filter(record.id, data)
+        }
         id::END_FILTER_COLUMN => filter_column_end(state),
         _ => {}
     }
@@ -186,7 +191,7 @@ fn rfx(r: &mut Reader) -> Option<Range> {
 /// A list of ranges: a count, then that many.
 fn sq_rfx(r: &mut Reader) -> Option<Vec<Range>> {
     let count = r.u32()?;
-    Some((0..count).filter_map(|_| rfx(r)).collect())
+    Some(many(count, r, rfx))
 }
 
 fn tab_color(data: &[u8]) -> Option<Color> {
@@ -503,9 +508,10 @@ fn protection(data: &[u8]) -> Option<String> {
     }
     xml.push_str(" sheet=\"1\"");
     for (name, default_locked) in FLAGS {
-        let value = r.u32()? != 0;
-        if value != default_locked {
-            xml.push_str(&format!(" {name}=\"{}\"", u8::from(value)));
+        // A flag of the binary format says the action is allowed; the attribute says it is locked.
+        let locked = r.u32()? == 0;
+        if locked != default_locked {
+            xml.push_str(&format!(" {name}=\"{}\"", u8::from(locked)));
         }
     }
     xml.push_str("/>");
@@ -575,6 +581,8 @@ fn begin_rule(data: &[u8], ctx: &Context, state: &State) -> Option<RuleInProgres
         rule,
         template,
         kind,
+        flags,
+        param,
         percent_icon: None,
         thresholds: Vec::new(),
         colors: Vec::new(),
@@ -622,14 +630,40 @@ fn end_rule(state: &mut State) {
         work.rule.raw_children = icon_set_xml(index, flags, &work.thresholds);
     } else if work.kind == 1 {
         work.rule.kind = "cellIs".to_owned();
-    } else if work.kind == 2 || !work.rule.formulas.is_empty() {
-        let _ = work.template;
+    } else if !work.rule.formulas.is_empty() {
         work.rule.kind = "expression".to_owned();
-    } else {
+    } else if !formula_less_rule(&mut work) {
         return;
     }
     if let Some((_, rules)) = state.blocks.last_mut() {
         rules.push(work.rule);
+    }
+}
+
+/// A rule that needs no formula: a top ten or above average. Its numbers are in the rule's header.
+fn formula_less_rule(work: &mut RuleInProgress) -> bool {
+    let flags = work.flags;
+    match work.template {
+        5 => {
+            work.rule.kind = "top10".to_owned();
+            work.rule.rank = u32::try_from(work.param).ok();
+            work.rule.percent = flags & 0x10 != 0;
+            work.rule.bottom = flags & 0x08 != 0;
+            true
+        }
+        6 | 7 => {
+            work.rule.kind = if work.template == 6 { "duplicateValues" } else { "uniqueValues" }.to_owned();
+            true
+        }
+        25 => {
+            work.rule.kind = "aboveAverage".to_owned();
+            work.rule.above_average = (flags & 0x04 == 0).then_some(false);
+            if work.param > 0 {
+                work.rule.attrs.push(("stdDev".to_owned(), work.param.to_string()));
+            }
+            true
+        }
+        _ => false,
     }
 }
 
@@ -680,6 +714,7 @@ fn filter_column_start(data: &[u8], state: &mut State) {
     state.filter_column = u32_at(data, 0);
     state.filter_values.clear();
     state.filter_conditions.clear();
+    state.filter_other = None;
     state.filter_and = false;
 }
 
@@ -710,7 +745,9 @@ fn custom_filter(data: &[u8], state: &mut State) {
 
 fn filter_column_end(state: &mut State) {
     let Some(column) = state.filter_column.take() else { return };
-    let criteria = if !state.filter_values.is_empty() {
+    let criteria = if let Some(inner) = state.filter_other.take() {
+        FilterCriteria::Raw(format!("<filterColumn colId=\"{column}\">{inner}</filterColumn>"))
+    } else if !state.filter_values.is_empty() {
         FilterCriteria::Values { values: std::mem::take(&mut state.filter_values), blank: false }
     } else if !state.filter_conditions.is_empty() {
         FilterCriteria::Custom {
@@ -721,4 +758,66 @@ fn filter_column_end(state: &mut State) {
         return;
     };
     state.columns.insert(column, criteria);
+}
+
+/// The kinds of dynamic filter, by the number the file gives them.
+const DYNAMIC_FILTERS: [&str; 23] = [
+    "null",
+    "aboveAverage",
+    "belowAverage",
+    "tomorrow",
+    "today",
+    "yesterday",
+    "nextWeek",
+    "thisWeek",
+    "lastWeek",
+    "nextMonth",
+    "thisMonth",
+    "lastMonth",
+    "nextQuarter",
+    "thisQuarter",
+    "lastQuarter",
+    "nextYear",
+    "thisYear",
+    "lastYear",
+    "yearToDate",
+    "Q1",
+    "Q2",
+    "Q3",
+    "Q4",
+];
+
+/// A top ten, colour or dynamic filter, as the element an `.xlsx` file holds it in.
+fn other_filter(kind: u16, data: &[u8]) -> Option<String> {
+    let mut r = Reader::new(data);
+    match kind {
+        id::TOP10_FILTER => {
+            let flags = r.u8()?;
+            let count = r.f64()?;
+            let value = r.f64()?;
+            let mut xml = String::from("<top10");
+            if flags & 1 == 0 {
+                xml.push_str(" top=\"0\"");
+            }
+            if flags & 2 != 0 {
+                xml.push_str(" percent=\"1\"");
+            }
+            xml.push_str(&format!(" val=\"{}\" filterVal=\"{}\"/>", number(count), number(value)));
+            Some(xml)
+        }
+        id::COLOR_FILTER => {
+            let dxf = r.u32()?;
+            let cell = r.u32()? & 1 != 0;
+            Some(format!("<colorFilter dxfId=\"{dxf}\"{}/>", if cell { "" } else { " cellColor=\"0\"" }))
+        }
+        _ => {
+            let kind = r.u32()? as usize;
+            let name = match kind {
+                0..=22 => DYNAMIC_FILTERS[kind].to_owned(),
+                23..=34 => format!("M{}", kind - 22),
+                _ => return None,
+            };
+            Some(format!("<dynamicFilter type=\"{name}\"/>"))
+        }
+    }
 }

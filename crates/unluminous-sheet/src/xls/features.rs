@@ -24,7 +24,10 @@ pub struct Collector {
     links: Vec<Hyperlink>,
     validations: Vec<Validation>,
     blocks: Vec<Block>,
-    rules_seen: i32,
+    /// Rules of the newer kinds that came with no group of their own.
+    strays: Vec<CfRule>,
+    /// How many rules of the newer kinds the group just started says follow it.
+    newer_rules_to_come: u16,
     protection: Protection,
     filter_entries: Vec<(u32, FilterCriteria)>,
     has_filter: bool,
@@ -79,7 +82,8 @@ impl Collector {
         }
         sheet.links = std::mem::take(&mut self.links);
         sheet.validations = std::mem::take(&mut self.validations);
-        sheet.conditional = std::mem::take(&mut self.blocks)
+        sheet.conditional = self
+            .settle_conditional_formats()
             .into_iter()
             .map(|b| ConditionalFormat { ranges: b.ranges, rules: b.rules })
             .collect();
@@ -146,20 +150,24 @@ impl Collector {
 
     fn start_block(&mut self, record: &Record) {
         let mut r = Reader::new(&record.data);
-        if record.id == id::CONDFMT12 && r.skip(12).is_none() {
+        let newer = record.id == id::CONDFMT12;
+        if newer && r.skip(12).is_none() {
             return;
         }
-        if r.skip(4 + 8).is_none() {
+        let Some(rules) = r.u16() else { return };
+        if r.skip(2 + 8).is_none() {
             return;
         }
         let Some(count) = r.u16() else { return };
         let ranges = (0..count).filter_map(|_| ref8(&mut r)).collect();
+        self.newer_rules_to_come = if newer { rules } else { 0 };
         self.blocks.push(Block { ranges, rules: Vec::new() });
     }
 
+    /// A rule of the older kind. Its priority is worked out when all the rules are known, because the
+    /// file numbers only the rules of the newer kind.
     fn old_rule(&mut self, record: &Record, ctx: &Context) {
-        self.rules_seen += 1;
-        let priority = self.rules_seen;
+        let priority = 0;
         let Some(block) = self.blocks.last_mut() else { return };
         let origin = block
             .ranges
@@ -173,11 +181,50 @@ impl Collector {
     }
 
     fn new_rule(&mut self, record: &Record) {
-        let Some(block) = self.blocks.last_mut() else { return };
-        if let Some(rule) = new_conditional_rule(record) {
-            self.rules_seen = self.rules_seen.max(rule.priority);
-            block.rules.push(rule);
+        let Some(rule) = new_conditional_rule(record) else { return };
+        match self.blocks.last_mut() {
+            Some(block) if self.newer_rules_to_come > 0 => {
+                self.newer_rules_to_come -= 1;
+                block.rules.push(rule);
+            }
+            _ => self.strays.push(rule),
         }
+    }
+
+    /// The groups of rules with every rule numbered and in order. A rule of the older kind is numbered
+    /// with the numbers the newer kind's rules leave free, in the order they came; a rule of the newer
+    /// kind that has no group goes with the rule of the older kind before it in priority.
+    fn settle_conditional_formats(&mut self) -> Vec<Block> {
+        let mut blocks = std::mem::take(&mut self.blocks);
+        let strays = std::mem::take(&mut self.strays);
+        let mut taken: std::collections::HashSet<i32> = strays.iter().map(|r| r.priority).collect();
+        taken.extend(blocks.iter().flat_map(|b| b.rules.iter()).map(|r| r.priority).filter(|&p| p > 0));
+        let mut next = 1;
+        let mut older: Vec<(i32, usize)> = Vec::new();
+        for (index, block) in blocks.iter_mut().enumerate() {
+            for rule in block.rules.iter_mut().filter(|r| r.priority == 0) {
+                while taken.contains(&next) {
+                    next += 1;
+                }
+                rule.priority = next;
+                older.push((next, index));
+                next += 1;
+            }
+        }
+        for stray in strays {
+            let home = older
+                .iter()
+                .filter(|(priority, _)| *priority < stray.priority)
+                .max()
+                .map_or(0, |&(_, index)| index);
+            if let Some(block) = blocks.get_mut(home) {
+                block.rules.push(stray);
+            }
+        }
+        for block in &mut blocks {
+            block.rules.sort_by_key(|r| r.priority);
+        }
+        blocks
     }
 
     /// The filter over a range found in the sheet's `_FilterDatabase` name.
@@ -202,7 +249,7 @@ impl Collector {
 /// A tooltip for the link over the same cells, from a `LINKTIP` record.
 pub fn link_tip(record: &Record, tips: &mut Vec<(Range, String)>) {
     let mut r = Reader::new(&record.data);
-    if r.skip(4).is_none() {
+    if r.skip(2).is_none() {
         return;
     }
     let Some(range) = ref8(&mut r) else { return };
@@ -285,7 +332,7 @@ fn moniker(r: &mut Reader) -> Option<String> {
             if let Some(bytes) = r.take(size as usize - 6) {
                 let unicode = utf16_nul(bytes);
                 if !unicode.is_empty() {
-                    return Some(format!("{}{unicode}", "..\\".repeat(up)));
+                    return Some(unicode);
                 }
             }
         }
@@ -379,18 +426,15 @@ pub fn validation(record: &Record, ctx: &Context) -> Option<Validation> {
 /// The tab colour a `SHEETEXT` record holds.
 fn tab_color(record: &Record, ctx: &Context) -> Option<Color> {
     let mut r = Reader::new(&record.data);
-    r.skip(12 + 4)?;
-    let index = r.u32()?;
-    r.skip(4)?;
+    r.skip(12 + 4 + 4 + 4)?;
     let kind = r.u32()?;
-    let rgba = r.take(4)?;
+    let value = r.take(4)?;
+    let tint = r.f64()?;
     match kind {
-        2 => Some(Color::rgb(rgba[0], rgba[1], rgba[2])),
-        1 => Some(ctx.palette.color(rgba[0] as u16)),
-        _ => {
-            let _ = index;
-            None
-        }
+        1 => Some(ctx.palette.color(value[0] as u16)),
+        2 => Some(Color::rgb(value[0], value[1], value[2])),
+        3 => Some(Color::Theme(u32::from_le_bytes([value[0], value[1], value[2], value[3]]), tint)),
+        _ => None,
     }
 }
 
@@ -659,12 +703,14 @@ fn cfvo_name(kind: u8) -> &'static str {
     }
 }
 
-/// One threshold: its kind, and its value when it has one.
-fn read_cfvo(r: &mut Reader) -> Option<Cfvo> {
+/// One threshold: its kind, and its value when it has one. A data bar leaves the number out of a
+/// minimum and a maximum, and a colour scale or an icon set always writes it.
+fn read_cfvo(r: &mut Reader, always_has_a_number: bool) -> Option<Cfvo> {
     let kind = r.u8()?;
     let cb = r.u16()? as usize;
     r.skip(cb)?;
-    let value = r.f64()?;
+    let has_number = always_has_a_number || matches!(kind, 1 | 4 | 5 | 6);
+    let value = if has_number { r.f64()? } else { 0.0 };
     Some(Cfvo {
         kind: cfvo_name(kind).to_owned(),
         value: matches!(kind, 1 | 4 | 5).then(|| number(value)),
@@ -709,7 +755,7 @@ fn icon_set(data: &[u8]) -> Option<String> {
     }
     xml.push('>');
     for _ in 0..count {
-        let cfvo = read_cfvo(&mut r)?;
+        let cfvo = read_cfvo(&mut r, true)?;
         r.skip(5)?;
         xml.push_str(&format!("<cfvo type=\"{}\"", cfvo.kind));
         if let Some(v) = cfvo.value {
@@ -727,8 +773,8 @@ fn data_bar(data: &[u8]) -> Option<(Cfvo, Cfvo, Color)> {
     let rgba = r.take(4)?;
     let color = Color::rgb(rgba[0], rgba[1], rgba[2]);
     r.skip(8)?;
-    let min = read_cfvo(&mut r)?;
-    let max = read_cfvo(&mut r)?;
+    let min = read_cfvo(&mut r, false)?;
+    let max = read_cfvo(&mut r, false)?;
     Some((min, max, color))
 }
 
@@ -739,7 +785,7 @@ fn color_scale(data: &[u8]) -> Option<Vec<(Cfvo, Color)>> {
     r.skip(2)?;
     let mut points = Vec::new();
     for _ in 0..count {
-        let cfvo = read_cfvo(&mut r)?;
+        let cfvo = read_cfvo(&mut r, true)?;
         if matches!(cfvo.kind.as_str(), "percent" | "percentile") {
             r.skip(8)?;
         }

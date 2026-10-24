@@ -1,6 +1,6 @@
 //! `xl/workbook.bin`: the sheet list, the names, the books formulas refer to, and the calculation settings.
 
-use super::records::{id, split, wide_string, Reader};
+use super::records::{id, many, split, wide_string, Reader};
 use crate::model::{CalcSettings, Visibility};
 use crate::xls::ptg::{SupBook, Xti};
 
@@ -92,7 +92,7 @@ pub fn read(bytes: &[u8]) -> Book {
                 if let (Some(SupBook::External { sheets, .. }), Some(count)) =
                     (book.supbooks.last_mut(), r.u32())
                 {
-                    *sheets = (0..count).filter_map(|_| wide_string(&mut r)).collect();
+                    *sheets = many(count, &mut r, wide_string);
                 }
             }
             id::EXTERN_SHEET => book.xti = extern_sheet(&mut r),
@@ -135,14 +135,12 @@ fn calc_properties(r: &mut Reader, calc: &mut CalcSettings) {
 
 fn extern_sheet(r: &mut Reader) -> Vec<Xti> {
     let count = r.u32().unwrap_or(0);
-    (0..count)
-        .filter_map(|_| {
-            let book = r.u32()?;
-            let first = r.i32()?;
-            let last = r.i32()?;
-            Some(Xti { book, first, last })
-        })
-        .collect()
+    many(count, r, |r| {
+        let book = r.u32()?;
+        let first = r.i32()?;
+        let last = r.i32()?;
+        Some(Xti { book, first, last })
+    })
 }
 
 fn name(r: &mut Reader) -> Option<RawName> {

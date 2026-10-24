@@ -171,7 +171,7 @@ pub const FUNCTIONS: [(&str, u8); 485] = [
     ("CLEAN", 1),              // 162
     ("MDETERM", 1),            // 163
     ("MINVERSE", 1),           // 164
-    ("MMULT", 1),              // 165
+    ("MMULT", 2),              // 165
     ("FILES", 2),              // 166
     ("IPMT", 6),               // 167
     ("PPMT", 6),               // 168
@@ -474,7 +474,7 @@ pub const FUNCTIONS: [(&str, u8); 485] = [
     ("WEEKNUM", 2),            // 465
     ("AMORDEGRC", 7),          // 466
     ("AMORLINC", 7),           // 467
-    ("CONVERT", 8),            // 468
+    ("CONVERT", 3),            // 468
     ("ACCRINT", 8),            // 469
     ("ACCRINTM", 5),           // 470
     ("WORKDAY", 3),            // 471
@@ -492,3 +492,22 @@ pub const FUNCTIONS: [(&str, u8); 485] = [
     ("AVERAGEIF", 3),          // 483
     ("AVERAGEIFS", 129),       // 484
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::FUNCTIONS;
+
+    /// A function the engine knows with a fixed number of arguments is written with `ptgFunc`, and the table
+    /// must say that number or the formula cannot be read.
+    #[test]
+    fn a_function_with_a_fixed_count_has_the_count_the_engine_gives_it() {
+        let mut wrong = Vec::new();
+        for (index, (name, count)) in FUNCTIONS.iter().enumerate() {
+            let Some(function) = crate::functions::find(name) else { continue };
+            if function.min == function.max && function.max < 128 && *count as usize != function.min {
+                wrong.push(format!("{index} {name} table {count} engine {}", function.min));
+            }
+        }
+        assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    }
+}

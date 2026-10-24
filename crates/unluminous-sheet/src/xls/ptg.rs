@@ -782,7 +782,7 @@ impl<'a> Decoder<'a> {
             _ => {
                 let name = |i: i32| self.env.sheets.get(i as usize).cloned();
                 match (name(first), name(last)) {
-                    (Some(a), Some(b)) if first == last => format!("{}!", sheet_name(&a)),
+                    (Some(a), Some(_)) if first == last => format!("{}!", sheet_name(&a)),
                     (Some(a), Some(b)) => {
                         if sheet_name(&a) == a && sheet_name(&b) == b {
                             format!("{a}:{b}!")

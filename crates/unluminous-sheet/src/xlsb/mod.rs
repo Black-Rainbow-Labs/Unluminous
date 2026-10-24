@@ -25,7 +25,7 @@ use crate::xlsx::{
     parse_rels, rels_path, resolve, REL_COMMENTS, REL_DRAWING, REL_HYPERLINK, REL_OFFICE_DOCUMENT,
     REL_SHARED_STRINGS, REL_STYLES, REL_TABLE, REL_THEME, REL_WORKSHEET,
 };
-use records::{id, split, wide_string, Reader};
+use records::{id, many, split, wide_string, Reader};
 
 /// Read a workbook from the bytes of an `.xlsb` file.
 pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
@@ -252,7 +252,7 @@ fn external_books(
                         .flat_map(|r| {
                             let mut reader = Reader::new(r.data);
                             let count = reader.u32().unwrap_or(0);
-                            (0..count).filter_map(|_| wide_string(&mut reader)).collect::<Vec<_>>()
+                            many(count, &mut reader, wide_string)
                         })
                         .collect()
                 })

@@ -21,8 +21,8 @@ const FREE: u32 = 0xFFFF_FFFF;
 const END_OF_CHAIN: u32 = 0xFFFF_FFFE;
 const FAT_SECTOR: u32 = 0xFFFF_FFFD;
 const DIFAT_SECTOR: u32 = 0xFFFF_FFFC;
-/// The most directory entries or chain links followed before the file is called damaged.
-const MOST_LINKS: usize = 1 << 24;
+/// The most directory entries read, a bound for a damaged file.
+const MOST_ENTRIES: usize = 1 << 20;
 
 /// What a directory entry is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -121,6 +121,11 @@ impl Compound {
         Ok(book)
     }
 
+    /// The most sectors a chain can pass through: every one of the file, so a longer chain loops.
+    fn most_links(&self) -> usize {
+        self.data.len() / self.sector_size + 2
+    }
+
     /// The offset of a sector in the file: sector 0 starts after the header sector.
     fn sector_at(&self, sector: u32) -> Option<&[u8]> {
         let start = (sector as usize).checked_add(1)?.checked_mul(self.sector_size)?;
@@ -144,7 +149,7 @@ impl Compound {
         let mut guard = 0;
         while difat < FAT_SECTOR {
             guard += 1;
-            if guard > MOST_LINKS {
+            if guard > self.most_links() {
                 return Err("the compound file's sector index loops".to_owned());
             }
             let sector = self.sector_at(difat).ok_or_else(truncated)?;
@@ -172,7 +177,7 @@ impl Compound {
         let mut links = 0usize;
         while at < FAT_SECTOR {
             links += 1;
-            if links > MOST_LINKS {
+            if links > self.most_links() {
                 return Err("a chain of sectors in the compound file loops".to_owned());
             }
             let sector = self.sector_at(at).ok_or_else(truncated)?;
@@ -200,7 +205,7 @@ impl Compound {
         let mut links = 0usize;
         while at < FAT_SECTOR && (out.len() as u64) < size {
             links += 1;
-            if links > MOST_LINKS {
+            if links > self.mini_stream.len() / self.mini_sector + 2 {
                 return Err("a chain of mini sectors in the compound file loops".to_owned());
             }
             let from = at as usize * self.mini_sector;
@@ -259,7 +264,7 @@ struct Node {
 
 fn parse_directory(bytes: &[u8]) -> Result<Vec<Node>, String> {
     let mut nodes = Vec::new();
-    for raw in bytes.chunks_exact(128).take(MOST_LINKS) {
+    for raw in bytes.chunks_exact(128).take(MOST_ENTRIES) {
         let name_len = (u16_at(raw, 64)? as usize).min(64);
         let units: Vec<u16> = raw[..name_len.saturating_sub(2)]
             .chunks_exact(2)
@@ -336,7 +341,7 @@ mod tests {
         for i in 1..109 {
             file[0x4C + i * 4..0x50 + i * 4].copy_from_slice(&FREE.to_le_bytes());
         }
-        let mut set_fat = |file: &mut Vec<u8>, index: usize, value: u32| {
+        let set_fat = |file: &mut Vec<u8>, index: usize, value: u32| {
             let at = sector + index * 4;
             file[at..at + 4].copy_from_slice(&value.to_le_bytes());
         };
@@ -352,7 +357,7 @@ mod tests {
         }
         // Directory: root, "Small" (mini sector 0, 5 bytes) and "Big" (sector 4, 5000 bytes).
         let dir = sector * 2;
-        let mut entry = |file: &mut Vec<u8>,
+        let entry = |file: &mut Vec<u8>,
                          n: usize,
                          name: &str,
                          kind: u8,

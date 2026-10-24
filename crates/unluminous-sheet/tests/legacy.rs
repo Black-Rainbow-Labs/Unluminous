@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use unluminous_sheet::coord::CellRef;
 use unluminous_sheet::formula::{print::print, Formula};
-use unluminous_sheet::model::Sheet;
+use unluminous_sheet::model::{LinkTarget, Sheet};
 use unluminous_sheet::numfmt::Format;
 use unluminous_sheet::{FileKind, Value, Workbook};
 
@@ -355,6 +355,7 @@ fn compare_with_original(name: &str, book: &Workbook, source: &Workbook) -> Vec<
                 hidden(theirs)
             ));
         }
+        problems.extend(compare_view_and_features(&label, ours, theirs));
         // Excel keeps a threaded comment in an .xlsx file and drops it from the binary file.
         let notes = |s: &Sheet| {
             s.notes
@@ -373,6 +374,130 @@ fn compare_with_original(name: &str, book: &Workbook, source: &Workbook) -> Vec<
     }
     problems.extend(compare_names(name, book, source));
     problems
+}
+
+/// The view, the validations, the links, the filter, the protection and the outline of a sheet.
+fn compare_view_and_features(label: &str, ours: &Sheet, theirs: &Sheet) -> Vec<String> {
+    let mut problems = Vec::new();
+    let mut check = |what: &str, a: String, b: String| {
+        if a != b {
+            problems.push(format!("{label}: {what} is {a}, original {b}"));
+        }
+    };
+    check("frozen panes", format!("{:?}", ours.frozen), format!("{:?}", theirs.frozen));
+    check("gridlines", ours.show_grid.to_string(), theirs.show_grid.to_string());
+    check("tab colour", format!("{:?}", ours.tab_color), format!("{:?}", theirs.tab_color));
+    let rows = |s: &Sheet| {
+        s.rows.iter().map(|(&i, r)| (i, r.outline, r.collapsed)).filter(|r| r.1 > 0 || r.2).collect::<Vec<_>>()
+    };
+    check("outline rows", format!("{:?}", rows(ours)), format!("{:?}", rows(theirs)));
+    let columns = |s: &Sheet| {
+        (0..256).map(|c| (c, s.column(c).map_or((0, false), |i| (i.outline, i.collapsed)))).filter(|(_, o)| o.0 > 0 || o.1).collect::<Vec<_>>()
+    };
+    check("outline columns", format!("{:?}", columns(ours)), format!("{:?}", columns(theirs)));
+    // The unique identifier Excel gives a validation in an .xlsx file has no place in a binary file.
+    let validations = |s: &Sheet| {
+        s.validations
+            .iter()
+            .map(|v| {
+                let mut v = v.clone();
+                v.attrs.retain(|(name, _)| name != "xr:uid");
+                format!("{v:?}")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    check("validations", validations(ours), validations(theirs));
+    // A binary file keeps the text shown with every link, and a file link as the path from the folder
+    // the file is in, which is not where the .xlsx file was.
+    let links = |s: &Sheet| {
+        s.links
+            .iter()
+            .map(|l| {
+                let target = match &l.target {
+                    LinkTarget::External(t) => LinkTarget::External(t.trim_start_matches("../").to_owned()),
+                    other => other.clone(),
+                };
+                format!("{:?} {:?} {:?}", l.range, target, l.tooltip)
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    check("links", links(ours), links(theirs));
+    // The older format has no colour filter and no dynamic date filter, so Excel keeps none of them.
+    let filter = |s: &Sheet, old_format: bool| {
+        let unsupported = old_format && matches!(s.name.as_str(), "ByColor" | "DateDynamic");
+        s.filter
+            .as_ref()
+            .map(|f| (f.range, f.columns.keys().copied().filter(|_| !unsupported).collect::<Vec<_>>()))
+    };
+    let old_format = label.contains(".xls ");
+    check("filter", format!("{:?}", filter(ours, old_format)), format!("{:?}", filter(theirs, old_format)));
+    let protection = |s: &Sheet| {
+        s.raw.elements.iter().filter(|(n, _)| n == "sheetProtection").map(|(_, x)| x.clone()).collect::<Vec<_>>()
+    };
+    // The password of a sheet protected from Excel 2013 on is a hash this format has no place for.
+    let plain = |list: Vec<String>| list.into_iter().map(|x| strip_hash(&x)).collect::<Vec<_>>();
+    check("protection", format!("{:?}", plain(protection(ours))), format!("{:?}", plain(protection(theirs))));
+    problems.extend(compare_conditional_formats(label, ours, theirs));
+    problems
+}
+
+/// The conditional formats: which cells, and for the rules both formats can say the same way, the rule.
+/// A rule the older format can only say as a formula (a date period, a text match, a top ten) is a
+/// formula here, so only its range and priority are compared.
+fn compare_conditional_formats(label: &str, ours: &Sheet, theirs: &Sheet) -> Vec<String> {
+    let mut problems = Vec::new();
+    let rules = |s: &Sheet| {
+        s.conditional
+            .iter()
+            .flat_map(|f| f.rules.iter().map(move |r| (f.ranges.clone(), r.clone())))
+            .collect::<Vec<_>>()
+    };
+    let (mut a, mut b) = (rules(ours), rules(theirs));
+    a.sort_by_key(|r| r.1.priority);
+    b.sort_by_key(|r| r.1.priority);
+    if a.len() != b.len() {
+        problems.push(format!("{label}: {} conditional format rules {:?}, original {} {:?}", a.len(), a.iter().map(|r| (r.1.priority, r.1.kind.clone())).collect::<Vec<_>>(), b.len(), b.iter().map(|r| (r.1.priority, r.1.kind.clone())).collect::<Vec<_>>()));
+        return problems;
+    }
+    for ((ours_ranges, ours_rule), (their_ranges, their_rule)) in a.iter().zip(&b) {
+        let at = format!("{label}: rule {} of {their_ranges:?}", their_rule.priority);
+        if ours_ranges != their_ranges {
+            problems.push(format!("{at}: ranges {ours_ranges:?}"));
+        }
+        if ours_rule.priority != their_rule.priority {
+            problems.push(format!("{at}: priority {}", ours_rule.priority));
+        }
+        let comparable = matches!(their_rule.kind.as_str(), "cellIs" | "expression" | "colorScale" | "dataBar" | "iconSet");
+        if !comparable {
+            continue;
+        }
+        let describe = |r: &unluminous_sheet::model::CfRule| {
+            let formulas: Vec<String> = r.formulas.iter().map(|f| normal_formula(f)).collect();
+            // A data bar keeps the settings of Excel 2010 in an extension this version does not read.
+            let kept = if r.kind == "iconSet" { r.raw_children.as_str() } else { "" };
+            format!("{} {:?} {formulas:?} {:?} {:?} {kept}", r.kind, r.operator, r.color_scale, r.data_bar)
+        };
+        if describe(ours_rule) != describe(their_rule) {
+            problems.push(format!("{at}: {} but the original has {}", describe(ours_rule), describe(their_rule)));
+        }
+        // The older format keeps no stop flag with a rule it writes in the older kind.
+        if ours_rule.stop != their_rule.stop && !label.contains(".xls ") {
+            problems.push(format!("{at}: stop if true {}", ours_rule.stop));
+        }
+    }
+    problems
+}
+
+/// A protection element without the attributes of its password hash.
+fn strip_hash(xml: &str) -> String {
+    xml.split(' ')
+        .filter(|part| {
+            !["algorithmName", "hashValue", "saltValue", "spinCount", "password"].iter().any(|k| part.starts_with(k))
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Column widths and hidden columns, one column at a time, since the two files cut runs of columns
@@ -452,5 +577,42 @@ fn xlsb_cells_match_what_excel_reports() {
 #[test]
 fn xlsb_features_match_the_xlsx_they_were_saved_from() {
     let problems = feature_problems_for("xlsb");
+    assert!(problems.is_empty(), "{} differences:\n{}", problems.len(), problems.join("\n"));
+}
+
+/// Every formula of the oracle corpus, saved by Excel in a binary file, reads back as Excel reads it. This
+/// is what checks the function numbers of the binary formats, and the tokens the corpus uses.
+fn function_problems_for(extension: &str) -> Vec<String> {
+    let name = format!("functions.{extension}");
+    let book = open(&name).unwrap();
+    let list = std::fs::read_to_string(legacy_dir().join("functions.formulas.txt")).unwrap();
+    let sheet = &book.sheets[0];
+    let mut problems = Vec::new();
+    let mut checked = 0;
+    for line in list.lines() {
+        let Some((row, want)) = line.split_once('\t') else { continue };
+        let row: u32 = row.parse().unwrap();
+        checked += 1;
+        let at = CellRef::new(row - 1, 9);
+        let have = sheet.cell(at).and_then(|c| c.formula.as_ref()).map(|f| f.display());
+        match have {
+            Some(h) if normal_formula(&h) == normal_formula(want) => {}
+            Some(h) => problems.push(format!("{name} J{row}: {h} but Excel has {want}")),
+            None => problems.push(format!("{name} J{row}: no formula but Excel has {want}")),
+        }
+    }
+    assert!(checked > 500, "only {checked} formulas were checked");
+    problems
+}
+
+#[test]
+fn xls_formulas_of_every_function_read_as_excel_reads_them() {
+    let problems = function_problems_for("xls");
+    assert!(problems.is_empty(), "{} differences:\n{}", problems.len(), problems.join("\n"));
+}
+
+#[test]
+fn xlsb_formulas_of_every_function_read_as_excel_reads_them() {
+    let problems = function_problems_for("xlsb");
     assert!(problems.is_empty(), "{} differences:\n{}", problems.len(), problems.join("\n"));
 }

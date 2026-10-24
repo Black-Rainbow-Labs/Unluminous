@@ -45,6 +45,7 @@ function Save-One($file, $target, $format) {
     $watchdog = Start-Job -ScriptBlock { param($p, $s) Start-Sleep $s; Stop-Process -Id $p -Force -ErrorAction SilentlyContinue } -ArgumentList $excelPid, $Seconds
     try {
         $book = $excel.Workbooks.Open($file.FullName, 0, $true)
+        $book.CheckCompatibility = $false
         $book.SaveAs($target, $format)
         $book.Close($false)
         return "saved $target"
