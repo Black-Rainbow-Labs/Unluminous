@@ -5,10 +5,22 @@
 //! edit-oracle.ps1` ran through Excel's own object model and compares every cell.
 
 mod extras;
+mod external;
+mod fill;
+mod flash;
+mod html;
 mod insert_copied;
+mod lists;
 mod operate;
 mod paste;
+mod series;
 mod snapshot;
+mod trend;
+
+pub use fill::{AcrossSheets, FillKind, SeriesDate, SeriesKind, SeriesSpec};
+pub use external::{parse_text_grid, ExternalPaste};
+pub use flash::flash_fill_examples;
+pub use lists::CustomLists;
 
 use std::collections::BTreeMap;
 
@@ -284,6 +296,10 @@ pub struct ClipExtras {
     pub rows: Vec<u32>,
     /// Whether the source workbook counts dates from 1904.
     pub date1904: bool,
+    /// The offsets from the first row copied of the rows that are hidden, which the text for other programs
+    /// leaves out, and the same for columns.
+    pub hidden_rows: Vec<u32>,
+    pub hidden_columns: Vec<u32>,
 }
 
 impl super::Clip {

@@ -39,3 +39,27 @@ fn a_filtered_range_copies_its_visible_rows_and_pastes_into_hidden_rows_too() {
     expect_none(common::check_file("clipboard", "paste_filtered_from_other_sheet", &[]));
     expect_none(common::check_file("clipboard", "paste_filtered_to_filtered", &[]));
 }
+
+#[test]
+fn the_text_a_copy_gives_other_programs_is_what_excel_gives() {
+    expect_none(common::check_file("clipboard", "copy_text", &[]));
+}
+
+#[test]
+fn text_from_other_programs_is_typed_into_the_cells() {
+    // Typing "$3.50" gives the Currency format. Excel gives it with red negatives, which `input.rs`, held
+    // to its own format by other tests, does not.
+    let currency = "typed currency takes Excel's format with red negatives";
+    expect_none(common::check_file("clipboard", "paste_text", &[("text_typed:E2", currency)]));
+}
+
+#[test]
+fn html_tables_from_other_programs_become_cells() {
+    let currency = "typed currency takes Excel's format with red negatives";
+    expect_none(common::check_file("clipboard", "paste_html", &[("html_typed:F2", currency)]));
+}
+
+#[test]
+fn more_operations_skipping_blanks_and_logical_values() {
+    expect_none(common::check_file("clipboard", "paste_more", &[]));
+}

@@ -214,18 +214,34 @@ fn moved_rules(
     rules: &ClipRules,
     plan: &Plan,
     origin: CellRef,
-    (dr, dc): (i64, i64),
+    shift: (i64, i64),
     dxf_map: &std::collections::BTreeMap<u32, u32>,
     priority: &mut i32,
 ) -> ConditionalFormat {
     let ranges = rules.ranges.iter().map(|r| plan.map_range(origin, *r)).collect();
+    rules_with(rules, ranges, shift, Some(dxf_map), priority)
+}
+
+/// A conditional format's rules over some ranges, with their formulas moved and each given a priority after
+/// the ones before it.
+fn rules_with(
+    rules: &ClipRules,
+    ranges: Vec<Range>,
+    (dr, dc): (i64, i64),
+    dxf_map: Option<&std::collections::BTreeMap<u32, u32>>,
+    priority: &mut i32,
+) -> ConditionalFormat {
     let rules = rules
         .rules
         .iter()
         .map(|rule| {
             *priority += 1;
+            let dxf = match (rule.dxf, dxf_map) {
+                (Some(d), Some(map)) => map.get(&d).copied().or(Some(d)),
+                (other, _) => other,
+            };
             CfRule {
-                dxf: rule.dxf.and_then(|d| dxf_map.get(&d).copied()).or(rule.dxf),
+                dxf,
                 priority: *priority,
                 formulas: rule.formulas.iter().map(|f| shifted_text(f, dr, dc)).collect(),
                 ..rule.clone()
@@ -233,4 +249,24 @@ fn moved_rules(
         })
         .collect();
     ConditionalFormat { ranges, rules }
+}
+
+/// The ranges with every hole cut out of them.
+pub(super) fn subtract_all(ranges: &[Range], holes: &[Range]) -> Vec<Range> {
+    holes.iter().fold(ranges.to_vec(), |left, hole| cut_out(&left, *hole))
+}
+
+/// A validation moved to a range, for the fill, with its formulas moved.
+pub(super) fn moved_validation_in(v: &Validation, range: Range, dr: i64, dc: i64) -> Validation {
+    moved_validation(v, range, dr, dc)
+}
+
+/// A conditional format moved to some ranges, for the fill.
+pub(super) fn moved_rules_in(
+    rules: &ClipRules,
+    ranges: Vec<Range>,
+    shift: (i64, i64),
+    priority: &mut i32,
+) -> ConditionalFormat {
+    rules_with(rules, ranges, shift, None, priority)
 }

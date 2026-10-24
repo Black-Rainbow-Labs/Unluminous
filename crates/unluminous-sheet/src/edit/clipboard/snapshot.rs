@@ -120,7 +120,21 @@ fn block_extras(s: &Sheet, range: Range) -> ClipExtras {
         extras.links.push(crate::model::Hyperlink { range: at(link.range), ..link.clone() });
     }
     widths_and_heights(s, range, &mut extras);
+    hidden_lines(s, range, &mut extras);
     extras
+}
+
+/// The rows and columns of the block that are hidden.
+fn hidden_lines(s: &Sheet, range: Range, extras: &mut ClipExtras) {
+    let last_row = range.last.row.min(last_used_row(s).max(range.first.row));
+    extras.hidden_rows = (range.first.row..=last_row)
+        .filter(|r| s.is_row_hidden(*r))
+        .map(|r| r - range.first.row)
+        .collect();
+    extras.hidden_columns = (range.first.col..=range.last.col.min(range.first.col + 16_383))
+        .filter(|c| s.is_column_hidden(*c))
+        .map(|c| c - range.first.col)
+        .collect();
 }
 
 /// The width of every copied column and the height of every copied row that has one.

@@ -106,6 +106,23 @@ function Build-Case($book, $case) {
     foreach ($m in @($case.merge)) { if ($m) { (Get-Target $book $m).Merge() | Out-Null } }
 }
 
+Add-Type -AssemblyName System.Windows.Forms
+$script:clipboardText = $null
+
+# Put an HTML fragment on the clipboard in the CF_HTML format, header and offsets included.
+function Set-HtmlClipboard([string]$fragment) {
+    $prefix = '<html><body><!--StartFragment-->'
+    $suffix = '<!--EndFragment--></body></html>'
+    $utf8 = [Text.Encoding]::UTF8
+    $headerTemplate = "Version:0.9`r`nStartHTML:{0:D10}`r`nEndHTML:{1:D10}`r`nStartFragment:{2:D10}`r`nEndFragment:{3:D10}`r`n"
+    $headerLength = $utf8.GetByteCount(($headerTemplate -f 0, 0, 0, 0))
+    $startFragment = $headerLength + $utf8.GetByteCount($prefix)
+    $endFragment = $startFragment + $utf8.GetByteCount($fragment)
+    $endHtml = $endFragment + $utf8.GetByteCount($suffix)
+    $document = ($headerTemplate -f $headerLength, $endHtml, $startFragment, $endFragment) + $prefix + $fragment + $suffix
+    [Windows.Forms.Clipboard]::SetText($document, [Windows.Forms.TextDataFormat]::Html)
+}
+
 # Worksheet.Paste is a method with parameters; PowerShell reads it as a property, so it is invoked by name.
 function Invoke-Paste($destination, [bool]$link) {
     $sheet = $destination.Worksheet
@@ -171,6 +188,35 @@ function Invoke-Step($book, $step) {
             }
         }
         'set' { Set-Cell $book $step.at $step.value }
+        # Clipboard steps need a single threaded apartment: run the script with `pwsh -STA`.
+        # The clipboard is shared with every program on the machine, so a busy one is tried again.
+        'clipboardtext' {
+            for ($try = 0; $try -lt 40; $try++) {
+                try { $script:clipboardText = [Windows.Forms.Clipboard]::GetText(); break } catch { Start-Sleep -Milliseconds 250 }
+            }
+        }
+        # Copy and read the text again until two reads agree, because another program can copy in between.
+        'copytext' {
+            $previous = $null
+            for ($try = 0; $try -lt 12; $try++) {
+                $at.Copy() | Out-Null
+                Start-Sleep -Milliseconds 150
+                $text = $null
+                try { $text = [Windows.Forms.Clipboard]::GetText() } catch { }
+                if ($null -ne $text -and $text -eq $previous) { break }
+                $previous = $text
+            }
+            $script:clipboardText = $text
+        }
+        'settext' { [Windows.Forms.Clipboard]::SetText([string]$step.value) }
+        'sethtml' { Set-HtmlClipboard ([string]$step.value) }
+        'pasteformat' {
+            $sheet = $at.Worksheet
+            $sheet.Activate()
+            $at.Select() | Out-Null
+            $flags = [Reflection.BindingFlags]::InvokeMethod
+            [void]$sheet.GetType().InvokeMember('PasteSpecial', $flags, $null, $sheet, @([string]$step.format))
+        }
         default { throw "unknown step $($step.do)" }
     }
 }
@@ -263,7 +309,8 @@ foreach ($case in $cases) {
         foreach ($letter in 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H') { $widths[$letter] = [double]$sheet.Columns.Item($letter).ColumnWidth }
         $hidden = @()
         for ($row = 1; $row -le 20; $row++) { if ($sheet.Rows.Item($row).Hidden) { $hidden += $row } }
-        $results += [pscustomobject]@{ name = $case.name; error = $error_text; cells = $dumped; widths = $widths; hidden_rows = $hidden }
+        $results += [pscustomobject]@{ name = $case.name; error = $error_text; cells = $dumped; widths = $widths; hidden_rows = $hidden; clipboard = $script:clipboardText }
+        $script:clipboardText = $null
     } catch {
         $results += [pscustomobject]@{ name = $case.name; error = "HARNESS: $($_.Exception.Message) at $($_.ScriptStackTrace)"; cells = @(); widths = @{}; hidden_rows = @() }
     } finally {

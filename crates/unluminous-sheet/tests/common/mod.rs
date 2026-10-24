@@ -9,7 +9,10 @@
 
 use serde_json::Value as J;
 use unluminous_sheet::coord::{CellRef, Range};
-use unluminous_sheet::edit::clipboard::{PasteKind, PasteOperation, PasteSpecial};
+use unluminous_sheet::edit::clipboard::{
+    AcrossSheets, CustomLists, ExternalPaste, FillKind, PasteKind, PasteOperation, PasteSpecial, SeriesDate, SeriesKind,
+    SeriesSpec,
+};
 use unluminous_sheet::edit::{Clip, Session, Shift};
 use unluminous_sheet::model::{CfRule, FilterCriteria, Validation, Workbook};
 use unluminous_sheet::styles::{
@@ -21,6 +24,10 @@ use unluminous_sheet::value::Value;
 pub struct World {
     pub session: Session,
     pub clip: Option<Clip>,
+    /// Text and HTML put on the clipboard by another program, and the text a copy gave for other programs.
+    pub outside_text: Option<String>,
+    pub outside_html: Option<String>,
+    pub copied_text: Option<String>,
 }
 
 /// An Excel `Color` integer (blue, green, red from the top) as a colour.
@@ -71,7 +78,7 @@ pub fn build(case: &J) -> World {
         let (sheet, range) = address(&session, m.as_str().unwrap());
         session.merge(sheet, range, false).unwrap();
     }
-    World { session, clip: None }
+    World { session, clip: None, outside_text: None, outside_html: None, copied_text: None }
 }
 
 fn put_cell(session: &mut Session, at: &str, spec: &J) {
@@ -90,7 +97,12 @@ fn put_cell(session: &mut Session, at: &str, spec: &J) {
     } else {
         match value {
             J::Number(n) => session.set_value(sheet, at, Value::Number(n.as_f64().unwrap())).unwrap(),
-            J::String(s) => session.set_value(sheet, at, Value::text(s)).unwrap(),
+            // Excel reads a string it is given as it would be typed, unless the cell is a text cell.
+            J::String(s) if spec["nf"].as_str() == Some("@") => {
+                session.set_value(sheet, at, Value::text(s)).unwrap()
+            }
+            J::String(s) if s.is_empty() => {}
+            J::String(s) => session.set_input(sheet, at, &s).unwrap(),
             J::Bool(b) => session.set_value(sheet, at, Value::Bool(b)).unwrap(),
             _ => {}
         }
@@ -203,9 +215,31 @@ fn run_step(world: &mut World, step: &J) -> Result<(), String> {
     match step["do"].as_str().unwrap() {
         "copy" => world.clip = Some(s.copy(sheet, at, false)),
         "cut" => world.clip = Some(s.copy(sheet, at, true)),
+        "paste" if world.outside_text.is_some() => {
+            let text = world.outside_text.clone().unwrap();
+            s.paste_text(sheet, at.first, &text, ExternalPaste { formulas: true })?;
+        }
         "paste" => {
             let clip = world.clip.clone().expect("a clip");
             s.paste_special(&clip, sheet, at, &PasteSpecial::default())?;
+        }
+        "settext" => world.outside_text = step["value"].as_str().map(str::to_owned),
+        "sethtml" => world.outside_html = step["value"].as_str().map(str::to_owned),
+        "pasteformat" => {
+            let page = world.outside_html.clone().expect("html");
+            s.paste_html(sheet, at.first, &page, ExternalPaste { formulas: true })?;
+        }
+        "copytext" => {
+            let clip = s.copy(sheet, at, false);
+            world.copied_text = Some(clip.to_text(&s.book));
+            world.clip = Some(clip);
+        }
+        "clipboardtext" => {
+            let clip = world.clip.as_ref().expect("a clip");
+            world.copied_text = Some(clip.to_text(&s.book));
+        }
+        "flashfill" => {
+            s.flash_fill(sheet, at)?;
         }
         "pastespecial" => {
             let clip = world.clip.clone().expect("a clip");
@@ -221,9 +255,52 @@ fn run_step(world: &mut World, step: &J) -> Result<(), String> {
             s.insert_copied(&clip, sheet, at.first, shift)?;
         }
         "filter" => filter(s, sheet, at, step)?,
+        "autofill" => {
+            let (_, to) = address(s, step["to"].as_str().unwrap());
+            let kind = FillKind::from_excel_code(step["type"].as_i64().unwrap_or(0) as i32).unwrap();
+            s.fill_series_with(sheet, at, to, kind, &CustomLists::default())?;
+        }
+        "dataseries" => s.data_series(sheet, at, &series_of(step))?,
+        "fillacross" => {
+            let others: Vec<usize> = step["sheets"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|n| s.book.sheet_index(n.as_str().unwrap()).unwrap())
+                .filter(|i| *i != sheet)
+                .collect();
+            let what = match step["type"].as_i64().unwrap() {
+                -4104 => AcrossSheets::All,
+                2 => AcrossSheets::Contents,
+                _ => AcrossSheets::Formats,
+            };
+            s.fill_across_sheets(sheet, at, &others, what)?;
+        }
         other => return Err(format!("the runner has no step {other}")),
     }
     Ok(())
+}
+
+/// The options of a `dataseries` step.
+pub fn series_of(step: &J) -> SeriesSpec {
+    let kind = match step["type"].as_i64().unwrap_or(-4132) {
+        2 => SeriesKind::Growth,
+        3 => SeriesKind::Date(match step["date"].as_i64().unwrap_or(1) {
+            2 => SeriesDate::Weekday,
+            3 => SeriesDate::Month,
+            4 => SeriesDate::Year,
+            _ => SeriesDate::Day,
+        }),
+        4 => SeriesKind::AutoFill,
+        _ => SeriesKind::Linear,
+    };
+    SeriesSpec {
+        by_rows: step["rowcol"].as_i64() == Some(1),
+        kind,
+        step: step["step"].as_f64().unwrap_or(1.0),
+        stop: step["stop"].as_f64(),
+        trend: step["trend"].as_bool().unwrap_or(false),
+    }
 }
 
 /// The options of a `pastespecial` step.
@@ -471,7 +548,12 @@ pub fn check_file(folder: &str, stem: &str, skip: &[(&str, &str)]) -> Vec<String
         if skip.iter().any(|(n, _)| *n == label) {
             continue;
         }
-        for line in check_case(case, answer) {
+        let ignored: Vec<String> = skip
+            .iter()
+            .filter_map(|(n, _)| n.strip_prefix(label).and_then(|rest| rest.strip_prefix(':')))
+            .map(str::to_owned)
+            .collect();
+        for line in check_case(case, answer, &ignored) {
             wrong.push(format!("{label}: {line}"));
         }
     }
@@ -486,7 +568,7 @@ fn read(folder: &std::path::Path, file: &str) -> Vec<J> {
 }
 
 /// Compare one case with Excel's answer.
-pub fn check_case(case: &J, answer: &J) -> Vec<String> {
+pub fn check_case(case: &J, answer: &J, ignored_columns: &[String]) -> Vec<String> {
     let mut world = build(case);
     let result = run_steps(&mut world, case);
     let excel_error = answer["error"].as_str().unwrap_or("");
@@ -494,6 +576,8 @@ pub fn check_case(case: &J, answer: &J) -> Vec<String> {
     match (&result, excel_error.is_empty()) {
         (Err(_), true) => out.push(format!("engine refused: {}", result.as_ref().unwrap_err())),
         (Ok(()), false) => out.push(format!("engine did not refuse; excel: {excel_error}")),
+        // A method Excel's object model refuses says so only with an error code.
+        (Err(_), false) if excel_error.starts_with("0x800A03EC") => {}
         (Err(ours), false) if !excel_error.starts_with(ours.lines().next().unwrap_or("")) => {
             out.push(format!("refusal differs: excel {excel_error}, engine {ours}"))
         }
@@ -504,6 +588,10 @@ pub fn check_case(case: &J, answer: &J) -> Vec<String> {
         let (sheet, range) = address(&world.session, range_text);
         let sheet_name = world.session.book.sheets[sheet].name.clone();
         for at in range.cells() {
+            let column = unluminous_sheet::coord::column_name(at.col);
+            if ignored_columns.contains(&column) || ignored_columns.contains(&at.a1()) {
+                continue;
+            }
             let listed = answer["cells"].as_array().into_iter().flatten().find(|x| {
                 x["cell"].as_str() == Some(&at.a1()) && x["sheet"].as_str() == Some(&sheet_name)
             });
@@ -515,6 +603,11 @@ pub fn check_case(case: &J, answer: &J) -> Vec<String> {
         }
     }
     out.extend(width_differences(case, answer, &world));
+    if let Some(expected) = answer["clipboard"].as_str() {
+        if world.copied_text.as_deref() != Some(expected) {
+            out.push(format!("text for other programs: excel {expected:?}, engine {:?}", world.copied_text));
+        }
+    }
     out
 }
 

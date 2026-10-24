@@ -1,0 +1,104 @@
+[
+ {
+  "name": "skip_blanks_formatted_blank",
+  "formats": true,
+  "cells": {
+   "A1": {
+    "v": 1,
+    "bold": true
+   },
+   "A2": {
+    "fill": 255
+   },
+   "A3": 3,
+   "C1": {
+    "v": 10,
+    "italic": true
+   },
+   "C2": {
+    "v": 20,
+    "italic": true
+   },
+   "C3": 30
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:A3"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4104,
+    "skip": true
+   }
+  ],
+  "dump": [
+   "A1:D4"
+  ]
+ },
+ {
+  "name": "op_bool_formula_source",
+  "formats": false,
+  "cells": {
+   "A1": {
+    "f": "=TRUE"
+   },
+   "A2": {
+    "f": "=TRUE"
+   },
+   "A3": {
+    "f": "=2>1"
+   },
+   "C1": 5,
+   "C2": {
+    "f": "=1+1"
+   },
+   "C4": 7
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:A4"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4163,
+    "op": 2
+   }
+  ],
+  "dump": [
+   "A1:D5"
+  ]
+ },
+ {
+  "name": "op_negative_destination_formula_source",
+  "formats": false,
+  "cells": {
+   "A1": {
+    "f": "=B1*2"
+   },
+   "B1": 3,
+   "C1": -2.25,
+   "C2": 0.1,
+   "C3": 1e-7,
+   "C4": 123456789012
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:A4"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4123,
+    "op": 2
+   }
+  ],
+  "dump": [
+   "C1:C5"
+  ]
+ }
+]

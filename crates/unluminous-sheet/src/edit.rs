@@ -57,35 +57,37 @@ pub struct Clip {
 }
 
 impl Clip {
-    /// The cells as tab separated text, which is what Excel puts on the clipboard and reads from it.
+    /// The cells as tab separated text, which is what Excel puts on the clipboard for other programs: every
+    /// row ends with a line break, a cell holding a tab or a line break is in quotes, and rows and columns
+    /// that are hidden are left out.
     pub fn to_text(&self, book: &Workbook) -> String {
         let mut out = String::new();
-        let (rows, cols) = self.block_size();
+        // Only as far as the cells in use: rows and columns of blanks at the end are not copied.
+        let rows = self.cells.iter().map(|(r, _, _)| r + 1).max().unwrap_or(1);
+        let cols = self.cells.iter().map(|(_, c, _)| c + 1).max().unwrap_or(1);
+        let by_place: std::collections::HashMap<(u32, u32), &Cell> =
+            self.cells.iter().map(|(r, c, cell)| ((*r, *c), cell)).collect();
         for r in 0..rows {
-            if r > 0 {
-                out.push_str("\r\n");
+            if self.extras.hidden_rows.contains(&(self.source_row(r) - self.range.first.row)) {
+                continue;
             }
-            for c in 0..cols {
-                if c > 0 {
-                    out.push('\t');
-                }
-                if let Some((_, _, cell)) =
-                    self.cells.iter().find(|(rr, cc, _)| *rr == r && *cc == c)
-                {
-                    out.push_str(&shown_text(book, cell));
-                }
-            }
+            let shown: Vec<String> = (0..cols)
+                .filter(|c| !self.extras.hidden_columns.contains(c))
+                .map(|c| by_place.get(&(r, c)).map_or_else(String::new, |cell| shown_text(book, cell)))
+                .collect();
+            out.push_str(&shown.join("\t"));
+            out.push_str("\r\n");
         }
-        out.push_str("\r\n");
         out
     }
 }
 
-/// A cell as it is shown, with its number format: what copying to another program gives.
+/// A cell as it is shown, with its number format: what copying to another program gives. A cell holding a
+/// tab or a line break is in quotes, with any quote marks in it doubled; quote marks alone change nothing.
 pub fn shown_text(book: &Workbook, cell: &Cell) -> String {
     let code = book.styles.format_code(cell.style);
     let text = crate::numfmt::Format::parse(&code).render(&cell.value, book.date1904, 255).text;
-    if text.contains(['\t', '\n', '"']) {
+    if text.contains(['\t', '\n', '\r']) {
         format!("\"{}\"", text.replace('"', "\"\""))
     } else {
         text
@@ -1402,95 +1404,6 @@ impl Session {
         Ok(())
     }
 
-    /// Extend a block of cells into a larger range the way dragging the fill handle does: numbers and
-    /// dates continue their step, text ending in a number counts on, day and month names continue,
-    /// formulas move their references, and anything else repeats.
-    pub fn fill_series(
-        &mut self,
-        sheet: usize,
-        source: Range,
-        target: Range,
-    ) -> Result<(), String> {
-        self.check_sheet(sheet)?;
-        if !target.contains(source.first) || !target.contains(source.last) {
-            return Err("the range to fill must contain the cells it starts from".to_owned());
-        }
-        let down = target.rows() > source.rows();
-        let up = down && target.first.row < source.first.row;
-        let left = !down && target.first.col < source.first.col;
-        self.remember_cells("Fill series", sheet, &[target], false);
-        let lines = if down { source.cols() } else { source.rows() };
-        for line in 0..lines {
-            // The source cells along this line, in fill order.
-            let sources: Vec<CellRef> = if down {
-                (source.first.row..=source.last.row)
-                    .map(|r| CellRef::new(r, source.first.col + line))
-                    .collect()
-            } else {
-                (source.first.col..=source.last.col)
-                    .map(|c| CellRef::new(source.first.row + line, c))
-                    .collect()
-            };
-            let cells: Vec<Cell> = sources
-                .iter()
-                .map(|at| self.book.sheets[sheet].cell(*at).cloned().unwrap_or_default())
-                .collect();
-            let series = Series::of(&cells, self.book.date1904);
-            let targets: Vec<CellRef> = if down {
-                let col = source.first.col + line;
-                if up {
-                    (target.first.row..source.first.row)
-                        .rev()
-                        .map(|r| CellRef::new(r, col))
-                        .collect()
-                } else {
-                    (source.last.row + 1..=target.last.row).map(|r| CellRef::new(r, col)).collect()
-                }
-            } else {
-                let row = source.first.row + line;
-                if left {
-                    (target.first.col..source.first.col)
-                        .rev()
-                        .map(|c| CellRef::new(row, c))
-                        .collect()
-                } else {
-                    (source.last.col + 1..=target.last.col).map(|c| CellRef::new(row, c)).collect()
-                }
-            };
-            let backwards = up || left;
-            for (k, at) in targets.iter().enumerate() {
-                let n = k + 1;
-                let template_index =
-                    if backwards { (cells.len() - 1) - (k % cells.len()) } else { k % cells.len() };
-                let template = &cells[template_index];
-                let template_at = sources[template_index];
-                let cell = match &template.formula {
-                    Some(f) => Cell {
-                        formula: Some(Formula::from_expr(
-                            formula::shifted(
-                                &f.expr,
-                                at.row as i64 - template_at.row as i64,
-                                at.col as i64 - template_at.col as i64,
-                            ),
-                            f.dynamic,
-                        )),
-                        style: template.style,
-                        ..Default::default()
-                    },
-                    None => Cell {
-                        value: series.value(n as i64, backwards, &cells, template_index),
-                        style: template.style,
-                        ..Default::default()
-                    },
-                };
-                self.book.sheets[sheet].set(*at, cell);
-                self.engine.changed(&self.book, sheet, *at);
-            }
-        }
-        self.recalculate();
-        Ok(())
-    }
-
     /// Sort the rows of a range by some of its columns, each ascending or descending. `header` leaves the
     /// first row where it is.
     pub fn sort(
@@ -2421,158 +2334,6 @@ pub(crate) fn adjust_band(
         }
         formula::adjust_reference(r, axis, at, count)
     })
-}
-
-/// How a fill continues a block of cells.
-struct Series {
-    kind: SeriesKind,
-}
-
-enum SeriesKind {
-    /// Numbers (or dates) with a step.
-    Linear {
-        start: f64,
-        step: f64,
-    },
-    /// Text ending in a number that counts on.
-    Counted {
-        prefix: String,
-        start: i64,
-        step: i64,
-        width: usize,
-    },
-    /// Day or month names.
-    Names {
-        list: &'static [&'static str],
-        start: usize,
-        step: i64,
-        upper: bool,
-    },
-    Copy,
-}
-
-const DAYS_SHORT: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTHS_SHORT: [&str; 12] =
-    ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-impl Series {
-    fn of(cells: &[Cell], _date1904: bool) -> Series {
-        let numbers: Vec<f64> = cells.iter().filter_map(|c| c.value.as_number()).collect();
-        if numbers.len() == cells.len() && cells.iter().all(|c| c.formula.is_none()) {
-            if numbers.len() >= 2 {
-                // A straight line through the numbers, as Excel's series fill takes.
-                let n = numbers.len() as f64;
-                let mean_x = (n - 1.0) / 2.0;
-                let mean_y = numbers.iter().sum::<f64>() / n;
-                let sxx: f64 = (0..numbers.len()).map(|i| (i as f64 - mean_x).powi(2)).sum();
-                let sxy: f64 = numbers
-                    .iter()
-                    .enumerate()
-                    .map(|(i, y)| (i as f64 - mean_x) * (y - mean_y))
-                    .sum();
-                let step = sxy / sxx;
-                return Series {
-                    kind: SeriesKind::Linear {
-                        start: mean_y - step * mean_x + step * (n - 1.0),
-                        step,
-                    },
-                };
-            }
-            // One number copies, which is Excel's fill without Ctrl.
-            return Series { kind: SeriesKind::Copy };
-        }
-        let texts: Vec<String> = cells.iter().map(|c| c.value.to_text()).collect();
-        if cells.iter().all(|c| matches!(c.value, Value::Text(_))) {
-            for list in [
-                &crate::dates::DAYS[..],
-                &DAYS_SHORT[..],
-                &crate::dates::MONTHS[..],
-                &MONTHS_SHORT[..],
-            ] {
-                let positions: Vec<Option<usize>> = texts
-                    .iter()
-                    .map(|t| list.iter().position(|d| d.eq_ignore_ascii_case(t)))
-                    .collect();
-                if positions.iter().all(Option::is_some) {
-                    let p: Vec<i64> = positions.iter().map(|x| x.unwrap() as i64).collect();
-                    let step =
-                        if p.len() >= 2 { (p[1] - p[0]).rem_euclid(list.len() as i64) } else { 1 };
-                    let upper = texts[0].chars().all(|c| !c.is_lowercase());
-                    return Series {
-                        kind: SeriesKind::Names {
-                            list,
-                            start: *p.last().unwrap() as usize,
-                            step: if step == 0 { 1 } else { step },
-                            upper,
-                        },
-                    };
-                }
-            }
-            // Text ending in a number.
-            let split = |t: &str| -> Option<(String, i64, usize)> {
-                let digits: String = t
-                    .chars()
-                    .rev()
-                    .take_while(|c| c.is_ascii_digit())
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .rev()
-                    .collect();
-                if digits.is_empty() || digits.len() > 15 {
-                    return None;
-                }
-                Some((t[..t.len() - digits.len()].to_owned(), digits.parse().ok()?, digits.len()))
-            };
-            let parts: Vec<Option<(String, i64, usize)>> = texts.iter().map(|t| split(t)).collect();
-            if parts.iter().all(Option::is_some) {
-                let p: Vec<(String, i64, usize)> = parts.into_iter().map(Option::unwrap).collect();
-                if p.iter().all(|x| x.0 == p[0].0) {
-                    let step = if p.len() >= 2 { p[1].1 - p[0].1 } else { 1 };
-                    let last = p.last().unwrap();
-                    return Series {
-                        kind: SeriesKind::Counted {
-                            prefix: last.0.clone(),
-                            start: last.1,
-                            step,
-                            width: p[0].2,
-                        },
-                    };
-                }
-            }
-        }
-        Series { kind: SeriesKind::Copy }
-    }
-
-    /// The value `n` steps past the block (or before it, going backwards).
-    fn value(&self, n: i64, backwards: bool, cells: &[Cell], template: usize) -> Value {
-        let len = cells.len() as i64;
-        match &self.kind {
-            SeriesKind::Linear { start, step } => {
-                let x = if backwards {
-                    start - step * (len - 1) as f64 - step * n as f64
-                } else {
-                    start + step * n as f64
-                };
-                Value::Number(crate::value::round_significant(x, 15))
-            }
-            SeriesKind::Counted { prefix, start, step, width } => {
-                let v =
-                    if backwards { start - step * (len - 1) - step * n } else { start + step * n };
-                Value::text(format!("{prefix}{:0width$}", v.max(0), width = *width))
-            }
-            SeriesKind::Names { list, start, step, upper } => {
-                let size = list.len() as i64;
-                let i = if backwards {
-                    (*start as i64 - step * (len - 1) - step * n).rem_euclid(size)
-                } else {
-                    (*start as i64 + step * n).rem_euclid(size)
-                };
-                let name = list[i as usize];
-                Value::text(if *upper { name.to_uppercase() } else { name.to_owned() })
-            }
-            SeriesKind::Copy => cells[template].value.clone(),
-        }
-    }
 }
 
 #[cfg(test)]

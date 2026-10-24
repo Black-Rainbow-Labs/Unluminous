@@ -1,0 +1,161 @@
+[
+ {
+  "name": "justify_basic",
+  "formats": false,
+  "cells": {
+   "A1": "The quick brown fox jumps over the lazy dog and keeps running through the field until night",
+   "A2": "second line"
+  },
+  "widths": {
+   "A": 20
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A8"
+   }
+  ],
+  "dump": [
+   "A1:B12"
+  ]
+ },
+ {
+  "name": "justify_many",
+  "formats": false,
+  "cells": {
+   "A1": "one two three",
+   "A2": "four five",
+   "A3": "six seven eight nine",
+   "A4": "ten"
+  },
+  "widths": {
+   "A": 12
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A8"
+   }
+  ],
+  "dump": [
+   "A1:B12"
+  ]
+ },
+ {
+  "name": "justify_wide",
+  "formats": false,
+  "cells": {
+   "A1": "a b",
+   "A2": "c d"
+  },
+  "widths": {
+   "A": 40
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A5"
+   }
+  ],
+  "dump": [
+   "A1:B12"
+  ]
+ },
+ {
+  "name": "justify_multi_col",
+  "formats": false,
+  "cells": {
+   "A1": "one two three four five six seven",
+   "B1": "x"
+  },
+  "widths": {
+   "A": 10,
+   "B": 10
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:B6"
+   }
+  ],
+  "dump": [
+   "A1:C12"
+  ]
+ },
+ {
+  "name": "justify_number",
+  "formats": false,
+  "cells": {
+   "A1": 5,
+   "A2": "text"
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A4"
+   }
+  ],
+  "dump": [
+   "A1:B6"
+  ]
+ },
+ {
+  "name": "justify_small_range",
+  "formats": false,
+  "cells": {
+   "A1": "The quick brown fox jumps over the lazy dog and keeps running through the field until night",
+   "A2": "second line"
+  },
+  "widths": {
+   "A": 20
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A2"
+   }
+  ],
+  "dump": [
+   "A1:B12"
+  ]
+ },
+ {
+  "name": "justify_long_word",
+  "formats": false,
+  "cells": {
+   "A1": "abcdefghijklmnopqrstuvwxyz short"
+  },
+  "widths": {
+   "A": 10
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A5"
+   }
+  ],
+  "dump": [
+   "A1:B12"
+  ]
+ },
+ {
+  "name": "justify_text_then_blank",
+  "formats": false,
+  "cells": {
+   "A1": "alpha beta gamma delta",
+   "A3": "zeta"
+  },
+  "widths": {
+   "A": 14
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A6"
+   }
+  ],
+  "dump": [
+   "A1:B12"
+  ]
+ }
+]
