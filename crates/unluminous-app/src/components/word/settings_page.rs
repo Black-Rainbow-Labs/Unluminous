@@ -1,5 +1,5 @@
-//! `Settings -> Word`: the name on comments and tracked changes, the zoom a document opens at, and whether
-//! formatting marks are shown.
+//! `Settings -> Word`: the name on comments and tracked changes, the zoom a document opens at, whether
+//! formatting marks are shown, and whether spelling is checked as you type.
 
 use egui::RichText;
 
@@ -16,8 +16,15 @@ pub fn show(word: &mut Word, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request>
     ui.horizontal(|ui| {
         ui.label("Author");
         let field = word.author_field.get_or_insert_with(|| word.config.author.clone());
-        let response =
-            ui.add(egui::TextEdit::singleline(field).hint_text("Your name").desired_width(220.0));
+        let response = ui.add(
+            egui::TextEdit::singleline(field)
+                .hint_text(crate::components::controls::placeholder(
+                    "Your name",
+                    &egui::TextStyle::Body.resolve(ui.style()),
+                    crate::theme::color::text_faint(),
+                ))
+                .desired_width(220.0),
+        );
         if response.lost_focus() && *field != word.config.author {
             word.config.author = field.clone();
             changed = true;
@@ -45,9 +52,20 @@ pub fn show(word: &mut Word, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request>
     {
         changed = true;
     }
+    if ui.checkbox(&mut word.config.spelling, "Check spelling as you type").changed() {
+        changed = true;
+    }
+    ui.label(
+        RichText::new("Misspelled and repeated words are underlined in red. Words added to the dictionary are kept in words.dic in this machine's settings folder, and words added in Microsoft Word are known too.")
+            .weak(),
+    );
     if changed {
         for doc in &mut word.docs {
             doc.session.author = word.config.author.clone();
+            doc.view.spelling = word.config.spelling;
+            if !word.config.spelling {
+                doc.view.spell_menu = None;
+            }
         }
         if let Some(folder) = &word.folder {
             if let Err(problem) = word.config.write(folder) {

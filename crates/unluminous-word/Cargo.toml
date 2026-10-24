@@ -22,6 +22,9 @@ ab_glyph.workspace = true
 ttf-parser.workspace = true
 # `plugins run word read` answers as data, and the agent's arguments arrive as JSON.
 serde_json.workspace = true
+# Spell check (`spell.rs`): Hunspell dictionaries read in pure Rust. The English dictionary is SCOWL en_US,
+# kept deflated in `dictionaries/` and inflated only when a document is first checked.
+spellbook.workspace = true
 
 [dev-dependencies]
 # A small picture for the test that has Word open a document Unluminous wrote.

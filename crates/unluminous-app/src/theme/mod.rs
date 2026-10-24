@@ -246,6 +246,43 @@ palette! {
     /// A notebook cell that raised: its mark on the status line, the last line of its traceback, and
     /// what it wrote to stderr, which is drawn on this at a low strength. `task-2220`.
     failure = Color32::from_rgb(0xF0, 0x71, 0x78);
+
+    /// A Word document's page when the document does not colour it. White in every theme, because the
+    /// page is paper, as it is in Word. `task-2341`.
+    word_paper = Color32::from_rgb(0xFF, 0xFF, 0xFF);
+
+    /// Words Unluminous writes on the Word page or on a comment card: a comment, a style's sample.
+    word_ink = Color32::from_rgb(0x1E, 0x1E, 0x1E);
+
+    /// A comment's author and date, and a resolved comment, on its card.
+    word_ink_dim = Color32::from_rgb(0x64, 0x64, 0x64);
+
+    /// Behind a comment in the margin beside a Word document's pages.
+    word_comment = Color32::from_rgb(0xFF, 0xF4, 0xC8);
+
+    /// Behind a resolved comment in that margin.
+    word_comment_resolved = Color32::from_rgb(0xEE, 0xEE, 0xEE);
+
+    /// The edge of a comment card, and the line from it to the words it is on.
+    word_comment_edge = Color32::from_rgb(0xE0, 0xB0, 0x30);
+
+    /// The dashed line and the label that mark the header or footer being edited.
+    word_marker = Color32::from_rgb(0x2F, 0x6F, 0xD6);
+
+    /// Behind selected text on the Word page, which is the same light blue on paper in any theme.
+    word_selection = Color32::from_rgb(0xB4, 0xD5, 0xFE);
+
+    /// Formatting marks on the Word page: paragraph marks, spaces and tabs.
+    word_marks = Color32::from_rgb(0x7A, 0x8C, 0xC8);
+
+    /// The caret on the Word page.
+    word_caret = Color32::from_rgb(0x00, 0x00, 0x00);
+
+    /// The swatch on the Highlight button, which is Word's yellow highlight.
+    word_highlight = Color32::from_rgb(0xFF, 0xE6, 0x00);
+
+    /// The wavy line under a misspelled or repeated word on the Word page.
+    word_spelling = Color32::from_rgb(0xE0, 0x30, 0x30);
 }
 
 impl Palette {
@@ -315,6 +352,20 @@ impl Palette {
         // same strengths read the other way up.
         hover_wash: Color32::BLACK,
         on_accent: Color32::WHITE,
+
+        // The Word page is paper in either theme, so its colours do not change.
+        word_paper: Color32::from_rgb(0xFF, 0xFF, 0xFF),
+        word_ink: Color32::from_rgb(0x1E, 0x1E, 0x1E),
+        word_ink_dim: Color32::from_rgb(0x64, 0x64, 0x64),
+        word_comment: Color32::from_rgb(0xFF, 0xF4, 0xC8),
+        word_comment_resolved: Color32::from_rgb(0xEE, 0xEE, 0xEE),
+        word_comment_edge: Color32::from_rgb(0xE0, 0xB0, 0x30),
+        word_marker: Color32::from_rgb(0x2F, 0x6F, 0xD6),
+        word_selection: Color32::from_rgb(0xB4, 0xD5, 0xFE),
+        word_marks: Color32::from_rgb(0x7A, 0x8C, 0xC8),
+        word_caret: Color32::from_rgb(0x00, 0x00, 0x00),
+        word_highlight: Color32::from_rgb(0xFF, 0xE6, 0x00),
+        word_spelling: Color32::from_rgb(0xE0, 0x30, 0x30),
     };
 }
 

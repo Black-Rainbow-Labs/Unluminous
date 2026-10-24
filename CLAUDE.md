@@ -7550,4 +7550,14 @@ in are one list. `# `, `- `, `1. ` and `> ` at a paragraph's start become a head
 `plugins run word` is the agent's half; its verbs are `unluminous_cli::plugins::WORD`. A paragraph is numbered from
 1 in document order, table cells included, as `read` lists them. The window tests are `tests/word.rs`, and their
 pictures are `word_kitchen_sink`, `word_typed`, `word_panel_root`, `word_panel_page`, `word_panel_text`,
-`word_slash` and `word_command_search`.
+`word_slash`, `word_command_search` and `word_spelling`.
+
+**A popup over the pages records the rectangle it covers, and the page ignores a press inside one.** The bubble, the
+command lists and the spelling card paint on a foreground layer, but their buttons are in the page's layer, and the
+page senses drags as well as clicks. egui picks the click target and the drag target separately, so the page also
+saw the press, moved the caret, emptied the selection and closed the bubble before its button saw the release. That
+is `overlays::remember_popup` and `overlays::a_popup_covers`; a new popup calls the first, or it will not take clicks.
+`the_bubble_over_a_selection_formats_it` fails without it.
+
+Spell check is `unluminous_word::spell` (SCOWL en_US through `spellbook`, inflated only on first use) and
+`services::word::spelling`, which caches each paragraph's result by its checked text. TDD section 13 has the rules.

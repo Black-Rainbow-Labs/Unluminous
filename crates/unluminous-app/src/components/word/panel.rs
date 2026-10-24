@@ -2,6 +2,7 @@
 //! controls of one level. The root level lists the others, each with a line saying what is in it, so a
 //! setting is two presses from the page and never more than three.
 
+use crate::components::controls::WithHint;
 use egui::{Align2, FontId, Rect, RichText, Stroke, Vec2};
 use unluminous_word::props::{self, LineRule, Rgb};
 
@@ -41,7 +42,7 @@ pub fn show(
     inner.set_clip_rect(rect);
     // The head: back, the breadcrumb, close.
     inner.horizontal(|ui| {
-        if doc.view.panel.len() > 1 && ui.button("‹").on_hover_text("Back").clicked() {
+        if doc.view.panel.len() > 1 && ui.button("‹").with_hint("Back").clicked() {
             doc.view.panel.pop();
         }
         let crumbs: Vec<&str> = doc.view.panel.iter().map(|l| l.name()).collect();
@@ -51,7 +52,7 @@ pub fn show(
                 .size(look.font_size * 1.05),
         );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("✕").on_hover_text("Close the panel").clicked() {
+            if ui.button("✕").with_hint("Close the panel").clicked() {
                 doc.view.panel.clear();
             }
         });
@@ -204,11 +205,12 @@ fn text(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<Re
     heading(ui, "Colour");
     ui.horizontal_wrapped(|ui| {
         for (name, hex) in COLOURS {
-            let colour = Rgb::parse(hex)
-                .map_or(egui::Color32::from_gray(30), |c| egui::Color32::from_rgb(c.0, c.1, c.2));
+            let colour = Rgb::parse(hex).map_or(crate::theme::color::word_ink(), |c| {
+                egui::Color32::from_rgb(c.0, c.1, c.2)
+            });
             let button =
                 egui::Button::new(RichText::new("■").color(colour).size(18.0)).frame(false);
-            if ui.add(button).on_hover_text(*name).clicked() {
+            if ui.add(button).with_hint(*name).clicked() {
                 let hex = hex.to_string();
                 doc.session.format(move |rpr| props::set_val(rpr, "w:color", Some(&hex)));
             }
@@ -223,7 +225,7 @@ fn text(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<Re
             let colour = egui::Color32::from_rgb(rgb.0, rgb.1, rgb.2);
             if ui
                 .add(egui::Button::new(RichText::new("■").color(colour).size(18.0)).frame(false))
-                .on_hover_text(*name)
+                .with_hint(*name)
                 .clicked()
             {
                 let name = name.to_string();
@@ -405,7 +407,15 @@ fn paragraph(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut V
     let field = doc.view.fields.entry("tab").or_default();
     let mut add = None;
     ui.horizontal(|ui| {
-        ui.add(egui::TextEdit::singleline(field).hint_text("points, e.g. 216").desired_width(90.0));
+        ui.add(
+            egui::TextEdit::singleline(field)
+                .hint_text(crate::components::controls::placeholder(
+                    "points, e.g. 216",
+                    &egui::TextStyle::Body.resolve(ui.style()),
+                    crate::theme::color::text_faint(),
+                ))
+                .desired_width(90.0),
+        );
         for (label, kind) in
             [("Left", "left"), ("Center", "center"), ("Right", "right"), ("Decimal", "decimal")]
         {
@@ -476,7 +486,15 @@ fn styles(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
     let field = doc.view.fields.entry("style").or_default();
     let mut make = None;
     ui.horizontal(|ui| {
-        ui.add(egui::TextEdit::singleline(field).hint_text("Name").desired_width(160.0));
+        ui.add(
+            egui::TextEdit::singleline(field)
+                .hint_text(crate::components::controls::placeholder(
+                    "Name",
+                    &egui::TextStyle::Body.resolve(ui.style()),
+                    crate::theme::color::text_faint(),
+                ))
+                .desired_width(160.0),
+        );
         if ui.button("Create").clicked() && !field.trim().is_empty() {
             make = Some(field.trim().to_owned());
         }
@@ -633,7 +651,11 @@ fn insert(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     ui.horizontal(|ui| {
         let field = ui.add(
             egui::TextEdit::singleline(link)
-                .hint_text("https://… or #bookmark")
+                .hint_text(crate::components::controls::placeholder(
+                    "https://… or #bookmark",
+                    &egui::TextStyle::Body.resolve(ui.style()),
+                    crate::theme::color::text_faint(),
+                ))
                 .desired_width(190.0),
         );
         if (ui.button("Link").clicked()
@@ -652,7 +674,15 @@ fn insert(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     let mark = doc.view.fields.entry("bookmark").or_default();
     let mut add_mark = None;
     ui.horizontal(|ui| {
-        ui.add(egui::TextEdit::singleline(mark).hint_text("Name").desired_width(150.0));
+        ui.add(
+            egui::TextEdit::singleline(mark)
+                .hint_text(crate::components::controls::placeholder(
+                    "Name",
+                    &egui::TextStyle::Body.resolve(ui.style()),
+                    crate::theme::color::text_faint(),
+                ))
+                .desired_width(150.0),
+        );
         if ui.button("Add").clicked() && !mark.trim().is_empty() {
             add_mark = Some(mark.trim().replace(' ', "_"));
         }
@@ -716,7 +746,11 @@ fn page(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
             ui.label(label);
             ui.add(
                 egui::TextEdit::singleline(field)
-                    .hint_text("Text, with {PAGE} and {NUMPAGES}")
+                    .hint_text(crate::components::controls::placeholder(
+                        "Text, with {PAGE} and {NUMPAGES}",
+                        &egui::TextStyle::Body.resolve(ui.style()),
+                        crate::theme::color::text_faint(),
+                    ))
                     .desired_width(170.0),
             );
             if ui.button("Set").clicked() {
@@ -785,6 +819,24 @@ fn references(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
 }
 
 fn review(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<Request>) {
+    heading(ui, "Spelling");
+    let mut spelling = doc.view.spelling;
+    if ui.checkbox(&mut spelling, "Check spelling as you type").changed() {
+        super::run_action(doc, "check-spelling", requests);
+    }
+    if doc.view.spelling {
+        let count = crate::services::word::spelling::misspellings(&doc.session.document).len();
+        let said = match count {
+            0 => "No spelling errors".to_owned(),
+            1 => "1 spelling error".to_owned(),
+            n => format!("{n} spelling errors"),
+        };
+        ui.label(RichText::new(said).color(look.palette.text_dim));
+        if count > 0 && ui.button("Next error (F7)").clicked() {
+            super::run_action(doc, "spelling", requests);
+            requests.push(Request::TakeTheKeyboard(true));
+        }
+    }
     heading(ui, "Track changes");
     let mut tracking = doc.session.tracking;
     if ui.checkbox(&mut tracking, "Track changes").changed() {
@@ -796,7 +848,11 @@ fn review(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
     let mut add = None;
     ui.add(
         egui::TextEdit::multiline(field)
-            .hint_text("A comment on the selection")
+            .hint_text(crate::components::controls::placeholder(
+                "A comment on the selection",
+                &egui::TextStyle::Body.resolve(ui.style()),
+                crate::theme::color::text_faint(),
+            ))
             .desired_rows(2)
             .desired_width(f32::INFINITY),
     );

@@ -120,6 +120,47 @@ fn the_arrows_and_shift_select_and_backspace_deletes_the_selection() {
     assert_eq!(paragraphs(&mut harness)[0]["text"], ">one two ");
 }
 
+/// **The bubble over a selection takes a click.** The page under the bubble used to take the press as
+/// well, move the caret and close the bubble before its button saw the release.
+#[test]
+fn the_bubble_over_a_selection_formats_it() {
+    let (_, mut harness) = a_word_window("unluminous-word-bubble", "blank.docx");
+    type_text(&mut harness, "one two three");
+    harness.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::ArrowLeft);
+    steady(&mut harness);
+    harness.get_by_label("Bold").click();
+    steady(&mut harness);
+    assert_eq!(did(&mut harness, "plugins run word selection")["text"], "three");
+    harness.get_by_label("Italic").click();
+    steady(&mut harness);
+    let runs = paragraphs(&mut harness)[0]["runs"].as_array().cloned().unwrap();
+    let last = runs.last().unwrap();
+    assert_eq!(last["text"], "three");
+    assert_eq!(last["bold"], true);
+    assert_eq!(last["italic"], true);
+}
+
+/// **F7 opens the card for the next misspelled word, and a click on a suggestion replaces it.** The
+/// status line counts the errors, and the count goes when the word is fixed.
+#[test]
+fn f7_opens_a_misspelled_words_card_and_a_suggestion_replaces_it() {
+    let (_, mut harness) = a_word_window("unluminous-word-spelling", "blank.docx");
+    type_text(&mut harness, "A sentance to check.");
+    harness.get_by_label("Next spelling error (F7)");
+    harness.key_press(Key::Home);
+    harness.key_press(Key::F7);
+    steady(&mut harness);
+    assert_eq!(did(&mut harness, "plugins run word selection")["text"], "sentance");
+    harness.snapshot(shot("word_spelling"));
+    harness.get_by_label("sentence").click();
+    steady(&mut harness);
+    assert_eq!(paragraphs(&mut harness)[0]["text"], "A sentence to check.");
+    assert!(
+        harness.query_by_label("Next spelling error (F7)").is_none(),
+        "no errors are left to count"
+    );
+}
+
 #[test]
 fn the_format_panel_drills_down_and_its_controls_change_the_document() {
     let (_, mut harness) = a_word_window("unluminous-word-panel", "styles.docx");

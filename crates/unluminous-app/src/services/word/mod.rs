@@ -9,6 +9,7 @@
 pub mod actions;
 pub mod commands;
 pub mod fonts;
+pub mod spelling;
 #[cfg(test)]
 mod tests;
 
@@ -34,11 +35,13 @@ pub struct Config {
     pub zoom: f32,
     /// Show formatting marks: paragraph marks, spaces and hidden text.
     pub marks: bool,
+    /// Underline misspelled and repeated words as they are typed.
+    pub spelling: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { author: whoami(), zoom: 1.0, marks: false }
+        Config { author: whoami(), zoom: 1.0, marks: false, spelling: true }
     }
 }
 
@@ -62,6 +65,7 @@ impl Config {
                 "author" => config.author = value.to_owned(),
                 "zoom" => config.zoom = value.parse::<f32>().unwrap_or(1.0).clamp(0.25, 5.0),
                 "marks" => config.marks = value == "true",
+                "spelling" => config.spelling = value != "false",
                 _ => {}
             }
         }
@@ -72,8 +76,8 @@ impl Config {
         std::fs::create_dir_all(folder)
             .map_err(|e| format!("{} could not be made: {e}", folder.display()))?;
         let text = format!(
-            "# The Word plugin's settings. The author is the name on comments and tracked changes.\nauthor = {}\nzoom = {}\nmarks = {}\n",
-            self.author, self.zoom, self.marks
+            "# The Word plugin's settings. The author is the name on comments and tracked changes.\nauthor = {}\nzoom = {}\nmarks = {}\nspelling = {}\n",
+            self.author, self.zoom, self.marks, self.spelling
         );
         crate::services::store::write_atomically(&folder.join(Self::FILE), text.as_bytes())
             .map_err(|e| format!("{} could not be written: {e}", folder.join(Self::FILE).display()))
@@ -153,6 +157,10 @@ pub struct View {
     /// How far down the pages are scrolled, in screen points.
     pub scroll: f32,
     pub marks: bool,
+    /// Underline misspelled and repeated words.
+    pub spelling: bool,
+    /// The card a right click on an underlined word opens, or F7: the word, and what it could be.
+    pub spell_menu: Option<SpellMenu>,
     pub navigation: bool,
     /// The panel's levels, deepest last; empty when the panel is closed.
     pub panel: Vec<Level>,
@@ -178,6 +186,13 @@ pub struct View {
     pub pictures: std::collections::HashMap<String, Option<egui::TextureHandle>>,
 }
 
+/// The card for one underlined word: where it is, and the spellings the dictionary suggests.
+#[derive(Debug, Clone)]
+pub struct SpellMenu {
+    pub word: unluminous_word::spell::Misspelling,
+    pub suggestions: Vec<String>,
+}
+
 /// The find bar.
 #[derive(Debug, Clone, Default)]
 pub struct Find {
@@ -195,6 +210,8 @@ impl View {
             zoom: config.zoom,
             scroll: 0.0,
             marks: config.marks,
+            spelling: config.spelling,
+            spell_menu: None,
             navigation: false,
             panel: Vec::new(),
             slash: None,
@@ -456,6 +473,7 @@ impl UiProvider for Word {
     fn open(&mut self, context: &Context) -> Result<(), String> {
         self.project = context.project.clone();
         self.folder = context.folder.clone();
+        spelling::use_folder(self.folder.as_deref());
         if let Some(folder) = &self.folder {
             self.config = Config::read(folder);
         }

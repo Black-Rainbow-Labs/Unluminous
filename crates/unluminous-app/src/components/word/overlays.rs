@@ -4,6 +4,7 @@
 //! The `/` menu and the search are both lists of the same `actions::ACTIONS`, filtered by what has been
 //! typed; Up and Down choose, Enter runs, Escape closes.
 
+use crate::components::controls::WithHint;
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 
 use crate::services::plugin_ui::{Look, Request};
@@ -82,7 +83,8 @@ fn run_slash(
     super::run_action(doc, id, requests);
 }
 
-/// Draw whichever of the four is open.
+/// Draw whichever is open: the command search, the `/` menu, a misspelled word's card, or the bubble
+/// over a selection, and the find bar beside any of them.
 pub fn show(
     ui: &mut egui::Ui,
     look: &Look<'_>,
@@ -94,12 +96,39 @@ pub fn show(
         palette(ui, look, doc, area, requests);
     } else if doc.view.slash.is_some() {
         slash(ui, look, doc, area, requests);
+    } else if doc.view.spell_menu.is_some() {
+        super::spelling::show_menu(ui, look, doc, area, requests);
     } else if !doc.session.selection.is_empty() && !doc.view.dragging {
         bubble(ui, look, doc, area, requests);
     }
     if doc.view.find.is_some() {
         find_bar(ui, look, doc, area, requests);
     }
+}
+
+/// Note that a popup covers `card` this frame, so the page under it does not take a press meant for one
+/// of its buttons. A popup is painted on a layer of its own, but its buttons are in the page's layer.
+/// The page also takes drags, so egui gives it the press as well, and the page moved the caret, which
+/// emptied the selection and closed the bubble before its button saw the release.
+pub(super) fn remember_popup(ui: &egui::Ui, card: Rect) {
+    let frame = ui.ctx().cumulative_frame_nr();
+    let id = egui::Id::new("word-popups");
+    ui.ctx().data_mut(|d| {
+        let popups: &mut (u64, Vec<Rect>) = d.get_temp_mut_or_default(id);
+        if popups.0 != frame {
+            *popups = (frame, Vec::new());
+        }
+        popups.1.push(card);
+    });
+}
+
+/// Whether a popup drawn this frame or the frame before covers a point. The page reads this before the
+/// popups of this frame are drawn, so the frame before is the one that counts.
+pub fn a_popup_covers(ui: &egui::Ui, at: Pos2) -> bool {
+    let frame = ui.ctx().cumulative_frame_nr();
+    let popups: (u64, Vec<Rect>) =
+        ui.ctx().data(|d| d.get_temp(egui::Id::new("word-popups")).unwrap_or_default());
+    popups.0 + 1 >= frame && popups.1.iter().any(|r| r.contains(at))
 }
 
 /// Where a list of commands goes and what it shows.
@@ -122,9 +151,10 @@ fn list(ui: &mut egui::Ui, look: &Look<'_>, menu: Menu<'_>) -> Option<&'static s
     let first = chosen.saturating_sub(ROWS - 1);
     let height = head + row * shown.max(1) as f32 + 8.0 * scale;
     let card = Rect::from_min_size(at, Vec2::new(width, height));
+    remember_popup(ui, card);
     let layer = egui::LayerId::new(egui::Order::Foreground, ui.id().with(("word-list", name)));
     let painter = ui.ctx().layer_painter(layer);
-    painter.rect_filled(card.translate(Vec2::new(0.0, 3.0)), 8.0, Color32::from_black_alpha(80));
+    painter.rect_filled(card.translate(Vec2::new(0.0, 3.0)), 8.0, Color32::from_black_alpha(80)); // any ground: the shadow under a card
     painter.rect(
         card,
         8.0,
@@ -305,9 +335,10 @@ fn bubble(
         return;
     }
     let card = Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, size + 6.0));
+    remember_popup(ui, card);
     let layer = egui::LayerId::new(egui::Order::Foreground, ui.id().with("word-bubble"));
     let painter = ui.ctx().layer_painter(layer);
-    painter.rect_filled(card.translate(Vec2::new(0.0, 2.0)), 8.0, Color32::from_black_alpha(70));
+    painter.rect_filled(card.translate(Vec2::new(0.0, 2.0)), 8.0, Color32::from_black_alpha(70)); // any ground: the shadow under a card
     painter.rect(
         card,
         8.0,
@@ -333,7 +364,7 @@ fn bubble(
             painter.rect_filled(r, 5.0, look.palette.selected_row);
         }
         let colour = if *id == "highlight" {
-            Color32::from_rgb(255, 230, 0)
+            crate::theme::color::word_highlight()
         } else {
             look.palette.text_strong
         };
@@ -345,13 +376,16 @@ fn bubble(
             colour,
         );
         let name = match *id {
+            "bold" => "Bold",
+            "italic" => "Italic",
+            "underline" => "Underline",
             "highlight" => "Highlight",
             "link" => "Link (Ctrl+K)",
             "comment" => "Comment",
             other => other,
         };
         response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name));
-        if response.on_hover_text(name).clicked() {
+        if response.with_hint(name).clicked() {
             match *id {
                 "highlight" => {
                     let on = run.highlight.is_none();
@@ -401,7 +435,11 @@ fn find_bar(
                 ui.horizontal(|ui| {
                     let field = ui.add(
                         egui::TextEdit::singleline(&mut find.needle)
-                            .hint_text("Find")
+                            .hint_text(crate::components::controls::placeholder(
+                                "Find",
+                                &egui::TextStyle::Body.resolve(ui.style()),
+                                crate::theme::color::text_faint(),
+                            ))
                             .desired_width(width * 0.45),
                     );
                     if field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
@@ -410,15 +448,15 @@ fn find_bar(
                     if !field.has_focus() && find.needle.is_empty() {
                         field.request_focus();
                     }
-                    ui.toggle_value(&mut find.case, "Aa").on_hover_text("Match case");
-                    ui.toggle_value(&mut find.word, "W").on_hover_text("Whole words");
-                    if ui.button("↑").on_hover_text("Previous").clicked() {
+                    ui.toggle_value(&mut find.case, "Aa").with_hint("Match case");
+                    ui.toggle_value(&mut find.word, "W").with_hint("Whole words");
+                    if ui.button("↑").with_hint("Previous").clicked() {
                         go = Some(false);
                     }
-                    if ui.button("↓").on_hover_text("Next").clicked() {
+                    if ui.button("↓").with_hint("Next").clicked() {
                         go = Some(true);
                     }
-                    if ui.button("✕").on_hover_text("Close").clicked() {
+                    if ui.button("✕").with_hint("Close").clicked() {
                         close = true;
                     }
                 });
@@ -426,7 +464,11 @@ fn find_bar(
                     ui.horizontal(|ui| {
                         ui.add(
                             egui::TextEdit::singleline(&mut find.with)
-                                .hint_text("Replace with")
+                                .hint_text(crate::components::controls::placeholder(
+                                    "Replace with",
+                                    &egui::TextStyle::Body.resolve(ui.style()),
+                                    crate::theme::color::text_faint(),
+                                ))
                                 .desired_width(width * 0.45),
                         );
                         replace_one = ui.button("Replace").clicked();

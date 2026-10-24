@@ -122,9 +122,11 @@ pub fn show(
         painter.rect_filled(
             rect.translate(Vec2::new(0.0, 2.0)).expand(1.0),
             2.0,
-            Color32::from_black_alpha(70),
+            Color32::from_black_alpha(70), // any ground: the shadow under a sheet of paper
         );
-        let paper = page.background.map_or(Color32::WHITE, |c| Color32::from_rgb(c.0, c.1, c.2));
+        let paper = page
+            .background
+            .map_or(crate::theme::color::word_paper(), |c| Color32::from_rgb(c.0, c.1, c.2));
         painter.rect_filled(rect, 0.0, paper);
         let to_screen = |x: f32, y: f32| origin + Vec2::new(x * zoom, y * zoom);
         paint_selection(&painter, page, &selection, zoom, origin);
@@ -132,6 +134,9 @@ pub fn show(
             paint_marks(&painter, page, to_screen);
         }
         paint_items(ui, &painter, &fonts, doc, index, origin, zoom);
+        if doc.view.spelling {
+            super::spelling::paint(&painter, doc, index, origin, zoom);
+        }
     }
     if look.has_the_keyboard {
         paint_caret(ui, &painter, doc, area, &tops);
@@ -148,7 +153,7 @@ fn paint_header_frame(painter: &egui::Painter, doc: &Doc, area: Rect, tops: &[Po
     let footer =
         doc.session.document.headers.iter().find(|h| &h.id == id).is_some_and(|h| h.footer);
     let zoom = doc.view.zoom;
-    let blue = Color32::from_rgb(0x2F, 0x6F, 0xD6);
+    let blue = crate::theme::color::word_marker();
     for (index, page) in doc.pages.pages.iter().enumerate() {
         let origin = area.min + Vec2::new(tops[index].x, tops[index].y - doc.view.scroll);
         let y = if footer { page.body.bottom() } else { page.body.y };
@@ -161,14 +166,14 @@ fn paint_header_frame(painter: &egui::Painter, doc: &Doc, area: Rect, tops: &[Po
         let label = painter.layout_no_wrap(
             if footer { "Footer" } else { "Header" }.to_owned(),
             egui::FontId::proportional(11.0),
-            Color32::WHITE,
+            crate::theme::color::on_accent(),
         );
         let size = label.size() + Vec2::new(10.0, 4.0);
         let corner =
             if footer { a + Vec2::new(8.0, 4.0) } else { a + Vec2::new(8.0, -4.0 - size.y) };
         let rect = Rect::from_min_size(corner, size);
         painter.rect_filled(rect, 3.0, blue);
-        painter.galley(rect.min + Vec2::new(5.0, 2.0), label, Color32::WHITE);
+        painter.galley(rect.min + Vec2::new(5.0, 2.0), label, crate::theme::color::on_accent());
     }
 }
 
@@ -192,7 +197,7 @@ fn paint_comments(
             }
         }
     }
-    let ink = Color32::from_gray(30);
+    let ink = crate::theme::color::word_ink();
     let mut below = area.top();
     let mut clicked = None;
     for comment in comments {
@@ -212,7 +217,7 @@ fn paint_comments(
         let body = painter.layout(
             text,
             egui::FontId::proportional(look.font_size * 0.9),
-            if resolved { Color32::from_gray(110) } else { ink },
+            if resolved { crate::theme::color::word_ink_dim() } else { ink },
             width - 16.0,
         );
         let height = body.size().y + 30.0;
@@ -223,11 +228,11 @@ fn paint_comments(
         }
         let card = Rect::from_min_size(Pos2::new(card_x, top), Vec2::new(width, height));
         let fill = if resolved {
-            Color32::from_rgb(0xEE, 0xEE, 0xEE)
+            crate::theme::color::word_comment_resolved()
         } else {
-            Color32::from_rgb(0xFF, 0xF4, 0xC8)
+            crate::theme::color::word_comment()
         };
-        let edge = Color32::from_rgb(0xE0, 0xB0, 0x30);
+        let edge = crate::theme::color::word_comment_edge();
         painter.line_segment(
             [anchor, Pos2::new(card.left(), card.top() + 12.0)],
             Stroke::new(1.0, edge),
@@ -240,7 +245,7 @@ fn paint_comments(
             egui::Align2::LEFT_TOP,
             name,
             egui::FontId::proportional(look.font_size * 0.8),
-            Color32::from_gray(90),
+            crate::theme::color::word_ink_dim(),
         );
         painter.galley(card.left_top() + Vec2::new(8.0, 22.0), body, ink);
         let response = ui.interact(card, ui.id().with(("word-comment", id)), Sense::click());
@@ -320,7 +325,7 @@ fn paint_items(
                     texture.id(),
                     rect,
                     Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-                    Color32::WHITE,
+                    Color32::WHITE, // any ground: the tint a picture is drawn with, which leaves it as it is
                 );
             }
             None => {
@@ -443,7 +448,7 @@ fn paint_selection(
         return;
     }
     let (from, to) = selection.ordered();
-    let colour = Color32::from_rgb(0xB4, 0xD5, 0xFE);
+    let colour = crate::theme::color::word_selection();
     for line in &page.carets {
         if line.story != from.story {
             continue;
@@ -511,7 +516,7 @@ fn paint_marks(
             egui::Align2::LEFT_BOTTOM,
             "¶",
             egui::FontId::proportional(10.0),
-            Color32::from_rgb(0x7A, 0x8C, 0xC8),
+            crate::theme::color::word_marks(),
         );
     }
 }
@@ -525,7 +530,7 @@ fn paint_caret(ui: &egui::Ui, painter: &egui::Painter, doc: &Doc, area: Rect, to
     let top = origin + Vec2::new(x * zoom, line.top * zoom);
     let bottom = origin + Vec2::new(x * zoom, (line.top + line.height) * zoom);
     if area.contains(top) || area.contains(bottom) {
-        painter.line_segment([top, bottom], Stroke::new(1.5, Color32::BLACK));
+        painter.line_segment([top, bottom], Stroke::new(1.5, crate::theme::color::word_caret()));
         let rect = Rect::from_min_max(top, bottom + Vec2::new(1.0, 0.0));
         ui.ctx().output_mut(|output| {
             output.ime = Some(egui::output::IMEOutput {
@@ -595,8 +600,10 @@ fn pointer(
         requests.push(Request::TakeTheKeyboard(true));
         ui.ctx().memory_mut(|m| m.stop_text_input());
     }
-    let pressed = ui.input(|i| i.pointer.primary_pressed()) && response.hovered();
     let Some(at) = ui.input(|i| i.pointer.interact_pos()) else { return };
+    let pressed = ui.input(|i| i.pointer.primary_pressed())
+        && response.hovered()
+        && !super::overlays::a_popup_covers(ui, at);
     let now = ui.input(|i| i.time);
     let (last, place, previous) = doc.view.clicks;
     let count = match pressed {
@@ -609,8 +616,18 @@ fn pointer(
             doc.pages.hit(page, x, y, &clickable(doc, page, y, count == 2))
         })
     };
+    let right_pressed = ui.input(|i| i.pointer.secondary_pressed())
+        && response.hovered()
+        && !super::overlays::a_popup_covers(ui, at);
+    if right_pressed {
+        if let Some(pos) = hit(doc) {
+            super::spelling::right_click(doc, pos);
+        }
+        return;
+    }
     if pressed {
         doc.view.slash = None;
+        doc.view.spell_menu = None;
         let Some(pos) = hit(doc) else { return };
         doc.view.clicks = (now, at, count);
         // Moving into a header or out of one is the press itself, not a word chosen by a double press.

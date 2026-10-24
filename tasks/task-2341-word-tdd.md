@@ -350,3 +350,42 @@ failure, the rule `UNLUMINOUS_REQUIRE_KERNEL` set for notebooks.
 7. The format bar, panel, bubble, slash menu, navigation.
 8. Exports including PDF.
 9. The agent's half, documentation, window tests, release.
+
+## 13. Spell check
+
+Added after the first build was tried, at Jason's request: "we need spell check".
+
+**The engine** is `unluminous-word/src/spell.rs`. It uses `spellbook` 0.4.2, a pure Rust reader of
+Hunspell dictionaries (MPL-2.0, used unmodified), with SCOWL's en_US dictionary. The word list is kept
+deflated in `crates/unluminous-word/dictionaries/` (551,762 bytes become 193,124), with its licence beside
+it, and it is inflated only when something first asks to check a document. A window with the plugin
+switched off, or with no Word document open, never reads it.
+
+What is checked follows Word's defaults:
+
+- A word not in the dictionary is underlined, and so is a word that repeats the one before it with only
+  spaces between them.
+- Words in capitals, words with digits in them, and anything inside a web, email or file address are
+  left alone.
+- `checked_text` copies a paragraph's flat text with field codes, deleted text, objects, and runs marked
+  `w:noProof` or `w:lang` other than English turned into spaces of the same byte length. Offsets in that
+  copy are offsets in the paragraph, so the results can be drawn without mapping.
+- Every story is checked: the body, headers and footers, footnotes, endnotes and comments.
+
+**In the window**, `services/word/spelling.rs` keeps the speller in a thread local and caches what each
+paragraph has underlined, keyed by a hash of its checked text, so the page and the status line can ask on
+every frame. `components/word/spelling.rs` draws a red wavy line per caret line, skipping the word the
+caret is in while it is typed. A right click on an underlined word selects it and opens a card with up to
+six suggestions, Ignore All and Add to Dictionary, or Delete Repeated Word for a repeat. F7, the Word
+menu's Spelling entry, Review in the panel, and a click on the status line's count all go to the next
+error. Added words are written to `words.dic` in the plugin's settings folder. Office's own
+`%APPDATA%\Microsoft\UProof\CUSTOM.DIC` is read as well and never written. `Settings -> Word` and the
+Review panel turn checking off.
+
+**For an agent**, `plugins run word spelling` lists every underlined word with its story, paragraph,
+offset, kind and suggestions; `spelling add <word>`, `spelling ignore <word>` and `spelling next` do what
+the card and F7 do.
+
+**Tests**: `crates/unluminous-word/tests/spelling.rs` covers the rules, the window's service tests cover
+the agent verb and the right click, and the window test
+`f7_opens_a_misspelled_words_card_and_a_suggestion_replaces_it` drives F7 and a click on a suggestion.

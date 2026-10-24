@@ -12,6 +12,7 @@ pub mod overlays;
 pub mod page_view;
 pub mod panel;
 pub mod settings_page;
+pub mod spelling;
 
 use egui::{Rect, Vec2};
 

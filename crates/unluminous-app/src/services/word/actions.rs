@@ -882,6 +882,28 @@ pub const ACTIONS: &[Action] = &[
             done("Type the comment in the panel")
         },
     },
+    Action {
+        id: "spelling",
+        label: "Spelling (F7)",
+        level: Level::Review,
+        slash: false,
+        run: super::spelling::next,
+    },
+    Action {
+        id: "check-spelling",
+        label: "Check spelling as you type",
+        level: Level::Review,
+        slash: false,
+        run: |d| {
+            d.view.spelling = !d.view.spelling;
+            d.view.spell_menu = None;
+            Ok(if d.view.spelling {
+                "Spell check is on".into()
+            } else {
+                "Spell check is off".into()
+            })
+        },
+    },
     // Document
     Action {
         id: "formatting-marks",

@@ -16,7 +16,7 @@ use crate::services::word::Doc;
 /// The chords a Word tab answers itself: Word's own formatting, editing and navigation keys.
 pub fn claims(key: Key, modifiers: &Modifiers) -> bool {
     if !modifiers.command {
-        return matches!(key, Key::Tab | Key::F9 | Key::Escape);
+        return matches!(key, Key::Tab | Key::F7 | Key::F9 | Key::Escape);
     }
     // Saving, closing a tab, quitting and switching tabs stay the window's.
     !matches!(key, Key::S | Key::W | Key::Q | Key::O | Key::N | Key::Tab | Key::P | Key::Comma)
@@ -265,6 +265,7 @@ fn key_press(doc: &mut Doc, key: Key, modifiers: &Modifiers, requests: &mut Vec<
                 doc.session.type_text("\t");
             }
         }
+        Key::Escape if doc.view.spell_menu.is_some() => doc.view.spell_menu = None,
         Key::Escape => {
             doc.view.slash = None;
             doc.view.palette = None;
@@ -280,6 +281,7 @@ fn key_press(doc: &mut Doc, key: Key, modifiers: &Modifiers, requests: &mut Vec<
                 doc.session.select(Pos::new(first.clone(), 0), Pos::new(first, 0));
             }
         }
+        Key::F7 => super::run_action(doc, "spelling", requests),
         Key::F9 => super::run_action(doc, "update-fields", requests),
         Key::ArrowLeft => move_to(doc, char_step(doc, false), shift),
         Key::ArrowRight => move_to(doc, char_step(doc, true), shift),

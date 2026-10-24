@@ -166,6 +166,9 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                 .collect();
             Ok(Answer::said(format!("{} headings", entries.len())).with(json!(entries)))
         }
+        "spelling" => spelling(doc, arguments),
+        // The Word menu's Spelling entry, which goes to the next error as F7 does.
+        "spelling-next" => spelling(doc, &["next".to_owned()]),
         "stats" => {
             doc.ensure_pages();
             let stats = doc.session.stats(Some(&doc.pages));
@@ -1031,4 +1034,55 @@ pub fn view(word: &Word) -> serde_json::Value {
         })),
         "author": word.config.author,
     })
+}
+
+/// `spelling`: every underlined word in the document, with what the dictionary suggests for it.
+/// `spelling add <word>` adds a word to the dictionary, `spelling ignore <word>` stops underlining it for
+/// the session, and `spelling next` selects the next underlined word after the caret, as F7 does.
+fn spelling(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
+    use super::spelling as speller;
+    match arguments.first().map(String::as_str) {
+        Some("add") => {
+            let word = rest(arguments, 1);
+            speller::add_word(&word)?;
+            Ok(Answer::said(format!("Added {word} to the dictionary")))
+        }
+        Some("ignore") => {
+            let word = rest(arguments, 1);
+            speller::ignore(&word);
+            Ok(Answer::said(format!("Ignoring {word}")))
+        }
+        Some("next") => {
+            let said = speller::next(doc)?;
+            let said = if said.is_empty() { doc.session.selected_text() } else { said };
+            Ok(Answer::said(said).with(json!({ "selection": selection_value(&doc.session.selection), "text": doc.session.selected_text() })))
+        }
+        Some(other) => Err(format!("spelling takes add, ignore or next, not {other}")),
+        None => {
+            let body = position::paragraphs(&doc.session.document.body);
+            let found: Vec<serde_json::Value> = speller::misspellings(&doc.session.document)
+                .into_iter()
+                .map(|m| {
+                    let paragraph = (m.story == StoryId::Body).then(|| body.iter().position(|(p, _)| *p == m.path).map(|i| i + 1)).flatten();
+                    let (kind, suggestions) = match m.kind {
+                        unluminous_word::spell::Kind::Spelling => ("spelling", speller::suggestions(&m.word, 5)),
+                        unluminous_word::spell::Kind::Repeated => ("repeated", Vec::new()),
+                    };
+                    json!({ "story": story_name(&m.story), "paragraph": paragraph, "path": m.path, "offset": m.range.start, "word": m.word, "kind": kind, "suggestions": suggestions })
+                })
+                .collect();
+            Ok(Answer::said(format!("{} spelling errors", found.len())).with(json!(found)))
+        }
+    }
+}
+
+/// A story as an agent names it: `body`, `header:<id>`, `footnote:<n>`, `endnote:<n>` or `comment:<n>`.
+fn story_name(story: &StoryId) -> String {
+    match story {
+        StoryId::Body => "body".to_owned(),
+        StoryId::Header(id) => format!("header:{id}"),
+        StoryId::Footnote(n) => format!("footnote:{n}"),
+        StoryId::Endnote(n) => format!("endnote:{n}"),
+        StoryId::Comment(n) => format!("comment:{n}"),
+    }
 }

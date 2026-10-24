@@ -29,6 +29,7 @@ flate2 = "1.1"
 crc32fast = "1.5"
 roxmltree = "0.20"
 ttf-parser = "0.25"
+spellbook = "0.4.2"
 # Speech to text for the Agent-Chat prompt: the microphone, the "Sable" wake word, the local Moonshine model
 # and an OpenAI compatible endpoint. `task-2290`.
 unluminous-voice = { path = "crates/unluminous-voice" }

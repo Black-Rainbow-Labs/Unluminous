@@ -28,6 +28,7 @@ pub mod position;
 pub mod props;
 pub mod read;
 pub mod session;
+pub mod spell;
 pub mod styles;
 pub mod write;
 pub mod xml;

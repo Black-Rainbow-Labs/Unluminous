@@ -1,5 +1,6 @@
 //! The navigation pane: the document's headings, indented by level, each one a link to its place.
 
+use crate::components::controls::WithHint;
 use egui::{Rect, RichText, Stroke, Vec2};
 use unluminous_word::position::Pos;
 
@@ -35,7 +36,7 @@ pub fn show(
                 ui.add_space(12.0 * f32::from(level.saturating_sub(1)));
                 let here = current.first() >= path.first() && path == current;
                 let label = ui.selectable_label(here, RichText::new(&text).size(look.font_size * if level == 1 { 1.0 } else { 0.92 }));
-                if label.on_hover_text(format!("Page {page}")).clicked() {
+                if label.with_hint(format!("Page {page}")).clicked() {
                     doc.session.select(Pos::new(path.clone(), 0), Pos::new(path, 0));
                     doc.view.reveal = true;
                 }

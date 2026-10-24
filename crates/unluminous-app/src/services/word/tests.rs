@@ -319,3 +319,48 @@ fn a_double_press_on_the_margin_edits_the_header() {
     let middle = doc.pages.pages[0].body.y + 100.0;
     assert_eq!(clickable(doc, 0, middle, false), [StoryId::Body]);
 }
+
+/// **An agent lists the spelling errors with suggestions**, steps to the next one as F7 does, and a
+/// suggestion replaces the word.
+#[test]
+fn an_agent_lists_spelling_errors_and_a_suggestion_replaces_one() {
+    let (mut word, _) = word_with("blank.docx");
+    run(&mut word, "type A sentance with an an error.");
+    let found = run(&mut word, "spelling").value;
+    let found = found.as_array().unwrap();
+    assert_eq!(found.len(), 2, "{found:?}");
+    assert_eq!(found[0]["word"], "sentance");
+    assert_eq!(found[0]["kind"], "spelling");
+    assert!(found[0]["suggestions"].as_array().unwrap().iter().any(|s| s == "sentence"));
+    assert_eq!(found[1]["word"], "an");
+    assert_eq!(found[1]["kind"], "repeated");
+    run(&mut word, "select 1 0");
+    assert_eq!(run(&mut word, "spelling next").value["text"], "sentance");
+    let doc = word.current_doc().unwrap();
+    assert!(doc.view.spell_menu.is_some(), "F7 opens the card");
+    super::spelling::replace(doc, "sentence");
+    super::spelling::next(doc).unwrap();
+    super::spelling::delete_repeated(doc);
+    let read = unluminous_word::export::paragraphs_value(&doc.session.document, 1, 1, false);
+    assert_eq!(read[0]["text"], "A sentence with an error.");
+    assert_eq!(run(&mut word, "spelling").value.as_array().unwrap().len(), 0);
+}
+
+/// **A right click on an underlined word selects it and opens its card**, and a right click elsewhere
+/// moves the caret there.
+#[test]
+fn a_right_click_on_a_misspelled_word_opens_its_card() {
+    use unluminous_word::position::Pos;
+    let (mut word, _) = word_with("blank.docx");
+    run(&mut word, "type Plain wrods here");
+    let doc = word.current_doc().unwrap();
+    crate::components::word::spelling::right_click(doc, Pos::new(vec![0], 8));
+    let menu = doc.view.spell_menu.clone().expect("the card is open");
+    assert_eq!(menu.word.word, "wrods");
+    assert!(menu.suggestions.iter().any(|s| s == "words"), "{:?}", menu.suggestions);
+    assert_eq!(doc.session.selected_text(), "wrods");
+    crate::components::word::spelling::right_click(doc, Pos::new(vec![0], 2));
+    assert!(doc.view.spell_menu.is_none());
+    assert!(doc.session.selection.is_empty());
+    assert_eq!(doc.session.selection.head.offset, 2);
+}

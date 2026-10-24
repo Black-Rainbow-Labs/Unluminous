@@ -2,6 +2,7 @@
 //! alignment, and the two buttons that open the panel, `Aa` for formatting and `+` for inserting. On the
 //! right, where the caret is, how long the document is, and the zoom.
 
+use crate::components::controls::WithHint;
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Vec2};
 use unluminous_word::props::Align;
 
@@ -27,7 +28,7 @@ fn button(
     let ink = if on { look.palette.text_strong } else { look.palette.text_control };
     paint(painter, rect, ink);
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name));
-    response.on_hover_text(name).clicked()
+    response.with_hint(name).clicked()
 }
 
 /// How a letter on a button is set.
@@ -286,14 +287,41 @@ pub fn show(
     if doc.session.tracking {
         status = format!("Tracking changes   {status}");
     }
+    let errors = if doc.view.spelling {
+        crate::services::word::spelling::misspellings(&doc.session.document).len()
+    } else {
+        0
+    };
+    match errors {
+        0 => {}
+        1 => status = format!("1 spelling error   {status}"),
+        n => status = format!("{n} spelling errors   {status}"),
+    }
     let right = Pos2::new(rect.right() - 12.0 * scale, rect.center().y);
     if x < right.x - 260.0 * scale {
-        ui.painter().text(
+        let drawn = ui.painter().text(
             right,
             Align2::RIGHT_CENTER,
             status,
             FontId::proportional(look.font_size * 0.92),
             look.palette.text_dim,
         );
+        // A click on the status line when it counts spelling errors goes to the next one, as Word's
+        // proofing icon does.
+        if errors > 0 {
+            let response =
+                ui.interact(drawn, ui.id().with("word-status-spelling"), egui::Sense::click());
+            response.widget_info(|| {
+                egui::WidgetInfo::labeled(
+                    egui::WidgetType::Button,
+                    true,
+                    "Next spelling error (F7)",
+                )
+            });
+            if response.with_hint("Next spelling error (F7)").clicked() {
+                super::run_action(doc, "spelling", requests);
+                requests.push(Request::TakeTheKeyboard(true));
+            }
+        }
     }
 }

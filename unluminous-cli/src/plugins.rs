@@ -242,6 +242,7 @@ pub const WORD: &[(&str, &str)] = &[
     ("text", "The document as plain text."),
     ("outline", "The headings with level and page."),
     ("stats", "Pages, words, characters, paragraphs, lines."),
+    ("spelling", "Misspelled and repeated words with suggestions; spelling add|ignore <word> | next."),
     ("pages", "Each page and what it starts with."),
     ("select", "select <paragraph> [offset] [to] [to-offset] | all | text <words>."),
     ("selection", "The selection and its text."),

@@ -191,7 +191,8 @@ File menu. The last column is the decision.
 | Accept and reject one change, all changes | Yes. |
 | Compare and combine documents | No. |
 | Word count (pages, words, characters, paragraphs, lines) | Yes, as Word counts. |
-| Spelling and grammar, thesaurus, translate, read aloud | No: each needs a dictionary or a service, and Unluminous ships neither. Words a document marks as no proofing keep that. |
+| Spelling | Yes, added after the first build was tried: misspelled and repeated words are underlined as they are typed, a right click or F7 opens the suggestions with Ignore All and Add to Dictionary, and the status line counts the errors. English only, with SCOWL's en_US Hunspell dictionary. Runs marked no proofing or another language are skipped, as are words in capitals, words with digits and addresses, which are Word's defaults. Words added in Word's own custom dictionary are known. |
+| Grammar, thesaurus, translate, read aloud | No: each needs a service Unluminous does not ship. |
 
 ### View and editing
 
@@ -242,6 +243,6 @@ Word is the oracle. Tests drive it through COM (TDD §10):
 
 ## Out of scope, said once
 
-Spelling and grammar, collaboration and co-authoring, cloud storage, `.doc` reading, encryption,
+Grammar, collaboration and co-authoring, cloud storage, `.doc` reading, encryption,
 macros running, drawing shapes, SmartArt, charts, equation editing, mail merge, compare, and Read Mode.
 Each is said in the plugin's `plugin.limitations` so the Plugins page tells a person before they find out.
