@@ -1000,23 +1000,7 @@ fn validate_verb(sheet: &mut Spreadsheet, args: &[String]) -> Result<Answer, Str
 }
 
 fn blank_rule(kind: &str) -> CfRule {
-    CfRule {
-        kind: kind.to_owned(),
-        dxf: None,
-        priority: 1,
-        stop: false,
-        operator: None,
-        text: None,
-        rank: None,
-        percent: false,
-        bottom: false,
-        above_average: None,
-        formulas: Vec::new(),
-        color_scale: None,
-        data_bar: None,
-        attrs: Vec::new(),
-        raw_children: String::new(),
-    }
+    CfRule::new(kind)
 }
 
 /// A conditional format rule from words, with the look it applies.

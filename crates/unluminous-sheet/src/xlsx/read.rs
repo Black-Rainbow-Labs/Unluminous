@@ -290,11 +290,50 @@ fn read_theme(xml: &str, styles: &mut Styles) {
         .map(str::to_owned);
 }
 
-fn bool_attr(n: Node, name: &str) -> bool {
+pub(super) fn bool_attr(n: Node, name: &str) -> bool {
     matches!(n.attribute(name), Some("1") | Some("true"))
 }
 
-fn color(n: Node) -> Color {
+/// The `outlinePr` element of `sheetPr`: where summary rows and columns sit.
+fn read_outline_settings(n: Node) -> OutlineSettings {
+    let flag = |name: &str, default: bool| match n.attribute(name) {
+        Some(v) => v == "1" || v == "true",
+        None => default,
+    };
+    OutlineSettings {
+        summary_below: flag("summaryBelow", true),
+        summary_right: flag("summaryRight", true),
+        apply_styles: flag("applyStyles", false),
+        show_symbols: flag("showOutlineSymbols", true),
+    }
+}
+
+/// A differential format element (`dxf`, or the `x14:dxf` of an extension rule), with its XML kept.
+pub(super) fn read_dxf(xml: &str, d: Node) -> Dxf {
+    let font = child(d, "font");
+    let flag =
+        |n: Option<Node>| n.map(|b| !matches!(b.attribute("val"), Some("0") | Some("false")));
+    Dxf {
+        font_color: font.and_then(|f| child(f, "color")).map(color),
+        bold: flag(font.and_then(|f| child(f, "b"))),
+        italic: flag(font.and_then(|f| child(f, "i"))),
+        strike: flag(font.and_then(|f| child(f, "strike"))),
+        underline: font
+            .and_then(|f| child(f, "u"))
+            .map(|u| Underline::parse(u.attribute("val").unwrap_or("single"))),
+        fill: child(d, "fill")
+            .and_then(|f| child(f, "patternFill"))
+            .and_then(|p| child(p, "bgColor").or_else(|| child(p, "fgColor")))
+            .map(color),
+        num_fmt: child(d, "numFmt").and_then(|n| n.attribute("formatCode")).map(str::to_owned),
+        border: child(d, "border")
+            .and_then(|b| b.descendants().find(|n| n.tag_name().name() == "color"))
+            .map(color),
+        raw: Some(raw(xml, d).to_owned()),
+    }
+}
+
+pub(super) fn color(n: Node) -> Color {
     if bool_attr(n, "auto") {
         return Color::Auto;
     }
@@ -311,7 +350,7 @@ fn color(n: Node) -> Color {
     Color::Auto
 }
 
-fn child<'a, 'b>(n: Node<'a, 'b>, name: &str) -> Option<Node<'a, 'b>> {
+pub(super) fn child<'a, 'b>(n: Node<'a, 'b>, name: &str) -> Option<Node<'a, 'b>> {
     n.children().find(|c| c.is_element() && c.tag_name().name() == name)
 }
 
@@ -471,33 +510,7 @@ fn read_styles(xml: &str, styles: &mut Styles) -> Result<(), String> {
             }
             "dxfs" => {
                 for d in section.children().filter(Node::is_element) {
-                    let font = child(d, "font");
-                    styles.dxfs.push(Dxf {
-                        font_color: font.and_then(|f| child(f, "color")).map(color),
-                        bold: font
-                            .and_then(|f| child(f, "b"))
-                            .map(|b| !matches!(b.attribute("val"), Some("0") | Some("false"))),
-                        italic: font
-                            .and_then(|f| child(f, "i"))
-                            .map(|b| !matches!(b.attribute("val"), Some("0") | Some("false"))),
-                        strike: font
-                            .and_then(|f| child(f, "strike"))
-                            .map(|b| !matches!(b.attribute("val"), Some("0") | Some("false"))),
-                        underline: font
-                            .and_then(|f| child(f, "u"))
-                            .map(|u| Underline::parse(u.attribute("val").unwrap_or("single"))),
-                        fill: child(d, "fill")
-                            .and_then(|f| child(f, "patternFill"))
-                            .and_then(|p| child(p, "bgColor").or_else(|| child(p, "fgColor")))
-                            .map(color),
-                        num_fmt: child(d, "numFmt")
-                            .and_then(|n| n.attribute("formatCode"))
-                            .map(str::to_owned),
-                        border: child(d, "border")
-                            .and_then(|b| b.descendants().find(|n| n.tag_name().name() == "color"))
-                            .map(color),
-                        raw: Some(raw(xml, d).to_owned()),
-                    });
+                    styles.dxfs.push(read_dxf(xml, d));
                 }
             }
             "cellStyleXfs" => styles.raw_cell_style_xfs = Some(raw(xml, section).to_owned()),
@@ -749,6 +762,9 @@ fn read_sheet(
                 if let Some(tab) = child(section, "tabColor") {
                     sheet.tab_color = Some(color(tab));
                 }
+                if let Some(outline) = child(section, "outlinePr") {
+                    sheet.outline = read_outline_settings(outline);
+                }
                 sheet.raw.elements.push((name.to_owned(), raw(xml, section).to_owned()));
             }
             "dimension" => {}
@@ -760,8 +776,11 @@ fn read_sheet(
                     .unwrap_or(15.0);
                 sheet.default_col_width =
                     section.attribute("defaultColWidth").and_then(|v| v.parse().ok());
-                sheet.raw.format_attrs =
-                    attrs_of(section, &["defaultRowHeight", "defaultColWidth"]);
+                // The deepest outline levels are worked out again when the sheet is written.
+                sheet.raw.format_attrs = attrs_of(
+                    section,
+                    &["defaultRowHeight", "defaultColWidth", "outlineLevelRow", "outlineLevelCol"],
+                );
             }
             "cols" => {
                 for c in section.children().filter(Node::is_element) {
@@ -910,7 +929,8 @@ fn read_sheet(
                                     formula = Some(made);
                                 }
                                 Some("dataTable") => {
-                                    let cell = |name: &str| f.attribute(name).and_then(CellRef::parse);
+                                    let cell =
+                                        |name: &str| f.attribute(name).and_then(CellRef::parse);
                                     sheet.data_tables.push(DataTable {
                                         range: f
                                             .attribute("ref")
@@ -920,7 +940,10 @@ fn read_sheet(
                                         row_input: bool_attr(f, "dtr"),
                                         r1: cell("r1"),
                                         r2: cell("r2"),
-                                        attrs: attrs_of(f, &["t", "ref", "dt2D", "dtr", "r1", "r2"]),
+                                        attrs: attrs_of(
+                                            f,
+                                            &["t", "ref", "dt2D", "dtr", "r1", "r2"],
+                                        ),
                                     });
                                 }
                                 _ => {
@@ -953,18 +976,15 @@ fn read_sheet(
                 }
             }
             "conditionalFormatting" => {
-                let ranges: Vec<Range> = section
-                    .attribute("sqref")
-                    .unwrap_or("")
-                    .split_whitespace()
-                    .filter_map(Range::parse)
-                    .collect();
-                let rules = section
-                    .children()
-                    .filter(|n| n.has_tag_name((MAIN_NS, "cfRule")))
-                    .map(|r| read_cf_rule(xml, r))
-                    .collect();
-                sheet.conditional.push(ConditionalFormat { ranges, rules });
+                sheet.conditional.push(super::cf::read_conditional_formatting(xml, section))
+            }
+            "extLst" => {
+                // The conditional formats of the extension join the sheet's; the other extensions are kept.
+                if let Some(rest) =
+                    super::cf::read_extension_list(xml, section, sheet, &mut book.styles)
+                {
+                    sheet.raw.elements.push((name.to_owned(), rest));
+                }
             }
             "dataValidations" => {
                 for dv in section.children().filter(|n| n.has_tag_name((MAIN_NS, "dataValidation")))
@@ -1111,69 +1131,6 @@ fn read_sheet(
         }
     }
     Ok(())
-}
-
-fn read_cf_rule(xml: &str, r: Node) -> CfRule {
-    let num = |name: &str| r.attribute(name).and_then(|v| v.parse().ok());
-    let cfvo = |n: Node| Cfvo {
-        kind: n.attribute("type").unwrap_or("min").to_owned(),
-        value: n.attribute("val").map(str::to_owned),
-    };
-    let color_scale = child(r, "colorScale").map(|cs| {
-        let points: Vec<Cfvo> =
-            cs.children().filter(|n| n.tag_name().name() == "cfvo").map(cfvo).collect();
-        let colors: Vec<Color> =
-            cs.children().filter(|n| n.tag_name().name() == "color").map(color).collect();
-        points.into_iter().zip(colors).collect()
-    });
-    let data_bar = child(r, "dataBar").and_then(|db| {
-        let points: Vec<Cfvo> =
-            db.children().filter(|n| n.tag_name().name() == "cfvo").map(cfvo).collect();
-        let c = child(db, "color").map_or(Color::rgb(0x63, 0x8E, 0xC6), color);
-        (points.len() >= 2).then(|| (points[0].clone(), points[1].clone(), c))
-    });
-    let mut raw_children = String::new();
-    for c in r.children().filter(Node::is_element) {
-        match c.tag_name().name() {
-            "formula" | "colorScale" | "dataBar" => {}
-            _ => raw_children.push_str(raw(xml, c)),
-        }
-    }
-    CfRule {
-        kind: r.attribute("type").unwrap_or("").to_owned(),
-        dxf: num("dxfId"),
-        priority: r.attribute("priority").and_then(|v| v.parse().ok()).unwrap_or(1),
-        stop: bool_attr(r, "stopIfTrue"),
-        operator: r.attribute("operator").map(str::to_owned),
-        text: r.attribute("text").map(str::to_owned),
-        rank: num("rank"),
-        percent: bool_attr(r, "percent"),
-        bottom: bool_attr(r, "bottom"),
-        above_average: r.attribute("aboveAverage").map(|v| v != "0" && v != "false"),
-        formulas: r
-            .children()
-            .filter(|n| n.tag_name().name() == "formula")
-            .map(|f| f.text().unwrap_or("").to_owned())
-            .collect(),
-        color_scale,
-        data_bar,
-        attrs: attrs_of(
-            r,
-            &[
-                "type",
-                "dxfId",
-                "priority",
-                "stopIfTrue",
-                "operator",
-                "text",
-                "rank",
-                "percent",
-                "bottom",
-                "aboveAverage",
-            ],
-        ),
-        raw_children,
-    }
 }
 
 fn read_validation(dv: Node) -> Validation {

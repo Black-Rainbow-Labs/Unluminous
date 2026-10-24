@@ -23,6 +23,7 @@
 )]
 
 pub mod calc;
+pub mod conditional;
 pub mod coord;
 pub mod dates;
 pub mod edit;
@@ -32,6 +33,7 @@ pub mod functions;
 pub mod input;
 pub mod model;
 pub mod numfmt;
+pub mod outline;
 pub mod refshift;
 pub mod styles;
 pub mod value;
