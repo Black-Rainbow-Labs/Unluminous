@@ -14,14 +14,19 @@ use crate::formula::Expr;
 use crate::value::{ErrorKind, Value};
 
 pub mod criteria;
+pub mod database;
 pub mod date;
+pub mod discrete;
 pub mod dist;
 pub mod engineering;
 pub mod financial;
+pub mod forecast;
+pub mod inference;
 pub mod info;
 pub mod logical;
 pub mod lookup;
 pub mod math;
+pub mod regression;
 pub mod stats;
 pub mod text;
 
@@ -85,6 +90,11 @@ const CATEGORIES: &[(&str, &[Function])] = &[
     ("Math", math::FUNCTIONS),
     ("Statistical", stats::FUNCTIONS),
     ("Statistical", dist::FUNCTIONS),
+    ("Statistical", discrete::FUNCTIONS),
+    ("Statistical", inference::FUNCTIONS),
+    ("Statistical", regression::FUNCTIONS),
+    ("Statistical", forecast::FUNCTIONS),
+    ("Database", database::FUNCTIONS),
     ("Logical", logical::FUNCTIONS),
     ("Lookup", lookup::FUNCTIONS),
     ("Text", text::FUNCTIONS),

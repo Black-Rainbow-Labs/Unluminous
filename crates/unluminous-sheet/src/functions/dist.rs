@@ -493,7 +493,7 @@ fn chisq_rt(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
     if x < 0.0 || df < 1.0 {
         return Err(ErrorKind::Num);
     }
-    number(1.0 - gamma_p(df / 2.0, x / 2.0))
+    number(gamma_q(df / 2.0, x / 2.0))
 }
 
 fn chisq_inv_rt(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
@@ -715,7 +715,8 @@ fn t_pdf(x: f64, df: f64) -> f64 {
         * (1.0 + x * x / df).powf(-(df + 1.0) / 2.0)
 }
 
-fn t_cdf(x: f64, df: f64) -> f64 {
+/// Student's t cumulative distribution for a possibly fractional number of degrees of freedom.
+pub fn t_cdf(x: f64, df: f64) -> f64 {
     let tail = 0.5 * beta_i(df / (df + x * x), df / 2.0, 0.5);
     if x >= 0.0 {
         1.0 - tail
