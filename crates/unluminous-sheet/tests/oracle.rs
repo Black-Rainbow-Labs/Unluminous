@@ -76,7 +76,11 @@ struct Wrong {
 /// Functions Excel answers by iterating to a tolerance of its own, so its last digits are where its
 /// iteration stopped rather than the root. Measured: XIRR of -100 and 110 a year apart is
 /// 0.09999999403953552 in Excel, where the root is exactly 0.1.
-const ITERATIVE: &[&str] = &["IRR", "XIRR", "RATE"];
+///
+/// YIELD and ODDFYIELD solve for the yield by iteration in Excel too, and stop where their price is within
+/// a tolerance of the price asked for, so the yield is exact only to about eight digits. The names end in
+/// an opening bracket so that YIELDDISC and YIELDMAT, which are closed forms, stay at full precision.
+const ITERATIVE: &[&str] = &["IRR", "XIRR", "RATE", "YIELD(", "ODDFYIELD("];
 
 /// The largest relative difference measured between Excel's FORECAST.ETS family and ours on the series
 /// in `ets_approx`, which is every series whose answer depends on the smoothing gains Excel chose.

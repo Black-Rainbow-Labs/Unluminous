@@ -289,7 +289,7 @@ fn iso_week(n: f64, date1904: bool) -> i64 {
     ((thursday - jan1) / 7.0).floor() as i64 + 1
 }
 
-fn days360(start: (i64, u32, u32), end: (i64, u32, u32), european: bool) -> i64 {
+pub(super) fn days360(start: (i64, u32, u32), end: (i64, u32, u32), european: bool) -> i64 {
     let (y1, m1, mut d1) = (start.0, start.1 as i64, start.2 as i64);
     let (y2, m2, mut d2) = (end.0, end.1 as i64, end.2 as i64);
     if european {
@@ -429,33 +429,38 @@ fn workday(
     go(ctx).map_or_else(Val::error, Val::number)
 }
 
-fn yearfrac(s1: f64, s2: f64, basis: i64, date1904: bool) -> Result<f64, ErrorKind> {
+/// Days between two dates in the US (NASD) 30/360 count that YEARFRAC basis 0 and the bond functions use.
+/// It differs from the DAYS360 rule in how the last day of February is treated.
+pub(super) fn days360_nasd(d1: (i64, u32, u32), d2: (i64, u32, u32)) -> i64 {
+    let (y1, m1, mut dd1) = (d1.0, d1.1 as i64, d1.2 as i64);
+    let (y2, m2, mut dd2) = (d2.0, d2.1 as i64, d2.2 as i64);
+    if dd1 == 31 && dd2 == 31 {
+        dd1 = 30;
+        dd2 = 30;
+    } else if dd1 == 31 {
+        dd1 = 30;
+    } else if dd1 == 30 && dd2 == 31 {
+        dd2 = 30;
+    } else if m1 == 2
+        && m2 == 2
+        && dd1 == dates::days_in_month(y1, 2) as i64
+        && dd2 == dates::days_in_month(y2, 2) as i64
+    {
+        dd1 = 30;
+        dd2 = 30;
+    } else if m1 == 2 && dd1 == dates::days_in_month(y1, 2) as i64 {
+        dd1 = 30;
+    }
+    (y2 - y1) * 360 + (m2 - m1) * 30 + (dd2 - dd1)
+}
+
+/// The fraction of a year between two serials under a day count basis from 0 to 4.
+pub(super) fn yearfrac(s1: f64, s2: f64, basis: i64, date1904: bool) -> Result<f64, ErrorKind> {
     let (a, b) = if s1 <= s2 { (s1, s2) } else { (s2, s1) };
     let d1 = dates::date(a, date1904).ok_or(ErrorKind::Num)?;
     let d2 = dates::date(b, date1904).ok_or(ErrorKind::Num)?;
     Ok(match basis {
-        0 => {
-            let (y1, m1, mut dd1) = (d1.0, d1.1 as i64, d1.2 as i64);
-            let (y2, m2, mut dd2) = (d2.0, d2.1 as i64, d2.2 as i64);
-            if dd1 == 31 && dd2 == 31 {
-                dd1 = 30;
-                dd2 = 30;
-            } else if dd1 == 31 {
-                dd1 = 30;
-            } else if dd1 == 30 && dd2 == 31 {
-                dd2 = 30;
-            } else if m1 == 2
-                && m2 == 2
-                && dd1 == dates::days_in_month(y1, 2) as i64
-                && dd2 == dates::days_in_month(y2, 2) as i64
-            {
-                dd1 = 30;
-                dd2 = 30;
-            } else if m1 == 2 && dd1 == dates::days_in_month(y1, 2) as i64 {
-                dd1 = 30;
-            }
-            ((y2 - y1) * 360 + (m2 - m1) * 30 + (dd2 - dd1)) as f64 / 360.0
-        }
+        0 => days360_nasd(d1, d2) as f64 / 360.0,
         1 => {
             let days = b - a;
             if d1.0 == d2.0 {

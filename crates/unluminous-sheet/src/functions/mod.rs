@@ -33,6 +33,7 @@ pub mod precise;
 pub mod regex;
 pub mod regression;
 pub mod services;
+pub mod securities;
 pub mod stats;
 pub mod text;
 pub mod text_bytes;
@@ -143,6 +144,7 @@ const CATEGORIES: &[(&str, &[Function])] = &[
     ("Other", services::OTHER),
     ("Date and time", date::FUNCTIONS),
     ("Financial", financial::FUNCTIONS),
+    ("Financial", securities::FUNCTIONS),
     ("Information", info::FUNCTIONS),
     ("Engineering", engineering::FUNCTIONS),
     ("Engineering", complex::FUNCTIONS),
