@@ -365,8 +365,7 @@ fn parse_date(text: &str, date1904: bool, this_year: i64) -> Option<(f64, &'stat
         return None;
     }
     // Oct 23, 2026 / October 23 2026 / 23 October 2026 / October 2026.
-    let words: Vec<&str> =
-        text.split(|c: char| c == ' ' || c == ',').filter(|w| !w.is_empty()).collect();
+    let words: Vec<&str> = text.split([' ', ',']).filter(|w| !w.is_empty()).collect();
     match words.as_slice() {
         [m, d, y] if month_number(m).is_some() => {
             make(year_of(y)?, month_number(m)? as i64, number(d)?, "d-mmm-yy")

@@ -4,7 +4,7 @@
 
 use unluminous_sheet::coord::{CellRef, Range};
 use unluminous_sheet::edit::Session;
-use unluminous_sheet::model::{LinkTarget, Workbook};
+use unluminous_sheet::model::{Chart, ChartKind, ChartSeries, LinkTarget, Workbook};
 use unluminous_sheet::styles::{Color, FontEdit, StyleChange};
 
 fn at(a: &str) -> CellRef {
@@ -106,6 +106,29 @@ fn main() {
     s.set_input(1, at("A2"), "Line one\nline two").unwrap();
     s.set_tab_color(1, Some(Color::rgb(0xFF, 0xC0, 0))).unwrap();
     cases.push(("sheets", s));
+    for (kind, name) in [
+        (ChartKind::Column, "chart-column"),
+        (ChartKind::Line, "chart-line"),
+        (ChartKind::Pie, "chart-pie"),
+        (ChartKind::Scatter, "chart-scatter"),
+    ] {
+        let mut s = base();
+        let chart = Chart {
+            from: (at("E2"), 0, 0),
+            to: (at("L17"), 0, 0),
+            kind,
+            title: Some("Qty".to_owned()),
+            series: vec![ChartSeries {
+                name: Some("Sheet1!$B$1".to_owned()),
+                categories: Some("Sheet1!$A$2:$A$3".to_owned()),
+                values: "Sheet1!$B$2:$B$3".to_owned(),
+            }],
+            part: String::new(),
+            new: true,
+        };
+        s.add_chart(0, chart).unwrap();
+        cases.push((name, s));
+    }
     for (name, session) in cases {
         let path = folder.join(format!("{name}.xlsx"));
         std::fs::write(&path, unluminous_sheet::xlsx::write(&session.book).unwrap()).unwrap();

@@ -265,8 +265,7 @@ pub const FUNCTIONS: &[Function] = &[
                 || s < 0.0
                 || l <= 0.0
                 || p <= 0.0
-                || month < 1.0
-                || month > 12.0
+                || !(1.0..=12.0).contains(&month)
                 || p > l + 1.0
                 || month == 12.0 && p > l
             {

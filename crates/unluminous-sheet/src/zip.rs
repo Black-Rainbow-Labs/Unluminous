@@ -53,7 +53,7 @@ pub fn read(bytes: &[u8]) -> Result<Vec<Entry>, String> {
         );
     }
     // A stub before the archive moves every offset by the same amount.
-    let shift = end.checked_sub(directory_at + directory_size).unwrap_or(0);
+    let shift = end.saturating_sub(directory_at + directory_size);
     let mut at = directory_at + shift;
     let mut entries = Vec::with_capacity(count);
     for _ in 0..count {

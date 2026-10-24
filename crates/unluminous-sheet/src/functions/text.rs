@@ -243,8 +243,7 @@ pub const FUNCTIONS: &[Function] = &[
             crate::numfmt::Format::parse(&code)
                 .render(&Value::Number(rounded), false, 255)
                 .text
-                .trim_end()
-                .to_owned(),
+                .trim_end(),
         ))
     }),
     s(

@@ -597,6 +597,11 @@ impl<'a> Writer<'a> {
             "smartTags",
         ] {
             out.push_str(&raw(name));
+            // A sheet with no margins gets Excel's default ones, in their place in the schema's order: before
+            // `pageSetup` and before the drawing, or Excel refuses the file.
+            if name == "pageMargins" && sheet.page_margins_missing() {
+                out.push_str("<pageMargins left=\"0.7\" right=\"0.7\" top=\"0.75\" bottom=\"0.75\" header=\"0.3\" footer=\"0.3\"/>");
+            }
         }
         // The drawing: kept as it was, with the charts made here added to it, or a new one holding them.
         let new_charts: Vec<&crate::model::Chart> = sheet.charts.iter().filter(|c| c.new).collect();
@@ -665,9 +670,6 @@ impl<'a> Writer<'a> {
                     out.push_str(&format!("<drawing {r}:id=\"{id}\"/>"));
                 }
             }
-        }
-        if sheet.page_margins_missing() {
-            out.push_str("<pageMargins left=\"0.7\" right=\"0.7\" top=\"0.75\" bottom=\"0.75\" header=\"0.3\" footer=\"0.3\"/>");
         }
         // Notes: the kept legacy drawing, or new comments and VML parts when they changed.
         if sheet.notes_changed {

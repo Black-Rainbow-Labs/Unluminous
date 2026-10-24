@@ -121,13 +121,10 @@ pub fn show_pictures(ui: &egui::Ui, book: &mut Book, frame: Frame) {
         }
         match book.pictures.0.get(&picture.part).and_then(Option::as_ref) {
             Some(texture) => {
+                let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
                 // any ground: the tint a picture is drawn with, which leaves its own colours as they are.
-                painter.image(
-                    texture.id(),
-                    rect,
-                    Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-                    Color32::WHITE,
-                );
+                let tint = Color32::WHITE;
+                painter.image(texture.id(), rect, uv, tint);
             }
             None => {
                 painter.rect_stroke(

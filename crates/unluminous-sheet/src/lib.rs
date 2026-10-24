@@ -12,6 +12,10 @@
 //!
 //! `tasks/task-2338-spreadsheet-tdd.md` is the design.
 
+// Two lints that work against arithmetic written to match its source: a conversion factor is written as
+// the reference gives it, and a matrix routine indexes its rows and columns by number as the algorithm does.
+#![allow(clippy::inconsistent_digit_grouping, clippy::needless_range_loop)]
+
 pub mod calc;
 pub mod coord;
 pub mod dates;

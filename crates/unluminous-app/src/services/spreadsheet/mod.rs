@@ -93,8 +93,10 @@ impl Book {
     ) -> Book {
         let mut session = Session::new(book, now_serial());
         session.this_year = this_year();
-        let mut view = View::default();
-        view.sheet = session.book.active_sheet.min(session.book.sheets.len().saturating_sub(1));
+        let view = View {
+            sheet: session.book.active_sheet.min(session.book.sheets.len().saturating_sub(1)),
+            ..View::default()
+        };
         Book {
             key: key.to_owned(),
             path: path.to_path_buf(),
@@ -116,7 +118,8 @@ impl Book {
         if let Some(folder) = self.path.parent() {
             let _ = std::fs::create_dir_all(folder);
         }
-        std::fs::write(&self.path, bytes)
+        // Written beside the file and moved over it, so a failed write leaves the workbook as it was.
+        crate::services::store::write_a_source_file(&self.path, &bytes)
             .map_err(|e| format!("{} could not be saved: {e}", self.path.display()))?;
         self.session.modified = false;
         self.stamp = modified_time(&self.path);

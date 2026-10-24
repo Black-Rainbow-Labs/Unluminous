@@ -549,7 +549,7 @@ pub const FUNCTIONS: &[Function] = &[
             Ok(n) => n.trunc(),
             Err(e) => return Val::error(e),
         };
-        if n < 1.0 || n > 4096.0 {
+        if !(1.0..=4096.0).contains(&n) {
             return Val::error(ErrorKind::Value);
         }
         let n = n as usize;
@@ -584,8 +584,7 @@ pub const FUNCTIONS: &[Function] = &[
             if n < 0.0
                 || n >= 2f64.powi(53)
                 || !(2.0..=36.0).contains(&radix)
-                || min < 0.0
-                || min > 255.0
+                || !(0.0..=255.0).contains(&min)
             {
                 return Err(ErrorKind::Num);
             }
@@ -800,7 +799,7 @@ fn roman(n: u32, form: u32) -> String {
         _ => &[],
     };
     table.extend_from_slice(extra);
-    table.sort_by(|a, b| b.0.cmp(&a.0));
+    table.sort_by_key(|entry| std::cmp::Reverse(entry.0));
     let mut out = String::new();
     let mut n = n;
     for (value, letters) in table {

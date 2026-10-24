@@ -342,7 +342,9 @@ impl Parser {
                     )
                 }
             };
-            rows.last_mut().map(|row| row.push(item));
+            if let Some(row) = rows.last_mut() {
+                row.push(item)
+            }
             self.skip_space();
             match self.peek() {
                 Some(',') => self.at += 1,
@@ -378,10 +380,7 @@ impl Parser {
                 return Ok(Expr::Error(kind));
             }
         }
-        Err(format!(
-            "`{}` is not an error value",
-            rest.split(|c: char| c == ',' || c == ')').next().unwrap_or("")
-        ))
+        Err(format!("`{}` is not an error value", rest.split([',', ')']).next().unwrap_or("")))
     }
 
     fn number(&mut self) -> Result<f64, String> {

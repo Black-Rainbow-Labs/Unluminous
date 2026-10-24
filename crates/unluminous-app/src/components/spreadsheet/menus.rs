@@ -236,6 +236,36 @@ fn popup_level(
     picked
 }
 
+/// The rows a command search found, each with the path to it. Answers what was pressed.
+fn found_rows(
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    everything: &[Item],
+    search: &str,
+) -> Option<Picked> {
+    let mut picked = None;
+    for (path, item) in catalogue::search(everything, search) {
+        match &item {
+            Item::Run { words, keys, checked, .. }
+                if controls::menu_row(ui, &path, keys, true, *checked, 0.0) =>
+            {
+                picked = Some(Picked::Words(words.clone()));
+            }
+            Item::Ask { .. } if controls::menu_row(ui, &path, "", true, false, 0.0) => {
+                picked = ask_of(&item).map(Picked::Ask);
+            }
+            Item::Colors { words, none, label } => {
+                controls::menu_heading(ui, &path, 0.0);
+                if let Some(p) = swatch_grid(ui, look, words, none.as_deref(), label) {
+                    picked = Some(p);
+                }
+            }
+            _ => {}
+        }
+    }
+    picked
+}
+
 /// A popup menu of items at a point. Answers what was picked, or `Close` when a press landed outside it.
 pub fn popup(
     ctx: &egui::Context,
@@ -307,35 +337,14 @@ pub fn book_menu(
                 if search.trim().is_empty() {
                     popup_level(ui, look, items, id, 0, &mut drawn)
                 } else {
-                    let found = catalogue::search(items, search);
                     let mut picked = None;
-                    if found.is_empty() {
+                    if catalogue::search(items, search).is_empty() {
                         ui.label(
                             egui::RichText::new("Nothing matches").color(look.palette.text_dim),
                         );
                     }
-                    for (path, item) in found {
-                        match &item {
-                            Item::Run { words, keys, checked, .. } => {
-                                if controls::menu_row(ui, &path, keys, true, *checked, 0.0) {
-                                    picked = Some(Picked::Words(words.clone()));
-                                }
-                            }
-                            Item::Ask { .. } => {
-                                if controls::menu_row(ui, &path, "", true, false, 0.0) {
-                                    picked = ask_of(&item).map(Picked::Ask);
-                                }
-                            }
-                            Item::Colors { words, none, label } => {
-                                controls::menu_heading(ui, &path, 0.0);
-                                if let Some(p) =
-                                    swatch_grid(ui, look, words, none.as_deref(), label)
-                                {
-                                    picked = Some(p);
-                                }
-                            }
-                            _ => {}
-                        }
+                    if let Some(p) = found_rows(ui, look, items, search) {
+                        picked = Some(p);
                     }
                     // Enter runs the first match.
                     if picked.is_none() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
@@ -362,6 +371,7 @@ pub fn book_menu(
     (pressed_outside || escape).then_some(Picked::Close)
 }
 
+#[allow(clippy::too_many_arguments)]
 /// The Format panel: the level at `path`, with a way back up and the path as its title.
 pub fn panel(
     ui: &mut egui::Ui,
@@ -449,26 +459,8 @@ pub fn panel(
         egui::ScrollArea::vertical().id_salt("spreadsheet-panel-found").show(&mut body_ui, |ui| {
             ui.set_width((body.width() - 4.0).max(0.0));
             ui.spacing_mut().item_spacing.y = 2.0;
-            for (found, item) in catalogue::search(everything, &search) {
-                match &item {
-                    Item::Run { words, keys, checked, .. } => {
-                        if controls::menu_row(ui, &found, keys, true, *checked, 0.0) {
-                            picked = Some(Picked::Words(words.clone()));
-                        }
-                    }
-                    Item::Ask { .. } => {
-                        if controls::menu_row(ui, &found, "", true, false, 0.0) {
-                            picked = ask_of(&item).map(Picked::Ask);
-                        }
-                    }
-                    Item::Colors { words, none, label } => {
-                        controls::menu_heading(ui, &found, 0.0);
-                        if let Some(p) = swatch_grid(ui, look, words, none.as_deref(), label) {
-                            picked = Some(p);
-                        }
-                    }
-                    _ => {}
-                }
+            if let Some(p) = found_rows(ui, look, everything, &search) {
+                picked = Some(p);
             }
         });
         return picked;
@@ -753,7 +745,7 @@ pub fn filter_menu(
     look: &Look<'_>,
     id: egui::Id,
     at: Pos2,
-    values: &mut Vec<(String, bool)>,
+    values: &mut [(String, bool)],
     column: &str,
 ) -> Option<Picked> {
     let mut picked = None;

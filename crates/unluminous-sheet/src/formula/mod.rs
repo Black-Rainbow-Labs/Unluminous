@@ -146,7 +146,7 @@ pub fn moved(
             Some(name) => name.eq_ignore_ascii_case(sheet) && r.sheet_last.is_none(),
             None => own_sheet.eq_ignore_ascii_case(sheet),
         };
-        if !on || !(from.contains(r.first.at()) && from.contains(r.last.at())) {
+        if !(on && from.contains(r.first.at()) && from.contains(r.last.at())) {
             return Some(r.clone());
         }
         let mut r = r.clone();

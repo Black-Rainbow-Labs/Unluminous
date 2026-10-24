@@ -214,8 +214,9 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
     book.kept.workbook_rels = workbook_rels
         .iter()
         .filter(|r| {
-            !REGENERATED.contains(&r.kind.as_str())
-                && !(r.kind == REL_METADATA && book.dynamic_cm.is_none())
+            let regenerated = REGENERATED.contains(&r.kind.as_str());
+            let unused_metadata = r.kind == REL_METADATA && book.dynamic_cm.is_none();
+            !(regenerated || unused_metadata)
         })
         .filter(|r| {
             r.kind != REL_WORKSHEET
@@ -522,7 +523,10 @@ fn string_item(xml: &str, si: Node) -> (Arc<str>, Option<Arc<str>>) {
     (Arc::from(text.as_str()), rich.then(|| Arc::from(raw(xml, si))))
 }
 
-fn read_strings(xml: &str) -> Result<Vec<(Arc<str>, Option<Arc<str>>)>, String> {
+/// The shared strings: each one's text, and its rich text runs as XML when it has them.
+type Strings = Vec<(Arc<str>, Option<Arc<str>>)>;
+
+fn read_strings(xml: &str) -> Result<Strings, String> {
     let doc =
         Document::parse(xml).map_err(|e| format!("the shared strings part is damaged: {e}"))?;
     Ok(doc
@@ -567,10 +571,10 @@ fn file_formula(text: &str, dynamic: bool) -> Formula {
             let mut unknown = false;
             f.expr.walk(&mut |e| match e {
                 Expr::External(_) => unknown = true,
-                Expr::Call(name, _) => {
-                    if crate::functions::find(name).is_none() && !is_name_call(name) {
-                        unknown = true;
-                    }
+                Expr::Call(name, _)
+                    if crate::functions::find(name).is_none() && !is_name_call(name) =>
+                {
+                    unknown = true;
                 }
                 _ => {}
             });
@@ -946,11 +950,7 @@ fn read_sheet(
             sheet.charts.extend(super::chart::read_charts(part, &rel.target, text));
             sheet.pictures.extend(super::chart::read_pictures(part, &rel.target, text));
         }
-        let kept = match rel.kind.as_str() {
-            REL_HYPERLINK => false,
-            REL_TABLE => false,
-            _ => true,
-        };
+        let kept = !matches!(rel.kind.as_str(), REL_HYPERLINK | REL_TABLE);
         if kept {
             kept_rels.push(rel.clone());
         }

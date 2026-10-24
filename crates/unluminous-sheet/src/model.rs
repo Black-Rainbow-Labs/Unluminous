@@ -517,7 +517,7 @@ impl Sheet {
             first_row = first_row.min(row);
             first_col = first_col.min(col);
         }
-        for (&(row, col), _) in &self.spills.values {
+        for &(row, col) in self.spills.values.keys() {
             last_row = Some(last_row.map_or(row, |r: u32| r.max(row)));
             last_col = last_col.max(col);
             first_row = first_row.min(row);

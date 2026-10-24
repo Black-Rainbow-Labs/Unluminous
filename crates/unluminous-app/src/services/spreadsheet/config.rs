@@ -87,6 +87,7 @@ impl Config {
             self.paper.name(),
             if self.function_list { "on" } else { "off" }
         );
-        std::fs::write(folder.join(FILE), text).map_err(|e| e.to_string())
+        crate::services::store::write_atomically(&folder.join(FILE), text.as_bytes())
+            .map_err(|e| e.to_string())
     }
 }

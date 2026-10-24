@@ -551,14 +551,16 @@ mod tests {
         assert!(surfaces.tabs.is_empty(), "and nothing contributes a tab any more");
         assert!(surfaces.tab("agent-tasks/board").is_none());
         assert!(surfaces.tab("database/workspace").is_none());
-        assert_eq!(surfaces.menus.len(), 4);
-        assert_eq!(surfaces.pages.len(), 4);
+        // The Spreadsheet plugin (`task-2338`) adds a menu and a page and no pane: a workbook is a tab.
+        assert_eq!(surfaces.menus.len(), 5);
+        assert_eq!(surfaces.pages.len(), 5);
         // Switching one off withdraws every contribution of that plugin at once, which is the rule
         // `Plugins::renders` already keeps for a Mermaid diagram: the window asks before it draws.
         plugins.set_enabled(None, "agent-tasks", false);
         plugins.set_enabled(None, "agent-chat", false);
         plugins.set_enabled(None, "database", false);
         plugins.set_enabled(None, "designer", false);
+        plugins.set_enabled(None, "spreadsheet", false);
         assert!(plugins.surfaces().is_empty(), "a plugin that is off contributes nothing");
         plugins.set_enabled(None, "agent-tasks", true);
         plugins.set_enabled(None, "agent-chat", true);

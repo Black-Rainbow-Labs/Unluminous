@@ -531,13 +531,13 @@ impl Session {
                 Axis::Rows,
                 range.first.row,
                 range.rows() as i64,
-                (shift == Shift::Down).then(|| (range.first.col, range.last.col)),
+                (shift == Shift::Down).then_some((range.first.col, range.last.col)),
             ),
             Shift::WholeColumns | Shift::Right => (
                 Axis::Columns,
                 range.first.col,
                 range.cols() as i64,
-                (shift == Shift::Right).then(|| (range.first.row, range.last.row)),
+                (shift == Shift::Right).then_some((range.first.row, range.last.row)),
             ),
             _ => return Err("insert shifts cells down or right".to_owned()),
         };
@@ -557,13 +557,13 @@ impl Session {
                 Axis::Rows,
                 range.first.row,
                 -(range.rows() as i64),
-                (shift == Shift::Up).then(|| (range.first.col, range.last.col)),
+                (shift == Shift::Up).then_some((range.first.col, range.last.col)),
             ),
             Shift::WholeColumns | Shift::Left => (
                 Axis::Columns,
                 range.first.col,
                 -(range.cols() as i64),
-                (shift == Shift::Left).then(|| (range.first.row, range.last.row)),
+                (shift == Shift::Left).then_some((range.first.row, range.last.row)),
             ),
             _ => return Err("delete shifts cells up or left".to_owned()),
         };

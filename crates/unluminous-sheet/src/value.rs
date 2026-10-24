@@ -226,7 +226,7 @@ pub fn round_significant(n: f64, digits: i32) -> f64 {
     }
     let magnitude = n.abs().log10().floor() as i32;
     let scale = digits - 1 - magnitude;
-    if scale > 300 || scale < -300 {
+    if !(-300..=300).contains(&scale) {
         return n;
     }
     let text = format!("{:.*e}", (digits - 1).max(0) as usize, n);

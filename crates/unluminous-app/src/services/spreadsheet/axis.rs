@@ -133,7 +133,7 @@ impl Axis {
         }
         let (mut low, mut high) = (0u32, self.count - 1);
         while low < high {
-            let middle = low + (high - low + 1) / 2;
+            let middle = low + (high - low).div_ceil(2);
             if self.start(middle) <= position {
                 low = middle;
             } else {

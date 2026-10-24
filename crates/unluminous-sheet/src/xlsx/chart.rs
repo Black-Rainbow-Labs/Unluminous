@@ -157,8 +157,8 @@ pub fn read_charts(
                     .and_then(|e| e.attribute("cy"))
                     .and_then(|v| v.parse::<i64>().ok())
                     .unwrap_or(2_743_200);
-                let cols = (cx / EMU_PER_PIXEL / 64).max(1) as i64;
-                let rows = (cy / EMU_PER_PIXEL / 20).max(1) as i64;
+                let cols = (cx / EMU_PER_PIXEL / 64).max(1);
+                let rows = (cy / EMU_PER_PIXEL / 20).max(1);
                 (from.0.offset(rows, cols).unwrap_or(from.0), 0, 0)
             }
         };

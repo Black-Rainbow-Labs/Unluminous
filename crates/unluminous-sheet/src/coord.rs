@@ -230,7 +230,7 @@ pub fn column_number(name: &str) -> Option<u32> {
     for b in name.bytes() {
         n = n * 26 + (b.to_ascii_uppercase() - b'A' + 1) as u32;
     }
-    (n >= 1 && n <= MAX_COLS).then(|| n - 1)
+    (1..=MAX_COLS).contains(&n).then(|| n - 1)
 }
 
 #[cfg(test)]

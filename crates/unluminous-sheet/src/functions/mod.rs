@@ -144,7 +144,7 @@ pub fn boolean(v: &Value) -> Result<bool, ErrorKind> {
 }
 
 /// The optional argument at `i`, or `default` when it was left out or left empty.
-pub fn opt<'v>(args: &'v [Value], i: usize) -> Option<&'v Value> {
+pub fn opt(args: &[Value], i: usize) -> Option<&Value> {
     args.get(i).filter(|v| !v.is_empty())
 }
 

@@ -404,10 +404,10 @@ pub const FUNCTIONS: &[Function] = &[
         number((x - m) / sd)
     }),
     r("CORREL", 2, 2, "array1, array2", "The correlation coefficient.", |ctx, a| {
-        paired(ctx, a, |x, y| correl(x, y))
+        paired(ctx, a, correl)
     }),
     r("PEARSON", 2, 2, "array1, array2", "The Pearson correlation coefficient.", |ctx, a| {
-        paired(ctx, a, |x, y| correl(x, y))
+        paired(ctx, a, correl)
     }),
     r("RSQ", 2, 2, "known_y's, known_x's", "The square of the correlation.", |ctx, a| {
         paired(ctx, a, |y, x| correl(x, y).map(|r| r * r))

@@ -117,12 +117,12 @@ impl Format {
 
     /// Whether the first section is General.
     pub fn is_general(&self) -> bool {
-        self.sections.first().is_some_and(|s| s.tokens.iter().any(|t| *t == Token::General))
+        self.sections.first().is_some_and(|s| s.tokens.contains(&Token::General))
     }
 
     pub fn is_text(&self) -> bool {
         self.sections.len() == 1
-            && self.sections[0].tokens.iter().any(|t| *t == Token::Text)
+            && self.sections[0].tokens.contains(&Token::Text)
             && !self.sections[0]
                 .tokens
                 .iter()
@@ -565,9 +565,7 @@ fn render_numeric(section: &Section, value: f64, width: usize) -> (String, Optio
     let mut v = value * 100f64.powi(section.percent as i32) / 1000f64.powi(section.scale as i32);
     let mut fill = None;
     let has_digits = tokens.iter().any(|t| matches!(t, Token::Digit(_)));
-    if tokens.iter().any(|t| *t == Token::General)
-        || !has_digits && !tokens.iter().any(|t| *t == Token::Text)
-    {
+    if tokens.contains(&Token::General) || !has_digits && !tokens.contains(&Token::Text) {
         // General, or a section of literal text only.
         let mut out = String::new();
         for t in tokens {
@@ -580,7 +578,7 @@ fn render_numeric(section: &Section, value: f64, width: usize) -> (String, Optio
                 _ => {}
             }
         }
-        if !tokens.iter().any(|t| *t == Token::General) && out.is_empty() {
+        if !tokens.contains(&Token::General) && out.is_empty() {
             return (String::new(), fill);
         }
         return (out, fill);
@@ -683,19 +681,15 @@ fn render_numeric(section: &Section, value: f64, width: usize) -> (String, Optio
     for (k, t) in tokens.iter().enumerate() {
         let in_int = point.is_none_or(|p| k < p);
         match t {
-            Token::Digit(_) if in_int => {
-                if !int_written {
-                    out.push_str(&int_text);
-                    int_written = true;
-                }
+            Token::Digit(_) if in_int && !int_written => {
+                out.push_str(&int_text);
+                int_written = true;
             }
-            Token::Digit(_) => {
-                if !dec_written {
-                    let take: String = dec_out.iter().skip(dec_index).collect();
-                    out.push_str(&take);
-                    dec_index = dec_out.len();
-                    dec_written = true;
-                }
+            Token::Digit(_) if !dec_written => {
+                let take: String = dec_out.iter().skip(dec_index).collect();
+                out.push_str(&take);
+                dec_index = dec_out.len();
+                dec_written = true;
             }
             Token::Point => out.push('.'),
             Token::Group => {}
@@ -785,7 +779,7 @@ fn render_scientific(section: &Section, v: f64, e_at: usize) -> String {
         while let (Some('0'), Some('#')) = (d.last(), dec_tokens.get(d.len().wrapping_sub(1))) {
             d.pop();
         }
-        text = if d.is_empty() && !dec_tokens.iter().any(|c| *c == '0') {
+        text = if d.is_empty() && !dec_tokens.contains(&'0') {
             format!("{w}.")
         } else {
             format!("{w}.{}", d.iter().collect::<String>())
@@ -798,11 +792,9 @@ fn render_scientific(section: &Section, v: f64, e_at: usize) -> String {
     let mut placed = false;
     for t in mantissa_tokens {
         match t {
-            Token::Digit(_) | Token::Point => {
-                if !placed {
-                    out.push_str(&text);
-                    placed = true;
-                }
+            Token::Digit(_) | Token::Point if !placed => {
+                out.push_str(&text);
+                placed = true;
             }
             Token::Literal(l) => out.push_str(l),
             Token::Space => out.push(' '),
@@ -875,13 +867,11 @@ fn render_fraction(section: &Section, v: f64, slash: usize) -> String {
         let mut wrote = false;
         for t in &before[..numerator_start] {
             match t {
-                Token::Digit(_) => {
-                    if !wrote {
-                        if whole != 0.0 || num == 0.0 {
-                            out.push_str(&format!("{}", whole as u64));
-                        }
-                        wrote = true;
+                Token::Digit(_) if !wrote => {
+                    if whole != 0.0 || num == 0.0 {
+                        out.push_str(&format!("{}", whole as u64));
                     }
+                    wrote = true;
                 }
                 Token::Literal(l) => {
                     if whole != 0.0 || num == 0.0 {

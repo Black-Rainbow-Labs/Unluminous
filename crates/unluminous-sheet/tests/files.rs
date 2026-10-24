@@ -11,7 +11,9 @@ use unluminous_sheet::coord::{CellRef, Range};
 use unluminous_sheet::edit::{Session, Shift};
 use unluminous_sheet::model::{LinkTarget, Workbook};
 use unluminous_sheet::styles::{BorderEdit, Color, Edge, FontEdit, Sides, StyleChange};
-use unluminous_sheet::value::Value;
+// The example that includes this file for `built_for_example` uses none of the tests that read values.
+#[allow(unused_imports)]
+use unluminous_sheet::Value;
 
 fn fixture(name: &str) -> Vec<u8> {
     std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name)).unwrap()
@@ -355,6 +357,48 @@ fn excel_opens_what_unluminous_writes_and_computes_the_same_values() {
         data["validations"]
     );
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_dir(&folder);
+}
+
+#[test]
+fn excel_opens_a_chart_made_here_beside_the_one_it_made_itself() {
+    if !excel_is_installed() {
+        assert!(
+            std::env::var("UNLUMINOUS_REQUIRE_EXCEL").is_err(),
+            "UNLUMINOUS_REQUIRE_EXCEL is set and Excel is not installed"
+        );
+        println!("Excel is not installed here, so a chart made here was not checked");
+        return;
+    }
+    let book = unluminous_sheet::xlsx::read(&fixture("features.xlsx")).unwrap();
+    let mut session = Session::new(book, 46318.5);
+    let sheet = session.book.sheet_index("Data").unwrap();
+    assert_eq!(session.book.sheets[sheet].charts.len(), 1, "Excel's own chart is read");
+    let chart = unluminous_sheet::model::Chart {
+        from: (CellRef::parse("N2").unwrap(), 0, 0),
+        to: (CellRef::parse("U16").unwrap(), 0, 0),
+        kind: unluminous_sheet::model::ChartKind::Line,
+        title: Some("Made here".to_owned()),
+        series: vec![unluminous_sheet::model::ChartSeries {
+            name: Some("Data!$C$1".to_owned()),
+            categories: Some("Data!$A$2:$A$7".to_owned()),
+            values: "Data!$C$2:$C$7".to_owned(),
+        }],
+        part: String::new(),
+        new: true,
+    };
+    session.add_chart(sheet, chart).unwrap();
+    let folder =
+        std::env::temp_dir().join(format!("unluminous-sheet-chart-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).unwrap();
+    let path = folder.join("charted.xlsx");
+    std::fs::write(&path, unluminous_sheet::xlsx::write(&session.book).unwrap()).unwrap();
+    let excel = inspect(&path);
+    assert_eq!(excel["repaired"], false, "Excel repaired the file: {}", excel["problem"]);
+    let charts = excel["sheets"][sheet]["features"]["charts"].as_array().unwrap().clone();
+    assert_eq!(charts.len(), 2, "{charts:?}");
+    assert!(charts.iter().any(|c| c.as_str().unwrap().ends_with("|Made here")), "{charts:?}");
     let _ = std::fs::remove_file(&path);
     let _ = std::fs::remove_dir(&folder);
 }

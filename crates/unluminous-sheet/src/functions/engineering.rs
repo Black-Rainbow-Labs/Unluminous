@@ -98,7 +98,7 @@ fn digits(n: i64, base: u32, places: Option<f64>) -> Result<Value, ErrorKind> {
         to_base(n as u64, base)
     };
     if let Some(p) = places.filter(|_| n >= 0) {
-        if p < 0.0 || p > 10.0 || (p as usize) < text.len() {
+        if !(0.0..=10.0).contains(&p) || (p as usize) < text.len() {
             return Err(ErrorKind::Num);
         }
         return Ok(Value::text(format!("{:0>width$}", text, width = p as usize)));
