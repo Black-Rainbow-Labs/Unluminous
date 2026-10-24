@@ -354,6 +354,8 @@ fn read_styles(xml: &str, styles: &mut Styles) -> Result<(), String> {
     styles.fills.clear();
     styles.borders.clear();
     styles.xfs.clear();
+    styles.style_xfs.clear();
+    styles.cell_styles.clear();
     for section in root.children().filter(Node::is_element) {
         match section.tag_name().name() {
             "numFmts" => {
@@ -409,65 +411,18 @@ fn read_styles(xml: &str, styles: &mut Styles) -> Result<(), String> {
                 }
             }
             "cellXfs" => {
-                for x in section.children().filter(Node::is_element) {
-                    let num =
-                        |name: &str| x.attribute(name).and_then(|v| v.parse().ok()).unwrap_or(0);
-                    let align = child(x, "alignment").map_or(Alignment::default(), |a| Alignment {
-                        horizontal: a
-                            .attribute("horizontal")
-                            .filter(|h| *h != "general")
-                            .map(str::to_owned),
-                        vertical: a
-                            .attribute("vertical")
-                            .filter(|v| *v != "bottom")
-                            .map(str::to_owned),
-                        wrap: bool_attr(a, "wrapText"),
-                        indent: a.attribute("indent").and_then(|v| v.parse().ok()).unwrap_or(0),
-                        rotation: a
-                            .attribute("textRotation")
-                            .and_then(|v| v.parse().ok())
-                            .unwrap_or(0),
-                        shrink: bool_attr(a, "shrinkToFit"),
-                        reading_order: a
-                            .attribute("readingOrder")
-                            .and_then(|v| v.parse().ok())
-                            .unwrap_or(0),
-                        extra: attrs_of(
-                            a,
-                            &[
-                                "horizontal",
-                                "vertical",
-                                "wrapText",
-                                "indent",
-                                "textRotation",
-                                "shrinkToFit",
-                                "readingOrder",
-                            ],
-                        ),
-                    });
-                    let protection = child(x, "protection");
-                    styles.xfs.push(Xf {
-                        num_fmt: num("numFmtId"),
-                        font: num("fontId"),
-                        fill: num("fillId"),
-                        border: num("borderId"),
-                        xf_id: num("xfId"),
-                        align,
-                        locked: protection
-                            .and_then(|p| p.attribute("locked"))
-                            .map(|v| v == "1" || v == "true"),
-                        hidden: protection
-                            .and_then(|p| p.attribute("hidden"))
-                            .map(|v| v == "1" || v == "true"),
-                        quote_prefix: bool_attr(x, "quotePrefix"),
-                        pivot_button: bool_attr(x, "pivotButton"),
-                        applies: x
-                            .attributes()
-                            .filter(|a| a.name().starts_with("apply"))
-                            .map(|a| (a.name().to_owned(), a.value().to_owned()))
-                            .collect(),
-                    });
-                }
+                styles.xfs = section.children().filter(Node::is_element).map(read_xf).collect();
+            }
+            "cellStyleXfs" => {
+                styles.style_xfs =
+                    section.children().filter(Node::is_element).map(read_xf).collect();
+            }
+            "cellStyles" => {
+                styles.cell_styles = section
+                    .children()
+                    .filter(|n| n.is_element() && n.tag_name().name() == "cellStyle")
+                    .map(|n| read_cell_style(xml, n))
+                    .collect();
             }
             "dxfs" => {
                 for d in section.children().filter(Node::is_element) {
@@ -500,8 +455,6 @@ fn read_styles(xml: &str, styles: &mut Styles) -> Result<(), String> {
                     });
                 }
             }
-            "cellStyleXfs" => styles.raw_cell_style_xfs = Some(raw(xml, section).to_owned()),
-            "cellStyles" => styles.raw_cell_styles = Some(raw(xml, section).to_owned()),
             "tableStyles" => styles.raw_table_styles = Some(raw(xml, section).to_owned()),
             "colors" => styles.raw_colors = Some(raw(xml, section).to_owned()),
             "extLst" => styles.raw_ext = Some(raw(xml, section).to_owned()),
@@ -521,7 +474,72 @@ fn read_styles(xml: &str, styles: &mut Styles) -> Result<(), String> {
     if styles.xfs.is_empty() {
         styles.xfs.push(Xf::default());
     }
+    if styles.style_xfs.is_empty() {
+        styles.style_xfs.push(Xf::default());
+    }
+    if !styles.cell_styles.iter().any(|s| s.builtin_id == Some(0)) {
+        styles.cell_styles.push(CellStyle::normal());
+    }
     Ok(())
+}
+
+/// One `xf` of `cellXfs` or `cellStyleXfs`.
+fn read_xf(x: Node) -> Xf {
+    let num = |name: &str| x.attribute(name).and_then(|v| v.parse().ok()).unwrap_or(0);
+    let align = child(x, "alignment").map_or(Alignment::default(), |a| Alignment {
+        horizontal: a.attribute("horizontal").filter(|h| *h != "general").map(str::to_owned),
+        vertical: a.attribute("vertical").filter(|v| *v != "bottom").map(str::to_owned),
+        wrap: bool_attr(a, "wrapText"),
+        indent: a.attribute("indent").and_then(|v| v.parse().ok()).unwrap_or(0),
+        rotation: a.attribute("textRotation").and_then(|v| v.parse().ok()).unwrap_or(0),
+        shrink: bool_attr(a, "shrinkToFit"),
+        reading_order: a.attribute("readingOrder").and_then(|v| v.parse().ok()).unwrap_or(0),
+        extra: attrs_of(
+            a,
+            &[
+                "horizontal",
+                "vertical",
+                "wrapText",
+                "indent",
+                "textRotation",
+                "shrinkToFit",
+                "readingOrder",
+            ],
+        ),
+    });
+    let protection = child(x, "protection");
+    Xf {
+        num_fmt: num("numFmtId"),
+        font: num("fontId"),
+        fill: num("fillId"),
+        border: num("borderId"),
+        xf_id: num("xfId"),
+        align,
+        locked: protection.and_then(|p| p.attribute("locked")).map(|v| v == "1" || v == "true"),
+        hidden: protection.and_then(|p| p.attribute("hidden")).map(|v| v == "1" || v == "true"),
+        quote_prefix: bool_attr(x, "quotePrefix"),
+        pivot_button: bool_attr(x, "pivotButton"),
+        applies: x
+            .attributes()
+            .filter(|a| a.name().starts_with("apply"))
+            .map(|a| (a.name().to_owned(), a.value().to_owned()))
+            .collect(),
+    }
+}
+
+/// One `cellStyle`: its name, the entry of `cellStyleXfs` it is, and the attributes and children kept.
+fn read_cell_style(xml: &str, n: Node) -> CellStyle {
+    let known = ["name", "xfId", "builtinId", "iLevel", "hidden", "customBuiltin"];
+    CellStyle {
+        name: n.attribute("name").unwrap_or("").to_owned(),
+        xf_id: n.attribute("xfId").and_then(|v| v.parse().ok()).unwrap_or(0),
+        builtin_id: n.attribute("builtinId").and_then(|v| v.parse().ok()),
+        i_level: n.attribute("iLevel").and_then(|v| v.parse().ok()),
+        hidden: bool_attr(n, "hidden"),
+        custom_builtin: bool_attr(n, "customBuiltin"),
+        other: attrs_of(n, &known),
+        children: n.children().filter(Node::is_element).map(|c| raw(xml, c)).collect(),
+    }
 }
 
 /// The text of a shared string or inline string: its runs joined, phonetic guides left out. The XML is

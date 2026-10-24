@@ -1551,86 +1551,17 @@ fn styles_xml(styles: &Styles) -> String {
         out.push_str("</border>");
     }
     out.push_str("</borders>");
-    out.push_str(styles.raw_cell_style_xfs.as_deref().unwrap_or("<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>"));
+    out.push_str(&format!("<cellStyleXfs count=\"{}\">", styles.style_xfs.len()));
+    for x in &styles.style_xfs {
+        out.push_str(&xf_xml(styles, x, false));
+    }
+    out.push_str("</cellStyleXfs>");
     out.push_str(&format!("<cellXfs count=\"{}\">", styles.xfs.len()));
     for x in &styles.xfs {
-        let mut a = format!(
-            "<xf numFmtId=\"{}\" fontId=\"{}\" fillId=\"{}\" borderId=\"{}\" xfId=\"{}\"",
-            x.num_fmt, x.font, x.fill, x.border, x.xf_id
-        );
-        if x.applies.is_empty() {
-            for (flag, on) in [
-                ("applyNumberFormat", x.num_fmt != 0),
-                ("applyFont", x.font != 0),
-                ("applyFill", x.fill != 0),
-                ("applyBorder", x.border != 0),
-                ("applyAlignment", !x.align.is_default()),
-                ("applyProtection", x.locked.is_some() || x.hidden.is_some()),
-            ] {
-                if on {
-                    a.push_str(&format!(" {flag}=\"1\""));
-                }
-            }
-        } else {
-            a.push_str(&attrs_text(&x.applies));
-        }
-        if x.quote_prefix {
-            a.push_str(" quotePrefix=\"1\"");
-        }
-        if x.pivot_button {
-            a.push_str(" pivotButton=\"1\"");
-        }
-        let mut inner = String::new();
-        if !x.align.is_default() {
-            let al = &x.align;
-            let mut s = String::from("<alignment");
-            if let Some(h) = &al.horizontal {
-                s.push_str(&format!(" horizontal=\"{}\"", escape(h)));
-            }
-            if let Some(v) = &al.vertical {
-                s.push_str(&format!(" vertical=\"{}\"", escape(v)));
-            }
-            if al.rotation != 0 {
-                s.push_str(&format!(" textRotation=\"{}\"", al.rotation));
-            }
-            if al.wrap {
-                s.push_str(" wrapText=\"1\"");
-            }
-            if al.indent > 0 {
-                s.push_str(&format!(" indent=\"{}\"", al.indent));
-            }
-            if al.shrink {
-                s.push_str(" shrinkToFit=\"1\"");
-            }
-            if al.reading_order != 0 {
-                s.push_str(&format!(" readingOrder=\"{}\"", al.reading_order));
-            }
-            s.push_str(&attrs_text(&al.extra));
-            s.push_str("/>");
-            inner.push_str(&s);
-        }
-        if x.locked.is_some() || x.hidden.is_some() {
-            inner.push_str("<protection");
-            if let Some(l) = x.locked {
-                inner.push_str(&format!(" locked=\"{}\"", u8::from(l)));
-            }
-            if let Some(h) = x.hidden {
-                inner.push_str(&format!(" hidden=\"{}\"", u8::from(h)));
-            }
-            inner.push_str("/>");
-        }
-        if inner.is_empty() {
-            out.push_str(&a);
-            out.push_str("/>");
-        } else {
-            out.push_str(&a);
-            out.push('>');
-            out.push_str(&inner);
-            out.push_str("</xf>");
-        }
+        out.push_str(&xf_xml(styles, x, true));
     }
     out.push_str("</cellXfs>");
-    out.push_str(styles.raw_cell_styles.as_deref().unwrap_or("<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>"));
+    out.push_str(&cell_styles_xml(styles));
     out.push_str(&format!("<dxfs count=\"{}\">", styles.dxfs.len()));
     for d in &styles.dxfs {
         match &d.raw {
@@ -1647,6 +1578,118 @@ fn styles_xml(styles: &Styles) -> String {
         out.push_str(e);
     }
     out.push_str("</styleSheet>");
+    out
+}
+
+/// One `xf` of `cellXfs` (`cell_xf`) or `cellStyleXfs`. A cell format names its cell style with `xfId`,
+/// and when the file gave no `apply` flags they are worked out as Excel writes them: a flag is on when the
+/// format's value for that group differs from its style's. A style's own format has no flags unless the
+/// file had them, which means every group is part of the style.
+fn xf_xml(styles: &Styles, x: &Xf, cell_xf: bool) -> String {
+    let mut a = format!(
+        "<xf numFmtId=\"{}\" fontId=\"{}\" fillId=\"{}\" borderId=\"{}\"",
+        x.num_fmt, x.font, x.fill, x.border
+    );
+    if cell_xf {
+        a.push_str(&format!(" xfId=\"{}\"", x.xf_id));
+    }
+    if !x.applies.is_empty() {
+        a.push_str(&attrs_text(&x.applies));
+    } else if cell_xf {
+        let base = styles.style_xfs.get(x.xf_id as usize).cloned().unwrap_or_default();
+        for (flag, on) in [
+            ("applyNumberFormat", x.num_fmt != base.num_fmt),
+            ("applyFont", x.font != base.font),
+            ("applyFill", x.fill != base.fill),
+            ("applyBorder", x.border != base.border),
+            ("applyAlignment", x.align != base.align),
+            ("applyProtection", (x.locked, x.hidden) != (base.locked, base.hidden)),
+        ] {
+            if on {
+                a.push_str(&format!(" {flag}=\"1\""));
+            }
+        }
+    }
+    if x.quote_prefix {
+        a.push_str(" quotePrefix=\"1\"");
+    }
+    if x.pivot_button {
+        a.push_str(" pivotButton=\"1\"");
+    }
+    let mut inner = String::new();
+    if !x.align.is_default() {
+        let al = &x.align;
+        let mut s = String::from("<alignment");
+        if let Some(h) = &al.horizontal {
+            s.push_str(&format!(" horizontal=\"{}\"", escape(h)));
+        }
+        if let Some(v) = &al.vertical {
+            s.push_str(&format!(" vertical=\"{}\"", escape(v)));
+        }
+        if al.rotation != 0 {
+            s.push_str(&format!(" textRotation=\"{}\"", al.rotation));
+        }
+        if al.wrap {
+            s.push_str(" wrapText=\"1\"");
+        }
+        if al.indent > 0 {
+            s.push_str(&format!(" indent=\"{}\"", al.indent));
+        }
+        if al.shrink {
+            s.push_str(" shrinkToFit=\"1\"");
+        }
+        if al.reading_order != 0 {
+            s.push_str(&format!(" readingOrder=\"{}\"", al.reading_order));
+        }
+        s.push_str(&attrs_text(&al.extra));
+        s.push_str("/>");
+        inner.push_str(&s);
+    }
+    if x.locked.is_some() || x.hidden.is_some() {
+        inner.push_str("<protection");
+        if let Some(l) = x.locked {
+            inner.push_str(&format!(" locked=\"{}\"", u8::from(l)));
+        }
+        if let Some(h) = x.hidden {
+            inner.push_str(&format!(" hidden=\"{}\"", u8::from(h)));
+        }
+        inner.push_str("/>");
+    }
+    if inner.is_empty() {
+        a.push_str("/>");
+    } else {
+        a.push('>');
+        a.push_str(&inner);
+        a.push_str("</xf>");
+    }
+    a
+}
+
+/// `cellStyles`: the names of the cell styles, with the attributes Excel writes in its order.
+fn cell_styles_xml(styles: &Styles) -> String {
+    let mut out = format!("<cellStyles count=\"{}\">", styles.cell_styles.len());
+    for s in &styles.cell_styles {
+        let mut a = format!(" name=\"{}\" xfId=\"{}\"", escape(&s.name), s.xf_id);
+        if let Some(id) = s.builtin_id {
+            a.push_str(&format!(" builtinId=\"{id}\""));
+        }
+        if let Some(level) = s.i_level {
+            a.push_str(&format!(" iLevel=\"{level}\""));
+        }
+        if s.hidden {
+            a.push_str(" hidden=\"1\"");
+        }
+        if s.custom_builtin {
+            a.push_str(" customBuiltin=\"1\"");
+        }
+        a.push_str(&attrs_text(&s.other));
+        if s.children.is_empty() {
+            out.push_str(&format!("<cellStyle{a}/>"));
+        } else {
+            out.push_str(&format!("<cellStyle{a}>{}</cellStyle>", s.children));
+        }
+    }
+    out.push_str("</cellStyles>");
     out
 }
 

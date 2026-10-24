@@ -31,6 +31,7 @@ pub mod formula;
 pub mod functions;
 pub mod input;
 pub mod model;
+pub mod protect;
 pub mod numfmt;
 pub mod refshift;
 pub mod styles;

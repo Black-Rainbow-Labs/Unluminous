@@ -323,6 +323,45 @@ pub struct Xf {
     pub applies: Vec<(String, String)>,
 }
 
+/// A named cell style (Home, Cell Styles): a name for one entry of [`Styles::style_xfs`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct CellStyle {
+    pub name: String,
+    /// The index into [`Styles::style_xfs`].
+    pub xf_id: u32,
+    /// Excel's number for a style it ships (Normal is 0, Good 26 and so on), or `None` for a style a person made.
+    pub builtin_id: Option<u32>,
+    /// The outline level of the row and column level styles.
+    pub i_level: Option<u32>,
+    /// Not listed in the gallery. Deleting a built in style hides it.
+    pub hidden: bool,
+    /// A built in style whose definition was changed.
+    pub custom_builtin: bool,
+    /// Other attributes (`xr:uid`), kept.
+    pub other: Vec<(String, String)>,
+    /// Child elements (`extLst`), kept as XML.
+    pub children: String,
+}
+
+impl CellStyle {
+    pub fn normal() -> Self {
+        Self::named("Normal", 0, Some(0))
+    }
+
+    pub fn named(name: &str, xf_id: u32, builtin_id: Option<u32>) -> Self {
+        Self {
+            name: name.to_owned(),
+            xf_id,
+            builtin_id,
+            i_level: None,
+            hidden: false,
+            custom_builtin: false,
+            other: Vec::new(),
+            children: String::new(),
+        }
+    }
+}
+
 /// A differential format, which conditional formats apply over a cell's own.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Dxf {
@@ -348,9 +387,12 @@ pub struct Styles {
     pub borders: Vec<Border>,
     pub xfs: Vec<Xf>,
     pub dxfs: Vec<Dxf>,
-    /// `cellStyleXfs`, `cellStyles`, `tableStyles`, `colors` and `extLst`, kept as XML.
-    pub raw_cell_style_xfs: Option<String>,
-    pub raw_cell_styles: Option<String>,
+    /// `cellStyleXfs`: the formatting each named cell style defines. A cell format names one by its index
+    /// in [`Xf::xf_id`].
+    pub style_xfs: Vec<Xf>,
+    /// `cellStyles`: the names of the cell styles and the entry of `style_xfs` each one is.
+    pub cell_styles: Vec<CellStyle>,
+    /// `tableStyles`, `colors` and `extLst`, kept as XML.
     pub raw_table_styles: Option<String>,
     pub raw_colors: Option<String>,
     pub raw_ext: Option<String>,
@@ -369,6 +411,8 @@ impl Styles {
             fills: vec![Fill::none(), Fill { pattern: "gray125".to_owned(), ..Default::default() }],
             borders: vec![Border::default()],
             xfs: vec![Xf::default()],
+            style_xfs: vec![Xf::default()],
+            cell_styles: vec![CellStyle::normal()],
             theme: DEFAULT_THEME.to_vec(),
             ..Default::default()
         }

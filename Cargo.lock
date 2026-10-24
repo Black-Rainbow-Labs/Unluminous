@@ -6756,10 +6756,13 @@ dependencies = [
 name = "unluminous-sheet"
 version = "1.14.2"
 dependencies = [
+ "base64 0.22.1",
  "crc32fast",
  "flate2",
+ "getrandom 0.3.4",
  "roxmltree",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

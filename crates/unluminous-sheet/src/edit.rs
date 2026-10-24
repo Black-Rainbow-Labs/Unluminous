@@ -10,6 +10,13 @@
 
 use std::collections::BTreeMap;
 
+mod cellstyles;
+mod protect;
+mod theme;
+mod whatif;
+
+pub use protect::Guard;
+
 use crate::calc::Engine;
 use crate::coord::{CellRef, Range, MAX_COLS, MAX_ROWS};
 use crate::formula::{self, Axis, Expr, Formula};
@@ -130,6 +137,9 @@ pub struct Session {
     /// The year typing `10/23` means.
     pub this_year: i64,
     seed: u64,
+    /// The edit ranges (sheet, title) whose password was given, so their cells can be edited on a
+    /// protected sheet until it is protected again.
+    edit_unlocked: Vec<(usize, String)>,
 }
 
 const UNDO_LIMIT: usize = 100;
@@ -150,6 +160,7 @@ impl Session {
             now,
             this_year,
             seed: 1,
+            edit_unlocked: Vec::new(),
         }
     }
 
@@ -349,6 +360,7 @@ impl Session {
     pub fn set_value(&mut self, sheet: usize, at: CellRef, value: Value) -> Result<(), String> {
         self.check_sheet(sheet)?;
         self.refuse_array_member(sheet, Range::cell(at))?;
+        self.refuse_locked(sheet, Range::cell(at))?;
         self.remember_cells("Set value", sheet, &[Range::cell(at)], false);
         let s = &mut self.book.sheets[sheet];
         let old = s.cells.get(&(at.row, at.col)).cloned().unwrap_or_default();
@@ -369,6 +381,7 @@ impl Session {
         let mut f = Formula::parse(text).map_err(|e| format!("That formula has a problem: {e}"))?;
         f.dynamic = false;
         f.array = Some(range);
+        self.refuse_locked(sheet, range)?;
         self.remember_cells("Array formula", sheet, &[range], false);
         let s = &mut self.book.sheets[sheet];
         s.array_formulas.retain(|r| !r.intersects(&range));
@@ -394,7 +407,12 @@ impl Session {
             if what != Clear::Formats {
                 self.refuse_array_member(sheet, *r)?;
             }
-            self.refuse_locked(sheet, *r)?;
+            match what {
+                Clear::Formats => self.allowed(sheet, Guard::Format)?,
+                Clear::Notes => self.allowed(sheet, Guard::Objects)?,
+                Clear::Links => self.allowed(sheet, Guard::Hyperlink(*r))?,
+                _ => self.refuse_locked(sheet, *r)?,
+            }
         }
         match what {
             Clear::Notes => {
@@ -470,6 +488,7 @@ impl Session {
         change: &StyleChange,
     ) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::Format)?;
         self.remember_cells("Format", sheet, ranges, true);
         // Whole rows and columns change the row and column formats rather than every cell.
         for range in ranges {
@@ -526,6 +545,14 @@ impl Session {
     /// Insert rows or columns, or cells shifting the rest down or right.
     pub fn insert(&mut self, sheet: usize, range: Range, shift: Shift) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(
+            sheet,
+            match shift {
+                Shift::WholeRows => Guard::InsertRows,
+                Shift::WholeColumns => Guard::InsertColumns,
+                _ => Guard::Forbidden,
+            },
+        )?;
         let (axis, at, count, band) = match shift {
             Shift::WholeRows | Shift::Down => (
                 Axis::Rows,
@@ -553,6 +580,14 @@ impl Session {
     /// Delete rows or columns, or cells shifting the rest up or left.
     pub fn delete(&mut self, sheet: usize, range: Range, shift: Shift) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(
+            sheet,
+            match shift {
+                Shift::WholeRows => Guard::DeleteRows(range),
+                Shift::WholeColumns => Guard::DeleteColumns(range),
+                _ => Guard::Forbidden,
+            },
+        )?;
         let (axis, at, count, band) = match shift {
             Shift::WholeRows | Shift::Up => (
                 Axis::Rows,
@@ -829,6 +864,7 @@ impl Session {
     }
 
     pub fn add_sheet(&mut self, name: Option<&str>, at: Option<usize>) -> Result<usize, String> {
+        self.allow_structure_change()?;
         let name = match name {
             Some(n) => {
                 check_sheet_name(n)?;
@@ -852,6 +888,7 @@ impl Session {
     /// Rename a sheet, rewriting every formula that names it.
     pub fn rename_sheet(&mut self, sheet: usize, name: &str) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allow_structure_change()?;
         check_sheet_name(name)?;
         if self.book.sheet_index(name).is_some_and(|i| i != sheet) {
             return Err(format!("there is already a sheet called {name}"));
@@ -895,6 +932,7 @@ impl Session {
     /// Delete a sheet. Formulas that named it read `#REF!`.
     pub fn delete_sheet(&mut self, sheet: usize) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allow_structure_change()?;
         if self.book.sheets.iter().filter(|s| s.state == Visibility::Visible).count() <= 1
             && self.book.sheets[sheet].state == Visibility::Visible
         {
@@ -949,6 +987,7 @@ impl Session {
     /// Move a sheet to another place among the tabs.
     pub fn move_sheet(&mut self, from: usize, to: usize) -> Result<(), String> {
         self.check_sheet(from)?;
+        self.allow_structure_change()?;
         let to = to.min(self.book.sheets.len() - 1);
         if from == to {
             return Ok(());
@@ -977,6 +1016,7 @@ impl Session {
     /// A copy of a sheet beside it, named `Name (2)`.
     pub fn duplicate_sheet(&mut self, sheet: usize) -> Result<usize, String> {
         self.check_sheet(sheet)?;
+        self.allow_structure_change()?;
         self.remember_whole("Duplicate sheet");
         let mut copy = self.book.sheets[sheet].clone();
         copy.name = (2..)
@@ -1006,6 +1046,7 @@ impl Session {
 
     pub fn set_sheet_visibility(&mut self, sheet: usize, state: Visibility) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allow_structure_change()?;
         if state != Visibility::Visible
             && self
                 .book
@@ -1059,6 +1100,7 @@ impl Session {
         width: Option<f64>,
     ) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::FormatColumns)?;
         self.remember_whole("Column width");
         for col in first..=last {
             self.book.sheets[sheet].edit_column(col, |c| {
@@ -1079,6 +1121,7 @@ impl Session {
         height: Option<f64>,
     ) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::FormatRows)?;
         self.remember_whole("Row height");
         let s = &mut self.book.sheets[sheet];
         for row in first..=last {
@@ -1099,6 +1142,7 @@ impl Session {
         hidden: bool,
     ) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::FormatRows)?;
         self.remember_whole(if hidden { "Hide rows" } else { "Unhide rows" });
         let s = &mut self.book.sheets[sheet];
         for row in first..=last {
@@ -1121,6 +1165,7 @@ impl Session {
         hidden: bool,
     ) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::FormatColumns)?;
         self.remember_whole(if hidden { "Hide columns" } else { "Unhide columns" });
         for col in first..=last {
             self.book.sheets[sheet].edit_column(col, |c| c.hidden = hidden);
@@ -1211,6 +1256,7 @@ impl Session {
 
     pub fn merge(&mut self, sheet: usize, range: Range, center: bool) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::Forbidden)?;
         if range.len() < 2 {
             return Ok(());
         }
@@ -1256,6 +1302,7 @@ impl Session {
 
     pub fn unmerge(&mut self, sheet: usize, range: Range) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::Forbidden)?;
         self.remember_whole("Unmerge cells");
         self.book.sheets[sheet].merges.retain(|m| !m.intersects(&range));
         Ok(())
@@ -1310,6 +1357,11 @@ impl Session {
             ),
         );
         self.refuse_array_member(sheet, target)?;
+        if mode == PasteMode::Formats {
+            self.allowed(sheet, Guard::Format)?;
+        } else {
+            self.allowed(sheet, Guard::Write(&[target]))?;
+        }
         if clip.cut {
             self.remember_whole("Move cells");
             self.move_cells(clip, sheet, target.first);
@@ -1470,6 +1522,7 @@ impl Session {
     /// Fill a range from its first row (or column): Ctrl+D and Ctrl+R, and Fill Up and Left.
     pub fn fill(&mut self, sheet: usize, range: Range, direction: Direction) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::Write(&[range]))?;
         let (source, target) = match direction {
             Direction::Down => (
                 Range::new(range.first, CellRef::new(range.first.row, range.last.col)),
@@ -1521,6 +1574,7 @@ impl Session {
         target: Range,
     ) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::Write(&[target]))?;
         if !target.contains(source.first) || !target.contains(source.last) {
             return Err("the range to fill must contain the cells it starts from".to_owned());
         }
@@ -1610,6 +1664,7 @@ impl Session {
         header: bool,
     ) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::Sort(range))?;
         if keys.is_empty() {
             return Err("sort needs a column to sort by".to_owned());
         }
@@ -1682,6 +1737,7 @@ impl Session {
         header: bool,
     ) -> Result<usize, String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::Forbidden)?;
         let range = clip_to_used(&self.book.sheets[sheet], range);
         let first = range.first.row + u32::from(header);
         self.remember_whole("Remove duplicates");
@@ -1733,6 +1789,7 @@ impl Session {
         delimiter: &str,
     ) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::Forbidden)?;
         if delimiter.is_empty() {
             return Err("text to columns needs a delimiter".to_owned());
         }
@@ -1823,6 +1880,7 @@ impl Session {
         author: &str,
     ) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::Objects)?;
         self.remember_whole(if text.is_some() { "Note" } else { "Delete note" });
         let s = &mut self.book.sheets[sheet];
         match text {
@@ -1845,6 +1903,7 @@ impl Session {
         display: Option<String>,
     ) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::Hyperlink(range))?;
         self.remember_whole(if target.is_some() { "Link" } else { "Remove link" });
         let s = &mut self.book.sheets[sheet];
         s.links.retain(|l| !l.range.intersects(&range));
@@ -1903,6 +1962,7 @@ impl Session {
 
     pub fn add_validation(&mut self, sheet: usize, validation: Validation) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::Forbidden)?;
         self.remember_whole("Data validation");
         let s = &mut self.book.sheets[sheet];
         for v in &mut s.validations {
@@ -1917,6 +1977,7 @@ impl Session {
 
     pub fn clear_validation(&mut self, sheet: usize, range: Range) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::Forbidden)?;
         self.remember_whole("Clear validation");
         let s = &mut self.book.sheets[sheet];
         for v in &mut s.validations {
@@ -2003,6 +2064,7 @@ impl Session {
         mut rule: CfRule,
     ) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::Format)?;
         self.remember_whole("Conditional format");
         let top = self
             .book
@@ -2020,6 +2082,7 @@ impl Session {
 
     pub fn clear_conditional(&mut self, sheet: usize, range: Range) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::Format)?;
         self.remember_whole("Clear rules");
         let s = &mut self.book.sheets[sheet];
         for cf in &mut s.conditional {
@@ -2032,6 +2095,7 @@ impl Session {
     /// Turn the filter buttons on for a range, or off with `None`.
     pub fn set_filter(&mut self, sheet: usize, range: Option<Range>) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::Forbidden)?;
         self.remember_whole(if range.is_some() { "Filter" } else { "Remove filter" });
         let s = &mut self.book.sheets[sheet];
         if let Some(old) = &s.filter {
@@ -2060,6 +2124,7 @@ impl Session {
         criteria: Option<FilterCriteria>,
     ) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::Filter)?;
         let Some(filter) = self.book.sheets[sheet].filter.clone() else {
             return Err("this sheet has no filter".to_owned());
         };
@@ -2141,6 +2206,7 @@ impl Session {
         name: Option<&str>,
     ) -> Result<String, String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::Table)?;
         if self.book.tables.iter().any(|t| t.sheet == sheet && t.range.intersects(&range)) {
             return Err("a table cannot overlap another table".to_owned());
         }
@@ -2222,6 +2288,7 @@ impl Session {
     /// Put a chart on a sheet. It is written as new drawing and chart parts when the workbook is saved.
     pub fn add_chart(&mut self, sheet: usize, chart: Chart) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::Forbidden)?;
         self.remember_whole("Chart");
         self.book.sheets[sheet].charts.push(chart);
         self.modified = true;
@@ -2231,6 +2298,7 @@ impl Session {
     /// Take a chart off a sheet.
     pub fn delete_chart(&mut self, sheet: usize, index: usize) -> Result<(), String> {
         self.check_sheet(sheet)?;
+        self.allowed(sheet, Guard::Objects)?;
         let Some(chart) = self.book.sheets[sheet].charts.get(index) else {
             return Err(format!("there is no chart {} on this sheet", index + 1));
         };
@@ -2338,21 +2406,7 @@ impl Session {
 
     /// A protected sheet refuses changes to its locked cells.
     fn refuse_locked(&self, sheet: usize, range: Range) -> Result<(), String> {
-        let s = &self.book.sheets[sheet];
-        if !s.raw.elements.iter().any(|(n, x)| n == "sheetProtection" && x.contains("sheet=\"1\""))
-        {
-            return Ok(());
-        }
-        for at in range.cells().take(10_000) {
-            let style = s.cell(at).map_or(0, |c| c.style);
-            if self.book.styles.xf(style).locked.unwrap_or(true) {
-                return Err(
-                    "The cell is on a protected sheet. Unprotect the sheet in Excel to change it."
-                        .to_owned(),
-                );
-            }
-        }
-        Ok(())
+        self.allowed(sheet, Guard::Write(&[range]))
     }
 }
 
