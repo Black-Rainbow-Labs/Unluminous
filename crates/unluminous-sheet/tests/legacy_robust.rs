@@ -29,8 +29,15 @@ fn a_workbook_protected_without_a_password_to_open_is_read() {
     let bytes = std::fs::read(legacy_dir().join("02-protection.xls")).unwrap();
     let book = open_bytes("02-protection.xls", &bytes).unwrap();
     assert_eq!(book.sheets.len(), 2);
-    assert!(book.raw.iter().any(|(name, xml)| name == "workbookProtection" && xml.contains("lockStructure")));
-    assert!(book.sheets[0].raw.elements.iter().any(|(name, xml)| name == "sheetProtection" && xml.contains("sheet=\"1\"")));
+    assert!(book
+        .raw
+        .iter()
+        .any(|(name, xml)| name == "workbookProtection" && xml.contains("lockStructure")));
+    assert!(book.sheets[0]
+        .raw
+        .elements
+        .iter()
+        .any(|(name, xml)| name == "sheetProtection" && xml.contains("sheet=\"1\"")));
 }
 
 #[test]
@@ -55,7 +62,8 @@ fn a_binary_file_named_for_another_format_is_read_as_what_it_is() {
 /// `DAMAGE_STEPS` to try more places in each file.
 #[test]
 fn damaged_files_do_not_stop_the_reader() {
-    let places: usize = std::env::var("DAMAGE_STEPS").ok().and_then(|v| v.parse().ok()).unwrap_or(13);
+    let places: usize =
+        std::env::var("DAMAGE_STEPS").ok().and_then(|v| v.parse().ok()).unwrap_or(13);
     for name in [
         "features.xls",
         "features.xlsb",

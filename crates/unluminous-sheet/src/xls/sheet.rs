@@ -514,6 +514,8 @@ fn attach_notes(sheet: &mut Sheet, state: &State) {
         let text = state.text_boxes.get(object).cloned().unwrap_or_default();
         notes.insert((*row, *col), Note { author: author.clone(), text });
     }
+    // The notes are written out again when the sheet is saved as an .xlsx file.
+    sheet.notes_changed = !notes.is_empty();
     sheet.notes = notes;
 }
 

@@ -355,7 +355,7 @@ fn compare_with_original(name: &str, book: &Workbook, source: &Workbook) -> Vec<
                 hidden(theirs)
             ));
         }
-        problems.extend(compare_view_and_features(&label, ours, theirs));
+        problems.extend(compare_view_and_features(&label, (book, ours), (source, theirs)));
         // Excel keeps a threaded comment in an .xlsx file and drops it from the binary file.
         let notes = |s: &Sheet| {
             s.notes
@@ -377,7 +377,11 @@ fn compare_with_original(name: &str, book: &Workbook, source: &Workbook) -> Vec<
 }
 
 /// The view, the validations, the links, the filter, the protection and the outline of a sheet.
-fn compare_view_and_features(label: &str, ours: &Sheet, theirs: &Sheet) -> Vec<String> {
+fn compare_view_and_features(
+    label: &str,
+    (book, ours): (&Workbook, &Sheet),
+    (source, theirs): (&Workbook, &Sheet),
+) -> Vec<String> {
     let mut problems = Vec::new();
     let mut check = |what: &str, a: String, b: String| {
         if a != b {
@@ -388,11 +392,18 @@ fn compare_view_and_features(label: &str, ours: &Sheet, theirs: &Sheet) -> Vec<S
     check("gridlines", ours.show_grid.to_string(), theirs.show_grid.to_string());
     check("tab colour", format!("{:?}", ours.tab_color), format!("{:?}", theirs.tab_color));
     let rows = |s: &Sheet| {
-        s.rows.iter().map(|(&i, r)| (i, r.outline, r.collapsed)).filter(|r| r.1 > 0 || r.2).collect::<Vec<_>>()
+        s.rows
+            .iter()
+            .map(|(&i, r)| (i, r.outline, r.collapsed))
+            .filter(|r| r.1 > 0 || r.2)
+            .collect::<Vec<_>>()
     };
     check("outline rows", format!("{:?}", rows(ours)), format!("{:?}", rows(theirs)));
     let columns = |s: &Sheet| {
-        (0..256).map(|c| (c, s.column(c).map_or((0, false), |i| (i.outline, i.collapsed)))).filter(|(_, o)| o.0 > 0 || o.1).collect::<Vec<_>>()
+        (0..256)
+            .map(|c| (c, s.column(c).map_or((0, false), |i| (i.outline, i.collapsed))))
+            .filter(|(_, o)| o.0 > 0 || o.1)
+            .collect::<Vec<_>>()
     };
     check("outline columns", format!("{:?}", columns(ours)), format!("{:?}", columns(theirs)));
     // The unique identifier Excel gives a validation in an .xlsx file has no place in a binary file.
@@ -415,7 +426,9 @@ fn compare_view_and_features(label: &str, ours: &Sheet, theirs: &Sheet) -> Vec<S
             .iter()
             .map(|l| {
                 let target = match &l.target {
-                    LinkTarget::External(t) => LinkTarget::External(t.trim_start_matches("../").to_owned()),
+                    LinkTarget::External(t) => {
+                        LinkTarget::External(t.trim_start_matches("../").to_owned())
+                    }
                     other => other.clone(),
                 };
                 format!("{:?} {:?} {:?}", l.range, target, l.tooltip)
@@ -427,26 +440,43 @@ fn compare_view_and_features(label: &str, ours: &Sheet, theirs: &Sheet) -> Vec<S
     // The older format has no colour filter and no dynamic date filter, so Excel keeps none of them.
     let filter = |s: &Sheet, old_format: bool| {
         let unsupported = old_format && matches!(s.name.as_str(), "ByColor" | "DateDynamic");
-        s.filter
-            .as_ref()
-            .map(|f| (f.range, f.columns.keys().copied().filter(|_| !unsupported).collect::<Vec<_>>()))
+        s.filter.as_ref().map(|f| {
+            (f.range, f.columns.keys().copied().filter(|_| !unsupported).collect::<Vec<_>>())
+        })
     };
     let old_format = label.contains(".xls ");
-    check("filter", format!("{:?}", filter(ours, old_format)), format!("{:?}", filter(theirs, old_format)));
+    check(
+        "filter",
+        format!("{:?}", filter(ours, old_format)),
+        format!("{:?}", filter(theirs, old_format)),
+    );
     let protection = |s: &Sheet| {
-        s.raw.elements.iter().filter(|(n, _)| n == "sheetProtection").map(|(_, x)| x.clone()).collect::<Vec<_>>()
+        s.raw
+            .elements
+            .iter()
+            .filter(|(n, _)| n == "sheetProtection")
+            .map(|(_, x)| x.clone())
+            .collect::<Vec<_>>()
     };
     // The password of a sheet protected from Excel 2013 on is a hash this format has no place for.
     let plain = |list: Vec<String>| list.into_iter().map(|x| strip_hash(&x)).collect::<Vec<_>>();
-    check("protection", format!("{:?}", plain(protection(ours))), format!("{:?}", plain(protection(theirs))));
-    problems.extend(compare_conditional_formats(label, ours, theirs));
+    check(
+        "protection",
+        format!("{:?}", plain(protection(ours))),
+        format!("{:?}", plain(protection(theirs))),
+    );
+    problems.extend(compare_conditional_formats(label, (book, ours), (source, theirs)));
     problems
 }
 
 /// The conditional formats: which cells, and for the rules both formats can say the same way, the rule.
 /// A rule the older format can only say as a formula (a date period, a text match, a top ten) is a
 /// formula here, so only its range and priority are compared.
-fn compare_conditional_formats(label: &str, ours: &Sheet, theirs: &Sheet) -> Vec<String> {
+fn compare_conditional_formats(
+    label: &str,
+    (book, ours): (&Workbook, &Sheet),
+    (source, theirs): (&Workbook, &Sheet),
+) -> Vec<String> {
     let mut problems = Vec::new();
     let rules = |s: &Sheet| {
         s.conditional
@@ -458,7 +488,13 @@ fn compare_conditional_formats(label: &str, ours: &Sheet, theirs: &Sheet) -> Vec
     a.sort_by_key(|r| r.1.priority);
     b.sort_by_key(|r| r.1.priority);
     if a.len() != b.len() {
-        problems.push(format!("{label}: {} conditional format rules {:?}, original {} {:?}", a.len(), a.iter().map(|r| (r.1.priority, r.1.kind.clone())).collect::<Vec<_>>(), b.len(), b.iter().map(|r| (r.1.priority, r.1.kind.clone())).collect::<Vec<_>>()));
+        problems.push(format!(
+            "{label}: {} conditional format rules {:?}, original {} {:?}",
+            a.len(),
+            a.iter().map(|r| (r.1.priority, r.1.kind.clone())).collect::<Vec<_>>(),
+            b.len(),
+            b.iter().map(|r| (r.1.priority, r.1.kind.clone())).collect::<Vec<_>>()
+        ));
         return problems;
     }
     for ((ours_ranges, ours_rule), (their_ranges, their_rule)) in a.iter().zip(&b) {
@@ -469,7 +505,10 @@ fn compare_conditional_formats(label: &str, ours: &Sheet, theirs: &Sheet) -> Vec
         if ours_rule.priority != their_rule.priority {
             problems.push(format!("{at}: priority {}", ours_rule.priority));
         }
-        let comparable = matches!(their_rule.kind.as_str(), "cellIs" | "expression" | "colorScale" | "dataBar" | "iconSet");
+        let comparable = matches!(
+            their_rule.kind.as_str(),
+            "cellIs" | "expression" | "colorScale" | "dataBar" | "iconSet"
+        );
         if !comparable {
             continue;
         }
@@ -477,10 +516,41 @@ fn compare_conditional_formats(label: &str, ours: &Sheet, theirs: &Sheet) -> Vec
             let formulas: Vec<String> = r.formulas.iter().map(|f| normal_formula(f)).collect();
             // A data bar keeps the settings of Excel 2010 in an extension this version does not read.
             let kept = if r.kind == "iconSet" { r.raw_children.as_str() } else { "" };
-            format!("{} {:?} {formulas:?} {:?} {:?} {kept}", r.kind, r.operator, r.color_scale, r.data_bar)
+            format!(
+                "{} {:?} {formulas:?} {:?} {:?} {kept}",
+                r.kind, r.operator, r.color_scale, r.data_bar
+            )
         };
         if describe(ours_rule) != describe(their_rule) {
-            problems.push(format!("{at}: {} but the original has {}", describe(ours_rule), describe(their_rule)));
+            problems.push(format!(
+                "{at}: {} but the original has {}",
+                describe(ours_rule),
+                describe(their_rule)
+            ));
+        }
+        // The older format holds a colour as the nearest of 56, so its colours are not compared.
+        let dxf = |book: &Workbook, r: &unluminous_sheet::model::CfRule| {
+            let theme = &book.styles.theme;
+            let rgb = |c: Option<unluminous_sheet::styles::Color>| {
+                c.and_then(|c| c.resolve(theme)).filter(|_| !label.contains(".xls "))
+            };
+            r.dxf.and_then(|i| book.styles.dxfs.get(i as usize)).map(|d| {
+                format!(
+                    "font {:?} bold {:?} italic {:?} fill {:?} format {:?}",
+                    rgb(d.font_color),
+                    d.bold,
+                    d.italic,
+                    rgb(d.fill),
+                    d.num_fmt
+                )
+            })
+        };
+        if dxf(book, ours_rule) != dxf(source, their_rule) {
+            problems.push(format!(
+                "{at}: looks {:?}, original {:?}",
+                dxf(book, ours_rule),
+                dxf(source, their_rule)
+            ));
         }
         // The older format keeps no stop flag with a rule it writes in the older kind.
         if ours_rule.stop != their_rule.stop && !label.contains(".xls ") {
@@ -494,7 +564,9 @@ fn compare_conditional_formats(label: &str, ours: &Sheet, theirs: &Sheet) -> Vec
 fn strip_hash(xml: &str) -> String {
     xml.split(' ')
         .filter(|part| {
-            !["algorithmName", "hashValue", "saltValue", "spinCount", "password"].iter().any(|k| part.starts_with(k))
+            !["algorithmName", "hashValue", "saltValue", "spinCount", "password"]
+                .iter()
+                .any(|k| part.starts_with(k))
         })
         .collect::<Vec<_>>()
         .join(" ")

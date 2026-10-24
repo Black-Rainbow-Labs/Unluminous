@@ -869,3 +869,191 @@ fn escape_column(name: &str) -> String {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn text(dialect: Dialect, rgce: &[u8], rgcb: &[u8], env: &Env, origin: Origin) -> String {
+        match decode(dialect, rgce, rgcb, env, origin).unwrap() {
+            Decoded::Text(t) => t,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    fn plain(rgce: &[u8]) -> String {
+        text(Dialect::Biff8, rgce, &[], &Env::default(), Origin::default())
+    }
+
+    #[test]
+    fn operators_keep_the_order_the_tokens_give_them() {
+        // 1+2*3
+        assert_eq!(plain(&[0x1E, 1, 0, 0x1E, 2, 0, 0x1E, 3, 0, 0x05, 0x03]), "1+2*3");
+        // (1+2)*3, with the parenthesis token
+        assert_eq!(plain(&[0x1E, 1, 0, 0x1E, 2, 0, 0x03, 0x15, 0x1E, 3, 0, 0x05]), "(1+2)*3");
+        // -4%
+        assert_eq!(plain(&[0x1E, 4, 0, 0x14, 0x13]), "-4%");
+    }
+
+    #[test]
+    fn greater_than_and_greater_or_equal_are_not_swapped() {
+        assert_eq!(plain(&[0x1E, 1, 0, 0x1E, 2, 0, 0x0C]), "1>=2");
+        assert_eq!(plain(&[0x1E, 1, 0, 0x1E, 2, 0, 0x0D]), "1>2");
+        assert_eq!(plain(&[0x1E, 1, 0, 0x1E, 2, 0, 0x0E]), "1<>2");
+    }
+
+    #[test]
+    fn a_reference_is_absolute_unless_its_flags_say_it_is_relative() {
+        // $B$2, then B2, then $B2, with the column flag 0x4000 and the row flag 0x8000.
+        assert_eq!(plain(&[0x24, 1, 0, 1, 0]), "$B$2");
+        assert_eq!(plain(&[0x24, 1, 0, 1, 0xC0]), "B2");
+        assert_eq!(plain(&[0x24, 1, 0, 1, 0x80]), "$B2");
+    }
+
+    #[test]
+    fn whole_columns_and_whole_rows_are_written_the_short_way() {
+        // $A:$C
+        assert_eq!(plain(&[0x25, 0, 0, 0xFF, 0xFF, 0, 0, 2, 0]), "$A:$C");
+        // $2:$4
+        assert_eq!(plain(&[0x25, 1, 0, 3, 0, 0, 0, 0xFF, 0]), "$2:$4");
+    }
+
+    #[test]
+    fn a_function_takes_the_arguments_the_count_says_and_a_missing_argument_is_empty() {
+        // IF(A1,,2): ptgFuncVar with three arguments and function number 1.
+        let tokens = [0x24, 0, 0, 0, 0xC0, 0x16, 0x1E, 2, 0, 0x42, 3, 1, 0];
+        assert_eq!(plain(&tokens), "IF(A1,,2)");
+        // PI(): ptgFunc with no arguments.
+        assert_eq!(plain(&[0x21, 19, 0]), "PI()");
+    }
+
+    #[test]
+    fn a_string_doubles_its_quotes_and_reads_wide_characters() {
+        assert_eq!(plain(&[0x17, 3, 0, b'a', b'"', b'b']), "\"a\"\"b\"");
+        assert_eq!(plain(&[0x17, 1, 1, 0xE9, 0x00]), "\"\u{e9}\"");
+    }
+
+    #[test]
+    fn a_sheet_name_is_quoted_when_it_needs_it_and_a_range_of_sheets_has_one_prefix() {
+        let sheets = vec!["Data".to_owned(), "Two words".to_owned(), "Last".to_owned()];
+        let xti = [
+            Xti { book: 0, first: 0, last: 0 },
+            Xti { book: 0, first: 1, last: 1 },
+            Xti { book: 0, first: 0, last: 2 },
+        ];
+        let books = [SupBook::This];
+        let env = Env { sheets: &sheets, xti: &xti, supbooks: &books, ..Default::default() };
+        let one = |ixti: u8| [0x3A, ixti, 0, 0, 0, 0, 0xC0];
+        assert_eq!(text(Dialect::Biff8, &one(0), &[], &env, Origin::default()), "Data!A1");
+        assert_eq!(text(Dialect::Biff8, &one(1), &[], &env, Origin::default()), "'Two words'!A1");
+        assert_eq!(text(Dialect::Biff8, &one(2), &[], &env, Origin::default()), "Data:Last!A1");
+    }
+
+    #[test]
+    fn a_relative_token_is_measured_from_the_cell_it_is_in() {
+        // ptgRefN one row up and one column left: row offset -1, column offset -1, both relative.
+        let tokens = [0x2C, 0xFF, 0xFF, 0xFF, 0xC0];
+        let origin = Origin { row: 2, col: 2 };
+        assert_eq!(text(Dialect::Biff8, &tokens, &[], &Env::default(), origin), "B2");
+        let origin = Origin { row: 10, col: 5 };
+        assert_eq!(text(Dialect::Biff8, &tokens, &[], &Env::default(), origin), "E10");
+    }
+
+    #[test]
+    fn an_array_constant_is_read_from_the_data_after_the_tokens() {
+        // {1,"a";TRUE,#N/A}: 2 columns and 2 rows, the first value a number.
+        let mut extra = vec![1, 1, 0];
+        extra.push(1);
+        extra.extend(1f64.to_le_bytes());
+        extra.extend([2, 1, 0, 0, b'a']);
+        extra.extend([4, 1, 0, 0, 0, 0, 0, 0, 0]);
+        extra.extend([0x10, 0x2A, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(
+            text(
+                Dialect::Biff8,
+                &[0x20, 0, 0, 0, 0, 0, 0, 0],
+                &extra,
+                &Env::default(),
+                Origin::default()
+            ),
+            "{1,\"a\";TRUE,#N/A}"
+        );
+    }
+
+    #[test]
+    fn the_binary_workbook_format_has_wider_rows_and_columns() {
+        // A reference to XFD1048576 with nothing relative: the row is 32 bits and the column 14.
+        let mut tokens = vec![0x24];
+        tokens.extend(1_048_575u32.to_le_bytes());
+        tokens.extend(0x3FFFu16.to_le_bytes());
+        assert_eq!(
+            text(Dialect::Biff12, &tokens, &[], &Env::default(), Origin::default()),
+            "$XFD$1048576"
+        );
+        // Whole columns: the last row of the sheet.
+        let mut area = vec![0x25];
+        area.extend(0u32.to_le_bytes());
+        area.extend(1_048_575u32.to_le_bytes());
+        area.extend(0u16.to_le_bytes());
+        area.extend(1u16.to_le_bytes());
+        assert_eq!(text(Dialect::Biff12, &area, &[], &Env::default(), Origin::default()), "$A:$B");
+    }
+
+    #[test]
+    fn a_shared_or_array_formula_stands_for_the_formula_stored_elsewhere() {
+        assert_eq!(
+            decode(Dialect::Biff8, &[0x01, 5, 0, 3, 0], &[], &Env::default(), Origin::default())
+                .unwrap(),
+            Decoded::Exp { row: 5, col: 3 }
+        );
+    }
+
+    #[test]
+    fn a_token_this_version_does_not_know_is_an_error_and_not_a_guess() {
+        assert!(decode(Dialect::Biff8, &[0x1A], &[], &Env::default(), Origin::default()).is_err());
+        assert!(
+            decode(Dialect::Biff8, &[0x1E, 1], &[], &Env::default(), Origin::default()).is_err()
+        );
+        // An operator with nothing to work on.
+        assert!(decode(Dialect::Biff8, &[0x03], &[], &Env::default(), Origin::default()).is_err());
+    }
+
+    #[test]
+    fn a_function_added_after_the_format_is_called_by_its_name() {
+        let names = vec!["_xlfn.IFS".to_owned()];
+        let env = Env { names: &names, ..Default::default() };
+        // The name, an argument, and the user function call: ptgName 1, ptgInt 5, ptgFuncVar 2 arguments, 255.
+        let tokens = [0x23, 1, 0, 0, 0, 0x1E, 5, 0, 0x42, 2, 0xFF, 0];
+        assert_eq!(text(Dialect::Biff8, &tokens, &[], &env, Origin::default()), "IFS(5)");
+    }
+
+    #[test]
+    fn a_structured_reference_names_the_table_outside_it_and_leaves_the_name_out_inside() {
+        let tables = [TableInfo {
+            id: 1,
+            name: "Fruit".to_owned(),
+            columns: vec!["Item".to_owned(), "Units".to_owned()],
+            sheet: 0,
+            range: crate::coord::Range::parse("A1:B5").unwrap(),
+        }];
+        let env = Env { sheet: Some(0), tables: &tables, ..Default::default() };
+        // ptgExtend, ptgList; flags 1 (a single column); table 1; column 2 only.
+        let list = |flags: u16| {
+            let mut t = vec![0x18, 0x19, 0, 0];
+            t.extend(flags.to_le_bytes());
+            t.extend(1u32.to_le_bytes());
+            t.extend([1, 0, 1, 0]);
+            t
+        };
+        let inside = Origin { row: 2, col: 0 };
+        let outside = Origin { row: 2, col: 5 };
+        assert_eq!(text(Dialect::Biff8, &list(1), &[], &env, inside), "[Units]");
+        assert_eq!(text(Dialect::Biff8, &list(1), &[], &env, outside), "Fruit[Units]");
+        assert_eq!(text(Dialect::Biff8, &list(0x41), &[], &env, inside), "[@Units]");
+        assert_eq!(text(Dialect::Biff8, &list(0x41), &[], &env, outside), "Fruit[@Units]");
+        assert_eq!(
+            text(Dialect::Biff8, &list(0x11), &[], &env, outside),
+            "Fruit[[#Headers],[Units]]"
+        );
+    }
+}

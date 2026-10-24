@@ -652,7 +652,8 @@ fn formula_less_rule(work: &mut RuleInProgress) -> bool {
             true
         }
         6 | 7 => {
-            work.rule.kind = if work.template == 6 { "duplicateValues" } else { "uniqueValues" }.to_owned();
+            work.rule.kind =
+                if work.template == 6 { "duplicateValues" } else { "uniqueValues" }.to_owned();
             true
         }
         25 => {
@@ -808,7 +809,10 @@ fn other_filter(kind: u16, data: &[u8]) -> Option<String> {
         id::COLOR_FILTER => {
             let dxf = r.u32()?;
             let cell = r.u32()? & 1 != 0;
-            Some(format!("<colorFilter dxfId=\"{dxf}\"{}/>", if cell { "" } else { " cellColor=\"0\"" }))
+            Some(format!(
+                "<colorFilter dxfId=\"{dxf}\"{}/>",
+                if cell { "" } else { " cellColor=\"0\"" }
+            ))
         }
         _ => {
             let kind = r.u32()? as usize;

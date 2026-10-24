@@ -198,7 +198,9 @@ impl Collector {
         let mut blocks = std::mem::take(&mut self.blocks);
         let strays = std::mem::take(&mut self.strays);
         let mut taken: std::collections::HashSet<i32> = strays.iter().map(|r| r.priority).collect();
-        taken.extend(blocks.iter().flat_map(|b| b.rules.iter()).map(|r| r.priority).filter(|&p| p > 0));
+        taken.extend(
+            blocks.iter().flat_map(|b| b.rules.iter()).map(|r| r.priority).filter(|&p| p > 0),
+        );
         let mut next = 1;
         let mut older: Vec<(i32, usize)> = Vec::new();
         for (index, block) in blocks.iter_mut().enumerate() {

@@ -504,7 +504,8 @@ mod tests {
         let mut wrong = Vec::new();
         for (index, (name, count)) in FUNCTIONS.iter().enumerate() {
             let Some(function) = crate::functions::find(name) else { continue };
-            if function.min == function.max && function.max < 128 && *count as usize != function.min {
+            if function.min == function.max && function.max < 128 && *count as usize != function.min
+            {
                 wrong.push(format!("{index} {name} table {count} engine {}", function.min));
             }
         }

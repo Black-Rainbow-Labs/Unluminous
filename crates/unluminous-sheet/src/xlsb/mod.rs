@@ -22,8 +22,8 @@ use crate::model::{Note, Relationship, Sheet, Table, Workbook};
 use crate::styles::{Styles, DEFAULT_THEME};
 use crate::xls::ptg::{decode, Decoded, Dialect, Env, Origin, SupBook, TableInfo};
 use crate::xlsx::{
-    parse_rels, rels_path, resolve, REL_COMMENTS, REL_DRAWING, REL_HYPERLINK, REL_OFFICE_DOCUMENT,
-    REL_SHARED_STRINGS, REL_STYLES, REL_TABLE, REL_THEME, REL_WORKSHEET,
+    parse_rels, rels_path, resolve, REL_COMMENTS, REL_DRAWING, REL_HYPERLINK, REL_NS,
+    REL_OFFICE_DOCUMENT, REL_SHARED_STRINGS, REL_STYLES, REL_TABLE, REL_THEME, REL_WORKSHEET,
 };
 use records::{id, many, split, wide_string, Reader};
 
@@ -87,6 +87,7 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
     book.tables = tables;
     let mut parsed: Vec<String> = vec![workbook_part.clone()];
     parsed.append(&mut parsed_extra);
+    let mut xml_parts: Vec<String> = Vec::new();
     for (index, entry) in info.sheets.iter().enumerate() {
         let mut sheet = Sheet::new(entry.name.clone());
         sheet.state = entry.state;
@@ -106,6 +107,7 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
                     &text,
                     &files,
                     &mut parsed,
+                    &mut xml_parts,
                 );
             }
         }
@@ -118,6 +120,8 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
     for p in [target_of(REL_STYLES), target_of(REL_SHARED_STRINGS)].into_iter().flatten() {
         parsed.push(p);
     }
+    keep_drawings(&mut book, &xml_parts, &files, &text);
+    parsed.extend(xml_parts);
     for entry in &entries {
         if !parsed.contains(&entry.name) {
             book.kept.legacy.push((entry.name.clone(), Arc::new(entry.data.clone())));
@@ -172,8 +176,12 @@ fn read_sheet(
     text: &dyn Fn(&str) -> Option<String>,
     files: &HashMap<&str, &[u8]>,
     parsed: &mut Vec<String>,
+    xml_parts: &mut Vec<String>,
 ) {
     let rels = parse_rels(&text(&rels_path(part)).unwrap_or_default());
+    // The sheet is written out as XML beside the parts it keeps.
+    sheet.raw.part = part.strip_suffix(".bin").map_or(part.to_owned(), |p| format!("{p}.xml"));
+    sheet.raw.namespaces = vec![("r".to_owned(), REL_NS.to_owned())];
     let links: Vec<(String, String)> = rels
         .iter()
         .filter(|r| r.kind == REL_HYPERLINK)
@@ -187,12 +195,19 @@ fn read_sheet(
             let comments_part = resolve(part, &rel.target);
             if let Some(bytes) = files.get(comments_part.as_str()) {
                 sheet.notes = notes(bytes);
+                sheet.notes_changed = !sheet.notes.is_empty();
                 parsed.push(comments_part);
             }
         }
         if rel.kind == REL_DRAWING {
             sheet.charts.extend(crate::xlsx::chart::read_charts(part, &rel.target, text));
             sheet.pictures.extend(crate::xlsx::chart::read_pictures(part, &rel.target, text));
+            sheet.raw.rels.push(rel.clone());
+            sheet
+                .raw
+                .elements
+                .push(("drawing".to_owned(), format!("<drawing r:id=\"{}\"/>", rel.id)));
+            xml_parts.extend(parts_below(&resolve(part, &rel.target), files, text));
         }
     }
 }
@@ -301,4 +316,60 @@ fn read_tables(
         }
     }
     (infos, tables)
+}
+
+/// A part and every part it leads to through relationships, with their relationship parts: a drawing,
+/// its charts and pictures. They are XML and images in an `.xlsb` file as in an `.xlsx` one.
+fn parts_below(
+    first: &str,
+    files: &HashMap<&str, &[u8]>,
+    text: &dyn Fn(&str) -> Option<String>,
+) -> Vec<String> {
+    let mut found: Vec<String> = Vec::new();
+    let mut todo = vec![first.to_owned()];
+    while let Some(part) = todo.pop() {
+        if found.contains(&part) || !files.contains_key(part.as_str()) {
+            continue;
+        }
+        found.push(part.clone());
+        let rels_part = rels_path(&part);
+        if files.contains_key(rels_part.as_str()) {
+            for rel in parse_rels(&text(&rels_part).unwrap_or_default()) {
+                if !rel.external {
+                    todo.push(resolve(&part, &rel.target));
+                }
+            }
+            found.push(rels_part);
+        }
+    }
+    found
+}
+
+/// Keep the drawings, charts and pictures as the parts an `.xlsx` file holds them in, with their content
+/// types, so saving as `.xlsx` brings them along.
+fn keep_drawings(
+    book: &mut Workbook,
+    parts: &[String],
+    files: &HashMap<&str, &[u8]>,
+    text: &dyn Fn(&str) -> Option<String>,
+) {
+    let Some(types) = text("[Content_Types].xml") else { return };
+    let Ok(doc) = roxmltree::Document::parse(&types) else { return };
+    for node in doc.root_element().children().filter(roxmltree::Node::is_element) {
+        let attr = |name: &str| node.attribute(name).unwrap_or("").to_owned();
+        match node.tag_name().name() {
+            "Default" if attr("Extension") != "bin" => {
+                book.kept.defaults.push((attr("Extension"), attr("ContentType")))
+            }
+            "Override" if parts.contains(&attr("PartName").trim_start_matches('/').to_owned()) => {
+                book.kept.overrides.push((attr("PartName"), attr("ContentType")))
+            }
+            _ => {}
+        }
+    }
+    for part in parts {
+        if let Some(data) = files.get(part.as_str()) {
+            book.kept.parts.push((part.clone(), Arc::new(data.to_vec())));
+        }
+    }
 }

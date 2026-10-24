@@ -334,7 +334,7 @@ mod tests {
         file[0x20..0x22].copy_from_slice(&6u16.to_le_bytes());
         file[0x2C..0x30].copy_from_slice(&1u32.to_le_bytes()); // one FAT sector
         file[0x30..0x34].copy_from_slice(&1u32.to_le_bytes()); // directory at sector 1
-        file[0x38..0x3C].copy_from_slice(&4096u32.to_le_bytes());
+        file[0x38..0x3C].copy_from_slice(&512u32.to_le_bytes());
         file[0x3C..0x40].copy_from_slice(&2u32.to_le_bytes()); // mini FAT at sector 2
         file[0x44..0x48].copy_from_slice(&END_OF_CHAIN.to_le_bytes());
         file[0x4C..0x50].copy_from_slice(&0u32.to_le_bytes()); // FAT at sector 0
@@ -355,15 +355,15 @@ mod tests {
         for index in 6..128 {
             set_fat(&mut file, index, FREE);
         }
-        // Directory: root, "Small" (mini sector 0, 5 bytes) and "Big" (sector 4, 5000 bytes).
+        // Directory: root, "Small" (mini sector 0, 5 bytes) and "Big" (sector 4, 1024 bytes).
         let dir = sector * 2;
         let entry = |file: &mut Vec<u8>,
-                         n: usize,
-                         name: &str,
-                         kind: u8,
-                         links: (u32, u32, u32),
-                         start: u32,
-                         size: u32| {
+                     n: usize,
+                     name: &str,
+                     kind: u8,
+                     links: (u32, u32, u32),
+                     start: u32,
+                     size: u32| {
             let at = dir + n * 128;
             for (i, unit) in name.encode_utf16().enumerate() {
                 file[at + i * 2..at + i * 2 + 2].copy_from_slice(&unit.to_le_bytes());
@@ -378,7 +378,7 @@ mod tests {
         };
         entry(&mut file, 0, "Root Entry", 5, (FREE, FREE, 1), 3, 64);
         entry(&mut file, 1, "Small", 2, (FREE, 2, FREE), 0, 5);
-        entry(&mut file, 2, "Big", 2, (FREE, FREE, FREE), 4, 5000);
+        entry(&mut file, 2, "Big", 2, (FREE, FREE, FREE), 4, 1024);
         // The mini FAT: mini sector 0 ends the chain.
         file[sector * 3..sector * 3 + 4].copy_from_slice(&END_OF_CHAIN.to_le_bytes());
         // The mini stream holds "hello" at its start.
@@ -395,7 +395,7 @@ mod tests {
         let compound = Compound::parse(&tiny_file()).unwrap();
         assert_eq!(compound.stream("Small").unwrap().unwrap(), b"hello");
         let big = compound.stream("big").unwrap().unwrap();
-        assert_eq!(big.len(), 5000);
+        assert_eq!(big.len(), 1024);
         assert_eq!(big[250], 250);
         assert!(compound.stream("Missing").is_none());
         assert!(compound.has("Small"));

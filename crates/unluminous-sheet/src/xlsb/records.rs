@@ -45,7 +45,11 @@ pub fn split(bytes: &[u8]) -> Vec<Record<'_>> {
 
 /// Read up to `count` items, stopping at the first that cannot be read. A count in a damaged file can be
 /// billions, and the items it counts cannot be more than the bytes there are.
-pub fn many<T>(count: u32, r: &mut Reader, mut item: impl FnMut(&mut Reader) -> Option<T>) -> Vec<T> {
+pub fn many<T>(
+    count: u32,
+    r: &mut Reader,
+    mut item: impl FnMut(&mut Reader) -> Option<T>,
+) -> Vec<T> {
     let mut out = Vec::new();
     for _ in 0..count {
         match item(r) {
