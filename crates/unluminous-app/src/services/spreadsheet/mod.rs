@@ -18,6 +18,7 @@ pub mod config;
 pub mod display;
 pub mod entry;
 pub mod formula_text;
+pub mod names;
 pub mod verbs;
 pub mod view;
 

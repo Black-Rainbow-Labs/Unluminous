@@ -728,6 +728,7 @@ pub fn typing(ctx: &egui::Context, book: &mut Book, box_id: egui::Id, offered: &
     let mut complete = false;
     let mut toggle_mode = false;
     let mut no_complete = false;
+    let mut arguments_asked = false;
     let typed_more = ctx.input(|i| i.events.iter().any(|e| matches!(e, Event::Text(_))));
     ctx.input_mut(|input| {
         input.events.retain(|event| {
@@ -774,6 +775,10 @@ pub fn typing(ctx: &egui::Context, book: &mut Book, box_id: egui::Id, offered: &
                     toggle_mode = true;
                     false
                 }
+                Key::A if command && !m.shift && formula => {
+                    arguments_asked = true;
+                    false
+                }
                 Key::Backspace | Key::Delete => {
                     no_complete = true;
                     true
@@ -806,6 +811,25 @@ pub fn typing(ctx: &egui::Context, book: &mut Book, box_id: egui::Id, offered: &
         edit.no_complete = true;
     } else if typed_more {
         edit.no_complete = false;
+    }
+    let asked_for = arguments_asked.then(|| formula_text::function_at(&edit.text, caret)).flatten();
+    if let Some((name, _)) = asked_for {
+        {
+            if let Some(function) = unluminous_sheet::functions::find(&name) {
+                let fields: Vec<crate::services::spreadsheet::view::Field> =
+                    crate::services::spreadsheet::verbs::argument_names(function.args)
+                        .iter()
+                        .map(|a| crate::services::spreadsheet::view::Field::argument(a, ""))
+                        .collect();
+                book.view.prompt = Some(Prompt::form(
+                    vec!["arguments".to_owned(), function.name.to_owned()],
+                    format!("Function Arguments: {}", function.name),
+                    fields,
+                ));
+                book.view.edit = None;
+                return Finish::Typing;
+            }
+        }
     }
     if list_open {
         edit.chosen = chosen.rem_euclid(offered.names.len() as i64) as usize;

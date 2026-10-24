@@ -31,6 +31,9 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Option<Resul
         "autocomplete" => setting(sheet, "autocomplete", args),
         "autocorrect" => setting(sheet, "autocorrect", args),
         "custom-list" => custom_list(sheet, args),
+        "insert-function" => insert_function(sheet, args),
+        "arguments" => arguments(sheet, args),
+        "names" => names(sheet, args),
         _ => return None,
     })
 }
@@ -279,6 +282,183 @@ fn custom_list(sheet: &mut Spreadsheet, args: &[String]) -> Result<Answer, Strin
     }
     sheet.write_the_settings()?;
     Ok(Answer::said("Custom lists saved"))
+}
+
+/// `insert-function` opens Insert Function in the panel; `insert-function <NAME>` opens that function's
+/// Function Arguments box, as choosing it in Excel's dialog does.
+fn insert_function(sheet: &mut Spreadsheet, args: &[String]) -> Result<Answer, String> {
+    let book = sheet.current_book()?;
+    let Some(name) = args.first() else {
+        book.view.panel =
+            Some(super::view::PanelPath(vec!["Insert".to_owned(), "Function".to_owned()]));
+        return Ok(Answer::said(String::new()));
+    };
+    let function = unluminous_sheet::functions::find(name)
+        .ok_or_else(|| format!("there is no function `{name}`"))?;
+    let fields: Vec<Field> =
+        argument_names(function.args).iter().map(|a| Field::argument(a, "")).collect();
+    let mut verb = vec!["arguments".to_owned(), function.name.to_owned()];
+    if fields.is_empty() {
+        verb.push(String::new());
+    }
+    let title = format!("Function Arguments: {}", function.name);
+    book.view.prompt = Some(Prompt::form(verb, title, fields));
+    Ok(Answer::said(function.about))
+}
+
+/// A function's argument names as its hint spells them, without the brackets of an optional one.
+pub fn argument_names(args: &str) -> Vec<String> {
+    args.split(", ")
+        .map(|a| a.trim().trim_start_matches('[').trim_end_matches(']').to_owned())
+        .filter(|a| !a.is_empty() && a != "...")
+        .collect()
+}
+
+/// `arguments <NAME> <a> <b> ...`: what OK in Function Arguments does, a formula with those arguments in
+/// the active cell. Empty arguments at the end are left out; one in the middle keeps its comma.
+fn arguments(sheet: &mut Spreadsheet, args: &[String]) -> Result<Answer, String> {
+    let name = args.first().ok_or("arguments needs a function")?;
+    let mut values: Vec<&str> = args[1..].iter().map(|a| a.trim()).collect();
+    while values.last().is_some_and(|v| v.is_empty()) {
+        values.pop();
+    }
+    let formula = format!("={}({})", name.to_ascii_uppercase(), values.join(","));
+    let book = sheet.current_book()?;
+    let at = book.view.cursor;
+    act(sheet, Act::Type { at, text: formula.clone() })?;
+    Ok(Answer::said(formula))
+}
+
+/// `names` lists the defined names; `names new <name> <refers-to> [scope]`, `names edit <name> [scope]
+/// <refers-to>`, `names delete <name> [scope]` change them; `names paste` types one into the active cell,
+/// as F3 does; `names from-selection [top] [left] [bottom] [right]` names cells from their labels.
+fn names(sheet: &mut Spreadsheet, args: &[String]) -> Result<Answer, String> {
+    let book = sheet.current_book()?;
+    match args.first().map(String::as_str) {
+        None => Ok(names_list(book)),
+        Some("new") => {
+            let name = args.get(1).ok_or("names new needs a name")?;
+            let to = args.get(2).ok_or("names new needs what the name refers to")?;
+            let scope = scope_of(book, args.get(3).map(String::as_str))?;
+            book.session.set_name(name, to.trim_start_matches('='), scope)?;
+            book.changed();
+            Ok(Answer::said(format!("{name} is {to}")))
+        }
+        Some("edit") => {
+            let name = args.get(1).ok_or("names edit needs a name")?;
+            let (scope, to) = match args.len() {
+                3 => (None, &args[2]),
+                n if n >= 4 => (scope_of(book, Some(args[2].as_str()))?, &args[3]),
+                _ => return Err("names edit needs a name and what it refers to".to_owned()),
+            };
+            book.session.set_name(name, to.trim_start_matches('='), scope)?;
+            book.changed();
+            Ok(Answer::said(format!("{name} is {to}")))
+        }
+        Some("delete") => {
+            let name = args.get(1).ok_or("names delete needs a name")?;
+            let scope = scope_of(book, args.get(2).map(String::as_str))?;
+            book.session.delete_name(name, scope)?;
+            book.changed();
+            Ok(Answer::said(format!("{name} deleted")))
+        }
+        Some("paste") => paste_name(book, args.get(1)),
+        Some("from-selection") => {
+            let words: Vec<&str> = args[1..].iter().map(String::as_str).collect();
+            let range = book.view.range();
+            let index = book.view.sheet;
+            let sides = [
+                words.contains(&"top"),
+                words.contains(&"left"),
+                words.contains(&"bottom"),
+                words.contains(&"right"),
+            ];
+            let made = super::names::from_selection(&mut book.session, index, range, sides)?;
+            book.changed();
+            Ok(Answer::said(format!("Made {} names", made.len())).with(json!(made)))
+        }
+        Some(other) => {
+            Err(format!("names takes new, edit, delete, paste or from-selection, not `{other}`"))
+        }
+    }
+}
+
+/// Every name a person sees in Name Manager, with what it refers to, its value and its scope.
+fn names_list(book: &Book) -> Answer {
+    let wb = &book.session.book;
+    let list: Vec<serde_json::Value> = wb
+        .names
+        .iter()
+        .filter(|n| !n.name.starts_with("_xl"))
+        .map(|n| {
+            let value = book
+                .session
+                .evaluate_at(
+                    n.scope.unwrap_or(book.view.sheet),
+                    book.view.cursor,
+                    &format!("={}", n.formula),
+                )
+                .map(|v| v.to_text())
+                .unwrap_or_default();
+            json!({
+                "name": n.name,
+                "refers_to": n.formula,
+                "value": value,
+                "scope": n.scope.map_or("workbook".to_owned(), |i| wb.sheets[i].name.clone()),
+                "hidden": n.hidden,
+            })
+        })
+        .collect();
+    Answer::said(format!("{} names", list.len())).with(json!(list))
+}
+
+/// A scope word: `workbook`, a sheet's number from 1, or a sheet's name.
+fn scope_of(book: &Book, word: Option<&str>) -> Result<Option<usize>, String> {
+    match word {
+        None | Some("workbook") => Ok(None),
+        Some(w) => match w.parse::<usize>() {
+            Ok(n) if n >= 1 && n <= book.session.book.sheets.len() => Ok(Some(n - 1)),
+            _ => book
+                .session
+                .book
+                .sheet_index(w)
+                .map(Some)
+                .ok_or_else(|| format!("there is no sheet `{w}`")),
+        },
+    }
+}
+
+/// F3: a name chosen from the list goes into the formula being typed, or the active cell gets `=name`.
+fn paste_name(book: &mut Book, name: Option<&String>) -> Result<Answer, String> {
+    let Some(name) = name else {
+        let options: Vec<(String, String)> = book
+            .session
+            .book
+            .names
+            .iter()
+            .filter(|n| !n.hidden && !n.name.starts_with("_xl"))
+            .map(|n| (n.name.clone(), n.name.clone()))
+            .collect();
+        if options.is_empty() {
+            return Err("There are no names to paste.".to_owned());
+        }
+        let first = options[0].1.clone();
+        let fields = vec![Field::choices("Paste name", "name", options, &first)];
+        book.view.prompt =
+            Some(Prompt::form(vec!["names".into(), "paste".into()], "Paste Name", fields));
+        return Ok(Answer::said(String::new()));
+    };
+    match book.view.edit.as_mut() {
+        Some(edit) => {
+            edit.text.push_str(name);
+            edit.focus = true;
+        }
+        None => {
+            let at = book.view.cursor;
+            book.view.begin_edit(at, format!("={name}"));
+        }
+    }
+    Ok(Answer::said(format!("Pasted {name}")))
 }
 
 /// `autocomplete list`: the entries of the column under the active cell, which Alt+Down opens as a list.

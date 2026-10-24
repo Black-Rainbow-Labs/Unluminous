@@ -442,7 +442,11 @@ pub fn panel(
         egui::FontId::proportional(11.0),
         look.palette.text_dim,
     );
-    let level = catalogue::at_path(root, path).unwrap_or(root);
+    // A path the panel's own levels do not have is looked for in the whole tree, so the panel can show
+    // Insert > Function or Data > Sort as well as its formatting levels.
+    let level = catalogue::at_path(root, path)
+        .or_else(|| catalogue::at_path(everything, path))
+        .unwrap_or(root);
     let mut top = header.bottom() + 4.0;
     // At the first level, a box that finds any command by name.
     let search_id = egui::Id::new("spreadsheet-panel-search");

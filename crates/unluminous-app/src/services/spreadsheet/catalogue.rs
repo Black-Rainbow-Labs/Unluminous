@@ -517,7 +517,7 @@ fn insert() -> Item {
             run("Cells, shifting right", "", "insert right"),
             run("Sheet", "Shift+F11", "sheet add"),
             Item::Line,
-            run("Function", "Shift+F3", "edit ="),
+            insert_function(),
             run("AutoSum", "Alt+=", "autosum"),
             ask("Note...", "Note", "note"),
             ask2("Link...", "Address, or a place such as Sheet2!A1", "Text to show", "link"),
@@ -531,6 +531,29 @@ fn insert() -> Item {
             ),
         ],
     )
+}
+
+/// Insert Function: every function, by category, each opening its Function Arguments box.
+pub fn insert_function() -> Item {
+    let mut categories: Vec<&'static str> = Vec::new();
+    for f in unluminous_sheet::functions::all() {
+        if !categories.contains(&f.category) {
+            categories.push(f.category);
+        }
+    }
+    categories.sort_unstable();
+    let levels = categories
+        .iter()
+        .map(|category| {
+            let items = unluminous_sheet::functions::all()
+                .iter()
+                .filter(|f| f.category == *category)
+                .map(|f| run(f.name, "", &format!("insert-function {}", f.name)))
+                .collect();
+            sub(category, items)
+        })
+        .collect();
+    sub("Function", levels)
 }
 
 fn delete() -> Item {
@@ -555,6 +578,95 @@ fn delete() -> Item {
 fn capitalised(word: &str) -> String {
     let mut c = word.chars();
     c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+}
+
+/// Name Manager: every defined name with what it refers to, each opening to edit or delete it, and new
+/// names made from a box or from the labels beside the selection.
+pub fn names(book: &Book) -> Item {
+    let wb = &book.session.book;
+    let mut items = vec![
+        form(
+            "New name...",
+            "names new",
+            vec![
+                Field::bare("Name", ""),
+                Field::bare("Refers to", &selection_reference(book)),
+                Field::choices("Scope", "scope", scopes(book), "workbook"),
+            ],
+        ),
+        form(
+            "Create from selection...",
+            "names from-selection",
+            vec![
+                Field::check("Top row", "top", true),
+                Field::check("Left column", "left", true),
+                Field::check("Bottom row", "bottom", false),
+                Field::check("Right column", "right", false),
+            ],
+        ),
+        run("Use in formula", "F3", "names paste"),
+        Item::Line,
+    ];
+    for n in wb.names.iter().filter(|n| !n.hidden && !n.name.starts_with("_xl")) {
+        let scope = match n.scope {
+            Some(i) => wb.sheets.get(i).map_or("?".to_owned(), |s| s.name.clone()),
+            None => "workbook".to_owned(),
+        };
+        let label = format!("{}  ={}  ({scope})", n.name, n.formula);
+        let scope_word = n.scope.map_or("workbook".to_owned(), |i| (i + 1).to_string());
+        items.push(sub(
+            &label,
+            vec![
+                Item::Ask {
+                    label: "Edit...".to_owned(),
+                    title: format!("Edit {}", n.name),
+                    field: "Refers to".to_owned(),
+                    words: vec!["names".into(), "edit".into(), n.name.clone(), scope_word.clone()],
+                    second: None,
+                    initial: n.formula.clone(),
+                },
+                Item::Run {
+                    label: "Delete".to_owned(),
+                    keys: "",
+                    words: vec!["names".into(), "delete".into(), n.name.clone(), scope_word],
+                    checked: false,
+                },
+            ],
+        ));
+    }
+    sub("Names", items)
+}
+
+/// The selection written as a name refers to it: `Sheet1!$A$1:$B$4`.
+fn selection_reference(book: &Book) -> String {
+    let r = book.view.range();
+    let a = |c: unluminous_sheet::coord::CellRef| {
+        format!("${}${}", unluminous_sheet::coord::column_name(c.col), c.row + 1)
+    };
+    let area = if r.len() == 1 { a(r.first) } else { format!("{}:{}", a(r.first), a(r.last)) };
+    let sheet = &book.session.book.sheets[book.view.sheet].name;
+    format!("{}!{area}", unluminous_sheet::formula::print::sheet_name(sheet))
+}
+
+/// The scopes a name can have: the workbook, or one sheet by its number.
+fn scopes(book: &Book) -> Vec<(String, String)> {
+    let mut out = vec![("Workbook".to_owned(), "workbook".to_owned())];
+    for (i, s) in book.session.book.sheets.iter().enumerate() {
+        out.push((s.name.clone(), (i + 1).to_string()));
+    }
+    out
+}
+
+/// The Formulas level: functions, names, auditing and calculation, as Excel's Formulas tab groups them.
+pub fn formulas(book: &Book) -> Item {
+    sub(
+        "Formulas",
+        vec![
+            insert_function(),
+            run("AutoSum", "Alt+=", "autosum"),
+            names(book),
+        ],
+    )
 }
 
 /// The Format panel's first level.
@@ -660,6 +772,7 @@ pub fn everything(book: &Book) -> Vec<Item> {
         ),
         insert(),
         delete(),
+        formulas(book),
         sub(
             "Format",
             vec![

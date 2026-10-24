@@ -112,6 +112,9 @@ pub struct Field {
     pub value: String,
     /// The value goes into the command alone, without its key in front.
     pub positional: bool,
+    /// The value goes into the command even when it is empty, so the fields after it keep their places,
+    /// as a function's arguments do.
+    pub always: bool,
 }
 
 impl Field {
@@ -122,7 +125,13 @@ impl Field {
             kind: FieldKind::Text,
             value: value.to_owned(),
             positional: false,
+            always: false,
         }
+    }
+
+    /// A text field that keeps its place in the command even when it is empty.
+    pub fn argument(label: &str, value: &str) -> Field {
+        Field { always: true, ..Field::bare(label, value) }
     }
 
     /// A text field whose value goes into the command with no key in front.
@@ -142,6 +151,19 @@ impl Field {
             ),
             value: value.to_owned(),
             positional: true,
+            always: false,
+        }
+    }
+
+    /// A choice whose options are made at run time, such as the sheets of the workbook.
+    pub fn choices(label: &str, key: &str, options: Vec<(String, String)>, value: &str) -> Field {
+        Field {
+            label: label.to_owned(),
+            key: key.to_owned(),
+            kind: FieldKind::Choice(options),
+            value: value.to_owned(),
+            positional: true,
+            always: false,
         }
     }
 
@@ -152,6 +174,7 @@ impl Field {
             kind: FieldKind::Check,
             value: if on { "on".to_owned() } else { String::new() },
             positional: false,
+            always: false,
         }
     }
 
@@ -174,7 +197,7 @@ impl Field {
             }
             FieldKind::Text => {
                 let value = self.value.trim();
-                if value.is_empty() {
+                if value.is_empty() && !self.always {
                     return;
                 }
                 if !self.positional {
@@ -385,6 +408,22 @@ impl View {
         self.anchor = CellRef::new(last, MAX_COLS - 1);
         self.cursor = CellRef::new(first, 0);
         self.extra.clear();
+    }
+
+    /// Begin typing into a cell with some text, as typing over it does.
+    pub fn begin_edit(&mut self, at: CellRef, text: String) {
+        self.edit = Some(Edit {
+            sheet: self.sheet,
+            at,
+            text,
+            typed: true,
+            in_bar: false,
+            pointing: None,
+            focus: true,
+            caret: None,
+            chosen: 0,
+            no_complete: true,
+        });
     }
 
     /// Move the active cell, keeping the anchor when the range is being extended.
