@@ -380,7 +380,7 @@ fn lookup(ctx: &mut Ctx, args: &[Expr]) -> Val {
     }
 }
 
-//// Whether the match and search modes of XLOOKUP and XMATCH are ones Excel has, and not wildcards in a
+/// Whether the match and search modes of XLOOKUP and XMATCH are ones Excel has, and not wildcards in a
 /// binary search, which it refuses.
 fn modes_are_valid(match_mode: i64, search_mode: i64) -> bool {
     matches!(match_mode, -1..=2)

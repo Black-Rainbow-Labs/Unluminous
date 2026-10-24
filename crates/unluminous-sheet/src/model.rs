@@ -622,6 +622,16 @@ impl Workbook {
         }
     }
 
+    /// A number as a cell with this style stores it under precision as displayed: rounded to what its
+    /// number format shows.
+    pub fn shown_number(&self, style: u32, n: f64, date1904: bool) -> f64 {
+        let code = self.styles.format_code(style);
+        if code == "General" {
+            return n;
+        }
+        crate::numfmt::Format::parse(&code).shown_value(n, date1904)
+    }
+
     pub fn sheet_index(&self, name: &str) -> Option<usize> {
         self.sheets.iter().position(|sheet| sheet.name.eq_ignore_ascii_case(name))
     }

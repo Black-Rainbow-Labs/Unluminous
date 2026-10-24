@@ -10,7 +10,18 @@
 use std::sync::Arc;
 
 use crate::dates;
-use crate::value::{significant_digits, ErrorKind, Value};
+use crate::functions::math::{round_to, Rounding};
+use crate::value::{round_significant, significant_digits, ErrorKind, Value};
+
+/// How many digit placeholders a scientific section has after its exponent mark.
+fn exponent_digits(section: &Section) -> usize {
+    section
+        .tokens
+        .iter()
+        .skip_while(|t| !matches!(t, Token::Exponent { .. }))
+        .filter(|t| matches!(t, Token::Digit(_)))
+        .count()
+}
 
 /// A value shown with a format.
 #[derive(Debug, Clone, PartialEq)]
@@ -129,6 +140,76 @@ impl Format {
                 .tokens
                 .iter()
                 .any(|t| matches!(t, Token::Digit(_) | Token::General))
+    }
+
+    /// The number a cell stores with precision as displayed: the value rounded to the digits this format
+    /// shows. General, text, date and time formats keep the number as it is.
+    pub fn shown_value(&self, n: f64, date1904: bool) -> f64 {
+        if !n.is_finite() {
+            return n;
+        }
+        let (section, _) = self.choose(n);
+        let has = |f: fn(&Token) -> bool| section.tokens.iter().any(f);
+        if section.is_date || has(|t| matches!(t, Token::General | Token::Text)) {
+            return n;
+        }
+        if !has(|t| matches!(t, Token::Digit(_))) {
+            return n;
+        }
+        if has(|t| matches!(t, Token::Slash)) {
+            return self.shown_fraction(n, date1904);
+        }
+        if has(|t| matches!(t, Token::Exponent { .. })) {
+            let digits = section.tokens.iter().filter(|t| matches!(t, Token::Digit(_))).count();
+            let mantissa = digits.saturating_sub(exponent_digits(section));
+            return round_significant(n, mantissa.max(1) as i32);
+        }
+        let decimals = section
+            .tokens
+            .iter()
+            .skip_while(|t| !matches!(t, Token::Point))
+            .filter(|t| matches!(t, Token::Digit(_)))
+            .count();
+        let shift = 100f64.powi(section.percent as i32) / 1000f64.powi(section.scale as i32);
+        let rounded = round_to(n * shift, decimals as f64, Rounding::Half);
+        round_significant(rounded / shift, 15)
+    }
+
+    /// A number shown as a fraction is stored as the fraction: what its rendering says.
+    fn shown_fraction(&self, n: f64, date1904: bool) -> f64 {
+        let text = self.render_number(n, date1904, 11).text;
+        let text = text.trim();
+        let (negative, text) = match text.strip_prefix('-') {
+            Some(rest) => (true, rest.trim()),
+            None => (false, text),
+        };
+        let mut parts = text.split_whitespace();
+        let (first, second) = (parts.next(), parts.next());
+        let (whole, fraction) = match (first, second) {
+            (Some(w), Some(f)) => (w.parse::<f64>().ok(), f),
+            (Some(f), None) => (Some(0.0), f),
+            _ => return n,
+        };
+        let Some((top, bottom)) = fraction.split_once('/') else {
+            return first.and_then(|w| w.parse::<f64>().ok()).map_or(n, |w| {
+                if negative {
+                    -w
+                } else {
+                    w
+                }
+            });
+        };
+        match (whole, top.trim().parse::<f64>(), bottom.trim().parse::<f64>()) {
+            (Some(w), Ok(t), Ok(b)) if b != 0.0 => {
+                let value = w + t / b;
+                if negative {
+                    -value
+                } else {
+                    value
+                }
+            }
+            _ => n,
+        }
     }
 
     /// Show a value. `width` is how many characters General may use, 11 for a standard column.

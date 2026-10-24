@@ -150,7 +150,7 @@ fn decorated(text: &str, sign_allowed: bool) -> Option<Found> {
     let mut rest = text;
     loop {
         rest = rest.trim_start_matches(' ');
-        let Some(first) = rest.chars().next() else { return None };
+        let first = rest.chars().next()?;
         match first {
             '+' | '-' if sign_allowed && !marks.signed => {
                 marks.signed = true;
@@ -493,7 +493,7 @@ fn seconds_of(text: &str) -> Option<f64> {
     text.parse().ok()
 }
 
-//// A piece of a date: a run of digits or a run of letters.
+/// A piece of a date: a run of digits or a run of letters.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Field<'a> {
     Number(&'a str),

@@ -214,14 +214,7 @@ pub const FUNCTIONS: &[Function] = &[
             number(tails * (1.0 - t_cdf(x, df)))
         },
     ),
-    s(
-        "T.INV",
-        2,
-        2,
-        "probability, deg_freedom",
-        "The inverse of Student's t distribution.",
-        t_inv,
-    ),
+    s("T.INV", 2, 2, "probability, deg_freedom", "The inverse of Student's t distribution.", t_inv),
     s(
         "T.INV.2T",
         2,

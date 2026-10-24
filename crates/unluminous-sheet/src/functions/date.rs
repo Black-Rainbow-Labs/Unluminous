@@ -499,6 +499,16 @@ fn yearfrac(s1: f64, s2: f64, basis: i64, date1904: bool) -> Result<f64, ErrorKi
     })
 }
 
+/// The serial a date or time written as text stands for. A number is not text, so it is not a date.
+fn date_time_text(ctx: &Ctx, value: &Value) -> Result<f64, ErrorKind> {
+    match value {
+        Value::Text(t) => {
+            crate::input::date_time_from_text(t, ctx.date1904()).ok_or(ErrorKind::Value)
+        }
+        _ => Err(ErrorKind::Value),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::functions::testing::check;
@@ -530,15 +540,5 @@ mod tests {
             ("YEARFRAC(DATE(2026,1,1),DATE(2026,7,1))", "0.5"),
             ("DATEVALUE(\"10/23/2026\")", "46318"),
         ]);
-    }
-}
-
-/// The serial a date or time written as text stands for. A number is not text, so it is not a date.
-fn date_time_text(ctx: &Ctx, value: &Value) -> Result<f64, ErrorKind> {
-    match value {
-        Value::Text(t) => {
-            crate::input::date_time_from_text(t, ctx.date1904()).ok_or(ErrorKind::Value)
-        }
-        _ => Err(ErrorKind::Value),
     }
 }
