@@ -120,7 +120,7 @@ pub enum Shift {
 #[derive(Debug, Clone)]
 pub struct Session {
     pub book: Workbook,
-    engine: Engine,
+    pub(crate) engine: Engine,
     undo: Vec<Step>,
     redo: Vec<Step>,
     /// Changed since it was opened or saved.
@@ -227,7 +227,7 @@ impl Session {
         self.push(Step { label: label.to_owned(), before: Before::Cells { sheet, cells, styles } });
     }
 
-    fn remember_whole(&mut self, label: &str) {
+    pub(crate) fn remember_whole(&mut self, label: &str) {
         let mut copy = self.book.clone();
         copy.circular = None;
         self.push(Step { label: label.to_owned(), before: Before::Whole(Box::new(copy)) });
@@ -2149,7 +2149,7 @@ impl Session {
         summary
     }
 
-    fn check_sheet(&self, sheet: usize) -> Result<(), String> {
+    pub(crate) fn check_sheet(&self, sheet: usize) -> Result<(), String> {
         match self.book.sheets.get(sheet) {
             Some(s) if s.kept_part.is_some() => {
                 Err(format!("{} is a chart sheet, which has no cells", s.name))

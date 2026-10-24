@@ -32,6 +32,7 @@ pub mod functions;
 pub mod input;
 pub mod model;
 pub mod numfmt;
+pub mod pivot;
 pub mod styles;
 pub mod value;
 pub mod xlsx;
