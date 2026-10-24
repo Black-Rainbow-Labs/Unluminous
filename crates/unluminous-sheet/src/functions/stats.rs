@@ -89,7 +89,7 @@ pub const FUNCTIONS: &[Function] = &[
         MANY,
         "value1, [value2], ...",
         "The largest value, counting text as 0.",
-        |ctx, a| over(ctx, a, Gather::All, |n| Ok(max(n))),
+        |ctx, a| over(ctx, a, Gather::AllInRanges, |n| Ok(max(n))),
     ),
     r("MIN", 1, MANY, "number1, [number2], ...", "The smallest number.", |ctx, a| {
         over(ctx, a, Gather::Numbers, |n| Ok(min(n)))
@@ -100,7 +100,7 @@ pub const FUNCTIONS: &[Function] = &[
         MANY,
         "value1, [value2], ...",
         "The smallest value, counting text as 0.",
-        |ctx, a| over(ctx, a, Gather::All, |n| Ok(min(n))),
+        |ctx, a| over(ctx, a, Gather::AllInRanges, |n| Ok(min(n))),
     ),
     r("MEDIAN", 1, MANY, "number1, [number2], ...", "The middle number.", |ctx, a| {
         over(ctx, a, Gather::Numbers, |n| median(n).ok_or(ErrorKind::Num))
@@ -113,7 +113,7 @@ pub const FUNCTIONS: &[Function] = &[
         MANY,
         "number1, [number2], ...",
         "Every number that is most frequent, as a column.",
-        |ctx, a| match gather(ctx, a, Gather::Numbers) {
+        |ctx, a| match gather(ctx, a, Gather::OnlyNumbers) {
             Ok(n) => {
                 let m = modes(&n);
                 if m.is_empty() {
@@ -230,7 +230,9 @@ pub const FUNCTIONS: &[Function] = &[
         "value1, [value2], ...",
         "The standard deviation of a sample, counting text as 0.",
         |ctx, a| {
-            over(ctx, a, Gather::All, |n| sample_variance(n).map(f64::sqrt).ok_or(ErrorKind::Div0))
+            over(ctx, a, Gather::AllInRanges, |n| {
+                sample_variance(n).map(f64::sqrt).ok_or(ErrorKind::Div0)
+            })
         },
     ),
     r(
@@ -264,7 +266,7 @@ pub const FUNCTIONS: &[Function] = &[
         "value1, [value2], ...",
         "The standard deviation of a population, counting text as 0.",
         |ctx, a| {
-            over(ctx, a, Gather::All, |n| {
+            over(ctx, a, Gather::AllInRanges, |n| {
                 population_variance(n).map(f64::sqrt).ok_or(ErrorKind::Div0)
             })
         },
@@ -281,7 +283,7 @@ pub const FUNCTIONS: &[Function] = &[
         MANY,
         "value1, [value2], ...",
         "The variance of a sample, counting text as 0.",
-        |ctx, a| over(ctx, a, Gather::All, |n| sample_variance(n).ok_or(ErrorKind::Div0)),
+        |ctx, a| over(ctx, a, Gather::AllInRanges, |n| sample_variance(n).ok_or(ErrorKind::Div0)),
     ),
     r("VARP", 1, MANY, "number1, [number2], ...", "The variance of a population.", |ctx, a| {
         over(ctx, a, Gather::Numbers, |n| population_variance(n).ok_or(ErrorKind::Div0))
@@ -295,7 +297,9 @@ pub const FUNCTIONS: &[Function] = &[
         MANY,
         "value1, [value2], ...",
         "The variance of a population, counting text as 0.",
-        |ctx, a| over(ctx, a, Gather::All, |n| population_variance(n).ok_or(ErrorKind::Div0)),
+        |ctx, a| {
+            over(ctx, a, Gather::AllInRanges, |n| population_variance(n).ok_or(ErrorKind::Div0))
+        },
     ),
     r("AVEDEV", 1, MANY, "number1, [number2], ...", "The mean absolute deviation.", |ctx, a| {
         over(ctx, a, Gather::Numbers, |n| {
@@ -326,7 +330,10 @@ pub const FUNCTIONS: &[Function] = &[
     }),
     r("HARMEAN", 1, MANY, "number1, [number2], ...", "The harmonic mean.", |ctx, a| {
         over(ctx, a, Gather::Numbers, |n| {
-            if n.is_empty() || n.iter().any(|x| *x <= 0.0) {
+            if n.is_empty() {
+                return Err(ErrorKind::NA);
+            }
+            if n.iter().any(|x| *x <= 0.0) {
                 return Err(ErrorKind::Num);
             }
             Ok(n.len() as f64 / n.iter().map(|x| 1.0 / x).sum::<f64>())
@@ -601,7 +608,7 @@ fn over(ctx: &mut Ctx, args: &[Expr], how: Gather, f: fn(&[f64]) -> Result<f64, 
 }
 
 fn mode_sngl(ctx: &mut Ctx, args: &[Expr]) -> Val {
-    match gather(ctx, args, Gather::Numbers) {
+    match gather(ctx, args, Gather::OnlyNumbers) {
         Ok(n) => modes(&n).first().map_or(Val::error(ErrorKind::NA), |m| Val::number(*m)),
         Err(e) => Val::error(e),
     }
@@ -775,7 +782,14 @@ fn rank(ctx: &mut Ctx, args: &[Expr], average: bool) -> Val {
         Some(e) => {
             let v = ctx.eval(e);
             let v = ctx.single(v);
-            !matches!(ctx.number(&v), Ok(n) if n == 0.0) && !v.is_empty()
+            if v.is_empty() {
+                false
+            } else {
+                match ctx.number(&v) {
+                    Ok(n) => n != 0.0,
+                    Err(e) => return Val::error(e),
+                }
+            }
         }
         None => false,
     };
@@ -815,7 +829,10 @@ fn percentrank(ctx: &mut Ctx, args: &[Expr], exclusive: bool) -> Val {
         },
         None => 3.0,
     };
-    if numbers.is_empty() || significance < 1.0 {
+    if numbers.is_empty() {
+        return Val::error(ErrorKind::NA);
+    }
+    if significance < 1.0 {
         return Val::error(ErrorKind::Num);
     }
     let n = numbers.len();
@@ -831,10 +848,11 @@ fn percentrank(ctx: &mut Ctx, args: &[Expr], exclusive: bool) -> Val {
         let hi = numbers[below];
         (below - 1) as f64 + (x - lo) / (hi - lo)
     };
-    let fraction = if exclusive {
-        (rank + 1.0) / (n as f64 + 1.0)
-    } else if n == 1 {
+    // Excel answers 1 for a list of one value, in both forms.
+    let fraction = if n == 1 {
         1.0
+    } else if exclusive {
+        (rank + 1.0) / (n as f64 + 1.0)
     } else {
         rank / (n - 1) as f64
     };
@@ -945,7 +963,14 @@ fn trend(ctx: &mut Ctx, args: &[Expr]) -> Val {
     };
     let (y, x): (Vec<f64>, Vec<f64>) =
         ys.iter().zip(&xs).filter_map(|(p, q)| Some(((*p)?, (*q)?))).unzip();
-    let (slope, intercept) = if with_constant {
+    if y.is_empty() {
+        return Val::error(ErrorKind::Value);
+    }
+    let all_alike = x.iter().all(|v| *v == x[0]);
+    let (slope, intercept) = if with_constant && all_alike {
+        // Every x is the same, so the line is flat through the mean of y, as Excel's least squares gives.
+        (0.0, mean(&y).unwrap_or(0.0))
+    } else if with_constant {
         match line(&x, &y) {
             Ok(l) => l,
             Err(e) => return Val::error(e),

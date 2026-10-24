@@ -248,13 +248,22 @@ pub const FUNCTIONS: &[Function] = &[
     s("SQRT", 1, 1, "number", "The square root.", |ctx, a| {
         unary(ctx, a, |x| if x < 0.0 { Err(ErrorKind::Num) } else { Ok(x.sqrt()) })
     }),
-    s("SQRTPI", 1, 1, "number", "The square root of the number times pi.", |ctx, a| {
-        unary(ctx, a, |x| {
-            if x < 0.0 {
-                Err(ErrorKind::Num)
-            } else {
-                Ok((x * std::f64::consts::PI).sqrt())
-            }
+    r("SQRTPI", 1, 1, "number", "The square root of the number times pi.", |ctx, a| {
+        // A range of several cells is an error here, though an array written in the formula is worked
+        // through value by value; a logical is an error either way.
+        let given = ctx.eval(&a[0]);
+        if matches!(given, Val::Ref(_) | Val::Refs(_))
+            && ctx.dims(&given).is_none_or(|(r, c)| r * c > 1)
+        {
+            return Val::error(ErrorKind::Value);
+        }
+        ctx.lift_vals(vec![given], |ctx, v| match &v[0] {
+            Value::Bool(_) => Value::Error(ErrorKind::Value),
+            other => match num(ctx, other) {
+                Ok(x) if x >= 0.0 => Value::Number((x * std::f64::consts::PI).sqrt()),
+                Ok(_) => Value::Error(ErrorKind::Num),
+                Err(e) => Value::Error(e),
+            },
         })
     }),
     s("EXP", 1, 1, "number", "e raised to a power.", |ctx, a| unary(ctx, a, |x| Ok(x.exp()))),
@@ -312,10 +321,17 @@ pub const FUNCTIONS: &[Function] = &[
     s("COSH", 1, 1, "number", "The hyperbolic cosine.", |ctx, a| unary(ctx, a, |x| Ok(x.cosh()))),
     s("TANH", 1, 1, "number", "The hyperbolic tangent.", |ctx, a| unary(ctx, a, |x| Ok(x.tanh()))),
     s("ASINH", 1, 1, "number", "The inverse hyperbolic sine.", |ctx, a| {
-        unary(ctx, a, |x| Ok(x.asinh()))
+        // Excel squares the number, so one whose square overflows is an error.
+        unary(ctx, a, |x| if (x * x).is_infinite() { Err(ErrorKind::Num) } else { Ok(x.asinh()) })
     }),
     s("ACOSH", 1, 1, "number", "The inverse hyperbolic cosine.", |ctx, a| {
-        unary(ctx, a, |x| if x < 1.0 { Err(ErrorKind::Num) } else { Ok(x.acosh()) })
+        unary(ctx, a, |x| {
+            if x < 1.0 || (x * x).is_infinite() {
+                Err(ErrorKind::Num)
+            } else {
+                Ok(x.acosh())
+            }
+        })
     }),
     s("ATANH", 1, 1, "number", "The inverse hyperbolic tangent.", |ctx, a| {
         unary(ctx, a, |x| if x.abs() >= 1.0 { Err(ErrorKind::Num) } else { Ok(x.atanh()) })
@@ -429,25 +445,13 @@ pub const FUNCTIONS: &[Function] = &[
             number(n.powf(k))
         },
     ),
-    s(
+    r(
         "MULTINOMIAL",
         1,
         MANY,
         "number1, [number2], ...",
         "The multinomial of numbers.",
-        |ctx, a| {
-            let mut total = 0.0;
-            let mut denominator = 1.0;
-            for v in a {
-                let n = num(ctx, v)?.trunc();
-                if n < 0.0 {
-                    return Err(ErrorKind::Num);
-                }
-                total += n;
-                denominator *= factorial(n)?;
-            }
-            number(factorial(total)? / denominator)
-        },
+        multinomial,
     ),
     r("GCD", 1, MANY, "number1, [number2], ...", "The greatest common divisor.", |ctx, args| {
         let n = match gather(ctx, args, Gather::Numbers) {
@@ -490,7 +494,11 @@ pub const FUNCTIONS: &[Function] = &[
         "bottom, top",
         "A random whole number between two numbers. Changes on every calculation.",
         |ctx, a| {
-            let (lo, hi) = (num(ctx, &a[0])?.ceil(), num(ctx, &a[1])?.floor());
+            if a.iter().any(|v| matches!(v, Value::Bool(_))) {
+                return Err(ErrorKind::Value);
+            }
+            // Excel rounds both bounds up, so 2.1 and 2.9 can only give 3.
+            let (lo, hi) = (num(ctx, &a[0])?.ceil(), num(ctx, &a[1])?.ceil());
             if lo > hi {
                 return Err(ErrorKind::Num);
             }
@@ -545,6 +553,16 @@ pub const FUNCTIONS: &[Function] = &[
         Err(e) => Val::error(e),
     }),
     r("MUNIT", 1, 1, "dimension", "The identity matrix.", |ctx, a| {
+        let given = ctx.eval(&a[0]);
+        if ctx.dims(&given).is_some_and(|(r, c)| r * c > 1) {
+            // Given several dimensions, Excel answers an array of the same shape holding the first
+            // value of each identity matrix.
+            return ctx.lift_vals(vec![given], |ctx, v| match ctx.number(&v[0]) {
+                Ok(n) if (1.0..=4096.0).contains(&n.trunc()) => Value::Number(1.0),
+                Ok(_) => Value::Error(ErrorKind::Value),
+                Err(e) => Value::Error(e),
+            });
+        }
         let n = match scalar_arg(ctx, a, 0, 0.0) {
             Ok(n) => n.trunc(),
             Err(e) => return Val::error(e),
@@ -631,16 +649,67 @@ pub const FUNCTIONS: &[Function] = &[
                 Err(e) => return Val::error(e),
             }
         }
-        let coefficients = match gather(ctx, &a[3..], Gather::Numbers) {
+        let coefficients = match series_coefficients(ctx, &a[3]) {
             Ok(c) => c,
             Err(e) => return Val::error(e),
         };
         let (x, n, m) = (scalars[0], scalars[1], scalars[2]);
+        if x == 0.0 && (0..coefficients.len()).any(|i| n + i as f64 * m == 0.0) {
+            return Val::error(ErrorKind::Num);
+        }
         Val::number(
             coefficients.iter().enumerate().map(|(i, c)| c * x.powf(n + i as f64 * m)).sum(),
         )
     }),
 ];
+
+/// MULTINOMIAL: the factorial of the sum over the product of the factorials, of numbers typed or read from
+/// ranges and arrays. Empty cells are left out, and text or a logical in a range, or a logical typed, is an error.
+fn multinomial(ctx: &mut Ctx, args: &[Expr]) -> Val {
+    let mut numbers = Vec::new();
+    for arg in args {
+        let v = ctx.eval(arg);
+        let mut values = Vec::new();
+        ctx.values_of(v, &mut values);
+        for (value, from_range) in values {
+            let n = match (&value, from_range) {
+                (Value::Error(e), _) => return Val::error(*e),
+                (Value::Number(n), _) => *n,
+                (Value::Empty, _) => continue,
+                (Value::Text(t), false) => {
+                    match crate::input::number_from_text(t, ctx.date1904()) {
+                        Some(n) => n,
+                        None => return Val::error(ErrorKind::Value),
+                    }
+                }
+                _ => return Val::error(ErrorKind::Value),
+            };
+            numbers.push(n.trunc());
+        }
+    }
+    if numbers.iter().any(|n| *n < 0.0) {
+        return Val::error(ErrorKind::Num);
+    }
+    let denominator = numbers.iter().try_fold(1.0, |acc, n| factorial(*n).map(|f| acc * f));
+    match (factorial(numbers.iter().sum()), denominator) {
+        (Ok(top), Ok(bottom)) => Val::number(top / bottom),
+        (Err(e), _) | (_, Err(e)) => Val::error(e),
+    }
+}
+
+/// The coefficients of SERIESSUM, in order. Empty cells count as 0, and text or a logical is an error.
+fn series_coefficients(ctx: &mut Ctx, expr: &Expr) -> Result<Vec<f64>, ErrorKind> {
+    let (values, ..) = super::flat(ctx, expr)?;
+    values
+        .into_iter()
+        .map(|v| match v {
+            Value::Number(n) => Ok(n),
+            Value::Empty => Ok(0.0),
+            Value::Error(e) => Err(e),
+            _ => Err(ErrorKind::Value),
+        })
+        .collect()
+}
 
 fn precise_up(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
     let x = num(ctx, &a[0])?;
@@ -1008,7 +1077,12 @@ fn pairs(ctx: &mut Ctx, args: &[Expr], f: fn(f64, f64) -> f64) -> Val {
     if x.len() != y.len() {
         return Val::error(ErrorKind::NA);
     }
-    Val::number(x.iter().zip(&y).filter_map(|(a, b)| Some(f((*a)?, (*b)?))).sum())
+    let terms: Vec<f64> = x.iter().zip(&y).filter_map(|(a, b)| Some(f((*a)?, (*b)?))).collect();
+    // With no pair of numbers there is nothing to add, which Excel reports as a division by zero.
+    if terms.is_empty() {
+        return Val::error(ErrorKind::Div0);
+    }
+    Val::number(terms.iter().sum())
 }
 
 fn scalar_arg(ctx: &mut Ctx, args: &[Expr], i: usize, default: f64) -> Result<f64, ErrorKind> {

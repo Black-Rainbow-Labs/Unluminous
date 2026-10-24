@@ -178,6 +178,11 @@ pub enum Gather {
     Numbers,
     /// AVERAGEA, MAXA: text in ranges counts as 0 and logicals as 1 or 0.
     All,
+    /// MINA, MAXA, VARA: as `All` for cells of a range, but text and logicals inside an array written out
+    /// in the formula, such as `{1,"a",TRUE}`, are left out.
+    AllInRanges,
+    /// MODE: numbers only. Text and logicals are left out wherever they are, including when typed directly.
+    OnlyNumbers,
 }
 
 /// The numbers an aggregate reads from its arguments. An error anywhere is the answer.
@@ -192,18 +197,21 @@ pub fn gather(ctx: &mut Ctx, args: &[Expr], how: Gather) -> Result<Vec<f64>, Err
 
 pub fn gather_val(ctx: &mut Ctx, v: Val, how: Gather, out: &mut Vec<f64>) -> Result<(), ErrorKind> {
     let mut values = Vec::new();
+    let written_array = matches!(v, Val::Array(_));
     ctx.values_of(v, &mut values);
+    let counts_all = how == Gather::All || how == Gather::AllInRanges && !written_array;
     for (value, from_range) in values {
         match (&value, from_range) {
             (Value::Error(e), _) => return Err(*e),
             (Value::Number(n), _) => out.push(*n),
+            _ if how == Gather::OnlyNumbers => {}
             (Value::Bool(b), false) => out.push(f64::from(u8::from(*b))),
             (Value::Text(t), false) => {
                 out.push(crate::input::number_from_text(t, ctx.date1904()).ok_or(ErrorKind::Value)?)
             }
             (Value::Empty, false) => out.push(0.0),
-            (Value::Bool(b), true) if how == Gather::All => out.push(f64::from(u8::from(*b))),
-            (Value::Text(_), true) if how == Gather::All => out.push(0.0),
+            (Value::Bool(b), true) if counts_all => out.push(f64::from(u8::from(*b))),
+            (Value::Text(_), true) if counts_all => out.push(0.0),
             _ => {}
         }
     }

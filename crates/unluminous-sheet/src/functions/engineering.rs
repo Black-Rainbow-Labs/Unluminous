@@ -1,45 +1,46 @@
 //! Engineering functions: number bases, bitwise operations and unit conversion.
 
-use super::{num, number, opt, s, text_of, Function};
-use crate::eval::Ctx;
+use super::{num, number, opt, r, s, text_of, Function};
+use crate::eval::{Ctx, Val};
+use crate::formula::Expr;
 use crate::value::{ErrorKind, Value};
 
 pub const FUNCTIONS: &[Function] = &[
-    s("DEC2BIN", 1, 2, "number, [places]", "A decimal number in binary.", |ctx, a| {
-        from_decimal(ctx, a, 2)
+    r("DEC2BIN", 1, 2, "number, [places]", "A decimal number in binary.", |ctx, a| {
+        strict(ctx, a, |ctx, a| from_decimal(ctx, a, 2))
     }),
-    s("DEC2OCT", 1, 2, "number, [places]", "A decimal number in octal.", |ctx, a| {
-        from_decimal(ctx, a, 8)
+    r("DEC2OCT", 1, 2, "number, [places]", "A decimal number in octal.", |ctx, a| {
+        strict(ctx, a, |ctx, a| from_decimal(ctx, a, 8))
     }),
-    s("DEC2HEX", 1, 2, "number, [places]", "A decimal number in hexadecimal.", |ctx, a| {
-        from_decimal(ctx, a, 16)
+    r("DEC2HEX", 1, 2, "number, [places]", "A decimal number in hexadecimal.", |ctx, a| {
+        strict(ctx, a, |ctx, a| from_decimal(ctx, a, 16))
     }),
-    s("BIN2DEC", 1, 1, "number", "A binary number in decimal.", |_, a| {
-        to_decimal(&a[0], 2).map(Value::Number)
+    r("BIN2DEC", 1, 1, "number", "A binary number in decimal.", |ctx, a| {
+        strict(ctx, a, |_, a| to_decimal(&a[0], 2).map(Value::Number))
     }),
-    s("OCT2DEC", 1, 1, "number", "An octal number in decimal.", |_, a| {
-        to_decimal(&a[0], 8).map(Value::Number)
+    r("OCT2DEC", 1, 1, "number", "An octal number in decimal.", |ctx, a| {
+        strict(ctx, a, |_, a| to_decimal(&a[0], 8).map(Value::Number))
     }),
-    s("HEX2DEC", 1, 1, "number", "A hexadecimal number in decimal.", |_, a| {
-        to_decimal(&a[0], 16).map(Value::Number)
+    r("HEX2DEC", 1, 1, "number", "A hexadecimal number in decimal.", |ctx, a| {
+        strict(ctx, a, |_, a| to_decimal(&a[0], 16).map(Value::Number))
     }),
-    s("BIN2OCT", 1, 2, "number, [places]", "A binary number in octal.", |ctx, a| {
-        convert(ctx, a, 2, 8)
+    r("BIN2OCT", 1, 2, "number, [places]", "A binary number in octal.", |ctx, a| {
+        strict(ctx, a, |ctx, a| convert(ctx, a, 2, 8))
     }),
-    s("BIN2HEX", 1, 2, "number, [places]", "A binary number in hexadecimal.", |ctx, a| {
-        convert(ctx, a, 2, 16)
+    r("BIN2HEX", 1, 2, "number, [places]", "A binary number in hexadecimal.", |ctx, a| {
+        strict(ctx, a, |ctx, a| convert(ctx, a, 2, 16))
     }),
-    s("OCT2BIN", 1, 2, "number, [places]", "An octal number in binary.", |ctx, a| {
-        convert(ctx, a, 8, 2)
+    r("OCT2BIN", 1, 2, "number, [places]", "An octal number in binary.", |ctx, a| {
+        strict(ctx, a, |ctx, a| convert(ctx, a, 8, 2))
     }),
-    s("OCT2HEX", 1, 2, "number, [places]", "An octal number in hexadecimal.", |ctx, a| {
-        convert(ctx, a, 8, 16)
+    r("OCT2HEX", 1, 2, "number, [places]", "An octal number in hexadecimal.", |ctx, a| {
+        strict(ctx, a, |ctx, a| convert(ctx, a, 8, 16))
     }),
-    s("HEX2BIN", 1, 2, "number, [places]", "A hexadecimal number in binary.", |ctx, a| {
-        convert(ctx, a, 16, 2)
+    r("HEX2BIN", 1, 2, "number, [places]", "A hexadecimal number in binary.", |ctx, a| {
+        strict(ctx, a, |ctx, a| convert(ctx, a, 16, 2))
     }),
-    s("HEX2OCT", 1, 2, "number, [places]", "A hexadecimal number in octal.", |ctx, a| {
-        convert(ctx, a, 16, 8)
+    r("HEX2OCT", 1, 2, "number, [places]", "A hexadecimal number in octal.", |ctx, a| {
+        strict(ctx, a, |ctx, a| convert(ctx, a, 16, 8))
     }),
     s("BITAND", 2, 2, "number1, number2", "Bitwise AND.", |ctx, a| bits(ctx, a, |x, y| x & y)),
     s("BITOR", 2, 2, "number1, number2", "Bitwise OR.", |ctx, a| bits(ctx, a, |x, y| x | y)),
@@ -69,6 +70,31 @@ pub const FUNCTIONS: &[Function] = &[
         number(convert_units(x, &from, &to).ok_or(ErrorKind::NA)?)
     }),
 ];
+
+/// Run one of the conversion or error functions the way Excel does: each argument must be a single
+/// value, so a range or array of several cells is `#VALUE!`, and a logical is `#VALUE!` too.
+pub fn strict(
+    ctx: &mut Ctx,
+    args: &[Expr],
+    f: fn(&mut Ctx, &[Value]) -> Result<Value, ErrorKind>,
+) -> Val {
+    let mut values = Vec::with_capacity(args.len());
+    for arg in args {
+        let given = ctx.eval(arg);
+        if ctx.dims(&given) != Some((1, 1)) {
+            return Val::error(ErrorKind::Value);
+        }
+        let value = ctx.single(given);
+        if matches!(value, Value::Bool(_)) {
+            return Val::error(ErrorKind::Value);
+        }
+        values.push(value);
+    }
+    match f(ctx, &values) {
+        Ok(v) => Val::Value(v),
+        Err(e) => Val::error(e),
+    }
+}
 
 const LIMIT: [(u32, f64); 3] = [(2, 512.0), (8, 536_870_912.0), (16, 549_755_813_888.0)];
 

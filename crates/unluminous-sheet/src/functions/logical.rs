@@ -296,9 +296,24 @@ fn lambda(ctx: &mut Ctx, args: &[Expr]) -> Val {
     }))
 }
 
+/// A built in function named where a LAMBDA is expected, as in `BYCOL(array, SUM)`, as the LAMBDA that
+/// calls it. It takes up to two parameters, so a function of one value is given one.
+fn function_as_lambda(expr: &Expr) -> Option<Arc<Lambda>> {
+    let Expr::Name(name) = expr else { return None };
+    let upper = name.to_ascii_uppercase();
+    let function = crate::functions::find(&upper)?;
+    let params: Vec<Arc<str>> =
+        (1..=function.max.min(2)).map(|i| Arc::from(format!("_argument{i}"))).collect();
+    let body = Expr::Call(Arc::from(upper), params.iter().cloned().map(Expr::Name).collect());
+    Some(Arc::new(Lambda { params, body: Arc::new(body), scope: Vec::new() }))
+}
+
 fn lambda_arg(ctx: &mut Ctx, expr: &Expr) -> Result<Arc<Lambda>, ErrorKind> {
     match ctx.eval(expr) {
         Val::Lambda(l) => Ok(l),
+        Val::Value(Value::Error(ErrorKind::Name)) => {
+            function_as_lambda(expr).ok_or(ErrorKind::Name)
+        }
         Val::Value(Value::Error(e)) => Err(e),
         _ => Err(ErrorKind::Value),
     }

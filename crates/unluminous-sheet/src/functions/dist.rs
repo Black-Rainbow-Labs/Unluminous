@@ -5,7 +5,8 @@
 //! by its series and continued fraction, rather than one of the short rational approximations that stop
 //! at seven digits. The inverse normal is Acklam's algorithm refined by one Halley step.
 
-use super::{num, number, opt_bool, s, Function};
+use super::engineering::strict;
+use super::{num, number, opt_bool, r, s, Function};
 use crate::eval::Ctx;
 use crate::value::{ErrorKind, Value};
 
@@ -71,7 +72,12 @@ pub const FUNCTIONS: &[Function] = &[
         },
     ),
     s("PHI", 1, 1, "x", "The standard normal density.", |ctx, a| {
-        number(normal_pdf(num(ctx, &a[0])?))
+        let x = num(ctx, &a[0])?;
+        // Excel squares x before it takes the exponential, so a square that overflows is an error.
+        if (x * x).is_infinite() {
+            return Err(ErrorKind::Num);
+        }
+        number(normal_pdf(x))
     }),
     s(
         "GAUSS",
@@ -81,19 +87,23 @@ pub const FUNCTIONS: &[Function] = &[
         "The probability a standard normal value is between the mean and z.",
         |ctx, a| number(normal_cdf(num(ctx, &a[0])?) - 0.5),
     ),
-    s("ERF", 1, 2, "lower_limit, [upper_limit]", "The error function.", |ctx, a| {
-        let lo = num(ctx, &a[0])?;
-        match a.get(1) {
-            Some(v) => number(erf(num(ctx, v)?) - erf(lo)),
-            None => number(erf(lo)),
-        }
+    r("ERF", 1, 2, "lower_limit, [upper_limit]", "The error function.", |ctx, a| {
+        strict(ctx, a, |ctx, a| {
+            let lo = num(ctx, &a[0])?;
+            match a.get(1) {
+                Some(v) => number(erf(num(ctx, v)?) - erf(lo)),
+                None => number(erf(lo)),
+            }
+        })
     }),
-    s("ERF.PRECISE", 1, 1, "x", "The error function.", |ctx, a| number(erf(num(ctx, &a[0])?))),
-    s("ERFC", 1, 1, "x", "The complementary error function.", |ctx, a| {
-        number(erfc(num(ctx, &a[0])?))
+    r("ERF.PRECISE", 1, 1, "x", "The error function.", |ctx, a| {
+        strict(ctx, a, |ctx, a| number(erf(num(ctx, &a[0])?)))
     }),
-    s("ERFC.PRECISE", 1, 1, "x", "The complementary error function.", |ctx, a| {
-        number(erfc(num(ctx, &a[0])?))
+    r("ERFC", 1, 1, "x", "The complementary error function.", |ctx, a| {
+        strict(ctx, a, |ctx, a| number(erfc(num(ctx, &a[0])?)))
+    }),
+    r("ERFC.PRECISE", 1, 1, "x", "The complementary error function.", |ctx, a| {
+        strict(ctx, a, |ctx, a| number(erfc(num(ctx, &a[0])?)))
     }),
     s("GAMMALN", 1, 1, "x", "The natural logarithm of the gamma function.", gammaln_fn),
     s("GAMMALN.PRECISE", 1, 1, "x", "The natural logarithm of the gamma function.", gammaln_fn),
@@ -242,7 +252,7 @@ pub const FUNCTIONS: &[Function] = &[
         2,
         "probability, deg_freedom",
         "The two tailed inverse of Student's t distribution.",
-        t_inv_2t,
+        tinv,
     ),
     s(
         "CHISQ.DIST",
@@ -296,7 +306,7 @@ pub const FUNCTIONS: &[Function] = &[
             if !(0.0..1.0).contains(&p) || df < 1.0 {
                 return Err(ErrorKind::Num);
             }
-            number(invert(|x| gamma_p(df / 2.0, x / 2.0), p, 0.0, df.max(1.0) * 100.0 + 100.0))
+            number(chisq_quantile(p, 1.0 - p, df))
         },
     ),
     s(
@@ -488,6 +498,16 @@ fn t_inv_2t(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
     number(t_inverse(1.0 - p / 2.0, df))
 }
 
+/// TINV, which unlike T.INV.2T also answers for a probability between 1 and 2, as the negative t value
+/// whose two tailed probability is that much.
+fn tinv(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
+    let (p, df) = (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc());
+    if p <= 0.0 || p >= 2.0 || df < 1.0 {
+        return Err(ErrorKind::Num);
+    }
+    number(t_inverse(1.0 - p / 2.0, df))
+}
+
 fn chisq_rt(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
     let (x, df) = (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc());
     if x < 0.0 || df < 1.0 {
@@ -501,12 +521,26 @@ fn chisq_inv_rt(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
     if p <= 0.0 || p > 1.0 || df < 1.0 {
         return Err(ErrorKind::Num);
     }
-    number(invert(
-        |x| 1.0 - (1.0 - gamma_p(df / 2.0, x / 2.0)),
-        1.0 - p,
-        0.0,
-        df.max(1.0) * 100.0 + 100.0,
-    ))
+    number(chisq_quantile(1.0 - p, p, df))
+}
+
+/// The chi-squared value with this lower tail probability, which is also one minus the upper tail
+/// probability. The smaller of the two tails is the one solved for, because a tail near zero is only
+/// accurate when it is not computed as one minus a value near one.
+fn chisq_quantile(lower: f64, upper: f64, df: f64) -> f64 {
+    let half = df / 2.0;
+    let mut hi = df.max(1.0) * 2.0 + 10.0;
+    if lower <= 0.5 {
+        while gamma_p(half, hi / 2.0) < lower && hi < 1e300 {
+            hi *= 2.0;
+        }
+        invert(|x| gamma_p(half, x / 2.0), lower, 0.0, hi)
+    } else {
+        while gamma_q(half, hi / 2.0) > upper && hi < 1e300 {
+            hi *= 2.0;
+        }
+        invert(|x| -gamma_q(half, x / 2.0), -upper, 0.0, hi)
+    }
 }
 
 fn gamma_dist(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
@@ -541,12 +575,22 @@ pub fn erf(x: f64) -> f64 {
     if x < 0.0 {
         return -erf(-x);
     }
+    if x > ERF_SATURATED {
+        return 1.0;
+    }
     gamma_p(0.5, x * x)
 }
+
+/// Beyond this the error function is 1 to the last digit and its complement is smaller than any double
+/// the formulas here can use, so the series are not run at all.
+const ERF_SATURATED: f64 = 27.0;
 
 pub fn erfc(x: f64) -> f64 {
     if x < 0.0 {
         return 2.0 - erfc(-x);
+    }
+    if x > ERF_SATURATED {
+        return 0.0;
     }
     gamma_q(0.5, x * x)
 }
@@ -776,6 +820,11 @@ pub fn normal_inverse(p: f64) -> f64 {
         2.445134137142996e+00,
         3.754408661907416e+00,
     ];
+    // The upper half is solved as the lower tail of 1 - p, which is exact for p of one half or more, so
+    // a probability close to one keeps all of its digits.
+    if p > 0.5 {
+        return -normal_inverse(1.0 - p);
+    }
     let low = 0.02425;
     let x = if p < low {
         let q = (-2.0 * p.ln()).sqrt();
