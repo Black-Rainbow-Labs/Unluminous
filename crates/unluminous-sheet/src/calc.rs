@@ -494,6 +494,22 @@ fn collect(
     });
 }
 
+/// Every cell and range a formula reads, as the sheets it reaches and the range on each, following defined
+/// names, tables and spill references: what Trace Precedents draws arrows to. A 3D reference reaches
+/// several sheets, first to last.
+pub fn precedents_of(book: &Workbook, sheet: usize, expr: &Expr) -> Vec<(usize, usize, Range)> {
+    let mut found = Found::default();
+    collect(expr, book, sheet, &mut found, &mut Vec::new(), 0);
+    found
+        .precedents
+        .into_iter()
+        .map(|p| match p {
+            Precedent::Cell((s, row, col)) => (s, s, Range::cell(CellRef::new(row, col))),
+            Precedent::Range { first, last, range } => (first, last, range),
+        })
+        .collect()
+}
+
 /// What a formula's value is in its cell, given what it evaluated to.
 enum Outcome {
     Single(Value),

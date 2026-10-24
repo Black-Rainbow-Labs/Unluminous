@@ -78,8 +78,6 @@ pub const REGISTRY: &[Row] = &[
     row("sortState", Target::Attr("ref"), Syntax::Ref),
     row("sortCondition", Target::Attr("ref"), Syntax::Ref),
     row("protectedRange", Target::Attr("sqref"), Syntax::Sqref),
-    row("ignoredError", Target::Attr("sqref"), Syntax::Sqref),
-    row("cellWatch", Target::Attr("r"), Syntax::Ref),
     row("dataRef", Target::Attr("ref"), Syntax::Ref),
     row("dataRef", Target::Attr("sheet"), Syntax::SheetName),
     row("scenario", Target::Attr("sqref"), Syntax::Sqref),
@@ -105,7 +103,6 @@ pub const REGISTRY: &[Row] = &[
     under("to", "row", Target::Text, Syntax::Row0),
     under("to", "col", Target::Text, Syntax::Col0),
     // Threaded comments, kept comments and pivot tables.
-    row("threadedComment", Target::Attr("ref"), Syntax::Ref),
     row("comment", Target::Attr("ref"), Syntax::Ref),
     row("location", Target::Attr("ref"), Syntax::Ref),
     row("worksheetSource", Target::Attr("ref"), Syntax::Ref),
@@ -138,6 +135,9 @@ pub const MODELLED: &[&str] = &[
     "calculatedColumnFormula",
     "totalsRowFormula",
     "brk",
+    "threadedComment",
+    "ignoredError",
+    "cellWatch",
 ];
 
 /// Apply a structural edit to every kept element and part of the workbook.
@@ -228,7 +228,9 @@ fn shift_modelled_text(book: &mut Workbook, sheet: usize, edit: &StructuralEdit)
 /// A range on `own` after the edit, or `None` when it was wholly deleted.
 fn shift_own_range(range: Range, own: &str, edit: &StructuralEdit) -> Option<Range> {
     match edit {
-        StructuralEdit::Lines { sheet, axis, at, count, band } if own.eq_ignore_ascii_case(sheet) => {
+        StructuralEdit::Lines { sheet, axis, at, count, band }
+            if own.eq_ignore_ascii_case(sheet) =>
+        {
             shift_range(range, *axis, *at, *count, *band)
         }
         _ => Some(range),

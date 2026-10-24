@@ -7,8 +7,10 @@
 
 use crate::model::Relationship;
 
+pub mod audit;
 pub mod chart;
 pub mod read;
+pub mod threads;
 pub mod write;
 
 pub use read::read;
