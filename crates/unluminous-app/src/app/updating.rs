@@ -253,9 +253,12 @@ impl UnluminousApp {
         };
         self.update_versions = Some(versions);
         if let Some((channel, version)) = self.install_when_listed.take() {
-            match self.install_a_version(channel, version, true) {
-                Ok(said) => self.message = Some(said),
-                Err(problem) => self.toasts.say(problem, Kind::Problem),
+            // The status bar has said "Finding the newest version..." since the lists were asked for.
+            // That sentence is over whatever happens next: an install writes its own first step, and a
+            // refusal or "already running" is a toast, which the bar does not repeat (`task-2340`).
+            self.message = None;
+            if let Err(problem) = self.install_a_version(channel, version, true) {
+                self.toasts.say(problem, Kind::Problem);
             }
         }
         true
@@ -282,10 +285,6 @@ impl UnluminousApp {
                 update::RELEASES_PAGE
             ));
         }
-        if restart {
-            update_install::installed_at()
-                .map_err(|problem| format!("Cannot update in place: {problem}."))?;
-        }
         let version = version.map(|named| named.trim().trim_start_matches('v').to_owned());
         let Some(versions) = self.update_versions.clone() else {
             return Ok(self.install_once_listed(channel, version));
@@ -306,8 +305,24 @@ impl UnluminousApp {
                 (Ok(_), None) => format!("unluminous.com lists no {} version.", channel.name()),
             });
         };
+        // Asking for the version that is already running is answered, not refused: it is what a person
+        // gets from `Latest` on a channel they are already up to date on (`task-2340`).
         if restart && release.version == crate::build_info::VERSION {
-            return Err(format!("Unluminous {} is the version running now.", release.version));
+            let said = match version {
+                Some(_) => format!("Unluminous {} is the version running now.", release.version),
+                None => format!(
+                    "Unluminous {} is the newest {} version, and it is the one running now.",
+                    release.version,
+                    channel.name()
+                ),
+            };
+            self.message = None;
+            self.toasts.say(said.clone(), Kind::Done);
+            return Ok(said);
+        }
+        if restart {
+            update_install::installed_at()
+                .map_err(|problem| format!("Cannot update in place: {problem}."))?;
         }
         let Some(download) = release.download.clone() else {
             return Err(format!(

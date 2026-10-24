@@ -69,7 +69,9 @@ pub(crate) fn show(
     kit::card(
         ui,
         &mut column,
-        "Endpoints",
+        // "Model Integrations" rather than "Endpoints" (`task-2340`): most of these run a program on this
+        // machine, and only some of them send to a URL.
+        "Model Integrations",
         Some(
             "What answers, for Agent Chat, Agent Tasks and anything else that talks to a model. claude-cli, \
              codex-cli, opencode-cli and pi-cli run the agent already installed on this machine: they need no key, they \
@@ -132,7 +134,7 @@ pub(crate) fn show(
                         changed = true;
                     }
                 }
-                let (pressed, rect) = kit::add_button(rux, Pos2::new(column.left, pen), "Add endpoint");
+                let (pressed, rect) = kit::add_button(rux, Pos2::new(column.left, pen), "Add model integration");
                 if pressed {
                     let mut new = Provider::defaults()[2].clone();
                     new.name = ai_endpoints::unused_name(providers);

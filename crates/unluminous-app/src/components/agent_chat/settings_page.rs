@@ -42,12 +42,16 @@ fn cards(chat: &mut AgentChat, ui: &mut egui::Ui, column: &mut Column) -> Vec<Re
             configuration.providers.iter().map(|provider| provider.name.clone()).collect();
         let chosen_name = configuration.provider().map(|one| one.name.clone()).unwrap_or_default();
         let chosen = names.iter().position(|name| *name == chosen_name);
-        let said = match chosen.and_then(|index| refusals.get(index).cloned().flatten()) {
-            Some(why) => format!("{why} Settings -> AI Configuration is where the endpoints are."),
-            None => "Settings -> AI Configuration is where the endpoints are: what each one runs or where \
+        let mut said = match chosen.and_then(|index| refusals.get(index).cloned().flatten()) {
+            Some(why) => format!("{why} Settings -> AI Configuration is where the model integrations are."),
+            None => "Settings -> AI Configuration is where the model integrations are: what each one runs or where \
                      it sends, its model, and where its key is."
                 .to_owned(),
         };
+        // The conversation open in the pane keeps its model once it has started (`task-2340`).
+        if let Some(waiting) = chat.model_waits_for_a_new_conversation() {
+            said = format!("{said} {waiting}");
+        }
         card.row("Talks to", Some(&said), |row| {
             if let Some(index) = row.select("Endpoint", &names, chosen, 240.0) {
                 configuration.chosen = names[index].clone();
@@ -181,6 +185,7 @@ fn cards(chat: &mut AgentChat, ui: &mut egui::Ui, column: &mut Column) -> Vec<Re
 
     if changed {
         *chat.configuration_mut() = configuration;
+        chat.follow_the_chosen_model();
         chat.readiness_may_have_changed();
         if let Err(problem) = chat.save_the_configuration() {
             requests.push(Request::Message(problem));

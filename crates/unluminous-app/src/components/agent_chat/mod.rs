@@ -332,6 +332,11 @@ fn settings(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
     let used = parts.session.chat.context_used;
     let window = parts.session.chat.context_window;
     let mirrored = parts.mirror.map(|_| parts.session.chat.provider.clone());
+    // The line under the model when the chosen one waits for a new conversation (`task-2340`).
+    let waiting = match parts.mirror {
+        Some(_) => None,
+        None => crate::services::agent_chat::model_waits(&parts.session.chat, parts.configuration),
+    };
     let mut listening = parts.state.voice.listening;
     let mut button = parts.state.voice.button;
     let side = SIDE * scale;
@@ -365,6 +370,10 @@ fn settings(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
         true => 17.0 + 10.0 + 38.0 + 22.0,
         false => 0.0,
     };
+    let waiting_height = match waiting.is_some() {
+        true => WAITING_GAP + WAITING_LINE,
+        false => 0.0,
+    };
     // `padding: 20px 20px 22px; gap: 22px`: the title row, the model, the folder, the context well and the switch
     // that listens for "Sable" (`task-2290`).
     let height = (20.0
@@ -374,6 +383,7 @@ fn settings(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
         + 10.0
         + 46.0
         + 22.0
+        + waiting_height
         + folder_height
         + 80.0
         + 22.0
@@ -487,6 +497,24 @@ fn settings(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
                     }
                 }
                 top = switch.bottom() + rux.z(22.0);
+                if let Some(said) = waiting.as_deref() {
+                    let style = rux.zs(rux::Style::sans(11.5));
+                    let galley = rux.text(style, said, theme.ink.i500);
+                    let line = Rect::from_min_size(
+                        Pos2::new(inner.left(), switch.bottom() + rux.z(WAITING_GAP)),
+                        Vec2::new(inner.width(), rux.z(WAITING_LINE)),
+                    );
+                    // Cut at the dialog's edge rather than drawn past it, in a pane narrower than the words.
+                    let painter = rux.painter().with_clip_rect(line.intersect(dialog));
+                    rux::text::draw_left_capitals(
+                        &painter,
+                        Pos2::new(line.left(), line.center().y),
+                        galley,
+                        style,
+                        theme.ink.i500,
+                    );
+                    top = line.bottom() + rux.z(22.0);
+                }
                 // The folder the agent starts in. `task-2270`.
                 if let Some((rows, words, selected)) = &folder_rows {
                     let label = rux.text(rux.zs(rux::Style::sans(12.0)), "Folder", theme.ink.i500);
@@ -576,6 +604,11 @@ fn settings(parts: &mut Parts<'_>, ui: &mut egui::Ui, look: &Look<'_>, area: Rec
     );
     acts
 }
+
+/// The gap between the model pills and the line under them saying the choice waits for a new conversation,
+/// and that line's height. `task-2340`.
+const WAITING_GAP: f32 = 8.0;
+const WAITING_LINE: f32 = 16.0;
 
 /// The lowest the Chat settings dialog may reach: a little above the prompt box, so the box stays in view.
 fn settings_foot(parts: &Parts<'_>, look: &Look<'_>, area: Rect) -> f32 {
@@ -1512,11 +1545,10 @@ fn apply(chat: &mut AgentChat, acts: Vec<Act>) -> Vec<Request> {
                 title: "The folder the agent starts in".to_owned(),
                 start: chat.configuration().folder.clone(),
             }),
+            // An empty conversation switches to the model at once; one that has started keeps its own, and
+            // the dialog says so under the choice (`task-2340`).
             Act::Choose(name) => {
-                if let Err(problem) = chat.configuration_mut().choose(&name) {
-                    requests.push(Request::Message(problem));
-                }
-                if let Err(problem) = chat.save_the_configuration() {
+                if let Err(problem) = chat.choose_the_model(&name) {
                     requests.push(Request::Message(problem));
                 }
             }

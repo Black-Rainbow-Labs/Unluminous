@@ -2707,6 +2707,26 @@ its own custom layout (same behavior as if they were open in different windows).
   Tab`, `Next Project Tab` and `Previous Project Tab` (`Ctrl`/`Cmd`+`Alt`+`PageDown`/`PageUp`) are the agent's half.
   `tests/project_tabs.rs` is the tests.
 
+## What `task-2340` changed, and the rules it left
+
+- **A conversation keeps the model it was started with.** `AgentChat::provider` is the conversation's own endpoint
+  once it has a message, and the chosen one before that (`services::agent_chat::conversation_provider`).
+  `chosen_provider` is the choice for new conversations. Choosing a model goes through `choose_the_model`, from
+  the Chat settings pills, Settings -> Agent-Chat and `plugins run agent-chat use`: an empty conversation switches
+  at once, and a started one shows `model_waits` under the pills and keeps its model until `New`.
+- **Notices stack up from the top of the status bar**, not from the window's bottom edge. Laid out against the
+  whole window, the newest card covered the status bar.
+- **The AI Configuration card is `Model Integrations`**, because most of its rows run a program rather than send
+  to a URL. The code still calls a row an endpoint (`services::ai_endpoints`).
+- **`Latest` on a channel already running its newest version is answered, not refused.** The status bar's
+  `Finding the newest version...` is cleared when the lists arrive, whatever happens next, and the answer is a
+  `Done` notice.
+- **The rail's buttons can be carried anywhere on the rail**, within a group or into the other one, and the order is
+  the `rail.order` setting: names top to bottom, the top group, `|`, the bottom group. A button it does not name
+  keeps its default group, after the named ones at the top and above them at the bottom, so a new plugin's button
+  never takes a chosen place. `activity_bar::arranged` reads it and `activity_bar::landing` decides a drop, measuring
+  the gaps on the rail as drawn while the button is in the air.
+
 ## What `task-2336` changed, and the rules it left
 
 `tasks/task-2336-unluminous-issues-v28-tdd.md` is the design. Six rules:

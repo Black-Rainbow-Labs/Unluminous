@@ -6,7 +6,13 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.12.0 — 2026-10-24
+## 1.12.1 — 2026-10-24
+
+- Chat model follows a new conversation, notices above the status bar, Model Integrations, latest nightly answer, rail drag to arrange (`task-2340`)
+- Rail.order's help in the settings list test (`task-2340`)
+- Window pictures for notices above the status bar, the chat's own model, and Add model integration (`task-2340`)
+
+## 1.12.0 — 2026-10-23
 
 - A Templates manager with file name patterns and variables to insert, and New Tab on the tab menus (`task-2336`)
 - The tab menu picture with New Tab, and the block diagram picture with the CRLF line ending every checkout has (`task-2336`)

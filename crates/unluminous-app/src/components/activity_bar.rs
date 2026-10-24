@@ -74,17 +74,6 @@ enum IconDrawer {
     Svg(&'static crate::theme::svg_icon::SvgMark, f32),
 }
 
-/// One row of the panes that live at the side of the rail: its name, its icon, whether it is
-/// showing, whether it can be pressed, the action pressing it performs, and the panel its right
-/// click menu is about. The panel is `None` for a button with nowhere to be moved to, such as the
-/// editing area.
-type SideButtonRow =
-    (&'static str, IconDrawer, bool, bool, Action, Option<crate::app::dock::Panel>);
-
-/// One row of the tiles along the bottom of the rail: its name, its icon, whether it is showing,
-/// the action pressing it performs, and the panel its right click menu is about.
-type BottomButtonRow = (&'static str, IconDrawer, bool, Action, crate::app::dock::Panel);
-
 /// What the rail needs to know to draw itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RailState {
@@ -159,20 +148,25 @@ pub struct RailOutcome {
     /// A button was right clicked: where the pointer was, and which panel it is about. The git
     /// button opens no menu, because the commit panel is a modal rather than a docked panel.
     pub menu: Option<(Pos2, crate::app::dock::Panel)>,
+    /// A button was carried to another place and let go: the `rail.order` setting that says the rail as it
+    /// now is (`task-2340`).
+    pub order: Option<String>,
 }
 
 /// Draw the rail into `area`, and report what was pressed.
 pub fn show(ui: &mut egui::Ui, area: Rect, state: RailState, opacity: f32) -> RailOutcome {
-    show_with(ui, area, state, opacity, &[])
+    show_with(ui, area, state, opacity, &[], "")
 }
 
-/// The same, with the buttons the plugins that are switched on contributed.
+/// The same, with the buttons the plugins that are switched on contributed, in the order the `rail.order`
+/// setting asks for.
 pub fn show_with(
     ui: &mut egui::Ui,
     area: Rect,
     state: RailState,
     opacity: f32,
     plugins: &[PluginButton],
+    order: &str,
 ) -> RailOutcome {
     let painter = ui.painter_at(area);
     painter.rect_filled(
@@ -191,8 +185,20 @@ pub fn show_with(
         );
     }
     crate::components::chrome_kit::layer(ui, "rail", area, 0.0, |rux| {
-        buttons(rux, area, state, plugins)
+        buttons(rux, area, state, plugins, order)
     })
+}
+
+/// One button on the rail, whichever group it is in and whoever contributed it: its name, its icon,
+/// whether it is showing, whether it can be pressed, the action pressing it performs, and the panel its
+/// right click menu is about. The panel is `None` for a button with nowhere to be moved to.
+struct Entry {
+    name: String,
+    draw: IconDrawer,
+    on: bool,
+    enabled: bool,
+    action: Action,
+    panel: Option<crate::app::dock::Panel>,
 }
 
 /// Every button in the rail, drawn into one `rux` layer.
@@ -201,16 +207,152 @@ fn buttons(
     area: Rect,
     state: RailState,
     plugins: &[PluginButton],
+    order: &str,
 ) -> RailOutcome {
     let mut outcome = RailOutcome::default();
     // Centred on the rail left of its groove (`task-2282`). The outer six points belong to
     // `components::resize_edges`, so the part of a button under them is drawn and not pressed: see
     // `UNDER_THE_GRIP`.
     let centre_x = area.left() + CENTRE;
+    let (top, bottom) = arranged_entries(state, plugins, order);
+    let names = |group: &[Entry]| group.iter().map(|one| one.name.clone()).collect::<Vec<_>>();
+    let (top_names, bottom_names) = (names(&top), names(&bottom));
 
-    // The panes at the side, from the top.
-    let top: [SideButtonRow; 4] = [
-        (
+    // **A button can be carried to another place on the rail** (`task-2340`). The one being carried is drawn
+    // under the pointer, last, so it is over the rest; the others stay where they are, and an accent line
+    // says where it would land.
+    let carried = rux.ui.ctx().dragged_id();
+    let pointer = rux.ui.ctx().pointer_latest_pos();
+    let mut in_the_air: Option<(&Entry, Pos2)> = None;
+    let mut dropped: Option<(String, f32)> = None;
+    let centres = places(area, top.len(), bottom.len());
+    for (entry, y) in top.iter().chain(bottom.iter()).zip(centres) {
+        let centre = Pos2::new(centre_x, y);
+        // A button that would not fit is not drawn: the rail is as tall as the window and a button half off
+        // the end reads as a fault rather than as a full rail.
+        if centre.y - BUTTON / 2.0 < area.top() || centre.y + BUTTON / 2.0 > area.bottom() {
+            continue;
+        }
+        if carried.is_some_and(|id| id == button_id(rux, &entry.name)) {
+            in_the_air = Some((entry, centre));
+            continue;
+        }
+        press(rux, entry, centre, &mut outcome, &mut dropped);
+    }
+    if let Some((entry, rest)) = in_the_air {
+        let y = pointer
+            .map_or(rest.y, |at| at.y)
+            .clamp(area.top() + MARGIN + BUTTON / 2.0, area.bottom() - MARGIN - BUTTON / 2.0);
+        press(rux, entry, Pos2::new(centre_x, y), &mut outcome, &mut dropped);
+        if let Some(at) = pointer {
+            let slot = landing(area, &top_names, &bottom_names, &entry.name, at.y);
+            insertion_mark(rux.ui.painter(), area, slot.mark);
+        }
+    }
+    if let Some((name, y)) = dropped {
+        let slot = landing(area, &top_names, &bottom_names, &name, y);
+        outcome.order = Some(order_text(&slot.top, &slot.bottom));
+    }
+    outcome
+}
+
+/// The id a rail button's response has, which is how the button being carried is known before it is drawn.
+fn button_id(rux: &rux::Rux<'_>, name: &str) -> egui::Id {
+    rux.ui.id().with(("activity", name))
+}
+
+/// Draw one button at `centre` and take in what was done to it.
+fn press(
+    rux: &mut rux::Rux<'_>,
+    entry: &Entry,
+    centre: Pos2,
+    outcome: &mut RailOutcome,
+    dropped: &mut Option<(String, f32)>,
+) {
+    let pressed = rail_button(rux, centre, &entry.name, entry.draw, entry.on, entry.enabled);
+    if pressed.clicked {
+        outcome.chosen = Some(entry.action.clone());
+    }
+    if let (Some(at), Some(panel)) = (pressed.menu, entry.panel) {
+        outcome.menu = Some((at, panel));
+    }
+    if let Some(at) = pressed.dropped {
+        *dropped = Some((entry.name.clone(), at.y));
+    }
+}
+
+/// The rail's buttons in the two groups, top to bottom in each, in the order `order` asks for.
+///
+/// The default order is the one the rail always had. The top group is the panes at the side, then what
+/// plugins contributed to it. The bottom group is the three tiles along the bottom of the window with the
+/// terminal in the corner, and the plugins' buttons above them.
+fn arranged_entries(
+    state: RailState,
+    plugins: &[PluginButton],
+    order: &str,
+) -> (Vec<Entry>, Vec<Entry>) {
+    let (mut top, bottom) = built_in_entries(state);
+    let mut plugin_bottom = Vec::new();
+    for button in plugins {
+        let entry = Entry {
+            name: button.label.clone(),
+            draw: rail_mark(&button.icon),
+            on: button.on,
+            enabled: true,
+            action: match button.opens {
+                Opens::Pane => Action::PluginPane { pane: button.key.clone() },
+                Opens::Tab => Action::PluginTab { tab: button.key.clone() },
+            },
+            // A tab has no side to be moved to, so no menu. See [`Opens`].
+            panel: match button.opens {
+                Opens::Pane => Some(crate::app::dock::Panel::Plugin(button.slot as u8)),
+                Opens::Tab => None,
+            },
+        };
+        match button.bottom {
+            true => plugin_bottom.push(entry),
+            false => top.push(entry),
+        }
+    }
+    // A plugin's bottom button was counted up from the corner after Unluminous's own, so the first one is the
+    // nearest the tiles.
+    plugin_bottom.reverse();
+    plugin_bottom.extend(bottom);
+    let bottom = plugin_bottom;
+    let names = |group: &[Entry]| group.iter().map(|one| one.name.clone()).collect::<Vec<_>>();
+    let (top_names, bottom_names) = arranged(&names(&top), &names(&bottom), order);
+    let mut every: Vec<Entry> = top.into_iter().chain(bottom).collect();
+    let mut take = |wanted: Vec<String>| {
+        wanted
+            .iter()
+            .filter_map(|name| {
+                let at = every.iter().position(|one| one.name == *name)?;
+                Some(every.remove(at))
+            })
+            .collect::<Vec<Entry>>()
+    };
+    let top = take(top_names);
+    let bottom = take(bottom_names);
+    (top, bottom)
+}
+
+/// Unluminous's own buttons in their default groups, top to bottom in each.
+fn built_in_entries(state: RailState) -> (Vec<Entry>, Vec<Entry>) {
+    let entry = |name: &str,
+                 draw: IconDrawer,
+                 on: bool,
+                 enabled: bool,
+                 action: Action,
+                 panel: Option<crate::app::dock::Panel>| Entry {
+        name: name.to_owned(),
+        draw,
+        on,
+        enabled,
+        action,
+        panel,
+    };
+    let mut top = vec![
+        entry(
             "Project",
             IconDrawer::Line(rux::Icon::Project),
             state.explorer_visible,
@@ -218,13 +360,13 @@ fn buttons(
             Action::ToggleExplorer,
             Some(crate::app::dock::Panel::Explorer),
         ),
-        (
-            // **Under the folder icon**, which is where `task-28` asks for it. Named `Editing Area` rather
-            // than `Editor` or `Files`: `Editor` is the Settings window's own page for the same reason
-            // `Project` above is the explorer, and no two controls in one window may share a name.
-            //
-            // It is not a `Panel`, so a right click on it opens no menu: the editing area is what is left when
-            // the panels have taken their room, and there is no edge to move it to.
+        // **Under the folder icon**, which is where `task-28` asks for it. Named `Editing Area` rather than
+        // `Editor` or `Files`: `Editor` is the Settings window's own page for the same reason `Project` above is
+        // the explorer, and no two controls in one window may share a name.
+        //
+        // It is not a `Panel`, so a right click on it opens no menu: the editing area is what is left when the
+        // panels have taken their room, and there is no edge to move it to.
+        entry(
             "Editing Area",
             IconDrawer::Line(rux::Icon::Document),
             state.editor_visible,
@@ -232,133 +374,174 @@ fn buttons(
             Action::ToggleEditor,
             None,
         ),
-        (
-            // Not `Git`: the menu bar already has a `Git`, and no two controls in one window may share
-            // a name — a test cannot tell them apart and neither can anybody reading them out. This
-            // button opens the commit panel, which is the reference editor's Version Control tool window.
+        // Not `Git`: the menu bar already has a `Git`, and no two controls in one window may share a name. This
+        // button opens the commit panel, which is a modal rather than a docked panel, so it has no side to be
+        // moved to and its button opens no menu.
+        entry(
             "Version Control",
             IconDrawer::Line(rux::Icon::Git),
             state.git_open,
             state.in_repository,
             Action::Git(GitAction::Commit),
-            // The commit panel is a modal rather than a docked panel, so it has no side to be moved
-            // to and its button opens no menu.
             None,
         ),
-        (
-            // The Realm - `task-1904`. In the **top** group, because the rail's two
-            // groups say what a panel *is*: the bottom one holds the things that are a character
-            // grid, and a canvas is a surface with several of them inside it rather than one.
+    ];
+    // The Realm - `task-1904`. In the **top** group, because a canvas is a surface with several character grids
+    // inside it rather than one. Absent while its plugin is off, which is the rule a plugin's own rail button
+    // keeps (`task-2202`).
+    if state.realm_available {
+        top.push(entry(
             "Realm",
             IconDrawer::Line(rux::Icon::Realm),
             state.realm_visible,
             true,
             Action::Realm(crate::app::actions::RealmAction::Toggle),
             Some(crate::app::dock::Panel::Realm),
-        ),
-    ];
-    // The Realm's button is absent while its plugin is off, which is the rule a plugin's own rail button
-    // keeps. `task-2202`.
-    let top = top.into_iter().filter(|(name, ..)| *name != "Realm" || state.realm_available);
-    for (index, (name, draw, on, enabled, action, panel)) in top.enumerate() {
-        let centre = Pos2::new(centre_x, area.top() + MARGIN + BUTTON / 2.0 + index as f32 * STEP);
-        let pressed = rail_button(rux, centre, name, draw, on, enabled);
-        if pressed.clicked {
-            outcome.chosen = Some(action);
-        }
-        if let (Some(at), Some(panel)) = (pressed.menu, panel) {
-            outcome.menu = Some((at, panel));
-        }
+        ));
     }
-
-    // The three tiles that live along the bottom of the window, so their buttons are at the bottom
-    // of the rail, counted **up** from it so the last one is always in the corner however many there
-    // are — which is what made adding the third one free. `Terminal tile` rather than `Terminal`,
-    // because `Edit -> Settings` has a page called `Terminal` and the `View` menu has an entry
-    // called `Terminal`, and no two controls in one window may share a name; `Run tile` and
-    // `Debug tile` are named to match, and for the same reason — the `Run` menu is a control too.
-    // **The terminal stays in the corner.** The list is read bottom upwards, so the first entry is
-    // the one in the corner of the window — which `task-1658`'s capture put the terminal in and
-    // which a dozen accepted screenshots are of. The design's §9 says the debug button goes "below
-    // the run tile's", and that would have taken the corner; the corner is the older promise, so the
-    // new button goes above the run one instead.
-    let bottom: [BottomButtonRow; 3] = [
-        (
-            "Terminal tile",
-            IconDrawer::Line(rux::Icon::Terminal),
-            state.terminal_visible,
-            Action::ToggleTerminal,
-            crate::app::dock::Panel::Terminal,
-        ),
-        (
-            "Run tile",
-            IconDrawer::Line(rux::Icon::RunTile),
-            state.run_visible,
-            Action::ToggleRunTile,
-            crate::app::dock::Panel::Run,
-        ),
-        (
+    // The three tiles that live along the bottom of the window, top to bottom, with the terminal in the corner,
+    // which `task-1658`'s capture put it in. `Terminal tile` rather than `Terminal`, because `Edit -> Settings`
+    // has a page called `Terminal` and the `View` menu has an entry called `Terminal`; `Run tile` and `Debug
+    // tile` are named to match.
+    let bottom = vec![
+        entry(
             "Debug tile",
             DEBUG_MARK,
             state.debug_visible,
+            true,
             Action::ToggleDebugTile,
-            crate::app::dock::Panel::Debug,
+            Some(crate::app::dock::Panel::Debug),
+        ),
+        entry(
+            "Run tile",
+            IconDrawer::Line(rux::Icon::RunTile),
+            state.run_visible,
+            true,
+            Action::ToggleRunTile,
+            Some(crate::app::dock::Panel::Run),
+        ),
+        entry(
+            "Terminal tile",
+            IconDrawer::Line(rux::Icon::Terminal),
+            state.terminal_visible,
+            true,
+            Action::ToggleTerminal,
+            Some(crate::app::dock::Panel::Terminal),
         ),
     ];
-    for (index, (name, draw, on, action, panel)) in bottom.into_iter().enumerate() {
-        let centre =
-            Pos2::new(centre_x, area.bottom() - MARGIN - BUTTON / 2.0 - index as f32 * STEP);
-        let pressed = rail_button(rux, centre, name, draw, on, true);
-        if pressed.clicked {
-            outcome.chosen = Some(action);
-        }
-        if let Some(at) = pressed.menu {
-            outcome.menu = Some((at, panel));
-        }
-    }
+    (top, bottom)
+}
 
-    // The plugins' buttons, after Unluminous's own in whichever group each manifest named. A button that
-    // would not fit is not drawn: the rail is as tall as the window and a button half off the end reads
-    // as a fault rather than as a full rail.
-    let mut top_next = 4;
-    let mut bottom_next = 3;
-    for button in plugins {
-        let centre = match button.bottom {
-            true => {
-                let at = Pos2::new(
-                    centre_x,
-                    area.bottom() - MARGIN - BUTTON / 2.0 - bottom_next as f32 * STEP,
-                );
-                bottom_next += 1;
-                at
-            }
-            false => {
-                let at = Pos2::new(
-                    centre_x,
-                    area.top() + MARGIN + BUTTON / 2.0 + top_next as f32 * STEP,
-                );
-                top_next += 1;
-                at
-            }
-        };
-        if centre.y - BUTTON / 2.0 < area.top() || centre.y + BUTTON / 2.0 > area.bottom() {
-            continue;
-        }
-        let pressed =
-            rail_button(rux, centre, &button.label, rail_mark(&button.icon), button.on, true);
-        if pressed.clicked {
-            outcome.chosen = Some(match button.opens {
-                Opens::Pane => Action::PluginPane { pane: button.key.clone() },
-                Opens::Tab => Action::PluginTab { tab: button.key.clone() },
-            });
-        }
-        // A tab has no side to be moved to, so no menu. See [`Opens`].
-        if let (Some(at), Opens::Pane) = (pressed.menu, button.opens) {
-            outcome.menu = Some((at, crate::app::dock::Panel::Plugin(button.slot as u8)));
-        }
-    }
+/// The middle of each button, top group first and then the bottom group, both top to bottom. The top group
+/// is counted down from the top of the rail and the bottom group up from its bottom, so the last button of
+/// the bottom group is always in the corner however many there are.
+fn places(area: Rect, top: usize, bottom: usize) -> Vec<f32> {
+    let downwards = (0..top).map(|index| area.top() + MARGIN + BUTTON / 2.0 + index as f32 * STEP);
+    let upwards = (0..bottom)
+        .map(|index| area.bottom() - MARGIN - BUTTON / 2.0 - (bottom - 1 - index) as f32 * STEP);
+    downwards.chain(upwards).collect()
+}
 
-    outcome
+/// The two groups' names in the order `order` asks for, given the default groups.
+///
+/// `order` is the `rail.order` setting: names from the top of the rail down, the top group, then a `|`, then
+/// the bottom group. A name it gives that is not a button is passed over. A button it does not name stays in
+/// its default group: after the named ones at the top, and above them at the bottom, so a button that is new
+/// to the rail never takes a place somebody chose for another.
+pub fn arranged(top: &[String], bottom: &[String], order: &str) -> (Vec<String>, Vec<String>) {
+    if order.trim().is_empty() {
+        return (top.to_vec(), bottom.to_vec());
+    }
+    let (asked_top, asked_bottom) = order.split_once('|').unwrap_or((order, ""));
+    let every: Vec<&String> = top.iter().chain(bottom).collect();
+    let mut used: Vec<String> = Vec::new();
+    let mut named = |asked: &str| {
+        let mut found = Vec::new();
+        for name in asked.split(',').map(str::trim) {
+            let known = every.iter().any(|one| one.as_str() == name);
+            if known && !used.iter().any(|one| one == name) {
+                used.push(name.to_owned());
+                found.push(name.to_owned());
+            }
+        }
+        found
+    };
+    let mut new_top = named(asked_top);
+    let new_bottom = named(asked_bottom);
+    let unnamed = |group: &[String]| -> Vec<String> {
+        group.iter().filter(|name| !used.contains(name)).cloned().collect()
+    };
+    new_top.extend(unnamed(top));
+    let mut new_bottom_group = unnamed(bottom);
+    new_bottom_group.extend(new_bottom);
+    (new_top, new_bottom_group)
+}
+
+/// The `rail.order` setting that says these two groups, top to bottom in each.
+pub fn order_text(top: &[String], bottom: &[String]) -> String {
+    format!("{} | {}", top.join(", "), bottom.join(", "))
+}
+
+/// Where a button carried to some height lands: the two groups as they would be, and the height of the line
+/// that says so.
+pub struct Landing {
+    pub top: Vec<String>,
+    pub bottom: Vec<String>,
+    pub mark: f32,
+}
+
+/// Work out where the button `carried` lands when it is let go at height `y`.
+///
+/// Every gap a button could go into is a candidate, in both groups, and the one nearest the pointer wins: the
+/// gap above each button, and the one after the last button of each group. So a button carried down past the
+/// top group's last one, into the empty middle of the rail, joins whichever group is nearer.
+///
+/// The gaps are the ones on the rail as it is drawn while the button is carried, which is with every other
+/// button where it was and the carried one's own place still counted, because those are the gaps a person
+/// sees. Taking the button out first would put every gap below it one place higher than the line drawn.
+pub fn landing(area: Rect, top: &[String], bottom: &[String], carried: &str, y: f32) -> Landing {
+    let half_gap = (STEP - BUTTON) / 2.0;
+    // The gap above top button `index`, and after the last one at `index == top.len()`.
+    let top_gaps = (0..=top.len())
+        .map(|index| (false, index, area.top() + MARGIN + index as f32 * STEP - half_gap));
+    // The gap above bottom button `index`, and below the corner one at `index == bottom.len()`.
+    let count = bottom.len() as f32;
+    let bottom_gaps = (0..=bottom.len()).map(|index| {
+        (true, index, area.bottom() - MARGIN - (count - index as f32) * STEP + half_gap)
+    });
+    let (in_bottom, mut index, mark) = top_gaps
+        .chain(bottom_gaps)
+        .min_by(|one, other| (one.2 - y).abs().total_cmp(&(other.2 - y).abs()))
+        .unwrap_or((false, top.len(), area.top() + MARGIN));
+    // A gap below the carried button's own place in the same group moves up one once it is taken out.
+    let was = match in_bottom {
+        true => bottom.iter().position(|name| name == carried),
+        false => top.iter().position(|name| name == carried),
+    };
+    if was.is_some_and(|was| was < index) {
+        index -= 1;
+    }
+    let mut top: Vec<String> = top.iter().filter(|name| *name != carried).cloned().collect();
+    let mut bottom: Vec<String> = bottom.iter().filter(|name| *name != carried).cloned().collect();
+    match in_bottom {
+        true => bottom.insert(index.min(bottom.len()), carried.to_owned()),
+        false => top.insert(index.min(top.len()), carried.to_owned()),
+    }
+    Landing { top, bottom, mark }
+}
+
+/// The two point accent line across the rail that says where a carried button would land, which is the mark
+/// a carried tab draws between two tabs (`file_tabs::insertion_mark`).
+fn insertion_mark(painter: &egui::Painter, area: Rect, y: f32) {
+    let y = y.clamp(area.top() + 2.0, area.bottom() - 2.0);
+    painter.rect_filled(
+        Rect::from_min_size(
+            Pos2::new(area.left() + 4.0, y - 1.0),
+            Vec2::new(area.width() - 10.0, 2.0),
+        ),
+        CornerRadius::same(1),
+        color::accent(),
+    );
 }
 
 /// The drawing behind a `pane.icon` name.
@@ -408,6 +591,8 @@ struct Pressed {
     clicked: bool,
     /// Where the pointer was when it was right clicked, which opens the panel's own menu.
     menu: Option<Pos2>,
+    /// Where the pointer was when the button was let go after being carried. `task-2340`.
+    dropped: Option<Pos2>,
 }
 
 /// One button in the rail: round, carved into the rail while what it opens is open, and a line mark.
@@ -425,7 +610,10 @@ fn rail_button(
 ) -> Pressed {
     let hit = Rect::from_center_size(centre, Vec2::splat(BUTTON));
     let pressable = Rect::from_min_max(Pos2::new(hit.left() + UNDER_THE_GRIP, hit.top()), hit.max);
-    let sense = if enabled { Sense::click() } else { Sense::hover() };
+    // **Every button can be carried**, a dimmed one too, because where it sits is not about whether it can be
+    // pressed now (`task-2340`). egui does not count a press that moved as a click, so carrying one never
+    // presses it.
+    let sense = if enabled { Sense::click_and_drag() } else { Sense::drag() };
     let response =
         rux.ui.interact(pressable, rux.ui.id().with(("activity", name)), sense).with_hint(name);
     let chat = crate::components::chrome_kit::chat();
@@ -453,6 +641,10 @@ fn rail_button(
         clicked: response.clicked(),
         menu: match response.secondary_clicked() {
             true => response.interact_pointer_pos().or_else(|| response.hover_pos()),
+            false => None,
+        },
+        dropped: match response.drag_stopped() {
+            true => response.interact_pointer_pos().or_else(|| rux.ui.ctx().pointer_latest_pos()),
             false => None,
         },
     }
@@ -496,5 +688,81 @@ mod icon_tests {
             }
             assert_ne!(drawn, fallback, "`{name}` is in PANE_ICONS with no drawing behind it");
         }
+    }
+}
+
+/// The order of the rail's buttons, `task-2340`.
+#[cfg(test)]
+mod order_tests {
+    use super::{arranged, landing, order_text, BUTTON, MARGIN, STEP};
+
+    fn names(list: &[&str]) -> Vec<String> {
+        list.iter().map(|one| (*one).to_owned()).collect()
+    }
+
+    fn defaults() -> (Vec<String>, Vec<String>) {
+        (
+            names(&["Project", "Editing Area", "Version Control", "Realm"]),
+            names(&["Debug tile", "Run tile", "Terminal tile"]),
+        )
+    }
+
+    #[test]
+    fn an_empty_order_is_the_order_the_rail_always_had() {
+        let (top, bottom) = defaults();
+        assert_eq!(arranged(&top, &bottom, ""), (top.clone(), bottom.clone()));
+        assert_eq!(arranged(&top, &bottom, "  "), (top, bottom));
+    }
+
+    #[test]
+    fn an_order_moves_buttons_between_groups_and_unnamed_ones_keep_their_group() {
+        let (top, bottom) = defaults();
+        let (new_top, new_bottom) =
+            arranged(&top, &bottom, "Terminal tile, Realm | Project, Nothing Like This");
+        assert_eq!(new_top, names(&["Terminal tile", "Realm", "Editing Area", "Version Control"]));
+        // An unnamed bottom button is above the named ones, so the named one keeps the corner.
+        assert_eq!(new_bottom, names(&["Debug tile", "Run tile", "Project"]));
+    }
+
+    #[test]
+    fn a_name_given_twice_is_placed_once() {
+        let (top, bottom) = defaults();
+        let (new_top, new_bottom) = arranged(&top, &bottom, "Realm, Realm | Realm");
+        assert_eq!(new_top.iter().filter(|one| *one == "Realm").count(), 1);
+        assert!(!new_bottom.contains(&"Realm".to_owned()));
+    }
+
+    #[test]
+    fn the_order_text_reads_back_as_the_same_order() {
+        let top = names(&["Realm", "Project", "Editing Area", "Version Control"]);
+        let bottom = names(&["Terminal tile", "Debug tile", "Run tile"]);
+        let (all_top, all_bottom) = defaults();
+        let text = order_text(&top, &bottom);
+        assert_eq!(
+            text,
+            "Realm, Project, Editing Area, Version Control | Terminal tile, Debug tile, Run tile"
+        );
+        assert_eq!(arranged(&all_top, &all_bottom, &text), (top, bottom));
+    }
+
+    #[test]
+    fn a_button_lands_in_the_gap_nearest_where_it_was_let_go() {
+        let area = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(36.0, 600.0));
+        let (top, bottom) = defaults();
+        let centre = |index: usize| MARGIN + BUTTON / 2.0 + index as f32 * STEP;
+        // Down past Version Control: the gap under it, which is above Realm.
+        let down = landing(area, &top, &bottom, "Project", centre(2) + STEP / 2.0);
+        assert_eq!(down.top, names(&["Editing Area", "Version Control", "Project", "Realm"]));
+        assert_eq!(down.bottom, bottom);
+        // Up to the very top.
+        let up = landing(area, &top, &bottom, "Realm", 0.0);
+        assert_eq!(up.top, names(&["Realm", "Project", "Editing Area", "Version Control"]));
+        // Into the corner of the bottom group.
+        let corner = landing(area, &top, &bottom, "Project", area.bottom());
+        assert_eq!(corner.top, names(&["Editing Area", "Version Control", "Realm"]));
+        assert_eq!(corner.bottom, names(&["Debug tile", "Run tile", "Terminal tile", "Project"]));
+        // Let go where it already is, and nothing moves.
+        let still = landing(area, &top, &bottom, "Editing Area", centre(1));
+        assert_eq!(still.top, top);
     }
 }

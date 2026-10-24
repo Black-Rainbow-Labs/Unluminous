@@ -1005,6 +1005,7 @@ impl UnluminousApp {
             "update.check" => self.settings.update_check.name().to_owned(),
             "update.channel" => self.settings.update_channel.name().to_owned(),
             "update.skip" => self.settings.update_skip.clone(),
+            "rail.order" => self.settings.rail_order.clone(),
             "editor.exclude" => self.settings.exclude.clone(),
             "debug.value_tooltip" => self.settings.value_tooltip.name().to_owned(),
             "plugins.chrome" => self.settings.plugin_chrome.to_string(),
@@ -1167,6 +1168,9 @@ impl UnluminousApp {
             // A version, or empty to offer every version again. Not checked against the releases,
             // because declining a version that has not been published yet is harmless.
             "update.skip" => settings.update_skip = value.trim().trim_start_matches('v').to_owned(),
+            // Names are not checked against the rail: a plugin's button may be one switched on a moment
+            // from now, and `activity_bar::arranged` passes over a name nothing has. `task-2340`.
+            "rail.order" => settings.rail_order = value.trim().to_owned(),
             // Not checked against the machine, for `terminal.shell`'s reason: a path may name
             // something installed a moment from now, and when it is wrong the status bar says so in
             // the adapter's own words, which is a better message than one made up here.
@@ -1847,6 +1851,10 @@ const SETTINGS: &[SettingKey] = &[
         help: "The one version Don't Ask Again declined, which the daily check does not offer. A later version is offered again. Empty offers every version.",
     },
     SettingKey {
+        name: "rail.order",
+        help: "The order of the rail's buttons by name, top group, then |, then the bottom group, such as `Project, Realm | Run tile, Terminal tile`. Dragging a button on the rail writes it. A button it does not name keeps its own group. Empty is the default order.",
+    },
+    SettingKey {
         name: "editor.exclude",
         help: "Patterns Go to File, Find in Files, completion, Go to Definition and Find References leave out, beside the project's own .gitignore, which is read already. The explorer goes on showing everything.",
     },
@@ -1968,6 +1976,7 @@ fn fresh_value(name: &str, fresh: &crate::settings::Settings) -> String {
         "update.check" => fresh.update_check.name().to_owned(),
         "update.channel" => fresh.update_channel.name().to_owned(),
         "update.skip" => fresh.update_skip.clone(),
+        "rail.order" => fresh.rail_order.clone(),
         "editor.exclude" => fresh.exclude.clone(),
         "debug.value_tooltip" => fresh.value_tooltip.name().to_owned(),
         "plugins.chrome" => fresh.plugin_chrome.to_string(),

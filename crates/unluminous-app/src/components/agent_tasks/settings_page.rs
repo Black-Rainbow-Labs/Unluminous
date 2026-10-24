@@ -117,7 +117,7 @@ fn cards(board: &mut AgentTasks, ui: &mut egui::Ui, column: &mut Column) -> Vec<
             "Endpoint",
             Some(
                 "Which endpoint a new ticket is given to, and which one takes a ticket assigned to a person. The \
-                 endpoints are in Settings -> AI Configuration; the ones that run an agent on this machine are \
+                 model integrations are in Settings -> AI Configuration; the ones that run an agent on this machine are \
                  offered here.",
             ),
             |row| row.select("Default endpoint", &names, chosen, 240.0),

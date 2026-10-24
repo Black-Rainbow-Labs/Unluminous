@@ -710,8 +710,23 @@ impl UnluminousApp {
                 plugin_buttons.into_iter().chain(tab_buttons).collect();
             let rail = {
                 let mut rail_ui = ui.new_child(egui::UiBuilder::new().max_rect(rail_rect));
-                activity_bar::show_with(&mut rail_ui, rail_rect, state, opacity, &plugin_buttons)
+                activity_bar::show_with(
+                    &mut rail_ui,
+                    rail_rect,
+                    state,
+                    opacity,
+                    &plugin_buttons,
+                    &self.settings.rail_order,
+                )
             };
+            // A button carried to another place on the rail, which is remembered between runs as
+            // `rail.order` (`task-2340`).
+            if let Some(order) = rail.order {
+                if order != self.settings.rail_order {
+                    self.settings.rail_order = order;
+                    self.unsaved_settings = true;
+                }
+            }
             if let Some(chosen) = rail.chosen {
                 *action = Some(chosen);
             }
@@ -2283,7 +2298,13 @@ impl UnluminousApp {
             .toast_rux
             .take()
             .unwrap_or_else(|| crate::theme::rux_state(crate::theme::rux_theme()));
-        let pressed = crate::components::toast::show(ui, full, &self.toasts, &state);
+        // **Stacked up from the top of the status bar**, not from the window's bottom edge (`task-2340`). Laid
+        // out against the whole window, the newest card sat over the status bar, and with Agent Chat filling the
+        // right hand side its sentence read as a message running out of the chat into the bar.
+        let above_the_status_bar =
+            Rect::from_min_max(full.min, Pos2::new(full.right(), places.status_rect.top()));
+        let pressed =
+            crate::components::toast::show(ui, above_the_status_bar, &self.toasts, &state);
         state.end_frame();
         self.toast_rux = Some(state);
         if let Some(dismissed) = pressed {
