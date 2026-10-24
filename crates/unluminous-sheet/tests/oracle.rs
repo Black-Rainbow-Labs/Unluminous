@@ -1,14 +1,17 @@
-//! The Excel oracle: every formula in `oracle/formulas.txt`, computed by Unluminous, against the answer
-//! Excel computed for it on the same setup sheet.
+//! The Excel oracle: every formula in the corpus, computed by Unluminous, against the answer Excel
+//! computed for it on the same setup sheet.
 //!
-//! `excel.jsonl` was written by `tools/excel-oracle/evaluate.ps1`, which enters each formula into Excel 16
-//! through COM and records Excel's value at full precision. It is committed, so this test runs with no
-//! Excel. When the corpus changes, run that script again:
+//! The corpus is every pair `oracle/<name>.txt` and `oracle/<name>.jsonl`, except `setup.txt` and the typed
+//! input files (`inputs*`). A `.jsonl` file was written by `tools/excel-oracle/evaluate.ps1`, which enters
+//! each formula into Excel 16 through COM and records Excel's value at full precision. They are committed,
+//! so this test runs with no Excel. When a corpus file changes, run that script again for it:
 //!
 //! ```text
-//! pwsh tools/excel-oracle/evaluate.ps1 -Formulas crates/unluminous-sheet/tests/oracle/formulas.txt \
-//!     -Setup crates/unluminous-sheet/tests/oracle/setup.txt > crates/unluminous-sheet/tests/oracle/excel.jsonl
+//! pwsh tools/excel-oracle/evaluate.ps1 -Formulas crates/unluminous-sheet/tests/oracle/<name>.txt \
+//!     -Setup crates/unluminous-sheet/tests/oracle/setup.txt > crates/unluminous-sheet/tests/oracle/<name>.jsonl
 //! ```
+//!
+//! `ORACLE=<name>` limits a run to one file.
 
 use unluminous_sheet::coord::CellRef;
 use unluminous_sheet::eval::evaluate;
@@ -58,6 +61,25 @@ fn agrees(kind: &str, excel: &str, ours: &Value, tolerance: f64) -> bool {
     }
 }
 
+/// Every answer line of every corpus file, in file name order.
+fn corpus_lines() -> Vec<String> {
+    let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/oracle");
+    let only = std::env::var("ORACLE").ok();
+    let mut files: Vec<_> = std::fs::read_dir(&folder)
+        .unwrap()
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == "jsonl"))
+        .filter(|p| !p.file_name().unwrap().to_string_lossy().starts_with("input"))
+        .filter(|p| only.as_deref().is_none_or(|o| p.file_stem().unwrap() == o))
+        .collect();
+    files.sort();
+    files
+        .iter()
+        .flat_map(|p| std::fs::read_to_string(p).unwrap().lines().map(str::to_owned).collect::<Vec<_>>())
+        .filter(|l| !l.trim().is_empty())
+        .collect()
+}
+
 fn shown(v: &Value) -> String {
     match v {
         Value::Number(n) => format!("{n:?}"),
@@ -72,8 +94,8 @@ fn every_formula_computes_to_what_excel_computed() {
     let at = CellRef::parse("Z100").unwrap();
     let mut wrong = Vec::new();
     let mut checked = 0;
-    for line in include_str!("oracle/excel.jsonl").lines() {
-        let answer: serde_json::Value = serde_json::from_str(line).unwrap();
+    for line in corpus_lines() {
+        let answer: serde_json::Value = serde_json::from_str(&line).unwrap();
         let formula = answer["formula"].as_str().unwrap();
         let kind = answer["kind"].as_str().unwrap();
         let value = answer["value"].as_str().unwrap_or("");
