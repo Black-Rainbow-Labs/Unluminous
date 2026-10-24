@@ -7360,6 +7360,46 @@ rules:
   `com.apple.security.device.audio-input` in the entitlements. The Windows installer's `voice` task and
   `unluminous-cli setup` run `unluminous --setup-voice`, which downloads the model and asks.
 
+## A workbook opens in a tab of its own, and Excel is the oracle (`task-2338`)
+
+`tasks/task-2338-spreadsheet-prd.md` and `-tdd.md` are the design. The Spreadsheet plugin opens `.xlsx`, `.xlsm`,
+`.csv` and `.tsv` files. `crates/unluminous-sheet` is everything with no window in it: the zip, SpreadsheetML read
+and written, the formula language, the evaluator and its 330 functions, recalculation, number formats, CSV, and
+every editing operation as an undoable `edit::Session` call. Seven rules:
+
+- **What is not modelled is kept.** Every part the writer does not regenerate is written back as the bytes it was
+  read as, and every worksheet element the model does not hold is written back as its XML in the schema's order.
+  A chart Excel made is read only to be drawn (`xlsx/chart.rs`); its parts go back untouched. A chart made here is
+  written as new parts in Excel's default shape, appended to a drawing the sheet already had.
+- **Excel is the oracle.** `tools/excel-oracle/` drives the installed Excel through COM. `tests/oracle/formulas.txt`
+  is every function's cases with the value Excel computed, and `tests/files.rs` has Excel open what Unluminous
+  writes and compare its values, with no repair. A behaviour that differs from Excel is fixed to Excel's measured
+  answer, not to the documentation: number to text uses 15 significant digits, DATEDIF's `MD` keeps Excel's bug,
+  and `#SPILL!` and `#CALC!` are written into a file as `#VALUE!`. The tests that start Excel pass with a line
+  where Excel is not installed.
+- **A file a ui plugin claims through `ui.extensions` opens in a plugin tab keyed `<plugin>:<path>`**
+  (`app/plugin_files.rs`). `UiProvider::tab_keyed`, `modified`, `save`, `closed` and `claims_key` are the contract:
+  the dot in the tab strip, `Ctrl+S`, saving on close, and Excel's chords taken before the menus (`frame.rs`
+  asks `claims_key` while the tab has the keyboard, so `Ctrl+D` is Fill Down there and not Show Diff). The Realm
+  plugin keeps its own path. With the plugin off, `.csv` opens as text and `.xlsx` opens a tab naming the plugin.
+- **There is no ribbon, and there is one tree of commands.** `services::spreadsheet::catalogue` is every command
+  the tab offers, each entry naming the `plugins run spreadsheet` words it runs. The workbook menu under `...` (with
+  its search), the Format panel's levels, the right click menu and a sheet tab's menu are drawn from it, so a menu
+  entry and an agent's call are the same call into `commands::run`. A test walks the tree and runs every entry; add
+  a command to the tree, not to one menu.
+- **The grid's keys and pointer make `actions::Act` values**, and `commands::run` turns words into the same values,
+  so both reach `actions::apply`. A read (`cell`, `read`, `eval`) never moves the selection.
+- **The grid draws the visible rows and columns only**, positioned by `services::spreadsheet::axis` (the default
+  size and a sorted list of exceptions), in Excel's units: a column is `round(width * 7)` points, a row `height *
+  4 / 3`. Cell text is set with Unluminous's own glyph renderer in the workbook's font. `paper = theme` draws on the
+  theme's ground and lightens dark workbook colours to read on it; `paper = light` is white, as Excel draws.
+- **Undo keeps the cells a change could touch, empty ones included.** A snapshot cut to the used range before the
+  change could not undo typing into a new column, and nothing in the engine's own tests found it.
+
+`plugins run spreadsheet <verb>` and the generated `unluminous_spreadsheet` MCP tool are the agent's half; the verbs
+are `unluminous-cli/src/plugins.rs`'s `SPREADSHEET`. `crates/unluminous-app/tests/spreadsheet.rs` is the window
+tests, and the agent study's `s37-spreadsheet` watches a model add a column to a CSV file.
+
 ## A notebook is one document of percent cells, and the kernel is spoken to through Python
 
 Opening a `.ipynb` file opens a notebook tab: code, Markdown and raw cells, run against a Jupyter

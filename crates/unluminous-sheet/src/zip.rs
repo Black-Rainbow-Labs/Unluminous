@@ -82,20 +82,21 @@ pub fn read(bytes: &[u8]) -> Result<Vec<Entry>, String> {
         let data_at =
             local + 30 + u16_at(bytes, local + 26)? as usize + u16_at(bytes, local + 28)? as usize;
         let raw = bytes.get(data_at..data_at + compressed).ok_or_else(truncated)?;
-        let data =
-            match method {
-                0 => raw.to_vec(),
-                8 => {
-                    let mut out = Vec::with_capacity(size);
-                    flate2::read::DeflateDecoder::new(raw).read_to_end(&mut out).map_err(
-                        |problem| format!("{name} could not be decompressed: {problem}"),
-                    )?;
-                    out
-                }
-                other => return Err(format!(
+        let data = match method {
+            0 => raw.to_vec(),
+            8 => {
+                let mut out = Vec::with_capacity(size);
+                flate2::read::DeflateDecoder::new(raw)
+                    .read_to_end(&mut out)
+                    .map_err(|problem| format!("{name} could not be decompressed: {problem}"))?;
+                out
+            }
+            other => {
+                return Err(format!(
                     "{name} is compressed with method {other}, which this version does not read"
-                )),
-            };
+                ))
+            }
+        };
         if name.ends_with('/') {
             continue;
         }

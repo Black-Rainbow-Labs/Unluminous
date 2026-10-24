@@ -481,17 +481,18 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Result<Answe
         "paste" => {
             let book = sheet.current_book()?;
             let rest = take_range(book, args);
-            let mode =
-                match rest.first().map(String::as_str).unwrap_or("all") {
-                    "all" => PasteMode::All,
-                    "values" => PasteMode::Values,
-                    "formulas" => PasteMode::Formulas,
-                    "formats" => PasteMode::Formats,
-                    "transpose" => PasteMode::Transpose,
-                    other => return Err(format!(
+            let mode = match rest.first().map(String::as_str).unwrap_or("all") {
+                "all" => PasteMode::All,
+                "values" => PasteMode::Values,
+                "formulas" => PasteMode::Formulas,
+                "formats" => PasteMode::Formats,
+                "transpose" => PasteMode::Transpose,
+                other => {
+                    return Err(format!(
                         "paste takes all, values, formulas, formats or transpose, not `{other}`"
-                    )),
-                };
+                    ))
+                }
+            };
             act(sheet, Act::Paste(mode))
         }
         "find" => {
