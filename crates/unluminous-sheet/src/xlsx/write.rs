@@ -322,9 +322,9 @@ impl<'a> Writer<'a> {
             pr.push(("date1904".to_owned(), "1".to_owned()));
         }
         out.push_str(&format!("<workbookPr{}/>", attrs_text(&pr)));
-        out.push_str(&raw("workbookProtection"));
         // Elements the schema does not name, such as `mc:AlternateContent` and `xr:revisionPtr`, go where
-        // Excel writes them: after the workbook properties.
+        // Excel writes them: after the workbook properties and before `workbookProtection`. Excel refuses a
+        // file with the protection in front of them, and its repair refuses it too.
         const KNOWN: &[&str] = &[
             "fileVersion",
             "fileSharing",
@@ -346,6 +346,7 @@ impl<'a> Writer<'a> {
                 out.push_str(xml);
             }
         }
+        out.push_str(&raw("workbookProtection"));
         let mut view = book.view_attrs.clone();
         if book.active_sheet > 0 {
             view.push(("activeTab".to_owned(), book.active_sheet.to_string()));
@@ -886,21 +887,22 @@ impl<'a> Writer<'a> {
         out.push('>');
         if let Some(f) = &cell.formula {
             let text = if f.frozen { f.text.to_string() } else { print(&f.expr, true) };
+            let kept = f.attrs.as_deref().unwrap_or("");
             if let Some(range) = f.array {
                 out.push_str(&format!(
-                    "<f t=\"array\" ref=\"{}\">{}</f>",
+                    "<f t=\"array\" ref=\"{}\"{kept}>{}</f>",
                     range.a1(),
                     escape(&text)
                 ));
             } else if dynamic {
                 let range = sheet.spills.range_of(anchor).unwrap_or(Range::cell(at));
                 out.push_str(&format!(
-                    "<f t=\"array\" ref=\"{}\">{}</f>",
+                    "<f t=\"array\" ref=\"{}\"{kept}>{}</f>",
                     range.a1(),
                     escape(&text)
                 ));
             } else {
-                out.push_str(&format!("<f>{}</f>", escape(&text)));
+                out.push_str(&format!("<f{kept}>{}</f>", escape(&text)));
             }
         }
         if let Some(v) = value_text {
@@ -1058,42 +1060,154 @@ fn sheet_pr(raw: &str, tab: Option<Color>, _theme: &[u32]) -> String {
 }
 
 fn sheet_views(sheet: &Sheet, selected: bool) -> String {
-    let mut attrs = Vec::new();
+    let v = &sheet.view;
+    let mut attrs: Vec<(String, String)> = Vec::new();
+    let mut push = |k: &str, val: String| attrs.push((k.to_owned(), val));
     if selected {
-        attrs.push(("tabSelected", "1".to_owned()));
+        push("tabSelected", "1".to_owned());
     }
     if !sheet.show_grid {
-        attrs.push(("showGridLines", "0".to_owned()));
+        push("showGridLines", "0".to_owned());
+    }
+    if v.show_formulas {
+        push("showFormulas", "1".to_owned());
+    }
+    if !v.show_headings {
+        push("showRowColHeaders", "0".to_owned());
+    }
+    if !v.show_zeros {
+        push("showZeros", "0".to_owned());
+    }
+    if v.right_to_left {
+        push("rightToLeft", "1".to_owned());
+    }
+    if v.kind != ViewKind::Normal {
+        push("view", v.kind.name().to_owned());
+    }
+    if let Some(at) = v.top_left {
+        push("topLeftCell", at.a1());
     }
     if sheet.zoom != 100 && sheet.zoom != 0 {
-        attrs.push(("zoomScale", sheet.zoom.to_string()));
-        attrs.push(("zoomScaleNormal", sheet.zoom.to_string()));
+        push("zoomScale", sheet.zoom.to_string());
     }
-    attrs.push(("workbookViewId", "0".to_owned()));
-    let attrs: String = attrs.iter().map(|(k, v)| format!(" {k}=\"{v}\"")).collect();
-    let mut inner = String::new();
-    if let Some((rows, cols)) = sheet.frozen.filter(|(r, c)| *r > 0 || *c > 0) {
-        let top_left = CellRef::new(rows, cols).a1();
-        let pane = match (rows > 0, cols > 0) {
-            (true, true) => "bottomRight",
-            (true, false) => "bottomLeft",
-            _ => "topRight",
-        };
-        inner.push_str(&format!(
-            "<pane{}{} topLeftCell=\"{top_left}\" activePane=\"{pane}\" state=\"frozen\"/>",
+    let normal = v.zoom_normal.or((sheet.zoom != 100 && sheet.zoom != 0).then_some(sheet.zoom));
+    for (k, z) in [
+        ("zoomScaleNormal", normal),
+        ("zoomScalePageLayoutView", v.zoom_layout),
+        ("zoomScaleSheetLayoutView", v.zoom_page_break),
+    ] {
+        if let Some(z) = z {
+            push(k, z.to_string());
+        }
+    }
+    attrs.extend(v.extra.iter().cloned());
+    attrs.push(("workbookViewId".to_owned(), "0".to_owned()));
+    let mut inner = pane_xml(sheet);
+    for s in &v.selections {
+        let mut a: Vec<(String, String)> = Vec::new();
+        if let Some(p) = &s.pane {
+            a.push(("pane".to_owned(), p.clone()));
+        }
+        a.push(("activeCell".to_owned(), s.active.a1()));
+        let sqref: Vec<String> = s.ranges.iter().map(Range::a1).collect();
+        a.push(("sqref".to_owned(), sqref.join(" ")));
+        inner.push_str(&format!("<selection{}/>", attrs_text(&a)));
+    }
+    if v.selections.is_empty() {
+        if let Some((pane, at)) = frozen_pane(sheet) {
+            let at = at.a1();
+            inner.push_str(&format!(
+                "<selection pane=\"{pane}\" activeCell=\"{at}\" sqref=\"{at}\"/>"
+            ));
+        }
+    }
+    let others: String = v.others.concat();
+    format!("<sheetViews><sheetView{}>{inner}</sheetView>{others}</sheetViews>", attrs_text(&attrs))
+}
+
+/// The pane a frozen sheet's active pane is, with the first cell below and right of the frozen lines.
+fn frozen_pane(sheet: &Sheet) -> Option<(&'static str, CellRef)> {
+    let (rows, cols) = sheet.frozen.filter(|(r, c)| *r > 0 || *c > 0)?;
+    let pane = match (rows > 0, cols > 0) {
+        (true, true) => "bottomRight",
+        (true, false) => "bottomLeft",
+        _ => "topRight",
+    };
+    Some((pane, CellRef::new(rows, cols)))
+}
+
+/// The `pane` element: frozen panes from the model, or split panes as the split bars left them.
+fn pane_xml(sheet: &Sheet) -> String {
+    let v = &sheet.view;
+    if let Some((pane, at)) = frozen_pane(sheet) {
+        let (rows, cols) = sheet.frozen.unwrap_or_default();
+        let top_left = v.pane_top_left.unwrap_or(at).a1();
+        let active = v.active_pane.clone().unwrap_or_else(|| pane.to_owned());
+        let state = if v.frozen_split { "frozenSplit" } else { "frozen" };
+        return format!(
+            "<pane{}{} topLeftCell=\"{top_left}\" activePane=\"{active}\" state=\"{state}\"/>",
             if cols > 0 { format!(" xSplit=\"{cols}\"") } else { String::new() },
             if rows > 0 { format!(" ySplit=\"{rows}\"") } else { String::new() }
-        ));
-        inner.push_str(&format!(
-            "<selection pane=\"{pane}\" activeCell=\"{top_left}\" sqref=\"{top_left}\"/>"
-        ));
+        );
     }
-    format!("<sheetViews><sheetView{attrs}>{inner}</sheetView></sheetViews>")
+    let Some(split) = &v.split else { return String::new() };
+    let mut a: Vec<(String, String)> = Vec::new();
+    if split.x > 0.0 {
+        a.push(("xSplit".to_owned(), number_text(split.x)));
+    }
+    if split.y > 0.0 {
+        a.push(("ySplit".to_owned(), number_text(split.y)));
+    }
+    if let Some(t) = split.top_left {
+        a.push(("topLeftCell".to_owned(), t.a1()));
+    }
+    if let Some(p) = &v.active_pane {
+        a.push(("activePane".to_owned(), p.clone()));
+    }
+    format!("<pane{}/>", attrs_text(&a))
+}
+
+/// A `sortState` element from the model.
+pub(crate) fn sort_state_xml(sort: &SortState) -> String {
+    let mut a = vec![("ref".to_owned(), sort.range.a1())];
+    if sort.columns {
+        a.push(("columnSort".to_owned(), "1".to_owned()));
+    }
+    if sort.case_sensitive {
+        a.push(("caseSensitive".to_owned(), "1".to_owned()));
+    }
+    a.extend(sort.attrs.iter().cloned());
+    let mut out = format!("<sortState{}>", attrs_text(&a));
+    for c in &sort.conditions {
+        let mut a: Vec<(String, String)> = Vec::new();
+        if c.descending {
+            a.push(("descending".to_owned(), "1".to_owned()));
+        }
+        if c.by != SortBy::Value {
+            a.push(("sortBy".to_owned(), c.by.name().to_owned()));
+        }
+        a.push(("ref".to_owned(), c.range.a1()));
+        if let Some(l) = &c.custom_list {
+            a.push(("customList".to_owned(), l.clone()));
+        }
+        if let Some(d) = c.dxf {
+            a.push(("dxfId".to_owned(), d.to_string()));
+        }
+        if let Some(i) = &c.icon_set {
+            a.push(("iconSet".to_owned(), i.clone()));
+        }
+        if let Some(i) = c.icon_id {
+            a.push(("iconId".to_owned(), i.to_string()));
+        }
+        out.push_str(&format!("<sortCondition{}/>", attrs_text(&a)));
+    }
+    out.push_str("</sortState>");
+    out
 }
 
 fn auto_filter(filter: &AutoFilter) -> String {
     let mut out = format!("<autoFilter ref=\"{}\"", filter.range.a1());
-    if filter.columns.is_empty() {
+    if filter.columns.is_empty() && filter.sort.is_none() {
         out.push_str("/>");
         return out;
     }
@@ -1126,6 +1240,9 @@ fn auto_filter(filter: &AutoFilter) -> String {
                 out.push_str("</customFilters></filterColumn>");
             }
         }
+    }
+    if let Some(sort) = &filter.sort {
+        out.push_str(&sort_state_xml(sort));
     }
     out.push_str("</autoFilter>");
     out
@@ -1279,7 +1396,14 @@ fn comments_xml(sheet: &Sheet) -> String {
             authors.push(note.author.clone());
         }
     }
-    let mut out = format!("{XML_HEAD}<comments xmlns=\"{MAIN_NS}\"><authors>");
+    // A note that carries a threaded comment keeps the `xr:uid` the thread is matched by.
+    let revision = sheet.notes.values().any(|n| n.attrs.iter().any(|(k, _)| k.starts_with("xr:")));
+    let declarations = if revision {
+        " xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\" mc:Ignorable=\"xr\" xmlns:xr=\"http://schemas.microsoft.com/office/spreadsheetml/2014/revision\""
+    } else {
+        ""
+    };
+    let mut out = format!("{XML_HEAD}<comments xmlns=\"{MAIN_NS}\"{declarations}><authors>");
     for a in &authors {
         out.push_str(&format!("<author>{}</author>", escape(a)));
     }
@@ -1287,8 +1411,9 @@ fn comments_xml(sheet: &Sheet) -> String {
     for ((row, col), note) in &sheet.notes {
         let author = authors.iter().position(|a| *a == note.author).unwrap_or(0);
         out.push_str(&format!(
-            "<comment ref=\"{}\" authorId=\"{author}\"><text><r><rPr><sz val=\"9\"/><color indexed=\"81\"/><rFont val=\"Tahoma\"/><family val=\"2\"/></rPr><t xml:space=\"preserve\">{}</t></r></text></comment>",
+            "<comment ref=\"{}\" authorId=\"{author}\"{}><text><r><rPr><sz val=\"9\"/><color indexed=\"81\"/><rFont val=\"Tahoma\"/><family val=\"2\"/></rPr><t xml:space=\"preserve\">{}</t></r></text></comment>",
             CellRef::new(*row, *col).a1(),
+            attrs_text(&note.attrs),
             escape(&note.text)
         ));
     }
@@ -1303,12 +1428,14 @@ fn vml_xml(sheet: &Sheet) -> String {
 <o:shapelayout v:ext=\"edit\"><o:idmap v:ext=\"edit\" data=\"1\"/></o:shapelayout>\
 <v:shapetype id=\"_x0000_t202\" coordsize=\"21600,21600\" o:spt=\"202\" path=\"m,l,21600r21600,l21600,xe\"><v:stroke joinstyle=\"miter\"/><v:path gradientshapeok=\"t\" o:connecttype=\"rect\"/></v:shapetype>",
     );
-    for (i, (row, col)) in sheet.notes.keys().enumerate() {
+    for (i, ((row, col), note)) in sheet.notes.iter().enumerate() {
+        let (visibility, visible) =
+            if note.visible { ("visible", "<x:Visible/>") } else { ("hidden", "") };
         out.push_str(&format!(
-            "<v:shape id=\"_x0000_s{}\" type=\"#_x0000_t202\" style=\"position:absolute;margin-left:59.25pt;margin-top:1.5pt;width:108pt;height:59.25pt;z-index:{};visibility:hidden\" fillcolor=\"#ffffe1\" o:insetmode=\"auto\">\
+            "<v:shape id=\"_x0000_s{}\" type=\"#_x0000_t202\" style=\"position:absolute;margin-left:59.25pt;margin-top:1.5pt;width:108pt;height:59.25pt;z-index:{};visibility:{visibility}\" fillcolor=\"#ffffe1\" o:insetmode=\"auto\">\
 <v:fill color2=\"#ffffe1\"/><v:shadow on=\"t\" color=\"black\" obscured=\"t\"/><v:path o:connecttype=\"none\"/>\
 <v:textbox style=\"mso-direction-alt:auto\"><div style=\"text-align:left\"></div></v:textbox>\
-<x:ClientData ObjectType=\"Note\"><x:MoveWithCells/><x:SizeWithCells/><x:Anchor>{}, 15, {}, 2, {}, 15, {}, 16</x:Anchor><x:AutoFill>False</x:AutoFill><x:Row>{row}</x:Row><x:Column>{col}</x:Column></x:ClientData></v:shape>",
+<x:ClientData ObjectType=\"Note\"><x:MoveWithCells/><x:SizeWithCells/><x:Anchor>{}, 15, {}, 2, {}, 15, {}, 16</x:Anchor><x:AutoFill>False</x:AutoFill><x:Row>{row}</x:Row><x:Column>{col}</x:Column>{visible}</x:ClientData></v:shape>",
             1025 + i,
             i + 1,
             col + 1,
@@ -1408,26 +1535,27 @@ fn styles_xml(styles: &Styles) -> String {
             "<xf numFmtId=\"{}\" fontId=\"{}\" fillId=\"{}\" borderId=\"{}\" xfId=\"{}\"",
             x.num_fmt, x.font, x.fill, x.border, x.xf_id
         );
-        if x.num_fmt != 0 {
-            a.push_str(" applyNumberFormat=\"1\"");
-        }
-        if x.font != 0 {
-            a.push_str(" applyFont=\"1\"");
-        }
-        if x.fill != 0 {
-            a.push_str(" applyFill=\"1\"");
-        }
-        if x.border != 0 {
-            a.push_str(" applyBorder=\"1\"");
-        }
-        if !x.align.is_default() {
-            a.push_str(" applyAlignment=\"1\"");
-        }
-        if x.locked.is_some() || x.hidden.is_some() {
-            a.push_str(" applyProtection=\"1\"");
+        if x.applies.is_empty() {
+            for (flag, on) in [
+                ("applyNumberFormat", x.num_fmt != 0),
+                ("applyFont", x.font != 0),
+                ("applyFill", x.fill != 0),
+                ("applyBorder", x.border != 0),
+                ("applyAlignment", !x.align.is_default()),
+                ("applyProtection", x.locked.is_some() || x.hidden.is_some()),
+            ] {
+                if on {
+                    a.push_str(&format!(" {flag}=\"1\""));
+                }
+            }
+        } else {
+            a.push_str(&attrs_text(&x.applies));
         }
         if x.quote_prefix {
             a.push_str(" quotePrefix=\"1\"");
+        }
+        if x.pivot_button {
+            a.push_str(" pivotButton=\"1\"");
         }
         let mut inner = String::new();
         if !x.align.is_default() {
@@ -1451,6 +1579,10 @@ fn styles_xml(styles: &Styles) -> String {
             if al.shrink {
                 s.push_str(" shrinkToFit=\"1\"");
             }
+            if al.reading_order != 0 {
+                s.push_str(&format!(" readingOrder=\"{}\"", al.reading_order));
+            }
+            s.push_str(&attrs_text(&al.extra));
             s.push_str("/>");
             inner.push_str(&s);
         }

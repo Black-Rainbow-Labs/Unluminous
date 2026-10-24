@@ -391,68 +391,10 @@ impl<'a> Ctx<'a> {
     }
 
     fn table(&mut self, t: &TableRef) -> Val {
-        let table = match &t.table {
-            Some(name) => self.book.table(name),
-            None => self.book.table_at(self.sheet, self.at),
-        };
-        let Some(table) = table else { return Val::error(ErrorKind::Ref) };
-        let range = table.range;
-        let has = |item: &str| t.items.iter().any(|i| &**i == item);
-        let (mut first_row, mut last_row) = (range.first.row, range.last.row);
-        let data_first = range.first.row + u32::from(table.header_row);
-        let data_last = range.last.row.saturating_sub(u32::from(table.totals_row));
-        if has("all") {
-        } else if has("this row") {
-            if self.at.row < data_first || self.at.row > data_last {
-                return Val::error(ErrorKind::Value);
-            }
-            first_row = self.at.row;
-            last_row = self.at.row;
-        } else {
-            let headers = has("headers");
-            let totals = has("totals");
-            let data = has("data") || !headers && !totals;
-            first_row = if headers {
-                range.first.row
-            } else if data {
-                data_first
-            } else {
-                data_last + 1
-            };
-            last_row = if totals {
-                range.last.row
-            } else if data {
-                data_last
-            } else {
-                range.first.row
-            };
-            if headers && !table.header_row || totals && !table.totals_row {
-                return Val::error(ErrorKind::Ref);
-            }
+        match table_area(self.book, t, self.sheet, Some(self.at)) {
+            Ok((sheet, range)) => Val::Ref(Area::new(sheet, range)),
+            Err(e) => Val::error(e),
         }
-        let column = |name: &Option<Arc<str>>| -> Option<Option<u32>> {
-            match name {
-                None => Some(None),
-                Some(n) => table
-                    .columns
-                    .iter()
-                    .position(|c| c.eq_ignore_ascii_case(n))
-                    .map(|i| Some(range.first.col + i as u32)),
-            }
-        };
-        let (Some(first_col), Some(last_col)) = (column(&t.first_column), column(&t.last_column))
-        else {
-            return Val::error(ErrorKind::Ref);
-        };
-        let first_col = first_col.unwrap_or(range.first.col);
-        let last_col = last_col.unwrap_or(range.last.col);
-        if last_row < first_row {
-            return Val::error(ErrorKind::Ref);
-        }
-        Val::Ref(Area::new(
-            table.sheet,
-            Range::new(CellRef::new(first_row, first_col), CellRef::new(last_row, last_col)),
-        ))
     }
 
     /// One value out of anything: a single cell, the first of an array, the cell of a range in the
@@ -907,4 +849,76 @@ pub fn evaluate(
             (if v.is_empty() { Value::Number(0.0) } else { v }, None)
         }
     })
+}
+
+/// The cells a structured reference names: its table's sheet and the rows and columns its items and
+/// columns choose. `at` is the cell the formula is in, which `[#This Row]` and `[@Col]` need; with no cell
+/// they name the whole data body, which is what a dependency is on.
+pub fn table_area(
+    book: &Workbook,
+    t: &TableRef,
+    sheet: usize,
+    at: Option<CellRef>,
+) -> Result<(usize, Range), ErrorKind> {
+    let table = match (&t.table, at) {
+        (Some(name), _) => book.table(name),
+        (None, Some(at)) => book.table_at(sheet, at),
+        (None, None) => None,
+    };
+    let table = table.ok_or(ErrorKind::Ref)?;
+    let range = table.range;
+    let has = |item: &str| t.items.iter().any(|i| &**i == item);
+    let data_first = range.first.row + u32::from(table.header_row);
+    let data_last = range.last.row.saturating_sub(u32::from(table.totals_row));
+    let (first_row, last_row) = if has("all") {
+        (range.first.row, range.last.row)
+    } else if has("this row") {
+        match at {
+            Some(at) if at.row < data_first || at.row > data_last => return Err(ErrorKind::Value),
+            Some(at) => (at.row, at.row),
+            None => (data_first, data_last),
+        }
+    } else {
+        let headers = has("headers");
+        let totals = has("totals");
+        let data = has("data") || !headers && !totals;
+        if headers && !table.header_row || totals && !table.totals_row {
+            return Err(ErrorKind::Ref);
+        }
+        let first = if headers {
+            range.first.row
+        } else if data {
+            data_first
+        } else {
+            data_last + 1
+        };
+        let last = if totals {
+            range.last.row
+        } else if data {
+            data_last
+        } else {
+            range.first.row
+        };
+        (first, last)
+    };
+    let column = |name: &Option<Arc<str>>| -> Option<u32> {
+        match name {
+            None => None,
+            Some(n) => table
+                .columns
+                .iter()
+                .position(|c| c.eq_ignore_ascii_case(n))
+                .map(|i| range.first.col + i as u32),
+        }
+    };
+    let missing = |name: &Option<Arc<str>>| name.is_some() && column(name).is_none();
+    if missing(&t.first_column) || missing(&t.last_column) || last_row < first_row {
+        return Err(ErrorKind::Ref);
+    }
+    let first_col = column(&t.first_column).unwrap_or(range.first.col);
+    let last_col = column(&t.last_column).or(column(&t.first_column)).unwrap_or(range.last.col);
+    Ok((
+        table.sheet,
+        Range::new(CellRef::new(first_row, first_col), CellRef::new(last_row, last_col)),
+    ))
 }
