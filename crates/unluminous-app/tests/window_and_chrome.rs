@@ -2818,6 +2818,64 @@ fn the_rail_puts_each_pane_away_and_brings_it_back() {
     harness.snapshot(shot("activity_bar"));
 }
 
+/// A rail button carried to another place stays there, and the order is the `rail.order` setting, so it is
+/// remembered between runs and an agent sets the same order by name. `task-2340`: *"I want to be able to drag
+/// and drop the icons on the left bar so I can arrange them however I'd like, and for it to be remembered
+/// between restarts."*
+#[test]
+fn a_rail_button_is_carried_to_another_place_and_the_order_is_remembered() {
+    let mut harness = harness("");
+    let middle = |harness: &Harness<'static, UnluminousApp>, name: &str| {
+        harness.get_by_label(name).rect().center()
+    };
+    let project = middle(&harness, "Project");
+    let version = middle(&harness, "Version Control");
+    assert!(project.y < version.y, "the folder is the first button");
+
+    // Carried down past Version Control, and let go in the gap under it.
+    let under = egui::pos2(project.x, version.y + 19.0);
+    drag(&mut harness, project, under);
+    steady(&mut harness);
+    let order = harness.state().settings.rail_order.clone();
+    assert!(
+        order.starts_with("Editing Area, Version Control, Project"),
+        "the order says where it went: {order}"
+    );
+    assert!(
+        middle(&harness, "Project").y > middle(&harness, "Version Control").y,
+        "and the rail draws it there"
+    );
+    assert!(harness.state().explorer_visible, "carrying the button did not press it");
+
+    // Carried from the bottom group into the top one.
+    let terminal = middle(&harness, "Terminal tile");
+    let top = middle(&harness, "Editing Area");
+    drag(&mut harness, terminal, egui::pos2(terminal.x, top.y - 19.0));
+    steady(&mut harness);
+    let order = harness.state().settings.rail_order.clone();
+    let (upper, lower) = order.split_once('|').expect("two groups");
+    assert!(upper.trim().starts_with("Terminal tile, Editing Area"), "{order}");
+    assert!(!lower.contains("Terminal tile"), "{order}");
+    assert!(!harness.state().terminal.visible, "the terminal was not opened by carrying it");
+
+    // The same order from the command line, which is what a settings file read at start does too.
+    did(&mut harness, "settings set rail.order \"Realm, Project | Run tile, Terminal tile\"");
+    steady(&mut harness);
+    assert!(middle(&harness, "Realm").y < middle(&harness, "Project").y, "Realm is first now");
+    assert!(
+        middle(&harness, "Project").y < middle(&harness, "Editing Area").y,
+        "a button the order does not name keeps its group, after the named ones"
+    );
+    assert!(
+        middle(&harness, "Run tile").y < middle(&harness, "Terminal tile").y,
+        "the terminal is still in the corner"
+    );
+    assert!(
+        middle(&harness, "Debug tile").y < middle(&harness, "Run tile").y,
+        "and an unnamed bottom button goes above the named ones"
+    );
+}
+
 /// The commit panel is the rail's third button, and it is the same action the Git menu's `Commit...`
 /// entry is, so pressing it twice puts the panel away again.
 #[test]

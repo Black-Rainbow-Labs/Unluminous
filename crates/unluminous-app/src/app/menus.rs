@@ -1128,11 +1128,10 @@ impl UnluminousApp {
             Action::CheckForUpdates => self.check_for_updates(),
             // A row of `Check for Updates -> Stable` or `-> Nightly` (`task-2328`).
             Action::InstallVersion { channel, version } => {
-                match self.install_a_version(channel, version, true) {
-                    Ok(said) => self.message = Some(said),
-                    Err(problem) => {
-                        self.toasts.say(problem, crate::components::toast::Kind::Problem)
-                    }
+                // `install_a_version` writes the status bar or raises a toast itself, so only a
+                // refusal is left to say here.
+                if let Err(problem) = self.install_a_version(channel, version, true) {
+                    self.toasts.say(problem, crate::components::toast::Kind::Problem)
                 }
             }
             Action::FollowChannel(channel) => {

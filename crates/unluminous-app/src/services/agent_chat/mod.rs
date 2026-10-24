@@ -382,6 +382,30 @@ impl Configuration {
     }
 }
 
+/// The endpoint `chat` talks to: its own once something has been said in it, and the chosen one before that
+/// or when its own is no longer in the list. See [`AgentChat::provider`]. `task-2340`.
+pub fn conversation_provider<'a>(
+    chat: &Conversation,
+    configuration: &'a Configuration,
+) -> Option<&'a Provider> {
+    let own = &chat.provider;
+    let kept = match chat.messages.is_empty() || own.is_empty() {
+        true => None,
+        false => configuration.providers.iter().find(|one| one.name == *own),
+    };
+    kept.or_else(|| configuration.provider())
+}
+
+/// The sentence under the model choice when the chosen model is not the one `chat` talks to, which is only
+/// ever because `chat` had already started. `task-2340`.
+pub fn model_waits(chat: &Conversation, configuration: &Configuration) -> Option<String> {
+    let chosen = configuration.provider()?.name.clone();
+    let speaking = conversation_provider(chat, configuration)?.name.clone();
+    (chosen != speaking).then(|| {
+        format!("{chosen} applies from the next new conversation. This one stays with {speaking}.")
+    })
+}
+
 /// One provider's row, nothing when the row is empty, or the sentence it is refused with.
 ///
 /// **Refused with the list rather than half-loaded**, which is the rule `plugin.kind`,
@@ -1236,9 +1260,48 @@ impl AgentChat {
         self.project.as_deref()
     }
 
-    /// The endpoint in use.
+    /// The endpoint this conversation talks to.
+    ///
+    /// **Once something has been said, the conversation keeps the endpoint it was started with**, and a
+    /// model chosen afterwards applies from the next new conversation (`task-2340`). Before, choosing a model
+    /// changed which agent the next question in an open conversation went to, and that agent had none of the
+    /// session the answers on the screen came from. An empty conversation follows the choice, and so does one
+    /// whose endpoint is no longer in the list.
     pub fn provider(&self) -> Option<&Provider> {
+        conversation_provider(&self.session.chat, &self.configuration)
+    }
+
+    /// The endpoint chosen for new conversations, which is what the Chat settings show as selected.
+    pub fn chosen_provider(&self) -> Option<&Provider> {
         self.configuration.provider()
+    }
+
+    /// Choose the model new conversations talk to, and switch this conversation to it while nothing has
+    /// been said in it. Answers what happened, in the words the Chat settings show. `task-2340`.
+    pub fn choose_the_model(&mut self, name: &str) -> Result<String, String> {
+        self.configuration.choose(name)?;
+        self.save_the_configuration()?;
+        self.follow_the_chosen_model();
+        Ok(match self.model_waits_for_a_new_conversation() {
+            Some(waiting) => waiting,
+            None => format!("talking to {name}"),
+        })
+    }
+
+    /// Put an empty conversation on the chosen model. One with messages keeps its own; see [`Self::provider`].
+    pub fn follow_the_chosen_model(&mut self) {
+        if !self.session.chat.messages.is_empty() {
+            return;
+        }
+        if let Some(chosen) = self.configuration.provider().map(|one| one.name.clone()) {
+            self.session.chat.provider = chosen;
+        }
+    }
+
+    /// The sentence shown under the model choice when the chosen model is not the one this conversation
+    /// talks to, which is only ever because the conversation had already started. `task-2340`.
+    pub fn model_waits_for_a_new_conversation(&self) -> Option<String> {
+        model_waits(&self.session.chat, &self.configuration)
     }
 
     /// The folder an agent run as a program starts in: the one chosen on the Settings page while it still
@@ -1459,7 +1522,7 @@ impl AgentChat {
     pub fn new_conversation(&mut self) {
         self.stop_before_switching();
         self.write_the_conversation();
-        let provider = self.provider().map(|one| one.name.clone()).unwrap_or_default();
+        let provider = self.chosen_provider().map(|one| one.name.clone()).unwrap_or_default();
         let id = self.store.new_id();
         self.session = Session::new(Conversation::new(id, provider));
         self.attachments.clear();
@@ -2223,7 +2286,11 @@ impl AgentChat {
         serde_json::json!({
             "open": self.ui.settings_open,
             "models": self.configuration.providers.iter().map(|one| one.name.clone()).collect::<Vec<String>>(),
-            "chosen": self.provider().map(|one| one.name.clone()),
+            "chosen": self.chosen_provider().map(|one| one.name.clone()),
+            // Which model this conversation talks to, and the sentence under the choice when that is not the
+            // chosen one (`task-2340`).
+            "conversation": self.provider().map(|one| one.name.clone()),
+            "waiting": self.model_waits_for_a_new_conversation(),
             "folder": self.working_folder().map(|one| one.display().to_string()),
             "context": {
                 "used": used,
@@ -2448,7 +2515,8 @@ impl UiProvider for AgentChat {
             }
             None => {
                 let id = self.store.new_id();
-                let provider = self.provider().map(|one| one.name.clone()).unwrap_or_default();
+                let provider =
+                    self.chosen_provider().map(|one| one.name.clone()).unwrap_or_default();
                 self.session = Session::new(Conversation::new(id, provider));
             }
         }
@@ -2588,7 +2656,7 @@ impl UiProvider for AgentChat {
                     .join(", "),
             )
             .with(serde_json::json!({
-                "chosen": self.provider().map(|one| one.name.clone()),
+                "chosen": self.chosen_provider().map(|one| one.name.clone()),
                 "permission": self.configuration.permission.name(),
                 "providers": self.configuration.providers.iter().map(|one| serde_json::json!({
                     "name": one.name,
@@ -2607,9 +2675,12 @@ impl UiProvider for AgentChat {
                 })).collect::<Vec<serde_json::Value>>(),
             }))),
             "use" => {
-                self.configuration.choose(rest.trim())?;
-                self.save_the_configuration()?;
-                Ok(Answer::said(format!("talking to {}", rest.trim())))
+                let said = self.choose_the_model(rest.trim())?;
+                Ok(Answer::said(said).with(serde_json::json!({
+                    "chosen": self.chosen_provider().map(|one| one.name.clone()),
+                    "conversation": self.provider().map(|one| one.name.clone()),
+                    "waiting": self.model_waits_for_a_new_conversation(),
+                })))
             }
             "history" => Ok(
                 Answer::said(format!("{} conversations", self.history.len())).with(serde_json::json!(self
@@ -3298,6 +3369,44 @@ mod tests {
         row.url = "http://127.0.0.1:1/v1/chat/completions".to_owned();
         row.model = "a-model".to_owned();
         row.key_env = String::new();
+    }
+
+    /// `task-2340`: *"if my conversation hasn't started yet (ie no messages) then my current conversation should
+    /// switch to that model. Other wise there should be a small notification under the option that the model will
+    /// apply after a new conversation has been opened."*
+    #[test]
+    fn a_model_chosen_before_the_first_message_is_used_and_after_it_waits_for_a_new_conversation() {
+        let mut chat = opened("choose-model");
+        let named = |provider: Option<&Provider>| provider.map(|one| one.name.clone());
+        chat.choose_the_model("codex").expect("codex ships");
+        assert_eq!(chat.session.chat.provider, "codex", "the empty conversation switched");
+        assert_eq!(named(chat.provider()).as_deref(), Some("codex"));
+        assert_eq!(chat.model_waits_for_a_new_conversation(), None, "nothing to say");
+
+        chat.session.ask(Message::said(0, Role::User, "First"));
+        let answer = chat.command("use", &["claude".to_owned()]).expect("claude ships");
+        assert_eq!(
+            named(chat.provider()).as_deref(),
+            Some("codex"),
+            "a started one keeps its model"
+        );
+        assert_eq!(named(chat.chosen_provider()).as_deref(), Some("claude"), "the choice is kept");
+        assert!(
+            answer.message.contains("claude applies from the next new conversation"),
+            "{}",
+            answer.message
+        );
+        assert_eq!(answer.value["conversation"], "codex");
+        let settings = chat.command("settings", &[]).expect("the dialog answers");
+        assert_eq!(settings.value["chosen"], "claude");
+        assert_eq!(settings.value["conversation"], "codex");
+        assert!(settings.value["waiting"]
+            .as_str()
+            .is_some_and(|said| said.contains("This one stays with codex")));
+
+        chat.new_conversation();
+        assert_eq!(chat.session.chat.provider, "claude", "a new conversation starts on the choice");
+        assert_eq!(chat.model_waits_for_a_new_conversation(), None);
     }
 
     /// `task-2060`: *"I should be able to send new messages that get added to the queue when the

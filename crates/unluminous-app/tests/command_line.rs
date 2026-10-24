@@ -3309,6 +3309,15 @@ fn update_check_answers_with_what_the_releases_page_said() {
 
 /// A scripted unluminous.com serving both channels' manifests, answering `count` requests by path.
 fn two_channels(count: usize) -> (u16, std::thread::JoinHandle<()>) {
+    channels_listing(count, &["90.1.0", "90.0.0"], &["91.2.0", "91.1.0", "90.1.0"])
+}
+
+/// The same, with the versions each channel lists, newest first.
+fn channels_listing(
+    count: usize,
+    stable: &[&str],
+    nightly: &[&str],
+) -> (u16, std::thread::JoinHandle<()>) {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
     let port = listener.local_addr().expect("the address").port();
     let manifest = |channel: &str, versions: &[&str]| {
@@ -3329,8 +3338,8 @@ fn two_channels(count: usize) -> (u16, std::thread::JoinHandle<()>) {
         top["versions"] = versions.iter().map(|version| entry(version)).collect();
         top.to_string()
     };
-    let stable = manifest("stable", &["90.1.0", "90.0.0"]);
-    let nightly = manifest("nightly", &["91.2.0", "91.1.0", "90.1.0"]);
+    let stable = manifest("stable", stable);
+    let nightly = manifest("nightly", nightly);
     let served = std::thread::spawn(move || {
         for _ in 0..count {
             let Ok((mut stream, _)) = listener.accept() else { return };
@@ -3417,6 +3426,70 @@ fn update_versions_lists_both_channels_and_the_menu_shows_them() {
     // And the setting reaches the channel the checks ask.
     did(&mut harness, "settings set update.channel nightly");
     assert_eq!(did(&mut harness, "update status --json")["channel"], "nightly");
+
+    std::env::remove_var("UNLUMINOUS_RELEASES_STABLE");
+    std::env::remove_var("UNLUMINOUS_RELEASES_NIGHTLY");
+    let _ = served.join();
+}
+
+/// `Latest` on a channel whose newest version is the one running answers that, and the status bar stops
+/// saying it is finding the newest version. `task-2340`: the bar said "Finding the newest version on the
+/// nightly channel..." for ever, and the answer was a toast titled "Something went wrong".
+#[test]
+fn installing_the_latest_when_it_is_already_running_says_so_and_clears_the_status_bar() {
+    let _turn = ONE_AT_A_TIME.lock().unwrap_or_else(|held| held.into_inner());
+    let running = env!("CARGO_PKG_VERSION");
+    let (port, served) = channels_listing(2, &[running], &[running, "0.0.1"]);
+    std::env::set_var(
+        "UNLUMINOUS_RELEASES_STABLE",
+        format!("http://127.0.0.1:{port}/releases/stable.json"),
+    );
+    std::env::set_var(
+        "UNLUMINOUS_RELEASES_NIGHTLY",
+        format!("http://127.0.0.1:{port}/releases/nightly.json"),
+    );
+
+    let mut harness = harness(
+        "# a file
+",
+    );
+    // The lists have not been fetched, so the install waits for them and says so. The reply is read
+    // rather than the bar, because on loopback the lists can arrive inside the frames `run` draws, and
+    // then the bar has already moved on to the answer.
+    let finding = run(&mut harness, "update install --channel nightly");
+    assert!(finding.ok, "{}", finding.message);
+    assert!(
+        finding.message.starts_with("Finding the newest version on the nightly channel"),
+        "the install waits for the lists: {}",
+        finding.message
+    );
+    settle(&mut harness, "the answer to the install", |app| {
+        app.toasts
+            .notices()
+            .iter()
+            .any(|notice| notice.text.contains("is the newest nightly version"))
+    });
+
+    assert_eq!(
+        harness.state().message,
+        None,
+        "the bar no longer says it is finding the newest version"
+    );
+    let notices = harness.state().toasts.notices();
+    let answered = notices
+        .iter()
+        .find(|notice| notice.text.contains("is the newest nightly version"))
+        .unwrap_or_else(|| panic!("a notice says the newest is running: {notices:?}"));
+    assert_eq!(
+        answered.kind,
+        unluminous_app::components::toast::Kind::Done,
+        "being up to date is not a problem"
+    );
+    assert!(answered.text.contains(running), "{}", answered.text);
+    assert!(
+        did(&mut harness, "update status --json")["install"].is_null(),
+        "nothing is downloaded"
+    );
 
     std::env::remove_var("UNLUMINOUS_RELEASES_STABLE");
     std::env::remove_var("UNLUMINOUS_RELEASES_NIGHTLY");

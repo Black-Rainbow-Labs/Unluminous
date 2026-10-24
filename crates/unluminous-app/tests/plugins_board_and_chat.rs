@@ -3370,6 +3370,13 @@ fn a_notice_is_drawn_over_the_window_and_can_be_dismissed() {
         1,
         "the notice draws a cross that names which one it belongs to"
     );
+    // **Above the status bar** (`task-2340`). The notices were stacked from the window's bottom edge, so the
+    // newest card sat over the status bar and its sentence ran into it. The cross is 29 points under the card's
+    // top and a one line card is about 70 tall, so a card ending above the bar has its cross at least 30
+    // points above it.
+    let status_top = harness.ctx.content_rect().bottom() - unluminous_app::theme::size::STATUS_BAR;
+    let cross = harness.get_by_label("Dismiss notice 1").rect().center();
+    assert!(cross.y + 30.0 < status_top, "the card is over the status bar: {cross:?} {status_top}");
 
     harness.state_mut().toasts.say("and a second thing went wrong.", Kind::Problem);
     steady(&mut harness);
@@ -3444,6 +3451,11 @@ fn the_ai_configuration_page_lists_the_endpoints_and_an_agent_can_change_them() 
     did(&mut harness, "modal open settings --page ai");
     steady(&mut harness);
     assert_eq!(harness.get_all_by_label_contains("Remove ").count(), 5, "one card an endpoint");
+    // "Model Integrations" rather than "Endpoints" (`task-2340`): most of these run a program on this machine.
+    assert!(
+        unluminous_app::settings::Page::Ai.sections().contains(&"Model Integrations"),
+        "the search box finds the card by its name"
+    );
     harness.snapshot(shot("ai_configuration").as_str());
 
     did(&mut harness, "settings set ai.provider.3.model llama-local/local");

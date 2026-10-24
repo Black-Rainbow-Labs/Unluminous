@@ -841,7 +841,7 @@ impl Page {
             Page::Plugins => &["Marketplace", "Installed", "Color Scheme", "Syntax"],
             Page::Terminal => &["Font", "Shell"],
             Page::Mcp => &["Install", "Server", "Configuration"],
-            Page::Ai => &["Endpoints", "Keys", "OpenCode", "Claude", "Codex", "Pi"],
+            Page::Ai => &["Model Integrations", "Keys", "OpenCode", "Claude", "Codex", "Pi"],
             Page::Voice => {
                 &["Speech to text", "Endpoint", "Microphone", "Listen for Sable", "Dictation"]
             }
@@ -1194,6 +1194,15 @@ settings! {
         /// The input device dictation and "Sable" listen through, by the name the system gives it. Empty is
         /// the system's default, which follows the system when the default changes (`task-2320`).
         voice_microphone = String::new() => "voice.microphone", "an input device's name from `voice microphone`, or empty for the system's default";
+        /// The order of the buttons on the rail down the left, by their names from the top of the rail down:
+        /// the top group, a `|`, then the bottom group, such as `Project, Realm | Run tile, Terminal tile`.
+        ///
+        /// `task-2340`: *"I want to be able to drag and drop the icons on the left bar so I can arrange them
+        /// however I'd like, and for it to be remembered between restarts."* A drag on the rail writes this. A
+        /// button it does not name keeps its own group, after the named ones at the top and above them at the
+        /// bottom, so a plugin switched on later still gets a button; a name nothing has is passed over.
+        /// Empty is the order Unluminous ships with.
+        rail_order = String::new() => "rail.order", "the rail's button names, top group, then |, then bottom group, or empty for the default order";
     }
 
     text_raw {
@@ -2033,6 +2042,7 @@ mod tests {
             "voice.send_after_wake",
             "voice.button",
             "voice.engine",
+            "rail.order",
         ];
         expected.sort_unstable();
         let mut actual: Vec<&str> = Settings::NAMES.to_vec();
@@ -2160,6 +2170,7 @@ mod tests {
             voice_endpoint_key: "OPENAI_API_KEY".to_owned(),
             voice_language: "fr".to_owned(),
             voice_microphone: "Headset Microphone (USB Audio)".to_owned(),
+            rail_order: "Realm, Project | Terminal tile".to_owned(),
             voice_wake_sensitivity: 0.75,
             voice_model_idle: 300.0,
             voice_send_pause: 3.5,
