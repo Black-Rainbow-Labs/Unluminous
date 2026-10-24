@@ -257,7 +257,7 @@ fn decode(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
-fn read_theme(xml: &str, styles: &mut Styles) {
+pub(crate) fn read_theme(xml: &str, styles: &mut Styles) {
     let Ok(doc) = Document::parse(xml) else { return };
     let order = [
         "dk1", "lt1", "dk2", "lt2", "accent1", "accent2", "accent3", "accent4", "accent5",
@@ -285,6 +285,12 @@ fn read_theme(xml: &str, styles: &mut Styles) {
     styles.theme_font = doc
         .descendants()
         .find(|n| n.has_tag_name((DRAWING_NS, "minorFont")))
+        .and_then(|f| f.children().find(|n| n.has_tag_name((DRAWING_NS, "latin"))))
+        .and_then(|l| l.attribute("typeface"))
+        .map(str::to_owned);
+    styles.theme_major_font = doc
+        .descendants()
+        .find(|n| n.has_tag_name((DRAWING_NS, "majorFont")))
         .and_then(|f| f.children().find(|n| n.has_tag_name((DRAWING_NS, "latin"))))
         .and_then(|l| l.attribute("typeface"))
         .map(str::to_owned);
@@ -346,7 +352,7 @@ fn read_edge(n: Option<Node>) -> Edge {
     }
 }
 
-fn read_styles(xml: &str, styles: &mut Styles) -> Result<(), String> {
+pub(crate) fn read_styles(xml: &str, styles: &mut Styles) -> Result<(), String> {
     let doc = Document::parse(xml).map_err(|e| format!("the styles part is damaged: {e}"))?;
     let root = doc.root_element();
     styles.namespaces = namespaces_of(root);

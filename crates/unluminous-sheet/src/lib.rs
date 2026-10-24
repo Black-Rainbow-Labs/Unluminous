@@ -23,6 +23,7 @@
 )]
 
 pub mod calc;
+pub mod cellstyles;
 pub mod coord;
 pub mod dates;
 pub mod edit;
@@ -35,7 +36,9 @@ pub mod protect;
 pub mod numfmt;
 pub mod refshift;
 pub mod styles;
+pub mod theme;
 pub mod value;
+pub mod whatif;
 pub mod xlsx;
 pub mod zip;
 

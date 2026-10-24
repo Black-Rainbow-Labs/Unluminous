@@ -432,16 +432,20 @@ impl Session {
             }
             _ => {}
         }
-        self.remember_cells(
-            match what {
-                Clear::Contents => "Clear contents",
-                Clear::Formats => "Clear formats",
-                _ => "Clear",
-            },
-            sheet,
-            ranges,
-            false,
-        );
+        let label = match what {
+            Clear::Contents => "Clear contents",
+            Clear::Formats => "Clear formats",
+            _ => "Clear",
+        };
+        let drops_a_table = what != Clear::Formats
+            && self.book.sheets[sheet].data_tables.iter().any(|t| {
+                ranges.iter().any(|r| r.contains(t.range.first) && r.contains(t.range.last))
+            });
+        if drops_a_table {
+            self.remember_whole(label);
+        } else {
+            self.remember_cells(label, sheet, ranges, false);
+        }
         let keys: Vec<(u32, u32)> = {
             let s = &self.book.sheets[sheet];
             s.cells
@@ -475,6 +479,7 @@ impl Session {
         if what != Clear::Formats {
             let s = &mut self.book.sheets[sheet];
             s.array_formulas.retain(|r| !ranges.iter().any(|range| range.contains(r.first)));
+            s.data_tables.retain(|t| !ranges.iter().any(|range| range.contains(t.range.first) && range.contains(t.range.last)));
         }
         self.recalculate();
         Ok(())
@@ -2399,6 +2404,11 @@ impl Session {
         for a in &self.book.sheets[sheet].array_formulas {
             if a.intersects(&range) && !(range.contains(a.first) && range.contains(a.last)) {
                 return Err("You can't change part of an array formula. Select the whole of it to change it.".to_owned());
+            }
+        }
+        for t in &self.book.sheets[sheet].data_tables {
+            if t.range.intersects(&range) && !(range.contains(t.range.first) && range.contains(t.range.last)) {
+                return Err(whatif::DATA_TABLE_PART.to_owned());
             }
         }
         Ok(())

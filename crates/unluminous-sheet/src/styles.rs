@@ -401,6 +401,8 @@ pub struct Styles {
     pub theme: Vec<u32>,
     /// The theme's minor (body) font, the font a new workbook's cells are in.
     pub theme_font: Option<String>,
+    /// The theme's major (heading) font, the font the Title style is set in.
+    pub theme_major_font: Option<String>,
 }
 
 impl Styles {
@@ -467,7 +469,7 @@ impl Styles {
         id
     }
 
-    fn intern<T: PartialEq>(list: &mut Vec<T>, item: T) -> u32 {
+    pub(crate) fn intern<T: PartialEq>(list: &mut Vec<T>, item: T) -> u32 {
         if let Some(index) = list.iter().position(|existing| *existing == item) {
             return index as u32;
         }
@@ -480,12 +482,18 @@ impl Styles {
         if let StyleChange::Copy(other) = change {
             return *other;
         }
-        let mut next = self.xf(xf);
+        let next = self.derive_xf(self.xf(xf), change);
+        Self::intern(&mut self.xfs, next)
+    }
+
+    /// A cell format (or the format of a cell style) with one change applied, as a value rather than an
+    /// index. The `apply` flags the file had are dropped, and the writer works them out again.
+    pub fn derive_xf(&mut self, mut next: Xf, change: &StyleChange) -> Xf {
         next.applies.clear();
         match change {
             StyleChange::NumberFormat(code) => next.num_fmt = self.format_id(code),
             StyleChange::Font(edit) => {
-                let mut font = self.font_of(xf);
+                let mut font = self.fonts.get(next.font as usize).cloned().unwrap_or_default();
                 edit.apply(&mut font);
                 next.font = Self::intern(&mut self.fonts, font);
             }
@@ -497,15 +505,16 @@ impl Styles {
                 next.fill = Self::intern(&mut self.fills, fill);
             }
             StyleChange::Border(edit) => {
-                let mut border = self.border_of(xf);
+                let mut border = self.borders.get(next.border as usize).cloned().unwrap_or_default();
                 edit.apply(&mut border);
                 next.border = Self::intern(&mut self.borders, border);
             }
             StyleChange::Align(edit) => edit.apply(&mut next.align),
             StyleChange::Locked(locked) => next.locked = Some(*locked),
+            StyleChange::CellStyle(index) => self.take_cell_style(&mut next, *index),
             StyleChange::Copy(_) => {}
         }
-        Self::intern(&mut self.xfs, next)
+        next
     }
 }
 
@@ -521,6 +530,9 @@ pub enum StyleChange {
     Locked(bool),
     /// Take another cell format whole: what Paste Format does.
     Copy(u32),
+    /// Apply a named cell style, by its index in [`Styles::cell_styles`]: the cell format takes the style's
+    /// formatting for every group the style includes and points at the style.
+    CellStyle(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]

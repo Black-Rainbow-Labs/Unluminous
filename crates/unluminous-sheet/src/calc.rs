@@ -39,6 +39,8 @@ pub struct Engine {
     dirty: BTreeSet<Key>,
     /// How many formulas the last calculation computed, for tests and the frame trace.
     pub computed: usize,
+    /// A cell changed since the data tables were last computed.
+    tables_stale: bool,
 }
 
 impl Engine {
@@ -59,6 +61,7 @@ impl Engine {
                 }
             }
         }
+        self.tables_stale = true;
     }
 
     /// How many formulas the workbook has.
@@ -113,6 +116,7 @@ impl Engine {
 
     /// A cell's content changed: index its formula again if it has one, and mark what depends on it.
     pub fn changed(&mut self, book: &Workbook, sheet: usize, at: CellRef) {
+        self.tables_stale = true;
         let key = (sheet, at.row, at.col);
         let is_formula = book
             .sheets
@@ -175,10 +179,30 @@ impl Engine {
     /// Mark every formula, which is what opening a file and F9 with Shift and Control do.
     pub fn mark_all(&mut self) {
         self.dirty = self.formulas.clone();
+        self.tables_stale = true;
     }
 
-    /// Compute every marked formula and every volatile one. `now` is the serial NOW() answers.
+    /// Compute every marked formula and every volatile one, then the data tables when anything they could
+    /// read changed, and the formulas that read the tables' results. `now` is the serial NOW() answers.
     pub fn recalculate(&mut self, book: &mut Workbook, now: f64, seed: u64) {
+        self.recalculate_formulas(book, now, seed);
+        if !self.tables_stale || !crate::whatif::has_data_tables(book) {
+            self.tables_stale = false;
+            return;
+        }
+        self.tables_stale = false;
+        let changed = crate::whatif::compute_data_tables(book, now, seed);
+        if !changed.is_empty() {
+            let computed = self.computed;
+            for key in changed {
+                self.mark_dependents(key);
+            }
+            self.recalculate_formulas(book, now, seed);
+            self.computed += computed;
+        }
+    }
+
+    pub(crate) fn recalculate_formulas(&mut self, book: &mut Workbook, now: f64, seed: u64) {
         let env = Env::new(now, seed);
         self.computed = 0;
         book.circular = None;
