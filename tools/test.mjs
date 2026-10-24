@@ -272,12 +272,16 @@ function recordPass(unit) {
 function allUnits(crates, kernelOptional = false) {
   const byName = new Map(crates.map((crate) => [crate.name, crate]));
   const testEnvironment = kernelOptional ? {} : { UNLUMINOUS_REQUIRE_KERNEL: '1' };
+  // The Word plugin's tests against Word itself (`word_live`, `convert`) and against its fonts
+  // (`pagination`) fail rather than skip in the Windows gate, which is where Word is (task-2359).
+  const wordEnvironment = !kernelOptional && process.platform === 'win32' ? { UNLUMINOUS_REQUIRE_WORD: '1' } : {};
   const units = [];
   for (const crate of crates) {
     const closure = closureOf(crate, byName);
     units.push({ kind: 'clippy', crate: crate.name, closure, command: ['--all-targets', '--', '-D', 'warnings'], environment: {} });
     const targets = crate.name === APP ? ['--lib', '--bins'] : [];
-    units.push({ kind: 'test', crate: crate.name, closure, command: targets, environment: testEnvironment });
+    const environment = crate.name === 'unluminous-word' ? { ...testEnvironment, ...wordEnvironment } : testEnvironment;
+    units.push({ kind: 'test', crate: crate.name, closure, command: targets, environment });
   }
   return units;
 }
