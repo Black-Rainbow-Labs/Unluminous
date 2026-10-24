@@ -94,6 +94,77 @@ fn formatted_text_is_laid_out_the_way_excel_lays_it_out() {
 }
 
 #[test]
+fn xml_spreadsheet_2003_reads_as_the_workbook_excel_saved_it_from() {
+    for name in WORKBOOKS {
+        let original = workbook(name);
+        let read = unluminous_sheet::open(&bytes(&format!("{name}.xml")), FileKind::Xml, "x", 2026).unwrap();
+        let (a, b) = (&original.sheets[0], &read.sheets[0]);
+        assert_eq!(a.name, b.name);
+        let mut keys: Vec<(u32, u32)> = a.cells.keys().chain(b.cells.keys()).copied().collect();
+        keys.sort();
+        keys.dedup();
+        let mut wrong = Vec::new();
+        for (r, c) in keys {
+            let at = CellRef::new(r, c);
+            let shown = |book: &Workbook, sheet: &unluminous_sheet::Sheet| {
+                let style = sheet.cell(at).map_or(0, |x| x.style);
+                let code = book.styles.format_code(style);
+                unluminous_sheet::numfmt::Format::parse(&code).render(&sheet.value_at(at), false, 11).text
+            };
+            let formula = |s: &unluminous_sheet::Sheet| s.cell(at).and_then(|x| x.formula.as_ref()).map(|f| f.display());
+            if shown(&original, a) != shown(&read, b) {
+                wrong.push(format!("{at}: shows {:?} against {:?}", shown(&original, a), shown(&read, b)));
+            }
+            if a.value_at(at) != b.value_at(at) && !matches!((a.value_at(at), b.value_at(at)), (Value::Number(x), Value::Number(y)) if (x - y).abs() < 1e-9 * x.abs().max(1.0)) {
+                wrong.push(format!("{at}: {:?} against {:?}", a.value_at(at), b.value_at(at)));
+            }
+            if formula(a) != formula(b) {
+                wrong.push(format!("{at}: formula {:?} against {:?}", formula(a), formula(b)));
+            }
+        }
+        assert!(wrong.is_empty(), "{name}\n{}", wrong.join("\n"));
+        let widths = |book: &Workbook, s: &unluminous_sheet::Sheet| -> Vec<(u32, i64)> {
+            (0..12)
+                .filter_map(|c| s.column(c).and_then(|i| i.width.filter(|_| i.custom_width)).map(|w| (c, (w * 4.0).round() as i64)))
+                .collect::<Vec<_>>()
+                .into_iter()
+                .inspect(|_| {
+                    let _ = book;
+                })
+                .collect()
+        };
+        assert_eq!(widths(&original, a), widths(&read, b), "{name}: column widths");
+    }
+}
+
+#[test]
+fn fixed_width_text_is_cut_into_columns_where_every_line_has_a_gap() {
+    let text = "Name      Qty   Price\nTea         3    2.50\nCoffee     12   14.00\n";
+    let book = unluminous_sheet::open(text.as_bytes(), FileKind::Prn, "menu", 2026).unwrap();
+    let s = &book.sheets[0];
+    let at = |a: &str| s.value_at(CellRef::parse(a).unwrap());
+    assert_eq!(at("A1"), Value::text("Name"));
+    assert_eq!(at("B2"), Value::Number(3.0));
+    assert_eq!(at("C3"), Value::Number(14.0));
+    assert_eq!(at("A3"), Value::text("Coffee"));
+}
+
+#[test]
+fn json_files_open_as_tables() {
+    let book = unluminous_sheet::open(br#"[{"a":1,"b":"x"},{"a":2,"c":true}]"#, FileKind::Json, "data", 2026).unwrap();
+    assert_eq!(book.sheets[0].value_at(CellRef::parse("C3").unwrap()), Value::Bool(true));
+    assert!(unluminous_sheet::save(&book, FileKind::Json).is_err());
+}
+
+#[test]
+fn html_is_written_with_a_table_for_each_sheet_and_xml_and_json_are_read_only() {
+    let book = workbook("edge");
+    let page = String::from_utf8(unluminous_sheet::save(&book, FileKind::Html).unwrap()).unwrap();
+    assert!(page.contains("<h2>Edge</h2>") && page.contains("<td>plain</td>") && page.contains("2026-10-23"));
+    assert!(!FileKind::Xml.can_save() && FileKind::Csv.holds_one_sheet() && !FileKind::Ods.holds_one_sheet());
+}
+
+#[test]
 fn what_excel_wrote_reads_back_with_the_values_it_was_saved_from() {
     for name in WORKBOOKS {
         let original = workbook(name);

@@ -736,7 +736,8 @@ pub(crate) fn date_serial(text: &str, date1904: bool) -> Option<f64> {
     let year: i64 = parts.next()?.parse().ok()?;
     let month: i64 = parts.next()?.parse().ok()?;
     let day: i64 = parts.next()?.parse().ok()?;
-    let days = crate::dates::serial(year, month, day, date1904)?;
+    // Excel writes a time of day on the last days of 1899, and a spreadsheet's null date is 1899-12-30, so those are no days.
+    let days = if year == 1899 { 0.0 } else { crate::dates::serial(year, month, day, date1904)? };
     let fraction = time.map_or(0.0, |t| {
         let mut p = t.trim_end_matches('Z').split(':');
         let h: f64 = p.next().and_then(|v| v.parse().ok()).unwrap_or(0.0);

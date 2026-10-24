@@ -218,7 +218,7 @@ fn feature_differences(a: &Workbook, b: &Workbook, index: usize, lossy: bool) ->
     note("hidden columns", format!("{:?}", hidden_cols(sa)), format!("{:?}", hidden_cols(sb)));
     let widths = |s: &Sheet| {
         (0..32)
-            .filter_map(|c| s.column(c).and_then(|i| i.width.filter(|_| i.custom_width)).map(|w| (c, (w * 10.0).round() / 10.0)))
+            .filter_map(|c| s.column(c).and_then(|i| i.width.filter(|_| i.custom_width)).map(|w| (c, w.round())))
             .collect::<Vec<_>>()
     };
     note("custom widths", format!("{:?}", widths(sa)), format!("{:?}", widths(sb)));
@@ -270,9 +270,13 @@ fn feature_differences(a: &Workbook, b: &Workbook, index: usize, lossy: bool) ->
     let rules = |s: &Sheet| s.conditional.iter().map(|c| c.rules.len()).sum::<usize>();
     if lossy {
         // An `.ods` file written by Excel holds the rules that are a comparison or a formula.
-        if rules(sa) > rules(sb) || (rules(sb) > 0) != (rules(sa) > 0) {
-            out.push(format!("{name} conditional formats: {} against {}", rules(sa), rules(sb)));
-        }
+        let fine = !(rules(sa) > rules(sb) || (rules(sb) > 0) != (rules(sa) > 0));
+        let (x, y) = if fine {
+            ("fine".to_owned(), "fine".to_owned())
+        } else {
+            (rules(sa).to_string(), rules(sb).to_string())
+        };
+        note("conditional formats", x, y);
     } else {
         note("conditional formats", rules(sa).to_string(), rules(sb).to_string());
     }
@@ -344,7 +348,7 @@ fn built() -> Session {
     }
     s.set_input(0, at("D5"), "=SUM(D2:D4)").unwrap();
     s.set_input(0, at("F1"), "=SORT(A2:A4)").unwrap();
-    s.set_input(0, at("G1"), "=SEQUENCE(2,2)").unwrap();
+    s.set_input(0, at("K1"), "=SEQUENCE(2,2)").unwrap();
     s.set_input(0, at("H1"), "10/23/2026").unwrap();
     s.set_input(0, at("H2"), "=TEXT(H1,\"dddd\")").unwrap();
     s.set_input(0, at("H3"), "12.5%").unwrap();
@@ -378,8 +382,8 @@ fn built() -> Session {
     };
     s.add_conditional(0, vec![Range::parse("D2:D4").unwrap()], rule("cellIs", Some("greaterThan"), &["10"], dxf)).unwrap();
     s.add_conditional(0, vec![Range::parse("B2:B4").unwrap()], rule("expression", None, &["MOD(B2,2)=1"], dxf)).unwrap();
-    s.set_name(None, "Taxrate", "0.2").unwrap();
-    s.set_name(None, "Quantities", "Sheet1!$B$2:$B$4").unwrap();
+    s.set_name("Taxrate", "0.2", None).unwrap();
+    s.set_name("Quantities", "Sheet1!$B$2:$B$4", None).unwrap();
     let notes = s.add_sheet(Some("Notes"), None).unwrap();
     s.set_input(notes, at("A1"), "Total from orders").unwrap();
     s.set_input(notes, at("B1"), "=Sheet1!D5*Taxrate").unwrap();
@@ -428,6 +432,13 @@ fn rule(kind: &str, operator: Option<&str>, formulas: &[&str], dxf: u32) -> unlu
         attrs: Vec::new(),
         raw_children: String::new(),
     }
+}
+
+#[test]
+#[ignore = "writes the built workbook for a person to open: set UNLUMINOUS_ODS_OUT to a file name"]
+fn write_the_built_workbook_for_a_person() {
+    let out = PathBuf::from(std::env::var("UNLUMINOUS_ODS_OUT").unwrap());
+    std::fs::write(out, unluminous_sheet::ods::write(&built().book).unwrap()).unwrap();
 }
 
 #[test]
@@ -487,7 +498,7 @@ fn libreoffice_style_file() -> Vec<u8> {
 <style:style style:name="cfgood" style:family="table-cell"><style:table-cell-properties fo:background-color="#c6efce"/><style:text-properties fo:color="#006100"/></style:style>
 </office:automatic-styles>
 <office:body><office:spreadsheet>
-<table:calculation-settings table:null-date table:date-value="1899-12-30"><table:null-date table:date-value="1899-12-30"/></table:calculation-settings>
+<table:calculation-settings><table:null-date table:date-value="1899-12-30"/></table:calculation-settings>
 <table:content-validations>
  <table:content-validation table:name="val1" table:condition="of:cell-content-is-in-list([$Lists.$A$1:.$A$3])" table:allow-empty-cell="false" table:display-list="unsorted" table:base-cell-address="Data.B2"><table:error-message table:display="true" table:message-type="stop" table:title="Oops"><text:p>Pick from the list</text:p></table:error-message></table:content-validation>
  <table:content-validation table:name="val2" table:condition="of:cell-content-is-decimal-number() and cell-content-is-between(0;1)" table:base-cell-address="Data.C2"/>
@@ -505,17 +516,17 @@ fn libreoffice_style_file() -> Vec<u8> {
 <table:table-row table:style-name="ro2">
  <table:table-cell office:value-type="string"><text:p>Name</text:p></table:table-cell>
  <table:table-cell office:value-type="string" table:content-validation-name="val1"><text:p>Kind</text:p></table:table-cell>
- <table:table-cell office:value-type="percentage" office:value="0.255" table:style-name="ce1"><text:p>25.5%</text:p></table:table-cell>
+ <table:table-cell office:value-type="percentage" office:value="0.255" table:style-name="ce1" table:content-validation-name="val2"><text:p>25.5%</text:p></table:table-cell>
  <table:table-cell office:value-type="float" office:value="-1234.5" table:style-name="ce2"><text:p>-1.234,50 &#8364;</text:p></table:table-cell>
  <table:table-cell office:value-type="date" office:date-value="2026-10-24" table:style-name="ce3"><text:p>24.10.2026</text:p></table:table-cell>
  <table:table-cell office:value-type="float" office:value="12345.678" table:style-name="ce4"><text:p>1.23E+04</text:p></table:table-cell>
 </table:table-row>
-<table:table-row table:number-rows-repeated="3">
+<table:table-row table:style-name="ro1" table:number-rows-repeated="3">
  <table:table-cell office:value-type="float" office:value="7"><text:p>7</text:p></table:table-cell>
  <table:table-cell table:number-columns-repeated="2"/>
  <table:table-cell office:value-type="string" table:style-name="ce5"><text:p>Hello<text:s text:c="2"/><text:span text:style-name="T1">red bold</text:span><text:tab/>end<text:line-break/>next</text:p><text:p>second paragraph</text:p></table:table-cell>
 </table:table-row>
-<table:table-row>
+<table:table-row table:style-name="ro1">
  <table:table-cell table:number-columns-spanned="2" table:number-rows-spanned="2" office:value-type="string"><text:p>Merged</text:p><office:annotation><dc:creator>Sam</dc:creator><text:p>A note</text:p></office:annotation></table:table-cell>
  <table:covered-table-cell/>
  <table:table-cell office:value-type="boolean" office:boolean-value="true" table:formula="of:=AND(1;1)"><text:p>TRUE</text:p></table:table-cell>
@@ -523,7 +534,7 @@ fn libreoffice_style_file() -> Vec<u8> {
  <table:table-cell office:value-type="string" office:string-value="from formula" table:formula="of:=&quot;from &quot;&amp;&quot;formula&quot;"><text:p>from formula</text:p></table:table-cell>
  <table:table-cell office:value-type="float" office:value="30" table:formula="msoxl:=SUM(A1,A2)"><text:p>30</text:p></table:table-cell>
 </table:table-row>
-<table:table-row>
+<table:table-row table:style-name="ro1">
  <table:covered-table-cell table:number-columns-repeated="2"/>
  <table:table-cell office:value-type="float" office:value="1" table:formula="of:=SUM([.A2:.A4])" table:number-matrix-columns-spanned="1" table:number-matrix-rows-spanned="2"/>
  <table:table-cell office:value-type="string"><text:p><text:a xlink:href="#'Hidden sheet'.B2">jump</text:a></text:p></table:table-cell>

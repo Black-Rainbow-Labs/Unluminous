@@ -485,12 +485,12 @@ impl<'b> Writer<'b> {
             }
         }
         if let Some(merge) = sheet.merges.iter().find(|m| m.first == at) {
-            if merge.cols() > 1 {
-                xml.push_str(&format!(" table:number-columns-spanned=\"{}\"", merge.cols()));
-            }
-            if merge.rows() > 1 {
-                xml.push_str(&format!(" table:number-rows-spanned=\"{}\"", merge.rows()));
-            }
+            // Excel reads a merge only when both counts are given, even when one of them is one.
+            xml.push_str(&format!(
+                " table:number-columns-spanned=\"{}\" table:number-rows-spanned=\"{}\"",
+                merge.cols(),
+                merge.rows()
+            ));
         }
         let shown = Format::parse(&code).render(&cell.value, book.date1904, 255).text;
         xml.push_str(&value_attributes(&cell.value, &code, book.date1904, cell.formula.is_some()));
