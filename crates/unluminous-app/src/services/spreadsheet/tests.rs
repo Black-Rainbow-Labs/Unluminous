@@ -71,6 +71,10 @@ fn every_entry_in_the_menus_runs_the_words_it_names() {
                     w.push("#FF0000".to_owned());
                     out.push(w);
                 }
+                // A box of fields runs what OK would run with the fields as they open.
+                catalogue::Item::Form { words, fields, title, .. } => out.push(
+                    view::Prompt::form(words.clone(), title.clone(), fields.clone()).answer(),
+                ),
                 catalogue::Item::Sub { items, .. } => leaves(items, out),
                 catalogue::Item::Line => {}
             }

@@ -145,6 +145,7 @@ fn draw(
             let mut k = keys::Keys::default();
             keys::grid(&ctx, book, copied, &mut k);
             asked.acts.extend(k.acts);
+            asked.words.extend(k.words);
             name_box = k.name_box;
         }
     }

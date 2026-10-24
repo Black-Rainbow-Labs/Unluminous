@@ -10,19 +10,37 @@ use unluminous_sheet::styles::{FontEdit, StyleChange, Underline};
 use crate::services::spreadsheet::actions::{current_region, Act};
 use crate::services::spreadsheet::display;
 use crate::services::spreadsheet::formula_text;
-use crate::services::spreadsheet::view::{edge_of_data, Edit, Find, PanelPath, Prompt};
+use crate::services::spreadsheet::view::{edge_of_data, Edit, Find, PanelPath, Prompt, SelectMode};
 use crate::services::spreadsheet::Book;
 
 /// What a key asked for beyond moving the selection.
 #[derive(Debug, Default)]
 pub struct Keys {
     pub acts: Vec<Act>,
-    /// Put the name box in charge of the keyboard: Ctrl+G.
+    /// The words of a command, run after the frame as a menu entry's are.
+    pub words: Vec<Vec<String>>,
+    /// Put the name box in charge of the keyboard.
     pub name_box: bool,
 }
 
-/// The rows a page holds, for Page Up and Page Down.
-const PAGE: i64 = 20;
+/// The words of a command written as one string.
+fn say(text: &str) -> Vec<String> {
+    text.split(' ').filter(|w| !w.is_empty()).map(str::to_owned).collect()
+}
+
+/// The rows the grid shows, which Page Up and Page Down move by, as Excel's do.
+fn page_rows(book: &Book) -> i64 {
+    let Some(drawn) = book.view.drawn else { return 20 };
+    let rows = (drawn.height() / (20.0 * book.view.zoom.max(0.1))).floor() as i64;
+    rows.max(1)
+}
+
+/// The columns the grid shows, which Alt+Page Up and Alt+Page Down move by.
+fn page_columns(book: &Book) -> i64 {
+    let Some(drawn) = book.view.drawn else { return 8 };
+    let cols = (drawn.width() / (64.0 * book.view.zoom.max(0.1))).floor() as i64;
+    cols.max(1)
+}
 
 /// Read the keys meant for the grid while no cell is being typed into.
 pub fn grid(ctx: &egui::Context, book: &mut Book, copied: Option<&str>, keys: &mut Keys) {
@@ -76,13 +94,14 @@ fn grid_key(key: Key, m: Modifiers) -> bool {
     let command = m.command || m.ctrl;
     match key {
         ArrowUp | ArrowDown | ArrowLeft | ArrowRight | Enter | Tab | Home | End | PageUp
-        | PageDown | Delete | Backspace | Escape | F2 | F4 | F9 | F11 => true,
+        | PageDown | Delete | Backspace | Escape | F2 | F3 | F4 | F5 | F7 | F8 | F9 | F10 | F11
+        | F12 => true,
         Space => command || m.shift,
         _ if command => {
             crate::services::spreadsheet::view::claims_key(key, m)
                 || matches!(key, Exclamationmark | Num7 | Num8)
         }
-        Equals | Plus if m.alt => true,
+        Equals | Plus | Q | F1 if m.alt => true,
         _ => false,
     }
 }
@@ -228,205 +247,393 @@ pub fn step_within(book: &mut Book, rows: i64, cols: i64) {
 fn press(book: &mut Book, key: Key, m: Modifiers, keys: &mut Keys) {
     use Key::*;
     let command = m.command || m.ctrl;
-    let shift = m.shift;
-    let range = book.view.range();
+    if moves(book, key, m) {
+        return;
+    }
+    if command && m.alt {
+        return alt_chords(book, key, m, keys);
+    }
+    if m.alt {
+        return alt_keys(book, key, m, keys);
+    }
+    if function_key(book, key, m, keys) {
+        return;
+    }
+    if command {
+        return command_chords(book, key, m, keys);
+    }
     match key {
-        ArrowUp => step(book, -1, 0, shift, command),
-        ArrowDown if m.alt => book.view.choices = true,
-        ArrowDown => step(book, 1, 0, shift, command),
-        ArrowLeft => step(book, 0, -1, shift, command),
-        ArrowRight => step(book, 0, 1, shift, command),
-        Enter => step_within(book, if shift { -1 } else { 1 }, 0),
-        Tab => step_within(book, 0, if shift { -1 } else { 1 }),
-        Home if command => {
-            let frozen = book.session.book.sheets[book.view.sheet].frozen.unwrap_or((0, 0));
-            book.view.move_to(CellRef::new(frozen.0, frozen.1), shift);
-        }
-        Home => {
-            let at =
-                CellRef::new(if shift { book.view.anchor.row } else { book.view.cursor.row }, 0);
-            book.view.move_to(at, shift);
-        }
-        End if command => {
-            let last = book.session.book.sheets[book.view.sheet]
-                .used_range()
-                .map_or(CellRef::new(0, 0), |r| r.last);
-            book.view.move_to(last, shift);
-        }
-        PageDown if command => keys.acts.push(Act::ShowSheet(next_sheet(book, 1))),
-        PageUp if command => keys.acts.push(Act::ShowSheet(next_sheet(book, -1))),
-        PageDown => step(book, PAGE, 0, shift, false),
-        PageUp => step(book, -PAGE, 0, shift, false),
         Delete => keys.acts.push(Act::Clear(Clear::Contents)),
         Backspace => start_typing(book, String::new()),
         Escape => {
             book.view.marquee = None;
             book.view.close_the_menus();
             book.view.panel = None;
+            book.view.selecting = SelectMode::Normal;
+            book.view.end_mode = false;
         }
-        F2 if shift => {
-            let at = book.view.cursor;
-            let existing = book.session.book.sheets[book.view.sheet]
-                .notes
-                .get(&(at.row, at.col))
-                .map(|n| n.text.clone())
-                .unwrap_or_default();
-            book.view.prompt = Some(Prompt {
-                verb: vec!["note".to_owned()],
-                title: format!("Note on {}", at.a1()),
-                label: "Note".to_owned(),
-                text: existing,
-                second: None,
-                focus: true,
-            });
+        Space if m.shift => {
+            let range = book.view.range();
+            book.view.select_rows(range.first.row, range.last.row)
         }
+        _ => {}
+    }
+}
+
+/// The keys that move the active cell or grow the selection. Answers whether the key was one of them.
+fn moves(book: &mut Book, key: Key, m: Modifiers) -> bool {
+    use Key::*;
+    let command = m.command || m.ctrl;
+    // End mode: the next arrow goes to the edge of the data, as Ctrl and the arrow does.
+    let jump = command || std::mem::take(&mut book.view.end_mode) && is_arrow(key);
+    let extend = m.shift || book.view.selecting == SelectMode::Extend;
+    if book.view.selecting == SelectMode::Add && is_arrow(key) && !m.shift {
+        let range = book.view.range();
+        if !book.view.extra.contains(&range) {
+            book.view.extra.push(range);
+        }
+        book.view.held = None;
+    }
+    let keep_extra = book.view.selecting == SelectMode::Add;
+    let extra = book.view.extra.clone();
+    match key {
+        ArrowUp => step(book, -1, 0, extend, jump),
+        ArrowDown if m.alt => return false,
+        ArrowDown => step(book, 1, 0, extend, jump),
+        ArrowLeft => step(book, 0, -1, extend, jump),
+        ArrowRight => step(book, 0, 1, extend, jump),
+        Enter if !command && !m.alt => step_within(book, if m.shift { -1 } else { 1 }, 0),
+        Tab if !command => step_within(book, 0, if m.shift { -1 } else { 1 }),
+        Home if command => {
+            let frozen = book.session.book.sheets[book.view.sheet].frozen.unwrap_or((0, 0));
+            book.view.move_to(CellRef::new(frozen.0, frozen.1), m.shift);
+        }
+        Home => {
+            let row = if m.shift { book.view.anchor.row } else { book.view.cursor.row };
+            book.view.move_to(CellRef::new(row, 0), m.shift);
+        }
+        End if command => {
+            let last = book.session.book.sheets[book.view.sheet]
+                .used_range()
+                .map_or(CellRef::new(0, 0), |r| r.last);
+            book.view.move_to(last, m.shift);
+        }
+        End => book.view.end_mode = true,
+        PageDown | PageUp if !command && !m.alt => {
+            let rows = page_rows(book);
+            let rows = if key == PageDown { rows } else { -rows };
+            step(book, rows, 0, extend, false);
+            book.view.scroll.y = (book.view.scroll.y + rows as f32 * 20.0).max(0.0);
+        }
+        _ => return false,
+    }
+    if keep_extra {
+        book.view.extra = extra;
+    }
+    true
+}
+
+fn is_arrow(key: Key) -> bool {
+    matches!(key, Key::ArrowUp | Key::ArrowDown | Key::ArrowLeft | Key::ArrowRight)
+}
+
+/// The function keys, alone or with Shift. Answers whether the key was one of them.
+fn function_key(book: &mut Book, key: Key, m: Modifiers, keys: &mut Keys) -> bool {
+    use Key::*;
+    let command = m.command || m.ctrl;
+    let shift = m.shift;
+    match key {
+        F2 if command && shift => keys.words.push(say("comment new")),
+        F2 if command => keys.words.push(say("print-preview")),
+        F2 if shift => keys.words.push(say("note edit")),
         F2 => start_editing(book, false),
+        F3 if command && shift => keys.words.push(say("names from-selection")),
+        F3 if command => keys.words.push(say("panel Names")),
+        F3 if shift => keys.words.push(say("insert-function")),
+        F3 => keys.words.push(say("names paste")),
+        F4 => keys.acts.push(Act::Repeat { redo_first: false }),
+        F5 => keys.words.push(say("goto")),
+        F7 => keys.words.push(say("spelling")),
+        F8 if shift => book.view.selecting = toggle_mode(book.view.selecting, SelectMode::Add),
+        F8 => book.view.selecting = toggle_mode(book.view.selecting, SelectMode::Extend),
+        F9 if command && shift => keys.words.push(say("calculate rebuild")),
+        F9 if command => keys.words.push(say("calculate full")),
+        F9 if shift => keys.words.push(say("calculate sheet")),
         F9 => keys.acts.push(Act::Recalculate),
+        F10 if shift => keys.words.push(say("menu open")),
         F11 if shift => keys.acts.push(Act::AddSheet),
-        Space if command && shift => book
+        F11 => keys.words.push(say("chart sheet")),
+        F12 => keys.words.push(say("save-as")),
+        _ => return false,
+    }
+    true
+}
+
+fn toggle_mode(now: SelectMode, wanted: SelectMode) -> SelectMode {
+    if now == wanted {
+        SelectMode::Normal
+    } else {
+        wanted
+    }
+}
+
+/// Chords with Alt and no Ctrl.
+fn alt_keys(book: &mut Book, key: Key, m: Modifiers, keys: &mut Keys) {
+    use Key::*;
+    match key {
+        ArrowDown => keys.words.push(say("autocomplete list")),
+        Equals | Plus => keys.acts.push(Act::AutoSum),
+        Q => {
+            book.view.book_menu = Some(String::new());
+            book.view.menu = None;
+        }
+        F1 if m.shift => keys.acts.push(Act::AddSheet),
+        F1 => keys.words.push(say("chart default")),
+        F10 if m.shift => keys.words.push(say("error-menu")),
+        PageDown | PageUp => {
+            let cols = page_columns(book);
+            step(book, 0, if key == PageDown { cols } else { -cols }, m.shift, false);
+        }
+        ArrowRight if m.shift => keys.words.push(say("group")),
+        ArrowLeft if m.shift => keys.words.push(say("ungroup")),
+        _ => {}
+    }
+}
+
+/// Chords with Ctrl and Alt together.
+fn alt_chords(book: &mut Book, key: Key, m: Modifiers, keys: &mut Keys) {
+    use Key::*;
+    match key {
+        V => keys.words.push(say("paste special")),
+        Plus | Equals => keys.acts.push(Act::Zoom(book.view.zoom + 0.1)),
+        Minus => keys.acts.push(Act::Zoom(book.view.zoom - 0.1)),
+        F9 if m.shift => keys.words.push(say("calculate rebuild")),
+        F9 => keys.words.push(say("calculate full")),
+        _ => {}
+    }
+}
+
+/// Chords with Ctrl: Excel's own, each the same command a menu entry runs.
+fn command_chords(book: &mut Book, key: Key, m: Modifiers, keys: &mut Keys) {
+    use Key::*;
+    let shift = m.shift;
+    let range = book.view.range();
+    match key {
+        Space if shift => book
             .view
             .select_range(Range::new(CellRef::new(0, 0), CellRef::new(MAX_ROWS - 1, MAX_COLS - 1))),
-        Space if command => book.view.select_columns(range.first.col, range.last.col),
-        Space if shift => book.view.select_rows(range.first.row, range.last.row),
-        Z if command => keys.acts.push(Act::Undo),
-        Y if command => keys.acts.push(Act::Redo),
-        A if command => {
-            // The block of data first, then the whole sheet, as Excel's Ctrl+A goes.
-            let region =
-                current_region(&book.session.book.sheets[book.view.sheet], book.view.cursor);
-            let cursor = book.view.cursor;
-            if region.len() > 1 && range != region {
-                book.view.select_range(region);
-                book.view.cursor = cursor;
-                book.view.anchor = if cursor == region.first { region.last } else { region.first };
-            } else {
-                book.view.select_range(Range::new(
-                    CellRef::new(0, 0),
-                    CellRef::new(MAX_ROWS - 1, MAX_COLS - 1),
-                ));
-            }
-        }
-        D if command => keys.acts.push(Act::Fill(Direction::Down)),
-        R if command => keys.acts.push(Act::Fill(Direction::Right)),
-        B if command => keys.acts.push(toggle(
-            book,
-            |f| f.bold,
-            |v| FontEdit { bold: Some(v), ..Default::default() },
-        )),
-        I if command => keys.acts.push(toggle(
-            book,
-            |f| f.italic,
-            |v| FontEdit { italic: Some(v), ..Default::default() },
-        )),
-        U if command => keys.acts.push(toggle(
-            book,
-            |f| f.underline != Underline::None,
-            |v| FontEdit {
-                underline: Some(if v { Underline::Single } else { Underline::None }),
-                ..Default::default()
-            },
-        )),
-        Num5 if command => keys.acts.push(toggle(
+        Space => book.view.select_columns(range.first.col, range.last.col),
+        Z => keys.acts.push(Act::Undo),
+        Y => keys.acts.push(Act::Repeat { redo_first: true }),
+        A if shift => {}
+        A => select_all(book),
+        D => keys.acts.push(Act::Fill(Direction::Down)),
+        R => keys.acts.push(Act::Fill(Direction::Right)),
+        E => keys.words.push(say("flash-fill")),
+        B => keys.acts.push(bold(book)),
+        I => keys.acts.push(italic(book)),
+        Num3 if !shift => keys.acts.push(italic(book)),
+        U if shift => book.view.tall_bar = !book.view.tall_bar,
+        U => keys.acts.push(underline(book)),
+        Num4 if !shift => keys.acts.push(underline(book)),
+        Num5 if !shift => keys.acts.push(toggle(
             book,
             |f| f.strike,
             |v| FontEdit { strike: Some(v), ..Default::default() },
         )),
-        Num1 | Exclamationmark if command && shift => {
-            keys.acts.push(Act::Style(StyleChange::NumberFormat("#,##0.00".to_owned())))
-        }
-        Num1 if command => book.view.panel = Some(PanelPath(Vec::new())),
-        Num2 if command && shift => {
-            keys.acts.push(Act::Style(StyleChange::NumberFormat("h:mm AM/PM".to_owned())))
-        }
-        Num3 if command && shift => {
-            keys.acts.push(Act::Style(StyleChange::NumberFormat("d-mmm-yy".to_owned())))
-        }
-        Num4 if command && shift => {
-            keys.acts.push(Act::Style(StyleChange::NumberFormat("\"$\"#,##0.00".to_owned())))
-        }
-        Num5 if command && shift => {
-            keys.acts.push(Act::Style(StyleChange::NumberFormat("0%".to_owned())))
-        }
-        Num6 if command && shift => {
-            keys.acts.push(Act::Style(StyleChange::NumberFormat("0.00E+00".to_owned())))
-        }
-        Num7 if command && shift => keys.acts.push(Act::Border {
+        Num1 | Exclamationmark if shift => keys.acts.push(number_format("#,##0.00")),
+        Num1 => book.view.panel = Some(PanelPath(Vec::new())),
+        Num2 if shift => keys.acts.push(number_format("h:mm AM/PM")),
+        Num3 if shift => keys.acts.push(number_format("d-mmm-yy")),
+        Num4 if shift => keys.acts.push(number_format("\"$\"#,##0.00")),
+        Num5 if shift => keys.acts.push(number_format("0%")),
+        Num6 if shift => keys.acts.push(number_format("0.00E+00")),
+        Num6 => keys.words.push(say("objects toggle")),
+        Num7 if shift => keys.acts.push(Act::Border {
             sides: crate::services::spreadsheet::actions::BorderSides::Outline,
             style: "thin".to_owned(),
             color: unluminous_sheet::styles::Color::Auto,
         }),
-        Num9 if command => keys.acts.push(if shift {
+        Num8 if shift => select_current_region(book),
+        Num8 => keys.words.push(say("outline symbols toggle")),
+        Num9 => keys.acts.push(if shift {
             Act::Unhide { rows: true }
         } else {
             Act::Hide { rows: true }
         }),
-        Num0 if command => keys.acts.push(if shift {
+        Num0 => keys.acts.push(if shift {
             Act::Unhide { rows: false }
         } else {
             Act::Hide { rows: false }
         }),
-        Semicolon | Colon if command => {
-            let now = crate::services::clock::date_time();
-            let text = if shift || key == Colon {
-                let (hour, half) = match now.hour {
-                    0 => (12, "AM"),
-                    1..=11 => (now.hour, "AM"),
-                    12 => (12, "PM"),
-                    h => (h - 12, "PM"),
-                };
-                format!("{hour}:{:02} {half}", now.minute)
-            } else {
-                format!("{}/{}/{}", now.month, now.day, now.year)
-            };
-            let at = book.view.cursor;
-            keys.acts.push(Act::Type { at, text });
-        }
-        Minus if command => keys.acts.push(Act::Delete(if whole_rows(range) {
-            Shift::WholeRows
-        } else if whole_columns(range) {
-            Shift::WholeColumns
-        } else {
-            Shift::Up
-        })),
-        Plus | Equals if command => keys.acts.push(Act::Insert(if whole_rows(range) {
-            Shift::WholeRows
-        } else if whole_columns(range) {
-            Shift::WholeColumns
-        } else {
-            Shift::Down
-        })),
-        Equals | Plus if m.alt => keys.acts.push(Act::AutoSum),
-        F if command => {
+        Backtick if shift => keys.acts.push(number_format("General")),
+        Backtick => keys.words.push(say("show-formulas toggle")),
+        Quote => from_above(book, shift),
+        Semicolon | Colon => type_now(book, shift || key == Colon, keys),
+        Minus if shift => keys.words.push(say("border outline none")),
+        Minus => insert_or_delete(book, false, keys),
+        Plus | Equals => insert_or_delete(book, true, keys),
+        F if shift => book.view.panel = Some(PanelPath(vec!["Font".to_owned()])),
+        F => {
             book.view.find =
                 Some(Find { focus: true, ..book.view.find.clone().unwrap_or_default() })
         }
-        H if command => {
+        H => {
             book.view.find = Some(Find {
                 focus: true,
                 replace: Some(String::new()),
                 ..book.view.find.clone().unwrap_or_default()
             })
         }
-        G if command => keys.name_box = true,
-        K if command => {
-            let at = book.view.cursor;
-            book.view.prompt = Some(Prompt {
-                verb: vec!["link".to_owned(), at.a1()],
-                title: format!("Link on {}", at.a1()),
-                label: "Address or place".to_owned(),
-                text: String::new(),
-                second: Some(("Text to show".to_owned(), String::new())),
-                focus: true,
-            });
-        }
-        L if command && shift => keys.acts.push(Act::Filter),
-        P if command && shift => {
-            book.view.book_menu = Some(String::new());
-            book.view.menu = None;
-        }
-        T | L if command => keys.acts.push(Act::Table(None)),
+        G if shift => keys.words.push(say("statistics")),
+        G => keys.words.push(say("goto")),
+        K => ask_for_a_link(book),
+        L if shift => keys.acts.push(Act::Filter),
+        O if shift => keys.words.push(say("goto-special notes")),
+        P if shift => book.view.panel = Some(PanelPath(vec!["Font".to_owned()])),
+        P => keys.words.push(say("print-preview")),
+        Q => keys.words.push(say("quick-analysis")),
+        T | L => keys.acts.push(Act::Table(None)),
+        Backspace => book.view.reveal = true,
+        Period => next_corner(book),
+        PageDown if shift => keys.words.push(say("select-sheets next")),
+        PageUp if shift => keys.words.push(say("select-sheets previous")),
+        PageDown => keys.acts.push(Act::ShowSheet(next_sheet(book, 1))),
+        PageUp => keys.acts.push(Act::ShowSheet(next_sheet(book, -1))),
         _ => {}
     }
+}
+
+/// Ctrl+A: the block of data first, then the whole sheet, as Excel's goes.
+fn select_all(book: &mut Book) {
+    let range = book.view.range();
+    let region = current_region(&book.session.book.sheets[book.view.sheet], book.view.cursor);
+    let cursor = book.view.cursor;
+    if region.len() > 1 && range != region {
+        book.view.select_range(region);
+        book.view.cursor = cursor;
+        book.view.anchor = if cursor == region.first { region.last } else { region.first };
+    } else {
+        book.view
+            .select_range(Range::new(CellRef::new(0, 0), CellRef::new(MAX_ROWS - 1, MAX_COLS - 1)));
+    }
+}
+
+/// Ctrl+Shift+*: the current region, keeping the active cell.
+fn select_current_region(book: &mut Book) {
+    let cursor = book.view.cursor;
+    let region = current_region(&book.session.book.sheets[book.view.sheet], cursor);
+    book.view.select_range(region);
+    book.view.cursor = cursor;
+    book.view.anchor = if cursor == region.first { region.last } else { region.first };
+}
+
+/// Ctrl+Period: the active cell moves to the next corner of the selection, clockwise.
+fn next_corner(book: &mut Book) {
+    let r = book.view.range();
+    let corners = [
+        r.first,
+        CellRef::new(r.first.row, r.last.col),
+        r.last,
+        CellRef::new(r.last.row, r.first.col),
+    ];
+    let at = corners.iter().position(|c| *c == book.view.cursor).unwrap_or(0);
+    let next = corners[(at + 1) % 4];
+    let opposite = corners[(at + 3) % 4];
+    book.view.cursor = next;
+    book.view.anchor = CellRef::new(
+        if next.row == r.first.row { r.last.row } else { r.first.row },
+        if next.col == r.first.col { r.last.col } else { r.first.col },
+    );
+    let _ = opposite;
+    book.view.reveal = true;
+}
+
+/// Ctrl+' starts typing the formula of the cell above, and Ctrl+Shift+" its value, as Excel does.
+fn from_above(book: &mut Book, value: bool) {
+    let at = book.view.cursor;
+    let Some(above) = at.offset(-1, 0) else { return };
+    let s = &book.session.book;
+    let sheet = &s.sheets[book.view.sheet];
+    let text = if value {
+        display::shown(s, sheet, above, 255).text
+    } else {
+        display::input_text(s, sheet, above)
+    };
+    start_typing(book, text);
+}
+
+/// Ctrl+; types today's date and Ctrl+Shift+; the time now.
+fn type_now(book: &Book, time: bool, keys: &mut Keys) {
+    let now = crate::services::clock::date_time();
+    let text = if time {
+        let (hour, half) = match now.hour {
+            0 => (12, "AM"),
+            1..=11 => (now.hour, "AM"),
+            12 => (12, "PM"),
+            h => (h - 12, "PM"),
+        };
+        format!("{hour}:{:02} {half}", now.minute)
+    } else {
+        format!("{}/{}/{}", now.month, now.day, now.year)
+    };
+    keys.acts.push(Act::Type { at: book.view.cursor, text });
+}
+
+/// Ctrl+Plus and Ctrl+Minus: whole rows or columns at once, and otherwise a box asking which way the cells
+/// beside move, as Excel's Insert and Delete dialogs ask.
+fn insert_or_delete(book: &Book, insert: bool, keys: &mut Keys) {
+    let range = book.view.range();
+    let whole = if whole_rows(range) {
+        Some(Shift::WholeRows)
+    } else if whole_columns(range) {
+        Some(Shift::WholeColumns)
+    } else {
+        None
+    };
+    match (whole, insert) {
+        (Some(shift), true) => keys.acts.push(Act::Insert(shift)),
+        (Some(shift), false) => keys.acts.push(Act::Delete(shift)),
+        (None, true) => keys.words.push(say("insert ask")),
+        (None, false) => keys.words.push(say("delete ask")),
+    }
+}
+
+/// Ctrl+K: the box asking for a link's address and text.
+fn ask_for_a_link(book: &mut Book) {
+    let at = book.view.cursor;
+    book.view.prompt = Some(Prompt {
+        verb: vec!["link".to_owned(), at.a1()],
+        title: format!("Link on {}", at.a1()),
+        label: "Address or place".to_owned(),
+        text: String::new(),
+        second: Some(("Text to show".to_owned(), String::new())),
+        focus: true,
+        fields: Vec::new(),
+    });
+}
+
+fn number_format(code: &str) -> Act {
+    Act::Style(StyleChange::NumberFormat(code.to_owned()))
+}
+
+fn bold(book: &Book) -> Act {
+    toggle(book, |f| f.bold, |v| FontEdit { bold: Some(v), ..Default::default() })
+}
+
+fn italic(book: &Book) -> Act {
+    toggle(book, |f| f.italic, |v| FontEdit { italic: Some(v), ..Default::default() })
+}
+
+fn underline(book: &Book) -> Act {
+    toggle(
+        book,
+        |f| f.underline != Underline::None,
+        |v| FontEdit {
+            underline: Some(if v { Underline::Single } else { Underline::None }),
+            ..Default::default()
+        },
+    )
 }
 
 /// The next shown sheet before or after the one showing.
