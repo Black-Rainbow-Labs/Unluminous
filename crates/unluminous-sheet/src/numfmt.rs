@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use crate::dates;
-use crate::value::{round_significant, significant_digits, ErrorKind, Value};
+use crate::value::{significant_digits, ErrorKind, Value};
 
 /// A value shown with a format.
 #[derive(Debug, Clone, PartialEq)]
@@ -42,6 +42,8 @@ enum Token {
     Text,
     General,
     Year(u8),
+    /// `b`: the year of the Buddhist era, 543 years on, in two digits for `b` and `bb`.
+    BuddhistYear(u8),
     Month(u8),
     Day(u8),
     Hour(u8),
@@ -385,9 +387,12 @@ fn parse_section(text: &str) -> Section {
                 }
                 let n = k.min(255) as u8;
                 section.is_date =
-                    section.is_date || matches!(lc, 'y' | 'm' | 'd' | 'h' | 's' | 'e');
+                    section.is_date || matches!(lc, 'y' | 'm' | 'd' | 'h' | 's' | 'e' | 'b');
                 tokens.push(match lc {
-                    'y' | 'e' => Token::Year(n),
+                    'y' => Token::Year(n),
+                    // `e` is the year of the era, which for the Gregorian calendar is the whole year.
+                    'e' => Token::Year(4),
+                    'b' => Token::BuddhistYear(n),
                     'm' => Token::Month(n),
                     'd' => Token::Day(n),
                     'h' => Token::Hour(n),
@@ -615,48 +620,11 @@ fn render_numeric(section: &Section, value: f64, width: usize) -> (String, Optio
         decimals as f64,
         crate::functions::math::Rounding::Half,
     );
-    let whole = rounded.trunc();
-    let whole_digits = if whole == 0.0 { String::new() } else { format_whole(whole) };
-    let frac_digits: String = if decimals > 0 {
-        let frac = round_significant(rounded - whole, 15);
-        let text = format!("{:.*}", decimals, frac);
-        text.split_once('.').map(|(_, d)| d.to_owned()).unwrap_or_default()
-    } else {
-        String::new()
-    };
-    // Integer part: fill placeholders from the right.
-    let mut int_out: Vec<char> = Vec::new();
-    let digits: Vec<char> = whole_digits.chars().collect();
-    let placeholders = int_tokens.len();
-    let extra = digits.len().saturating_sub(placeholders);
-    let mut di = 0;
-    for (k, p) in int_tokens.iter().enumerate() {
-        if k == 0 && extra > 0 {
-            int_out.extend(&digits[..extra]);
-            di = extra;
-        }
-        let from_right = placeholders - k;
-        let available = digits.len() - di;
-        if available >= from_right {
-            int_out.push(digits[di]);
-            di += 1;
-        } else {
-            match p {
-                '0' => int_out.push('0'),
-                '?' => int_out.push(' '),
-                _ => {}
-            }
-        }
-    }
-    if placeholders == 0 && !digits.is_empty() {
-        int_out.extend(&digits);
-    }
-    let mut int_text: String = int_out.iter().collect();
-    if grouped {
-        int_text = group(&int_text);
-    }
-    // Decimal part: trailing zeros shown for 0, dropped for #, spaces for ?.
+    let (whole_digits, frac_digits) = split_digits(rounded, decimals);
+    let int_parts = integer_parts(&whole_digits, &int_tokens);
+    let int_text: String = int_parts.concat();
     let mut dec_out: Vec<char> = frac_digits.chars().collect();
+    // Trailing zeros are shown for 0, dropped for #, and spaces for ?.
     for k in (0..dec_out.len()).rev() {
         if dec_out[k] != '0' {
             break;
@@ -669,31 +637,32 @@ fn render_numeric(section: &Section, value: f64, width: usize) -> (String, Optio
             _ => break,
         }
     }
-    // Lay the tokens out.
+    // Lay the tokens out. A placeholder takes the next digit, so a literal between placeholders, as in
+    // `000-0000` or `0.0.0`, comes out between the digits.
     let mut out = String::new();
-    let mut int_written = false;
-    let mut dec_written = false;
-    let mut dec_index = 0;
-    let shows_negative = negative && rounded != 0.0;
-    if shows_negative {
+    let (mut int_seen, mut dec_seen) = (0, 0);
+    // A negative number that rounds to nothing shows no sign: -0.001 in 0.00 is 0.00.
+    if negative && rounded != 0.0 {
         out.push('-');
     }
     for (k, t) in tokens.iter().enumerate() {
         let in_int = point.is_none_or(|p| k < p);
         match t {
             Token::Digit(_) if in_int => {
-                if !int_written {
-                    out.push_str(&int_text);
-                    int_written = true;
+                if grouped {
+                    if int_seen == 0 {
+                        out.push_str(&group(&int_text));
+                    }
+                } else if let Some(part) = int_parts.get(int_seen) {
+                    out.push_str(part);
                 }
+                int_seen += 1;
             }
             Token::Digit(_) => {
-                if !dec_written {
-                    let take: String = dec_out.iter().skip(dec_index).collect();
-                    out.push_str(&take);
-                    dec_index = dec_out.len();
-                    dec_written = true;
+                if let Some(digit) = dec_out.get(dec_seen) {
+                    out.push(*digit);
                 }
+                dec_seen += 1;
             }
             Token::Point => out.push('.'),
             Token::Group => {}
@@ -708,13 +677,61 @@ fn render_numeric(section: &Section, value: f64, width: usize) -> (String, Optio
     (out, fill)
 }
 
-fn format_whole(n: f64) -> String {
-    if n < 1e15 {
-        format!("{}", n as u64)
-    } else {
-        let (digits, e) = significant_digits(n, 15);
-        place_digits(&digits, e)
+/// The digits of a rounded number before and after the decimal point, as Excel shows them: the first
+/// fifteen significant digits and zeros after those, the fraction padded or cut to `decimals` places.
+fn split_digits(x: f64, decimals: usize) -> (String, String) {
+    if x == 0.0 {
+        return (String::new(), "0".repeat(decimals));
     }
+    let (digits, exponent) = significant_digits(x, 15);
+    let (whole, mut fraction) = if exponent >= 0 {
+        let whole_len = exponent as usize + 1;
+        if digits.len() <= whole_len {
+            (format!("{digits}{}", "0".repeat(whole_len - digits.len())), String::new())
+        } else {
+            (digits[..whole_len].to_owned(), digits[whole_len..].to_owned())
+        }
+    } else {
+        (String::new(), format!("{}{digits}", "0".repeat((-exponent - 1) as usize)))
+    };
+    fraction.truncate(decimals);
+    while fraction.len() < decimals {
+        fraction.push('0');
+    }
+    (whole, fraction)
+}
+
+/// The whole digits shared out over the placeholders before the decimal point from the right: each takes
+/// one digit, the first takes any extra, and one with no digit left shows a zero, a space or nothing.
+fn integer_parts(whole: &str, placeholders: &[char]) -> Vec<String> {
+    let digits: Vec<char> = whole.chars().collect();
+    let count = placeholders.len();
+    if count == 0 {
+        return vec![whole.to_owned()];
+    }
+    let extra = digits.len().saturating_sub(count);
+    let mut parts = Vec::with_capacity(count);
+    let mut next = 0;
+    for (k, placeholder) in placeholders.iter().enumerate() {
+        let mut part = String::new();
+        if k == 0 && extra > 0 {
+            part.extend(&digits[..extra]);
+            next = extra;
+        }
+        let from_right = count - k;
+        if digits.len() - next >= from_right {
+            part.push(digits[next]);
+            next += 1;
+        } else {
+            match placeholder {
+                '0' => part.push('0'),
+                '?' => part.push(' '),
+                _ => {}
+            }
+        }
+        parts.push(part);
+    }
+    parts
 }
 
 fn group(int_text: &str) -> String {
@@ -958,6 +975,14 @@ fn render_date(section: &Section, value: f64, date1904: bool) -> Option<String> 
                     out.push_str(&format!("{:04}", y));
                 }
             }
+            Token::BuddhistYear(n) => {
+                let year = y + 543;
+                out.push_str(&if *n <= 2 {
+                    format!("{:02}", year.rem_euclid(100))
+                } else {
+                    format!("{year:04}")
+                });
+            }
             Token::Month(n) => out.push_str(&match n {
                 1 => format!("{m}"),
                 2 => format!("{m:02}"),
@@ -1035,6 +1060,14 @@ pub fn text(value: &Value, code: &str, date1904: bool) -> Result<String, ErrorKi
         return Err(*e);
     }
     let format = Format::parse(code);
+    // A date or time format cannot show a negative number, which is `#VALUE!` here and ##### in a cell.
+    if let Value::Number(n) = value {
+        let (section, signless) = format.choose(*n);
+        let shown = if signless { n.abs() } else { *n };
+        if section.is_date && render_date(section, shown, date1904).is_none() {
+            return Err(ErrorKind::Value);
+        }
+    }
     Ok(format.render(value, date1904, 11).text)
 }
 

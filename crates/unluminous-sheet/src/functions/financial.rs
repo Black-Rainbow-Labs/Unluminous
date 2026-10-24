@@ -78,9 +78,12 @@ pub const FUNCTIONS: &[Function] = &[
             let (fv, kind) = (opt_num(ctx, a, 3, 0.0)?, opt_num(ctx, a, 4, 0.0)? != 0.0);
             if rate == 0.0 {
                 if payment == 0.0 {
-                    return Err(ErrorKind::Num);
+                    return Err(ErrorKind::Div0);
                 }
                 return number(-(pv + fv) / payment);
+            }
+            if rate <= -1.0 {
+                return Err(ErrorKind::Num);
             }
             let adjusted = payment * (1.0 + rate * f64::from(u8::from(kind))) / rate;
             let ratio = (adjusted - fv) / (adjusted + pv);
@@ -100,6 +103,9 @@ pub const FUNCTIONS: &[Function] = &[
             let (n, payment, pv) = (num(ctx, &a[0])?, num(ctx, &a[1])?, num(ctx, &a[2])?);
             let (fv_, kind) = (opt_num(ctx, a, 3, 0.0)?, opt_num(ctx, a, 4, 0.0)? != 0.0);
             let guess = opt_num(ctx, a, 5, 0.1)?;
+            if n <= 0.0 {
+                return Err(ErrorKind::Num);
+            }
             let f = |r: f64| fv_ - fv(r, n, payment, pv, kind);
             newton(f, guess).map(Value::Number).ok_or(ErrorKind::Num)
         },
@@ -119,6 +125,9 @@ pub const FUNCTIONS: &[Function] = &[
                 Ok(f) => f,
                 Err(e) => return Val::error(e),
             };
+            if rate == -1.0 {
+                return Val::error(ErrorKind::Div0);
+            }
             Val::number(
                 flows.iter().enumerate().map(|(i, c)| c / (1.0 + rate).powi(i as i32 + 1)).sum(),
             )
@@ -135,7 +144,8 @@ pub const FUNCTIONS: &[Function] = &[
                 Ok(r) => r,
                 Err(e) => return Val::error(e),
             };
-            match dated(ctx, &a[1], &a[2]) {
+            match dated(ctx, &a[1], &a[2], true) {
+                Ok(_) if rate <= 0.0 => Val::error(ErrorKind::Num),
                 Ok((flows, dates)) => Val::number(xnpv(rate, &flows, &dates)),
                 Err(e) => Val::error(e),
             }
@@ -165,7 +175,7 @@ pub const FUNCTIONS: &[Function] = &[
         "values, dates, [guess]",
         "The internal rate of return of payments on dates.",
         |ctx, a| {
-            let (flows, dates) = match dated(ctx, &a[0], &a[1]) {
+            let (flows, dates) = match dated(ctx, &a[0], &a[1], false) {
                 Ok(x) => x,
                 Err(e) => return Val::error(e),
             };
@@ -173,6 +183,12 @@ pub const FUNCTIONS: &[Function] = &[
                 Some(e) => scalar(ctx, e).unwrap_or(0.1),
                 None => 0.1,
             };
+            if flows.len() < 2 {
+                return Val::error(ErrorKind::NA);
+            }
+            if guess <= -1.0 {
+                return Val::error(ErrorKind::Num);
+            }
             newton(|r| xnpv(r, &flows, &dates), guess)
                 .map_or(Val::error(ErrorKind::Num), Val::number)
         },
@@ -205,7 +221,8 @@ pub const FUNCTIONS: &[Function] = &[
                 .filter(|(_, c)| **c < 0.0)
                 .map(|(i, c)| c / (1.0 + fr).powi(i as i32))
                 .sum();
-            if pos == 0.0 || neg == 0.0 {
+            // No positive flow is a total loss, -1; no negative flow, or a single flow, cannot be worked out.
+            if neg == 0.0 || flows.len() < 2 || rr == -1.0 {
                 return Val::error(ErrorKind::Div0);
             }
             Val::number((-pos / neg).powf(1.0 / (n - 1.0)) - 1.0)
@@ -238,13 +255,7 @@ pub const FUNCTIONS: &[Function] = &[
             if c < 0.0 || s < 0.0 || l <= 0.0 || p <= 0.0 || p > l || factor <= 0.0 {
                 return Err(ErrorKind::Num);
             }
-            let mut book = c;
-            let mut dep = 0.0;
-            for _ in 0..p.ceil() as i64 {
-                dep = (book * factor / l).min((book - s).max(0.0));
-                book -= dep;
-            }
-            number(dep)
+            number(declining_balance(c, s, l, p, factor))
         },
     ),
     s(
@@ -370,13 +381,45 @@ pub const FUNCTIONS: &[Function] = &[
                 Ok(p) => p,
                 Err(e) => return Val::error(e),
             };
-            match super::gather(ctx, &a[1..2], super::Gather::Numbers) {
+            match schedule_rates(ctx, &a[1]) {
                 Ok(rates) => Val::number(rates.iter().fold(p, |acc, r| acc * (1.0 + r))),
                 Err(e) => Val::error(e),
             }
         },
     ),
 ];
+
+/// The rates of FVSCHEDULE. An empty cell is a rate of 0; text or a logical in a range is `#VALUE!`, and
+/// one written in the formula is read as a number when it can be.
+fn schedule_rates(ctx: &mut Ctx, schedule: &Expr) -> Result<Vec<f64>, ErrorKind> {
+    let mut rates = Vec::new();
+    for (value, from_range) in ctx.values(std::slice::from_ref(schedule)) {
+        match (&value, from_range) {
+            (Value::Error(e), _) => return Err(*e),
+            (Value::Number(n), _) => rates.push(*n),
+            (Value::Empty, _) => rates.push(0.0),
+            (_, false) => rates.push(ctx.number(&value)?),
+            (_, true) => return Err(ErrorKind::Value),
+        }
+    }
+    Ok(rates)
+}
+
+/// Double declining balance depreciation for a period, which may be a fraction: the book value at the
+/// start of the period less the book value at its end, never taking the value below the salvage.
+/// A period under one counts as the first.
+fn declining_balance(cost: f64, salvage: f64, life: f64, period: f64, factor: f64) -> f64 {
+    let period = period.max(1.0);
+    let rate = factor / life;
+    let (start, end) = if rate >= 1.0 {
+        // The whole value goes in the first period.
+        (if period == 1.0 { cost } else { 0.0 }, 0.0)
+    } else {
+        (cost * (1.0 - rate).powf(period - 1.0), cost * (1.0 - rate).powf(period))
+    };
+    let depreciation = if end < salvage { start - salvage } else { start - end };
+    depreciation.max(0.0)
+}
 
 fn scalar(ctx: &mut Ctx, e: &Expr) -> Result<f64, ErrorKind> {
     let v = ctx.eval(e);
@@ -420,9 +463,8 @@ fn ipmt(rate: f64, per: f64, n: f64, pv: f64, fv_: f64, at_start: bool) -> Resul
 }
 
 fn cumulative(ctx: &mut Ctx, a: &[Value], interest: bool) -> Result<Value, ErrorKind> {
-    let (rate, n, pv) = (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc(), num(ctx, &a[2])?);
-    let (start, end, kind) =
-        (num(ctx, &a[3])?.trunc(), num(ctx, &a[4])?.trunc(), num(ctx, &a[5])?.trunc());
+    let (rate, n, pv) = (num(ctx, &a[0])?, num(ctx, &a[1])?, num(ctx, &a[2])?);
+    let (start, end, kind) = (num(ctx, &a[3])?, num(ctx, &a[4])?, num(ctx, &a[5])?);
     if rate <= 0.0
         || n <= 0.0
         || pv <= 0.0
@@ -436,16 +478,21 @@ fn cumulative(ctx: &mut Ctx, a: &[Value], interest: bool) -> Result<Value, Error
     let at_start = kind == 1.0;
     let mut total = 0.0;
     let payment = pmt(rate, n, pv, 0.0, at_start)?;
-    for per in start as i64..=end as i64 {
+    // Only whole periods are summed: from the first one on or after the start to the last one on or
+    // before the end, so a range that holds none adds up to nothing.
+    for per in start.ceil() as i64..=end.floor() as i64 {
         let i = ipmt(rate, per as f64, n, pv, 0.0, at_start)?;
         total += if interest { i } else { payment - i };
     }
     number(total)
 }
 
-/// Newton's method from a guess, with a numerical derivative.
+/// Newton's method from a guess, with a numerical derivative. Excel stops once a step is under 1e-7; this
+/// goes on while steps keep shrinking, and stops at the noise in the function, so a root that is exactly
+/// zero comes back as a very small number rather than as a failure.
 fn newton(f: impl Fn(f64) -> f64, guess: f64) -> Option<f64> {
     let mut x = guess;
+    let mut last_step = f64::INFINITY;
     for _ in 0..100 {
         let y = f(x);
         if !y.is_finite() {
@@ -457,29 +504,46 @@ fn newton(f: impl Fn(f64) -> f64, guess: f64) -> Option<f64> {
             return None;
         }
         let next = x - y / slope;
-        if (next - x).abs() < 1e-12 * next.abs().max(1.0) {
+        let step = (next - x).abs();
+        if step < 1e-12 * next.abs().max(1.0) || (step < 1e-7 && step >= last_step) {
             return Some(next);
         }
+        last_step = step;
         x = next;
         if x <= -1.0 {
             x = -0.99;
         }
     }
-    None
+    (last_step < 1e-7).then_some(x)
 }
 
-fn dated(ctx: &mut Ctx, values: &Expr, dates: &Expr) -> Result<(Vec<f64>, Vec<f64>), ErrorKind> {
+/// The amounts and the dates of XNPV and XIRR. A date that is not a number, or is not after day zero, is
+/// `#NUM!`. XNPV also refuses a date before the first; XIRR refuses only a second date before the first,
+/// and goes on with a later one that is, if the cash flows have a rate.
+fn dated(
+    ctx: &mut Ctx,
+    values: &Expr,
+    dates: &Expr,
+    all_after_the_first: bool,
+) -> Result<(Vec<f64>, Vec<f64>), ErrorKind> {
     let (v, ..) = numbers_at(ctx, values)?;
     let (d, ..) = numbers_at(ctx, dates)?;
     if v.len() != d.len() || v.is_empty() {
         return Err(ErrorKind::Num);
     }
-    let flows: Option<Vec<f64>> = v.into_iter().collect();
-    let dates: Option<Vec<f64>> = d.into_iter().map(|d| d.map(f64::floor)).collect();
-    match (flows, dates) {
-        (Some(f), Some(d)) => Ok((f, d)),
-        _ => Err(ErrorKind::Value),
+    let dates: Vec<f64> =
+        d.into_iter().map(|d| d.map(f64::floor)).collect::<Option<_>>().ok_or(ErrorKind::Num)?;
+    let first = dates[0];
+    let out_of_order = if all_after_the_first {
+        dates.iter().any(|d| *d < first)
+    } else {
+        dates.get(1).is_some_and(|d| *d < first)
+    };
+    if out_of_order || dates.iter().any(|d| *d <= 0.0) {
+        return Err(ErrorKind::Num);
     }
+    let flows: Vec<f64> = v.into_iter().collect::<Option<_>>().ok_or(ErrorKind::Value)?;
+    Ok((flows, dates))
 }
 
 fn xnpv(rate: f64, flows: &[f64], dates: &[f64]) -> f64 {

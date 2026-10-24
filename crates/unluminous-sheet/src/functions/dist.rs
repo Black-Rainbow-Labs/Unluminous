@@ -220,13 +220,7 @@ pub const FUNCTIONS: &[Function] = &[
         2,
         "probability, deg_freedom",
         "The inverse of Student's t distribution.",
-        |ctx, a| {
-            let (p, df) = (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc());
-            if p <= 0.0 || p >= 1.0 || df < 1.0 {
-                return Err(ErrorKind::Num);
-            }
-            number(t_inverse(p, df))
-        },
+        t_inv,
     ),
     s(
         "T.INV.2T",
@@ -258,10 +252,11 @@ pub const FUNCTIONS: &[Function] = &[
             number(if opt_bool(a, 2, true)? {
                 gamma_p(df / 2.0, x / 2.0)
             } else if x == 0.0 {
-                if df == 2.0 {
-                    0.5
-                } else {
-                    0.0
+                // The density at 0 is infinite with one degree of freedom, which Excel gives as #NUM!.
+                match df {
+                    1.0 => return Err(ErrorKind::Num),
+                    2.0 => 0.5,
+                    _ => 0.0,
                 }
             } else {
                 ((df / 2.0 - 1.0) * x.ln() - x / 2.0 - (df / 2.0) * 2f64.ln() - ln_gamma(df / 2.0))
@@ -355,6 +350,14 @@ pub const FUNCTIONS: &[Function] = &[
             }
             number(if opt_bool(a, 3, true)? {
                 beta_i(d1 * x / (d1 * x + d2), d1 / 2.0, d2 / 2.0)
+            } else if x == 0.0 {
+                // The density at 0 is 0, 1 or infinite as the first degrees of freedom are above, at or
+                // under 2; infinite is #NUM!.
+                match d1 {
+                    1.0 => return Err(ErrorKind::Num),
+                    2.0 => 1.0,
+                    _ => 0.0,
+                }
             } else {
                 ((d1 * x).powf(d1) * d2.powf(d2) / (d1 * x + d2).powf(d1 + d2)).sqrt()
                     / (x * ln_beta(d1 / 2.0, d2 / 2.0).exp())
@@ -467,6 +470,9 @@ fn weibull(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
     let t = (x / l).powf(k);
     number(if opt_bool(a, 3, true)? {
         1.0 - (-t).exp()
+    } else if x == 0.0 {
+        // Excel answers 0 for the density at 0 whatever the shape.
+        0.0
     } else {
         k / l * (x / l).powf(k - 1.0) * (-t).exp()
     })
@@ -485,7 +491,20 @@ fn t_inv_2t(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
     if p <= 0.0 || p > 1.0 || df < 1.0 {
         return Err(ErrorKind::Num);
     }
+    if p == 1.0 {
+        // Half of the probability is on each side of 0, so the answer is exactly 0.
+        return number(0.0);
+    }
     number(t_inverse(1.0 - p / 2.0, df))
+}
+
+/// The one tailed inverse, which is exactly 0 at one half.
+fn t_inv(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
+    let (p, df) = (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc());
+    if p <= 0.0 || p >= 1.0 || df < 1.0 {
+        return Err(ErrorKind::Num);
+    }
+    number(if p == 0.5 { 0.0 } else { t_inverse(p, df) })
 }
 
 fn chisq_rt(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {

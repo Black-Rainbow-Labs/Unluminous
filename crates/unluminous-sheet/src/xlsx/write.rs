@@ -395,6 +395,7 @@ impl<'a> Writer<'a> {
         if !book.calc.automatic {
             calc.push(("calcMode".to_owned(), "manual".to_owned()));
         }
+        calc.extend(iteration_attributes(&book.calc));
         out.push_str(&format!("<calcPr{}/>", attrs_text(&calc)));
         for name in [
             "oleSize",
@@ -911,6 +912,24 @@ impl<'a> Writer<'a> {
 }
 
 /// Whether a dynamic formula is written as a dynamic array: when it spilled or could return an array.
+/// The `calcPr` attributes for iteration and precision, written only where they differ from Excel's own.
+fn iteration_attributes(calc: &CalcSettings) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    if calc.iterate {
+        out.push(("iterate".to_owned(), "1".to_owned()));
+    }
+    if calc.iterate_count != DEFAULT_ITERATE_COUNT {
+        out.push(("iterateCount".to_owned(), calc.iterate_count.to_string()));
+    }
+    if calc.iterate_delta != DEFAULT_ITERATE_DELTA {
+        out.push(("iterateDelta".to_owned(), number_text(calc.iterate_delta)));
+    }
+    if !calc.full_precision {
+        out.push(("fullPrecision".to_owned(), "0".to_owned()));
+    }
+    out
+}
+
 fn is_dynamic_shape(f: &crate::formula::Formula) -> bool {
     let mut arrayish = false;
     f.expr.walk(&mut |e| match e {

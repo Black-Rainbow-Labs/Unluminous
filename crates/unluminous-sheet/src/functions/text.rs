@@ -118,25 +118,12 @@ pub const FUNCTIONS: &[Function] = &[
             }
         },
     ),
-    s("UPPER", 1, 1, "text", "Capitals.", |_, a| Ok(Value::text(text_of(&a[0])?.to_uppercase()))),
-    s("LOWER", 1, 1, "text", "Lower case.", |_, a| Ok(Value::text(text_of(&a[0])?.to_lowercase()))),
+    s("UPPER", 1, 1, "text", "Capitals.", |_, a| {
+        Ok(Value::text(text_of(&a[0])?.chars().map(simple_upper).collect::<String>()))
+    }),
+    s("LOWER", 1, 1, "text", "Lower case.", |_, a| Ok(Value::text(lower_text(&text_of(&a[0])?)))),
     s("PROPER", 1, 1, "text", "The first letter of each word a capital.", |_, a| {
-        let mut out = String::new();
-        let mut after_letter = false;
-        for c in text_of(&a[0])?.chars() {
-            if c.is_alphabetic() {
-                if after_letter {
-                    out.extend(c.to_lowercase());
-                } else {
-                    out.extend(c.to_uppercase());
-                }
-                after_letter = true;
-            } else {
-                out.push(c);
-                after_letter = false;
-            }
-        }
-        Ok(Value::text(out))
+        Ok(Value::text(proper_text(&text_of(&a[0])?)))
     }),
     s("TRIM", 1, 1, "text", "Removes spaces but single ones between words.", |_, a| {
         Ok(Value::text(
@@ -168,6 +155,8 @@ pub const FUNCTIONS: &[Function] = &[
                 None => a[0].clone(),
             },
             Value::Bool(b) => Value::text(if *b { "TRUE" } else { "FALSE" }),
+            // An empty cell is shown as the number 0.
+            Value::Empty => Value::Number(0.0),
             other => other.clone(),
         };
         Ok(Value::text(crate::numfmt::text(&value, &code, ctx.date1904())?))
@@ -187,7 +176,15 @@ pub const FUNCTIONS: &[Function] = &[
         |ctx, a| {
             let mut t = text_of(&a[0])?;
             let decimal = opt(a, 1).map(text_of).transpose()?.unwrap_or_else(|| ".".to_owned());
-            let groups = opt(a, 2).map(text_of).transpose()?.unwrap_or_else(|| ",".to_owned());
+            if decimal.is_empty() {
+                return Err(ErrorKind::Value);
+            }
+            // Without a group separator it is the one that is not the decimal separator: `.` when that is `,`.
+            let other = if decimal.starts_with(',') { "." } else { "," };
+            let groups = opt(a, 2).map(text_of).transpose()?.unwrap_or_else(|| other.to_owned());
+            if groups.is_empty() || groups.chars().next() == decimal.chars().next() {
+                return Err(ErrorKind::Value);
+            }
             t.retain(|c| !c.is_whitespace());
             if let Some(g) = groups.chars().next() {
                 t = t.replace(g, "");
@@ -200,9 +197,14 @@ pub const FUNCTIONS: &[Function] = &[
             }
             let percents = t.chars().rev().take_while(|c| *c == '%').count();
             let body = &t[..t.len() - percents];
-            let n: f64 = body.parse().map_err(|_| ErrorKind::Value)?;
-            let _ = ctx;
-            number(n / 100f64.powi(percents as i32))
+            match body.parse::<f64>() {
+                Ok(n) => number(n / 100f64.powi(percents as i32)),
+                // Anything else is read as typing reads it: `(5)`, `$5`, and a date once the spaces
+                // are gone.
+                Err(_) => crate::input::number_from_text(&t, ctx.date1904())
+                    .ok_or(ErrorKind::Value)
+                    .and_then(number),
+            }
         },
     ),
     s(
@@ -235,16 +237,14 @@ pub const FUNCTIONS: &[Function] = &[
         let rounded = super::math::round_to(n, d, super::math::Rounding::Half);
         let decimals = d.max(0.0) as usize;
         let body = format!(
-            "#,##0{}",
+            "\"$\"#,##0{}",
             if decimals > 0 { format!(".{}", "0".repeat(decimals)) } else { String::new() }
         );
-        let code = format!("\"$\"{body}_);(\"$\"{body})");
-        Ok(Value::text(
-            crate::numfmt::Format::parse(&code)
-                .render(&Value::Number(rounded), false, 255)
-                .text
-                .trim_end(),
-        ))
+        // A negative number is in parentheses even when it rounds to nothing: DOLLAR(-0.001) is ($0.00).
+        let shown = crate::numfmt::Format::parse(&body)
+            .render(&Value::Number(rounded.abs()), false, 255)
+            .text;
+        Ok(Value::text(if n < 0.0 { format!("({shown})") } else { shown }))
     }),
     s(
         "CHAR",
@@ -274,10 +274,15 @@ pub const FUNCTIONS: &[Function] = &[
     ),
     s("UNICHAR", 1, 1, "number", "The Unicode character with a number.", |ctx, a| {
         let n = num(ctx, &a[0])?.trunc();
-        char::from_u32(n as u32)
-            .filter(|_| n >= 1.0)
-            .map(|c| Value::text(c.to_string()))
-            .ok_or(ErrorKind::Value)
+        if !(1.0..=1_114_111.0).contains(&n) {
+            return Err(ErrorKind::Value);
+        }
+        // A surrogate and the last two code points of each plane are not characters: #N/A.
+        let code = n as u32;
+        if (0xD800..=0xDFFF).contains(&code) || code & 0xFFFE == 0xFFFE {
+            return Err(ErrorKind::NA);
+        }
+        char::from_u32(code).map(|c| Value::text(c.to_string())).ok_or(ErrorKind::NA)
     }),
     s("UNICODE", 1, 1, "text", "The Unicode number of the first character.", |_, a| {
         text_of(&a[0])?
@@ -291,21 +296,21 @@ pub const FUNCTIONS: &[Function] = &[
         Value::Error(e) => Err(*e),
         _ => Ok(Value::text("")),
     }),
-    s(
+    r(
         "TEXTBEFORE",
         2,
         6,
         "text, delimiter, [instance_num], [match_mode], [match_end], [if_not_found]",
         "The text before a delimiter.",
-        |ctx, a| before_after(ctx, a, true),
+        |ctx, a| text_around(ctx, a, true),
     ),
-    s(
+    r(
         "TEXTAFTER",
         2,
         6,
         "text, delimiter, [instance_num], [match_mode], [match_end], [if_not_found]",
         "The text after a delimiter.",
-        |ctx, a| before_after(ctx, a, false),
+        |ctx, a| text_around(ctx, a, false),
     ),
     r(
         "TEXTSPLIT",
@@ -348,6 +353,70 @@ pub const FUNCTIONS: &[Function] = &[
         Ok(Value::text(text_of(&a[0])?))
     }),
 ];
+
+fn case_mapped(table: &[(u32, u32)], c: char) -> char {
+    table
+        .binary_search_by_key(&(c as u32), |(from, _)| *from)
+        .ok()
+        .and_then(|i| char::from_u32(table[i].1))
+        .unwrap_or(c)
+}
+
+/// A character in upper case the way Excel maps it: one character to one, and only the characters its
+/// tables know.
+pub fn simple_upper(c: char) -> char {
+    if c.is_ascii() {
+        c.to_ascii_uppercase()
+    } else {
+        case_mapped(super::casemap::UPPER, c)
+    }
+}
+
+/// A character in lower case the way Excel maps it. The capital sigma is the final sigma unless a letter
+/// follows it.
+pub fn simple_lower(c: char, letter_follows: bool) -> char {
+    if c.is_ascii() {
+        c.to_ascii_lowercase()
+    } else if c == '\u{3A3}' {
+        if letter_follows {
+            '\u{3C3}'
+        } else {
+            '\u{3C2}'
+        }
+    } else {
+        case_mapped(super::casemap::LOWER, c)
+    }
+}
+
+fn lower_text(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    (0..chars.len())
+        .map(|i| simple_lower(chars[i], chars.get(i + 1).is_some_and(|c| c.is_alphabetic())))
+        .collect()
+}
+
+/// PROPER: the first letter of each run of letters in capitals and the rest in lower case.
+fn proper_text(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut after_letter = false;
+    for (i, c) in chars.iter().enumerate() {
+        if c.is_alphabetic() {
+            let letter_follows = chars.get(i + 1).is_some_and(|n| n.is_alphabetic());
+            // A first letter goes through lower case on the way, which is how a dotted capital I becomes I.
+            out.push(if after_letter {
+                simple_lower(*c, letter_follows)
+            } else {
+                simple_upper(simple_lower(*c, true))
+            });
+            after_letter = true;
+        } else {
+            out.push(*c);
+            after_letter = false;
+        }
+    }
+    out
+}
 
 fn limit(text: String) -> Result<Value, ErrorKind> {
     if text.chars().count() > 32_767 {
@@ -463,43 +532,90 @@ fn find(ctx: &mut Ctx, a: &[Value], case_sensitive: bool) -> Result<Value, Error
     Err(ErrorKind::Value)
 }
 
-fn before_after(ctx: &mut Ctx, a: &[Value], before: bool) -> Result<Value, ErrorKind> {
+/// TEXTBEFORE and TEXTAFTER. The delimiter may be an array, which means any of these, so it is not
+/// lifted over; the text and the other arguments are.
+fn text_around(ctx: &mut Ctx, args: &[Expr], before: bool) -> Val {
+    let delimiters = ctx.eval(&args[1]);
+    let delimiters: Vec<String> = match ctx.array(delimiters) {
+        Ok(a) => a.data.iter().map(Value::to_text).collect(),
+        Err(e) => return Val::error(e),
+    };
+    let mut all = vec![ctx.eval(&args[0])];
+    all.extend(args[2..].iter().map(|e| ctx.eval(e)));
+    ctx.lift_vals(all, |ctx, v| {
+        text_around_one(ctx, v, &delimiters, before).unwrap_or_else(Value::Error)
+    })
+}
+
+/// Where the delimiters are in a text, as the first character and the number of characters of each, left to
+/// right, a longer delimiter being taken where two start at the same place.
+fn delimiter_places(hay: &[char], needles: &[Vec<char>]) -> Vec<(usize, usize)> {
+    if needles.iter().all(Vec::is_empty) {
+        return (0..=hay.len()).map(|at| (at, 0)).collect();
+    }
+    let mut places = Vec::new();
+    let mut at = 0;
+    while at < hay.len() {
+        let longest = needles
+            .iter()
+            .filter(|n| !n.is_empty() && hay[at..].starts_with(n))
+            .map(Vec::len)
+            .max();
+        match longest {
+            Some(length) => {
+                places.push((at, length));
+                at += length;
+            }
+            None => at += 1,
+        }
+    }
+    places
+}
+
+/// `a` is the text, then the instance, the match mode, whether the end of the text matches and what to
+/// give when nothing does.
+fn text_around_one(
+    ctx: &mut Ctx,
+    a: &[Value],
+    delimiters: &[String],
+    before: bool,
+) -> Result<Value, ErrorKind> {
     let text = text_of(&a[0])?;
-    let delimiter = text_of(&a[1])?;
-    let instance = opt_num(ctx, a, 2, 1.0)?.trunc() as i64;
-    let ignore_case = opt_num(ctx, a, 3, 0.0)? == 1.0;
-    let match_end = opt_num(ctx, a, 4, 0.0)? == 1.0;
+    let given = |ctx: &mut Ctx, i: usize, default: f64| match opt(a, i) {
+        Some(v) => num(ctx, v),
+        None => Ok(default),
+    };
+    let instance = given(ctx, 1, 1.0)?.trunc() as i64;
+    let ignore_case = given(ctx, 2, 0.0)? == 1.0;
+    let match_end = given(ctx, 3, 0.0)? == 1.0;
     if instance == 0 {
         return Err(ErrorKind::Value);
     }
-    let (hay, needle) = if ignore_case {
-        (text.to_lowercase(), delimiter.to_lowercase())
-    } else {
-        (text.clone(), delimiter.clone())
-    };
-    let mut positions: Vec<usize> = if needle.is_empty() {
-        (0..=hay.len()).filter(|i| hay.is_char_boundary(*i)).collect()
-    } else {
-        hay.match_indices(&needle).map(|(i, _)| i).collect()
-    };
+    let fold = |c: char| if ignore_case { simple_lower(c, true) } else { c };
+    let chars: Vec<char> = text.chars().collect();
+    let folded: Vec<char> = chars.iter().map(|c| fold(*c)).collect();
+    let needles: Vec<Vec<char>> =
+        delimiters.iter().map(|d| d.chars().map(fold).collect()).collect();
+    let mut places = delimiter_places(&folded, &needles);
     if match_end {
         if instance > 0 {
-            positions.push(hay.len());
+            places.push((chars.len(), 0));
         } else {
-            positions.insert(0, 0);
+            places.insert(0, (0, 0));
         }
     }
     let pick = if instance > 0 {
-        positions.get(instance as usize - 1)
+        places.get(instance as usize - 1)
     } else {
-        positions.len().checked_sub((-instance) as usize).and_then(|i| positions.get(i))
+        places.len().checked_sub((-instance) as usize).and_then(|i| places.get(i))
     };
     match pick {
-        Some(&at) => {
-            let end = (at + needle.len()).min(text.len());
-            Ok(Value::text(if before { &text[..at] } else { &text[end..] }))
+        Some(&(at, length)) => {
+            let piece =
+                if before { &chars[..at] } else { &chars[(at + length).min(chars.len())..] };
+            Ok(Value::text(piece.iter().collect::<String>()))
         }
-        None => match a.get(5) {
+        None => match a.get(4) {
             Some(v) => Ok(v.clone()),
             None => Err(ErrorKind::NA),
         },
@@ -516,26 +632,30 @@ fn textsplit(ctx: &mut Ctx, args: &[Expr]) -> Val {
         Value::Error(e) => return Val::error(e),
         v => v.to_text(),
     };
-    let delims = |ctx: &mut Ctx, v: Option<&Val>| -> Result<Vec<String>, ErrorKind> {
-        match v {
-            None => Ok(Vec::new()),
-            Some(v) => Ok(ctx
-                .array(v.clone())?
-                .data
-                .iter()
-                .map(Value::to_text)
-                .filter(|d| !d.is_empty())
-                .collect()),
+    // A delimiter that is left out is not one; one that is given as empty text or an empty cell is refused.
+    let delims = |ctx: &mut Ctx, at: usize| -> Result<Vec<String>, ErrorKind> {
+        match (args.get(at), scalars.get(at)) {
+            (Some(Expr::Missing), _) | (None, _) | (_, None) => Ok(Vec::new()),
+            (_, Some(v)) => {
+                let all = ctx.array(v.clone())?.data;
+                if all.iter().any(|d| d.is_empty() || matches!(d, Value::Text(t) if t.is_empty())) {
+                    return Err(ErrorKind::Value);
+                }
+                Ok(all.iter().map(Value::to_text).collect())
+            }
         }
     };
-    let cols = match delims(ctx, scalars.get(1)) {
+    let cols = match delims(ctx, 1) {
         Ok(d) => d,
         Err(e) => return Val::error(e),
     };
-    let rows = match delims(ctx, scalars.get(2)) {
+    let rows = match delims(ctx, 2) {
         Ok(d) => d,
         Err(e) => return Val::error(e),
     };
+    if cols.is_empty() && rows.is_empty() {
+        return Val::error(ErrorKind::Value);
+    }
     let ignore_empty = scalars
         .get(3)
         .map(|v| ctx.single(v.clone()))

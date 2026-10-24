@@ -154,8 +154,7 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
                 }
             }
             "calcPr" => {
-                book.calc.automatic = child.attribute("calcMode") != Some("manual");
-                book.calc.attrs = attrs_of(child, &["calcMode", "fullCalcOnLoad"]);
+                book.calc = calc_settings(child);
             }
             name => book.raw.push((name.to_owned(), raw(&workbook_xml, child).to_owned())),
         }
@@ -288,6 +287,40 @@ fn read_theme(xml: &str, styles: &mut Styles) {
         .and_then(|f| f.children().find(|n| n.has_tag_name((DRAWING_NS, "latin"))))
         .and_then(|l| l.attribute("typeface"))
         .map(str::to_owned);
+}
+
+/// The calculation settings of a `calcPr` element: the mode, whether circular references are iterated and
+/// how far, and whether numbers are kept as shown. The other attributes are kept as they were.
+fn calc_settings(n: Node) -> CalcSettings {
+    let flag = |name: &str, default: bool| match n.attribute(name) {
+        Some("1") | Some("true") => true,
+        Some("0") | Some("false") => false,
+        _ => default,
+    };
+    CalcSettings {
+        automatic: n.attribute("calcMode") != Some("manual"),
+        iterate: flag("iterate", false),
+        iterate_count: n
+            .attribute("iterateCount")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_ITERATE_COUNT),
+        iterate_delta: n
+            .attribute("iterateDelta")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_ITERATE_DELTA),
+        full_precision: flag("fullPrecision", true),
+        attrs: attrs_of(
+            n,
+            &[
+                "calcMode",
+                "fullCalcOnLoad",
+                "iterate",
+                "iterateCount",
+                "iterateDelta",
+                "fullPrecision",
+            ],
+        ),
+    }
 }
 
 fn bool_attr(n: Node, name: &str) -> bool {

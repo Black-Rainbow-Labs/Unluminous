@@ -13,6 +13,7 @@ use crate::eval::{to_bool, to_text, Ctx, Val};
 use crate::formula::Expr;
 use crate::value::{ErrorKind, Value};
 
+pub mod casemap;
 pub mod criteria;
 pub mod date;
 pub mod dist;

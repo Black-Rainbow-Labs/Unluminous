@@ -380,34 +380,81 @@ fn lookup(ctx: &mut Ctx, args: &[Expr]) -> Val {
     }
 }
 
+//// Whether the match and search modes of XLOOKUP and XMATCH are ones Excel has, and not wildcards in a
+/// binary search, which it refuses.
+fn modes_are_valid(match_mode: i64, search_mode: i64) -> bool {
+    matches!(match_mode, -1..=2)
+        && matches!(search_mode, -2 | -1 | 1 | 2)
+        && !(match_mode == 2 && search_mode.abs() == 2)
+}
+
+/// Excel's binary search for XLOOKUP and XMATCH, which trusts the list to be in order and gives whatever that
+/// leads to when it is not. It halves the range, going to the lower half when the middle value is above the
+/// target (below it for a list in descending order). A value equal to the target is remembered and the
+/// search goes on towards the start of the list, or towards the end for a descending one, so the first of
+/// several equal values is found going up and the last going down. For the nearest smaller (-1) or larger
+/// (1) value the closest one met on that side is kept.
+fn binary_search(
+    values: &[Value],
+    target: &Value,
+    match_mode: i64,
+    descending: bool,
+) -> Option<usize> {
+    let (mut lo, mut hi) = (0i64, values.len() as i64 - 1);
+    let (mut found, mut near) = (None, None);
+    while lo <= hi {
+        let mid = ((lo + hi) / 2) as usize;
+        let mut order = compare(&values[mid], target);
+        if order == Ordering::Equal && values[mid].is_empty() {
+            order = Ordering::Less;
+        }
+        let move_up = |lo: &mut i64, hi: &mut i64| {
+            if descending {
+                *lo = mid as i64 + 1;
+            } else {
+                *hi = mid as i64 - 1;
+            }
+        };
+        match order {
+            Ordering::Equal => {
+                found = Some(mid);
+                move_up(&mut lo, &mut hi);
+            }
+            Ordering::Less => {
+                if match_mode == -1 {
+                    near = Some(mid);
+                }
+                if descending {
+                    hi = mid as i64 - 1;
+                } else {
+                    lo = mid as i64 + 1;
+                }
+            }
+            Ordering::Greater => {
+                if match_mode == 1 {
+                    near = Some(mid);
+                }
+                if descending {
+                    lo = mid as i64 + 1;
+                } else {
+                    hi = mid as i64 - 1;
+                }
+            }
+        }
+    }
+    found.or(near)
+}
+
 /// Find a value in a list by XLOOKUP's match and search modes.
 fn find_in(values: &[Value], target: &Value, match_mode: i64, search_mode: i64) -> Option<usize> {
-    let order: Box<dyn Iterator<Item = usize>> = if search_mode == -1 || search_mode == -2 {
+    if search_mode.abs() == 2 {
+        return binary_search(values, target, match_mode, search_mode == -2);
+    }
+    let order: Box<dyn Iterator<Item = usize>> = if search_mode == -1 {
         Box::new((0..values.len()).rev())
     } else {
         Box::new(0..values.len())
     };
-    match search_mode {
-        2 | -2 => {
-            // Binary search over sorted data.
-            let descending = search_mode == -2;
-            let hit = approximate(values, target, descending)?;
-            return match match_mode {
-                0 | 2 => (matches_exactly(target, &values[hit], match_mode == 2)).then_some(hit),
-                -1 => Some(hit),
-                _ => {
-                    if matches_exactly(target, &values[hit], false) {
-                        Some(hit)
-                    } else if hit + 1 < values.len() {
-                        Some(hit + 1)
-                    } else {
-                        None
-                    }
-                }
-            };
-        }
-        _ => {}
-    }
     let mut best: Option<usize> = None;
     for i in order {
         let v = &values[i];
@@ -478,7 +525,7 @@ fn xlookup(ctx: &mut Ctx, args: &[Expr]) -> Val {
     let not_found = args.get(3).filter(|e| !matches!(e, Expr::Missing)).map(|e| ctx.eval(e));
     let match_mode = number_arg(ctx, args, 4, 0.0).unwrap_or(0.0).trunc() as i64;
     let search_mode = number_arg(ctx, args, 5, 1.0).unwrap_or(1.0).trunc() as i64;
-    if !matches!(match_mode, -1..=2) || !matches!(search_mode, -2 | -1 | 1 | 2) {
+    if !modes_are_valid(match_mode, search_mode) {
         return Val::error(ErrorKind::Value);
     }
     let one = |ctx: &mut Ctx, t: &Value| -> Val {
@@ -562,6 +609,9 @@ fn xmatch(ctx: &mut Ctx, args: &[Expr]) -> Val {
     }
     let match_mode = number_arg(ctx, args, 2, 0.0).unwrap_or(0.0).trunc() as i64;
     let search_mode = number_arg(ctx, args, 3, 1.0).unwrap_or(1.0).trunc() as i64;
+    if !modes_are_valid(match_mode, search_mode) {
+        return Val::error(ErrorKind::Value);
+    }
     ctx.lift_vals(vec![target], |_, t| {
         if let Value::Error(e) = &t[0] {
             return Value::Error(*e);
@@ -603,7 +653,8 @@ fn index(ctx: &mut Ctx, args: &[Expr]) -> Val {
             let (rows, cols) = (r.rows() as i64, r.cols() as i64);
             // One row or one column: a single number is the position along it.
             let (row, col) = if args.len() == 2 && rows == 1 { (1, row) } else { (row, col) };
-            if row > rows || col > cols {
+            // A row alone, from a range of several rows and columns, does not say which cell.
+            if args.len() == 2 && rows > 1 && cols > 1 || row > rows || col > cols {
                 return Val::error(ErrorKind::Ref);
             }
             let (first_row, last_row) = if row == 0 {
@@ -778,10 +829,14 @@ fn indirect(ctx: &mut Ctx, args: &[Expr]) -> Val {
         }
         None => true,
     };
+    // Spaces after the reference are ignored; a space before it, or inside it, is not a reference.
+    if text.starts_with(char::is_whitespace) {
+        return Val::error(ErrorKind::Ref);
+    }
     let written = if a1 {
-        text.trim().to_owned()
+        text.trim_end().to_owned()
     } else {
-        match r1c1_to_a1(text.trim(), ctx.at) {
+        match r1c1_to_a1(text.trim_end(), ctx.at) {
             Some(t) => t,
             None => return Val::error(ErrorKind::Ref),
         }
@@ -944,14 +999,12 @@ fn filter(ctx: &mut Ctx, args: &[Expr]) -> Val {
     if !by_rows && !by_cols {
         return Val::error(ErrorKind::Value);
     }
+    // Each include value is a logical, a number, or text that says TRUE or FALSE; any other text is refused.
     let mut keep = Vec::new();
     for v in &include.data {
-        match v {
-            Value::Error(e) => return Val::error(*e),
-            v => keep.push(
-                crate::eval::to_bool(v).unwrap_or(false)
-                    || matches!(v, Value::Number(n) if *n != 0.0),
-            ),
+        match crate::eval::to_bool(v) {
+            Ok(keeps) => keep.push(keeps),
+            Err(e) => return Val::error(e),
         }
     }
     let mut data = Vec::new();
@@ -1280,7 +1333,11 @@ fn to_line(ctx: &mut Ctx, args: &[Expr], column: bool) -> Val {
         Ok(a) => a,
         Err(e) => return Val::error(e),
     };
-    let ignore = number_arg(ctx, args, 1, 0.0).unwrap_or(0.0) as i64;
+    let ignore = match number_arg(ctx, args, 1, 0.0) {
+        Ok(n) if (0.0..4.0).contains(&n) => n as i64,
+        Ok(_) => return Val::error(ErrorKind::Value),
+        Err(e) => return Val::error(e),
+    };
     let by_col = args.get(2).is_some_and(|e| {
         let v = scalar(ctx, e);
         crate::eval::to_bool(&v).unwrap_or(false)
