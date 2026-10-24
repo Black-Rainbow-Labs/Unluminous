@@ -17,7 +17,7 @@ use crate::styles::{Alignment, Border, Color, Edge, Fill, Font, Underline, Xf};
 use crate::value::{ErrorKind, Value};
 
 /// The pixels one character of the default font is wide, for turning a width in points into characters.
-const PIXELS_PER_CHARACTER: f64 = 7.0;
+
 
 /// Read an XML Spreadsheet 2003 file.
 pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
@@ -272,7 +272,8 @@ fn read_sheet(node: Node, styles: &HashMap<String, u32>, book: &mut Workbook, in
 
 fn read_table(table: Node, styles: &HashMap<String, u32>, book: &mut Workbook, sheet: &mut Sheet) {
     let default_width = attribute(table, "DefaultColumnWidth").and_then(|w| w.parse::<f64>().ok());
-    sheet.default_col_width = default_width.map(characters_from_points);
+    let pixels = crate::ods::pixels_per_character(book);
+    sheet.default_col_width = default_width.map(|w| characters_from_points(w, pixels));
     if let Some(height) = attribute(table, "DefaultRowHeight").and_then(|h| h.parse::<f64>().ok()) {
         sheet.default_row_height = height;
     }
@@ -282,7 +283,7 @@ fn read_table(table: Node, styles: &HashMap<String, u32>, book: &mut Workbook, s
             col = index.saturating_sub(1);
         }
         let span = attribute(column, "Span").and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
-        let width = attribute(column, "Width").and_then(|w| w.parse::<f64>().ok()).map(characters_from_points);
+        let width = attribute(column, "Width").and_then(|w| w.parse::<f64>().ok()).map(|w| characters_from_points(w, pixels));
         let hidden = attribute(column, "Hidden") == Some("1");
         let style = attribute(column, "StyleID").and_then(|s| styles.get(s)).copied().unwrap_or(0);
         if width.is_some() || hidden || style != 0 {
@@ -324,9 +325,9 @@ fn read_table(table: Node, styles: &HashMap<String, u32>, book: &mut Workbook, s
 }
 
 /// A width in points as characters of the default font.
-fn characters_from_points(points: f64) -> f64 {
+fn characters_from_points(points: f64, pixels_per_character: f64) -> f64 {
     let pixels = points * 96.0 / 72.0;
-    (((pixels - 5.0) / PIXELS_PER_CHARACTER) * 100.0).round() / 100.0
+    ((pixels / pixels_per_character) * 100.0).round() / 100.0
 }
 
 fn read_cells(row: Node, r: u32, styles: &HashMap<String, u32>, book: &mut Workbook, sheet: &mut Sheet) {

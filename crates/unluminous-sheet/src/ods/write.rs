@@ -329,7 +329,8 @@ impl<'b> Writer<'b> {
 
     /// The `table:table-column` elements.
     fn columns(&mut self, sheet: &Sheet, cols: u32) -> String {
-        let default_width = sheet.default_col_width.unwrap_or(9.0);
+        let pixels = super::pixels_per_character(self.book);
+        let default_width = sheet.default_col_width.unwrap_or(super::default_column_pixels(self.book) / pixels);
         let mut specs: Vec<(String, bool, u32)> = Vec::new();
         for c in 0..cols {
             let info: Option<&ColumnInfo> = sheet.column(c);
@@ -338,7 +339,7 @@ impl<'b> Writer<'b> {
                 None => (default_width, false, 0),
             };
             let optimal = info.is_none_or(|i| !i.custom_width);
-            let name = self.column_style(cm_per_width(width), optimal);
+            let name = self.column_style(cm_per_width(width, pixels), optimal);
             specs.push((name, hidden, style));
         }
         let mut xml = String::new();
@@ -361,7 +362,7 @@ impl<'b> Writer<'b> {
             i = j + 1;
         }
         // The rest of the sheet's columns have the default width.
-        let name = self.column_style(cm_per_width(default_width), true);
+        let name = self.column_style(cm_per_width(default_width, pixels), true);
         let default = self.cell_style(0, &[], 0);
         let rest = crate::coord::MAX_COLS.saturating_sub(cols);
         if rest > 0 {

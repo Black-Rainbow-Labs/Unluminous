@@ -162,29 +162,40 @@ pub fn from_rows(rows: Vec<Vec<String>>, sheet_name: &str, this_year: i64) -> Wo
     book
 }
 
-/// A sheet as CSV text: each cell as it shows, quoted when it has to be, rows ended with CRLF.
-pub fn write(book: &Workbook, sheet: usize, sep: char) -> String {
+/// How many characters a General number may use in a text file. Excel writes the same eleven whatever the
+/// width of the column: `0.333333333`, `1.23457E+20`, `123456789.1`.
+pub const GENERAL_WIDTH: usize = 11;
+
+/// The text Excel writes for a cell: what the cell shows, with a General number cut to eleven characters. A
+/// text cell is written as its text, so `007` stays `007`.
+pub fn cell_text(book: &Workbook, sheet: usize, at: CellRef) -> String {
     let s = &book.sheets[sheet];
-    let Some(used) = s.used_range() else { return String::new() };
+    let style = s.cell(at).map_or(0, |cell| cell.style);
+    let code = book.styles.format_code(style);
+    crate::numfmt::Format::parse(&code).render(&s.value_at(at), book.date1904, GENERAL_WIDTH).text
+}
+
+/// A field as it goes in the file: in quotes, with its own quotes doubled, when it holds the separator, a
+/// comma, a tab, a quote or a line break. Excel quotes a field with a comma or a tab in a tab separated file
+/// too.
+pub fn quote_field(text: &str, sep: char) -> String {
+    if text.contains([sep, ',', '\t', '"', '\n', '\r']) {
+        format!("\"{}\"", text.replace('"', "\"\""))
+    } else {
+        text.to_owned()
+    }
+}
+
+/// A sheet as text with a separator: each cell as it shows, quoted when it has to be, rows ended with CRLF.
+/// Every row has as many fields as the sheet's used range has columns, and a blank row is a row of empty
+/// fields.
+pub fn write(book: &Workbook, sheet: usize, sep: char) -> String {
+    let Some(used) = book.sheets.get(sheet).and_then(|s| s.used_range()) else { return String::new() };
     let mut out = String::new();
     for r in 0..=used.last.row {
-        let mut fields = Vec::new();
-        for c in 0..=used.last.col {
-            let at = CellRef::new(r, c);
-            let cell = match s.cell(at) {
-                Some(cell) => cell.clone(),
-                None => Cell::value(s.value_at(at)),
-            };
-            let code = book.styles.format_code(cell.style);
-            let text =
-                crate::numfmt::Format::parse(&code).render(&cell.value, book.date1904, 255).text;
-            fields.push(if text.contains([sep, '"', '\n', '\r']) {
-                format!("\"{}\"", text.replace('"', "\"\""))
-            } else {
-                text
-            });
-        }
-        // Trailing empty fields are written, as Excel writes them, so every row has the same width.
+        let fields: Vec<String> = (0..=used.last.col)
+            .map(|c| quote_field(&cell_text(book, sheet, CellRef::new(r, c)), sep))
+            .collect();
         out.push_str(&fields.join(&sep.to_string()));
         out.push_str("\r\n");
     }

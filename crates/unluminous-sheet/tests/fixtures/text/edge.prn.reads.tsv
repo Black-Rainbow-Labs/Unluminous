@@ -1,0 +1,13 @@
+A1`ttext`tText    Number  Date     Percent Currency  AccountinTime    Bool    Error   Formula Wide                          Narrow`tGeneral
+A2`ttext`tplain         422026-10-2   25.6% $1,234.50 $ 1,234.12:00 PM  TRUE  #DIV/0! plainx                     0.333333333 0.5`tGeneral
+A3`ttext`t007       -17.25 1/5/2026    -50%   ($5.00) $      (23:58:34 FALSE    #N/A  0.333333                   314159.2654####`tGeneral
+A4`ttext`ta,b     1.23E+20 1-Jan-00   0.00%12,345,678 $          36:00                                           1234567.891####`tGeneral
+A5`ttext`tsay "hi"     0.32/29/1900                                                                              0.0000123450.12`tGeneral
+A6`ttext`tline1`tGeneral
+A7`ttext`tli1.23E+11                                                                                       123456789.1####`tGeneral
+A8`ttext`t  pad      1E+15                                                                                           0.00001`tGeneral
+A9`ttext`t=1+1    1.23E-05                                                                                               100`tGeneral
+A10`ttext`té€???      1E+11`tGeneral
+A11`ttext`ttab`tGeneral
+B11`ttext`there     0.5`tGeneral
+A13`ttext`tafter a blank row`tGeneral

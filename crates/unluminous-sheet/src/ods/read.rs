@@ -178,9 +178,10 @@ impl<'d> SheetReader<'_, 'd> {
             .map(|s| self.cells.bag_of("table-column", s))
             .unwrap_or_default();
         let visibility = attr(c, NS_TABLE, "visibility").unwrap_or("visible");
+        let pixels = super::pixels_per_character(self.book);
         ColumnRun {
             repeat: repeated(c, "number-columns-repeated"),
-            width: bag.get("col.column-width").and_then(|w| points(w)).map(|pt| characters_from_cm(pt / 72.0 * 2.54)),
+            width: bag.get("col.column-width").and_then(|w| points(w)).map(|pt| characters_from_cm(pt / 72.0 * 2.54, pixels)),
             hidden: visibility != "visible",
             outline,
             collapsed: collapsed && outline > 0,

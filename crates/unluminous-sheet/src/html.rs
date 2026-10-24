@@ -10,7 +10,7 @@ use crate::styles::{Edge, Underline};
 use crate::value::Value;
 
 /// The pixels one character of the default font is wide, for turning column widths into CSS.
-const PIXELS_PER_CHARACTER: f64 = 7.0;
+
 
 /// Escape text for HTML, with a line break as `<br>`.
 fn escape(text: &str) -> String {
@@ -56,7 +56,7 @@ fn table(book: &Workbook, index: usize, sheet: &Sheet) -> String {
     let columns: Vec<u32> = (0..=last_col).filter(|c| !sheet.is_column_hidden(*c)).collect();
     for c in &columns {
         let width = sheet.column(*c).and_then(|i| i.width).or(sheet.default_col_width).unwrap_or(8.43);
-        out.push_str(&format!("<col style=\"width:{}px\">\n", (width * PIXELS_PER_CHARACTER + 5.0).round()));
+        out.push_str(&format!("<col style=\"width:{}px\">\n", (width * crate::ods::pixels_per_character(book)).round()));
     }
     let covered = covered(sheet);
     for r in 0..=last_row {

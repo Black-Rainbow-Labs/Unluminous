@@ -35,19 +35,36 @@ pub const NS_CONFIG: &str = "urn:oasis:names:tc:opendocument:xmlns:config:1.0";
 pub const NS_CALCEXT: &str = "urn:org:documentfoundation:names:experimental:calc:xmlns:calcext:1.0";
 pub const MIME: &str = "application/vnd.oasis.opendocument.spreadsheet";
 
-/// How many pixels one character of the default font is wide in the column widths Excel writes to an
-/// `.ods` file. Measured: a column Excel stores as 10.125 characters is 2.143125 cm, which is 81 pixels
-/// at 96 per inch, and 29.75 characters is 238 pixels.
-pub const PIXELS_PER_CHARACTER: f64 = 8.0;
+/// How many pixels one character of the workbook's default font is wide, which turns the column widths a
+/// file stores in characters into lengths. Measured with Excel: with Aptos Narrow, a column stored as 10.125
+/// characters is written to an `.ods` file as 2.143125 cm, which is 81 pixels at 96 per inch, and 29.75
+/// characters is 238 pixels. Calibri, the font of workbooks made before Excel 2023, is 7 pixels a character.
+pub fn pixels_per_character(book: &crate::model::Workbook) -> f64 {
+    let font = book.styles.fonts.first().map_or("", |f| f.name.as_str());
+    if font.starts_with("Aptos") {
+        8.0
+    } else {
+        7.0
+    }
+}
+
+/// How many pixels wide a column is when its width is not set: 72 with Aptos Narrow and 64 with Calibri.
+pub fn default_column_pixels(book: &crate::model::Workbook) -> f64 {
+    if pixels_per_character(book) == 8.0 {
+        72.0
+    } else {
+        64.0
+    }
+}
 
 /// A width in centimetres as the number of characters of the default font.
-pub fn characters_from_cm(cm: f64) -> f64 {
-    cm / 2.54 * 96.0 / PIXELS_PER_CHARACTER
+pub fn characters_from_cm(cm: f64, pixels: f64) -> f64 {
+    cm / 2.54 * 96.0 / pixels
 }
 
 /// A width in characters as centimetres.
-pub fn cm_from_characters(characters: f64) -> f64 {
-    characters * PIXELS_PER_CHARACTER / 96.0 * 2.54
+pub fn cm_from_characters(characters: f64, pixels: f64) -> f64 {
+    characters * pixels / 96.0 * 2.54
 }
 
 /// An attribute of an element in a namespace.
