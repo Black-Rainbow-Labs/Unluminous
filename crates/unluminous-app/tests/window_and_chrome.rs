@@ -4310,7 +4310,8 @@ const EVERY_VARIANT: &[&str] = &[
     "NewFile",
     "NewFileFromTemplate",
     "SaveAsTemplate",
-    "OpenTemplatesFolder",
+    "ManageTemplates",
+    "NewTemplate",
     "NewUntitledTab",
     "NewFolder",
     "CutPath",
@@ -4440,7 +4441,8 @@ fn variant_name(action: &Action) -> &'static str {
         Action::NewFile(_) => "NewFile",
         Action::NewFileFromTemplate { .. } => "NewFileFromTemplate",
         Action::SaveAsTemplate(_) => "SaveAsTemplate",
-        Action::OpenTemplatesFolder => "OpenTemplatesFolder",
+        Action::ManageTemplates => "ManageTemplates",
+        Action::NewTemplate => "NewTemplate",
         Action::NewUntitledTab(_) => "NewUntitledTab",
         Action::NewFolder(_) => "NewFolder",
         Action::CutPath(_) => "CutPath",
@@ -4683,10 +4685,6 @@ const CANNOT_BE_DRIVEN: &[(&str, &str)] = &[
     ),
     ("quit", "it closes the window, and the walk has the rest of the actions still to run"),
     ("close-window", "the same: it closes the window"),
-    (
-        "open-templates-folder",
-        "it hands the templates folder to the operating system's own file manager, which opens a window on          this machine; `file_templates` tests the folder it makes",
-    ),
     (
         "reveal-path",
         "it hands the path to the operating system's own file manager, which opens a window on \
@@ -5241,6 +5239,8 @@ fn every_step() -> Vec<Step> {
             template: "Rust File".to_owned(),
         }),
         Step::new(Action::SaveAsTemplate(readme.clone())),
+        Step::new(Action::ManageTemplates),
+        Step::new(Action::NewTemplate),
         Step::new(Action::NewUntitledTab("HTML File".to_owned())),
         Step::new(Action::NewFolder(folder.join("docs"))),
         Step::new(Action::CutPath(readme.clone())),
@@ -7034,4 +7034,59 @@ fn a_tab_with_no_file_asks_where_to_save_it() {
         harness.state().files.iter().all(|file| file.name() != "index.html"),
         "the tab is closed"
     );
+}
+
+/// `task-2336`: *"there should be a templates manager that allows me to create new templates, edit existing ones,
+/// etc with variable name placement."* `Manage Templates...` opens it on the built in templates and the person's
+/// own, a variable pressed goes into the text at the caret, `OK` writes what changed, and a file made from the
+/// new template uses it.
+#[test]
+fn the_templates_manager_lists_edits_and_writes_templates() {
+    let project = std::env::temp_dir().join("unluminous-templates-manager");
+    let settings = std::env::temp_dir().join("unluminous-templates-manager-settings");
+    let _ = std::fs::remove_dir_all(&project);
+    let _ = std::fs::remove_dir_all(&settings);
+    std::fs::create_dir_all(project.join("docs")).expect("make the project");
+    std::fs::create_dir_all(&settings).expect("make the settings folder");
+    let mut harness = harness_in(&project);
+    harness.state_mut().use_store(unluminous_app::services::store::Store::at(&settings));
+    steady(&mut harness);
+    did(&mut harness, "explorer template-set Card --extension tsx --body Card --project");
+    let ctx = harness.ctx.clone();
+    harness.state_mut().run_action(Action::ManageTemplates, &ctx);
+    steady(&mut harness);
+    let dialog = harness.state().template_manager.clone().expect("the manager is open");
+    assert_eq!(dialog.showing().len(), 5, "the built in templates are yours to change");
+    assert!(harness.state_mut().template_manager.as_mut().unwrap().choose("Card"));
+    steady(&mut harness);
+    harness.get_by_label("Insert ${NAME}").click();
+    steady(&mut harness);
+    let body = |harness: &Harness<'static, UnluminousApp>| {
+        let dialog = harness.state().template_manager.clone().expect("still open");
+        dialog.drafts[dialog.chosen.expect("Card")].template.body.clone()
+    };
+    assert_eq!(
+        body(&harness),
+        "Card${NAME}",
+        "the variable went in at the caret, the end of the text"
+    );
+    harness.snapshot(shot("templates_manager"));
+
+    // New, a name, an extension and a text, then OK writes it into the project's templates.
+    {
+        let dialog = harness.state_mut().template_manager.as_mut().unwrap();
+        dialog.add();
+        let at = dialog.chosen.unwrap();
+        dialog.drafts[at].template.name = "Note".to_owned();
+        dialog.drafts[at].template.extension = "md".to_owned();
+        dialog.drafts[at].template.body = "# ${NAME}\n".to_owned();
+    }
+    did(&mut harness, "modal accept");
+    steady(&mut harness);
+    assert!(harness.state().template_manager.is_none(), "OK closes it");
+    let folder = project.join(".unluminous").join("templates");
+    assert_eq!(std::fs::read_to_string(folder.join("Card.tsx.ft")).unwrap(), "Card${NAME}");
+    assert!(folder.join("Note.md.ft").is_file());
+    did(&mut harness, "explorer new-file docs/today --template note");
+    assert_eq!(std::fs::read_to_string(project.join("docs/today.md")).unwrap(), "# today\n");
 }

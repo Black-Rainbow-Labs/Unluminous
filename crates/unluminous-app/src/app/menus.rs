@@ -313,7 +313,8 @@ impl UnluminousApp {
                 self.ask_for_a_file_from_a_template(folder, &template)
             }
             Action::SaveAsTemplate(path) => self.ask_to_save_as_template(path),
-            Action::OpenTemplatesFolder => self.open_the_templates_folder(),
+            Action::ManageTemplates => self.open_the_template_manager(false, None),
+            Action::NewTemplate => self.open_the_template_manager(true, None),
             Action::NewUntitledTab(template) => self.ask_for_an_untitled_tab(&template),
             Action::NewFile(_)
             | Action::NewFolder(_)

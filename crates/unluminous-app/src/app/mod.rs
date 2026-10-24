@@ -1258,6 +1258,8 @@ pub struct UnluminousApp {
     pub prompt: Option<Prompt>,
     /// The Save dialog, for a tab with no file, when it is open. `task-2336`, `app::saving`.
     pub save_dialog: Option<crate::components::save_dialog::SaveDialog>,
+    /// The Templates manager, when it is open. `task-2336`, `app::templates`.
+    pub template_manager: Option<crate::components::templates_dialog::TemplatesDialog>,
     /// `File -> Create Project...` while it is open. See `components::new_project_dialog`.
     pub new_project: Option<crate::components::new_project_dialog::NewProject>,
     /// The Background grid while it is open, holding why the last thing asked for was refused.
@@ -1693,6 +1695,7 @@ impl UnluminousApp {
             explorer_menu: None,
             prompt: None,
             save_dialog: None,
+            template_manager: None,
             new_project: None,
             background_grid: None,
             background_thumbnails: std::collections::HashMap::new(),

@@ -2224,6 +2224,12 @@ fn drive_the_panels_and_the_explorer(coverage: &mut Coverage) {
     c.works(&mut harness, "explorer new-file made/page --template html-file");
     c.refuses(&mut harness, "explorer new-file made/other --template no-such-template");
     c.works(&mut harness, "explorer templates");
+    c.works(&mut harness, "explorer templates html-file");
+    c.refuses(&mut harness, "explorer templates no-such-template");
+    c.works(&mut harness, "explorer template-set Stub --extension rs --body fn --project");
+    c.refuses(&mut harness, "explorer template-set rust-file --rename Other");
+    c.works(&mut harness, "explorer template-remove Stub --project");
+    c.refuses(&mut harness, "explorer template-remove Stub --project");
     c.works(&mut harness, "explorer save-template made/today.md --name Today --project");
     c.refuses(&mut harness, "explorer save-template no-such-file.md");
     c.works(&mut harness, "tab new --name scratch.md");

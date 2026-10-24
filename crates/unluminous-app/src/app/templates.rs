@@ -13,6 +13,7 @@ use unluminous_core::{Command, Document};
 use crate::app::files::OpenFile;
 use crate::app::UnluminousApp;
 use crate::components::prompt_dialog::{Made, Prompt, Purpose};
+use crate::components::templates_dialog::{self, Answer, TemplatesDialog};
 use crate::services::file_templates::{self, Template};
 
 impl UnluminousApp {
@@ -57,6 +58,12 @@ impl UnluminousApp {
                 return;
             }
         };
+        // A file name pattern that names the file without `${NAME}` needs nothing typed. `task-2336`.
+        if !file_templates::asks_for_a_name(&template) {
+            let target = folder.join(file_templates::file_name_for(&template, ""));
+            self.go_on_with_a_template(Made::File(target), template, Vec::new());
+            return;
+        }
         let place = crate::services::paths::the_useful_end_of(&folder.display().to_string());
         let note = match template.extension.is_empty() {
             true => format!("A new {} in {place}.", template.name),
@@ -123,19 +130,77 @@ impl UnluminousApp {
         ));
     }
 
-    /// `Open Templates Folder`: make the person's templates folder when it is missing, and show it.
-    pub(crate) fn open_the_templates_folder(&mut self) {
-        let Some(settings) = self.templates_settings_folder() else {
-            self.message =
-                Some("Unluminous has no settings folder to keep templates in.".to_owned());
+    /// `Manage Templates...` and `New Template...`: open the Templates manager over every template there is, on
+    /// a new one when `new` is set. `task-2336`: *"I want to be able to manage the templates, create new ones, see
+    /// my existing ones, etc from options in that template menu."*
+    ///
+    /// @param new - start a new template in it
+    /// @param chosen - the template to choose, when one is named
+    pub(crate) fn open_the_template_manager(&mut self, new: bool, chosen: Option<&str>) {
+        let drafts =
+            file_templates::drafts(self.tree.root(), self.templates_settings_folder().as_deref());
+        let mut dialog = TemplatesDialog::new(drafts);
+        if let Some(name) = chosen {
+            dialog.choose(name);
+        }
+        if new {
+            dialog.add();
+        }
+        self.close_every_modal();
+        self.template_manager = Some(dialog);
+    }
+
+    /// Draw the Templates manager when it is open, and act on its footer.
+    pub(crate) fn show_the_template_manager(&mut self, ctx: &egui::Context) {
+        let Some(mut dialog) = self.template_manager.take() else { return };
+        match templates_dialog::show(ctx, &mut dialog) {
+            None => self.template_manager = Some(dialog),
+            Some(answer) => self.answer_the_template_manager(dialog, answer),
+        }
+    }
+
+    /// What `Cancel`, `Apply` and `OK` do: nothing, write and stay open, write and close. A write that is refused
+    /// leaves the manager open with the reason in it.
+    ///
+    /// @param dialog - the manager as it was answered
+    /// @param answer - which button
+    pub(crate) fn answer_the_template_manager(
+        &mut self,
+        mut dialog: TemplatesDialog,
+        answer: Answer,
+    ) {
+        if answer == Answer::Cancel {
             return;
-        };
-        match file_templates::ensure_user_folder(&settings) {
-            Ok(folder) => {
-                crate::services::launcher::reveal(&folder.join("README.txt"));
-                self.message = Some(format!("Templates are kept in {}", folder.display()));
+        }
+        let settings = self.templates_settings_folder();
+        match file_templates::apply(&dialog.drafts, self.tree.root(), settings.as_deref()) {
+            Ok(changed) => {
+                self.tree.reload();
+                let said = match changed {
+                    0 => "Nothing had changed.".to_owned(),
+                    1 => "Saved one template.".to_owned(),
+                    n => format!("Saved {n} templates."),
+                };
+                if answer == Answer::Apply {
+                    let chosen = dialog.chosen.map(|at| dialog.drafts[at].template.name.clone());
+                    let mut fresh = TemplatesDialog::new(file_templates::drafts(
+                        self.tree.root(),
+                        settings.as_deref(),
+                    ));
+                    fresh.show_the_tab(dialog.scope, dialog.include);
+                    if let Some(name) = chosen {
+                        fresh.choose(&name);
+                    }
+                    fresh.said = Some((said, false));
+                    self.template_manager = Some(fresh);
+                } else {
+                    self.message = Some(said);
+                }
             }
-            Err(problem) => self.message = Some(problem),
+            Err(problem) => {
+                dialog.said = Some((problem, true));
+                self.template_manager = Some(dialog);
+            }
         }
     }
 
