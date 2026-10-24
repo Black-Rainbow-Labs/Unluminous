@@ -43,6 +43,8 @@ pub struct Geometry {
     /// `w:pgNumType w:fmt`.
     pub page_number_format: String,
     pub vertical_center: bool,
+    /// `w:cols w:sep`: a line between the columns.
+    pub separator: bool,
 }
 
 impl Geometry {
@@ -97,6 +99,9 @@ impl Geometry {
                 .unwrap_or("decimal")
                 .to_owned(),
             vertical_center: sect.val_of("w:vAlign") == Some("center"),
+            separator: sect
+                .child("w:cols")
+                .is_some_and(|c| crate::props::on_off_attr(c.attr("w:sep"))),
         };
         geometry.columns = columns(sect, geometry.text_width());
         geometry

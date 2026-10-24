@@ -215,3 +215,132 @@ fn lines_break_where_word_breaks_them_in_installed_fonts() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// The visible text of `paragraph` between two offsets of its flat text: field codes, field characters and
+/// hidden text left out, a footnote reference as character 2, which is how Word's line report gives it.
+fn visible_between(
+    paragraph: &Paragraph,
+    resolver: &unluminous_word::styles::Resolver,
+    from: usize,
+    to: usize,
+) -> String {
+    use unluminous_word::model::Content;
+    let mut out = String::new();
+    let mut in_code: Vec<bool> = Vec::new();
+    let mut at = 0;
+    for run in &paragraph.runs {
+        let start = at;
+        at += run.len();
+        if let Content::FieldChar(el) = &run.content {
+            match el.attr("w:fldCharType") {
+                Some("begin") => in_code.push(true),
+                Some("separate") => {
+                    if let Some(last) = in_code.last_mut() {
+                        *last = false;
+                    }
+                }
+                _ => {
+                    in_code.pop();
+                }
+            }
+            continue;
+        }
+        if start >= to || at <= from && start < from {
+            continue;
+        }
+        if in_code.iter().any(|c| *c) || matches!(run.content, Content::Instr(_)) {
+            continue;
+        }
+        if resolver.run(&paragraph.props, &run.props, None).hidden {
+            continue;
+        }
+        match &run.content {
+            Content::Text(text) => {
+                let lo = from.saturating_sub(start).min(text.len());
+                let hi = (to - start).min(text.len());
+                if let Some(piece) = text.get(lo..hi) {
+                    out.push_str(piece);
+                }
+            }
+            Content::Object(el)
+                if el.name == "w:footnoteReference" || el.name == "w:endnoteReference" =>
+            {
+                out.push('\u{2}')
+            }
+            other => out.extend(other.character().filter(|c| *c != '\u{FFFC}')),
+        }
+    }
+    out
+}
+
+/// Every line of every body paragraph, against the lines Word's report gives for it (`inspect.ps1` reads
+/// them with the `\Line` bookmark): the same words on each line, and each line starting where Word's does,
+/// which is what wrapping around a picture changes (task-2359).
+#[test]
+fn every_line_holds_the_words_words_line_holds() {
+    let fonts = common::RealFonts::new();
+    if !fonts_are_installed(&fonts) {
+        return;
+    }
+    let mut failures = Vec::new();
+    for name in fixture_names() {
+        let report = report(&name);
+        let words = report["paragraphs"].as_array().cloned().unwrap_or_default();
+        if !words.iter().any(|p| p["lines"].is_array()) {
+            continue;
+        }
+        let path = ["docx", "dotx", "docm"]
+            .iter()
+            .map(|e| folder().join(format!("{name}.{e}")))
+            .find(|p| p.is_file())
+            .unwrap();
+        let document = unluminous_word::read::open(&std::fs::read(path).unwrap()).unwrap();
+        let resolver = unluminous_word::styles::Resolver::new(&document);
+        let pages = lay_out(&document, &fonts, Options::default());
+        let mut wrong = 0;
+        for ((path, paragraph), word) in word_order(&document.body).iter().zip(&words) {
+            let (Some(paragraph), Some(word_lines)) = (paragraph, word["lines"].as_array()) else {
+                continue;
+            };
+            if word["inTable"].as_bool() == Some(true) {
+                continue;
+            }
+            let ours: Vec<(String, f32)> = pages
+                .pages
+                .iter()
+                .flat_map(|p| p.carets.iter())
+                .filter(|l| l.story == unluminous_word::position::StoryId::Body && l.path == *path)
+                .map(|l| {
+                    let text = visible_between(paragraph, &resolver, l.start, l.end);
+                    let left = l.stops.first().map_or(0.0, |s| s.1);
+                    (text.trim().to_owned(), left)
+                })
+                .collect();
+            let theirs: Vec<(String, f32)> = word_lines
+                .iter()
+                .map(|l| {
+                    let text = l["text"].as_str().unwrap_or("").replace('\u{b}', "");
+                    (text.trim().to_owned(), l["left"].as_f64().unwrap_or(0.0) as f32)
+                })
+                .collect();
+            let same_words =
+                ours.len() == theirs.len() && ours.iter().zip(&theirs).all(|(a, b)| a.0 == b.0);
+            let same_place = ours.len() == theirs.len()
+                && ours.iter().zip(&theirs).all(|(a, b)| (a.1 - b.1).abs() < 1.5);
+            if !same_words || !same_place {
+                wrong += 1;
+                if wrong <= 3 {
+                    failures.push(format!(
+                        "{name} {path:?}:\n  ours {:?}\n  Word {:?}",
+                        ours.iter().map(|(t, x)| format!("{x:.1} {t}")).collect::<Vec<_>>(),
+                        theirs.iter().map(|(t, x)| format!("{x:.1} {t}")).collect::<Vec<_>>()
+                    ));
+                }
+            }
+        }
+        if wrong > 3 {
+            failures.push(format!("{name}: {wrong} paragraphs in all"));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

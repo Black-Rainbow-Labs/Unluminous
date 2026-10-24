@@ -14,6 +14,7 @@
 pub mod builtin;
 pub mod edit;
 pub mod export;
+pub mod fields;
 pub mod kern;
 pub mod layout;
 pub mod math;
@@ -28,6 +29,7 @@ pub mod pdf;
 pub mod position;
 pub mod props;
 pub mod read;
+pub mod references;
 pub mod session;
 pub mod spell;
 pub mod styles;

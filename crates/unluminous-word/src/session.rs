@@ -65,6 +65,8 @@ pub struct Session {
     pub revision: u64,
     /// Changed since it was opened or saved.
     pub modified: bool,
+    /// The file the document was opened from or saved to, for the `FILENAME` and `FILESIZE` fields.
+    pub file: Option<std::path::PathBuf>,
     undo: Vec<Entry>,
     redo: Vec<Entry>,
 }
@@ -93,6 +95,7 @@ impl Session {
             author: String::new(),
             revision: 1,
             modified: false,
+            file: None,
             undo: Vec::new(),
             redo: Vec::new(),
         }

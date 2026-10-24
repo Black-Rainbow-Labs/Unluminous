@@ -9,6 +9,7 @@
 //! window draws ([`Item`]) and what the caret and the pointer need ([`CaretLine`]): for every line, which
 //! paragraph it is in, which offsets it holds and where each one is.
 
+pub mod drawing;
 pub mod fields;
 pub mod notes;
 pub mod paragraph;
@@ -87,10 +88,20 @@ pub enum Item {
         color: Rgb,
         kind: RuleKind,
     },
-    /// A picture, by the package part it is in.
+    /// A picture, by the package part it is in, with the fractions cut off each side (`a:srcRect`:
+    /// left, top, right, bottom).
     Picture {
         rect: Rect,
         part: String,
+        crop: Option<(f32, f32, f32, f32)>,
+    },
+    /// A preset shape (`drawing::PRESETS`) drawn in its rectangle with its fill and outline.
+    Shape {
+        rect: Rect,
+        preset: String,
+        fill: Option<Rgb>,
+        outline: Option<(Rgb, f32)>,
+        flip: (bool, bool),
     },
     /// Something Unluminous does not draw, shown as a box with a word in it.
     Placeholder {
@@ -111,6 +122,7 @@ impl Item {
             }
             Item::Fill { rect, .. }
             | Item::Picture { rect, .. }
+            | Item::Shape { rect, .. }
             | Item::Placeholder { rect, .. } => {
                 rect.x += dx;
                 rect.y += dy;
@@ -191,9 +203,54 @@ pub struct Float {
     pub horizontal: (String, Anchor),
     pub vertical: (String, Anchor),
     pub part: String,
-    /// `square`, `tight`, `through`, `topAndBottom`, `none`, `behind`.
+    /// `square`, `tight`, `through`, `topandbottom`, `none`, `behind`.
     pub wrap: String,
+    /// `wp:wrapSquare w:wrapText` and its kin: `bothSides`, `left`, `right` or `largest`.
+    pub side: String,
+    /// The distances text keeps from it: top, bottom, left and right (`distT`, `distB`, `distL`, `distR`).
+    pub distances: (f32, f32, f32, f32),
+    /// A text box's own content, laid out in the box, when this is one.
+    pub inside: Vec<Chunk>,
+    /// The box's fill and outline, when it draws them.
+    pub fill: Option<Rgb>,
+    pub outline: Option<(Rgb, f32)>,
+    /// What to draw when there is no picture part: `Shape`, `Chart`, `SmartArt`, `WordArt`.
+    pub label: String,
+    /// The preset shape it draws, when it is one of `drawing::PRESETS`.
+    pub preset: Option<String>,
+    /// `a:srcRect`: the fractions of the picture cut off its left, top, right and bottom.
+    pub crop: Option<(f32, f32, f32, f32)>,
+    /// Drawn mirrored left to right, top to bottom.
+    pub flip: (bool, bool),
 }
+
+impl Float {
+    /// Whether text goes around it rather than over or under it.
+    pub fn wraps(&self) -> bool {
+        matches!(self.wrap.as_str(), "square" | "tight" | "through" | "topandbottom")
+    }
+}
+
+/// Where a floating picture keeps text out of on a page.
+#[derive(Debug, Clone, PartialEq)]
+struct Exclusion {
+    /// The picture's rectangle with the distances text keeps from it.
+    rect: Rect,
+    /// Text goes only above and below it.
+    top_and_bottom: bool,
+    side: String,
+}
+
+/// The room a line has at a height on a page.
+enum Room {
+    /// The whole column, or the part of it between two x positions, from the column's left.
+    Free(Option<(f32, f32)>),
+    /// Nothing fits beside a picture here; the next place to try is this far down.
+    Blocked(f32),
+}
+
+/// Narrower than this, Word puts no text beside a picture.
+const NARROWEST_WRAP: f32 = 18.0;
 
 /// Where a float sits along one direction.
 #[derive(Debug, Clone, PartialEq)]
@@ -293,6 +350,11 @@ pub struct Ctx<'a> {
     pub part: String,
     /// The page being laid out, for PAGE and NUMPAGES in a header: `(number, pages)`.
     pub page: Option<(u32, u32)>,
+    /// For a page field in the body: the page each body paragraph started on in the pass before, as
+    /// `(number, pages)` (task-2359, C10).
+    pub body_pages: HashMap<Vec<u32>, (u32, u32)>,
+    /// Automatic hyphenation, when the document's settings turn it on (task-2359, M9).
+    pub hyphenation: Option<paragraph::Hyphenation>,
 }
 
 /// How the layout was asked to run.
@@ -388,6 +450,8 @@ pub fn lay_out(document: &Document, metrics: &dyn FontMetrics, options: Options)
         endnote_marks,
         part: document.main.clone(),
         page: None,
+        body_pages: HashMap::new(),
+        hyphenation: paragraph::Hyphenation::of(document),
     };
     let sections = sections(document);
     let mut pages = flow_document(&mut ctx, &sections, &references, endnote_options.section_end);
@@ -406,8 +470,48 @@ pub fn lay_out(document: &Document, metrics: &dyn FontMetrics, options: Options)
             pages = flow_document(&mut ctx, &sections, &references, endnote_options.section_end);
         }
     }
+    // A page field in the body shows the page it lands on, which is known once the pages are; a value of
+    // another width can move a line, so this goes round until nothing moves, three times at most.
+    if has_body_page_fields(document) {
+        for _ in 0..3 {
+            let found = body_pages(&pages);
+            if found == ctx.body_pages {
+                break;
+            }
+            ctx.body_pages = found;
+            pages = flow_document(&mut ctx, &sections, &references, endnote_options.section_end);
+        }
+    }
     decorate_pages(&mut pages, &mut ctx, &sections);
     Pages { pages }
+}
+
+/// Whether the body holds a field whose result is a page number or a page count.
+fn has_body_page_fields(document: &Document) -> bool {
+    crate::position::paragraphs(&document.body).iter().any(|(_, p)| {
+        p.runs.iter().any(|run| match &run.content {
+            crate::model::Content::Instr(code) => {
+                matches!(fields::split(code).0.as_str(), "PAGE" | "NUMPAGES" | "SECTIONPAGES")
+            }
+            _ => run.wraps.iter().any(|w| {
+                w.el.attr("w:instr").is_some_and(|code| {
+                    matches!(fields::split(code).0.as_str(), "PAGE" | "NUMPAGES" | "SECTIONPAGES")
+                })
+            }),
+        })
+    })
+}
+
+/// The page number each body paragraph starts on and the page count, by its path.
+fn body_pages(pages: &[Page]) -> HashMap<Vec<u32>, (u32, u32)> {
+    let total = pages.len() as u32;
+    let mut out = HashMap::new();
+    for page in pages {
+        for line in page.carets.iter().filter(|l| l.story == StoryId::Body) {
+            out.entry(line.path.clone()).or_insert((page.number, total));
+        }
+    }
+    out
 }
 
 /// The body flowed into pages, with the endnotes at the end of each section or of the document.
@@ -513,9 +617,13 @@ fn flow_block(flow: &mut Flow, ctx: &Ctx, counters: &mut Counters, block: &Block
     match block {
         Block::Paragraph(paragraph) => {
             let width = flow.column_width();
-            let laid =
-                paragraph::lay_out(ctx, counters, paragraph, &StoryId::Body, &path, width, None);
-            flow.place_paragraph(laid);
+            let prepared =
+                paragraph::prepare(ctx, counters, paragraph, &StoryId::Body, &path, width, None);
+            if flow.wraps_here() || prepared.floats().iter().any(Float::wraps) {
+                flow.place_wrapped(ctx, prepared);
+            } else {
+                flow.place_paragraph(prepared.laid(ctx));
+            }
         }
         Block::Table(table) => {
             let width = flow.column_width();
@@ -573,6 +681,10 @@ struct Flow<'a> {
     keep_chain: Vec<LaidParagraph>,
     /// The height of each section's header and footer by kind (`default`, `first`, `even`).
     bands: HashMap<(usize, String), (f32, f32)>,
+    /// Where the floating pictures on the current page keep text out (task-2359, C2).
+    exclusions: Vec<Exclusion>,
+    /// What is drawn in front of the text on the current page, added when the page is done.
+    front: Vec<Item>,
     even_and_odd: bool,
     /// The current page's number as Word prints it, and how many pages its section has so far.
     page_number: u32,
@@ -580,6 +692,17 @@ struct Flow<'a> {
     /// Where the current page's body starts, and how far above the foot it ends.
     page_top: f32,
     page_bottom: f32,
+    /// For a section in columns: what it has put on the current page since it started there, kept so
+    /// the columns can be balanced at its end (task-2359, C29): the page, the number of items and caret
+    /// lines the page had before it, and the pieces themselves.
+    columns_from: Option<(usize, usize, usize)>,
+    in_columns: Vec<Chunk>,
+    /// The lowest point reached in each column of the current page, for the line between columns.
+    column_bottoms: Vec<f32>,
+    /// A lower limit than the page's for where a column ends, while columns are being balanced.
+    limit: Option<f32>,
+    /// The space between paragraphs is the sum of after and before rather than the larger.
+    sum_spacing: bool,
 }
 
 impl<'a> Flow<'a> {
@@ -600,6 +723,8 @@ impl<'a> Flow<'a> {
             note_lines: HashMap::new(),
             keep_chain: Vec::new(),
             bands: HashMap::new(),
+            exclusions: Vec::new(),
+            front: Vec::new(),
             even_and_odd: document
                 .settings
                 .as_ref()
@@ -609,6 +734,16 @@ impl<'a> Flow<'a> {
             section_pages: 0,
             page_top: 72.0,
             page_bottom: 72.0,
+            columns_from: None,
+            in_columns: Vec::new(),
+            column_bottoms: Vec::new(),
+            limit: None,
+            sum_spacing: document
+                .settings
+                .as_ref()
+                .and_then(|s| s.root.child("w:compat"))
+                .and_then(|c| crate::props::on_off(c, "w:doNotUseHTMLParagraphAutoSpacing"))
+                .unwrap_or(false),
         }
     }
 
@@ -625,7 +760,8 @@ impl<'a> Flow<'a> {
     }
 
     fn bottom(&self) -> f32 {
-        self.geometry.height - self.page_bottom - self.notes_height
+        let bottom = self.geometry.height - self.page_bottom - self.notes_height;
+        self.limit.map_or(bottom, |limit| limit.min(bottom))
     }
 
     /// The height a page's body has between its header and its footer.
@@ -655,6 +791,8 @@ impl<'a> Flow<'a> {
     }
 
     fn new_page(&mut self) {
+        self.draw_column_lines();
+        self.finish_page();
         let (top, bottom) = self.bands_of_next_page();
         self.page_number = match (self.section_pages, self.geometry.page_number_start) {
             (0, Some(start)) => start,
@@ -663,7 +801,7 @@ impl<'a> Flow<'a> {
         self.section_pages += 1;
         self.page_top = top;
         self.page_bottom = bottom;
-        let number = self.pages.len() as u32 + 1;
+        let number = self.page_number;
         let geometry = &self.geometry;
         let body = Rect::new(
             geometry.left + geometry.gutter,
@@ -695,6 +833,7 @@ impl<'a> Flow<'a> {
         self.pending_after = 0.0;
         self.notes_height = 0.0;
         self.page_notes.clear();
+        self.start_columns();
         // What a footnote on the last page could not fit goes first at the foot of this one, under the
         // continuation separator (task-2359, C8).
         let carried = std::mem::take(&mut self.carry);
@@ -707,12 +846,19 @@ impl<'a> Flow<'a> {
     fn start_section(&mut self, index: usize, geometry: Geometry) {
         // A section break ends a keep with next chain: nothing after it keeps with what is before it.
         self.flush_keeps(None);
-        self.section_pages = 0;
         let start = geometry.start;
         let continuous = start == Start::Continuous
             && !self.pages.is_empty()
             && geometry.width == self.geometry.width
             && geometry.height == self.geometry.height;
+        // Columns that end at a continuous break are balanced, as Word balances them.
+        if continuous {
+            self.balance_columns();
+        }
+        self.draw_column_lines();
+        if !continuous {
+            self.section_pages = 0;
+        }
         self.section = index;
         self.geometry = geometry;
         if self.pages.is_empty() {
@@ -741,6 +887,225 @@ impl<'a> Flow<'a> {
         if let Some(page) = self.pages.last_mut() {
             page.section = index;
         }
+        self.start_columns();
+    }
+
+    /// Start keeping what a section in columns puts on the current page.
+    fn start_columns(&mut self) {
+        self.in_columns.clear();
+        self.column_bottoms = vec![self.column_top; self.geometry.columns.len()];
+        self.columns_from = (self.geometry.columns.len() > 1).then(|| {
+            let page = self.pages.last().expect("a page");
+            (self.pages.len() - 1, page.items.len(), page.carets.len())
+        });
+    }
+
+    /// Lay what the section put in columns on this page out again so the columns end level: the
+    /// shortest height that holds it all in the columns there are, found by trying taller heights.
+    fn balance_columns(&mut self) {
+        let Some((page_index, items_from, carets_from)) = self.columns_from else { return };
+        let count = self.geometry.columns.len();
+        if count < 2 || self.in_columns.is_empty() || page_index + 1 != self.pages.len() {
+            return;
+        }
+        let pieces = std::mem::take(&mut self.in_columns);
+        let total: f32 = pieces.iter().map(|c| c.height).sum();
+        let room = self.bottom() - self.column_top;
+        let mut target = (total / count as f32).min(room);
+        let fits = |target: f32| {
+            let (mut column, mut used) = (0, 0.0);
+            for piece in &pieces {
+                if used + piece.height > target + 0.01 && used > 0.0 {
+                    column += 1;
+                    used = 0.0;
+                }
+                used += piece.height;
+            }
+            column < count
+        };
+        while !fits(target) && target < room {
+            target += 1.0;
+        }
+        let page = self.pages.last_mut().expect("a page");
+        page.items.truncate(items_from);
+        page.carets.truncate(carets_from);
+        self.columns_from = None;
+        self.column = 0;
+        self.y = self.column_top;
+        self.column_bottoms = vec![self.column_top; count];
+        self.limit = Some(self.column_top + target);
+        for piece in pieces {
+            self.put(piece);
+        }
+        self.limit = None;
+        self.y = self.column_bottoms.iter().copied().fold(self.column_top, f32::max);
+        self.column = 0;
+    }
+
+    /// The line between columns, for a section that asks for one, as tall as the longest column.
+    fn draw_column_lines(&mut self) {
+        if !self.geometry.separator || self.geometry.columns.len() < 2 || self.pages.is_empty() {
+            return;
+        }
+        let bottom = self.column_bottoms.iter().copied().fold(self.column_top, f32::max);
+        if bottom <= self.column_top + 0.01 {
+            return;
+        }
+        let mut x = self.geometry.left + self.geometry.gutter;
+        let columns = self.geometry.columns.clone();
+        let top = self.column_top;
+        let page = self.pages.last_mut().expect("a page");
+        for column in columns.iter().take(columns.len() - 1) {
+            x += column.width;
+            let middle = x + column.space / 2.0;
+            page.items.push(Item::Rule {
+                x0: middle,
+                y0: top,
+                x1: middle,
+                y1: bottom,
+                width: 0.5,
+                color: Rgb::BLACK,
+                kind: RuleKind::Solid,
+            });
+            x += column.space;
+        }
+    }
+
+    /// Add what is drawn in front of the text to the page, and forget its pictures.
+    fn finish_page(&mut self) {
+        let front = std::mem::take(&mut self.front);
+        if let Some(page) = self.pages.last_mut() {
+            page.items.extend(front);
+        }
+        self.exclusions.clear();
+    }
+
+    /// The room a line `height` tall has at `y` beside the floating pictures on this page.
+    fn room_at(&self, y: f32, height: f32) -> Room {
+        let column_left = self.column_left();
+        let (mut from, mut to) = (column_left, column_left + self.column_width());
+        let mut touched = false;
+        let mut below: Option<f32> = None;
+        for exclusion in &self.exclusions {
+            let rect = exclusion.rect;
+            let across = rect.x < to && rect.x + rect.w > from;
+            if rect.y >= y + height || rect.bottom() <= y || !across {
+                continue;
+            }
+            touched = true;
+            below = Some(below.map_or(rect.bottom(), |b: f32| b.min(rect.bottom())));
+            if exclusion.top_and_bottom {
+                return Room::Blocked(rect.bottom());
+            }
+            let left_room = rect.x - from;
+            let right_room = to - (rect.x + rect.w);
+            let keep_left = match exclusion.side.as_str() {
+                "left" => true,
+                "right" => false,
+                // Both sides and the largest side: the side with more room, which is where Word puts
+                // text when the other side is too narrow for it.
+                _ => left_room >= right_room,
+            };
+            if keep_left {
+                to = to.min(rect.x);
+            } else {
+                from = from.max(rect.x + rect.w);
+            }
+        }
+        if !touched {
+            return Room::Free(None);
+        }
+        if to - from < NARROWEST_WRAP {
+            return Room::Blocked(below.unwrap_or(y + height));
+        }
+        Room::Free(Some((from - column_left, to - column_left)))
+    }
+
+    /// Put a floating picture on the page where its anchor puts it, relative to its paragraph's top, and
+    /// keep text out of where it is when it wraps.
+    fn register_float(&mut self, float: &Float, paragraph_top: f32) {
+        let (x, column_width) = (self.column_left(), self.column_width());
+        let page = self.pages.last_mut().expect("a page");
+        let items = draw_float(float, page, x, paragraph_top, column_width);
+        let rect = float_rect(float, page, x, paragraph_top, column_width);
+        match float.wrap.as_str() {
+            "behind" => {
+                for (offset, item) in items.into_iter().enumerate() {
+                    page.items.insert(offset, item);
+                }
+            }
+            "none" => self.front.extend(items),
+            _ => page.items.extend(items),
+        }
+        if float.wraps() {
+            let (top, bottom, left, right) = float.distances;
+            self.exclusions.push(Exclusion {
+                rect: Rect::new(
+                    rect.x - left,
+                    rect.y - top,
+                    rect.w + left + right,
+                    rect.h + top + bottom,
+                ),
+                top_and_bottom: float.wrap == "topandbottom",
+                side: float.side.clone(),
+            });
+        }
+    }
+
+    /// Whether the page has pictures text has to go around.
+    fn wraps_here(&self) -> bool {
+        !self.exclusions.is_empty()
+    }
+
+    /// Place a paragraph one line at a time, each line in the room the floating pictures leave it, after
+    /// putting the pictures anchored in it on the page (task-2359, C2).
+    fn place_wrapped(&mut self, ctx: &Ctx, prepared: paragraph::Prepared) {
+        self.flush_keeps(None);
+        let rules = prepared.spacing(Vec::new());
+        if rules.page_break_before && !self.at_top() {
+            self.new_page();
+        }
+        let gap = self.gap(self.pending_after, &self.last_style, &rules);
+        let gap = if self.at_top() && self.pages.len() > 1 { 0.0 } else { gap };
+        let height = prepared.line_height();
+        if !self.at_top() && self.y + gap + height > self.bottom() + 0.01 {
+            self.next_column();
+        }
+        let gap = if self.at_top() && self.pages.len() > 1 { 0.0 } else { gap };
+        self.y += gap;
+        let top = self.y;
+        for float in prepared.floats() {
+            self.register_float(&float, top);
+        }
+        let mut index = 0;
+        let mut first = true;
+        let mut hyphens = 0;
+        loop {
+            let room = loop {
+                if !self.at_top() && self.y + height > self.bottom() + 0.01 {
+                    self.next_column();
+                    continue;
+                }
+                match self.room_at(self.y, height) {
+                    Room::Free(room) => break room,
+                    Room::Blocked(next) if next > self.y + 0.01 => self.y = next,
+                    Room::Blocked(_) => break None,
+                }
+            };
+            let bounds = prepared.bounds(first, room);
+            let (line, next, last) = prepared.next_line(ctx, index, first, bounds, hyphens);
+            hyphens = if line.hyphen { hyphens + 1 } else { 0 };
+            let mut chunk = prepared.place(ctx, &line, first, last, bounds);
+            chunk.floats.clear();
+            self.put(chunk);
+            index = next;
+            first = false;
+            if last {
+                break;
+            }
+        }
+        self.pending_after = rules.space_after;
+        self.last_style = Some((rules.style, rules.contextual));
     }
 
     /// Whether nothing has been placed in the current column yet.
@@ -819,8 +1184,14 @@ impl<'a> Flow<'a> {
                 self.next_column();
             }
         }
+        if self.columns_from.is_some() {
+            self.in_columns.push(chunk.clone());
+        }
         let (x, y, column_width) = (self.column_left(), self.y, self.column_width());
         chunk.shift(x, y);
+        if let Some(bottom) = self.column_bottoms.get_mut(self.column) {
+            *bottom = bottom.max(y + chunk.height);
+        }
         let new = self.new_notes(&chunk);
         self.y += chunk.height;
         for id in new {
@@ -836,8 +1207,16 @@ impl<'a> Flow<'a> {
             }
         }
         for float in &chunk.floats {
-            let item = place_float(float, page, x, y, column_width);
-            page.items.push(item);
+            let items = draw_float(float, page, x, y, column_width);
+            match float.wrap.as_str() {
+                "behind" => {
+                    for (offset, item) in items.into_iter().enumerate() {
+                        page.items.insert(offset, item);
+                    }
+                }
+                "none" => self.front.extend(items),
+                _ => page.items.extend(items),
+            }
         }
         page.items.extend(chunk.items);
         page.carets.extend(chunk.carets);
@@ -852,14 +1231,16 @@ impl<'a> Flow<'a> {
     /// The space Word leaves between two paragraphs: none between two of the same style that ask for
     /// contextual spacing, otherwise the larger of the space after the first and before the second.
     /// Measured against Word 16, a 6 line paragraph and the heading under it are 8 points apart, which is
-    /// the larger of the two 8s and not their sum.
-    fn gap(after: f32, last: &Option<(String, bool)>, laid: &LaidParagraph) -> f32 {
-        let same = last
-            .as_ref()
-            .is_some_and(|(style, contextual)| *style == laid.style && *contextual)
-            && laid.contextual;
+    /// the larger of the two 8s and not their sum. A document whose compatibility options set
+    /// `w:doNotUseHTMLParagraphAutoSpacing` has the two added (task-2359, measured on `spacing-sum`).
+    fn gap(&self, after: f32, last: &Option<(String, bool)>, laid: &LaidParagraph) -> f32 {
+        let same =
+            last.as_ref().is_some_and(|(style, contextual)| *style == laid.style && *contextual)
+                && laid.contextual;
         if same {
             0.0
+        } else if self.sum_spacing {
+            after + laid.space_before
         } else {
             after.max(laid.space_before)
         }
@@ -888,7 +1269,7 @@ impl<'a> Flow<'a> {
         if !laid.page_break_before {
             let after = self.keep_chain.last().map_or(0.0, |p| p.space_after);
             let last = self.keep_chain.last().map(|p| (p.style.clone(), p.contextual));
-            let next = Self::gap(after, &last, &laid) + Self::start_height(&laid);
+            let next = self.gap(after, &last, &laid) + Self::start_height(&laid);
             self.flush_keeps(Some(next));
         } else {
             self.flush_keeps(None);
@@ -924,7 +1305,7 @@ impl<'a> Flow<'a> {
             first.lines.iter().rev().take(tail).map(|l| l.height).sum::<f32>() + next;
         for pair in chain.windows(2) {
             let last = Some((pair[0].style.clone(), pair[0].contextual));
-            together += Self::gap(pair[0].space_after, &last, &pair[1]);
+            together += self.gap(pair[0].space_after, &last, &pair[1]);
             together += pair[1].lines.iter().map(|l| l.height).sum::<f32>();
         }
         let room = self.room();
@@ -940,7 +1321,7 @@ impl<'a> Flow<'a> {
         if laid.page_break_before && !self.at_top() {
             self.new_page();
         }
-        let gap = Self::gap(self.pending_after, &self.last_style, &laid);
+        let gap = self.gap(self.pending_after, &self.last_style, &laid);
         // Space before a paragraph at the top of a page is dropped, except on the first page.
         let gap = if self.at_top() && self.pages.len() > 1 { 0.0 } else { gap };
         let count = laid.lines.len();
@@ -954,8 +1335,7 @@ impl<'a> Flow<'a> {
             must_fit = must_fit.max(together);
         }
         if !self.at_top() && self.y + gap + must_fit > self.bottom() + 0.01 {
-            let fits_fresh =
-                must_fit <= self.room();
+            let fits_fresh = must_fit <= self.room();
             if fits_fresh {
                 self.next_column();
             }
@@ -966,7 +1346,10 @@ impl<'a> Flow<'a> {
         while let Some((index, line)) = lines.next() {
             // The last lines of a paragraph kept with the next go to the next page with it.
             if let Some((from, together)) = keep {
-                if from > 0 && index == from && !self.at_top() && self.y + together > self.bottom() + 0.01
+                if from > 0
+                    && index == from
+                    && !self.at_top()
+                    && self.y + together > self.bottom() + 0.01
                 {
                     self.next_column();
                 }
@@ -1079,10 +1462,14 @@ impl<'a> Flow<'a> {
 
     fn finish(mut self) -> Vec<Page> {
         self.flush_keeps(None);
+        // The last section's columns are balanced at the end of the document too.
+        self.balance_columns();
+        self.draw_column_lines();
         // Footnote lines still waiting get pages of their own.
         while !self.carry.is_empty() {
             self.new_page();
         }
+        self.finish_page();
         self.pages
     }
 }
@@ -1108,8 +1495,19 @@ fn measure_footnotes(ctx: &Ctx) -> HashMap<i64, Vec<f32>> {
         .collect()
 }
 
+/// What a float draws where its anchor puts it.
+fn draw_float(
+    float: &Float,
+    page: &Page,
+    column_x: f32,
+    line_y: f32,
+    column_width: f32,
+) -> Vec<Item> {
+    drawing::items(float, float_rect(float, page, column_x, line_y, column_width))
+}
+
 /// Where a float lands on the page, from its anchor.
-fn place_float(float: &Float, page: &Page, column_x: f32, line_y: f32, column_width: f32) -> Item {
+fn float_rect(float: &Float, page: &Page, column_x: f32, line_y: f32, column_width: f32) -> Rect {
     let resolve = |(relative, anchor): &(String, Anchor),
                    page_size: f32,
                    margin_start: f32,
@@ -1135,7 +1533,7 @@ fn place_float(float: &Float, page: &Page, column_x: f32, line_y: f32, column_wi
     };
     let x = resolve(&float.horizontal, page.width, column_x, column_width, column_x, float.width);
     let y = resolve(&float.vertical, page.height, page.body.y, page.body.h, line_y, float.height);
-    Item::Picture { rect: Rect::new(x, y, float.width, float.height), part: float.part.clone() }
+    Rect::new(x, y, float.width, float.height)
 }
 
 /// Lay a story out as a stack of pieces, for a header, a footer, a note or a cell.
@@ -1322,9 +1720,7 @@ fn lay_out_footnotes(page: &mut Page, ctx: &Ctx, geometry: &Geometry) {
             geometry.text_width(),
         );
         paragraph::CURRENT_NOTE.with(|current| current.set(None));
-        chunks.extend(
-            lines.into_iter().skip(piece.from).take(piece.to.saturating_sub(piece.from)),
-        );
+        chunks.extend(lines.into_iter().skip(piece.from).take(piece.to.saturating_sub(piece.from)));
     }
     let mut block = stack(chunks);
     // At the foot of the body, which a tall footer can have moved up from the margin.

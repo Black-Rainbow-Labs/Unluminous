@@ -254,7 +254,12 @@ pub fn lay_out(
                     side("w:top", "w:top", r == 0, "w:insideH"),
                     side("w:left", "w:start", first_column, "w:insideV"),
                     side("w:right", "w:end", last_column, "w:insideV"),
-                    side("w:bottom", "w:bottom", last_row || r + 1 == table.rows.len(), "w:insideH"),
+                    side(
+                        "w:bottom",
+                        "w:bottom",
+                        last_row || r + 1 == table.rows.len(),
+                        "w:insideH",
+                    ),
                 ],
                 valign: cell.props.val_of("w:vAlign").unwrap_or("top").to_owned(),
                 continues,
@@ -452,7 +457,8 @@ fn widths_from_cells(
                 if let Some(w) = preferred(cell.props.child("w:tcW"), available) {
                     fixed[column] = Some(fixed[column].map_or(w, |f: f32| f.max(w)));
                 }
-                content[column] = content[column].max(natural_width(ctx, cell) + margins.0 + margins.1);
+                content[column] =
+                    content[column].max(natural_width(ctx, cell) + margins.0 + margins.1);
             }
             column += span;
         }

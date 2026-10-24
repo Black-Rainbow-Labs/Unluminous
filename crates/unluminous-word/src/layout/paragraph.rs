@@ -11,8 +11,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use unluminous_core::{CharStyle, Color, LineMetrics};
 
 use super::{
-    fields, Anchor, BreakAfter, CaretLine, Chunk, Ctx, Float, Item, LaidParagraph, Rect, RuleKind,
-    TextItem,
+    fields, BreakAfter, CaretLine, Chunk, Ctx, Float, Item, LaidParagraph, Rect, RuleKind, TextItem,
 };
 use crate::model::{Content, Paragraph, Run};
 use crate::numbering::{Counters, Suffix};
@@ -44,11 +43,8 @@ enum Kind {
     Line,
     Page,
     Column,
-    Picture {
-        w: f32,
-        h: f32,
-        part: String,
-    },
+    /// A picture or a shape in the line, drawn as `drawing::items` draws it.
+    Picture(Box<Float>),
     Float(Float),
     Label(String),
     /// A footnote or endnote reference mark, with the footnote's id when it is a reference to one in the
@@ -210,7 +206,11 @@ pub fn prepare(
             }
         }
     }
-    collect_atoms(ctx, paragraph, table_style, &mut looks, &mut atoms);
+    let page = ctx.page.or_else(|| {
+        // A page field in the body shows the page its paragraph landed on in the pass before.
+        (*story == StoryId::Body).then(|| ctx.body_pages.get(path).copied()).flatten()
+    });
+    collect_atoms(ctx, paragraph, table_style, page, &mut looks, &mut atoms);
     Prepared {
         look,
         looks,
@@ -225,7 +225,8 @@ pub fn prepare(
 impl Prepared {
     /// Every line, each at the paragraph's own indents, as one piece the flow places.
     pub fn laid(self, ctx: &Ctx) -> LaidParagraph {
-        let lines = break_lines(ctx, &self.look, &self.atoms, self.width);
+        let hyphen_width = measure(ctx, &self.looks[0], "-", false);
+        let lines = break_lines(ctx, &self.look, &self.atoms, self.width, hyphen_width);
         let mut chunks: Vec<Chunk> = Vec::with_capacity(lines.len());
         let count = lines.len();
         for (index, line) in lines.into_iter().enumerate() {
@@ -295,8 +296,19 @@ impl Prepared {
         from: usize,
         first: bool,
         bounds: (f32, f32),
+        hyphens: u32,
     ) -> (LineBuild, usize, bool) {
-        let (line, next) = next_line(ctx, &self.look, &self.atoms, from, first, bounds, self.width);
+        let hyphen_width = measure(ctx, &self.looks[0], "-", false);
+        let (line, next) = next_line(
+            ctx,
+            &self.look,
+            &self.atoms,
+            from,
+            first,
+            bounds,
+            self.width,
+            (hyphens, hyphen_width),
+        );
         // A paragraph that ends in a line break has one more, empty line after it.
         let last = next >= self.atoms.len() && !line.forced;
         (line, next, last)
@@ -344,7 +356,8 @@ fn display_equation_alignment(paragraph: &Paragraph) -> Option<Align> {
             _ => return None,
         }
     }
-    let jc = display?.child("m:oMathParaPr").and_then(|p| p.child("m:jc")).and_then(|j| j.attr("m:val"));
+    let jc =
+        display?.child("m:oMathParaPr").and_then(|p| p.child("m:jc")).and_then(|j| j.attr("m:val"));
     Some(match jc {
         Some("left") => Align::Left,
         Some("right") => Align::Right,
@@ -374,6 +387,7 @@ fn collect_atoms(
     ctx: &Ctx,
     paragraph: &Paragraph,
     table_style: Option<&str>,
+    page: Option<(u32, u32)>,
     looks: &mut Vec<Look>,
     atoms: &mut Vec<Atom>,
 ) {
@@ -392,7 +406,7 @@ fn collect_atoms(
                 Some("separate") => {
                     if let Some(field) = fields.open.last_mut() {
                         field.1 = false;
-                        field.2 = fields::page_result(&field.0, ctx.page);
+                        field.2 = fields::page_result(&field.0, page);
                     }
                 }
                 _ => {
@@ -448,7 +462,7 @@ fn collect_atoms(
         }
         if let Some(simple) = run.wraps.iter().find(|w| w.el.name == "w:fldSimple") {
             if let Some(value) =
-                simple.el.attr("w:instr").and_then(|code| fields::page_result(code, ctx.page))
+                simple.el.attr("w:instr").and_then(|code| fields::page_result(code, page))
             {
                 if simple_done == Some(simple.id) {
                     continue;
@@ -713,41 +727,27 @@ fn object_atom(
             });
         }
         _ => {
-            let Some(picture) = run.content.picture() else {
-                atoms.push(Atom {
+            let drawing =
+                run.content.picture().map(|_| el).and_then(|el| super::drawing::read(ctx, el));
+            match drawing {
+                Some(drawing) if drawing.inline => atoms.push(Atom {
                     start,
                     end,
-                    kind: Kind::Glyph(String::new()),
-                    width: 0.0,
+                    kind: Kind::Picture(Box::new(drawing.float.clone())),
+                    width: drawing.float.width,
                     look: index,
                     small: false,
                     opportunity: true,
-                });
-                return;
-            };
-            match read_picture(ctx, picture) {
-                Some(PictureKind::Inline { w, h, part }) => {
-                    atoms.push(Atom {
-                        start,
-                        end,
-                        kind: Kind::Picture { w, h, part },
-                        width: w,
-                        look: index,
-                        small: false,
-                        opportunity: true,
-                    });
-                }
-                Some(PictureKind::Float(float)) => {
-                    atoms.push(Atom {
-                        start,
-                        end,
-                        kind: Kind::Float(float),
-                        width: 0.0,
-                        look: index,
-                        small: false,
-                        opportunity: false,
-                    });
-                }
+                }),
+                Some(drawing) => atoms.push(Atom {
+                    start,
+                    end,
+                    kind: Kind::Float(drawing.float),
+                    width: 0.0,
+                    look: index,
+                    small: false,
+                    opportunity: false,
+                }),
                 None => atoms.push(Atom {
                     start,
                     end,
@@ -774,91 +774,48 @@ thread_local! {
     pub static CURRENT_NOTE: std::cell::Cell<Option<i64>> = const { std::cell::Cell::new(None) };
 }
 
-enum PictureKind {
-    Inline { w: f32, h: f32, part: String },
-    Float(Float),
+/// How a document hyphenates: `w:autoHyphenation` with its zone, the most lines in a row that may end
+/// in a hyphen, and whether words in capitals are left whole.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Hyphenation {
+    /// Words are hyphenated only when the space a line would otherwise leave is wider than this.
+    pub zone: f32,
+    /// The most lines in a row ending in a hyphen; 0 for no limit.
+    pub limit: u32,
+    pub capitals: bool,
 }
 
-/// A picture's size and the part its pixels are in, from a `w:drawing` or a `w:pict`.
-fn read_picture(ctx: &Ctx, el: &El) -> Option<PictureKind> {
-    let mut embed: Option<String> = None;
-    el.walk(&mut |node| {
-        if embed.is_none() {
-            if node.name == "a:blip" {
-                embed = node.attr("r:embed").or(node.attr("r:link")).map(str::to_owned);
-            } else if node.name == "v:imagedata" {
-                embed = node.attr("r:id").map(str::to_owned);
-            }
+impl Hyphenation {
+    /// The document's hyphenation settings, `None` when it does not hyphenate.
+    pub fn of(document: &crate::model::Document) -> Option<Hyphenation> {
+        let settings = &document.settings.as_ref()?.root;
+        if props::on_off(settings, "w:autoHyphenation") != Some(true) {
+            return None;
         }
-    });
-    let part = embed
-        .and_then(|id| {
-            let rel = ctx.document.package.rels.get(&ctx.part)?.by_id(&id)?.clone();
-            (!rel.external).then(|| crate::package::Package::resolve(&ctx.part, &rel.target))
+        Some(Hyphenation {
+            zone: settings
+                .val_of("w:hyphenationZone")
+                .and_then(props::number)
+                .map_or(18.0, props::twips),
+            limit: settings
+                .val_of("w:consecutiveHyphenLimit")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0),
+            capitals: props::on_off(settings, "w:doNotHyphenateCaps") != Some(true),
         })
-        .unwrap_or_default();
-    if el.name == "w:pict" {
-        let mut size = None;
-        el.walk(&mut |node| {
-            if size.is_none() && matches!(node.name.as_str(), "v:shape" | "v:rect" | "v:image") {
-                size = node.attr("style").map(vml_size);
-            }
-        });
-        let (w, h) = size.unwrap_or((72.0, 72.0));
-        return Some(PictureKind::Inline { w, h, part });
     }
-    let frame = el.elements().next()?;
-    let extent = frame.child("wp:extent")?;
-    let w = props::emu(extent.attr("cx").and_then(props::number).unwrap_or(0.0));
-    let h = props::emu(extent.attr("cy").and_then(props::number).unwrap_or(0.0));
-    if frame.name == "wp:inline" {
-        return Some(PictureKind::Inline { w, h, part });
-    }
-    let position = |name: &str| -> (String, Anchor) {
-        let Some(axis) = frame.child(name) else { return ("column".into(), Anchor::Offset(0.0)) };
-        let relative = axis.attr("relativeFrom").unwrap_or("column").to_owned();
-        let anchor = match (axis.child("wp:posOffset"), axis.child("wp:align")) {
-            (Some(offset), _) => {
-                Anchor::Offset(props::emu(props::number(&offset.text()).unwrap_or(0.0)))
-            }
-            (None, Some(align)) => Anchor::Align(align.text()),
-            _ => Anchor::Offset(0.0),
-        };
-        (relative, anchor)
-    };
-    let wrap = frame
-        .elements()
-        .find_map(|child| child.local().strip_prefix("wrap").map(|kind| kind.to_owned()))
-        .unwrap_or_else(|| {
-            if frame.attr("behindDoc") == Some("1") {
-                "behind".into()
-            } else {
-                "none".into()
-            }
-        });
-    Some(PictureKind::Float(Float {
-        width: w,
-        height: h,
-        horizontal: position("wp:positionH"),
-        vertical: position("wp:positionV"),
-        part,
-        wrap: wrap.to_lowercase(),
-    }))
 }
 
-/// `width:100pt;height:50pt` from a VML shape's style.
-fn vml_size(style: &str) -> (f32, f32) {
-    let mut size = (72.0, 72.0);
-    for declaration in style.split(';') {
-        let Some((key, value)) = declaration.split_once(':') else { continue };
-        let points = props::number(value.trim()).map(|twips| (twips / 20.0) as f32);
-        match (key.trim(), points) {
-            ("width", Some(w)) => size.0 = w,
-            ("height", Some(h)) => size.1 = h,
-            _ => {}
-        }
-    }
-    size
+/// The places a word may be hyphenated, by the en-US patterns, as byte offsets into it.
+fn hyphenation_points(word: &str) -> Vec<usize> {
+    use hyphenation::{Hyphenator, Language, Load, Standard};
+    static DICTIONARY: std::sync::OnceLock<Option<Standard>> = std::sync::OnceLock::new();
+    let Some(dictionary) =
+        DICTIONARY.get_or_init(|| Standard::from_embedded(Language::EnglishUS).ok())
+    else {
+        return Vec::new();
+    };
+    dictionary.hyphenate(word).breaks
 }
 
 /// A line before it is placed: which atoms it holds and why it ended.
@@ -867,6 +824,8 @@ pub struct LineBuild {
     atoms: Vec<usize>,
     /// It ended with a line break the person typed, so a justified line is not stretched.
     forced: bool,
+    /// It ends inside a word that was hyphenated, so a hyphen is drawn after its last letter.
+    pub hyphen: bool,
 }
 
 /// The left edge of a line, from the paragraph's indents.
@@ -907,14 +866,71 @@ fn position_tab(look: &ParaLook, align: TabKind, to_indent: bool, width: f32) ->
     (stop, align)
 }
 
+/// Where to hyphenate the word a segment holds so its first part and a hyphen fit before `right`: the
+/// atom the line ends before, or `None` when the word is not hyphenated (the document does not hyphenate,
+/// the gap at the end of the line is inside the zone, too many lines in a row end in a hyphen, it is in
+/// capitals and those are left whole, or no break point fits).
+#[allow(clippy::too_many_arguments)]
+fn hyphenate(
+    ctx: &Ctx,
+    look: &ParaLook,
+    atoms: &[Atom],
+    index: usize,
+    end: usize,
+    pen: f32,
+    right: f32,
+    (hyphens, hyphen_width): (u32, f32),
+) -> Option<usize> {
+    let rules = ctx.hyphenation?;
+    if look.suppress_hyphens
+        || right - pen <= rules.zone
+        || (rules.limit > 0 && hyphens >= rules.limit)
+    {
+        return None;
+    }
+    // The word is the segment's letters, without the space or punctuation after it.
+    let mut word = String::new();
+    let mut offsets = Vec::new();
+    for (at, atom) in atoms.iter().enumerate().take(end).skip(index) {
+        match &atom.kind {
+            Kind::Glyph(text) if text.chars().all(char::is_alphabetic) && !text.is_empty() => {
+                offsets.push((word.len(), at));
+                word.push_str(text);
+            }
+            _ => break,
+        }
+    }
+    if word.chars().count() < 5 || (!rules.capitals && word.chars().all(char::is_uppercase)) {
+        return None;
+    }
+    let mut best = None;
+    for point in hyphenation_points(&word.to_lowercase()) {
+        let Some(&(_, at)) = offsets.iter().find(|(offset, _)| *offset == point) else { continue };
+        let used: f32 = atoms[index..at].iter().map(|a| a.width).sum();
+        if pen + used + hyphen_width <= right + 0.01 {
+            best = Some(at);
+        }
+    }
+    best
+}
+
 /// Fill lines greedily from segments, each line at the paragraph's indents.
-fn break_lines(ctx: &Ctx, look: &ParaLook, atoms: &[Atom], width: f32) -> Vec<LineBuild> {
+fn break_lines(
+    ctx: &Ctx,
+    look: &ParaLook,
+    atoms: &[Atom],
+    width: f32,
+    hyphen_width: f32,
+) -> Vec<LineBuild> {
     let mut lines: Vec<LineBuild> = Vec::new();
     let mut index = 0;
+    let mut hyphens = 0;
     loop {
         let first = lines.is_empty();
         let bounds = (line_left(look, first), width - look.indent_right);
-        let (line, next) = next_line(ctx, look, atoms, index, first, bounds, width);
+        let (line, next) =
+            next_line(ctx, look, atoms, index, first, bounds, width, (hyphens, hyphen_width));
+        hyphens = if line.hyphen { hyphens + 1 } else { 0 };
         let forced = line.forced;
         lines.push(line);
         index = next;
@@ -931,6 +947,7 @@ fn break_lines(ctx: &Ctx, look: &ParaLook, atoms: &[Atom], width: f32) -> Vec<Li
 /// One line filled greedily from segments, from atom `from`, between `left` and `right`: the line and the
 /// atom the next line starts at. A segment is the atoms up to and including the next place a line may
 /// break; one wider than a whole line is broken between graphemes.
+#[allow(clippy::too_many_arguments)]
 fn next_line(
     ctx: &Ctx,
     look: &ParaLook,
@@ -939,6 +956,7 @@ fn next_line(
     first: bool,
     (left, right): (f32, f32),
     width: f32,
+    hyphens: (u32, f32),
 ) -> (LineBuild, usize) {
     let mut line = LineBuild::default();
     let mut pen = left;
@@ -988,6 +1006,11 @@ fn next_line(
             .sum();
         let fits = pen + total - trailing <= right + 0.01;
         if !fits && has_content {
+            if let Some(cut) = hyphenate(ctx, look, atoms, index, end, pen, right, hyphens) {
+                line.atoms.extend(index..cut);
+                line.hyphen = true;
+                return (line, cut);
+            }
             return (line, index);
         }
         if !fits {
@@ -1090,7 +1113,16 @@ fn place_line(
         .atoms
         .iter()
         .rposition(|&i| matches!(atoms[i].kind, Kind::Tab | Kind::PositionTab { .. }));
-    let extra = (right - content_end).max(0.0);
+    // A hyphenated line ends with a hyphen after its last letter, which takes room like a letter.
+    let hyphen = line
+        .hyphen
+        .then(|| {
+            line.atoms
+                .last()
+                .map(|&i| (atoms[i].look, measure(ctx, &looks[atoms[i].look], "-", false)))
+        })
+        .flatten();
+    let extra = (right - content_end - hyphen.map_or(0.0, |(_, w)| w)).max(0.0);
     match look.align {
         Align::Center => xs.iter_mut().for_each(|(x, _)| *x += extra / 2.0),
         Align::Right => xs.iter_mut().for_each(|(x, _)| *x += extra),
@@ -1139,8 +1171,8 @@ fn place_line(
         let atom = &atoms[index];
         let look_of = &looks[atom.look];
         match &atom.kind {
-            Kind::Picture { h, .. } => {
-                above = above.max(*h);
+            Kind::Picture(float) => {
+                above = above.max(float.height);
                 measured = true;
             }
             Kind::Float(_) | Kind::Line | Kind::Page | Kind::Column => {}
@@ -1172,6 +1204,15 @@ fn place_line(
     };
     let mut chunk = Chunk { height, ..Chunk::default() };
     emit(ctx, looks, atoms, line, &xs, baseline, height, &mut chunk);
+    if let (Some((look_index, _)), Some((x, w))) = (hyphen, xs.last()) {
+        let look_of = &looks[look_index];
+        chunk.items.push(Item::Text(TextItem {
+            baseline: baseline - raise_of(&look_of.run),
+            style: look_of.style.clone(),
+            text: "-".into(),
+            xs: vec![x + w],
+        }));
+    }
     for (x, w, leader, look_index) in leaders {
         let look_of = &looks[look_index];
         let dot = measure(ctx, look_of, &leader.to_string(), false).max(1.0);
@@ -1305,13 +1346,9 @@ fn emit(
             Kind::Glyph(text) | Kind::Space(text) | Kind::Label(text) | Kind::NoteMark(text, _) => {
                 Some(text)
             }
-            Kind::Picture { w, h, part } => {
-                let rect = Rect::new(x, baseline - h, *w, *h);
-                if part.is_empty() {
-                    pictures.push(Item::Placeholder { rect, label: "picture".into() });
-                } else {
-                    pictures.push(Item::Picture { rect, part: part.clone() });
-                }
+            Kind::Picture(float) => {
+                let rect = Rect::new(x, baseline - float.height, float.width, float.height);
+                pictures.extend(super::drawing::items(float, rect));
                 None
             }
             _ => None,

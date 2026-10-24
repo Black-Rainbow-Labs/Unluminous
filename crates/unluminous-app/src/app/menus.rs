@@ -527,8 +527,7 @@ impl UnluminousApp {
                 for (name, extensions) in crate::services::word::SAVE_KINDS {
                     dialog = dialog.add_filter(*name, extensions);
                 }
-                if let Some(target) = dialog.save_file()
-                {
+                if let Some(target) = dialog.save_file() {
                     let target = if target.extension().is_none() {
                         target.with_extension("docx")
                     } else {

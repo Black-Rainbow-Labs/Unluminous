@@ -328,6 +328,7 @@ impl Doc {
         crate::services::store::write_atomically(&path, &bytes)
             .map_err(|e| format!("{} could not be written: {e}", path.display()))?;
         self.path = Some(path.clone());
+        self.session.file = Some(path.clone());
         self.saved = self.session.revision;
         self.session.modified = false;
         Ok(path)
@@ -393,6 +394,7 @@ impl Word {
         }
         let mut session = Session::new(document);
         session.author = self.config.author.clone();
+        session.file = (!template).then(|| path.to_path_buf());
         self.docs.push(Doc {
             key: key.to_owned(),
             path: (!template).then(|| path.to_path_buf()),
@@ -611,5 +613,6 @@ pub fn story_name(story: &StoryId) -> String {
         StoryId::Footnote(id) => format!("footnote:{id}"),
         StoryId::Endnote(id) => format!("endnote:{id}"),
         StoryId::Comment(id) => format!("comment:{id}"),
+        StoryId::TextBox(id) => format!("textbox:{id}"),
     }
 }

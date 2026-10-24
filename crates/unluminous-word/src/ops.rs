@@ -1126,181 +1126,6 @@ impl Session {
         });
     }
 
-    /// Insert a table of contents at the caret, from the headings at levels 1 to `levels`, with the page
-    /// numbers `pages` gives. Each entry links to its heading through a `_Toc` bookmark, as Word's does.
-    pub fn insert_toc(&mut self, levels: u8, pages: &crate::layout::Pages) {
-        let entries = self.toc_entries(levels, pages);
-        let width = self
-            .section_at_caret()
-            .map_or(468.0, |s| crate::layout::section::Geometry::of(&s).text_width());
-        for level in 1..=levels {
-            let _ = builtin::ensure_style(&mut self.document, &format!("TOC{level}"));
-        }
-        let _ = builtin::ensure_style(&mut self.document, "TOCHeading");
-        self.change(Scope::Whole, move |document, selection, _| {
-            let mut blocks = Vec::new();
-            let mut heading = Paragraph::new();
-            heading.props.put(El::new("w:pStyle").with("w:val", "TOCHeading"));
-            heading.runs.push(Run::text("Contents", no_props()));
-            blocks.push(Block::Paragraph(heading));
-            for (index, (level, text, page, path)) in entries.iter().enumerate() {
-                let bookmark = format!("_Toc{:09}", 100_000_000 + index as u64 * 7919 + text.len() as u64);
-                if let Some(p) = position::paragraph_mut(document, &StoryId::Body, path) {
-                    let id = 9_000 + index;
-                    let len = p.len();
-                    p.marks.push(Mark { offset: 0, el: El::new("w:bookmarkStart").with("w:id", id.to_string()).with("w:name", bookmark.clone()), wraps: Vec::new() });
-                    p.marks.push(Mark { offset: len, el: El::new("w:bookmarkEnd").with("w:id", id.to_string()), wraps: Vec::new() });
-                    p.marks.sort_by_key(|m| m.offset);
-                }
-                let mut entry = Paragraph::new();
-                entry.props.put(El::new("w:pStyle").with("w:val", format!("TOC{level}")));
-                entry.props.put(El::new("w:tabs").with_child(El::new("w:tab").with("w:val", "right").with("w:leader", "dot").with("w:pos", twips(width - 0.5))));
-                let link = Wrap::new(El::new("w:hyperlink").with("w:anchor", bookmark).with("w:history", "1"));
-                let field = |content: Content| Run { props: no_props(), content, wraps: Vec::new(), attrs: Arc::default() };
-                if index == 0 {
-                    entry.runs.push(field(Content::FieldChar(El::new("w:fldChar").with("w:fldCharType", "begin"))));
-                    entry.runs.push(field(Content::Instr(format!(" TOC \\o \"1-{levels}\" \\h \\z \\u "))));
-                    entry.runs.push(field(Content::FieldChar(El::new("w:fldChar").with("w:fldCharType", "separate"))));
-                }
-                for content in [Content::Text(text.clone()), Content::Tab, Content::Text(page.to_string())] {
-                    entry.runs.push(Run { wraps: vec![Arc::clone(&link)], ..field(content) });
-                }
-                if index + 1 == entries.len() {
-                    entry.runs.push(field(Content::FieldChar(El::new("w:fldChar").with("w:fldCharType", "end"))));
-                }
-                blocks.push(Block::Paragraph(entry));
-            }
-            if entries.is_empty() {
-                let mut none = Paragraph::new();
-                none.runs.push(Run::text("No headings were found. Apply a Heading style to a paragraph and update the table.", no_props()));
-                blocks.push(Block::Paragraph(none));
-            }
-            let at = selection.head.clone();
-            let Some(blocks_of) = position::story_mut(document, &at.story) else { return selection.clone() };
-            let Some((container, index)) = position::container_mut(blocks_of, &at.path) else { return selection.clone() };
-            let count = blocks.len();
-            for (k, block) in blocks.into_iter().enumerate() {
-                container.insert(index + k, block);
-            }
-            let mut path = at.path.clone();
-            *path.last_mut().expect("a path") += count as u32;
-            Selection::caret(Pos { story: at.story, path, offset: 0 })
-        });
-    }
-
-    /// The headings a table of contents lists: level, text, page and where each is.
-    pub fn toc_entries(
-        &self,
-        levels: u8,
-        pages: &crate::layout::Pages,
-    ) -> Vec<(u8, String, u32, Vec<u32>)> {
-        let resolver = crate::styles::Resolver::new(&self.document);
-        let mut out = Vec::new();
-        for (path, p) in position::paragraphs(&self.document.body) {
-            if path.len() != 1 {
-                continue;
-            }
-            let look = resolver.paragraph(&p.props, None);
-            let Some(level) = look.outline_level else { continue };
-            if level >= levels || look.style.starts_with("TOC") {
-                continue;
-            }
-            let text = crate::session::clean_text(&p.visible_text()).trim().to_owned();
-            if text.is_empty() {
-                continue;
-            }
-            let page = pages
-                .find(&Pos::new(path.clone(), 0))
-                .map_or(1, |(index, _)| pages.pages[index].number);
-            out.push((level + 1, text, page, path));
-        }
-        out
-    }
-
-    /// Bring every field up to date that can be: the date and time, and a table of contents. Answers
-    /// how many fields changed.
-    pub fn update_fields(&mut self, pages: &crate::layout::Pages) -> usize {
-        let mut count = 0;
-        // A table of contents is rebuilt where it stands.
-        if let Some((first, last, levels)) = self.find_toc() {
-            let entries = self.toc_entries(levels, pages);
-            if !entries.is_empty() {
-                let at = Pos::new(first.clone(), 0);
-                self.selection = Selection::caret(at);
-                let blocks_before = last[0] - first[0] + 1;
-                self.change(Scope::Whole, |document, selection, _| {
-                    for _ in 0..blocks_before {
-                        document.body.remove(first[0] as usize);
-                    }
-                    if document.body.is_empty() {
-                        document.body.push(Block::Paragraph(Paragraph::new()));
-                    }
-                    selection.clone()
-                });
-                // Leave out the old heading if the rebuilt one would repeat it.
-                self.insert_toc(levels, pages);
-                count += 1;
-            }
-        }
-        let date = now_iso();
-        self.change(Scope::Story, |document, selection, _| {
-            for (path, _) in position::paragraphs(&document.body)
-                .into_iter()
-                .map(|(p, x)| (p, x.len()))
-                .collect::<Vec<_>>()
-            {
-                if let Some(p) = position::paragraph_mut(document, &StoryId::Body, &path) {
-                    count += update_dates_in(p, &date);
-                }
-            }
-            selection.clone()
-        });
-        count
-    }
-
-    /// The body paragraphs a table of contents field spans, and its levels.
-    fn find_toc(&self) -> Option<(Vec<u32>, Vec<u32>, u8)> {
-        let mut start: Option<(Vec<u32>, u8)> = None;
-        for (path, p) in position::paragraphs(&self.document.body) {
-            if path.len() != 1 {
-                continue;
-            }
-            for run in &p.runs {
-                if let Content::Instr(code) = &run.content {
-                    let (kind, rest) = crate::layout::fields::split(code);
-                    if kind == "TOC" && start.is_none() {
-                        let levels = rest
-                            .split("\\o")
-                            .nth(1)
-                            .and_then(|s| s.trim().trim_matches('"').split('-').nth(1))
-                            .and_then(|n| n.trim_matches('"').parse().ok())
-                            .unwrap_or(3);
-                        start = Some((path.clone(), levels));
-                    }
-                }
-                if let (Some((first, levels)), Content::FieldChar(el)) = (&start, &run.content) {
-                    if el.attr("w:fldCharType") == Some("end") {
-                        // The heading above the field, when it is a TOC Heading, goes with it.
-                        let mut first = first.clone();
-                        if first[0] > 0 {
-                            let above = position::paragraph(
-                                &self.document,
-                                &StoryId::Body,
-                                &[first[0] - 1],
-                            );
-                            if above.and_then(|a| a.props.val_of("w:pStyle")) == Some("TOCHeading")
-                            {
-                                first[0] -= 1;
-                            }
-                        }
-                        return Some((first, path.clone(), *levels));
-                    }
-                }
-            }
-        }
-        None
-    }
-
     // ---- Text ----
 
     /// Change the case of the selection: `upper`, `lower`, `sentence`, `title` or `toggle`.
@@ -1402,7 +1227,8 @@ fn replace_header_text(blocks: &mut Vec<Block>, paragraph: Paragraph) {
         Some(existing) => {
             // A picture or a shape in the paragraph stays where it is; the text after it is replaced.
             existing.runs.retain(|run| {
-                run.content.picture().is_some() || matches!(run.content, Content::ParagraphObject(_))
+                run.content.picture().is_some()
+                    || matches!(run.content, Content::ParagraphObject(_))
             });
             existing.runs.extend(paragraph.runs);
             let length = existing.len();
@@ -1837,85 +1663,6 @@ fn next_mark_id(document: &Document, name: &str) -> i64 {
         + 1
 }
 
-/// Replace the results of DATE and TIME fields in one paragraph. Answers how many.
-fn update_dates_in(paragraph: &mut Paragraph, now: &str) -> usize {
-    let mut count = 0;
-    let mut code = String::new();
-    let mut state = 0; // 0 outside, 1 in code, 2 in result
-    let mut first_result = true;
-    let mut value = None::<String>;
-    for run in &mut paragraph.runs {
-        match &mut run.content {
-            Content::FieldChar(el) => match el.attr("w:fldCharType") {
-                Some("begin") => {
-                    state = 1;
-                    code.clear();
-                }
-                Some("separate") => {
-                    state = 2;
-                    first_result = true;
-                    let (kind, rest) = crate::layout::fields::split(&code);
-                    value = matches!(kind.as_str(), "DATE" | "TIME" | "CREATEDATE" | "SAVEDATE")
-                        .then(|| format_date(now, &rest, &kind));
-                }
-                _ => {
-                    state = 0;
-                    if value.take().is_some() {
-                        count += 1;
-                    }
-                }
-            },
-            Content::Instr(text) if state == 1 => code.push_str(text),
-            Content::Text(text) if state == 2 => {
-                if let Some(v) = &value {
-                    *text = if first_result { v.clone() } else { String::new() };
-                    first_result = false;
-                }
-            }
-            _ => {}
-        }
-    }
-    paragraph.merge_runs();
-    count
-}
-
-/// A date in the form a field's `\@` switch asks for, with the common pictures Word offers.
-pub fn format_date(iso: &str, rest: &str, kind: &str) -> String {
-    let (y, mo, d) = (&iso[0..4], &iso[5..7], &iso[8..10]);
-    let (h, mi) = (&iso[11..13], &iso[14..16]);
-    let month: usize = mo.parse().unwrap_or(1);
-    const MONTHS: [&str; 12] = [
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
-    ];
-    let picture = rest.split("\\@").nth(1).map(|p| p.trim().trim_matches('"').to_owned());
-    match picture.as_deref() {
-        Some(p) => {
-            let mut out = p.to_owned();
-            out = out.replace("yyyy", y).replace("yy", &y[2..]);
-            out = out
-                .replace("MMMM", MONTHS[month.saturating_sub(1).min(11)])
-                .replace("MMM", &MONTHS[month.saturating_sub(1).min(11)][..3]);
-            out = out.replace("MM", mo);
-            out = out.replace("dd", d).replace('d', d.trim_start_matches('0'));
-            out = out.replace("HH", h).replace("mm", mi);
-            out
-        }
-        None if kind == "TIME" => format!("{h}:{mi}"),
-        None => format!("{}/{}/{y}", month, d.trim_start_matches('0')),
-    }
-}
-
 fn recase(text: &str, how: &str, start_of_sentence: &mut bool) -> String {
     match how {
         "upper" => text.to_uppercase(),
@@ -2164,9 +1911,5 @@ mod tests {
         let mut flag = true;
         assert_eq!(recase("hello world. again", "sentence", &mut flag), "Hello world. Again");
         assert_eq!(recase("hello world", "title", &mut true), "Hello World");
-        assert_eq!(
-            format_date("2026-10-23T16:25:00Z", "\\@ \"d MMMM yyyy\"", "DATE"),
-            "23 October 2026"
-        );
     }
 }

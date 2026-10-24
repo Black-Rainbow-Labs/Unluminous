@@ -276,9 +276,32 @@ fn paint_items(
     let renderer = fonts.renderer;
     let page = &doc.pages.pages[index];
     let to_screen = |x: f32, y: f32| origin + Vec2::new(x * zoom, y * zoom);
-    let mut pictures: Vec<(Rect, String)> = Vec::new();
+    let mut pictures: Vec<(Rect, String, Rect)> = Vec::new();
     for item in &page.items {
         match item {
+            Item::Shape { rect, preset, fill, outline, flip } => {
+                let points: Vec<Pos2> =
+                    unluminous_word::layout::drawing::outline_points(preset, *rect, *flip)
+                        .into_iter()
+                        .map(|(x, y)| to_screen(x, y))
+                        .collect();
+                let stroke = outline.map_or(Stroke::NONE, |(color, width)| {
+                    Stroke::new(
+                        (width * zoom).max(0.5),
+                        Color32::from_rgb(color.0, color.1, color.2),
+                    )
+                });
+                if points.len() == 2 {
+                    painter.line_segment([points[0], points[1]], stroke);
+                } else {
+                    let fill =
+                        fill.map_or(Color32::TRANSPARENT, |c| Color32::from_rgb(c.0, c.1, c.2));
+                    painter.add(egui::Shape::convex_polygon(points.clone(), fill, Stroke::NONE));
+                    let mut closed = points;
+                    closed.push(closed[0]);
+                    painter.add(egui::Shape::line(closed, stroke));
+                }
+            }
             Item::Fill { rect, color } => {
                 let r = Rect::from_min_size(
                     to_screen(rect.x, rect.y),
@@ -286,13 +309,17 @@ fn paint_items(
                 );
                 painter.rect_filled(r, 0.0, Color32::from_rgb(color.0, color.1, color.2));
             }
-            Item::Picture { rect, part } => {
+            Item::Picture { rect, part, crop } => {
+                // The part of the picture a crop leaves, as a rectangle of its texture.
+                let (l, t, r, b) = crop.unwrap_or((0.0, 0.0, 0.0, 0.0));
+                let uv = Rect::from_min_max(Pos2::new(l, t), Pos2::new(1.0 - r, 1.0 - b));
                 pictures.push((
                     Rect::from_min_size(
                         to_screen(rect.x, rect.y),
                         Vec2::new(rect.w * zoom, rect.h * zoom),
                     ),
                     part.clone(),
+                    uv,
                 ));
             }
             Item::Placeholder { rect, label } => {
@@ -317,14 +344,14 @@ fn paint_items(
             _ => {}
         }
     }
-    for (rect, part) in pictures {
+    for (rect, part, uv) in pictures {
         let texture = picture_texture(ui, doc, &part);
         match texture {
             Some(texture) => {
                 painter.image(
                     texture.id(),
                     rect,
-                    Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                    uv,
                     Color32::WHITE, // any ground: the tint a picture is drawn with, which leaves it as it is
                 );
             }

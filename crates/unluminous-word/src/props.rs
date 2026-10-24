@@ -369,6 +369,8 @@ pub struct ParaLook {
     pub borders: Borders,
     pub shading: Option<Rgb>,
     pub bidi: bool,
+    /// `w:suppressAutoHyphens`: this paragraph is not hyphenated when the document is.
+    pub suppress_hyphens: bool,
 }
 
 impl Default for ParaLook {
@@ -395,6 +397,7 @@ impl Default for ParaLook {
             borders: Borders::default(),
             shading: None,
             bidi: false,
+            suppress_hyphens: false,
         }
     }
 }
@@ -447,6 +450,7 @@ pub fn apply_paragraph(look: &mut ParaLook, el: &El) {
         ("w:widowControl", &mut look.widow_control),
         ("w:contextualSpacing", &mut look.contextual),
         ("w:bidi", &mut look.bidi),
+        ("w:suppressAutoHyphens", &mut look.suppress_hyphens),
     ] {
         if let Some(value) = on_off(el, name) {
             *slot = value;

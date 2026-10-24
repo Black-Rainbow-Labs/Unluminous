@@ -43,6 +43,7 @@ pub fn open(bytes: &[u8]) -> Result<Document, String> {
         endnotes: None,
         comments: None,
         ids: Arc::new(std::sync::atomic::AtomicI64::new(1)),
+        textboxes: Vec::new(),
         package,
     };
     let largest = document
@@ -62,7 +63,60 @@ pub fn open(bytes: &[u8]) -> Result<Document, String> {
         }
     }
     read_related_parts(&mut document)?;
+    document.textboxes = textboxes(&document);
     Ok(document)
+}
+
+/// Every text box in the body, the headers and the notes, with its content read as blocks.
+fn textboxes(document: &Document) -> Vec<TextBox> {
+    let mut out: Vec<TextBox> = Vec::new();
+    let mut stories: Vec<&[Block]> = vec![&document.body];
+    stories.extend(document.headers.iter().map(|h| h.story.blocks.as_slice()));
+    for part in [&document.footnotes, &document.endnotes].into_iter().flatten() {
+        stories.extend(part.notes.iter().map(|n| n.blocks.as_slice()));
+    }
+    for blocks in stories {
+        for (_, paragraph) in crate::position::paragraphs(blocks) {
+            for run in &paragraph.runs {
+                if let Content::Object(el) = &run.content {
+                    find_textboxes(el, &mut out);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The first element named `name` under `el`, in document order.
+pub fn descendant<'a>(el: &'a El, name: &str) -> Option<&'a El> {
+    for child in el.elements() {
+        if child.name == name {
+            return Some(child);
+        }
+        if let Some(found) = descendant(child, name) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+/// The text boxes inside a drawing: each `wp:docPr` with a `w:txbxContent` under its graphic. A drawing
+/// in `mc:AlternateContent` has the same box twice, as a DrawingML shape and as its VML fallback; the
+/// first one read is the one kept.
+fn find_textboxes(el: &El, out: &mut Vec<TextBox>) {
+    if el.name == "wp:anchor" || el.name == "wp:inline" {
+        let id =
+            el.child("wp:docPr").and_then(|d| d.attr("id")).and_then(|i| i.parse::<i64>().ok());
+        if let (Some(id), Some(content)) = (id, descendant(el, "w:txbxContent")) {
+            if !out.iter().any(|t| t.id == id) {
+                out.push(TextBox { id, blocks: blocks(content), dirty: false });
+            }
+        }
+        return;
+    }
+    for child in el.elements() {
+        find_textboxes(child, out);
+    }
 }
 
 /// The parts the main part points at.

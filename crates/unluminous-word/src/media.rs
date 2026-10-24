@@ -170,7 +170,7 @@ mod tests {
             Default::default(),
         );
         let picture = pages.pages[0].items.iter().find_map(|i| match i {
-            crate::layout::Item::Picture { rect, part } => Some((rect.w, rect.h, part.clone())),
+            crate::layout::Item::Picture { rect, part, .. } => Some((rect.w, rect.h, part.clone())),
             _ => None,
         });
         assert_eq!(picture, Some((100.0, 50.0, "word/media/image1.png".to_owned())));

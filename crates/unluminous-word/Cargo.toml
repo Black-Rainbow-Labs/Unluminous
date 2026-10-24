@@ -25,6 +25,10 @@ serde_json.workspace = true
 # Spell check (`spell.rs`): Hunspell dictionaries read in pure Rust. The English dictionary is SCOWL en_US,
 # kept deflated in `dictionaries/` and inflated only when a document is first checked.
 spellbook.workspace = true
+# Hyphenation when a document turns it on (`w:autoHyphenation`): Knuth-Liang with the en-US TeX patterns
+# embedded, the language spelling also checks. The code is MIT or Apache 2.0 and the pattern data is
+# under the patterns' own permissive notice, shipped as data (task-2359).
+hyphenation.workspace = true
 
 [dev-dependencies]
 # A small picture for the test that has Word open a document Unluminous wrote.

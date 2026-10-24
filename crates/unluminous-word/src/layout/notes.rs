@@ -44,7 +44,11 @@ impl NoteOptions {
         };
         NoteOptions {
             format: get("w:numFmt").unwrap_or_else(|| {
-                if endnote { "lowerRoman".into() } else { "decimal".into() }
+                if endnote {
+                    "lowerRoman".into()
+                } else {
+                    "decimal".into()
+                }
             }),
             start: get("w:numStart").and_then(|s| s.parse().ok()).unwrap_or(1),
             restart: match get("w:numRestart").as_deref() {
@@ -140,7 +144,8 @@ mod tests {
     #[test]
     fn notes_number_from_their_start_in_their_format() {
         let refs = vec![(false, 4, 0), (false, 5, 0), (true, 1, 0), (false, 6, 1)];
-        let (order, marks) = number(&refs, false, &options("lowerRoman", 3, Restart::Continuous), None);
+        let (order, marks) =
+            number(&refs, false, &options("lowerRoman", 3, Restart::Continuous), None);
         assert_eq!(order[&6], 3);
         assert_eq!(marks[&4], "iii");
         assert_eq!(marks[&6], "v");

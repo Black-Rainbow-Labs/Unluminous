@@ -44,8 +44,10 @@ fn argument(el: Option<&El>, out: &mut String) {
 fn is_bracketed(text: &str) -> bool {
     let open = text.chars().next();
     let close = text.chars().last();
-    matches!((open, close), (Some('('), Some(')')) | (Some('['), Some(']')) | (Some('{'), Some('}')))
-        && text[1..text.len() - 1].chars().all(|c| c != '(' && c != ')')
+    matches!(
+        (open, close),
+        (Some('('), Some(')')) | (Some('['), Some(']')) | (Some('{'), Some('}'))
+    ) && text[1..text.len() - 1].chars().all(|c| c != '(' && c != ')')
 }
 
 /// The `m:val` of a property child, such as `m:chr` inside `m:naryPr`.

@@ -53,6 +53,20 @@ pub struct Document {
     /// every id in the file when it was read, and shared by the copies undo keeps so an id is never
     /// given twice (task-2359, D5).
     pub ids: Arc<AtomicI64>,
+    /// The text inside every text box, by the drawing's `wp:docPr` id, so it can be laid out in its box
+    /// and edited like any other story (task-2359, TDD 5.3). The drawing keeps its own copy, which the
+    /// writer replaces with this one when it changed.
+    pub textboxes: Vec<TextBox>,
+}
+
+/// The content of one text box.
+#[derive(Debug, Clone)]
+pub struct TextBox {
+    /// The drawing's `wp:docPr` id, which is unique in the document.
+    pub id: i64,
+    pub blocks: Vec<Block>,
+    /// Set when the blocks were changed, so the drawing is written with them.
+    pub dirty: bool,
 }
 
 impl Document {

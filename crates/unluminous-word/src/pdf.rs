@@ -99,7 +99,7 @@ pub fn write(
                         );
                     }
                 }
-                Item::Picture { rect, part } => {
+                Item::Picture { rect, part, crop } => {
                     let index = match image_of.get(part) {
                         Some(index) => Some(*index),
                         None => picture(part).map(|p| {
@@ -109,13 +109,49 @@ pub fn write(
                         }),
                     };
                     if let Some(index) = index {
+                        // A cropped picture is drawn whole, larger than its box, and clipped to the box.
+                        let (l, t, r, b) = crop.unwrap_or((0.0, 0.0, 0.0, 0.0));
+                        let full_w = rect.w / (1.0 - l - r).max(0.01);
+                        let full_h = rect.h / (1.0 - t - b).max(0.01);
                         let _ = writeln!(
                             c,
-                            "q {:.2} 0 0 {:.2} {:.2} {:.2} cm /Im{index} Do Q",
+                            "q {:.2} {:.2} {:.2} {:.2} re W n {:.2} 0 0 {:.2} {:.2} {:.2} cm /Im{index} Do Q",
+                            rect.x,
+                            h - rect.y - rect.h,
                             rect.w,
                             rect.h,
-                            rect.x,
-                            h - rect.y - rect.h
+                            full_w,
+                            full_h,
+                            rect.x - full_w * l,
+                            h - rect.y - rect.h - full_h * b
+                        );
+                    }
+                }
+                Item::Shape { rect, preset, fill, outline, flip } => {
+                    let points = crate::layout::drawing::outline_points(preset, *rect, *flip);
+                    let open = points.len() == 2;
+                    let mut path = String::new();
+                    for (n, (x, y)) in points.iter().enumerate() {
+                        let op = if n == 0 { "m" } else { "l" };
+                        let _ = write!(path, "{x:.2} {:.2} {op} ", h - y);
+                    }
+                    if let (Some(color), false) = (fill, open) {
+                        let _ = writeln!(
+                            c,
+                            "{} {} {} rg {path}h f",
+                            f(color.0),
+                            f(color.1),
+                            f(color.2)
+                        );
+                    }
+                    if let Some((color, width)) = outline {
+                        let close = if open { "" } else { "h " };
+                        let _ = writeln!(
+                            c,
+                            "{} {} {} RG {width:.2} w [] 0 d {path}{close}S",
+                            f(color.0),
+                            f(color.1),
+                            f(color.2)
                         );
                     }
                 }

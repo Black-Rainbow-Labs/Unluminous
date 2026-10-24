@@ -457,7 +457,10 @@ fn every_runs_formatting_is_what_word_reports() {
                     ("color", same_colour(colour, ours.color)),
                     ("highlight", highlight == ours.highlight),
                     ("strike", word_run["strike"].as_bool() == Some(ours.strike)),
-                    ("doubleStrike", word_run["doubleStrike"].as_bool() == Some(ours.double_strike)),
+                    (
+                        "doubleStrike",
+                        word_run["doubleStrike"].as_bool() == Some(ours.double_strike),
+                    ),
                     (
                         "superscript",
                         word_run["superscript"].as_bool()
@@ -595,7 +598,11 @@ fn every_table_cell_is_what_word_reports() {
         collect(&document.body, &mut tables);
         let words = report["tables"].as_array().cloned().unwrap_or_default();
         if tables.len() != words.len() {
-            failures.push(format!("{name}: {} tables against Word's {}", tables.len(), words.len()));
+            failures.push(format!(
+                "{name}: {} tables against Word's {}",
+                tables.len(),
+                words.len()
+            ));
             continue;
         }
         for (t, (table, word)) in tables.iter().zip(&words).enumerate() {
@@ -684,8 +691,11 @@ fn every_header_and_footer_is_what_word_reports() {
                         inherited[f].insert(kind, id.to_owned());
                     }
                 }
-                let kinds =
-                    [("default", "primary", true), ("first", "first", title), ("even", "even", even_odd)];
+                let kinds = [
+                    ("default", "primary", true),
+                    ("first", "first", title),
+                    ("even", "even", even_odd),
+                ];
                 for (kind, word_kind, shown) in kinds {
                     if !shown {
                         continue;

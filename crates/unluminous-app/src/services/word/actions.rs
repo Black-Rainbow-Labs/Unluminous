@@ -640,7 +640,7 @@ pub const ACTIONS: &[Action] = &[
         slash: true,
         run: |d| {
             let now = unluminous_word::session::now_iso();
-            let shown = unluminous_word::ops::format_date(&now, "\\@ \"d MMMM yyyy\"", "DATE");
+            let shown = unluminous_word::fields::format_date(&now, Some("d MMMM yyyy"), false);
             d.session.insert_field("DATE \\@ \"d MMMM yyyy\"", &shown);
             Ok(String::new())
         },
@@ -812,12 +812,77 @@ pub const ACTIONS: &[Action] = &[
         level: Level::References,
         slash: true,
         run: |d| {
-            let _ = d.session.apply_style("Caption");
-            d.session.type_text("Figure ");
-            let count = 1 + unluminous_word::position::paragraphs(&d.session.document.body).iter().filter(|(_, p)| p.runs.iter().any(|r| matches!(&r.content, unluminous_word::model::Content::Instr(c) if c.contains("SEQ Figure")))).count();
-            d.session.insert_field("SEQ Figure \\* ARABIC", &count.to_string());
+            let pages = d.pages.clone();
+            d.session.insert_caption("Figure", "", true, &pages);
             Ok(String::new())
         },
+    },
+    Action {
+        id: "table-of-figures",
+        label: "Table of figures",
+        level: Level::References,
+        slash: false,
+        run: |d| {
+            let pages = d.pages.clone();
+            let options = unluminous_word::references::TocOptions {
+                caption: Some("Figure".into()),
+                ..Default::default()
+            };
+            d.session.insert_toc_with(&options, &pages);
+            Ok(String::new())
+        },
+    },
+    Action {
+        id: "update-table",
+        label: "Update table of contents",
+        level: Level::References,
+        slash: false,
+        run: |d| {
+            let pages = d.pages.clone();
+            let count = d.session.update_tocs(&pages);
+            Ok(format!("{count} tables updated"))
+        },
+    },
+    Action {
+        id: "remove-table-of-contents",
+        label: "Remove table of contents",
+        level: Level::References,
+        slash: false,
+        run: |d| {
+            if d.session.remove_toc() {
+                Ok("Table of contents removed".into())
+            } else {
+                Err("there is no table of contents".into())
+            }
+        },
+    },
+    Action {
+        id: "unlink-fields",
+        label: "Unlink fields",
+        level: Level::References,
+        slash: false,
+        run: |d| Ok(format!("{} fields replaced with their results", d.session.unlink_fields())),
+    },
+    Action {
+        id: "lock-fields",
+        label: "Lock fields",
+        level: Level::References,
+        slash: false,
+        run: |d| Ok(format!("{} fields locked", d.session.lock_fields(true))),
+    },
+    Action {
+        id: "unlock-fields",
+        label: "Unlock fields",
+        level: Level::References,
+        slash: false,
+        run: |d| Ok(format!("{} fields unlocked", d.session.lock_fields(false))),
+    },
+    Action {
+        id: "remove-link",
+        label: "Remove link",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.remove_hyperlink().map(|()| "Link removed".to_owned()),
     },
     // Review
     Action {

@@ -347,8 +347,11 @@ fn join_with_next(document: &mut Document, story: &StoryId, path: &[u32]) -> Opt
 pub fn delete_range(document: &mut Document, a: &Pos, b: &Pos, tracking: Option<&Tracking>) -> Pos {
     let (from, to) = if a <= b { (a.clone(), b.clone()) } else { (b.clone(), a.clone()) };
     if from.path == to.path {
-        let gone =
-            if tracking.is_none() { comments_referenced_between(document, &from, &to) } else { Vec::new() };
+        let gone = if tracking.is_none() {
+            comments_referenced_between(document, &from, &to)
+        } else {
+            Vec::new()
+        };
         remove_comments(document, &gone);
         let offset = delete_in_paragraph(
             document,
@@ -428,7 +431,8 @@ fn comments_referenced_between(document: &Document, from: &Pos, to: &Pos) -> Vec
         }
         let mut at = 0;
         for run in &paragraph.runs {
-            let inside = (path > from.path || at >= from.offset) && (path < to.path || at < to.offset);
+            let inside =
+                (path > from.path || at >= from.offset) && (path < to.path || at < to.offset);
             if let Content::Object(el) = &run.content {
                 if inside && el.name == "w:commentReference" {
                     ids.extend(el.attr("w:id").map(str::to_owned));

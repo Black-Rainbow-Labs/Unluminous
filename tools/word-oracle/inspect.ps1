@@ -163,6 +163,9 @@ function Get-RunsSafe {
 function Get-Lines {
     param($doc, $para)
     if (-not $script:AskLines) { return $null }
+    # A cell's lines take a selection move each, which on a long table runs past the inspect timeout, and
+    # the line test compares body paragraphs only.
+    if (Try-Get { [bool]$para.Range.Information(12) } $false) { return $null }
     $list = New-Object System.Collections.Generic.List[object]
     try {
         $r = $para.Range

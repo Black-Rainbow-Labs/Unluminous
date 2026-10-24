@@ -57,6 +57,113 @@ fn paragraph_path(doc: &Doc, n: usize) -> Result<Vec<u32>, String> {
         .ok_or_else(|| format!("there is no paragraph {n}: the document has {count}"))
 }
 
+/// `fields [update|unlink|lock|unlock|list]`: Update Fields, and the field commands on the selection.
+fn fields(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
+    match arguments.get(1).map_or("update", String::as_str) {
+        "update" => {
+            doc.ensure_pages();
+            let pages = doc.pages.clone();
+            let count = doc.session.update_fields(&pages);
+            Ok(Answer::said(format!("{count} fields updated")))
+        }
+        "unlink" => {
+            let count = doc.session.unlink_fields();
+            Ok(Answer::said(format!("{count} fields replaced with their results")))
+        }
+        "lock" | "unlock" => {
+            let lock = arguments[1] == "lock";
+            let count = doc.session.lock_fields(lock);
+            Ok(Answer::said(format!("{count} fields {}", if lock { "locked" } else { "unlocked" })))
+        }
+        "list" => {
+            let list = unluminous_word::references::field_list(&doc.session.document);
+            let said = list
+                .iter()
+                .map(|(n, code, result)| format!("{n}: {code} = {result}"))
+                .collect::<Vec<_>>()
+                .join(
+                    "
+",
+                );
+            Ok(Answer::said(said).with(json!(list
+                .iter()
+                .map(|(n, code, result)| json!({ "paragraph": n, "code": code, "result": result }))
+                .collect::<Vec<_>>())))
+        }
+        other => Err(format!("fields takes update, unlink, lock, unlock or list, not {other}")),
+    }
+}
+
+/// `toc insert [levels] [--figures <label>] [--no-pages] [--no-links] [--leader dot|hyphen|underscore|none]`,
+/// `toc update` and `toc remove`.
+fn toc(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
+    doc.ensure_pages();
+    let pages = doc.pages.clone();
+    match arguments.get(1).map_or("insert", String::as_str) {
+        "insert" => {
+            let value = |name: &str| {
+                arguments.iter().position(|a| a == name).and_then(|i| arguments.get(i + 1)).cloned()
+            };
+            let options = unluminous_word::references::TocOptions {
+                levels: arguments.get(2).and_then(|n| n.parse().ok()).unwrap_or(3),
+                page_numbers: !flag(arguments, "--no-pages"),
+                hyperlinks: !flag(arguments, "--no-links"),
+                leader: value("--leader").unwrap_or_else(|| "dot".into()),
+                caption: value("--figures"),
+                ..Default::default()
+            };
+            doc.session.insert_toc_with(&options, &pages);
+            Ok(Answer::said(if options.caption.is_some() {
+                "Table of figures added"
+            } else {
+                "Table of contents added"
+            }))
+        }
+        "update" => {
+            let count = doc.session.update_tocs(&pages);
+            Ok(Answer::said(format!("{count} tables updated")))
+        }
+        "remove" => {
+            if doc.session.remove_toc() {
+                Ok(Answer::said("Table of contents removed"))
+            } else {
+                Err("there is no table of contents".into())
+            }
+        }
+        other => Err(format!("toc takes insert, update or remove, not {other}")),
+    }
+}
+
+/// `link show`, `link edit <address> [text]`, `link tip <tooltip>` and `link remove`, for the
+/// hyperlink at the caret.
+fn link(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
+    let at = doc.session.selection.head.clone();
+    match arguments.get(1).map_or("show", String::as_str) {
+        "show" => {
+            let (address, tip) =
+                doc.session.hyperlink_at(&at).ok_or("the caret is not in a link")?;
+            Ok(Answer::said(address.clone()).with(json!({ "address": address, "tooltip": tip })))
+        }
+        "edit" => {
+            let address = arguments.get(2).ok_or("link edit takes an address")?;
+            let text = (arguments.len() > 3).then(|| rest(arguments, 3));
+            let tip = doc.session.hyperlink_at(&at).and_then(|(_, t)| t);
+            doc.session.edit_hyperlink(address, text.as_deref(), tip.as_deref())?;
+            Ok(Answer::said("Link changed"))
+        }
+        "tip" | "tooltip" => {
+            let (address, _) = doc.session.hyperlink_at(&at).ok_or("the caret is not in a link")?;
+            doc.session.edit_hyperlink(&address, None, Some(&rest(arguments, 2)))?;
+            Ok(Answer::said("Link tip changed"))
+        }
+        "remove" => {
+            doc.session.remove_hyperlink()?;
+            Ok(Answer::said("Link removed"))
+        }
+        other => Err(format!("link takes show, edit, tip or remove, not {other}")),
+    }
+}
+
 /// Run one command.
 pub fn run(word: &mut Word, command: &str, arguments: &[String]) -> Result<Answer, String> {
     match command {
@@ -335,12 +442,30 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                 if session.tracking { "on" } else { "off" }
             )))
         }
-        "fields" => {
+        "fields" => fields(doc, arguments),
+        "toc" => toc(doc, arguments),
+        "caption" => {
             doc.ensure_pages();
             let pages = doc.pages.clone();
-            let count = doc.session.update_fields(&pages);
-            Ok(Answer::said(format!("{count} fields updated")))
+            let label = arguments.get(1).cloned().unwrap_or_else(|| "Figure".into());
+            let below = !flag(arguments, "--above");
+            let text = words(arguments).get(2..).map(|w| w.join(" ")).unwrap_or_default();
+            doc.session.insert_caption(&label, &text, below, &pages);
+            Ok(Answer::said(format!("{label} caption added")))
         }
+        "xref" | "cross-reference" => {
+            doc.ensure_pages();
+            let pages = doc.pages.clone();
+            let n: usize = arguments
+                .get(1)
+                .and_then(|n| n.parse().ok())
+                .ok_or("xref takes the number of the paragraph it refers to")?;
+            let what = arguments.get(2).map_or("text", String::as_str).to_owned();
+            let target = paragraph_path(doc, n)?;
+            doc.session.insert_cross_reference(&target, &what, &pages)?;
+            Ok(Answer::said(format!("Cross reference to paragraph {n} added")))
+        }
+        "link" => link(doc, arguments),
         "undo" => Ok(Answer::said(if session.undo() { "Undone" } else { "Nothing to undo" })),
         "redo" => Ok(Answer::said(if session.redo() { "Redone" } else { "Nothing to redo" })),
         "export" => {
@@ -517,7 +642,14 @@ fn insert(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
         "toc" | "table-of-contents" => {
             doc.ensure_pages();
             let pages = doc.pages.clone();
-            doc.session.insert_toc(3, &pages);
+            let levels = arguments.get(1).and_then(|n| n.parse().ok()).unwrap_or(3);
+            doc.session.insert_toc(levels, &pages);
+        }
+        "caption" => {
+            doc.ensure_pages();
+            let pages = doc.pages.clone();
+            let label = arguments.get(1).cloned().unwrap_or_else(|| "Figure".into());
+            doc.session.insert_caption(&label, &rest(arguments, 2), true, &pages);
         }
         "field" => {
             let code = rest(arguments, 1);
@@ -1084,5 +1216,6 @@ fn story_name(story: &StoryId) -> String {
         StoryId::Footnote(n) => format!("footnote:{n}"),
         StoryId::Endnote(n) => format!("endnote:{n}"),
         StoryId::Comment(n) => format!("comment:{n}"),
+        StoryId::TextBox(n) => format!("textbox:{n}"),
     }
 }
