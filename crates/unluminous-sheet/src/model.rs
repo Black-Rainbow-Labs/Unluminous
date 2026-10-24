@@ -478,6 +478,8 @@ pub struct Sheet {
     pub raw: SheetRaw,
     /// The legacy array formulas: a range sharing one formula entered with Ctrl+Shift+Enter.
     pub array_formulas: Vec<Range>,
+    /// What If data tables (`TABLE()`): the results range and its input cells.
+    pub data_tables: Vec<DataTable>,
     /// A chart sheet, a dialog sheet or a macro sheet, kept as its part and shown as a tab with no grid.
     pub kept_part: Option<KeptSheet>,
 }
@@ -578,6 +580,22 @@ pub struct Selection {
     pub pane: Option<String>,
     pub active: CellRef,
     pub ranges: Vec<Range>,
+}
+
+/// A What If data table: Excel fills `range` by putting each row and column header value into the input
+/// cells and recomputing the formulas along the top row or left column.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DataTable {
+    /// The cells that hold the results, written as one `dataTable` formula on the first of them.
+    pub range: Range,
+    /// Two input cells, one taking the values down the left and one along the top.
+    pub two_d: bool,
+    /// With one input cell: the values run along a row rather than down a column.
+    pub row_input: bool,
+    pub r1: Option<CellRef>,
+    pub r2: Option<CellRef>,
+    /// Other attributes (`del1`, `del2`, `aca`), kept.
+    pub attrs: Vec<(String, String)>,
 }
 
 /// A sheet that is not a worksheet: its part, its relationship type and its content type.

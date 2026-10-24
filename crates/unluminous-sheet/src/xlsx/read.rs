@@ -910,8 +910,18 @@ fn read_sheet(
                                     formula = Some(made);
                                 }
                                 Some("dataTable") => {
-                                    // A What If data table: kept as its values.
-                                    let _ = f_text;
+                                    let cell = |name: &str| f.attribute(name).and_then(CellRef::parse);
+                                    sheet.data_tables.push(DataTable {
+                                        range: f
+                                            .attribute("ref")
+                                            .and_then(Range::parse)
+                                            .unwrap_or(Range::cell(at)),
+                                        two_d: bool_attr(f, "dt2D"),
+                                        row_input: bool_attr(f, "dtr"),
+                                        r1: cell("r1"),
+                                        r2: cell("r2"),
+                                        attrs: attrs_of(f, &["t", "ref", "dt2D", "dtr", "r1", "r2"]),
+                                    });
                                 }
                                 _ => {
                                     if !f_text.is_empty() {

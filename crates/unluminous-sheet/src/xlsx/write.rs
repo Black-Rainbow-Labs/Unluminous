@@ -905,11 +905,34 @@ impl<'a> Writer<'a> {
                 out.push_str(&format!("<f{kept}>{}</f>", escape(&text)));
             }
         }
+        if cell.formula.is_none() {
+            if let Some(t) = sheet.data_tables.iter().find(|t| t.range.first == at) {
+                out.push_str(&data_table_xml(t));
+            }
+        }
         if let Some(v) = value_text {
             out.push_str(&format!("<v>{v}</v>"));
         }
         out.push_str("</c>");
     }
+}
+
+/// The `f` element of a What If data table, written on its first results cell.
+fn data_table_xml(t: &DataTable) -> String {
+    let mut a = vec![("t".to_owned(), "dataTable".to_owned()), ("ref".to_owned(), t.range.a1())];
+    if t.two_d {
+        a.push(("dt2D".to_owned(), "1".to_owned()));
+    }
+    if t.row_input {
+        a.push(("dtr".to_owned(), "1".to_owned()));
+    }
+    for (k, c) in [("r1", t.r1), ("r2", t.r2)] {
+        if let Some(c) = c {
+            a.push((k.to_owned(), c.a1()));
+        }
+    }
+    a.extend(t.attrs.iter().cloned());
+    format!("<f{}/>", attrs_text(&a))
 }
 
 /// Whether a dynamic formula is written as a dynamic array: when it spilled or could return an array.
