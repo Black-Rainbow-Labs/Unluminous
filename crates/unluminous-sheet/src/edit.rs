@@ -17,6 +17,9 @@ use crate::model::*;
 use crate::styles::{StyleChange, Styles};
 use crate::value::Value;
 
+pub mod clipboard;
+pub use clipboard::{ClipExtras, PasteKind, PasteOperation, PasteSpecial};
+
 /// What a change put back when undone.
 #[derive(Debug, Clone)]
 enum Before {
@@ -49,17 +52,20 @@ pub struct Clip {
     pub cells: Vec<(u32, u32, Cell)>,
     /// A cut: pasting moves the cells and the references to them.
     pub cut: bool,
+    /// Notes, validation, conditional formats, merges, links, widths and cell formats that came with them.
+    pub extras: ClipExtras,
 }
 
 impl Clip {
     /// The cells as tab separated text, which is what Excel puts on the clipboard and reads from it.
     pub fn to_text(&self, book: &Workbook) -> String {
         let mut out = String::new();
-        for r in 0..self.range.rows() {
+        let (rows, cols) = self.block_size();
+        for r in 0..rows {
             if r > 0 {
                 out.push_str("\r\n");
             }
-            for c in 0..self.range.cols() {
+            for c in 0..cols {
                 if c > 0 {
                     out.push('\t');
                 }
@@ -1265,28 +1271,11 @@ impl Session {
     // Copy, paste, fill, sort.
 
     pub fn copy(&self, sheet: usize, range: Range, cut: bool) -> Clip {
-        let s = &self.book.sheets[sheet];
-        let mut cells = Vec::new();
-        for r in range.first.row..=range.last.row.min(last_row(s).max(range.first.row)) {
-            for c in range.first.col..=range.last.col.min(last_col(s).max(range.first.col)) {
-                let at = CellRef::new(r, c);
-                let cell = match s.cells.get(&(r, c)) {
-                    Some(cell) => cell.clone(),
-                    None => match s.spills.values.get(&(r, c)) {
-                        // A value a spill put there copies as a value.
-                        Some(v) => Cell::value(v.clone()),
-                        None => continue,
-                    },
-                };
-                let _ = at;
-                cells.push((r - range.first.row, c - range.first.col, cell));
-            }
-        }
-        Clip { sheet, range, cells, cut }
+        self.build_clip(sheet, range, cut)
     }
 
     /// Paste copied cells with their top left at `to`. A paste into a selection that is a whole multiple of
-    /// the copied block repeats it, as Excel does.
+    /// the copied block repeats it, as Excel does. [`Session::paste_special`] has every other choice.
     pub fn paste(
         &mut self,
         clip: &Clip,
@@ -1294,105 +1283,7 @@ impl Session {
         to: Range,
         mode: PasteMode,
     ) -> Result<Range, String> {
-        self.check_sheet(sheet)?;
-        let (rows, cols) = if mode == PasteMode::Transpose {
-            (clip.range.cols(), clip.range.rows())
-        } else {
-            (clip.range.rows(), clip.range.cols())
-        };
-        let repeat_r = if to.rows() > rows && to.rows() % rows == 0 { to.rows() / rows } else { 1 };
-        let repeat_c = if to.cols() > cols && to.cols() % cols == 0 { to.cols() / cols } else { 1 };
-        let target = Range::new(
-            to.first,
-            CellRef::new(
-                (to.first.row + rows * repeat_r - 1).min(MAX_ROWS - 1),
-                (to.first.col + cols * repeat_c - 1).min(MAX_COLS - 1),
-            ),
-        );
-        self.refuse_array_member(sheet, target)?;
-        if clip.cut {
-            self.remember_whole("Move cells");
-            self.move_cells(clip, sheet, target.first);
-            return Ok(target);
-        }
-        self.remember_cells("Paste", sheet, &[target], true);
-        for rr in 0..repeat_r {
-            for rc in 0..repeat_c {
-                // Clear the block first, so empty source cells paste as empty.
-                if mode == PasteMode::All || mode == PasteMode::Transpose {
-                    for r in 0..rows {
-                        for c in 0..cols {
-                            let key = (to.first.row + rr * rows + r, to.first.col + rc * cols + c);
-                            self.book.sheets[sheet].cells.remove(&key);
-                            self.engine.changed(&self.book, sheet, CellRef::new(key.0, key.1));
-                        }
-                    }
-                }
-                for (r, c, cell) in &clip.cells {
-                    let (r, c) = if mode == PasteMode::Transpose { (*c, *r) } else { (*r, *c) };
-                    let at =
-                        CellRef::new(to.first.row + rr * rows + r, to.first.col + rc * cols + c);
-                    if at.row >= MAX_ROWS || at.col >= MAX_COLS {
-                        continue;
-                    }
-                    let source = CellRef::new(
-                        clip.range.first.row + if mode == PasteMode::Transpose { c } else { r },
-                        clip.range.first.col + if mode == PasteMode::Transpose { r } else { c },
-                    );
-                    let shifted = |f: &Formula| -> Formula {
-                        let expr = formula::shifted(
-                            &f.expr,
-                            at.row as i64 - source.row as i64,
-                            at.col as i64 - source.col as i64,
-                        );
-                        let mut out = Formula::from_expr(expr, f.dynamic);
-                        out.array = None;
-                        out
-                    };
-                    let existing = self.book.sheets[sheet]
-                        .cells
-                        .get(&(at.row, at.col))
-                        .cloned()
-                        .unwrap_or_default();
-                    let pasted = match mode {
-                        PasteMode::All | PasteMode::Transpose => Cell {
-                            value: cell.value.clone(),
-                            formula: cell
-                                .formula
-                                .as_ref()
-                                .filter(|f| f.array.is_none())
-                                .map(shifted),
-                            style: cell.style,
-                            rich: cell.rich.clone(),
-                            extra: None,
-                        },
-                        PasteMode::Values => Cell {
-                            value: cell.value.clone(),
-                            formula: None,
-                            style: existing.style,
-                            rich: None,
-                            extra: None,
-                        },
-                        PasteMode::Formulas => Cell {
-                            value: if cell.formula.is_some() {
-                                Value::Empty
-                            } else {
-                                cell.value.clone()
-                            },
-                            formula: cell.formula.as_ref().map(shifted),
-                            style: existing.style,
-                            rich: None,
-                            extra: None,
-                        },
-                        PasteMode::Formats => Cell { style: cell.style, ..existing },
-                    };
-                    self.book.sheets[sheet].set(at, pasted);
-                    self.engine.changed(&self.book, sheet, at);
-                }
-            }
-        }
-        self.recalculate();
-        Ok(target)
+        self.paste_special(clip, sheet, to, &mode.into())
     }
 
     /// Cut and paste: the cells move and every formula that named them follows.

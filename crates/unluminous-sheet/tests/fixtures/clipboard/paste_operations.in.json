@@ -1,0 +1,6866 @@
+[
+ {
+  "name": "op_add_all",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4104,
+    "op": 2
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_add_values",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4163,
+    "op": 2
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_add_formulas",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4123,
+    "op": 2
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_add_formats",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4122,
+    "op": 2
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_add_values_nf",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": 12,
+    "op": 2
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_add_formulas_nf",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": 11,
+    "op": 2
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_subtract_all",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4104,
+    "op": 3
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_subtract_values",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4163,
+    "op": 3
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_subtract_formulas",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4123,
+    "op": 3
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_subtract_formats",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4122,
+    "op": 3
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_subtract_values_nf",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": 12,
+    "op": 3
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_subtract_formulas_nf",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": 11,
+    "op": 3
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_multiply_all",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4104,
+    "op": 4
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_multiply_values",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4163,
+    "op": 4
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_multiply_formulas",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4123,
+    "op": 4
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_multiply_formats",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4122,
+    "op": 4
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_multiply_values_nf",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": 12,
+    "op": 4
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_multiply_formulas_nf",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": 11,
+    "op": 4
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_divide_all",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4104,
+    "op": 5
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_divide_values",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4163,
+    "op": 5
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_divide_formulas",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4123,
+    "op": 5
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_divide_formats",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4122,
+    "op": 5
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_divide_values_nf",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": 12,
+    "op": 5
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_divide_formulas_nf",
+  "cells": {
+   "A1": {
+    "v": 10,
+    "bold": true
+   },
+   "A2": {
+    "v": "txt",
+    "bold": true
+   },
+   "A4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "A5": {
+    "v": true,
+    "bold": true
+   },
+   "A6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "A7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "B1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "B2": {
+    "v": -2,
+    "bold": true
+   },
+   "B3": {
+    "v": 3,
+    "bold": true
+   },
+   "B4": {
+    "v": 4,
+    "bold": true
+   },
+   "B5": {
+    "v": 5,
+    "bold": true
+   },
+   "B6": {
+    "v": 6,
+    "bold": true
+   },
+   "B7": {
+    "v": 7,
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": 11,
+    "op": 5
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_add_all_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4104,
+    "op": 2
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_add_values_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4163,
+    "op": 2
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_add_formulas_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4123,
+    "op": 2
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_add_formats_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4122,
+    "op": 2
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_add_values_nf_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": 12,
+    "op": 2
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_add_formulas_nf_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": 11,
+    "op": 2
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_subtract_all_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4104,
+    "op": 3
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_subtract_values_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4163,
+    "op": 3
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_subtract_formulas_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4123,
+    "op": 3
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_subtract_formats_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4122,
+    "op": 3
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_subtract_values_nf_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": 12,
+    "op": 3
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_subtract_formulas_nf_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": 11,
+    "op": 3
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_multiply_all_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4104,
+    "op": 4
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_multiply_values_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4163,
+    "op": 4
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_multiply_formulas_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4123,
+    "op": 4
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_multiply_formats_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4122,
+    "op": 4
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_multiply_values_nf_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": 12,
+    "op": 4
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_multiply_formulas_nf_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": 11,
+    "op": 4
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_divide_all_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4104,
+    "op": 5
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_divide_values_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4163,
+    "op": 5
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_divide_formulas_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4123,
+    "op": 5
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_divide_formats_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4122,
+    "op": 5
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_divide_values_nf_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": 12,
+    "op": 5
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op_divide_formulas_nf_swap",
+  "cells": {
+   "B1": {
+    "v": 10,
+    "bold": true
+   },
+   "B2": {
+    "v": "txt",
+    "bold": true
+   },
+   "B4": {
+    "f": "=B1+1",
+    "nf": "0.0",
+    "bold": true
+   },
+   "B5": {
+    "v": true,
+    "bold": true
+   },
+   "B6": {
+    "f": "=NA()",
+    "bold": true
+   },
+   "B7": {
+    "v": 45000,
+    "nf": "d/m/yyyy",
+    "bold": true
+   },
+   "B8": {
+    "v": 0,
+    "bold": true
+   },
+   "A1": {
+    "v": 1.5,
+    "bold": true
+   },
+   "A2": {
+    "v": -2,
+    "bold": true
+   },
+   "A3": {
+    "v": 3,
+    "bold": true
+   },
+   "A4": {
+    "v": 4,
+    "bold": true
+   },
+   "A5": {
+    "v": 5,
+    "bold": true
+   },
+   "A6": {
+    "v": 6,
+    "bold": true
+   },
+   "A7": {
+    "v": 7,
+    "bold": true
+   },
+   "A8": {
+    "v": 0,
+    "bold": true
+   },
+   "C1": {
+    "v": 2,
+    "italic": true
+   },
+   "C2": {
+    "v": 3,
+    "italic": true
+   },
+   "C3": {
+    "v": 4,
+    "italic": true
+   },
+   "C4": {
+    "v": 5,
+    "italic": true
+   },
+   "C5": {
+    "v": 6,
+    "italic": true
+   },
+   "C6": {
+    "v": 7,
+    "italic": true
+   },
+   "C7": {
+    "v": 8,
+    "italic": true
+   },
+   "C8": {
+    "v": 9,
+    "italic": true
+   },
+   "D1": {
+    "v": 2,
+    "italic": true
+   },
+   "D2": {
+    "v": "t",
+    "italic": true
+   },
+   "D4": {
+    "f": "=A1",
+    "italic": true
+   },
+   "D5": {
+    "v": true,
+    "italic": true
+   },
+   "D6": {
+    "f": "=1/0",
+    "italic": true
+   },
+   "D7": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd",
+    "italic": true
+   },
+   "D8": {
+    "v": "x",
+    "italic": true
+   }
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": 11,
+    "op": 5
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ }
+]
