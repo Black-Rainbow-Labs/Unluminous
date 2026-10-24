@@ -6,6 +6,12 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.12.0 — 2026-10-24
+
+- A Templates manager with file name patterns and variables to insert, and New Tab on the tab menus (`task-2336`)
+- The tab menu picture with New Tab, and the block diagram picture with the CRLF line ending every checkout has (`task-2336`)
+- The thirteen diagram pictures task-2339 added, with the CRLF line ending every checkout has (`task-2336`)
+
 ## 1.11.0 — 2026-10-23
 
 - Draw every diagram type Mermaid documents, C4 included, and fix what photographing Mermaid's own examples found (`task-2339`)
