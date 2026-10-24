@@ -6,6 +6,10 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.14.2 — 2026-10-24
+
+- Synthetic bold and italic for a face without its own, a suggestion keeps the replaced word's formatting, and the spelling card fits its text (`task-2341`)
+
 ## 1.14.1 — 2026-10-24
 
 - The Windows installer packages the build from CARGO_TARGET_DIR, and refuses an executable of another version (`task-2341`)
