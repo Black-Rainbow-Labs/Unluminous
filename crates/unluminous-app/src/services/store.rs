@@ -1154,6 +1154,10 @@ theme.comment = #6272A4
                 "a scripted agent and an older conversation file, written into a temporary folder",
             ),
             (
+                "services/spreadsheet/tests.rs",
+                "a CSV fixture the provider tests write into a temporary folder",
+            ),
+            (
                 "services/agent_tasks/tests_task_2285.rs",
                 "fixtures the ticket resume test writes into a temporary folder",
             ),

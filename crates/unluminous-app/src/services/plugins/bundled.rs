@@ -69,6 +69,13 @@ pub const ALL: &[(&str, &str, Option<&[u8]>)] = &[
         include_str!("../../../plugins/word/plugin.conf"),
         Some(include_bytes!("../../../plugins/word/icon.png")),
     ),
+    // The Spreadsheet plugin, `task-2338`. A `ui` plugin that opens `.xlsx`, `.xlsm`, `.csv` and `.tsv` files in a tab
+    // of their own, drawn by `services::spreadsheet` from the workbook `unluminous-sheet` reads and writes.
+    (
+        "spreadsheet",
+        include_str!("../../../plugins/spreadsheet/plugin.conf"),
+        Some(include_bytes!("../../../plugins/spreadsheet/icon.png")),
+    ),
     // The Realm, `task-2202`. A `ui` plugin whose provider is the window itself: it claims `.realm`, gives
     // those files this icon, shows `.realm-files/` in the explorer, and is the switch for the Realm panel.
     (

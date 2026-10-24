@@ -6,7 +6,21 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
-## 1.12.1 — 2026-10-24
+## 1.13.0 — 2026-10-24
+
+- Spreadsheet engine: model, formulas, evaluator, function library, number formats, Excel oracle (`task-2338`)
+- Recalculation engine and the xlsx reader and writer (`task-2338`)
+- Editing operations with undo, CSV, and file tests checked by Excel (`task-2338`)
+- The Spreadsheet plugin: workbook tabs, the grid, the bar, the Format panel, menus, charts and the agent's verbs (`task-2338`)
+- Format, and the Spreadsheet plugin's section in CLAUDE.md (`task-2338`)
+- Charts Excel opens with no repair, pictures over the grid, cell styles, the panel's search and details, and clippy (`task-2338`)
+- Put back the number format arms the automatic lint fix changed (`task-2338`)
+- The Plugins menu and the Settings rail pictures with the Spreadsheet plugin in them (`task-2338`)
+- The lock file with the workspace version main moved to (`task-2338`)
+- The lock file at the workspace version 1.12.1 (`task-2338`)
+- The Agent-Tasks settings picture with the Spreadsheet page in the rail (`task-2338`)
+
+## 1.12.1 — 2026-10-23
 
 - Chat model follows a new conversation, notices above the status bar, Model Integrations, latest nightly answer, rail drag to arrange (`task-2340`)
 - Rail.order's help in the settings list test (`task-2340`)

@@ -368,6 +368,16 @@ const CHECKS = {
     if (!used(ctx, /unluminous_voice/, /transcribe/)) return no('did not use voice transcribe');
     return /time/i.test(ctx.text) && /listen.*(on|true)|"listening":\s*true/i.test(JSON.stringify(v ?? {})) ? ok('transcribed and listening') : no('not transcribed or not listening');
   },
+  's37-spreadsheet': async ctx => {
+    // The plugin's own tool (`unluminous_spreadsheet`) or `plugins run spreadsheet`. `task-2338`.
+    if (!used(ctx, /unluminous_spreadsheet/) && !used(ctx, /unluminous_plugins/, /run/)) return no('did not use the spreadsheet plugin');
+    if (ownWrites(ctx, 'sales.csv').length) return no('sales.csv written with the agent\'s own tools');
+    const text = (ctx.file('data/sales.csv') ?? '').replace(/\r/g, '');
+    const lines = text.trim().split('\n');
+    if (!/^Item,Price,Count,Total/.test(lines[0] ?? '')) return no(`no Total column saved: ${lines[0]}`);
+    if (!/^Tea,3\.5,4,14$/.test(lines[1] ?? '')) return no(`Tea's total is not 14: ${lines[1]}`);
+    return /35\.5/.test(ctx.text) ? ok('column added, saved, total reported') : no('did not report the grand total, 35.5');
+  },
   'n01-goto-line': async ctx => {
     const e = await ctx.cli('editor', 'status');
     return String(e?.path ?? '').replace(/\\/g, '/').endsWith('src/main.rs') && Number(e?.caret?.line) === 30 ? ok('caret on main.rs:30') : no(`caret at ${e?.name}:${e?.caret?.line}`);

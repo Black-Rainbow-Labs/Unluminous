@@ -74,6 +74,7 @@ pub mod scheduling;
 pub mod shell_integration;
 #[cfg(feature = "diagnostic-spans")]
 pub mod span_trace;
+pub mod spreadsheet;
 pub mod stats;
 pub mod store;
 pub mod system_files;

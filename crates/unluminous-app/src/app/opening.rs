@@ -241,10 +241,12 @@ impl UnluminousApp {
             let relative = crate::services::project_state::relative(self.tree.root(), path);
             return self.open_a_realm_in_a_tab(&relative);
         }
-        // **A Word document opens as pages, in a tab of the Word plugin** (`task-2341`), and as a file that
-        // cannot be shown when the plugin is switched off.
-        if self.plugins.opens_elsewhere(path) == Some("word") {
-            return self.open_a_word_document(path);
+        // A file a plugin draws in a tab of its own, such as a workbook (`task-2338`) or a Word document
+        // (`task-2341`).
+        if !as_text {
+            if let Some((plugin, provider)) = self.plugin_that_draws(path) {
+                return self.open_a_file_in_a_plugin_tab(&plugin, &provider, path);
+            }
         }
         // **A file that exists and cannot be shown opens a tab that says so** (`task-2270`), rather than being
         // refused with a line in the status bar. One already open is shown again.
@@ -253,6 +255,10 @@ impl UnluminousApp {
                 let reason = format!("{}: {}", path.display(), refusal.reason());
                 self.message = Some(reason.clone());
                 return Err(reason);
+            }
+            // A file type a plugin that is switched off would open says so, and which plugin. `task-2338`.
+            if let Some(off) = self.plugin_that_would_draw(path) {
+                return self.open_an_unrenderable_file(path, &off, permanent);
             }
             return self.open_an_unrenderable_file(path, refusal.reason(), permanent);
         }
@@ -681,22 +687,6 @@ impl UnluminousApp {
             self.browser.close_tab(id);
             self.page_stills.forget(id);
         }
-        // **A Word document is saved as it closes, like a text file** (`task-2341`). One that has never been
-        // saved asks where to go; cancelling that keeps the tab open.
-        if self.keyed_plugin_tab(index).is_some() {
-            if self.plugin_tab_is_modified(index) {
-                if let Err(problem) = self.save_a_plugin_tab(index, None) {
-                    if problem != "not saved" {
-                        self.toasts.say(problem, crate::components::toast::Kind::Problem);
-                    }
-                    return;
-                }
-            }
-            self.a_plugin_tab_closed(index);
-            self.remember_a_closed_tab(index);
-            self.files.close(index);
-            return;
-        }
         // **A tab with no file and changes in it asks where to save them** (`task-2336`): *"If I close the tab
         // before saving where to save it, it should prompt me with the pop up."* It used to close and say the
         // text was not saved. The dialog's `Don't Save` closes it, through `close_tab_without_saving`.
@@ -731,6 +721,9 @@ impl UnluminousApp {
             self.toasts.say(problem, crate::components::toast::Kind::Problem);
             return;
         }
+        if let Some(tab) = self.files.get(index).and_then(|file| file.plugin.clone()) {
+            self.a_plugin_tab_closed(&tab);
+        }
         self.files.close(index);
         // **The tab shown next keeps what was laid out for it and where it was scrolled** (`task-2269`: *"When I
         // have a .md file open, then click a link on it, it opens a browser tab. if i close that browser tab and end
@@ -752,15 +745,6 @@ impl UnluminousApp {
     pub fn save_every_modified_tab(&mut self) -> Vec<String> {
         let mut refused = Vec::new();
         for index in 0..self.files.len() {
-            // A Word tab is saved by its provider (`task-2341`).
-            if self.keyed_plugin_tab(index).is_some() {
-                if self.plugin_tab_is_modified(index) {
-                    if let Err(problem) = self.save_a_plugin_tab(index, None) {
-                        refused.push(problem);
-                    }
-                }
-                continue;
-            }
             // A second view of a file holds a copy; the view it copies is the one written. `task-2320`.
             if self.files.at(index).follows.is_some() {
                 continue;
@@ -808,6 +792,22 @@ impl UnluminousApp {
         let Some(file) = self.files.get(index) else {
             return Ok(());
         };
+        // A tab that draws a file with unsaved changes is written by its plugin. `task-2338`.
+        if let Some(tab) = file.plugin.clone() {
+            if !self.plugin_tab_is_modified(&tab) {
+                return Ok(());
+            }
+            return match self.save_a_plugin_tab(&tab) {
+                Ok(said) => {
+                    self.message = Some(said);
+                    Ok(())
+                }
+                Err(problem) => {
+                    self.message = Some(problem.clone());
+                    Err(problem)
+                }
+            };
+        }
         if file.is_picture() || file.is_browser() || !file.document.is_modified() {
             return Ok(());
         }
@@ -848,8 +848,10 @@ impl UnluminousApp {
         // A tab closed with `--discard` is still a tab somebody may want back, and what reopening it
         // means is reading the file again — which is what it would have meant either way.
         self.remember_a_closed_tab(index);
-        self.a_plugin_tab_closed(index);
         self.hand_over_before_closing(index);
+        if let Some(tab) = self.files.get(index).and_then(|file| file.plugin.clone()) {
+            self.a_plugin_tab_closed(&tab);
+        }
         self.files.close(index);
         // **The tab shown next keeps what was laid out for it and where it was scrolled** (`task-2269`: *"When I
         // have a .md file open, then click a link on it, it opens a browser tab. if i close that browser tab and end
@@ -890,6 +892,17 @@ impl UnluminousApp {
         // `untitled.md` into the project. There is nothing in it to save: what a plugin holds, the plugin
         // keeps — the board is a database file of its own.
         if let Some(plugin) = self.files.active().plugin.clone() {
+            // A tab that draws a file is saved by the plugin that draws it. `task-2338`.
+            if self.plugin_tab_is_modified(&plugin) || self.a_file_tab_is_still_drawn(&plugin) {
+                match self.save_a_plugin_tab(&plugin) {
+                    Ok(said) => self.message = Some(said),
+                    Err(problem) => {
+                        self.toasts.say(problem, crate::components::toast::Kind::Problem)
+                    }
+                }
+                self.the_project_changed_on_disk();
+                return;
+            }
             self.message = Some(format!(
                 "{} is not a file, so there is nothing to save. It keeps what it holds itself.",
                 plugin.label

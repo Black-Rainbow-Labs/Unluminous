@@ -660,40 +660,47 @@ pub trait UiProvider: std::fmt::Debug {
         self.pane(ui, look)
     }
 
-    /// Draw the tab whose key is `key`, for a provider that draws one tab for each file it opens.
+    /// Draw one of this plugin's tabs, by the key the tab was opened with (`task-2338`).
     ///
-    /// The default is [`Self::tab`], which is right for a provider with one tab. The Word plugin opens a tab
-    /// for each document, keyed `word:<path>`, and has to know which one it is drawing (`task-2341`;
-    /// `task-2338` adds the same for workbooks).
+    /// **A provider that draws a tab for each file has to know which file the tab is.** The Spreadsheet
+    /// plugin opens one tab a workbook, each keyed `spreadsheet:<path>`, and the Word plugin one a document,
+    /// keyed `word:<path>` (`task-2341`); the default draws [`Self::tab`],
+    /// which is every provider whose tab is one surface.
     fn tab_keyed(&mut self, key: &str, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request> {
         let _ = key;
         self.tab(ui, look)
     }
 
-    /// Whether the tab keyed `key` has changes that are not saved, which draws the tab's unsaved dot and
-    /// makes closing it save first. False by default.
+    /// Whether the tab with this key has changes that are not saved, so the tab strip draws its dot and
+    /// closing it writes it first. The default holds nothing of a file's and says no.
     fn modified(&self, key: &str) -> bool {
         let _ = key;
         false
     }
 
-    /// Save the tab keyed `key` to its file, or to `to` when one is given, which is Save As. The default
-    /// refuses, because a provider with nothing to save has nowhere to save it.
-    fn save(&mut self, key: &str, to: Option<&std::path::Path>) -> Result<(), String> {
-        let _ = (key, to);
-        Err(format!("{} has nothing to save", self.id()))
+    /// Save the tab with this key, which is what `Ctrl+S` and `File -> Save` do while it is showing.
+    /// Answers the line for the status bar. The default has nothing to save and says so.
+    fn save(&mut self, key: &str) -> Result<String, String> {
+        let _ = key;
+        Err("there is nothing in this tab to save".to_owned())
     }
 
-    /// The tab keyed `key` was closed, so whatever the provider held for it can go.
-    fn tab_closed(&mut self, key: &str) {
+    /// Save the tab with this key to another file, which is `File -> Save As` (`task-2341`). Answers the
+    /// line for the status bar. The default cannot, and says so.
+    fn save_as(&mut self, key: &str, to: &std::path::Path) -> Result<String, String> {
+        let _ = (key, to);
+        Err("this tab cannot be saved to another file".to_owned())
+    }
+
+    /// The tab with this key was closed, so whatever it held can be let go of.
+    fn closed(&mut self, key: &str) {
         let _ = key;
     }
 
-    /// Whether this provider takes a key chord itself while its tab holds the keyboard, rather than the
-    /// window's menus taking it first. The Word plugin takes `Ctrl+B` and `Ctrl+Z` and the rest of Word's
-    /// own chords, so they format the document rather than doing what the menus give them to. False by
-    /// default.
-    fn claims_key(&self, key: egui::Key, modifiers: &egui::Modifiers) -> bool {
+    /// Whether this provider takes a key press itself while one of its tabs has the keyboard, before the
+    /// menus are asked about it (`task-2338`). The spreadsheet's `Ctrl+D` is Fill Down where the menus'
+    /// is Git's Show Diff, and its `Ctrl+Z` undoes a change to a cell, not to the document behind the tab.
+    fn claims_key(&self, key: egui::Key, modifiers: egui::Modifiers) -> bool {
         let _ = (key, modifiers);
         false
     }
@@ -968,6 +975,7 @@ pub fn provider(name: &str) -> Option<Box<dyn UiProvider>> {
         "database" => Some(Box::new(crate::services::database::DatabaseExplorer::new())),
         "designer" => Some(Box::new(crate::services::designer::Designer::new())),
         "word" => Some(Box::new(crate::services::word::Word::new())),
+        "spreadsheet" => Some(Box::new(crate::services::spreadsheet::Spreadsheet::new())),
         // Drawn by the window itself — see `plugins::CORE_PROVIDERS`.
         "realm" => None,
         _ => None,

@@ -765,24 +765,28 @@ impl UnluminousApp {
             // and the menu's use of the pair for going back and forward (`task-2063`) must not take
             // either away from a program.
             let in_a_terminal = self.a_terminal_has_the_keyboard();
-            // **A plugin tab holding the keyboard keeps the chords it claims** (`task-2341`): in a Word tab
-            // `Ctrl+B` is bold and `Ctrl+Z` undoes in the document, whatever the menus give them to.
-            let claimed: Vec<(egui::Key, egui::Modifiers)> = ui
-                .input(|input| {
-                    input
-                        .events
-                        .iter()
-                        .filter_map(|event| match event {
-                            egui::Event::Key { key, pressed: true, modifiers, .. } => {
-                                Some((*key, *modifiers))
-                            }
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .into_iter()
-                .filter(|(key, modifiers)| self.a_plugin_tab_claims(*key, modifiers))
-                .collect();
+            // **A plugin tab that reads its own chords takes them before the menus** (`task-2338`, `task-2341`): `Ctrl+D` is
+            // Fill Down in a workbook and Git's Show Diff on the menu, and `Ctrl+Z` undoes a change to a cell
+            // rather than to the empty document behind the tab. In a Word tab `Ctrl+B` is bold.
+            let claimer = self.the_plugin_tab_with_the_keyboard();
+            let claims: Vec<(egui::Key, egui::Modifiers)> =
+                match claimer.and_then(|p| self.plugin_ui.provider(&p)) {
+                    Some(provider) => ui.ctx().input(|input| {
+                        input
+                            .events
+                            .iter()
+                            .filter_map(|event| match event {
+                                egui::Event::Key { key, pressed: true, modifiers, .. }
+                                    if provider.claims_key(*key, *modifiers) =>
+                                {
+                                    Some((*key, *modifiers))
+                                }
+                                _ => None,
+                            })
+                            .collect()
+                    }),
+                    None => Vec::new(),
+                };
             // **The press an entry acted on is taken out of the frame** (`task-2286`), except while a terminal
             // has the keyboard, where a program has always been sent the chord as well. Left in, a chord
             // the keymap gives to a menu entry would also reach whatever reads that key itself: with the
@@ -797,7 +801,7 @@ impl UnluminousApp {
                     if found.is_some() {
                         return true;
                     }
-                    if claimed.iter().any(|(k, m)| k == key && m == modifiers) {
+                    if claims.iter().any(|(k, m)| k == key && m == modifiers) {
                         return true;
                     }
                     let Some(chosen) = actions::action_for_key(menus, *key, modifiers) else {

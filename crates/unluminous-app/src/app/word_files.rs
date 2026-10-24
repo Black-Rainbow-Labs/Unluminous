@@ -2,9 +2,10 @@
 //!
 //! **A Word tab is a plugin tab of the `word` plugin, keyed by the document's path**, so the window's own
 //! rules for a tab a plugin draws apply to it unchanged: it has no gutter and no preview, and its key
-//! names the file so it comes back when the project is opened again. What a plugin tab did not have before
-//! it is asked of the provider: whether it has unsaved changes (`UiProvider::modified`), saving it
-//! (`UiProvider::save`), and that it closed (`UiProvider::tab_closed`).
+//! names the file so it comes back when the project is opened again. Unsaved changes, saving and closing go
+//! through `plugin_files`, which the Spreadsheet plugin (`task-2338`) uses the same way; what is here is what a
+//! Word document needs beyond that: it is read with the `load` command under its own key, it can be saved to
+//! another file, and its provider can ask for a tab to be opened, renamed or closed.
 
 use std::path::Path;
 
@@ -48,37 +49,6 @@ impl UnluminousApp {
         self.plugin_with_the_keyboard = Some(WORD.to_owned());
     }
 
-    /// The key of the plugin tab at `index` when a provider draws one tab a file, as Word does.
-    pub(crate) fn keyed_plugin_tab(&self, index: usize) -> Option<(String, String)> {
-        let tab = self.files.get(index)?.plugin.as_ref()?;
-        (tab.plugin == WORD).then(|| (tab.plugin.clone(), tab.key.clone()))
-    }
-
-    /// Whether the plugin tab at `index` has changes that are not saved.
-    pub(crate) fn plugin_tab_is_modified(&mut self, index: usize) -> bool {
-        let Some((plugin, key)) = self.keyed_plugin_tab(index) else { return false };
-        self.plugin_ui.provider(&plugin).is_some_and(|provider| provider.modified(&key))
-    }
-
-    /// Save the plugin tab at `index`, to `to` when it is Save As.
-    pub(crate) fn save_a_plugin_tab(
-        &mut self,
-        index: usize,
-        to: Option<&Path>,
-    ) -> Result<(), String> {
-        let Some((plugin, key)) = self.keyed_plugin_tab(index) else { return Ok(()) };
-        let Some(provider) = self.plugin_ui.provider(&plugin) else { return Ok(()) };
-        provider.save(&key, to)
-    }
-
-    /// Tell the provider a keyed tab closed, so it can let its document go.
-    pub(crate) fn a_plugin_tab_closed(&mut self, index: usize) {
-        let Some((plugin, key)) = self.keyed_plugin_tab(index) else { return };
-        if let Some(provider) = self.plugin_ui.provider(&plugin) {
-            provider.tab_closed(&key);
-        }
-    }
-
     /// The tab a plugin asked to rename, after a Save As.
     pub(crate) fn rename_a_plugin_tab(&mut self, key: &str, label: &str) {
         if let Some(index) = self.files.index_of_plugin_tab(key) {
@@ -88,27 +58,21 @@ impl UnluminousApp {
         }
     }
 
+    /// Save the active plugin tab to another file, which is `File -> Save As` for a Word document.
+    pub(crate) fn save_a_plugin_tab_as(&mut self, to: &Path) -> Result<String, String> {
+        let Some(tab) = self.files.active().plugin.clone() else {
+            return Err("this tab has no file to save".to_owned());
+        };
+        match self.plugin_ui.provider(&tab.plugin) {
+            Some(provider) => provider.save_as(&tab.key, to),
+            None => Err(format!("{} is not open", tab.label)),
+        }
+    }
+
     /// Close the keyed plugin tab a provider asked to close.
     pub(crate) fn close_a_plugin_tab(&mut self, key: &str) {
         if let Some(index) = self.files.index_of_plugin_tab(key) {
             self.close_tab(index);
         }
-    }
-
-    /// Whether the window's menus should leave this chord for the plugin tab that holds the keyboard.
-    pub(crate) fn a_plugin_tab_claims(
-        &mut self,
-        key: egui::Key,
-        modifiers: &egui::Modifiers,
-    ) -> bool {
-        if self.focus != Focus::Plugin {
-            return false;
-        }
-        let index = self.files.active_index();
-        let Some((plugin, _)) = self.keyed_plugin_tab(index) else { return false };
-        if self.plugin_with_the_keyboard.as_deref() != Some(plugin.as_str()) {
-            return false;
-        }
-        self.plugin_ui.provider(&plugin).is_some_and(|provider| provider.claims_key(key, modifiers))
     }
 }

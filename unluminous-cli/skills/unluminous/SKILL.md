@@ -51,6 +51,7 @@ The editor and fold commands act on the file that is showing, and each takes `pa
 | the Agent-Chat pane, or an Agent Chat node (give `node`) | **agent_chat** |
 | a database: data sources, tables, SQL | **database** |
 | the Designer | **designer** |
+| an Excel or CSV workbook: cells, formulas, formats, sheets, charts | **spreadsheet**: `open`, `read`, `write`, `format`, `save` |
 
 ## When a call is refused
 

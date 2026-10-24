@@ -37,6 +37,7 @@ unluminous-lsp.workspace = true
 unluminous-jupyter.workspace = true
 # Word documents: the .docx file, its styles and lists, editing, pagination and the exports. `task-2341`.
 unluminous-word.workspace = true
+unluminous-sheet.workspace = true
 unluminous-git.workspace = true
 unluminous-terminal.workspace = true
 # The Agent-Chat plugin's half with no window in it: the endpoints, the two wire shapes, the

@@ -515,44 +515,41 @@ impl UiProvider for Word {
         self.docs.iter().any(|doc| doc.key == key && doc.modified())
     }
 
-    fn save(&mut self, key: &str, to: Option<&Path>) -> Result<(), String> {
-        let doc = self.doc(key)?;
-        // A document with no file yet, and no name given, asks the window for one.
-        if doc.path.is_none() && to.is_none() {
+    fn save(&mut self, key: &str) -> Result<String, String> {
+        // A document with no file yet asks where to go.
+        if self.doc(key)?.path.is_none() {
             let start = self.project.clone();
             let chosen = rfd::FileDialog::new()
                 .set_title("Save Word Document")
                 .add_filter("Word document", &["docx"])
                 .set_directory(start.unwrap_or_default())
                 .save_file();
-            let Some(chosen) = chosen else { return Err("not saved".to_owned()) };
+            let Some(chosen) = chosen else { return Err("Not saved".to_owned()) };
             let chosen =
                 if chosen.extension().is_none() { chosen.with_extension("docx") } else { chosen };
-            let doc = self.doc(key)?;
-            let saved = doc.save(Some(&chosen))?;
-            let label = doc.label();
-            self.outbox.push(Request::RenameTab { key: key.to_owned(), label });
-            self.outbox.push(Request::Message(format!("Saved {}", saved.display())));
-            return Ok(());
+            return self.save_as(key, &chosen);
         }
-        let saved = doc.save(to)?;
-        if to.is_some() {
-            let label = doc.label();
-            self.outbox.push(Request::RenameTab { key: key.to_owned(), label });
-        }
-        self.outbox.push(Request::Message(format!("Saved {}", saved.display())));
-        Ok(())
+        let saved = self.doc(key)?.save(None)?;
+        Ok(format!("Saved {}", saved.display()))
     }
 
-    fn tab_closed(&mut self, key: &str) {
+    fn save_as(&mut self, key: &str, to: &Path) -> Result<String, String> {
+        let doc = self.doc(key)?;
+        let saved = doc.save(Some(to))?;
+        let label = doc.label();
+        self.outbox.push(Request::RenameTab { key: key.to_owned(), label });
+        Ok(format!("Saved {}", saved.display()))
+    }
+
+    fn closed(&mut self, key: &str) {
         self.docs.retain(|doc| doc.key != key);
         if self.current.as_deref() == Some(key) {
             self.current = self.docs.last().map(|d| d.key.clone());
         }
     }
 
-    fn claims_key(&self, key: egui::Key, modifiers: &egui::Modifiers) -> bool {
-        crate::components::word::keys::claims(key, modifiers)
+    fn claims_key(&self, key: egui::Key, modifiers: egui::Modifiers) -> bool {
+        crate::components::word::keys::claims(key, &modifiers)
     }
 
     fn settings(&mut self, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request> {

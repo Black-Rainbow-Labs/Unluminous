@@ -154,6 +154,8 @@ flowchart LR
 </html>
 `,
   'docs/notes.md': `# Notes\n\nSome prose to preview.\n\n- one\n- two\n`,
+  // For `s37-spreadsheet` (`task-2338`): a table an agent opens in the Spreadsheet plugin and adds a column to.
+  'data/sales.csv': 'Item,Price,Count\nTea,3.5,4\nCake,4.25,2\nScone,2,6\n',
 };
 
 fs.mkdirSync(P, { recursive: true });
