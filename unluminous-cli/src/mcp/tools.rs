@@ -2093,6 +2093,10 @@ mod tests {
         //            cost 3,900 tokens for nothing, so it is not here. The ceiling moves to 38,000.
         //   38,142   `task-2314` merged with `task-2270`, whose `folder` and `project` verbs reach the
         //            Agent-Chat and Agent-Tasks tools as well as `plugins run`. The ceiling moves to 39,000.
+        //   40,366   `task-2338` adding the Spreadsheet plugin's tool, 61 verbs over Excel workbooks, each
+        //            summary cut to its usage line first. A workbook is a new kind of document with its own
+        //            vocabulary of cells, formats, sheets, rules and charts, and an agent that cannot see
+        //            these verbs would read a .xlsx file as bytes. The ceiling moves to 41,000.
         //
         // **The number being hard to hold is itself `task-1804` §4.2's finding**, and what
         // changed with it is that there is now an answer: `mcp serve --areas` equips an agent with
@@ -2100,7 +2104,7 @@ mod tests {
         // `editor,git` rather than 18,511 for all of it. This ceiling goes on saying when the
         // *default* has grown, which is what it is for; it is no longer the only lever there is.
         assert!(
-            grouped.len() / 4 < 39_000,
+            grouped.len() / 4 < 41_000,
             "grouped MCP schema exceeded budget: {} bytes",
             grouped.len()
         );

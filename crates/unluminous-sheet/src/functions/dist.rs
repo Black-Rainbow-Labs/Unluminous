@@ -10,31 +10,77 @@ use crate::eval::Ctx;
 use crate::value::{ErrorKind, Value};
 
 pub const FUNCTIONS: &[Function] = &[
-    s("NORM.DIST", 4, 4, "x, mean, standard_dev, cumulative", "The normal distribution.", norm_dist),
+    s(
+        "NORM.DIST",
+        4,
+        4,
+        "x, mean, standard_dev, cumulative",
+        "The normal distribution.",
+        norm_dist,
+    ),
     s("NORMDIST", 4, 4, "x, mean, standard_dev, cumulative", "The normal distribution.", norm_dist),
     s("NORM.S.DIST", 2, 2, "z, cumulative", "The standard normal distribution.", |ctx, a| {
         let z = num(ctx, &a[0])?;
         number(if opt_bool(a, 1, true)? { normal_cdf(z) } else { normal_pdf(z) })
     }),
-    s("NORMSDIST", 1, 1, "z", "The cumulative standard normal distribution.", |ctx, a| number(normal_cdf(num(ctx, &a[0])?))),
-    s("NORM.INV", 3, 3, "probability, mean, standard_dev", "The inverse of the normal distribution.", norm_inv),
-    s("NORMINV", 3, 3, "probability, mean, standard_dev", "The inverse of the normal distribution.", norm_inv),
-    s("NORM.S.INV", 1, 1, "probability", "The inverse of the standard normal distribution.", |ctx, a| {
-        let p = num(ctx, &a[0])?;
-        if p <= 0.0 || p >= 1.0 {
-            return Err(ErrorKind::Num);
-        }
-        number(normal_inverse(p))
+    s("NORMSDIST", 1, 1, "z", "The cumulative standard normal distribution.", |ctx, a| {
+        number(normal_cdf(num(ctx, &a[0])?))
     }),
-    s("NORMSINV", 1, 1, "probability", "The inverse of the standard normal distribution.", |ctx, a| {
-        let p = num(ctx, &a[0])?;
-        if p <= 0.0 || p >= 1.0 {
-            return Err(ErrorKind::Num);
-        }
-        number(normal_inverse(p))
+    s(
+        "NORM.INV",
+        3,
+        3,
+        "probability, mean, standard_dev",
+        "The inverse of the normal distribution.",
+        norm_inv,
+    ),
+    s(
+        "NORMINV",
+        3,
+        3,
+        "probability, mean, standard_dev",
+        "The inverse of the normal distribution.",
+        norm_inv,
+    ),
+    s(
+        "NORM.S.INV",
+        1,
+        1,
+        "probability",
+        "The inverse of the standard normal distribution.",
+        |ctx, a| {
+            let p = num(ctx, &a[0])?;
+            if p <= 0.0 || p >= 1.0 {
+                return Err(ErrorKind::Num);
+            }
+            number(normal_inverse(p))
+        },
+    ),
+    s(
+        "NORMSINV",
+        1,
+        1,
+        "probability",
+        "The inverse of the standard normal distribution.",
+        |ctx, a| {
+            let p = num(ctx, &a[0])?;
+            if p <= 0.0 || p >= 1.0 {
+                return Err(ErrorKind::Num);
+            }
+            number(normal_inverse(p))
+        },
+    ),
+    s("PHI", 1, 1, "x", "The standard normal density.", |ctx, a| {
+        number(normal_pdf(num(ctx, &a[0])?))
     }),
-    s("PHI", 1, 1, "x", "The standard normal density.", |ctx, a| number(normal_pdf(num(ctx, &a[0])?))),
-    s("GAUSS", 1, 1, "z", "The probability a standard normal value is between the mean and z.", |ctx, a| number(normal_cdf(num(ctx, &a[0])?) - 0.5)),
+    s(
+        "GAUSS",
+        1,
+        1,
+        "z",
+        "The probability a standard normal value is between the mean and z.",
+        |ctx, a| number(normal_cdf(num(ctx, &a[0])?) - 0.5),
+    ),
     s("ERF", 1, 2, "lower_limit, [upper_limit]", "The error function.", |ctx, a| {
         let lo = num(ctx, &a[0])?;
         match a.get(1) {
@@ -43,8 +89,12 @@ pub const FUNCTIONS: &[Function] = &[
         }
     }),
     s("ERF.PRECISE", 1, 1, "x", "The error function.", |ctx, a| number(erf(num(ctx, &a[0])?))),
-    s("ERFC", 1, 1, "x", "The complementary error function.", |ctx, a| number(erfc(num(ctx, &a[0])?))),
-    s("ERFC.PRECISE", 1, 1, "x", "The complementary error function.", |ctx, a| number(erfc(num(ctx, &a[0])?))),
+    s("ERFC", 1, 1, "x", "The complementary error function.", |ctx, a| {
+        number(erfc(num(ctx, &a[0])?))
+    }),
+    s("ERFC.PRECISE", 1, 1, "x", "The complementary error function.", |ctx, a| {
+        number(erfc(num(ctx, &a[0])?))
+    }),
     s("GAMMALN", 1, 1, "x", "The natural logarithm of the gamma function.", gammaln_fn),
     s("GAMMALN.PRECISE", 1, 1, "x", "The natural logarithm of the gamma function.", gammaln_fn),
     s("GAMMA", 1, 1, "number", "The gamma function.", |ctx, a| {
@@ -54,31 +104,73 @@ pub const FUNCTIONS: &[Function] = &[
         }
         number(gamma(x))
     }),
-    s("BINOM.DIST", 4, 4, "number_s, trials, probability_s, cumulative", "The binomial distribution.", binom_dist),
-    s("BINOMDIST", 4, 4, "number_s, trials, probability_s, cumulative", "The binomial distribution.", binom_dist),
+    s(
+        "BINOM.DIST",
+        4,
+        4,
+        "number_s, trials, probability_s, cumulative",
+        "The binomial distribution.",
+        binom_dist,
+    ),
+    s(
+        "BINOMDIST",
+        4,
+        4,
+        "number_s, trials, probability_s, cumulative",
+        "The binomial distribution.",
+        binom_dist,
+    ),
     s("POISSON.DIST", 3, 3, "x, mean, cumulative", "The Poisson distribution.", poisson),
     s("POISSON", 3, 3, "x, mean, cumulative", "The Poisson distribution.", poisson),
     s("EXPON.DIST", 3, 3, "x, lambda, cumulative", "The exponential distribution.", expon),
     s("EXPONDIST", 3, 3, "x, lambda, cumulative", "The exponential distribution.", expon),
-    s("LOGNORM.DIST", 4, 4, "x, mean, standard_dev, cumulative", "The lognormal distribution.", |ctx, a| {
-        let (x, m, sd) = (num(ctx, &a[0])?, num(ctx, &a[1])?, num(ctx, &a[2])?);
-        if x <= 0.0 || sd <= 0.0 {
-            return Err(ErrorKind::Num);
-        }
-        let z = (x.ln() - m) / sd;
-        number(if opt_bool(a, 3, true)? { normal_cdf(z) } else { normal_pdf(z) / (x * sd) })
-    }),
-    s("LOGNORM.INV", 3, 3, "probability, mean, standard_dev", "The inverse of the lognormal distribution.", |ctx, a| {
-        let (p, m, sd) = (num(ctx, &a[0])?, num(ctx, &a[1])?, num(ctx, &a[2])?);
-        if p <= 0.0 || p >= 1.0 || sd <= 0.0 {
-            return Err(ErrorKind::Num);
-        }
-        number((m + sd * normal_inverse(p)).exp())
-    }),
+    s(
+        "LOGNORM.DIST",
+        4,
+        4,
+        "x, mean, standard_dev, cumulative",
+        "The lognormal distribution.",
+        |ctx, a| {
+            let (x, m, sd) = (num(ctx, &a[0])?, num(ctx, &a[1])?, num(ctx, &a[2])?);
+            if x <= 0.0 || sd <= 0.0 {
+                return Err(ErrorKind::Num);
+            }
+            let z = (x.ln() - m) / sd;
+            number(if opt_bool(a, 3, true)? { normal_cdf(z) } else { normal_pdf(z) / (x * sd) })
+        },
+    ),
+    s(
+        "LOGNORM.INV",
+        3,
+        3,
+        "probability, mean, standard_dev",
+        "The inverse of the lognormal distribution.",
+        |ctx, a| {
+            let (p, m, sd) = (num(ctx, &a[0])?, num(ctx, &a[1])?, num(ctx, &a[2])?);
+            if p <= 0.0 || p >= 1.0 || sd <= 0.0 {
+                return Err(ErrorKind::Num);
+            }
+            number((m + sd * normal_inverse(p)).exp())
+        },
+    ),
     s("WEIBULL.DIST", 4, 4, "x, alpha, beta, cumulative", "The Weibull distribution.", weibull),
     s("WEIBULL", 4, 4, "x, alpha, beta, cumulative", "The Weibull distribution.", weibull),
-    s("CONFIDENCE.NORM", 3, 3, "alpha, standard_dev, size", "The confidence interval for a mean, normal distribution.", confidence),
-    s("CONFIDENCE", 3, 3, "alpha, standard_dev, size", "The confidence interval for a mean, normal distribution.", confidence),
+    s(
+        "CONFIDENCE.NORM",
+        3,
+        3,
+        "alpha, standard_dev, size",
+        "The confidence interval for a mean, normal distribution.",
+        confidence,
+    ),
+    s(
+        "CONFIDENCE",
+        3,
+        3,
+        "alpha, standard_dev, size",
+        "The confidence interval for a mean, normal distribution.",
+        confidence,
+    ),
     s("T.DIST", 3, 3, "x, deg_freedom, cumulative", "Student's t distribution.", |ctx, a| {
         let (x, df) = (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc());
         if df < 1.0 {
@@ -86,13 +178,20 @@ pub const FUNCTIONS: &[Function] = &[
         }
         number(if opt_bool(a, 2, true)? { t_cdf(x, df) } else { t_pdf(x, df) })
     }),
-    s("T.DIST.RT", 2, 2, "x, deg_freedom", "The right tail of Student's t distribution.", |ctx, a| {
-        let (x, df) = (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc());
-        if df < 1.0 {
-            return Err(ErrorKind::Num);
-        }
-        number(1.0 - t_cdf(x, df))
-    }),
+    s(
+        "T.DIST.RT",
+        2,
+        2,
+        "x, deg_freedom",
+        "The right tail of Student's t distribution.",
+        |ctx, a| {
+            let (x, df) = (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc());
+            if df < 1.0 {
+                return Err(ErrorKind::Num);
+            }
+            number(1.0 - t_cdf(x, df))
+        },
+    ),
     s("T.DIST.2T", 2, 2, "x, deg_freedom", "Both tails of Student's t distribution.", |ctx, a| {
         let (x, df) = (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc());
         if df < 1.0 || x < 0.0 {
@@ -100,80 +199,184 @@ pub const FUNCTIONS: &[Function] = &[
         }
         number(2.0 * (1.0 - t_cdf(x, df)))
     }),
-    s("TDIST", 3, 3, "x, deg_freedom, tails", "Student's t distribution, one or two tails.", |ctx, a| {
-        let (x, df, tails) = (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc(), num(ctx, &a[2])?.trunc());
-        if df < 1.0 || x < 0.0 || !(tails == 1.0 || tails == 2.0) {
-            return Err(ErrorKind::Num);
-        }
-        number(tails * (1.0 - t_cdf(x, df)))
-    }),
-    s("T.INV", 2, 2, "probability, deg_freedom", "The inverse of Student's t distribution.", |ctx, a| {
-        let (p, df) = (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc());
-        if p <= 0.0 || p >= 1.0 || df < 1.0 {
-            return Err(ErrorKind::Num);
-        }
-        number(t_inverse(p, df))
-    }),
-    s("T.INV.2T", 2, 2, "probability, deg_freedom", "The two tailed inverse of Student's t distribution.", t_inv_2t),
-    s("TINV", 2, 2, "probability, deg_freedom", "The two tailed inverse of Student's t distribution.", t_inv_2t),
-    s("CHISQ.DIST", 3, 3, "x, deg_freedom, cumulative", "The chi-squared distribution.", |ctx, a| {
-        let (x, df) = (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc());
-        if x < 0.0 || df < 1.0 {
-            return Err(ErrorKind::Num);
-        }
-        number(if opt_bool(a, 2, true)? {
-            gamma_p(df / 2.0, x / 2.0)
-        } else if x == 0.0 {
-            if df == 2.0 {
-                0.5
-            } else {
-                0.0
+    s(
+        "TDIST",
+        3,
+        3,
+        "x, deg_freedom, tails",
+        "Student's t distribution, one or two tails.",
+        |ctx, a| {
+            let (x, df, tails) =
+                (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc(), num(ctx, &a[2])?.trunc());
+            if df < 1.0 || x < 0.0 || !(tails == 1.0 || tails == 2.0) {
+                return Err(ErrorKind::Num);
             }
-        } else {
-            ((df / 2.0 - 1.0) * x.ln() - x / 2.0 - (df / 2.0) * 2f64.ln() - ln_gamma(df / 2.0)).exp()
-        })
-    }),
-    s("CHISQ.DIST.RT", 2, 2, "x, deg_freedom", "The right tail of the chi-squared distribution.", chisq_rt),
-    s("CHIDIST", 2, 2, "x, deg_freedom", "The right tail of the chi-squared distribution.", chisq_rt),
-    s("CHISQ.INV", 2, 2, "probability, deg_freedom", "The inverse of the chi-squared distribution.", |ctx, a| {
-        let (p, df) = (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc());
-        if !(0.0..1.0).contains(&p) || df < 1.0 {
-            return Err(ErrorKind::Num);
-        }
-        number(invert(|x| gamma_p(df / 2.0, x / 2.0), p, 0.0, df.max(1.0) * 100.0 + 100.0))
-    }),
-    s("CHISQ.INV.RT", 2, 2, "probability, deg_freedom", "The inverse of the right tail of the chi-squared distribution.", chisq_inv_rt),
-    s("CHIINV", 2, 2, "probability, deg_freedom", "The inverse of the right tail of the chi-squared distribution.", chisq_inv_rt),
+            number(tails * (1.0 - t_cdf(x, df)))
+        },
+    ),
+    s(
+        "T.INV",
+        2,
+        2,
+        "probability, deg_freedom",
+        "The inverse of Student's t distribution.",
+        |ctx, a| {
+            let (p, df) = (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc());
+            if p <= 0.0 || p >= 1.0 || df < 1.0 {
+                return Err(ErrorKind::Num);
+            }
+            number(t_inverse(p, df))
+        },
+    ),
+    s(
+        "T.INV.2T",
+        2,
+        2,
+        "probability, deg_freedom",
+        "The two tailed inverse of Student's t distribution.",
+        t_inv_2t,
+    ),
+    s(
+        "TINV",
+        2,
+        2,
+        "probability, deg_freedom",
+        "The two tailed inverse of Student's t distribution.",
+        t_inv_2t,
+    ),
+    s(
+        "CHISQ.DIST",
+        3,
+        3,
+        "x, deg_freedom, cumulative",
+        "The chi-squared distribution.",
+        |ctx, a| {
+            let (x, df) = (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc());
+            if x < 0.0 || df < 1.0 {
+                return Err(ErrorKind::Num);
+            }
+            number(if opt_bool(a, 2, true)? {
+                gamma_p(df / 2.0, x / 2.0)
+            } else if x == 0.0 {
+                if df == 2.0 {
+                    0.5
+                } else {
+                    0.0
+                }
+            } else {
+                ((df / 2.0 - 1.0) * x.ln() - x / 2.0 - (df / 2.0) * 2f64.ln() - ln_gamma(df / 2.0))
+                    .exp()
+            })
+        },
+    ),
+    s(
+        "CHISQ.DIST.RT",
+        2,
+        2,
+        "x, deg_freedom",
+        "The right tail of the chi-squared distribution.",
+        chisq_rt,
+    ),
+    s(
+        "CHIDIST",
+        2,
+        2,
+        "x, deg_freedom",
+        "The right tail of the chi-squared distribution.",
+        chisq_rt,
+    ),
+    s(
+        "CHISQ.INV",
+        2,
+        2,
+        "probability, deg_freedom",
+        "The inverse of the chi-squared distribution.",
+        |ctx, a| {
+            let (p, df) = (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc());
+            if !(0.0..1.0).contains(&p) || df < 1.0 {
+                return Err(ErrorKind::Num);
+            }
+            number(invert(|x| gamma_p(df / 2.0, x / 2.0), p, 0.0, df.max(1.0) * 100.0 + 100.0))
+        },
+    ),
+    s(
+        "CHISQ.INV.RT",
+        2,
+        2,
+        "probability, deg_freedom",
+        "The inverse of the right tail of the chi-squared distribution.",
+        chisq_inv_rt,
+    ),
+    s(
+        "CHIINV",
+        2,
+        2,
+        "probability, deg_freedom",
+        "The inverse of the right tail of the chi-squared distribution.",
+        chisq_inv_rt,
+    ),
     s("GAMMA.DIST", 4, 4, "x, alpha, beta, cumulative", "The gamma distribution.", gamma_dist),
     s("GAMMADIST", 4, 4, "x, alpha, beta, cumulative", "The gamma distribution.", gamma_dist),
-    s("BETA.DIST", 4, 6, "x, alpha, beta, cumulative, [A], [B]", "The beta distribution.", |ctx, a| {
-        let (x, alpha, beta) = (num(ctx, &a[0])?, num(ctx, &a[1])?, num(ctx, &a[2])?);
-        let cumulative = opt_bool(a, 3, true)?;
-        let lo = super::opt_num(ctx, a, 4, 0.0)?;
-        let hi = super::opt_num(ctx, a, 5, 1.0)?;
-        if alpha <= 0.0 || beta <= 0.0 || x < lo || x > hi || lo == hi {
-            return Err(ErrorKind::Num);
-        }
-        let t = (x - lo) / (hi - lo);
-        number(if cumulative {
-            beta_i(t, alpha, beta)
-        } else {
-            (((alpha - 1.0) * t.ln() + (beta - 1.0) * (1.0 - t).ln()) - ln_beta(alpha, beta)).exp() / (hi - lo)
-        })
-    }),
-    s("F.DIST", 4, 4, "x, deg_freedom1, deg_freedom2, cumulative", "The F distribution.", |ctx, a| {
-        let (x, d1, d2) = (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc(), num(ctx, &a[2])?.trunc());
-        if x < 0.0 || d1 < 1.0 || d2 < 1.0 {
-            return Err(ErrorKind::Num);
-        }
-        number(if opt_bool(a, 3, true)? {
-            beta_i(d1 * x / (d1 * x + d2), d1 / 2.0, d2 / 2.0)
-        } else {
-            ((d1 * x).powf(d1) * d2.powf(d2) / (d1 * x + d2).powf(d1 + d2)).sqrt() / (x * ln_beta(d1 / 2.0, d2 / 2.0).exp())
-        })
-    }),
-    s("F.DIST.RT", 3, 3, "x, deg_freedom1, deg_freedom2", "The right tail of the F distribution.", f_rt),
-    s("FDIST", 3, 3, "x, deg_freedom1, deg_freedom2", "The right tail of the F distribution.", f_rt),
+    s(
+        "BETA.DIST",
+        4,
+        6,
+        "x, alpha, beta, cumulative, [A], [B]",
+        "The beta distribution.",
+        |ctx, a| {
+            let (x, alpha, beta) = (num(ctx, &a[0])?, num(ctx, &a[1])?, num(ctx, &a[2])?);
+            let cumulative = opt_bool(a, 3, true)?;
+            let lo = super::opt_num(ctx, a, 4, 0.0)?;
+            let hi = super::opt_num(ctx, a, 5, 1.0)?;
+            if alpha <= 0.0 || beta <= 0.0 || x < lo || x > hi || lo == hi {
+                return Err(ErrorKind::Num);
+            }
+            let t = (x - lo) / (hi - lo);
+            number(if cumulative {
+                beta_i(t, alpha, beta)
+            } else {
+                (((alpha - 1.0) * t.ln() + (beta - 1.0) * (1.0 - t).ln()) - ln_beta(alpha, beta))
+                    .exp()
+                    / (hi - lo)
+            })
+        },
+    ),
+    s(
+        "F.DIST",
+        4,
+        4,
+        "x, deg_freedom1, deg_freedom2, cumulative",
+        "The F distribution.",
+        |ctx, a| {
+            let (x, d1, d2) =
+                (num(ctx, &a[0])?, num(ctx, &a[1])?.trunc(), num(ctx, &a[2])?.trunc());
+            if x < 0.0 || d1 < 1.0 || d2 < 1.0 {
+                return Err(ErrorKind::Num);
+            }
+            number(if opt_bool(a, 3, true)? {
+                beta_i(d1 * x / (d1 * x + d2), d1 / 2.0, d2 / 2.0)
+            } else {
+                ((d1 * x).powf(d1) * d2.powf(d2) / (d1 * x + d2).powf(d1 + d2)).sqrt()
+                    / (x * ln_beta(d1 / 2.0, d2 / 2.0).exp())
+            })
+        },
+    ),
+    s(
+        "F.DIST.RT",
+        3,
+        3,
+        "x, deg_freedom1, deg_freedom2",
+        "The right tail of the F distribution.",
+        f_rt,
+    ),
+    s(
+        "FDIST",
+        3,
+        3,
+        "x, deg_freedom1, deg_freedom2",
+        "The right tail of the F distribution.",
+        f_rt,
+    ),
 ];
 
 fn norm_dist(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
@@ -213,9 +416,16 @@ fn binom_dist(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
         if p == 1.0 {
             return if i == n { 1.0 } else { 0.0 };
         }
-        (ln_gamma(n + 1.0) - ln_gamma(i + 1.0) - ln_gamma(n - i + 1.0) + i * p.ln() + (n - i) * (1.0 - p).ln()).exp()
+        (ln_gamma(n + 1.0) - ln_gamma(i + 1.0) - ln_gamma(n - i + 1.0)
+            + i * p.ln()
+            + (n - i) * (1.0 - p).ln())
+        .exp()
     };
-    number(if opt_bool(a, 3, true)? { (0..=k as i64).map(|i| pmf(i as f64)).sum::<f64>().min(1.0) } else { pmf(k) })
+    number(if opt_bool(a, 3, true)? {
+        (0..=k as i64).map(|i| pmf(i as f64)).sum::<f64>().min(1.0)
+    } else {
+        pmf(k)
+    })
 }
 
 fn poisson(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
@@ -255,7 +465,11 @@ fn weibull(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
         return Err(ErrorKind::Num);
     }
     let t = (x / l).powf(k);
-    number(if opt_bool(a, 3, true)? { 1.0 - (-t).exp() } else { k / l * (x / l).powf(k - 1.0) * (-t).exp() })
+    number(if opt_bool(a, 3, true)? {
+        1.0 - (-t).exp()
+    } else {
+        k / l * (x / l).powf(k - 1.0) * (-t).exp()
+    })
 }
 
 fn confidence(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
@@ -287,7 +501,12 @@ fn chisq_inv_rt(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
     if p <= 0.0 || p > 1.0 || df < 1.0 {
         return Err(ErrorKind::Num);
     }
-    number(invert(|x| 1.0 - (1.0 - gamma_p(df / 2.0, x / 2.0)), 1.0 - p, 0.0, df.max(1.0) * 100.0 + 100.0))
+    number(invert(
+        |x| 1.0 - (1.0 - gamma_p(df / 2.0, x / 2.0)),
+        1.0 - p,
+        0.0,
+        df.max(1.0) * 100.0 + 100.0,
+    ))
 }
 
 fn gamma_dist(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
@@ -528,21 +747,49 @@ fn invert(f: impl Fn(f64) -> f64, target: f64, mut lo: f64, mut hi: f64) -> f64 
 /// The inverse of the standard normal distribution: Acklam's rational approximation, then one step of
 /// Halley's method against the exact distribution, which brings it to the last digit.
 pub fn normal_inverse(p: f64) -> f64 {
-    const A: [f64; 6] = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02, 1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
-    const B: [f64; 5] = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02, 6.680131188771972e+01, -1.328068155288572e+01];
-    const C: [f64; 6] = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00, -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
-    const D: [f64; 4] = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00, 3.754408661907416e+00];
+    const A: [f64; 6] = [
+        -3.969683028665376e+01,
+        2.209460984245205e+02,
+        -2.759285104469687e+02,
+        1.383577518672690e+02,
+        -3.066479806614716e+01,
+        2.506628277459239e+00,
+    ];
+    const B: [f64; 5] = [
+        -5.447609879822406e+01,
+        1.615858368580409e+02,
+        -1.556989798598866e+02,
+        6.680131188771972e+01,
+        -1.328068155288572e+01,
+    ];
+    const C: [f64; 6] = [
+        -7.784894002430293e-03,
+        -3.223964580411365e-01,
+        -2.400758277161838e+00,
+        -2.549732539343734e+00,
+        4.374664141464968e+00,
+        2.938163982698783e+00,
+    ];
+    const D: [f64; 4] = [
+        7.784695709041462e-03,
+        3.224671290700398e-01,
+        2.445134137142996e+00,
+        3.754408661907416e+00,
+    ];
     let low = 0.02425;
     let x = if p < low {
         let q = (-2.0 * p.ln()).sqrt();
-        (((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5]) / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0)
+        (((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5])
+            / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0)
     } else if p <= 1.0 - low {
         let q = p - 0.5;
         let r = q * q;
-        (((((A[0] * r + A[1]) * r + A[2]) * r + A[3]) * r + A[4]) * r + A[5]) * q / (((((B[0] * r + B[1]) * r + B[2]) * r + B[3]) * r + B[4]) * r + 1.0)
+        (((((A[0] * r + A[1]) * r + A[2]) * r + A[3]) * r + A[4]) * r + A[5]) * q
+            / (((((B[0] * r + B[1]) * r + B[2]) * r + B[3]) * r + B[4]) * r + 1.0)
     } else {
         let q = (-2.0 * (1.0 - p).ln()).sqrt();
-        -(((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5]) / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0)
+        -(((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5])
+            / ((((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0)
     };
     let e = normal_cdf(x) - p;
     let u = e * (2.0 * std::f64::consts::PI).sqrt() * (x * x / 2.0).exp();

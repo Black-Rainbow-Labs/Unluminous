@@ -227,7 +227,7 @@ in a few milliseconds.
 
 `plugins/spreadsheet/plugin.conf`: `plugin.kind = ui`, `ui.provider = spreadsheet`, `ui.extensions =
 .xlsx, .xlsm, .csv, .tsv`, a menu and a settings page, no pane. `opening.rs` sends a file the plugin
-claims to `open_a_workbook_in_a_tab`, which opens a plugin tab keyed `spreadsheet:<path relative to the
+claims to `open_a_file_in_a_plugin_tab` (`app/plugin_files.rs`), which opens a plugin tab keyed `spreadsheet:<path relative to the
 project>` and tells the provider to load it. Switched off, `opens_elsewhere` answers nothing, so `.csv`
 opens as text and `.xlsx` opens as "cannot be shown" with a line naming the plugin.
 
@@ -237,8 +237,11 @@ opens as text and `.xlsx` opens as "cannot be shown" with a line naming the plug
   file has to know which file the tab is. Realm drew its tabs in the window to get round this; a second
   provider needing it is the reason to make it part of the contract.
 - **`UiProvider::modified(key) -> bool`** and **`save(key)`**, defaulting to false and a refusal, so a
-  plugin tab can have the unsaved dot, be saved by `Ctrl+S` and `File -> Save`, and ask before it closes.
-  `close_tab` asks a modified plugin tab through the same save dialog a document uses.
+  plugin tab can have the unsaved dot and be saved by `Ctrl+S` and `File -> Save`. Closing a modified
+  workbook tab writes it, which is what closing a modified document tab already does in Unluminous, and a
+  write that fails keeps the tab open with a notice. `closed(key)` lets the provider drop the book.
+- **`UiProvider::claims_key(key, modifiers)`**, so the menu watcher in `frame.rs` leaves Excel's chords to
+  the tab: `Ctrl+D` is Fill Down there and Show Diff on the Git menu, `Ctrl+Z` undoes a cell.
 
 ### 8.3 The provider
 
@@ -246,6 +249,15 @@ opens as text and `.xlsx` opens as "cannot be shown" with a line naming the plug
 stack, and view (sheet, selection, scroll, the cell being edited, the Format panel's level). A book is
 dropped when its tab closes. `open` reads nothing; a workbook is read when its tab is first drawn or
 when `open` is asked for.
+
+### 8.3.1 One tree of commands
+
+`services::spreadsheet::catalogue` is every command a tab offers, as a tree of entries that each name the
+`plugins run spreadsheet` words they run. The workbook menu under `...` (with its search box), the Format
+panel's levels, the right click menu and a sheet tab's menu are all drawn from it, so a press on an entry
+and an agent sending the same words reach `commands::run` alike. A test walks the tree and runs every entry.
+The keyboard and the pointer on the grid make `actions::Act` values directly, and `commands::run` turns
+words into the same values, so both reach `actions::apply`.
 
 ### 8.4 Drawing
 
@@ -261,7 +273,9 @@ when `open` is asked for.
 - `panel.rs`: the Format panel, a stack of levels.
 - `sheets.rs`: the sheet tabs and the selection summary.
 - `menu.rs`: the right click menu.
-- `chart.rs`: charts from the chart parts.
+- `chart.rs`: charts. A chart read from a file is drawn from its kind, title and series formulas, and its
+  parts are written back as they were; a chart made here (`chart <kind>`) is written as new drawing and
+  chart parts in Excel's default shape (`xlsx/chart.rs`).
 - `completion.rs`: the function list and the argument hint.
 
 All of it is drawn with egui and the window's `controls`, `modal` and `rux` furniture, sized by the tab's

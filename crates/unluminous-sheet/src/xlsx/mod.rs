@@ -7,6 +7,7 @@
 
 use crate::model::Relationship;
 
+pub mod chart;
 pub mod read;
 pub mod write;
 
@@ -18,32 +19,54 @@ pub const REL_NS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/
 pub const PKG_REL_NS: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
 pub const DRAWING_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/main";
 pub const CHART_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/chart";
-pub const SPREADSHEET_DRAWING_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing";
+pub const SPREADSHEET_DRAWING_NS: &str =
+    "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing";
 
-pub const REL_OFFICE_DOCUMENT: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
-pub const REL_WORKSHEET: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet";
-pub const REL_STYLES: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles";
-pub const REL_SHARED_STRINGS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings";
-pub const REL_THEME: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme";
-pub const REL_METADATA: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/sheetMetadata";
-pub const REL_CALC_CHAIN: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/calcChain";
-pub const REL_COMMENTS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments";
-pub const REL_VML: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing";
-pub const REL_HYPERLINK: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink";
-pub const REL_TABLE: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/table";
-pub const REL_DRAWING: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing";
-pub const REL_CHART: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart";
-pub const REL_CORE: &str = "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties";
-pub const REL_APP: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties";
+pub const REL_OFFICE_DOCUMENT: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
+pub const REL_WORKSHEET: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet";
+pub const REL_STYLES: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles";
+pub const REL_SHARED_STRINGS: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings";
+pub const REL_THEME: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme";
+pub const REL_METADATA: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/sheetMetadata";
+pub const REL_CALC_CHAIN: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/calcChain";
+pub const REL_COMMENTS: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments";
+pub const REL_VML: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing";
+pub const REL_HYPERLINK: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink";
+pub const REL_TABLE: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/table";
+pub const REL_DRAWING: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing";
+pub const REL_CHART: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart";
+pub const REL_CORE: &str =
+    "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties";
+pub const REL_APP: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties";
 
-pub const CT_WORKBOOK: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml";
+pub const CT_WORKBOOK: &str =
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml";
 pub const CT_WORKBOOK_MACRO: &str = "application/vnd.ms-excel.sheet.macroEnabled.main+xml";
-pub const CT_WORKSHEET: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml";
-pub const CT_STYLES: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml";
-pub const CT_SHARED_STRINGS: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml";
+pub const CT_WORKSHEET: &str =
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml";
+pub const CT_STYLES: &str =
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml";
+pub const CT_SHARED_STRINGS: &str =
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml";
 pub const CT_THEME: &str = "application/vnd.openxmlformats-officedocument.theme+xml";
-pub const CT_METADATA: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheetMetadata+xml";
-pub const CT_COMMENTS: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml";
+pub const CT_METADATA: &str =
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheetMetadata+xml";
+pub const CT_COMMENTS: &str =
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml";
 pub const CT_VML: &str = "application/vnd.openxmlformats-officedocument.vmlDrawing";
 pub const CT_TABLE: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml";
 pub const CT_DRAWING: &str = "application/vnd.openxmlformats-officedocument.drawing+xml";
@@ -63,7 +86,9 @@ pub fn escape(text: &str) -> String {
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
             '\t' | '\n' | '\r' => out.push(c),
-            c if (c as u32) < 0x20 || c == '\u{FFFE}' || c == '\u{FFFF}' => out.push_str(&format!("_x{:04X}_", c as u32)),
+            c if (c as u32) < 0x20 || c == '\u{FFFE}' || c == '\u{FFFF}' => {
+                out.push_str(&format!("_x{:04X}_", c as u32))
+            }
             c => out.push(c),
         }
     }
@@ -170,7 +195,10 @@ pub fn write_rels(rels: &[Relationship]) -> String {
 
 /// A relationship id not in use: `rId1`, `rId2`, ...
 pub fn next_id(rels: &[Relationship]) -> String {
-    (1..).map(|n| format!("rId{n}")).find(|id| !rels.iter().any(|r| r.id == *id)).unwrap_or_default()
+    (1..)
+        .map(|n| format!("rId{n}"))
+        .find(|id| !rels.iter().any(|r| r.id == *id))
+        .unwrap_or_default()
 }
 
 /// The namespace declarations of an element, as `(prefix, uri)`, prefix empty for the default.
@@ -225,10 +253,16 @@ mod tests {
     #[test]
     fn relationship_targets_resolve_and_relativise() {
         assert_eq!(resolve("xl/workbook.xml", "worksheets/sheet1.xml"), "xl/worksheets/sheet1.xml");
-        assert_eq!(resolve("xl/worksheets/sheet1.xml", "../drawings/drawing1.xml"), "xl/drawings/drawing1.xml");
+        assert_eq!(
+            resolve("xl/worksheets/sheet1.xml", "../drawings/drawing1.xml"),
+            "xl/drawings/drawing1.xml"
+        );
         assert_eq!(resolve("xl/workbook.xml", "/xl/styles.xml"), "xl/styles.xml");
         assert_eq!(relative("xl/worksheets/sheet1.xml", "xl/comments1.xml"), "../comments1.xml");
-        assert_eq!(relative("xl/workbook.xml", "xl/worksheets/sheet2.xml"), "worksheets/sheet2.xml");
+        assert_eq!(
+            relative("xl/workbook.xml", "xl/worksheets/sheet2.xml"),
+            "worksheets/sheet2.xml"
+        );
         assert_eq!(rels_path("xl/worksheets/sheet1.xml"), "xl/worksheets/_rels/sheet1.xml.rels");
     }
 

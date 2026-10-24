@@ -57,7 +57,10 @@ impl Color {
                     3 => 2,
                     other => other,
                 };
-                let base = theme.get(swapped as usize).copied().or_else(|| DEFAULT_THEME.get(swapped as usize).copied())?;
+                let base = theme
+                    .get(swapped as usize)
+                    .copied()
+                    .or_else(|| DEFAULT_THEME.get(swapped as usize).copied())?;
                 Some(tinted(base, tint))
             }
         }
@@ -74,7 +77,11 @@ impl Color {
 
 /// Apply Excel's tint to a colour, through hue, luminance and saturation.
 fn tinted(rgb: u32, tint: f64) -> (u8, u8, u8) {
-    let (r, g, b) = (((rgb >> 16) & 0xFF) as f64 / 255.0, ((rgb >> 8) & 0xFF) as f64 / 255.0, (rgb & 0xFF) as f64 / 255.0);
+    let (r, g, b) = (
+        ((rgb >> 16) & 0xFF) as f64 / 255.0,
+        ((rgb >> 8) & 0xFF) as f64 / 255.0,
+        (rgb & 0xFF) as f64 / 255.0,
+    );
     if tint == 0.0 {
         return ((r * 255.0).round() as u8, (g * 255.0).round() as u8, (b * 255.0).round() as u8);
     }
@@ -131,20 +138,20 @@ fn hls_to_rgb(h: f64, l: f64, s: f64) -> (f64, f64, f64) {
 
 /// Office's default theme colours, in file order: dk1 lt1 dk2 lt2 accent1 to accent6 hlink folHlink.
 pub const DEFAULT_THEME: [u32; 12] = [
-    0x000000, 0xFFFFFF, 0x0E2841, 0xE8E8E8, 0x156082, 0xE97132, 0x196B24, 0x0F9ED5, 0xA02B93, 0x4EA72E, 0x467886,
-    0x96607D,
+    0x000000, 0xFFFFFF, 0x0E2841, 0xE8E8E8, 0x156082, 0xE97132, 0x196B24, 0x0F9ED5, 0xA02B93,
+    0x4EA72E, 0x467886, 0x96607D,
 ];
 
 /// The legacy indexed palette.
 pub const INDEXED: [u32; 64] = [
-    0xFF000000, 0xFFFFFFFF, 0xFFFF0000, 0xFF00FF00, 0xFF0000FF, 0xFFFFFF00, 0xFFFF00FF, 0xFF00FFFF, 0xFF000000,
-    0xFFFFFFFF, 0xFFFF0000, 0xFF00FF00, 0xFF0000FF, 0xFFFFFF00, 0xFFFF00FF, 0xFF00FFFF, 0xFF800000, 0xFF008000,
-    0xFF000080, 0xFF808000, 0xFF800080, 0xFF008080, 0xFFC0C0C0, 0xFF808080, 0xFF9999FF, 0xFF993366, 0xFFFFFFCC,
-    0xFFCCFFFF, 0xFF660066, 0xFFFF8080, 0xFF0066CC, 0xFFCCCCFF, 0xFF000080, 0xFFFF00FF, 0xFFFFFF00, 0xFF00FFFF,
-    0xFF800080, 0xFF800000, 0xFF008080, 0xFF0000FF, 0xFF00CCFF, 0xFFCCFFFF, 0xFFCCFFCC, 0xFFFFFF99, 0xFF99CCFF,
-    0xFFFF99CC, 0xFFCC99FF, 0xFFFFCC99, 0xFF3366FF, 0xFF33CCCC, 0xFF99CC00, 0xFFFFCC00, 0xFFFF9900, 0xFFFF6600,
-    0xFF666699, 0xFF969696, 0xFF003366, 0xFF339966, 0xFF003300, 0xFF333300, 0xFF993300, 0xFF993366, 0xFF333399,
-    0xFF333333,
+    0xFF000000, 0xFFFFFFFF, 0xFFFF0000, 0xFF00FF00, 0xFF0000FF, 0xFFFFFF00, 0xFFFF00FF, 0xFF00FFFF,
+    0xFF000000, 0xFFFFFFFF, 0xFFFF0000, 0xFF00FF00, 0xFF0000FF, 0xFFFFFF00, 0xFFFF00FF, 0xFF00FFFF,
+    0xFF800000, 0xFF008000, 0xFF000080, 0xFF808000, 0xFF800080, 0xFF008080, 0xFFC0C0C0, 0xFF808080,
+    0xFF9999FF, 0xFF993366, 0xFFFFFFCC, 0xFFCCFFFF, 0xFF660066, 0xFFFF8080, 0xFF0066CC, 0xFFCCCCFF,
+    0xFF000080, 0xFFFF00FF, 0xFFFFFF00, 0xFF00FFFF, 0xFF800080, 0xFF800000, 0xFF008080, 0xFF0000FF,
+    0xFF00CCFF, 0xFFCCFFFF, 0xFFCCFFCC, 0xFFFFFF99, 0xFF99CCFF, 0xFFFF99CC, 0xFFCC99FF, 0xFFFFCC99,
+    0xFF3366FF, 0xFF33CCCC, 0xFF99CC00, 0xFFFFCC00, 0xFFFF9900, 0xFFFF6600, 0xFF666699, 0xFF969696,
+    0xFF003366, 0xFF339966, 0xFF003300, 0xFF333300, 0xFF993300, 0xFF993366, 0xFF333399, 0xFF333333,
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -364,7 +371,11 @@ impl Styles {
 
     pub fn font_of(&self, xf: u32) -> Font {
         let index = self.xf(xf).font;
-        self.fonts.get(index as usize).cloned().or_else(|| self.fonts.first().cloned()).unwrap_or_default()
+        self.fonts
+            .get(index as usize)
+            .cloned()
+            .or_else(|| self.fonts.first().cloned())
+            .unwrap_or_default()
     }
 
     pub fn fill_of(&self, xf: u32) -> Fill {

@@ -10,55 +10,207 @@ use crate::formula::Expr;
 use crate::value::{Array, ErrorKind, Value};
 
 pub const FUNCTIONS: &[Function] = &[
-    r("VLOOKUP", 3, 4, "lookup_value, table_array, col_index_num, [range_lookup]", "Looks down the first column and returns a value from another column.", |ctx, a| vh_lookup(ctx, a, true)),
-    r("HLOOKUP", 3, 4, "lookup_value, table_array, row_index_num, [range_lookup]", "Looks along the first row and returns a value from another row.", |ctx, a| vh_lookup(ctx, a, false)),
-    r("LOOKUP", 2, 3, "lookup_value, lookup_vector, [result_vector]", "Looks up a value in a sorted row or column.", lookup),
-    r("XLOOKUP", 3, 6, "lookup_value, lookup_array, return_array, [if_not_found], [match_mode], [search_mode]", "Finds a value and returns what is beside it.", xlookup),
-    r("MATCH", 2, 3, "lookup_value, lookup_array, [match_type]", "The position of a value in a row or column.", match_fn),
-    r("XMATCH", 2, 4, "lookup_value, lookup_array, [match_mode], [search_mode]", "The position of a value in a row or column.", xmatch),
-    r("INDEX", 2, 4, "array, row_num, [column_num], [area_num]", "The value or reference at a row and column of a range.", index),
-    r("CHOOSE", 2, MANY, "index_num, value1, [value2], ...", "One of a list of values by number.", choose),
-    r("CHOOSECOLS", 2, MANY, "array, col_num1, [col_num2], ...", "Some columns of an array.", |ctx, a| choose_lines(ctx, a, false)),
-    r("CHOOSEROWS", 2, MANY, "array, row_num1, [row_num2], ...", "Some rows of an array.", |ctx, a| choose_lines(ctx, a, true)),
-    r("OFFSET", 3, 5, "reference, rows, cols, [height], [width]", "A reference moved and resized.", offset),
+    r(
+        "VLOOKUP",
+        3,
+        4,
+        "lookup_value, table_array, col_index_num, [range_lookup]",
+        "Looks down the first column and returns a value from another column.",
+        |ctx, a| vh_lookup(ctx, a, true),
+    ),
+    r(
+        "HLOOKUP",
+        3,
+        4,
+        "lookup_value, table_array, row_index_num, [range_lookup]",
+        "Looks along the first row and returns a value from another row.",
+        |ctx, a| vh_lookup(ctx, a, false),
+    ),
+    r(
+        "LOOKUP",
+        2,
+        3,
+        "lookup_value, lookup_vector, [result_vector]",
+        "Looks up a value in a sorted row or column.",
+        lookup,
+    ),
+    r(
+        "XLOOKUP",
+        3,
+        6,
+        "lookup_value, lookup_array, return_array, [if_not_found], [match_mode], [search_mode]",
+        "Finds a value and returns what is beside it.",
+        xlookup,
+    ),
+    r(
+        "MATCH",
+        2,
+        3,
+        "lookup_value, lookup_array, [match_type]",
+        "The position of a value in a row or column.",
+        match_fn,
+    ),
+    r(
+        "XMATCH",
+        2,
+        4,
+        "lookup_value, lookup_array, [match_mode], [search_mode]",
+        "The position of a value in a row or column.",
+        xmatch,
+    ),
+    r(
+        "INDEX",
+        2,
+        4,
+        "array, row_num, [column_num], [area_num]",
+        "The value or reference at a row and column of a range.",
+        index,
+    ),
+    r(
+        "CHOOSE",
+        2,
+        MANY,
+        "index_num, value1, [value2], ...",
+        "One of a list of values by number.",
+        choose,
+    ),
+    r(
+        "CHOOSECOLS",
+        2,
+        MANY,
+        "array, col_num1, [col_num2], ...",
+        "Some columns of an array.",
+        |ctx, a| choose_lines(ctx, a, false),
+    ),
+    r(
+        "CHOOSEROWS",
+        2,
+        MANY,
+        "array, row_num1, [row_num2], ...",
+        "Some rows of an array.",
+        |ctx, a| choose_lines(ctx, a, true),
+    ),
+    r(
+        "OFFSET",
+        3,
+        5,
+        "reference, rows, cols, [height], [width]",
+        "A reference moved and resized.",
+        offset,
+    ),
     r("INDIRECT", 1, 2, "ref_text, [a1]", "The reference written in text.", indirect),
-    r("ADDRESS", 2, 5, "row_num, column_num, [abs_num], [a1], [sheet_text]", "A cell address as text.", address),
+    r(
+        "ADDRESS",
+        2,
+        5,
+        "row_num, column_num, [abs_num], [a1], [sheet_text]",
+        "A cell address as text.",
+        address,
+    ),
     r("ROW", 0, 1, "[reference]", "The row number of a reference.", |ctx, a| row_col(ctx, a, true)),
-    r("COLUMN", 0, 1, "[reference]", "The column number of a reference.", |ctx, a| row_col(ctx, a, false)),
+    r("COLUMN", 0, 1, "[reference]", "The column number of a reference.", |ctx, a| {
+        row_col(ctx, a, false)
+    }),
     r("ROWS", 1, 1, "array", "How many rows.", |ctx, a| count_lines(ctx, a, true)),
     r("COLUMNS", 1, 1, "array", "How many columns.", |ctx, a| count_lines(ctx, a, false)),
-    r("AREAS", 1, 1, "reference", "How many areas a reference has.", |ctx, a| match ctx.eval(&a[0]) {
-        Val::Ref(_) => Val::number(1.0),
-        Val::Refs(areas) => Val::number(areas.len() as f64),
-        Val::Value(Value::Error(e)) => Val::error(e),
-        _ => Val::error(ErrorKind::Value),
+    r("AREAS", 1, 1, "reference", "How many areas a reference has.", |ctx, a| {
+        match ctx.eval(&a[0]) {
+            Val::Ref(_) => Val::number(1.0),
+            Val::Refs(areas) => Val::number(areas.len() as f64),
+            Val::Value(Value::Error(e)) => Val::error(e),
+            _ => Val::error(ErrorKind::Value),
+        }
     }),
-    r("TRANSPOSE", 1, 1, "array", "Rows turned into columns.", |ctx, a| with_array(ctx, &a[0], |a| Ok(a.transpose()))),
-    r("FILTER", 2, 3, "array, include, [if_empty]", "The rows or columns that meet a condition.", filter),
+    r("TRANSPOSE", 1, 1, "array", "Rows turned into columns.", |ctx, a| {
+        with_array(ctx, &a[0], |a| Ok(a.transpose()))
+    }),
+    r(
+        "FILTER",
+        2,
+        3,
+        "array, include, [if_empty]",
+        "The rows or columns that meet a condition.",
+        filter,
+    ),
     r("SORT", 1, 4, "array, [sort_index], [sort_order], [by_col]", "An array sorted.", sort),
-    r("SORTBY", 2, MANY, "array, by_array1, [sort_order1], ...", "An array sorted by other arrays.", sortby),
+    r(
+        "SORTBY",
+        2,
+        MANY,
+        "array, by_array1, [sort_order1], ...",
+        "An array sorted by other arrays.",
+        sortby,
+    ),
     r("UNIQUE", 1, 3, "array, [by_col], [exactly_once]", "The distinct rows or columns.", unique),
-    r("TAKE", 2, 3, "array, rows, [columns]", "Rows or columns from the start or the end.", |ctx, a| take_drop(ctx, a, true)),
-    r("DROP", 2, 3, "array, rows, [columns]", "An array without rows or columns at the start or the end.", |ctx, a| take_drop(ctx, a, false)),
-    r("VSTACK", 1, MANY, "array1, [array2], ...", "Arrays one under another.", |ctx, a| stack(ctx, a, true)),
-    r("HSTACK", 1, MANY, "array1, [array2], ...", "Arrays side by side.", |ctx, a| stack(ctx, a, false)),
-    r("TOCOL", 1, 3, "array, [ignore], [scan_by_column]", "An array as one column.", |ctx, a| to_line(ctx, a, true)),
-    r("TOROW", 1, 3, "array, [ignore], [scan_by_column]", "An array as one row.", |ctx, a| to_line(ctx, a, false)),
-    r("WRAPROWS", 2, 3, "vector, wrap_count, [pad_with]", "A row or column wrapped into rows.", |ctx, a| wrap(ctx, a, true)),
-    r("WRAPCOLS", 2, 3, "vector, wrap_count, [pad_with]", "A row or column wrapped into columns.", |ctx, a| wrap(ctx, a, false)),
-    r("EXPAND", 2, 4, "array, rows, [columns], [pad_with]", "An array grown to a size.", expand),
-    r("HYPERLINK", 1, 2, "link_location, [friendly_name]", "A link; the cell shows the friendly name.", |ctx, a| {
-        let shown = a.get(1).unwrap_or(&a[0]);
-        let v = ctx.eval(shown);
-        Val::Value(ctx.single(v))
+    r(
+        "TAKE",
+        2,
+        3,
+        "array, rows, [columns]",
+        "Rows or columns from the start or the end.",
+        |ctx, a| take_drop(ctx, a, true),
+    ),
+    r(
+        "DROP",
+        2,
+        3,
+        "array, rows, [columns]",
+        "An array without rows or columns at the start or the end.",
+        |ctx, a| take_drop(ctx, a, false),
+    ),
+    r("VSTACK", 1, MANY, "array1, [array2], ...", "Arrays one under another.", |ctx, a| {
+        stack(ctx, a, true)
     }),
-    r("FORMULATEXT", 1, 1, "reference", "A cell's formula as text.", |ctx, a| match ctx.eval(&a[0]) {
-        Val::Ref(area) => match ctx.book.sheets[area.sheet].cell(area.range.first).and_then(|c| c.formula.as_ref()) {
-            Some(f) => Val::text(f.display()),
-            None => Val::error(ErrorKind::NA),
+    r("HSTACK", 1, MANY, "array1, [array2], ...", "Arrays side by side.", |ctx, a| {
+        stack(ctx, a, false)
+    }),
+    r("TOCOL", 1, 3, "array, [ignore], [scan_by_column]", "An array as one column.", |ctx, a| {
+        to_line(ctx, a, true)
+    }),
+    r("TOROW", 1, 3, "array, [ignore], [scan_by_column]", "An array as one row.", |ctx, a| {
+        to_line(ctx, a, false)
+    }),
+    r(
+        "WRAPROWS",
+        2,
+        3,
+        "vector, wrap_count, [pad_with]",
+        "A row or column wrapped into rows.",
+        |ctx, a| wrap(ctx, a, true),
+    ),
+    r(
+        "WRAPCOLS",
+        2,
+        3,
+        "vector, wrap_count, [pad_with]",
+        "A row or column wrapped into columns.",
+        |ctx, a| wrap(ctx, a, false),
+    ),
+    r("EXPAND", 2, 4, "array, rows, [columns], [pad_with]", "An array grown to a size.", expand),
+    r(
+        "HYPERLINK",
+        1,
+        2,
+        "link_location, [friendly_name]",
+        "A link; the cell shows the friendly name.",
+        |ctx, a| {
+            let shown = a.get(1).unwrap_or(&a[0]);
+            let v = ctx.eval(shown);
+            Val::Value(ctx.single(v))
         },
-        Val::Value(Value::Error(e)) => Val::error(e),
-        _ => Val::error(ErrorKind::Value),
+    ),
+    r("FORMULATEXT", 1, 1, "reference", "A cell's formula as text.", |ctx, a| {
+        match ctx.eval(&a[0]) {
+            Val::Ref(area) => match ctx.book.sheets[area.sheet]
+                .cell(area.range.first)
+                .and_then(|c| c.formula.as_ref())
+            {
+                Some(f) => Val::text(f.display()),
+                None => Val::error(ErrorKind::NA),
+            },
+            Val::Value(Value::Error(e)) => Val::error(e),
+            _ => Val::error(ErrorKind::Value),
+        }
     }),
 ];
 
@@ -95,7 +247,9 @@ fn with_array(ctx: &mut Ctx, e: &Expr, f: impl FnOnce(Array) -> Result<Array, Er
 /// Exact equality for lookups: text without regard to case, with wildcards when asked.
 fn matches_exactly(target: &Value, candidate: &Value, wildcards: bool) -> bool {
     match (target, candidate) {
-        (Value::Text(t), Value::Text(c)) if wildcards && t.contains(['*', '?', '~']) => wildcard_match(t, c),
+        (Value::Text(t), Value::Text(c)) if wildcards && t.contains(['*', '?', '~']) => {
+            wildcard_match(t, c)
+        }
         (Value::Number(_), Value::Text(_)) | (Value::Text(_), Value::Number(_)) => false,
         (Value::Empty, _) | (_, Value::Empty) => false,
         _ => equal(target, candidate),
@@ -126,7 +280,8 @@ fn approximate(values: &[Value], target: &Value, descending: bool) -> Option<usi
             continue;
         }
         let order = compare(&values[probe as usize], target);
-        let not_past = if descending { order != Ordering::Less } else { order != Ordering::Greater };
+        let not_past =
+            if descending { order != Ordering::Less } else { order != Ordering::Greater };
         if not_past {
             found = Some(probe as usize);
             lo = mid + 1;
@@ -165,13 +320,25 @@ fn vh_lookup(ctx: &mut Ctx, args: &[Expr], vertical: bool) -> Val {
     if index < 1 {
         return Val::error(ErrorKind::Value);
     }
-    let keys: Vec<Value> = if vertical { (0..table.rows).map(|r| table.get(r, 0).clone()).collect() } else { (0..table.cols).map(|c| table.get(0, c).clone()).collect() };
-    let hit = if approx { approximate(&keys, &target, false) } else { keys.iter().position(|k| matches_exactly(&target, k, true)) };
+    let keys: Vec<Value> = if vertical {
+        (0..table.rows).map(|r| table.get(r, 0).clone()).collect()
+    } else {
+        (0..table.cols).map(|c| table.get(0, c).clone()).collect()
+    };
+    let hit = if approx {
+        approximate(&keys, &target, false)
+    } else {
+        keys.iter().position(|k| matches_exactly(&target, k, true))
+    };
     match hit {
         // Measured: a value that is not found is #N/A even when the index is past the table.
         Some(_) if index as usize > lines => Val::error(ErrorKind::Ref),
         Some(i) => {
-            let v = if vertical { table.get(i, index as usize - 1) } else { table.get(index as usize - 1, i) };
+            let v = if vertical {
+                table.get(i, index as usize - 1)
+            } else {
+                table.get(index as usize - 1, i)
+            };
             Val::Value(v.clone())
         }
         None => Val::error(ErrorKind::NA),
@@ -195,9 +362,15 @@ fn lookup(ctx: &mut Ctx, args: &[Expr]) -> Val {
         }
         None => {
             if vector.cols > vector.rows {
-                ((0..vector.cols).map(|c| vector.get(0, c).clone()).collect(), (0..vector.cols).map(|c| vector.get(vector.rows - 1, c).clone()).collect())
+                (
+                    (0..vector.cols).map(|c| vector.get(0, c).clone()).collect(),
+                    (0..vector.cols).map(|c| vector.get(vector.rows - 1, c).clone()).collect(),
+                )
             } else {
-                ((0..vector.rows).map(|r| vector.get(r, 0).clone()).collect(), (0..vector.rows).map(|r| vector.get(r, vector.cols - 1).clone()).collect())
+                (
+                    (0..vector.rows).map(|r| vector.get(r, 0).clone()).collect(),
+                    (0..vector.rows).map(|r| vector.get(r, vector.cols - 1).clone()).collect(),
+                )
             }
         }
     };
@@ -209,7 +382,11 @@ fn lookup(ctx: &mut Ctx, args: &[Expr]) -> Val {
 
 /// Find a value in a list by XLOOKUP's match and search modes.
 fn find_in(values: &[Value], target: &Value, match_mode: i64, search_mode: i64) -> Option<usize> {
-    let order: Box<dyn Iterator<Item = usize>> = if search_mode == -1 || search_mode == -2 { Box::new((0..values.len()).rev()) } else { Box::new(0..values.len()) };
+    let order: Box<dyn Iterator<Item = usize>> = if search_mode == -1 || search_mode == -2 {
+        Box::new((0..values.len()).rev())
+    } else {
+        Box::new(0..values.len())
+    };
     match search_mode {
         2 | -2 => {
             // Binary search over sorted data.
@@ -253,7 +430,11 @@ fn find_in(values: &[Value], target: &Value, match_mode: i64, search_mode: i64) 
                     continue;
                 }
                 let order = compare(v, target);
-                let fits = if match_mode == -1 { order == Ordering::Less } else { order == Ordering::Greater };
+                let fits = if match_mode == -1 {
+                    order == Ordering::Less
+                } else {
+                    order == Ordering::Greater
+                };
                 if fits {
                     let better = match best {
                         None => true,
@@ -310,12 +491,16 @@ fn xlookup(ctx: &mut Ctx, args: &[Expr]) -> Val {
                     if returns.cols == 1 {
                         Val::Value(returns.get(i, 0).clone())
                     } else {
-                        Val::Array(Array::row((0..returns.cols).map(|c| returns.get(i, c).clone()).collect()))
+                        Val::Array(Array::row(
+                            (0..returns.cols).map(|c| returns.get(i, c).clone()).collect(),
+                        ))
                     }
                 } else if returns.rows == 1 {
                     Val::Value(returns.get(0, i).clone())
                 } else {
-                    Val::Array(Array::column((0..returns.rows).map(|r| returns.get(r, i).clone()).collect()))
+                    Val::Array(Array::column(
+                        (0..returns.rows).map(|r| returns.get(r, i).clone()).collect(),
+                    ))
                 }
             }
             None => match &not_found {
@@ -381,7 +566,8 @@ fn xmatch(ctx: &mut Ctx, args: &[Expr]) -> Val {
         if let Value::Error(e) = &t[0] {
             return Value::Error(*e);
         }
-        find_in(&list.data, &t[0], match_mode, search_mode).map_or(Value::Error(ErrorKind::NA), |i| Value::Number(i as f64 + 1.0))
+        find_in(&list.data, &t[0], match_mode, search_mode)
+            .map_or(Value::Error(ErrorKind::NA), |i| Value::Number(i as f64 + 1.0))
     })
 }
 
@@ -420,9 +606,20 @@ fn index(ctx: &mut Ctx, args: &[Expr]) -> Val {
             if row > rows || col > cols {
                 return Val::error(ErrorKind::Ref);
             }
-            let (first_row, last_row) = if row == 0 { (r.first.row, r.last.row) } else { (r.first.row + row as u32 - 1, r.first.row + row as u32 - 1) };
-            let (first_col, last_col) = if col == 0 { (r.first.col, r.last.col) } else { (r.first.col + col as u32 - 1, r.first.col + col as u32 - 1) };
-            Val::Ref(Area::new(area.sheet, Range::new(CellRef::new(first_row, first_col), CellRef::new(last_row, last_col))))
+            let (first_row, last_row) = if row == 0 {
+                (r.first.row, r.last.row)
+            } else {
+                (r.first.row + row as u32 - 1, r.first.row + row as u32 - 1)
+            };
+            let (first_col, last_col) = if col == 0 {
+                (r.first.col, r.last.col)
+            } else {
+                (r.first.col + col as u32 - 1, r.first.col + col as u32 - 1)
+            };
+            Val::Ref(Area::new(
+                area.sheet,
+                Range::new(CellRef::new(first_row, first_col), CellRef::new(last_row, last_col)),
+            ))
         }
         None => {
             let again = source_again(ctx, &args[0]);
@@ -430,14 +627,24 @@ fn index(ctx: &mut Ctx, args: &[Expr]) -> Val {
                 Ok(a) => a,
                 Err(e) => return Val::error(e),
             };
-            let (row, col) = if args.len() == 2 && a.rows == 1 { (1, row) } else if args.len() == 2 && a.cols == 1 { (row, 1) } else { (row, col) };
+            let (row, col) = if args.len() == 2 && a.rows == 1 {
+                (1, row)
+            } else if args.len() == 2 && a.cols == 1 {
+                (row, 1)
+            } else {
+                (row, col)
+            };
             if row as usize > a.rows || col as usize > a.cols {
                 return Val::error(ErrorKind::Ref);
             }
             match (row, col) {
                 (0, 0) => Val::Array(a),
-                (0, c) => Val::Array(Array::column((0..a.rows).map(|r| a.get(r, c as usize - 1).clone()).collect())),
-                (r, 0) => Val::Array(Array::row((0..a.cols).map(|c| a.get(r as usize - 1, c).clone()).collect())),
+                (0, c) => Val::Array(Array::column(
+                    (0..a.rows).map(|r| a.get(r, c as usize - 1).clone()).collect(),
+                )),
+                (r, 0) => Val::Array(Array::row(
+                    (0..a.cols).map(|c| a.get(r as usize - 1, c).clone()).collect(),
+                )),
                 (r, c) => Val::Value(a.get(r as usize - 1, c as usize - 1).clone()),
             }
         }
@@ -548,7 +755,13 @@ fn offset(ctx: &mut Ctx, args: &[Expr]) -> Val {
     if top < 0 || left < 0 || bottom >= MAX_ROWS as i64 || right >= MAX_COLS as i64 {
         return Val::error(ErrorKind::Ref);
     }
-    Val::Ref(Area::new(area.sheet, Range::new(CellRef::new(top as u32, left as u32), CellRef::new(bottom as u32, right as u32))))
+    Val::Ref(Area::new(
+        area.sheet,
+        Range::new(
+            CellRef::new(top as u32, left as u32),
+            CellRef::new(bottom as u32, right as u32),
+        ),
+    ))
 }
 
 fn indirect(ctx: &mut Ctx, args: &[Expr]) -> Val {
@@ -565,10 +778,14 @@ fn indirect(ctx: &mut Ctx, args: &[Expr]) -> Val {
         }
         None => true,
     };
-    let written = if a1 { text.trim().to_owned() } else { match r1c1_to_a1(text.trim(), ctx.at) {
-        Some(t) => t,
-        None => return Val::error(ErrorKind::Ref),
-    } };
+    let written = if a1 {
+        text.trim().to_owned()
+    } else {
+        match r1c1_to_a1(text.trim(), ctx.at) {
+            Some(t) => t,
+            None => return Val::error(ErrorKind::Ref),
+        }
+    };
     match crate::formula::parser::parse(&written) {
         Ok(expr @ (Expr::Ref(_) | Expr::Name(_) | Expr::Table(_))) => match ctx.eval(&expr) {
             v @ Val::Ref(_) => v,
@@ -603,7 +820,13 @@ fn r1c1_to_a1(text: &str, at: CellRef) -> Option<String> {
         };
         let (row, row_abs) = resolve(row_part, at.row)?;
         let (col, col_abs) = resolve(col_part, at.col)?;
-        Some(format!("{}{}{}{}", if col_abs { "$" } else { "" }, crate::coord::column_name(col), if row_abs { "$" } else { "" }, row + 1))
+        Some(format!(
+            "{}{}{}{}",
+            if col_abs { "$" } else { "" },
+            crate::coord::column_name(col),
+            if row_abs { "$" } else { "" },
+            row + 1
+        ))
     };
     let a1 = match body.split_once(':') {
         Some((a, b)) => format!("{}:{}", one(a)?, one(b)?),
@@ -630,7 +853,12 @@ fn address(ctx: &mut Ctx, args: &[Expr]) -> Val {
         }
         None => true,
     };
-    if row < 1.0 || col < 1.0 || row > MAX_ROWS as f64 || col > MAX_COLS as f64 || !(1..=4).contains(&abs) {
+    if row < 1.0
+        || col < 1.0
+        || row > MAX_ROWS as f64
+        || col > MAX_COLS as f64
+        || !(1..=4).contains(&abs)
+    {
         return Val::error(ErrorKind::Value);
     }
     let (row_abs, col_abs) = match abs {
@@ -640,7 +868,13 @@ fn address(ctx: &mut Ctx, args: &[Expr]) -> Val {
         _ => (false, false),
     };
     let body = if a1 {
-        format!("{}{}{}{}", if col_abs { "$" } else { "" }, crate::coord::column_name(col as u32 - 1), if row_abs { "$" } else { "" }, row as u32)
+        format!(
+            "{}{}{}{}",
+            if col_abs { "$" } else { "" },
+            crate::coord::column_name(col as u32 - 1),
+            if row_abs { "$" } else { "" },
+            row as u32
+        )
     } else {
         format!(
             "R{}C{}",
@@ -672,12 +906,16 @@ fn row_col(ctx: &mut Ctx, args: &[Expr], rows: bool) -> Val {
         if r.rows() == 1 || r.is_whole_columns() {
             return Val::number(r.first.row as f64 + 1.0);
         }
-        Val::Array(Array::column((r.first.row..=r.last.row).map(|x| Value::Number(x as f64 + 1.0)).collect()))
+        Val::Array(Array::column(
+            (r.first.row..=r.last.row).map(|x| Value::Number(x as f64 + 1.0)).collect(),
+        ))
     } else {
         if r.cols() == 1 || r.is_whole_rows() {
             return Val::number(r.first.col as f64 + 1.0);
         }
-        Val::Array(Array::row((r.first.col..=r.last.col).map(|x| Value::Number(x as f64 + 1.0)).collect()))
+        Val::Array(Array::row(
+            (r.first.col..=r.last.col).map(|x| Value::Number(x as f64 + 1.0)).collect(),
+        ))
     }
 }
 
@@ -710,7 +948,10 @@ fn filter(ctx: &mut Ctx, args: &[Expr]) -> Val {
     for v in &include.data {
         match v {
             Value::Error(e) => return Val::error(*e),
-            v => keep.push(crate::eval::to_bool(v).unwrap_or(false) || matches!(v, Value::Number(n) if *n != 0.0)),
+            v => keep.push(
+                crate::eval::to_bool(v).unwrap_or(false)
+                    || matches!(v, Value::Number(n) if *n != 0.0),
+            ),
         }
     }
     let mut data = Vec::new();
@@ -784,13 +1025,23 @@ fn sort(ctx: &mut Ctx, args: &[Expr]) -> Val {
         }
         None => false,
     };
-    let indexes = match args.get(1).filter(|e| !matches!(e, Expr::Missing)).map(|e| array_of(ctx, e)) {
-        Some(Ok(x)) => x.data.iter().map(|v| ctx.number(v).map(|n| n.trunc() as i64)).collect::<Result<Vec<_>, _>>(),
-        Some(Err(e)) => Err(e),
-        None => Ok(vec![1]),
-    };
-    let orders = match args.get(2).filter(|e| !matches!(e, Expr::Missing)).map(|e| array_of(ctx, e)) {
-        Some(Ok(x)) => x.data.iter().map(|v| ctx.number(v).map(|n| n.trunc() as i64)).collect::<Result<Vec<_>, _>>(),
+    let indexes =
+        match args.get(1).filter(|e| !matches!(e, Expr::Missing)).map(|e| array_of(ctx, e)) {
+            Some(Ok(x)) => x
+                .data
+                .iter()
+                .map(|v| ctx.number(v).map(|n| n.trunc() as i64))
+                .collect::<Result<Vec<_>, _>>(),
+            Some(Err(e)) => Err(e),
+            None => Ok(vec![1]),
+        };
+    let orders = match args.get(2).filter(|e| !matches!(e, Expr::Missing)).map(|e| array_of(ctx, e))
+    {
+        Some(Ok(x)) => x
+            .data
+            .iter()
+            .map(|v| ctx.number(v).map(|n| n.trunc() as i64))
+            .collect::<Result<Vec<_>, _>>(),
         Some(Err(e)) => Err(e),
         None => Ok(vec![1]),
     };
@@ -809,7 +1060,15 @@ fn sort(ctx: &mut Ctx, args: &[Expr]) -> Val {
         if order != 1 && order != -1 {
             return Val::error(ErrorKind::Value);
         }
-        let key: Vec<Value> = (0..count).map(|i| if by_col { a.get(*index as usize - 1, i).clone() } else { a.get(i, *index as usize - 1).clone() }).collect();
+        let key: Vec<Value> = (0..count)
+            .map(|i| {
+                if by_col {
+                    a.get(*index as usize - 1, i).clone()
+                } else {
+                    a.get(i, *index as usize - 1).clone()
+                }
+            })
+            .collect();
         keys.push((key, order == -1));
     }
     let order = order_by(count, &keys);
@@ -854,7 +1113,8 @@ fn sortby(ctx: &mut Ctx, args: &[Expr]) -> Val {
         if order != 1 && order != -1 {
             return Val::error(ErrorKind::Value);
         }
-        let cols = key.rows == 1 && key.cols == a.cols && a.rows != a.cols || key.rows == 1 && key.cols > 1;
+        let cols = key.rows == 1 && key.cols == a.cols && a.rows != a.cols
+            || key.rows == 1 && key.cols > 1;
         let this_by_col = cols && key.cols == a.cols;
         if !this_by_col && (key.cols != 1 || key.rows != a.rows) {
             return Val::error(ErrorKind::Value);
@@ -886,8 +1146,19 @@ fn unique(ctx: &mut Ctx, args: &[Expr]) -> Val {
     let by_col = flag(ctx, 1);
     let once = flag(ctx, 2);
     let count = if by_col { a.cols } else { a.rows };
-    let line = |i: usize| -> Vec<Value> { if by_col { (0..a.rows).map(|r| a.get(r, i).clone()).collect() } else { (0..a.cols).map(|c| a.get(i, c).clone()).collect() } };
-    let same = |x: &[Value], y: &[Value]| x.iter().zip(y).all(|(p, q)| equal(p, q) && std::mem::discriminant(p) == std::mem::discriminant(q) || p.is_empty() && q.is_empty());
+    let line = |i: usize| -> Vec<Value> {
+        if by_col {
+            (0..a.rows).map(|r| a.get(r, i).clone()).collect()
+        } else {
+            (0..a.cols).map(|c| a.get(i, c).clone()).collect()
+        }
+    };
+    let same = |x: &[Value], y: &[Value]| {
+        x.iter().zip(y).all(|(p, q)| {
+            equal(p, q) && std::mem::discriminant(p) == std::mem::discriminant(q)
+                || p.is_empty() && q.is_empty()
+        })
+    };
     let mut seen: Vec<(Vec<Value>, usize)> = Vec::new();
     for i in 0..count {
         let l = line(i);
@@ -896,7 +1167,8 @@ fn unique(ctx: &mut Ctx, args: &[Expr]) -> Val {
             None => seen.push((l, 1)),
         }
     }
-    let kept: Vec<Vec<Value>> = seen.into_iter().filter(|(_, n)| !once || *n == 1).map(|(l, _)| l).collect();
+    let kept: Vec<Vec<Value>> =
+        seen.into_iter().filter(|(_, n)| !once || *n == 1).map(|(l, _)| l).collect();
     if kept.is_empty() {
         return Val::error(ErrorKind::Calc);
     }
@@ -1093,10 +1365,15 @@ mod tests {
     #[test]
     fn lookups_answer_what_excel_answers() {
         let b = book(&[
-            ("A1", "apple"), ("B1", "1"),
-            ("A2", "banana"), ("B2", "2"),
-            ("A3", "cherry"), ("B3", "3"),
-            ("D1", "10"), ("D2", "20"), ("D3", "30"),
+            ("A1", "apple"),
+            ("B1", "1"),
+            ("A2", "banana"),
+            ("B2", "2"),
+            ("A3", "cherry"),
+            ("B3", "3"),
+            ("D1", "10"),
+            ("D2", "20"),
+            ("D3", "30"),
         ]);
         let cases = [
             ("VLOOKUP(\"banana\",A1:B3,2,FALSE)", "2"),

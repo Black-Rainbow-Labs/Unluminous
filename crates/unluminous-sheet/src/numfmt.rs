@@ -35,7 +35,9 @@ enum Token {
     /// A comma between digit placeholders, which groups thousands.
     Group,
     Percent,
-    Exponent { plus: bool },
+    Exponent {
+        plus: bool,
+    },
     Slash,
     Text,
     General,
@@ -47,7 +49,10 @@ enum Token {
     Second(u8),
     /// Fractional seconds: how many digits.
     Subsecond(u8),
-    AmPm { long: bool, upper: bool },
+    AmPm {
+        long: bool,
+        upper: bool,
+    },
     ElapsedHours(u8),
     ElapsedMinutes(u8),
     ElapsedSeconds(u8),
@@ -116,24 +121,44 @@ impl Format {
     }
 
     pub fn is_text(&self) -> bool {
-        self.sections.len() == 1 && self.sections[0].tokens.iter().any(|t| *t == Token::Text) && !self.sections[0].tokens.iter().any(|t| matches!(t, Token::Digit(_) | Token::General))
+        self.sections.len() == 1
+            && self.sections[0].tokens.iter().any(|t| *t == Token::Text)
+            && !self.sections[0]
+                .tokens
+                .iter()
+                .any(|t| matches!(t, Token::Digit(_) | Token::General))
     }
 
     /// Show a value. `width` is how many characters General may use, 11 for a standard column.
     pub fn render(&self, value: &Value, date1904: bool, width: usize) -> Rendered {
         match value {
-            Value::Empty => Rendered { text: String::new(), color: None, numeric: false, fill: None },
+            Value::Empty => {
+                Rendered { text: String::new(), color: None, numeric: false, fill: None }
+            }
             Value::Number(n) => self.render_number(*n, date1904, width),
             Value::Text(t) => self.render_text(t),
-            Value::Bool(b) => Rendered { text: if *b { "TRUE" } else { "FALSE" }.to_owned(), color: None, numeric: false, fill: None },
-            Value::Error(e) => Rendered { text: e.text().to_owned(), color: None, numeric: false, fill: None },
+            Value::Bool(b) => Rendered {
+                text: if *b { "TRUE" } else { "FALSE" }.to_owned(),
+                color: None,
+                numeric: false,
+                fill: None,
+            },
+            Value::Error(e) => {
+                Rendered { text: e.text().to_owned(), color: None, numeric: false, fill: None }
+            }
         }
     }
 
     fn render_text(&self, text: &str) -> Rendered {
         let section = match self.sections.len() {
             4 => Some(&self.sections[3]),
-            _ => self.sections.iter().find(|s| s.tokens.contains(&Token::Text) && s.condition.is_none()).filter(|_| self.sections.len() == 1 || self.sections[0].tokens.contains(&Token::Text)),
+            _ => self
+                .sections
+                .iter()
+                .find(|s| s.tokens.contains(&Token::Text) && s.condition.is_none())
+                .filter(|_| {
+                    self.sections.len() == 1 || self.sections[0].tokens.contains(&Token::Text)
+                }),
         };
         let Some(section) = section else {
             return Rendered { text: text.to_owned(), color: None, numeric: false, fill: None };
@@ -188,7 +213,10 @@ impl Format {
     }
 
     fn render_number(&self, n: f64, date1904: bool, width: usize) -> Rendered {
-        if self.sections.len() == 4 && self.sections[3].tokens.contains(&Token::Text) && self.sections[..3].is_empty() {
+        if self.sections.len() == 4
+            && self.sections[3].tokens.contains(&Token::Text)
+            && self.sections[..3].is_empty()
+        {
             return self.render_text(&crate::value::number_to_text(n));
         }
         let (section, signless) = self.choose(n);
@@ -196,8 +224,15 @@ impl Format {
         // A text only section shows a number as General inside the literal text.
         if section.is_date {
             return match render_date(section, value, date1904) {
-                Some(text) => Rendered { text, color: section.color.clone(), numeric: true, fill: None },
-                None => Rendered { text: "#".repeat(width.max(1)), color: None, numeric: true, fill: None },
+                Some(text) => {
+                    Rendered { text, color: section.color.clone(), numeric: true, fill: None }
+                }
+                None => Rendered {
+                    text: "#".repeat(width.max(1)),
+                    color: None,
+                    numeric: true,
+                    fill: None,
+                },
             };
         }
         let (text, fill) = render_numeric(section, value, width);
@@ -288,7 +323,13 @@ fn parse_section(text: &str) -> Section {
             }
             '.' => {
                 // Fractional seconds: `.0` after seconds.
-                if tokens.iter().rev().find(|t| !matches!(t, Token::Literal(_))).is_some_and(|t| matches!(t, Token::Second(_) | Token::ElapsedSeconds(_))) && chars.get(i + 1) == Some(&'0') {
+                if tokens
+                    .iter()
+                    .rev()
+                    .find(|t| !matches!(t, Token::Literal(_)))
+                    .is_some_and(|t| matches!(t, Token::Second(_) | Token::ElapsedSeconds(_)))
+                    && chars.get(i + 1) == Some(&'0')
+                {
                     let mut k = 0;
                     while chars.get(i + 1 + k) == Some(&'0') {
                         k += 1;
@@ -335,14 +376,16 @@ fn parse_section(text: &str) -> Section {
                 section.is_date = true;
                 i += 3;
             }
-            'y' | 'Y' | 'm' | 'M' | 'd' | 'D' | 'h' | 'H' | 's' | 'S' | 'e' | 'g' | 'G' | 'b' | 'B' => {
+            'y' | 'Y' | 'm' | 'M' | 'd' | 'D' | 'h' | 'H' | 's' | 'S' | 'e' | 'g' | 'G' | 'b'
+            | 'B' => {
                 let lc = c.to_ascii_lowercase();
                 let mut k = 1;
                 while lower.get(i + k) == Some(&lc) {
                     k += 1;
                 }
                 let n = k.min(255) as u8;
-                section.is_date = section.is_date || matches!(lc, 'y' | 'm' | 'd' | 'h' | 's' | 'e');
+                section.is_date =
+                    section.is_date || matches!(lc, 'y' | 'm' | 'd' | 'h' | 's' | 'e');
                 tokens.push(match lc {
                     'y' | 'e' => Token::Year(n),
                     'm' => Token::Month(n),
@@ -365,8 +408,10 @@ fn parse_section(text: &str) -> Section {
             if n > 2 {
                 continue;
             }
-            let before = tokens[..k].iter().rev().find(|t| !matches!(t, Token::Literal(_) | Token::Space));
-            let after = tokens[k + 1..].iter().find(|t| !matches!(t, Token::Literal(_) | Token::Space));
+            let before =
+                tokens[..k].iter().rev().find(|t| !matches!(t, Token::Literal(_) | Token::Space));
+            let after =
+                tokens[k + 1..].iter().find(|t| !matches!(t, Token::Literal(_) | Token::Space));
             let minutes = matches!(before, Some(Token::Hour(_)) | Some(Token::ElapsedHours(_)))
                 || matches!(after, Some(Token::Second(_)) | Some(Token::ElapsedSeconds(_)));
             if minutes {
@@ -396,7 +441,8 @@ fn parse_section(text: &str) -> Section {
         }
         cleaned.push(token);
     }
-    if section.is_date && cleaned.iter().any(|t| matches!(t, Token::Digit('#') | Token::Digit('?'))) {
+    if section.is_date && cleaned.iter().any(|t| matches!(t, Token::Digit('#') | Token::Digit('?')))
+    {
         section.is_date = false;
     }
     section.tokens = cleaned;
@@ -405,7 +451,8 @@ fn parse_section(text: &str) -> Section {
 
 fn bracket(inside: &str, section: &mut Section, tokens: &mut Vec<Token>) {
     let lower = inside.to_ascii_lowercase();
-    const COLORS: [&str; 8] = ["black", "blue", "cyan", "green", "magenta", "red", "white", "yellow"];
+    const COLORS: [&str; 8] =
+        ["black", "blue", "cyan", "green", "magenta", "red", "white", "yellow"];
     if let Some(c) = COLORS.iter().find(|c| **c == lower) {
         let mut name = c.to_string();
         name[..1].make_ascii_uppercase();
@@ -472,7 +519,11 @@ pub fn general(n: f64, width: usize) -> String {
     if exponent < room as i32 && exponent >= -5 {
         let whole_len = if exponent >= 0 { exponent as usize + 1 } else { 1 };
         let decimals = room.saturating_sub(whole_len + 1);
-        let digits_allowed = if exponent >= 0 { (decimals + whole_len).min(15) } else { (decimals as i32 + exponent + 1).max(1) as usize };
+        let digits_allowed = if exponent >= 0 {
+            (decimals + whole_len).min(15)
+        } else {
+            (decimals as i32 + exponent + 1).max(1) as usize
+        };
         let (digits, e) = significant_digits(abs, digits_allowed.min(15));
         let text = place_digits(&digits, e);
         if text.len() <= room {
@@ -483,8 +534,17 @@ pub fn general(n: f64, width: usize) -> String {
     let exponent_text_len = 4;
     let mantissa_digits = room.saturating_sub(exponent_text_len + 1).clamp(1, 15);
     let (digits, e) = significant_digits(abs, mantissa_digits);
-    let mantissa = if digits.len() > 1 { format!("{}.{}", &digits[..1], &digits[1..]) } else { digits.clone() };
-    format!("{}{mantissa}E{}{:02}", if negative { "-" } else { "" }, if e < 0 { '-' } else { '+' }, e.abs())
+    let mantissa = if digits.len() > 1 {
+        format!("{}.{}", &digits[..1], &digits[1..])
+    } else {
+        digits.clone()
+    };
+    format!(
+        "{}{mantissa}E{}{:02}",
+        if negative { "-" } else { "" },
+        if e < 0 { '-' } else { '+' },
+        e.abs()
+    )
 }
 
 fn place_digits(digits: &str, exponent: i32) -> String {
@@ -505,7 +565,9 @@ fn render_numeric(section: &Section, value: f64, width: usize) -> (String, Optio
     let mut v = value * 100f64.powi(section.percent as i32) / 1000f64.powi(section.scale as i32);
     let mut fill = None;
     let has_digits = tokens.iter().any(|t| matches!(t, Token::Digit(_)));
-    if tokens.iter().any(|t| *t == Token::General) || !has_digits && !tokens.iter().any(|t| *t == Token::Text) {
+    if tokens.iter().any(|t| *t == Token::General)
+        || !has_digits && !tokens.iter().any(|t| *t == Token::Text)
+    {
         // General, or a section of literal text only.
         let mut out = String::new();
         for t in tokens {
@@ -534,9 +596,15 @@ fn render_numeric(section: &Section, value: f64, width: usize) -> (String, Optio
         }
     }
     let point = tokens.iter().position(|t| *t == Token::Point);
-    let int_tokens: Vec<char> = tokens[..point.unwrap_or(tokens.len())].iter().filter_map(|t| if let Token::Digit(c) = t { Some(*c) } else { None }).collect();
+    let int_tokens: Vec<char> = tokens[..point.unwrap_or(tokens.len())]
+        .iter()
+        .filter_map(|t| if let Token::Digit(c) = t { Some(*c) } else { None })
+        .collect();
     let dec_tokens: Vec<char> = match point {
-        Some(p) => tokens[p + 1..].iter().filter_map(|t| if let Token::Digit(c) = t { Some(*c) } else { None }).collect(),
+        Some(p) => tokens[p + 1..]
+            .iter()
+            .filter_map(|t| if let Token::Digit(c) = t { Some(*c) } else { None })
+            .collect(),
         None => Vec::new(),
     };
     let grouped = tokens.contains(&Token::Group);
@@ -544,7 +612,11 @@ fn render_numeric(section: &Section, value: f64, width: usize) -> (String, Optio
     let negative = v < 0.0;
     v = v.abs();
     // Round on the decimal value, as ROUND does.
-    let rounded = crate::functions::math::round_to(v, decimals as f64, crate::functions::math::Rounding::Half);
+    let rounded = crate::functions::math::round_to(
+        v,
+        decimals as f64,
+        crate::functions::math::Rounding::Half,
+    );
     let whole = rounded.trunc();
     let whole_digits = if whole == 0.0 { String::new() } else { format_whole(whole) };
     let frac_digits: String = if decimals > 0 {
@@ -669,11 +741,19 @@ fn render_scientific(section: &Section, v: f64, e_at: usize) -> String {
     let tokens = &section.tokens;
     let Token::Exponent { plus } = tokens[e_at] else { return String::new() };
     let mantissa_tokens = &tokens[..e_at];
-    let exponent_digits = tokens[e_at + 1..].iter().filter(|t| matches!(t, Token::Digit(_))).count().max(1);
+    let exponent_digits =
+        tokens[e_at + 1..].iter().filter(|t| matches!(t, Token::Digit(_))).count().max(1);
     let point = mantissa_tokens.iter().position(|t| *t == Token::Point);
-    let int_places = mantissa_tokens[..point.unwrap_or(mantissa_tokens.len())].iter().filter(|t| matches!(t, Token::Digit(_))).count().max(1);
+    let int_places = mantissa_tokens[..point.unwrap_or(mantissa_tokens.len())]
+        .iter()
+        .filter(|t| matches!(t, Token::Digit(_)))
+        .count()
+        .max(1);
     let dec_tokens: Vec<char> = match point {
-        Some(p) => mantissa_tokens[p + 1..].iter().filter_map(|t| if let Token::Digit(c) = t { Some(*c) } else { None }).collect(),
+        Some(p) => mantissa_tokens[p + 1..]
+            .iter()
+            .filter_map(|t| if let Token::Digit(c) = t { Some(*c) } else { None })
+            .collect(),
         None => Vec::new(),
     };
     let negative = v < 0.0;
@@ -684,11 +764,19 @@ fn render_scientific(section: &Section, v: f64, e_at: usize) -> String {
         exponent = exponent.div_euclid(int_places as i32) * int_places as i32;
     }
     let mut mantissa = if abs == 0.0 { 0.0 } else { abs / 10f64.powi(exponent) };
-    mantissa = crate::functions::math::round_to(mantissa, dec_tokens.len() as f64, crate::functions::math::Rounding::Half);
+    mantissa = crate::functions::math::round_to(
+        mantissa,
+        dec_tokens.len() as f64,
+        crate::functions::math::Rounding::Half,
+    );
     if mantissa >= 10f64.powi(int_places as i32) {
         mantissa /= 10f64.powi(int_places as i32);
         exponent += int_places as i32;
-        mantissa = crate::functions::math::round_to(mantissa, dec_tokens.len() as f64, crate::functions::math::Rounding::Half);
+        mantissa = crate::functions::math::round_to(
+            mantissa,
+            dec_tokens.len() as f64,
+            crate::functions::math::Rounding::Half,
+        );
     }
     let mut text = format!("{:.*}", dec_tokens.len(), mantissa);
     // Trailing optional decimals.
@@ -697,7 +785,11 @@ fn render_scientific(section: &Section, v: f64, e_at: usize) -> String {
         while let (Some('0'), Some('#')) = (d.last(), dec_tokens.get(d.len().wrapping_sub(1))) {
             d.pop();
         }
-        text = if d.is_empty() && !dec_tokens.iter().any(|c| *c == '0') { format!("{w}.") } else { format!("{w}.{}", d.iter().collect::<String>()) };
+        text = if d.is_empty() && !dec_tokens.iter().any(|c| *c == '0') {
+            format!("{w}.")
+        } else {
+            format!("{w}.{}", d.iter().collect::<String>())
+        };
     }
     let mut out = String::new();
     if negative {
@@ -717,7 +809,13 @@ fn render_scientific(section: &Section, v: f64, e_at: usize) -> String {
             _ => {}
         }
     }
-    let sign = if exponent < 0 { "-" } else if plus { "+" } else { "" };
+    let sign = if exponent < 0 {
+        "-"
+    } else if plus {
+        "+"
+    } else {
+        ""
+    };
     out.push('E');
     out.push_str(sign);
     out.push_str(&format!("{:0width$}", exponent.abs(), width = exponent_digits));
@@ -735,14 +833,23 @@ fn render_fraction(section: &Section, v: f64, slash: usize) -> String {
     let tokens = &section.tokens;
     // The denominator: placeholders after the slash, or a fixed number.
     let after: Vec<&Token> = tokens[slash + 1..].iter().collect();
-    let den_digits: Vec<char> = after.iter().take_while(|t| matches!(t, Token::Digit(_))).filter_map(|t| if let Token::Digit(c) = t { Some(*c) } else { None }).collect();
+    let den_digits: Vec<char> = after
+        .iter()
+        .take_while(|t| matches!(t, Token::Digit(_)))
+        .filter_map(|t| if let Token::Digit(c) = t { Some(*c) } else { None })
+        .collect();
     let fixed: Option<u64> = {
-        let lit: String = after.iter().take_while(|t| matches!(t, Token::Literal(l) if l.chars().all(|c| c.is_ascii_digit()))).map(|t| if let Token::Literal(l) = t { l.clone() } else { String::new() }).collect();
+        let lit: String = after
+            .iter()
+            .take_while(|t| matches!(t, Token::Literal(l) if l.chars().all(|c| c.is_ascii_digit())))
+            .map(|t| if let Token::Literal(l) = t { l.clone() } else { String::new() })
+            .collect();
         lit.parse().ok()
     };
     // Is there a whole number part? Digits, then a space literal, then the numerator digits.
     let before = &tokens[..slash];
-    let numerator_start = before.iter().rposition(|t| !matches!(t, Token::Digit(_))).map_or(0, |p| p + 1);
+    let numerator_start =
+        before.iter().rposition(|t| !matches!(t, Token::Digit(_))).map_or(0, |p| p + 1);
     let has_whole = before[..numerator_start].iter().any(|t| matches!(t, Token::Digit(_)));
     let negative = v < 0.0;
     let abs = v.abs();
@@ -789,7 +896,8 @@ fn render_fraction(section: &Section, v: f64, slash: usize) -> String {
         }
         if num == 0.0 {
             // A whole number with no fraction leaves room the width of the fraction.
-            let width = num_places + 1 + den_digits.len().max(fixed.map_or(0, |d| d.to_string().len()));
+            let width =
+                num_places + 1 + den_digits.len().max(fixed.map_or(0, |d| d.to_string().len()));
             out.push_str(&" ".repeat(width));
             return out;
         }
@@ -825,7 +933,11 @@ fn render_date(section: &Section, value: f64, date1904: bool) -> Option<String> 
     if value < 0.0 {
         return None;
     }
-    let subsecond_digits = section.tokens.iter().find_map(|t| if let Token::Subsecond(n) = t { Some(*n) } else { None }).unwrap_or(0);
+    let subsecond_digits = section
+        .tokens
+        .iter()
+        .find_map(|t| if let Token::Subsecond(n) = t { Some(*n) } else { None })
+        .unwrap_or(0);
     // Round to the precision shown, which is how 10:59:59.6 shows as 11:00:00.
     let unit = 86_400.0 * 10f64.powi(subsecond_digits as i32);
     let rounded = (value * unit).round() / unit;
@@ -874,8 +986,12 @@ fn render_date(section: &Section, value: f64, date1904: bool) -> Option<String> 
                 };
                 out.push_str(&if *n >= 2 { format!("{h:02}") } else { format!("{h}") });
             }
-            Token::Minute(n) => out.push_str(&if *n >= 2 { format!("{minutes:02}") } else { format!("{minutes}") }),
-            Token::Second(n) => out.push_str(&if *n >= 2 { format!("{seconds:02}") } else { format!("{seconds}") }),
+            Token::Minute(n) => {
+                out.push_str(&if *n >= 2 { format!("{minutes:02}") } else { format!("{minutes}") })
+            }
+            Token::Second(n) => {
+                out.push_str(&if *n >= 2 { format!("{seconds:02}") } else { format!("{seconds}") })
+            }
             Token::Subsecond(n) => {
                 let digits = format!("{millis:03}");
                 out.push('.');
@@ -986,9 +1102,16 @@ mod tests {
             ("[h]:mm", "1111646:30"),
         ];
         for (code, want) in cases {
-            assert_eq!(&Format::parse(code).render(&Value::Number(when), false, 11).text, want, "{code}");
+            assert_eq!(
+                &Format::parse(code).render(&Value::Number(when), false, 11).text,
+                want,
+                "{code}"
+            );
         }
-        assert_eq!(Format::parse("mm:ss.0").render(&Value::Number(1.25 / 86400.0), false, 11).text, "00:01.3");
+        assert_eq!(
+            Format::parse("mm:ss.0").render(&Value::Number(1.25 / 86400.0), false, 11).text,
+            "00:01.3"
+        );
     }
 
     #[test]

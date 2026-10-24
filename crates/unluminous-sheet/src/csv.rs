@@ -89,7 +89,9 @@ pub fn read(text: &str, tsv: bool, sheet_name: &str, this_year: i64) -> Workbook
             let typed = crate::input::read(&field, false, this_year);
             let mut cell = Cell::value(typed.value);
             if let Some(code) = typed.format {
-                cell.style = book.styles.derive(0, &crate::styles::StyleChange::NumberFormat(code.to_owned()));
+                cell.style = book
+                    .styles
+                    .derive(0, &crate::styles::StyleChange::NumberFormat(code.to_owned()));
             }
             sheet.set(at, cell);
         }
@@ -112,8 +114,13 @@ pub fn write(book: &Workbook, sheet: usize, sep: char) -> String {
                 None => Cell::value(s.value_at(at)),
             };
             let code = book.styles.format_code(cell.style);
-            let text = crate::numfmt::Format::parse(&code).render(&cell.value, book.date1904, 255).text;
-            fields.push(if text.contains([sep, '"', '\n', '\r']) { format!("\"{}\"", text.replace('"', "\"\"")) } else { text });
+            let text =
+                crate::numfmt::Format::parse(&code).render(&cell.value, book.date1904, 255).text;
+            fields.push(if text.contains([sep, '"', '\n', '\r']) {
+                format!("\"{}\"", text.replace('"', "\"\""))
+            } else {
+                text
+            });
         }
         // Trailing empty fields are written, as Excel writes them, so every row has the same width.
         out.push_str(&fields.join(&sep.to_string()));

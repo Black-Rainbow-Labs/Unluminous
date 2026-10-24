@@ -31,30 +31,43 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
 
     let mut book = Workbook { styles: Styles::default_workbook(), ..Default::default() };
     // Content types.
-    let types = text("[Content_Types].xml").ok_or("the file has no [Content_Types].xml, so it is not an Office file")?;
-    let types_doc = Document::parse(&types).map_err(|e| format!("[Content_Types].xml is damaged: {e}"))?;
+    let types = text("[Content_Types].xml")
+        .ok_or("the file has no [Content_Types].xml, so it is not an Office file")?;
+    let types_doc =
+        Document::parse(&types).map_err(|e| format!("[Content_Types].xml is damaged: {e}"))?;
     let mut overrides: HashMap<String, String> = HashMap::new();
     for n in types_doc.root_element().children().filter(Node::is_element) {
         match n.tag_name().name() {
-            "Default" => book.kept.defaults.push((n.attribute("Extension").unwrap_or("").to_owned(), n.attribute("ContentType").unwrap_or("").to_owned())),
+            "Default" => book.kept.defaults.push((
+                n.attribute("Extension").unwrap_or("").to_owned(),
+                n.attribute("ContentType").unwrap_or("").to_owned(),
+            )),
             "Override" => {
-                overrides.insert(n.attribute("PartName").unwrap_or("").to_owned(), n.attribute("ContentType").unwrap_or("").to_owned());
+                overrides.insert(
+                    n.attribute("PartName").unwrap_or("").to_owned(),
+                    n.attribute("ContentType").unwrap_or("").to_owned(),
+                );
             }
             _ => {}
         }
     }
     // The package relationships lead to the workbook.
     let root_rels = parse_rels(&text("_rels/.rels").unwrap_or_default());
-    let workbook_rel = root_rels.iter().find(|r| r.kind == REL_OFFICE_DOCUMENT).ok_or("the file names no workbook")?;
+    let workbook_rel = root_rels
+        .iter()
+        .find(|r| r.kind == REL_OFFICE_DOCUMENT)
+        .ok_or("the file names no workbook")?;
     let workbook_part = resolve("", &workbook_rel.target);
-    book.kept.package_rels = root_rels.iter().filter(|r| r.kind != REL_OFFICE_DOCUMENT).cloned().collect();
+    book.kept.package_rels =
+        root_rels.iter().filter(|r| r.kind != REL_OFFICE_DOCUMENT).cloned().collect();
     book.part = workbook_part.clone();
     if overrides.get(&format!("/{workbook_part}")).is_some_and(|t| t == CT_WORKBOOK_MACRO) {
         book.has_macros = true;
     }
     let workbook_xml = text(&workbook_part).ok_or("the workbook part is missing")?;
     let workbook_rels = parse_rels(&text(&rels_path(&workbook_part)).unwrap_or_default());
-    let by_id: HashMap<&str, &Relationship> = workbook_rels.iter().map(|r| (r.id.as_str(), r)).collect();
+    let by_id: HashMap<&str, &Relationship> =
+        workbook_rels.iter().map(|r| (r.id.as_str(), r)).collect();
     let mut regenerated_parts: HashSet<String> = HashSet::new();
     regenerated_parts.insert(workbook_part.clone());
     regenerated_parts.insert(rels_path(&workbook_part));
@@ -62,7 +75,9 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
     regenerated_parts.insert("_rels/.rels".to_owned());
 
     // Theme, styles and shared strings.
-    let target_of = |kind: &str| workbook_rels.iter().find(|r| r.kind == kind).map(|r| resolve(&workbook_part, &r.target));
+    let target_of = |kind: &str| {
+        workbook_rels.iter().find(|r| r.kind == kind).map(|r| resolve(&workbook_part, &r.target))
+    };
     if let Some(theme) = target_of(REL_THEME).and_then(|p| text(&p)) {
         read_theme(&theme, &mut book.styles);
     }
@@ -97,7 +112,8 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
     }
 
     // The workbook part.
-    let doc = Document::parse(&workbook_xml).map_err(|e| format!("the workbook part is damaged: {e}"))?;
+    let doc =
+        Document::parse(&workbook_xml).map_err(|e| format!("the workbook part is damaged: {e}"))?;
     let root = doc.root_element();
     book.namespaces = namespaces_of(root);
     let mut sheet_entries: Vec<(String, String, Visibility)> = Vec::new();
@@ -109,8 +125,11 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
                 book.workbook_pr = attrs_of(child, &["date1904"]);
             }
             "bookViews" => {
-                if let Some(view) = child.children().find(|n| n.has_tag_name((MAIN_NS, "workbookView"))) {
-                    book.active_sheet = view.attribute("activeTab").and_then(|v| v.parse().ok()).unwrap_or(0);
+                if let Some(view) =
+                    child.children().find(|n| n.has_tag_name((MAIN_NS, "workbookView")))
+                {
+                    book.active_sheet =
+                        view.attribute("activeTab").and_then(|v| v.parse().ok()).unwrap_or(0);
                     book.view_attrs = attrs_of(view, &["activeTab", "firstSheet"]);
                 }
             }
@@ -122,7 +141,11 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
                         Some("veryHidden") => Visibility::VeryHidden,
                         _ => Visibility::Visible,
                     };
-                    sheet_entries.push((s.attribute("name").unwrap_or("Sheet").to_owned(), id, state));
+                    sheet_entries.push((
+                        s.attribute("name").unwrap_or("Sheet").to_owned(),
+                        id,
+                        state,
+                    ));
                 }
             }
             "definedNames" => {
@@ -168,7 +191,18 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
         let sheet_rels = parse_rels(&text(&rels_path(&part)).unwrap_or_default());
         regenerated_parts.insert(rels_path(&part));
         sheet.raw.part = part.clone();
-        read_sheet(&xml, &part, &sheet_rels, &strings, dynamic_cm, &mut sheet, &mut book, index, &text, &mut regenerated_parts)?;
+        read_sheet(
+            &xml,
+            &part,
+            &sheet_rels,
+            &strings,
+            dynamic_cm,
+            &mut sheet,
+            &mut book,
+            index,
+            &text,
+            &mut regenerated_parts,
+        )?;
         book.sheets.push(sheet);
     }
     if book.sheets.is_empty() {
@@ -179,8 +213,18 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
     // Relationships of the workbook that are kept: themes, external links, pivot caches, VBA, connections.
     book.kept.workbook_rels = workbook_rels
         .iter()
-        .filter(|r| !REGENERATED.contains(&r.kind.as_str()) && !(r.kind == REL_METADATA && book.dynamic_cm.is_none()))
-        .filter(|r| r.kind != REL_WORKSHEET && !book.sheets.iter().any(|s| s.kept_part.as_ref().is_some_and(|k| resolve(&workbook_part, &r.target) == k.part)))
+        .filter(|r| {
+            !REGENERATED.contains(&r.kind.as_str())
+                && !(r.kind == REL_METADATA && book.dynamic_cm.is_none())
+        })
+        .filter(|r| {
+            r.kind != REL_WORKSHEET
+                && !book.sheets.iter().any(|s| {
+                    s.kept_part
+                        .as_ref()
+                        .is_some_and(|k| resolve(&workbook_part, &r.target) == k.part)
+                })
+        })
         .cloned()
         .collect();
     // Every other part is kept as bytes, with its content type.
@@ -203,7 +247,10 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
 fn decode(bytes: &[u8]) -> String {
     let bytes = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
     if bytes.starts_with(&[0xFF, 0xFE]) {
-        let units: Vec<u16> = bytes[2..].chunks(2).map(|c| u16::from_le_bytes([c[0], *c.get(1).unwrap_or(&0)])).collect();
+        let units: Vec<u16> = bytes[2..]
+            .chunks(2)
+            .map(|c| u16::from_le_bytes([c[0], *c.get(1).unwrap_or(&0)]))
+            .collect();
         return String::from_utf16_lossy(&units);
     }
     String::from_utf8_lossy(bytes).into_owned()
@@ -211,15 +258,24 @@ fn decode(bytes: &[u8]) -> String {
 
 fn read_theme(xml: &str, styles: &mut Styles) {
     let Ok(doc) = Document::parse(xml) else { return };
-    let order = ["dk1", "lt1", "dk2", "lt2", "accent1", "accent2", "accent3", "accent4", "accent5", "accent6", "hlink", "folHlink"];
-    let Some(scheme) = doc.descendants().find(|n| n.has_tag_name((DRAWING_NS, "clrScheme"))) else { return };
+    let order = [
+        "dk1", "lt1", "dk2", "lt2", "accent1", "accent2", "accent3", "accent4", "accent5",
+        "accent6", "hlink", "folHlink",
+    ];
+    let Some(scheme) = doc.descendants().find(|n| n.has_tag_name((DRAWING_NS, "clrScheme"))) else {
+        return;
+    };
     let mut colors = Vec::new();
     for name in order {
         let value = scheme
             .children()
             .find(|n| n.has_tag_name((DRAWING_NS, name)))
             .and_then(|n| n.children().find(Node::is_element))
-            .and_then(|c| c.attribute("val").filter(|_| c.tag_name().name() == "srgbClr").or_else(|| c.attribute("lastClr")))
+            .and_then(|c| {
+                c.attribute("val")
+                    .filter(|_| c.tag_name().name() == "srgbClr")
+                    .or_else(|| c.attribute("lastClr"))
+            })
             .and_then(|v| u32::from_str_radix(v, 16).ok())
             .unwrap_or(0);
         colors.push(value);
@@ -260,13 +316,16 @@ fn child<'a, 'b>(n: Node<'a, 'b>, name: &str) -> Option<Node<'a, 'b>> {
 
 fn read_font(n: Node) -> Font {
     let val = |name: &str| child(n, name).and_then(|c| c.attribute("val"));
-    let flag = |name: &str| child(n, name).is_some_and(|c| !matches!(c.attribute("val"), Some("0") | Some("false")));
+    let flag = |name: &str| {
+        child(n, name).is_some_and(|c| !matches!(c.attribute("val"), Some("0") | Some("false")))
+    };
     Font {
         name: val("name").unwrap_or("Calibri").to_owned(),
         size: val("sz").and_then(|v| v.parse().ok()).unwrap_or(11.0),
         bold: flag("b"),
         italic: flag("i"),
-        underline: child(n, "u").map_or(Underline::None, |u| Underline::parse(u.attribute("val").unwrap_or("single"))),
+        underline: child(n, "u")
+            .map_or(Underline::None, |u| Underline::parse(u.attribute("val").unwrap_or("single"))),
         strike: flag("strike"),
         color: child(n, "color").map_or(Color::Auto, color),
         vert_align: val("vertAlign").map(str::to_owned),
@@ -278,7 +337,10 @@ fn read_font(n: Node) -> Font {
 
 fn read_edge(n: Option<Node>) -> Edge {
     match n {
-        Some(n) => Edge { style: n.attribute("style").unwrap_or("").to_owned(), color: child(n, "color").map_or(Color::Auto, color) },
+        Some(n) => Edge {
+            style: n.attribute("style").unwrap_or("").to_owned(),
+            color: child(n, "color").map_or(Color::Auto, color),
+        },
         None => Edge::default(),
     }
 }
@@ -295,12 +357,17 @@ fn read_styles(xml: &str, styles: &mut Styles) -> Result<(), String> {
         match section.tag_name().name() {
             "numFmts" => {
                 for f in section.children().filter(Node::is_element) {
-                    if let (Some(id), Some(code)) = (f.attribute("numFmtId").and_then(|v| v.parse().ok()), f.attribute("formatCode")) {
+                    if let (Some(id), Some(code)) = (
+                        f.attribute("numFmtId").and_then(|v| v.parse().ok()),
+                        f.attribute("formatCode"),
+                    ) {
                         styles.num_fmts.insert(id, code.to_owned());
                     }
                 }
             }
-            "fonts" => styles.fonts = section.children().filter(Node::is_element).map(read_font).collect(),
+            "fonts" => {
+                styles.fonts = section.children().filter(Node::is_element).map(read_font).collect()
+            }
             "fills" => {
                 for f in section.children().filter(Node::is_element) {
                     let fill = match child(f, "patternFill") {
@@ -312,8 +379,16 @@ fn read_styles(xml: &str, styles: &mut Styles) -> Result<(), String> {
                         },
                         None => {
                             // A gradient: kept, and drawn as its first stop.
-                            let first = f.descendants().find(|n| n.tag_name().name() == "color").map_or(Color::Auto, color);
-                            Fill { pattern: "gradient".to_owned(), fg: first, bg: Color::Auto, raw: Some(raw(xml, f).to_owned()) }
+                            let first = f
+                                .descendants()
+                                .find(|n| n.tag_name().name() == "color")
+                                .map_or(Color::Auto, color);
+                            Fill {
+                                pattern: "gradient".to_owned(),
+                                fg: first,
+                                bg: Color::Auto,
+                                raw: Some(raw(xml, f).to_owned()),
+                            }
                         }
                     };
                     styles.fills.push(fill);
@@ -334,13 +409,23 @@ fn read_styles(xml: &str, styles: &mut Styles) -> Result<(), String> {
             }
             "cellXfs" => {
                 for x in section.children().filter(Node::is_element) {
-                    let num = |name: &str| x.attribute(name).and_then(|v| v.parse().ok()).unwrap_or(0);
+                    let num =
+                        |name: &str| x.attribute(name).and_then(|v| v.parse().ok()).unwrap_or(0);
                     let align = child(x, "alignment").map_or(Alignment::default(), |a| Alignment {
-                        horizontal: a.attribute("horizontal").filter(|h| *h != "general").map(str::to_owned),
-                        vertical: a.attribute("vertical").filter(|v| *v != "bottom").map(str::to_owned),
+                        horizontal: a
+                            .attribute("horizontal")
+                            .filter(|h| *h != "general")
+                            .map(str::to_owned),
+                        vertical: a
+                            .attribute("vertical")
+                            .filter(|v| *v != "bottom")
+                            .map(str::to_owned),
                         wrap: bool_attr(a, "wrapText"),
                         indent: a.attribute("indent").and_then(|v| v.parse().ok()).unwrap_or(0),
-                        rotation: a.attribute("textRotation").and_then(|v| v.parse().ok()).unwrap_or(0),
+                        rotation: a
+                            .attribute("textRotation")
+                            .and_then(|v| v.parse().ok())
+                            .unwrap_or(0),
                         shrink: bool_attr(a, "shrinkToFit"),
                     });
                     let protection = child(x, "protection");
@@ -351,8 +436,12 @@ fn read_styles(xml: &str, styles: &mut Styles) -> Result<(), String> {
                         border: num("borderId"),
                         xf_id: num("xfId"),
                         align,
-                        locked: protection.and_then(|p| p.attribute("locked")).map(|v| v == "1" || v == "true"),
-                        hidden: protection.and_then(|p| p.attribute("hidden")).map(|v| v == "1" || v == "true"),
+                        locked: protection
+                            .and_then(|p| p.attribute("locked"))
+                            .map(|v| v == "1" || v == "true"),
+                        hidden: protection
+                            .and_then(|p| p.attribute("hidden"))
+                            .map(|v| v == "1" || v == "true"),
                         quote_prefix: bool_attr(x, "quotePrefix"),
                     });
                 }
@@ -362,13 +451,28 @@ fn read_styles(xml: &str, styles: &mut Styles) -> Result<(), String> {
                     let font = child(d, "font");
                     styles.dxfs.push(Dxf {
                         font_color: font.and_then(|f| child(f, "color")).map(color),
-                        bold: font.and_then(|f| child(f, "b")).map(|b| !matches!(b.attribute("val"), Some("0") | Some("false"))),
-                        italic: font.and_then(|f| child(f, "i")).map(|b| !matches!(b.attribute("val"), Some("0") | Some("false"))),
-                        strike: font.and_then(|f| child(f, "strike")).map(|b| !matches!(b.attribute("val"), Some("0") | Some("false"))),
-                        underline: font.and_then(|f| child(f, "u")).map(|u| Underline::parse(u.attribute("val").unwrap_or("single"))),
-                        fill: child(d, "fill").and_then(|f| child(f, "patternFill")).and_then(|p| child(p, "bgColor").or_else(|| child(p, "fgColor"))).map(color),
-                        num_fmt: child(d, "numFmt").and_then(|n| n.attribute("formatCode")).map(str::to_owned),
-                        border: child(d, "border").and_then(|b| b.descendants().find(|n| n.tag_name().name() == "color")).map(color),
+                        bold: font
+                            .and_then(|f| child(f, "b"))
+                            .map(|b| !matches!(b.attribute("val"), Some("0") | Some("false"))),
+                        italic: font
+                            .and_then(|f| child(f, "i"))
+                            .map(|b| !matches!(b.attribute("val"), Some("0") | Some("false"))),
+                        strike: font
+                            .and_then(|f| child(f, "strike"))
+                            .map(|b| !matches!(b.attribute("val"), Some("0") | Some("false"))),
+                        underline: font
+                            .and_then(|f| child(f, "u"))
+                            .map(|u| Underline::parse(u.attribute("val").unwrap_or("single"))),
+                        fill: child(d, "fill")
+                            .and_then(|f| child(f, "patternFill"))
+                            .and_then(|p| child(p, "bgColor").or_else(|| child(p, "fgColor")))
+                            .map(color),
+                        num_fmt: child(d, "numFmt")
+                            .and_then(|n| n.attribute("formatCode"))
+                            .map(str::to_owned),
+                        border: child(d, "border")
+                            .and_then(|b| b.descendants().find(|n| n.tag_name().name() == "color"))
+                            .map(color),
                         raw: Some(raw(xml, d).to_owned()),
                     });
                 }
@@ -385,7 +489,8 @@ fn read_styles(xml: &str, styles: &mut Styles) -> Result<(), String> {
         styles.fonts.push(Font::default());
     }
     if styles.fills.len() < 2 {
-        styles.fills = vec![Fill::none(), Fill { pattern: "gray125".to_owned(), ..Default::default() }];
+        styles.fills =
+            vec![Fill::none(), Fill { pattern: "gray125".to_owned(), ..Default::default() }];
     }
     if styles.borders.is_empty() {
         styles.borders.push(Border::default());
@@ -418,8 +523,14 @@ fn string_item(xml: &str, si: Node) -> (Arc<str>, Option<Arc<str>>) {
 }
 
 fn read_strings(xml: &str) -> Result<Vec<(Arc<str>, Option<Arc<str>>)>, String> {
-    let doc = Document::parse(xml).map_err(|e| format!("the shared strings part is damaged: {e}"))?;
-    Ok(doc.root_element().children().filter(|n| n.has_tag_name((MAIN_NS, "si"))).map(|si| string_item(xml, si)).collect())
+    let doc =
+        Document::parse(xml).map_err(|e| format!("the shared strings part is damaged: {e}"))?;
+    Ok(doc
+        .root_element()
+        .children()
+        .filter(|n| n.has_tag_name((MAIN_NS, "si")))
+        .map(|si| string_item(xml, si))
+        .collect())
 }
 
 /// Which `cm` index is a dynamic array, and whether that is all the metadata part holds.
@@ -436,7 +547,9 @@ fn read_metadata(xml: &str) -> (Option<u32>, bool) {
     let mut cm = None;
     if let Some(cells) = cell_metadata {
         for (i, bk) in cells.children().filter(|n| n.tag_name().name() == "bk").enumerate() {
-            if bk.children().filter(|n| n.tag_name().name() == "rc").any(|rc| rc.attribute("t").and_then(|t| t.parse::<usize>().ok()) == Some(dynamic_type + 1)) {
+            if bk.children().filter(|n| n.tag_name().name() == "rc").any(|rc| {
+                rc.attribute("t").and_then(|t| t.parse::<usize>().ok()) == Some(dynamic_type + 1)
+            }) {
                 cm = Some(i as u32 + 1);
                 break;
             }
@@ -512,26 +625,40 @@ fn read_sheet(
             "dimension" => {}
             "sheetViews" => {
                 if let Some(view) = child(section, "sheetView") {
-                    sheet.show_grid = !matches!(view.attribute("showGridLines"), Some("0") | Some("false"));
-                    sheet.zoom = view.attribute("zoomScale").and_then(|z| z.parse().ok()).unwrap_or(100);
+                    sheet.show_grid =
+                        !matches!(view.attribute("showGridLines"), Some("0") | Some("false"));
+                    sheet.zoom =
+                        view.attribute("zoomScale").and_then(|z| z.parse().ok()).unwrap_or(100);
                     if let Some(pane) = child(view, "pane") {
                         if matches!(pane.attribute("state"), Some("frozen") | Some("frozenSplit")) {
-                            let cols = pane.attribute("xSplit").and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0) as u32;
-                            let rows = pane.attribute("ySplit").and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0) as u32;
+                            let cols = pane
+                                .attribute("xSplit")
+                                .and_then(|v| v.parse::<f64>().ok())
+                                .unwrap_or(0.0) as u32;
+                            let rows = pane
+                                .attribute("ySplit")
+                                .and_then(|v| v.parse::<f64>().ok())
+                                .unwrap_or(0.0) as u32;
                             sheet.frozen = Some((rows, cols));
                         }
                     }
                 }
             }
             "sheetFormatPr" => {
-                sheet.default_row_height = section.attribute("defaultRowHeight").and_then(|v| v.parse().ok()).unwrap_or(15.0);
-                sheet.default_col_width = section.attribute("defaultColWidth").and_then(|v| v.parse().ok());
-                sheet.raw.format_attrs = attrs_of(section, &["defaultRowHeight", "defaultColWidth"]);
+                sheet.default_row_height = section
+                    .attribute("defaultRowHeight")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(15.0);
+                sheet.default_col_width =
+                    section.attribute("defaultColWidth").and_then(|v| v.parse().ok());
+                sheet.raw.format_attrs =
+                    attrs_of(section, &["defaultRowHeight", "defaultColWidth"]);
             }
             "cols" => {
                 for c in section.children().filter(Node::is_element) {
                     let first: u32 = c.attribute("min").and_then(|v| v.parse().ok()).unwrap_or(1);
-                    let last: u32 = c.attribute("max").and_then(|v| v.parse().ok()).unwrap_or(first);
+                    let last: u32 =
+                        c.attribute("max").and_then(|v| v.parse().ok()).unwrap_or(first);
                     sheet.columns.push(ColumnInfo {
                         first: first.saturating_sub(1),
                         last: last.saturating_sub(1).min(crate::coord::MAX_COLS - 1),
@@ -539,7 +666,10 @@ fn read_sheet(
                         hidden: bool_attr(c, "hidden"),
                         style: c.attribute("style").and_then(|v| v.parse().ok()).unwrap_or(0),
                         custom_width: bool_attr(c, "customWidth"),
-                        outline: c.attribute("outlineLevel").and_then(|v| v.parse().ok()).unwrap_or(0),
+                        outline: c
+                            .attribute("outlineLevel")
+                            .and_then(|v| v.parse().ok())
+                            .unwrap_or(0),
                         collapsed: bool_attr(c, "collapsed"),
                         best_fit: bool_attr(c, "bestFit"),
                     });
@@ -548,29 +678,64 @@ fn read_sheet(
             "sheetData" => {
                 let mut next_row = 0u32;
                 for row in section.children().filter(|n| n.has_tag_name((MAIN_NS, "row"))) {
-                    let r: u32 = row.attribute("r").and_then(|v| v.parse::<u32>().ok()).map_or(next_row, |v| v - 1);
+                    let r: u32 = row
+                        .attribute("r")
+                        .and_then(|v| v.parse::<u32>().ok())
+                        .map_or(next_row, |v| v - 1);
                     next_row = r + 1;
                     let info = RowInfo {
-                        height: if bool_attr(row, "customHeight") || row.attribute("ht").is_some() { row.attribute("ht").and_then(|v| v.parse().ok()) } else { None },
+                        height: if bool_attr(row, "customHeight") || row.attribute("ht").is_some() {
+                            row.attribute("ht").and_then(|v| v.parse().ok())
+                        } else {
+                            None
+                        },
                         hidden: bool_attr(row, "hidden"),
-                        style: if bool_attr(row, "customFormat") { row.attribute("s").and_then(|v| v.parse().ok()) } else { None },
-                        outline: row.attribute("outlineLevel").and_then(|v| v.parse().ok()).unwrap_or(0),
+                        style: if bool_attr(row, "customFormat") {
+                            row.attribute("s").and_then(|v| v.parse().ok())
+                        } else {
+                            None
+                        },
+                        outline: row
+                            .attribute("outlineLevel")
+                            .and_then(|v| v.parse().ok())
+                            .unwrap_or(0),
                         collapsed: bool_attr(row, "collapsed"),
-                        attrs: attrs_of(row, &["r", "spans", "ht", "customHeight", "hidden", "s", "customFormat", "outlineLevel", "collapsed"]),
+                        attrs: attrs_of(
+                            row,
+                            &[
+                                "r",
+                                "spans",
+                                "ht",
+                                "customHeight",
+                                "hidden",
+                                "s",
+                                "customFormat",
+                                "outlineLevel",
+                                "collapsed",
+                            ],
+                        ),
                     };
                     if info != RowInfo::default() {
                         sheet.rows.insert(r, info);
                     }
                     let mut next_col = 0u32;
                     for c in row.children().filter(|n| n.has_tag_name((MAIN_NS, "c"))) {
-                        let at = c.attribute("r").and_then(CellRef::parse).unwrap_or(CellRef::new(r, next_col));
+                        let at = c
+                            .attribute("r")
+                            .and_then(CellRef::parse)
+                            .unwrap_or(CellRef::new(r, next_col));
                         next_col = at.col + 1;
                         let style = c.attribute("s").and_then(|v| v.parse().ok()).unwrap_or(0);
                         let kind = c.attribute("t").unwrap_or("n");
                         let v_text = child(c, "v").and_then(|v| v.text()).unwrap_or("");
                         let mut rich = None;
                         let value = match kind {
-                            "s" => match v_text.trim().parse::<usize>().ok().and_then(|i| strings.get(i)) {
+                            "s" => match v_text
+                                .trim()
+                                .parse::<usize>()
+                                .ok()
+                                .and_then(|i| strings.get(i))
+                            {
                                 Some((t, r)) => {
                                     rich = r.clone();
                                     Value::Text(t.clone())
@@ -587,7 +752,9 @@ fn read_sheet(
                                 None => Value::Empty,
                             },
                             "b" => Value::Bool(v_text.trim() == "1"),
-                            "e" => Value::Error(ErrorKind::parse(v_text).unwrap_or(ErrorKind::Value)),
+                            "e" => {
+                                Value::Error(ErrorKind::parse(v_text).unwrap_or(ErrorKind::Value))
+                            }
                             _ => match v_text.trim() {
                                 "" => Value::Empty,
                                 t => t.parse::<f64>().map(Value::Number).unwrap_or(Value::Empty),
@@ -600,20 +767,30 @@ fn read_sheet(
                             let f_text = f.text().unwrap_or("");
                             match f.attribute("t") {
                                 Some("shared") => {
-                                    let si: u32 = f.attribute("si").and_then(|v| v.parse().ok()).unwrap_or(0);
+                                    let si: u32 =
+                                        f.attribute("si").and_then(|v| v.parse().ok()).unwrap_or(0);
                                     if !f_text.is_empty() {
                                         let made = file_formula(f_text, false);
                                         shared.insert(si, (at, made.expr.clone()));
                                         formula = Some(made);
                                     } else if let Some((origin, expr)) = shared.get(&si) {
-                                        let moved = crate::formula::shifted(expr, at.row as i64 - origin.row as i64, at.col as i64 - origin.col as i64);
+                                        let moved = crate::formula::shifted(
+                                            expr,
+                                            at.row as i64 - origin.row as i64,
+                                            at.col as i64 - origin.col as i64,
+                                        );
                                         let mut made = Formula::from_expr(moved, false);
-                                        made.text = Arc::from(crate::formula::print::print(&made.expr, true).as_str());
+                                        made.text = Arc::from(
+                                            crate::formula::print::print(&made.expr, true).as_str(),
+                                        );
                                         formula = Some(made);
                                     }
                                 }
                                 Some("array") => {
-                                    let range = f.attribute("ref").and_then(Range::parse).unwrap_or(Range::cell(at));
+                                    let range = f
+                                        .attribute("ref")
+                                        .and_then(Range::parse)
+                                        .unwrap_or(Range::cell(at));
                                     let mut made = file_formula(f_text, is_dynamic);
                                     if is_dynamic {
                                         dynamic_ranges.push(range);
@@ -635,8 +812,11 @@ fn read_sheet(
                             }
                         }
                         let extra_attrs = attrs_of(c, &["r", "s", "t", "cm"]);
-                        let extra = (!extra_attrs.is_empty()).then(|| Arc::from(attrs_text(&extra_attrs).as_str()));
-                        sheet.cells.insert((at.row, at.col), Cell { value, formula, style, rich, extra });
+                        let extra = (!extra_attrs.is_empty())
+                            .then(|| Arc::from(attrs_text(&extra_attrs).as_str()));
+                        sheet
+                            .cells
+                            .insert((at.row, at.col), Cell { value, formula, style, rich, extra });
                     }
                 }
             }
@@ -648,19 +828,30 @@ fn read_sheet(
                 }
             }
             "conditionalFormatting" => {
-                let ranges: Vec<Range> = section.attribute("sqref").unwrap_or("").split_whitespace().filter_map(Range::parse).collect();
-                let rules = section.children().filter(|n| n.has_tag_name((MAIN_NS, "cfRule"))).map(|r| read_cf_rule(xml, r)).collect();
+                let ranges: Vec<Range> = section
+                    .attribute("sqref")
+                    .unwrap_or("")
+                    .split_whitespace()
+                    .filter_map(Range::parse)
+                    .collect();
+                let rules = section
+                    .children()
+                    .filter(|n| n.has_tag_name((MAIN_NS, "cfRule")))
+                    .map(|r| read_cf_rule(xml, r))
+                    .collect();
                 sheet.conditional.push(ConditionalFormat { ranges, rules });
             }
             "dataValidations" => {
-                for dv in section.children().filter(|n| n.has_tag_name((MAIN_NS, "dataValidation"))) {
+                for dv in section.children().filter(|n| n.has_tag_name((MAIN_NS, "dataValidation")))
+                {
                     sheet.validations.push(read_validation(dv));
                 }
             }
             "hyperlinks" => {
                 for h in section.children().filter(Node::is_element) {
                     let Some(range) = h.attribute("ref").and_then(Range::parse) else { continue };
-                    let target = match h.attribute((REL_NS, "id")).and_then(|id| rel_by_id.get(id)) {
+                    let target = match h.attribute((REL_NS, "id")).and_then(|id| rel_by_id.get(id))
+                    {
                         Some(rel) => {
                             let mut target = rel.target.clone();
                             if let Some(loc) = h.attribute("location") {
@@ -668,7 +859,9 @@ fn read_sheet(
                             }
                             LinkTarget::External(target)
                         }
-                        None => LinkTarget::Location(h.attribute("location").unwrap_or("").to_owned()),
+                        None => {
+                            LinkTarget::Location(h.attribute("location").unwrap_or("").to_owned())
+                        }
                     };
                     sheet.links.push(Hyperlink {
                         range,
@@ -681,11 +874,18 @@ fn read_sheet(
             "autoFilter" => {
                 if let Some(range) = section.attribute("ref").and_then(Range::parse) {
                     let mut columns = BTreeMap::new();
-                    for fc in section.children().filter(|n| n.has_tag_name((MAIN_NS, "filterColumn"))) {
-                        let id: u32 = fc.attribute("colId").and_then(|v| v.parse().ok()).unwrap_or(0);
+                    for fc in
+                        section.children().filter(|n| n.has_tag_name((MAIN_NS, "filterColumn")))
+                    {
+                        let id: u32 =
+                            fc.attribute("colId").and_then(|v| v.parse().ok()).unwrap_or(0);
                         let criteria = if let Some(filters) = child(fc, "filters") {
                             FilterCriteria::Values {
-                                values: filters.children().filter(|n| n.tag_name().name() == "filter").filter_map(|f| f.attribute("val").map(str::to_owned)).collect(),
+                                values: filters
+                                    .children()
+                                    .filter(|n| n.tag_name().name() == "filter")
+                                    .filter_map(|f| f.attribute("val").map(str::to_owned))
+                                    .collect(),
                                 blank: bool_attr(filters, "blank"),
                             }
                         } else if let Some(custom) = child(fc, "customFilters") {
@@ -693,7 +893,12 @@ fn read_sheet(
                                 conditions: custom
                                     .children()
                                     .filter(|n| n.tag_name().name() == "customFilter")
-                                    .map(|f| (f.attribute("operator").unwrap_or("equal").to_owned(), f.attribute("val").unwrap_or("").to_owned()))
+                                    .map(|f| {
+                                        (
+                                            f.attribute("operator").unwrap_or("equal").to_owned(),
+                                            f.attribute("val").unwrap_or("").to_owned(),
+                                        )
+                                    })
                                     .collect(),
                                 and: bool_attr(custom, "and"),
                             }
@@ -711,7 +916,10 @@ fn read_sheet(
             }
             "tableParts" => {
                 for tp in section.children().filter(Node::is_element) {
-                    let Some(rel) = tp.attribute((REL_NS, "id")).and_then(|id| rel_by_id.get(id)) else { continue };
+                    let Some(rel) = tp.attribute((REL_NS, "id")).and_then(|id| rel_by_id.get(id))
+                    else {
+                        continue;
+                    };
                     let table_part = resolve(part, &rel.target);
                     if let Some(table_xml) = text(&table_part) {
                         if let Some(table) = read_table(&table_xml, &table_part, index) {
@@ -732,6 +940,11 @@ fn read_sheet(
                 read_notes(&cx, sheet);
             }
             // Kept as bytes; regenerated only if a note changes.
+        }
+        // Charts, read so they can be drawn; their parts are kept as they were.
+        if rel.kind == REL_DRAWING {
+            sheet.charts.extend(super::chart::read_charts(part, &rel.target, text));
+            sheet.pictures.extend(super::chart::read_pictures(part, &rel.target, text));
         }
         let kept = match rel.kind.as_str() {
             REL_HYPERLINK => false,
@@ -775,14 +988,20 @@ fn read_sheet(
 
 fn read_cf_rule(xml: &str, r: Node) -> CfRule {
     let num = |name: &str| r.attribute(name).and_then(|v| v.parse().ok());
-    let cfvo = |n: Node| Cfvo { kind: n.attribute("type").unwrap_or("min").to_owned(), value: n.attribute("val").map(str::to_owned) };
+    let cfvo = |n: Node| Cfvo {
+        kind: n.attribute("type").unwrap_or("min").to_owned(),
+        value: n.attribute("val").map(str::to_owned),
+    };
     let color_scale = child(r, "colorScale").map(|cs| {
-        let points: Vec<Cfvo> = cs.children().filter(|n| n.tag_name().name() == "cfvo").map(cfvo).collect();
-        let colors: Vec<Color> = cs.children().filter(|n| n.tag_name().name() == "color").map(color).collect();
+        let points: Vec<Cfvo> =
+            cs.children().filter(|n| n.tag_name().name() == "cfvo").map(cfvo).collect();
+        let colors: Vec<Color> =
+            cs.children().filter(|n| n.tag_name().name() == "color").map(color).collect();
         points.into_iter().zip(colors).collect()
     });
     let data_bar = child(r, "dataBar").and_then(|db| {
-        let points: Vec<Cfvo> = db.children().filter(|n| n.tag_name().name() == "cfvo").map(cfvo).collect();
+        let points: Vec<Cfvo> =
+            db.children().filter(|n| n.tag_name().name() == "cfvo").map(cfvo).collect();
         let c = child(db, "color").map_or(Color::rgb(0x63, 0x8E, 0xC6), color);
         (points.len() >= 2).then(|| (points[0].clone(), points[1].clone(), c))
     });
@@ -804,10 +1023,28 @@ fn read_cf_rule(xml: &str, r: Node) -> CfRule {
         percent: bool_attr(r, "percent"),
         bottom: bool_attr(r, "bottom"),
         above_average: r.attribute("aboveAverage").map(|v| v != "0" && v != "false"),
-        formulas: r.children().filter(|n| n.tag_name().name() == "formula").map(|f| f.text().unwrap_or("").to_owned()).collect(),
+        formulas: r
+            .children()
+            .filter(|n| n.tag_name().name() == "formula")
+            .map(|f| f.text().unwrap_or("").to_owned())
+            .collect(),
         color_scale,
         data_bar,
-        attrs: attrs_of(r, &["type", "dxfId", "priority", "stopIfTrue", "operator", "text", "rank", "percent", "bottom", "aboveAverage"]),
+        attrs: attrs_of(
+            r,
+            &[
+                "type",
+                "dxfId",
+                "priority",
+                "stopIfTrue",
+                "operator",
+                "text",
+                "rank",
+                "percent",
+                "bottom",
+                "aboveAverage",
+            ],
+        ),
         raw_children,
     }
 }
@@ -815,7 +1052,12 @@ fn read_cf_rule(xml: &str, r: Node) -> CfRule {
 fn read_validation(dv: Node) -> Validation {
     let text = |name: &str| child(dv, name).and_then(|n| n.text()).map(str::to_owned);
     Validation {
-        ranges: dv.attribute("sqref").unwrap_or("").split_whitespace().filter_map(Range::parse).collect(),
+        ranges: dv
+            .attribute("sqref")
+            .unwrap_or("")
+            .split_whitespace()
+            .filter_map(Range::parse)
+            .collect(),
         kind: dv.attribute("type").unwrap_or("none").to_owned(),
         operator: dv.attribute("operator").map(str::to_owned),
         formula1: text("formula1"),
@@ -827,7 +1069,21 @@ fn read_validation(dv: Node) -> Validation {
         error_title: dv.attribute("errorTitle").map(str::to_owned),
         error: dv.attribute("error").map(str::to_owned),
         error_style: dv.attribute("errorStyle").map(str::to_owned),
-        attrs: attrs_of(dv, &["sqref", "type", "operator", "allowBlank", "showDropDown", "promptTitle", "prompt", "errorTitle", "error", "errorStyle"]),
+        attrs: attrs_of(
+            dv,
+            &[
+                "sqref",
+                "type",
+                "operator",
+                "allowBlank",
+                "showDropDown",
+                "promptTitle",
+                "prompt",
+                "errorTitle",
+                "error",
+                "errorStyle",
+            ],
+        ),
     }
 }
 
@@ -836,15 +1092,25 @@ fn read_table(xml: &str, part: &str, sheet: usize) -> Option<Table> {
     let root = doc.root_element();
     let range = root.attribute("ref").and_then(Range::parse)?;
     let columns = child(root, "tableColumns")
-        .map(|tc| tc.children().filter(Node::is_element).map(|c| c.attribute("name").unwrap_or("").to_owned()).collect())
+        .map(|tc| {
+            tc.children()
+                .filter(Node::is_element)
+                .map(|c| c.attribute("name").unwrap_or("").to_owned())
+                .collect()
+        })
         .unwrap_or_default();
     Some(Table {
         sheet,
-        name: root.attribute("displayName").or_else(|| root.attribute("name")).unwrap_or("Table").to_owned(),
+        name: root
+            .attribute("displayName")
+            .or_else(|| root.attribute("name"))
+            .unwrap_or("Table")
+            .to_owned(),
         range,
         columns,
         header_row: root.attribute("headerRowCount") != Some("0"),
-        totals_row: root.attribute("totalsRowCount").is_some_and(|v| v != "0") || bool_attr(root, "totalsRowShown") && root.attribute("totalsRowCount").is_some(),
+        totals_row: root.attribute("totalsRowCount").is_some_and(|v| v != "0")
+            || bool_attr(root, "totalsRowShown") && root.attribute("totalsRowCount").is_some(),
         part: part.to_owned(),
         xml: xml.to_owned(),
     })
@@ -853,11 +1119,23 @@ fn read_table(xml: &str, part: &str, sheet: usize) -> Option<Table> {
 fn read_notes(xml: &str, sheet: &mut Sheet) {
     let Ok(doc) = Document::parse(xml) else { return };
     let root = doc.root_element();
-    let authors: Vec<String> = child(root, "authors").map(|a| a.children().filter(Node::is_element).map(|n| n.text().unwrap_or("").to_owned()).collect()).unwrap_or_default();
+    let authors: Vec<String> = child(root, "authors")
+        .map(|a| {
+            a.children()
+                .filter(Node::is_element)
+                .map(|n| n.text().unwrap_or("").to_owned())
+                .collect()
+        })
+        .unwrap_or_default();
     let Some(list) = child(root, "commentList") else { return };
     for c in list.children().filter(Node::is_element) {
         let Some(at) = c.attribute("ref").and_then(CellRef::parse) else { continue };
-        let author = c.attribute("authorId").and_then(|v| v.parse::<usize>().ok()).and_then(|i| authors.get(i)).cloned().unwrap_or_default();
+        let author = c
+            .attribute("authorId")
+            .and_then(|v| v.parse::<usize>().ok())
+            .and_then(|i| authors.get(i))
+            .cloned()
+            .unwrap_or_default();
         let text = child(c, "text").map(|t| string_item(xml, t).0.to_string()).unwrap_or_default();
         sheet.notes.insert((at.row, at.col), Note { author, text });
     }

@@ -63,7 +63,9 @@ impl Clip {
                 if c > 0 {
                     out.push('\t');
                 }
-                if let Some((_, _, cell)) = self.cells.iter().find(|(rr, cc, _)| *rr == r && *cc == c) {
+                if let Some((_, _, cell)) =
+                    self.cells.iter().find(|(rr, cc, _)| *rr == r && *cc == c)
+                {
                     out.push_str(&shown_text(book, cell));
                 }
             }
@@ -139,7 +141,16 @@ impl Session {
         engine.mark_all();
         engine.recalculate(&mut book, now, 0x51_7cc1_b727_220a);
         let this_year = crate::dates::date(now, false).map_or(2026, |(y, _, _)| y);
-        Self { book, engine, undo: Vec::new(), redo: Vec::new(), modified: false, now, this_year, seed: 1 }
+        Self {
+            book,
+            engine,
+            undo: Vec::new(),
+            redo: Vec::new(),
+            modified: false,
+            now,
+            this_year,
+            seed: 1,
+        }
     }
 
     pub fn can_undo(&self) -> bool {
@@ -160,7 +171,10 @@ impl Session {
     }
 
     fn seed(&mut self) -> u64 {
-        self.seed = self.seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        self.seed = self
+            .seed
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         self.seed
     }
 
@@ -193,8 +207,18 @@ impl Session {
         let s = &self.book.sheets[sheet];
         let mut cells = Vec::new();
         for range in ranges {
-            for r in range.first.row..=range.last.row.min(last_row(s)) {
-                for c in range.first.col..=range.last.col.min(last_col(s)) {
+            // A range of ordinary size is recorded whole, empty cells included, because the change may fill
+            // cells past what is in use now. Only a whole row or column is cut to the cells in use.
+            let (last_r, last_c) = if range.len() > 1_000_000 {
+                (
+                    range.last.row.min(last_row(s).max(range.first.row)),
+                    range.last.col.min(last_col(s).max(range.first.col)),
+                )
+            } else {
+                (range.last.row, range.last.col)
+            };
+            for r in range.first.row..=last_r {
+                for c in range.first.col..=last_c {
                     cells.push(((r, c), s.cells.get(&(r, c)).cloned()));
                 }
             }
@@ -286,7 +310,8 @@ impl Session {
             let mut style = old.style;
             if let Some(code) = format {
                 if self.book.styles.format_code(style) == "General" {
-                    style = self.book.styles.derive(style, &StyleChange::NumberFormat(code.to_owned()));
+                    style =
+                        self.book.styles.derive(style, &StyleChange::NumberFormat(code.to_owned()));
                 }
             }
             let cell = Cell { value, formula, style, rich: None, extra: old.extra.clone() };
@@ -297,7 +322,12 @@ impl Session {
         Ok(())
     }
 
-    fn prepare(&self, sheet: usize, at: CellRef, text: &str) -> Result<(Value, Option<Formula>, Option<&'static str>), String> {
+    fn prepare(
+        &self,
+        sheet: usize,
+        at: CellRef,
+        text: &str,
+    ) -> Result<(Value, Option<Formula>, Option<&'static str>), String> {
         let style = self.book.sheets[sheet].cell(at).map_or(0, |c| c.style);
         let as_text = self.book.styles.format_code(style) == "@";
         if !as_text && text.starts_with('=') && text.len() > 1 {
@@ -305,7 +335,11 @@ impl Session {
             return Ok((Value::Empty, Some(f), None));
         }
         if as_text {
-            return Ok((if text.is_empty() { Value::Empty } else { Value::text(text) }, None, None));
+            return Ok((
+                if text.is_empty() { Value::Empty } else { Value::text(text) },
+                None,
+                None,
+            ));
         }
         let typed = crate::input::read(text, self.book.date1904, self.this_year);
         Ok((typed.value, None, typed.format))
@@ -325,7 +359,12 @@ impl Session {
     }
 
     /// Enter a legacy array formula over a range, which is what Ctrl+Shift+Enter does.
-    pub fn set_array_formula(&mut self, sheet: usize, range: Range, text: &str) -> Result<(), String> {
+    pub fn set_array_formula(
+        &mut self,
+        sheet: usize,
+        range: Range,
+        text: &str,
+    ) -> Result<(), String> {
         self.check_sheet(sheet)?;
         let mut f = Formula::parse(text).map_err(|e| format!("That formula has a problem: {e}"))?;
         f.dynamic = false;
@@ -336,7 +375,11 @@ impl Session {
         s.array_formulas.push(range);
         for at in range.cells() {
             let style = s.cells.get(&(at.row, at.col)).map_or(0, |c| c.style);
-            let cell = if at == range.first { Cell { formula: Some(f.clone()), style, ..Default::default() } } else { Cell { value: Value::Number(0.0), style, ..Default::default() } };
+            let cell = if at == range.first {
+                Cell { formula: Some(f.clone()), style, ..Default::default() }
+            } else {
+                Cell { value: Value::Number(0.0), style, ..Default::default() }
+            };
             s.cells.insert((at.row, at.col), cell);
         }
         self.engine.changed(&self.book, sheet, range.first);
@@ -357,7 +400,9 @@ impl Session {
             Clear::Notes => {
                 self.remember_whole("Clear notes");
                 let s = &mut self.book.sheets[sheet];
-                s.notes.retain(|(r, c), _| !ranges.iter().any(|range| range.contains(CellRef::new(*r, *c))));
+                s.notes.retain(|(r, c), _| {
+                    !ranges.iter().any(|range| range.contains(CellRef::new(*r, *c)))
+                });
                 s.notes_changed = true;
                 return Ok(());
             }
@@ -369,14 +414,23 @@ impl Session {
             }
             _ => {}
         }
-        self.remember_cells(match what {
-            Clear::Contents => "Clear contents",
-            Clear::Formats => "Clear formats",
-            _ => "Clear",
-        }, sheet, ranges, false);
+        self.remember_cells(
+            match what {
+                Clear::Contents => "Clear contents",
+                Clear::Formats => "Clear formats",
+                _ => "Clear",
+            },
+            sheet,
+            ranges,
+            false,
+        );
         let keys: Vec<(u32, u32)> = {
             let s = &self.book.sheets[sheet];
-            s.cells.keys().filter(|(r, c)| ranges.iter().any(|range| range.contains(CellRef::new(*r, *c)))).copied().collect()
+            s.cells
+                .keys()
+                .filter(|(r, c)| ranges.iter().any(|range| range.contains(CellRef::new(*r, *c))))
+                .copied()
+                .collect()
         };
         for key in keys {
             let s = &mut self.book.sheets[sheet];
@@ -409,7 +463,12 @@ impl Session {
     }
 
     /// Change one property of the format of every cell in some ranges.
-    pub fn set_style(&mut self, sheet: usize, ranges: &[Range], change: &StyleChange) -> Result<(), String> {
+    pub fn set_style(
+        &mut self,
+        sheet: usize,
+        ranges: &[Range],
+        change: &StyleChange,
+    ) -> Result<(), String> {
         self.check_sheet(sheet)?;
         self.remember_cells("Format", sheet, ranges, true);
         // Whole rows and columns change the row and column formats rather than every cell.
@@ -418,7 +477,11 @@ impl Session {
             let whole_cols = range.is_whole_columns();
             let whole_rows = range.is_whole_rows();
             let keys: Vec<(u32, u32)> = if whole_cols || whole_rows {
-                s.cells.keys().filter(|(r, c)| range.contains(CellRef::new(*r, *c))).copied().collect()
+                s.cells
+                    .keys()
+                    .filter(|(r, c)| range.contains(CellRef::new(*r, *c)))
+                    .copied()
+                    .collect()
             } else {
                 range.cells().map(|c| (c.row, c.col)).collect()
             };
@@ -431,7 +494,8 @@ impl Session {
             }
             if whole_rows {
                 for row in range.first.row..=range.last.row {
-                    let base = self.book.sheets[sheet].rows.get(&row).and_then(|r| r.style).unwrap_or(0);
+                    let base =
+                        self.book.sheets[sheet].rows.get(&row).and_then(|r| r.style).unwrap_or(0);
                     let next = self.book.styles.derive(base, change);
                     self.book.sheets[sheet].rows.entry(row).or_default().style = Some(next);
                 }
@@ -439,8 +503,11 @@ impl Session {
             let mut cache: BTreeMap<u32, u32> = BTreeMap::new();
             for key in keys {
                 let s = &mut self.book.sheets[sheet];
-                let current = s.cells.get(&key).map_or_else(|| inherited_style(s, key), |c| c.style);
-                let next = *cache.entry(current).or_insert_with(|| self.book.styles.derive(current, change));
+                let current =
+                    s.cells.get(&key).map_or_else(|| inherited_style(s, key), |c| c.style);
+                let next = *cache
+                    .entry(current)
+                    .or_insert_with(|| self.book.styles.derive(current, change));
                 let s = &mut self.book.sheets[sheet];
                 let cell = s.cells.entry(key).or_default();
                 cell.style = next;
@@ -460,8 +527,18 @@ impl Session {
     pub fn insert(&mut self, sheet: usize, range: Range, shift: Shift) -> Result<(), String> {
         self.check_sheet(sheet)?;
         let (axis, at, count, band) = match shift {
-            Shift::WholeRows | Shift::Down => (Axis::Rows, range.first.row, range.rows() as i64, (shift == Shift::Down).then(|| (range.first.col, range.last.col))),
-            Shift::WholeColumns | Shift::Right => (Axis::Columns, range.first.col, range.cols() as i64, (shift == Shift::Right).then(|| (range.first.row, range.last.row))),
+            Shift::WholeRows | Shift::Down => (
+                Axis::Rows,
+                range.first.row,
+                range.rows() as i64,
+                (shift == Shift::Down).then(|| (range.first.col, range.last.col)),
+            ),
+            Shift::WholeColumns | Shift::Right => (
+                Axis::Columns,
+                range.first.col,
+                range.cols() as i64,
+                (shift == Shift::Right).then(|| (range.first.row, range.last.row)),
+            ),
             _ => return Err("insert shifts cells down or right".to_owned()),
         };
         self.remember_whole(match axis {
@@ -476,8 +553,18 @@ impl Session {
     pub fn delete(&mut self, sheet: usize, range: Range, shift: Shift) -> Result<(), String> {
         self.check_sheet(sheet)?;
         let (axis, at, count, band) = match shift {
-            Shift::WholeRows | Shift::Up => (Axis::Rows, range.first.row, -(range.rows() as i64), (shift == Shift::Up).then(|| (range.first.col, range.last.col))),
-            Shift::WholeColumns | Shift::Left => (Axis::Columns, range.first.col, -(range.cols() as i64), (shift == Shift::Left).then(|| (range.first.row, range.last.row))),
+            Shift::WholeRows | Shift::Up => (
+                Axis::Rows,
+                range.first.row,
+                -(range.rows() as i64),
+                (shift == Shift::Up).then(|| (range.first.col, range.last.col)),
+            ),
+            Shift::WholeColumns | Shift::Left => (
+                Axis::Columns,
+                range.first.col,
+                -(range.cols() as i64),
+                (shift == Shift::Left).then(|| (range.first.row, range.last.row)),
+            ),
             _ => return Err("delete shifts cells up or left".to_owned()),
         };
         self.remember_whole(match axis {
@@ -490,7 +577,14 @@ impl Session {
 
     /// Move cells for an insert (`count` positive) or a delete (negative) and rewrite every reference.
     /// `band` limits the move to some columns (rows) for inserting cells rather than whole lines.
-    fn structural(&mut self, sheet: usize, axis: Axis, at: u32, count: i64, band: Option<(u32, u32)>) {
+    fn structural(
+        &mut self,
+        sheet: usize,
+        axis: Axis,
+        at: u32,
+        count: i64,
+        band: Option<(u32, u32)>,
+    ) {
         let name = self.book.sheets[sheet].name.clone();
         let limit = match axis {
             Axis::Rows => MAX_ROWS,
@@ -506,7 +600,9 @@ impl Session {
                     }
                     let adjusted = match band {
                         None => formula::adjusted(&f.expr, &name, &names[si], axis, at, count),
-                        Some(band) => adjust_band(&f.expr, &name, &names[si], axis, at, count, band),
+                        Some(band) => {
+                            adjust_band(&f.expr, &name, &names[si], axis, at, count, band)
+                        }
                     };
                     if adjusted != *f.expr {
                         let dynamic = f.dynamic;
@@ -606,9 +702,14 @@ impl Session {
             v.ranges = v.ranges.iter().filter_map(|r| shift_range(*r)).collect();
         }
         s.validations.retain(|v| !v.ranges.is_empty());
-        s.links = s.links.iter().filter_map(|l| shift_range(l.range).map(|range| Hyperlink { range, ..l.clone() })).collect();
+        s.links = s
+            .links
+            .iter()
+            .filter_map(|l| shift_range(l.range).map(|range| Hyperlink { range, ..l.clone() }))
+            .collect();
         if let Some(f) = &s.filter {
-            s.filter = shift_range(f.range).map(|range| AutoFilter { range, columns: f.columns.clone() });
+            s.filter =
+                shift_range(f.range).map(|range| AutoFilter { range, columns: f.columns.clone() });
         }
         if band.is_none() {
             match axis {
@@ -707,7 +808,9 @@ impl Session {
     /// Delete a sheet. Formulas that named it read `#REF!`.
     pub fn delete_sheet(&mut self, sheet: usize) -> Result<(), String> {
         self.check_sheet(sheet)?;
-        if self.book.sheets.iter().filter(|s| s.state == Visibility::Visible).count() <= 1 && self.book.sheets[sheet].state == Visibility::Visible {
+        if self.book.sheets.iter().filter(|s| s.state == Visibility::Visible).count() <= 1
+            && self.book.sheets[sheet].state == Visibility::Visible
+        {
             return Err("a workbook needs at least one visible sheet".to_owned());
         }
         self.remember_whole("Delete sheet");
@@ -733,7 +836,8 @@ impl Session {
         self.reindex_after_sheet_move(|i| if i > sheet { i - 1 } else { i });
         self.book.active_sheet = self.book.active_sheet.min(self.book.sheets.len() - 1);
         if self.book.sheets[self.book.active_sheet].state != Visibility::Visible {
-            self.book.active_sheet = self.book.sheets.iter().position(|s| s.state == Visibility::Visible).unwrap_or(0);
+            self.book.active_sheet =
+                self.book.sheets.iter().position(|s| s.state == Visibility::Visible).unwrap_or(0);
         }
         self.engine.rebuild(&self.book);
         self.recalculate_all();
@@ -773,10 +877,19 @@ impl Session {
         self.check_sheet(sheet)?;
         self.remember_whole("Duplicate sheet");
         let mut copy = self.book.sheets[sheet].clone();
-        copy.name = (2..).map(|n| format!("{} ({n})", copy.name)).find(|n| self.book.sheet_index(n).is_none()).unwrap_or_default();
+        copy.name = (2..)
+            .map(|n| format!("{} ({n})", copy.name))
+            .find(|n| self.book.sheet_index(n).is_none())
+            .unwrap_or_default();
         copy.raw.part = String::new();
-        copy.raw.rels.retain(|r| r.kind != crate::xlsx::REL_COMMENTS && r.kind != crate::xlsx::REL_VML && r.kind != crate::xlsx::REL_DRAWING);
-        copy.raw.elements.retain(|(n, _)| n != "drawing" && n != "legacyDrawing" && n != "tableParts");
+        copy.raw.rels.retain(|r| {
+            r.kind != crate::xlsx::REL_COMMENTS
+                && r.kind != crate::xlsx::REL_VML
+                && r.kind != crate::xlsx::REL_DRAWING
+        });
+        copy.raw
+            .elements
+            .retain(|(n, _)| n != "drawing" && n != "legacyDrawing" && n != "tableParts");
         copy.notes_changed = true;
         copy.charts.clear();
         copy.state = Visibility::Visible;
@@ -791,18 +904,32 @@ impl Session {
 
     pub fn set_sheet_visibility(&mut self, sheet: usize, state: Visibility) -> Result<(), String> {
         self.check_sheet(sheet)?;
-        if state != Visibility::Visible && self.book.sheets.iter().enumerate().filter(|(i, s)| *i != sheet && s.state == Visibility::Visible).count() == 0 {
+        if state != Visibility::Visible
+            && self
+                .book
+                .sheets
+                .iter()
+                .enumerate()
+                .filter(|(i, s)| *i != sheet && s.state == Visibility::Visible)
+                .count()
+                == 0
+        {
             return Err("a workbook needs at least one visible sheet".to_owned());
         }
         self.remember_whole("Hide sheet");
         self.book.sheets[sheet].state = state;
         if state != Visibility::Visible && self.book.active_sheet == sheet {
-            self.book.active_sheet = self.book.sheets.iter().position(|s| s.state == Visibility::Visible).unwrap_or(0);
+            self.book.active_sheet =
+                self.book.sheets.iter().position(|s| s.state == Visibility::Visible).unwrap_or(0);
         }
         Ok(())
     }
 
-    pub fn set_tab_color(&mut self, sheet: usize, color: Option<crate::styles::Color>) -> Result<(), String> {
+    pub fn set_tab_color(
+        &mut self,
+        sheet: usize,
+        color: Option<crate::styles::Color>,
+    ) -> Result<(), String> {
         self.check_sheet(sheet)?;
         self.remember_whole("Tab color");
         self.book.sheets[sheet].tab_color = color;
@@ -822,7 +949,13 @@ impl Session {
     // Layout.
 
     /// Set column widths, in characters, or `None` for the default.
-    pub fn set_column_width(&mut self, sheet: usize, first: u32, last: u32, width: Option<f64>) -> Result<(), String> {
+    pub fn set_column_width(
+        &mut self,
+        sheet: usize,
+        first: u32,
+        last: u32,
+        width: Option<f64>,
+    ) -> Result<(), String> {
         self.check_sheet(sheet)?;
         self.remember_whole("Column width");
         for col in first..=last {
@@ -836,7 +969,13 @@ impl Session {
     }
 
     /// Set row heights, in points, or `None` for the default.
-    pub fn set_row_height(&mut self, sheet: usize, first: u32, last: u32, height: Option<f64>) -> Result<(), String> {
+    pub fn set_row_height(
+        &mut self,
+        sheet: usize,
+        first: u32,
+        last: u32,
+        height: Option<f64>,
+    ) -> Result<(), String> {
         self.check_sheet(sheet)?;
         self.remember_whole("Row height");
         let s = &mut self.book.sheets[sheet];
@@ -850,7 +989,13 @@ impl Session {
         Ok(())
     }
 
-    pub fn hide_rows(&mut self, sheet: usize, first: u32, last: u32, hidden: bool) -> Result<(), String> {
+    pub fn hide_rows(
+        &mut self,
+        sheet: usize,
+        first: u32,
+        last: u32,
+        hidden: bool,
+    ) -> Result<(), String> {
         self.check_sheet(sheet)?;
         self.remember_whole(if hidden { "Hide rows" } else { "Unhide rows" });
         let s = &mut self.book.sheets[sheet];
@@ -866,7 +1011,13 @@ impl Session {
         Ok(())
     }
 
-    pub fn hide_columns(&mut self, sheet: usize, first: u32, last: u32, hidden: bool) -> Result<(), String> {
+    pub fn hide_columns(
+        &mut self,
+        sheet: usize,
+        first: u32,
+        last: u32,
+        hidden: bool,
+    ) -> Result<(), String> {
         self.check_sheet(sheet)?;
         self.remember_whole(if hidden { "Hide columns" } else { "Unhide columns" });
         for col in first..=last {
@@ -900,7 +1051,15 @@ impl Session {
         s.merges.retain(|m| !m.intersects(&range));
         s.merges.push(range);
         // Only the top left cell keeps its value, as in Excel.
-        let keys: Vec<(u32, u32)> = s.cells.keys().filter(|(r, c)| range.contains(CellRef::new(*r, *c)) && (*r, *c) != (range.first.row, range.first.col)).copied().collect();
+        let keys: Vec<(u32, u32)> = s
+            .cells
+            .keys()
+            .filter(|(r, c)| {
+                range.contains(CellRef::new(*r, *c))
+                    && (*r, *c) != (range.first.row, range.first.col)
+            })
+            .copied()
+            .collect();
         for key in keys {
             if let Some(cell) = s.cells.get_mut(&key) {
                 cell.value = Value::Empty;
@@ -909,8 +1068,18 @@ impl Session {
         }
         if center {
             let style = s.cells.get(&(range.first.row, range.first.col)).map_or(0, |c| c.style);
-            let next = self.book.styles.derive(style, &StyleChange::Align(crate::styles::AlignEdit { horizontal: Some(Some("center".to_owned())), ..Default::default() }));
-            self.book.sheets[sheet].cells.entry((range.first.row, range.first.col)).or_default().style = next;
+            let next = self.book.styles.derive(
+                style,
+                &StyleChange::Align(crate::styles::AlignEdit {
+                    horizontal: Some(Some("center".to_owned())),
+                    ..Default::default()
+                }),
+            );
+            self.book.sheets[sheet]
+                .cells
+                .entry((range.first.row, range.first.col))
+                .or_default()
+                .style = next;
         }
         self.engine.rebuild(&self.book);
         self.recalculate_all();
@@ -950,15 +1119,28 @@ impl Session {
 
     /// Paste copied cells with their top left at `to`. A paste into a selection that is a whole multiple of
     /// the copied block repeats it, as Excel does.
-    pub fn paste(&mut self, clip: &Clip, sheet: usize, to: Range, mode: PasteMode) -> Result<Range, String> {
+    pub fn paste(
+        &mut self,
+        clip: &Clip,
+        sheet: usize,
+        to: Range,
+        mode: PasteMode,
+    ) -> Result<Range, String> {
         self.check_sheet(sheet)?;
-        let (rows, cols) = if mode == PasteMode::Transpose { (clip.range.cols(), clip.range.rows()) } else { (clip.range.rows(), clip.range.cols()) };
+        let (rows, cols) = if mode == PasteMode::Transpose {
+            (clip.range.cols(), clip.range.rows())
+        } else {
+            (clip.range.rows(), clip.range.cols())
+        };
         let repeat_r = if to.rows() > rows && to.rows() % rows == 0 { to.rows() / rows } else { 1 };
         let repeat_c = if to.cols() > cols && to.cols() % cols == 0 { to.cols() / cols } else { 1 };
-        let target = Range::new(to.first, CellRef::new(
-            (to.first.row + rows * repeat_r - 1).min(MAX_ROWS - 1),
-            (to.first.col + cols * repeat_c - 1).min(MAX_COLS - 1),
-        ));
+        let target = Range::new(
+            to.first,
+            CellRef::new(
+                (to.first.row + rows * repeat_r - 1).min(MAX_ROWS - 1),
+                (to.first.col + cols * repeat_c - 1).min(MAX_COLS - 1),
+            ),
+        );
         self.refuse_array_member(sheet, target)?;
         if clip.cut {
             self.remember_whole("Move cells");
@@ -980,23 +1162,55 @@ impl Session {
                 }
                 for (r, c, cell) in &clip.cells {
                     let (r, c) = if mode == PasteMode::Transpose { (*c, *r) } else { (*r, *c) };
-                    let at = CellRef::new(to.first.row + rr * rows + r, to.first.col + rc * cols + c);
+                    let at =
+                        CellRef::new(to.first.row + rr * rows + r, to.first.col + rc * cols + c);
                     if at.row >= MAX_ROWS || at.col >= MAX_COLS {
                         continue;
                     }
-                    let source = CellRef::new(clip.range.first.row + if mode == PasteMode::Transpose { c } else { r }, clip.range.first.col + if mode == PasteMode::Transpose { r } else { c });
+                    let source = CellRef::new(
+                        clip.range.first.row + if mode == PasteMode::Transpose { c } else { r },
+                        clip.range.first.col + if mode == PasteMode::Transpose { r } else { c },
+                    );
                     let shifted = |f: &Formula| -> Formula {
-                        let expr = formula::shifted(&f.expr, at.row as i64 - source.row as i64, at.col as i64 - source.col as i64);
+                        let expr = formula::shifted(
+                            &f.expr,
+                            at.row as i64 - source.row as i64,
+                            at.col as i64 - source.col as i64,
+                        );
                         let mut out = Formula::from_expr(expr, f.dynamic);
                         out.array = None;
                         out
                     };
-                    let existing = self.book.sheets[sheet].cells.get(&(at.row, at.col)).cloned().unwrap_or_default();
+                    let existing = self.book.sheets[sheet]
+                        .cells
+                        .get(&(at.row, at.col))
+                        .cloned()
+                        .unwrap_or_default();
                     let pasted = match mode {
-                        PasteMode::All | PasteMode::Transpose => Cell { value: cell.value.clone(), formula: cell.formula.as_ref().filter(|f| f.array.is_none()).map(shifted), style: cell.style, rich: cell.rich.clone(), extra: None },
-                        PasteMode::Values => Cell { value: cell.value.clone(), formula: None, style: existing.style, rich: None, extra: None },
+                        PasteMode::All | PasteMode::Transpose => Cell {
+                            value: cell.value.clone(),
+                            formula: cell
+                                .formula
+                                .as_ref()
+                                .filter(|f| f.array.is_none())
+                                .map(shifted),
+                            style: cell.style,
+                            rich: cell.rich.clone(),
+                            extra: None,
+                        },
+                        PasteMode::Values => Cell {
+                            value: cell.value.clone(),
+                            formula: None,
+                            style: existing.style,
+                            rich: None,
+                            extra: None,
+                        },
                         PasteMode::Formulas => Cell {
-                            value: if cell.formula.is_some() { Value::Empty } else { cell.value.clone() },
+                            value: if cell.formula.is_some() {
+                                Value::Empty
+                            } else {
+                                cell.value.clone()
+                            },
                             formula: cell.formula.as_ref().map(shifted),
                             style: existing.style,
                             rich: None,
@@ -1015,7 +1229,10 @@ impl Session {
 
     /// Cut and paste: the cells move and every formula that named them follows.
     fn move_cells(&mut self, clip: &Clip, sheet: usize, to: CellRef) {
-        let (dr, dc) = (to.row as i64 - clip.range.first.row as i64, to.col as i64 - clip.range.first.col as i64);
+        let (dr, dc) = (
+            to.row as i64 - clip.range.first.row as i64,
+            to.col as i64 - clip.range.first.col as i64,
+        );
         let from_name = self.book.sheets[clip.sheet].name.clone();
         let names: Vec<String> = self.book.sheets.iter().map(|s| s.name.clone()).collect();
         // Every reference to the moved block now points at its new place.
@@ -1046,9 +1263,17 @@ impl Session {
                 }
             }
         }
-        let target = Range::new(to, CellRef::new(to.row + clip.range.rows() - 1, to.col + clip.range.cols() - 1));
+        let target = Range::new(
+            to,
+            CellRef::new(to.row + clip.range.rows() - 1, to.col + clip.range.cols() - 1),
+        );
         let dest = &mut self.book.sheets[sheet];
-        let keys: Vec<(u32, u32)> = dest.cells.keys().filter(|(r, c)| target.contains(CellRef::new(*r, *c))).copied().collect();
+        let keys: Vec<(u32, u32)> = dest
+            .cells
+            .keys()
+            .filter(|(r, c)| target.contains(CellRef::new(*r, *c)))
+            .copied()
+            .collect();
         for k in keys {
             dest.cells.remove(&k);
         }
@@ -1056,10 +1281,17 @@ impl Session {
             dest.cells.insert((to.row + r, to.col + c), cell);
         }
         // Notes travel with their cells.
-        let notes: Vec<((u32, u32), Note)> = self.book.sheets[clip.sheet].notes.iter().filter(|((r, c), _)| clip.range.contains(CellRef::new(*r, *c))).map(|(k, n)| (*k, n.clone())).collect();
+        let notes: Vec<((u32, u32), Note)> = self.book.sheets[clip.sheet]
+            .notes
+            .iter()
+            .filter(|((r, c), _)| clip.range.contains(CellRef::new(*r, *c)))
+            .map(|(k, n)| (*k, n.clone()))
+            .collect();
         for (k, n) in notes {
             self.book.sheets[clip.sheet].notes.remove(&k);
-            self.book.sheets[sheet].notes.insert(((k.0 as i64 + dr) as u32, (k.1 as i64 + dc) as u32), n);
+            self.book.sheets[sheet]
+                .notes
+                .insert(((k.0 as i64 + dr) as u32, (k.1 as i64 + dc) as u32), n);
             self.book.sheets[sheet].notes_changed = true;
             self.book.sheets[clip.sheet].notes_changed = true;
         }
@@ -1071,12 +1303,32 @@ impl Session {
     pub fn fill(&mut self, sheet: usize, range: Range, direction: Direction) -> Result<(), String> {
         self.check_sheet(sheet)?;
         let (source, target) = match direction {
-            Direction::Down => (Range::new(range.first, CellRef::new(range.first.row, range.last.col)), Range::new(CellRef::new(range.first.row + 1, range.first.col), range.last)),
-            Direction::Right => (Range::new(range.first, CellRef::new(range.last.row, range.first.col)), Range::new(CellRef::new(range.first.row, range.first.col + 1), range.last)),
-            Direction::Up => (Range::new(CellRef::new(range.last.row, range.first.col), range.last), Range::new(range.first, CellRef::new(range.last.row.saturating_sub(1), range.last.col))),
-            Direction::Left => (Range::new(CellRef::new(range.first.row, range.last.col), range.last), Range::new(range.first, CellRef::new(range.last.row, range.last.col.saturating_sub(1)))),
+            Direction::Down => (
+                Range::new(range.first, CellRef::new(range.first.row, range.last.col)),
+                Range::new(CellRef::new(range.first.row + 1, range.first.col), range.last),
+            ),
+            Direction::Right => (
+                Range::new(range.first, CellRef::new(range.last.row, range.first.col)),
+                Range::new(CellRef::new(range.first.row, range.first.col + 1), range.last),
+            ),
+            Direction::Up => (
+                Range::new(CellRef::new(range.last.row, range.first.col), range.last),
+                Range::new(
+                    range.first,
+                    CellRef::new(range.last.row.saturating_sub(1), range.last.col),
+                ),
+            ),
+            Direction::Left => (
+                Range::new(CellRef::new(range.first.row, range.last.col), range.last),
+                Range::new(
+                    range.first,
+                    CellRef::new(range.last.row, range.last.col.saturating_sub(1)),
+                ),
+            ),
         };
-        if range.rows() < 2 && matches!(direction, Direction::Down | Direction::Up) || range.cols() < 2 && matches!(direction, Direction::Right | Direction::Left) {
+        if range.rows() < 2 && matches!(direction, Direction::Down | Direction::Up)
+            || range.cols() < 2 && matches!(direction, Direction::Right | Direction::Left)
+        {
             return Ok(());
         }
         let clip = self.copy(sheet, source, false);
@@ -1094,7 +1346,12 @@ impl Session {
     /// Extend a block of cells into a larger range the way dragging the fill handle does: numbers and
     /// dates continue their step, text ending in a number counts on, day and month names continue,
     /// formulas move their references, and anything else repeats.
-    pub fn fill_series(&mut self, sheet: usize, source: Range, target: Range) -> Result<(), String> {
+    pub fn fill_series(
+        &mut self,
+        sheet: usize,
+        source: Range,
+        target: Range,
+    ) -> Result<(), String> {
         self.check_sheet(sheet)?;
         if !target.contains(source.first) || !target.contains(source.last) {
             return Err("the range to fill must contain the cells it starts from".to_owned());
@@ -1107,23 +1364,36 @@ impl Session {
         for line in 0..lines {
             // The source cells along this line, in fill order.
             let sources: Vec<CellRef> = if down {
-                (source.first.row..=source.last.row).map(|r| CellRef::new(r, source.first.col + line)).collect()
+                (source.first.row..=source.last.row)
+                    .map(|r| CellRef::new(r, source.first.col + line))
+                    .collect()
             } else {
-                (source.first.col..=source.last.col).map(|c| CellRef::new(source.first.row + line, c)).collect()
+                (source.first.col..=source.last.col)
+                    .map(|c| CellRef::new(source.first.row + line, c))
+                    .collect()
             };
-            let cells: Vec<Cell> = sources.iter().map(|at| self.book.sheets[sheet].cell(*at).cloned().unwrap_or_default()).collect();
+            let cells: Vec<Cell> = sources
+                .iter()
+                .map(|at| self.book.sheets[sheet].cell(*at).cloned().unwrap_or_default())
+                .collect();
             let series = Series::of(&cells, self.book.date1904);
             let targets: Vec<CellRef> = if down {
                 let col = source.first.col + line;
                 if up {
-                    (target.first.row..source.first.row).rev().map(|r| CellRef::new(r, col)).collect()
+                    (target.first.row..source.first.row)
+                        .rev()
+                        .map(|r| CellRef::new(r, col))
+                        .collect()
                 } else {
                     (source.last.row + 1..=target.last.row).map(|r| CellRef::new(r, col)).collect()
                 }
             } else {
                 let row = source.first.row + line;
                 if left {
-                    (target.first.col..source.first.col).rev().map(|c| CellRef::new(row, c)).collect()
+                    (target.first.col..source.first.col)
+                        .rev()
+                        .map(|c| CellRef::new(row, c))
+                        .collect()
                 } else {
                     (source.last.col + 1..=target.last.col).map(|c| CellRef::new(row, c)).collect()
                 }
@@ -1131,16 +1401,28 @@ impl Session {
             let backwards = up || left;
             for (k, at) in targets.iter().enumerate() {
                 let n = k + 1;
-                let template_index = if backwards { (cells.len() - 1) - (k % cells.len()) } else { k % cells.len() };
+                let template_index =
+                    if backwards { (cells.len() - 1) - (k % cells.len()) } else { k % cells.len() };
                 let template = &cells[template_index];
                 let template_at = sources[template_index];
                 let cell = match &template.formula {
                     Some(f) => Cell {
-                        formula: Some(Formula::from_expr(formula::shifted(&f.expr, at.row as i64 - template_at.row as i64, at.col as i64 - template_at.col as i64), f.dynamic)),
+                        formula: Some(Formula::from_expr(
+                            formula::shifted(
+                                &f.expr,
+                                at.row as i64 - template_at.row as i64,
+                                at.col as i64 - template_at.col as i64,
+                            ),
+                            f.dynamic,
+                        )),
                         style: template.style,
                         ..Default::default()
                     },
-                    None => Cell { value: series.value(n as i64, backwards, &cells, template_index), style: template.style, ..Default::default() },
+                    None => Cell {
+                        value: series.value(n as i64, backwards, &cells, template_index),
+                        style: template.style,
+                        ..Default::default()
+                    },
                 };
                 self.book.sheets[sheet].set(*at, cell);
                 self.engine.changed(&self.book, sheet, *at);
@@ -1152,7 +1434,13 @@ impl Session {
 
     /// Sort the rows of a range by some of its columns, each ascending or descending. `header` leaves the
     /// first row where it is.
-    pub fn sort(&mut self, sheet: usize, range: Range, keys: &[(u32, bool)], header: bool) -> Result<(), String> {
+    pub fn sort(
+        &mut self,
+        sheet: usize,
+        range: Range,
+        keys: &[(u32, bool)],
+        header: bool,
+    ) -> Result<(), String> {
         self.check_sheet(sheet)?;
         if keys.is_empty() {
             return Err("sort needs a column to sort by".to_owned());
@@ -1193,7 +1481,10 @@ impl Session {
             for c in range.first.col..=range.last.col {
                 if let Some(mut cell) = self.book.sheets[sheet].cells.get(&(*old_row, c)).cloned() {
                     if let Some(f) = &cell.formula {
-                        cell.formula = Some(Formula::from_expr(formula::shifted(&f.expr, new_row as i64 - *old_row as i64, 0), f.dynamic));
+                        cell.formula = Some(Formula::from_expr(
+                            formula::shifted(&f.expr, new_row as i64 - *old_row as i64, 0),
+                            f.dynamic,
+                        ));
                     }
                     moved.push(((new_row, c), cell));
                 }
@@ -1215,7 +1506,13 @@ impl Session {
 
     /// Remove the rows of a range whose values in some columns repeat an earlier row. Answers how many
     /// were removed.
-    pub fn remove_duplicates(&mut self, sheet: usize, range: Range, columns: &[u32], header: bool) -> Result<usize, String> {
+    pub fn remove_duplicates(
+        &mut self,
+        sheet: usize,
+        range: Range,
+        columns: &[u32],
+        header: bool,
+    ) -> Result<usize, String> {
         self.check_sheet(sheet)?;
         let range = clip_to_used(&self.book.sheets[sheet], range);
         let first = range.first.row + u32::from(header);
@@ -1224,8 +1521,14 @@ impl Session {
         let mut seen: Vec<Vec<Value>> = Vec::new();
         let mut keep_rows = Vec::new();
         for r in first..=range.last.row {
-            let key: Vec<Value> = columns.iter().map(|c| s.value_at(CellRef::new(r, range.first.col + c))).collect();
-            if seen.iter().any(|k| k.iter().zip(&key).all(|(a, b)| crate::eval::equal(a, b) && std::mem::discriminant(a) == std::mem::discriminant(b))) {
+            let key: Vec<Value> =
+                columns.iter().map(|c| s.value_at(CellRef::new(r, range.first.col + c))).collect();
+            if seen.iter().any(|k| {
+                k.iter().zip(&key).all(|(a, b)| {
+                    crate::eval::equal(a, b)
+                        && std::mem::discriminant(a) == std::mem::discriminant(b)
+                })
+            }) {
                 continue;
             }
             seen.push(key);
@@ -1255,7 +1558,12 @@ impl Session {
     }
 
     /// Split the text of a column into the columns to its right at a delimiter.
-    pub fn text_to_columns(&mut self, sheet: usize, range: Range, delimiter: &str) -> Result<(), String> {
+    pub fn text_to_columns(
+        &mut self,
+        sheet: usize,
+        range: Range,
+        delimiter: &str,
+    ) -> Result<(), String> {
         self.check_sheet(sheet)?;
         if delimiter.is_empty() {
             return Err("text to columns needs a delimiter".to_owned());
@@ -1274,7 +1582,14 @@ impl Session {
     }
 
     /// Find cells whose value (or formula) holds some text. Answers the cells in row order.
-    pub fn find(&self, sheet: Option<usize>, text: &str, formulas: bool, whole: bool, case: bool) -> Vec<(usize, CellRef)> {
+    pub fn find(
+        &self,
+        sheet: Option<usize>,
+        text: &str,
+        formulas: bool,
+        whole: bool,
+        case: bool,
+    ) -> Vec<(usize, CellRef)> {
         let needle = if case { text.to_owned() } else { text.to_lowercase() };
         let mut out = Vec::new();
         for (si, s) in self.book.sheets.iter().enumerate() {
@@ -1297,7 +1612,13 @@ impl Session {
     }
 
     /// Replace text in cell values and formulas. Answers how many cells changed.
-    pub fn replace(&mut self, sheet: Option<usize>, find: &str, with: &str, case: bool) -> Result<usize, String> {
+    pub fn replace(
+        &mut self,
+        sheet: Option<usize>,
+        find: &str,
+        with: &str,
+        case: bool,
+    ) -> Result<usize, String> {
         let hits = self.find(sheet, find, true, false, case);
         let mut by_sheet: BTreeMap<usize, Vec<(CellRef, String)>> = BTreeMap::new();
         for (si, at) in hits {
@@ -1306,7 +1627,11 @@ impl Session {
                 Some(f) => f.display(),
                 None => cell.value.to_text(),
             };
-            let replaced = if case { source.replace(find, with) } else { replace_ignoring_case(&source, find, with) };
+            let replaced = if case {
+                source.replace(find, with)
+            } else {
+                replace_ignoring_case(&source, find, with)
+            };
             if replaced != source {
                 by_sheet.entry(si).or_default().push((at, replaced));
             }
@@ -1322,13 +1647,22 @@ impl Session {
     // ------------------------------------------------------------------------------------------------
     // Notes, links, names, validation, conditional formats, filters.
 
-    pub fn set_note(&mut self, sheet: usize, at: CellRef, text: Option<&str>, author: &str) -> Result<(), String> {
+    pub fn set_note(
+        &mut self,
+        sheet: usize,
+        at: CellRef,
+        text: Option<&str>,
+        author: &str,
+    ) -> Result<(), String> {
         self.check_sheet(sheet)?;
         self.remember_whole(if text.is_some() { "Note" } else { "Delete note" });
         let s = &mut self.book.sheets[sheet];
         match text {
             Some(t) => {
-                s.notes.insert((at.row, at.col), Note { author: author.to_owned(), text: t.to_owned() });
+                s.notes.insert(
+                    (at.row, at.col),
+                    Note { author: author.to_owned(), text: t.to_owned() },
+                );
             }
             None => {
                 s.notes.remove(&(at.row, at.col));
@@ -1338,7 +1672,13 @@ impl Session {
         Ok(())
     }
 
-    pub fn set_link(&mut self, sheet: usize, range: Range, target: Option<LinkTarget>, display: Option<String>) -> Result<(), String> {
+    pub fn set_link(
+        &mut self,
+        sheet: usize,
+        range: Range,
+        target: Option<LinkTarget>,
+        display: Option<String>,
+    ) -> Result<(), String> {
         self.check_sheet(sheet)?;
         self.remember_whole(if target.is_some() { "Link" } else { "Remove link" });
         let s = &mut self.book.sheets[sheet];
@@ -1361,13 +1701,25 @@ impl Session {
     }
 
     /// Add or replace a defined name.
-    pub fn set_name(&mut self, name: &str, refers_to: &str, scope: Option<usize>) -> Result<(), String> {
+    pub fn set_name(
+        &mut self,
+        name: &str,
+        refers_to: &str,
+        scope: Option<usize>,
+    ) -> Result<(), String> {
         check_defined_name(name)?;
         let formula = refers_to.trim().trim_start_matches('=');
-        let expr = formula::parser::parse(formula).map_err(|e| format!("{refers_to} is not a reference or a formula: {e}"))?;
+        let expr = formula::parser::parse(formula)
+            .map_err(|e| format!("{refers_to} is not a reference or a formula: {e}"))?;
         self.remember_whole("Name");
         self.book.names.retain(|n| !(n.name.eq_ignore_ascii_case(name) && n.scope == scope));
-        self.book.names.push(DefinedName { name: name.to_owned(), scope, formula: formula::print::print(&expr, true), hidden: false, attrs: Vec::new() });
+        self.book.names.push(DefinedName {
+            name: name.to_owned(),
+            scope,
+            formula: formula::print::print(&expr, true),
+            hidden: false,
+            attrs: Vec::new(),
+        });
         self.engine.rebuild(&self.book);
         self.recalculate_all();
         Ok(())
@@ -1389,7 +1741,9 @@ impl Session {
         self.remember_whole("Data validation");
         let s = &mut self.book.sheets[sheet];
         for v in &mut s.validations {
-            v.ranges.retain(|r| !validation.ranges.iter().any(|n| n.contains(r.first) && n.contains(r.last)));
+            v.ranges.retain(|r| {
+                !validation.ranges.iter().any(|n| n.contains(r.first) && n.contains(r.last))
+            });
         }
         s.validations.retain(|v| !v.ranges.is_empty());
         s.validations.push(validation);
@@ -1409,7 +1763,12 @@ impl Session {
 
     /// The validation rule that applies to a cell.
     pub fn validation_at(&self, sheet: usize, at: CellRef) -> Option<&Validation> {
-        self.book.sheets.get(sheet)?.validations.iter().find(|v| v.ranges.iter().any(|r| r.contains(at)))
+        self.book
+            .sheets
+            .get(sheet)?
+            .validations
+            .iter()
+            .find(|v| v.ranges.iter().any(|r| r.contains(at)))
     }
 
     /// Whether a value meets a cell's validation; the error message when it does not.
@@ -1419,7 +1778,9 @@ impl Session {
             return if v.allow_blank { Ok(()) } else { Err(validation_message(v)) };
         }
         let ok = match v.kind.as_str() {
-            "list" => list_items(self, sheet, at, v).iter().any(|item| item.eq_ignore_ascii_case(&value.to_text())),
+            "list" => list_items(self, sheet, at, v)
+                .iter()
+                .any(|item| item.eq_ignore_ascii_case(&value.to_text())),
             "whole" | "decimal" | "date" | "time" | "textLength" => {
                 let n = match (v.kind.as_str(), value) {
                     ("textLength", v) => v.to_text().chars().count() as f64,
@@ -1429,7 +1790,11 @@ impl Session {
                 if v.kind == "whole" && n.fract() != 0.0 {
                     false
                 } else {
-                    let bound = |f: &Option<String>| f.as_ref().and_then(|t| self.evaluate_at(sheet, at, t).ok()).and_then(|v| v.as_number());
+                    let bound = |f: &Option<String>| {
+                        f.as_ref()
+                            .and_then(|t| self.evaluate_at(sheet, at, t).ok())
+                            .and_then(|v| v.as_number())
+                    };
                     let (a, b) = (bound(&v.formula1), bound(&v.formula2));
                     match (v.operator.as_deref().unwrap_or("between"), a, b) {
                         ("between", Some(a), Some(b)) => n >= a && n <= b,
@@ -1444,7 +1809,11 @@ impl Session {
                     }
                 }
             }
-            "custom" => v.formula1.as_ref().and_then(|f| self.evaluate_at(sheet, at, f).ok()).is_none_or(|r| matches!(r, Value::Bool(true))),
+            "custom" => v
+                .formula1
+                .as_ref()
+                .and_then(|f| self.evaluate_at(sheet, at, f).ok())
+                .is_none_or(|r| matches!(r, Value::Bool(true))),
             _ => true,
         };
         if ok {
@@ -1462,10 +1831,23 @@ impl Session {
         }
     }
 
-    pub fn add_conditional(&mut self, sheet: usize, ranges: Vec<Range>, mut rule: CfRule) -> Result<(), String> {
+    pub fn add_conditional(
+        &mut self,
+        sheet: usize,
+        ranges: Vec<Range>,
+        mut rule: CfRule,
+    ) -> Result<(), String> {
         self.check_sheet(sheet)?;
         self.remember_whole("Conditional format");
-        let top = self.book.sheets.iter().flat_map(|s| s.conditional.iter()).flat_map(|c| c.rules.iter()).map(|r| r.priority).max().unwrap_or(0);
+        let top = self
+            .book
+            .sheets
+            .iter()
+            .flat_map(|s| s.conditional.iter())
+            .flat_map(|c| c.rules.iter())
+            .map(|r| r.priority)
+            .max()
+            .unwrap_or(0);
         rule.priority = top + 1;
         self.book.sheets[sheet].conditional.push(ConditionalFormat { ranges, rules: vec![rule] });
         Ok(())
@@ -1495,16 +1877,24 @@ impl Session {
                 }
             }
         }
-        s.filter = range.map(|r| AutoFilter { range: clip_to_used(s, r), columns: BTreeMap::new() });
+        s.filter =
+            range.map(|r| AutoFilter { range: clip_to_used(s, r), columns: BTreeMap::new() });
         self.recalculate_all();
         Ok(())
     }
 
     /// Filter one column of the filter range: keep rows whose shown value is one of `values`, or all rows
     /// with `None`.
-    pub fn filter_column(&mut self, sheet: usize, col: u32, criteria: Option<FilterCriteria>) -> Result<(), String> {
+    pub fn filter_column(
+        &mut self,
+        sheet: usize,
+        col: u32,
+        criteria: Option<FilterCriteria>,
+    ) -> Result<(), String> {
         self.check_sheet(sheet)?;
-        let Some(filter) = self.book.sheets[sheet].filter.clone() else { return Err("this sheet has no filter".to_owned()) };
+        let Some(filter) = self.book.sheets[sheet].filter.clone() else {
+            return Err("this sheet has no filter".to_owned());
+        };
         if col < filter.range.first.col || col > filter.range.last.col {
             return Err("that column is not in the filter".to_owned());
         }
@@ -1532,7 +1922,10 @@ impl Session {
         for r in filter.range.first.row + 1..=filter.range.last.row {
             let mut keep = true;
             for (offset, criteria) in &filter.columns {
-                let cell = self.book.sheets[sheet].cell(CellRef::new(r, filter.range.first.col + offset)).cloned().unwrap_or_default();
+                let cell = self.book.sheets[sheet]
+                    .cell(CellRef::new(r, filter.range.first.col + offset))
+                    .cloned()
+                    .unwrap_or_default();
                 let shown = shown_text(&self.book, &cell);
                 let ok = match criteria {
                     FilterCriteria::Values { values, blank } => {
@@ -1543,7 +1936,12 @@ impl Session {
                         }
                     }
                     FilterCriteria::Custom { conditions, and } => {
-                        let results: Vec<bool> = conditions.iter().map(|(op, val)| custom_matches(op, val, &cell.value, self.book.date1904)).collect();
+                        let results: Vec<bool> = conditions
+                            .iter()
+                            .map(|(op, val)| {
+                                custom_matches(op, val, &cell.value, self.book.date1904)
+                            })
+                            .collect();
                         if *and {
                             results.iter().all(|x| *x)
                         } else {
@@ -1568,7 +1966,12 @@ impl Session {
     }
 
     /// Make a table over a range, with a header row of names.
-    pub fn add_table(&mut self, sheet: usize, range: Range, name: Option<&str>) -> Result<String, String> {
+    pub fn add_table(
+        &mut self,
+        sheet: usize,
+        range: Range,
+        name: Option<&str>,
+    ) -> Result<String, String> {
         self.check_sheet(sheet)?;
         if self.book.tables.iter().any(|t| t.sheet == sheet && t.range.intersects(&range)) {
             return Err("a table cannot overlap another table".to_owned());
@@ -1578,21 +1981,31 @@ impl Session {
                 check_defined_name(n)?;
                 n.to_owned()
             }
-            None => (1..).map(|n| format!("Table{n}")).find(|n| self.book.table(n).is_none()).unwrap_or_default(),
+            None => (1..)
+                .map(|n| format!("Table{n}"))
+                .find(|n| self.book.table(n).is_none())
+                .unwrap_or_default(),
         };
         self.remember_whole("Table");
         let s = &self.book.sheets[sheet];
         let mut columns = Vec::new();
         for c in range.first.col..=range.last.col {
             let v = s.value_at(CellRef::new(range.first.row, c)).to_text();
-            let mut header = if v.is_empty() { format!("Column{}", c - range.first.col + 1) } else { v };
+            let mut header =
+                if v.is_empty() { format!("Column{}", c - range.first.col + 1) } else { v };
             while columns.contains(&header) {
                 header.push('2');
             }
             columns.push(header);
         }
         let id = self.book.tables.len() + 1;
-        let cols: String = columns.iter().enumerate().map(|(i, c)| format!("<tableColumn id=\"{}\" name=\"{}\"/>", i + 1, crate::xlsx::escape(c))).collect();
+        let cols: String = columns
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                format!("<tableColumn id=\"{}\" name=\"{}\"/>", i + 1, crate::xlsx::escape(c))
+            })
+            .collect();
         let xml = format!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n<table xmlns=\"{}\" id=\"{id}\" name=\"{name}\" displayName=\"{name}\" ref=\"{r}\" totalsRowShown=\"0\"><autoFilter ref=\"{r}\"/><tableColumns count=\"{}\">{cols}</tableColumns><tableStyleInfo name=\"TableStyleMedium2\" showFirstColumn=\"0\" showLastColumn=\"0\" showRowStripes=\"1\" showColumnStripes=\"0\"/></table>",
             crate::xlsx::MAIN_NS,
@@ -1600,12 +2013,34 @@ impl Session {
             r = range.a1()
         );
         // Header cells hold the names.
-        let inputs: Vec<(CellRef, String)> = columns.iter().enumerate().map(|(i, c)| (CellRef::new(range.first.row, range.first.col + i as u32), format!("'{c}"))).collect();
-        self.book.tables.push(Table { sheet, name: name.clone(), range, columns, header_row: true, totals_row: false, part: String::new(), xml });
+        let inputs: Vec<(CellRef, String)> = columns
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                (CellRef::new(range.first.row, range.first.col + i as u32), format!("'{c}"))
+            })
+            .collect();
+        self.book.tables.push(Table {
+            sheet,
+            name: name.clone(),
+            range,
+            columns,
+            header_row: true,
+            totals_row: false,
+            part: String::new(),
+            xml,
+        });
         for (at, text) in inputs {
             let s = &mut self.book.sheets[sheet];
             let style = s.cell(at).map_or(0, |c| c.style);
-            s.set(at, Cell { value: Value::text(text.trim_start_matches('\'')), style, ..Default::default() });
+            s.set(
+                at,
+                Cell {
+                    value: Value::text(text.trim_start_matches('\'')),
+                    style,
+                    ..Default::default()
+                },
+            );
         }
         self.engine.rebuild(&self.book);
         self.recalculate_all();
@@ -1616,6 +2051,33 @@ impl Session {
     // Questions.
 
     /// Evaluate a formula as though it were in a cell, without changing anything.
+    /// Put a chart on a sheet. It is written as new drawing and chart parts when the workbook is saved.
+    pub fn add_chart(&mut self, sheet: usize, chart: Chart) -> Result<(), String> {
+        self.check_sheet(sheet)?;
+        self.remember_whole("Chart");
+        self.book.sheets[sheet].charts.push(chart);
+        self.modified = true;
+        Ok(())
+    }
+
+    /// Take a chart off a sheet.
+    pub fn delete_chart(&mut self, sheet: usize, index: usize) -> Result<(), String> {
+        self.check_sheet(sheet)?;
+        let Some(chart) = self.book.sheets[sheet].charts.get(index) else {
+            return Err(format!("there is no chart {} on this sheet", index + 1));
+        };
+        if !chart.new {
+            return Err(
+                "That chart was made in Excel and is kept exactly as it was; delete it in Excel."
+                    .to_owned(),
+            );
+        }
+        self.remember_whole("Delete chart");
+        self.book.sheets[sheet].charts.remove(index);
+        self.modified = true;
+        Ok(())
+    }
+
     pub fn evaluate_at(&self, sheet: usize, at: CellRef, formula: &str) -> Result<Value, String> {
         crate::eval::evaluate(&self.book, sheet, at, formula, self.now).map(|(v, _)| v)
     }
@@ -1629,14 +2091,20 @@ impl Session {
             top -= 1;
         }
         if top < at.row {
-            return format!("=SUM({})", Range::new(CellRef::new(top, at.col), CellRef::new(at.row - 1, at.col)).a1());
+            return format!(
+                "=SUM({})",
+                Range::new(CellRef::new(top, at.col), CellRef::new(at.row - 1, at.col)).a1()
+            );
         }
         let mut left = at.col;
         while left > 0 && numeric(at.row, left - 1) {
             left -= 1;
         }
         if left < at.col {
-            return format!("=SUM({})", Range::new(CellRef::new(at.row, left), CellRef::new(at.row, at.col - 1)).a1());
+            return format!(
+                "=SUM({})",
+                Range::new(CellRef::new(at.row, left), CellRef::new(at.row, at.col - 1)).a1()
+            );
         }
         "=SUM()".to_owned()
     }
@@ -1660,8 +2128,13 @@ impl Session {
                 }
                 let _ = row;
             }
-            for (&(row, col), v) in s.spills.values.range((r.first.row, 0)..=(r.last.row, MAX_COLS)) {
-                if col < r.first.col || col > r.last.col || v.is_empty() || s.cells.contains_key(&(row, col)) {
+            for (&(row, col), v) in s.spills.values.range((r.first.row, 0)..=(r.last.row, MAX_COLS))
+            {
+                if col < r.first.col
+                    || col > r.last.col
+                    || v.is_empty()
+                    || s.cells.contains_key(&(row, col))
+                {
                     continue;
                 }
                 summary.count += 1;
@@ -1678,7 +2151,9 @@ impl Session {
 
     fn check_sheet(&self, sheet: usize) -> Result<(), String> {
         match self.book.sheets.get(sheet) {
-            Some(s) if s.kept_part.is_some() => Err(format!("{} is a chart sheet, which has no cells", s.name)),
+            Some(s) if s.kept_part.is_some() => {
+                Err(format!("{} is a chart sheet, which has no cells", s.name))
+            }
             Some(_) => Ok(()),
             None => Err(format!("there is no sheet {sheet}")),
         }
@@ -1696,13 +2171,17 @@ impl Session {
     /// A protected sheet refuses changes to its locked cells.
     fn refuse_locked(&self, sheet: usize, range: Range) -> Result<(), String> {
         let s = &self.book.sheets[sheet];
-        if !s.raw.elements.iter().any(|(n, x)| n == "sheetProtection" && x.contains("sheet=\"1\"")) {
+        if !s.raw.elements.iter().any(|(n, x)| n == "sheetProtection" && x.contains("sheet=\"1\""))
+        {
             return Ok(());
         }
         for at in range.cells().take(10_000) {
             let style = s.cell(at).map_or(0, |c| c.style);
             if self.book.styles.xf(style).locked.unwrap_or(true) {
-                return Err("The cell is on a protected sheet. Unprotect the sheet in Excel to change it.".to_owned());
+                return Err(
+                    "The cell is on a protected sheet. Unprotect the sheet in Excel to change it."
+                        .to_owned(),
+                );
             }
         }
         Ok(())
@@ -1736,13 +2215,20 @@ fn last_col(s: &Sheet) -> u32 {
 /// A range limited to the rows and columns in use, so a whole column is not millions of cells.
 pub fn clip_to_used(s: &Sheet, r: Range) -> Range {
     let used = s.used_range().unwrap_or(Range::cell(CellRef::new(0, 0)));
-    let last = CellRef::new(r.last.row.min(used.last.row.max(r.first.row)), r.last.col.min(used.last.col.max(r.first.col)));
+    let last = CellRef::new(
+        r.last.row.min(used.last.row.max(r.first.row)),
+        r.last.col.min(used.last.col.max(r.first.col)),
+    );
     Range::new(r.first, last)
 }
 
 /// The style a cell with no entry of its own shows: its row's, or its column's.
 fn inherited_style(s: &Sheet, key: (u32, u32)) -> u32 {
-    s.rows.get(&key.0).and_then(|r| r.style).or_else(|| s.column(key.1).map(|c| c.style)).unwrap_or(0)
+    s.rows
+        .get(&key.0)
+        .and_then(|r| r.style)
+        .or_else(|| s.column(key.1).map(|c| c.style))
+        .unwrap_or(0)
 }
 
 /// Excel's rules for a sheet name.
@@ -1775,7 +2261,9 @@ pub fn check_defined_name(name: &str) -> Result<(), String> {
     if !chars.all(|c| c.is_alphanumeric() || c == '_' || c == '.' || c == '\\') {
         return Err("a name holds letters, numbers, underscores and periods".to_owned());
     }
-    if CellRef::parse(name).is_some() || matches!(name.to_ascii_uppercase().as_str(), "R" | "C" | "TRUE" | "FALSE") {
+    if CellRef::parse(name).is_some()
+        || matches!(name.to_ascii_uppercase().as_str(), "R" | "C" | "TRUE" | "FALSE")
+    {
         return Err(format!("{name} reads as a cell reference or a value"));
     }
     if name.chars().count() > 255 {
@@ -1785,7 +2273,10 @@ pub fn check_defined_name(name: &str) -> Result<(), String> {
 }
 
 fn validation_message(v: &Validation) -> String {
-    v.error.clone().unwrap_or_else(|| "This value doesn't match the data validation restrictions defined for this cell.".to_owned())
+    v.error.clone().unwrap_or_else(|| {
+        "This value doesn't match the data validation restrictions defined for this cell."
+            .to_owned()
+    })
 }
 
 fn list_items(session: &Session, sheet: usize, at: CellRef, v: &Validation) -> Vec<String> {
@@ -1840,7 +2331,15 @@ fn replace_ignoring_case(source: &str, find: &str, with: &str) -> String {
 }
 
 /// A reference adjustment for inserting or deleting cells in a band of columns (rows) only.
-fn adjust_band(expr: &Expr, sheet: &str, own: &str, axis: Axis, at: u32, count: i64, band: (u32, u32)) -> Expr {
+fn adjust_band(
+    expr: &Expr,
+    sheet: &str,
+    own: &str,
+    axis: Axis,
+    at: u32,
+    count: i64,
+    band: (u32, u32),
+) -> Expr {
     expr.map_refs(&mut |r| {
         let on = match &r.sheet {
             Some(n) => n.eq_ignore_ascii_case(sheet),
@@ -1864,16 +2363,30 @@ struct Series {
 
 enum SeriesKind {
     /// Numbers (or dates) with a step.
-    Linear { start: f64, step: f64 },
+    Linear {
+        start: f64,
+        step: f64,
+    },
     /// Text ending in a number that counts on.
-    Counted { prefix: String, start: i64, step: i64, width: usize },
+    Counted {
+        prefix: String,
+        start: i64,
+        step: i64,
+        width: usize,
+    },
     /// Day or month names.
-    Names { list: &'static [&'static str], start: usize, step: i64, upper: bool },
+    Names {
+        list: &'static [&'static str],
+        start: usize,
+        step: i64,
+        upper: bool,
+    },
     Copy,
 }
 
 const DAYS_SHORT: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTHS_SHORT: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTHS_SHORT: [&str; 12] =
+    ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 impl Series {
     fn of(cells: &[Cell], _date1904: bool) -> Series {
@@ -1885,27 +2398,59 @@ impl Series {
                 let mean_x = (n - 1.0) / 2.0;
                 let mean_y = numbers.iter().sum::<f64>() / n;
                 let sxx: f64 = (0..numbers.len()).map(|i| (i as f64 - mean_x).powi(2)).sum();
-                let sxy: f64 = numbers.iter().enumerate().map(|(i, y)| (i as f64 - mean_x) * (y - mean_y)).sum();
+                let sxy: f64 = numbers
+                    .iter()
+                    .enumerate()
+                    .map(|(i, y)| (i as f64 - mean_x) * (y - mean_y))
+                    .sum();
                 let step = sxy / sxx;
-                return Series { kind: SeriesKind::Linear { start: mean_y - step * mean_x + step * (n - 1.0), step } };
+                return Series {
+                    kind: SeriesKind::Linear {
+                        start: mean_y - step * mean_x + step * (n - 1.0),
+                        step,
+                    },
+                };
             }
             // One number copies, which is Excel's fill without Ctrl.
             return Series { kind: SeriesKind::Copy };
         }
         let texts: Vec<String> = cells.iter().map(|c| c.value.to_text()).collect();
         if cells.iter().all(|c| matches!(c.value, Value::Text(_))) {
-            for list in [&crate::dates::DAYS[..], &DAYS_SHORT[..], &crate::dates::MONTHS[..], &MONTHS_SHORT[..]] {
-                let positions: Vec<Option<usize>> = texts.iter().map(|t| list.iter().position(|d| d.eq_ignore_ascii_case(t))).collect();
+            for list in [
+                &crate::dates::DAYS[..],
+                &DAYS_SHORT[..],
+                &crate::dates::MONTHS[..],
+                &MONTHS_SHORT[..],
+            ] {
+                let positions: Vec<Option<usize>> = texts
+                    .iter()
+                    .map(|t| list.iter().position(|d| d.eq_ignore_ascii_case(t)))
+                    .collect();
                 if positions.iter().all(Option::is_some) {
                     let p: Vec<i64> = positions.iter().map(|x| x.unwrap() as i64).collect();
-                    let step = if p.len() >= 2 { (p[1] - p[0]).rem_euclid(list.len() as i64) } else { 1 };
+                    let step =
+                        if p.len() >= 2 { (p[1] - p[0]).rem_euclid(list.len() as i64) } else { 1 };
                     let upper = texts[0].chars().all(|c| !c.is_lowercase());
-                    return Series { kind: SeriesKind::Names { list, start: *p.last().unwrap() as usize, step: if step == 0 { 1 } else { step }, upper } };
+                    return Series {
+                        kind: SeriesKind::Names {
+                            list,
+                            start: *p.last().unwrap() as usize,
+                            step: if step == 0 { 1 } else { step },
+                            upper,
+                        },
+                    };
                 }
             }
             // Text ending in a number.
             let split = |t: &str| -> Option<(String, i64, usize)> {
-                let digits: String = t.chars().rev().take_while(|c| c.is_ascii_digit()).collect::<Vec<_>>().into_iter().rev().collect();
+                let digits: String = t
+                    .chars()
+                    .rev()
+                    .take_while(|c| c.is_ascii_digit())
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect();
                 if digits.is_empty() || digits.len() > 15 {
                     return None;
                 }
@@ -1917,7 +2462,14 @@ impl Series {
                 if p.iter().all(|x| x.0 == p[0].0) {
                     let step = if p.len() >= 2 { p[1].1 - p[0].1 } else { 1 };
                     let last = p.last().unwrap();
-                    return Series { kind: SeriesKind::Counted { prefix: last.0.clone(), start: last.1, step, width: p[0].2 } };
+                    return Series {
+                        kind: SeriesKind::Counted {
+                            prefix: last.0.clone(),
+                            start: last.1,
+                            step,
+                            width: p[0].2,
+                        },
+                    };
                 }
             }
         }
@@ -1929,16 +2481,25 @@ impl Series {
         let len = cells.len() as i64;
         match &self.kind {
             SeriesKind::Linear { start, step } => {
-                let x = if backwards { start - step * (len - 1) as f64 - step * n as f64 } else { start + step * n as f64 };
+                let x = if backwards {
+                    start - step * (len - 1) as f64 - step * n as f64
+                } else {
+                    start + step * n as f64
+                };
                 Value::Number(crate::value::round_significant(x, 15))
             }
             SeriesKind::Counted { prefix, start, step, width } => {
-                let v = if backwards { start - step * (len - 1) - step * n } else { start + step * n };
+                let v =
+                    if backwards { start - step * (len - 1) - step * n } else { start + step * n };
                 Value::text(format!("{prefix}{:0width$}", v.max(0), width = *width))
             }
             SeriesKind::Names { list, start, step, upper } => {
                 let size = list.len() as i64;
-                let i = if backwards { (*start as i64 - step * (len - 1) - step * n).rem_euclid(size) } else { (*start as i64 + step * n).rem_euclid(size) };
+                let i = if backwards {
+                    (*start as i64 - step * (len - 1) - step * n).rem_euclid(size)
+                } else {
+                    (*start as i64 + step * n).rem_euclid(size)
+                };
                 let name = list[i as usize];
                 Value::text(if *upper { name.to_uppercase() } else { name.to_owned() })
             }
@@ -1961,6 +2522,18 @@ mod tests {
 
     fn shown(s: &Session, a: &str) -> String {
         s.book.sheets[0].value_at(at(a)).to_text()
+    }
+
+    #[test]
+    fn typing_past_the_cells_in_use_is_undone() {
+        let mut s = session();
+        s.set_input(0, at("A1"), "1").unwrap();
+        s.set_input(0, at("D5"), "=A1*2").unwrap();
+        assert_eq!(shown(&s, "D5"), "2");
+        s.undo();
+        assert_eq!(shown(&s, "D5"), "");
+        s.redo();
+        assert_eq!(shown(&s, "D5"), "2");
     }
 
     #[test]
@@ -1988,9 +2561,15 @@ mod tests {
         s.redo();
         assert_eq!(shown(&s, "B1"), "6");
         s.insert(0, Range::parse("1:1").unwrap(), Shift::WholeRows).unwrap();
-        assert_eq!(s.book.sheets[0].cell(at("B2")).unwrap().formula.as_ref().unwrap().display(), "=A2+1");
+        assert_eq!(
+            s.book.sheets[0].cell(at("B2")).unwrap().formula.as_ref().unwrap().display(),
+            "=A2+1"
+        );
         s.undo();
-        assert_eq!(s.book.sheets[0].cell(at("B1")).unwrap().formula.as_ref().unwrap().display(), "=A1+1");
+        assert_eq!(
+            s.book.sheets[0].cell(at("B1")).unwrap().formula.as_ref().unwrap().display(),
+            "=A1+1"
+        );
     }
 
     #[test]
@@ -2002,7 +2581,10 @@ mod tests {
         s.set_input(0, at("B1"), "=SUM(A1:A4)").unwrap();
         s.insert(0, Range::parse("A3:A3").unwrap(), Shift::Down).unwrap();
         assert_eq!(shown(&s, "A5"), "4");
-        assert_eq!(s.book.sheets[0].cell(at("B1")).unwrap().formula.as_ref().unwrap().display(), "=SUM(A1:A5)");
+        assert_eq!(
+            s.book.sheets[0].cell(at("B1")).unwrap().formula.as_ref().unwrap().display(),
+            "=SUM(A1:A5)"
+        );
         s.delete(0, Range::parse("1:2").unwrap(), Shift::WholeRows).unwrap();
         assert_eq!(shown(&s, "A3"), "4");
     }
@@ -2018,7 +2600,10 @@ mod tests {
         assert_eq!(shown(&s, "B2"), "30");
         let cut = s.copy(0, Range::parse("A1").unwrap(), true);
         s.paste(&cut, 0, Range::parse("D5").unwrap(), PasteMode::All).unwrap();
-        assert_eq!(s.book.sheets[0].cell(at("B1")).unwrap().formula.as_ref().unwrap().display(), "=D5*10");
+        assert_eq!(
+            s.book.sheets[0].cell(at("B1")).unwrap().formula.as_ref().unwrap().display(),
+            "=D5*10"
+        );
         assert_eq!(shown(&s, "B1"), "20");
         assert_eq!(clip.to_text(&s.book), "20\r\n");
     }
@@ -2042,7 +2627,9 @@ mod tests {
     #[test]
     fn sorting_orders_rows_and_keeps_the_header() {
         let mut s = session();
-        for (i, (a, b)) in [("Name", "Score"), ("b", "2"), ("a", "3"), ("c", "1")].iter().enumerate() {
+        for (i, (a, b)) in
+            [("Name", "Score"), ("b", "2"), ("a", "3"), ("c", "1")].iter().enumerate()
+        {
             s.set_input(0, CellRef::new(i as u32, 0), a).unwrap();
             s.set_input(0, CellRef::new(i as u32, 1), b).unwrap();
         }
@@ -2059,7 +2646,10 @@ mod tests {
         s.set_input(1, at("A1"), "7").unwrap();
         s.set_input(0, at("A1"), "=Data!A1*2").unwrap();
         s.rename_sheet(1, "My data").unwrap();
-        assert_eq!(s.book.sheets[0].cell(at("A1")).unwrap().formula.as_ref().unwrap().display(), "='My data'!A1*2");
+        assert_eq!(
+            s.book.sheets[0].cell(at("A1")).unwrap().formula.as_ref().unwrap().display(),
+            "='My data'!A1*2"
+        );
         s.delete_sheet(1).unwrap();
         assert_eq!(shown(&s, "A1"), "#REF!");
         assert!(s.rename_sheet(0, "a/b").is_err());
@@ -2109,7 +2699,12 @@ mod tests {
             s.set_input(0, CellRef::new(i as u32, 0), v).unwrap();
         }
         s.set_filter(0, Some(Range::parse("A1:A4").unwrap())).unwrap();
-        s.filter_column(0, 0, Some(FilterCriteria::Values { values: vec!["apple".to_owned()], blank: false })).unwrap();
+        s.filter_column(
+            0,
+            0,
+            Some(FilterCriteria::Values { values: vec!["apple".to_owned()], blank: false }),
+        )
+        .unwrap();
         assert!(s.book.sheets[0].is_row_hidden(2));
         assert!(!s.book.sheets[0].is_row_hidden(1));
     }

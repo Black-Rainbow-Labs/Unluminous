@@ -63,7 +63,9 @@ pub fn open(bytes: &[u8], kind: FileKind, name: &str, this_year: i64) -> Result<
     match kind {
         FileKind::Xlsx | FileKind::Xlsm => xlsx::read(bytes),
         FileKind::Csv | FileKind::Tsv => {
-            let text = String::from_utf8(bytes.to_vec()).unwrap_or_else(|_| bytes.iter().map(|b| crate::functions::text::windows_1252(*b)).collect());
+            let text = String::from_utf8(bytes.to_vec()).unwrap_or_else(|_| {
+                bytes.iter().map(|b| crate::functions::text::windows_1252(*b)).collect()
+            });
             Ok(csv::read(&text, kind == FileKind::Tsv, name, this_year))
         }
     }

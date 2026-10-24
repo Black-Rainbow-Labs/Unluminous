@@ -11,28 +11,82 @@ pub const FUNCTIONS: &[Function] = &[
         gather(ctx, args, Gather::Numbers).map_or_else(Val::error, |n| Val::number(n.iter().sum()))
     }),
     r("PRODUCT", 1, MANY, "number1, [number2], ...", "Multiplies its arguments.", |ctx, args| {
-        gather(ctx, args, Gather::Numbers).map_or_else(Val::error, |n| Val::number(if n.is_empty() { 0.0 } else { n.iter().product() }))
+        gather(ctx, args, Gather::Numbers).map_or_else(Val::error, |n| {
+            Val::number(if n.is_empty() { 0.0 } else { n.iter().product() })
+        })
     }),
-    r("SUMSQ", 1, MANY, "number1, [number2], ...", "The sum of the squares of its arguments.", |ctx, args| {
-        gather(ctx, args, Gather::Numbers).map_or_else(Val::error, |n| Val::number(n.iter().map(|x| x * x).sum()))
+    r(
+        "SUMSQ",
+        1,
+        MANY,
+        "number1, [number2], ...",
+        "The sum of the squares of its arguments.",
+        |ctx, args| {
+            gather(ctx, args, Gather::Numbers)
+                .map_or_else(Val::error, |n| Val::number(n.iter().map(|x| x * x).sum()))
+        },
+    ),
+    r(
+        "SUMIF",
+        2,
+        3,
+        "range, criteria, [sum_range]",
+        "Adds the cells that meet a criterion.",
+        sumif,
+    ),
+    r(
+        "SUMIFS",
+        3,
+        MANY,
+        "sum_range, criteria_range1, criteria1, ...",
+        "Adds the cells that meet every criterion.",
+        sumifs,
+    ),
+    r(
+        "SUMPRODUCT",
+        1,
+        MANY,
+        "array1, [array2], ...",
+        "Multiplies matching items of arrays and adds the products.",
+        sumproduct,
+    ),
+    r("SUMX2MY2", 2, 2, "array_x, array_y", "The sum of the differences of squares.", |ctx, a| {
+        pairs(ctx, a, |x, y| x * x - y * y)
     }),
-    r("SUMIF", 2, 3, "range, criteria, [sum_range]", "Adds the cells that meet a criterion.", sumif),
-    r("SUMIFS", 3, MANY, "sum_range, criteria_range1, criteria1, ...", "Adds the cells that meet every criterion.", sumifs),
-    r("SUMPRODUCT", 1, MANY, "array1, [array2], ...", "Multiplies matching items of arrays and adds the products.", sumproduct),
-    r("SUMX2MY2", 2, 2, "array_x, array_y", "The sum of the differences of squares.", |ctx, a| pairs(ctx, a, |x, y| x * x - y * y)),
-    r("SUMX2PY2", 2, 2, "array_x, array_y", "The sum of the sums of squares.", |ctx, a| pairs(ctx, a, |x, y| x * x + y * y)),
-    r("SUMXMY2", 2, 2, "array_x, array_y", "The sum of squares of differences.", |ctx, a| pairs(ctx, a, |x, y| (x - y) * (x - y))),
+    r("SUMX2PY2", 2, 2, "array_x, array_y", "The sum of the sums of squares.", |ctx, a| {
+        pairs(ctx, a, |x, y| x * x + y * y)
+    }),
+    r("SUMXMY2", 2, 2, "array_x, array_y", "The sum of squares of differences.", |ctx, a| {
+        pairs(ctx, a, |x, y| (x - y) * (x - y))
+    }),
     s("ABS", 1, 1, "number", "The absolute value.", |ctx, a| unary(ctx, a, |x| Ok(x.abs()))),
-    s("SIGN", 1, 1, "number", "1, 0 or -1 for the sign.", |ctx, a| unary(ctx, a, |x| Ok(if x > 0.0 { 1.0 } else if x < 0.0 { -1.0 } else { 0.0 }))),
-    s("INT", 1, 1, "number", "Rounds down to a whole number.", |ctx, a| unary(ctx, a, |x| Ok(x.floor()))),
+    s("SIGN", 1, 1, "number", "1, 0 or -1 for the sign.", |ctx, a| {
+        unary(ctx, a, |x| {
+            Ok(if x > 0.0 {
+                1.0
+            } else if x < 0.0 {
+                -1.0
+            } else {
+                0.0
+            })
+        })
+    }),
+    s("INT", 1, 1, "number", "Rounds down to a whole number.", |ctx, a| {
+        unary(ctx, a, |x| Ok(x.floor()))
+    }),
     s("TRUNC", 1, 2, "number, [num_digits]", "Cuts off the decimals.", |ctx, a| {
         let x = num(ctx, &a[0])?;
         let d = opt_num(ctx, a, 1, 0.0)?.trunc();
         number(round_to(x, d, Rounding::Down))
     }),
-    s("ROUND", 2, 2, "number, num_digits", "Rounds to a number of digits, halves away from zero.", |ctx, a| {
-        number(round_to(num(ctx, &a[0])?, num(ctx, &a[1])?.trunc(), Rounding::Half))
-    }),
+    s(
+        "ROUND",
+        2,
+        2,
+        "number, num_digits",
+        "Rounds to a number of digits, halves away from zero.",
+        |ctx, a| number(round_to(num(ctx, &a[0])?, num(ctx, &a[1])?.trunc(), Rounding::Half)),
+    ),
     s("ROUNDUP", 2, 2, "number, num_digits", "Rounds away from zero.", |ctx, a| {
         number(round_to(num(ctx, &a[0])?, num(ctx, &a[1])?.trunc(), Rounding::Up))
     }),
@@ -49,56 +103,105 @@ pub const FUNCTIONS: &[Function] = &[
         }
         number(round_to(x / m, 0.0, Rounding::Half) * m)
     }),
-    s("CEILING", 2, 2, "number, significance", "Rounds up to a multiple of the significance.", |ctx, a| {
-        let (x, m) = (num(ctx, &a[0])?, num(ctx, &a[1])?);
-        if m == 0.0 {
-            return number(0.0);
-        }
-        if x > 0.0 && m < 0.0 {
-            return Err(ErrorKind::Num);
-        }
-        number(clean(x / m).ceil() * m)
-    }),
-    s("FLOOR", 2, 2, "number, significance", "Rounds down to a multiple of the significance.", |ctx, a| {
-        let (x, m) = (num(ctx, &a[0])?, num(ctx, &a[1])?);
-        if m == 0.0 {
-            return if x == 0.0 { number(0.0) } else { Err(ErrorKind::Div0) };
-        }
-        if x > 0.0 && m < 0.0 {
-            return Err(ErrorKind::Num);
-        }
-        number(clean(x / m).floor() * m)
-    }),
-    s("CEILING.MATH", 1, 3, "number, [significance], [mode]", "Rounds up to a multiple; mode rounds negatives away from zero.", |ctx, a| {
-        let x = num(ctx, &a[0])?;
-        let m = opt_num(ctx, a, 1, 1.0)?.abs();
-        let mode = opt_num(ctx, a, 2, 0.0)?;
-        if m == 0.0 {
-            return number(0.0);
-        }
-        let q = clean(x / m);
-        number(if x < 0.0 && mode != 0.0 { q.floor() } else { q.ceil() } * m)
-    }),
-    s("FLOOR.MATH", 1, 3, "number, [significance], [mode]", "Rounds down to a multiple; mode rounds negatives toward zero.", |ctx, a| {
-        let x = num(ctx, &a[0])?;
-        let m = opt_num(ctx, a, 1, 1.0)?.abs();
-        let mode = opt_num(ctx, a, 2, 0.0)?;
-        if m == 0.0 {
-            return number(0.0);
-        }
-        let q = clean(x / m);
-        number(if x < 0.0 && mode != 0.0 { q.ceil() } else { q.floor() } * m)
-    }),
-    s("CEILING.PRECISE", 1, 2, "number, [significance]", "Rounds up to a multiple, whatever the signs.", precise_up),
-    s("ISO.CEILING", 1, 2, "number, [significance]", "Rounds up to a multiple, whatever the signs.", precise_up),
-    s("FLOOR.PRECISE", 1, 2, "number, [significance]", "Rounds down to a multiple, whatever the signs.", |ctx, a| {
-        let x = num(ctx, &a[0])?;
-        let m = opt_num(ctx, a, 1, 1.0)?.abs();
-        if m == 0.0 {
-            return number(0.0);
-        }
-        number(clean(x / m).floor() * m)
-    }),
+    s(
+        "CEILING",
+        2,
+        2,
+        "number, significance",
+        "Rounds up to a multiple of the significance.",
+        |ctx, a| {
+            let (x, m) = (num(ctx, &a[0])?, num(ctx, &a[1])?);
+            if m == 0.0 {
+                return number(0.0);
+            }
+            if x > 0.0 && m < 0.0 {
+                return Err(ErrorKind::Num);
+            }
+            number(clean(x / m).ceil() * m)
+        },
+    ),
+    s(
+        "FLOOR",
+        2,
+        2,
+        "number, significance",
+        "Rounds down to a multiple of the significance.",
+        |ctx, a| {
+            let (x, m) = (num(ctx, &a[0])?, num(ctx, &a[1])?);
+            if m == 0.0 {
+                return if x == 0.0 { number(0.0) } else { Err(ErrorKind::Div0) };
+            }
+            if x > 0.0 && m < 0.0 {
+                return Err(ErrorKind::Num);
+            }
+            number(clean(x / m).floor() * m)
+        },
+    ),
+    s(
+        "CEILING.MATH",
+        1,
+        3,
+        "number, [significance], [mode]",
+        "Rounds up to a multiple; mode rounds negatives away from zero.",
+        |ctx, a| {
+            let x = num(ctx, &a[0])?;
+            let m = opt_num(ctx, a, 1, 1.0)?.abs();
+            let mode = opt_num(ctx, a, 2, 0.0)?;
+            if m == 0.0 {
+                return number(0.0);
+            }
+            let q = clean(x / m);
+            number(if x < 0.0 && mode != 0.0 { q.floor() } else { q.ceil() } * m)
+        },
+    ),
+    s(
+        "FLOOR.MATH",
+        1,
+        3,
+        "number, [significance], [mode]",
+        "Rounds down to a multiple; mode rounds negatives toward zero.",
+        |ctx, a| {
+            let x = num(ctx, &a[0])?;
+            let m = opt_num(ctx, a, 1, 1.0)?.abs();
+            let mode = opt_num(ctx, a, 2, 0.0)?;
+            if m == 0.0 {
+                return number(0.0);
+            }
+            let q = clean(x / m);
+            number(if x < 0.0 && mode != 0.0 { q.ceil() } else { q.floor() } * m)
+        },
+    ),
+    s(
+        "CEILING.PRECISE",
+        1,
+        2,
+        "number, [significance]",
+        "Rounds up to a multiple, whatever the signs.",
+        precise_up,
+    ),
+    s(
+        "ISO.CEILING",
+        1,
+        2,
+        "number, [significance]",
+        "Rounds up to a multiple, whatever the signs.",
+        precise_up,
+    ),
+    s(
+        "FLOOR.PRECISE",
+        1,
+        2,
+        "number, [significance]",
+        "Rounds down to a multiple, whatever the signs.",
+        |ctx, a| {
+            let x = num(ctx, &a[0])?;
+            let m = opt_num(ctx, a, 1, 1.0)?.abs();
+            if m == 0.0 {
+                return number(0.0);
+            }
+            number(clean(x / m).floor() * m)
+        },
+    ),
     s("EVEN", 1, 1, "number", "Rounds away from zero to an even whole number.", |ctx, a| {
         unary(ctx, a, |x| {
             let up = (x.abs() / 2.0).ceil() * 2.0;
@@ -113,18 +216,25 @@ pub const FUNCTIONS: &[Function] = &[
             Ok(if x < 0.0 { -up } else { up })
         })
     }),
-    s("MOD", 2, 2, "number, divisor", "The remainder after division, with the divisor's sign.", |ctx, a| {
-        let (x, d) = (num(ctx, &a[0])?, num(ctx, &a[1])?);
-        if d == 0.0 {
-            return Err(ErrorKind::Div0);
-        }
-        // Measured: Excel refuses once the quotient reaches 2^40.
-        if (x / d).abs() >= 1_099_511_627_776.0 {
-            return Err(ErrorKind::Num);
-        }
-        let m = x - d * (x / d).floor();
-        number(if (m - d).abs() < d.abs() * 1e-15 { 0.0 } else { m })
-    }),
+    s(
+        "MOD",
+        2,
+        2,
+        "number, divisor",
+        "The remainder after division, with the divisor's sign.",
+        |ctx, a| {
+            let (x, d) = (num(ctx, &a[0])?, num(ctx, &a[1])?);
+            if d == 0.0 {
+                return Err(ErrorKind::Div0);
+            }
+            // Measured: Excel refuses once the quotient reaches 2^40.
+            if (x / d).abs() >= 1_099_511_627_776.0 {
+                return Err(ErrorKind::Num);
+            }
+            let m = x - d * (x / d).floor();
+            number(if (m - d).abs() < d.abs() * 1e-15 { 0.0 } else { m })
+        },
+    ),
     s("QUOTIENT", 2, 2, "numerator, denominator", "The whole part of a division.", |ctx, a| {
         let (x, d) = (num(ctx, &a[0])?, num(ctx, &a[1])?);
         if d == 0.0 {
@@ -132,14 +242,28 @@ pub const FUNCTIONS: &[Function] = &[
         }
         number((x / d).trunc())
     }),
-    s("POWER", 2, 2, "number, power", "A number raised to a power.", |ctx, a| number(crate::eval::power(num(ctx, &a[0])?, num(ctx, &a[1])?)?)),
-    s("SQRT", 1, 1, "number", "The square root.", |ctx, a| unary(ctx, a, |x| if x < 0.0 { Err(ErrorKind::Num) } else { Ok(x.sqrt()) })),
+    s("POWER", 2, 2, "number, power", "A number raised to a power.", |ctx, a| {
+        number(crate::eval::power(num(ctx, &a[0])?, num(ctx, &a[1])?)?)
+    }),
+    s("SQRT", 1, 1, "number", "The square root.", |ctx, a| {
+        unary(ctx, a, |x| if x < 0.0 { Err(ErrorKind::Num) } else { Ok(x.sqrt()) })
+    }),
     s("SQRTPI", 1, 1, "number", "The square root of the number times pi.", |ctx, a| {
-        unary(ctx, a, |x| if x < 0.0 { Err(ErrorKind::Num) } else { Ok((x * std::f64::consts::PI).sqrt()) })
+        unary(ctx, a, |x| {
+            if x < 0.0 {
+                Err(ErrorKind::Num)
+            } else {
+                Ok((x * std::f64::consts::PI).sqrt())
+            }
+        })
     }),
     s("EXP", 1, 1, "number", "e raised to a power.", |ctx, a| unary(ctx, a, |x| Ok(x.exp()))),
-    s("LN", 1, 1, "number", "The natural logarithm.", |ctx, a| unary(ctx, a, |x| if x <= 0.0 { Err(ErrorKind::Num) } else { Ok(x.ln()) })),
-    s("LOG10", 1, 1, "number", "The base 10 logarithm.", |ctx, a| unary(ctx, a, |x| if x <= 0.0 { Err(ErrorKind::Num) } else { Ok(x.log10()) })),
+    s("LN", 1, 1, "number", "The natural logarithm.", |ctx, a| {
+        unary(ctx, a, |x| if x <= 0.0 { Err(ErrorKind::Num) } else { Ok(x.ln()) })
+    }),
+    s("LOG10", 1, 1, "number", "The base 10 logarithm.", |ctx, a| {
+        unary(ctx, a, |x| if x <= 0.0 { Err(ErrorKind::Num) } else { Ok(x.log10()) })
+    }),
     s("LOG", 1, 2, "number, [base]", "The logarithm in a base, 10 when left out.", |ctx, a| {
         let x = num(ctx, &a[0])?;
         let b = opt_num(ctx, a, 1, 10.0)?;
@@ -152,35 +276,98 @@ pub const FUNCTIONS: &[Function] = &[
         number(if b == 10.0 { x.log10() } else { x.ln() / b.ln() })
     }),
     s("PI", 0, 0, "", "Pi to fifteen digits.", |_, _| number(std::f64::consts::PI)),
-    s("SIN", 1, 1, "number", "The sine of an angle in radians.", |ctx, a| unary(ctx, a, |x| big_angle(x).map(f64::sin))),
-    s("COS", 1, 1, "number", "The cosine of an angle in radians.", |ctx, a| unary(ctx, a, |x| big_angle(x).map(f64::cos))),
-    s("TAN", 1, 1, "number", "The tangent of an angle in radians.", |ctx, a| unary(ctx, a, |x| big_angle(x).map(f64::tan))),
-    s("ASIN", 1, 1, "number", "The arcsine, in radians.", |ctx, a| unary(ctx, a, |x| if x.abs() > 1.0 { Err(ErrorKind::Num) } else { Ok(x.asin()) })),
-    s("ACOS", 1, 1, "number", "The arccosine, in radians.", |ctx, a| unary(ctx, a, |x| if x.abs() > 1.0 { Err(ErrorKind::Num) } else { Ok(x.acos()) })),
-    s("ATAN", 1, 1, "number", "The arctangent, in radians.", |ctx, a| unary(ctx, a, |x| Ok(x.atan()))),
-    s("ATAN2", 2, 2, "x_num, y_num", "The angle of a point from the x axis, in radians.", |ctx, a| {
-        let (x, y) = (num(ctx, &a[0])?, num(ctx, &a[1])?);
-        if x == 0.0 && y == 0.0 {
-            return Err(ErrorKind::Div0);
-        }
-        number(y.atan2(x))
+    s("SIN", 1, 1, "number", "The sine of an angle in radians.", |ctx, a| {
+        unary(ctx, a, |x| big_angle(x).map(f64::sin))
     }),
+    s("COS", 1, 1, "number", "The cosine of an angle in radians.", |ctx, a| {
+        unary(ctx, a, |x| big_angle(x).map(f64::cos))
+    }),
+    s("TAN", 1, 1, "number", "The tangent of an angle in radians.", |ctx, a| {
+        unary(ctx, a, |x| big_angle(x).map(f64::tan))
+    }),
+    s("ASIN", 1, 1, "number", "The arcsine, in radians.", |ctx, a| {
+        unary(ctx, a, |x| if x.abs() > 1.0 { Err(ErrorKind::Num) } else { Ok(x.asin()) })
+    }),
+    s("ACOS", 1, 1, "number", "The arccosine, in radians.", |ctx, a| {
+        unary(ctx, a, |x| if x.abs() > 1.0 { Err(ErrorKind::Num) } else { Ok(x.acos()) })
+    }),
+    s("ATAN", 1, 1, "number", "The arctangent, in radians.", |ctx, a| {
+        unary(ctx, a, |x| Ok(x.atan()))
+    }),
+    s(
+        "ATAN2",
+        2,
+        2,
+        "x_num, y_num",
+        "The angle of a point from the x axis, in radians.",
+        |ctx, a| {
+            let (x, y) = (num(ctx, &a[0])?, num(ctx, &a[1])?);
+            if x == 0.0 && y == 0.0 {
+                return Err(ErrorKind::Div0);
+            }
+            number(y.atan2(x))
+        },
+    ),
     s("SINH", 1, 1, "number", "The hyperbolic sine.", |ctx, a| unary(ctx, a, |x| Ok(x.sinh()))),
     s("COSH", 1, 1, "number", "The hyperbolic cosine.", |ctx, a| unary(ctx, a, |x| Ok(x.cosh()))),
     s("TANH", 1, 1, "number", "The hyperbolic tangent.", |ctx, a| unary(ctx, a, |x| Ok(x.tanh()))),
-    s("ASINH", 1, 1, "number", "The inverse hyperbolic sine.", |ctx, a| unary(ctx, a, |x| Ok(x.asinh()))),
-    s("ACOSH", 1, 1, "number", "The inverse hyperbolic cosine.", |ctx, a| unary(ctx, a, |x| if x < 1.0 { Err(ErrorKind::Num) } else { Ok(x.acosh()) })),
-    s("ATANH", 1, 1, "number", "The inverse hyperbolic tangent.", |ctx, a| unary(ctx, a, |x| if x.abs() >= 1.0 { Err(ErrorKind::Num) } else { Ok(x.atanh()) })),
-    s("COT", 1, 1, "number", "The cotangent.", |ctx, a| unary(ctx, a, |x| if x == 0.0 { Err(ErrorKind::Div0) } else { big_angle(x).map(|x| 1.0 / x.tan()) })),
-    s("COTH", 1, 1, "number", "The hyperbolic cotangent.", |ctx, a| unary(ctx, a, |x| if x == 0.0 { Err(ErrorKind::Div0) } else { Ok(1.0 / x.tanh()) })),
-    s("CSC", 1, 1, "number", "The cosecant.", |ctx, a| unary(ctx, a, |x| if x == 0.0 { Err(ErrorKind::Div0) } else { big_angle(x).map(|x| 1.0 / x.sin()) })),
-    s("CSCH", 1, 1, "number", "The hyperbolic cosecant.", |ctx, a| unary(ctx, a, |x| if x == 0.0 { Err(ErrorKind::Div0) } else { Ok(1.0 / x.sinh()) })),
-    s("SEC", 1, 1, "number", "The secant.", |ctx, a| unary(ctx, a, |x| big_angle(x).map(|x| 1.0 / x.cos()))),
-    s("SECH", 1, 1, "number", "The hyperbolic secant.", |ctx, a| unary(ctx, a, |x| Ok(1.0 / x.cosh()))),
-    s("ACOT", 1, 1, "number", "The arccotangent.", |ctx, a| unary(ctx, a, |x| Ok(std::f64::consts::FRAC_PI_2 - x.atan()))),
-    s("ACOTH", 1, 1, "number", "The inverse hyperbolic cotangent.", |ctx, a| unary(ctx, a, |x| if x.abs() <= 1.0 { Err(ErrorKind::Num) } else { Ok(0.5 * ((x + 1.0) / (x - 1.0)).ln()) })),
-    s("DEGREES", 1, 1, "angle", "Radians to degrees.", |ctx, a| unary(ctx, a, |x| Ok(x.to_degrees()))),
-    s("RADIANS", 1, 1, "angle", "Degrees to radians.", |ctx, a| unary(ctx, a, |x| Ok(x.to_radians()))),
+    s("ASINH", 1, 1, "number", "The inverse hyperbolic sine.", |ctx, a| {
+        unary(ctx, a, |x| Ok(x.asinh()))
+    }),
+    s("ACOSH", 1, 1, "number", "The inverse hyperbolic cosine.", |ctx, a| {
+        unary(ctx, a, |x| if x < 1.0 { Err(ErrorKind::Num) } else { Ok(x.acosh()) })
+    }),
+    s("ATANH", 1, 1, "number", "The inverse hyperbolic tangent.", |ctx, a| {
+        unary(ctx, a, |x| if x.abs() >= 1.0 { Err(ErrorKind::Num) } else { Ok(x.atanh()) })
+    }),
+    s("COT", 1, 1, "number", "The cotangent.", |ctx, a| {
+        unary(ctx, a, |x| {
+            if x == 0.0 {
+                Err(ErrorKind::Div0)
+            } else {
+                big_angle(x).map(|x| 1.0 / x.tan())
+            }
+        })
+    }),
+    s("COTH", 1, 1, "number", "The hyperbolic cotangent.", |ctx, a| {
+        unary(ctx, a, |x| if x == 0.0 { Err(ErrorKind::Div0) } else { Ok(1.0 / x.tanh()) })
+    }),
+    s("CSC", 1, 1, "number", "The cosecant.", |ctx, a| {
+        unary(ctx, a, |x| {
+            if x == 0.0 {
+                Err(ErrorKind::Div0)
+            } else {
+                big_angle(x).map(|x| 1.0 / x.sin())
+            }
+        })
+    }),
+    s("CSCH", 1, 1, "number", "The hyperbolic cosecant.", |ctx, a| {
+        unary(ctx, a, |x| if x == 0.0 { Err(ErrorKind::Div0) } else { Ok(1.0 / x.sinh()) })
+    }),
+    s("SEC", 1, 1, "number", "The secant.", |ctx, a| {
+        unary(ctx, a, |x| big_angle(x).map(|x| 1.0 / x.cos()))
+    }),
+    s("SECH", 1, 1, "number", "The hyperbolic secant.", |ctx, a| {
+        unary(ctx, a, |x| Ok(1.0 / x.cosh()))
+    }),
+    s("ACOT", 1, 1, "number", "The arccotangent.", |ctx, a| {
+        unary(ctx, a, |x| Ok(std::f64::consts::FRAC_PI_2 - x.atan()))
+    }),
+    s("ACOTH", 1, 1, "number", "The inverse hyperbolic cotangent.", |ctx, a| {
+        unary(ctx, a, |x| {
+            if x.abs() <= 1.0 {
+                Err(ErrorKind::Num)
+            } else {
+                Ok(0.5 * ((x + 1.0) / (x - 1.0)).ln())
+            }
+        })
+    }),
+    s("DEGREES", 1, 1, "angle", "Radians to degrees.", |ctx, a| {
+        unary(ctx, a, |x| Ok(x.to_degrees()))
+    }),
+    s("RADIANS", 1, 1, "angle", "Degrees to radians.", |ctx, a| {
+        unary(ctx, a, |x| Ok(x.to_radians()))
+    }),
     s("FACT", 1, 1, "number", "The factorial.", |ctx, a| unary(ctx, a, |x| factorial(x.trunc()))),
     s("FACTDOUBLE", 1, 1, "number", "The double factorial.", |ctx, a| {
         unary(ctx, a, |x| {
@@ -200,16 +387,23 @@ pub const FUNCTIONS: &[Function] = &[
     s("COMBIN", 2, 2, "number, number_chosen", "The number of combinations.", |ctx, a| {
         number(combin(num(ctx, &a[0])?.trunc(), num(ctx, &a[1])?.trunc())?)
     }),
-    s("COMBINA", 2, 2, "number, number_chosen", "The number of combinations with repetitions.", |ctx, a| {
-        let (n, k) = (num(ctx, &a[0])?.trunc(), num(ctx, &a[1])?.trunc());
-        if n < 0.0 || k < 0.0 || n == 0.0 && k > 0.0 {
-            return Err(ErrorKind::Num);
-        }
-        if n == 0.0 && k == 0.0 {
-            return number(1.0);
-        }
-        number(combin(n + k - 1.0, k)?)
-    }),
+    s(
+        "COMBINA",
+        2,
+        2,
+        "number, number_chosen",
+        "The number of combinations with repetitions.",
+        |ctx, a| {
+            let (n, k) = (num(ctx, &a[0])?.trunc(), num(ctx, &a[1])?.trunc());
+            if n < 0.0 || k < 0.0 || n == 0.0 && k > 0.0 {
+                return Err(ErrorKind::Num);
+            }
+            if n == 0.0 && k == 0.0 {
+                return number(1.0);
+            }
+            number(combin(n + k - 1.0, k)?)
+        },
+    ),
     s("PERMUT", 2, 2, "number, number_chosen", "The number of permutations.", |ctx, a| {
         let (n, k) = (num(ctx, &a[0])?.trunc(), num(ctx, &a[1])?.trunc());
         if n < 0.0 || k < 0.0 || k > n {
@@ -221,26 +415,40 @@ pub const FUNCTIONS: &[Function] = &[
         }
         number(out)
     }),
-    s("PERMUTATIONA", 2, 2, "number, number_chosen", "The number of permutations with repetitions.", |ctx, a| {
-        let (n, k) = (num(ctx, &a[0])?.trunc(), num(ctx, &a[1])?.trunc());
-        if n < 0.0 || k < 0.0 {
-            return Err(ErrorKind::Num);
-        }
-        number(n.powf(k))
-    }),
-    s("MULTINOMIAL", 1, MANY, "number1, [number2], ...", "The multinomial of numbers.", |ctx, a| {
-        let mut total = 0.0;
-        let mut denominator = 1.0;
-        for v in a {
-            let n = num(ctx, v)?.trunc();
-            if n < 0.0 {
+    s(
+        "PERMUTATIONA",
+        2,
+        2,
+        "number, number_chosen",
+        "The number of permutations with repetitions.",
+        |ctx, a| {
+            let (n, k) = (num(ctx, &a[0])?.trunc(), num(ctx, &a[1])?.trunc());
+            if n < 0.0 || k < 0.0 {
                 return Err(ErrorKind::Num);
             }
-            total += n;
-            denominator *= factorial(n)?;
-        }
-        number(factorial(total)? / denominator)
-    }),
+            number(n.powf(k))
+        },
+    ),
+    s(
+        "MULTINOMIAL",
+        1,
+        MANY,
+        "number1, [number2], ...",
+        "The multinomial of numbers.",
+        |ctx, a| {
+            let mut total = 0.0;
+            let mut denominator = 1.0;
+            for v in a {
+                let n = num(ctx, v)?.trunc();
+                if n < 0.0 {
+                    return Err(ErrorKind::Num);
+                }
+                total += n;
+                denominator *= factorial(n)?;
+            }
+            number(factorial(total)? / denominator)
+        },
+    ),
     r("GCD", 1, MANY, "number1, [number2], ...", "The greatest common divisor.", |ctx, args| {
         let n = match gather(ctx, args, Gather::Numbers) {
             Ok(n) => n,
@@ -259,20 +467,68 @@ pub const FUNCTIONS: &[Function] = &[
         if n.iter().any(|x| *x < 0.0) {
             return Val::error(ErrorKind::Num);
         }
-        Val::number(n.iter().map(|x| x.trunc()).fold(1.0, |acc, x| if acc == 0.0 || x == 0.0 { 0.0 } else { acc / gcd(acc, x) * x }))
+        Val::number(n.iter().map(|x| x.trunc()).fold(1.0, |acc, x| {
+            if acc == 0.0 || x == 0.0 {
+                0.0
+            } else {
+                acc / gcd(acc, x) * x
+            }
+        }))
     }),
-    r("RAND", 0, 0, "", "A random number from 0 up to 1. Changes on every calculation.", |ctx, _| Val::number(ctx.env.random())),
-    s("RANDBETWEEN", 2, 2, "bottom, top", "A random whole number between two numbers. Changes on every calculation.", |ctx, a| {
-        let (lo, hi) = (num(ctx, &a[0])?.ceil(), num(ctx, &a[1])?.floor());
-        if lo > hi {
-            return Err(ErrorKind::Num);
-        }
-        number(lo + (ctx.env.random() * (hi - lo + 1.0)).floor())
-    }),
-    r("RANDARRAY", 0, 5, "[rows], [columns], [min], [max], [whole_number]", "An array of random numbers.", randarray),
-    r("SEQUENCE", 1, 4, "rows, [columns], [start], [step]", "An array of numbers in sequence.", sequence),
-    r("SUBTOTAL", 2, MANY, "function_num, ref1, [ref2], ...", "An aggregate that skips other subtotals, and hidden rows from 101 on.", subtotal),
-    r("AGGREGATE", 3, MANY, "function_num, options, ref1, [ref2], ...", "An aggregate that can skip errors, hidden rows and subtotals.", aggregate),
+    r(
+        "RAND",
+        0,
+        0,
+        "",
+        "A random number from 0 up to 1. Changes on every calculation.",
+        |ctx, _| Val::number(ctx.env.random()),
+    ),
+    s(
+        "RANDBETWEEN",
+        2,
+        2,
+        "bottom, top",
+        "A random whole number between two numbers. Changes on every calculation.",
+        |ctx, a| {
+            let (lo, hi) = (num(ctx, &a[0])?.ceil(), num(ctx, &a[1])?.floor());
+            if lo > hi {
+                return Err(ErrorKind::Num);
+            }
+            number(lo + (ctx.env.random() * (hi - lo + 1.0)).floor())
+        },
+    ),
+    r(
+        "RANDARRAY",
+        0,
+        5,
+        "[rows], [columns], [min], [max], [whole_number]",
+        "An array of random numbers.",
+        randarray,
+    ),
+    r(
+        "SEQUENCE",
+        1,
+        4,
+        "rows, [columns], [start], [step]",
+        "An array of numbers in sequence.",
+        sequence,
+    ),
+    r(
+        "SUBTOTAL",
+        2,
+        MANY,
+        "function_num, ref1, [ref2], ...",
+        "An aggregate that skips other subtotals, and hidden rows from 101 on.",
+        subtotal,
+    ),
+    r(
+        "AGGREGATE",
+        3,
+        MANY,
+        "function_num, options, ref1, [ref2], ...",
+        "An aggregate that can skip errors, hidden rows and subtotals.",
+        aggregate,
+    ),
     r("MMULT", 2, 2, "array1, array2", "The matrix product.", mmult),
     r("MDETERM", 1, 1, "array", "The matrix determinant.", |ctx, a| match square(ctx, &a[0]) {
         Ok(m) => Val::number(determinant(m)),
@@ -297,7 +553,11 @@ pub const FUNCTIONS: &[Function] = &[
             return Val::error(ErrorKind::Value);
         }
         let n = n as usize;
-        Val::Array(Array::new(n, n, (0..n * n).map(|i| Value::Number(if i / n == i % n { 1.0 } else { 0.0 })).collect()))
+        Val::Array(Array::new(
+            n,
+            n,
+            (0..n * n).map(|i| Value::Number(if i / n == i % n { 1.0 } else { 0.0 })).collect(),
+        ))
     }),
     s("ROMAN", 1, 2, "number, [form]", "A number as Roman numerals.", |ctx, a| {
         let n = num(ctx, &a[0])?.trunc();
@@ -311,28 +571,44 @@ pub const FUNCTIONS: &[Function] = &[
         let t = super::text_of(&a[0])?;
         arabic(t.trim()).map(|n| Value::Number(n as f64)).ok_or(ErrorKind::Value)
     }),
-    s("BASE", 2, 3, "number, radix, [min_length]", "A number written in another base.", |ctx, a| {
-        let n = num(ctx, &a[0])?.trunc();
-        let radix = num(ctx, &a[1])?.trunc();
-        let min = opt_num(ctx, a, 2, 0.0)?.trunc();
-        if n < 0.0 || n >= 2f64.powi(53) || !(2.0..=36.0).contains(&radix) || min < 0.0 || min > 255.0 {
-            return Err(ErrorKind::Num);
-        }
-        let mut digits = Vec::new();
-        let mut x = n as u64;
-        let r = radix as u64;
-        loop {
-            digits.push(std::char::from_digit((x % r) as u32, r as u32).unwrap_or('0').to_ascii_uppercase());
-            x /= r;
-            if x == 0 {
-                break;
+    s(
+        "BASE",
+        2,
+        3,
+        "number, radix, [min_length]",
+        "A number written in another base.",
+        |ctx, a| {
+            let n = num(ctx, &a[0])?.trunc();
+            let radix = num(ctx, &a[1])?.trunc();
+            let min = opt_num(ctx, a, 2, 0.0)?.trunc();
+            if n < 0.0
+                || n >= 2f64.powi(53)
+                || !(2.0..=36.0).contains(&radix)
+                || min < 0.0
+                || min > 255.0
+            {
+                return Err(ErrorKind::Num);
             }
-        }
-        while digits.len() < min as usize {
-            digits.push('0');
-        }
-        Ok(Value::text(digits.iter().rev().collect::<String>()))
-    }),
+            let mut digits = Vec::new();
+            let mut x = n as u64;
+            let r = radix as u64;
+            loop {
+                digits.push(
+                    std::char::from_digit((x % r) as u32, r as u32)
+                        .unwrap_or('0')
+                        .to_ascii_uppercase(),
+                );
+                x /= r;
+                if x == 0 {
+                    break;
+                }
+            }
+            while digits.len() < min as usize {
+                digits.push('0');
+            }
+            Ok(Value::text(digits.iter().rev().collect::<String>()))
+        },
+    ),
     s("DECIMAL", 2, 2, "text, radix", "A number written in a base, read as a number.", |ctx, a| {
         let t = super::text_of(&a[0])?;
         let radix = num(ctx, &a[1])?.trunc();
@@ -361,7 +637,9 @@ pub const FUNCTIONS: &[Function] = &[
             Err(e) => return Val::error(e),
         };
         let (x, n, m) = (scalars[0], scalars[1], scalars[2]);
-        Val::number(coefficients.iter().enumerate().map(|(i, c)| c * x.powf(n + i as f64 * m)).sum())
+        Val::number(
+            coefficients.iter().enumerate().map(|(i, c)| c * x.powf(n + i as f64 * m)).sum(),
+        )
     }),
 ];
 
@@ -483,9 +761,42 @@ fn roman(n: u32, form: u32) -> String {
     ];
     let extra: &[(u32, &str)] = match form {
         1 => &[(950, "LM"), (450, "LD"), (95, "VC"), (45, "VL")],
-        2 => &[(990, "XM"), (950, "LM"), (490, "XD"), (450, "LD"), (99, "IC"), (95, "VC"), (49, "IL"), (45, "VL")],
-        3 => &[(995, "VM"), (990, "XM"), (950, "LM"), (495, "VD"), (490, "XD"), (450, "LD"), (99, "IC"), (95, "VC"), (49, "IL"), (45, "VL")],
-        4 => &[(999, "IM"), (995, "VM"), (990, "XM"), (950, "LM"), (499, "ID"), (495, "VD"), (490, "XD"), (450, "LD"), (99, "IC"), (95, "VC"), (49, "IL"), (45, "VL")],
+        2 => &[
+            (990, "XM"),
+            (950, "LM"),
+            (490, "XD"),
+            (450, "LD"),
+            (99, "IC"),
+            (95, "VC"),
+            (49, "IL"),
+            (45, "VL"),
+        ],
+        3 => &[
+            (995, "VM"),
+            (990, "XM"),
+            (950, "LM"),
+            (495, "VD"),
+            (490, "XD"),
+            (450, "LD"),
+            (99, "IC"),
+            (95, "VC"),
+            (49, "IL"),
+            (45, "VL"),
+        ],
+        4 => &[
+            (999, "IM"),
+            (995, "VM"),
+            (990, "XM"),
+            (950, "LM"),
+            (499, "ID"),
+            (495, "VD"),
+            (490, "XD"),
+            (450, "LD"),
+            (99, "IC"),
+            (95, "VC"),
+            (49, "IL"),
+            (45, "VL"),
+        ],
         _ => &[],
     };
     table.extend_from_slice(extra);
@@ -572,7 +883,11 @@ fn sumif(ctx: &mut Ctx, args: &[Expr]) -> Val {
 /// The criteria ranges and criteria of a *IFS function, matched cell by cell. `first` is the range every
 /// criteria range must be the size of, the sum range for SUMIFS. Answers which positions meet every
 /// criterion and the rows and columns read, a whole column being clipped to the rows in use.
-pub fn ifs_mask(ctx: &mut Ctx, pairs: &[Expr], first: Option<Area>) -> Result<(Vec<bool>, usize, usize), ErrorKind> {
+pub fn ifs_mask(
+    ctx: &mut Ctx,
+    pairs: &[Expr],
+    first: Option<Area>,
+) -> Result<(Vec<bool>, usize, usize), ErrorKind> {
     if pairs.len() % 2 != 0 || pairs.is_empty() {
         return Err(ErrorKind::Value);
     }
@@ -733,13 +1048,21 @@ fn randarray(ctx: &mut Ctx, args: &[Expr]) -> Val {
         _ => false,
     };
     if rows < 1.0 || cols < 1.0 || lo > hi {
-        return Val::error(if rows == 0.0 || cols == 0.0 { ErrorKind::Calc } else { ErrorKind::Value });
+        return Val::error(if rows == 0.0 || cols == 0.0 {
+            ErrorKind::Calc
+        } else {
+            ErrorKind::Value
+        });
     }
     let (rows, cols) = (rows as usize, cols as usize);
     let data = (0..rows * cols)
         .map(|_| {
             let r = ctx.env.random();
-            Value::Number(if whole { (lo.ceil() + (r * (hi.floor() - lo.ceil() + 1.0)).floor()).min(hi.floor()) } else { lo + r * (hi - lo) })
+            Value::Number(if whole {
+                (lo.ceil() + (r * (hi.floor() - lo.ceil() + 1.0)).floor()).min(hi.floor())
+            } else {
+                lo + r * (hi - lo)
+            })
         })
         .collect();
     Val::Array(Array::new(rows, cols, data))
@@ -786,18 +1109,28 @@ fn is_subtotal_cell(ctx: &Ctx, sheet: usize, at: crate::coord::CellRef) -> bool 
 }
 
 /// The values a SUBTOTAL or AGGREGATE reads: by cell, so hidden rows and nested subtotals can be left out.
-fn subtotal_values(ctx: &mut Ctx, args: &[Expr], skip_hidden: bool, skip_errors: bool, skip_nested: bool) -> Result<Vec<Value>, ErrorKind> {
+fn subtotal_values(
+    ctx: &mut Ctx,
+    args: &[Expr],
+    skip_hidden: bool,
+    skip_errors: bool,
+    skip_nested: bool,
+) -> Result<Vec<Value>, ErrorKind> {
     let mut out = Vec::new();
     for arg in args {
         match ctx.eval(arg) {
-            Val::Ref(area) => collect_area(ctx, &area, skip_hidden, skip_errors, skip_nested, &mut out)?,
+            Val::Ref(area) => {
+                collect_area(ctx, &area, skip_hidden, skip_errors, skip_nested, &mut out)?
+            }
             Val::Refs(areas) => {
                 for area in areas {
                     collect_area(ctx, &area, skip_hidden, skip_errors, skip_nested, &mut out)?;
                 }
             }
             Val::Value(Value::Error(e)) if !skip_errors => return Err(e),
-            Val::Array(a) => out.extend(a.data.into_iter().filter(|v| !(skip_errors && v.is_error()))),
+            Val::Array(a) => {
+                out.extend(a.data.into_iter().filter(|v| !(skip_errors && v.is_error())))
+            }
             Val::Value(v) => out.push(v),
             _ => return Err(ErrorKind::Value),
         }
@@ -805,7 +1138,14 @@ fn subtotal_values(ctx: &mut Ctx, args: &[Expr], skip_hidden: bool, skip_errors:
     Ok(out)
 }
 
-fn collect_area(ctx: &Ctx, area: &Area, skip_hidden: bool, skip_errors: bool, skip_nested: bool, out: &mut Vec<Value>) -> Result<(), ErrorKind> {
+fn collect_area(
+    ctx: &Ctx,
+    area: &Area,
+    skip_hidden: bool,
+    skip_errors: bool,
+    skip_nested: bool,
+    out: &mut Vec<Value>,
+) -> Result<(), ErrorKind> {
     for sheet in area.sheet..=area.sheet_last {
         let s = &ctx.book.sheets[sheet];
         let r = area.range;
@@ -818,7 +1158,11 @@ fn collect_area(ctx: &Ctx, area: &Area, skip_hidden: bool, skip_errors: bool, sk
                 s.spills
                     .values
                     .range((r.first.row, 0)..=(r.last.row, crate::coord::MAX_COLS))
-                    .filter(|((row, col), _)| *col >= r.first.col && *col <= r.last.col && !s.cells.contains_key(&(*row, *col)))
+                    .filter(|((row, col), _)| {
+                        *col >= r.first.col
+                            && *col <= r.last.col
+                            && !s.cells.contains_key(&(*row, *col))
+                    })
                     .map(|(k, v)| (*k, v.clone())),
             )
             .collect();
@@ -827,7 +1171,10 @@ fn collect_area(ctx: &Ctx, area: &Area, skip_hidden: bool, skip_errors: bool, sk
                 continue;
             }
             let hidden = s.rows.get(&row).is_some_and(|info| info.hidden);
-            let filtered = hidden && s.filter.as_ref().is_some_and(|f| f.range.contains(crate::coord::CellRef::new(row, col)));
+            let filtered = hidden
+                && s.filter
+                    .as_ref()
+                    .is_some_and(|f| f.range.contains(crate::coord::CellRef::new(row, col)));
             if (skip_hidden && hidden) || filtered {
                 continue;
             }
@@ -849,14 +1196,32 @@ fn collect_area(ctx: &Ctx, area: &Area, skip_hidden: bool, skip_errors: bool, sk
 /// One of SUBTOTAL's and AGGREGATE's eleven aggregates over values read from ranges.
 fn aggregate_of(which: u32, values: &[Value]) -> Result<f64, ErrorKind> {
     let numbers: Vec<f64> = values.iter().filter_map(Value::as_number).collect();
-    use super::stats::{mean, sample_variance, population_variance};
+    use super::stats::{mean, population_variance, sample_variance};
     Ok(match which {
         1 => mean(&numbers).ok_or(ErrorKind::Div0)?,
         2 => numbers.len() as f64,
         3 => values.iter().filter(|v| !v.is_empty()).count() as f64,
-        4 => if numbers.is_empty() { 0.0 } else { numbers.iter().copied().fold(f64::NEG_INFINITY, f64::max) },
-        5 => if numbers.is_empty() { 0.0 } else { numbers.iter().copied().fold(f64::INFINITY, f64::min) },
-        6 => if numbers.is_empty() { 0.0 } else { numbers.iter().product() },
+        4 => {
+            if numbers.is_empty() {
+                0.0
+            } else {
+                numbers.iter().copied().fold(f64::NEG_INFINITY, f64::max)
+            }
+        }
+        5 => {
+            if numbers.is_empty() {
+                0.0
+            } else {
+                numbers.iter().copied().fold(f64::INFINITY, f64::min)
+            }
+        }
+        6 => {
+            if numbers.is_empty() {
+                0.0
+            } else {
+                numbers.iter().product()
+            }
+        }
         7 => sample_variance(&numbers).ok_or(ErrorKind::Div0)?.sqrt(),
         8 => population_variance(&numbers).ok_or(ErrorKind::Div0)?.sqrt(),
         9 => numbers.iter().sum(),
@@ -910,7 +1275,9 @@ fn aggregate(ctx: &mut Ctx, args: &[Expr]) -> Val {
             }
             _ => {
                 let n: Vec<f64> = values.iter().filter_map(Value::as_number).collect();
-                super::stats::modes(&n).first().map_or(Val::error(ErrorKind::NA), |m| Val::number(*m))
+                super::stats::modes(&n)
+                    .first()
+                    .map_or(Val::error(ErrorKind::NA), |m| Val::number(*m))
             }
         };
     }
@@ -985,7 +1352,9 @@ pub fn determinant(mut m: Vec<Vec<f64>>) -> f64 {
     let n = m.len();
     let mut det = 1.0;
     for col in 0..n {
-        let pivot = (col..n).max_by(|&a, &b| m[a][col].abs().partial_cmp(&m[b][col].abs()).unwrap_or(std::cmp::Ordering::Equal));
+        let pivot = (col..n).max_by(|&a, &b| {
+            m[a][col].abs().partial_cmp(&m[b][col].abs()).unwrap_or(std::cmp::Ordering::Equal)
+        });
         let Some(pivot) = pivot else { return 0.0 };
         if m[pivot][col] == 0.0 {
             return 0.0;
@@ -1007,12 +1376,18 @@ pub fn determinant(mut m: Vec<Vec<f64>>) -> f64 {
 
 pub fn inverse(m: Vec<Vec<f64>>) -> Option<Vec<Vec<f64>>> {
     let n = m.len();
-    let mut a: Vec<Vec<f64>> = m.into_iter().enumerate().map(|(i, mut row)| {
-        row.extend((0..n).map(|j| if i == j { 1.0 } else { 0.0 }));
-        row
-    }).collect();
+    let mut a: Vec<Vec<f64>> = m
+        .into_iter()
+        .enumerate()
+        .map(|(i, mut row)| {
+            row.extend((0..n).map(|j| if i == j { 1.0 } else { 0.0 }));
+            row
+        })
+        .collect();
     for col in 0..n {
-        let pivot = (col..n).max_by(|&x, &y| a[x][col].abs().partial_cmp(&a[y][col].abs()).unwrap_or(std::cmp::Ordering::Equal))?;
+        let pivot = (col..n).max_by(|&x, &y| {
+            a[x][col].abs().partial_cmp(&a[y][col].abs()).unwrap_or(std::cmp::Ordering::Equal)
+        })?;
         if a[pivot][col].abs() < 1e-300 {
             return None;
         }

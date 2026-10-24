@@ -653,6 +653,43 @@ pub trait UiProvider: std::fmt::Debug {
         self.pane(ui, look)
     }
 
+    /// Draw one of this plugin's tabs, by the key the tab was opened with (`task-2338`).
+    ///
+    /// **A provider that draws a tab for each file has to know which file the tab is.** The Spreadsheet
+    /// plugin opens one tab a workbook, each keyed `spreadsheet:<path>`; the default draws [`Self::tab`],
+    /// which is every provider whose tab is one surface.
+    fn tab_keyed(&mut self, key: &str, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request> {
+        let _ = key;
+        self.tab(ui, look)
+    }
+
+    /// Whether the tab with this key has changes that are not saved, so the tab strip draws its dot and
+    /// closing it writes it first. The default holds nothing of a file's and says no.
+    fn modified(&self, key: &str) -> bool {
+        let _ = key;
+        false
+    }
+
+    /// Save the tab with this key, which is what `Ctrl+S` and `File -> Save` do while it is showing.
+    /// Answers the line for the status bar. The default has nothing to save and says so.
+    fn save(&mut self, key: &str) -> Result<String, String> {
+        let _ = key;
+        Err("there is nothing in this tab to save".to_owned())
+    }
+
+    /// The tab with this key was closed, so whatever it held can be let go of.
+    fn closed(&mut self, key: &str) {
+        let _ = key;
+    }
+
+    /// Whether this provider takes a key press itself while one of its tabs has the keyboard, before the
+    /// menus are asked about it (`task-2338`). The spreadsheet's `Ctrl+D` is Fill Down where the menus'
+    /// is Git's Show Diff, and its `Ctrl+Z` undoes a change to a cell, not to the document behind the tab.
+    fn claims_key(&self, key: egui::Key, modifiers: egui::Modifiers) -> bool {
+        let _ = (key, modifiers);
+        false
+    }
+
     /// Draw the Settings page inside the rectangle every page gets.
     fn settings(&mut self, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request>;
 
@@ -922,6 +959,7 @@ pub fn provider(name: &str) -> Option<Box<dyn UiProvider>> {
         "agent-chat" => Some(Box::new(crate::services::agent_chat::AgentChat::new())),
         "database" => Some(Box::new(crate::services::database::DatabaseExplorer::new())),
         "designer" => Some(Box::new(crate::services::designer::Designer::new())),
+        "spreadsheet" => Some(Box::new(crate::services::spreadsheet::Spreadsheet::new())),
         // Drawn by the window itself — see `plugins::CORE_PROVIDERS`.
         "realm" => None,
         _ => None,

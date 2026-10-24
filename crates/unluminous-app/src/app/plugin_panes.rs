@@ -297,6 +297,13 @@ impl PluginUi {
         Some(one.provider.as_mut())
     }
 
+    /// Whether a plugin's tab with this key holds changes that are not saved. `task-2338`.
+    pub fn modified(&self, plugin: &str, key: &str) -> bool {
+        self.loaded
+            .iter()
+            .any(|one| one.plugin == plugin && one.problem.is_none() && one.provider.modified(key))
+    }
+
     /// The provider for `plugin` without changing it, for reading its view.
     pub fn view_of(&self, plugin: &str) -> Option<serde_json::Value> {
         self.loaded
@@ -1366,7 +1373,7 @@ impl UnluminousApp {
                 self.files.at(*index).plugin.as_ref().is_some_and(|tab| match tab.plugin.as_str() {
                     "realm" => !realm_on,
                     "designer" => !designer_on,
-                    _ => !contributed.contains(&tab.key),
+                    _ => !contributed.contains(&tab.key) && !self.a_file_tab_is_still_drawn(tab),
                 })
             })
             .collect();
@@ -1386,6 +1393,7 @@ impl UnluminousApp {
         ui: &mut egui::Ui,
         area: Rect,
         tab: &files::PluginTab,
+        focused: bool,
     ) -> bool {
         // The page's own ground first, then the slot the decoration goes in, then the plugin's widgets.
         // egui hands a layer's shapes to the tessellator in the order they arrive, so a ground drawn after
@@ -1408,8 +1416,17 @@ impl UnluminousApp {
             // `.sql` one. `Look::colouring_with` had no caller at all until now, so both were drawing
             // in one flat colour: the seam was built and never plugged in.
             let highlighter = PluginHighlighter { plugins: &self.plugins };
+            // A tab that draws a file holds the keyboard while its pane does, whether the window calls that
+            // the editing area's or the plugin's. `task-2338`.
+            let keys = match self.focus {
+                Focus::Plugin => {
+                    self.plugin_with_the_keyboard.as_deref().is_none_or(|p| p == tab.plugin)
+                }
+                Focus::Editor => focused && tab.key.contains(':') && tab.plugin != "realm",
+                _ => false,
+            };
             let look = crate::services::plugin_ui::Look::of(&self.settings, &self.renderer)
-                .holding_the_keyboard(matches!(self.focus, Focus::Plugin))
+                .holding_the_keyboard(keys)
                 .colouring_with(&highlighter)
                 .drawing_into(&chrome);
             match self.plugin_ui.problem_with(&tab.plugin) {
@@ -1431,7 +1448,7 @@ impl UnluminousApp {
                     let mut tab_ui = ui.new_child(egui::UiBuilder::new().max_rect(area));
                     tab_ui.set_clip_rect(area);
                     match self.plugin_ui.provider(&tab.plugin) {
-                        Some(provider) => provider.tab(&mut tab_ui, &look),
+                        Some(provider) => provider.tab_keyed(&tab.key, &mut tab_ui, &look),
                         None => Vec::new(),
                     }
                 }

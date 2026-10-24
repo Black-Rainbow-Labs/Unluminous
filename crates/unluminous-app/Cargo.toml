@@ -35,6 +35,7 @@ unluminous-dap.workspace = true
 unluminous-lsp.workspace = true
 # Jupyter notebooks: the .ipynb file, the text a notebook tab edits, and the kernel. `task-2220`.
 unluminous-jupyter.workspace = true
+unluminous-sheet.workspace = true
 unluminous-git.workspace = true
 unluminous-terminal.workspace = true
 # The Agent-Chat plugin's half with no window in it: the endpoints, the two wire shapes, the

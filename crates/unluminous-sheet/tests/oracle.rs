@@ -83,18 +83,38 @@ fn every_formula_computes_to_what_excel_computed() {
         let ours = match evaluate(&book, 0, at, formula, 46318.5) {
             Ok((v, _)) => v,
             Err(problem) => {
-                wrong.push(Wrong { formula: formula.to_owned(), excel: format!("{kind} {value}"), ours: format!("refused: {problem}") });
+                wrong.push(Wrong {
+                    formula: formula.to_owned(),
+                    excel: format!("{kind} {value}"),
+                    ours: format!("refused: {problem}"),
+                });
                 continue;
             }
         };
         checked += 1;
         let volatile = VOLATILE.iter().any(|f| formula.contains(f));
         let tolerance = if ITERATIVE.iter().any(|f| formula.starts_with(f)) { 1e-7 } else { 1e-12 };
-        let ok = if volatile { matches!((kind, &ours), ("number", Value::Number(_))) } else { agrees(kind, value, &ours, tolerance) };
+        let ok = if volatile {
+            matches!((kind, &ours), ("number", Value::Number(_)))
+        } else {
+            agrees(kind, value, &ours, tolerance)
+        };
         if !ok {
-            wrong.push(Wrong { formula: formula.to_owned(), excel: format!("{kind} {value}"), ours: shown(&ours) });
+            wrong.push(Wrong {
+                formula: formula.to_owned(),
+                excel: format!("{kind} {value}"),
+                ours: shown(&ours),
+            });
         }
     }
-    let report: Vec<String> = wrong.iter().map(|w| format!("{}\n    excel: {}\n    ours:  {}", w.formula, w.excel, w.ours)).collect();
-    assert!(wrong.is_empty(), "{} of {checked} formulas differ from Excel:\n{}", wrong.len(), report.join("\n"));
+    let report: Vec<String> = wrong
+        .iter()
+        .map(|w| format!("{}\n    excel: {}\n    ours:  {}", w.formula, w.excel, w.ours))
+        .collect();
+    assert!(
+        wrong.is_empty(),
+        "{} of {checked} formulas differ from Excel:\n{}",
+        wrong.len(),
+        report.join("\n")
+    );
 }

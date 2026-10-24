@@ -53,7 +53,8 @@ pub const DEBUGGERS: &[&str] = &["lldb", "node"];
 /// is a pane, where it docks, what its button looks like and what its menu holds; the drawing shipped
 /// with the binary. So the most a manifest can do is name a provider that is already here, visibly,
 /// and nothing in a plugin is executed.
-pub const UI_PROVIDERS: &[&str] = &["agent-tasks", "agent-chat", "database", "realm", "designer"];
+pub const UI_PROVIDERS: &[&str] =
+    &["agent-tasks", "agent-chat", "database", "realm", "designer", "spreadsheet"];
 
 /// The providers in [`UI_PROVIDERS`] whose surface is drawn by the window itself rather than by a
 /// `UiProvider` object. `task-2202`.

@@ -10,146 +10,392 @@ use crate::formula::Expr;
 use crate::value::{Array, ErrorKind, Value};
 
 pub const FUNCTIONS: &[Function] = &[
-    r("AVERAGE", 1, MANY, "number1, [number2], ...", "The arithmetic mean.", |ctx, a| over(ctx, a, Gather::Numbers, |n| mean(n).ok_or(ErrorKind::Div0))),
-    r("AVERAGEA", 1, MANY, "value1, [value2], ...", "The mean, counting text as 0 and logicals as 1 or 0.", |ctx, a| over(ctx, a, Gather::All, |n| mean(n).ok_or(ErrorKind::Div0))),
-    r("AVERAGEIF", 2, 3, "range, criteria, [average_range]", "The mean of the cells that meet a criterion.", averageif),
-    r("AVERAGEIFS", 3, MANY, "average_range, criteria_range1, criteria1, ...", "The mean of the cells that meet every criterion.", |ctx, a| {
-        ifs_over(ctx, a, |n| mean(n).ok_or(ErrorKind::Div0))
+    r("AVERAGE", 1, MANY, "number1, [number2], ...", "The arithmetic mean.", |ctx, a| {
+        over(ctx, a, Gather::Numbers, |n| mean(n).ok_or(ErrorKind::Div0))
     }),
-    r("MAXIFS", 3, MANY, "max_range, criteria_range1, criteria1, ...", "The largest of the cells that meet every criterion.", |ctx, a| {
-        ifs_over(ctx, a, |n| Ok(n.iter().copied().fold(f64::NEG_INFINITY, f64::max).max(if n.is_empty() { 0.0 } else { f64::NEG_INFINITY })))
-    }),
-    r("MINIFS", 3, MANY, "min_range, criteria_range1, criteria1, ...", "The smallest of the cells that meet every criterion.", |ctx, a| {
-        ifs_over(ctx, a, |n| Ok(if n.is_empty() { 0.0 } else { n.iter().copied().fold(f64::INFINITY, f64::min) }))
-    }),
+    r(
+        "AVERAGEA",
+        1,
+        MANY,
+        "value1, [value2], ...",
+        "The mean, counting text as 0 and logicals as 1 or 0.",
+        |ctx, a| over(ctx, a, Gather::All, |n| mean(n).ok_or(ErrorKind::Div0)),
+    ),
+    r(
+        "AVERAGEIF",
+        2,
+        3,
+        "range, criteria, [average_range]",
+        "The mean of the cells that meet a criterion.",
+        averageif,
+    ),
+    r(
+        "AVERAGEIFS",
+        3,
+        MANY,
+        "average_range, criteria_range1, criteria1, ...",
+        "The mean of the cells that meet every criterion.",
+        |ctx, a| ifs_over(ctx, a, |n| mean(n).ok_or(ErrorKind::Div0)),
+    ),
+    r(
+        "MAXIFS",
+        3,
+        MANY,
+        "max_range, criteria_range1, criteria1, ...",
+        "The largest of the cells that meet every criterion.",
+        |ctx, a| {
+            ifs_over(ctx, a, |n| {
+                Ok(n.iter().copied().fold(f64::NEG_INFINITY, f64::max).max(if n.is_empty() {
+                    0.0
+                } else {
+                    f64::NEG_INFINITY
+                }))
+            })
+        },
+    ),
+    r(
+        "MINIFS",
+        3,
+        MANY,
+        "min_range, criteria_range1, criteria1, ...",
+        "The smallest of the cells that meet every criterion.",
+        |ctx, a| {
+            ifs_over(ctx, a, |n| {
+                Ok(if n.is_empty() { 0.0 } else { n.iter().copied().fold(f64::INFINITY, f64::min) })
+            })
+        },
+    ),
     r("COUNT", 1, MANY, "value1, [value2], ...", "How many numbers there are.", count),
     r("COUNTA", 1, MANY, "value1, [value2], ...", "How many values are not empty.", counta),
     r("COUNTBLANK", 1, 1, "range", "How many cells are empty.", countblank),
     r("COUNTIF", 2, 2, "range, criteria", "How many cells meet a criterion.", countif),
-    r("COUNTIFS", 2, MANY, "criteria_range1, criteria1, ...", "How many cells meet every criterion.", |ctx, a| match ifs_mask(ctx, a, None) {
-        Ok((mask, ..)) => Val::number(mask.iter().filter(|m| **m).count() as f64),
-        Err(e) => Val::error(e),
+    r(
+        "COUNTIFS",
+        2,
+        MANY,
+        "criteria_range1, criteria1, ...",
+        "How many cells meet every criterion.",
+        |ctx, a| match ifs_mask(ctx, a, None) {
+            Ok((mask, ..)) => Val::number(mask.iter().filter(|m| **m).count() as f64),
+            Err(e) => Val::error(e),
+        },
+    ),
+    r("MAX", 1, MANY, "number1, [number2], ...", "The largest number.", |ctx, a| {
+        over(ctx, a, Gather::Numbers, |n| Ok(max(n)))
     }),
-    r("MAX", 1, MANY, "number1, [number2], ...", "The largest number.", |ctx, a| over(ctx, a, Gather::Numbers, |n| Ok(max(n)))),
-    r("MAXA", 1, MANY, "value1, [value2], ...", "The largest value, counting text as 0.", |ctx, a| over(ctx, a, Gather::All, |n| Ok(max(n)))),
-    r("MIN", 1, MANY, "number1, [number2], ...", "The smallest number.", |ctx, a| over(ctx, a, Gather::Numbers, |n| Ok(min(n)))),
-    r("MINA", 1, MANY, "value1, [value2], ...", "The smallest value, counting text as 0.", |ctx, a| over(ctx, a, Gather::All, |n| Ok(min(n)))),
-    r("MEDIAN", 1, MANY, "number1, [number2], ...", "The middle number.", |ctx, a| over(ctx, a, Gather::Numbers, |n| median(n).ok_or(ErrorKind::Num))),
+    r(
+        "MAXA",
+        1,
+        MANY,
+        "value1, [value2], ...",
+        "The largest value, counting text as 0.",
+        |ctx, a| over(ctx, a, Gather::All, |n| Ok(max(n))),
+    ),
+    r("MIN", 1, MANY, "number1, [number2], ...", "The smallest number.", |ctx, a| {
+        over(ctx, a, Gather::Numbers, |n| Ok(min(n)))
+    }),
+    r(
+        "MINA",
+        1,
+        MANY,
+        "value1, [value2], ...",
+        "The smallest value, counting text as 0.",
+        |ctx, a| over(ctx, a, Gather::All, |n| Ok(min(n))),
+    ),
+    r("MEDIAN", 1, MANY, "number1, [number2], ...", "The middle number.", |ctx, a| {
+        over(ctx, a, Gather::Numbers, |n| median(n).ok_or(ErrorKind::Num))
+    }),
     r("MODE", 1, MANY, "number1, [number2], ...", "The most frequent number.", mode_sngl),
     r("MODE.SNGL", 1, MANY, "number1, [number2], ...", "The most frequent number.", mode_sngl),
-    r("MODE.MULT", 1, MANY, "number1, [number2], ...", "Every number that is most frequent, as a column.", |ctx, a| match gather(ctx, a, Gather::Numbers) {
-        Ok(n) => {
-            let m = modes(&n);
-            if m.is_empty() {
-                Val::error(ErrorKind::NA)
-            } else {
-                Val::Array(Array::column(m.into_iter().map(Value::Number).collect()))
+    r(
+        "MODE.MULT",
+        1,
+        MANY,
+        "number1, [number2], ...",
+        "Every number that is most frequent, as a column.",
+        |ctx, a| match gather(ctx, a, Gather::Numbers) {
+            Ok(n) => {
+                let m = modes(&n);
+                if m.is_empty() {
+                    Val::error(ErrorKind::NA)
+                } else {
+                    Val::Array(Array::column(m.into_iter().map(Value::Number).collect()))
+                }
             }
-        }
-        Err(e) => Val::error(e),
-    }),
+            Err(e) => Val::error(e),
+        },
+    ),
     r("LARGE", 2, 2, "array, k", "The k-th largest number.", |ctx, a| ranked(ctx, a, true)),
     r("SMALL", 2, 2, "array, k", "The k-th smallest number.", |ctx, a| ranked(ctx, a, false)),
-    r("RANK", 2, 3, "number, ref, [order]", "A number's rank in a list.", |ctx, a| rank(ctx, a, false)),
-    r("RANK.EQ", 2, 3, "number, ref, [order]", "A number's rank in a list; ties share the top rank.", |ctx, a| rank(ctx, a, false)),
-    r("RANK.AVG", 2, 3, "number, ref, [order]", "A number's rank in a list; ties share the average rank.", |ctx, a| rank(ctx, a, true)),
-    r("PERCENTILE", 2, 2, "array, k", "The k-th percentile, k from 0 to 1.", |ctx, a| sorted_k(ctx, a, percentile_inc)),
-    r("PERCENTILE.INC", 2, 2, "array, k", "The k-th percentile, k from 0 to 1.", |ctx, a| sorted_k(ctx, a, percentile_inc)),
-    r("PERCENTILE.EXC", 2, 2, "array, k", "The k-th percentile, k between 0 and 1 exclusive.", |ctx, a| sorted_k(ctx, a, percentile_exc)),
-    r("QUARTILE", 2, 2, "array, quart", "A quartile, 0 to 4.", |ctx, a| sorted_k(ctx, a, quartile_inc)),
-    r("QUARTILE.INC", 2, 2, "array, quart", "A quartile, 0 to 4.", |ctx, a| sorted_k(ctx, a, quartile_inc)),
-    r("QUARTILE.EXC", 2, 2, "array, quart", "A quartile, 1 to 3.", |ctx, a| sorted_k(ctx, a, |n, q| {
-        let q = q.trunc();
-        if !(1.0..=3.0).contains(&q) {
-            return Err(ErrorKind::Num);
-        }
-        percentile_exc(n, q / 4.0)
-    })),
-    r("PERCENTRANK", 2, 3, "array, x, [significance]", "The rank of a value as a percentage.", |ctx, a| percentrank(ctx, a, false)),
-    r("PERCENTRANK.INC", 2, 3, "array, x, [significance]", "The rank of a value as a percentage, 0 to 1 inclusive.", |ctx, a| percentrank(ctx, a, false)),
-    r("PERCENTRANK.EXC", 2, 3, "array, x, [significance]", "The rank of a value as a percentage, 0 to 1 exclusive.", |ctx, a| percentrank(ctx, a, true)),
-    r("STDEV", 1, MANY, "number1, [number2], ...", "The standard deviation of a sample.", |ctx, a| over(ctx, a, Gather::Numbers, |n| sample_variance(n).map(f64::sqrt).ok_or(ErrorKind::Div0))),
-    r("STDEV.S", 1, MANY, "number1, [number2], ...", "The standard deviation of a sample.", |ctx, a| over(ctx, a, Gather::Numbers, |n| sample_variance(n).map(f64::sqrt).ok_or(ErrorKind::Div0))),
-    r("STDEVA", 1, MANY, "value1, [value2], ...", "The standard deviation of a sample, counting text as 0.", |ctx, a| over(ctx, a, Gather::All, |n| sample_variance(n).map(f64::sqrt).ok_or(ErrorKind::Div0))),
-    r("STDEVP", 1, MANY, "number1, [number2], ...", "The standard deviation of a population.", |ctx, a| over(ctx, a, Gather::Numbers, |n| population_variance(n).map(f64::sqrt).ok_or(ErrorKind::Div0))),
-    r("STDEV.P", 1, MANY, "number1, [number2], ...", "The standard deviation of a population.", |ctx, a| over(ctx, a, Gather::Numbers, |n| population_variance(n).map(f64::sqrt).ok_or(ErrorKind::Div0))),
-    r("STDEVPA", 1, MANY, "value1, [value2], ...", "The standard deviation of a population, counting text as 0.", |ctx, a| over(ctx, a, Gather::All, |n| population_variance(n).map(f64::sqrt).ok_or(ErrorKind::Div0))),
-    r("VAR", 1, MANY, "number1, [number2], ...", "The variance of a sample.", |ctx, a| over(ctx, a, Gather::Numbers, |n| sample_variance(n).ok_or(ErrorKind::Div0))),
-    r("VAR.S", 1, MANY, "number1, [number2], ...", "The variance of a sample.", |ctx, a| over(ctx, a, Gather::Numbers, |n| sample_variance(n).ok_or(ErrorKind::Div0))),
-    r("VARA", 1, MANY, "value1, [value2], ...", "The variance of a sample, counting text as 0.", |ctx, a| over(ctx, a, Gather::All, |n| sample_variance(n).ok_or(ErrorKind::Div0))),
-    r("VARP", 1, MANY, "number1, [number2], ...", "The variance of a population.", |ctx, a| over(ctx, a, Gather::Numbers, |n| population_variance(n).ok_or(ErrorKind::Div0))),
-    r("VAR.P", 1, MANY, "number1, [number2], ...", "The variance of a population.", |ctx, a| over(ctx, a, Gather::Numbers, |n| population_variance(n).ok_or(ErrorKind::Div0))),
-    r("VARPA", 1, MANY, "value1, [value2], ...", "The variance of a population, counting text as 0.", |ctx, a| over(ctx, a, Gather::All, |n| population_variance(n).ok_or(ErrorKind::Div0))),
-    r("AVEDEV", 1, MANY, "number1, [number2], ...", "The mean absolute deviation.", |ctx, a| over(ctx, a, Gather::Numbers, |n| {
-        let m = mean(n).ok_or(ErrorKind::Num)?;
-        Ok(n.iter().map(|x| (x - m).abs()).sum::<f64>() / n.len() as f64)
-    })),
-    r("DEVSQ", 1, MANY, "number1, [number2], ...", "The sum of squared deviations from the mean.", |ctx, a| over(ctx, a, Gather::Numbers, |n| {
-        let m = mean(n).ok_or(ErrorKind::Num)?;
-        Ok(n.iter().map(|x| (x - m) * (x - m)).sum())
-    })),
-    r("GEOMEAN", 1, MANY, "number1, [number2], ...", "The geometric mean.", |ctx, a| over(ctx, a, Gather::Numbers, |n| {
-        if n.is_empty() || n.iter().any(|x| *x <= 0.0) {
-            return Err(ErrorKind::Num);
-        }
-        Ok((n.iter().map(|x| x.ln()).sum::<f64>() / n.len() as f64).exp())
-    })),
-    r("HARMEAN", 1, MANY, "number1, [number2], ...", "The harmonic mean.", |ctx, a| over(ctx, a, Gather::Numbers, |n| {
-        if n.is_empty() || n.iter().any(|x| *x <= 0.0) {
-            return Err(ErrorKind::Num);
-        }
-        Ok(n.len() as f64 / n.iter().map(|x| 1.0 / x).sum::<f64>())
-    })),
-    r("SKEW", 1, MANY, "number1, [number2], ...", "The skewness of a sample.", |ctx, a| over(ctx, a, Gather::Numbers, |n| {
-        let c = n.len() as f64;
-        if c < 3.0 {
-            return Err(ErrorKind::Div0);
-        }
-        let m = mean(n).unwrap_or(0.0);
-        let sd = sample_variance(n).ok_or(ErrorKind::Div0)?.sqrt();
-        if sd == 0.0 {
-            return Err(ErrorKind::Div0);
-        }
-        Ok(c / ((c - 1.0) * (c - 2.0)) * n.iter().map(|x| ((x - m) / sd).powi(3)).sum::<f64>())
-    })),
-    r("SKEW.P", 1, MANY, "number1, [number2], ...", "The skewness of a population.", |ctx, a| over(ctx, a, Gather::Numbers, |n| {
-        let c = n.len() as f64;
-        let m = mean(n).ok_or(ErrorKind::Div0)?;
-        let sd = population_variance(n).ok_or(ErrorKind::Div0)?.sqrt();
-        if sd == 0.0 {
-            return Err(ErrorKind::Div0);
-        }
-        Ok(n.iter().map(|x| ((x - m) / sd).powi(3)).sum::<f64>() / c)
-    })),
-    r("KURT", 1, MANY, "number1, [number2], ...", "The kurtosis of a sample.", |ctx, a| over(ctx, a, Gather::Numbers, |n| {
-        let c = n.len() as f64;
-        if c < 4.0 {
-            return Err(ErrorKind::Div0);
-        }
-        let m = mean(n).unwrap_or(0.0);
-        let sd = sample_variance(n).ok_or(ErrorKind::Div0)?.sqrt();
-        if sd == 0.0 {
-            return Err(ErrorKind::Div0);
-        }
-        let sum: f64 = n.iter().map(|x| ((x - m) / sd).powi(4)).sum();
-        Ok(c * (c + 1.0) / ((c - 1.0) * (c - 2.0) * (c - 3.0)) * sum - 3.0 * (c - 1.0).powi(2) / ((c - 2.0) * (c - 3.0)))
-    })),
-    r("TRIMMEAN", 2, 2, "array, percent", "The mean without a share of the largest and smallest.", |ctx, a| {
-        let mut n = match gather(ctx, &a[..1], Gather::Numbers) {
-            Ok(n) => n,
-            Err(e) => return Val::error(e),
-        };
-        let p = match scalar(ctx, &a[1]) {
-            Ok(p) => p,
-            Err(e) => return Val::error(e),
-        };
-        if !(0.0..1.0).contains(&p) || n.is_empty() {
-            return Val::error(ErrorKind::Num);
-        }
-        n.sort_by(cmp);
-        let k = ((n.len() as f64 * p) / 2.0).floor() as usize;
-        mean(&n[k..n.len() - k]).map_or(Val::error(ErrorKind::Num), Val::number)
+    r("RANK", 2, 3, "number, ref, [order]", "A number's rank in a list.", |ctx, a| {
+        rank(ctx, a, false)
     }),
+    r(
+        "RANK.EQ",
+        2,
+        3,
+        "number, ref, [order]",
+        "A number's rank in a list; ties share the top rank.",
+        |ctx, a| rank(ctx, a, false),
+    ),
+    r(
+        "RANK.AVG",
+        2,
+        3,
+        "number, ref, [order]",
+        "A number's rank in a list; ties share the average rank.",
+        |ctx, a| rank(ctx, a, true),
+    ),
+    r("PERCENTILE", 2, 2, "array, k", "The k-th percentile, k from 0 to 1.", |ctx, a| {
+        sorted_k(ctx, a, percentile_inc)
+    }),
+    r("PERCENTILE.INC", 2, 2, "array, k", "The k-th percentile, k from 0 to 1.", |ctx, a| {
+        sorted_k(ctx, a, percentile_inc)
+    }),
+    r(
+        "PERCENTILE.EXC",
+        2,
+        2,
+        "array, k",
+        "The k-th percentile, k between 0 and 1 exclusive.",
+        |ctx, a| sorted_k(ctx, a, percentile_exc),
+    ),
+    r("QUARTILE", 2, 2, "array, quart", "A quartile, 0 to 4.", |ctx, a| {
+        sorted_k(ctx, a, quartile_inc)
+    }),
+    r("QUARTILE.INC", 2, 2, "array, quart", "A quartile, 0 to 4.", |ctx, a| {
+        sorted_k(ctx, a, quartile_inc)
+    }),
+    r("QUARTILE.EXC", 2, 2, "array, quart", "A quartile, 1 to 3.", |ctx, a| {
+        sorted_k(ctx, a, |n, q| {
+            let q = q.trunc();
+            if !(1.0..=3.0).contains(&q) {
+                return Err(ErrorKind::Num);
+            }
+            percentile_exc(n, q / 4.0)
+        })
+    }),
+    r(
+        "PERCENTRANK",
+        2,
+        3,
+        "array, x, [significance]",
+        "The rank of a value as a percentage.",
+        |ctx, a| percentrank(ctx, a, false),
+    ),
+    r(
+        "PERCENTRANK.INC",
+        2,
+        3,
+        "array, x, [significance]",
+        "The rank of a value as a percentage, 0 to 1 inclusive.",
+        |ctx, a| percentrank(ctx, a, false),
+    ),
+    r(
+        "PERCENTRANK.EXC",
+        2,
+        3,
+        "array, x, [significance]",
+        "The rank of a value as a percentage, 0 to 1 exclusive.",
+        |ctx, a| percentrank(ctx, a, true),
+    ),
+    r(
+        "STDEV",
+        1,
+        MANY,
+        "number1, [number2], ...",
+        "The standard deviation of a sample.",
+        |ctx, a| {
+            over(ctx, a, Gather::Numbers, |n| {
+                sample_variance(n).map(f64::sqrt).ok_or(ErrorKind::Div0)
+            })
+        },
+    ),
+    r(
+        "STDEV.S",
+        1,
+        MANY,
+        "number1, [number2], ...",
+        "The standard deviation of a sample.",
+        |ctx, a| {
+            over(ctx, a, Gather::Numbers, |n| {
+                sample_variance(n).map(f64::sqrt).ok_or(ErrorKind::Div0)
+            })
+        },
+    ),
+    r(
+        "STDEVA",
+        1,
+        MANY,
+        "value1, [value2], ...",
+        "The standard deviation of a sample, counting text as 0.",
+        |ctx, a| {
+            over(ctx, a, Gather::All, |n| sample_variance(n).map(f64::sqrt).ok_or(ErrorKind::Div0))
+        },
+    ),
+    r(
+        "STDEVP",
+        1,
+        MANY,
+        "number1, [number2], ...",
+        "The standard deviation of a population.",
+        |ctx, a| {
+            over(ctx, a, Gather::Numbers, |n| {
+                population_variance(n).map(f64::sqrt).ok_or(ErrorKind::Div0)
+            })
+        },
+    ),
+    r(
+        "STDEV.P",
+        1,
+        MANY,
+        "number1, [number2], ...",
+        "The standard deviation of a population.",
+        |ctx, a| {
+            over(ctx, a, Gather::Numbers, |n| {
+                population_variance(n).map(f64::sqrt).ok_or(ErrorKind::Div0)
+            })
+        },
+    ),
+    r(
+        "STDEVPA",
+        1,
+        MANY,
+        "value1, [value2], ...",
+        "The standard deviation of a population, counting text as 0.",
+        |ctx, a| {
+            over(ctx, a, Gather::All, |n| {
+                population_variance(n).map(f64::sqrt).ok_or(ErrorKind::Div0)
+            })
+        },
+    ),
+    r("VAR", 1, MANY, "number1, [number2], ...", "The variance of a sample.", |ctx, a| {
+        over(ctx, a, Gather::Numbers, |n| sample_variance(n).ok_or(ErrorKind::Div0))
+    }),
+    r("VAR.S", 1, MANY, "number1, [number2], ...", "The variance of a sample.", |ctx, a| {
+        over(ctx, a, Gather::Numbers, |n| sample_variance(n).ok_or(ErrorKind::Div0))
+    }),
+    r(
+        "VARA",
+        1,
+        MANY,
+        "value1, [value2], ...",
+        "The variance of a sample, counting text as 0.",
+        |ctx, a| over(ctx, a, Gather::All, |n| sample_variance(n).ok_or(ErrorKind::Div0)),
+    ),
+    r("VARP", 1, MANY, "number1, [number2], ...", "The variance of a population.", |ctx, a| {
+        over(ctx, a, Gather::Numbers, |n| population_variance(n).ok_or(ErrorKind::Div0))
+    }),
+    r("VAR.P", 1, MANY, "number1, [number2], ...", "The variance of a population.", |ctx, a| {
+        over(ctx, a, Gather::Numbers, |n| population_variance(n).ok_or(ErrorKind::Div0))
+    }),
+    r(
+        "VARPA",
+        1,
+        MANY,
+        "value1, [value2], ...",
+        "The variance of a population, counting text as 0.",
+        |ctx, a| over(ctx, a, Gather::All, |n| population_variance(n).ok_or(ErrorKind::Div0)),
+    ),
+    r("AVEDEV", 1, MANY, "number1, [number2], ...", "The mean absolute deviation.", |ctx, a| {
+        over(ctx, a, Gather::Numbers, |n| {
+            let m = mean(n).ok_or(ErrorKind::Num)?;
+            Ok(n.iter().map(|x| (x - m).abs()).sum::<f64>() / n.len() as f64)
+        })
+    }),
+    r(
+        "DEVSQ",
+        1,
+        MANY,
+        "number1, [number2], ...",
+        "The sum of squared deviations from the mean.",
+        |ctx, a| {
+            over(ctx, a, Gather::Numbers, |n| {
+                let m = mean(n).ok_or(ErrorKind::Num)?;
+                Ok(n.iter().map(|x| (x - m) * (x - m)).sum())
+            })
+        },
+    ),
+    r("GEOMEAN", 1, MANY, "number1, [number2], ...", "The geometric mean.", |ctx, a| {
+        over(ctx, a, Gather::Numbers, |n| {
+            if n.is_empty() || n.iter().any(|x| *x <= 0.0) {
+                return Err(ErrorKind::Num);
+            }
+            Ok((n.iter().map(|x| x.ln()).sum::<f64>() / n.len() as f64).exp())
+        })
+    }),
+    r("HARMEAN", 1, MANY, "number1, [number2], ...", "The harmonic mean.", |ctx, a| {
+        over(ctx, a, Gather::Numbers, |n| {
+            if n.is_empty() || n.iter().any(|x| *x <= 0.0) {
+                return Err(ErrorKind::Num);
+            }
+            Ok(n.len() as f64 / n.iter().map(|x| 1.0 / x).sum::<f64>())
+        })
+    }),
+    r("SKEW", 1, MANY, "number1, [number2], ...", "The skewness of a sample.", |ctx, a| {
+        over(ctx, a, Gather::Numbers, |n| {
+            let c = n.len() as f64;
+            if c < 3.0 {
+                return Err(ErrorKind::Div0);
+            }
+            let m = mean(n).unwrap_or(0.0);
+            let sd = sample_variance(n).ok_or(ErrorKind::Div0)?.sqrt();
+            if sd == 0.0 {
+                return Err(ErrorKind::Div0);
+            }
+            Ok(c / ((c - 1.0) * (c - 2.0)) * n.iter().map(|x| ((x - m) / sd).powi(3)).sum::<f64>())
+        })
+    }),
+    r("SKEW.P", 1, MANY, "number1, [number2], ...", "The skewness of a population.", |ctx, a| {
+        over(ctx, a, Gather::Numbers, |n| {
+            let c = n.len() as f64;
+            let m = mean(n).ok_or(ErrorKind::Div0)?;
+            let sd = population_variance(n).ok_or(ErrorKind::Div0)?.sqrt();
+            if sd == 0.0 {
+                return Err(ErrorKind::Div0);
+            }
+            Ok(n.iter().map(|x| ((x - m) / sd).powi(3)).sum::<f64>() / c)
+        })
+    }),
+    r("KURT", 1, MANY, "number1, [number2], ...", "The kurtosis of a sample.", |ctx, a| {
+        over(ctx, a, Gather::Numbers, |n| {
+            let c = n.len() as f64;
+            if c < 4.0 {
+                return Err(ErrorKind::Div0);
+            }
+            let m = mean(n).unwrap_or(0.0);
+            let sd = sample_variance(n).ok_or(ErrorKind::Div0)?.sqrt();
+            if sd == 0.0 {
+                return Err(ErrorKind::Div0);
+            }
+            let sum: f64 = n.iter().map(|x| ((x - m) / sd).powi(4)).sum();
+            Ok(c * (c + 1.0) / ((c - 1.0) * (c - 2.0) * (c - 3.0)) * sum
+                - 3.0 * (c - 1.0).powi(2) / ((c - 2.0) * (c - 3.0)))
+        })
+    }),
+    r(
+        "TRIMMEAN",
+        2,
+        2,
+        "array, percent",
+        "The mean without a share of the largest and smallest.",
+        |ctx, a| {
+            let mut n = match gather(ctx, &a[..1], Gather::Numbers) {
+                Ok(n) => n,
+                Err(e) => return Val::error(e),
+            };
+            let p = match scalar(ctx, &a[1]) {
+                Ok(p) => p,
+                Err(e) => return Val::error(e),
+            };
+            if !(0.0..1.0).contains(&p) || n.is_empty() {
+                return Val::error(ErrorKind::Num);
+            }
+            n.sort_by(cmp);
+            let k = ((n.len() as f64 * p) / 2.0).floor() as usize;
+            mean(&n[k..n.len() - k]).map_or(Val::error(ErrorKind::Num), Val::number)
+        },
+    ),
     s("STANDARDIZE", 3, 3, "x, mean, standard_dev", "A normalised value.", |ctx, a| {
         let (x, m, sd) = (num(ctx, &a[0])?, num(ctx, &a[1])?, num(ctx, &a[2])?);
         if sd <= 0.0 {
@@ -157,27 +403,72 @@ pub const FUNCTIONS: &[Function] = &[
         }
         number((x - m) / sd)
     }),
-    r("CORREL", 2, 2, "array1, array2", "The correlation coefficient.", |ctx, a| paired(ctx, a, |x, y| correl(x, y))),
-    r("PEARSON", 2, 2, "array1, array2", "The Pearson correlation coefficient.", |ctx, a| paired(ctx, a, |x, y| correl(x, y))),
-    r("RSQ", 2, 2, "known_y's, known_x's", "The square of the correlation.", |ctx, a| paired(ctx, a, |y, x| correl(x, y).map(|r| r * r))),
-    r("COVAR", 2, 2, "array1, array2", "The population covariance.", |ctx, a| paired(ctx, a, |x, y| covariance(x, y, false))),
-    r("COVARIANCE.P", 2, 2, "array1, array2", "The population covariance.", |ctx, a| paired(ctx, a, |x, y| covariance(x, y, false))),
-    r("COVARIANCE.S", 2, 2, "array1, array2", "The sample covariance.", |ctx, a| paired(ctx, a, |x, y| covariance(x, y, true))),
-    r("SLOPE", 2, 2, "known_y's, known_x's", "The slope of the regression line.", |ctx, a| paired(ctx, a, |y, x| line(x, y).map(|l| l.0))),
-    r("INTERCEPT", 2, 2, "known_y's, known_x's", "Where the regression line crosses the y axis.", |ctx, a| paired(ctx, a, |y, x| line(x, y).map(|l| l.1))),
-    r("STEYX", 2, 2, "known_y's, known_x's", "The standard error of the predicted y.", |ctx, a| paired(ctx, a, |y, x| {
-        let n = x.len() as f64;
-        if n < 3.0 {
-            return Err(ErrorKind::Div0);
-        }
-        let (slope, intercept) = line(x, y)?;
-        let residual: f64 = x.iter().zip(y).map(|(x, y)| (y - (slope * x + intercept)).powi(2)).sum();
-        Ok((residual / (n - 2.0)).sqrt())
-    })),
+    r("CORREL", 2, 2, "array1, array2", "The correlation coefficient.", |ctx, a| {
+        paired(ctx, a, |x, y| correl(x, y))
+    }),
+    r("PEARSON", 2, 2, "array1, array2", "The Pearson correlation coefficient.", |ctx, a| {
+        paired(ctx, a, |x, y| correl(x, y))
+    }),
+    r("RSQ", 2, 2, "known_y's, known_x's", "The square of the correlation.", |ctx, a| {
+        paired(ctx, a, |y, x| correl(x, y).map(|r| r * r))
+    }),
+    r("COVAR", 2, 2, "array1, array2", "The population covariance.", |ctx, a| {
+        paired(ctx, a, |x, y| covariance(x, y, false))
+    }),
+    r("COVARIANCE.P", 2, 2, "array1, array2", "The population covariance.", |ctx, a| {
+        paired(ctx, a, |x, y| covariance(x, y, false))
+    }),
+    r("COVARIANCE.S", 2, 2, "array1, array2", "The sample covariance.", |ctx, a| {
+        paired(ctx, a, |x, y| covariance(x, y, true))
+    }),
+    r("SLOPE", 2, 2, "known_y's, known_x's", "The slope of the regression line.", |ctx, a| {
+        paired(ctx, a, |y, x| line(x, y).map(|l| l.0))
+    }),
+    r(
+        "INTERCEPT",
+        2,
+        2,
+        "known_y's, known_x's",
+        "Where the regression line crosses the y axis.",
+        |ctx, a| paired(ctx, a, |y, x| line(x, y).map(|l| l.1)),
+    ),
+    r("STEYX", 2, 2, "known_y's, known_x's", "The standard error of the predicted y.", |ctx, a| {
+        paired(ctx, a, |y, x| {
+            let n = x.len() as f64;
+            if n < 3.0 {
+                return Err(ErrorKind::Div0);
+            }
+            let (slope, intercept) = line(x, y)?;
+            let residual: f64 =
+                x.iter().zip(y).map(|(x, y)| (y - (slope * x + intercept)).powi(2)).sum();
+            Ok((residual / (n - 2.0)).sqrt())
+        })
+    }),
     r("FORECAST", 3, 3, "x, known_y's, known_x's", "A value on the regression line.", forecast),
-    r("FORECAST.LINEAR", 3, 3, "x, known_y's, known_x's", "A value on the regression line.", forecast),
-    r("TREND", 1, 4, "known_y's, [known_x's], [new_x's], [const]", "Values on the regression line.", trend),
-    r("FREQUENCY", 2, 2, "data_array, bins_array", "How many values fall in each bin, as a column.", frequency),
+    r(
+        "FORECAST.LINEAR",
+        3,
+        3,
+        "x, known_y's, known_x's",
+        "A value on the regression line.",
+        forecast,
+    ),
+    r(
+        "TREND",
+        1,
+        4,
+        "known_y's, [known_x's], [new_x's], [const]",
+        "Values on the regression line.",
+        trend,
+    ),
+    r(
+        "FREQUENCY",
+        2,
+        2,
+        "data_array, bins_array",
+        "How many values fall in each bin, as a column.",
+        frequency,
+    ),
 ];
 
 pub fn cmp(a: &f64, b: &f64) -> Ordering {
@@ -394,7 +685,9 @@ fn count(ctx: &mut Ctx, args: &[Expr]) -> Val {
 
 fn counta(ctx: &mut Ctx, args: &[Expr]) -> Val {
     let values = ctx.values(args);
-    Val::number(values.iter().filter(|(v, from_range)| !(v.is_empty() && *from_range)).count() as f64)
+    Val::number(
+        values.iter().filter(|(v, from_range)| !(v.is_empty() && *from_range)).count() as f64
+    )
 }
 
 fn countblank(ctx: &mut Ctx, args: &[Expr]) -> Val {
@@ -496,7 +789,11 @@ fn rank(ctx: &mut Ctx, args: &[Expr], average: bool) -> Val {
         if same == 0 {
             return Value::Error(ErrorKind::NA);
         }
-        Value::Number(if average { better as f64 + (same as f64 + 1.0) / 2.0 } else { better as f64 + 1.0 })
+        Value::Number(if average {
+            better as f64 + (same as f64 + 1.0) / 2.0
+        } else {
+            better as f64 + 1.0
+        })
     })
 }
 
@@ -534,13 +831,23 @@ fn percentrank(ctx: &mut Ctx, args: &[Expr], exclusive: bool) -> Val {
         let hi = numbers[below];
         (below - 1) as f64 + (x - lo) / (hi - lo)
     };
-    let fraction = if exclusive { (rank + 1.0) / (n as f64 + 1.0) } else if n == 1 { 1.0 } else { rank / (n - 1) as f64 };
+    let fraction = if exclusive {
+        (rank + 1.0) / (n as f64 + 1.0)
+    } else if n == 1 {
+        1.0
+    } else {
+        rank / (n - 1) as f64
+    };
     let scale = 10f64.powf(significance);
     Val::number((crate::value::round_significant(fraction * scale, 15)).floor() / scale)
 }
 
 /// Two arrays read as pairs of numbers, keeping only positions where both are numbers.
-fn paired(ctx: &mut Ctx, args: &[Expr], f: impl Fn(&[f64], &[f64]) -> Result<f64, ErrorKind>) -> Val {
+fn paired(
+    ctx: &mut Ctx,
+    args: &[Expr],
+    f: impl Fn(&[f64], &[f64]) -> Result<f64, ErrorKind>,
+) -> Val {
     let (a, ..) = match numbers_at(ctx, &args[0]) {
         Ok(v) => v,
         Err(e) => return Val::error(e),
@@ -552,7 +859,8 @@ fn paired(ctx: &mut Ctx, args: &[Expr], f: impl Fn(&[f64], &[f64]) -> Result<f64
     if a.len() != b.len() {
         return Val::error(ErrorKind::NA);
     }
-    let (x, y): (Vec<f64>, Vec<f64>) = a.iter().zip(&b).filter_map(|(p, q)| Some(((*p)?, (*q)?))).unzip();
+    let (x, y): (Vec<f64>, Vec<f64>) =
+        a.iter().zip(&b).filter_map(|(p, q)| Some(((*p)?, (*q)?))).unzip();
     f(&x, &y).map_or_else(Val::error, Val::number)
 }
 
@@ -607,7 +915,8 @@ fn paired_line(ctx: &mut Ctx, ys: &Expr, xs: &Expr) -> Result<(f64, f64), ErrorK
     if a.len() != b.len() {
         return Err(ErrorKind::NA);
     }
-    let (y, x): (Vec<f64>, Vec<f64>) = a.iter().zip(&b).filter_map(|(p, q)| Some(((*p)?, (*q)?))).unzip();
+    let (y, x): (Vec<f64>, Vec<f64>) =
+        a.iter().zip(&b).filter_map(|(p, q)| Some(((*p)?, (*q)?))).unzip();
     line(&x, &y)
 }
 
@@ -634,7 +943,8 @@ fn trend(ctx: &mut Ctx, args: &[Expr]) -> Val {
         }
         _ => true,
     };
-    let (y, x): (Vec<f64>, Vec<f64>) = ys.iter().zip(&xs).filter_map(|(p, q)| Some(((*p)?, (*q)?))).unzip();
+    let (y, x): (Vec<f64>, Vec<f64>) =
+        ys.iter().zip(&xs).filter_map(|(p, q)| Some(((*p)?, (*q)?))).unzip();
     let (slope, intercept) = if with_constant {
         match line(&x, &y) {
             Ok(l) => l,
@@ -654,7 +964,10 @@ fn trend(ctx: &mut Ctx, args: &[Expr]) -> Val {
         },
         None => (xs.clone(), rows, cols),
     };
-    let data = new_x.iter().map(|x| x.map_or(Value::Error(ErrorKind::Value), |x| Value::Number(slope * x + intercept))).collect();
+    let data = new_x
+        .iter()
+        .map(|x| x.map_or(Value::Error(ErrorKind::Value), |x| Value::Number(slope * x + intercept)))
+        .collect();
     Val::Array(Array::new(nr, nc, data))
 }
 
@@ -688,9 +1001,21 @@ mod tests {
     #[test]
     fn statistics_answer_what_excel_answers() {
         let b = book(&[
-            ("A1", "1"), ("A2", "2"), ("A3", "3"), ("A4", "4"), ("A5", "text"), ("A6", "TRUE"), ("A7", ""),
-            ("B1", "10"), ("B2", "20"), ("B3", "30"), ("B4", "40"),
-            ("C1", "apple"), ("C2", "banana"), ("C3", "apple"), ("C4", "cherry"),
+            ("A1", "1"),
+            ("A2", "2"),
+            ("A3", "3"),
+            ("A4", "4"),
+            ("A5", "text"),
+            ("A6", "TRUE"),
+            ("A7", ""),
+            ("B1", "10"),
+            ("B2", "20"),
+            ("B3", "30"),
+            ("B4", "40"),
+            ("C1", "apple"),
+            ("C2", "banana"),
+            ("C3", "apple"),
+            ("C4", "cherry"),
         ]);
         let cases = [
             ("AVERAGE(A1:A7)", "2.5"),

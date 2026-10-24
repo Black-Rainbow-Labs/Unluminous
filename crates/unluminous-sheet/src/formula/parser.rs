@@ -194,7 +194,14 @@ impl Parser {
                 return Ok(left);
             }
             let starts_a_reference = match self.peek() {
-                Some(c) => c.is_alphabetic() || c == '$' || c == '\'' || c == '(' || c == '_' || c.is_ascii_digit() && is_reference_like(&left),
+                Some(c) => {
+                    c.is_alphabetic()
+                        || c == '$'
+                        || c == '\''
+                        || c == '('
+                        || c == '_'
+                        || c.is_ascii_digit() && is_reference_like(&left)
+                }
                 None => false,
             };
             if !starts_a_reference || !is_reference_like(&left) {
@@ -223,7 +230,9 @@ impl Parser {
     fn postfix(&mut self) -> Result<Expr, String> {
         let mut expr = self.primary()?;
         loop {
-            if self.peek() == Some('#') && matches!(expr, Expr::Ref(_) | Expr::Name(_) | Expr::Call(..)) {
+            if self.peek() == Some('#')
+                && matches!(expr, Expr::Ref(_) | Expr::Name(_) | Expr::Call(..))
+            {
                 self.at += 1;
                 expr = Expr::Spill(Box::new(expr));
                 continue;
@@ -273,7 +282,9 @@ impl Parser {
             }
             '[' => self.bracketed(),
             c if c.is_ascii_digit() || c == '.' => self.number_or_rows(),
-            '$' if matches!(self.peek_at(1), Some(d) if d.is_ascii_digit()) => self.number_or_rows(),
+            '$' if matches!(self.peek_at(1), Some(d) if d.is_ascii_digit()) => {
+                self.number_or_rows()
+            }
             '$' => self.word_or_reference(),
             c if c.is_alphabetic() || c == '_' || c == '\\' => self.word_or_reference(),
             other => Err(format!("`{other}` cannot start a value")),
@@ -325,7 +336,11 @@ impl Parser {
                         _ => return Err(format!("`{word}` cannot be in an array constant")),
                     }
                 }
-                _ => return Err("an array constant holds numbers, text, TRUE, FALSE and errors".to_owned()),
+                _ => {
+                    return Err(
+                        "an array constant holds numbers, text, TRUE, FALSE and errors".to_owned()
+                    )
+                }
             };
             rows.last_mut().map(|row| row.push(item));
             self.skip_space();
@@ -363,7 +378,10 @@ impl Parser {
                 return Ok(Expr::Error(kind));
             }
         }
-        Err(format!("`{}` is not an error value", rest.split(|c: char| c == ',' || c == ')').next().unwrap_or("")))
+        Err(format!(
+            "`{}` is not an error value",
+            rest.split(|c: char| c == ',' || c == ')').next().unwrap_or("")
+        ))
     }
 
     fn number(&mut self) -> Result<f64, String> {
@@ -379,7 +397,8 @@ impl Parser {
         }
         if matches!(self.peek(), Some('e' | 'E'))
             && (matches!(self.peek_at(1), Some(c) if c.is_ascii_digit())
-                || matches!(self.peek_at(1), Some('+' | '-')) && matches!(self.peek_at(2), Some(c) if c.is_ascii_digit()))
+                || matches!(self.peek_at(1), Some('+' | '-'))
+                    && matches!(self.peek_at(2), Some(c) if c.is_ascii_digit()))
         {
             self.at += 2;
             while matches!(self.peek(), Some(c) if c.is_ascii_digit()) {
@@ -401,7 +420,10 @@ impl Parser {
     }
 
     /// `3:5` or `$3:$5`, or nothing when the characters here are not that.
-    fn try_rows(&mut self, sheet: Option<(Arc<str>, Option<Arc<str>>)>) -> Result<Option<Expr>, String> {
+    fn try_rows(
+        &mut self,
+        sheet: Option<(Arc<str>, Option<Arc<str>>)>,
+    ) -> Result<Option<Expr>, String> {
         let start = self.at;
         let Some((a, a_abs)) = self.row_number() else {
             self.at = start;
@@ -440,7 +462,8 @@ impl Parser {
     /// Letters, digits, `_`, `.`, `\`, `?` and `$`, the characters a name or a reference is made of.
     fn word(&mut self) -> String {
         let start = self.at;
-        while matches!(self.peek(), Some(c) if c.is_alphanumeric() || matches!(c, '_' | '.' | '\\' | '?' | '$')) {
+        while matches!(self.peek(), Some(c) if c.is_alphanumeric() || matches!(c, '_' | '.' | '\\' | '?' | '$'))
+        {
             self.at += 1;
         }
         self.chars[start..self.at].iter().collect()
@@ -565,11 +588,23 @@ impl Parser {
                 let second = self.word();
                 if let Some(last) = point(&second) {
                     let (first, last) = ordered(first, last);
-                    return Ok(Some(Expr::Ref(Reference { sheet, sheet_last, first, last, shape: Shape::Range })));
+                    return Ok(Some(Expr::Ref(Reference {
+                        sheet,
+                        sheet_last,
+                        first,
+                        last,
+                        shape: Shape::Range,
+                    })));
                 }
                 self.at = save;
             }
-            return Ok(Some(Expr::Ref(Reference { sheet, sheet_last, first, last: first, shape: Shape::Cell })));
+            return Ok(Some(Expr::Ref(Reference {
+                sheet,
+                sheet_last,
+                first,
+                last: first,
+                shape: Shape::Cell,
+            })));
         }
         // Whole columns: `A:C`, `$A:$C`.
         if let Some((a, a_abs)) = column_part(word) {
@@ -580,7 +615,13 @@ impl Parser {
                     let (mut first, mut last) = Reference::whole_columns(a.min(b), a.max(b));
                     first.col_abs = a_abs;
                     last.col_abs = b_abs;
-                    return Ok(Some(Expr::Ref(Reference { sheet, sheet_last, first, last, shape: Shape::Columns })));
+                    return Ok(Some(Expr::Ref(Reference {
+                        sheet,
+                        sheet_last,
+                        first,
+                        last,
+                        shape: Shape::Columns,
+                    })));
                 }
             }
             self.at = save;
@@ -676,7 +717,9 @@ impl Parser {
 /// Whether an expression can be one side of an intersection.
 fn is_reference_like(expr: &Expr) -> bool {
     match expr {
-        Expr::Ref(_) | Expr::Name(_) | Expr::Table(_) | Expr::Union(_) | Expr::Intersect(..) => true,
+        Expr::Ref(_) | Expr::Name(_) | Expr::Table(_) | Expr::Union(_) | Expr::Intersect(..) => {
+            true
+        }
         Expr::Binary(BinOp::Range, ..) => true,
         Expr::Paren(inner) => is_reference_like(inner),
         Expr::Call(name, _) => matches!(&**name, "INDEX" | "OFFSET" | "INDIRECT" | "CHOOSE" | "IF"),
@@ -685,7 +728,8 @@ fn is_reference_like(expr: &Expr) -> bool {
 }
 
 fn is_callable(expr: &Expr) -> bool {
-    matches!(expr, Expr::Call(name, _) if &**name == "LAMBDA") || matches!(expr, Expr::Paren(inner) if is_callable(inner))
+    matches!(expr, Expr::Call(name, _) if &**name == "LAMBDA")
+        || matches!(expr, Expr::Paren(inner) if is_callable(inner))
 }
 
 fn ordered(a: Point, b: Point) -> (Point, Point) {

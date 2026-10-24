@@ -58,12 +58,26 @@ impl std::fmt::Debug for Function {
 pub const MANY: usize = 255;
 
 /// A scalar function entry.
-pub const fn s(name: &'static str, min: usize, max: usize, args: &'static str, about: &'static str, f: ScalarFn) -> Function {
+pub const fn s(
+    name: &'static str,
+    min: usize,
+    max: usize,
+    args: &'static str,
+    about: &'static str,
+    f: ScalarFn,
+) -> Function {
     Function { name, min, max, imp: Imp::Scalar(f), args, about, category: "" }
 }
 
 /// A raw function entry.
-pub const fn r(name: &'static str, min: usize, max: usize, args: &'static str, about: &'static str, f: RawFn) -> Function {
+pub const fn r(
+    name: &'static str,
+    min: usize,
+    max: usize,
+    args: &'static str,
+    about: &'static str,
+    f: RawFn,
+) -> Function {
     Function { name, min, max, imp: Imp::Raw(f), args, about, category: "" }
 }
 
@@ -101,7 +115,8 @@ pub fn find(name: &str) -> Option<&'static Function> {
 }
 
 /// Functions whose value can change with nothing in the workbook changing.
-pub const VOLATILE: &[&str] = &["NOW", "TODAY", "RAND", "RANDBETWEEN", "RANDARRAY", "OFFSET", "INDIRECT", "CELL", "INFO"];
+pub const VOLATILE: &[&str] =
+    &["NOW", "TODAY", "RAND", "RANDBETWEEN", "RANDARRAY", "OFFSET", "INDIRECT", "CELL", "INFO"];
 
 // ---------------------------------------------------------------------------------------------------
 // Helpers every category uses.
@@ -183,7 +198,9 @@ pub fn gather_val(ctx: &mut Ctx, v: Val, how: Gather, out: &mut Vec<f64>) -> Res
             (Value::Error(e), _) => return Err(*e),
             (Value::Number(n), _) => out.push(*n),
             (Value::Bool(b), false) => out.push(f64::from(u8::from(*b))),
-            (Value::Text(t), false) => out.push(crate::input::number_from_text(t, ctx.date1904()).ok_or(ErrorKind::Value)?),
+            (Value::Text(t), false) => {
+                out.push(crate::input::number_from_text(t, ctx.date1904()).ok_or(ErrorKind::Value)?)
+            }
             (Value::Empty, false) => out.push(0.0),
             (Value::Bool(b), true) if how == Gather::All => out.push(f64::from(u8::from(*b))),
             (Value::Text(_), true) if how == Gather::All => out.push(0.0),
@@ -202,7 +219,10 @@ pub fn flat(ctx: &mut Ctx, expr: &Expr) -> Result<(Vec<Value>, usize, usize), Er
 
 /// Numbers of one array argument, in order, keeping their positions: `None` for anything not a number.
 /// What CORREL, SUMPRODUCT and the regression functions pair up.
-pub fn numbers_at(ctx: &mut Ctx, expr: &Expr) -> Result<(Vec<Option<f64>>, usize, usize), ErrorKind> {
+pub fn numbers_at(
+    ctx: &mut Ctx,
+    expr: &Expr,
+) -> Result<(Vec<Option<f64>>, usize, usize), ErrorKind> {
     let (values, rows, cols) = flat(ctx, expr)?;
     let mut out = Vec::with_capacity(values.len());
     for v in values {
@@ -216,7 +236,11 @@ pub fn numbers_at(ctx: &mut Ctx, expr: &Expr) -> Result<(Vec<Option<f64>>, usize
 }
 
 /// A function of one number, for the many entries that are only that.
-pub fn unary(ctx: &mut Ctx, args: &[Value], f: fn(f64) -> Result<f64, ErrorKind>) -> Result<Value, ErrorKind> {
+pub fn unary(
+    ctx: &mut Ctx,
+    args: &[Value],
+    f: fn(f64) -> Result<f64, ErrorKind>,
+) -> Result<Value, ErrorKind> {
     number(f(num(ctx, &args[0])?)?)
 }
 

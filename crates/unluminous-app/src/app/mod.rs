@@ -68,6 +68,7 @@ pub mod servers;
 pub mod signature;
 mod templates;
 // The window's side of the UI plugins: which providers are open, and which of their panes are showing.
+pub mod plugin_files;
 pub mod plugin_panes;
 mod preview;
 // Several projects in one window, a project tab each. `task-2322`.
@@ -2072,6 +2073,9 @@ impl UnluminousApp {
                 let _ = self.open_a_design_in_the_pane(&design);
             } else if self.plugin_ui.surfaces().tab(&key).is_some() {
                 self.open_the_plugin_tab(&key);
+            } else {
+                // A file a plugin draws, such as a workbook. `task-2338`.
+                self.reopen_a_file_tab(&key);
             }
         }
         for path in &state.open_files {

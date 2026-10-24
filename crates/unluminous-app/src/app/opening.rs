@@ -241,6 +241,12 @@ impl UnluminousApp {
             let relative = crate::services::project_state::relative(self.tree.root(), path);
             return self.open_a_realm_in_a_tab(&relative);
         }
+        // A file a plugin draws in a tab of its own, such as a workbook. `task-2338`.
+        if !as_text {
+            if let Some((plugin, provider)) = self.plugin_that_draws(path) {
+                return self.open_a_file_in_a_plugin_tab(&plugin, &provider, path);
+            }
+        }
         // **A file that exists and cannot be shown opens a tab that says so** (`task-2270`), rather than being
         // refused with a line in the status bar. One already open is shown again.
         if let Err(refusal) = file_kind::openable(path) {
@@ -248,6 +254,10 @@ impl UnluminousApp {
                 let reason = format!("{}: {}", path.display(), refusal.reason());
                 self.message = Some(reason.clone());
                 return Err(reason);
+            }
+            // A file type a plugin that is switched off would open says so, and which plugin. `task-2338`.
+            if let Some(off) = self.plugin_that_would_draw(path) {
+                return self.open_an_unrenderable_file(path, &off, permanent);
             }
             return self.open_an_unrenderable_file(path, refusal.reason(), permanent);
         }
@@ -710,6 +720,9 @@ impl UnluminousApp {
             self.toasts.say(problem, crate::components::toast::Kind::Problem);
             return;
         }
+        if let Some(tab) = self.files.get(index).and_then(|file| file.plugin.clone()) {
+            self.a_plugin_tab_closed(&tab);
+        }
         self.files.close(index);
         // **The tab shown next keeps what was laid out for it and where it was scrolled** (`task-2269`: *"When I
         // have a .md file open, then click a link on it, it opens a browser tab. if i close that browser tab and end
@@ -778,6 +791,22 @@ impl UnluminousApp {
         let Some(file) = self.files.get(index) else {
             return Ok(());
         };
+        // A tab that draws a file with unsaved changes is written by its plugin. `task-2338`.
+        if let Some(tab) = file.plugin.clone() {
+            if !self.plugin_tab_is_modified(&tab) {
+                return Ok(());
+            }
+            return match self.save_a_plugin_tab(&tab) {
+                Ok(said) => {
+                    self.message = Some(said);
+                    Ok(())
+                }
+                Err(problem) => {
+                    self.message = Some(problem.clone());
+                    Err(problem)
+                }
+            };
+        }
         if file.is_picture() || file.is_browser() || !file.document.is_modified() {
             return Ok(());
         }
@@ -819,6 +848,9 @@ impl UnluminousApp {
         // means is reading the file again — which is what it would have meant either way.
         self.remember_a_closed_tab(index);
         self.hand_over_before_closing(index);
+        if let Some(tab) = self.files.get(index).and_then(|file| file.plugin.clone()) {
+            self.a_plugin_tab_closed(&tab);
+        }
         self.files.close(index);
         // **The tab shown next keeps what was laid out for it and where it was scrolled** (`task-2269`: *"When I
         // have a .md file open, then click a link on it, it opens a browser tab. if i close that browser tab and end
@@ -859,6 +891,17 @@ impl UnluminousApp {
         // `untitled.md` into the project. There is nothing in it to save: what a plugin holds, the plugin
         // keeps — the board is a database file of its own.
         if let Some(plugin) = self.files.active().plugin.clone() {
+            // A tab that draws a file is saved by the plugin that draws it. `task-2338`.
+            if self.plugin_tab_is_modified(&plugin) || self.a_file_tab_is_still_drawn(&plugin) {
+                match self.save_a_plugin_tab(&plugin) {
+                    Ok(said) => self.message = Some(said),
+                    Err(problem) => {
+                        self.toasts.say(problem, crate::components::toast::Kind::Problem)
+                    }
+                }
+                self.the_project_changed_on_disk();
+                return;
+            }
             self.message = Some(format!(
                 "{} is not a file, so there is nothing to save. It keeps what it holds itself.",
                 plugin.label

@@ -83,7 +83,12 @@ impl Engine {
 
     fn index(&mut self, key: Key, book: &Workbook) {
         self.unindex(key);
-        let Some(formula) = book.sheets.get(key.0).and_then(|s| s.cells.get(&(key.1, key.2))).and_then(|c| c.formula.as_ref()) else {
+        let Some(formula) = book
+            .sheets
+            .get(key.0)
+            .and_then(|s| s.cells.get(&(key.1, key.2)))
+            .and_then(|c| c.formula.as_ref())
+        else {
             return;
         };
         if formula.array_member.is_some() {
@@ -98,7 +103,9 @@ impl Engine {
         for p in &found.precedents {
             match p {
                 Precedent::Cell(c) => self.single.entry(*c).or_default().push(key),
-                Precedent::Range { first, last, range } => self.ranges.push((*first, *last, *range, key)),
+                Precedent::Range { first, last, range } => {
+                    self.ranges.push((*first, *last, *range, key))
+                }
             }
         }
         self.precedents.insert(key, found.precedents);
@@ -107,7 +114,11 @@ impl Engine {
     /// A cell's content changed: index its formula again if it has one, and mark what depends on it.
     pub fn changed(&mut self, book: &Workbook, sheet: usize, at: CellRef) {
         let key = (sheet, at.row, at.col);
-        let is_formula = book.sheets.get(sheet).and_then(|s| s.cells.get(&(at.row, at.col))).is_some_and(|c| c.formula.is_some());
+        let is_formula = book
+            .sheets
+            .get(sheet)
+            .and_then(|s| s.cells.get(&(at.row, at.col)))
+            .is_some_and(|c| c.formula.is_some());
         if is_formula {
             self.index(key, book);
             self.dirty.insert(key);
@@ -179,7 +190,10 @@ impl Engine {
             if self.dirty.is_empty() {
                 break;
             }
-            let dirty: Vec<Key> = std::mem::take(&mut self.dirty).into_iter().filter(|k| self.formulas.contains(k)).collect();
+            let dirty: Vec<Key> = std::mem::take(&mut self.dirty)
+                .into_iter()
+                .filter(|k| self.formulas.contains(k))
+                .collect();
             let (order, cycle) = self.order(&dirty, book);
             if let Some(first) = cycle.iter().next() {
                 book.circular = Some((first.0, CellRef::new(first.1, first.2)));
@@ -227,8 +241,16 @@ impl Engine {
         }
         // Volatile formulas last among the formulas that are ready, so the cells OFFSET and INDIRECT read
         // have been computed when they can be.
-        let mut ready: VecDeque<Key> = dirty.iter().filter(|k| indegree[k] == 0 && !self.volatile.contains(k)).copied().collect();
-        let mut ready_volatile: VecDeque<Key> = dirty.iter().filter(|k| indegree[k] == 0 && self.volatile.contains(k)).copied().collect();
+        let mut ready: VecDeque<Key> = dirty
+            .iter()
+            .filter(|k| indegree[k] == 0 && !self.volatile.contains(k))
+            .copied()
+            .collect();
+        let mut ready_volatile: VecDeque<Key> = dirty
+            .iter()
+            .filter(|k| indegree[k] == 0 && self.volatile.contains(k))
+            .copied()
+            .collect();
         let mut order = Vec::with_capacity(dirty.len());
         while let Some(key) = ready.pop_front().or_else(|| ready_volatile.pop_front()) {
             order.push(key);
@@ -252,12 +274,15 @@ impl Engine {
         // What is left is on a cycle or downstream of one. Peel the formulas nothing left depends on; what
         // cannot be peeled is the cycle.
         let ordered: HashSet<Key> = order.iter().copied().collect();
-        let mut left: BTreeSet<Key> = dirty.iter().filter(|k| !ordered.contains(k)).copied().collect();
+        let mut left: BTreeSet<Key> =
+            dirty.iter().filter(|k| !ordered.contains(k)).copied().collect();
         let mut peeled = Vec::new();
         loop {
             let sinks: Vec<Key> = left
                 .iter()
-                .filter(|k| successors.get(k).is_none_or(|next| next.iter().all(|n| !left.contains(n))))
+                .filter(|k| {
+                    successors.get(k).is_none_or(|next| next.iter().all(|n| !left.contains(n)))
+                })
                 .copied()
                 .collect();
             if sinks.is_empty() {
@@ -285,7 +310,9 @@ impl Engine {
                         out.push(*c);
                     }
                     // A cell a spill covers is computed by the spill's anchor.
-                    if let Some(anchor) = book.sheets.get(c.0).and_then(|s| s.spills.owner.get(&(c.1, c.2))) {
+                    if let Some(anchor) =
+                        book.sheets.get(c.0).and_then(|s| s.spills.owner.get(&(c.1, c.2)))
+                    {
                         let a = (c.0, anchor.0, anchor.1);
                         if marked.contains(&a) {
                             out.push(a);
@@ -297,14 +324,18 @@ impl Engine {
                         let lo = (sheet, range.first.row, 0);
                         let hi = (sheet, range.last.row, MAX_COLS);
                         for k in self.formulas.range(lo..=hi) {
-                            if k.2 >= range.first.col && k.2 <= range.last.col && marked.contains(k) {
+                            if k.2 >= range.first.col && k.2 <= range.last.col && marked.contains(k)
+                            {
                                 out.push(*k);
                             }
                         }
                         // Spills reaching into the range come from anchors that may be outside it.
                         if let Some(s) = book.sheets.get(sheet) {
                             for (anchor, (rows, cols)) in &s.spills.anchors {
-                                let spill = Range::new(CellRef::new(anchor.0, anchor.1), CellRef::new(anchor.0 + rows - 1, anchor.1 + cols - 1));
+                                let spill = Range::new(
+                                    CellRef::new(anchor.0, anchor.1),
+                                    CellRef::new(anchor.0 + rows - 1, anchor.1 + cols - 1),
+                                );
                                 let a = (sheet, anchor.0, anchor.1);
                                 if spill.intersects(range) && marked.contains(&a) {
                                     out.push(a);
@@ -344,7 +375,14 @@ struct Found {
 }
 
 /// The cells and ranges an expression reads, following defined names, tables and spill references.
-fn collect(expr: &Expr, book: &Workbook, sheet: usize, found: &mut Found, names: &mut Vec<String>, depth: usize) {
+fn collect(
+    expr: &Expr,
+    book: &Workbook,
+    sheet: usize,
+    found: &mut Found,
+    names: &mut Vec<String>,
+    depth: usize,
+) {
     if depth > 64 {
         found.volatile = true;
         return;
@@ -366,8 +404,14 @@ fn collect(expr: &Expr, book: &Workbook, sheet: usize, found: &mut Found, names:
                 found.precedents.push(Precedent::Cell((first, r.first.row, r.first.col)));
             } else {
                 let range = match r.shape {
-                    Shape::Columns => Range::new(CellRef::new(0, r.first.col), CellRef::new(crate::coord::MAX_ROWS - 1, r.last.col)),
-                    Shape::Rows => Range::new(CellRef::new(r.first.row, 0), CellRef::new(r.last.row, MAX_COLS - 1)),
+                    Shape::Columns => Range::new(
+                        CellRef::new(0, r.first.col),
+                        CellRef::new(crate::coord::MAX_ROWS - 1, r.last.col),
+                    ),
+                    Shape::Rows => Range::new(
+                        CellRef::new(r.first.row, 0),
+                        CellRef::new(r.last.row, MAX_COLS - 1),
+                    ),
                     _ => r.range(),
                 };
                 found.precedents.push(Precedent::Range { first, last, range });
@@ -383,13 +427,19 @@ fn collect(expr: &Expr, book: &Workbook, sheet: usize, found: &mut Found, names:
                 None => (sheet, &**name),
             };
             if let Some(defined) = book.name(bare, scope) {
-                if let Ok(parsed) = crate::formula::parser::parse(defined.formula.trim_start_matches('=')) {
+                if let Ok(parsed) =
+                    crate::formula::parser::parse(defined.formula.trim_start_matches('='))
+                {
                     names.push(upper);
                     collect(&parsed, book, scope, found, names, depth + 1);
                     names.pop();
                 }
             } else if let Some(table) = book.table(bare) {
-                found.precedents.push(Precedent::Range { first: table.sheet, last: table.sheet, range: table.range });
+                found.precedents.push(Precedent::Range {
+                    first: table.sheet,
+                    last: table.sheet,
+                    range: table.range,
+                });
             }
         }
         Expr::Table(t) => {
@@ -398,7 +448,11 @@ fn collect(expr: &Expr, book: &Workbook, sheet: usize, found: &mut Found, names:
                 None => None,
             };
             match table {
-                Some(table) => found.precedents.push(Precedent::Range { first: table.sheet, last: table.sheet, range: table.range }),
+                Some(table) => found.precedents.push(Precedent::Range {
+                    first: table.sheet,
+                    last: table.sheet,
+                    range: table.range,
+                }),
                 None => found.volatile = true,
             }
         }
@@ -409,8 +463,15 @@ fn collect(expr: &Expr, book: &Workbook, sheet: usize, found: &mut Found, names:
                     // The anchor, and whatever it spills into now; a change of extent is caught by
                     // the engine marking the cells a moved spill covered.
                     found.precedents.push(Precedent::Cell((target, r.first.row, r.first.col)));
-                    let spill = s.spills.range_of((r.first.row, r.first.col)).unwrap_or(Range::cell(r.first.at()));
-                    found.precedents.push(Precedent::Range { first: target, last: target, range: spill });
+                    let spill = s
+                        .spills
+                        .range_of((r.first.row, r.first.col))
+                        .unwrap_or(Range::cell(r.first.at()));
+                    found.precedents.push(Precedent::Range {
+                        first: target,
+                        last: target,
+                        range: spill,
+                    });
                 }
             }
         }
@@ -423,7 +484,9 @@ fn collect(expr: &Expr, book: &Workbook, sheet: usize, found: &mut Found, names:
                 let upper = name.to_ascii_uppercase();
                 if !names.contains(&upper) {
                     if let Some(defined) = book.name(name, sheet) {
-                        if let Ok(parsed) = crate::formula::parser::parse(defined.formula.trim_start_matches('=')) {
+                        if let Ok(parsed) =
+                            crate::formula::parser::parse(defined.formula.trim_start_matches('='))
+                        {
                             names.push(upper);
                             collect(&parsed, book, sheet, found, names, depth + 1);
                             names.pop();
@@ -469,14 +532,19 @@ fn compute(book: &mut Workbook, key: Key, env: &Env) -> Option<Range> {
         } else {
             match v {
                 Val::Array(a) if a.rows * a.cols > 1 && formula.dynamic => Outcome::Spill(a),
-                Val::Ref(area) if area.range.len() > 1 && formula.dynamic && !area.is_3d() => match ctx.array(Val::Ref(area)) {
-                    Ok(a) => Outcome::Spill(a),
-                    Err(e) => Outcome::Single(Value::Error(e)),
-                },
+                Val::Ref(area) if area.range.len() > 1 && formula.dynamic && !area.is_3d() => {
+                    match ctx.array(Val::Ref(area)) {
+                        Ok(a) => Outcome::Spill(a),
+                        Err(e) => Outcome::Single(Value::Error(e)),
+                    }
+                }
                 Val::Lambda(_) => Outcome::Single(Value::Error(ErrorKind::Calc)),
-                Val::Refs(ref areas) if areas.is_empty() => Outcome::Single(Value::Error(ErrorKind::Calc)),
+                Val::Refs(ref areas) if areas.is_empty() => {
+                    Outcome::Single(Value::Error(ErrorKind::Calc))
+                }
                 other => {
-                    let single = if formula.dynamic { ctx.single(other) } else { ctx.intersect(other) };
+                    let single =
+                        if formula.dynamic { ctx.single(other) } else { ctx.intersect(other) };
                     Outcome::Single(single)
                 }
             }
@@ -508,17 +576,29 @@ fn compute(book: &mut Workbook, key: Key, env: &Env) -> Option<Range> {
             }
             let rows = array.rows as u32;
             let cols = array.cols as u32;
-            let target = at.offset(rows as i64 - 1, cols as i64 - 1).map(|last| Range::new(at, last));
+            let target =
+                at.offset(rows as i64 - 1, cols as i64 - 1).map(|last| Range::new(at, last));
             s.spills.clear_anchor((key.1, key.2));
             let blocked = match target {
                 None => true,
                 Some(range) => {
-                    s.cells.range((range.first.row, 0)..=(range.last.row, MAX_COLS)).any(|(&(r, c), cell)| {
-                        (r, c) != (key.1, key.2) && range.contains(CellRef::new(r, c)) && !(cell.value.is_empty() && cell.formula.is_none())
-                    }) || s.spills.owner.range((range.first.row, 0)..=(range.last.row, MAX_COLS)).any(|(&(r, c), owner)| range.contains(CellRef::new(r, c)) && *owner != (key.1, key.2))
+                    s.cells.range((range.first.row, 0)..=(range.last.row, MAX_COLS)).any(
+                        |(&(r, c), cell)| {
+                            (r, c) != (key.1, key.2)
+                                && range.contains(CellRef::new(r, c))
+                                && !(cell.value.is_empty() && cell.formula.is_none())
+                        },
+                    ) || s
+                        .spills
+                        .owner
+                        .range((range.first.row, 0)..=(range.last.row, MAX_COLS))
+                        .any(|(&(r, c), owner)| {
+                            range.contains(CellRef::new(r, c)) && *owner != (key.1, key.2)
+                        })
                 }
             };
-            let first = if blocked { Value::Error(ErrorKind::Spill) } else { array.data[0].clone() };
+            let first =
+                if blocked { Value::Error(ErrorKind::Spill) } else { array.data[0].clone() };
             let first = if first.is_empty() { Value::Number(0.0) } else { first };
             if let Some(cell) = s.cells.get_mut(&(key.1, key.2)) {
                 cell.value = first;
@@ -532,7 +612,9 @@ fn compute(book: &mut Workbook, key: Key, env: &Env) -> Option<Range> {
                     }
                     s.spills.owner.insert((r, c), (key.1, key.2));
                     // An empty value in a spill reads as 0, as it shows.
-                    s.spills.values.insert((r, c), if v.is_empty() { Value::Number(0.0) } else { v });
+                    s.spills
+                        .values
+                        .insert((r, c), if v.is_empty() { Value::Number(0.0) } else { v });
                 }
             }
             let after = s.spills.range_of((key.1, key.2));
@@ -679,7 +761,10 @@ mod tests {
         }
         let mut legacy = Formula::parse("=A1:A3*10").unwrap();
         legacy.dynamic = false;
-        book.sheets[0].set(CellRef::parse("B2").unwrap(), Cell { formula: Some(legacy), ..Default::default() });
+        book.sheets[0].set(
+            CellRef::parse("B2").unwrap(),
+            Cell { formula: Some(legacy), ..Default::default() },
+        );
         recalculate_all(&mut book, 0.0);
         assert_eq!(get(&book, "B2"), "20");
         assert_eq!(get(&book, "B3"), "");

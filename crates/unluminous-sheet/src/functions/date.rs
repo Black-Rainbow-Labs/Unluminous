@@ -8,14 +8,18 @@ use crate::value::{ErrorKind, Value};
 
 pub const FUNCTIONS: &[Function] = &[
     s("DATE", 3, 3, "year, month, day", "The serial number of a date.", |ctx, a| {
-        let (y, m, d) = (num(ctx, &a[0])?.trunc(), num(ctx, &a[1])?.trunc(), num(ctx, &a[2])?.trunc());
+        let (y, m, d) =
+            (num(ctx, &a[0])?.trunc(), num(ctx, &a[1])?.trunc(), num(ctx, &a[2])?.trunc());
         if !(0.0..10000.0).contains(&y) {
             return Err(ErrorKind::Num);
         }
-        dates::serial(y as i64, m as i64, d as i64, ctx.date1904()).map(Value::Number).ok_or(ErrorKind::Num)
+        dates::serial(y as i64, m as i64, d as i64, ctx.date1904())
+            .map(Value::Number)
+            .ok_or(ErrorKind::Num)
     }),
     s("TIME", 3, 3, "hour, minute, second", "A time as a fraction of a day.", |ctx, a| {
-        let (h, m, sec) = (num(ctx, &a[0])?.trunc(), num(ctx, &a[1])?.trunc(), num(ctx, &a[2])?.trunc());
+        let (h, m, sec) =
+            (num(ctx, &a[0])?.trunc(), num(ctx, &a[1])?.trunc(), num(ctx, &a[2])?.trunc());
         let total = h * 3600.0 + m * 60.0 + sec;
         if total < 0.0 || h > 32767.0 {
             return Err(ErrorKind::Num);
@@ -27,36 +31,66 @@ pub const FUNCTIONS: &[Function] = &[
         let n = crate::input::number_from_text(&t, ctx.date1904()).ok_or(ErrorKind::Value)?;
         number(n.floor())
     }),
-    s("TIMEVALUE", 1, 1, "time_text", "A time written as text, as a fraction of a day.", |ctx, a| {
-        let t = super::text_of(&a[0])?;
-        let n = crate::input::number_from_text(&t, ctx.date1904()).ok_or(ErrorKind::Value)?;
-        number(n.fract())
+    s(
+        "TIMEVALUE",
+        1,
+        1,
+        "time_text",
+        "A time written as text, as a fraction of a day.",
+        |ctx, a| {
+            let t = super::text_of(&a[0])?;
+            let n = crate::input::number_from_text(&t, ctx.date1904()).ok_or(ErrorKind::Value)?;
+            number(n.fract())
+        },
+    ),
+    r("NOW", 0, 0, "", "The date and time now. Changes on every calculation.", |ctx, _| {
+        Val::number(ctx.env.now)
     }),
-    r("NOW", 0, 0, "", "The date and time now. Changes on every calculation.", |ctx, _| Val::number(ctx.env.now)),
-    r("TODAY", 0, 0, "", "Today's date. Changes on every calculation.", |ctx, _| Val::number(ctx.env.now.floor())),
-    s("YEAR", 1, 1, "serial_number", "The year of a date.", |ctx, a| part(ctx, a, |(y, _, _)| y as f64)),
-    s("MONTH", 1, 1, "serial_number", "The month of a date, 1 to 12.", |ctx, a| part(ctx, a, |(_, m, _)| m as f64)),
-    s("DAY", 1, 1, "serial_number", "The day of the month.", |ctx, a| part(ctx, a, |(_, _, d)| d as f64)),
-    s("HOUR", 1, 1, "serial_number", "The hour of a time, 0 to 23.", |ctx, a| clock(ctx, a, |(h, _, _)| h)),
-    s("MINUTE", 1, 1, "serial_number", "The minute of a time.", |ctx, a| clock(ctx, a, |(_, m, _)| m)),
-    s("SECOND", 1, 1, "serial_number", "The second of a time.", |ctx, a| clock(ctx, a, |(_, _, s)| s)),
-    s("WEEKDAY", 1, 2, "serial_number, [return_type]", "The day of the week as a number.", |ctx, a| {
-        let n = serial(ctx, &a[0])?;
-        let kind = opt_num(ctx, a, 1, 1.0)?.trunc() as i64;
-        let w = dates::weekday(n, ctx.date1904()) as i64; // 0 Sunday
-        let answer = match kind {
-            1 | 17 => w + 1,
-            2 | 11 => (w + 6) % 7 + 1,
-            3 => (w + 6) % 7,
-            12 => (w + 5) % 7 + 1,
-            13 => (w + 4) % 7 + 1,
-            14 => (w + 3) % 7 + 1,
-            15 => (w + 2) % 7 + 1,
-            16 => (w + 1) % 7 + 1,
-            _ => return Err(ErrorKind::Num),
-        };
-        number(answer as f64)
+    r("TODAY", 0, 0, "", "Today's date. Changes on every calculation.", |ctx, _| {
+        Val::number(ctx.env.now.floor())
     }),
+    s("YEAR", 1, 1, "serial_number", "The year of a date.", |ctx, a| {
+        part(ctx, a, |(y, _, _)| y as f64)
+    }),
+    s("MONTH", 1, 1, "serial_number", "The month of a date, 1 to 12.", |ctx, a| {
+        part(ctx, a, |(_, m, _)| m as f64)
+    }),
+    s("DAY", 1, 1, "serial_number", "The day of the month.", |ctx, a| {
+        part(ctx, a, |(_, _, d)| d as f64)
+    }),
+    s("HOUR", 1, 1, "serial_number", "The hour of a time, 0 to 23.", |ctx, a| {
+        clock(ctx, a, |(h, _, _)| h)
+    }),
+    s("MINUTE", 1, 1, "serial_number", "The minute of a time.", |ctx, a| {
+        clock(ctx, a, |(_, m, _)| m)
+    }),
+    s("SECOND", 1, 1, "serial_number", "The second of a time.", |ctx, a| {
+        clock(ctx, a, |(_, _, s)| s)
+    }),
+    s(
+        "WEEKDAY",
+        1,
+        2,
+        "serial_number, [return_type]",
+        "The day of the week as a number.",
+        |ctx, a| {
+            let n = serial(ctx, &a[0])?;
+            let kind = opt_num(ctx, a, 1, 1.0)?.trunc() as i64;
+            let w = dates::weekday(n, ctx.date1904()) as i64; // 0 Sunday
+            let answer = match kind {
+                1 | 17 => w + 1,
+                2 | 11 => (w + 6) % 7 + 1,
+                3 => (w + 6) % 7,
+                12 => (w + 5) % 7 + 1,
+                13 => (w + 4) % 7 + 1,
+                14 => (w + 3) % 7 + 1,
+                15 => (w + 2) % 7 + 1,
+                16 => (w + 1) % 7 + 1,
+                _ => return Err(ErrorKind::Num),
+            };
+            number(answer as f64)
+        },
+    ),
     s("WEEKNUM", 1, 2, "serial_number, [return_type]", "The week of the year.", |ctx, a| {
         let n = serial(ctx, &a[0])?;
         let kind = opt_num(ctx, a, 1, 1.0)?.trunc() as i64;
@@ -90,70 +124,131 @@ pub const FUNCTIONS: &[Function] = &[
         let total = y * 12 + m as i64 - 1 + months;
         let (ny, nm) = (total.div_euclid(12), total.rem_euclid(12) as u32 + 1);
         let day = d.min(dates::days_in_month(ny, nm));
-        dates::serial(ny, nm as i64, day as i64, ctx.date1904()).map(Value::Number).ok_or(ErrorKind::Num)
+        dates::serial(ny, nm as i64, day as i64, ctx.date1904())
+            .map(Value::Number)
+            .ok_or(ErrorKind::Num)
     }),
-    s("EOMONTH", 2, 2, "start_date, months", "The last day of a month some months away.", |ctx, a| {
-        let n = serial(ctx, &a[0])?;
-        let months = num(ctx, &a[1])?.trunc() as i64;
-        let (y, m, _) = dates::date(n, ctx.date1904()).ok_or(ErrorKind::Num)?;
-        let total = y * 12 + m as i64 - 1 + months;
-        let (ny, nm) = (total.div_euclid(12), total.rem_euclid(12) as u32 + 1);
-        dates::serial(ny, nm as i64, dates::days_in_month(ny, nm) as i64, ctx.date1904()).map(Value::Number).ok_or(ErrorKind::Num)
+    s(
+        "EOMONTH",
+        2,
+        2,
+        "start_date, months",
+        "The last day of a month some months away.",
+        |ctx, a| {
+            let n = serial(ctx, &a[0])?;
+            let months = num(ctx, &a[1])?.trunc() as i64;
+            let (y, m, _) = dates::date(n, ctx.date1904()).ok_or(ErrorKind::Num)?;
+            let total = y * 12 + m as i64 - 1 + months;
+            let (ny, nm) = (total.div_euclid(12), total.rem_euclid(12) as u32 + 1);
+            dates::serial(ny, nm as i64, dates::days_in_month(ny, nm) as i64, ctx.date1904())
+                .map(Value::Number)
+                .ok_or(ErrorKind::Num)
+        },
+    ),
+    s("DAYS", 2, 2, "end_date, start_date", "The days between two dates.", |ctx, a| {
+        number(serial(ctx, &a[0])?.floor() - serial(ctx, &a[1])?.floor())
     }),
-    s("DAYS", 2, 2, "end_date, start_date", "The days between two dates.", |ctx, a| number(serial(ctx, &a[0])?.floor() - serial(ctx, &a[1])?.floor())),
-    s("DAYS360", 2, 3, "start_date, end_date, [method]", "The days between two dates in a 360 day year.", |ctx, a| {
-        let (s1, s2) = (serial(ctx, &a[0])?, serial(ctx, &a[1])?);
-        let european = super::opt_bool(a, 2, false)?;
-        let (y1, m1, d1) = dates::date(s1, ctx.date1904()).ok_or(ErrorKind::Num)?;
-        let (y2, m2, d2) = dates::date(s2, ctx.date1904()).ok_or(ErrorKind::Num)?;
-        number(days360((y1, m1, d1), (y2, m2, d2), european) as f64)
-    }),
-    s("DATEDIF", 3, 3, "start_date, end_date, unit", "The difference between dates in years, months or days.", |ctx, a| {
-        let (s1, s2) = (serial(ctx, &a[0])?.floor(), serial(ctx, &a[1])?.floor());
-        if s1 > s2 {
-            return Err(ErrorKind::Num);
-        }
-        let unit = super::text_of(&a[2])?.to_ascii_uppercase();
-        let (y1, m1, d1) = dates::date(s1, ctx.date1904()).ok_or(ErrorKind::Num)?;
-        let (y2, m2, d2) = dates::date(s2, ctx.date1904()).ok_or(ErrorKind::Num)?;
-        let months = (y2 - y1) * 12 + m2 as i64 - m1 as i64 - i64::from(d2 < d1);
-        number(match unit.as_str() {
-            "Y" => (months / 12) as f64,
-            "M" => months as f64,
-            "D" => s2 - s1,
-            "MD" => {
-                if d2 >= d1 {
-                    (d2 - d1) as f64
-                } else {
-                    // Excel counts from the start day in the month before the end, rolling over, so
-                    // 31 January to 1 March is -2: 1 March less 31 February, which is 3 March.
-                    s2 - dates::serial(y2, m2 as i64 - 1, d1 as i64, ctx.date1904()).ok_or(ErrorKind::Num)?
-                }
+    s(
+        "DAYS360",
+        2,
+        3,
+        "start_date, end_date, [method]",
+        "The days between two dates in a 360 day year.",
+        |ctx, a| {
+            let (s1, s2) = (serial(ctx, &a[0])?, serial(ctx, &a[1])?);
+            let european = super::opt_bool(a, 2, false)?;
+            let (y1, m1, d1) = dates::date(s1, ctx.date1904()).ok_or(ErrorKind::Num)?;
+            let (y2, m2, d2) = dates::date(s2, ctx.date1904()).ok_or(ErrorKind::Num)?;
+            number(days360((y1, m1, d1), (y2, m2, d2), european) as f64)
+        },
+    ),
+    s(
+        "DATEDIF",
+        3,
+        3,
+        "start_date, end_date, unit",
+        "The difference between dates in years, months or days.",
+        |ctx, a| {
+            let (s1, s2) = (serial(ctx, &a[0])?.floor(), serial(ctx, &a[1])?.floor());
+            if s1 > s2 {
+                return Err(ErrorKind::Num);
             }
-            "YM" => (months % 12) as f64,
-            "YD" => {
-                let mut start = dates::serial(y2, m1 as i64, d1 as i64, ctx.date1904()).ok_or(ErrorKind::Num)?;
-                if start > s2 {
-                    start = dates::serial(y2 - 1, m1 as i64, d1 as i64, ctx.date1904()).ok_or(ErrorKind::Num)?;
+            let unit = super::text_of(&a[2])?.to_ascii_uppercase();
+            let (y1, m1, d1) = dates::date(s1, ctx.date1904()).ok_or(ErrorKind::Num)?;
+            let (y2, m2, d2) = dates::date(s2, ctx.date1904()).ok_or(ErrorKind::Num)?;
+            let months = (y2 - y1) * 12 + m2 as i64 - m1 as i64 - i64::from(d2 < d1);
+            number(match unit.as_str() {
+                "Y" => (months / 12) as f64,
+                "M" => months as f64,
+                "D" => s2 - s1,
+                "MD" => {
+                    if d2 >= d1 {
+                        (d2 - d1) as f64
+                    } else {
+                        // Excel counts from the start day in the month before the end, rolling over, so
+                        // 31 January to 1 March is -2: 1 March less 31 February, which is 3 March.
+                        s2 - dates::serial(y2, m2 as i64 - 1, d1 as i64, ctx.date1904())
+                            .ok_or(ErrorKind::Num)?
+                    }
                 }
-                s2 - start
-            }
-            _ => return Err(ErrorKind::Num),
-        })
-    }),
-    r("NETWORKDAYS", 2, 3, "start_date, end_date, [holidays]", "The working days between two dates.", |ctx, a| networkdays(ctx, &a[0], &a[1], None, a.get(2))),
-    r("NETWORKDAYS.INTL", 2, 4, "start_date, end_date, [weekend], [holidays]", "The working days between two dates, with a chosen weekend.", |ctx, a| {
-        networkdays(ctx, &a[0], &a[1], a.get(2), a.get(3))
-    }),
-    r("WORKDAY", 2, 3, "start_date, days, [holidays]", "The date some working days away.", |ctx, a| workday(ctx, &a[0], &a[1], None, a.get(2))),
-    r("WORKDAY.INTL", 2, 4, "start_date, days, [weekend], [holidays]", "The date some working days away, with a chosen weekend.", |ctx, a| {
-        workday(ctx, &a[0], &a[1], a.get(2), a.get(3))
-    }),
-    s("YEARFRAC", 2, 3, "start_date, end_date, [basis]", "The fraction of a year between two dates.", |ctx, a| {
-        let (s1, s2) = (serial(ctx, &a[0])?.floor(), serial(ctx, &a[1])?.floor());
-        let basis = opt_num(ctx, a, 2, 0.0)?.trunc() as i64;
-        number(yearfrac(s1, s2, basis, ctx.date1904())?)
-    }),
+                "YM" => (months % 12) as f64,
+                "YD" => {
+                    let mut start = dates::serial(y2, m1 as i64, d1 as i64, ctx.date1904())
+                        .ok_or(ErrorKind::Num)?;
+                    if start > s2 {
+                        start = dates::serial(y2 - 1, m1 as i64, d1 as i64, ctx.date1904())
+                            .ok_or(ErrorKind::Num)?;
+                    }
+                    s2 - start
+                }
+                _ => return Err(ErrorKind::Num),
+            })
+        },
+    ),
+    r(
+        "NETWORKDAYS",
+        2,
+        3,
+        "start_date, end_date, [holidays]",
+        "The working days between two dates.",
+        |ctx, a| networkdays(ctx, &a[0], &a[1], None, a.get(2)),
+    ),
+    r(
+        "NETWORKDAYS.INTL",
+        2,
+        4,
+        "start_date, end_date, [weekend], [holidays]",
+        "The working days between two dates, with a chosen weekend.",
+        |ctx, a| networkdays(ctx, &a[0], &a[1], a.get(2), a.get(3)),
+    ),
+    r(
+        "WORKDAY",
+        2,
+        3,
+        "start_date, days, [holidays]",
+        "The date some working days away.",
+        |ctx, a| workday(ctx, &a[0], &a[1], None, a.get(2)),
+    ),
+    r(
+        "WORKDAY.INTL",
+        2,
+        4,
+        "start_date, days, [weekend], [holidays]",
+        "The date some working days away, with a chosen weekend.",
+        |ctx, a| workday(ctx, &a[0], &a[1], a.get(2), a.get(3)),
+    ),
+    s(
+        "YEARFRAC",
+        2,
+        3,
+        "start_date, end_date, [basis]",
+        "The fraction of a year between two dates.",
+        |ctx, a| {
+            let (s1, s2) = (serial(ctx, &a[0])?.floor(), serial(ctx, &a[1])?.floor());
+            let basis = opt_num(ctx, a, 2, 0.0)?.trunc() as i64;
+            number(yearfrac(s1, s2, basis, ctx.date1904())?)
+        },
+    ),
 ];
 
 fn serial(ctx: &Ctx, v: &Value) -> Result<f64, ErrorKind> {
@@ -214,7 +309,9 @@ fn days360(start: (i64, u32, u32), end: (i64, u32, u32), european: bool) -> i64 
 
 /// Which days of the week are the weekend, Monday first.
 fn weekend_mask(ctx: &mut Ctx, weekend: Option<&Expr>) -> Result<[bool; 7], ErrorKind> {
-    let Some(e) = weekend.filter(|e| !matches!(e, Expr::Missing)) else { return Ok([false, false, false, false, false, true, true]) };
+    let Some(e) = weekend.filter(|e| !matches!(e, Expr::Missing)) else {
+        return Ok([false, false, false, false, false, true, true]);
+    };
     let v = ctx.eval(e);
     let v = ctx.single(v);
     match v {
@@ -268,7 +365,13 @@ fn scalar_serial(ctx: &mut Ctx, e: &Expr) -> Result<f64, ErrorKind> {
     Ok(serial(ctx, &v)?.floor())
 }
 
-fn networkdays(ctx: &mut Ctx, start: &Expr, end: &Expr, weekend: Option<&Expr>, extra: Option<&Expr>) -> Val {
+fn networkdays(
+    ctx: &mut Ctx,
+    start: &Expr,
+    end: &Expr,
+    weekend: Option<&Expr>,
+    extra: Option<&Expr>,
+) -> Val {
     let go = |ctx: &mut Ctx| -> Result<f64, ErrorKind> {
         let (a, b) = (scalar_serial(ctx, start)?, scalar_serial(ctx, end)?);
         let mask = weekend_mask(ctx, weekend)?;
@@ -288,7 +391,13 @@ fn networkdays(ctx: &mut Ctx, start: &Expr, end: &Expr, weekend: Option<&Expr>, 
     go(ctx).map_or_else(Val::error, Val::number)
 }
 
-fn workday(ctx: &mut Ctx, start: &Expr, days: &Expr, weekend: Option<&Expr>, extra: Option<&Expr>) -> Val {
+fn workday(
+    ctx: &mut Ctx,
+    start: &Expr,
+    days: &Expr,
+    weekend: Option<&Expr>,
+    extra: Option<&Expr>,
+) -> Val {
     let go = |ctx: &mut Ctx| -> Result<f64, ErrorKind> {
         let s0 = scalar_serial(ctx, start)?;
         let v = ctx.eval(days);
@@ -329,7 +438,11 @@ fn yearfrac(s1: f64, s2: f64, basis: i64, date1904: bool) -> Result<f64, ErrorKi
                 dd1 = 30;
             } else if dd1 == 30 && dd2 == 31 {
                 dd2 = 30;
-            } else if m1 == 2 && m2 == 2 && dd1 == dates::days_in_month(y1, 2) as i64 && dd2 == dates::days_in_month(y2, 2) as i64 {
+            } else if m1 == 2
+                && m2 == 2
+                && dd1 == dates::days_in_month(y1, 2) as i64
+                && dd2 == dates::days_in_month(y2, 2) as i64
+            {
                 dd1 = 30;
                 dd2 = 30;
             } else if m1 == 2 && dd1 == dates::days_in_month(y1, 2) as i64 {
@@ -342,7 +455,8 @@ fn yearfrac(s1: f64, s2: f64, basis: i64, date1904: bool) -> Result<f64, ErrorKi
             if d1.0 == d2.0 {
                 days / if dates::is_leap(d1.0) { 366.0 } else { 365.0 }
             } else if d2.0 == d1.0 + 1 && (d2.1, d2.2) <= (d1.1, d1.2) {
-                let leap = dates::is_leap(d1.0) && (d1.1 <= 2) || dates::is_leap(d2.0) && (d2.1 > 2 || d2.1 == 2 && d2.2 == 29);
+                let leap = dates::is_leap(d1.0) && (d1.1 <= 2)
+                    || dates::is_leap(d2.0) && (d2.1 > 2 || d2.1 == 2 && d2.2 == 29);
                 days / if leap { 366.0 } else { 365.0 }
             } else {
                 let years = (d2.0 - d1.0 + 1) as f64;

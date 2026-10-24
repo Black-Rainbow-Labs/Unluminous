@@ -34,7 +34,9 @@ pub fn shifted(expr: &Expr, rows: i64, cols: i64) -> Expr {
         };
         let whole_cols = r.shape == Shape::Columns;
         let whole_rows = r.shape == Shape::Rows;
-        if !move_point(&mut r.first, whole_rows, whole_cols) || !move_point(&mut r.last, whole_rows, whole_cols) {
+        if !move_point(&mut r.first, whole_rows, whole_cols)
+            || !move_point(&mut r.last, whole_rows, whole_cols)
+        {
             return None;
         }
         Some(r)
@@ -51,7 +53,14 @@ pub enum Axis {
 /// A formula after rows or columns were inserted (`count` positive) or deleted (`count` negative) at
 /// `at` on the sheet called `sheet`. `own_sheet` is the name of the sheet the formula is on, which is
 /// what a reference with no sheet means.
-pub fn adjusted(expr: &Expr, sheet: &str, own_sheet: &str, axis: Axis, at: u32, count: i64) -> Expr {
+pub fn adjusted(
+    expr: &Expr,
+    sheet: &str,
+    own_sheet: &str,
+    axis: Axis,
+    at: u32,
+    count: i64,
+) -> Expr {
     expr.map_refs(&mut |r| {
         let on = match &r.sheet {
             Some(name) => name.eq_ignore_ascii_case(sheet) && r.sheet_last.is_none(),
@@ -124,7 +133,14 @@ pub fn adjust_reference(r: &Reference, axis: Axis, at: u32, count: i64) -> Optio
 
 /// A formula after the cells `from` were moved to start at `to` on the same sheet, which is what cut and
 /// paste does to every reference that named them.
-pub fn moved(expr: &Expr, sheet: &str, own_sheet: &str, from: crate::coord::Range, rows: i64, cols: i64) -> Expr {
+pub fn moved(
+    expr: &Expr,
+    sheet: &str,
+    own_sheet: &str,
+    from: crate::coord::Range,
+    rows: i64,
+    cols: i64,
+) -> Expr {
     expr.map_refs(&mut |r| {
         let on = match &r.sheet {
             Some(name) => name.eq_ignore_ascii_case(sheet) && r.sheet_last.is_none(),

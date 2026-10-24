@@ -51,8 +51,22 @@ fn main() {
     s.set_input(0, at("D3"), "12.5%").unwrap();
     cases.push(("formats", s));
     let mut s = base();
-    s.set_style(0, &[Range::parse("A1:B1").unwrap()], &StyleChange::Font(FontEdit { bold: Some(true), color: Some(Color::rgb(0x1F, 0x4E, 0x79)), ..Default::default() })).unwrap();
-    s.set_style(0, &[Range::parse("A1:B1").unwrap()], &StyleChange::Fill(Some(Color::rgb(0xDD, 0xEB, 0xF7)))).unwrap();
+    s.set_style(
+        0,
+        &[Range::parse("A1:B1").unwrap()],
+        &StyleChange::Font(FontEdit {
+            bold: Some(true),
+            color: Some(Color::rgb(0x1F, 0x4E, 0x79)),
+            ..Default::default()
+        }),
+    )
+    .unwrap();
+    s.set_style(
+        0,
+        &[Range::parse("A1:B1").unwrap()],
+        &StyleChange::Fill(Some(Color::rgb(0xDD, 0xEB, 0xF7))),
+    )
+    .unwrap();
     cases.push(("styles", s));
     let mut s = base();
     s.set_input(0, at("A5"), "Merged").unwrap();
@@ -67,8 +81,20 @@ fn main() {
     s.set_note(0, at("A2"), Some("Green tea"), "Jason").unwrap();
     cases.push(("note", s));
     let mut s = base();
-    s.set_link(0, Range::parse("A5").unwrap(), Some(LinkTarget::External("https://example.com/".to_owned())), Some("Example".to_owned())).unwrap();
-    s.set_link(0, Range::parse("A6").unwrap(), Some(LinkTarget::Location("Sheet1!A1".to_owned())), Some("Top".to_owned())).unwrap();
+    s.set_link(
+        0,
+        Range::parse("A5").unwrap(),
+        Some(LinkTarget::External("https://example.com/".to_owned())),
+        Some("Example".to_owned()),
+    )
+    .unwrap();
+    s.set_link(
+        0,
+        Range::parse("A6").unwrap(),
+        Some(LinkTarget::Location("Sheet1!A1".to_owned())),
+        Some("Top".to_owned()),
+    )
+    .unwrap();
     cases.push(("links", s));
     let mut s = base();
     s.add_table(0, Range::parse("A1:B3").unwrap(), Some("Orders")).unwrap();

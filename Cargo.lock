@@ -6653,6 +6653,7 @@ dependencies = [
  "unluminous-git",
  "unluminous-jupyter",
  "unluminous-lsp",
+ "unluminous-sheet",
  "unluminous-terminal",
  "unluminous-voice",
  "ureq",

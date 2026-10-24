@@ -77,6 +77,7 @@ pub mod settings_kit;
 pub mod setup_dialog;
 pub mod signature;
 pub mod splitter;
+pub mod spreadsheet;
 pub mod status_bar;
 pub mod terminal_panel;
 pub mod text_menu;

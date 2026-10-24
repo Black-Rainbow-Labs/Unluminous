@@ -165,7 +165,10 @@ impl Range {
                 self.first.row.max(other.first.row),
                 self.first.col.max(other.first.col),
             ),
-            last: CellRef::new(self.last.row.min(other.last.row), self.last.col.min(other.last.col)),
+            last: CellRef::new(
+                self.last.row.min(other.last.row),
+                self.last.col.min(other.last.col),
+            ),
         })
     }
 
@@ -176,7 +179,10 @@ impl Range {
                 self.first.row.min(other.first.row),
                 self.first.col.min(other.first.col),
             ),
-            last: CellRef::new(self.last.row.max(other.last.row), self.last.col.max(other.last.col)),
+            last: CellRef::new(
+                self.last.row.max(other.last.row),
+                self.last.col.max(other.last.col),
+            ),
         }
     }
 
@@ -190,8 +196,9 @@ impl Range {
 
     /// Every cell, row by row.
     pub fn cells(&self) -> impl Iterator<Item = CellRef> + '_ {
-        (self.first.row..=self.last.row)
-            .flat_map(move |row| (self.first.col..=self.last.col).map(move |col| CellRef::new(row, col)))
+        (self.first.row..=self.last.row).flat_map(move |row| {
+            (self.first.col..=self.last.col).map(move |col| CellRef::new(row, col))
+        })
     }
 }
 
@@ -232,7 +239,16 @@ mod tests {
 
     #[test]
     fn column_names_go_from_a_to_xfd_and_back() {
-        for (col, name) in [(0, "A"), (25, "Z"), (26, "AA"), (51, "AZ"), (52, "BA"), (701, "ZZ"), (702, "AAA"), (16383, "XFD")] {
+        for (col, name) in [
+            (0, "A"),
+            (25, "Z"),
+            (26, "AA"),
+            (51, "AZ"),
+            (52, "BA"),
+            (701, "ZZ"),
+            (702, "AAA"),
+            (16383, "XFD"),
+        ] {
             assert_eq!(column_name(col), name);
             assert_eq!(column_number(name), Some(col));
         }

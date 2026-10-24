@@ -75,7 +75,12 @@ pub fn date(serial: f64, date1904: bool) -> Option<(i64, u32, u32)> {
 pub fn time(serial: f64) -> (u32, u32, u32, u32) {
     let fraction = serial - serial.floor();
     let ms = (fraction * 86_400_000.0).round() as u64 % 86_400_000;
-    ((ms / 3_600_000) as u32, (ms / 60_000 % 60) as u32, (ms / 1000 % 60) as u32, (ms % 1000) as u32)
+    (
+        (ms / 3_600_000) as u32,
+        (ms / 60_000 % 60) as u32,
+        (ms / 1000 % 60) as u32,
+        (ms % 1000) as u32,
+    )
 }
 
 /// The day of the week, 0 for Sunday.
@@ -115,10 +120,21 @@ pub fn days_in_month(year: i64, month: u32) -> u32 {
 }
 
 pub const MONTHS: [&str; 12] = [
-    "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
     "December",
 ];
-pub const DAYS: [&str; 7] = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+pub const DAYS: [&str; 7] =
+    ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 #[cfg(test)]
 mod tests {

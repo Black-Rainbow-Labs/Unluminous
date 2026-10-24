@@ -73,7 +73,9 @@ impl Criterion {
                 } else {
                     Target::Text(rest.to_owned())
                 };
-                let wildcard = matches!(target, Target::Text(_)) && matches!(op, Op::Eq | Op::Ne) && rest.contains(['*', '?', '~']);
+                let wildcard = matches!(target, Target::Text(_))
+                    && matches!(op, Op::Eq | Op::Ne)
+                    && rest.contains(['*', '?', '~']);
                 Self { op, target, wildcard }
             }
         }
@@ -100,7 +102,9 @@ impl Criterion {
             }),
             (Target::Text(_), Value::Empty) if self.op == Op::Eq => None,
             (Target::Bool(b), Value::Bool(c)) => Some(c.cmp(b)),
-            (Target::Error(e), Value::Error(c)) => Some(if e == c { Ordering::Equal } else { Ordering::Less }),
+            (Target::Error(e), Value::Error(c)) => {
+                Some(if e == c { Ordering::Equal } else { Ordering::Less })
+            }
             _ => None,
         };
         match (self.op, hit) {

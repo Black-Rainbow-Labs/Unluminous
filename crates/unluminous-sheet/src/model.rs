@@ -133,7 +133,10 @@ impl Table {
         let first = self.range.first.row + u32::from(self.header_row);
         let last = self.range.last.row.checked_sub(u32::from(self.totals_row))?;
         (first <= last).then(|| {
-            Range::new(CellRef::new(first, self.range.first.col), CellRef::new(last, self.range.last.col))
+            Range::new(
+                CellRef::new(first, self.range.first.col),
+                CellRef::new(last, self.range.last.col),
+            )
         })
     }
 }
@@ -355,6 +358,15 @@ impl ChartKind {
     }
 }
 
+/// A picture placed over the cells: where it sits and the package part holding its image.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Picture {
+    pub from: (CellRef, i64, i64),
+    pub to: (CellRef, i64, i64),
+    /// The image part's path, such as `xl/media/image1.png`, whose bytes are in [`Kept::parts`].
+    pub part: String,
+}
+
 /// One series of a chart: formulas for its name, categories and values.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChartSeries {
@@ -381,6 +393,8 @@ pub struct Sheet {
     pub links: Vec<Hyperlink>,
     pub filter: Option<AutoFilter>,
     pub charts: Vec<Chart>,
+    /// Pictures a drawing places over the cells, read for drawing; their parts are kept.
+    pub pictures: Vec<Picture>,
     pub state: Visibility,
     pub tab_color: Option<crate::styles::Color>,
     pub zoom: u32,
@@ -458,7 +472,13 @@ pub struct SheetRaw {
 
 impl Sheet {
     pub fn new(name: impl Into<String>) -> Self {
-        Self { name: name.into(), zoom: 100, show_grid: true, default_row_height: 14.25, ..Default::default() }
+        Self {
+            name: name.into(),
+            zoom: 100,
+            show_grid: true,
+            default_row_height: 14.25,
+            ..Default::default()
+        }
     }
 
     pub fn cell(&self, at: CellRef) -> Option<&Cell> {
@@ -503,7 +523,8 @@ impl Sheet {
             first_row = first_row.min(row);
             first_col = first_col.min(col);
         }
-        last_row.map(|row| Range::new(CellRef::new(first_row, first_col), CellRef::new(row, last_col)))
+        last_row
+            .map(|row| Range::new(CellRef::new(first_row, first_col), CellRef::new(row, last_col)))
     }
 
     /// The column info covering a column, if any.
@@ -560,7 +581,11 @@ impl Sheet {
             change(target);
         }
         infos.retain(|info| {
-            info.width.is_some() || info.hidden || info.style != 0 || info.outline != 0 || info.collapsed
+            info.width.is_some()
+                || info.hidden
+                || info.style != 0
+                || info.outline != 0
+                || info.collapsed
         });
         self.columns = infos;
     }
@@ -582,7 +607,10 @@ impl Workbook {
 
     /// The name a new sheet gets: `Sheet2`, `Sheet3` and so on, skipping names in use.
     pub fn next_sheet_name(&self) -> String {
-        (1..).map(|n| format!("Sheet{n}")).find(|name| self.sheet_index(name).is_none()).unwrap_or_default()
+        (1..)
+            .map(|n| format!("Sheet{n}"))
+            .find(|name| self.sheet_index(name).is_none())
+            .unwrap_or_default()
     }
 
     /// The defined name visible from `sheet`, preferring the sheet's own.
@@ -590,7 +618,9 @@ impl Workbook {
         self.names
             .iter()
             .find(|n| n.scope == Some(sheet) && n.name.eq_ignore_ascii_case(name))
-            .or_else(|| self.names.iter().find(|n| n.scope.is_none() && n.name.eq_ignore_ascii_case(name)))
+            .or_else(|| {
+                self.names.iter().find(|n| n.scope.is_none() && n.name.eq_ignore_ascii_case(name))
+            })
     }
 
     pub fn table(&self, name: &str) -> Option<&Table> {

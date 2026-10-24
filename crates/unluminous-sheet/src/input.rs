@@ -22,7 +22,10 @@ pub fn read(text: &str, date1904: bool, this_year: i64) -> Typed {
     }
     let trimmed = text.trim();
     if trimmed.is_empty() {
-        return Typed { value: if text.is_empty() { Value::Empty } else { Value::text(text) }, format: None };
+        return Typed {
+            value: if text.is_empty() { Value::Empty } else { Value::text(text) },
+            format: None,
+        };
     }
     match trimmed.to_ascii_uppercase().as_str() {
         "TRUE" => return Typed { value: Value::Bool(true), format: None },
@@ -117,7 +120,9 @@ fn plain_number(text: &str) -> Option<(f64, Option<&'static str>)> {
     if digits.is_empty() && decimals.is_none_or(str::is_empty) {
         return None;
     }
-    if !digits.chars().all(|c| c.is_ascii_digit()) || decimals.is_some_and(|d| !d.chars().all(|c| c.is_ascii_digit())) {
+    if !digits.chars().all(|c| c.is_ascii_digit())
+        || decimals.is_some_and(|d| !d.chars().all(|c| c.is_ascii_digit()))
+    {
         return None;
     }
     if let Some(e) = exponent {
@@ -127,7 +132,12 @@ fn plain_number(text: &str) -> Option<(f64, Option<&'static str>)> {
             return None;
         }
     }
-    let literal = format!("{}{}{}", if digits.is_empty() { "0" } else { &digits }, decimals.map(|d| format!(".{d}")).unwrap_or_default(), exponent.map(|e| format!("e{e}")).unwrap_or_default());
+    let literal = format!(
+        "{}{}{}",
+        if digits.is_empty() { "0" } else { &digits },
+        decimals.map(|d| format!(".{d}")).unwrap_or_default(),
+        exponent.map(|e| format!("e{e}")).unwrap_or_default()
+    );
     let mut n = parse_literal(&literal)?;
     if negative {
         n = -n;
@@ -137,7 +147,11 @@ fn plain_number(text: &str) -> Option<(f64, Option<&'static str>)> {
         n /= 100.0;
         Some(if has_decimals { "0.00%" } else { "0%" })
     } else if currency {
-        Some(if has_decimals { "\"$\"#,##0.00_);\\(\"$\"#,##0.00\\)" } else { "\"$\"#,##0_);\\(\"$\"#,##0\\)" })
+        Some(if has_decimals {
+            "\"$\"#,##0.00_);\\(\"$\"#,##0.00\\)"
+        } else {
+            "\"$\"#,##0_);\\(\"$\"#,##0\\)"
+        })
     } else if exponent.is_some() {
         Some("0.00E+00")
     } else if grouped {
@@ -160,7 +174,10 @@ fn fraction(text: &str) -> Option<(f64, Option<&'static str>)> {
         return None;
     }
     let value = whole + top / bottom;
-    Some((if negative { -value } else { value }, Some(if bottom >= 10.0 { "# ??/??" } else { "# ?/?" })))
+    Some((
+        if negative { -value } else { value },
+        Some(if bottom >= 10.0 { "# ??/??" } else { "# ?/?" }),
+    ))
 }
 
 fn month_number(name: &str) -> Option<u32> {
@@ -168,7 +185,10 @@ fn month_number(name: &str) -> Option<u32> {
     if lower.len() < 3 {
         return None;
     }
-    dates::MONTHS.iter().position(|m| m.to_ascii_lowercase().starts_with(&lower)).map(|i| i as u32 + 1)
+    dates::MONTHS
+        .iter()
+        .position(|m| m.to_ascii_lowercase().starts_with(&lower))
+        .map(|i| i as u32 + 1)
 }
 
 /// A date, a time, or both.
@@ -198,7 +218,14 @@ fn split_time(text: &str) -> (&str, Option<&str>) {
     let mut start = None;
     let mut at = 0;
     for token in text.split(' ') {
-        if token.contains(':') || token.ends_with("am") || token.ends_with("pm") || token == "am" || token == "pm" || token == "a" || token == "p" {
+        if token.contains(':')
+            || token.ends_with("am")
+            || token.ends_with("pm")
+            || token == "am"
+            || token == "pm"
+            || token == "a"
+            || token == "p"
+        {
             if token.contains(':') || token.chars().next().is_some_and(|c| c.is_ascii_digit()) {
                 start = Some(at);
                 break;
@@ -222,18 +249,20 @@ fn split_time(text: &str) -> (&str, Option<&str>) {
 /// `14:30`, `2:30 pm`, `14:30:15.5`, `2 pm`. Answers the fraction of a day and its format.
 fn parse_time(text: &str) -> Option<(f64, &'static str)> {
     let text = text.trim();
-    let (clock, meridiem) = if let Some(rest) = text.strip_suffix("am").or_else(|| text.strip_suffix(" a")) {
-        (rest.trim(), Some(false))
-    } else if let Some(rest) = text.strip_suffix("pm").or_else(|| text.strip_suffix(" p")) {
-        (rest.trim(), Some(true))
-    } else {
-        (text, None)
-    };
+    let (clock, meridiem) =
+        if let Some(rest) = text.strip_suffix("am").or_else(|| text.strip_suffix(" a")) {
+            (rest.trim(), Some(false))
+        } else if let Some(rest) = text.strip_suffix("pm").or_else(|| text.strip_suffix(" p")) {
+            (rest.trim(), Some(true))
+        } else {
+            (text, None)
+        };
     let parts: Vec<&str> = clock.split(':').collect();
     if parts.is_empty() || parts.len() > 3 || parts.iter().any(|p| p.is_empty()) {
         return None;
     }
-    let mut hours: f64 = parts[0].parse().ok().filter(|_| parts[0].chars().all(|c| c.is_ascii_digit()))?;
+    let mut hours: f64 =
+        parts[0].parse().ok().filter(|_| parts[0].chars().all(|c| c.is_ascii_digit()))?;
     let minutes: f64 = match parts.get(1) {
         Some(m) if m.chars().all(|c| c.is_ascii_digit()) => m.parse().ok()?,
         Some(_) => return None,
@@ -290,7 +319,9 @@ fn parse_date(text: &str, date1904: bool, this_year: i64) -> Option<(f64, &'stat
             _ => return None,
         })
     };
-    let number = |s: &str| -> Option<i64> { s.chars().all(|c| c.is_ascii_digit()).then(|| s.parse().ok()).flatten() };
+    let number = |s: &str| -> Option<i64> {
+        s.chars().all(|c| c.is_ascii_digit()).then(|| s.parse().ok()).flatten()
+    };
     let make = |y: i64, m: i64, d: i64, format: &'static str| -> Option<(f64, &'static str)> {
         if !(1..=12).contains(&m) || d < 1 || d > dates::days_in_month(y, m as u32) as i64 {
             return None;
@@ -334,12 +365,21 @@ fn parse_date(text: &str, date1904: bool, this_year: i64) -> Option<(f64, &'stat
         return None;
     }
     // Oct 23, 2026 / October 23 2026 / 23 October 2026 / October 2026.
-    let words: Vec<&str> = text.split(|c: char| c == ' ' || c == ',').filter(|w| !w.is_empty()).collect();
+    let words: Vec<&str> =
+        text.split(|c: char| c == ' ' || c == ',').filter(|w| !w.is_empty()).collect();
     match words.as_slice() {
-        [m, d, y] if month_number(m).is_some() => make(year_of(y)?, month_number(m)? as i64, number(d)?, "d-mmm-yy"),
-        [d, m, y] if month_number(m).is_some() => make(year_of(y)?, month_number(m)? as i64, number(d)?, "d-mmm-yy"),
-        [m, d] if month_number(m).is_some() && d.len() <= 2 => make(this_year, month_number(m)? as i64, number(d)?, "d-mmm"),
-        [m, y] if month_number(m).is_some() && y.len() == 4 => make(year_of(y)?, month_number(m)? as i64, 1, "mmm-yy"),
+        [m, d, y] if month_number(m).is_some() => {
+            make(year_of(y)?, month_number(m)? as i64, number(d)?, "d-mmm-yy")
+        }
+        [d, m, y] if month_number(m).is_some() => {
+            make(year_of(y)?, month_number(m)? as i64, number(d)?, "d-mmm-yy")
+        }
+        [m, d] if month_number(m).is_some() && d.len() <= 2 => {
+            make(this_year, month_number(m)? as i64, number(d)?, "d-mmm")
+        }
+        [m, y] if month_number(m).is_some() && y.len() == 4 => {
+            make(year_of(y)?, month_number(m)? as i64, 1, "mmm-yy")
+        }
         _ => None,
     }
 }

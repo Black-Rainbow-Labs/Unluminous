@@ -56,8 +56,10 @@ impl Reference {
     }
 
     pub fn from_range(range: Range, sheet: Option<Arc<str>>) -> Self {
-        let first = Point { row: range.first.row, col: range.first.col, row_abs: false, col_abs: false };
-        let last = Point { row: range.last.row, col: range.last.col, row_abs: false, col_abs: false };
+        let first =
+            Point { row: range.first.row, col: range.first.col, row_abs: false, col_abs: false };
+        let last =
+            Point { row: range.last.row, col: range.last.col, row_abs: false, col_abs: false };
         let shape = if range.first == range.last {
             Shape::Cell
         } else if range.is_whole_columns() {
@@ -192,9 +194,12 @@ impl Expr {
         visit(self);
         match self {
             Expr::Array(rows) => rows.iter().flatten().for_each(|e| e.walk(visit)),
-            Expr::Neg(e) | Expr::Plus(e) | Expr::Percent(e) | Expr::Spill(e) | Expr::Implicit(e) | Expr::Paren(e) => {
-                e.walk(visit)
-            }
+            Expr::Neg(e)
+            | Expr::Plus(e)
+            | Expr::Percent(e)
+            | Expr::Spill(e)
+            | Expr::Implicit(e)
+            | Expr::Paren(e) => e.walk(visit),
             Expr::Binary(_, a, b) | Expr::Intersect(a, b) => {
                 a.walk(visit);
                 b.walk(visit);
@@ -284,7 +289,14 @@ impl Formula {
     /// Parse text exactly as it stands, keeping it as the formula's text: what reading a file does.
     pub fn parse_kept(text: &str) -> Result<Self, String> {
         let expr = super::parser::parse(text)?;
-        Ok(Self { text: Arc::from(text), expr: Arc::new(expr), dynamic: true, array: None, array_member: None, frozen: false })
+        Ok(Self {
+            text: Arc::from(text),
+            expr: Arc::new(expr),
+            dynamic: true,
+            array: None,
+            array_member: None,
+            frozen: false,
+        })
     }
 
     /// A formula from a tree, printing the text.

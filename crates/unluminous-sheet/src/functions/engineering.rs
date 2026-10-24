@@ -5,23 +5,53 @@ use crate::eval::Ctx;
 use crate::value::{ErrorKind, Value};
 
 pub const FUNCTIONS: &[Function] = &[
-    s("DEC2BIN", 1, 2, "number, [places]", "A decimal number in binary.", |ctx, a| from_decimal(ctx, a, 2)),
-    s("DEC2OCT", 1, 2, "number, [places]", "A decimal number in octal.", |ctx, a| from_decimal(ctx, a, 8)),
-    s("DEC2HEX", 1, 2, "number, [places]", "A decimal number in hexadecimal.", |ctx, a| from_decimal(ctx, a, 16)),
-    s("BIN2DEC", 1, 1, "number", "A binary number in decimal.", |_, a| to_decimal(&a[0], 2).map(Value::Number)),
-    s("OCT2DEC", 1, 1, "number", "An octal number in decimal.", |_, a| to_decimal(&a[0], 8).map(Value::Number)),
-    s("HEX2DEC", 1, 1, "number", "A hexadecimal number in decimal.", |_, a| to_decimal(&a[0], 16).map(Value::Number)),
-    s("BIN2OCT", 1, 2, "number, [places]", "A binary number in octal.", |ctx, a| convert(ctx, a, 2, 8)),
-    s("BIN2HEX", 1, 2, "number, [places]", "A binary number in hexadecimal.", |ctx, a| convert(ctx, a, 2, 16)),
-    s("OCT2BIN", 1, 2, "number, [places]", "An octal number in binary.", |ctx, a| convert(ctx, a, 8, 2)),
-    s("OCT2HEX", 1, 2, "number, [places]", "An octal number in hexadecimal.", |ctx, a| convert(ctx, a, 8, 16)),
-    s("HEX2BIN", 1, 2, "number, [places]", "A hexadecimal number in binary.", |ctx, a| convert(ctx, a, 16, 2)),
-    s("HEX2OCT", 1, 2, "number, [places]", "A hexadecimal number in octal.", |ctx, a| convert(ctx, a, 16, 8)),
+    s("DEC2BIN", 1, 2, "number, [places]", "A decimal number in binary.", |ctx, a| {
+        from_decimal(ctx, a, 2)
+    }),
+    s("DEC2OCT", 1, 2, "number, [places]", "A decimal number in octal.", |ctx, a| {
+        from_decimal(ctx, a, 8)
+    }),
+    s("DEC2HEX", 1, 2, "number, [places]", "A decimal number in hexadecimal.", |ctx, a| {
+        from_decimal(ctx, a, 16)
+    }),
+    s("BIN2DEC", 1, 1, "number", "A binary number in decimal.", |_, a| {
+        to_decimal(&a[0], 2).map(Value::Number)
+    }),
+    s("OCT2DEC", 1, 1, "number", "An octal number in decimal.", |_, a| {
+        to_decimal(&a[0], 8).map(Value::Number)
+    }),
+    s("HEX2DEC", 1, 1, "number", "A hexadecimal number in decimal.", |_, a| {
+        to_decimal(&a[0], 16).map(Value::Number)
+    }),
+    s("BIN2OCT", 1, 2, "number, [places]", "A binary number in octal.", |ctx, a| {
+        convert(ctx, a, 2, 8)
+    }),
+    s("BIN2HEX", 1, 2, "number, [places]", "A binary number in hexadecimal.", |ctx, a| {
+        convert(ctx, a, 2, 16)
+    }),
+    s("OCT2BIN", 1, 2, "number, [places]", "An octal number in binary.", |ctx, a| {
+        convert(ctx, a, 8, 2)
+    }),
+    s("OCT2HEX", 1, 2, "number, [places]", "An octal number in hexadecimal.", |ctx, a| {
+        convert(ctx, a, 8, 16)
+    }),
+    s("HEX2BIN", 1, 2, "number, [places]", "A hexadecimal number in binary.", |ctx, a| {
+        convert(ctx, a, 16, 2)
+    }),
+    s("HEX2OCT", 1, 2, "number, [places]", "A hexadecimal number in octal.", |ctx, a| {
+        convert(ctx, a, 16, 8)
+    }),
     s("BITAND", 2, 2, "number1, number2", "Bitwise AND.", |ctx, a| bits(ctx, a, |x, y| x & y)),
     s("BITOR", 2, 2, "number1, number2", "Bitwise OR.", |ctx, a| bits(ctx, a, |x, y| x | y)),
-    s("BITXOR", 2, 2, "number1, number2", "Bitwise exclusive OR.", |ctx, a| bits(ctx, a, |x, y| x ^ y)),
-    s("BITLSHIFT", 2, 2, "number, shift_amount", "A number shifted left by bits.", |ctx, a| shift(ctx, a, true)),
-    s("BITRSHIFT", 2, 2, "number, shift_amount", "A number shifted right by bits.", |ctx, a| shift(ctx, a, false)),
+    s("BITXOR", 2, 2, "number1, number2", "Bitwise exclusive OR.", |ctx, a| {
+        bits(ctx, a, |x, y| x ^ y)
+    }),
+    s("BITLSHIFT", 2, 2, "number, shift_amount", "A number shifted left by bits.", |ctx, a| {
+        shift(ctx, a, true)
+    }),
+    s("BITRSHIFT", 2, 2, "number, shift_amount", "A number shifted right by bits.", |ctx, a| {
+        shift(ctx, a, false)
+    }),
     s("DELTA", 1, 2, "number1, [number2]", "1 when two numbers are equal.", |ctx, a| {
         let x = num(ctx, &a[0])?;
         let y = super::opt_num(ctx, a, 1, 0.0)?;
@@ -82,7 +112,11 @@ fn to_base(mut n: u64, base: u32) -> String {
     }
     let mut out = Vec::new();
     while n > 0 {
-        out.push(std::char::from_digit((n % base as u64) as u32, base).unwrap_or('0').to_ascii_uppercase());
+        out.push(
+            std::char::from_digit((n % base as u64) as u32, base)
+                .unwrap_or('0')
+                .to_ascii_uppercase(),
+        );
         n /= base as u64;
     }
     out.iter().rev().collect()
@@ -226,10 +260,34 @@ const UNITS: &[(&str, &str, f64)] = &[
 ];
 
 const PREFIXES: &[(&str, f64)] = &[
-    ("Y", 1e24), ("Z", 1e21), ("E", 1e18), ("P", 1e15), ("T", 1e12), ("G", 1e9), ("M", 1e6), ("k", 1e3), ("h", 1e2), ("da", 1e1),
-    ("d", 1e-1), ("c", 1e-2), ("m", 1e-3), ("u", 1e-6), ("n", 1e-9), ("p", 1e-12), ("f", 1e-15), ("a", 1e-18), ("z", 1e-21), ("y", 1e-24),
-    ("ki", 1024.0), ("Mi", 1_048_576.0), ("Gi", 1_073_741_824.0), ("Ti", 1_099_511_627_776.0), ("Pi", 1_125_899_906_842_624.0),
-    ("Ei", 1_152_921_504_606_846_976.0), ("Zi", 1_180_591_620_717_411_303_424.0), ("Yi", 1_208_925_819_614_629_174_706_176.0),
+    ("Y", 1e24),
+    ("Z", 1e21),
+    ("E", 1e18),
+    ("P", 1e15),
+    ("T", 1e12),
+    ("G", 1e9),
+    ("M", 1e6),
+    ("k", 1e3),
+    ("h", 1e2),
+    ("da", 1e1),
+    ("d", 1e-1),
+    ("c", 1e-2),
+    ("m", 1e-3),
+    ("u", 1e-6),
+    ("n", 1e-9),
+    ("p", 1e-12),
+    ("f", 1e-15),
+    ("a", 1e-18),
+    ("z", 1e-21),
+    ("y", 1e-24),
+    ("ki", 1024.0),
+    ("Mi", 1_048_576.0),
+    ("Gi", 1_073_741_824.0),
+    ("Ti", 1_099_511_627_776.0),
+    ("Pi", 1_125_899_906_842_624.0),
+    ("Ei", 1_152_921_504_606_846_976.0),
+    ("Zi", 1_180_591_620_717_411_303_424.0),
+    ("Yi", 1_208_925_819_614_629_174_706_176.0),
 ];
 
 /// A unit's kind and factor, reading a metric prefix where the unit itself is not known.
@@ -241,7 +299,13 @@ fn unit(name: &str) -> Option<(&'static str, f64)> {
         if let Some(rest) = name.strip_prefix(prefix) {
             if let Some((_, kind, factor)) = UNITS.iter().find(|(n, ..)| *n == rest) {
                 // Squared and cubed units take the prefix squared or cubed.
-                let power = if rest.ends_with('2') { 2 } else if rest.ends_with('3') { 3 } else { 1 };
+                let power = if rest.ends_with('2') {
+                    2
+                } else if rest.ends_with('3') {
+                    3
+                } else {
+                    1
+                };
                 return Some((kind, factor * scale.powi(power)));
             }
         }

@@ -13,28 +13,122 @@ use crate::formula::Expr;
 use crate::value::{Array, ErrorKind, Value};
 
 pub const FUNCTIONS: &[Function] = &[
-    r("IF", 1, 3, "logical_test, [value_if_true], [value_if_false]", "One value if a test is true and another if it is false.", if_fn),
-    r("IFS", 2, MANY, "logical_test1, value_if_true1, ...", "The value for the first test that is true.", ifs),
-    r("IFERROR", 2, 2, "value, value_if_error", "A value, or another one when it is an error.", |ctx, a| if_error(ctx, a, false)),
-    r("IFNA", 2, 2, "value, value_if_na", "A value, or another one when it is #N/A.", |ctx, a| if_error(ctx, a, true)),
-    r("AND", 1, MANY, "logical1, [logical2], ...", "TRUE when every argument is true.", |ctx, a| logicals(ctx, a, |t, n| t == n)),
-    r("OR", 1, MANY, "logical1, [logical2], ...", "TRUE when any argument is true.", |ctx, a| logicals(ctx, a, |t, _| t > 0)),
-    r("XOR", 1, MANY, "logical1, [logical2], ...", "TRUE when an odd number of arguments are true.", |ctx, a| logicals(ctx, a, |t, _| t % 2 == 1)),
-    s("NOT", 1, 1, "logical", "The opposite of a logical.", |_, a| to_bool(&a[0]).map(|b| Value::Bool(!b))),
+    r(
+        "IF",
+        1,
+        3,
+        "logical_test, [value_if_true], [value_if_false]",
+        "One value if a test is true and another if it is false.",
+        if_fn,
+    ),
+    r(
+        "IFS",
+        2,
+        MANY,
+        "logical_test1, value_if_true1, ...",
+        "The value for the first test that is true.",
+        ifs,
+    ),
+    r(
+        "IFERROR",
+        2,
+        2,
+        "value, value_if_error",
+        "A value, or another one when it is an error.",
+        |ctx, a| if_error(ctx, a, false),
+    ),
+    r("IFNA", 2, 2, "value, value_if_na", "A value, or another one when it is #N/A.", |ctx, a| {
+        if_error(ctx, a, true)
+    }),
+    r(
+        "AND",
+        1,
+        MANY,
+        "logical1, [logical2], ...",
+        "TRUE when every argument is true.",
+        |ctx, a| logicals(ctx, a, |t, n| t == n),
+    ),
+    r("OR", 1, MANY, "logical1, [logical2], ...", "TRUE when any argument is true.", |ctx, a| {
+        logicals(ctx, a, |t, _| t > 0)
+    }),
+    r(
+        "XOR",
+        1,
+        MANY,
+        "logical1, [logical2], ...",
+        "TRUE when an odd number of arguments are true.",
+        |ctx, a| logicals(ctx, a, |t, _| t % 2 == 1),
+    ),
+    s("NOT", 1, 1, "logical", "The opposite of a logical.", |_, a| {
+        to_bool(&a[0]).map(|b| Value::Bool(!b))
+    }),
     s("TRUE", 0, 0, "", "The logical value TRUE.", |_, _| Ok(Value::Bool(true))),
     s("FALSE", 0, 0, "", "The logical value FALSE.", |_, _| Ok(Value::Bool(false))),
-    r("SWITCH", 3, MANY, "expression, value1, result1, ..., [default]", "The result for the first value that matches.", switch),
-    r("LET", 3, MANY, "name1, value1, ..., calculation", "Names values to use in a calculation.", let_fn),
-    r("LAMBDA", 1, MANY, "[parameter1, ...], calculation", "A function made from a calculation.", lambda),
+    r(
+        "SWITCH",
+        3,
+        MANY,
+        "expression, value1, result1, ..., [default]",
+        "The result for the first value that matches.",
+        switch,
+    ),
+    r(
+        "LET",
+        3,
+        MANY,
+        "name1, value1, ..., calculation",
+        "Names values to use in a calculation.",
+        let_fn,
+    ),
+    r(
+        "LAMBDA",
+        1,
+        MANY,
+        "[parameter1, ...], calculation",
+        "A function made from a calculation.",
+        lambda,
+    ),
     r("ISOMITTED", 1, 1, "argument", "TRUE when a LAMBDA's argument was left out.", |ctx, a| {
         Val::Value(Value::Bool(matches!(ctx.eval(&a[0]), Val::Refs(ref areas) if areas.is_empty())))
     }),
-    r("MAP", 2, MANY, "array1, [array2, ...], lambda", "A LAMBDA applied to each value of arrays.", map),
-    r("REDUCE", 3, 3, "initial_value, array, lambda", "An array reduced to one value by a LAMBDA.", |ctx, a| fold(ctx, a, false)),
-    r("SCAN", 3, 3, "initial_value, array, lambda", "Every step of reducing an array with a LAMBDA.", |ctx, a| fold(ctx, a, true)),
-    r("BYROW", 2, 2, "array, lambda", "A LAMBDA applied to each row, as a column.", |ctx, a| by(ctx, a, true)),
-    r("BYCOL", 2, 2, "array, lambda", "A LAMBDA applied to each column, as a row.", |ctx, a| by(ctx, a, false)),
-    r("MAKEARRAY", 3, 3, "rows, columns, lambda", "An array made by calling a LAMBDA with each row and column number.", make_array),
+    r(
+        "MAP",
+        2,
+        MANY,
+        "array1, [array2, ...], lambda",
+        "A LAMBDA applied to each value of arrays.",
+        map,
+    ),
+    r(
+        "REDUCE",
+        3,
+        3,
+        "initial_value, array, lambda",
+        "An array reduced to one value by a LAMBDA.",
+        |ctx, a| fold(ctx, a, false),
+    ),
+    r(
+        "SCAN",
+        3,
+        3,
+        "initial_value, array, lambda",
+        "Every step of reducing an array with a LAMBDA.",
+        |ctx, a| fold(ctx, a, true),
+    ),
+    r("BYROW", 2, 2, "array, lambda", "A LAMBDA applied to each row, as a column.", |ctx, a| {
+        by(ctx, a, true)
+    }),
+    r("BYCOL", 2, 2, "array, lambda", "A LAMBDA applied to each column, as a row.", |ctx, a| {
+        by(ctx, a, false)
+    }),
+    r(
+        "MAKEARRAY",
+        3,
+        3,
+        "rows, columns, lambda",
+        "An array made by calling a LAMBDA with each row and column number.",
+        make_array,
+    ),
 ];
 
 fn if_fn(ctx: &mut Ctx, args: &[Expr]) -> Val {
@@ -105,7 +199,13 @@ fn if_error(ctx: &mut Ctx, args: &[Expr], only_na: bool) -> Val {
         }
         _ => {
             let fallback = ctx.eval(&args[1]);
-            ctx.lift_vals(vec![value, fallback], |_, v| if caught(&v[0]) { v[1].clone() } else { v[0].clone() })
+            ctx.lift_vals(vec![value, fallback], |_, v| {
+                if caught(&v[0]) {
+                    v[1].clone()
+                } else {
+                    v[0].clone()
+                }
+            })
         }
     }
 }
@@ -154,7 +254,9 @@ fn switch(ctx: &mut Ctx, args: &[Expr]) -> Val {
         }
         let candidate = ctx.eval(&pair[0]);
         let candidate = ctx.single(candidate);
-        if crate::eval::equal(&value, &candidate) && !matches!((&value, &candidate), (Value::Empty, Value::Text(_))) {
+        if crate::eval::equal(&value, &candidate)
+            && !matches!((&value, &candidate), (Value::Empty, Value::Text(_)))
+        {
             return ctx.eval(&pair[1]);
         }
     }
@@ -187,7 +289,11 @@ fn lambda(ctx: &mut Ctx, args: &[Expr]) -> Val {
             _ => return Val::error(ErrorKind::Value),
         }
     }
-    Val::Lambda(Arc::new(Lambda { params, body: Arc::new(args[args.len() - 1].clone()), scope: ctx.scope.clone() }))
+    Val::Lambda(Arc::new(Lambda {
+        params,
+        body: Arc::new(args[args.len() - 1].clone()),
+        scope: ctx.scope.clone(),
+    }))
 }
 
 fn lambda_arg(ctx: &mut Ctx, expr: &Expr) -> Result<Arc<Lambda>, ErrorKind> {
@@ -297,7 +403,13 @@ fn make_array(ctx: &mut Ctx, args: &[Expr]) -> Val {
     let mut data = Vec::with_capacity(rows * cols);
     for r in 0..rows {
         for c in 0..cols {
-            let v = ctx.invoke_with(&f, vec![Val::Value(Value::Number(r as f64 + 1.0)), Val::Value(Value::Number(c as f64 + 1.0))]);
+            let v = ctx.invoke_with(
+                &f,
+                vec![
+                    Val::Value(Value::Number(r as f64 + 1.0)),
+                    Val::Value(Value::Number(c as f64 + 1.0)),
+                ],
+            );
             data.push(ctx.single(v));
         }
     }

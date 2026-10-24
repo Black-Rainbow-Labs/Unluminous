@@ -22,7 +22,10 @@ fn u16_at(bytes: &[u8], at: usize) -> Result<u16, String> {
 }
 
 fn u32_at(bytes: &[u8], at: usize) -> Result<u32, String> {
-    bytes.get(at..at + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]])).ok_or_else(truncated)
+    bytes
+        .get(at..at + 4)
+        .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+        .ok_or_else(truncated)
 }
 
 fn truncated() -> String {
@@ -44,7 +47,10 @@ pub fn read(bytes: &[u8]) -> Result<Vec<Entry>, String> {
     let directory_size = u32_at(bytes, end + 12)? as usize;
     let directory_at = u32_at(bytes, end + 16)? as usize;
     if count == 0xFFFF || directory_at == 0xFFFF_FFFF {
-        return Err("the file is a zip64 archive, which no workbook needs and this version does not read".to_owned());
+        return Err(
+            "the file is a zip64 archive, which no workbook needs and this version does not read"
+                .to_owned(),
+        );
     }
     // A stub before the archive moves every offset by the same amount.
     let shift = end.checked_sub(directory_at + directory_size).unwrap_or(0);
@@ -73,19 +79,23 @@ pub fn read(bytes: &[u8]) -> Result<Vec<Entry>, String> {
         if u32_at(bytes, local)? != LOCAL {
             return Err(format!("the zip entry for {name} is damaged"));
         }
-        let data_at = local + 30 + u16_at(bytes, local + 26)? as usize + u16_at(bytes, local + 28)? as usize;
+        let data_at =
+            local + 30 + u16_at(bytes, local + 26)? as usize + u16_at(bytes, local + 28)? as usize;
         let raw = bytes.get(data_at..data_at + compressed).ok_or_else(truncated)?;
-        let data = match method {
-            0 => raw.to_vec(),
-            8 => {
-                let mut out = Vec::with_capacity(size);
-                flate2::read::DeflateDecoder::new(raw)
-                    .read_to_end(&mut out)
-                    .map_err(|problem| format!("{name} could not be decompressed: {problem}"))?;
-                out
-            }
-            other => return Err(format!("{name} is compressed with method {other}, which this version does not read")),
-        };
+        let data =
+            match method {
+                0 => raw.to_vec(),
+                8 => {
+                    let mut out = Vec::with_capacity(size);
+                    flate2::read::DeflateDecoder::new(raw).read_to_end(&mut out).map_err(
+                        |problem| format!("{name} could not be decompressed: {problem}"),
+                    )?;
+                    out
+                }
+                other => return Err(format!(
+                    "{name} is compressed with method {other}, which this version does not read"
+                )),
+            };
         if name.ends_with('/') {
             continue;
         }
@@ -105,11 +115,13 @@ pub fn write(entries: &[Entry]) -> Result<Vec<u8>, String> {
         let mut crc = crc32fast::Hasher::new();
         crc.update(&entry.data);
         let crc = crc.finalize();
-        let mut encoder = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+        let mut encoder =
+            flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
         encoder.write_all(&entry.data).map_err(|problem| problem.to_string())?;
         let compressed = encoder.finish().map_err(|problem| problem.to_string())?;
         if compressed.len() > u32::MAX as usize || out.len() > u32::MAX as usize {
-            return Err("the workbook is larger than 4 GB, which a zip without zip64 cannot hold".to_owned());
+            return Err("the workbook is larger than 4 GB, which a zip without zip64 cannot hold"
+                .to_owned());
         }
         let offset = out.len() as u32;
         let name = entry.name.as_bytes();
@@ -164,7 +176,10 @@ mod tests {
     fn what_is_written_reads_back_the_same() {
         let entries = vec![
             Entry { name: "[Content_Types].xml".to_owned(), data: b"<Types/>".to_vec() },
-            Entry { name: "xl/worksheets/sheet1.xml".to_owned(), data: "é".repeat(10_000).into_bytes() },
+            Entry {
+                name: "xl/worksheets/sheet1.xml".to_owned(),
+                data: "é".repeat(10_000).into_bytes(),
+            },
             Entry { name: "empty".to_owned(), data: Vec::new() },
         ];
         let bytes = write(&entries).unwrap();

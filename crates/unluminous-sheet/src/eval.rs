@@ -193,10 +193,14 @@ impl<'a> Ctx<'a> {
             Expr::Binary(BinOp::Range, a, b) => {
                 let (a, b) = (self.eval(a), self.eval(b));
                 match (a, b) {
-                    (Val::Ref(x), Val::Ref(y)) if x.sheet == y.sheet && !x.is_3d() && !y.is_3d() => {
+                    (Val::Ref(x), Val::Ref(y))
+                        if x.sheet == y.sheet && !x.is_3d() && !y.is_3d() =>
+                    {
                         Val::Ref(Area::new(x.sheet, x.range.union(&y.range)))
                     }
-                    (Val::Value(Value::Error(e)), _) | (_, Val::Value(Value::Error(e))) => Val::error(e),
+                    (Val::Value(Value::Error(e)), _) | (_, Val::Value(Value::Error(e))) => {
+                        Val::error(e)
+                    }
                     _ => Val::error(ErrorKind::Value),
                 }
             }
@@ -235,11 +239,15 @@ impl<'a> Ctx<'a> {
             Expr::Intersect(a, b) => {
                 let (a, b) = (self.eval(a), self.eval(b));
                 match (a, b) {
-                    (Val::Ref(x), Val::Ref(y)) if x.sheet == y.sheet => match x.range.intersection(&y.range) {
-                        Some(r) => Val::Ref(Area::new(x.sheet, r)),
-                        None => Val::error(ErrorKind::Null),
-                    },
-                    (Val::Value(Value::Error(e)), _) | (_, Val::Value(Value::Error(e))) => Val::error(e),
+                    (Val::Ref(x), Val::Ref(y)) if x.sheet == y.sheet => {
+                        match x.range.intersection(&y.range) {
+                            Some(r) => Val::Ref(Area::new(x.sheet, r)),
+                            None => Val::error(ErrorKind::Null),
+                        }
+                    }
+                    (Val::Value(Value::Error(e)), _) | (_, Val::Value(Value::Error(e))) => {
+                        Val::error(e)
+                    }
                     _ => Val::error(ErrorKind::Value),
                 }
             }
@@ -264,15 +272,20 @@ impl<'a> Ctx<'a> {
         };
         let (sheet, sheet_last) = (sheet.min(sheet_last), sheet.max(sheet_last));
         let range = match r.shape {
-            Shape::Columns => Range::new(CellRef::new(0, r.first.col), CellRef::new(MAX_ROWS - 1, r.last.col)),
-            Shape::Rows => Range::new(CellRef::new(r.first.row, 0), CellRef::new(r.last.row, MAX_COLS - 1)),
+            Shape::Columns => {
+                Range::new(CellRef::new(0, r.first.col), CellRef::new(MAX_ROWS - 1, r.last.col))
+            }
+            Shape::Rows => {
+                Range::new(CellRef::new(r.first.row, 0), CellRef::new(r.last.row, MAX_COLS - 1))
+            }
             _ => r.range(),
         };
         Val::Ref(Area { sheet, sheet_last, range })
     }
 
     fn name(&mut self, name: &Arc<str>) -> Val {
-        if let Some((_, val)) = self.scope.iter().rev().find(|(n, _)| n.eq_ignore_ascii_case(name)) {
+        if let Some((_, val)) = self.scope.iter().rev().find(|(n, _)| n.eq_ignore_ascii_case(name))
+        {
             return val.clone();
         }
         let (scope_sheet, bare) = match name.split_once('!') {
@@ -286,7 +299,8 @@ impl<'a> Ctx<'a> {
             if self.depth > DEEPEST {
                 return Val::error(ErrorKind::Num);
             }
-            let expr = match crate::formula::parser::parse(defined.formula.trim_start_matches('=')) {
+            let expr = match crate::formula::parser::parse(defined.formula.trim_start_matches('='))
+            {
                 Ok(expr) => expr,
                 Err(_) => return Val::error(ErrorKind::Name),
             };
@@ -312,7 +326,9 @@ impl<'a> Ctx<'a> {
                 return Val::error(ErrorKind::Value);
             }
             return match function.imp {
-                crate::functions::Imp::Scalar(f) => self.lift(args, |ctx, values| f(ctx, values).unwrap_or_else(Value::Error)),
+                crate::functions::Imp::Scalar(f) => {
+                    self.lift(args, |ctx, values| f(ctx, values).unwrap_or_else(Value::Error))
+                }
                 crate::functions::Imp::Raw(f) => f(self, args),
             };
         }
@@ -320,9 +336,8 @@ impl<'a> Ctx<'a> {
         let name: Arc<str> = Arc::from(name);
         match self.name(&name) {
             Val::Lambda(lambda) => self.invoke(&lambda, args),
-            Val::Value(Value::Error(ErrorKind::Name)) | Val::Value(Value::Error(ErrorKind::Ref)) => {
-                Val::error(ErrorKind::Name)
-            }
+            Val::Value(Value::Error(ErrorKind::Name))
+            | Val::Value(Value::Error(ErrorKind::Ref)) => Val::error(ErrorKind::Name),
             _ => Val::error(ErrorKind::Value),
         }
     }
@@ -358,11 +373,15 @@ impl<'a> Ctx<'a> {
     fn spill(&mut self, inner: &Expr) -> Val {
         match self.eval(inner) {
             Val::Ref(area) if area.range.first == area.range.last && !area.is_3d() => {
-                let Some(sheet) = self.book.sheets.get(area.sheet) else { return Val::error(ErrorKind::Ref) };
+                let Some(sheet) = self.book.sheets.get(area.sheet) else {
+                    return Val::error(ErrorKind::Ref);
+                };
                 let anchor = (area.range.first.row, area.range.first.col);
                 match sheet.spills.range_of(anchor) {
                     Some(range) => Val::Ref(Area::new(area.sheet, range)),
-                    None if sheet.cell(area.range.first).is_some_and(|c| c.formula.is_some()) => Val::Ref(area),
+                    None if sheet.cell(area.range.first).is_some_and(|c| c.formula.is_some()) => {
+                        Val::Ref(area)
+                    }
                     None => Val::error(ErrorKind::Ref),
                 }
             }
@@ -393,8 +412,20 @@ impl<'a> Ctx<'a> {
             let headers = has("headers");
             let totals = has("totals");
             let data = has("data") || !headers && !totals;
-            first_row = if headers { range.first.row } else if data { data_first } else { data_last + 1 };
-            last_row = if totals { range.last.row } else if data { data_last } else { range.first.row };
+            first_row = if headers {
+                range.first.row
+            } else if data {
+                data_first
+            } else {
+                data_last + 1
+            };
+            last_row = if totals {
+                range.last.row
+            } else if data {
+                data_last
+            } else {
+                range.first.row
+            };
             if headers && !table.header_row || totals && !table.totals_row {
                 return Val::error(ErrorKind::Ref);
             }
@@ -402,10 +433,15 @@ impl<'a> Ctx<'a> {
         let column = |name: &Option<Arc<str>>| -> Option<Option<u32>> {
             match name {
                 None => Some(None),
-                Some(n) => table.columns.iter().position(|c| c.eq_ignore_ascii_case(n)).map(|i| Some(range.first.col + i as u32)),
+                Some(n) => table
+                    .columns
+                    .iter()
+                    .position(|c| c.eq_ignore_ascii_case(n))
+                    .map(|i| Some(range.first.col + i as u32)),
             }
         };
-        let (Some(first_col), Some(last_col)) = (column(&t.first_column), column(&t.last_column)) else {
+        let (Some(first_col), Some(last_col)) = (column(&t.first_column), column(&t.last_column))
+        else {
             return Val::error(ErrorKind::Ref);
         };
         let first_col = first_col.unwrap_or(range.first.col);
@@ -425,7 +461,9 @@ impl<'a> Ctx<'a> {
         match val {
             Val::Value(v) => v,
             Val::Array(a) => a.data.first().cloned().unwrap_or(Value::Error(ErrorKind::Value)),
-            Val::Ref(area) if area.range.first == area.range.last && !area.is_3d() => self.cell_value(area.sheet, area.range.first),
+            Val::Ref(area) if area.range.first == area.range.last && !area.is_3d() => {
+                self.cell_value(area.sheet, area.range.first)
+            }
             other => self.intersect(other),
         }
     }
@@ -440,10 +478,16 @@ impl<'a> Ctx<'a> {
                 if r.first == r.last {
                     return self.cell_value(area.sheet, r.first);
                 }
-                if r.first.col == r.last.col && r.first.row <= self.at.row && self.at.row <= r.last.row {
+                if r.first.col == r.last.col
+                    && r.first.row <= self.at.row
+                    && self.at.row <= r.last.row
+                {
                     return self.cell_value(area.sheet, CellRef::new(self.at.row, r.first.col));
                 }
-                if r.first.row == r.last.row && r.first.col <= self.at.col && self.at.col <= r.last.col {
+                if r.first.row == r.last.row
+                    && r.first.col <= self.at.col
+                    && self.at.col <= r.last.col
+                {
                     return self.cell_value(area.sheet, CellRef::new(r.first.row, self.at.col));
                 }
                 Value::Error(ErrorKind::Value)
@@ -462,7 +506,9 @@ impl<'a> Ctx<'a> {
         match val {
             Val::Value(_) => Some((1, 1)),
             Val::Array(a) => Some((a.rows, a.cols)),
-            Val::Ref(area) if !area.is_3d() => Some((area.range.rows() as usize, area.range.cols() as usize)),
+            Val::Ref(area) if !area.is_3d() => {
+                Some((area.range.rows() as usize, area.range.cols() as usize))
+            }
             _ => None,
         }
     }
@@ -480,7 +526,10 @@ impl<'a> Ctx<'a> {
                 if rr >= rows || cc >= cols {
                     return Value::Error(ErrorKind::NA);
                 }
-                self.cell_value(area.sheet, CellRef::new(r.first.row + rr as u32, r.first.col + cc as u32))
+                self.cell_value(
+                    area.sheet,
+                    CellRef::new(r.first.row + rr as u32, r.first.col + cc as u32),
+                )
             }
             Val::Lambda(_) => Value::Error(ErrorKind::Calc),
             Val::Refs(_) => Value::Error(ErrorKind::Value),
@@ -497,7 +546,9 @@ impl<'a> Ctx<'a> {
         let vals: Vec<Val> = if self.legacy {
             vals.into_iter()
                 .map(|v| match v {
-                    Val::Ref(area) if area.range.len() > 1 => Val::Value(self.intersect(Val::Ref(area))),
+                    Val::Ref(area) if area.range.len() > 1 => {
+                        Val::Value(self.intersect(Val::Ref(area)))
+                    }
                     other => other,
                 })
                 .collect()
@@ -565,7 +616,13 @@ impl<'a> Ctx<'a> {
                     let sheet = self.book.sheets.get(area.sheet).ok_or(ErrorKind::Ref)?;
                     let used = sheet.used_range();
                     let clipped = match used {
-                        Some(u) => Range::new(r.first, CellRef::new(r.last.row.min(u.last.row.max(r.first.row)), r.last.col.min(u.last.col.max(r.first.col)))),
+                        Some(u) => Range::new(
+                            r.first,
+                            CellRef::new(
+                                r.last.row.min(u.last.row.max(r.first.row)),
+                                r.last.col.min(u.last.col.max(r.first.col)),
+                            ),
+                        ),
                         None => Range::cell(r.first),
                     };
                     return Ok(self.read_range(area.sheet, clipped));
@@ -623,8 +680,14 @@ impl<'a> Ctx<'a> {
                     visit(&cell.value);
                 }
             }
-            for (&(row, col), value) in s.spills.values.range((r.first.row, 0)..=(r.last.row, MAX_COLS)) {
-                if col >= r.first.col && col <= r.last.col && !s.cells.contains_key(&(row, col)) && !value.is_empty() {
+            for (&(row, col), value) in
+                s.spills.values.range((r.first.row, 0)..=(r.last.row, MAX_COLS))
+            {
+                if col >= r.first.col
+                    && col <= r.last.col
+                    && !s.cells.contains_key(&(row, col))
+                    && !value.is_empty()
+                {
                     visit(value);
                 }
             }
@@ -697,8 +760,20 @@ pub fn compare(a: &Value, b: &Value) -> Ordering {
     }
     match (a, b) {
         (Value::Empty, Value::Empty) => Ordering::Equal,
-        (Value::Empty, Value::Text(t)) => if t.is_empty() { Ordering::Equal } else { Ordering::Less },
-        (Value::Text(t), Value::Empty) => if t.is_empty() { Ordering::Equal } else { Ordering::Greater },
+        (Value::Empty, Value::Text(t)) => {
+            if t.is_empty() {
+                Ordering::Equal
+            } else {
+                Ordering::Less
+            }
+        }
+        (Value::Text(t), Value::Empty) => {
+            if t.is_empty() {
+                Ordering::Equal
+            } else {
+                Ordering::Greater
+            }
+        }
         (Value::Empty, Value::Bool(x)) => false.cmp(x),
         (Value::Bool(x), Value::Empty) => x.cmp(&false),
         (Value::Empty, Value::Number(n)) => 0.0f64.partial_cmp(n).unwrap_or(Ordering::Equal),
@@ -797,7 +872,25 @@ pub fn power(x: f64, y: f64) -> Result<f64, ErrorKind> {
 /// Evaluate formula text as though it were in a cell, without changing the workbook: what the
 /// `eval` command and the oracle tests use. The answer is the value the cell would show, the top left of
 /// an array, with the array itself when there is one.
-pub fn evaluate(book: &Workbook, sheet: usize, at: CellRef, formula: &str, now: f64) -> Result<(Value, Option<Array>), String> {
+/// One value from a parsed formula evaluated at a cell, which is what a conditional format rule's formula
+/// is, moved to each cell it covers.
+pub fn evaluate_expr(book: &Workbook, sheet: usize, at: CellRef, expr: &Expr, now: f64) -> Value {
+    let env = Env::new(now, 0x2545_F491_4F6C_DD1D);
+    let mut ctx = Ctx::new(book, sheet, at, &env);
+    let v = ctx.eval(expr);
+    match v {
+        Val::Lambda(_) => Value::Error(ErrorKind::Calc),
+        other => ctx.single(other),
+    }
+}
+
+pub fn evaluate(
+    book: &Workbook,
+    sheet: usize,
+    at: CellRef,
+    formula: &str,
+    now: f64,
+) -> Result<(Value, Option<Array>), String> {
     let expr = crate::formula::parser::parse(formula.trim().trim_start_matches('='))?;
     let env = Env::new(now, 0x2545_F491_4F6C_DD1D);
     let mut ctx = Ctx::new(book, sheet, at, &env);

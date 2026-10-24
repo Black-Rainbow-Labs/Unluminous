@@ -39,7 +39,8 @@ struct Writer<'a> {
 impl<'a> Writer<'a> {
     fn new(book: &'a Workbook) -> Self {
         let mut taken: BTreeSet<String> = book.kept.parts.iter().map(|(p, _)| p.clone()).collect();
-        let workbook_part = if book.part.is_empty() { "xl/workbook.xml".to_owned() } else { book.part.clone() };
+        let workbook_part =
+            if book.part.is_empty() { "xl/workbook.xml".to_owned() } else { book.part.clone() };
         taken.insert(workbook_part.clone());
         Self {
             book,
@@ -64,7 +65,10 @@ impl<'a> Writer<'a> {
 
     /// A part path not in use, numbered from 1: `xl/worksheets/sheet{}.xml`.
     fn fresh(&self, pattern: &str) -> String {
-        (1..).map(|n| pattern.replace("{}", &n.to_string())).find(|p| !self.taken.contains(p)).unwrap_or_default()
+        (1..)
+            .map(|n| pattern.replace("{}", &n.to_string()))
+            .find(|p| !self.taken.contains(p))
+            .unwrap_or_default()
     }
 
     fn string(&mut self, text: &str, rich: Option<&str>) -> usize {
@@ -81,8 +85,14 @@ impl<'a> Writer<'a> {
         if let Some(i) = self.string_index.get(text) {
             return *i;
         }
-        let preserve = text.starts_with(char::is_whitespace) || text.ends_with(char::is_whitespace) || text.contains('\n');
-        self.strings.push(format!("<si><t{}>{}</t></si>", if preserve { " xml:space=\"preserve\"" } else { "" }, escape(text)));
+        let preserve = text.starts_with(char::is_whitespace)
+            || text.ends_with(char::is_whitespace)
+            || text.contains('\n');
+        self.strings.push(format!(
+            "<si><t{}>{}</t></si>",
+            if preserve { " xml:space=\"preserve\"" } else { "" },
+            escape(text)
+        ));
         let i = self.strings.len() - 1;
         self.string_index.insert(text.to_owned(), i);
         i
@@ -96,17 +106,31 @@ impl<'a> Writer<'a> {
         for (index, sheet) in book.sheets.iter().enumerate() {
             if let Some(kept) = &sheet.kept_part {
                 let id = next_id(&workbook_rels);
-                workbook_rels.push(Relationship { id: id.clone(), kind: kept.kind.clone(), target: relative(&self.workbook_part, &kept.part), external: false });
+                workbook_rels.push(Relationship {
+                    id: id.clone(),
+                    kind: kept.kind.clone(),
+                    target: relative(&self.workbook_part, &kept.part),
+                    external: false,
+                });
                 if !kept.content_type.is_empty() {
                     self.overrides.push((format!("/{}", kept.part), kept.content_type.clone()));
                 }
                 sheet_parts.push((id, kept.part.clone(), kept.kind.clone()));
                 continue;
             }
-            let part = if sheet.raw.part.is_empty() { self.fresh("xl/worksheets/sheet{}.xml") } else { sheet.raw.part.clone() };
+            let part = if sheet.raw.part.is_empty() {
+                self.fresh("xl/worksheets/sheet{}.xml")
+            } else {
+                sheet.raw.part.clone()
+            };
             self.taken.insert(part.clone());
             let id = next_id(&workbook_rels);
-            workbook_rels.push(Relationship { id: id.clone(), kind: REL_WORKSHEET.to_owned(), target: relative(&self.workbook_part, &part), external: false });
+            workbook_rels.push(Relationship {
+                id: id.clone(),
+                kind: REL_WORKSHEET.to_owned(),
+                target: relative(&self.workbook_part, &part),
+                external: false,
+            });
             sheet_parts.push((id, part.clone(), REL_WORKSHEET.to_owned()));
             let (xml, rels) = self.sheet_xml(index, sheet, &part)?;
             self.add(&part, Some(CT_WORKSHEET), xml.into_bytes());
@@ -117,14 +141,27 @@ impl<'a> Writer<'a> {
         // Styles, strings, theme, metadata.
         let styles_part = "xl/styles.xml".to_owned();
         let id = next_id(&workbook_rels);
-        workbook_rels.push(Relationship { id, kind: REL_STYLES.to_owned(), target: relative(&self.workbook_part, &styles_part), external: false });
+        workbook_rels.push(Relationship {
+            id,
+            kind: REL_STYLES.to_owned(),
+            target: relative(&self.workbook_part, &styles_part),
+            external: false,
+        });
         let styles = styles_xml(&book.styles);
         self.add(&styles_part, Some(CT_STYLES), styles.into_bytes());
         if !self.strings.is_empty() {
             let part = "xl/sharedStrings.xml".to_owned();
             let id = next_id(&workbook_rels);
-            workbook_rels.push(Relationship { id, kind: REL_SHARED_STRINGS.to_owned(), target: relative(&self.workbook_part, &part), external: false });
-            let mut xml = format!("{XML_HEAD}<sst xmlns=\"{MAIN_NS}\" count=\"{0}\" uniqueCount=\"{0}\">", self.strings.len());
+            workbook_rels.push(Relationship {
+                id,
+                kind: REL_SHARED_STRINGS.to_owned(),
+                target: relative(&self.workbook_part, &part),
+                external: false,
+            });
+            let mut xml = format!(
+                "{XML_HEAD}<sst xmlns=\"{MAIN_NS}\" count=\"{0}\" uniqueCount=\"{0}\">",
+                self.strings.len()
+            );
             for s in &self.strings {
                 xml.push_str(s);
             }
@@ -134,13 +171,23 @@ impl<'a> Writer<'a> {
         if !workbook_rels.iter().any(|r| r.kind == REL_THEME) {
             let part = self.fresh("xl/theme/theme{}.xml");
             let id = next_id(&workbook_rels);
-            workbook_rels.push(Relationship { id, kind: REL_THEME.to_owned(), target: relative(&self.workbook_part, &part), external: false });
+            workbook_rels.push(Relationship {
+                id,
+                kind: REL_THEME.to_owned(),
+                target: relative(&self.workbook_part, &part),
+                external: false,
+            });
             self.add(&part, Some(CT_THEME), DEFAULT_THEME_XML.as_bytes().to_vec());
         }
         if self.needs_metadata && book.dynamic_cm.is_none() {
             let part = self.fresh("xl/metadata.xml");
             let id = next_id(&workbook_rels);
-            workbook_rels.push(Relationship { id, kind: REL_METADATA.to_owned(), target: relative(&self.workbook_part, &part), external: false });
+            workbook_rels.push(Relationship {
+                id,
+                kind: REL_METADATA.to_owned(),
+                target: relative(&self.workbook_part, &part),
+                external: false,
+            });
             self.add(&part, Some(CT_METADATA), METADATA_XML.as_bytes().to_vec());
         }
         // The workbook part.
@@ -150,7 +197,12 @@ impl<'a> Writer<'a> {
         self.add(&workbook_part, Some(ct), workbook.into_bytes());
         self.add(&rels_path(&workbook_part), None, write_rels(&workbook_rels).into_bytes());
         // Package relationships and document properties.
-        let mut package = vec![Relationship { id: "rId1".to_owned(), kind: REL_OFFICE_DOCUMENT.to_owned(), target: workbook_part.clone(), external: false }];
+        let mut package = vec![Relationship {
+            id: "rId1".to_owned(),
+            kind: REL_OFFICE_DOCUMENT.to_owned(),
+            target: workbook_part.clone(),
+            external: false,
+        }];
         for r in &book.kept.package_rels {
             let mut r = r.clone();
             if package.iter().any(|p| p.id == r.id) {
@@ -160,12 +212,22 @@ impl<'a> Writer<'a> {
         }
         if !package.iter().any(|r| r.kind == REL_CORE) {
             let id = next_id(&package);
-            package.push(Relationship { id, kind: REL_CORE.to_owned(), target: "docProps/core.xml".to_owned(), external: false });
+            package.push(Relationship {
+                id,
+                kind: REL_CORE.to_owned(),
+                target: "docProps/core.xml".to_owned(),
+                external: false,
+            });
             self.add("docProps/core.xml", Some(CT_CORE), CORE_XML.as_bytes().to_vec());
         }
         if !package.iter().any(|r| r.kind == REL_APP) {
             let id = next_id(&package);
-            package.push(Relationship { id, kind: REL_APP.to_owned(), target: "docProps/app.xml".to_owned(), external: false });
+            package.push(Relationship {
+                id,
+                kind: REL_APP.to_owned(),
+                target: "docProps/app.xml".to_owned(),
+                external: false,
+            });
             self.add("docProps/app.xml", Some(CT_APP), APP_XML.as_bytes().to_vec());
         }
         self.add("_rels/.rels", None, write_rels(&package).into_bytes());
@@ -178,7 +240,8 @@ impl<'a> Writer<'a> {
         }
         // Content types, first in the file.
         let types = self.content_types();
-        self.entries.insert(0, Entry { name: "[Content_Types].xml".to_owned(), data: types.into_bytes() });
+        self.entries
+            .insert(0, Entry { name: "[Content_Types].xml".to_owned(), data: types.into_bytes() });
         // `_rels/.rels` second, which is where Excel puts it.
         if let Some(i) = self.entries.iter().position(|e| e.name == "_rels/.rels") {
             let e = self.entries.remove(i);
@@ -194,7 +257,9 @@ impl<'a> Writer<'a> {
                 continue;
             }
             for r in &sheet.raw.rels {
-                if (r.kind == REL_COMMENTS || r.kind == REL_VML) && resolve(&sheet.raw.part, &r.target) == path {
+                if (r.kind == REL_COMMENTS || r.kind == REL_VML)
+                    && resolve(&sheet.raw.part, &r.target) == path
+                {
                     return true;
                 }
             }
@@ -218,10 +283,18 @@ impl<'a> Writer<'a> {
         }
         let mut out = format!("{XML_HEAD}<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">");
         for (ext, ct) in defaults {
-            out.push_str(&format!("<Default Extension=\"{}\" ContentType=\"{}\"/>", escape(&ext), escape(&ct)));
+            out.push_str(&format!(
+                "<Default Extension=\"{}\" ContentType=\"{}\"/>",
+                escape(&ext),
+                escape(&ct)
+            ));
         }
         for (path, ct) in overrides {
-            out.push_str(&format!("<Override PartName=\"{}\" ContentType=\"{}\"/>", escape(&path), escape(&ct)));
+            out.push_str(&format!(
+                "<Override PartName=\"{}\" ContentType=\"{}\"/>",
+                escape(&path),
+                escape(&ct)
+            ));
         }
         out.push_str("</Types>");
         out
@@ -229,12 +302,18 @@ impl<'a> Writer<'a> {
 
     fn workbook_xml(&self, sheets: &[(String, String, String)]) -> String {
         let book = self.book;
-        let raw = |name: &str| book.raw.iter().filter(|(n, _)| n == name).map(|(_, x)| x.as_str()).collect::<String>();
+        let raw = |name: &str| {
+            book.raw.iter().filter(|(n, _)| n == name).map(|(_, x)| x.as_str()).collect::<String>()
+        };
         let mut namespaces = book.namespaces.clone();
         if !namespaces.iter().any(|(_, uri)| uri == REL_NS) {
             namespaces.push(("r".to_owned(), REL_NS.to_owned()));
         }
-        let r = namespaces.iter().find(|(_, uri)| uri == REL_NS).map(|(p, _)| p.clone()).unwrap_or_else(|| "r".to_owned());
+        let r = namespaces
+            .iter()
+            .find(|(_, uri)| uri == REL_NS)
+            .map(|(p, _)| p.clone())
+            .unwrap_or_else(|| "r".to_owned());
         let mut out = format!("{XML_HEAD}<workbook{}>", namespaces_text(&namespaces, MAIN_NS));
         out.push_str(&raw("fileVersion"));
         out.push_str(&raw("fileSharing"));
@@ -247,9 +326,20 @@ impl<'a> Writer<'a> {
         // Elements the schema does not name, such as `mc:AlternateContent` and `xr:revisionPtr`, go where
         // Excel writes them: after the workbook properties.
         const KNOWN: &[&str] = &[
-            "fileVersion", "fileSharing", "workbookProtection", "functionGroups", "externalReferences", "oleSize",
-            "customWorkbookViews", "pivotCaches", "smartTagPr", "smartTagTypes", "webPublishing", "fileRecoveryPr",
-            "webPublishObjects", "extLst",
+            "fileVersion",
+            "fileSharing",
+            "workbookProtection",
+            "functionGroups",
+            "externalReferences",
+            "oleSize",
+            "customWorkbookViews",
+            "pivotCaches",
+            "smartTagPr",
+            "smartTagTypes",
+            "webPublishing",
+            "fileRecoveryPr",
+            "webPublishObjects",
+            "extLst",
         ];
         for (name, xml) in &book.raw {
             if !KNOWN.contains(&name.as_str()) {
@@ -268,7 +358,12 @@ impl<'a> Writer<'a> {
                 Visibility::Hidden => " state=\"hidden\"",
                 Visibility::VeryHidden => " state=\"veryHidden\"",
             };
-            out.push_str(&format!("<sheet name=\"{}\" sheetId=\"{}\"{state} {r}:id=\"{}\"/>", escape(&sheet.name), i + 1, escape(id)));
+            out.push_str(&format!(
+                "<sheet name=\"{}\" sheetId=\"{}\"{state} {r}:id=\"{}\"/>",
+                escape(&sheet.name),
+                i + 1,
+                escape(id)
+            ));
         }
         out.push_str("</sheets>");
         out.push_str(&raw("functionGroups"));
@@ -285,7 +380,11 @@ impl<'a> Writer<'a> {
                     attrs.push(("hidden".to_owned(), "1".to_owned()));
                 }
                 attrs.extend(n.attrs.clone());
-                out.push_str(&format!("<definedName{}>{}</definedName>", attrs_text(&attrs), escape(&n.formula)));
+                out.push_str(&format!(
+                    "<definedName{}>{}</definedName>",
+                    attrs_text(&attrs),
+                    escape(&n.formula)
+                ));
             }
             out.push_str("</definedNames>");
         }
@@ -297,7 +396,17 @@ impl<'a> Writer<'a> {
             calc.push(("calcMode".to_owned(), "manual".to_owned()));
         }
         out.push_str(&format!("<calcPr{}/>", attrs_text(&calc)));
-        for name in ["oleSize", "customWorkbookViews", "pivotCaches", "smartTagPr", "smartTagTypes", "webPublishing", "fileRecoveryPr", "webPublishObjects", "extLst"] {
+        for name in [
+            "oleSize",
+            "customWorkbookViews",
+            "pivotCaches",
+            "smartTagPr",
+            "smartTagTypes",
+            "webPublishing",
+            "fileRecoveryPr",
+            "webPublishObjects",
+            "extLst",
+        ] {
             out.push_str(&raw(name));
         }
         out.push_str("</workbook>");
@@ -306,26 +415,49 @@ impl<'a> Writer<'a> {
 
     /// The names, with a hidden `_xlnm._FilterDatabase` for each sheet that has a filter.
     fn defined_names(&self) -> Vec<DefinedName> {
-        let mut names: Vec<DefinedName> = self.book.names.iter().filter(|n| n.name != "_xlnm._FilterDatabase").cloned().collect();
+        let mut names: Vec<DefinedName> =
+            self.book.names.iter().filter(|n| n.name != "_xlnm._FilterDatabase").cloned().collect();
         for (i, sheet) in self.book.sheets.iter().enumerate() {
             if let Some(filter) = &sheet.filter {
                 let range = filter.range;
                 names.push(DefinedName {
                     name: "_xlnm._FilterDatabase".to_owned(),
                     scope: Some(i),
-                    formula: format!("{}!{}", crate::formula::print::sheet_name(&sheet.name), absolute(range)),
+                    formula: format!(
+                        "{}!{}",
+                        crate::formula::print::sheet_name(&sheet.name),
+                        absolute(range)
+                    ),
                     hidden: true,
                     attrs: Vec::new(),
                 });
             }
         }
-        names.sort_by(|a, b| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()).then(a.scope.cmp(&b.scope)));
+        names.sort_by(|a, b| {
+            a.name
+                .to_ascii_lowercase()
+                .cmp(&b.name.to_ascii_lowercase())
+                .then(a.scope.cmp(&b.scope))
+        });
         names
     }
 
-    fn sheet_xml(&mut self, index: usize, sheet: &Sheet, part: &str) -> Result<(String, Vec<Relationship>), String> {
+    fn sheet_xml(
+        &mut self,
+        index: usize,
+        sheet: &Sheet,
+        part: &str,
+    ) -> Result<(String, Vec<Relationship>), String> {
         let book = self.book;
-        let raw = |name: &str| sheet.raw.elements.iter().filter(|(n, _)| n == name).map(|(_, x)| x.as_str()).collect::<String>();
+        let raw = |name: &str| {
+            sheet
+                .raw
+                .elements
+                .iter()
+                .filter(|(n, _)| n == name)
+                .map(|(_, x)| x.as_str())
+                .collect::<String>()
+        };
         let mut rels: Vec<Relationship> = sheet.raw.rels.clone();
         if sheet.notes_changed {
             rels.retain(|r| r.kind != REL_COMMENTS && r.kind != REL_VML);
@@ -334,7 +466,11 @@ impl<'a> Writer<'a> {
         if !namespaces.iter().any(|(_, uri)| uri == REL_NS) {
             namespaces.push(("r".to_owned(), REL_NS.to_owned()));
         }
-        let r = namespaces.iter().find(|(_, uri)| uri == REL_NS).map(|(p, _)| p.clone()).unwrap_or_else(|| "r".to_owned());
+        let r = namespaces
+            .iter()
+            .find(|(_, uri)| uri == REL_NS)
+            .map(|(p, _)| p.clone())
+            .unwrap_or_else(|| "r".to_owned());
         let mut out = String::with_capacity(4096 + sheet.cells.len() * 40);
         out.push_str(XML_HEAD);
         out.push_str(&format!("<worksheet{}>", namespaces_text(&namespaces, MAIN_NS)));
@@ -343,7 +479,8 @@ impl<'a> Writer<'a> {
         let dimension = sheet.used_range().map_or("A1".to_owned(), |r| r.a1());
         out.push_str(&format!("<dimension ref=\"{dimension}\"/>"));
         out.push_str(&sheet_views(sheet, index == book.active_sheet));
-        let mut format_attrs = vec![("defaultRowHeight".to_owned(), number_text(sheet.default_row_height))];
+        let mut format_attrs =
+            vec![("defaultRowHeight".to_owned(), number_text(sheet.default_row_height))];
         if let Some(w) = sheet.default_col_width {
             format_attrs.push(("defaultColWidth".to_owned(), number_text(w)));
         }
@@ -354,8 +491,14 @@ impl<'a> Writer<'a> {
             let mut cols = sheet.columns.clone();
             cols.sort_by_key(|c| c.first);
             for c in cols {
-                let mut a = vec![("min".to_owned(), (c.first + 1).to_string()), ("max".to_owned(), (c.last + 1).to_string())];
-                a.push(("width".to_owned(), number_text(c.width.unwrap_or(sheet.default_col_width.unwrap_or(8.88671875)))));
+                let mut a = vec![
+                    ("min".to_owned(), (c.first + 1).to_string()),
+                    ("max".to_owned(), (c.last + 1).to_string()),
+                ];
+                a.push((
+                    "width".to_owned(),
+                    number_text(c.width.unwrap_or(sheet.default_col_width.unwrap_or(8.88671875))),
+                ));
                 if c.style != 0 {
                     a.push(("style".to_owned(), c.style.to_string()));
                 }
@@ -418,7 +561,12 @@ impl<'a> Writer<'a> {
                             None => (target.clone(), None),
                         };
                         let id = next_id(&rels);
-                        rels.push(Relationship { id: id.clone(), kind: REL_HYPERLINK.to_owned(), target: address, external: true });
+                        rels.push(Relationship {
+                            id: id.clone(),
+                            kind: REL_HYPERLINK.to_owned(),
+                            target: address,
+                            external: true,
+                        });
                         a.push((format!("{r}:id"), id));
                         if let Some(l) = location {
                             a.push(("location".to_owned(), l));
@@ -436,8 +584,87 @@ impl<'a> Writer<'a> {
             }
             out.push_str("</hyperlinks>");
         }
-        for name in ["printOptions", "pageMargins", "pageSetup", "headerFooter", "rowBreaks", "colBreaks", "customProperties", "cellWatches", "ignoredErrors", "smartTags", "drawing"] {
+        for name in [
+            "printOptions",
+            "pageMargins",
+            "pageSetup",
+            "headerFooter",
+            "rowBreaks",
+            "colBreaks",
+            "customProperties",
+            "cellWatches",
+            "ignoredErrors",
+            "smartTags",
+        ] {
             out.push_str(&raw(name));
+        }
+        // The drawing: kept as it was, with the charts made here added to it, or a new one holding them.
+        let new_charts: Vec<&crate::model::Chart> = sheet.charts.iter().filter(|c| c.new).collect();
+        if new_charts.is_empty() {
+            out.push_str(&raw("drawing"));
+        } else {
+            let existing = sheet.raw.rels.iter().find(|r| r.kind == REL_DRAWING).cloned();
+            let (drawing_part, mut drawing_rels, mut anchors, kept_xml) = match &existing {
+                Some(rel) => {
+                    let path = resolve(part, &rel.target);
+                    let xml = book
+                        .kept
+                        .get(&path)
+                        .map(|b| String::from_utf8_lossy(b).into_owned())
+                        .unwrap_or_default();
+                    let rels_bytes = book
+                        .kept
+                        .get(&rels_path(&path))
+                        .map(|b| String::from_utf8_lossy(b).into_owned())
+                        .unwrap_or_default();
+                    (path, parse_rels(&rels_bytes), String::new(), Some(xml))
+                }
+                None => (self.fresh("xl/drawings/drawing{}.xml"), Vec::new(), String::new(), None),
+            };
+            self.taken.insert(drawing_part.clone());
+            for (i, chart) in new_charts.iter().enumerate() {
+                let chart_part = self.fresh("xl/charts/chart{}.xml");
+                let text_categories = chart
+                    .series
+                    .first()
+                    .and_then(|s| s.categories.as_deref())
+                    .is_some_and(|c| categories_are_text(book, c));
+                self.add(
+                    &chart_part,
+                    Some(CT_CHART),
+                    super::chart::chart_xml(chart, text_categories).into_bytes(),
+                );
+                let id = next_id(&drawing_rels);
+                drawing_rels.push(Relationship {
+                    id: id.clone(),
+                    kind: REL_CHART.to_owned(),
+                    target: relative(&drawing_part, &chart_part),
+                    external: false,
+                });
+                anchors.push_str(&super::chart::anchor_xml(chart, &id, 1000 + i as u32));
+            }
+            let drawing = match kept_xml {
+                Some(xml) if xml.contains("</xdr:wsDr>") => {
+                    xml.replacen("</xdr:wsDr>", &format!("{anchors}</xdr:wsDr>"), 1)
+                }
+                _ => super::chart::drawing_xml(&anchors),
+            };
+            let content_type = if existing.is_some() { None } else { Some(CT_DRAWING) };
+            self.add(&drawing_part, content_type, drawing.into_bytes());
+            self.add(&rels_path(&drawing_part), None, write_rels(&drawing_rels).into_bytes());
+            match existing {
+                Some(_) => out.push_str(&raw("drawing")),
+                None => {
+                    let id = next_id(&rels);
+                    rels.push(Relationship {
+                        id: id.clone(),
+                        kind: REL_DRAWING.to_owned(),
+                        target: relative(part, &drawing_part),
+                        external: false,
+                    });
+                    out.push_str(&format!("<drawing {r}:id=\"{id}\"/>"));
+                }
+            }
         }
         if sheet.page_margins_missing() {
             out.push_str("<pageMargins left=\"0.7\" right=\"0.7\" top=\"0.75\" bottom=\"0.75\" header=\"0.3\" footer=\"0.3\"/>");
@@ -448,9 +675,19 @@ impl<'a> Writer<'a> {
                 let comments_part = self.fresh("xl/comments{}.xml");
                 let vml_part = self.fresh("xl/drawings/vmlDrawing{}.vml");
                 let comments_id = next_id(&rels);
-                rels.push(Relationship { id: comments_id, kind: REL_COMMENTS.to_owned(), target: relative(part, &comments_part), external: false });
+                rels.push(Relationship {
+                    id: comments_id,
+                    kind: REL_COMMENTS.to_owned(),
+                    target: relative(part, &comments_part),
+                    external: false,
+                });
                 let vml_id = next_id(&rels);
-                rels.push(Relationship { id: vml_id.clone(), kind: REL_VML.to_owned(), target: relative(part, &vml_part), external: false });
+                rels.push(Relationship {
+                    id: vml_id.clone(),
+                    kind: REL_VML.to_owned(),
+                    target: relative(part, &vml_part),
+                    external: false,
+                });
                 self.add(&comments_part, Some(CT_COMMENTS), comments_xml(sheet).into_bytes());
                 self.add(&vml_part, None, vml_xml(sheet).into_bytes());
                 out.push_str(&format!("<legacyDrawing {r}:id=\"{vml_id}\"/>"));
@@ -458,15 +695,41 @@ impl<'a> Writer<'a> {
         } else {
             out.push_str(&raw("legacyDrawing"));
         }
-        for name in ["legacyDrawingHF", "drawingHF", "picture", "oleObjects", "controls", "webPublishItems"] {
+        for name in
+            ["legacyDrawingHF", "drawingHF", "picture", "oleObjects", "controls", "webPublishItems"]
+        {
             out.push_str(&raw(name));
         }
         // Elements the schema does not name, such as `mc:AlternateContent` round form controls.
         const KNOWN: &[&str] = &[
-            "sheetPr", "sheetCalcPr", "sheetProtection", "protectedRanges", "scenarios", "sortState", "dataConsolidate",
-            "customSheetViews", "phoneticPr", "printOptions", "pageMargins", "pageSetup", "headerFooter", "rowBreaks",
-            "colBreaks", "customProperties", "cellWatches", "ignoredErrors", "smartTags", "drawing", "legacyDrawing",
-            "legacyDrawingHF", "drawingHF", "picture", "oleObjects", "controls", "webPublishItems", "extLst",
+            "sheetPr",
+            "sheetCalcPr",
+            "sheetProtection",
+            "protectedRanges",
+            "scenarios",
+            "sortState",
+            "dataConsolidate",
+            "customSheetViews",
+            "phoneticPr",
+            "printOptions",
+            "pageMargins",
+            "pageSetup",
+            "headerFooter",
+            "rowBreaks",
+            "colBreaks",
+            "customProperties",
+            "cellWatches",
+            "ignoredErrors",
+            "smartTags",
+            "drawing",
+            "legacyDrawing",
+            "legacyDrawingHF",
+            "drawingHF",
+            "picture",
+            "oleObjects",
+            "controls",
+            "webPublishItems",
+            "extLst",
         ];
         for (name, xml) in &sheet.raw.elements {
             if !KNOWN.contains(&name.as_str()) {
@@ -478,9 +741,18 @@ impl<'a> Writer<'a> {
         if !tables.is_empty() {
             out.push_str(&format!("<tableParts count=\"{}\">", tables.len()));
             for t in tables {
-                let table_part = if t.part.is_empty() { self.fresh("xl/tables/table{}.xml") } else { t.part.clone() };
+                let table_part = if t.part.is_empty() {
+                    self.fresh("xl/tables/table{}.xml")
+                } else {
+                    t.part.clone()
+                };
                 let id = next_id(&rels);
-                rels.push(Relationship { id: id.clone(), kind: REL_TABLE.to_owned(), target: relative(part, &table_part), external: false });
+                rels.push(Relationship {
+                    id: id.clone(),
+                    kind: REL_TABLE.to_owned(),
+                    target: relative(part, &table_part),
+                    external: false,
+                });
                 out.push_str(&format!("<tablePart {r}:id=\"{id}\"/>"));
                 self.add(&table_part, Some(CT_TABLE), table_xml(t).into_bytes());
             }
@@ -522,17 +794,28 @@ impl<'a> Writer<'a> {
             }
             out.push_str(&format!("<row{}>", attrs_text(&attrs)));
             // Cells and spilled values in column order.
-            let mut cols: BTreeSet<u32> = sheet.cells.range((row, 0)..=(row, u32::MAX)).map(|((_, c), _)| *c).collect();
-            cols.extend(sheet.spills.values.range((row, 0)..=(row, u32::MAX)).map(|((_, c), _)| *c));
+            let mut cols: BTreeSet<u32> =
+                sheet.cells.range((row, 0)..=(row, u32::MAX)).map(|((_, c), _)| *c).collect();
+            cols.extend(
+                sheet.spills.values.range((row, 0)..=(row, u32::MAX)).map(|((_, c), _)| *c),
+            );
             for col in cols {
                 let at = CellRef::new(row, col);
                 match sheet.cells.get(&(row, col)) {
                     Some(cell) => {
                         // A styled empty cell inside a spill holds the spilled value.
-                        let spilled = cell.formula.is_none() && cell.value.is_empty() && sheet.spills.values.contains_key(&(row, col));
+                        let spilled = cell.formula.is_none()
+                            && cell.value.is_empty()
+                            && sheet.spills.values.contains_key(&(row, col));
                         if spilled {
                             let v = sheet.spills.values[&(row, col)].clone();
-                            self.cell(out, at, &Cell { value: v, style: cell.style, ..Default::default() }, sheet, true);
+                            self.cell(
+                                out,
+                                at,
+                                &Cell { value: v, style: cell.style, ..Default::default() },
+                                sheet,
+                                true,
+                            );
                         } else {
                             self.cell(out, at, cell, sheet, false);
                         }
@@ -561,10 +844,15 @@ impl<'a> Writer<'a> {
             Value::Bool(b) => (Some("b"), Some(if *b { "1" } else { "0" }.to_owned())),
             // The newer errors are written as #VALUE!, which is what Excel writes beside the rich value that
             // carries the real one; Excel works the real one out again when it calculates.
-            Value::Error(e) => (Some("e"), Some(match e {
-                crate::value::ErrorKind::Spill | crate::value::ErrorKind::Calc | crate::value::ErrorKind::GettingData => "#VALUE!".to_owned(),
-                other => other.text().to_owned(),
-            })),
+            Value::Error(e) => (
+                Some("e"),
+                Some(match e {
+                    crate::value::ErrorKind::Spill
+                    | crate::value::ErrorKind::Calc
+                    | crate::value::ErrorKind::GettingData => "#VALUE!".to_owned(),
+                    other => other.text().to_owned(),
+                }),
+            ),
             Value::Text(t) => {
                 if cell.formula.is_some() || spilled {
                     (Some("str"), Some(escape(t)))
@@ -580,7 +868,10 @@ impl<'a> Writer<'a> {
         }
         let anchor = (at.row, at.col);
         let dynamic = cell.formula.as_ref().is_some_and(|f| {
-            f.dynamic && f.array.is_none() && !f.frozen && (sheet.spills.anchors.contains_key(&anchor) || is_dynamic_shape(f))
+            f.dynamic
+                && f.array.is_none()
+                && !f.frozen
+                && (sheet.spills.anchors.contains_key(&anchor) || is_dynamic_shape(f))
         });
         if dynamic {
             self.needs_metadata = true;
@@ -594,10 +885,18 @@ impl<'a> Writer<'a> {
         if let Some(f) = &cell.formula {
             let text = if f.frozen { f.text.to_string() } else { print(&f.expr, true) };
             if let Some(range) = f.array {
-                out.push_str(&format!("<f t=\"array\" ref=\"{}\">{}</f>", range.a1(), escape(&text)));
+                out.push_str(&format!(
+                    "<f t=\"array\" ref=\"{}\">{}</f>",
+                    range.a1(),
+                    escape(&text)
+                ));
             } else if dynamic {
                 let range = sheet.spills.range_of(anchor).unwrap_or(Range::cell(at));
-                out.push_str(&format!("<f t=\"array\" ref=\"{}\">{}</f>", range.a1(), escape(&text)));
+                out.push_str(&format!(
+                    "<f t=\"array\" ref=\"{}\">{}</f>",
+                    range.a1(),
+                    escape(&text)
+                ));
             } else {
                 out.push_str(&format!("<f>{}</f>", escape(&text)));
             }
@@ -614,15 +913,32 @@ fn is_dynamic_shape(f: &crate::formula::Formula) -> bool {
     let mut arrayish = false;
     f.expr.walk(&mut |e| match e {
         crate::formula::Expr::Ref(r) if r.shape != crate::formula::Shape::Cell => arrayish = true,
-        crate::formula::Expr::Array(_) | crate::formula::Expr::Spill(_) | crate::formula::Expr::Name(_) | crate::formula::Expr::Table(_) => arrayish = true,
-        crate::formula::Expr::Call(name, _) if ARRAY_FUNCTIONS.contains(&&**name) => arrayish = true,
+        crate::formula::Expr::Array(_)
+        | crate::formula::Expr::Spill(_)
+        | crate::formula::Expr::Name(_)
+        | crate::formula::Expr::Table(_) => arrayish = true,
+        crate::formula::Expr::Call(name, _) if ARRAY_FUNCTIONS.contains(&&**name) => {
+            arrayish = true
+        }
         _ => {}
     });
     arrayish
 }
 
 /// Functions that return an array with no range among their arguments.
-const ARRAY_FUNCTIONS: &[&str] = &["SEQUENCE", "RANDARRAY", "MUNIT", "TEXTSPLIT", "MAKEARRAY", "FREQUENCY", "MODE.MULT", "TREND", "MINVERSE", "MMULT", "TRANSPOSE"];
+const ARRAY_FUNCTIONS: &[&str] = &[
+    "SEQUENCE",
+    "RANDARRAY",
+    "MUNIT",
+    "TEXTSPLIT",
+    "MAKEARRAY",
+    "FREQUENCY",
+    "MODE.MULT",
+    "TREND",
+    "MINVERSE",
+    "MMULT",
+    "TRANSPOSE",
+];
 
 trait PageMargins {
     fn page_margins_missing(&self) -> bool;
@@ -633,6 +949,15 @@ impl PageMargins for Sheet {
     fn page_margins_missing(&self) -> bool {
         !self.raw.elements.iter().any(|(n, _)| n == "pageMargins")
     }
+}
+
+/// Whether a chart's categories are words rather than numbers, which decides how the file names them.
+fn categories_are_text(book: &Workbook, formula: &str) -> bool {
+    let Some((sheet, area)) = formula.rsplit_once('!') else { return false };
+    let name = sheet.trim_matches('\'').replace("''", "'");
+    let Some(index) = book.sheet_index(&name) else { return false };
+    let Some(range) = Range::parse(&area.replace('$', "")) else { return false };
+    matches!(book.sheets[index].value_at(range.first), crate::value::Value::Text(_))
 }
 
 fn absolute(range: Range) -> String {
@@ -704,7 +1029,11 @@ fn color_attrs(c: &Color) -> String {
 fn sheet_pr(raw: &str, tab: Option<Color>, _theme: &[u32]) -> String {
     let tab_xml = tab.map(|c| format!("<tabColor{}/>", color_attrs(&c))).unwrap_or_default();
     if raw.is_empty() {
-        return if tab_xml.is_empty() { String::new() } else { format!("<sheetPr>{tab_xml}</sheetPr>") };
+        return if tab_xml.is_empty() {
+            String::new()
+        } else {
+            format!("<sheetPr>{tab_xml}</sheetPr>")
+        };
     }
     // Take out any tab colour, then put the current one first.
     let mut body = raw.to_owned();
@@ -753,7 +1082,9 @@ fn sheet_views(sheet: &Sheet, selected: bool) -> String {
             if cols > 0 { format!(" xSplit=\"{cols}\"") } else { String::new() },
             if rows > 0 { format!(" ySplit=\"{rows}\"") } else { String::new() }
         ));
-        inner.push_str(&format!("<selection pane=\"{pane}\" activeCell=\"{top_left}\" sqref=\"{top_left}\"/>"));
+        inner.push_str(&format!(
+            "<selection pane=\"{pane}\" activeCell=\"{top_left}\" sqref=\"{top_left}\"/>"
+        ));
     }
     format!("<sheetViews><sheetView{attrs}>{inner}</sheetView></sheetViews>")
 }
@@ -769,16 +1100,26 @@ fn auto_filter(filter: &AutoFilter) -> String {
         match criteria {
             FilterCriteria::Raw(xml) => out.push_str(xml),
             FilterCriteria::Values { values, blank } => {
-                out.push_str(&format!("<filterColumn colId=\"{col}\"><filters{}>", if *blank { " blank=\"1\"" } else { "" }));
+                out.push_str(&format!(
+                    "<filterColumn colId=\"{col}\"><filters{}>",
+                    if *blank { " blank=\"1\"" } else { "" }
+                ));
                 for v in values {
                     out.push_str(&format!("<filter val=\"{}\"/>", escape(v)));
                 }
                 out.push_str("</filters></filterColumn>");
             }
             FilterCriteria::Custom { conditions, and } => {
-                out.push_str(&format!("<filterColumn colId=\"{col}\"><customFilters{}>", if *and { " and=\"1\"" } else { "" }));
+                out.push_str(&format!(
+                    "<filterColumn colId=\"{col}\"><customFilters{}>",
+                    if *and { " and=\"1\"" } else { "" }
+                ));
                 for (op, v) in conditions {
-                    out.push_str(&format!("<customFilter operator=\"{}\" val=\"{}\"/>", escape(op), escape(v)));
+                    out.push_str(&format!(
+                        "<customFilter operator=\"{}\" val=\"{}\"/>",
+                        escape(op),
+                        escape(v)
+                    ));
                 }
                 out.push_str("</customFilters></filterColumn>");
             }
@@ -825,7 +1166,13 @@ fn conditional(cf: &ConditionalFormat, _theme: &[u32]) -> String {
         for f in &rule.formulas {
             out.push_str(&format!("<formula>{}</formula>", escape(f)));
         }
-        let cfvo = |c: &Cfvo| format!("<cfvo type=\"{}\"{}/>", escape(&c.kind), c.value.as_ref().map(|v| format!(" val=\"{}\"", escape(v))).unwrap_or_default());
+        let cfvo = |c: &Cfvo| {
+            format!(
+                "<cfvo type=\"{}\"{}/>",
+                escape(&c.kind),
+                c.value.as_ref().map(|v| format!(" val=\"{}\"", escape(v))).unwrap_or_default()
+            )
+        };
         if let Some(scale) = &rule.color_scale {
             out.push_str("<colorScale>");
             for (c, _) in scale {
@@ -837,7 +1184,12 @@ fn conditional(cf: &ConditionalFormat, _theme: &[u32]) -> String {
             out.push_str("</colorScale>");
         }
         if let Some((lo, hi, color)) = &rule.data_bar {
-            out.push_str(&format!("<dataBar>{}{}<color{}/></dataBar>", cfvo(lo), cfvo(hi), color_attrs(color)));
+            out.push_str(&format!(
+                "<dataBar>{}{}<color{}/></dataBar>",
+                cfvo(lo),
+                cfvo(hi),
+                color_attrs(color)
+            ));
         }
         out.push_str(&rule.raw_children);
         out.push_str("</cfRule>");
@@ -871,7 +1223,12 @@ fn validation(v: &Validation) -> String {
         attrs.push(("showErrorMessage".to_owned(), "1".to_owned()));
     }
     a.extend(attrs);
-    for (k, val) in [("errorTitle", &v.error_title), ("error", &v.error), ("promptTitle", &v.prompt_title), ("prompt", &v.prompt)] {
+    for (k, val) in [
+        ("errorTitle", &v.error_title),
+        ("error", &v.error),
+        ("promptTitle", &v.prompt_title),
+        ("prompt", &v.prompt),
+    ] {
         if let Some(t) = val {
             a.push((k.to_owned(), t.clone()));
         }
@@ -898,10 +1255,15 @@ fn table_xml(t: &Table) -> String {
     if old == new {
         return t.xml.clone();
     }
-    let filter_old = root.children().find(|n| n.tag_name().name() == "autoFilter").and_then(|n| n.attribute("ref")).map(str::to_owned);
+    let filter_old = root
+        .children()
+        .find(|n| n.tag_name().name() == "autoFilter")
+        .and_then(|n| n.attribute("ref"))
+        .map(str::to_owned);
     let mut xml = t.xml.replacen(&format!("ref=\"{old}\""), &format!("ref=\"{new}\""), 1);
     if let Some(f) = filter_old {
-        let data_last = if t.totals_row { t.range.last.row.saturating_sub(1) } else { t.range.last.row };
+        let data_last =
+            if t.totals_row { t.range.last.row.saturating_sub(1) } else { t.range.last.row };
         let filter_new = Range::new(t.range.first, CellRef::new(data_last, t.range.last.col)).a1();
         xml = xml.replacen(&format!("ref=\"{f}\""), &format!("ref=\"{filter_new}\""), 1);
     }
@@ -961,7 +1323,11 @@ fn styles_xml(styles: &Styles) -> String {
     let mut ns = styles.namespaces.clone();
     ns.retain(|(p, _)| !p.is_empty());
     let mut out = format!("{XML_HEAD}<styleSheet{}>", namespaces_text(&ns, MAIN_NS));
-    let custom: Vec<(&u32, &String)> = styles.num_fmts.iter().filter(|(id, _)| **id >= 164 || builtin_format(**id).is_none()).collect();
+    let custom: Vec<(&u32, &String)> = styles
+        .num_fmts
+        .iter()
+        .filter(|(id, _)| **id >= 164 || builtin_format(**id).is_none())
+        .collect();
     if !custom.is_empty() {
         out.push_str(&format!("<numFmts count=\"{}\">", custom.len()));
         for (id, code) in custom {
@@ -1008,13 +1374,26 @@ fn styles_xml(styles: &Styles) -> String {
             attrs.push_str(" diagonalDown=\"1\"");
         }
         out.push_str(&format!("<border{attrs}>"));
-        for (name, e) in [("left", &b.left), ("right", &b.right), ("top", &b.top), ("bottom", &b.bottom), ("diagonal", &b.diagonal)] {
+        for (name, e) in [
+            ("left", &b.left),
+            ("right", &b.right),
+            ("top", &b.top),
+            ("bottom", &b.bottom),
+            ("diagonal", &b.diagonal),
+        ] {
             if e.is_none() {
                 out.push_str(&format!("<{name}/>"));
             } else if matches!(e.color, Color::Auto) {
-                out.push_str(&format!("<{name} style=\"{}\"><color auto=\"1\"/></{name}>", escape(&e.style)));
+                out.push_str(&format!(
+                    "<{name} style=\"{}\"><color auto=\"1\"/></{name}>",
+                    escape(&e.style)
+                ));
             } else {
-                out.push_str(&format!("<{name} style=\"{}\"><color{}/></{name}>", escape(&e.style), color_attrs(&e.color)));
+                out.push_str(&format!(
+                    "<{name} style=\"{}\"><color{}/></{name}>",
+                    escape(&e.style),
+                    color_attrs(&e.color)
+                ));
             }
         }
         out.push_str("</border>");
@@ -1023,7 +1402,10 @@ fn styles_xml(styles: &Styles) -> String {
     out.push_str(styles.raw_cell_style_xfs.as_deref().unwrap_or("<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>"));
     out.push_str(&format!("<cellXfs count=\"{}\">", styles.xfs.len()));
     for x in &styles.xfs {
-        let mut a = format!("<xf numFmtId=\"{}\" fontId=\"{}\" fillId=\"{}\" borderId=\"{}\" xfId=\"{}\"", x.num_fmt, x.font, x.fill, x.border, x.xf_id);
+        let mut a = format!(
+            "<xf numFmtId=\"{}\" fontId=\"{}\" fillId=\"{}\" borderId=\"{}\" xfId=\"{}\"",
+            x.num_fmt, x.font, x.fill, x.border, x.xf_id
+        );
         if x.num_fmt != 0 {
             a.push_str(" applyNumberFormat=\"1\"");
         }
@@ -1123,7 +1505,9 @@ fn font_xml(f: &Font, tag: &str) -> String {
         out.push_str("<strike/>");
     }
     if let Some(u) = f.underline.name() {
-        out.push_str(if u == "single" { "<u/>".to_owned() } else { format!("<u val=\"{u}\"/>") }.as_str());
+        out.push_str(
+            if u == "single" { "<u/>".to_owned() } else { format!("<u val=\"{u}\"/>") }.as_str(),
+        );
     }
     if let Some(v) = &f.vert_align {
         out.push_str(&format!("<vertAlign val=\"{}\"/>", escape(v)));
@@ -1148,7 +1532,11 @@ fn font_xml(f: &Font, tag: &str) -> String {
 
 pub fn dxf_xml(d: &Dxf) -> String {
     let mut out = String::from("<dxf>");
-    let has_font = d.font_color.is_some() || d.bold.is_some() || d.italic.is_some() || d.strike.is_some() || d.underline.is_some();
+    let has_font = d.font_color.is_some()
+        || d.bold.is_some()
+        || d.italic.is_some()
+        || d.strike.is_some()
+        || d.underline.is_some();
     if has_font {
         out.push_str("<font>");
         if let Some(b) = d.bold {
@@ -1175,11 +1563,20 @@ pub fn dxf_xml(d: &Dxf) -> String {
         out.push_str(&format!("<numFmt numFmtId=\"200\" formatCode=\"{}\"/>", escape(code)));
     }
     if let Some(c) = &d.fill {
-        out.push_str(&format!("<fill><patternFill><bgColor{}/></patternFill></fill>", color_attrs(c)));
+        out.push_str(&format!(
+            "<fill><patternFill><bgColor{}/></patternFill></fill>",
+            color_attrs(c)
+        ));
     }
     if let Some(c) = &d.border {
         let side = |n: &str| format!("<{n} style=\"thin\"><color{}/></{n}>", color_attrs(c));
-        out.push_str(&format!("<border>{}{}{}{}</border>", side("left"), side("right"), side("top"), side("bottom")));
+        out.push_str(&format!(
+            "<border>{}{}{}{}</border>",
+            side("left"),
+            side("right"),
+            side("top"),
+            side("bottom")
+        ));
     }
     out.push_str("</dxf>");
     out
