@@ -513,6 +513,36 @@ impl UnluminousApp {
                     let _ = std::fs::remove_file(store.recent_path());
                 }
             }
+            // A Word document is saved to another file by the plugin that draws it (`task-2341`).
+            Action::SaveAs
+                if self
+                    .files
+                    .active()
+                    .plugin
+                    .as_ref()
+                    .is_some_and(|tab| tab.plugin == super::word_files::WORD) =>
+            {
+                let start = self.tree.root().to_path_buf();
+                if let Some(target) = rfd::FileDialog::new()
+                    .set_title("Save As")
+                    .add_filter("Word document", &["docx"])
+                    .set_directory(&start)
+                    .save_file()
+                {
+                    let target = if target.extension().is_none() {
+                        target.with_extension("docx")
+                    } else {
+                        target
+                    };
+                    match self.save_a_plugin_tab_as(&target) {
+                        Ok(said) => {
+                            self.message = Some(said);
+                            self.tree.reload();
+                        }
+                        Err(problem) => self.message = Some(problem),
+                    }
+                }
+            }
             Action::Save | Action::SaveAs if self.files.active().unrenderable.is_some() => {
                 self.message = Some(
                     "Unluminous cannot show this file, so there is nothing to save.".to_owned(),

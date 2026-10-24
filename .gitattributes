@@ -13,3 +13,7 @@
 *.png   binary
 *.ico   binary
 *.icns  binary
+*.docx  binary
+*.deflate binary
+# Hunspell dictionaries are read as they are, so a checkout must not change their line endings.
+*.aff -text

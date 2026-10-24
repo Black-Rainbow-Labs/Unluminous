@@ -62,6 +62,13 @@ pub const ALL: &[(&str, &str, Option<&[u8]>)] = &[
         include_str!("../../../plugins/designer/plugin.conf"),
         Some(include_bytes!("../../../plugins/designer/icon.png")),
     ),
+    // Word documents, `task-2341`. A `ui` plugin that claims `.docx`, `.dotx` and `.docm` and opens each in a tab of
+    // its own, drawn as pages. Switched off, those files open as "cannot be shown" and no Word code runs.
+    (
+        "word",
+        include_str!("../../../plugins/word/plugin.conf"),
+        Some(include_bytes!("../../../plugins/word/icon.png")),
+    ),
     // The Spreadsheet plugin, `task-2338`. A `ui` plugin that opens `.xlsx`, `.xlsm`, `.csv` and `.tsv` files in a tab
     // of their own, drawn by `services::spreadsheet` from the workbook `unluminous-sheet` reads and writes.
     (

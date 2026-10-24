@@ -741,6 +741,10 @@ impl UnluminousApp {
                     provider.keyboard(taking);
                 }
             }
+            // A keyed tab, which is one a provider that draws a tab for each file asks for (`task-2341`).
+            Request::OpenKeyedTab { key, label } => self.open_a_word_tab(&key, &label),
+            Request::RenameTab { key, label } => self.rename_a_plugin_tab(&key, &label),
+            Request::CloseKeyedTab { key } => self.close_a_plugin_tab(&key),
             // `services::launcher` is the one place Unluminous asks the operating system to open something.
             Request::Reveal(path) => {
                 if !crate::services::launcher::reveal(&path) {

@@ -86,6 +86,7 @@ mod terminals;
 mod twins;
 mod updating;
 pub mod voice;
+pub mod word_files;
 mod zooming;
 
 use std::collections::HashMap;

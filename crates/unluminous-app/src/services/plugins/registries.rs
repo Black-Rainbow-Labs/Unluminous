@@ -54,7 +54,7 @@ pub const DEBUGGERS: &[&str] = &["lldb", "node"];
 /// with the binary. So the most a manifest can do is name a provider that is already here, visibly,
 /// and nothing in a plugin is executed.
 pub const UI_PROVIDERS: &[&str] =
-    &["agent-tasks", "agent-chat", "database", "realm", "designer", "spreadsheet"];
+    &["agent-tasks", "agent-chat", "database", "realm", "designer", "spreadsheet", "word"];
 
 /// The providers in [`UI_PROVIDERS`] whose surface is drawn by the window itself rather than by a
 /// `UiProvider` object. `task-2202`.
@@ -85,7 +85,7 @@ pub const CHROME: &[&str] = &["vello"];
 /// is worse than a manifest that was refused with the list of icons in the message.
 pub const PANE_ICONS: &[&str] = &[
     "board", "folder", "terminal", "run", "bug", "clock", "branch", "tick", "plus", "image",
-    "chat", "database", "table", "design",
+    "chat", "database", "table", "design", "document",
 ];
 
 /// The icon sets built into this version of Unluminous that a theme's `icons` may name.

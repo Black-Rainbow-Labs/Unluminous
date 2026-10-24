@@ -765,9 +765,9 @@ impl UnluminousApp {
             // and the menu's use of the pair for going back and forward (`task-2063`) must not take
             // either away from a program.
             let in_a_terminal = self.a_terminal_has_the_keyboard();
-            // **A plugin tab that reads Excel's chords takes them before the menus** (`task-2338`): `Ctrl+D` is
+            // **A plugin tab that reads its own chords takes them before the menus** (`task-2338`, `task-2341`): `Ctrl+D` is
             // Fill Down in a workbook and Git's Show Diff on the menu, and `Ctrl+Z` undoes a change to a cell
-            // rather than to the empty document behind the tab.
+            // rather than to the empty document behind the tab. In a Word tab `Ctrl+B` is bold.
             let claimer = self.the_plugin_tab_with_the_keyboard();
             let claims: Vec<(egui::Key, egui::Modifiers)> =
                 match claimer.and_then(|p| self.plugin_ui.provider(&p)) {

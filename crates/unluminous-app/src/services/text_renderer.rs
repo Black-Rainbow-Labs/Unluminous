@@ -503,7 +503,7 @@ impl Atlas {
 }
 
 /// The bytes of a font file, mapped or held, shared by every face read from it.
-type FaceBytes = Arc<dyn AsRef<[u8]> + Send + Sync>;
+pub(crate) type FaceBytes = Arc<dyn AsRef<[u8]> + Send + Sync>;
 
 /// A parsed face and the bytes it was parsed from.
 ///
@@ -512,6 +512,12 @@ type FaceBytes = Arc<dyn AsRef<[u8]> + Send + Sync>;
 pub(crate) struct Face {
     font: FontRef<'static>,
     _bytes: FaceBytes,
+    /// Which face of its file it is, for [`TextRenderer::face_file`].
+    index: u32,
+    /// The face's own weight, 400 for regular and 700 for bold.
+    weight: u16,
+    /// Whether the face is itself italic or oblique.
+    slanted: bool,
 }
 
 impl Face {
@@ -525,8 +531,75 @@ impl Face {
         let data: &'static [u8] =
             unsafe { std::mem::transmute::<&[u8], &'static [u8]>((*bytes).as_ref()) };
         let font = FontRef::try_from_slice_and_index(data, index).ok()?;
-        Some(Self { font, _bytes: bytes })
+        Some(Self { font, _bytes: bytes, index, weight: 400, slanted: false })
     }
+
+    /// Whether drawing `style` with this face needs a bold or a slant the face does not have itself.
+    ///
+    /// `task-2341`. A family with only its regular face, such as Aptos as Office leaves it on a machine
+    /// that has never needed the bold, answers a query for its bold with the regular face, and bold text
+    /// was then drawn exactly like regular text. Word thickens and slants the regular face in that case.
+    fn synthesis(&self, style: &CharStyle) -> Synthesis {
+        Synthesis {
+            embolden: style.bold && self.weight < 600,
+            slant: style.italic && !self.slanted,
+        }
+    }
+}
+
+/// What a glyph needs added to it because its face lacks a bold or an italic of its own.
+#[derive(Clone, Copy, PartialEq)]
+struct Synthesis {
+    embolden: bool,
+    slant: bool,
+}
+
+/// How far a synthetic italic leans: the horizontal shift for each unit of height, about 11 degrees.
+const SYNTHETIC_SLANT: f32 = 0.2;
+
+/// How much a synthetic bold thickens each stroke, as a share of the font size.
+const SYNTHETIC_BOLD: f32 = 0.03;
+
+/// Thicken and slant one glyph's coverage, which is `width` by `height` pixels whose top row sits `top`
+/// pixels from the baseline (negative above it). Answers the new coverage, its width, and how far its
+/// left edge moved. Rows above the baseline move right and rows below it move left, as an italic leans.
+/// The bold is the coverage laid over itself `strength` pixels to the right.
+fn synthesise(
+    coverage: &[f32],
+    width: usize,
+    height: usize,
+    top: f32,
+    slant: f32,
+    strength: f32,
+) -> (Vec<f32>, usize, f32) {
+    let shift = |row: usize| -(top + row as f32 + 0.5) * slant;
+    let (low, high) =
+        (0..height).map(shift).fold((f32::MAX, f32::MIN), |(a, b), s| (a.min(s), b.max(s)));
+    let (low, high) = if height == 0 { (0.0, 0.0) } else { (low, high) };
+    let wide = width + (high - low).ceil() as usize + strength.ceil() as usize + 1;
+    let sample = |row: usize, x: f32| -> f32 {
+        let left = x.floor();
+        let part = x - left;
+        let at = |column: f32| {
+            if column < 0.0 || column >= width as f32 {
+                0.0
+            } else {
+                coverage[row * width + column as usize]
+            }
+        };
+        at(left) * (1.0 - part) + at(left + 1.0) * part
+    };
+    let taps = [0.0, strength * 0.5, strength];
+    let mut out = vec![0.0; wide * height];
+    for row in 0..height {
+        let moved = shift(row) - low;
+        for x in 0..wide {
+            let source = x as f32 - moved;
+            out[row * wide + x] =
+                taps.iter().map(|tap| sample(row, source - tap)).fold(0.0, f32::max);
+        }
+    }
+    (out, wide, low)
 }
 
 impl std::ops::Deref for Face {
@@ -539,7 +612,9 @@ impl std::ops::Deref for Face {
 
 /// Fonts, measurements and rasterised glyphs.
 pub struct TextRenderer {
-    database: fontdb::Database,
+    /// In a cell so a plugin can add a folder of fonts after the window has started
+    /// ([`TextRenderer::add_font_folder`]); everything else only reads it.
+    database: RefCell<fontdb::Database>,
     /// Families that are installed, in the order the toolbar shows them.
     families: Vec<String>,
     /// Faces already read from disk. An entry holding `None` is a face this system does not have, kept
@@ -602,7 +677,7 @@ impl TextRenderer {
             .collect();
         let families = with_every_other_family(installed, &database);
         Self {
-            database,
+            database: RefCell::new(database),
             families,
             faces: RefCell::new(HashMap::new()),
             fallbacks: RefCell::new(HashMap::new()),
@@ -656,12 +731,17 @@ impl TextRenderer {
             style: if key.italic { fontdb::Style::Italic } else { fontdb::Style::Normal },
             stretch: fontdb::Stretch::Normal,
         };
-        let loaded = self
-            .database
-            .query(&query)
+        let found = self.database.borrow().query(&query);
+        let loaded = found
             .and_then(|id| {
                 let (bytes, index) = self.shared_bytes(id)?;
-                Face::new(bytes, index)
+                let mut face = Face::new(bytes, index)?;
+                // The query answers the closest face it has, which for a missing bold is the regular one.
+                if let Some(info) = self.database.borrow().face(id) {
+                    face.weight = info.weight.0;
+                    face.slanted = info.style != fontdb::Style::Normal;
+                }
+                Some(face)
             })
             .map(Arc::new);
         self.faces.borrow_mut().insert(key.clone(), loaded.clone());
@@ -793,6 +873,13 @@ impl TextRenderer {
         moved
     }
 
+    /// The interface zoom every size asked of this renderer is divided by. A caller whose sizes are not
+    /// about the letters a person reads, such as a Word page whose text must stay the size of its page
+    /// (`task-2341`), multiplies by it first.
+    pub fn interface_zoom(&self) -> f32 {
+        self.interface_zoom.get()
+    }
+
     /// `style` at the size it is laid out at once the interface zoom is taken back out of it.
     fn unzoomed<'a>(&self, style: &'a CharStyle) -> std::borrow::Cow<'a, CharStyle> {
         let zoom = self.interface_zoom.get();
@@ -865,6 +952,26 @@ impl TextRenderer {
         if width == 0 || height == 0 {
             return Rasterised::Blank;
         }
+        let synthesis = face.synthesis(style);
+        if synthesis.embolden || synthesis.slant {
+            let mut coverage = vec![0.0; width * height];
+            outlined.draw(|dx, dy, value| {
+                if (dx as usize) < width && (dy as usize) < height {
+                    coverage[dy as usize * width + dx as usize] = value.clamp(0.0, 1.0);
+                }
+            });
+            let slant = if synthesis.slant { SYNTHETIC_SLANT } else { 0.0 };
+            let strength =
+                if synthesis.embolden { (style.size * SYNTHETIC_BOLD).max(0.5) } else { 0.0 };
+            let (drawn, wide, moved) =
+                synthesise(&coverage, width, height, bounds.min.y, slant, strength);
+            return self.keep_in_atlas(
+                &drawn,
+                wide,
+                height,
+                egui::vec2(bounds.min.x + moved, bounds.min.y),
+            );
+        }
         let mut atlas = self.atlas.borrow_mut();
         let Some((x, y)) = atlas.reserve(width, height) else {
             return Rasterised::AtlasFull;
@@ -891,6 +998,41 @@ impl TextRenderer {
         })
     }
 
+    /// Copy coverage already drawn, `width` by `height` from 0 to 1, into the atlas: a synthetic bold or
+    /// italic glyph, which is made in a buffer of its own first (`task-2341`).
+    fn keep_in_atlas(
+        &self,
+        coverage: &[f32],
+        width: usize,
+        height: usize,
+        offset: egui::Vec2,
+    ) -> Rasterised {
+        let mut atlas = self.atlas.borrow_mut();
+        let Some((x, y)) = atlas.reserve(width, height) else {
+            return Rasterised::AtlasFull;
+        };
+        for row in 0..height {
+            for column in 0..width {
+                let (px, py) = (x + column, y + row);
+                if px < ATLAS_SIDE && py < ATLAS_SIDE {
+                    let alpha =
+                        (coverage[row * width + column].clamp(0.0, 1.0) * 255.0).round() as u8;
+                    atlas.coverage[py * ATLAS_SIDE + px] = alpha;
+                }
+            }
+        }
+        atlas.mark(x, y, width, height);
+        let side = ATLAS_SIDE as f32;
+        Rasterised::Glyph(AtlasGlyph {
+            uv: egui::Rect::from_min_max(
+                egui::pos2(x as f32 / side, y as f32 / side),
+                egui::pos2((x + width) as f32 / side, (y + height) as f32 / side),
+            ),
+            size: egui::vec2(width as f32, height as f32),
+            offset,
+        })
+    }
+
     /// A face for egui, so that the interface itself is set in a real font rather than egui's built in
     /// one. egui needs the file contents and does its own parsing; they are the mapped file, not a copy.
     ///
@@ -903,7 +1045,7 @@ impl TextRenderer {
             style: fontdb::Style::Normal,
             stretch: fontdb::Stretch::Normal,
         };
-        let id = self.database.query(&query)?;
+        let id = self.database.borrow().query(&query)?;
         let (bytes, index) = self.shared_bytes(id)?;
         // egui holds a font's bytes as `'static`, and a face it was given is kept until the fonts are
         // replaced, which this window does when the interface font changes. So the mapping is kept for the
@@ -927,8 +1069,12 @@ impl TextRenderer {
     ///
     /// @param id - the face in the database
     fn shared_bytes(&self, id: fontdb::ID) -> Option<(FaceBytes, u32)> {
-        let face = self.database.face(id)?;
-        let bytes: FaceBytes = match &face.source {
+        let (source, face_index) = {
+            let database = self.database.borrow();
+            let face = database.face(id)?;
+            (face.source.clone(), face.index)
+        };
+        let bytes: FaceBytes = match &source {
             fontdb::Source::Binary(data) => data.clone(),
             fontdb::Source::SharedFile(_, data) => data.clone(),
             fontdb::Source::File(path) => {
@@ -939,7 +1085,7 @@ impl TextRenderer {
                 Arc::new(unsafe { memmap2::Mmap::map(&file) }.ok()?)
             }
         };
-        Some((bytes, face.index))
+        Some((bytes, face_index))
     }
 
     /// The size of one cell of the terminal grid, at `size` points.
@@ -1081,6 +1227,13 @@ impl FontMetrics for TextRenderer {
         Some(self.ascii_table(&self.unzoomed(style)))
     }
 
+    fn kerning(&self, left: char, right: char, style: &CharStyle) -> f32 {
+        let style = &*self.unzoomed(style);
+        let Some(face) = self.face_for(style) else { return 0.0 };
+        let scaled = face.as_scaled(PxScale::from(style.size));
+        scaled.kern(face.glyph_id(left), face.glyph_id(right))
+    }
+
     fn line_metrics(&self, style: &CharStyle) -> LineMetrics {
         let style = &*self.unzoomed(style);
         let id = self.resolve_id(style);
@@ -1098,6 +1251,13 @@ impl FontMetrics for TextRenderer {
 impl TextRenderer {
     /// What [`FontMetrics::line_metrics`] answers, asking the font.
     fn measure_line_metrics(&self, style: &CharStyle) -> LineMetrics {
+        let mut metrics = self.font_metrics_unzoomed(style);
+        metrics.line_gap += style.size * READING_LEADING;
+        metrics
+    }
+
+    /// A face's own ascent, descent and line gap, with none of the reading leading the editor adds.
+    fn font_metrics_unzoomed(&self, style: &CharStyle) -> LineMetrics {
         let Some(face) = self.face_for(style) else {
             return LineMetrics { ascent: style.size, descent: style.size * 0.25, line_gap: 0.0 };
         };
@@ -1106,8 +1266,56 @@ impl TextRenderer {
             ascent: scaled.ascent(),
             // ab_glyph reports the descent as a negative number, below the baseline.
             descent: -scaled.descent(),
-            line_gap: scaled.line_gap() + style.size * READING_LEADING,
+            line_gap: scaled.line_gap(),
         }
+    }
+
+    /// The line metrics the font itself gives, without the editor's reading leading.
+    ///
+    /// **A Word document is laid out on these** (`task-2341`): Word's single line is exactly the font's
+    /// ascent, descent and gap, and the leading that makes code easier to read would make every page of a
+    /// document come out longer than Word's.
+    pub fn font_line_metrics(&self, style: &CharStyle) -> LineMetrics {
+        self.font_metrics_unzoomed(&self.unzoomed(style))
+    }
+
+    /// How much taller a face's line is than its em, which is what a point size is multiplied by to give
+    /// the size this renderer is asked for.
+    ///
+    /// The renderer scales a face so that its ascent to descent is the size asked for, which is what makes
+    /// every monospaced face fill the same line in the editor. Word's size is the em, so a 12 point Aptos
+    /// is asked for here as 14.6 (`task-2341`).
+    pub fn em_ratio(&self, style: &CharStyle) -> f32 {
+        self.face_for(&self.unzoomed(style))
+            .and_then(|face| Some(face.height_unscaled() / face.units_per_em()?))
+            .filter(|ratio| ratio.is_finite() && *ratio > 0.2)
+            .unwrap_or(1.0)
+    }
+
+    /// The file a style's face was read from and which face of it, for a caller that reads a table the renderer
+    /// does not. The Word plugin reads the GPOS kerning pairs this way (`task-2341`).
+    pub fn face_file(&self, style: &CharStyle) -> Option<(FaceBytes, u32)> {
+        let face = self.face_for(&self.unzoomed(style))?;
+        Some((Arc::clone(&face._bytes), face.index))
+    }
+
+    /// The glyph a character is drawn with in a style's face.
+    pub fn glyph_index(&self, character: char, style: &CharStyle) -> u16 {
+        self.face_for(&self.unzoomed(style)).map_or(0, |face| face.glyph_id(character).0)
+    }
+
+    /// Add every font in a folder, for a plugin whose documents name families the system does not list.
+    ///
+    /// The Word plugin adds Office's cloud fonts this way, when a document is first opened, so a window
+    /// that never opens one never reads them (`task-2341`). A face that was looked for before and not
+    /// found is looked for again. Answers how many faces were added.
+    pub fn add_font_folder(&self, folder: &std::path::Path) -> usize {
+        let before = self.database.borrow().len();
+        self.database.borrow_mut().load_fonts_dir(folder);
+        self.faces.borrow_mut().retain(|_, face| face.is_some());
+        self.fallbacks.borrow_mut().clear();
+        *self.memo.borrow_mut() = None;
+        self.database.borrow().len() - before
     }
 
     /// The ASCII advances of `style`'s face at its size, measured the first time they are asked for.
@@ -1255,6 +1463,50 @@ mod tests {
         let large = CharStyle { size: 36.0, ..small.clone() };
         assert!(renderer.advance("m", &large) > renderer.advance("m", &small));
         assert!(renderer.line_metrics(&large).height() > renderer.line_metrics(&small).height());
+    }
+
+    /// A synthetic italic moves the top of a glyph right and its bottom left (`task-2341`).
+    #[test]
+    fn a_synthetic_italic_leans_the_glyph_to_the_right() {
+        // A one pixel wide upright bar, ten rows tall, sitting on the baseline.
+        let bar = vec![1.0; 10];
+        let (drawn, wide, moved) = synthesise(&bar, 1, 10, -10.0, SYNTHETIC_SLANT, 0.0);
+        let centre = |row: usize| {
+            let cells = &drawn[row * wide..(row + 1) * wide];
+            let total: f32 = cells.iter().sum();
+            cells.iter().enumerate().map(|(x, c)| x as f32 * c).sum::<f32>() / total
+        };
+        assert!(centre(0) > centre(9) + 1.0, "the top row is further right than the bottom one");
+        assert!(moved >= 0.0, "nothing of a glyph above the baseline moves left of where it was");
+    }
+
+    /// A synthetic bold thickens each stroke and leaves its height alone (`task-2341`).
+    #[test]
+    fn a_synthetic_bold_thickens_the_strokes() {
+        let bar = vec![1.0; 10];
+        let (drawn, wide, moved) = synthesise(&bar, 1, 10, -10.0, 0.0, 1.0);
+        assert_eq!(drawn.len(), wide * 10);
+        assert_eq!(moved, 0.0);
+        let inked: f32 = drawn[..wide].iter().sum();
+        assert!(inked >= 1.9, "a one pixel stroke is about two pixels wide: {inked}");
+    }
+
+    /// A face that is itself bold or italic needs nothing added, and a regular face asked for bold does.
+    #[test]
+    fn only_a_face_without_its_own_bold_or_italic_is_thickened_or_slanted() {
+        let renderer = TextRenderer::new();
+        let regular = CharStyle { size: 20.0, ..CharStyle::default() };
+        let face = renderer.face_for(&regular).expect("a face");
+        assert!(face.synthesis(&regular) == Synthesis { embolden: false, slant: false });
+        let asked = CharStyle { bold: true, italic: true, ..regular.clone() };
+        assert!(
+            face.synthesis(&asked) == Synthesis { embolden: true, slant: true },
+            "the regular face lacks both"
+        );
+        let real = renderer.face_for(&asked).expect("a face");
+        if real.weight >= 600 && real.slanted {
+            assert!(real.synthesis(&asked) == Synthesis { embolden: false, slant: false });
+        }
     }
 
     #[test]

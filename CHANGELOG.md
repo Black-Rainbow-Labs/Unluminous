@@ -6,6 +6,28 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.14.2 — 2026-10-24
+
+- Synthetic bold and italic for a face without its own, a suggestion keeps the replaced word's formatting, and the spelling card fits its text (`task-2341`)
+
+## 1.14.1 — 2026-10-24
+
+- The Windows installer packages the build from CARGO_TARGET_DIR, and refuses an executable of another version (`task-2341`)
+
+## 1.14.0 — 2026-10-24
+
+- Word document engine: zip, model, reader and writer that keep everything, styles, lists, layout (`task-2341`)
+- Editing, undo, track changes, lists, tables, sections, notes, comments, fields; plugin contract (`task-2341`)
+- The Word plugin in the window, exports, kerning, and the Word oracle (`task-2341`)
+- Word tab kerning, comment cards, header editing, formatted paste, tests (`task-2341`)
+- Record the Word window test pictures, and type the heading without a trailing space (`task-2341`)
+- Spell check in Word documents, and the bubble over a selection takes clicks (`task-2341`)
+- Keep the Hunspell affix file's line endings as they are (`task-2341`)
+- Rebased on 1.12.0, the MCP size measured again, and four pictures recorded with Word in the Settings list and the Plugins menu (`task-2341`)
+- The lock file follows 1.12.1 (`task-2341`)
+- The board's settings picture with task-2340's settings list and Word (`task-2341`)
+- The Settings and Plugins menu pictures with both Word and Spreadsheet (`task-2341`)
+
 ## 1.13.0 — 2026-10-24
 
 - Spreadsheet engine: model, formulas, evaluator, function library, number formats, Excel oracle (`task-2338`)

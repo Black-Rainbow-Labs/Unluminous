@@ -46,6 +46,11 @@ pub const PLUGINS: &[Plugin] = &[
         note: "Excel and CSV workbooks in tabs. A range is A1, B2:C9, A:C, 3:5 or Sheet2!A1; a verb chooses the range it names first. `open` a file first.",
         commands: SPREADSHEET,
     },
+    Plugin {
+        id: "word",
+        note: "Microsoft Word documents (.docx): read a document as paragraphs with their styles, type and replace text, format it, build lists, tables and a table of contents, add comments and footnotes, track and accept changes, set the page, and save or export it. Commands act on the document showing, or the one chosen with `use`. A paragraph is numbered from 1 in document order, table cells included, as `read` lists them.",
+        commands: WORD,
+    },
 ];
 
 /// The plugin with this id, if it is one of [`PLUGINS`].
@@ -229,6 +234,45 @@ pub const DESIGNER: &[(&str, &str)] = &[
     ("restore", "Put a copy back as the design: restore <copy>, by name or by place in the list."),
     ("reload", "Load the page again."),
     ("source", "Open the design's file as text."),
+];
+
+pub const WORD: &[(&str, &str)] = &[
+    ("new", "A new document: new [path.docx]."),
+    ("open", "Open a .docx in a tab: open <path>."),
+    ("docs", "The open documents."),
+    ("use", "Act on another open document: use <key or path>."),
+    ("save", "Save: save [path] (a path is Save As)."),
+    ("close", "Close the tab, saving it first."),
+    ("read", "Paragraphs from 1 with style, list, cell and text: read [from] [to] [--runs]."),
+    ("text", "The document as plain text."),
+    ("outline", "The headings with level and page."),
+    ("stats", "Pages, words, characters, paragraphs, lines."),
+    ("spelling", "Misspelled and repeated words with suggestions; spelling add|ignore <word> | next."),
+    ("pages", "Each page and what it starts with."),
+    ("select", "select <paragraph> [offset] [to] [to-offset] | all | text <words>."),
+    ("selection", "The selection and its text."),
+    ("type", "Type at the selection: type <text> (\\n splits a paragraph)."),
+    ("insert", "insert paragraph|page-break|line-break|section-break|table <rows> <cols>|picture <path>|footnote <text>|toc|field <code>|link <url>|bookmark <name>|date."),
+    ("delete", "Delete the selection or a character: delete [forward] [word]."),
+    ("find", "Matches as paragraph and offset: find <text> [--case] [--word]."),
+    ("replace", "replace <find> -- <with> [--all] [--case] [--word]."),
+    ("format", "format bold|italic|underline|strike|caps|superscript [on|off], font <name>, size <pt>, color <RRGGBB>, highlight <name>, clear."),
+    ("paragraph", "paragraph align <left|center|right|justify>, indent-left|first-line|hanging|before|after <pt>, line <multiple>, keep-next on."),
+    ("style", "Apply a style: style Heading 1. style list names them."),
+    ("list", "list bullet|number|deeper|shallower|restart."),
+    ("table", "table row-below|column-right|delete-row|merge-right|merge-down|split|width <pt>|cell <row> <col>."),
+    ("section", "section size a4|orientation landscape|margins narrow|columns <n>|header <text>|footer <text>|page-numbers."),
+    ("comment", "comment add <text>|reply <id> <text>|resolve <id>|delete <id>|list."),
+    ("track", "Track Changes: track on|off|list|accept [all]|reject [all]."),
+    ("fields", "Update the table of contents and the dates."),
+    ("undo", "Undo."),
+    ("redo", "Redo."),
+    ("export", "export pdf|html|md|txt [path]."),
+    ("properties", "Title, subject, author, keywords: properties [name] [value]."),
+    ("view", "view zoom <percent>|marks on|navigation on."),
+    ("panel", "Open the format panel at a level: panel text|paragraph|page|review|close."),
+    ("action", "Run a Ctrl+/ command by id: action <id>; action list."),
+    ("load", "Read a file into a tab key (the window sends this): load <key> <path>."),
 ];
 
 pub const AGENT_CHAT: &[(&str, &str)] = &[

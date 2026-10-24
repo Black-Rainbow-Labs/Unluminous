@@ -241,7 +241,8 @@ impl UnluminousApp {
             let relative = crate::services::project_state::relative(self.tree.root(), path);
             return self.open_a_realm_in_a_tab(&relative);
         }
-        // A file a plugin draws in a tab of its own, such as a workbook. `task-2338`.
+        // A file a plugin draws in a tab of its own, such as a workbook (`task-2338`) or a Word document
+        // (`task-2341`).
         if !as_text {
             if let Some((plugin, provider)) = self.plugin_that_draws(path) {
                 return self.open_a_file_in_a_plugin_tab(&plugin, &provider, path);

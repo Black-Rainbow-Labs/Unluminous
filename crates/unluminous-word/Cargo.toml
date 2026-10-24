@@ -1,0 +1,35 @@
+[package]
+name = "unluminous-word"
+description = "Word documents: the .docx file, its styles and lists, editing, pagination and the exports. No user interface dependency."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+# The zip container a .docx file is. Both were already in the lock file through other crates.
+flate2.workspace = true
+crc32fast.workspace = true
+# Reading XML. Writing is done by hand with one escaping function, in `xml.rs`.
+roxmltree.workspace = true
+# Text is measured through `FontMetrics`, so the layout tests run on `FixedMetrics` and the window passes
+# its real fonts. Line breaking and grapheme clusters come from the same crates the editor uses.
+unluminous-core.workspace = true
+unicode-segmentation.workspace = true
+# Glyph ids and advances for the fonts a PDF export embeds. Already in the tree through the window.
+ab_glyph.workspace = true
+# GPOS pair kerning (`kern.rs`), which Word kerns with. Already in the tree through `ab_glyph`.
+ttf-parser.workspace = true
+# `plugins run word read` answers as data, and the agent's arguments arrive as JSON.
+serde_json.workspace = true
+# Spell check (`spell.rs`): Hunspell dictionaries read in pure Rust. The English dictionary is SCOWL en_US,
+# kept deflated in `dictionaries/` and inflated only when a document is first checked.
+spellbook.workspace = true
+
+[dev-dependencies]
+# A small picture for the test that has Word open a document Unluminous wrote.
+flate2.workspace = true
+crc32fast.workspace = true
+# Real fonts for the tests that compare pages with Word's (`tests/pagination.rs`). Both are already in the
+# workspace through the window.
+fontdb.workspace = true

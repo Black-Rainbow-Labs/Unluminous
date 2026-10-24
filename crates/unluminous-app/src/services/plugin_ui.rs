@@ -516,6 +516,13 @@ pub enum Request {
     /// the one seam a test replaces, and a plugin that opened the platform's own dialog itself could not be
     /// tested. `start` is the folder the picker opens in, the project when it is `None`.
     PickFolder { id: String, title: String, start: Option<PathBuf> },
+    /// Open a tab for a file the provider already holds, keyed `key` and named `label` (`task-2341`): a new,
+    /// untitled Word document has no path for `OpenFile` to open.
+    OpenKeyedTab { key: String, label: String },
+    /// Rename the keyed tab, after a Save As gave its document a new name.
+    RenameTab { key: String, label: String },
+    /// Close the keyed tab, saving it first when it has changes, as closing any tab does.
+    CloseKeyedTab { key: String },
 }
 
 /// What a command answered.
@@ -656,7 +663,8 @@ pub trait UiProvider: std::fmt::Debug {
     /// Draw one of this plugin's tabs, by the key the tab was opened with (`task-2338`).
     ///
     /// **A provider that draws a tab for each file has to know which file the tab is.** The Spreadsheet
-    /// plugin opens one tab a workbook, each keyed `spreadsheet:<path>`; the default draws [`Self::tab`],
+    /// plugin opens one tab a workbook, each keyed `spreadsheet:<path>`, and the Word plugin one a document,
+    /// keyed `word:<path>` (`task-2341`); the default draws [`Self::tab`],
     /// which is every provider whose tab is one surface.
     fn tab_keyed(&mut self, key: &str, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request> {
         let _ = key;
@@ -675,6 +683,13 @@ pub trait UiProvider: std::fmt::Debug {
     fn save(&mut self, key: &str) -> Result<String, String> {
         let _ = key;
         Err("there is nothing in this tab to save".to_owned())
+    }
+
+    /// Save the tab with this key to another file, which is `File -> Save As` (`task-2341`). Answers the
+    /// line for the status bar. The default cannot, and says so.
+    fn save_as(&mut self, key: &str, to: &std::path::Path) -> Result<String, String> {
+        let _ = (key, to);
+        Err("this tab cannot be saved to another file".to_owned())
     }
 
     /// The tab with this key was closed, so whatever it held can be let go of.
@@ -959,6 +974,7 @@ pub fn provider(name: &str) -> Option<Box<dyn UiProvider>> {
         "agent-chat" => Some(Box::new(crate::services::agent_chat::AgentChat::new())),
         "database" => Some(Box::new(crate::services::database::DatabaseExplorer::new())),
         "designer" => Some(Box::new(crate::services::designer::Designer::new())),
+        "word" => Some(Box::new(crate::services::word::Word::new())),
         "spreadsheet" => Some(Box::new(crate::services::spreadsheet::Spreadsheet::new())),
         // Drawn by the window itself — see `plugins::CORE_PROVIDERS`.
         "realm" => None,

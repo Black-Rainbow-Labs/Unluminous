@@ -2024,6 +2024,44 @@ pub fn design(painter: &egui::Painter, centre: Pos2, color: Color32) {
     ));
 }
 
+/// A document: a page with its top right corner folded over and three lines of text, the last one short.
+/// The Word plugin's settings page (`task-2341`).
+pub fn document(painter: &egui::Painter, centre: Pos2, color: Color32) {
+    let page = Rect::from_center_size(centre, egui::Vec2::new(10.0, 13.0));
+    let fold = 3.2;
+    let stroke = Stroke::new(1.2, color);
+    let outline = vec![
+        page.left_top(),
+        Pos2::new(page.right() - fold, page.top()),
+        Pos2::new(page.right(), page.top() + fold),
+        page.right_bottom(),
+        page.left_bottom(),
+        page.left_top(),
+    ];
+    painter.add(egui::Shape::line(outline, stroke));
+    painter.line_segment(
+        [
+            Pos2::new(page.right() - fold, page.top()),
+            Pos2::new(page.right() - fold, page.top() + fold),
+        ],
+        Stroke::new(1.0, color),
+    );
+    painter.line_segment(
+        [
+            Pos2::new(page.right() - fold, page.top() + fold),
+            Pos2::new(page.right(), page.top() + fold),
+        ],
+        Stroke::new(1.0, color),
+    );
+    for (row, width) in [(5.2, 6.0), (7.6, 6.0), (10.0, 3.6)] {
+        let y = page.top() + row;
+        painter.line_segment(
+            [Pos2::new(page.left() + 2.0, y), Pos2::new(page.left() + 2.0 + width, y)],
+            Stroke::new(1.0, color),
+        );
+    }
+}
+
 /// A table: a grid with a heavier first row, which is what a header is.
 pub fn table(painter: &egui::Painter, centre: Pos2, color: Color32) {
     let rect = Rect::from_center_size(centre, egui::Vec2::new(13.0, 11.0));

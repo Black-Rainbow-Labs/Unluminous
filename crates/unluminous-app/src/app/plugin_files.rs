@@ -36,6 +36,10 @@ impl UnluminousApp {
         provider: &str,
         path: &Path,
     ) -> Result<(), String> {
+        // A Word document is read under the key the Word plugin gives it. `task-2341`.
+        if plugin == super::word_files::WORD {
+            return self.open_a_word_document(path);
+        }
         let opened = self.plugin_ui.opened(plugin, provider)?;
         let words = vec![path.to_string_lossy().into_owned()];
         // `use` reads the file into the provider and makes it the one its commands act on, without asking for a
