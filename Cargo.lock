@@ -6781,7 +6781,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-word"
-version = "1.12.0"
+version = "1.12.1"
 dependencies = [
  "ab_glyph",
  "crc32fast",
