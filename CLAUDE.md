@@ -2709,7 +2709,7 @@ its own custom layout (same behavior as if they were open in different windows).
 
 ## What `task-2336` changed, and the rules it left
 
-`tasks/task-2336-unluminous-issues-v28-tdd.md` is the design. Five rules:
+`tasks/task-2336-unluminous-issues-v28-tdd.md` is the design. Six rules:
 
 - **A page reports its own zoom gesture, through the one message a page can send.** `services/browser_zoom.js`
   is put in every page. It catches `Ctrl`/`Cmd` with the wheel, and `Ctrl` with `=`, `-` and `0` (not on macOS,
@@ -2727,6 +2727,14 @@ its own custom layout (same behavior as if they were open in different windows).
   the other standard variables, `#set` and `#parse` are filled in; any other `${Variable}` is asked for, one
   prompt each, and `$word` with no braces and no value is left alone because it is code. A template's action is
   named by its slug: `new-file-from-html-file`, `new-untitled-tab-rust-file`.
+- **Templates are managed in the Templates manager** (`components::templates_dialog`, `New -> Templates -> Manage
+  Templates...` and `New Template...`, `modal open templates`), the reference editor's `File and Code Templates`
+  page: the person's templates (holding the five built in ones, which can be changed and reset but not removed or
+  renamed) and the project's, templates and includes, a file name pattern (`${NAME}_test`, kept in a `.ft.conf`
+  beside the template), and the variables listed under the text to put in at the caret. It edits
+  `file_templates::Draft`s and writes nothing until `Apply` or `OK`, through `file_templates::apply`, which is also
+  what `explorer template-set` and `template-remove` write with. `Open Templates Folder` is gone: Jason found it
+  meant nothing.
 - **A tab with no file has a proposed name** (`OpenFile::proposed`), which names the tab and decides its
   language through `OpenFile::language_path`. Ask that rather than `path()` wherever the question is "what
   language is this".

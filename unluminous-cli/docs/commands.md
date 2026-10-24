@@ -4095,14 +4095,58 @@ unluminous-cli explorer new-file src/card --template react-component --set Autho
 ### explorer templates
 
 ```
-unluminous-cli explorer templates
+unluminous-cli explorer templates [name] [--project] [--include]
 ```
 
-Every file template, built in, yours or the project's, with its extension and the variables it asks for.
+Every file template, built in, yours or the project's, with its extension and the variables it asks for. With a name, that one in full.
+
+- `name` (optional) — One template to show.
+
+- `--project` — The project's rather than yours.
+- `--include` — An include rather than a template.
 
 ```sh
 unluminous-cli explorer templates
-unluminous-cli explorer templates --json
+unluminous-cli explorer templates "HTML File"
+```
+
+### explorer template-set
+
+```
+unluminous-cli explorer template-set <name> [--extension <extension>] [--body <text>] [--body-file <path>] [--file-name <pattern>] [--rename <name>] [--project] [--include]
+```
+
+Make or change a file template: what the Templates manager does, with no dialog.
+
+- `name` — The template.
+
+- `--extension <extension>` — The extension of files made from it.
+- `--body <text>` — Its text.
+- `--body-file <path>` — A file to take its text from.
+- `--file-name <pattern>` — What a file made from it is called, such as ${NAME}_test.
+- `--rename <name>` — A new name.
+- `--project` — The project's rather than yours.
+- `--include` — An include rather than a template.
+
+```sh
+unluminous-cli explorer template-set Card --extension tsx --body-file card.tsx
+```
+
+### explorer template-remove
+
+```
+unluminous-cli explorer template-remove <name> [--project] [--include]
+```
+
+Remove a file template, or put a built in one back as it ships.
+
+- `name` — The template.
+
+- `--project` — The project's rather than yours.
+- `--include` — An include rather than a template.
+
+```sh
+unluminous-cli explorer template-remove Card
 ```
 
 ### explorer save-template

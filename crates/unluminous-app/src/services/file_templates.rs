@@ -57,6 +57,11 @@ pub struct Template {
     pub extension: String,
     pub body: String,
     pub scope: Scope,
+    /// What a file made from it is called, written with variables: `${NAME}.test` or `../${NAME}`. Empty asks
+    /// for a name and adds the extension, which is what a template with no pattern has always done. Kept in a
+    /// `<file>.ft.conf` beside the template as `file_name = …`, because a `.ft` file is its body and nothing
+    /// else. The reference editor's `File name` field. `task-2336`.
+    pub file_name: String,
 }
 
 impl Template {
@@ -93,6 +98,7 @@ pub fn built_in() -> Vec<Template> {
         extension: extension.to_owned(),
         body: body.to_owned(),
         scope: Scope::BuiltIn,
+        file_name: String::new(),
     };
     vec![
         template("Rust File", "rs", ""),
@@ -151,6 +157,28 @@ pub fn all(project: &Path, user: Option<&Path>) -> Vec<Template> {
     templates
 }
 
+/// The includes there are, a person's and the project's, by name. An include is a fragment a template puts in
+/// with `#parse("<Name>.<extension>")`, kept in an `includes` folder beside the templates.
+///
+/// @param project - the project folder
+/// @param user - Unluminous's settings folder, when there is one
+pub fn includes(project: &Path, user: Option<&Path>) -> Vec<Template> {
+    let mut found = Vec::new();
+    if let Some(user) = user {
+        found.extend(read_folder(&user_folder(user).join("includes"), Scope::User));
+    }
+    found.extend(read_folder(&project_folder(project).join("includes"), Scope::Project));
+    found.sort_by_key(|template| (template.scope != Scope::User, template.name.to_lowercase()));
+    found
+}
+
+/// The built in template called `name`, as Unluminous ships it, which is what `Reset` puts back.
+///
+/// @param name - a template's name
+pub fn original(name: &str) -> Option<Template> {
+    built_in().into_iter().find(|template| template.name.eq_ignore_ascii_case(name.trim()))
+}
+
 /// The template a name or a slug names.
 ///
 /// @param templates - what [`all`] answered
@@ -172,9 +200,29 @@ fn read_folder(folder: &Path, scope: Scope) -> Vec<Template> {
             let file = entry.file_name().to_string_lossy().to_string();
             let (name, extension) = parse_file_name(&file)?;
             let body = std::fs::read_to_string(entry.path()).ok()?;
-            Some(Template { name, extension, body: body.replace("\r\n", "\n"), scope })
+            let file_name = read_file_name_pattern(&entry.path());
+            Some(Template { name, extension, body: body.replace("\r\n", "\n"), scope, file_name })
         })
         .collect()
+}
+
+/// The `.ft.conf` beside a template, which holds what is not its body.
+fn settings_beside(template_file: &Path) -> PathBuf {
+    let mut name = template_file.as_os_str().to_owned();
+    name.push(".conf");
+    PathBuf::from(name)
+}
+
+/// The file name pattern kept beside a template, or empty when there is none.
+fn read_file_name_pattern(template_file: &Path) -> String {
+    let Ok(text) = std::fs::read_to_string(settings_beside(template_file)) else {
+        return String::new();
+    };
+    text.lines()
+        .filter_map(|line| line.split_once('='))
+        .find(|(key, _)| key.trim() == "file_name")
+        .map(|(_, value)| value.trim().to_owned())
+        .unwrap_or_default()
 }
 
 /// A template file's name read as the template's name and extension: `React Component.tsx.ft` is
@@ -205,12 +253,36 @@ pub fn file_name_of(name: &str, extension: &str) -> String {
     }
 }
 
-/// What a file is called when it is made from `template` with `name` typed: the extension is added when
-/// what was typed does not already end with it.
+/// Whether making a file from `template` needs a name typed: always, unless its file name pattern names the
+/// file without `${NAME}`, which is the reference editor's rule for its `File name` field.
 ///
 /// @param template - the template
-/// @param name - what was typed
+pub fn asks_for_a_name(template: &Template) -> bool {
+    let pattern = template.file_name.trim();
+    pattern.is_empty() || pattern.contains("NAME")
+}
+
+/// What a file is called when it is made from `template` with `name` typed. With no file name pattern, the
+/// name typed with the template's extension added when it is not already there. With one, the pattern with
+/// `${NAME}` and the other variables filled in, and the extension added when the pattern did not end with it;
+/// the pattern may name folders, `../${NAME}` or `tests/${NAME}`.
+///
+/// @param template - the template
+/// @param name - what was typed, or empty for a pattern that does not use it
 pub fn file_name_for(template: &Template, name: &str) -> String {
+    let pattern = template.file_name.trim();
+    if !pattern.is_empty() {
+        let stem = name.trim();
+        let stem = match template.extension.is_empty() {
+            true => stem,
+            false => stem.strip_suffix(&format!(".{}", template.extension)).unwrap_or(stem),
+        };
+        let mut values = standard_values(Path::new(&format!("{stem}.x")), Path::new(""));
+        values.insert("NAME".to_owned(), stem.to_owned());
+        let made = expand(pattern, &values, None).unwrap_or_else(|_| pattern.to_owned());
+        let plain = Template { file_name: String::new(), ..template.clone() };
+        return file_name_for(&plain, &made);
+    }
     let name = name.trim();
     if template.extension.is_empty()
         || name.to_lowercase().ends_with(&format!(".{}", template.extension.to_lowercase()))
@@ -373,13 +445,23 @@ fn expand_into(
     Ok(())
 }
 
-/// Put each `${NAME}` and `$NAME` in `text` in, from `values`.
+/// Put each `${NAME}` and `$NAME` in `text` in, from `values`, with the string methods a template may call on
+/// one: `${NAME.toUpperCase()}`, `toLowerCase()`, `trim()`, `length()`, and
+/// `substring(a)` or `substring(a,b)`, which the reference editor's Velocity offers through Java.
 fn substitute(text: &str, values: &BTreeMap<String, String>) -> Result<String, String> {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(at) = rest.find('$') {
         out.push_str(&rest[..at]);
         let after = &rest[at + 1..];
+        if let Some((name, methods, used)) = call_at(after) {
+            let Some(value) = values.get(&name) else {
+                return Err(format!("The template needs a value for {name}."));
+            };
+            out.push_str(&call_methods(value, &methods)?);
+            rest = &after[used..];
+            continue;
+        }
         match variable_at(after) {
             Some((name, used, _)) if values.contains_key(&name) => {
                 out.push_str(&values[&name]);
@@ -396,6 +478,41 @@ fn substitute(text: &str, values: &BTreeMap<String, String>) -> Result<String, S
     }
     out.push_str(rest);
     Ok(out)
+}
+
+/// `{NAME.method()…}` straight after a `$`: the variable, the methods called on it in order, and how many bytes
+/// it took. `None` for anything else, which is read as a plain variable.
+fn call_at(after: &str) -> Option<(String, Vec<String>, usize)> {
+    let inside = after.strip_prefix('{')?;
+    let end = inside.find('}')?;
+    let (name, calls) = inside[..end].split_once('.')?;
+    if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return None;
+    }
+    let methods: Vec<String> =
+        calls.split(").").map(|call| call.trim_end_matches(')').to_owned()).collect();
+    methods.iter().all(|call| call.contains('(')).then(|| (name.to_owned(), methods, end + 2))
+}
+
+/// Apply each of `methods` (`toUpperCase(`, `substring(0,3`) to `value`, refusing one this does not know.
+fn call_methods(value: &str, methods: &[String]) -> Result<String, String> {
+    let mut value = value.to_owned();
+    for call in methods {
+        let (method, arguments) = call.split_once('(').unwrap_or((call, ""));
+        let numbers: Vec<usize> =
+            arguments.split(',').filter_map(|number| number.trim().parse().ok()).collect();
+        let characters: Vec<char> = value.chars().collect();
+        value = match (method.trim(), numbers.as_slice()) {
+            ("toUpperCase", _) => value.to_uppercase(),
+            ("toLowerCase", _) => value.to_lowercase(),
+            ("trim", _) => value.trim().to_owned(),
+            ("length", _) => characters.len().to_string(),
+            ("substring", [from]) => characters.iter().skip(*from).collect(),
+            ("substring", [from, to]) => characters.iter().take(*to).skip(*from).collect(),
+            (other, _) => return Err(format!("A template cannot call {other}() on a value.")),
+        };
+    }
+    Ok(value)
 }
 
 /// The variable named straight after a `$`, how many bytes it took, and whether it was in braces: `{NAME}`
@@ -427,6 +544,11 @@ fn references(line: &str) -> Vec<String> {
     let mut rest = line;
     while let Some(at) = rest.find('$') {
         let after = &rest[at + 1..];
+        if let Some((name, _, used)) = call_at(after) {
+            found.push(name);
+            rest = &after[used..];
+            continue;
+        }
         match variable_at(after) {
             Some((name, used, braced)) => {
                 if braced {
@@ -519,40 +641,326 @@ pub fn save_as_template(file: &Path, name: &str, folder: &Path) -> Result<PathBu
     Ok(target)
 }
 
-/// Make the user's templates folder when it is missing, with a short read me so it is not an empty folder
-/// with no explanation. Answers the folder.
+/// One template or include as the Templates manager holds it while it is being edited (`task-2336`).
 ///
-/// @param settings - Unluminous's settings folder
-pub fn ensure_user_folder(settings: &Path) -> Result<PathBuf, String> {
-    let folder = user_folder(settings);
-    std::fs::create_dir_all(folder.join("includes"))
-        .map_err(|problem| format!("Unluminous could not make {}: {problem}", folder.display()))?;
-    let readme = folder.join("README.txt");
-    if !readme.exists() {
-        let _ = crate::services::store::write_atomically(&readme, README.as_bytes());
-    }
-    Ok(folder)
+/// The manager edits a list of these and writes them all with [`apply`] when `Apply` or `OK` is pressed, so
+/// `Cancel` throws every change away, which is how the reference editor's settings page behaves. `unluminous-cli
+/// explorer template-*` builds one and applies it the same way, so a template made from the command line and
+/// one made in the dialog are the same file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Draft {
+    /// What it says now. `scope` is where it goes: a built in one that was changed goes with the user's.
+    pub template: Template,
+    /// An include rather than a template, kept in the `includes` folder.
+    pub include: bool,
+    /// The file it was read from, when it was read from one. A built in template nobody changed has none.
+    pub file: Option<PathBuf>,
+    /// Take it out when the changes are applied.
+    pub removed: bool,
 }
 
-/// What the templates folder's read me says.
-const README: &str = "Unluminous file templates\n\
-\n\
-Each file here called <Name>.<extension>.ft is a template, listed under New -> Templates on the explorer's\n\
-right click menu and under New Tab on the editor's. A project's own templates go in .unluminous/templates in\n\
-the project, and win over these. A template named Rust File, Text File, JavaScript File, HTML File or CSS File\n\
-replaces the one Unluminous ships.\n\
-\n\
-Variables: ${NAME} (the name typed, without its extension), ${FILE_NAME}, ${DIR_PATH}, ${PROJECT_NAME},\n\
-${USER}, ${DATE}, ${TIME}, ${YEAR}, ${MONTH}, ${MONTH_NAME_FULL}, ${MONTH_NAME_SHORT}, ${DAY}, ${HOUR},\n\
-${MINUTE}, ${SECOND}, ${PRODUCT_NAME} and ${DS} for a dollar sign. Any other variable in braces is asked for\n\
-when the file is made.\n\
-\n\
-#set( $Author = \"Jason\" ) gives a variable a value. #parse(\"Header.rs\") puts in the include\n\
-includes/Header.rs.ft.\n";
+impl Draft {
+    /// A new template or include, in `scope`, named and filled in the way the manager's `New` makes one.
+    ///
+    /// @param name - what it is called
+    /// @param scope - the person's or the project's
+    /// @param include - an include rather than a template
+    pub fn new(name: &str, scope: Scope, include: bool) -> Self {
+        let template = Template {
+            name: name.to_owned(),
+            extension: "txt".to_owned(),
+            body: String::new(),
+            scope,
+            file_name: String::new(),
+        };
+        Self { template, include, file: None, removed: false }
+    }
+
+    /// Whether this is a built in template, changed or not, which cannot be removed, only reset.
+    pub fn is_built_in(&self) -> bool {
+        !self.include
+            && original(&self.template.name).is_some()
+            && self.template.scope != Scope::Project
+    }
+
+    /// Whether a built in template says something other than what Unluminous ships, which is what `Reset`
+    /// offers to undo.
+    pub fn differs_from_the_original(&self) -> bool {
+        match original(&self.template.name) {
+            Some(shipped) if self.is_built_in() => {
+                shipped.body != self.template.body
+                    || shipped.extension != self.template.extension
+                    || !self.template.file_name.trim().is_empty()
+            }
+            _ => false,
+        }
+    }
+}
+
+/// The folder a template or an include in `scope` is kept in, or `None` for the person's when there is no
+/// settings folder. A built in template that is changed is kept with the person's.
+///
+/// @param scope - where it goes
+/// @param include - an include rather than a template
+/// @param project - the project folder
+/// @param settings - Unluminous's settings folder, when there is one
+pub fn folder_for(
+    scope: Scope,
+    include: bool,
+    project: &Path,
+    settings: Option<&Path>,
+) -> Option<PathBuf> {
+    let folder = match scope {
+        Scope::Project => project_folder(project),
+        Scope::User | Scope::BuiltIn => user_folder(settings?),
+    };
+    Some(match include {
+        true => folder.join("includes"),
+        false => folder,
+    })
+}
+
+/// Everything the Templates manager lists, as drafts: the person's templates with the built in ones among them,
+/// the project's, and the includes of both. Built in templates come first, in the menu's order.
+///
+/// @param project - the project folder
+/// @param settings - Unluminous's settings folder, when there is one
+pub fn drafts(project: &Path, settings: Option<&Path>) -> Vec<Draft> {
+    let mut found = Vec::new();
+    let user = settings.map(user_folder);
+    let mine: Vec<Template> =
+        user.as_deref().map(|folder| read_folder(folder, Scope::User)).unwrap_or_default();
+    for shipped in built_in() {
+        let changed =
+            mine.iter().find(|template| template.name.eq_ignore_ascii_case(&shipped.name));
+        found.push(match changed {
+            Some(template) => Draft {
+                file: user
+                    .as_ref()
+                    .map(|folder| folder.join(file_name_of(&template.name, &template.extension))),
+                template: template.clone(),
+                include: false,
+                removed: false,
+            },
+            None => Draft { template: shipped, include: false, file: None, removed: false },
+        });
+    }
+    let mut rest: Vec<Draft> = Vec::new();
+    for (folder, scope) in
+        [(user.clone(), Scope::User), (Some(project_folder(project)), Scope::Project)]
+    {
+        let Some(folder) = folder else { continue };
+        for (place, include) in [(folder.clone(), false), (folder.join("includes"), true)] {
+            for template in read_folder(&place, scope) {
+                if !include && scope == Scope::User && template.is_a_common_type() {
+                    continue;
+                }
+                let file = place.join(file_name_of(&template.name, &template.extension));
+                rest.push(Draft { template, include, file: Some(file), removed: false });
+            }
+        }
+    }
+    rest.sort_by_key(|draft| (draft.include, draft.template.name.to_lowercase()));
+    found.extend(rest);
+    found
+}
+
+/// Why `drafts` cannot be written as they are, or `None` when they can: a name that is empty or names a folder,
+/// an extension with a separator in it, or two templates of one name in one folder.
+///
+/// @param drafts - what the manager holds
+pub fn refusal(drafts: &[Draft]) -> Option<String> {
+    let mut seen: Vec<(Scope, bool, String)> = Vec::new();
+    for draft in drafts.iter().filter(|draft| !draft.removed) {
+        let template = &draft.template;
+        let name = template.name.trim();
+        let what = if draft.include { "An include" } else { "A template" };
+        if name.is_empty() {
+            return Some(format!("{what} needs a name."));
+        }
+        if name.contains(['/', '\\', ':', '*', '?', '"', '<', '>', '|']) || name.starts_with('.') {
+            return Some(format!("{name} is not a name a file can have."));
+        }
+        if template.extension.contains(['/', '\\', ' ', '.']) {
+            return Some(format!(
+                "The extension of {name} is one word with no dot, such as rs or tsx."
+            ));
+        }
+        let scope = match template.scope {
+            Scope::BuiltIn => Scope::User,
+            other => other,
+        };
+        let key = (scope, draft.include, name.to_lowercase());
+        if seen.contains(&key) {
+            return Some(format!("Two templates in one place are both called {name}."));
+        }
+        seen.push(key);
+    }
+    None
+}
+
+/// Write the manager's changes: each draft's body and file name pattern into the folder it belongs in, a draft
+/// that was renamed out of its old file, a removed one sent to the Recycle Bin, and a built in template that says
+/// what Unluminous ships again with its own copy removed. A draft whose file already says the same is left alone.
+/// Answers how many files changed.
+///
+/// @param drafts - what the manager holds
+/// @param project - the project folder
+/// @param settings - Unluminous's settings folder, when there is one
+pub fn apply(drafts: &[Draft], project: &Path, settings: Option<&Path>) -> Result<usize, String> {
+    if let Some(refusal) = refusal(drafts) {
+        return Err(refusal);
+    }
+    let mut changed = 0;
+    for draft in drafts {
+        let template = &draft.template;
+        let take_away = |file: &Path| -> Result<(), String> {
+            for path in [file.to_path_buf(), settings_beside(file)] {
+                if path.exists() {
+                    crate::services::recycle::delete(&path).map_err(|problem| {
+                        format!("Unluminous could not remove {}: {problem}", path.display())
+                    })?;
+                }
+            }
+            Ok(())
+        };
+        if draft.removed || (draft.is_built_in() && !draft.differs_from_the_original()) {
+            if let Some(file) = draft.file.as_ref().filter(|file| file.exists()) {
+                take_away(file)?;
+                changed += 1;
+            }
+            continue;
+        }
+        let Some(folder) = folder_for(template.scope, draft.include, project, settings) else {
+            return Err("Unluminous has no settings folder to keep templates in.".to_owned());
+        };
+        let target = folder.join(file_name_of(&template.name, &template.extension));
+        if let Some(old) = draft.file.as_ref().filter(|old| **old != target && old.exists()) {
+            take_away(old)?;
+        }
+        let same = std::fs::read_to_string(&target).ok().map(|text| text.replace("\r\n", "\n"))
+            == Some(template.body.clone())
+            && read_file_name_pattern(&target) == template.file_name.trim();
+        if same {
+            continue;
+        }
+        std::fs::create_dir_all(&folder).map_err(|problem| {
+            format!("Unluminous could not make {}: {problem}", folder.display())
+        })?;
+        crate::services::store::write_a_source_file(&target, template.body.as_bytes()).map_err(
+            |problem| format!("Unluminous could not write {}: {problem}", target.display()),
+        )?;
+        let beside = settings_beside(&target);
+        match template.file_name.trim() {
+            "" if beside.exists() => {
+                crate::services::recycle::delete(&beside).map_err(|problem| problem.to_string())?
+            }
+            "" => {}
+            pattern => crate::services::store::write_atomically(
+                &beside,
+                format!("file_name = {pattern}\n").as_bytes(),
+            )
+            .map_err(|problem| problem.to_string())?,
+        }
+        changed += 1;
+    }
+    Ok(changed)
+}
+
+/// The variables a template can use and what each holds, which the manager lists beside the body and inserts at
+/// the caret. The reference editor's own list, less `PACKAGE_NAME`, which belongs to Java.
+pub const VARIABLES: [(&str, &str); 17] = [
+    ("NAME", "The name typed for the new file, without its extension"),
+    ("FILE_NAME", "The new file's name with its extension"),
+    ("DIR_PATH", "The folder the file goes in, from the project"),
+    ("PROJECT_NAME", "The project folder's name"),
+    ("USER", "Who is signed in on this computer"),
+    ("DATE", "Today, as 2026-10-23"),
+    ("TIME", "Now, as 14:05"),
+    ("YEAR", "This year"),
+    ("MONTH", "This month as a number"),
+    ("MONTH_NAME_FULL", "This month's name"),
+    ("MONTH_NAME_SHORT", "This month's name in three letters"),
+    ("DAY", "Today's day of the month"),
+    ("HOUR", "This hour"),
+    ("MINUTE", "This minute"),
+    ("SECOND", "This second"),
+    ("PRODUCT_NAME", "Unluminous"),
+    ("DS", "A dollar sign, where one would otherwise start a variable"),
+];
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_template_can_call_string_methods_on_a_value() {
+        let given = values(&[("NAME", "widget panel")]);
+        let made =
+            expand("${NAME.toUpperCase()} ${NAME.substring(0,3)} ${NAME.length()}", &given, None);
+        assert_eq!(made.unwrap(), "WIDGET PANEL wid 12");
+        assert!(expand("${NAME.explode()}", &given, None).unwrap_err().contains("explode"));
+        assert_eq!(variables_asked("${Thing.toLowerCase()}", None), vec!["Thing".to_owned()]);
+    }
+
+    #[test]
+    fn a_file_name_pattern_names_the_file_and_may_not_need_a_name_typed() {
+        let mut test = built_in()[0].clone();
+        test.file_name = "${NAME}_test".to_owned();
+        assert!(asks_for_a_name(&test));
+        assert_eq!(file_name_for(&test, "parser"), "parser_test.rs");
+        assert_eq!(file_name_for(&test, "parser.rs"), "parser_test.rs");
+        test.file_name = "lib".to_owned();
+        assert!(!asks_for_a_name(&test));
+        assert_eq!(file_name_for(&test, ""), "lib.rs");
+    }
+
+    #[test]
+    fn the_manager_writes_renames_removes_and_resets_through_apply() {
+        let project = scratch("manager");
+        let settings = scratch("manager-settings");
+        let mut list = drafts(&project, Some(&settings));
+        assert_eq!(list.len(), 5, "only the built in ones to start with");
+        // A new template in the project, with a file name pattern.
+        let mut card = Draft::new("Card", Scope::Project, false);
+        card.template.extension = "tsx".to_owned();
+        card.template.body = "export const ${NAME} = () => null;\n".to_owned();
+        card.template.file_name = "${NAME}.view".to_owned();
+        list.push(card);
+        // A changed built in template, and an include of the person's.
+        list[0].template.body = "// ${NAME}\n".to_owned();
+        let mut header = Draft::new("Header", Scope::User, true);
+        header.template.extension = "rs".to_owned();
+        header.template.body = "// by ${USER}\n".to_owned();
+        list.push(header);
+        assert_eq!(apply(&list, &project, Some(&settings)).unwrap(), 3);
+        let card = project_folder(&project).join("Card.tsx.ft");
+        assert!(card.is_file());
+        assert_eq!(read_file_name_pattern(&card), "${NAME}.view");
+        assert!(user_folder(&settings).join("includes").join("Header.rs.ft").is_file());
+        let read = drafts(&project, Some(&settings));
+        assert_eq!(read[0].template.body, "// ${NAME}\n");
+        assert!(read[0].differs_from_the_original());
+        assert_eq!(apply(&read, &project, Some(&settings)).unwrap(), 0, "nothing changed");
+        // Rename the card, remove the include, and put Rust File back as it ships.
+        let mut next = read.clone();
+        let at = next.iter().position(|draft| draft.template.name == "Card").unwrap();
+        next[at].template.name = "Panel".to_owned();
+        next.iter_mut().find(|draft| draft.include).unwrap().removed = true;
+        next[0].template = original("Rust File").unwrap();
+        apply(&next, &project, Some(&settings)).unwrap();
+        assert!(!card.exists() && project_folder(&project).join("Panel.tsx.ft").is_file());
+        assert!(
+            !user_folder(&settings).join("Rust File.rs.ft").exists(),
+            "a reset removes the copy"
+        );
+        assert!(!user_folder(&settings).join("includes").join("Header.rs.ft").exists());
+        // Two of one name in one place are refused before anything is written.
+        let mut twice = drafts(&project, Some(&settings));
+        twice.push(Draft::new("panel", Scope::Project, false));
+        assert!(refusal(&twice).unwrap().contains("both called"));
+        assert!(refusal(&[Draft::new("a/b", Scope::User, false)]).is_some());
+    }
 
     fn values(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
         pairs.iter().map(|(key, value)| (key.to_string(), value.to_string())).collect()

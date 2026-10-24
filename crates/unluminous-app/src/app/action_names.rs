@@ -153,7 +153,8 @@ impl Action {
                 format!("new-file-from-{}", crate::services::file_templates::slug(template))
             }
             Action::SaveAsTemplate(_) => "save-as-template".to_owned(),
-            Action::OpenTemplatesFolder => "open-templates-folder".to_owned(),
+            Action::ManageTemplates => "manage-templates".to_owned(),
+            Action::NewTemplate => "new-template".to_owned(),
             Action::NewUntitledTab(template) if template.is_empty() => {
                 "new-untitled-tab".to_owned()
             }
@@ -358,7 +359,8 @@ impl Action {
             "rename-terminal-tab" => Action::RenameTerminalTab,
             "new-file" => Action::NewFile(with_path()),
             "save-as-template" => Action::SaveAsTemplate(with_path()),
-            "open-templates-folder" => Action::OpenTemplatesFolder,
+            "manage-templates" => Action::ManageTemplates,
+            "new-template" => Action::NewTemplate,
             "new-untitled-tab" => Action::NewUntitledTab(String::new()),
             "new-folder" => Action::NewFolder(with_path()),
             "cut-path" => Action::CutPath(with_path()),

@@ -2093,7 +2093,10 @@ mod tests {
         //            cost 3,900 tokens for nothing, so it is not here. The ceiling moves to 38,000.
         //   38,142   `task-2314` merged with `task-2270`, whose `folder` and `project` verbs reach the
         //            Agent-Chat and Agent-Tasks tools as well as `plugins run`. The ceiling moves to 39,000.
-        //   40,366   `task-2338` adding the Spreadsheet plugin's tool, 61 verbs over Excel workbooks, each
+        //   39,150   `task-2336` adding `tab new`, `explorer templates`, `save-template`, `template-set` and
+        //            `template-remove`, the agent's half of file templates and of a tab with no file, each with a
+        //            one line summary. The ceiling moves to 40,000.
+        //   40,527   `task-2338` adding the Spreadsheet plugin's tool, 61 verbs over Excel workbooks, each
         //            summary cut to its usage line first. A workbook is a new kind of document with its own
         //            vocabulary of cells, formats, sheets, rules and charts, and an agent that cannot see
         //            these verbs would read a .xlsx file as bytes. The ceiling moves to 41,000.
