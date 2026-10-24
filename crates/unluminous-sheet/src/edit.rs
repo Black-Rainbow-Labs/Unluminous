@@ -17,6 +17,8 @@ use crate::model::*;
 use crate::styles::{StyleChange, Styles};
 use crate::value::Value;
 
+mod page_edits;
+
 /// What a change put back when undone.
 #[derive(Debug, Clone)]
 enum Before {
@@ -733,6 +735,9 @@ impl Session {
                     }
                 }
             }
+        }
+        if band.is_none() {
+            page_edits::shift_page_breaks(&mut s.page, axis, at, count);
         }
         s.spills = Spills::default();
         for t in &mut self.book.tables {

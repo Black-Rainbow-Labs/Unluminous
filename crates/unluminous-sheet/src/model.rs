@@ -405,6 +405,8 @@ pub struct Sheet {
     pub default_row_height: f64,
     pub spills: Spills,
     pub raw: SheetRaw,
+    /// How the sheet prints: page setup, margins, headers and footers, manual page breaks.
+    pub page: crate::pages::PageSetup,
     /// The legacy array formulas: a range sharing one formula entered with Ctrl+Shift+Enter.
     pub array_formulas: Vec<Range>,
     /// A chart sheet, a dialog sheet or a macro sheet, kept as its part and shown as a tab with no grid.

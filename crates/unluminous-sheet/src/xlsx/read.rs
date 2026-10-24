@@ -624,7 +624,12 @@ fn read_sheet(
                 if let Some(tab) = child(section, "tabColor") {
                     sheet.tab_color = Some(color(tab));
                 }
+                crate::pages::xml::read_sheet_pr(&mut sheet.page, section);
                 sheet.raw.elements.push((name.to_owned(), raw(xml, section).to_owned()));
+            }
+            "printOptions" | "pageMargins" | "pageSetup" | "headerFooter" | "rowBreaks"
+            | "colBreaks" => {
+                crate::pages::xml::read_element(&mut sheet.page, section);
             }
             "dimension" => {}
             "sheetViews" => {

@@ -475,7 +475,8 @@ impl<'a> Writer<'a> {
         out.push_str(XML_HEAD);
         out.push_str(&format!("<worksheet{}>", namespaces_text(&namespaces, MAIN_NS)));
         // sheetPr, with the tab colour written into it.
-        out.push_str(&sheet_pr(&raw("sheetPr"), sheet.tab_color, &book.styles.theme));
+        let sheet_pr_xml = sheet_pr(&raw("sheetPr"), sheet.tab_color, &book.styles.theme);
+        out.push_str(&crate::pages::xml::with_page_set_up_pr(&sheet_pr_xml, &sheet.page));
         let dimension = sheet.used_range().map_or("A1".to_owned(), |r| r.a1());
         out.push_str(&format!("<dimension ref=\"{dimension}\"/>"));
         out.push_str(&sheet_views(sheet, index == book.active_sheet));
@@ -596,11 +597,12 @@ impl<'a> Writer<'a> {
             "ignoredErrors",
             "smartTags",
         ] {
-            out.push_str(&raw(name));
-            // A sheet with no margins gets Excel's default ones, in their place in the schema's order: before
-            // `pageSetup` and before the drawing, or Excel refuses the file.
-            if name == "pageMargins" && sheet.page_margins_missing() {
-                out.push_str("<pageMargins left=\"0.7\" right=\"0.7\" top=\"0.75\" bottom=\"0.75\" header=\"0.3\" footer=\"0.3\"/>");
+            // The page setup elements come from the model, which writes margins on every sheet, as Excel does.
+            let modelled = crate::pages::xml::write_element(&sheet.page, name, &r);
+            if modelled.is_empty() {
+                out.push_str(&raw(name));
+            } else {
+                out.push_str(&modelled);
             }
         }
         // The drawing: kept as it was, with the charts made here added to it, or a new one holding them.
@@ -941,17 +943,6 @@ const ARRAY_FUNCTIONS: &[&str] = &[
     "MMULT",
     "TRANSPOSE",
 ];
-
-trait PageMargins {
-    fn page_margins_missing(&self) -> bool;
-}
-
-impl PageMargins for Sheet {
-    /// Excel writes page margins on every sheet; a sheet made here gets the defaults.
-    fn page_margins_missing(&self) -> bool {
-        !self.raw.elements.iter().any(|(n, _)| n == "pageMargins")
-    }
-}
 
 /// Whether a chart's categories are words rather than numbers, which decides how the file names them.
 fn categories_are_text(book: &Workbook, formula: &str) -> bool {

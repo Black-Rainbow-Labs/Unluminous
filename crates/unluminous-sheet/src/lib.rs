@@ -8,6 +8,7 @@
 //! - [`eval`] and [`functions`] compute a formula, and [`calc`] decides which formulas to compute and in
 //!   what order.
 //! - [`numfmt`] shows a value the way a format code says, and [`input`] reads what a person types.
+//! - [`pages`] is page setup and printing: the setup a sheet keeps and the pages it makes.
 //! - [`edit`] is every change a person or an agent makes, each one undoable.
 //!
 //! `tasks/task-2338-spreadsheet-tdd.md` is the design.
@@ -32,6 +33,7 @@ pub mod functions;
 pub mod input;
 pub mod model;
 pub mod numfmt;
+pub mod pages;
 pub mod styles;
 pub mod value;
 pub mod xlsx;
