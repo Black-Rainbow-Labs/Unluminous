@@ -13,11 +13,17 @@ use unluminous_word::position::{Pos, Selection};
 use unluminous_word::session::Session;
 
 fn word_is_installed() -> bool {
-    let found = ["C:/Program Files/Microsoft Office/root/Office16/WINWORD.EXE", "C:/Program Files (x86)/Microsoft Office/root/Office16/WINWORD.EXE"]
-        .iter()
-        .any(|p| Path::new(p).is_file());
+    let found = [
+        "C:/Program Files/Microsoft Office/root/Office16/WINWORD.EXE",
+        "C:/Program Files (x86)/Microsoft Office/root/Office16/WINWORD.EXE",
+    ]
+    .iter()
+    .any(|p| Path::new(p).is_file());
     if !found {
-        assert!(std::env::var("UNLUMINOUS_REQUIRE_WORD").is_err(), "UNLUMINOUS_REQUIRE_WORD is set and Word is not installed");
+        assert!(
+            std::env::var("UNLUMINOUS_REQUIRE_WORD").is_err(),
+            "UNLUMINOUS_REQUIRE_WORD is set and Word is not installed"
+        );
         println!("Word is not installed, so this test checked nothing");
     }
     found
@@ -44,11 +50,24 @@ fn inspect(path: &Path) -> Value {
         .status()
         .expect("pwsh runs");
     assert!(status.success(), "inspect.ps1 failed on {}", path.display());
-    serde_json::from_str(std::fs::read_to_string(&out).unwrap().trim_start_matches('\u{feff}')).unwrap()
+    serde_json::from_str(std::fs::read_to_string(&out).unwrap().trim_start_matches('\u{feff}'))
+        .unwrap()
 }
 
 fn texts(report: &Value) -> Vec<String> {
-    report["paragraphs"].as_array().unwrap().iter().map(|p| p["text"].as_str().unwrap_or_default().replace('\u{7}', "").trim_end_matches('\r').to_owned()).collect()
+    report["paragraphs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| {
+            p["text"]
+                .as_str()
+                .unwrap_or_default()
+                .replace('\u{7}', "")
+                .trim_end_matches('\r')
+                .to_owned()
+        })
+        .collect()
 }
 
 /// A tiny PNG, 4 by 2 pixels, written by hand so the test needs no image library.
@@ -87,7 +106,8 @@ fn png() -> Vec<u8> {
 /// Select the text `words` in the body.
 fn select(session: &mut Session, words: &str) {
     let found = session.find(words, true, false);
-    session.selection = found.first().cloned().unwrap_or_else(|| panic!("{words} is in the document"));
+    session.selection =
+        found.first().cloned().unwrap_or_else(|| panic!("{words} is in the document"));
 }
 
 fn caret_at_end(session: &mut Session) {
@@ -140,7 +160,8 @@ fn a_document_using_every_feature_opens_in_word_as_written() {
     // A picture, a footnote, a comment, a link and a bookmark.
     select(&mut s, "read by Word");
     s.selection = Selection::caret(s.selection.head.clone());
-    unluminous_word::media::insert_picture(&mut s, &png(), "png", 40.0, 20.0, "swatch.png").unwrap();
+    unluminous_word::media::insert_picture(&mut s, &png(), "png", 40.0, 20.0, "swatch.png")
+        .unwrap();
     s.insert_note(false, "A footnote from Unluminous.");
     select(&mut s, "Introduction");
     let comment = s.add_comment("Is this heading right?");
@@ -159,7 +180,11 @@ fn a_document_using_every_feature_opens_in_word_as_written() {
     s.set_orientation(true);
     select(&mut s, "Introduction");
     s.selection = Selection::caret(s.selection.anchor.clone());
-    let pages = unluminous_word::layout::lay_out(&s.document, &unluminous_core::FixedMetrics::default(), Default::default());
+    let pages = unluminous_word::layout::lay_out(
+        &s.document,
+        &unluminous_core::FixedMetrics::default(),
+        Default::default(),
+    );
     s.insert_toc(3, &pages);
     // Tracked changes last.
     s.set_tracking(true);
@@ -173,14 +198,32 @@ fn a_document_using_every_feature_opens_in_word_as_written() {
     assert_eq!(report["opened"], true, "Word did not open it: {}", report["error"]);
     let texts = texts(&report);
     let has = |text: &str| texts.iter().any(|t| t.contains(text));
-    for expected in ["Annual Review", "Introduction", "alpha", "gamma", "The end of the", "A landscape section."] {
+    for expected in [
+        "Annual Review",
+        "Introduction",
+        "alpha",
+        "gamma",
+        "The end of the",
+        // "wide" is the tracked insertion and "landscape" the tracked deletion, which Word's range
+        // text still contains.
+        "A widelandscape section.",
+    ] {
         assert!(has(expected), "Word does not see {expected:?} in {texts:?}");
     }
     let paragraphs = report["paragraphs"].as_array().unwrap();
-    let style_of = |text: &str| paragraphs.iter().find(|p| p["text"].as_str() == Some(text)).map(|p| p["style"].as_str().unwrap_or("").to_owned());
+    let style_of = |text: &str| {
+        paragraphs
+            .iter()
+            .find(|p| p["text"].as_str() == Some(text))
+            .map(|p| p["style"].as_str().unwrap_or("").to_owned())
+    };
     assert_eq!(style_of("Annual Review").as_deref(), Some("Title"));
     assert_eq!(style_of("Introduction").as_deref(), Some("Heading 1"));
-    let lists: Vec<&str> = paragraphs.iter().filter_map(|p| p["listString"].as_str()).filter(|l| !l.is_empty()).collect();
+    let lists: Vec<&str> = paragraphs
+        .iter()
+        .filter_map(|p| p["listString"].as_str())
+        .filter(|l| !l.is_empty())
+        .collect();
     assert!(lists.len() >= 5, "Word sees the two lists: {lists:?}");
     assert!(lists.contains(&"1.") && lists.contains(&"2."), "the numbered list: {lists:?}");
     assert_eq!(report["tables"].as_array().unwrap().len(), 1);
@@ -190,11 +233,18 @@ fn a_document_using_every_feature_opens_in_word_as_written() {
     assert_eq!(comments.len(), 2, "a comment and its reply");
     assert_eq!(comments[0]["author"], "Unluminous Test");
     assert!(comments.iter().any(|c| c["done"] == true), "the resolved comment is done in Word");
-    assert!(report["hyperlinks"].as_array().unwrap().iter().any(|h| h["address"] == "https://example.com/"));
+    assert!(report["hyperlinks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|h| h["address"] == "https://example.com/"));
     assert!(report["bookmarks"].as_array().unwrap().iter().any(|b| b == "Top"));
     assert_eq!(report["inlineShapes"].as_array().unwrap().len(), 1, "the picture");
     assert_eq!(report["tablesOfContents"], 1);
-    assert!(report["revisions"].as_array().unwrap().len() >= 2, "the tracked insertion and deletion");
+    assert!(
+        report["revisions"].as_array().unwrap().len() >= 2,
+        "the tracked insertion and deletion"
+    );
     let sections = report["sections"].as_array().unwrap();
     assert_eq!(sections.len(), 2);
     assert_eq!(sections[1]["orientation"], 1, "the second section is landscape");
@@ -209,26 +259,54 @@ fn every_fixture_saved_by_unluminous_opens_in_word_unrepaired() {
         return;
     }
     let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
-    let mut files: Vec<PathBuf> = std::fs::read_dir(&folder).unwrap().filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|e| e == "docx")).collect();
+    let mut files: Vec<PathBuf> = std::fs::read_dir(&folder)
+        .unwrap()
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|e| e == "docx"))
+        .collect();
     files.sort();
     for file in files {
         let name = file.file_stem().unwrap().to_string_lossy().into_owned();
         let original = inspect_copy(&file, &name);
-        let mut session = Session::new(unluminous_word::read::open(&std::fs::read(&file).unwrap()).unwrap());
+        let mut session =
+            Session::new(unluminous_word::read::open(&std::fs::read(&file).unwrap()).unwrap());
         // An edit at the start of the body, so the main part is written from the model.
         session.type_text("Edited by Unluminous. ");
         let path = scratch(&format!("{name}-edited.docx"));
         std::fs::write(&path, unluminous_word::write::save(&session.document).unwrap()).unwrap();
         let report = inspect(&path);
         assert_eq!(report["opened"], true, "{name}: Word did not open it: {}", report["error"]);
-        assert_eq!(report["paragraphs"].as_array().unwrap().len(), original["paragraphs"].as_array().unwrap().len(), "{name}: the paragraph count changed");
-        assert_eq!(report["tables"].as_array().unwrap().len(), original["tables"].as_array().unwrap().len(), "{name}: the tables");
+        assert_eq!(
+            report["paragraphs"].as_array().unwrap().len(),
+            original["paragraphs"].as_array().unwrap().len(),
+            "{name}: the paragraph count changed"
+        );
+        assert_eq!(
+            report["tables"].as_array().unwrap().len(),
+            original["tables"].as_array().unwrap().len(),
+            "{name}: the tables"
+        );
         assert_eq!(report["footnotes"], original["footnotes"], "{name}: the footnotes");
-        assert_eq!(report["comments"].as_array().unwrap().len(), original["comments"].as_array().unwrap().len(), "{name}: the comments");
-        assert_eq!(report["inlineShapes"].as_array().unwrap().len(), original["inlineShapes"].as_array().unwrap().len(), "{name}: the pictures");
-        assert_eq!(report["sections"].as_array().unwrap().len(), original["sections"].as_array().unwrap().len(), "{name}: the sections");
+        assert_eq!(
+            report["comments"].as_array().unwrap().len(),
+            original["comments"].as_array().unwrap().len(),
+            "{name}: the comments"
+        );
+        assert_eq!(
+            report["inlineShapes"].as_array().unwrap().len(),
+            original["inlineShapes"].as_array().unwrap().len(),
+            "{name}: the pictures"
+        );
+        assert_eq!(
+            report["sections"].as_array().unwrap().len(),
+            original["sections"].as_array().unwrap().len(),
+            "{name}: the sections"
+        );
         let first = texts(&report).into_iter().find(|t| !t.is_empty()).unwrap_or_default();
-        assert!(first.starts_with("Edited by Unluminous."), "{name}: the edit is where it was typed: {first:?}");
+        assert!(
+            first.starts_with("Edited by Unluminous."),
+            "{name}: the edit is where it was typed: {first:?}"
+        );
     }
 }
 
@@ -236,5 +314,6 @@ fn every_fixture_saved_by_unluminous_opens_in_word_unrepaired() {
 fn inspect_copy(file: &Path, name: &str) -> Value {
     let report = file.with_extension("word.json");
     let _ = name;
-    serde_json::from_str(std::fs::read_to_string(report).unwrap().trim_start_matches('\u{feff}')).unwrap()
+    serde_json::from_str(std::fs::read_to_string(report).unwrap().trim_start_matches('\u{feff}'))
+        .unwrap()
 }

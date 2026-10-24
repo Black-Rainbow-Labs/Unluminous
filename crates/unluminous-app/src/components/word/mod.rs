@@ -28,16 +28,25 @@ pub const NAVIGATION: f32 = 230.0;
 /// Draw a document's tab and take its input.
 pub fn show(doc: &mut Doc, config: &Config, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request> {
     let _ = config;
+    doc.drawn += 1;
     let mut requests = Vec::new();
     let area = ui.max_rect();
     let scale = look.scale();
     let bar = Rect::from_min_size(area.min, Vec2::new(area.width(), BAR * scale));
-    let panel_width = if doc.view.panel.is_empty() { 0.0 } else { (PANEL * scale).min(area.width() * 0.5) };
-    let navigation_width = if doc.view.navigation { (NAVIGATION * scale).min(area.width() * 0.3) } else { 0.0 };
+    let panel_width =
+        if doc.view.panel.is_empty() { 0.0 } else { (PANEL * scale).min(area.width() * 0.5) };
+    let navigation_width =
+        if doc.view.navigation { (NAVIGATION * scale).min(area.width() * 0.3) } else { 0.0 };
     let body = Rect::from_min_max(egui::pos2(area.left(), bar.bottom()), area.max);
-    let pages = Rect::from_min_max(egui::pos2(body.left() + navigation_width, body.top()), egui::pos2(body.right() - panel_width, body.bottom()));
+    let pages = Rect::from_min_max(
+        egui::pos2(body.left() + navigation_width, body.top()),
+        egui::pos2(body.right() - panel_width, body.bottom()),
+    );
     // Keys first, against the layout the person is looking at, then lay out what they changed.
-    let typing_into_a_field = ui.ctx().memory(|m| m.focused().is_some());
+    // A field of the panel or the find bar takes typing for itself; the window keeps egui's own focus on a
+    // widget of its own at other times, so the question is whether a text box has it.
+    let typing_into_a_field = crate::app::text_box_has_the_keyboard(ui.ctx());
+    doc.keyboard = (look.has_the_keyboard, typing_into_a_field);
     if look.has_the_keyboard && !typing_into_a_field {
         keys::handle(ui, doc, &mut requests);
     }
@@ -62,7 +71,8 @@ pub fn run_action(doc: &mut Doc, id: &str, requests: &mut Vec<Request>) {
     match (action.run)(doc) {
         Ok(said) if !said.is_empty() => requests.push(Request::Message(said)),
         Ok(_) => {}
-        Err(problem) => requests.push(Request::Notice { text: problem, kind: crate::components::toast::Kind::Problem }),
+        Err(problem) => requests
+            .push(Request::Notice { text: problem, kind: crate::components::toast::Kind::Problem }),
     }
     doc.view.reveal = true;
 }

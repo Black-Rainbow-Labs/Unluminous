@@ -86,7 +86,8 @@ fn read_related_parts(document: &mut Document) -> Result<(), String> {
             dirty: false,
         });
     }
-    let core = document.package.rels.get("").and_then(|rels| rels.of_kind(kind::CORE).next().cloned());
+    let core =
+        document.package.rels.get("").and_then(|rels| rels.of_kind(kind::CORE).next().cloned());
     if let Some(rel) = core {
         let name = Package::resolve("", &rel.target);
         if let Some(bytes) = document.package.part(&name) {
@@ -106,13 +107,19 @@ fn notes_part(
     let name = Package::resolve(&document.main, &rel.target);
     let Some(bytes) = document.package.part(&name) else { return Ok(None) };
     let root = xml::parse_bytes(bytes)?;
-    let notes = root.elements().map(|note| Story { el: shell(note), blocks: blocks(note) }).collect();
+    let notes =
+        root.elements().map(|note| Story { el: shell(note), blocks: blocks(note) }).collect();
     Ok(Some(NotesPart { name, root: shell(&root), notes, dirty: false }))
 }
 
 /// An element with its attributes and declarations and no children.
 fn shell(el: &El) -> El {
-    El { name: el.name.clone(), attrs: el.attrs.clone(), children: Vec::new(), declares: el.declares.clone() }
+    El {
+        name: el.name.clone(),
+        attrs: el.attrs.clone(),
+        children: Vec::new(),
+        declares: el.declares.clone(),
+    }
 }
 
 /// The blocks inside a container: a body, a cell, a header, a note, a content control's content.
@@ -131,8 +138,12 @@ fn blocks_with_section(container: &El) -> (Vec<Block>, Option<El>) {
             "w:sdt" => match el.child("w:sdtContent") {
                 Some(content) => {
                     let mut shell = shell(el);
-                    shell.children =
-                        el.elements().filter(|child| child.name != "w:sdtContent").cloned().map(Node::El).collect();
+                    shell.children = el
+                        .elements()
+                        .filter(|child| child.name != "w:sdtContent")
+                        .cloned()
+                        .map(Node::El)
+                        .collect();
                     out.push(Block::Sdt(Sdt { el: shell, blocks: blocks(content) }));
                 }
                 None => out.push(Block::Kept(el.clone())),
@@ -148,7 +159,8 @@ fn blocks_with_section(container: &El) -> (Vec<Block>, Option<El>) {
 
 /// A table.
 fn table(el: &El) -> Table {
-    let mut table = Table { props: El::new("w:tblPr"), grid: El::new("w:tblGrid"), ..Table::default() };
+    let mut table =
+        Table { props: El::new("w:tblPr"), grid: El::new("w:tblGrid"), ..Table::default() };
     for child in el.elements() {
         match child.name.as_str() {
             "w:tblPr" => table.props = child.clone(),
@@ -183,17 +195,39 @@ fn cell(el: &El) -> Cell {
 
 /// The elements that wrap runs, which become a run's wraps.
 const WRAPPERS: &[&str] = &[
-    "w:hyperlink", "w:ins", "w:del", "w:moveFrom", "w:moveTo", "w:fldSimple", "w:smartTag", "w:customXml",
-    "w:dir", "w:bdo", "w:sdt",
+    "w:hyperlink",
+    "w:ins",
+    "w:del",
+    "w:moveFrom",
+    "w:moveTo",
+    "w:fldSimple",
+    "w:smartTag",
+    "w:customXml",
+    "w:dir",
+    "w:bdo",
+    "w:sdt",
 ];
 
 /// The elements that take no room in the text, which become marks.
 const MARKS: &[&str] = &[
-    "w:bookmarkStart", "w:bookmarkEnd", "w:commentRangeStart", "w:commentRangeEnd", "w:permStart",
-    "w:permEnd", "w:moveFromRangeStart", "w:moveFromRangeEnd", "w:moveToRangeStart", "w:moveToRangeEnd",
-    "w:customXmlInsRangeStart", "w:customXmlInsRangeEnd", "w:customXmlDelRangeStart",
-    "w:customXmlDelRangeEnd", "w:customXmlMoveFromRangeStart", "w:customXmlMoveFromRangeEnd",
-    "w:customXmlMoveToRangeStart", "w:customXmlMoveToRangeEnd",
+    "w:bookmarkStart",
+    "w:bookmarkEnd",
+    "w:commentRangeStart",
+    "w:commentRangeEnd",
+    "w:permStart",
+    "w:permEnd",
+    "w:moveFromRangeStart",
+    "w:moveFromRangeEnd",
+    "w:moveToRangeStart",
+    "w:moveToRangeEnd",
+    "w:customXmlInsRangeStart",
+    "w:customXmlInsRangeEnd",
+    "w:customXmlDelRangeStart",
+    "w:customXmlDelRangeEnd",
+    "w:customXmlMoveFromRangeStart",
+    "w:customXmlMoveFromRangeEnd",
+    "w:customXmlMoveToRangeStart",
+    "w:customXmlMoveToRangeEnd",
 ];
 
 /// A paragraph.
@@ -275,7 +309,12 @@ fn run(el: &El, wraps: &[Arc<Wrap>], paragraph: &mut Paragraph) {
     let attrs = Arc::new(el.attrs.clone());
     let first = paragraph.runs.len();
     let push = |paragraph: &mut Paragraph, content: Content| {
-        paragraph.runs.push(Run { props: Arc::clone(&props), content, wraps: wraps.to_vec(), attrs: Arc::clone(&attrs) });
+        paragraph.runs.push(Run {
+            props: Arc::clone(&props),
+            content,
+            wraps: wraps.to_vec(),
+            attrs: Arc::clone(&attrs),
+        });
     };
     for child in el.elements() {
         match child.name.as_str() {
@@ -284,7 +323,9 @@ fn run(el: &El, wraps: &[Arc<Wrap>], paragraph: &mut Paragraph) {
                 let text = child.text();
                 // Two `w:t` in one run are one stretch of text.
                 if paragraph.runs.len() > first {
-                    if let Some(Run { content: Content::Text(before), .. }) = paragraph.runs.last_mut() {
+                    if let Some(Run { content: Content::Text(before), .. }) =
+                        paragraph.runs.last_mut()
+                    {
                         before.push_str(&text);
                         continue;
                     }

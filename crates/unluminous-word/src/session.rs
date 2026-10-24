@@ -76,7 +76,10 @@ const TYPING_JOINS: Duration = Duration::from_millis(1000);
 
 impl Session {
     pub fn new(document: Document) -> Session {
-        let first = position::paragraphs(&document.body).first().map(|(p, _)| p.clone()).unwrap_or_else(|| vec![0]);
+        let first = position::paragraphs(&document.body)
+            .first()
+            .map(|(p, _)| p.clone())
+            .unwrap_or_else(|| vec![0]);
         let tracking = document
             .settings
             .as_ref()
@@ -97,13 +100,21 @@ impl Session {
 
     fn tracking_info(&self) -> Option<Tracking> {
         self.tracking.then(|| Tracking {
-            author: if self.author.is_empty() { "Unluminous".to_owned() } else { self.author.clone() },
+            author: if self.author.is_empty() {
+                "Unluminous".to_owned()
+            } else {
+                self.author.clone()
+            },
             date: now_iso(),
         })
     }
 
     /// Run a change, recording what it needs for undo.
-    pub fn change(&mut self, scope: Scope, change: impl FnOnce(&mut Document, &Selection, Option<&Tracking>) -> Selection) {
+    pub fn change(
+        &mut self,
+        scope: Scope,
+        change: impl FnOnce(&mut Document, &Selection, Option<&Tracking>) -> Selection,
+    ) {
         let before = match scope {
             Scope::Story => {
                 let story = self.selection.head.story.clone();
@@ -164,7 +175,10 @@ impl Session {
 
     fn snapshot_like(&self, like: &Snapshot) -> Snapshot {
         match like {
-            Snapshot::Story(story, _) => Snapshot::Story(story.clone(), position::story(&self.document, story).cloned().unwrap_or_default()),
+            Snapshot::Story(story, _) => Snapshot::Story(
+                story.clone(),
+                position::story(&self.document, story).cloned().unwrap_or_default(),
+            ),
             Snapshot::Whole(_) => Snapshot::Whole(Box::new(self.document.clone())),
         }
     }
@@ -187,15 +201,23 @@ impl Session {
         if text.is_empty() {
             return;
         }
-        let joins = self.undo.last().and_then(|entry| entry.typing.clone()).is_some_and(|(path, at)| {
-            self.selection.is_empty() && path == self.selection.head.path && at.elapsed() < TYPING_JOINS && self.redo.is_empty()
-                && self.undo.last().is_some_and(|e| e.after == self.selection)
-        }) && !text.contains('\n')
-            && !text.starts_with(' ');
+        let joins =
+            self.undo.last().and_then(|entry| entry.typing.clone()).is_some_and(|(path, at)| {
+                self.selection.is_empty()
+                    && path == self.selection.head.path
+                    && at.elapsed() < TYPING_JOINS
+                    && self.redo.is_empty()
+                    && self.undo.last().is_some_and(|e| e.after == self.selection)
+            }) && !text.contains('\n')
+                && !text.starts_with(' ');
         let pending = self.pending.take().map(|rpr| {
-            let (base, _) = position::paragraph(&self.document, &self.selection.head.story, &self.selection.head.path)
-                .map(|p| edit::props_at(p, self.selection.head.offset))
-                .unwrap_or_else(|| (no_props(), Vec::new()));
+            let (base, _) = position::paragraph(
+                &self.document,
+                &self.selection.head.story,
+                &self.selection.head.path,
+            )
+            .map(|p| edit::props_at(p, self.selection.head.offset))
+            .unwrap_or_else(|| (no_props(), Vec::new()));
             let mut merged = base.as_ref().clone();
             for child in rpr.elements() {
                 merged.put(child.clone());
@@ -210,7 +232,13 @@ impl Session {
         let tracking = self.tracking_info();
         if joins {
             let selection = self.selection.clone();
-            let after = edit::insert_text(&mut self.document, &selection.head, text, pending, tracking.as_ref());
+            let after = edit::insert_text(
+                &mut self.document,
+                &selection.head,
+                text,
+                pending,
+                tracking.as_ref(),
+            );
             self.selection = Selection::caret(after.clone());
             if let Some(last) = self.undo.last_mut() {
                 last.after = self.selection.clone();
@@ -228,14 +256,19 @@ impl Session {
             Selection::caret(edit::insert_text(document, &at, text, pending, tracking))
         });
         if let Some(last) = self.undo.last_mut() {
-            last.typing = (!text.contains('\n')).then(|| (self.selection.head.path.clone(), Instant::now()));
+            last.typing =
+                (!text.contains('\n')).then(|| (self.selection.head.path.clone(), Instant::now()));
         }
     }
 
     /// Enter: a new paragraph.
     pub fn enter(&mut self) {
         self.change(Scope::Story, |document, selection, tracking| {
-            let at = if selection.is_empty() { selection.head.clone() } else { edit::delete_range(document, &selection.anchor, &selection.head, tracking) };
+            let at = if selection.is_empty() {
+                selection.head.clone()
+            } else {
+                edit::delete_range(document, &selection.anchor, &selection.head, tracking)
+            };
             // Enter in an empty list item ends the list, as Word does.
             if let Some(paragraph) = position::paragraph_mut(document, &at.story, &at.path) {
                 if paragraph.is_empty() && paragraph.props.child("w:numPr").is_some() {
@@ -254,7 +287,12 @@ impl Session {
     pub fn backspace(&mut self, unit: Unit) {
         self.change(Scope::Story, |document, selection, tracking| {
             if !selection.is_empty() {
-                return Selection::caret(edit::delete_range(document, &selection.anchor, &selection.head, tracking));
+                return Selection::caret(edit::delete_range(
+                    document,
+                    &selection.anchor,
+                    &selection.head,
+                    tracking,
+                ));
             }
             Selection::caret(edit::delete_backward(document, &selection.head, unit, tracking))
         });
@@ -264,7 +302,12 @@ impl Session {
     pub fn delete(&mut self, unit: Unit) {
         self.change(Scope::Story, |document, selection, tracking| {
             if !selection.is_empty() {
-                return Selection::caret(edit::delete_range(document, &selection.anchor, &selection.head, tracking));
+                return Selection::caret(edit::delete_range(
+                    document,
+                    &selection.anchor,
+                    &selection.head,
+                    tracking,
+                ));
             }
             Selection::caret(edit::delete_forward(document, &selection.head, unit, tracking))
         });
@@ -281,7 +324,9 @@ impl Session {
     pub fn look_at_caret(&self) -> props::RunLook {
         let resolver = crate::styles::Resolver::new(&self.document);
         let head = self.selection.ordered().0;
-        let Some(paragraph) = position::paragraph(&self.document, &head.story, &head.path) else { return props::RunLook::default() };
+        let Some(paragraph) = position::paragraph(&self.document, &head.story, &head.path) else {
+            return props::RunLook::default();
+        };
         let offset = if self.selection.is_empty() { head.offset } else { head.offset + 1 };
         let (rpr, _) = edit::props_at(paragraph, offset.min(paragraph.len()));
         let mut rpr = rpr.as_ref().clone();
@@ -347,7 +392,11 @@ impl Session {
             let mut current = look.clone();
             !*props::toggle_slot(&mut current, name)
         };
-        let on = if name == "w:u" { self.look_at_caret().underline == props::Underline::None } else { on };
+        let on = if name == "w:u" {
+            self.look_at_caret().underline == props::Underline::None
+        } else {
+            on
+        };
         self.format(move |rpr| match name {
             "w:u" => props::set_val(rpr, "w:u", on.then_some("single")),
             _ => props::set_on_off(rpr, name, Some(on)),
@@ -365,7 +414,9 @@ impl Session {
     /// Apply a style by id: a paragraph style to the paragraphs, a character style to the selection.
     pub fn apply_style(&mut self, id: &str) -> Result<(), String> {
         crate::builtin::ensure_style(&mut self.document, id)?;
-        let kind = crate::styles::Resolver::new(&self.document).style(id).and_then(|s| s.attr("w:type").map(str::to_owned));
+        let kind = crate::styles::Resolver::new(&self.document)
+            .style(id)
+            .and_then(|s| s.attr("w:type").map(str::to_owned));
         let id = id.to_owned();
         match kind.as_deref() {
             Some("character") => self.format(move |rpr| props::set_val(rpr, "w:rStyle", Some(&id))),
@@ -379,7 +430,9 @@ impl Session {
                 });
                 selection.clone()
             }),
-            Some(other) => return Err(format!("{id} is a {other} style, which is not applied to text")),
+            Some(other) => {
+                return Err(format!("{id} is a {other} style, which is not applied to text"))
+            }
         }
         Ok(())
     }
@@ -400,10 +453,12 @@ impl Session {
     /// Put the caret or a selection somewhere, clamped to the text that is there.
     pub fn select(&mut self, anchor: Pos, head: Pos) {
         let clamp = |document: &Document, pos: Pos| {
-            let len = position::paragraph(document, &pos.story, &pos.path).map_or(0, Paragraph::len);
+            let len =
+                position::paragraph(document, &pos.story, &pos.path).map_or(0, Paragraph::len);
             Pos { offset: pos.offset.min(len), ..pos }
         };
-        self.selection = Selection { anchor: clamp(&self.document, anchor), head: clamp(&self.document, head) };
+        self.selection =
+            Selection { anchor: clamp(&self.document, anchor), head: clamp(&self.document, head) };
         self.pending = None;
     }
 
@@ -412,13 +467,50 @@ impl Session {
         let (from, to) = self.selection.ordered();
         let mut out = Vec::new();
         for (path, len, _) in edit::covered(&self.document, from, to) {
-            let Some(paragraph) = position::paragraph(&self.document, &from.story, &path) else { continue };
+            let Some(paragraph) = position::paragraph(&self.document, &from.story, &path) else {
+                continue;
+            };
             let lo = if path == from.path { from.offset } else { 0 };
             let hi = if path == to.path { to.offset } else { len };
             let text = paragraph.flat_text();
             out.push(clean_text(&text[lo.min(text.len())..hi.min(text.len())]));
         }
         out.join("\n")
+    }
+
+    /// The selection as text and as paragraphs with their formatting, for the clipboard.
+    pub fn copy(&self) -> (String, Vec<Paragraph>) {
+        (
+            self.selected_text(),
+            edit::copy_fragment(&self.document, &self.selection.anchor, &self.selection.head),
+        )
+    }
+
+    /// Paste paragraphs this or another document copied, keeping their formatting, over the selection.
+    pub fn paste_fragment(&mut self, fragment: Vec<Paragraph>) {
+        // A style a pasted paragraph names that this document lacks comes from Word's built in ones.
+        let mut wanted: Vec<String> = Vec::new();
+        for paragraph in &fragment {
+            if let Some(id) = paragraph.props.val_of("w:pStyle") {
+                wanted.push(id.to_owned());
+            }
+            for run in &paragraph.runs {
+                if let Some(id) = run.props.val_of("w:rStyle") {
+                    wanted.push(id.to_owned());
+                }
+            }
+        }
+        for id in wanted {
+            let _ = crate::builtin::ensure_style(&mut self.document, &id);
+        }
+        self.change(Scope::Whole, move |document, selection, tracking| {
+            let at = if selection.is_empty() {
+                selection.head.clone()
+            } else {
+                edit::delete_range(document, &selection.anchor, &selection.head, tracking)
+            };
+            Selection::caret(edit::paste_fragment(document, &at, &fragment, tracking))
+        });
     }
 
     // ---- Review ----
@@ -438,7 +530,9 @@ impl Session {
                 }
             } else {
                 for (path, _, _) in edit::covered(document, &from, &to) {
-                    if let Some(Block::Paragraph(paragraph)) = position::story_mut(document, &story).and_then(|b| position::block_mut(b, &path)) {
+                    if let Some(Block::Paragraph(paragraph)) = position::story_mut(document, &story)
+                        .and_then(|b| position::block_mut(b, &path))
+                    {
                         let mut one = vec![Block::Paragraph(std::mem::take(paragraph))];
                         count += edit::resolve_revisions(&mut one, accept, None);
                         if let Some(Block::Paragraph(done)) = one.pop() {
@@ -447,7 +541,8 @@ impl Session {
                     }
                 }
             }
-            let len = position::paragraph(document, &selection.head.story, &selection.head.path).map_or(0, Paragraph::len);
+            let len = position::paragraph(document, &selection.head.story, &selection.head.path)
+                .map_or(0, Paragraph::len);
             Selection::caret(selection.head.at(selection.head.offset.min(len)))
         });
         count
@@ -486,7 +581,8 @@ impl Session {
             while let Some(at) = haystack[from..].find(&needle_folded) {
                 let start = from + at;
                 let end = start + needle_folded.len();
-                let starts_a_word = text[..start].chars().last().is_none_or(|c| !c.is_alphanumeric());
+                let starts_a_word =
+                    text[..start].chars().last().is_none_or(|c| !c.is_alphanumeric());
                 let ends_a_word = text[end..].chars().next().is_none_or(|c| !c.is_alphanumeric());
                 if !whole_word || (starts_a_word && ends_a_word) {
                     found.push(Selection {
@@ -504,7 +600,13 @@ impl Session {
     }
 
     /// Replace every match, as one undo step. Answers how many were replaced.
-    pub fn replace_all(&mut self, needle: &str, with: &str, match_case: bool, whole_word: bool) -> usize {
+    pub fn replace_all(
+        &mut self,
+        needle: &str,
+        with: &str,
+        match_case: bool,
+        whole_word: bool,
+    ) -> usize {
         let matches = self.find(needle, match_case, whole_word);
         if matches.is_empty() {
             return 0;
@@ -517,7 +619,8 @@ impl Session {
                 let at = edit::delete_range(document, &found.anchor, &found.head, tracking);
                 edit::insert_text(document, &at, &with, None, tracking);
             }
-            let len = position::paragraph(document, &selection.head.story, &selection.head.path).map_or(0, Paragraph::len);
+            let len = position::paragraph(document, &selection.head.story, &selection.head.path)
+                .map_or(0, Paragraph::len);
             Selection::caret(selection.head.at(selection.head.offset.min(len)))
         });
         count
@@ -534,7 +637,10 @@ impl Session {
             if !clean.trim().is_empty() {
                 stats.paragraphs += 1;
             }
-            stats.words += clean.split(|c: char| c.is_whitespace()).filter(|w| w.chars().any(|c| c.is_alphanumeric() || !c.is_ascii_punctuation())).count();
+            stats.words += clean
+                .split(|c: char| c.is_whitespace())
+                .filter(|w| w.chars().any(|c| c.is_alphanumeric() || !c.is_ascii_punctuation()))
+                .count();
             stats.characters += clean.chars().filter(|c| !c.is_whitespace()).count();
             stats.characters_with_spaces += clean.chars().filter(|c| *c != '\u{b}').count();
         }
@@ -561,7 +667,9 @@ pub fn clean_text(text: &str) -> String {
 
 /// The time now as Word writes a revision's date.
 pub fn now_iso() -> String {
-    let seconds = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()) as i64;
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs()) as i64;
     let days = seconds.div_euclid(86_400);
     let rest = seconds.rem_euclid(86_400);
     // Howard Hinnant's days-to-civil.
@@ -587,7 +695,10 @@ mod tests {
     }
 
     fn texts(session: &Session) -> Vec<String> {
-        position::paragraphs(&session.document.body).into_iter().map(|(_, p)| p.flat_text()).collect()
+        position::paragraphs(&session.document.body)
+            .into_iter()
+            .map(|(_, p)| p.flat_text())
+            .collect()
     }
 
     #[test]

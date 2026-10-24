@@ -10,7 +10,10 @@
 use unicode_segmentation::UnicodeSegmentation;
 use unluminous_core::{CharStyle, Color, LineMetrics};
 
-use super::{fields, BreakAfter, CaretLine, Chunk, Ctx, Float, Anchor, Item, LaidParagraph, Rect, RuleKind, TextItem};
+use super::{
+    fields, Anchor, BreakAfter, CaretLine, Chunk, Ctx, Float, Item, LaidParagraph, Rect, RuleKind,
+    TextItem,
+};
 use crate::model::{Content, Paragraph, Run};
 use crate::numbering::{Counters, Suffix};
 use crate::position::StoryId;
@@ -41,7 +44,11 @@ enum Kind {
     Line,
     Page,
     Column,
-    Picture { w: f32, h: f32, part: String },
+    Picture {
+        w: f32,
+        h: f32,
+        part: String,
+    },
     Float(Float),
     Label(String),
     /// A footnote or endnote reference mark.
@@ -109,7 +116,8 @@ pub fn lay_out(
     let look = ctx.resolver.paragraph(&paragraph.props, table_style);
     let empty = El::new("w:rPr");
     let mark_rpr = paragraph.props.child("w:rPr").unwrap_or(&empty);
-    let mark = make_look(ctx, ctx.resolver.run(&paragraph.props, mark_rpr, table_style), false, false);
+    let mark =
+        make_look(ctx, ctx.resolver.run(&paragraph.props, mark_rpr, table_style), false, false);
     let mut looks: Vec<Look> = vec![mark];
     let mut atoms: Vec<Atom> = Vec::new();
     // The list label, first.
@@ -126,12 +134,36 @@ pub fn lay_out(
             looks.push(make_look(ctx, run, false, false));
             let index = looks.len() - 1;
             let width = measure(ctx, &looks[index], &label.text, false);
-            atoms.push(Atom { start: 0, end: 0, kind: Kind::Label(label.text.clone()), width, look: index, small: false, opportunity: false });
+            atoms.push(Atom {
+                start: 0,
+                end: 0,
+                kind: Kind::Label(label.text.clone()),
+                width,
+                look: index,
+                small: false,
+                opportunity: false,
+            });
             match label.suffix {
-                Suffix::Tab => atoms.push(Atom { start: 0, end: 0, kind: Kind::Tab, width: 0.0, look: index, small: false, opportunity: false }),
+                Suffix::Tab => atoms.push(Atom {
+                    start: 0,
+                    end: 0,
+                    kind: Kind::Tab,
+                    width: 0.0,
+                    look: index,
+                    small: false,
+                    opportunity: false,
+                }),
                 Suffix::Space => {
                     let space = measure(ctx, &looks[index], " ", false);
-                    atoms.push(Atom { start: 0, end: 0, kind: Kind::Label(" ".into()), width: space, look: index, small: false, opportunity: false });
+                    atoms.push(Atom {
+                        start: 0,
+                        end: 0,
+                        kind: Kind::Label(" ".into()),
+                        width: space,
+                        look: index,
+                        small: false,
+                        opportunity: false,
+                    });
                 }
                 Suffix::Nothing => {}
             }
@@ -144,7 +176,19 @@ pub fn lay_out(
     for (index, line) in lines.into_iter().enumerate() {
         let first = index == 0;
         let last = index + 1 == count;
-        chunks.push(place_line(ctx, &look, &looks, &atoms, &line, width, first, last, story, path, paragraph.len()));
+        chunks.push(place_line(
+            ctx,
+            &look,
+            &looks,
+            &atoms,
+            &line,
+            width,
+            first,
+            last,
+            story,
+            path,
+            paragraph.len(),
+        ));
     }
     decorate_paragraph(&look, &mut chunks, width);
     let auto = 14.0;
@@ -167,7 +211,9 @@ fn measure(ctx: &Ctx, look: &Look, text: &str, small: bool) -> f32 {
         (true, Some((style, _))) => style,
         _ => &look.style,
     };
-    text.graphemes(true).map(|g| ctx.metrics.advance(g, style) * look.run.scale + look.run.spacing).sum()
+    text.graphemes(true)
+        .map(|g| ctx.metrics.advance(g, style) * look.run.scale + look.run.spacing)
+        .sum()
 }
 
 /// What a field is doing at each point in the paragraph.
@@ -177,7 +223,13 @@ struct FieldState {
     open: Vec<(String, bool, Option<String>, bool)>,
 }
 
-fn collect_atoms(ctx: &Ctx, paragraph: &Paragraph, table_style: Option<&str>, looks: &mut Vec<Look>, atoms: &mut Vec<Atom>) {
+fn collect_atoms(
+    ctx: &Ctx,
+    paragraph: &Paragraph,
+    table_style: Option<&str>,
+    looks: &mut Vec<Look>,
+    atoms: &mut Vec<Atom>,
+) {
     let mut offset = 0usize;
     let mut fields = FieldState { open: Vec::new() };
     let mut last_props: Option<(*const El, bool, bool, usize)> = None;
@@ -219,7 +271,10 @@ fn collect_atoms(ctx: &Ctx, paragraph: &Paragraph, table_style: Option<&str>, lo
                 Some((ptr, d, i, index)) if ptr == key.0 && d == deleted && i == inserted => index,
                 _ => {
                     let mut resolved = ctx.resolver.run(&paragraph.props, &run.props, table_style);
-                    if run.link().is_some() && run.props.val_of("w:rStyle").is_none() && resolved.color.is_none() {
+                    if run.link().is_some()
+                        && run.props.val_of("w:rStyle").is_none()
+                        && resolved.color.is_none()
+                    {
                         resolved.color = ctx.resolver.theme.colour("hyperlink");
                     }
                     looks.push(make_look(ctx, resolved, deleted, inserted));
@@ -245,7 +300,9 @@ fn collect_atoms(ctx: &Ctx, paragraph: &Paragraph, table_style: Option<&str>, lo
             }
         }
         if let Some(simple) = run.wraps.iter().find(|w| w.el.name == "w:fldSimple") {
-            if let Some(value) = simple.el.attr("w:instr").and_then(|code| fields::page_result(code, ctx.page)) {
+            if let Some(value) =
+                simple.el.attr("w:instr").and_then(|code| fields::page_result(code, ctx.page))
+            {
                 if simple_done == Some(simple.id) {
                     continue;
                 }
@@ -258,17 +315,37 @@ fn collect_atoms(ctx: &Ctx, paragraph: &Paragraph, table_style: Option<&str>, lo
             continue;
         }
         match &run.content {
-            Content::Text(text) => push_text(ctx, &looks[look], look, text, start, start + len, atoms, false),
-            Content::Tab => atoms.push(Atom { start, end: start + len, kind: Kind::Tab, width: 0.0, look, small: false, opportunity: true }),
+            Content::Text(text) => {
+                push_text(ctx, &looks[look], look, text, start, start + len, atoms, false)
+            }
+            Content::Tab => atoms.push(Atom {
+                start,
+                end: start + len,
+                kind: Kind::Tab,
+                width: 0.0,
+                look,
+                small: false,
+                opportunity: true,
+            }),
             Content::Break(el) => {
                 let kind = match el.attr("w:type") {
                     Some("page") => Kind::Page,
                     Some("column") => Kind::Column,
                     _ => Kind::Line,
                 };
-                atoms.push(Atom { start, end: start + len, kind, width: 0.0, look, small: false, opportunity: true });
+                atoms.push(Atom {
+                    start,
+                    end: start + len,
+                    kind,
+                    width: 0.0,
+                    look,
+                    small: false,
+                    opportunity: true,
+                });
             }
-            Content::Object(el) => object_atom(ctx, run, el, &looks[look], look, start, start + len, atoms),
+            Content::Object(el) => {
+                object_atom(ctx, run, el, &looks[look], look, start, start + len, atoms)
+            }
             Content::FieldChar(_) | Content::Instr(_) => {}
         }
     }
@@ -276,10 +353,18 @@ fn collect_atoms(ctx: &Ctx, paragraph: &Paragraph, table_style: Option<&str>, lo
 
 /// The atoms of a stretch of text, one grapheme each.
 #[allow(clippy::too_many_arguments)]
-fn push_text(ctx: &Ctx, look: &Look, index: usize, text: &str, start: usize, end: usize, atoms: &mut Vec<Atom>, replaced: bool) {
+fn push_text(
+    ctx: &Ctx,
+    look: &Look,
+    index: usize,
+    text: &str,
+    start: usize,
+    end: usize,
+    atoms: &mut Vec<Atom>,
+    replaced: bool,
+) {
     let caps = look.run.caps || look.run.small_caps;
     let graphemes: Vec<(usize, &str)> = text.grapheme_indices(true).collect();
-    let count = graphemes.len();
     for (position, (at, grapheme)) in graphemes.iter().enumerate() {
         // A replaced result covers the run's whole range with text that has its own length, so its
         // offsets are pinned to the run's two ends.
@@ -294,7 +379,8 @@ fn push_text(ctx: &Ctx, look: &Look, index: usize, text: &str, start: usize, end
         // point up. The adjustment belongs to the left letter of the pair.
         if look.run.kern.is_some_and(|from| look.run.size >= from) {
             if let (Some(left), Some(next)) = (drawn.chars().last(), graphemes.get(position + 1)) {
-                let right = if caps { next.1.to_uppercase().chars().next() } else { next.1.chars().next() };
+                let right =
+                    if caps { next.1.to_uppercase().chars().next() } else { next.1.chars().next() };
                 if let Some(right) = right {
                     width += ctx.metrics.kerning(left, right, &look.style) * look.run.scale;
                 }
@@ -303,12 +389,21 @@ fn push_text(ctx: &Ctx, look: &Look, index: usize, text: &str, start: usize, end
         let space = *grapheme == " " || *grapheme == "\u{3000}";
         let next = graphemes.get(position + 1).map(|(_, g)| *g);
         let opportunity = space
-            || (matches!(*grapheme, "-" | "\u{2013}" | "\u{2014}" | "/") && next.is_some_and(|n| n.chars().all(char::is_alphanumeric)))
+            || (matches!(*grapheme, "-" | "\u{2013}" | "\u{2014}" | "/")
+                && next.is_some_and(|n| n.chars().all(char::is_alphanumeric)))
             || is_ideograph(grapheme)
             || next.is_some_and(is_ideograph)
             || *grapheme == "\u{200B}";
         let kind = if space { Kind::Space(drawn) } else { Kind::Glyph(drawn) };
-        atoms.push(Atom { start: atom_start, end: atom_end, kind, width, look: index, small, opportunity: opportunity && position + 1 <= count });
+        atoms.push(Atom {
+            start: atom_start,
+            end: atom_end,
+            kind,
+            width,
+            look: index,
+            small,
+            opportunity,
+        });
     }
 }
 
@@ -320,52 +415,149 @@ fn is_ideograph(grapheme: &str) -> bool {
 
 /// The atom for a run that holds something other than text.
 #[allow(clippy::too_many_arguments)]
-fn object_atom(ctx: &Ctx, run: &Run, el: &El, look: &Look, index: usize, start: usize, end: usize, atoms: &mut Vec<Atom>) {
+fn object_atom(
+    ctx: &Ctx,
+    run: &Run,
+    el: &El,
+    look: &Look,
+    index: usize,
+    start: usize,
+    end: usize,
+    atoms: &mut Vec<Atom>,
+) {
     match el.name.as_str() {
         "w:footnoteReference" | "w:endnoteReference" => {
             let id = el.attr("w:id").and_then(|id| id.parse::<i64>().ok());
-            let numbers = if el.name == "w:footnoteReference" { &ctx.footnote_numbers } else { &ctx.endnote_numbers };
-            let mark = id.and_then(|id| numbers.get(&id)).map_or(String::new(), |n| match el.name.as_str() {
-                "w:endnoteReference" => crate::numbering::format_number(i64::from(*n), "lowerRoman"),
-                _ => n.to_string(),
+            let numbers = if el.name == "w:footnoteReference" {
+                &ctx.footnote_numbers
+            } else {
+                &ctx.endnote_numbers
+            };
+            let mark = id.and_then(|id| numbers.get(&id)).map_or(String::new(), |n| {
+                match el.name.as_str() {
+                    "w:endnoteReference" => {
+                        crate::numbering::format_number(i64::from(*n), "lowerRoman")
+                    }
+                    _ => n.to_string(),
+                }
             });
             let width = measure(ctx, look, &mark, false);
-            atoms.push(Atom { start, end, kind: Kind::NoteMark(mark), width, look: index, small: false, opportunity: false });
+            atoms.push(Atom {
+                start,
+                end,
+                kind: Kind::NoteMark(mark),
+                width,
+                look: index,
+                small: false,
+                opportunity: false,
+            });
         }
         // The mark at the start of a note's own text: its number, drawn the way the reference is.
         "w:footnoteRef" | "w:endnoteRef" => {
             let mark = note_number_for_ref(ctx, el.name == "w:endnoteRef");
             let width = measure(ctx, look, &mark, false);
-            atoms.push(Atom { start, end, kind: Kind::NoteMark(mark), width, look: index, small: false, opportunity: false });
+            atoms.push(Atom {
+                start,
+                end,
+                kind: Kind::NoteMark(mark),
+                width,
+                look: index,
+                small: false,
+                opportunity: false,
+            });
         }
         "w:separator" | "w:continuationSeparator" => {
-            atoms.push(Atom { start, end, kind: Kind::Glyph(String::new()), width: 144.0, look: index, small: false, opportunity: false });
+            atoms.push(Atom {
+                start,
+                end,
+                kind: Kind::Glyph(String::new()),
+                width: 144.0,
+                look: index,
+                small: false,
+                opportunity: false,
+            });
         }
         "w:noBreakHyphen" => {
             let width = measure(ctx, look, "-", false);
-            atoms.push(Atom { start, end, kind: Kind::Glyph("-".into()), width, look: index, small: false, opportunity: false });
+            atoms.push(Atom {
+                start,
+                end,
+                kind: Kind::Glyph("-".into()),
+                width,
+                look: index,
+                small: false,
+                opportunity: false,
+            });
         }
         "w:softHyphen" | "w:commentReference" | "w:annotationRef" => {
-            atoms.push(Atom { start, end, kind: Kind::Glyph(String::new()), width: 0.0, look: index, small: false, opportunity: true });
+            atoms.push(Atom {
+                start,
+                end,
+                kind: Kind::Glyph(String::new()),
+                width: 0.0,
+                look: index,
+                small: false,
+                opportunity: true,
+            });
         }
         "w:sym" => {
             let character = run.content.character().unwrap_or('□').to_string();
             let width = measure(ctx, look, &character, false);
-            atoms.push(Atom { start, end, kind: Kind::Glyph(character), width, look: index, small: false, opportunity: false });
+            atoms.push(Atom {
+                start,
+                end,
+                kind: Kind::Glyph(character),
+                width,
+                look: index,
+                small: false,
+                opportunity: false,
+            });
         }
         _ => {
             let Some(picture) = run.content.picture() else {
-                atoms.push(Atom { start, end, kind: Kind::Glyph(String::new()), width: 0.0, look: index, small: false, opportunity: true });
+                atoms.push(Atom {
+                    start,
+                    end,
+                    kind: Kind::Glyph(String::new()),
+                    width: 0.0,
+                    look: index,
+                    small: false,
+                    opportunity: true,
+                });
                 return;
             };
             match read_picture(ctx, picture) {
                 Some(PictureKind::Inline { w, h, part }) => {
-                    atoms.push(Atom { start, end, kind: Kind::Picture { w, h, part }, width: w, look: index, small: false, opportunity: true });
+                    atoms.push(Atom {
+                        start,
+                        end,
+                        kind: Kind::Picture { w, h, part },
+                        width: w,
+                        look: index,
+                        small: false,
+                        opportunity: true,
+                    });
                 }
                 Some(PictureKind::Float(float)) => {
-                    atoms.push(Atom { start, end, kind: Kind::Float(float), width: 0.0, look: index, small: false, opportunity: false });
+                    atoms.push(Atom {
+                        start,
+                        end,
+                        kind: Kind::Float(float),
+                        width: 0.0,
+                        look: index,
+                        small: false,
+                        opportunity: false,
+                    });
                 }
-                None => atoms.push(Atom { start, end, kind: Kind::Glyph(String::new()), width: 0.0, look: index, small: false, opportunity: true }),
+                None => atoms.push(Atom {
+                    start,
+                    end,
+                    kind: Kind::Glyph(String::new()),
+                    width: 0.0,
+                    look: index,
+                    small: false,
+                    opportunity: true,
+                }),
             }
         }
     }
@@ -431,7 +623,9 @@ fn read_picture(ctx: &Ctx, el: &El) -> Option<PictureKind> {
         let Some(axis) = frame.child(name) else { return ("column".into(), Anchor::Offset(0.0)) };
         let relative = axis.attr("relativeFrom").unwrap_or("column").to_owned();
         let anchor = match (axis.child("wp:posOffset"), axis.child("wp:align")) {
-            (Some(offset), _) => Anchor::Offset(props::emu(props::number(&offset.text()).unwrap_or(0.0))),
+            (Some(offset), _) => {
+                Anchor::Offset(props::emu(props::number(&offset.text()).unwrap_or(0.0)))
+            }
             (None, Some(align)) => Anchor::Align(align.text()),
             _ => Anchor::Offset(0.0),
         };
@@ -440,7 +634,13 @@ fn read_picture(ctx: &Ctx, el: &El) -> Option<PictureKind> {
     let wrap = frame
         .elements()
         .find_map(|child| child.local().strip_prefix("wrap").map(|kind| kind.to_owned()))
-        .unwrap_or_else(|| if frame.attr("behindDoc") == Some("1") { "behind".into() } else { "none".into() });
+        .unwrap_or_else(|| {
+            if frame.attr("behindDoc") == Some("1") {
+                "behind".into()
+            } else {
+                "none".into()
+            }
+        });
     Some(PictureKind::Float(Float {
         width: w,
         height: h,
@@ -552,7 +752,12 @@ fn break_lines(ctx: &Ctx, look: &ParaLook, atoms: &[Atom], width: f32) -> Vec<Li
         }
         let segment = &atoms[index..end];
         let total: f32 = segment.iter().map(|a| a.width).sum();
-        let trailing: f32 = segment.iter().rev().take_while(|a| matches!(a.kind, Kind::Space(_))).map(|a| a.width).sum();
+        let trailing: f32 = segment
+            .iter()
+            .rev()
+            .take_while(|a| matches!(a.kind, Kind::Space(_)))
+            .map(|a| a.width)
+            .sum();
         let fits = pen + total - trailing <= right + 0.01;
         if !fits && has_content {
             finish(&mut lines, &mut line, false);
@@ -561,9 +766,11 @@ fn break_lines(ctx: &Ctx, look: &ParaLook, atoms: &[Atom], width: f32) -> Vec<Li
         }
         if pen + total - trailing > right + 0.01 && !has_content {
             // Wider than a whole line: break between graphemes, at least one on each line.
-            for at in index..end {
-                let atom = &atoms[at];
-                if has_content && pen + atom.width > right + 0.01 && !matches!(atom.kind, Kind::Space(_)) {
+            for (at, atom) in atoms.iter().enumerate().take(end).skip(index) {
+                if has_content
+                    && pen + atom.width > right + 0.01
+                    && !matches!(atom.kind, Kind::Space(_))
+                {
                     finish(&mut lines, &mut line, false);
                     pen = line_left(look, false);
                     has_content = false;
@@ -573,9 +780,9 @@ fn break_lines(ctx: &Ctx, look: &ParaLook, atoms: &[Atom], width: f32) -> Vec<Li
                 has_content |= atom.addressable();
             }
         } else {
-            for at in index..end {
+            for (at, atom) in atoms.iter().enumerate().take(end).skip(index) {
                 line.atoms.push(at);
-                has_content |= atoms[at].addressable();
+                has_content |= atom.addressable();
             }
             pen += total;
         }
@@ -619,7 +826,10 @@ fn place_line(
                 .sum();
             let decimal: f32 = line.atoms[position + 1..]
                 .iter()
-                .take_while(|&&i| atoms[i].kind != Kind::Tab && !matches!(&atoms[i].kind, Kind::Glyph(g) if g == "." || g == ","))
+                .take_while(|&&i| {
+                    atoms[i].kind != Kind::Tab
+                        && !matches!(&atoms[i].kind, Kind::Glyph(g) if g == "." || g == ",")
+                })
                 .map(|&i| atoms[i].width)
                 .sum();
             let target = match kind {
@@ -645,7 +855,9 @@ fn place_line(
         .iter()
         .zip(&xs)
         .rev()
-        .find(|(&i, _)| !matches!(atoms[i].kind, Kind::Space(_) | Kind::Line | Kind::Page | Kind::Column))
+        .find(|(&i, _)| {
+            !matches!(atoms[i].kind, Kind::Space(_) | Kind::Line | Kind::Page | Kind::Column)
+        })
         .map_or(left, |(_, (x, w))| x + w);
     let last_tab = line.atoms.iter().rposition(|&i| atoms[i].kind == Kind::Tab);
     let extra = (right - content_end).max(0.0);
@@ -656,7 +868,12 @@ fn place_line(
             let trailing_from = line
                 .atoms
                 .iter()
-                .rposition(|&i| !matches!(atoms[i].kind, Kind::Space(_) | Kind::Line | Kind::Page | Kind::Column))
+                .rposition(|&i| {
+                    !matches!(
+                        atoms[i].kind,
+                        Kind::Space(_) | Kind::Line | Kind::Page | Kind::Column
+                    )
+                })
                 .unwrap_or(0);
             let from = last_tab.map_or(0, |t| t + 1);
             let spaces: Vec<usize> = (from..trailing_from)
@@ -665,10 +882,10 @@ fn place_line(
             if !spaces.is_empty() {
                 let per = extra / spaces.len() as f32;
                 let mut shift = 0.0;
-                for position in 0..xs.len() {
-                    xs[position].0 += shift;
+                for (position, slot) in xs.iter_mut().enumerate() {
+                    slot.0 += shift;
                     if spaces.contains(&position) {
-                        xs[position].1 += per;
+                        slot.1 += per;
                         shift += per;
                     }
                 }
@@ -732,7 +949,12 @@ fn place_line(
         if count > 0 {
             let start = x + (w - count as f32 * dot) - dot * 0.5;
             let xs: Vec<f32> = (0..count).map(|n| start + n as f32 * dot).collect();
-            chunk.items.push(Item::Text(TextItem { baseline, style: look_of.style.clone(), text: leader.to_string().repeat(count), xs }));
+            chunk.items.push(Item::Text(TextItem {
+                baseline,
+                style: look_of.style.clone(),
+                text: leader.to_string().repeat(count),
+                xs,
+            }));
         }
     }
     // The caret's stops.
@@ -746,7 +968,8 @@ fn place_line(
         if stops.last().is_none_or(|(at, _)| *at != atom.start) {
             stops.push((atom.start, x));
         }
-        let after = if matches!(atom.kind, Kind::Line | Kind::Page | Kind::Column) { x } else { x + w };
+        let after =
+            if matches!(atom.kind, Kind::Line | Kind::Page | Kind::Column) { x } else { x + w };
         stops.push((atom.end, after));
     }
     stops.dedup_by(|b, a| a.0 == b.0);
@@ -811,7 +1034,16 @@ fn raise_of(run: &RunLook) -> f32 {
 
 /// The items a placed line draws: text grouped by look, rules, fills and pictures.
 #[allow(clippy::too_many_arguments)]
-fn emit(ctx: &Ctx, looks: &[Look], atoms: &[Atom], line: &LineBuild, xs: &[(f32, f32)], baseline: f32, height: f32, chunk: &mut Chunk) {
+fn emit(
+    ctx: &Ctx,
+    looks: &[Look],
+    atoms: &[Atom],
+    line: &LineBuild,
+    xs: &[(f32, f32)],
+    baseline: f32,
+    height: f32,
+    chunk: &mut Chunk,
+) {
     let mut fills: Vec<Item> = Vec::new();
     let mut rules: Vec<Item> = Vec::new();
     let mut texts: Vec<Item> = Vec::new();
@@ -828,7 +1060,9 @@ fn emit(ctx: &Ctx, looks: &[Look], atoms: &[Atom], line: &LineBuild, xs: &[(f32,
     let trailing_from = line
         .atoms
         .iter()
-        .rposition(|&i| !matches!(atoms[i].kind, Kind::Space(_) | Kind::Line | Kind::Page | Kind::Column))
+        .rposition(|&i| {
+            !matches!(atoms[i].kind, Kind::Space(_) | Kind::Line | Kind::Page | Kind::Column)
+        })
         .map_or(0, |p| p + 1);
     for (position, &index) in line.atoms.iter().enumerate() {
         let atom = &atoms[index];
@@ -836,7 +1070,9 @@ fn emit(ctx: &Ctx, looks: &[Look], atoms: &[Atom], line: &LineBuild, xs: &[(f32,
         let look = &looks[atom.look];
         let raise = raise_of(&look.run);
         let text = match &atom.kind {
-            Kind::Glyph(text) | Kind::Space(text) | Kind::Label(text) | Kind::NoteMark(text) => Some(text),
+            Kind::Glyph(text) | Kind::Space(text) | Kind::Label(text) | Kind::NoteMark(text) => {
+                Some(text)
+            }
             Kind::Picture { w, h, part } => {
                 let rect = Rect::new(x, baseline - h, *w, *h);
                 if part.is_empty() {
@@ -853,10 +1089,20 @@ fn emit(ctx: &Ctx, looks: &[Look], atoms: &[Atom], line: &LineBuild, xs: &[(f32,
                 (true, Some((style, _))) => style.clone(),
                 _ => look.style.clone(),
             };
-            let same = current.as_ref().is_some_and(|(l, s, _)| *l == atom.look && *s == atom.small);
+            let same =
+                current.as_ref().is_some_and(|(l, s, _)| *l == atom.look && *s == atom.small);
             if !same {
                 flush(&mut current, &mut texts);
-                current = Some((atom.look, atom.small, TextItem { baseline: baseline - raise, style, text: String::new(), xs: Vec::new() }));
+                current = Some((
+                    atom.look,
+                    atom.small,
+                    TextItem {
+                        baseline: baseline - raise,
+                        style,
+                        text: String::new(),
+                        xs: Vec::new(),
+                    },
+                ));
             }
             if let Some((_, _, item)) = current.as_mut() {
                 for character in text.chars() {
@@ -879,7 +1125,10 @@ fn emit(ctx: &Ctx, looks: &[Look], atoms: &[Atom], line: &LineBuild, xs: &[(f32,
             flush(&mut current, &mut texts);
         }
         // Decoration.
-        let decorated = !matches!(atom.kind, Kind::Label(_) | Kind::Line | Kind::Page | Kind::Column | Kind::Float(_));
+        let decorated = !matches!(
+            atom.kind,
+            Kind::Label(_) | Kind::Line | Kind::Page | Kind::Column | Kind::Float(_)
+        );
         if !decorated || w <= 0.0 {
             continue;
         }
@@ -895,8 +1144,13 @@ fn emit(ctx: &Ctx, looks: &[Look], atoms: &[Atom], line: &LineBuild, xs: &[(f32,
         let space = matches!(atom.kind, Kind::Space(_));
         let ink = look.run.color.unwrap_or(Rgb::BLACK);
         let ink = if look.deleted || look.inserted { REVISION } else { ink };
-        let underline = if look.inserted && look.run.underline == Underline::None { Underline::Single } else { look.run.underline };
-        if underline != Underline::None && !in_trailing && !(space && underline == Underline::Words) {
+        let underline = if look.inserted && look.run.underline == Underline::None {
+            Underline::Single
+        } else {
+            look.run.underline
+        };
+        if underline != Underline::None && !in_trailing && !(space && underline == Underline::Words)
+        {
             let thickness = ctx.metrics.rule_thickness(&look.style);
             let y = baseline - raise + ctx.metrics.underline_offset(&look.style);
             let (width, kind) = match underline {
@@ -913,7 +1167,15 @@ fn emit(ctx: &Ctx, looks: &[Look], atoms: &[Atom], line: &LineBuild, xs: &[(f32,
             let thickness = ctx.metrics.rule_thickness(&look.style);
             let y = baseline - raise - ctx.metrics.strikethrough_offset(&look.style);
             let kind = if look.run.double_strike { RuleKind::Double } else { RuleKind::Solid };
-            rules.push(Item::Rule { x0: x, y0: y, x1: x + w, y1: y, width: thickness, color: ink, kind });
+            rules.push(Item::Rule {
+                x0: x,
+                y0: y,
+                x1: x + w,
+                y1: y,
+                width: thickness,
+                color: ink,
+                kind,
+            });
         }
     }
     flush(&mut current, &mut texts);
@@ -930,7 +1192,12 @@ fn is_combining(character: char) -> bool {
 /// A paragraph's shading and borders, drawn on its lines so they split across pages with them.
 fn decorate_paragraph(look: &ParaLook, chunks: &mut [Chunk], width: f32) {
     let borders = look.borders;
-    if look.shading.is_none() && borders.top.is_none() && borders.bottom.is_none() && borders.left.is_none() && borders.right.is_none() {
+    if look.shading.is_none()
+        && borders.top.is_none()
+        && borders.bottom.is_none()
+        && borders.left.is_none()
+        && borders.right.is_none()
+    {
         return;
     }
     let left = look.indent_left - borders.left.map_or(0.0, |b| b.space + b.width);
@@ -939,7 +1206,9 @@ fn decorate_paragraph(look: &ParaLook, chunks: &mut [Chunk], width: f32) {
     for (index, chunk) in chunks.iter_mut().enumerate() {
         let h = chunk.height;
         if let Some(color) = look.shading {
-            chunk.items.insert(0, Item::Fill { rect: Rect::new(left, 0.0, right - left, h), color });
+            chunk
+                .items
+                .insert(0, Item::Fill { rect: Rect::new(left, 0.0, right - left, h), color });
         }
         let rule = |x0: f32, y0: f32, x1: f32, y1: f32, b: props::Border| Item::Rule {
             x0,

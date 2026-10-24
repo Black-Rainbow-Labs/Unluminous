@@ -16,23 +16,33 @@ pub fn show(word: &mut Word, ui: &mut egui::Ui, look: &Look<'_>) -> Vec<Request>
     ui.horizontal(|ui| {
         ui.label("Author");
         let field = word.author_field.get_or_insert_with(|| word.config.author.clone());
-        let response = ui.add(egui::TextEdit::singleline(field).hint_text("Your name").desired_width(220.0));
+        let response =
+            ui.add(egui::TextEdit::singleline(field).hint_text("Your name").desired_width(220.0));
         if response.lost_focus() && *field != word.config.author {
             word.config.author = field.clone();
             changed = true;
         }
     });
-    ui.label(RichText::new("The name written on comments and tracked changes, and on a new document.").weak());
+    ui.label(
+        RichText::new("The name written on comments and tracked changes, and on a new document.")
+            .weak(),
+    );
     ui.add_space(8.0);
     ui.horizontal(|ui| {
         ui.label("Open documents at");
         let mut percent = word.config.zoom * 100.0;
-        if ui.add(egui::DragValue::new(&mut percent).range(25.0..=500.0).speed(1.0).suffix("%")).changed() {
+        if ui
+            .add(egui::DragValue::new(&mut percent).range(25.0..=500.0).speed(1.0).suffix("%"))
+            .changed()
+        {
             word.config.zoom = percent / 100.0;
             changed = true;
         }
     });
-    if ui.checkbox(&mut word.config.marks, "Show formatting marks in a document that opens").changed() {
+    if ui
+        .checkbox(&mut word.config.marks, "Show formatting marks in a document that opens")
+        .changed()
+    {
         changed = true;
     }
     if changed {

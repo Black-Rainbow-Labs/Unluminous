@@ -7496,3 +7496,58 @@ When there is none, each kernel test prints that it did nothing and passes. The 
 evcxr registered as well (`cargo install --locked evcxr_jupyter`, then `evcxr_jupyter --install`) and
 skip with a printed line without it. The pictures are `notebook_top`, `notebook_bottom`,
 `notebook_traceback` and `notebook_kernel_picker`.
+
+
+## A Word document is pages in a tab of the Word plugin, and Word itself is the oracle (`task-2341`)
+
+`tasks/task-2341-word-prd.md` and `tasks/task-2341-word-tdd.md` are the design. A `.docx`, `.dotx` or `.docm`
+opens as pages, the way Word's Print Layout shows it, in a plugin tab keyed `word:<path>`. `crates/unluminous-word`
+holds everything that is not drawing: the zip, the model, reading and writing, styles, lists, layout, editing,
+undo, the exports. `services::word` is the provider and `components::word` the drawing.
+
+Eight rules, each found by measuring:
+
+- **What Unluminous does not model is kept, and written back where the schema puts it.** Properties
+  (`w:pPr`, `w:rPr`, `w:sectPr`, the table ones) are held as the XML tree they were read as and changed in
+  place; `order.rs` sorts a properties element's children into the schema's sequence before it is written,
+  because Word calls a file with a child out of place damaged. Parts nobody changed are written byte for byte.
+  `tests/roundtrip.rs` saves every fixture unchanged and compares every part.
+- **Word is the oracle.** `tools/word-oracle/inspect.ps1` opens a document read only in a private Word through
+  COM and writes Word's report; `make-fixtures.ps1` makes the fixtures with Word. The reports are committed, so
+  `tests/oracle.rs` and `tests/pagination.rs` need no Word. `tests/word_live.rs` writes documents with Unluminous,
+  has Word open them, and fails if Word repairs one; it passes with a printed line where Word is not installed,
+  and `UNLUMINOUS_REQUIRE_WORD=1` makes that a failure.
+- **Word's paragraph spacing is the larger of the space after and the space before, never their sum.**
+  Measured against Word 16's positions: a paragraph with 8 points after and a heading with 8 before are 8
+  points apart.
+- **A size is the em.** `TextRenderer` sizes a face by its ascent to descent; `WordFonts::drawn` multiplies by
+  `TextRenderer::em_ratio`, so 12 point Aptos is asked for as 14.65. It also multiplies by
+  `TextRenderer::interface_zoom`, which the renderer divides every size by: without it a page at an interface
+  zoom of 125% held a fifth more text than Word's page.
+- **A line is the font's own height.** `TextRenderer::font_line_metrics` answers without the reading leading the
+  editor adds. With it, every page came out shorter than Word's.
+- **Kerning comes from GPOS.** `unluminous_word::kern::PairKerning` reads the `kern` feature's pair lookups, which
+  is where Word reads them; the old `kern` table holds only some pairs.
+- **Lines break where Word breaks them for any font installed as a file.** `tests/pagination.rs` and the app's
+  `the_window_breaks_lines_where_word_does` compare a paragraph in Calibri, Times New Roman and Arial with Word's
+  own line breaks, word for word. **Aptos is the exception**: Word lays out a narrower Aptos than the file Office
+  downloads into `FontCache/4/CloudFonts`, about three percent, so Word fits a word more on some lines. Page counts
+  still match on every fixture.
+- **The window keeps egui's focus on a widget of its own**, so a Word tab asks `text_box_has_the_keyboard`, not
+  whether anything has the focus, before it takes the keys. And a Word tab keeps Word's own chords from the menus
+  through `UiProvider::claims_key`, read in `read_the_menu_shortcuts`.
+
+Three additions to the plugin contract, which `task-2338` adds for workbooks with the same names:
+`UiProvider::tab_keyed`, `modified` and `save`, plus `tab_closed` and `claims_key`, and three requests,
+`OpenKeyedTab`, `RenameTab` and `CloseKeyedTab`. A Word tab saves as it closes, like a text tab; an untitled one asks
+where to go.
+
+There is no ribbon. The format bar has the style, bold, italic, underline, the two lists, the alignment and the
+`Aa` and `+` buttons that open the drill down panel; `/` at the start of an empty paragraph and `Ctrl+/` anywhere
+search `services::word::actions::ACTIONS`, which is also what `plugins run word action <id>` runs, so the four ways
+in are one list. `# `, `- `, `1. ` and `> ` at a paragraph's start become a heading, a list or a quote.
+
+`plugins run word` is the agent's half; its verbs are `unluminous_cli::plugins::WORD`. A paragraph is numbered from
+1 in document order, table cells included, as `read` lists them. The window tests are `tests/word.rs`, and their
+pictures are `word_kitchen_sink`, `word_typed`, `word_panel_root`, `word_panel_page`, `word_panel_text`,
+`word_slash` and `word_command_search`.

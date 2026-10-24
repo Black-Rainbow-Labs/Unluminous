@@ -29,10 +29,16 @@ fn report(docx: &Path) -> Value {
 /// characters for a line break (11) and a page break (12) as Unluminous's flat text has them.
 /// The paragraphs in the order Word's `Document.Paragraphs` lists them, which has one more after the last
 /// cell of every table row: the row's end mark, given here as `None`.
-fn word_order(blocks: &[unluminous_word::model::Block]) -> Vec<(Vec<u32>, Option<&unluminous_word::model::Paragraph>)> {
+fn word_order(
+    blocks: &[unluminous_word::model::Block],
+) -> Vec<(Vec<u32>, Option<&unluminous_word::model::Paragraph>)> {
     use unluminous_word::model::Block;
     let mut out = Vec::new();
-    fn walk<'a>(blocks: &'a [Block], prefix: &mut Vec<u32>, out: &mut Vec<(Vec<u32>, Option<&'a unluminous_word::model::Paragraph>)>) {
+    fn walk<'a>(
+        blocks: &'a [Block],
+        prefix: &mut Vec<u32>,
+        out: &mut Vec<(Vec<u32>, Option<&'a unluminous_word::model::Paragraph>)>,
+    ) {
         for (index, block) in blocks.iter().enumerate() {
             prefix.push(index as u32);
             match block {
@@ -58,7 +64,12 @@ fn word_order(blocks: &[unluminous_word::model::Block]) -> Vec<(Vec<u32>, Option
 }
 
 fn words_text(paragraph: &Value) -> String {
-    paragraph["text"].as_str().unwrap_or_default().replace(['\u{7}'], "").trim_end_matches('\r').to_owned()
+    paragraph["text"]
+        .as_str()
+        .unwrap_or_default()
+        .replace(['\u{7}'], "")
+        .trim_end_matches('\r')
+        .to_owned()
 }
 
 /// A paragraph's text the way Word's `Range.Text` gives it: field codes left out, deleted text kept, hidden
@@ -91,9 +102,20 @@ fn ours(paragraph: &unluminous_word::model::Paragraph, resolver: &Resolver) -> S
         }
         match &run.content {
             Content::Text(text) => out.push_str(text),
-            Content::Object(el) if el.name == "w:footnoteReference" || el.name == "w:endnoteReference" => out.push('\u{2}'),
-            Content::Object(_) if run.content.picture().is_some_and(|p| p.elements().next().is_some_and(|f| f.name != "wp:anchor")) => out.push('/'),
-            Content::Object(el) if matches!(el.name.as_str(), "w:commentReference" | "w:annotationRef") => {}
+            Content::Object(el)
+                if el.name == "w:footnoteReference" || el.name == "w:endnoteReference" =>
+            {
+                out.push('\u{2}')
+            }
+            Content::Object(_)
+                if run.content.picture().is_some_and(|p| {
+                    p.elements().next().is_some_and(|f| f.name != "wp:anchor")
+                }) =>
+            {
+                out.push('/')
+            }
+            Content::Object(el)
+                if matches!(el.name.as_str(), "w:commentReference" | "w:annotationRef") => {}
             Content::Object(_) if run.content.picture().is_some() => {}
             other => out.extend(other.character().filter(|c| *c != '\u{FFFC}')),
         }
@@ -114,26 +136,43 @@ fn every_paragraphs_text_and_style_are_what_word_reports() {
         let ours_list = word_order(&document.body);
         let words = report["paragraphs"].as_array().cloned().unwrap_or_default();
         if ours_list.len() != words.len() {
-            failures.push(format!("{}: {} paragraphs against Word's {}", file.display(), ours_list.len(), words.len()));
+            failures.push(format!(
+                "{}: {} paragraphs against Word's {}",
+                file.display(),
+                ours_list.len(),
+                words.len()
+            ));
             continue;
         }
         for ((_, paragraph), word) in ours_list.iter().zip(&words) {
             let index = word["index"].as_i64().unwrap_or(0);
             let Some(paragraph) = paragraph else {
                 if !words_text(word).is_empty() {
-                    failures.push(format!("{} paragraph {index}: a row end against Word's {:?}", file.display(), words_text(word)));
+                    failures.push(format!(
+                        "{} paragraph {index}: a row end against Word's {:?}",
+                        file.display(),
+                        words_text(word)
+                    ));
                 }
                 continue;
             };
             let text = ours(paragraph, &resolver);
             // Word reports text in all capitals as it is drawn.
             if text.to_lowercase() != words_text(word).to_lowercase() {
-                failures.push(format!("{} paragraph {index}: {text:?} against Word's {:?}", file.display(), words_text(word)));
+                failures.push(format!(
+                    "{} paragraph {index}: {text:?} against Word's {:?}",
+                    file.display(),
+                    words_text(word)
+                ));
             }
             let style_id = resolver.paragraph_style_id(&paragraph.props).unwrap_or("Normal");
             let style = resolver.name_of(style_id);
             if Some(style.as_str()) != word["style"].as_str() {
-                failures.push(format!("{} paragraph {index}: style {style:?} against Word's {:?}", file.display(), word["style"]));
+                failures.push(format!(
+                    "{} paragraph {index}: style {style:?} against Word's {:?}",
+                    file.display(),
+                    word["style"]
+                ));
             }
         }
     }
@@ -150,18 +189,25 @@ fn every_paragraphs_indents_spacing_and_alignment_are_what_word_reports() {
         let ours_list = word_order(&document.body);
         let words = report["paragraphs"].as_array().cloned().unwrap_or_default();
         if ours_list.len() != words.len() {
-            failures.push(format!("{}: {} paragraphs against Word's {}", file.display(), ours_list.len(), words.len()));
+            failures.push(format!(
+                "{}: {} paragraphs against Word's {}",
+                file.display(),
+                ours_list.len(),
+                words.len()
+            ));
             continue;
         }
         for ((path, paragraph), word) in ours_list.iter().zip(&words) {
             let index = word["index"].as_i64().unwrap_or(0);
             let Some(paragraph) = paragraph else { continue };
-            let table_style = unluminous_word::position::cell_of(&document.body, path).and_then(|(table, _, _)| {
-                match unluminous_word::position::block(&document.body, &table) {
-                    Some(unluminous_word::model::Block::Table(t)) => resolver.table_style_id(&t.props),
+            let table_style = unluminous_word::position::cell_of(&document.body, path).and_then(
+                |(table, _, _)| match unluminous_word::position::block(&document.body, &table) {
+                    Some(unluminous_word::model::Block::Table(t)) => {
+                        resolver.table_style_id(&t.props)
+                    }
                     _ => None,
-                }
-            });
+                },
+            );
             let look = resolver.paragraph(&paragraph.props, table_style);
             let alignment = match look.align {
                 unluminous_word::props::Align::Left => 0,
@@ -169,7 +215,8 @@ fn every_paragraphs_indents_spacing_and_alignment_are_what_word_reports() {
                 unluminous_word::props::Align::Right => 2,
                 unluminous_word::props::Align::Justify => 3,
             };
-            let close = |a: f32, b: &Value| (a - b.as_f64().unwrap_or(f64::NAN) as f32).abs() < 0.11;
+            let close =
+                |a: f32, b: &Value| (a - b.as_f64().unwrap_or(f64::NAN) as f32).abs() < 0.11;
             let checks = [
                 ("alignment", word["alignment"].as_i64() == Some(alignment)),
                 ("leftIndent", close(look.indent_left, &word["leftIndent"])),
@@ -178,11 +225,19 @@ fn every_paragraphs_indents_spacing_and_alignment_are_what_word_reports() {
                 ("spaceBefore", look.before_auto || close(look.space_before, &word["spaceBefore"])),
                 ("spaceAfter", look.after_auto || close(look.space_after, &word["spaceAfter"])),
                 ("keepWithNext", word["keepWithNext"].as_bool() == Some(look.keep_next)),
-                ("pageBreakBefore", word["pageBreakBefore"].as_bool() == Some(look.page_break_before)),
+                (
+                    "pageBreakBefore",
+                    word["pageBreakBefore"].as_bool() == Some(look.page_break_before),
+                ),
             ];
             for (name, ok) in checks {
                 if !ok {
-                    failures.push(format!("{} paragraph {index} {:?}: {name} ours {look:?} Word {}", file.display(), words_text(word), word[name]));
+                    failures.push(format!(
+                        "{} paragraph {index} {:?}: {name} ours {look:?} Word {}",
+                        file.display(),
+                        words_text(word),
+                        word[name]
+                    ));
                 }
             }
         }

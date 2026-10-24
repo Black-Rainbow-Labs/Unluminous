@@ -374,8 +374,10 @@ mod tests {
 
     #[test]
     fn a_foreign_prefix_for_the_main_namespace_is_read_as_w() {
-        let el = parse(&format!(r#"<ns0:document xmlns:ns0="{W}"><ns0:body><ns0:p/></ns0:body></ns0:document>"#))
-            .unwrap();
+        let el = parse(&format!(
+            r#"<ns0:document xmlns:ns0="{W}"><ns0:body><ns0:p/></ns0:body></ns0:document>"#
+        ))
+        .unwrap();
         assert_eq!(el.name, "w:document");
         assert_eq!(el.child("w:body").unwrap().child("w:p").unwrap().name, "w:p");
     }
@@ -394,8 +396,10 @@ mod tests {
 
     #[test]
     fn spaces_in_text_are_kept_and_spaces_between_elements_are_not() {
-        let el = parse(&format!("<w:r xmlns:w=\"{W}\">\n  <w:t xml:space=\"preserve\">  two  </w:t>\n</w:r>"))
-            .unwrap();
+        let el = parse(&format!(
+            "<w:r xmlns:w=\"{W}\">\n  <w:t xml:space=\"preserve\">  two  </w:t>\n</w:r>"
+        ))
+        .unwrap();
         assert_eq!(el.to_xml(), r#"<w:r><w:t xml:space="preserve">  two  </w:t></w:r>"#);
     }
 

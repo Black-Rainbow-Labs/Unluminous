@@ -17,7 +17,13 @@ enum Subtable {
     /// Format 1: listed pairs.
     Pairs(HashMap<(u16, u16), i16>),
     /// Format 2: a value for each pair of classes, for the glyphs in the coverage.
-    Classes { covered: Vec<bool>, first: Vec<u16>, second: Vec<u16>, columns: usize, values: Vec<i16> },
+    Classes {
+        covered: Vec<bool>,
+        first: Vec<u16>,
+        second: Vec<u16>,
+        columns: usize,
+        values: Vec<i16>,
+    },
 }
 
 /// A face's kerning pairs, in font units.
@@ -33,14 +39,23 @@ impl PairKerning {
         let face = ttf_parser::Face::parse(bytes, index).ok()?;
         let glyphs = face.number_of_glyphs();
         let gpos = face.tables().gpos?;
-        let mut lookups: Vec<u16> = gpos.features.into_iter().filter(|f| &f.tag.to_bytes() == b"kern").flat_map(|f| f.lookup_indices.into_iter()).collect();
+        let mut lookups: Vec<u16> = gpos
+            .features
+            .into_iter()
+            .filter(|f| &f.tag.to_bytes() == b"kern")
+            .flat_map(|f| f.lookup_indices.into_iter())
+            .collect();
         lookups.sort_unstable();
         lookups.dedup();
         let mut subtables = Vec::new();
         for index in lookups {
             let Some(lookup) = gpos.lookups.get(index) else { continue };
             for n in 0..lookup.subtables.len() {
-                let Some(PositioningSubtable::Pair(pair)) = lookup.subtables.get::<PositioningSubtable>(n) else { continue };
+                let Some(PositioningSubtable::Pair(pair)) =
+                    lookup.subtables.get::<PositioningSubtable>(n)
+                else {
+                    continue;
+                };
                 match pair {
                     PairAdjustment::Format1 { coverage, sets } => {
                         let mut pairs = HashMap::new();
@@ -58,9 +73,12 @@ impl PairKerning {
                         subtables.push(Subtable::Pairs(pairs));
                     }
                     PairAdjustment::Format2 { coverage, classes, matrix } => {
-                        let covered: Vec<bool> = (0..glyphs).map(|g| coverage.contains(GlyphId(g))).collect();
-                        let first: Vec<u16> = (0..glyphs).map(|g| classes.0.get(GlyphId(g))).collect();
-                        let second: Vec<u16> = (0..glyphs).map(|g| classes.1.get(GlyphId(g))).collect();
+                        let covered: Vec<bool> =
+                            (0..glyphs).map(|g| coverage.contains(GlyphId(g))).collect();
+                        let first: Vec<u16> =
+                            (0..glyphs).map(|g| classes.0.get(GlyphId(g))).collect();
+                        let second: Vec<u16> =
+                            (0..glyphs).map(|g| classes.1.get(GlyphId(g))).collect();
                         let rows = first.iter().copied().max().unwrap_or(0) as usize + 1;
                         let columns = second.iter().copied().max().unwrap_or(0) as usize + 1;
                         let mut values = vec![0i16; rows * columns];
@@ -71,7 +89,13 @@ impl PairKerning {
                                 }
                             }
                         }
-                        subtables.push(Subtable::Classes { covered, first, second, columns, values });
+                        subtables.push(Subtable::Classes {
+                            covered,
+                            first,
+                            second,
+                            columns,
+                            values,
+                        });
                     }
                 }
             }

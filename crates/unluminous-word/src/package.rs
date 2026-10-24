@@ -32,8 +32,13 @@ pub mod kind {
 /// The full relationship type URI Word writes for `kind`.
 pub fn kind_uri(kind: &str) -> String {
     match kind {
-        kind::CORE => "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties".into(),
-        other => format!("http://schemas.openxmlformats.org/officeDocument/2006/relationships/{other}"),
+        kind::CORE => {
+            "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"
+                .into()
+        }
+        other => {
+            format!("http://schemas.openxmlformats.org/officeDocument/2006/relationships/{other}")
+        }
     }
 }
 
@@ -84,7 +89,12 @@ impl Rels {
             number += 1;
         }
         let id = format!("rIdU{number}");
-        self.rels.push(Rel { id: id.clone(), kind: kind_uri(kind), target: target.to_owned(), external });
+        self.rels.push(Rel {
+            id: id.clone(),
+            kind: kind_uri(kind),
+            target: target.to_owned(),
+            external,
+        });
         self.dirty = true;
         id
     }
@@ -148,8 +158,12 @@ impl Package {
                 _ => {}
             }
         }
-        let rel_parts: Vec<String> =
-            package.parts.iter().map(|part| part.name.clone()).filter(|name| name.ends_with(".rels")).collect();
+        let rel_parts: Vec<String> = package
+            .parts
+            .iter()
+            .map(|part| part.name.clone())
+            .filter(|name| name.ends_with(".rels"))
+            .collect();
         for name in rel_parts {
             let Some(source) = source_of_rels(&name) else { continue };
             let el = xml::parse_bytes(package.part(&name).unwrap_or_default())?;
@@ -276,10 +290,16 @@ impl Package {
                 "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">",
             );
             for (extension, kind) in &self.defaults {
-                El::new("Default").with("Extension", extension.clone()).with("ContentType", kind.clone()).write(&mut out);
+                El::new("Default")
+                    .with("Extension", extension.clone())
+                    .with("ContentType", kind.clone())
+                    .write(&mut out);
             }
             for (name, kind) in &self.overrides {
-                El::new("Override").with("PartName", format!("/{name}")).with("ContentType", kind.clone()).write(&mut out);
+                El::new("Override")
+                    .with("PartName", format!("/{name}"))
+                    .with("ContentType", kind.clone())
+                    .write(&mut out);
             }
             out.push_str("</Types>");
             self.set_part(CONTENT_TYPES, out.into_bytes());
@@ -328,17 +348,31 @@ mod tests {
 
     #[test]
     fn targets_resolve_against_the_source_folder() {
-        assert_eq!(Package::resolve("word/document.xml", "media/image1.png"), "word/media/image1.png");
-        assert_eq!(Package::resolve("word/document.xml", "../customXml/item1.xml"), "customXml/item1.xml");
+        assert_eq!(
+            Package::resolve("word/document.xml", "media/image1.png"),
+            "word/media/image1.png"
+        );
+        assert_eq!(
+            Package::resolve("word/document.xml", "../customXml/item1.xml"),
+            "customXml/item1.xml"
+        );
         assert_eq!(Package::resolve("", "word/document.xml"), "word/document.xml");
         assert_eq!(Package::resolve("word/document.xml", "/word/styles.xml"), "word/styles.xml");
-        assert_eq!(Package::relative("word/document.xml", "word/media/image1.png"), "media/image1.png");
+        assert_eq!(
+            Package::relative("word/document.xml", "word/media/image1.png"),
+            "media/image1.png"
+        );
     }
 
     #[test]
     fn a_new_relationship_id_cannot_be_one_word_makes() {
         let mut rels = Rels::default();
-        rels.rels.push(Rel { id: "rId1".into(), kind: kind_uri("styles"), target: "styles.xml".into(), external: false });
+        rels.rels.push(Rel {
+            id: "rId1".into(),
+            kind: kind_uri("styles"),
+            target: "styles.xml".into(),
+            external: false,
+        });
         assert_eq!(rels.add(kind::IMAGE, "media/image1.png", false), "rIdU1");
         assert_eq!(rels.add(kind::IMAGE, "media/image2.png", false), "rIdU2");
         assert!(rels.dirty);

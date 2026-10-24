@@ -25,7 +25,10 @@ fn u16_at(bytes: &[u8], at: usize) -> Result<u16, String> {
 }
 
 fn u32_at(bytes: &[u8], at: usize) -> Result<u32, String> {
-    bytes.get(at..at + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]])).ok_or_else(truncated)
+    bytes
+        .get(at..at + 4)
+        .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+        .ok_or_else(truncated)
 }
 
 fn truncated() -> String {
@@ -126,7 +129,8 @@ pub fn write(entries: &[Entry]) -> Result<Vec<u8>, String> {
         if entry.data.len() >= u32::MAX as usize {
             return Err(format!("{} is larger than 4 GB", entry.name));
         }
-        let mut deflated = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::new(6));
+        let mut deflated =
+            flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::new(6));
         deflated.write_all(&entry.data).map_err(|problem| problem.to_string())?;
         let deflated = deflated.finish().map_err(|problem| problem.to_string())?;
         let crc = crc32fast::hash(&entry.data);

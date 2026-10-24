@@ -19,7 +19,11 @@ pub struct Numbering<'a> {
 
 impl<'a> Numbering<'a> {
     pub fn new(root: Option<&'a El>) -> Numbering<'a> {
-        let mut numbering = Numbering { nums: HashMap::new(), abstracts: HashMap::new(), style_nums: HashMap::new() };
+        let mut numbering = Numbering {
+            nums: HashMap::new(),
+            abstracts: HashMap::new(),
+            style_nums: HashMap::new(),
+        };
         let Some(root) = root else { return numbering };
         for el in root.elements() {
             match el.name.as_str() {
@@ -42,9 +46,16 @@ impl<'a> Numbering<'a> {
     /// Tell the numbering which `w:num` each numbering style names, from the styles part.
     pub fn with_styles(mut self, styles: Option<&El>) -> Self {
         let Some(styles) = styles else { return self };
-        for style in styles.children_named("w:style").filter(|s| s.attr("w:type") == Some("numbering")) {
-            let num = style.child("w:pPr").and_then(|ppr| ppr.child("w:numPr")).and_then(|n| n.val_of("w:numId"));
-            if let (Some(id), Some(num)) = (style.attr("w:styleId"), num.and_then(|n| n.parse().ok())) {
+        for style in
+            styles.children_named("w:style").filter(|s| s.attr("w:type") == Some("numbering"))
+        {
+            let num = style
+                .child("w:pPr")
+                .and_then(|ppr| ppr.child("w:numPr"))
+                .and_then(|n| n.val_of("w:numId"));
+            if let (Some(id), Some(num)) =
+                (style.attr("w:styleId"), num.and_then(|n| n.parse().ok()))
+            {
                 self.style_nums.insert(id.to_owned(), num);
             }
         }
@@ -78,7 +89,10 @@ impl<'a> Numbering<'a> {
 
     fn override_of(&self, num: i64, level: u8) -> Option<&'a El> {
         let level_text = level.to_string();
-        self.nums.get(&num)?.children_named("w:lvlOverride").find(|o| o.attr("w:ilvl") == Some(level_text.as_str()))
+        self.nums
+            .get(&num)?
+            .children_named("w:lvlOverride")
+            .find(|o| o.attr("w:ilvl") == Some(level_text.as_str()))
     }
 
     /// The level of list `num` whose `w:pStyle` is `style`, for a paragraph that is in the list only
@@ -150,13 +164,13 @@ impl Counters {
         counts[level] += 1;
         // Deeper levels start again, unless a level's `w:lvlRestart` says it restarts only after a
         // shallower one.
-        for deeper in level + 1..9 {
+        for (deeper, count) in counts.iter_mut().enumerate().skip(level + 1) {
             let restart_after = numbering
                 .level(num, deeper as u8)
                 .and_then(|l| l.val_of("w:lvlRestart"))
                 .and_then(|r| r.parse::<usize>().ok());
             if restart_after.is_none_or(|after| after > level) {
-                counts[deeper] = i64::MIN;
+                *count = i64::MIN;
             }
         }
         self.last_level.insert(abstract_id, level as u8);
@@ -174,8 +188,17 @@ impl Counters {
                         i64::MIN => numbering.start_of(num, at as u8),
                         value => value,
                     };
-                    let at_format = numbering.level(num, at as u8).and_then(|l| l.val_of("w:numFmt")).unwrap_or("decimal");
-                    let at_format = if legal && at != level { "decimal" } else if at == level { format } else { at_format };
+                    let at_format = numbering
+                        .level(num, at as u8)
+                        .and_then(|l| l.val_of("w:numFmt"))
+                        .unwrap_or("decimal");
+                    let at_format = if legal && at != level {
+                        "decimal"
+                    } else if at == level {
+                        format
+                    } else {
+                        at_format
+                    };
                     text.push_str(&format_number(value, at_format));
                     continue;
                 }
@@ -221,8 +244,19 @@ fn roman(mut value: i64) -> String {
         return value.to_string();
     }
     let table = [
-        (1000, "m"), (900, "cm"), (500, "d"), (400, "cd"), (100, "c"), (90, "xc"), (50, "l"), (40, "xl"),
-        (10, "x"), (9, "ix"), (5, "v"), (4, "iv"), (1, "i"),
+        (1000, "m"),
+        (900, "cm"),
+        (500, "d"),
+        (400, "cd"),
+        (100, "c"),
+        (90, "xc"),
+        (50, "l"),
+        (40, "xl"),
+        (10, "x"),
+        (9, "ix"),
+        (5, "v"),
+        (4, "iv"),
+        (1, "i"),
     ];
     let mut out = String::new();
     for (amount, letters) in table {
@@ -256,10 +290,29 @@ fn ordinal_suffix(value: i64) -> &'static str {
 }
 
 const ONES: [&str; 20] = [
-    "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
-    "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen",
+    "zero",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "eleven",
+    "twelve",
+    "thirteen",
+    "fourteen",
+    "fifteen",
+    "sixteen",
+    "seventeen",
+    "eighteen",
+    "nineteen",
 ];
-const TENS: [&str; 10] = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+const TENS: [&str; 10] =
+    ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
 
 fn cardinal_text(value: i64) -> String {
     match value {
@@ -279,7 +332,15 @@ fn cardinal_text(value: i64) -> String {
 
 fn ordinal_text(value: i64) -> String {
     let cardinal = cardinal_text(value);
-    let irregular = [("one", "first"), ("two", "second"), ("three", "third"), ("five", "fifth"), ("eight", "eighth"), ("nine", "ninth"), ("twelve", "twelfth")];
+    let irregular = [
+        ("one", "first"),
+        ("two", "second"),
+        ("three", "third"),
+        ("five", "fifth"),
+        ("eight", "eighth"),
+        ("nine", "ninth"),
+        ("twelve", "twelfth"),
+    ];
     for (end, replacement) in irregular {
         if let Some(front) = cardinal.strip_suffix(end) {
             return format!("{front}{replacement}");
@@ -323,9 +384,17 @@ mod tests {
     #[test]
     fn every_format_word_offers() {
         let cases = [
-            (4, "decimal", "4"), (4, "decimalZero", "04"), (4, "upperRoman", "IV"), (14, "lowerRoman", "xiv"),
-            (3, "upperLetter", "C"), (28, "lowerLetter", "bb"), (22, "ordinal", "22nd"), (13, "ordinal", "13th"),
-            (21, "cardinalText", "Twenty-one"), (12, "ordinalText", "Twelfth"), (40, "ordinalText", "Fortieth"),
+            (4, "decimal", "4"),
+            (4, "decimalZero", "04"),
+            (4, "upperRoman", "IV"),
+            (14, "lowerRoman", "xiv"),
+            (3, "upperLetter", "C"),
+            (28, "lowerLetter", "bb"),
+            (22, "ordinal", "22nd"),
+            (13, "ordinal", "13th"),
+            (21, "cardinalText", "Twenty-one"),
+            (12, "ordinalText", "Twelfth"),
+            (40, "ordinalText", "Fortieth"),
             (101, "cardinalText", "One hundred one"),
         ];
         for (value, format, expected) in cases {

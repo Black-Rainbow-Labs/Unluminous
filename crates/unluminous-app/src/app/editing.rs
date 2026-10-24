@@ -551,7 +551,8 @@ impl UnluminousApp {
                     // Only a tab holding a document can have unsaved changes: a browser, picture or plugin tab
                     // holds an empty document nobody can save, and a dot on it read as a page with unsaved work
                     // (`task-2255`).
-                    modified: (file.is_a_document() && file.document.is_modified()) || plugin_modified,
+                    modified: (file.is_a_document() && file.document.is_modified())
+                        || plugin_modified,
                     transient: file.transient,
                     marker: file.path().map(theme::file_marker).unwrap_or(color::file_text()),
                     icon,

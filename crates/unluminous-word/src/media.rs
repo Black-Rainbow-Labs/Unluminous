@@ -25,7 +25,14 @@ pub fn content_type(extension: &str) -> &'static str {
 }
 
 /// Insert a picture at the caret, `width` by `height` points.
-pub fn insert_picture(session: &mut Session, bytes: &[u8], extension: &str, width: f32, height: f32, name: &str) -> Result<(), String> {
+pub fn insert_picture(
+    session: &mut Session,
+    bytes: &[u8],
+    extension: &str,
+    width: f32,
+    height: f32,
+    name: &str,
+) -> Result<(), String> {
     let extension = if extension == "jpeg" { "jpg".to_owned() } else { extension.to_owned() };
     let bytes = bytes.to_vec();
     let name = name.to_owned();
@@ -39,10 +46,19 @@ pub fn insert_picture(session: &mut Session, bytes: &[u8], extension: &str, widt
         let shape = next_shape_id(document);
         let drawing = drawing(&id, shape, &name, width, height);
         let at = selection.ordered().1.clone();
-        let (props, wraps) = crate::position::paragraph(document, &at.story, &at.path).map(|p| crate::edit::props_at(p, at.offset)).unwrap_or_else(|| (no_props(), Vec::new()));
-        let Some(paragraph) = crate::position::paragraph_mut(document, &at.story, &at.path) else { return selection.clone() };
+        let (props, wraps) = crate::position::paragraph(document, &at.story, &at.path)
+            .map(|p| crate::edit::props_at(p, at.offset))
+            .unwrap_or_else(|| (no_props(), Vec::new()));
+        let Some(paragraph) = crate::position::paragraph_mut(document, &at.story, &at.path) else {
+            return selection.clone();
+        };
         let index = paragraph.split_at(at.offset);
-        let run = Run { props: Arc::clone(&props), content: Content::Object(drawing), wraps, attrs: Arc::default() };
+        let run = Run {
+            props: Arc::clone(&props),
+            content: Content::Object(drawing),
+            wraps,
+            attrs: Arc::default(),
+        };
         let len = run.len();
         paragraph.runs.insert(index, run);
         for mark in &mut paragraph.marks {
@@ -97,7 +113,9 @@ pub fn drawing(rel: &str, id: u32, name: &str, width: f32, height: f32) -> El {
                         .with_child(El::new("a:off").with("x", "0").with("y", "0"))
                         .with_child(El::new("a:ext").with("cx", cx.clone()).with("cy", cy.clone())),
                 )
-                .with_child(El::new("a:prstGeom").with("prst", "rect").with_child(El::new("a:avLst"))),
+                .with_child(
+                    El::new("a:prstGeom").with("prst", "rect").with_child(El::new("a:avLst")),
+                ),
         );
     El::new("w:drawing").with_child(
         El::new("wp:inline")
@@ -106,15 +124,28 @@ pub fn drawing(rel: &str, id: u32, name: &str, width: f32, height: f32) -> El {
             .with("distL", "0")
             .with("distR", "0")
             .with_child(extent())
-            .with_child(El::new("wp:effectExtent").with("l", "0").with("t", "0").with("r", "0").with("b", "0"))
-            .with_child(El::new("wp:docPr").with("id", id.to_string()).with("name", format!("Picture {id}")).with("descr", name))
+            .with_child(
+                El::new("wp:effectExtent")
+                    .with("l", "0")
+                    .with("t", "0")
+                    .with("r", "0")
+                    .with("b", "0"),
+            )
+            .with_child(
+                El::new("wp:docPr")
+                    .with("id", id.to_string())
+                    .with("name", format!("Picture {id}"))
+                    .with("descr", name),
+            )
             .with_child(
                 El::new("wp:cNvGraphicFramePr")
                     .with_child(El::new("a:graphicFrameLocks").with("noChangeAspect", "1")),
             )
             .with_child(
                 El::new("a:graphic").with_child(
-                    El::new("a:graphicData").with("uri", "http://schemas.openxmlformats.org/drawingml/2006/picture").with_child(picture),
+                    El::new("a:graphicData")
+                        .with("uri", "http://schemas.openxmlformats.org/drawingml/2006/picture")
+                        .with_child(picture),
                 ),
             ),
     )
@@ -133,7 +164,11 @@ mod tests {
         let again = crate::read::open(&crate::write::save(&session.document).unwrap()).unwrap();
         assert_eq!(again.package.part("word/media/image1.png"), Some(png.as_slice()));
         assert_eq!(again.package.content_type("word/media/image1.png"), Some("image/png"));
-        let pages = crate::layout::lay_out(&again, &unluminous_core::FixedMetrics::default(), Default::default());
+        let pages = crate::layout::lay_out(
+            &again,
+            &unluminous_core::FixedMetrics::default(),
+            Default::default(),
+        );
         let picture = pages.pages[0].items.iter().find_map(|i| match i {
             crate::layout::Item::Picture { rect, part } => Some((rect.w, rect.h, part.clone())),
             _ => None,

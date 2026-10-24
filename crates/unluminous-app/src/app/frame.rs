@@ -773,7 +773,9 @@ impl UnluminousApp {
                         .events
                         .iter()
                         .filter_map(|event| match event {
-                            egui::Event::Key { key, pressed: true, modifiers, .. } => Some((*key, *modifiers)),
+                            egui::Event::Key { key, pressed: true, modifiers, .. } => {
+                                Some((*key, *modifiers))
+                            }
                             _ => None,
                         })
                         .collect::<Vec<_>>()

@@ -58,7 +58,10 @@ pub fn props_at(paragraph: &Paragraph, offset: usize) -> (Arc<El>, Vec<Arc<Wrap>
         if at + len <= offset && !matches!(run.content, Content::FieldChar(_) | Content::Instr(_)) {
             before = Some(run);
         }
-        if at >= offset && after.is_none() && !matches!(run.content, Content::FieldChar(_) | Content::Instr(_)) {
+        if at >= offset
+            && after.is_none()
+            && !matches!(run.content, Content::FieldChar(_) | Content::Instr(_))
+        {
             after = Some(run);
         }
         at += len;
@@ -79,7 +82,12 @@ pub fn props_at(paragraph: &Paragraph, offset: usize) -> (Arc<El>, Vec<Arc<Wrap>
             .zip(&a.wraps)
             .take_while(|(x, y)| x.id == y.id)
             .map(|(x, _)| Arc::clone(x))
-            .filter(|wrap| !matches!(wrap.el.name.as_str(), "w:ins" | "w:del" | "w:moveFrom" | "w:moveTo" | "w:fldSimple"))
+            .filter(|wrap| {
+                !matches!(
+                    wrap.el.name.as_str(),
+                    "w:ins" | "w:del" | "w:moveFrom" | "w:moveTo" | "w:fldSimple"
+                )
+            })
             .collect(),
         _ => Vec::new(),
     };
@@ -105,7 +113,14 @@ pub fn insert_in_paragraph(
     if let Some(insertion) = insertion {
         // Joining the insertion just before this one, by the same author, keeps one revision.
         let previous = paragraph.run_at(offset).map(|(i, _)| &paragraph.runs[i]);
-        let joined = previous.and_then(|run| run.wraps.iter().find(|w| w.el.name == "w:ins" && w.el.attr("w:author") == insertion.el.attr("w:author")).cloned());
+        let joined = previous.and_then(|run| {
+            run.wraps
+                .iter()
+                .find(|w| {
+                    w.el.name == "w:ins" && w.el.attr("w:author") == insertion.el.attr("w:author")
+                })
+                .cloned()
+        });
         wraps.push(joined.unwrap_or(insertion));
     }
     let index = paragraph.split_at(offset);
@@ -113,7 +128,12 @@ pub fn insert_in_paragraph(
     let mut length = 0;
     let mut pending = String::new();
     let push = |runs: &mut Vec<Run>, content: Content| {
-        runs.push(Run { props: Arc::clone(&props), content, wraps: wraps.clone(), attrs: Arc::default() });
+        runs.push(Run {
+            props: Arc::clone(&props),
+            content,
+            wraps: wraps.clone(),
+            attrs: Arc::default(),
+        });
     };
     for character in text.chars() {
         let special = match character {
@@ -151,14 +171,28 @@ pub fn insert_in_paragraph(
 }
 
 /// Insert text that may hold line ends, which split paragraphs. Answers where the caret goes.
-pub fn insert_text(document: &mut Document, at: &Pos, text: &str, props: Option<Arc<El>>, tracking: Option<&Tracking>) -> Pos {
+pub fn insert_text(
+    document: &mut Document,
+    at: &Pos,
+    text: &str,
+    props: Option<Arc<El>>,
+    tracking: Option<&Tracking>,
+) -> Pos {
     let normalised = text.replace("\r\n", "\n").replace('\r', "\n");
     let mut pos = at.clone();
     for (index, line) in normalised.split('\n').enumerate() {
         if index > 0 {
             pos = split_paragraph(document, &pos, tracking);
         }
-        let offset = insert_in_paragraph(document, &pos.story, &pos.path, pos.offset, line, props.clone(), tracking);
+        let offset = insert_in_paragraph(
+            document,
+            &pos.story,
+            &pos.path,
+            pos.offset,
+            line,
+            props.clone(),
+            tracking,
+        );
         pos = pos.at(offset);
     }
     pos
@@ -169,24 +203,34 @@ pub fn insert_text(document: &mut Document, at: &Pos, text: &str, props: Option<
 /// start of the new paragraph.
 pub fn split_paragraph(document: &mut Document, at: &Pos, tracking: Option<&Tracking>) -> Pos {
     let next_style = {
-        let Some(paragraph) = position::paragraph(document, &at.story, &at.path) else { return at.clone() };
+        let Some(paragraph) = position::paragraph(document, &at.story, &at.path) else {
+            return at.clone();
+        };
         let at_end = at.offset >= paragraph.len();
         let style = paragraph.props.val_of("w:pStyle").map(str::to_owned);
         let next = style.as_deref().and_then(|id| {
             let resolver = crate::styles::Resolver::new(document);
             resolver.style(id).and_then(|s| s.val_of("w:next")).map(str::to_owned)
         });
-        if at_end { next.filter(|n| Some(n) != style.as_ref()) } else { None }
+        if at_end {
+            next.filter(|n| Some(n) != style.as_ref())
+        } else {
+            None
+        }
     };
     let blocks = position::story_mut(document, &at.story).expect("the story");
-    let Some((container, index)) = position::container_mut(blocks, &at.path) else { return at.clone() };
+    let Some((container, index)) = position::container_mut(blocks, &at.path) else {
+        return at.clone();
+    };
     let Some(Block::Paragraph(paragraph)) = container.get_mut(index) else { return at.clone() };
     let offset = at.offset.min(paragraph.len());
     let cut = paragraph.split_at(offset);
     let tail_runs = paragraph.runs.split_off(cut);
     let mut tail_marks = Vec::new();
     paragraph.marks.retain(|mark| {
-        if mark.offset > offset || (mark.offset == offset && mark.el.name.ends_with("End")) && offset > 0 {
+        if mark.offset > offset
+            || (mark.offset == offset && mark.el.name.ends_with("End")) && offset > 0
+        {
             tail_marks.push(Mark { offset: mark.offset - offset, ..mark.clone() });
             false
         } else {
@@ -203,10 +247,19 @@ pub fn split_paragraph(document: &mut Document, at: &Pos, tracking: Option<&Trac
     if tracking.is_some() {
         // Word records an inserted paragraph mark on the paragraph that was split.
         let mark_rpr = paragraph.props.child_or_insert("w:rPr");
-        mark_rpr.put(El::new("w:ins").with("w:id", "0").with("w:author", tracking.map_or("", |t| t.author.as_str())).with("w:date", tracking.map_or("", |t| t.date.as_str())));
+        mark_rpr.put(
+            El::new("w:ins")
+                .with("w:id", "0")
+                .with("w:author", tracking.map_or("", |t| t.author.as_str()))
+                .with("w:date", tracking.map_or("", |t| t.date.as_str())),
+        );
     }
-    let attrs: Vec<(String, String)> =
-        paragraph.attrs.iter().filter(|(key, _)| !matches!(key.as_str(), "w14:paraId" | "w14:textId")).cloned().collect();
+    let attrs: Vec<(String, String)> = paragraph
+        .attrs
+        .iter()
+        .filter(|(key, _)| !matches!(key.as_str(), "w14:paraId" | "w14:textId"))
+        .cloned()
+        .collect();
     let mut tail = Paragraph { attrs, props, runs: tail_runs, marks: tail_marks };
     tail.merge_runs();
     paragraph.merge_runs();
@@ -218,7 +271,14 @@ pub fn split_paragraph(document: &mut Document, at: &Pos, tracking: Option<&Trac
 
 /// Remove `[from, to)` inside one paragraph. With tracking, runs not inserted by this change are marked
 /// deleted instead. Answers the offset the caret goes to.
-fn delete_in_paragraph(document: &mut Document, story: &StoryId, path: &[u32], from: usize, to: usize, tracking: Option<&Tracking>) -> usize {
+fn delete_in_paragraph(
+    document: &mut Document,
+    story: &StoryId,
+    path: &[u32],
+    from: usize,
+    to: usize,
+    tracking: Option<&Tracking>,
+) -> usize {
     let deletion = tracking.map(|t| t.wrap("w:del", document));
     let Some(paragraph) = position::paragraph_mut(document, story, path) else { return from };
     let (from, to) = (from.min(paragraph.len()), to.min(paragraph.len()));
@@ -240,7 +300,9 @@ fn delete_in_paragraph(document: &mut Document, story: &StoryId, path: &[u32], f
                 }
                 run.wraps.push(Arc::clone(&deletion));
             }
-            paragraph.runs.retain(|run| !(matches!(&run.content, Content::Text(t) if t.is_empty())));
+            paragraph
+                .runs
+                .retain(|run| !(matches!(&run.content, Content::Text(t) if t.is_empty())));
             // The caret stays before the deleted text when deleting backwards; the caller decides.
             from
         }
@@ -279,7 +341,9 @@ fn join_with_next(document: &mut Document, story: &StoryId, path: &[u32]) -> Opt
         paragraph.props.put(section.clone());
     }
     paragraph.runs.extend(next.runs);
-    paragraph.marks.extend(next.marks.into_iter().map(|mark| Mark { offset: mark.offset + offset, ..mark }));
+    paragraph
+        .marks
+        .extend(next.marks.into_iter().map(|mark| Mark { offset: mark.offset + offset, ..mark }));
     paragraph.merge_runs();
     Some(offset)
 }
@@ -288,7 +352,14 @@ fn join_with_next(document: &mut Document, story: &StoryId, path: &[u32]) -> Opt
 pub fn delete_range(document: &mut Document, a: &Pos, b: &Pos, tracking: Option<&Tracking>) -> Pos {
     let (from, to) = if a <= b { (a.clone(), b.clone()) } else { (b.clone(), a.clone()) };
     if from.path == to.path {
-        let offset = delete_in_paragraph(document, &from.story, &from.path, from.offset, to.offset, tracking);
+        let offset = delete_in_paragraph(
+            document,
+            &from.story,
+            &from.path,
+            from.offset,
+            to.offset,
+            tracking,
+        );
         return from.at(offset);
     }
     let Some(blocks) = position::story(document, &from.story) else { return from };
@@ -296,8 +367,10 @@ pub fn delete_range(document: &mut Document, a: &Pos, b: &Pos, tracking: Option<
     let start = all.iter().position(|(p, _)| *p == from.path);
     let end = all.iter().position(|(p, _)| *p == to.path);
     let (Some(start), Some(end)) = (start, end) else { return from };
-    let between: Vec<(Vec<u32>, usize)> = all[start..=end].iter().map(|(p, para)| (p.clone(), para.len())).collect();
-    let same_container = from.path.len() == to.path.len() && from.path[..from.path.len() - 1] == to.path[..to.path.len() - 1];
+    let between: Vec<(Vec<u32>, usize)> =
+        all[start..=end].iter().map(|(p, para)| (p.clone(), para.len())).collect();
+    let same_container = from.path.len() == to.path.len()
+        && from.path[..from.path.len() - 1] == to.path[..to.path.len() - 1];
     if tracking.is_some() || !same_container {
         // Text is deleted from every paragraph in the range and the structure is kept: a tracked deletion
         // is shown, not performed, and a range that crosses into a table clears the cells it covers.
@@ -332,7 +405,12 @@ pub enum Unit {
 }
 
 /// Backspace at a caret: the grapheme before it, or the word, or the paragraph mark before it.
-pub fn delete_backward(document: &mut Document, at: &Pos, unit: Unit, tracking: Option<&Tracking>) -> Pos {
+pub fn delete_backward(
+    document: &mut Document,
+    at: &Pos,
+    unit: Unit,
+    tracking: Option<&Tracking>,
+) -> Pos {
     if at.offset == 0 {
         let Some(blocks) = position::story(document, &at.story) else { return at.clone() };
         let Some(previous) = position::previous_paragraph(blocks, &at.path) else {
@@ -349,7 +427,8 @@ pub fn delete_backward(document: &mut Document, at: &Pos, unit: Unit, tracking: 
                 return at.clone();
             }
         }
-        let same_container = previous.len() == at.path.len() && previous[..previous.len() - 1] == at.path[..at.path.len() - 1];
+        let same_container = previous.len() == at.path.len()
+            && previous[..previous.len() - 1] == at.path[..at.path.len() - 1];
         if !same_container || tracking.is_some() {
             let len = position::paragraph(document, &at.story, &previous).map_or(0, Paragraph::len);
             return Pos { story: at.story.clone(), path: previous, offset: len };
@@ -357,7 +436,9 @@ pub fn delete_backward(document: &mut Document, at: &Pos, unit: Unit, tracking: 
         let offset = join_with_next(document, &at.story, &previous).unwrap_or(0);
         return Pos { story: at.story.clone(), path: previous, offset };
     }
-    let Some(paragraph) = position::paragraph(document, &at.story, &at.path) else { return at.clone() };
+    let Some(paragraph) = position::paragraph(document, &at.story, &at.path) else {
+        return at.clone();
+    };
     let text = paragraph.flat_text();
     let from = match unit {
         Unit::Character => previous_boundary(&text, at.offset),
@@ -368,13 +449,21 @@ pub fn delete_backward(document: &mut Document, at: &Pos, unit: Unit, tracking: 
 }
 
 /// Delete at a caret: the grapheme after it, or the word, or the paragraph mark after it.
-pub fn delete_forward(document: &mut Document, at: &Pos, unit: Unit, tracking: Option<&Tracking>) -> Pos {
-    let Some(paragraph) = position::paragraph(document, &at.story, &at.path) else { return at.clone() };
+pub fn delete_forward(
+    document: &mut Document,
+    at: &Pos,
+    unit: Unit,
+    tracking: Option<&Tracking>,
+) -> Pos {
+    let Some(paragraph) = position::paragraph(document, &at.story, &at.path) else {
+        return at.clone();
+    };
     let text = paragraph.flat_text();
     if at.offset >= text.len() {
         let Some(blocks) = position::story(document, &at.story) else { return at.clone() };
         let Some(next) = position::next_paragraph(blocks, &at.path) else { return at.clone() };
-        let same_container = next.len() == at.path.len() && next[..next.len() - 1] == at.path[..at.path.len() - 1];
+        let same_container =
+            next.len() == at.path.len() && next[..next.len() - 1] == at.path[..at.path.len() - 1];
         if same_container && tracking.is_none() {
             join_with_next(document, &at.story, &at.path);
         }
@@ -391,7 +480,7 @@ pub fn delete_forward(document: &mut Document, at: &Pos, unit: Unit, tracking: O
 /// The grapheme boundary before `offset`.
 pub fn previous_boundary(text: &str, offset: usize) -> usize {
     use unicode_segmentation::UnicodeSegmentation;
-    text[..offset.min(text.len())].grapheme_indices(true).last().map_or(0, |(at, _)| at)
+    text[..offset.min(text.len())].grapheme_indices(true).next_back().map_or(0, |(at, _)| at)
 }
 
 /// The grapheme boundary after `offset`.
@@ -405,7 +494,9 @@ pub fn next_boundary(text: &str, offset: usize) -> usize {
 pub fn previous_word(text: &str, offset: usize) -> usize {
     let before = &text[..offset.min(text.len())];
     let trimmed = before.trim_end_matches(|c: char| c.is_whitespace());
-    let start = trimmed.rfind(|c: char| !c.is_alphanumeric() && c != '_' && c != '\'').map_or(0, |at| at + trimmed[at..].chars().next().map_or(1, char::len_utf8));
+    let start = trimmed
+        .rfind(|c: char| !c.is_alphanumeric() && c != '_' && c != '\'')
+        .map_or(0, |at| at + trimmed[at..].chars().next().map_or(1, char::len_utf8));
     if start == trimmed.len() && !trimmed.is_empty() {
         // The character before is punctuation: one character.
         return previous_boundary(text, trimmed.len());
@@ -417,15 +508,24 @@ pub fn previous_word(text: &str, offset: usize) -> usize {
 pub fn next_word(text: &str, offset: usize) -> usize {
     let offset = offset.min(text.len());
     let rest = &text[offset..];
-    let word_end = rest.find(|c: char| !c.is_alphanumeric() && c != '_' && c != '\'').unwrap_or(rest.len());
-    let word_end = if word_end == 0 { rest.chars().next().map_or(0, char::len_utf8) } else { word_end };
+    let word_end =
+        rest.find(|c: char| !c.is_alphanumeric() && c != '_' && c != '\'').unwrap_or(rest.len());
+    let word_end =
+        if word_end == 0 { rest.chars().next().map_or(0, char::len_utf8) } else { word_end };
     let after = &rest[word_end..];
-    let spaces = after.len() - after.trim_start_matches(|c: char| c == ' ').len();
+    let spaces = after.len() - after.trim_start_matches(' ').len();
     offset + word_end + spaces
 }
 
 /// Change the run properties of every run in `[from, to)` of one paragraph with `change`.
-pub fn format_runs_in_paragraph(document: &mut Document, story: &StoryId, path: &[u32], from: usize, to: usize, change: &dyn Fn(&mut El)) {
+pub fn format_runs_in_paragraph(
+    document: &mut Document,
+    story: &StoryId,
+    path: &[u32],
+    from: usize,
+    to: usize,
+    change: &dyn Fn(&mut El),
+) {
     let Some(paragraph) = position::paragraph_mut(document, story, path) else { return };
     if from >= to && !paragraph.runs.is_empty() {
         return;
@@ -476,7 +576,8 @@ pub fn covered(document: &Document, from: &Pos, to: &Pos) -> Vec<(Vec<u32>, usiz
             .iter()
             .map(|(path, paragraph)| {
                 let len = paragraph.len();
-                let whole = (*path != to.path || to.offset >= len) && (*path != from.path || from.offset == 0 || from.path != to.path);
+                let whole = (*path != to.path || to.offset >= len)
+                    && (*path != from.path || from.offset == 0 || from.path != to.path);
                 (path.clone(), len, whole && (s != e || (from.offset == 0 && to.offset >= len)))
             })
             .collect(),
@@ -529,15 +630,31 @@ pub fn new_table(rows: usize, columns: usize, width: f32, style: Option<&str>) -
     } else {
         let mut borders = El::new("w:tblBorders");
         for side in ["top", "left", "bottom", "right", "insideH", "insideV"] {
-            borders.put(El::new(format!("w:{side}")).with("w:val", "single").with("w:sz", "4").with("w:space", "0").with("w:color", "auto"));
+            borders.put(
+                El::new(format!("w:{side}"))
+                    .with("w:val", "single")
+                    .with("w:sz", "4")
+                    .with("w:space", "0")
+                    .with("w:color", "auto"),
+            );
         }
         props.put(borders);
     }
     props.put(El::new("w:tblW").with("w:w", "0").with("w:type", "auto"));
-    props.put(El::new("w:tblLook").with("w:val", "04A0").with("w:firstRow", "1").with("w:lastRow", "0").with("w:firstColumn", "1").with("w:lastColumn", "0").with("w:noHBand", "0").with("w:noVBand", "1"));
+    props.put(
+        El::new("w:tblLook")
+            .with("w:val", "04A0")
+            .with("w:firstRow", "1")
+            .with("w:lastRow", "0")
+            .with("w:firstColumn", "1")
+            .with("w:lastColumn", "0")
+            .with("w:noHBand", "0")
+            .with("w:noVBand", "1"),
+    );
     let mut grid = El::new("w:tblGrid");
     for _ in 0..columns {
-        grid.children.push(crate::xml::Node::El(El::new("w:gridCol").with("w:w", column.to_string())));
+        grid.children
+            .push(crate::xml::Node::El(El::new("w:gridCol").with("w:w", column.to_string())));
     }
     let rows = (0..rows.max(1))
         .map(|_| Row {
@@ -545,7 +662,9 @@ pub fn new_table(rows: usize, columns: usize, width: f32, style: Option<&str>) -
             cells: (0..columns)
                 .map(|_| Cell {
                     attrs: Vec::new(),
-                    props: El::new("w:tcPr").with_child(El::new("w:tcW").with("w:w", column.to_string()).with("w:type", "dxa")),
+                    props: El::new("w:tcPr").with_child(
+                        El::new("w:tcW").with("w:w", column.to_string()).with("w:type", "dxa"),
+                    ),
                     blocks: vec![Block::Paragraph(Paragraph::new())],
                 })
                 .collect(),
@@ -555,8 +674,131 @@ pub fn new_table(rows: usize, columns: usize, width: f32, style: Option<&str>) -
     Table { props, grid, rows, extra: Vec::new() }
 }
 
+/// The paragraphs a range covers, cut to the range, with their formatting, for a copy that keeps it.
+/// Marks are left out, so a pasted copy brings no bookmark or comment range with it.
+pub fn copy_fragment(document: &Document, a: &Pos, b: &Pos) -> Vec<Paragraph> {
+    let (from, to) = if a <= b { (a, b) } else { (b, a) };
+    let mut out = Vec::new();
+    for (path, len, _) in covered(document, from, to) {
+        let Some(paragraph) = position::paragraph(document, &from.story, &path) else { continue };
+        let lo = if path == from.path { from.offset } else { 0 };
+        let hi = if path == to.path { to.offset } else { len };
+        let mut copy = paragraph.clone();
+        copy.marks.clear();
+        copy.attrs.retain(|(key, _)| !matches!(key.as_str(), "w14:paraId" | "w14:textId"));
+        copy.props.remove_children("w:sectPr");
+        let end = copy.split_at(hi);
+        copy.runs.truncate(end);
+        let start = copy.split_at(lo);
+        copy.runs.drain(..start);
+        // A field cut in two by the range is no longer a field; its pieces paste as the text they show.
+        copy.runs.retain(|run| !matches!(run.content, Content::FieldChar(_) | Content::Instr(_)));
+        for run in &mut copy.runs {
+            run.wraps.retain(|w| {
+                !matches!(w.el.name.as_str(), "w:ins" | "w:del" | "w:moveFrom" | "w:moveTo")
+            });
+            if run.is_deleted() {
+                run.content = Content::Text(String::new());
+            }
+        }
+        copy.merge_runs();
+        out.push(copy);
+    }
+    out
+}
+
+/// Paste paragraphs copied with [`copy_fragment`] at a position: the first joins the paragraph there, the
+/// last takes the rest of it, and any between are paragraphs of their own, each with its own formatting.
+/// Answers where the caret goes.
+pub fn paste_fragment(
+    document: &mut Document,
+    at: &Pos,
+    fragment: &[Paragraph],
+    tracking: Option<&Tracking>,
+) -> Pos {
+    let Some((first, rest)) = fragment.split_first() else { return at.clone() };
+    let insertion = tracking.map(|t| t.wrap("w:ins", document));
+    let tag = |runs: &[Run]| -> Vec<Run> {
+        runs.iter()
+            .cloned()
+            .map(|mut run| {
+                if let Some(wrap) = &insertion {
+                    run.wraps.push(Arc::clone(wrap));
+                }
+                run
+            })
+            .collect()
+    };
+    // One paragraph: its runs go in at the caret.
+    if rest.is_empty() {
+        let Some(paragraph) = position::paragraph_mut(document, &at.story, &at.path) else {
+            return at.clone();
+        };
+        let offset = at.offset.min(paragraph.len());
+        let index = paragraph.split_at(offset);
+        let runs = tag(&first.runs);
+        let length: usize = runs.iter().map(Run::len).sum();
+        paragraph.runs.splice(index..index, runs);
+        for mark in &mut paragraph.marks {
+            if mark.offset > offset {
+                mark.offset += length;
+            }
+        }
+        paragraph.merge_runs();
+        return at.at(offset + length);
+    }
+    // Several: split where the caret is, fill the two halves, and put the middle between them.
+    let tail = split_paragraph(document, at, tracking);
+    let mut head_path = tail.path.clone();
+    *head_path.last_mut().expect("a path") -= 1;
+    if let Some(head) = position::paragraph_mut(document, &at.story, &head_path) {
+        let was_empty = head.is_empty();
+        head.runs.extend(tag(&first.runs));
+        if was_empty {
+            head.props = first.props.clone();
+        }
+        head.merge_runs();
+    }
+    let (middle, last) = rest.split_at(rest.len() - 1);
+    let mut inserted = 0u32;
+    if let Some(blocks) = position::story_mut(document, &at.story) {
+        if let Some((container, index)) = position::container_mut(blocks, &tail.path) {
+            for (k, paragraph) in middle.iter().enumerate() {
+                let mut paragraph = paragraph.clone();
+                paragraph.runs = tag(&paragraph.runs);
+                container.insert(index + k, Block::Paragraph(paragraph));
+                inserted += 1;
+            }
+        }
+    }
+    let mut last_path = tail.path.clone();
+    *last_path.last_mut().expect("a path") += inserted;
+    let last = &last[0];
+    let mut offset = 0;
+    if let Some(paragraph) = position::paragraph_mut(document, &at.story, &last_path) {
+        let runs = tag(&last.runs);
+        offset = runs.iter().map(Run::len).sum();
+        for mark in &mut paragraph.marks {
+            mark.offset += offset;
+        }
+        paragraph.runs.splice(0..0, runs);
+        // The pasted last paragraph's own formatting, as Word gives the paragraph that ends a paste.
+        let section = paragraph.props.child("w:sectPr").cloned();
+        paragraph.props = last.props.clone();
+        if let Some(section) = section {
+            paragraph.props.put(section);
+        }
+        paragraph.merge_runs();
+    }
+    Pos { story: at.story.clone(), path: last_path, offset }
+}
+
 /// Accept or reject every tracked change in a list of blocks. Answers how many were resolved.
-pub fn resolve_revisions(blocks: &mut [Block], accept: bool, only: Option<&dyn Fn(&Run) -> bool>) -> usize {
+pub fn resolve_revisions(
+    blocks: &mut [Block],
+    accept: bool,
+    only: Option<&dyn Fn(&Run) -> bool>,
+) -> usize {
     let mut count = 0;
     for block in blocks.iter_mut() {
         match block {
@@ -575,7 +817,11 @@ pub fn resolve_revisions(blocks: &mut [Block], accept: bool, only: Option<&dyn F
     count
 }
 
-fn resolve_in_paragraph(paragraph: &mut Paragraph, accept: bool, only: Option<&dyn Fn(&Run) -> bool>) -> usize {
+fn resolve_in_paragraph(
+    paragraph: &mut Paragraph,
+    accept: bool,
+    only: Option<&dyn Fn(&Run) -> bool>,
+) -> usize {
     let mut count = 0;
     let mut kept: Vec<Run> = Vec::with_capacity(paragraph.runs.len());
     for mut run in std::mem::take(&mut paragraph.runs) {
@@ -588,13 +834,17 @@ fn resolve_in_paragraph(paragraph: &mut Paragraph, accept: bool, only: Option<&d
             if !keep {
                 continue;
             }
-            run.wraps.retain(|w| !matches!(w.el.name.as_str(), "w:ins" | "w:del" | "w:moveFrom" | "w:moveTo"));
+            run.wraps.retain(|w| {
+                !matches!(w.el.name.as_str(), "w:ins" | "w:del" | "w:moveFrom" | "w:moveTo")
+            });
         }
         if chosen && run.props.child("w:rPrChange").is_some() {
             count += 1;
             let mut props = run.props.as_ref().clone();
             if !accept {
-                if let Some(old) = props.child("w:rPrChange").and_then(|c| c.child("w:rPr")).cloned() {
+                if let Some(old) =
+                    props.child("w:rPrChange").and_then(|c| c.child("w:rPr")).cloned()
+                {
                     props = El { name: "w:rPr".into(), ..old };
                 }
             }
@@ -614,7 +864,9 @@ fn resolve_in_paragraph(paragraph: &mut Paragraph, accept: bool, only: Option<&d
     if paragraph.props.child("w:pPrChange").is_some() {
         count += 1;
         if !accept {
-            if let Some(old) = paragraph.props.child("w:pPrChange").and_then(|c| c.child("w:pPr")).cloned() {
+            if let Some(old) =
+                paragraph.props.child("w:pPrChange").and_then(|c| c.child("w:pPr")).cloned()
+            {
                 let keep_rpr = paragraph.props.child("w:rPr").cloned();
                 let keep_sect = paragraph.props.child("w:sectPr").cloned();
                 paragraph.props = El { name: "w:pPr".into(), ..old };
@@ -704,7 +956,9 @@ mod tests {
     #[test]
     fn formatting_a_range_splits_runs_and_shares_the_new_properties() {
         let mut doc = document(&["make this bold"]);
-        format_range(&mut doc, &Pos::new(vec![0], 5), &Pos::new(vec![0], 9), &|rpr: &mut El| crate::props::set_on_off(rpr, "w:b", Some(true)));
+        format_range(&mut doc, &Pos::new(vec![0], 5), &Pos::new(vec![0], 9), &|rpr: &mut El| {
+            crate::props::set_on_off(rpr, "w:b", Some(true))
+        });
         let Block::Paragraph(p) = &doc.body[0] else { panic!() };
         assert_eq!(p.runs.len(), 3);
         assert!(p.runs[1].props.child("w:b").is_some());
@@ -738,9 +992,32 @@ mod tests {
     }
 
     #[test]
+    fn a_copied_range_pastes_with_its_formatting_and_its_paragraphs() {
+        let mut doc = document(&["one two", "three four"]);
+        format_range(&mut doc, &Pos::new(vec![0], 4), &Pos::new(vec![0], 7), &|rpr: &mut El| {
+            crate::props::set_on_off(rpr, "w:b", Some(true))
+        });
+        let fragment = copy_fragment(&doc, &Pos::new(vec![0], 4), &Pos::new(vec![1], 5));
+        assert_eq!(fragment.len(), 2);
+        assert_eq!(fragment[0].flat_text(), "two");
+        assert!(fragment[0].runs[0].props.child("w:b").is_some(), "the bold came with it");
+        let pos = paste_fragment(&mut doc, &Pos::new(vec![1], 10), &fragment, None);
+        assert_eq!(texts(&doc), ["one two", "three fourtwo", "three"]);
+        assert_eq!(pos, Pos::new(vec![2], 5));
+        let single = copy_fragment(&doc, &Pos::new(vec![0], 0), &Pos::new(vec![0], 3));
+        paste_fragment(&mut doc, &Pos::new(vec![2], 0), &single, None);
+        assert_eq!(texts(&doc)[2], "onethree");
+    }
+
+    #[test]
     fn a_table_goes_after_the_paragraph_and_leaves_a_paragraph_after_it() {
         let mut doc = document(&["before"]);
-        let path = insert_block(&mut doc, &Pos::new(vec![0], 6), Block::Table(new_table(2, 3, 468.0, None))).unwrap();
+        let path = insert_block(
+            &mut doc,
+            &Pos::new(vec![0], 6),
+            Block::Table(new_table(2, 3, 468.0, None)),
+        )
+        .unwrap();
         assert_eq!(path, vec![1]);
         assert!(matches!(doc.body[1], Block::Table(_)));
         assert!(matches!(doc.body[2], Block::Paragraph(_)));

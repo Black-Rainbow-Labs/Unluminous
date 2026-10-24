@@ -37,7 +37,8 @@ pub fn child_number(el: &El, child: &str, attr: &str) -> Option<f64> {
 
 /// An on/off property (`w:b`, `w:keepNext`): present with no value, `true`, `1` or `on` is on.
 pub fn on_off(el: &El, child: &str) -> Option<bool> {
-    el.child(child).map(|child| !matches!(child.attr("w:val"), Some("0" | "false" | "off" | "none")))
+    el.child(child)
+        .map(|child| !matches!(child.attr("w:val"), Some("0" | "false" | "off" | "none")))
 }
 
 /// An on/off attribute (`w:default="1"`), which is off when it is missing.
@@ -89,7 +90,11 @@ impl Rgb {
         let mut out = self;
         if let Some(shade) = shade {
             let f = f32::from(shade) / 255.0;
-            out = Rgb((f32::from(out.0) * f) as u8, (f32::from(out.1) * f) as u8, (f32::from(out.2) * f) as u8);
+            out = Rgb(
+                (f32::from(out.0) * f) as u8,
+                (f32::from(out.1) * f) as u8,
+                (f32::from(out.2) * f) as u8,
+            );
         }
         if let Some(tint) = tint {
             let f = f32::from(tint) / 255.0;
@@ -145,8 +150,8 @@ impl Underline {
             "none" => Underline::None,
             "words" => Underline::Words,
             "double" | "wavyDouble" => Underline::Double,
-            "thick" | "dottedHeavy" | "dashedHeavy" | "dashLongHeavy" | "dashDotHeavy" | "dashDotDotHeavy"
-            | "wavyHeavy" => Underline::Thick,
+            "thick" | "dottedHeavy" | "dashedHeavy" | "dashLongHeavy" | "dashDotHeavy"
+            | "dashDotDotHeavy" | "wavyHeavy" => Underline::Thick,
             "dotted" => Underline::Dotted,
             "dash" | "dashLong" => Underline::Dash,
             "dotDash" | "dotDotDash" => Underline::DotDash,
@@ -248,9 +253,8 @@ impl Align {
         match value {
             "center" => Align::Center,
             "right" | "end" => Align::Right,
-            "both" | "distribute" | "lowKashida" | "mediumKashida" | "highKashida" | "thaiDistribute" => {
-                Align::Justify
-            }
+            "both" | "distribute" | "lowKashida" | "mediumKashida" | "highKashida"
+            | "thaiDistribute" => Align::Justify,
             _ => Align::Left,
         }
     }
@@ -314,12 +318,15 @@ pub fn border(el: Option<&El>) -> Option<Border> {
         return None;
     }
     // `w:sz` is in eighths of a point.
-    let width = el.attr("w:sz").and_then(number).map_or(0.5, |eighths| (eighths / 8.0) as f32).max(0.25);
+    let width =
+        el.attr("w:sz").and_then(number).map_or(0.5, |eighths| (eighths / 8.0) as f32).max(0.25);
     Some(Border {
         width,
         color: el.attr("w:color").and_then(Rgb::parse),
         space: el.attr("w:space").and_then(number).unwrap_or(0.0) as f32,
-        double: style.starts_with("double") || style.starts_with("thinThick") || style.starts_with("thickThin"),
+        double: style.starts_with("double")
+            || style.starts_with("thinThick")
+            || style.starts_with("thickThin"),
     })
 }
 
@@ -497,7 +504,8 @@ pub fn shading(shd: &El) -> Option<Rgb> {
 }
 
 /// The toggle properties, whose value in a style flips the inherited one rather than setting it.
-pub const TOGGLES: &[&str] = &["w:b", "w:i", "w:caps", "w:smallCaps", "w:strike", "w:dstrike", "w:vanish"];
+pub const TOGGLES: &[&str] =
+    &["w:b", "w:i", "w:caps", "w:smallCaps", "w:strike", "w:dstrike", "w:vanish"];
 
 /// The fonts a `w:rFonts` names, as `(ascii, theme)` where the theme name (`minorHAnsi`) wins.
 pub fn fonts(el: &El) -> (Option<String>, Option<String>) {
@@ -523,7 +531,8 @@ pub fn apply_run(look: &mut RunLook, el: &El, theme: &crate::styles::Theme) {
             (Some("auto"), None) => None,
             (Some(value), _) if value != "auto" => Rgb::parse(value),
             (_, Some(name)) => theme.colour(name).map(|rgb| {
-                let byte = |attr: &str| color.attr(attr).and_then(|hex| u8::from_str_radix(hex, 16).ok());
+                let byte =
+                    |attr: &str| color.attr(attr).and_then(|hex| u8::from_str_radix(hex, 16).ok());
                 rgb.shaded(byte("w:themeShade"), byte("w:themeTint"))
             }),
             _ => None,
@@ -597,7 +606,12 @@ mod tests {
     fn indents_and_spacing_read_in_points() {
         let el = El::new("w:pPr")
             .with_child(El::new("w:ind").with("w:left", "720").with("w:hanging", "360"))
-            .with_child(El::new("w:spacing").with("w:after", "160").with("w:line", "259").with("w:lineRule", "auto"))
+            .with_child(
+                El::new("w:spacing")
+                    .with("w:after", "160")
+                    .with("w:line", "259")
+                    .with("w:lineRule", "auto"),
+            )
             .with_child(El::new("w:jc").with("w:val", "both"));
         let mut look = ParaLook::default();
         apply_paragraph(&mut look, &el);
@@ -616,7 +630,14 @@ mod tests {
 
     #[test]
     fn on_off_reads_every_spelling_of_off() {
-        for (value, expected) in [(None, true), (Some("1"), true), (Some("true"), true), (Some("0"), false), (Some("false"), false), (Some("off"), false)] {
+        for (value, expected) in [
+            (None, true),
+            (Some("1"), true),
+            (Some("true"), true),
+            (Some("0"), false),
+            (Some("false"), false),
+            (Some("off"), false),
+        ] {
             let mut b = El::new("w:b");
             if let Some(value) = value {
                 b.set_attr("w:val", value);

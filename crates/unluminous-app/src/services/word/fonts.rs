@@ -14,9 +14,12 @@ use unluminous_core::{CharStyle, FontMetrics, LineMetrics};
 use crate::services::text_renderer::TextRenderer;
 
 /// A `FontMetrics` over the window's renderer at Word's sizes.
+/// A face as a style names it: its family, bold and italic.
+type FaceKey = (Arc<str>, bool, bool);
+
 pub struct WordFonts<'a> {
     pub renderer: &'a TextRenderer,
-    ratios: RefCell<HashMap<(Arc<str>, bool, bool), f32>>,
+    ratios: RefCell<HashMap<FaceKey, f32>>,
 }
 
 impl<'a> WordFonts<'a> {
@@ -25,10 +28,15 @@ impl<'a> WordFonts<'a> {
     }
 
     /// The style to ask the renderer for, for a run Word sets at `style.size` points.
+    ///
+    /// Times the face's em ratio, and times the interface zoom, which the renderer divides every size by so
+    /// the editor's letters keep their size while the interface round them grows. A page grows with the
+    /// interface, so its letters have to as well, or a page at 125% holds a fifth more text than Word's.
     pub fn drawn(&self, style: &CharStyle) -> CharStyle {
         let key = (Arc::clone(&style.family), style.bold, style.italic);
-        let ratio = *self.ratios.borrow_mut().entry(key).or_insert_with(|| self.renderer.em_ratio(style));
-        CharStyle { size: style.size * ratio, ..style.clone() }
+        let ratio =
+            *self.ratios.borrow_mut().entry(key).or_insert_with(|| self.renderer.em_ratio(style));
+        CharStyle { size: style.size * ratio * self.renderer.interface_zoom(), ..style.clone() }
     }
 }
 
@@ -48,7 +56,11 @@ impl FontMetrics for WordFonts<'_> {
     /// The face's GPOS pairs, which is where Word reads kerning; the old `kern` table when it has none.
     fn kerning(&self, left: char, right: char, style: &CharStyle) -> f32 {
         match pairs_for(self.renderer, style) {
-            Some(pairs) => pairs.points(self.renderer.glyph_index(left, style), self.renderer.glyph_index(right, style), style.size),
+            Some(pairs) => pairs.points(
+                self.renderer.glyph_index(left, style),
+                self.renderer.glyph_index(right, style),
+                style.size,
+            ),
             None => self.renderer.kerning(left, right, &self.drawn(style)),
         }
     }
@@ -56,10 +68,13 @@ impl FontMetrics for WordFonts<'_> {
 
 thread_local! {
     /// Each face's GPOS kerning pairs, read once: reading them walks the whole table.
-    static PAIRS: RefCell<HashMap<(Arc<str>, bool, bool), Option<Arc<unluminous_word::kern::PairKerning>>>> = RefCell::new(HashMap::new());
+    static PAIRS: RefCell<HashMap<FaceKey, Option<Arc<unluminous_word::kern::PairKerning>>>> = RefCell::new(HashMap::new());
 }
 
-fn pairs_for(renderer: &TextRenderer, style: &CharStyle) -> Option<Arc<unluminous_word::kern::PairKerning>> {
+fn pairs_for(
+    renderer: &TextRenderer,
+    style: &CharStyle,
+) -> Option<Arc<unluminous_word::kern::PairKerning>> {
     let key = (Arc::clone(&style.family), style.bold, style.italic);
     PAIRS.with(|cache| {
         cache
@@ -78,12 +93,25 @@ fn pairs_for(renderer: &TextRenderer, style: &CharStyle) -> Option<Arc<unluminou
 pub fn office_font_folders() -> Vec<std::path::PathBuf> {
     let mut folders = Vec::new();
     if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-        folders.push(std::path::Path::new(&local).join("Microsoft").join("FontCache").join("4").join("CloudFonts"));
+        folders.push(
+            std::path::Path::new(&local)
+                .join("Microsoft")
+                .join("FontCache")
+                .join("4")
+                .join("CloudFonts"),
+        );
     }
     // The fonts Office installs for its own programs, Agency, Bookman, Century Gothic and the rest, which a
     // document from Word names as if every machine had them.
     if let Some(files) = std::env::var_os("ProgramFiles") {
-        folders.push(std::path::Path::new(&files).join("Microsoft Office").join("root").join("vfs").join("Fonts").join("private"));
+        folders.push(
+            std::path::Path::new(&files)
+                .join("Microsoft Office")
+                .join("root")
+                .join("vfs")
+                .join("Fonts")
+                .join("private"),
+        );
     }
     if let Some(home) = std::env::var_os("HOME") {
         folders.push(

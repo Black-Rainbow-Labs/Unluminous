@@ -38,20 +38,49 @@ pub fn handle(ui: &egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
                 }
             }
             Event::Paste(text) => {
-                // A paste of exactly what this document copied keeps its formatting; anything else is text.
-                doc.session.type_text(&text.replace("\r\n", "\n"));
+                // A paste of exactly what a Word tab copied keeps its formatting; anything else is text.
+                let text = text.replace("\r\n", "\n");
+                match copied_fragment(&text) {
+                    Some(fragment) => doc.session.paste_fragment(fragment),
+                    None => doc.session.type_text(&text),
+                }
                 doc.view.reveal = true;
             }
-            Event::Key { key, pressed: true, modifiers, .. } => key_press(doc, key, &modifiers, requests),
+            Event::Key { key, pressed: true, modifiers, .. } => {
+                key_press(doc, key, &modifiers, requests)
+            }
             _ => {}
         }
     }
 }
 
+/// What a Word tab last copied, as paragraphs with their formatting, beside the text that went on the
+/// clipboard. Kept for the whole window, so a copy from one document pastes into another formatted.
+static COPIED: std::sync::Mutex<Option<(String, Vec<unluminous_word::model::Paragraph>)>> =
+    std::sync::Mutex::new(None);
+
 fn copy(doc: &Doc, requests: &mut Vec<Request>) {
-    if !doc.session.selection.is_empty() {
-        requests.push(Request::Copy(doc.session.selected_text()));
+    if doc.session.selection.is_empty() {
+        return;
     }
+    let (text, fragment) = doc.session.copy();
+    if let Ok(mut slot) = COPIED.lock() {
+        *slot = Some((text.clone(), fragment));
+    }
+    requests.push(Request::Copy(text));
+}
+
+/// The paragraphs a Word tab copied, when the clipboard still holds exactly their text.
+fn copied_fragment(text: &str) -> Option<Vec<unluminous_word::model::Paragraph>> {
+    let slot = COPIED.lock().ok()?;
+    let (copied, fragment) = slot.as_ref()?;
+    (copied.replace("\r\n", "\n") == text).then(|| fragment.clone())
+}
+
+/// Type as a keyboard does, for a test that drives the Markdown habits.
+#[cfg(test)]
+pub fn type_for_test(doc: &mut Doc, text: &str) {
+    type_text(doc, text);
 }
 
 /// Typed text, with the `/` menu, the slash menu's filter, and Markdown habits.
@@ -72,7 +101,8 @@ fn type_text(doc: &mut Doc, text: &str) {
     let head = doc.session.selection.head.clone();
     let paragraph = position::paragraph(&doc.session.document, &head.story, &head.path);
     let before = paragraph.map(|p| p.flat_text()).unwrap_or_default();
-    let at_start = doc.session.selection.is_empty() && before[..head.offset.min(before.len())].trim().is_empty();
+    let at_start = doc.session.selection.is_empty()
+        && before[..head.offset.min(before.len())].trim().is_empty();
     if text == "/" && at_start && before.trim().is_empty() {
         doc.session.type_text("/");
         doc.view.slash = Some((head, String::new(), 0));
@@ -89,7 +119,10 @@ fn type_text(doc: &mut Doc, text: &str) {
 /// and `---` then Enter a line. Each is its own undo step, so `Ctrl+Z` gives the characters back.
 fn markdown_habit(doc: &mut Doc) {
     let head = doc.session.selection.head.clone();
-    let Some(paragraph) = position::paragraph(&doc.session.document, &head.story, &head.path) else { return };
+    let Some(paragraph) = position::paragraph(&doc.session.document, &head.story, &head.path)
+    else {
+        return;
+    };
     let text = paragraph.flat_text();
     let typed = &text[..head.offset.min(text.len())];
     let action = match typed {
@@ -149,7 +182,8 @@ fn key_press(doc: &mut Doc, key: Key, modifiers: &Modifiers, requests: &mut Vec<
             (Key::C, true) => Some("copy-formatting"),
             (Key::V, true) => Some("paste-formatting"),
             (Key::K, false) => {
-                doc.view.panel = vec![crate::services::word::Level::Root, crate::services::word::Level::Insert];
+                doc.view.panel =
+                    vec![crate::services::word::Level::Root, crate::services::word::Level::Insert];
                 doc.view.fields.insert("link", String::new());
                 None
             }
@@ -210,7 +244,9 @@ fn key_press(doc: &mut Doc, key: Key, modifiers: &Modifiers, requests: &mut Vec<
         Key::Enter => {
             // `---` and Enter makes a line, the last of the Markdown habits.
             let head = doc.session.selection.head.clone();
-            let text = position::paragraph(&doc.session.document, &head.story, &head.path).map(|p| p.flat_text()).unwrap_or_default();
+            let text = position::paragraph(&doc.session.document, &head.story, &head.path)
+                .map(|p| p.flat_text())
+                .unwrap_or_default();
             if text == "---" && head.offset == 3 {
                 doc.session.select(head.at(0), head.at(3));
                 doc.session.backspace(Unit::Character);
@@ -237,7 +273,10 @@ fn key_press(doc: &mut Doc, key: Key, modifiers: &Modifiers, requests: &mut Vec<
             }
             if doc.session.selection.head.story != StoryId::Body {
                 // Escape leaves a header or a note, back to the body.
-                let first = position::paragraphs(&doc.session.document.body).first().map(|(p, _)| p.clone()).unwrap_or_default();
+                let first = position::paragraphs(&doc.session.document.body)
+                    .first()
+                    .map(|(p, _)| p.clone())
+                    .unwrap_or_default();
                 doc.session.select(Pos::new(first.clone(), 0), Pos::new(first, 0));
             }
         }
@@ -305,7 +344,11 @@ fn char_step(doc: &Doc, forward: bool) -> Option<Pos> {
     let head = &selection.head;
     let blocks = position::story(&doc.session.document, &head.story)?;
     let stops = stops(doc, head);
-    let next = if forward { stops.iter().find(|s| **s > head.offset).copied() } else { stops.iter().rev().find(|s| **s < head.offset).copied() };
+    let next = if forward {
+        stops.iter().find(|s| **s > head.offset).copied()
+    } else {
+        stops.iter().rev().find(|s| **s < head.offset).copied()
+    };
     if let Some(offset) = next {
         return Some(head.at(offset));
     }
@@ -336,14 +379,22 @@ fn word_step(doc: &Doc, forward: bool) -> Option<Pos> {
         // At a paragraph's end, a word step crosses the paragraph mark, which a character step does.
         let blocks = position::story(&doc.session.document, &head.story)?;
         return if forward {
-            Some(Pos { story: head.story.clone(), path: position::next_paragraph(blocks, &head.path)?, offset: 0 })
+            Some(Pos {
+                story: head.story.clone(),
+                path: position::next_paragraph(blocks, &head.path)?,
+                offset: 0,
+            })
         } else {
             let previous = position::previous_paragraph(blocks, &head.path)?;
             let len = position::paragraph(&doc.session.document, &head.story, &previous)?.len();
             Some(Pos { story: head.story.clone(), path: previous, offset: len })
         };
     }
-    Some(head.at(if forward { edit::next_word(&text, head.offset) } else { edit::previous_word(&text, head.offset) }))
+    Some(head.at(if forward {
+        edit::next_word(&text, head.offset)
+    } else {
+        edit::previous_word(&text, head.offset)
+    }))
 }
 
 fn paragraph_step(doc: &Doc, forward: bool) -> Option<Pos> {
@@ -352,7 +403,11 @@ fn paragraph_step(doc: &Doc, forward: bool) -> Option<Pos> {
     if !forward && head.offset > 0 {
         return Some(head.at(0));
     }
-    let path = if forward { position::next_paragraph(blocks, &head.path)? } else { position::previous_paragraph(blocks, &head.path)? };
+    let path = if forward {
+        position::next_paragraph(blocks, &head.path)?
+    } else {
+        position::previous_paragraph(blocks, &head.path)?
+    };
     Some(Pos { story: head.story.clone(), path, offset: 0 })
 }
 
@@ -364,7 +419,7 @@ fn story_edge(doc: &Doc, end: bool) -> Option<Pos> {
 }
 
 /// The caret's line in the layout, and its page.
-fn current_line<'a>(doc: &'a Doc) -> Option<(usize, &'a unluminous_word::layout::CaretLine)> {
+fn current_line(doc: &Doc) -> Option<(usize, &unluminous_word::layout::CaretLine)> {
     doc.pages.find(&doc.session.selection.head)
 }
 
@@ -373,7 +428,11 @@ fn line_edge(doc: &Doc, end: bool) -> Option<Pos> {
     let (_, line) = current_line(doc)?;
     let offset = if end {
         // Before the space a line wrapped at, so the caret shows at this line's end rather than the next's start.
-        if line.last { line.end } else { line.stops.iter().rev().nth(1).map_or(line.end, |s| s.0).max(line.start) }
+        if line.last {
+            line.end
+        } else {
+            line.stops.iter().rev().nth(1).map_or(line.end, |s| s.0).max(line.start)
+        }
     } else {
         line.start
     };
@@ -396,14 +455,34 @@ fn line_step(doc: &mut Doc, down: bool) -> Option<Pos> {
         }
         for candidate in p.carets.iter().filter(|l| l.story == head.story) {
             let centre = candidate.top + candidate.height / 2.0;
-            let further = if index == page { if down { centre > middle + 0.5 } else { centre < middle - 0.5 } } else { true };
+            let further = if index == page {
+                if down {
+                    centre > middle + 0.5
+                } else {
+                    centre < middle - 0.5
+                }
+            } else {
+                true
+            };
             if !further {
                 continue;
             }
             let left = candidate.stops.first().map_or(0.0, |s| s.1);
             let right = candidate.stops.last().map_or(0.0, |s| s.1);
-            let dx = if goal < left { left - goal } else if goal > right { goal - right } else { 0.0 };
-            let dy = if index == page { (centre - middle).abs() } else if down { 10_000.0 * (index - page) as f32 + candidate.top } else { 10_000.0 * (page - index) as f32 + (2000.0 - candidate.top) };
+            let dx = if goal < left {
+                left - goal
+            } else if goal > right {
+                goal - right
+            } else {
+                0.0
+            };
+            let dy = if index == page {
+                (centre - middle).abs()
+            } else if down {
+                10_000.0 * (index - page) as f32 + candidate.top
+            } else {
+                10_000.0 * (page - index) as f32 + (2000.0 - candidate.top)
+            };
             let score = dy + dx * 0.25;
             if best.as_ref().is_none_or(|(s, _, _)| score < *s) {
                 best = Some((score, index, candidate));
@@ -428,11 +507,19 @@ fn screen_step(doc: &mut Doc, down: bool) -> Option<Pos> {
 
 /// Tab and Shift+Tab in a table: the next cell, or a new row after the last one.
 fn next_cell(doc: &mut Doc, table: Vec<u32>, row: u32, cell: u32, forward: bool) {
-    let Some(unluminous_word::model::Block::Table(t)) = position::block(&doc.session.document.body, &table) else { return };
+    let Some(unluminous_word::model::Block::Table(t)) =
+        position::block(&doc.session.document.body, &table)
+    else {
+        return;
+    };
     let cells = t.rows.get(row as usize).map_or(0, |r| r.cells.len()) as u32;
     let rows = t.rows.len() as u32;
     let (r, c) = if forward {
-        if cell + 1 < cells { (row, cell + 1) } else { (row + 1, 0) }
+        if cell + 1 < cells {
+            (row, cell + 1)
+        } else {
+            (row + 1, 0)
+        }
     } else if cell > 0 {
         (row, cell - 1)
     } else if row > 0 {
@@ -447,6 +534,7 @@ fn next_cell(doc: &mut Doc, table: Vec<u32>, row: u32, cell: u32, forward: bool)
     }
     let mut path = table;
     path.extend([r, c, 0]);
-    let len = position::paragraph(&doc.session.document, &StoryId::Body, &path).map_or(0, |p| p.len());
+    let len =
+        position::paragraph(&doc.session.document, &StoryId::Body, &path).map_or(0, |p| p.len());
     doc.session.select(Pos::new(path.clone(), 0), Pos::new(path, len));
 }

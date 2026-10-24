@@ -46,7 +46,8 @@ impl Session {
     /// one. A list directly above, of the same kind, is continued, which is what Word does.
     pub fn toggle_list(&mut self, kind: ListKind) {
         let (from, to) = (self.selection.ordered().0.clone(), self.selection.ordered().1.clone());
-        let paths: Vec<Vec<u32>> = edit::covered(&self.document, &from, &to).into_iter().map(|(p, _, _)| p).collect();
+        let paths: Vec<Vec<u32>> =
+            edit::covered(&self.document, &from, &to).into_iter().map(|(p, _, _)| p).collect();
         let resolver = crate::styles::Resolver::new(&self.document);
         let all_in_kind = paths.iter().all(|path| {
             position::paragraph(&self.document, &from.story, path)
@@ -71,11 +72,16 @@ impl Session {
                         }
                     }
                     // A paragraph whose style puts it in a list is taken out with numId 0.
-                    let by_style = position::paragraph(document, &from.story, path)
-                        .is_some_and(|p| crate::styles::Resolver::new(document).numbering_of(&p.props).is_some());
+                    let by_style =
+                        position::paragraph(document, &from.story, path).is_some_and(|p| {
+                            crate::styles::Resolver::new(document).numbering_of(&p.props).is_some()
+                        });
                     if by_style {
                         if let Some(p) = position::paragraph_mut(document, &from.story, path) {
-                            p.props.put(El::new("w:numPr").with_child(El::new("w:numId").with("w:val", "0")));
+                            p.props.put(
+                                El::new("w:numPr")
+                                    .with_child(El::new("w:numId").with("w:val", "0")),
+                            );
                         }
                     }
                 }
@@ -85,7 +91,12 @@ impl Session {
             let _ = builtin::ensure_style(document, "ListParagraph");
             for path in &paths {
                 if let Some(p) = position::paragraph_mut(document, &from.story, path) {
-                    let level = p.props.child("w:numPr").and_then(|n| n.val_of("w:ilvl")).unwrap_or("0").to_owned();
+                    let level = p
+                        .props
+                        .child("w:numPr")
+                        .and_then(|n| n.val_of("w:ilvl"))
+                        .unwrap_or("0")
+                        .to_owned();
                     p.props.put(
                         El::new("w:numPr")
                             .with_child(El::new("w:ilvl").with("w:val", level))
@@ -147,7 +158,13 @@ impl Session {
                 return selection.clone();
             };
             let part = document.numbering.as_mut().expect("there is a list");
-            let new_id = part.root.children_named("w:num").filter_map(|el| el.attr("w:numId")?.parse::<i64>().ok()).max().unwrap_or(0) + 1;
+            let new_id = part
+                .root
+                .children_named("w:num")
+                .filter_map(|el| el.attr("w:numId")?.parse::<i64>().ok())
+                .max()
+                .unwrap_or(0)
+                + 1;
             let num_el = El::new("w:num")
                 .with("w:numId", new_id.to_string())
                 .with_child(El::new("w:abstractNumId").with("w:val", abstract_id.to_string()))
@@ -156,7 +173,11 @@ impl Session {
                         .with("w:ilvl", level.to_string())
                         .with_child(El::new("w:startOverride").with("w:val", start.to_string())),
                 );
-            let last = part.root.children.iter().rposition(|n| matches!(n, Node::El(el) if el.name == "w:num"));
+            let last = part
+                .root
+                .children
+                .iter()
+                .rposition(|n| matches!(n, Node::El(el) if el.name == "w:num"));
             match last {
                 Some(at) => part.root.children.insert(at + 1, Node::El(num_el)),
                 None => part.root.children.push(Node::El(num_el)),
@@ -198,7 +219,9 @@ impl Session {
     /// Insert a table of `rows` by `columns` at the caret, as wide as the text, with the caret in its
     /// first cell.
     pub fn insert_table(&mut self, rows: usize, columns: usize) {
-        let width = self.section_at_caret().map_or(468.0, |s| crate::layout::section::Geometry::of(&s).text_width());
+        let width = self
+            .section_at_caret()
+            .map_or(468.0, |s| crate::layout::section::Geometry::of(&s).text_width());
         let has_grid = builtin::ensure_style(&mut self.document, "TableGrid").is_ok();
         let table = edit::new_table(rows, columns, width, has_grid.then_some("TableGrid"));
         self.change(Scope::Whole, move |document, selection, _| {
@@ -227,7 +250,9 @@ impl Session {
         let mut failure = None;
         self.change(Scope::Story, |document, selection, _| {
             let story = selection.head.story.clone();
-            let Some(Block::Table(table)) = position::story_mut(document, &story).and_then(|b| position::block_mut(b, &table_path)) else {
+            let Some(Block::Table(table)) = position::story_mut(document, &story)
+                .and_then(|b| position::block_mut(b, &table_path))
+            else {
                 failure = Some("the table has gone".to_owned());
                 return selection.clone();
             };
@@ -239,13 +264,25 @@ impl Session {
             };
             let empty_cell = |template: &Cell| Cell {
                 attrs: Vec::new(),
-                props: { let mut p = template.props.clone(); p.remove_children("w:vMerge"); p.remove_children("w:gridSpan"); p },
-                blocks: vec![Block::Paragraph(Paragraph { props: first_paragraph_props(template), ..Paragraph::new() })],
+                props: {
+                    let mut p = template.props.clone();
+                    p.remove_children("w:vMerge");
+                    p.remove_children("w:gridSpan");
+                    p
+                },
+                blocks: vec![Block::Paragraph(Paragraph {
+                    props: first_paragraph_props(template),
+                    ..Paragraph::new()
+                })],
             };
             match op.as_str() {
                 "row-above" | "row-below" => {
                     let template = table.rows[r].clone();
-                    let new = Row { cells: template.cells.iter().map(empty_cell).collect(), attrs: Vec::new(), ..template };
+                    let new = Row {
+                        cells: template.cells.iter().map(empty_cell).collect(),
+                        attrs: Vec::new(),
+                        ..template
+                    };
                     let at = if op == "row-above" { r } else { r + 1 };
                     table.rows.insert(at, new);
                     return caret_in(at, c.min(table.rows[at].cells.len() - 1));
@@ -264,9 +301,16 @@ impl Session {
                     if at >= columns.len() {
                         grid.push(width);
                     }
-                    table.grid.children = grid.iter().map(|w| Node::El(El::new("w:gridCol").with("w:w", w.to_string()))).collect();
+                    table.grid.children = grid
+                        .iter()
+                        .map(|w| Node::El(El::new("w:gridCol").with("w:w", w.to_string())))
+                        .collect();
                     for row in &mut table.rows {
-                        let template = row.cells.get(c.min(row.cells.len().saturating_sub(1))).cloned().unwrap_or_default();
+                        let template = row
+                            .cells
+                            .get(c.min(row.cells.len().saturating_sub(1)))
+                            .cloned()
+                            .unwrap_or_default();
                         let new = empty_cell(&template);
                         let at = at.min(row.cells.len());
                         row.cells.insert(at, new);
@@ -289,7 +333,10 @@ impl Session {
                     if c < columns.len() {
                         columns.remove(c);
                     }
-                    table.grid.children = columns.iter().map(|w| Node::El(El::new("w:gridCol").with("w:w", w.to_string()))).collect();
+                    table.grid.children = columns
+                        .iter()
+                        .map(|w| Node::El(El::new("w:gridCol").with("w:w", w.to_string())))
+                        .collect();
                     for row in &mut table.rows {
                         if c < row.cells.len() && row.cells.len() > 1 {
                             row.cells.remove(c);
@@ -308,7 +355,8 @@ impl Session {
                     let span = span_of(this) + span_of(&next);
                     this.props.put(El::new("w:gridSpan").with("w:val", span.to_string()));
                     // The text of the cell merged in follows, as Word keeps it.
-                    let has_text = next.blocks.iter().any(|b| b.as_paragraph().is_none_or(|p| !p.is_empty()));
+                    let has_text =
+                        next.blocks.iter().any(|b| b.as_paragraph().is_none_or(|p| !p.is_empty()));
                     if has_text {
                         this.blocks.extend(next.blocks);
                     }
@@ -320,7 +368,9 @@ impl Session {
                         return selection.clone();
                     }
                     if table.rows[r].cells[c].props.child("w:vMerge").is_none() {
-                        table.rows[r].cells[c].props.put(El::new("w:vMerge").with("w:val", "restart"));
+                        table.rows[r].cells[c]
+                            .props
+                            .put(El::new("w:vMerge").with("w:val", "restart"));
                     }
                     if let Some(below) = table.rows[r + 1].cells.get_mut(c) {
                         below.props.put(El::new("w:vMerge"));
@@ -364,15 +414,21 @@ impl Session {
         let (table_path, _, cell) = self.cell_at_caret().ok_or("the caret is not in a table")?;
         self.change(Scope::Story, move |document, selection, _| {
             let story = selection.head.story.clone();
-            if let Some(Block::Table(table)) = position::story_mut(document, &story).and_then(|b| position::block_mut(b, &table_path)) {
+            if let Some(Block::Table(table)) = position::story_mut(document, &story)
+                .and_then(|b| position::block_mut(b, &table_path))
+            {
                 let mut columns = table.columns();
                 if let Some(slot) = columns.get_mut(cell as usize) {
                     *slot = (points * 20.0).round() as i64;
                 }
-                table.grid.children = columns.iter().map(|w| Node::El(El::new("w:gridCol").with("w:w", w.to_string()))).collect();
+                table.grid.children = columns
+                    .iter()
+                    .map(|w| Node::El(El::new("w:gridCol").with("w:w", w.to_string())))
+                    .collect();
                 for row in &mut table.rows {
                     if let Some(c) = row.cells.get_mut(cell as usize) {
-                        c.props.put(El::new("w:tcW").with("w:w", twips(points)).with("w:type", "dxa"));
+                        c.props
+                            .put(El::new("w:tcW").with("w:w", twips(points)).with("w:type", "dxa"));
                     }
                 }
             }
@@ -386,10 +442,19 @@ impl Session {
         let (table_path, row, cell) = self.cell_at_caret().ok_or("the caret is not in a table")?;
         self.change(Scope::Story, move |document, selection, _| {
             let story = selection.head.story.clone();
-            if let Some(Block::Table(table)) = position::story_mut(document, &story).and_then(|b| position::block_mut(b, &table_path)) {
-                if let Some(c) = table.rows.get_mut(row as usize).and_then(|r| r.cells.get_mut(cell as usize)) {
+            if let Some(Block::Table(table)) = position::story_mut(document, &story)
+                .and_then(|b| position::block_mut(b, &table_path))
+            {
+                if let Some(c) =
+                    table.rows.get_mut(row as usize).and_then(|r| r.cells.get_mut(cell as usize))
+                {
                     match color {
-                        Some(rgb) => c.props.put(El::new("w:shd").with("w:val", "clear").with("w:color", "auto").with("w:fill", rgb.hex())),
+                        Some(rgb) => c.props.put(
+                            El::new("w:shd")
+                                .with("w:val", "clear")
+                                .with("w:color", "auto")
+                                .with("w:fill", rgb.hex()),
+                        ),
                         None => c.props.remove_children("w:shd"),
                     }
                 }
@@ -403,9 +468,14 @@ impl Session {
 
     /// The `w:sectPr` of the section the caret is in.
     pub fn section_at_caret(&self) -> Option<El> {
-        Some(self.section_path().map_or_else(|| self.document.section.clone(), |path| {
-            position::paragraph(&self.document, &StoryId::Body, &path).and_then(|p| p.props.child("w:sectPr").cloned()).unwrap_or_else(|| self.document.section.clone())
-        }))
+        Some(self.section_path().map_or_else(
+            || self.document.section.clone(),
+            |path| {
+                position::paragraph(&self.document, &StoryId::Body, &path)
+                    .and_then(|p| p.props.child("w:sectPr").cloned())
+                    .unwrap_or_else(|| self.document.section.clone())
+            },
+        ))
     }
 
     /// The body paragraph whose `w:sectPr` ends the caret's section, or `None` for the last section.
@@ -422,7 +492,8 @@ impl Session {
         let path = self.section_path();
         self.change(Scope::Whole, move |document, selection, _| {
             let sect = match &path {
-                Some(path) => position::paragraph_mut(document, &StoryId::Body, path).and_then(|p| p.props.child_mut("w:sectPr")),
+                Some(path) => position::paragraph_mut(document, &StoryId::Body, path)
+                    .and_then(|p| p.props.child_mut("w:sectPr")),
                 None => Some(&mut document.section),
             };
             if let Some(sect) = sect {
@@ -437,11 +508,22 @@ impl Session {
         let (w, h) = match PAGE_SIZES.iter().find(|(name, _, _)| name.eq_ignore_ascii_case(size)) {
             Some((_, w, h)) => (*w, *h),
             None => {
-                let (w, h) = size.split_once(['x', 'X']).ok_or_else(|| format!("{size} is not a page size: use one of {} or WIDTHxHEIGHT in points", PAGE_SIZES.iter().map(|s| s.0).collect::<Vec<_>>().join(", ")))?;
-                (w.trim().parse::<f32>().map_err(|e| e.to_string())?, h.trim().parse::<f32>().map_err(|e| e.to_string())?)
+                let (w, h) = size.split_once(['x', 'X']).ok_or_else(|| {
+                    format!(
+                        "{size} is not a page size: use one of {} or WIDTHxHEIGHT in points",
+                        PAGE_SIZES.iter().map(|s| s.0).collect::<Vec<_>>().join(", ")
+                    )
+                })?;
+                (
+                    w.trim().parse::<f32>().map_err(|e| e.to_string())?,
+                    h.trim().parse::<f32>().map_err(|e| e.to_string())?,
+                )
             }
         };
-        let landscape = self.section_at_caret().map(|s| crate::layout::section::Geometry::of(&s).landscape()).unwrap_or(false);
+        let landscape = self
+            .section_at_caret()
+            .map(|s| crate::layout::section::Geometry::of(&s).landscape())
+            .unwrap_or(false);
         let (w, h) = if landscape { (w.max(h), w.min(h)) } else { (w.min(h), w.max(h)) };
         self.change_section(move |sect| {
             let pg = sect.child_or_insert("w:pgSz");
@@ -458,7 +540,8 @@ impl Session {
 
     /// Portrait or landscape, swapping the page's width and height and its margins round.
     pub fn set_orientation(&mut self, landscape: bool) {
-        let geometry = crate::layout::section::Geometry::of(&self.section_at_caret().unwrap_or_default());
+        let geometry =
+            crate::layout::section::Geometry::of(&self.section_at_caret().unwrap_or_default());
         if geometry.landscape() == landscape {
             return;
         }
@@ -473,8 +556,10 @@ impl Session {
             }
             let mar = sect.child_or_insert("w:pgMar");
             // Turning the page turns its margins with it, as Word does.
-            let (top, bottom, left, right) = (geometry.top, geometry.bottom, geometry.left, geometry.right);
-            let (t, b, l, r) = if landscape { (left, right, bottom, top) } else { (right, left, top, bottom) };
+            let (top, bottom, left, right) =
+                (geometry.top, geometry.bottom, geometry.left, geometry.right);
+            let (t, b, l, r) =
+                if landscape { (left, right, bottom, top) } else { (right, left, top, bottom) };
             mar.set_attr("w:top", twips(t));
             mar.set_attr("w:bottom", twips(b));
             mar.set_attr("w:left", twips(l));
@@ -535,7 +620,8 @@ impl Session {
                 path
             });
             let sect = match &following {
-                Some(path) => position::paragraph_mut(document, &StoryId::Body, path).and_then(|p| p.props.child_mut("w:sectPr")),
+                Some(path) => position::paragraph_mut(document, &StoryId::Body, path)
+                    .and_then(|p| p.props.child_mut("w:sectPr")),
                 None => Some(&mut document.section),
             };
             if let Some(sect) = sect {
@@ -556,7 +642,9 @@ impl Session {
         self.change(Scope::Whole, move |document, selection, _| {
             let reference = if footer { "w:footerReference" } else { "w:headerReference" };
             let sect = match &section_path {
-                Some(path) => position::paragraph(document, &StoryId::Body, path).and_then(|p| p.props.child("w:sectPr")).cloned(),
+                Some(path) => position::paragraph(document, &StoryId::Body, path)
+                    .and_then(|p| p.props.child("w:sectPr"))
+                    .cloned(),
                 None => Some(document.section.clone()),
             }
             .unwrap_or_else(|| El::new("w:sectPr"));
@@ -572,11 +660,19 @@ impl Session {
                 None => {
                     let id = new_header_part(document, footer);
                     let sect = match &section_path {
-                        Some(path) => position::paragraph_mut(document, &StoryId::Body, path).and_then(|p| p.props.child_mut("w:sectPr")),
+                        Some(path) => position::paragraph_mut(document, &StoryId::Body, path)
+                            .and_then(|p| p.props.child_mut("w:sectPr")),
                         None => Some(&mut document.section),
                     };
                     if let Some(sect) = sect {
-                        sect.children.insert(0, Node::El(El::new(reference).with("w:type", which.clone()).with("r:id", id.clone())));
+                        sect.children.insert(
+                            0,
+                            Node::El(
+                                El::new(reference)
+                                    .with("w:type", which.clone())
+                                    .with("r:id", id.clone()),
+                            ),
+                        );
                     }
                     if which == "first" {
                         if let Some(sect) = section_sect_mut(document, &section_path) {
@@ -585,7 +681,11 @@ impl Session {
                     }
                     if which == "even" {
                         if let Some(settings) = document.settings.as_mut() {
-                            props::set_on_off(&mut settings.root, "w:evenAndOddHeaders", Some(true));
+                            props::set_on_off(
+                                &mut settings.root,
+                                "w:evenAndOddHeaders",
+                                Some(true),
+                            );
                             settings.dirty = true;
                         }
                     }
@@ -615,23 +715,43 @@ impl Session {
             } else {
                 ("FootnoteText", "FootnoteReference", "w:footnoteReference", "w:footnoteRef")
             };
-            let reference_props = Arc::new(El::new("w:rPr").with_child(El::new("w:rStyle").with("w:val", reference_style)));
+            let reference_props = Arc::new(
+                El::new("w:rPr").with_child(El::new("w:rStyle").with("w:val", reference_style)),
+            );
             let mut paragraph = Paragraph::new();
             paragraph.props.put(El::new("w:pStyle").with("w:val", text_style));
-            paragraph.runs.push(Run { content: Content::Object(El::new(own)), ..Run::text("", Arc::clone(&reference_props)) });
+            paragraph.runs.push(Run {
+                content: Content::Object(El::new(own)),
+                ..Run::text("", Arc::clone(&reference_props))
+            });
             paragraph.runs.push(Run::text(format!(" {text}"), no_props()));
-            let note = Story { el: El::new(if endnote { "w:endnote" } else { "w:footnote" }).with("w:id", id.to_string()), blocks: vec![Block::Paragraph(paragraph)] };
-            let part = if endnote { document.endnotes.as_mut() } else { document.footnotes.as_mut() };
+            let note = Story {
+                el: El::new(if endnote { "w:endnote" } else { "w:footnote" })
+                    .with("w:id", id.to_string()),
+                blocks: vec![Block::Paragraph(paragraph)],
+            };
+            let part =
+                if endnote { document.endnotes.as_mut() } else { document.footnotes.as_mut() };
             if let Some(part) = part {
                 part.notes.push(note);
                 part.dirty = true;
             }
             let at = selection.ordered().1.clone();
-            let Some(p) = position::paragraph_mut(document, &at.story, &at.path) else { return selection.clone() };
+            let Some(p) = position::paragraph_mut(document, &at.story, &at.path) else {
+                return selection.clone();
+            };
             let index = p.split_at(at.offset);
-            let mut run = Run { content: Content::Object(El::new(reference).with("w:id", id.to_string())), ..Run::text("", reference_props) };
+            let mut run = Run {
+                content: Content::Object(El::new(reference).with("w:id", id.to_string())),
+                ..Run::text("", reference_props)
+            };
             if let Some(t) = tracking {
-                run.wraps.push(Wrap::new(El::new("w:ins").with("w:id", id.to_string()).with("w:author", t.author.clone()).with("w:date", t.date.clone())));
+                run.wraps.push(Wrap::new(
+                    El::new("w:ins")
+                        .with("w:id", id.to_string())
+                        .with("w:author", t.author.clone())
+                        .with("w:date", t.date.clone()),
+                ));
             }
             let len = run.len();
             p.runs.insert(index, run);
@@ -649,7 +769,8 @@ impl Session {
     /// Add a comment on the selection (or the word at the caret) by the session's author. Answers its id.
     pub fn add_comment(&mut self, text: &str) -> i64 {
         let text = text.to_owned();
-        let author = if self.author.is_empty() { "Unluminous".to_owned() } else { self.author.clone() };
+        let author =
+            if self.author.is_empty() { "Unluminous".to_owned() } else { self.author.clone() };
         for style in ["CommentText", "CommentReference"] {
             let _ = builtin::ensure_style(&mut self.document, style);
         }
@@ -657,15 +778,25 @@ impl Session {
         self.change(Scope::Whole, |document, selection, _| {
             let id = ensure_comments_part(document);
             made = id;
-            let initials: String = author.split_whitespace().filter_map(|w| w.chars().next()).collect();
+            let initials: String =
+                author.split_whitespace().filter_map(|w| w.chars().next()).collect();
             let mut paragraph = Paragraph::new();
             paragraph.props.put(El::new("w:pStyle").with("w:val", "CommentText"));
             paragraph.attrs.push(("w14:paraId".into(), random_para_id(id)));
-            let reference_props = Arc::new(El::new("w:rPr").with_child(El::new("w:rStyle").with("w:val", "CommentReference")));
-            paragraph.runs.push(Run { content: Content::Object(El::new("w:annotationRef")), ..Run::text("", Arc::clone(&reference_props)) });
+            let reference_props = Arc::new(
+                El::new("w:rPr").with_child(El::new("w:rStyle").with("w:val", "CommentReference")),
+            );
+            paragraph.runs.push(Run {
+                content: Content::Object(El::new("w:annotationRef")),
+                ..Run::text("", Arc::clone(&reference_props))
+            });
             paragraph.runs.push(Run::text(text.clone(), no_props()));
             let comment = Story {
-                el: El::new("w:comment").with("w:id", id.to_string()).with("w:author", author.clone()).with("w:date", now_iso()).with("w:initials", initials),
+                el: El::new("w:comment")
+                    .with("w:id", id.to_string())
+                    .with("w:author", author.clone())
+                    .with("w:date", now_iso())
+                    .with("w:initials", initials),
                 blocks: vec![Block::Paragraph(paragraph)],
             };
             if let Some(part) = document.comments.as_mut() {
@@ -675,23 +806,38 @@ impl Session {
             let (from, to) = (selection.ordered().0.clone(), selection.ordered().1.clone());
             // A comment with nothing selected covers the word at the caret.
             let (from, to) = if from == to {
-                let text = position::paragraph(document, &from.story, &from.path).map(Paragraph::flat_text).unwrap_or_default();
+                let text = position::paragraph(document, &from.story, &from.path)
+                    .map(Paragraph::flat_text)
+                    .unwrap_or_default();
                 let start = edit::previous_word(&text, from.offset.min(text.len()));
-                let end = text[from.offset.min(text.len())..].find(|c: char| !c.is_alphanumeric()).map_or(text.len(), |n| from.offset + n);
+                let end = text[from.offset.min(text.len())..]
+                    .find(|c: char| !c.is_alphanumeric())
+                    .map_or(text.len(), |n| from.offset + n);
                 (from.at(start), from.at(end.max(from.offset)))
             } else {
                 (from, to)
             };
             let mark = |name: &str| El::new(name).with("w:id", id.to_string());
             if let Some(p) = position::paragraph_mut(document, &from.story, &from.path) {
-                p.marks.push(Mark { offset: from.offset, el: mark("w:commentRangeStart"), wraps: Vec::new() });
+                p.marks.push(Mark {
+                    offset: from.offset,
+                    el: mark("w:commentRangeStart"),
+                    wraps: Vec::new(),
+                });
                 p.marks.sort_by_key(|m| m.offset);
             }
             if let Some(p) = position::paragraph_mut(document, &to.story, &to.path) {
-                p.marks.push(Mark { offset: to.offset, el: mark("w:commentRangeEnd"), wraps: Vec::new() });
+                p.marks.push(Mark {
+                    offset: to.offset,
+                    el: mark("w:commentRangeEnd"),
+                    wraps: Vec::new(),
+                });
                 p.marks.sort_by_key(|m| m.offset);
                 let index = p.split_at(to.offset);
-                let run = Run { content: Content::Object(mark("w:commentReference")), ..Run::text("", reference_props) };
+                let run = Run {
+                    content: Content::Object(mark("w:commentReference")),
+                    ..Run::text("", reference_props)
+                };
                 p.runs.insert(index, run);
                 // Marks after the reference move past it; the range end stays before it.
                 for m in &mut p.marks {
@@ -713,7 +859,10 @@ impl Session {
             .iter()
             .filter_map(|note| {
                 let id = note.id()?;
-                let text: Vec<String> = position::paragraphs(&note.blocks).iter().map(|(_, p)| crate::session::clean_text(&p.visible_text())).collect();
+                let text: Vec<String> = position::paragraphs(&note.blocks)
+                    .iter()
+                    .map(|(_, p)| crate::session::clean_text(&p.visible_text()))
+                    .collect();
                 let para_id = last_para_id(note);
                 Some(serde_json::json!({
                     "id": id,
@@ -734,10 +883,20 @@ impl Session {
         let mut inside = false;
         for (_, p) in position::paragraphs(&self.document.body) {
             let text = p.flat_text();
-            let start = p.marks.iter().find(|m| m.el.name == "w:commentRangeStart" && m.el.attr("w:id") == Some(&id)).map(|m| m.offset);
-            let end = p.marks.iter().find(|m| m.el.name == "w:commentRangeEnd" && m.el.attr("w:id") == Some(&id)).map(|m| m.offset);
+            let start = p
+                .marks
+                .iter()
+                .find(|m| m.el.name == "w:commentRangeStart" && m.el.attr("w:id") == Some(&id))
+                .map(|m| m.offset);
+            let end = p
+                .marks
+                .iter()
+                .find(|m| m.el.name == "w:commentRangeEnd" && m.el.attr("w:id") == Some(&id))
+                .map(|m| m.offset);
             match (start, end, inside) {
-                (Some(s), Some(e), _) => return crate::session::clean_text(&text[s.min(text.len())..e.min(text.len())]),
+                (Some(s), Some(e), _) => {
+                    return crate::session::clean_text(&text[s.min(text.len())..e.min(text.len())])
+                }
                 (Some(s), None, _) => {
                     out.push_str(&text[s.min(text.len())..]);
                     inside = true;
@@ -760,13 +919,20 @@ impl Session {
     /// Reply to a comment, which Word keeps as another comment whose parent is the first.
     pub fn reply_to_comment(&mut self, parent: i64, text: &str) -> Result<i64, String> {
         let part = self.document.comments.as_ref().ok_or("the document has no comments")?;
-        let note = part.notes.iter().find(|n| n.id() == Some(parent)).ok_or_else(|| format!("there is no comment {parent}"))?;
+        let note = part
+            .notes
+            .iter()
+            .find(|n| n.id() == Some(parent))
+            .ok_or_else(|| format!("there is no comment {parent}"))?;
         let parent_para = last_para_id(note).unwrap_or_else(|| random_para_id(parent));
         // A reply sits on the same range as its parent.
         let anchor = position::paragraphs(&self.document.body).into_iter().find_map(|(path, p)| {
             p.marks
                 .iter()
-                .find(|m| m.el.name == "w:commentRangeStart" && m.el.attr("w:id") == Some(&parent.to_string()))
+                .find(|m| {
+                    m.el.name == "w:commentRangeStart"
+                        && m.el.attr("w:id") == Some(&parent.to_string())
+                })
                 .map(|m| Pos::new(path.clone(), m.offset))
         });
         if let Some(at) = anchor {
@@ -782,7 +948,11 @@ impl Session {
     /// Mark a comment resolved, or open again.
     pub fn resolve_comment(&mut self, id: i64, done: bool) -> Result<(), String> {
         let part = self.document.comments.as_ref().ok_or("the document has no comments")?;
-        let note = part.notes.iter().find(|n| n.id() == Some(id)).ok_or_else(|| format!("there is no comment {id}"))?;
+        let note = part
+            .notes
+            .iter()
+            .find(|n| n.id() == Some(id))
+            .ok_or_else(|| format!("there is no comment {id}"))?;
         let para = last_para_id(note).unwrap_or_else(|| random_para_id(id));
         self.change(Scope::Whole, |document, selection, _| {
             ensure_para_id(document, id, &para);
@@ -794,7 +964,11 @@ impl Session {
 
     /// Delete a comment, its range and its reference.
     pub fn delete_comment(&mut self, id: i64) -> Result<(), String> {
-        let exists = self.document.comments.as_ref().is_some_and(|p| p.notes.iter().any(|n| n.id() == Some(id)));
+        let exists = self
+            .document
+            .comments
+            .as_ref()
+            .is_some_and(|p| p.notes.iter().any(|n| n.id() == Some(id)));
         if !exists {
             return Err(format!("there is no comment {id}"));
         }
@@ -805,7 +979,8 @@ impl Session {
                 part.dirty = true;
             }
             remove_comment_pieces(&mut document.body, &key);
-            let len = position::paragraph(document, &selection.head.story, &selection.head.path).map_or(0, Paragraph::len);
+            let len = position::paragraph(document, &selection.head.story, &selection.head.path)
+                .map_or(0, Paragraph::len);
             Selection::caret(selection.head.at(selection.head.offset.min(len)))
         });
         Ok(())
@@ -839,7 +1014,9 @@ impl Session {
             for (path, len, _) in edit::covered(document, &from, &to) {
                 let lo = if path == from.path { from.offset } else { 0 };
                 let hi = if path == to.path { to.offset } else { len };
-                let Some(p) = position::paragraph_mut(document, &from.story, &path) else { continue };
+                let Some(p) = position::paragraph_mut(document, &from.story, &path) else {
+                    continue;
+                };
                 let first = p.split_at(lo);
                 let last = p.split_at(hi);
                 for run in &mut p.runs[first..last] {
@@ -862,11 +1039,21 @@ impl Session {
             let id = next_mark_id(document, "w:bookmarkStart");
             let (from, to) = (selection.ordered().0.clone(), selection.ordered().1.clone());
             if let Some(p) = position::paragraph_mut(document, &from.story, &from.path) {
-                p.marks.push(Mark { offset: from.offset, el: El::new("w:bookmarkStart").with("w:id", id.to_string()).with("w:name", name.clone()), wraps: Vec::new() });
+                p.marks.push(Mark {
+                    offset: from.offset,
+                    el: El::new("w:bookmarkStart")
+                        .with("w:id", id.to_string())
+                        .with("w:name", name.clone()),
+                    wraps: Vec::new(),
+                });
                 p.marks.sort_by_key(|m| m.offset);
             }
             if let Some(p) = position::paragraph_mut(document, &to.story, &to.path) {
-                p.marks.push(Mark { offset: to.offset, el: El::new("w:bookmarkEnd").with("w:id", id.to_string()), wraps: Vec::new() });
+                p.marks.push(Mark {
+                    offset: to.offset,
+                    el: El::new("w:bookmarkEnd").with("w:id", id.to_string()),
+                    wraps: Vec::new(),
+                });
                 p.marks.sort_by_key(|m| m.offset);
             }
             selection.clone()
@@ -881,7 +1068,9 @@ impl Session {
                 p.marks
                     .iter()
                     .filter(|m| m.el.name == "w:bookmarkStart")
-                    .filter_map(|m| Some((m.el.attr("w:name")?.to_owned(), Pos::new(path.clone(), m.offset))))
+                    .filter_map(|m| {
+                        Some((m.el.attr("w:name")?.to_owned(), Pos::new(path.clone(), m.offset)))
+                    })
                     .collect::<Vec<_>>()
             })
             .filter(|(name, _)| name != "_GoBack")
@@ -896,10 +1085,19 @@ impl Session {
         let result = result.to_owned();
         self.change(Scope::Story, move |document, selection, _| {
             let at = selection.head.clone();
-            let (props, wraps) = position::paragraph(document, &at.story, &at.path).map(|p| edit::props_at(p, at.offset)).unwrap_or_else(|| (no_props(), Vec::new()));
-            let Some(p) = position::paragraph_mut(document, &at.story, &at.path) else { return selection.clone() };
+            let (props, wraps) = position::paragraph(document, &at.story, &at.path)
+                .map(|p| edit::props_at(p, at.offset))
+                .unwrap_or_else(|| (no_props(), Vec::new()));
+            let Some(p) = position::paragraph_mut(document, &at.story, &at.path) else {
+                return selection.clone();
+            };
             let index = p.split_at(at.offset);
-            let run = |content: Content| Run { props: Arc::clone(&props), content, wraps: wraps.clone(), attrs: Arc::default() };
+            let run = |content: Content| Run {
+                props: Arc::clone(&props),
+                content,
+                wraps: wraps.clone(),
+                attrs: Arc::default(),
+            };
             let runs = vec![
                 run(Content::FieldChar(El::new("w:fldChar").with("w:fldCharType", "begin"))),
                 run(Content::Instr(code.clone())),
@@ -922,7 +1120,9 @@ impl Session {
     /// numbers `pages` gives. Each entry links to its heading through a `_Toc` bookmark, as Word's does.
     pub fn insert_toc(&mut self, levels: u8, pages: &crate::layout::Pages) {
         let entries = self.toc_entries(levels, pages);
-        let width = self.section_at_caret().map_or(468.0, |s| crate::layout::section::Geometry::of(&s).text_width());
+        let width = self
+            .section_at_caret()
+            .map_or(468.0, |s| crate::layout::section::Geometry::of(&s).text_width());
         for level in 1..=levels {
             let _ = builtin::ensure_style(&mut self.document, &format!("TOC{level}"));
         }
@@ -979,7 +1179,11 @@ impl Session {
     }
 
     /// The headings a table of contents lists: level, text, page and where each is.
-    pub fn toc_entries(&self, levels: u8, pages: &crate::layout::Pages) -> Vec<(u8, String, u32, Vec<u32>)> {
+    pub fn toc_entries(
+        &self,
+        levels: u8,
+        pages: &crate::layout::Pages,
+    ) -> Vec<(u8, String, u32, Vec<u32>)> {
         let resolver = crate::styles::Resolver::new(&self.document);
         let mut out = Vec::new();
         for (path, p) in position::paragraphs(&self.document.body) {
@@ -1030,7 +1234,11 @@ impl Session {
         }
         let date = now_iso();
         self.change(Scope::Story, |document, selection, _| {
-            for (path, _) in position::paragraphs(&document.body).into_iter().map(|(p, x)| (p, x.len())).collect::<Vec<_>>() {
+            for (path, _) in position::paragraphs(&document.body)
+                .into_iter()
+                .map(|(p, x)| (p, x.len()))
+                .collect::<Vec<_>>()
+            {
                 if let Some(p) = position::paragraph_mut(document, &StoryId::Body, &path) {
                     count += update_dates_in(p, &date);
                 }
@@ -1051,7 +1259,12 @@ impl Session {
                 if let Content::Instr(code) = &run.content {
                     let (kind, rest) = crate::layout::fields::split(code);
                     if kind == "TOC" && start.is_none() {
-                        let levels = rest.split("\\o").nth(1).and_then(|s| s.trim().trim_matches('"').split('-').nth(1)).and_then(|n| n.trim_matches('"').parse().ok()).unwrap_or(3);
+                        let levels = rest
+                            .split("\\o")
+                            .nth(1)
+                            .and_then(|s| s.trim().trim_matches('"').split('-').nth(1))
+                            .and_then(|n| n.trim_matches('"').parse().ok())
+                            .unwrap_or(3);
                         start = Some((path.clone(), levels));
                     }
                 }
@@ -1060,8 +1273,13 @@ impl Session {
                         // The heading above the field, when it is a TOC Heading, goes with it.
                         let mut first = first.clone();
                         if first[0] > 0 {
-                            let above = position::paragraph(&self.document, &StoryId::Body, &[first[0] - 1]);
-                            if above.and_then(|a| a.props.val_of("w:pStyle")) == Some("TOCHeading") {
+                            let above = position::paragraph(
+                                &self.document,
+                                &StoryId::Body,
+                                &[first[0] - 1],
+                            );
+                            if above.and_then(|a| a.props.val_of("w:pStyle")) == Some("TOCHeading")
+                            {
                                 first[0] -= 1;
                             }
                         }
@@ -1083,7 +1301,9 @@ impl Session {
             for (path, len, _) in edit::covered(document, &from, &to) {
                 let lo = if path == from.path { from.offset } else { 0 };
                 let hi = if path == to.path { to.offset } else { len };
-                let Some(p) = position::paragraph_mut(document, &from.story, &path) else { continue };
+                let Some(p) = position::paragraph_mut(document, &from.story, &path) else {
+                    continue;
+                };
                 let first = p.split_at(lo);
                 let last = p.split_at(hi);
                 let mut start_of_sentence = lo == 0;
@@ -1102,9 +1322,13 @@ impl Session {
     /// `Normal`, which is Word's Clear All Formatting.
     pub fn clear_formatting(&mut self) {
         self.change(Scope::Story, |document, selection, _| {
-            edit::format_range(document, &selection.anchor, &selection.head, &|rpr| rpr.children.clear());
+            edit::format_range(document, &selection.anchor, &selection.head, &|rpr| {
+                rpr.children.clear()
+            });
             edit::format_paragraphs(document, &selection.anchor, &selection.head, &|ppr| {
-                ppr.children.retain(|n| matches!(n, Node::El(el) if el.name == "w:sectPr" || el.name == "w:rPr"));
+                ppr.children.retain(
+                    |n| matches!(n, Node::El(el) if el.name == "w:sectPr" || el.name == "w:rPr"),
+                );
             });
             selection.clone()
         });
@@ -1112,7 +1336,11 @@ impl Session {
 }
 
 fn first_paragraph_props(cell: &Cell) -> El {
-    cell.blocks.iter().find_map(Block::as_paragraph).map(|p| p.props.clone()).unwrap_or_else(|| El::new("w:pPr"))
+    cell.blocks
+        .iter()
+        .find_map(Block::as_paragraph)
+        .map(|p| p.props.clone())
+        .unwrap_or_else(|| El::new("w:pPr"))
 }
 
 fn span_of(cell: &Cell) -> usize {
@@ -1120,11 +1348,23 @@ fn span_of(cell: &Cell) -> usize {
 }
 
 /// Take a block out and put the caret where it was.
-fn remove_block(document: &mut Document, story: &StoryId, path: &[u32], selection: &Selection) -> Selection {
+fn remove_block(
+    document: &mut Document,
+    story: &StoryId,
+    path: &[u32],
+    selection: &Selection,
+) -> Selection {
     let Some(blocks) = position::story_mut(document, story) else { return selection.clone() };
-    let Some((container, index)) = position::container_mut(blocks, path) else { return selection.clone() };
+    let Some((container, index)) = position::container_mut(blocks, path) else {
+        return selection.clone();
+    };
     container.remove(index);
-    if container.is_empty() || !matches!(container.get(index.min(container.len().saturating_sub(1))), Some(Block::Paragraph(_))) {
+    if container.is_empty()
+        || !matches!(
+            container.get(index.min(container.len().saturating_sub(1))),
+            Some(Block::Paragraph(_))
+        )
+    {
         container.insert(index.min(container.len()), Block::Paragraph(Paragraph::new()));
     }
     let mut at = path.to_vec();
@@ -1134,7 +1374,8 @@ fn remove_block(document: &mut Document, story: &StoryId, path: &[u32], selectio
 
 fn section_sect_mut<'a>(document: &'a mut Document, path: &Option<Vec<u32>>) -> Option<&'a mut El> {
     match path {
-        Some(path) => position::paragraph_mut(document, &StoryId::Body, path).and_then(|p| p.props.child_mut("w:sectPr")),
+        Some(path) => position::paragraph_mut(document, &StoryId::Body, path)
+            .and_then(|p| p.props.child_mut("w:sectPr")),
         None => Some(&mut document.section),
     }
 }
@@ -1145,7 +1386,10 @@ fn header_paragraph(style: &str, text: &str) -> Paragraph {
     paragraph.props.put(El::new("w:pStyle").with("w:val", style));
     let mut rest = text;
     while !rest.is_empty() {
-        let next = ["{PAGE}", "{NUMPAGES}"].iter().filter_map(|token| rest.find(token).map(|at| (at, *token))).min();
+        let next = ["{PAGE}", "{NUMPAGES}"]
+            .iter()
+            .filter_map(|token| rest.find(token).map(|at| (at, *token)))
+            .min();
         match next {
             Some((at, token)) => {
                 if at > 0 {
@@ -1153,11 +1397,17 @@ fn header_paragraph(style: &str, text: &str) -> Paragraph {
                 }
                 let code = token.trim_matches(['{', '}']);
                 let field = |content| Run { content, ..Run::text("", no_props()) };
-                paragraph.runs.push(field(Content::FieldChar(El::new("w:fldChar").with("w:fldCharType", "begin"))));
+                paragraph.runs.push(field(Content::FieldChar(
+                    El::new("w:fldChar").with("w:fldCharType", "begin"),
+                )));
                 paragraph.runs.push(field(Content::Instr(format!(" {code} "))));
-                paragraph.runs.push(field(Content::FieldChar(El::new("w:fldChar").with("w:fldCharType", "separate"))));
+                paragraph.runs.push(field(Content::FieldChar(
+                    El::new("w:fldChar").with("w:fldCharType", "separate"),
+                )));
                 paragraph.runs.push(Run::text("1", no_props()));
-                paragraph.runs.push(field(Content::FieldChar(El::new("w:fldChar").with("w:fldCharType", "end"))));
+                paragraph.runs.push(field(Content::FieldChar(
+                    El::new("w:fldChar").with("w:fldCharType", "end"),
+                )));
                 rest = &rest[at + token.len()..];
             }
             None => {
@@ -1175,7 +1425,11 @@ fn new_header_part(document: &mut Document, footer: bool) -> String {
     let name = document.package.unused_name(stem, "xml");
     let main = document.main.clone();
     let target = Package::relative(&main, &name);
-    let id = document.package.rels_mut(&main).add(if footer { kind::FOOTER } else { kind::HEADER }, &target, false);
+    let id = document.package.rels_mut(&main).add(
+        if footer { kind::FOOTER } else { kind::HEADER },
+        &target,
+        false,
+    );
     let content_type = if footer {
         "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"
     } else {
@@ -1186,18 +1440,37 @@ fn new_header_part(document: &mut Document, footer: bool) -> String {
     let mut root = El::new(if footer { "w:ftr" } else { "w:hdr" });
     root.attrs = document.root.attrs.clone();
     root.declares = document.root.declares.clone();
-    document.headers.push(HeaderPart { id: id.clone(), name, footer, story: Story { el: root, blocks: vec![Block::Paragraph(Paragraph::new())] }, dirty: true });
+    document.headers.push(HeaderPart {
+        id: id.clone(),
+        name,
+        footer,
+        story: Story { el: root, blocks: vec![Block::Paragraph(Paragraph::new())] },
+        dirty: true,
+    });
     id
 }
 
 /// The footnotes or endnotes part, made with Word's two separator notes when missing. Answers the next id.
 fn ensure_notes_part(document: &mut Document, endnote: bool) -> i64 {
-    let slot_missing = if endnote { document.endnotes.is_none() } else { document.footnotes.is_none() };
+    let slot_missing =
+        if endnote { document.endnotes.is_none() } else { document.footnotes.is_none() };
     if slot_missing {
         let (stem, rel, content_type, root_name, note_name) = if endnote {
-            ("word/endnotes.xml", kind::ENDNOTES, "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml", "w:endnotes", "w:endnote")
+            (
+                "word/endnotes.xml",
+                kind::ENDNOTES,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml",
+                "w:endnotes",
+                "w:endnote",
+            )
         } else {
-            ("word/footnotes.xml", kind::FOOTNOTES, "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml", "w:footnotes", "w:footnote")
+            (
+                "word/footnotes.xml",
+                kind::FOOTNOTES,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
+                "w:footnotes",
+                "w:footnote",
+            )
         };
         let main = document.main.clone();
         let target = Package::relative(&main, stem);
@@ -1206,9 +1479,17 @@ fn ensure_notes_part(document: &mut Document, endnote: bool) -> i64 {
         document.package.set_part(stem, Vec::new());
         let separator = |id: &str, kind: &str, el: &str| {
             let mut p = Paragraph::new();
-            p.props.put(El::new("w:spacing").with("w:after", "0").with("w:line", "240").with("w:lineRule", "auto"));
+            p.props.put(
+                El::new("w:spacing")
+                    .with("w:after", "0")
+                    .with("w:line", "240")
+                    .with("w:lineRule", "auto"),
+            );
             p.runs.push(Run { content: Content::Object(El::new(el)), ..Run::text("", no_props()) });
-            Story { el: El::new(note_name).with("w:type", kind).with("w:id", id), blocks: vec![Block::Paragraph(p)] }
+            Story {
+                el: El::new(note_name).with("w:type", kind).with("w:id", id),
+                blocks: vec![Block::Paragraph(p)],
+            }
         };
         let mut root = El::new(root_name);
         root.attrs = document.root.attrs.clone();
@@ -1216,17 +1497,28 @@ fn ensure_notes_part(document: &mut Document, endnote: bool) -> i64 {
         let part = NotesPart {
             name: stem.to_owned(),
             root,
-            notes: vec![separator("-1", "separator", "w:separator"), separator("0", "continuationSeparator", "w:continuationSeparator")],
+            notes: vec![
+                separator("-1", "separator", "w:separator"),
+                separator("0", "continuationSeparator", "w:continuationSeparator"),
+            ],
             dirty: true,
         };
         // The settings name the two separators; Word repairs a file whose settings do not.
         if let Some(settings) = document.settings.as_mut() {
-            let (pr, child) = if endnote { ("w:endnotePr", "w:endnote") } else { ("w:footnotePr", "w:footnote") };
+            let (pr, child) =
+                if endnote { ("w:endnotePr", "w:endnote") } else { ("w:footnotePr", "w:footnote") };
             if settings.root.child(pr).is_none() {
-                let el = El::new(pr).with_child(El::new(child).with("w:id", "-1")).with_child(El::new(child).with("w:id", "0"));
+                let el = El::new(pr)
+                    .with_child(El::new(child).with("w:id", "-1"))
+                    .with_child(El::new(child).with("w:id", "0"));
                 // Word writes these after `w:characterSpacingControl`; the settings part has no order table,
                 // so it goes after that element when there is one.
-                let at = settings.root.children.iter().position(|n| matches!(n, Node::El(e) if e.name == "w:characterSpacingControl")).map_or(settings.root.children.len(), |i| i + 1);
+                let at = settings
+                    .root
+                    .children
+                    .iter()
+                    .position(|n| matches!(n, Node::El(e) if e.name == "w:characterSpacingControl"))
+                    .map_or(settings.root.children.len(), |i| i + 1);
                 settings.root.children.insert(at, Node::El(el));
                 settings.dirty = true;
             }
@@ -1248,17 +1540,25 @@ fn ensure_comments_part(document: &mut Document) -> i64 {
         let main = document.main.clone();
         let target = Package::relative(&main, name);
         document.package.rels_mut(&main).add(kind::COMMENTS, &target, false);
-        document.package.set_override(name, "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml");
+        document.package.set_override(
+            name,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml",
+        );
         document.package.set_part(name, Vec::new());
         let mut root = El::new("w:comments");
         root.attrs = document.root.attrs.clone();
         root.declares = document.root.declares.clone();
-        document.comments = Some(NotesPart { name: name.to_owned(), root, notes: Vec::new(), dirty: true });
+        document.comments =
+            Some(NotesPart { name: name.to_owned(), root, notes: Vec::new(), dirty: true });
     }
-    document.comments.as_ref().map_or(0, |p| p.notes.iter().filter_map(Story::id).max().map_or(0, |n| n + 1))
+    document
+        .comments
+        .as_ref()
+        .map_or(0, |p| p.notes.iter().filter_map(Story::id).max().map_or(0, |n| n + 1))
 }
 
-const COMMENTS_EXTENDED: &str = "http://schemas.microsoft.com/office/2011/relationships/commentsExtended";
+const COMMENTS_EXTENDED: &str =
+    "http://schemas.microsoft.com/office/2011/relationships/commentsExtended";
 const W15: &str = "http://schemas.microsoft.com/office/word/2012/wordml";
 
 /// The `w14:paraId` of a comment's last paragraph, which `commentsExtended` refers to it by.
@@ -1270,14 +1570,21 @@ fn last_para_id(note: &Story) -> Option<String> {
 
 /// A paragraph id for a comment, eight hexadecimal digits below 0x80000000 as the schema requires.
 fn random_para_id(seed: i64) -> String {
-    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.subsec_nanos()) as u64;
-    format!("{:08X}", (nanos.wrapping_mul(2_654_435_761).wrapping_add(seed as u64 * 40_503)) & 0x7FFF_FFFF)
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.subsec_nanos()) as u64;
+    format!(
+        "{:08X}",
+        (nanos.wrapping_mul(2_654_435_761).wrapping_add(seed as u64 * 40_503)) & 0x7FFF_FFFF
+    )
 }
 
 fn ensure_para_id(document: &mut Document, comment: i64, para: &str) {
     let Some(part) = document.comments.as_mut() else { return };
     let Some(note) = part.notes.iter_mut().find(|n| n.id() == Some(comment)) else { return };
-    if let Some(Block::Paragraph(p)) = note.blocks.iter_mut().rev().find(|b| matches!(b, Block::Paragraph(_))) {
+    if let Some(Block::Paragraph(p)) =
+        note.blocks.iter_mut().rev().find(|b| matches!(b, Block::Paragraph(_)))
+    {
         if !p.attrs.iter().any(|(k, _)| k == "w14:paraId") {
             p.attrs.push(("w14:paraId".into(), para.to_owned()));
             part.dirty = true;
@@ -1287,7 +1594,11 @@ fn ensure_para_id(document: &mut Document, comment: i64, para: &str) {
 
 /// The paragraph ids of the comments `commentsExtended` marks done.
 fn resolved_comments(document: &Document) -> Vec<String> {
-    let Some(root) = comments_extended(document).and_then(|(_, bytes)| crate::xml::parse_bytes(&bytes).ok()) else { return Vec::new() };
+    let Some(root) =
+        comments_extended(document).and_then(|(_, bytes)| crate::xml::parse_bytes(&bytes).ok())
+    else {
+        return Vec::new();
+    };
     root.elements()
         .filter(|el| el.name == "w15:commentEx" && el.attr("w15:done") == Some("1"))
         .filter_map(|el| el.attr("w15:paraId").map(str::to_owned))
@@ -1295,7 +1606,13 @@ fn resolved_comments(document: &Document) -> Vec<String> {
 }
 
 fn comments_extended(document: &Document) -> Option<(String, Vec<u8>)> {
-    let rel = document.package.rels.get(&document.main)?.rels.iter().find(|r| r.kind == COMMENTS_EXTENDED)?;
+    let rel = document
+        .package
+        .rels
+        .get(&document.main)?
+        .rels
+        .iter()
+        .find(|r| r.kind == COMMENTS_EXTENDED)?;
     let name = Package::resolve(&document.main, &rel.target);
     Some((name.clone(), document.package.part(&name)?.to_vec()))
 }
@@ -1309,20 +1626,28 @@ fn set_comment_extended(document: &mut Document, comment: i64, parent: Option<&s
         .and_then(last_para_id);
     let Some(para) = para else { return };
     let (name, mut root) = match comments_extended(document) {
-        Some((name, bytes)) => (name, crate::xml::parse_bytes(&bytes).unwrap_or_else(|_| El::new("w15:commentsEx"))),
+        Some((name, bytes)) => {
+            (name, crate::xml::parse_bytes(&bytes).unwrap_or_else(|_| El::new("w15:commentsEx")))
+        }
         None => {
             let name = "word/commentsExtended.xml".to_owned();
             let main = document.main.clone();
             let target = Package::relative(&main, &name);
             let rels = document.package.rels_mut(&main);
             let id = format!("rIdU{}", rels.rels.len() + 100);
-            rels.rels.push(crate::package::Rel { id, kind: COMMENTS_EXTENDED.into(), target, external: false });
+            rels.rels.push(crate::package::Rel {
+                id,
+                kind: COMMENTS_EXTENDED.into(),
+                target,
+                external: false,
+            });
             rels.dirty = true;
             document.package.set_override(&name, "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml");
             (name, El::new("w15:commentsEx").with("mc:Ignorable", "w14 w15"))
         }
     };
-    root.children.retain(|n| !matches!(n, Node::El(el) if el.attr("w15:paraId") == Some(para.as_str())));
+    root.children
+        .retain(|n| !matches!(n, Node::El(el) if el.attr("w15:paraId") == Some(para.as_str())));
     let mut entry = El::new("w15:commentEx").with("w15:paraId", para.clone());
     if let Some(parent) = parent {
         entry.set_attr("w15:paraIdParent", parent);
@@ -1338,7 +1663,10 @@ fn remove_comment_pieces(blocks: &mut [Block], id: &str) {
     for block in blocks {
         match block {
             Block::Paragraph(p) => {
-                p.marks.retain(|m| !(matches!(m.el.name.as_str(), "w:commentRangeStart" | "w:commentRangeEnd") && m.el.attr("w:id") == Some(id)));
+                p.marks.retain(|m| {
+                    !(matches!(m.el.name.as_str(), "w:commentRangeStart" | "w:commentRangeEnd")
+                        && m.el.attr("w:id") == Some(id))
+                });
                 let before = p.runs.len();
                 let mut removed = Vec::new();
                 let mut at = 0;
@@ -1404,7 +1732,8 @@ fn update_dates_in(paragraph: &mut Paragraph, now: &str) -> usize {
                     state = 2;
                     first_result = true;
                     let (kind, rest) = crate::layout::fields::split(&code);
-                    value = matches!(kind.as_str(), "DATE" | "TIME" | "CREATEDATE" | "SAVEDATE").then(|| format_date(now, &rest, &kind));
+                    value = matches!(kind.as_str(), "DATE" | "TIME" | "CREATEDATE" | "SAVEDATE")
+                        .then(|| format_date(now, &rest, &kind));
                 }
                 _ => {
                     state = 0;
@@ -1432,13 +1761,28 @@ pub fn format_date(iso: &str, rest: &str, kind: &str) -> String {
     let (y, mo, d) = (&iso[0..4], &iso[5..7], &iso[8..10]);
     let (h, mi) = (&iso[11..13], &iso[14..16]);
     let month: usize = mo.parse().unwrap_or(1);
-    const MONTHS: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const MONTHS: [&str; 12] = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ];
     let picture = rest.split("\\@").nth(1).map(|p| p.trim().trim_matches('"').to_owned());
     match picture.as_deref() {
         Some(p) => {
             let mut out = p.to_owned();
             out = out.replace("yyyy", y).replace("yy", &y[2..]);
-            out = out.replace("MMMM", MONTHS[month.saturating_sub(1).min(11)]).replace("MMM", &MONTHS[month.saturating_sub(1).min(11)][..3]);
+            out = out
+                .replace("MMMM", MONTHS[month.saturating_sub(1).min(11)])
+                .replace("MMM", &MONTHS[month.saturating_sub(1).min(11)][..3]);
             out = out.replace("MM", mo);
             out = out.replace("dd", d).replace('d', d.trim_start_matches('0'));
             out = out.replace("HH", h).replace("mm", mi);
@@ -1453,7 +1797,16 @@ fn recase(text: &str, how: &str, start_of_sentence: &mut bool) -> String {
     match how {
         "upper" => text.to_uppercase(),
         "lower" => text.to_lowercase(),
-        "toggle" => text.chars().map(|c| if c.is_uppercase() { c.to_lowercase().collect::<String>() } else { c.to_uppercase().collect() }).collect(),
+        "toggle" => text
+            .chars()
+            .map(|c| {
+                if c.is_uppercase() {
+                    c.to_lowercase().collect::<String>()
+                } else {
+                    c.to_uppercase().collect()
+                }
+            })
+            .collect(),
         "title" => {
             let mut out = String::new();
             let mut start = true;
@@ -1510,11 +1863,16 @@ mod tests {
         s.toggle_list(ListKind::Bullet);
         let again = reopened(&s);
         let resolver = crate::styles::Resolver::new(&again);
-        let listed = position::paragraphs(&again.body).iter().filter(|(_, p)| resolver.numbering_of(&p.props).is_some()).count();
+        let listed = position::paragraphs(&again.body)
+            .iter()
+            .filter(|(_, p)| resolver.numbering_of(&p.props).is_some())
+            .count();
         assert_eq!(listed, 3);
         s.toggle_list(ListKind::Bullet);
         let resolver = crate::styles::Resolver::new(&s.document);
-        assert!(position::paragraphs(&s.document.body).iter().all(|(_, p)| resolver.numbering_of(&p.props).is_none()));
+        assert!(position::paragraphs(&s.document.body)
+            .iter()
+            .all(|(_, p)| resolver.numbering_of(&p.props).is_none()));
     }
 
     #[test]
@@ -1550,9 +1908,14 @@ mod tests {
         let again = reopened(&s);
         let notes = again.footnotes.as_ref().unwrap();
         assert_eq!(notes.notes.len(), 3, "two separators and the note");
-        let pages = crate::layout::lay_out(&again, &unluminous_core::FixedMetrics::default(), Default::default());
+        let pages = crate::layout::lay_out(
+            &again,
+            &unluminous_core::FixedMetrics::default(),
+            Default::default(),
+        );
         assert_eq!(pages.pages.len(), 1);
-        let has_note_text = pages.pages[0].carets.iter().any(|l| matches!(l.story, StoryId::Footnote(_)));
+        let has_note_text =
+            pages.pages[0].carets.iter().any(|l| matches!(l.story, StoryId::Footnote(_)));
         assert!(has_note_text, "the note is laid out at the foot of the page");
     }
 
@@ -1585,7 +1948,10 @@ mod tests {
         let (_, p) = &position::paragraphs(&again.body)[0];
         let link = p.runs.iter().find_map(|r| r.link()).expect("a link");
         let id = link.attr("r:id").unwrap();
-        assert_eq!(again.package.rels[&again.main].by_id(id).unwrap().target, "https://example.com");
+        assert_eq!(
+            again.package.rels[&again.main].by_id(id).unwrap().target,
+            "https://example.com"
+        );
     }
 
     #[test]
@@ -1607,10 +1973,20 @@ mod tests {
         s.set_header_text(true, "default", "Page {PAGE} of {NUMPAGES}");
         s.type_text("\u{c}second");
         let again = reopened(&s);
-        let pages = crate::layout::lay_out(&again, &unluminous_core::FixedMetrics::default(), Default::default());
+        let pages = crate::layout::lay_out(
+            &again,
+            &unluminous_core::FixedMetrics::default(),
+            Default::default(),
+        );
         assert_eq!(pages.pages.len(), 2);
         let footer_text = |page: &crate::layout::Page| -> String {
-            page.items.iter().filter_map(|i| match i { crate::layout::Item::Text(t) if t.baseline > 700.0 => Some(t.text.clone()), _ => None }).collect()
+            page.items
+                .iter()
+                .filter_map(|i| match i {
+                    crate::layout::Item::Text(t) if t.baseline > 700.0 => Some(t.text.clone()),
+                    _ => None,
+                })
+                .collect()
         };
         assert_eq!(footer_text(&pages.pages[1]).replace(' ', ""), "Page2of2");
     }
@@ -1620,7 +1996,11 @@ mod tests {
         let mut s = session("one two");
         s.select(Pos::new(vec![0], 3), Pos::new(vec![0], 3));
         s.insert_section_break("nextPage");
-        let pages = crate::layout::lay_out(&s.document, &unluminous_core::FixedMetrics::default(), Default::default());
+        let pages = crate::layout::lay_out(
+            &s.document,
+            &unluminous_core::FixedMetrics::default(),
+            Default::default(),
+        );
         assert_eq!(pages.pages.len(), 2);
     }
 
@@ -1632,15 +2012,27 @@ mod tests {
         s.select(Pos::new(vec![2], 0), Pos::new(vec![2], 0));
         s.apply_style("Heading2").unwrap();
         s.select(Pos::new(vec![0], 0), Pos::new(vec![0], 0));
-        let pages = crate::layout::lay_out(&s.document, &unluminous_core::FixedMetrics::default(), Default::default());
+        let pages = crate::layout::lay_out(
+            &s.document,
+            &unluminous_core::FixedMetrics::default(),
+            Default::default(),
+        );
         s.insert_toc(3, &pages);
-        let texts: Vec<String> = position::paragraphs(&s.document.body).iter().map(|(_, p)| p.visible_text()).collect();
+        let texts: Vec<String> =
+            position::paragraphs(&s.document.body).iter().map(|(_, p)| p.visible_text()).collect();
         assert_eq!(texts[0], "Contents");
         assert_eq!(texts[1], "Intro\t1");
         assert_eq!(texts[2], "More\t1");
-        let pages = crate::layout::lay_out(&s.document, &unluminous_core::FixedMetrics::default(), Default::default());
+        let pages = crate::layout::lay_out(
+            &s.document,
+            &unluminous_core::FixedMetrics::default(),
+            Default::default(),
+        );
         assert_eq!(s.update_fields(&pages), 1);
-        let count = position::paragraphs(&s.document.body).iter().filter(|(_, p)| p.visible_text() == "Contents").count();
+        let count = position::paragraphs(&s.document.body)
+            .iter()
+            .filter(|(_, p)| p.visible_text() == "Contents")
+            .count();
         assert_eq!(count, 1, "updating replaces the table rather than adding a second");
     }
 
@@ -1649,6 +2041,9 @@ mod tests {
         let mut flag = true;
         assert_eq!(recase("hello world. again", "sentence", &mut flag), "Hello world. Again");
         assert_eq!(recase("hello world", "title", &mut true), "Hello World");
-        assert_eq!(format_date("2026-10-23T16:25:00Z", "\\@ \"d MMMM yyyy\"", "DATE"), "23 October 2026");
+        assert_eq!(
+            format_date("2026-10-23T16:25:00Z", "\\@ \"d MMMM yyyy\"", "DATE"),
+            "23 October 2026"
+        );
     }
 }

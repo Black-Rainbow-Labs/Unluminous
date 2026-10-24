@@ -11,7 +11,8 @@ const BLANK: &[u8] = include_bytes!("../templates/blank.docx");
 
 /// A blank document, with no author and no dates yet.
 pub fn blank() -> Document {
-    let mut document = crate::read::open(BLANK).expect("the blank template is a document Word wrote");
+    let mut document =
+        crate::read::open(BLANK).expect("the blank template is a document Word wrote");
     set_property(&mut document, "dc:creator", "");
     set_property(&mut document, "cp:lastModifiedBy", "");
     document

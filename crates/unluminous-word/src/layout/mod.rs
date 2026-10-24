@@ -72,13 +72,30 @@ pub enum RuleKind {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Item {
     Text(TextItem),
-    Fill { rect: Rect, color: Rgb },
+    Fill {
+        rect: Rect,
+        color: Rgb,
+    },
     /// A horizontal or vertical line from `(x0, y0)` to `(x1, y1)`.
-    Rule { x0: f32, y0: f32, x1: f32, y1: f32, width: f32, color: Rgb, kind: RuleKind },
+    Rule {
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        width: f32,
+        color: Rgb,
+        kind: RuleKind,
+    },
     /// A picture, by the package part it is in.
-    Picture { rect: Rect, part: String },
+    Picture {
+        rect: Rect,
+        part: String,
+    },
     /// Something Unluminous does not draw, shown as a box with a word in it.
-    Placeholder { rect: Rect, label: String },
+    Placeholder {
+        rect: Rect,
+        label: String,
+    },
 }
 
 impl Item {
@@ -91,7 +108,9 @@ impl Item {
                     *x += dx;
                 }
             }
-            Item::Fill { rect, .. } | Item::Picture { rect, .. } | Item::Placeholder { rect, .. } => {
+            Item::Fill { rect, .. }
+            | Item::Picture { rect, .. }
+            | Item::Placeholder { rect, .. } => {
                 rect.x += dx;
                 rect.y += dy;
             }
@@ -158,7 +177,8 @@ impl CaretLine {
     /// Whether `offset` is on this line: from its start up to but not including its end, except on a
     /// paragraph's last line, which owns the end too.
     pub fn holds(&self, offset: usize) -> bool {
-        offset >= self.start && (offset < self.end || (self.last && offset == self.end) || self.start == self.end)
+        offset >= self.start
+            && (offset < self.end || (self.last && offset == self.end) || self.start == self.end)
     }
 }
 
@@ -292,16 +312,25 @@ impl Pages {
     /// The position under a point on a page, in the body or a header, the nearest line on that page.
     pub fn hit(&self, page: usize, x: f32, y: f32, stories: &[StoryId]) -> Option<Pos> {
         let page = self.pages.get(page)?;
-        let line = page
-            .carets
-            .iter()
-            .filter(|line| stories.contains(&line.story))
-            .min_by(|a, b| {
+        let line =
+            page.carets.iter().filter(|line| stories.contains(&line.story)).min_by(|a, b| {
                 let distance = |line: &CaretLine| {
-                    let dy = if y < line.top { line.top - y } else if y > line.top + line.height { y - line.top - line.height } else { 0.0 };
+                    let dy = if y < line.top {
+                        line.top - y
+                    } else if y > line.top + line.height {
+                        y - line.top - line.height
+                    } else {
+                        0.0
+                    };
                     let left = line.stops.first().map_or(0.0, |s| s.1);
                     let right = line.stops.last().map_or(0.0, |s| s.1);
-                    let dx = if x < left { left - x } else if x > right { x - right } else { 0.0 };
+                    let dx = if x < left {
+                        left - x
+                    } else if x > right {
+                        x - right
+                    } else {
+                        0.0
+                    };
                     dy * 1000.0 + dx
                 };
                 distance(a).total_cmp(&distance(b))
@@ -319,7 +348,8 @@ fn number_notes(document: &Document) -> (HashMap<i64, u32>, HashMap<i64, u32>) {
             if let crate::model::Content::Object(el) = &run.content {
                 let id = el.attr("w:id").and_then(|id| id.parse::<i64>().ok());
                 // A reference with `w:customMarkFollows` shows its own mark and is not counted.
-                let custom = el.attr("w:customMarkFollows").is_some_and(|v| v == "1" || v == "true");
+                let custom =
+                    el.attr("w:customMarkFollows").is_some_and(|v| v == "1" || v == "true");
                 match (el.name.as_str(), id) {
                     ("w:footnoteReference", Some(id)) if !custom => {
                         let next = footnotes.len() as u32 + 1;
@@ -394,7 +424,8 @@ fn sections(document: &Document) -> Vec<(Vec<(usize, &Block)>, Geometry)> {
     out.push((current, Geometry::of(&document.section)));
     // A section that names no header inherits the previous section's, which is what Word does.
     for index in 1..out.len() {
-        let (before_headers, before_footers) = (out[index - 1].1.headers.clone(), out[index - 1].1.footers.clone());
+        let (before_headers, before_footers) =
+            (out[index - 1].1.headers.clone(), out[index - 1].1.footers.clone());
         let geometry = &mut out[index].1;
         for (kind, id) in before_headers {
             if !geometry.headers.iter().any(|(k, _)| *k == kind) {
@@ -415,7 +446,8 @@ fn flow_block(flow: &mut Flow, ctx: &Ctx, counters: &mut Counters, block: &Block
     match block {
         Block::Paragraph(paragraph) => {
             let width = flow.column_width();
-            let laid = paragraph::lay_out(ctx, counters, paragraph, &StoryId::Body, &path, width, None);
+            let laid =
+                paragraph::lay_out(ctx, counters, paragraph, &StoryId::Body, &path, width, None);
             flow.place_paragraph(laid);
         }
         Block::Table(table) => {
@@ -539,8 +571,10 @@ impl<'a> Flow<'a> {
 
     fn start_section(&mut self, index: usize, geometry: Geometry) {
         let start = geometry.start;
-        let continuous = start == Start::Continuous && !self.pages.is_empty()
-            && geometry.width == self.geometry.width && geometry.height == self.geometry.height;
+        let continuous = start == Start::Continuous
+            && !self.pages.is_empty()
+            && geometry.width == self.geometry.width
+            && geometry.height == self.geometry.height;
         self.section = index;
         self.geometry = geometry;
         if self.pages.is_empty() {
@@ -588,13 +622,15 @@ impl<'a> Flow<'a> {
 
     /// The height a piece's footnotes need on this page, beyond those already here.
     fn notes_for(&self, chunk: &Chunk) -> f32 {
-        let new: Vec<i64> = chunk.notes.iter().copied().filter(|id| !self.page_note_ids.contains(id)).collect();
+        let new: Vec<i64> =
+            chunk.notes.iter().copied().filter(|id| !self.page_note_ids.contains(id)).collect();
         if new.is_empty() {
             return 0.0;
         }
         // Measured before the body was laid out, at the width of the text.
         let separator = if self.page_note_ids.is_empty() { NOTE_SEPARATOR } else { 0.0 };
-        separator + new.iter().map(|id| self.note_heights.get(id).copied().unwrap_or(14.0)).sum::<f32>()
+        separator
+            + new.iter().map(|id| self.note_heights.get(id).copied().unwrap_or(14.0)).sum::<f32>()
     }
 
     /// Put one piece at the current place, moving to the next column first when it does not fit.
@@ -610,7 +646,8 @@ impl<'a> Flow<'a> {
         let page = self.pages.last_mut().expect("a page");
         if page.first.is_none() {
             if let Some(line) = chunk.carets.iter().find(|line| line.story == StoryId::Body) {
-                page.first = Some(Pos { story: StoryId::Body, path: line.path.clone(), offset: line.start });
+                page.first =
+                    Some(Pos { story: StoryId::Body, path: line.path.clone(), offset: line.start });
             }
         }
         for float in &chunk.floats {
@@ -631,7 +668,10 @@ impl<'a> Flow<'a> {
         if laid.page_break_before && !self.at_top() {
             self.new_page();
         }
-        let same = self.last_style.as_ref().is_some_and(|(style, contextual)| *style == laid.style && *contextual)
+        let same = self
+            .last_style
+            .as_ref()
+            .is_some_and(|(style, contextual)| *style == laid.style && *contextual)
             && laid.contextual;
         let after = if same { 0.0 } else { self.pending_after };
         let before = if same { 0.0 } else { laid.space_before };
@@ -641,13 +681,15 @@ impl<'a> Flow<'a> {
         // apart, which is the larger of the two 8s and not their sum.
         let gap = if self.at_top() && self.pages.len() > 1 { 0.0 } else { after.max(before) };
         let count = laid.lines.len();
-        let first_lines: f32 = laid.lines.iter().take(if laid.widow_control { 2 } else { 1 }).map(|l| l.height).sum();
+        let first_lines: f32 =
+            laid.lines.iter().take(if laid.widow_control { 2 } else { 1 }).map(|l| l.height).sum();
         let whole: f32 = laid.lines.iter().map(|l| l.height).sum();
         // Keep the whole paragraph together when asked, and at least its first two lines when widow
         // control is on, by starting it on the next column when they would not fit here.
         let must_fit = if laid.keep_lines { whole } else { first_lines };
         if !self.at_top() && self.y + gap + must_fit > self.bottom() + 0.01 {
-            let fits_fresh = must_fit <= self.geometry.height - self.geometry.top - self.geometry.bottom;
+            let fits_fresh =
+                must_fit <= self.geometry.height - self.geometry.top - self.geometry.bottom;
             if fits_fresh {
                 self.next_column();
             }
@@ -660,7 +702,9 @@ impl<'a> Flow<'a> {
             // second last line is the last one that fits, it moves with it.
             if laid.widow_control && count >= 3 && index == count - 2 {
                 let next_height = lines.peek().map_or(0.0, |(_, l)| l.height);
-                if self.y + line.height <= self.bottom() + 0.01 && self.y + line.height + next_height > self.bottom() + 0.01 {
+                if self.y + line.height <= self.bottom() + 0.01
+                    && self.y + line.height + next_height > self.bottom() + 0.01
+                {
                     self.next_column();
                 }
             }
@@ -673,7 +717,8 @@ impl<'a> Flow<'a> {
     fn place_table(&mut self, rows: Vec<table::LaidRow>) {
         self.y += self.pending_after;
         self.pending_after = 0.0;
-        let headers: Vec<Chunk> = rows.iter().take_while(|row| row.header).map(|row| row.chunk.clone()).collect();
+        let headers: Vec<Chunk> =
+            rows.iter().take_while(|row| row.header).map(|row| row.chunk.clone()).collect();
         for (index, row) in rows.into_iter().enumerate() {
             if !self.at_top() && self.y + row.chunk.height > self.bottom() + 0.01 {
                 self.next_column();
@@ -693,7 +738,8 @@ impl<'a> Flow<'a> {
 
     fn place_endnotes(&mut self, ctx: &Ctx) {
         let Some(part) = &self.document.endnotes else { return };
-        let mut numbered: Vec<(u32, i64)> = ctx.endnote_numbers.iter().map(|(id, n)| (*n, *id)).collect();
+        let mut numbered: Vec<(u32, i64)> =
+            ctx.endnote_numbers.iter().map(|(id, n)| (*n, *id)).collect();
         numbered.sort();
         if numbered.is_empty() {
             return;
@@ -701,7 +747,15 @@ impl<'a> Flow<'a> {
         let mut counters = Counters::default();
         let width = self.column_width();
         let mut separator = Chunk { height: 12.0, ..Chunk::default() };
-        separator.items.push(Item::Rule { x0: 0.0, y0: 6.0, x1: 144.0, y1: 6.0, width: 0.5, color: Rgb::BLACK, kind: RuleKind::Solid });
+        separator.items.push(Item::Rule {
+            x0: 0.0,
+            y0: 6.0,
+            x1: 144.0,
+            y1: 6.0,
+            width: 0.5,
+            color: Rgb::BLACK,
+            kind: RuleKind::Solid,
+        });
         self.put(separator);
         for (_, id) in numbered {
             let Some(note) = part.notes.iter().find(|n| n.id() == Some(id)) else { continue };
@@ -733,7 +787,8 @@ fn measure_footnotes(ctx: &Ctx) -> HashMap<i64, f32> {
         .filter_map(|note| {
             let id = note.id()?;
             paragraph::CURRENT_NOTE.with(|current| current.set(Some(id)));
-            let chunks = lay_out_story(ctx, &mut counters, &note.blocks, &StoryId::Footnote(id), width);
+            let chunks =
+                lay_out_story(ctx, &mut counters, &note.blocks, &StoryId::Footnote(id), width);
             paragraph::CURRENT_NOTE.with(|current| current.set(None));
             Some((id, chunks.iter().map(|c| c.height).sum()))
         })
@@ -742,7 +797,13 @@ fn measure_footnotes(ctx: &Ctx) -> HashMap<i64, f32> {
 
 /// Where a float lands on the page, from its anchor.
 fn place_float(float: &Float, page: &Page, column_x: f32, line_y: f32, column_width: f32) -> Item {
-    let resolve = |(relative, anchor): &(String, Anchor), page_size: f32, margin_start: f32, margin_size: f32, line: f32, size: f32| -> f32 {
+    let resolve = |(relative, anchor): &(String, Anchor),
+                   page_size: f32,
+                   margin_start: f32,
+                   margin_size: f32,
+                   line: f32,
+                   size: f32|
+     -> f32 {
         let (origin, extent) = match relative.as_str() {
             "page" => (0.0, page_size),
             "margin" | "column" => (margin_start, margin_size),
@@ -765,10 +826,26 @@ fn place_float(float: &Float, page: &Page, column_x: f32, line_y: f32, column_wi
 }
 
 /// Lay a story out as a stack of pieces, for a header, a footer, a note or a cell.
-pub fn lay_out_story(ctx: &Ctx, counters: &mut Counters, blocks: &[Block], story: &StoryId, width: f32) -> Vec<Chunk> {
+pub fn lay_out_story(
+    ctx: &Ctx,
+    counters: &mut Counters,
+    blocks: &[Block],
+    story: &StoryId,
+    width: f32,
+) -> Vec<Chunk> {
     let mut out = Vec::new();
     let mut pending_after = 0.0;
-    lay_out_blocks(ctx, counters, blocks, story, &mut Vec::new(), width, None, &mut out, &mut pending_after);
+    lay_out_blocks(
+        ctx,
+        counters,
+        blocks,
+        story,
+        &mut Vec::new(),
+        width,
+        None,
+        &mut out,
+        &mut pending_after,
+    );
     out
 }
 
@@ -788,7 +865,8 @@ pub(crate) fn lay_out_blocks(
         prefix.push(index as u32);
         match block {
             Block::Paragraph(paragraph) => {
-                let laid = paragraph::lay_out(ctx, counters, paragraph, story, prefix, width, table_style);
+                let laid =
+                    paragraph::lay_out(ctx, counters, paragraph, story, prefix, width, table_style);
                 let gap = pending_after.max(laid.space_before);
                 for (line_index, mut line) in laid.lines.into_iter().enumerate() {
                     if line_index == 0 && gap > 0.0 {
@@ -806,7 +884,17 @@ pub(crate) fn lay_out_blocks(
                 *pending_after = 0.0;
             }
             Block::Sdt(sdt) => {
-                lay_out_blocks(ctx, counters, &sdt.blocks, story, prefix, width, table_style, out, pending_after);
+                lay_out_blocks(
+                    ctx,
+                    counters,
+                    &sdt.blocks,
+                    story,
+                    prefix,
+                    width,
+                    table_style,
+                    out,
+                    pending_after,
+                );
             }
             Block::Kept(_) => {}
         }
@@ -826,7 +914,11 @@ pub fn stack(chunks: Vec<Chunk>) -> Chunk {
 }
 
 /// Headers, footers and footnotes, once the pages are known.
-fn decorate_pages(pages: &mut [Page], ctx: &mut Ctx, sections: &[(Vec<(usize, &Block)>, Geometry)]) {
+fn decorate_pages(
+    pages: &mut [Page],
+    ctx: &mut Ctx,
+    sections: &[(Vec<(usize, &Block)>, Geometry)],
+) {
     let total = pages.len() as u32;
     let even_odd = ctx
         .document
@@ -836,16 +928,17 @@ fn decorate_pages(pages: &mut [Page], ctx: &mut Ctx, sections: &[(Vec<(usize, &B
         .unwrap_or(false);
     let mut first_of_section: HashMap<usize, usize> = HashMap::new();
     let mut number = 0u32;
-    for index in 0..pages.len() {
-        let section = pages[index].section;
-        let geometry = &sections.get(section).map_or_else(|| sections[0].1.clone(), |(_, g)| g.clone());
+    for (index, page) in pages.iter_mut().enumerate() {
+        let section = page.section;
+        let geometry =
+            &sections.get(section).map_or_else(|| sections[0].1.clone(), |(_, g)| g.clone());
         let is_first = !first_of_section.contains_key(&section);
         first_of_section.entry(section).or_insert(index);
         number = match (is_first, geometry.page_number_start) {
             (true, Some(start)) => start,
             _ => number + 1,
         };
-        pages[index].number = number;
+        page.number = number;
         let kind = if is_first && geometry.title_page {
             "first"
         } else if even_odd && number % 2 == 0 {
@@ -854,14 +947,19 @@ fn decorate_pages(pages: &mut [Page], ctx: &mut Ctx, sections: &[(Vec<(usize, &B
             "default"
         };
         ctx.page = Some((number, total));
-        let page = &mut pages[index];
         for (footer, references) in [(false, &geometry.headers), (true, &geometry.footers)] {
             let Some((_, id)) = references.iter().find(|(k, _)| k == kind) else { continue };
             let Some(header) = ctx.document.headers.iter().find(|h| &h.id == id) else { continue };
             let saved = std::mem::replace(&mut ctx.part, header.name.clone());
             let mut counters = Counters::default();
             let story = StoryId::Header(id.clone());
-            let chunks = lay_out_story(ctx, &mut counters, &header.story.blocks, &story, geometry.text_width());
+            let chunks = lay_out_story(
+                ctx,
+                &mut counters,
+                &header.story.blocks,
+                &story,
+                geometry.text_width(),
+            );
             ctx.part = saved;
             let block = stack(chunks);
             let y = match footer {
@@ -883,7 +981,10 @@ fn lay_out_footnotes(page: &mut Page, ctx: &Ctx, geometry: &Geometry) {
     let Some(part) = &ctx.document.footnotes else { return };
     let mut ids: Vec<i64> = Vec::new();
     for line in page.carets.iter().filter(|line| line.story == StoryId::Body) {
-        let Some(paragraph) = crate::position::paragraph(ctx.document, &line.story, &line.path) else { continue };
+        let Some(paragraph) = crate::position::paragraph(ctx.document, &line.story, &line.path)
+        else {
+            continue;
+        };
         let mut at = 0;
         for run in &paragraph.runs {
             let len = run.len();
@@ -907,12 +1008,26 @@ fn lay_out_footnotes(page: &mut Page, ctx: &Ctx, geometry: &Geometry) {
     let mut counters = Counters::default();
     let mut chunks = Vec::new();
     let mut separator = Chunk { height: NOTE_SEPARATOR, ..Chunk::default() };
-    separator.items.push(Item::Rule { x0: 0.0, y0: 5.0, x1: 144.0, y1: 5.0, width: 0.5, color: Rgb::BLACK, kind: RuleKind::Solid });
+    separator.items.push(Item::Rule {
+        x0: 0.0,
+        y0: 5.0,
+        x1: 144.0,
+        y1: 5.0,
+        width: 0.5,
+        color: Rgb::BLACK,
+        kind: RuleKind::Solid,
+    });
     chunks.push(separator);
     for id in ids {
         let Some(note) = part.notes.iter().find(|n| n.id() == Some(id)) else { continue };
         paragraph::CURRENT_NOTE.with(|current| current.set(Some(id)));
-        chunks.extend(lay_out_story(ctx, &mut counters, &note.blocks, &StoryId::Footnote(id), geometry.text_width()));
+        chunks.extend(lay_out_story(
+            ctx,
+            &mut counters,
+            &note.blocks,
+            &StoryId::Footnote(id),
+            geometry.text_width(),
+        ));
         paragraph::CURRENT_NOTE.with(|current| current.set(None));
     }
     let mut block = stack(chunks);

@@ -16,15 +16,22 @@ const DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\
 pub fn save(document: &Document) -> Result<Vec<u8>, String> {
     let mut package = document.package.clone();
     package.set_part(&document.main, main_part(document).into_bytes());
-    for part in [&document.styles, &document.numbering, &document.settings, &document.core].into_iter().flatten() {
+    for part in [&document.styles, &document.numbering, &document.settings, &document.core]
+        .into_iter()
+        .flatten()
+    {
         if part.dirty {
             package.set_part(&part.name, whole_part(&part.root).into_bytes());
         }
     }
     for header in document.headers.iter().filter(|header| header.dirty) {
-        package.set_part(&header.name, story_part(&header.story.el, &header.story.blocks).into_bytes());
+        package.set_part(
+            &header.name,
+            story_part(&header.story.el, &header.story.blocks).into_bytes(),
+        );
     }
-    for notes in [&document.footnotes, &document.endnotes, &document.comments].into_iter().flatten() {
+    for notes in [&document.footnotes, &document.endnotes, &document.comments].into_iter().flatten()
+    {
         if notes.dirty {
             package.set_part(&notes.name, notes_part(notes).into_bytes());
         }
@@ -327,8 +334,12 @@ fn write_runs(runs: &[Run], out: &mut String) {
     let deleted = first.is_deleted();
     for run in runs {
         match &run.content {
-            Content::Text(text) => text_element(if deleted { "w:delText" } else { "w:t" }, text, out),
-            Content::Instr(text) => text_element(if deleted { "w:delInstrText" } else { "w:instrText" }, text, out),
+            Content::Text(text) => {
+                text_element(if deleted { "w:delText" } else { "w:t" }, text, out)
+            }
+            Content::Instr(text) => {
+                text_element(if deleted { "w:delInstrText" } else { "w:instrText" }, text, out)
+            }
             Content::Tab => out.push_str("<w:tab/>"),
             Content::Break(el) | Content::FieldChar(el) | Content::Object(el) => el.write(out),
         }
@@ -341,7 +352,10 @@ fn write_runs(runs: &[Run], out: &mut String) {
 fn text_element(name: &str, text: &str, out: &mut String) {
     out.push('<');
     out.push_str(name);
-    if text.starts_with(char::is_whitespace) || text.ends_with(char::is_whitespace) || text.contains("  ") {
+    if text.starts_with(char::is_whitespace)
+        || text.ends_with(char::is_whitespace)
+        || text.contains("  ")
+    {
         out.push_str(" xml:space=\"preserve\"");
     }
     out.push('>');

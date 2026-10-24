@@ -267,7 +267,9 @@ impl Content {
                     .attr("w:char")
                     .and_then(|hex| u32::from_str_radix(hex, 16).ok())
                     // A symbol font's characters are written in the private use area from F000.
-                    .map(|code| if (0xF000..=0xF0FF).contains(&code) { code - 0xF000 } else { code })
+                    .map(
+                        |code| if (0xF000..=0xF0FF).contains(&code) { code - 0xF000 } else { code },
+                    )
                     .and_then(char::from_u32)
                     .unwrap_or(OBJECT),
                 _ => OBJECT,
@@ -385,7 +387,8 @@ impl Paragraph {
                 Content::Instr(_) | Content::FieldChar(_) => {}
                 Content::Tab => out.push('\t'),
                 Content::Break(_) => out.extend(run.content.character()),
-                Content::Object(el) if el.name == "w:footnoteReference" || el.name == "w:endnoteReference" => {}
+                Content::Object(el)
+                    if el.name == "w:footnoteReference" || el.name == "w:endnoteReference" => {}
                 other => {
                     if let Some(character) = other.character().filter(|c| *c != OBJECT) {
                         out.push(character);
@@ -441,7 +444,9 @@ impl Paragraph {
                 continue;
             }
             if let Some(last) = merged.last_mut() {
-                if let (Content::Text(before), Content::Text(after)) = (&mut last.content, &run.content) {
+                if let (Content::Text(before), Content::Text(after)) =
+                    (&mut last.content, &run.content)
+                {
                     if same_formatting(&last.props, &run.props)
                         && same_wraps(&last.wraps, &run.wraps)
                     {
@@ -471,7 +476,8 @@ pub fn same_wraps(a: &[Arc<Wrap>], b: &[Arc<Wrap>]) -> bool {
 fn split_run(run: &mut Run, into: usize) -> Run {
     let mut tail = run.clone();
     match (&mut run.content, &mut tail.content) {
-        (Content::Text(front), Content::Text(back)) | (Content::Instr(front), Content::Instr(back)) => {
+        (Content::Text(front), Content::Text(back))
+        | (Content::Instr(front), Content::Instr(back)) => {
             let mut cut = into.min(front.len());
             while !front.is_char_boundary(cut) {
                 cut -= 1;
@@ -509,7 +515,10 @@ mod tests {
             content: Content::Break(El::new("w:br").with("w:type", "page")),
             ..Run::text("", no_props())
         });
-        paragraph.runs.push(Run { content: Content::Object(El::new("w:drawing")), ..Run::text("", no_props()) });
+        paragraph.runs.push(Run {
+            content: Content::Object(El::new("w:drawing")),
+            ..Run::text("", no_props())
+        });
         assert_eq!(paragraph.flat_text(), "ab\t\u{c}\u{fffc}");
         assert_eq!(paragraph.len(), paragraph.flat_text().len());
     }
@@ -531,11 +540,20 @@ mod tests {
     fn visible_text_leaves_field_codes_and_deletions_out() {
         let mut paragraph = paragraph(&["Page "]);
         let plain = || Run::text("", no_props());
-        paragraph.runs.push(Run { content: Content::FieldChar(El::new("w:fldChar").with("w:fldCharType", "begin")), ..plain() });
+        paragraph.runs.push(Run {
+            content: Content::FieldChar(El::new("w:fldChar").with("w:fldCharType", "begin")),
+            ..plain()
+        });
         paragraph.runs.push(Run { content: Content::Instr(" PAGE ".into()), ..plain() });
-        paragraph.runs.push(Run { content: Content::FieldChar(El::new("w:fldChar").with("w:fldCharType", "separate")), ..plain() });
+        paragraph.runs.push(Run {
+            content: Content::FieldChar(El::new("w:fldChar").with("w:fldCharType", "separate")),
+            ..plain()
+        });
         paragraph.runs.push(Run::text("3", no_props()));
-        paragraph.runs.push(Run { content: Content::FieldChar(El::new("w:fldChar").with("w:fldCharType", "end")), ..plain() });
+        paragraph.runs.push(Run {
+            content: Content::FieldChar(El::new("w:fldChar").with("w:fldCharType", "end")),
+            ..plain()
+        });
         let mut gone = Run::text(" gone", no_props());
         gone.wraps.push(Wrap::new(El::new("w:del")));
         paragraph.runs.push(gone);

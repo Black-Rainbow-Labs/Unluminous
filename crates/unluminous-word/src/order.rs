@@ -10,68 +10,230 @@ use crate::xml::{El, Node};
 
 /// `CT_PPr` (with `CT_PPrBase` first).
 pub const PARAGRAPH: &[&str] = &[
-    "pStyle", "keepNext", "keepLines", "pageBreakBefore", "framePr", "widowControl", "numPr",
-    "suppressLineNumbers", "pBdr", "shd", "tabs", "suppressAutoHyphens", "kinsoku", "wordWrap",
-    "overflowPunct", "topLinePunct", "autoSpaceDE", "autoSpaceDN", "bidi", "adjustRightInd", "snapToGrid",
-    "spacing", "ind", "contextualSpacing", "mirrorIndents", "suppressOverlap", "jc", "textDirection",
-    "textAlignment", "textboxTightWrap", "outlineLvl", "divId", "cnfStyle", "rPr", "sectPr", "pPrChange",
+    "pStyle",
+    "keepNext",
+    "keepLines",
+    "pageBreakBefore",
+    "framePr",
+    "widowControl",
+    "numPr",
+    "suppressLineNumbers",
+    "pBdr",
+    "shd",
+    "tabs",
+    "suppressAutoHyphens",
+    "kinsoku",
+    "wordWrap",
+    "overflowPunct",
+    "topLinePunct",
+    "autoSpaceDE",
+    "autoSpaceDN",
+    "bidi",
+    "adjustRightInd",
+    "snapToGrid",
+    "spacing",
+    "ind",
+    "contextualSpacing",
+    "mirrorIndents",
+    "suppressOverlap",
+    "jc",
+    "textDirection",
+    "textAlignment",
+    "textboxTightWrap",
+    "outlineLvl",
+    "divId",
+    "cnfStyle",
+    "rPr",
+    "sectPr",
+    "pPrChange",
 ];
 
 /// `CT_RPr`, and the paragraph mark's `CT_ParaRPr`, which adds the revision marks at its front.
 pub const RUN: &[&str] = &[
-    "ins", "del", "moveFrom", "moveTo", "rStyle", "rFonts", "b", "bCs", "i", "iCs", "caps", "smallCaps",
-    "strike", "dstrike", "outline", "shadow", "emboss", "imprint", "noProof", "snapToGrid", "vanish",
-    "webHidden", "color", "spacing", "w", "kern", "position", "sz", "szCs", "highlight", "u", "effect",
-    "bdr", "shd", "fitText", "vertAlign", "rtl", "cs", "em", "lang", "eastAsianLayout", "specVanish",
-    "oMath", "rPrChange",
+    "ins",
+    "del",
+    "moveFrom",
+    "moveTo",
+    "rStyle",
+    "rFonts",
+    "b",
+    "bCs",
+    "i",
+    "iCs",
+    "caps",
+    "smallCaps",
+    "strike",
+    "dstrike",
+    "outline",
+    "shadow",
+    "emboss",
+    "imprint",
+    "noProof",
+    "snapToGrid",
+    "vanish",
+    "webHidden",
+    "color",
+    "spacing",
+    "w",
+    "kern",
+    "position",
+    "sz",
+    "szCs",
+    "highlight",
+    "u",
+    "effect",
+    "bdr",
+    "shd",
+    "fitText",
+    "vertAlign",
+    "rtl",
+    "cs",
+    "em",
+    "lang",
+    "eastAsianLayout",
+    "specVanish",
+    "oMath",
+    "rPrChange",
 ];
 
 /// `CT_SectPr`. Header and footer references are one choice group in the schema, in any order, so they
 /// share a place.
 pub const SECTION: &[&str] = &[
-    "headerReference|footerReference", "footnotePr", "endnotePr", "type", "pgSz", "pgMar", "paperSrc",
-    "pgBorders", "lnNumType", "pgNumType", "cols", "formProt", "vAlign", "noEndnote", "titlePg",
-    "textDirection", "bidi", "rtlGutter", "docGrid", "printerSettings", "sectPrChange",
+    "headerReference|footerReference",
+    "footnotePr",
+    "endnotePr",
+    "type",
+    "pgSz",
+    "pgMar",
+    "paperSrc",
+    "pgBorders",
+    "lnNumType",
+    "pgNumType",
+    "cols",
+    "formProt",
+    "vAlign",
+    "noEndnote",
+    "titlePg",
+    "textDirection",
+    "bidi",
+    "rtlGutter",
+    "docGrid",
+    "printerSettings",
+    "sectPrChange",
 ];
 
 /// `CT_TblPr`.
 pub const TABLE: &[&str] = &[
-    "tblStyle", "tblpPr", "tblOverlap", "bidiVisual", "tblStyleRowBandSize", "tblStyleColBandSize", "tblW",
-    "jc", "tblCellSpacing", "tblInd", "tblBorders", "shd", "tblLayout", "tblCellMar", "tblLook",
-    "tblCaption", "tblDescription", "tblPrChange",
+    "tblStyle",
+    "tblpPr",
+    "tblOverlap",
+    "bidiVisual",
+    "tblStyleRowBandSize",
+    "tblStyleColBandSize",
+    "tblW",
+    "jc",
+    "tblCellSpacing",
+    "tblInd",
+    "tblBorders",
+    "shd",
+    "tblLayout",
+    "tblCellMar",
+    "tblLook",
+    "tblCaption",
+    "tblDescription",
+    "tblPrChange",
 ];
 
 /// `CT_TrPr`, which is a choice rather than a sequence; Word writes it in this order.
 pub const ROW: &[&str] = &[
-    "cnfStyle", "divId", "gridBefore", "gridAfter", "wBefore", "wAfter", "cantSplit", "trHeight",
-    "tblHeader", "tblCellSpacing", "jc", "hidden", "ins", "del", "trPrChange",
+    "cnfStyle",
+    "divId",
+    "gridBefore",
+    "gridAfter",
+    "wBefore",
+    "wAfter",
+    "cantSplit",
+    "trHeight",
+    "tblHeader",
+    "tblCellSpacing",
+    "jc",
+    "hidden",
+    "ins",
+    "del",
+    "trPrChange",
 ];
 
 /// `CT_TcPr`.
 pub const CELL: &[&str] = &[
-    "cnfStyle", "tcW", "gridSpan", "hMerge", "vMerge", "tcBorders", "shd", "noWrap", "tcMar",
-    "textDirection", "tcFitText", "vAlign", "hideMark", "headers", "cellIns", "cellDel", "cellMerge",
+    "cnfStyle",
+    "tcW",
+    "gridSpan",
+    "hMerge",
+    "vMerge",
+    "tcBorders",
+    "shd",
+    "noWrap",
+    "tcMar",
+    "textDirection",
+    "tcFitText",
+    "vAlign",
+    "hideMark",
+    "headers",
+    "cellIns",
+    "cellDel",
+    "cellMerge",
     "tcPrChange",
 ];
 
 /// `CT_PBdr`, `CT_TblBorders` and `CT_TcBorders` share one order.
-pub const BORDERS: &[&str] =
-    &["top", "left", "start", "bottom", "right", "end", "insideH", "insideV", "tl2br", "tr2bl", "bar", "between"];
+pub const BORDERS: &[&str] = &[
+    "top", "left", "start", "bottom", "right", "end", "insideH", "insideV", "tl2br", "tr2bl",
+    "bar", "between",
+];
 
 /// `CT_TblCellMar` and `CT_TcMar`.
 pub const MARGINS: &[&str] = &["top", "left", "start", "bottom", "right", "end"];
 
 /// `CT_Style`.
 pub const STYLE: &[&str] = &[
-    "name", "aliases", "basedOn", "next", "link", "autoRedefine", "hidden", "uiPriority", "semiHidden",
-    "unhideWhenUsed", "qFormat", "locked", "personal", "personalCompose", "personalReply", "rsid", "pPr",
-    "rPr", "tblPr", "trPr", "tcPr", "tblStylePr",
+    "name",
+    "aliases",
+    "basedOn",
+    "next",
+    "link",
+    "autoRedefine",
+    "hidden",
+    "uiPriority",
+    "semiHidden",
+    "unhideWhenUsed",
+    "qFormat",
+    "locked",
+    "personal",
+    "personalCompose",
+    "personalReply",
+    "rsid",
+    "pPr",
+    "rPr",
+    "tblPr",
+    "trPr",
+    "tcPr",
+    "tblStylePr",
 ];
 
 /// `CT_Lvl`, a numbering level.
 pub const LEVEL: &[&str] = &[
-    "start", "numFmt", "lvlRestart", "pStyle", "isLgl", "suff", "lvlText", "lvlPicBulletId", "legacy",
-    "lvlJc", "pPr", "rPr",
+    "start",
+    "numFmt",
+    "lvlRestart",
+    "pStyle",
+    "isLgl",
+    "suff",
+    "lvlText",
+    "lvlPicBulletId",
+    "legacy",
+    "lvlJc",
+    "pPr",
+    "rPr",
 ];
 
 /// The order table for a properties element called `name`, when there is one.
@@ -100,7 +262,9 @@ pub fn sort(el: &mut El) {
     }
     let Some(table) = table_for(&el.name) else { return };
     let rank = |child: &El| -> Option<usize> {
-        child.name.strip_prefix("w:").and_then(|local| table.iter().position(|known| known.split('|').any(|name| name == local)))
+        child.name.strip_prefix("w:").and_then(|local| {
+            table.iter().position(|known| known.split('|').any(|name| name == local))
+        })
     };
     // A child the table does not name sorts just after whatever named child came before it.
     let mut last = 0usize;

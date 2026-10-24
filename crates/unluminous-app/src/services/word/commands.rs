@@ -34,7 +34,9 @@ fn words(arguments: &[String]) -> Vec<String> {
 
 fn points(text: Option<&String>) -> Result<f32, String> {
     let text = text.ok_or("a number of points is needed")?;
-    text.trim_end_matches("pt").parse::<f32>().map_err(|_| format!("{text} is not a number of points"))
+    text.trim_end_matches("pt")
+        .parse::<f32>()
+        .map_err(|_| format!("{text} is not a number of points"))
 }
 
 fn on(text: Option<&String>) -> Option<bool> {
@@ -49,7 +51,10 @@ fn on(text: Option<&String>) -> Option<bool> {
 fn paragraph_path(doc: &Doc, n: usize) -> Result<Vec<u32>, String> {
     let all = position::paragraphs(&doc.session.document.body);
     let count = all.len();
-    all.into_iter().nth(n.saturating_sub(1)).map(|(path, _)| path).ok_or_else(|| format!("there is no paragraph {n}: the document has {count}"))
+    all.into_iter()
+        .nth(n.saturating_sub(1))
+        .map(|(path, _)| path)
+        .ok_or_else(|| format!("there is no paragraph {n}: the document has {count}"))
 }
 
 /// Run one command.
@@ -78,7 +83,8 @@ pub fn run(word: &mut Word, command: &str, arguments: &[String]) -> Result<Answe
                 return Err(format!("{} is not a file", path.display()));
             }
             word.outbox.push(Request::OpenFile(path.clone()));
-            return Ok(Answer::said(format!("Opening {}", path.display())).with(json!({ "key": super::tab_key(&path) })));
+            return Ok(Answer::said(format!("Opening {}", path.display()))
+                .with(json!({ "key": super::tab_key(&path) })));
         }
         "docs" => {
             let docs: Vec<serde_json::Value> = word
@@ -90,7 +96,15 @@ pub fn run(word: &mut Word, command: &str, arguments: &[String]) -> Result<Answe
         }
         "use" => {
             let wanted = rest(arguments, 0);
-            let found = word.docs.iter().find(|d| d.key == wanted || d.key == format!("word:{wanted}") || d.path.as_ref().is_some_and(|p| p.ends_with(&wanted))).map(|d| d.key.clone());
+            let found = word
+                .docs
+                .iter()
+                .find(|d| {
+                    d.key == wanted
+                        || d.key == format!("word:{wanted}")
+                        || d.path.as_ref().is_some_and(|p| p.ends_with(&wanted))
+                })
+                .map(|d| d.key.clone());
             let key = found.ok_or_else(|| format!("no open document is {wanted}"))?;
             word.current = Some(key.clone());
             return Ok(Answer::said(format!("Using {key}")));
@@ -108,7 +122,9 @@ pub fn run(word: &mut Word, command: &str, arguments: &[String]) -> Result<Answe
                 let label = word.doc(&key)?.label();
                 word.outbox.push(Request::RenameTab { key, label });
             }
-            return Ok(Answer::said(format!("Saved {}", saved.display())).with(json!({ "path": saved })));
+            return Ok(
+                Answer::said(format!("Saved {}", saved.display())).with(json!({ "path": saved }))
+            );
         }
         _ => {}
     }
@@ -123,8 +139,17 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
         "read" => {
             let numbers: Vec<usize> = arguments.iter().filter_map(|a| a.parse().ok()).collect();
             let from = numbers.first().copied().unwrap_or(1);
-            let to = numbers.get(1).copied().unwrap_or(if numbers.is_empty() { usize::MAX } else { from });
-            let paragraphs = unluminous_word::export::paragraphs_value(&session.document, from, to, flag(arguments, "--runs"));
+            let to = numbers.get(1).copied().unwrap_or(if numbers.is_empty() {
+                usize::MAX
+            } else {
+                from
+            });
+            let paragraphs = unluminous_word::export::paragraphs_value(
+                &session.document,
+                from,
+                to,
+                flag(arguments, "--runs"),
+            );
             Ok(Answer::said(format!("{} paragraphs", paragraphs.len())).with(json!(paragraphs)))
         }
         "text" => {
@@ -209,7 +234,9 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
         }
         "replace" => {
             let plain = words(arguments);
-            let split = plain.iter().position(|a| a == "--").ok_or("replace takes the text to find, then --, then the text to put in its place")?;
+            let split = plain.iter().position(|a| a == "--").ok_or(
+                "replace takes the text to find, then --, then the text to put in its place",
+            )?;
             let needle = plain[..split].join(" ");
             let with = unescape(&plain[split + 1..].join(" "));
             let (case, whole) = (flag(arguments, "--case"), flag(arguments, "--word"));
@@ -233,7 +260,11 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
             if arguments.first().map(String::as_str) == Some("list") {
                 let kind = arguments.get(1).map_or("paragraph", String::as_str);
                 let resolver = unluminous_word::styles::Resolver::new(&session.document);
-                let styles: Vec<serde_json::Value> = resolver.listed(kind).into_iter().map(|(id, name)| json!({ "id": id, "name": name })).collect();
+                let styles: Vec<serde_json::Value> = resolver
+                    .listed(kind)
+                    .into_iter()
+                    .map(|(id, name)| json!({ "id": id, "name": name }))
+                    .collect();
                 return Ok(Answer::said(format!("{} styles", styles.len())).with(json!(styles)));
             }
             let wanted = rest(arguments, 0);
@@ -255,8 +286,14 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                 Some("shallower" | "promote" | "outdent") => {
                     session.change_list_level(false);
                 }
-                Some("restart") => session.restart_list(arguments.get(1).and_then(|n| n.parse().ok()).unwrap_or(1)),
-                other => return Err(format!("list takes bullet, number, deeper, shallower or restart, not {other:?}")),
+                Some("restart") => {
+                    session.restart_list(arguments.get(1).and_then(|n| n.parse().ok()).unwrap_or(1))
+                }
+                other => {
+                    return Err(format!(
+                        "list takes bullet, number, deeper, shallower or restart, not {other:?}"
+                    ))
+                }
             }
             Ok(Answer::said("Done"))
         }
@@ -271,15 +308,29 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                     let accept = arguments[0] == "accept";
                     let all = arguments.get(1).is_some_and(|a| a == "all");
                     let count = session.resolve_revisions(accept, all);
-                    return Ok(Answer::said(format!("{count} changes {}", if accept { "accepted" } else { "rejected" })).with(json!({ "count": count })));
+                    return Ok(Answer::said(format!(
+                        "{count} changes {}",
+                        if accept { "accepted" } else { "rejected" }
+                    ))
+                    .with(json!({ "count": count })));
                 }
                 Some("list") | None => {
                     let changes = revisions(&session.document);
-                    return Ok(Answer::said(format!("{} tracked changes; Track Changes is {}", changes.len(), if session.tracking { "on" } else { "off" })).with(json!({ "tracking": session.tracking, "changes": changes })));
+                    return Ok(Answer::said(format!(
+                        "{} tracked changes; Track Changes is {}",
+                        changes.len(),
+                        if session.tracking { "on" } else { "off" }
+                    ))
+                    .with(json!({ "tracking": session.tracking, "changes": changes })));
                 }
-                Some(other) => return Err(format!("track takes on, off, list, accept or reject, not {other}")),
+                Some(other) => {
+                    return Err(format!("track takes on, off, list, accept or reject, not {other}"))
+                }
             }
-            Ok(Answer::said(format!("Track Changes is {}", if session.tracking { "on" } else { "off" })))
+            Ok(Answer::said(format!(
+                "Track Changes is {}",
+                if session.tracking { "on" } else { "off" }
+            )))
         }
         "fields" => {
             doc.ensure_pages();
@@ -290,13 +341,20 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
         "undo" => Ok(Answer::said(if session.undo() { "Undone" } else { "Nothing to undo" })),
         "redo" => Ok(Answer::said(if session.redo() { "Redone" } else { "Nothing to redo" })),
         "export" => {
-            let kind = arguments.first().map(String::as_str).ok_or("export takes pdf, html, md or txt")?;
+            let kind =
+                arguments.first().map(String::as_str).ok_or("export takes pdf, html, md or txt")?;
             let to = arguments.get(1).map(PathBuf::from);
             let said = export_to(doc, kind, to.as_deref())?;
             Ok(Answer::said(said))
         }
         "properties" => {
-            let names = [("title", "dc:title"), ("subject", "dc:subject"), ("author", "dc:creator"), ("keywords", "cp:keywords"), ("description", "dc:description")];
+            let names = [
+                ("title", "dc:title"),
+                ("subject", "dc:subject"),
+                ("author", "dc:creator"),
+                ("keywords", "cp:keywords"),
+                ("description", "dc:description"),
+            ];
             if let (Some(name), true) = (arguments.first(), arguments.len() > 1) {
                 let el = names.iter().find(|(n, _)| n == name).map(|(_, el)| *el).ok_or_else(|| format!("{name} is not a property: title, subject, author, keywords or description"))?;
                 let value = rest(arguments, 1);
@@ -305,17 +363,26 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                 session.modified = true;
                 return Ok(Answer::said(format!("{name} is {value}")));
             }
-            let values: serde_json::Map<String, serde_json::Value> = names.iter().map(|(n, el)| (n.to_string(), json!(unluminous_word::new::property(&session.document, el)))).collect();
+            let values: serde_json::Map<String, serde_json::Value> = names
+                .iter()
+                .map(|(n, el)| {
+                    (n.to_string(), json!(unluminous_word::new::property(&session.document, el)))
+                })
+                .collect();
             Ok(Answer::said("Properties").with(serde_json::Value::Object(values)))
         }
         "view" => {
             match arguments.first().map(String::as_str) {
-                Some("zoom") => doc.view.zoom = (points(arguments.get(1))? / 100.0).clamp(0.25, 5.0),
+                Some("zoom") => {
+                    doc.view.zoom = (points(arguments.get(1))? / 100.0).clamp(0.25, 5.0)
+                }
                 Some("marks") => {
                     doc.view.marks = on(arguments.get(1)).unwrap_or(!doc.view.marks);
                     doc.laid = 0;
                 }
-                Some("navigation") => doc.view.navigation = on(arguments.get(1)).unwrap_or(!doc.view.navigation),
+                Some("navigation") => {
+                    doc.view.navigation = on(arguments.get(1)).unwrap_or(!doc.view.navigation)
+                }
                 _ => {}
             }
             Ok(Answer::said("View").with(json!({ "zoom": doc.view.zoom, "marks": doc.view.marks, "navigation": doc.view.navigation })))
@@ -324,28 +391,50 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
             match arguments.first().map(String::as_str) {
                 Some("close") | None => doc.view.panel.clear(),
                 Some(name) => {
-                    let level = Level::parse(name).ok_or_else(|| format!("{name} is not a level: {}", Level::ALL.iter().map(|l| l.name().to_lowercase()).collect::<Vec<_>>().join(", ")))?;
-                    doc.view.panel = if level == Level::Root { vec![Level::Root] } else { vec![Level::Root, level] };
+                    let level = Level::parse(name).ok_or_else(|| {
+                        format!(
+                            "{name} is not a level: {}",
+                            Level::ALL
+                                .iter()
+                                .map(|l| l.name().to_lowercase())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
+                    })?;
+                    doc.view.panel = if level == Level::Root {
+                        vec![Level::Root]
+                    } else {
+                        vec![Level::Root, level]
+                    };
                 }
             }
-            Ok(Answer::said("Panel").with(json!({ "panel": doc.view.panel.iter().map(|l| l.name()).collect::<Vec<_>>() })))
+            Ok(Answer::said("Panel").with(
+                json!({ "panel": doc.view.panel.iter().map(|l| l.name()).collect::<Vec<_>>() }),
+            ))
         }
-        "action" => {
-            match arguments.first().map(String::as_str) {
-                Some("list") | None => {
-                    let all: Vec<serde_json::Value> = actions::ACTIONS.iter().map(|a| json!({ "id": a.id, "label": a.label, "level": a.level.name() })).collect();
-                    Ok(Answer::said(format!("{} actions", all.len())).with(json!(all)))
-                }
-                Some(id) => {
-                    let action = actions::find(id).ok_or_else(|| format!("there is no action `{id}`: `action list` names them all"))?;
-                    let said = (action.run)(doc)?;
-                    Ok(Answer::said(if said.is_empty() { action.label.to_owned() } else { said }))
-                }
+        "action" => match arguments.first().map(String::as_str) {
+            Some("list") | None => {
+                let all: Vec<serde_json::Value> = actions::ACTIONS
+                    .iter()
+                    .map(|a| json!({ "id": a.id, "label": a.label, "level": a.level.name() }))
+                    .collect();
+                Ok(Answer::said(format!("{} actions", all.len())).with(json!(all)))
             }
-        }
+            Some(id) => {
+                let action = actions::find(id).ok_or_else(|| {
+                    format!("there is no action `{id}`: `action list` names them all")
+                })?;
+                let said = (action.run)(doc)?;
+                Ok(Answer::said(if said.is_empty() { action.label.to_owned() } else { said }))
+            }
+        },
         other => Err(format!(
             "there is no `{other}` command on `word`: {}",
-            unluminous_cli::plugins::WORD.iter().map(|(name, _)| *name).collect::<Vec<_>>().join(", ")
+            unluminous_cli::plugins::WORD
+                .iter()
+                .map(|(name, _)| *name)
+                .collect::<Vec<_>>()
+                .join(", ")
         )),
     }
 }
@@ -355,19 +444,33 @@ fn select(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
         Some("all") => doc.session.select_all(),
         Some("text") => {
             let needle = rest(arguments, 1);
-            let first = doc.session.find(&needle, false, false).into_iter().next().ok_or_else(|| format!("{needle} is not in the document"))?;
+            let first = doc
+                .session
+                .find(&needle, false, false)
+                .into_iter()
+                .next()
+                .ok_or_else(|| format!("{needle} is not in the document"))?;
             doc.session.selection = first;
         }
         _ => {
-            let numbers: Vec<usize> = arguments.iter().map(|a| a.parse::<usize>().map_err(|_| format!("{a} is not a number"))).collect::<Result<_, _>>()?;
-            let paragraph = numbers.first().copied().ok_or("select takes a paragraph number, `all`, or `text <words>`")?;
+            let numbers: Vec<usize> = arguments
+                .iter()
+                .map(|a| a.parse::<usize>().map_err(|_| format!("{a} is not a number")))
+                .collect::<Result<_, _>>()?;
+            let paragraph = numbers
+                .first()
+                .copied()
+                .ok_or("select takes a paragraph number, `all`, or `text <words>`")?;
             let path = paragraph_path(doc, paragraph)?;
-            let len = position::paragraph(&doc.session.document, &StoryId::Body, &path).map_or(0, |p| p.len());
+            let len = position::paragraph(&doc.session.document, &StoryId::Body, &path)
+                .map_or(0, |p| p.len());
             let anchor = Pos::new(path.clone(), numbers.get(1).copied().unwrap_or(0).min(len));
             let head = match numbers.get(2) {
                 Some(to) => {
                     let to_path = paragraph_path(doc, *to)?;
-                    let to_len = position::paragraph(&doc.session.document, &StoryId::Body, &to_path).map_or(0, |p| p.len());
+                    let to_len =
+                        position::paragraph(&doc.session.document, &StoryId::Body, &to_path)
+                            .map_or(0, |p| p.len());
                     Pos::new(to_path, numbers.get(3).copied().unwrap_or(to_len).min(to_len))
                 }
                 // One number and an offset puts the caret; one number alone selects the whole paragraph.
@@ -434,7 +537,15 @@ fn insert(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
 fn format(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
     let what = arguments.first().map(String::as_str).ok_or("format takes a property")?;
     let session = &mut doc.session;
-    let toggles = [("bold", "w:b"), ("italic", "w:i"), ("strike", "w:strike"), ("double-strike", "w:dstrike"), ("small-caps", "w:smallCaps"), ("caps", "w:caps"), ("hidden", "w:vanish")];
+    let toggles = [
+        ("bold", "w:b"),
+        ("italic", "w:i"),
+        ("strike", "w:strike"),
+        ("double-strike", "w:dstrike"),
+        ("small-caps", "w:smallCaps"),
+        ("caps", "w:caps"),
+        ("hidden", "w:vanish"),
+    ];
     if let Some((_, element)) = toggles.iter().find(|(name, _)| *name == what) {
         match on(arguments.get(1)) {
             Some(value) => {
@@ -458,12 +569,20 @@ fn format(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
         "superscript" | "subscript" => {
             let off = on(arguments.get(1)) == Some(false);
             let what = what.to_owned();
-            session.format(move |rpr| props::set_val(rpr, "w:vertAlign", (!off).then_some(what.as_str())));
+            session.format(move |rpr| {
+                props::set_val(rpr, "w:vertAlign", (!off).then_some(what.as_str()))
+            });
         }
         "font" => {
             let name = rest(arguments, 1);
             session.format(move |rpr| {
-                rpr.put(unluminous_word::xml::El::new("w:rFonts").with("w:ascii", name.clone()).with("w:hAnsi", name.clone()).with("w:cs", name.clone()).with("w:eastAsia", name.clone()));
+                rpr.put(
+                    unluminous_word::xml::El::new("w:rFonts")
+                        .with("w:ascii", name.clone())
+                        .with("w:hAnsi", name.clone())
+                        .with("w:cs", name.clone())
+                        .with("w:eastAsia", name.clone()),
+                );
             });
         }
         "size" => {
@@ -485,13 +604,20 @@ fn format(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
         "highlight" => {
             let name = value.clone();
             if name != "none" && props::highlight_colour(&name).is_none() {
-                return Err(format!("{name} is not one of Word's highlight colours: {}", props::HIGHLIGHTS.iter().map(|h| h.0).collect::<Vec<_>>().join(", ")));
+                return Err(format!(
+                    "{name} is not one of Word's highlight colours: {}",
+                    props::HIGHLIGHTS.iter().map(|h| h.0).collect::<Vec<_>>().join(", ")
+                ));
             }
-            session.format(move |rpr| props::set_val(rpr, "w:highlight", (name != "none").then_some(name.as_str())));
+            session.format(move |rpr| {
+                props::set_val(rpr, "w:highlight", (name != "none").then_some(name.as_str()))
+            });
         }
         "spacing" => {
             let pts = points(arguments.get(1))?;
-            session.format(move |rpr| props::set_val(rpr, "w:spacing", Some(&((pts * 20.0).round() as i64).to_string())));
+            session.format(move |rpr| {
+                props::set_val(rpr, "w:spacing", Some(&((pts * 20.0).round() as i64).to_string()))
+            });
         }
         "clear" => session.clear_formatting(),
         other => return Err(format!("format does not know `{other}`")),
@@ -510,7 +636,11 @@ fn paragraph(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
                 Some("center" | "centre") => "center",
                 Some("right") => "right",
                 Some("justify" | "both") => "both",
-                other => return Err(format!("align takes left, center, right or justify, not {other:?}")),
+                other => {
+                    return Err(format!(
+                        "align takes left, center, right or justify, not {other:?}"
+                    ))
+                }
             };
             session.format_paragraphs(move |ppr| props::set_val(ppr, "w:jc", Some(value)));
         }
@@ -539,15 +669,31 @@ fn paragraph(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
             session.format_paragraphs(move |ppr| {
                 let spacing = ppr.child_or_insert("w:spacing");
                 spacing.set_attr(attr, value.clone());
-                spacing.remove_attr(if what_is_before(attr) { "w:beforeAutospacing" } else { "w:afterAutospacing" });
+                spacing.remove_attr(if what_is_before(attr) {
+                    "w:beforeAutospacing"
+                } else {
+                    "w:afterAutospacing"
+                });
             });
         }
         "line" => {
             let (line, rule) = match arguments.get(1).map(String::as_str) {
                 Some("exact" | "exactly") => (twips(points(arguments.get(2))?), "exact"),
                 Some("at-least" | "atleast") => (twips(points(arguments.get(2))?), "atLeast"),
-                Some(multiple) => (((multiple.parse::<f32>().map_err(|_| format!("{multiple} is not a multiple"))? * 240.0).round() as i64).to_string(), "auto"),
-                None => return Err("line takes a multiple such as 1.5, or exact or at-least and points".into()),
+                Some(multiple) => (
+                    ((multiple
+                        .parse::<f32>()
+                        .map_err(|_| format!("{multiple} is not a multiple"))?
+                        * 240.0)
+                        .round() as i64)
+                        .to_string(),
+                    "auto",
+                ),
+                None => {
+                    return Err(
+                        "line takes a multiple such as 1.5, or exact or at-least and points".into(),
+                    )
+                }
             };
             session.format_paragraphs(move |ppr| {
                 let spacing = ppr.child_or_insert("w:spacing");
@@ -568,7 +714,12 @@ fn paragraph(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
         "shading" => {
             let fill = arguments.get(1).cloned().unwrap_or_default();
             session.format_paragraphs(move |ppr| match props::Rgb::parse(&fill) {
-                Some(rgb) => ppr.put(unluminous_word::xml::El::new("w:shd").with("w:val", "clear").with("w:color", "auto").with("w:fill", rgb.hex())),
+                Some(rgb) => ppr.put(
+                    unluminous_word::xml::El::new("w:shd")
+                        .with("w:val", "clear")
+                        .with("w:color", "auto")
+                        .with("w:fill", rgb.hex()),
+                ),
                 None => ppr.remove_children("w:shd"),
             });
         }
@@ -588,9 +739,16 @@ fn table(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
         "width" => session.set_column_width(points(arguments.get(1))?)?,
         "shade" => session.shade_cell(arguments.get(1).and_then(|c| props::Rgb::parse(c)))?,
         "cell" => {
-            let (table_path, _, _) = session.cell_at_caret().ok_or("the caret is not in a table")?;
-            let row: u32 = arguments.get(1).and_then(|r| r.parse().ok()).ok_or("table cell takes a row and a column, from 1")?;
-            let column: u32 = arguments.get(2).and_then(|c| c.parse().ok()).ok_or("table cell takes a row and a column, from 1")?;
+            let (table_path, _, _) =
+                session.cell_at_caret().ok_or("the caret is not in a table")?;
+            let row: u32 = arguments
+                .get(1)
+                .and_then(|r| r.parse().ok())
+                .ok_or("table cell takes a row and a column, from 1")?;
+            let column: u32 = arguments
+                .get(2)
+                .and_then(|c| c.parse().ok())
+                .ok_or("table cell takes a row and a column, from 1")?;
             let mut path = table_path;
             path.extend([row.saturating_sub(1), column.saturating_sub(1), 0]);
             if position::paragraph(&session.document, &StoryId::Body, &path).is_none() {
@@ -608,19 +766,33 @@ fn section(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
     let session = &mut doc.session;
     match what {
         "size" => session.set_page_size(arguments.get(1).ok_or("section size takes a size")?)?,
-        "orientation" => session.set_orientation(arguments.get(1).is_some_and(|o| o == "landscape")),
+        "orientation" => {
+            session.set_orientation(arguments.get(1).is_some_and(|o| o == "landscape"))
+        }
         "margins" => {
             let margins = match arguments.get(1).map(String::as_str) {
-                Some(name) if unluminous_word::ops::MARGINS.iter().any(|(n, _)| *n == name) => unluminous_word::ops::MARGINS.iter().find(|(n, _)| *n == name).expect("found").1,
+                Some(name) if unluminous_word::ops::MARGINS.iter().any(|(n, _)| *n == name) => {
+                    unluminous_word::ops::MARGINS.iter().find(|(n, _)| *n == name).expect("found").1
+                }
                 _ => {
-                    let values: Vec<f32> = arguments[1..].iter().filter_map(|v| v.trim_end_matches("pt").parse().ok()).collect();
-                    let [top, bottom, left, right] = values[..] else { return Err("margins takes a preset (normal, narrow, moderate, wide) or four numbers of points: top bottom left right".into()) };
+                    let values: Vec<f32> = arguments[1..]
+                        .iter()
+                        .filter_map(|v| v.trim_end_matches("pt").parse().ok())
+                        .collect();
+                    let [top, bottom, left, right] = values[..] else {
+                        return Err("margins takes a preset (normal, narrow, moderate, wide) or four numbers of points: top bottom left right".into());
+                    };
                     [top, bottom, left, right]
                 }
             };
             session.set_margins(margins);
         }
-        "columns" => session.set_columns(arguments.get(1).and_then(|n| n.parse().ok()).ok_or("section columns takes a number")?),
+        "columns" => session.set_columns(
+            arguments
+                .get(1)
+                .and_then(|n| n.parse().ok())
+                .ok_or("section columns takes a number")?,
+        ),
         "header" | "footer" | "header-first" | "footer-first" | "header-even" | "footer-even" => {
             let footer = what.starts_with("footer");
             let which = what.split_once('-').map_or("default", |(_, w)| w);
@@ -635,7 +807,12 @@ fn section(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
 fn comment(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
     let what = arguments.first().map(String::as_str).unwrap_or("list");
     let session = &mut doc.session;
-    let id = || arguments.get(1).and_then(|i| i.parse::<i64>().ok()).ok_or("a comment id is needed: comment list shows them");
+    let id = || {
+        arguments
+            .get(1)
+            .and_then(|i| i.parse::<i64>().ok())
+            .ok_or("a comment id is needed: comment list shows them")
+    };
     match what {
         "add" => {
             let made = session.add_comment(&rest(arguments, 1));
@@ -661,7 +838,9 @@ fn comment(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
             let comments = session.comments();
             Ok(Answer::said(format!("{} comments", comments.len())).with(json!(comments)))
         }
-        other => Err(format!("comment takes add, reply, resolve, reopen, delete or list, not {other}")),
+        other => {
+            Err(format!("comment takes add, reply, resolve, reopen, delete or list, not {other}"))
+        }
     }
 }
 
@@ -671,7 +850,9 @@ fn revisions(document: &unluminous_word::Document) -> Vec<serde_json::Value> {
     for (index, (_, p)) in position::paragraphs(&document.body).into_iter().enumerate() {
         let mut current: Option<(u64, &str, String, String)> = None;
         for run in &p.runs {
-            let wrap = run.wraps.iter().find(|w| matches!(w.el.name.as_str(), "w:ins" | "w:del" | "w:moveFrom" | "w:moveTo"));
+            let wrap = run.wraps.iter().find(|w| {
+                matches!(w.el.name.as_str(), "w:ins" | "w:del" | "w:moveFrom" | "w:moveTo")
+            });
             let text = match &run.content {
                 unluminous_word::model::Content::Text(t) => t.clone(),
                 _ => String::new(),
@@ -682,8 +863,17 @@ fn revisions(document: &unluminous_word::Document) -> Vec<serde_json::Value> {
                     if let Some((_, kind, author, text)) = current.take() {
                         out.push(json!({ "paragraph": index + 1, "kind": kind, "author": author, "text": text }));
                     }
-                    let kind = if matches!(w.el.name.as_str(), "w:ins" | "w:moveTo") { "insertion" } else { "deletion" };
-                    current = Some((w.id, kind, w.el.attr("w:author").unwrap_or_default().to_owned(), text.clone()));
+                    let kind = if matches!(w.el.name.as_str(), "w:ins" | "w:moveTo") {
+                        "insertion"
+                    } else {
+                        "deletion"
+                    };
+                    current = Some((
+                        w.id,
+                        kind,
+                        w.el.attr("w:author").unwrap_or_default().to_owned(),
+                        text.clone(),
+                    ));
                 }
                 (None, _) => {
                     if let Some((_, kind, author, text)) = current.take() {
@@ -696,43 +886,70 @@ fn revisions(document: &unluminous_word::Document) -> Vec<serde_json::Value> {
             }
         }
         if let Some((_, kind, author, text)) = current.take() {
-            out.push(json!({ "paragraph": index + 1, "kind": kind, "author": author, "text": text }));
+            out.push(
+                json!({ "paragraph": index + 1, "kind": kind, "author": author, "text": text }),
+            );
         }
     }
     out
 }
 
 /// Insert a picture from a file at the caret, at its own size or `width` points wide.
-pub fn insert_picture_file(doc: &mut Doc, path: &Path, width: Option<f32>) -> Result<String, String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("{} could not be read: {e}", path.display()))?;
-    let (w, h) = crate::services::picture::dimensions_of(&bytes).ok_or_else(|| format!("{} is not a picture Unluminous can read", path.display()))?;
+pub fn insert_picture_file(
+    doc: &mut Doc,
+    path: &Path,
+    width: Option<f32>,
+) -> Result<String, String> {
+    let bytes =
+        std::fs::read(path).map_err(|e| format!("{} could not be read: {e}", path.display()))?;
+    let (w, h) = crate::services::picture::dimensions_of(&bytes)
+        .ok_or_else(|| format!("{} is not a picture Unluminous can read", path.display()))?;
     let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("png").to_lowercase();
     // Pixels at 96 to the inch, which is the size Word gives a picture with no resolution of its own, and no
     // wider than the text.
-    let text_width = doc.session.section_at_caret().map_or(468.0, |s| unluminous_word::layout::section::Geometry::of(&s).text_width());
+    let text_width = doc
+        .session
+        .section_at_caret()
+        .map_or(468.0, |s| unluminous_word::layout::section::Geometry::of(&s).text_width());
     let natural = (w * 0.75, h * 0.75);
     let width = width.unwrap_or(natural.0).min(text_width).max(1.0);
     let height = width * natural.1 / natural.0.max(1.0);
-    unluminous_word::media::insert_picture(&mut doc.session, &bytes, &extension, width, height, path.file_name().and_then(|n| n.to_str()).unwrap_or("Picture"))?;
+    unluminous_word::media::insert_picture(
+        &mut doc.session,
+        &bytes,
+        &extension,
+        width,
+        height,
+        path.file_name().and_then(|n| n.to_str()).unwrap_or("Picture"),
+    )?;
     Ok(format!("Inserted {}", path.display()))
 }
 
 /// Export the document, beside itself or to `to`.
 pub fn export_to(doc: &mut Doc, kind: &str, to: Option<&Path>) -> Result<String, String> {
-    let path = to.map(Path::to_path_buf).or_else(|| Word::export_path(doc, kind)).ok_or("the document has not been saved, so give the export a path")?;
+    let path = to
+        .map(Path::to_path_buf)
+        .or_else(|| Word::export_path(doc, kind))
+        .ok_or("the document has not been saved, so give the export a path")?;
     let bytes: Vec<u8> = match kind {
         "txt" | "text" => unluminous_word::export::to_text(&doc.session.document).into_bytes(),
-        "md" | "markdown" => unluminous_word::export::to_markdown(&doc.session.document).into_bytes(),
+        "md" | "markdown" => {
+            unluminous_word::export::to_markdown(&doc.session.document).into_bytes()
+        }
         "html" => unluminous_word::export::to_html(&doc.session.document).into_bytes(),
         "pdf" => {
             doc.ensure_pages();
-            let title = unluminous_word::new::property(&doc.session.document, "dc:title").unwrap_or_else(|| doc.label());
+            let title = unluminous_word::new::property(&doc.session.document, "dc:title")
+                .unwrap_or_else(|| doc.label());
             let document = &doc.session.document;
-            unluminous_word::pdf::write(&doc.pages, &title, &|style| pdf_face(style), &|part| pdf_picture(document, part))
+            unluminous_word::pdf::write(&doc.pages, &title, &|style| pdf_face(style), &|part| {
+                pdf_picture(document, part)
+            })
         }
         other => return Err(format!("{other} is not a format: pdf, html, md or txt")),
     };
-    crate::services::store::write_atomically(&path, &bytes).map_err(|e| format!("{} could not be written: {e}", path.display()))?;
+    crate::services::store::write_atomically(&path, &bytes)
+        .map_err(|e| format!("{} could not be written: {e}", path.display()))?;
     Ok(format!("Exported {}", path.display()))
 }
 
@@ -764,7 +981,10 @@ fn pdf_face(style: &unluminous_core::CharStyle) -> Option<unluminous_word::pdf::
 }
 
 /// A picture's pixels for a PDF: a JPEG as it is, anything else decoded to RGB.
-fn pdf_picture(document: &unluminous_word::Document, part: &str) -> Option<unluminous_word::pdf::Picture> {
+fn pdf_picture(
+    document: &unluminous_word::Document,
+    part: &str,
+) -> Option<unluminous_word::pdf::Picture> {
     let bytes = document.package.part(part)?;
     let image = crate::services::picture::decode_bytes(bytes).ok()?;
     let (width, height) = (image.size[0] as u32, image.size[1] as u32);
@@ -792,6 +1012,10 @@ pub fn view(word: &Word) -> serde_json::Value {
         "current": current.map(|d| json!({
             "key": d.key,
             "pages": d.pages.pages.len(),
+            "laidOutWith": d.formatted_text,
+            "drawn": d.drawn,
+            "keyboard": d.keyboard.0,
+            "fieldHasTheKeyboard": d.keyboard.1,
             "zoom": d.view.zoom,
             "panel": d.view.panel.iter().map(|l| l.name()).collect::<Vec<_>>(),
             "slash": d.view.slash.as_ref().map(|(_, q, _)| q.clone()),

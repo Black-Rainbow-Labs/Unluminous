@@ -6644,6 +6644,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tracing-core",
+ "ttf-parser",
  "unicode-segmentation",
  "unluminous-chat",
  "unluminous-cli",

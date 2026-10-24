@@ -6,11 +6,21 @@ use unluminous_word::position::Pos;
 use crate::services::plugin_ui::{Look, Request};
 use crate::services::word::Doc;
 
-pub fn show(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, rect: Rect, requests: &mut Vec<Request>) {
+pub fn show(
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    doc: &mut Doc,
+    rect: Rect,
+    requests: &mut Vec<Request>,
+) {
     let _ = requests;
     ui.painter().rect_filled(rect, 0.0, look.ground(look.palette.panel));
-    ui.painter().line_segment([rect.right_top(), rect.right_bottom()], Stroke::new(1.0, look.palette.divider));
-    let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(Vec2::new(10.0, 10.0))));
+    ui.painter().line_segment(
+        [rect.right_top(), rect.right_bottom()],
+        Stroke::new(1.0, look.palette.divider),
+    );
+    let mut inner =
+        ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(Vec2::new(10.0, 10.0))));
     inner.set_clip_rect(rect);
     inner.label(RichText::new("Navigation").strong());
     inner.add_space(4.0);

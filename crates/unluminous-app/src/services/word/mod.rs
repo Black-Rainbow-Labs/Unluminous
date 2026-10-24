@@ -9,6 +9,8 @@
 pub mod actions;
 pub mod commands;
 pub mod fonts;
+#[cfg(test)]
+mod tests;
 
 use std::path::{Path, PathBuf};
 
@@ -49,7 +51,9 @@ impl Config {
     const FILE: &'static str = "word.conf";
 
     fn read(folder: &Path) -> Config {
-        let Ok(text) = std::fs::read_to_string(folder.join(Self::FILE)) else { return Config::default() };
+        let Ok(text) = std::fs::read_to_string(folder.join(Self::FILE)) else {
+            return Config::default();
+        };
         let mut config = Config::default();
         for line in text.lines() {
             let Some((key, value)) = line.split_once('=') else { continue };
@@ -65,7 +69,8 @@ impl Config {
     }
 
     pub fn write(&self, folder: &Path) -> Result<(), String> {
-        std::fs::create_dir_all(folder).map_err(|e| format!("{} could not be made: {e}", folder.display()))?;
+        std::fs::create_dir_all(folder)
+            .map_err(|e| format!("{} could not be made: {e}", folder.display()))?;
         let text = format!(
             "# The Word plugin's settings. The author is the name on comments and tracked changes.\nauthor = {}\nzoom = {}\nmarks = {}\n",
             self.author, self.zoom, self.marks
@@ -92,8 +97,15 @@ pub enum Level {
 
 impl Level {
     pub const ALL: &'static [Level] = &[
-        Level::Text, Level::Paragraph, Level::Styles, Level::Lists, Level::Insert, Level::Page,
-        Level::References, Level::Review, Level::Document,
+        Level::Text,
+        Level::Paragraph,
+        Level::Styles,
+        Level::Lists,
+        Level::Insert,
+        Level::Page,
+        Level::References,
+        Level::Review,
+        Level::Document,
     ];
 
     pub fn name(self) -> &'static str {
@@ -112,7 +124,9 @@ impl Level {
     }
 
     pub fn parse(name: &str) -> Option<Level> {
-        std::iter::once(Level::Root).chain(Level::ALL.iter().copied()).find(|level| level.name().eq_ignore_ascii_case(name))
+        std::iter::once(Level::Root)
+            .chain(Level::ALL.iter().copied())
+            .find(|level| level.name().eq_ignore_ascii_case(name))
     }
 
     /// One line under the level's name on the root level.
@@ -208,13 +222,21 @@ pub struct Doc {
     pub view: View,
     /// The revision when it was last saved.
     pub saved: u64,
-    /// What the layout last measured the fonts with, so an agent's question about pages has an answer.
+    /// What the pages were last laid out with: `window` fonts, or `fixed` widths before the tab was first drawn.
     pub formatted_text: Option<String>,
+    /// How many frames have drawn this document's tab.
+    pub drawn: u64,
+    /// On the last frame: whether the tab held the keyboard, and whether a field of its own had it instead.
+    pub keyboard: (bool, bool),
 }
 
 impl std::fmt::Debug for Doc {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        out.debug_struct("Doc").field("key", &self.key).field("path", &self.path).field("pages", &self.pages.pages.len()).finish()
+        out.debug_struct("Doc")
+            .field("key", &self.key)
+            .field("path", &self.path)
+            .field("pages", &self.pages.pages.len())
+            .finish()
     }
 }
 
@@ -225,15 +247,25 @@ impl Doc {
             return;
         }
         let fonts = fonts::WordFonts::new(renderer);
-        self.pages = layout::lay_out(&self.session.document, &fonts, layout::Options { show_marks: self.view.marks });
+        self.pages = layout::lay_out(
+            &self.session.document,
+            &fonts,
+            layout::Options { show_marks: self.view.marks },
+        );
         self.laid = self.session.revision;
+        self.formatted_text = Some("window".into());
     }
 
     /// Lay out with fixed metrics when the window has not drawn the tab yet, so an agent still gets pages.
     pub fn ensure_pages(&mut self) {
         if self.pages.pages.is_empty() || self.laid != self.session.revision {
-            self.pages = layout::lay_out(&self.session.document, &unluminous_core::FixedMetrics { cluster_width: 5.5, ascent: 9.0, descent: 3.0 }, layout::Options::default());
+            self.pages = layout::lay_out(
+                &self.session.document,
+                &unluminous_core::FixedMetrics { cluster_width: 5.5, ascent: 9.0, descent: 3.0 },
+                layout::Options::default(),
+            );
             // Not marked laid, so the window lays it out again with its real fonts.
+            self.formatted_text = Some("fixed".into());
         }
     }
 
@@ -244,22 +276,36 @@ impl Doc {
     /// The name shown on the tab.
     pub fn label(&self) -> String {
         match &self.path {
-            Some(path) => path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned()),
+            Some(path) => path
+                .file_name()
+                .map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned()),
             None => self.key.trim_start_matches("word:").to_owned(),
         }
     }
 
     /// Write the document to its file, or to `to`.
     pub fn save(&mut self, to: Option<&Path>) -> Result<PathBuf, String> {
-        let path = to.map(Path::to_path_buf).or_else(|| self.path.clone()).ok_or("this document has never been saved, so it needs a name: use Save As")?;
+        let path = to
+            .map(Path::to_path_buf)
+            .or_else(|| self.path.clone())
+            .ok_or("this document has never been saved, so it needs a name: use Save As")?;
         let author = self.session.author.clone();
-        unluminous_word::new::set_property(&mut self.session.document, "cp:lastModifiedBy", &author);
+        unluminous_word::new::set_property(
+            &mut self.session.document,
+            "cp:lastModifiedBy",
+            &author,
+        );
         if unluminous_word::new::property(&self.session.document, "dc:creator").is_none() {
             unluminous_word::new::set_property(&mut self.session.document, "dc:creator", &author);
         }
-        unluminous_word::new::set_property(&mut self.session.document, "dcterms:modified", &unluminous_word::session::now_iso());
+        unluminous_word::new::set_property(
+            &mut self.session.document,
+            "dcterms:modified",
+            &unluminous_word::session::now_iso(),
+        );
         let bytes = unluminous_word::write::save(&self.session.document)?;
-        crate::services::store::write_atomically(&path, &bytes).map_err(|e| format!("{} could not be written: {e}", path.display()))?;
+        crate::services::store::write_atomically(&path, &bytes)
+            .map_err(|e| format!("{} could not be written: {e}", path.display()))?;
         self.path = Some(path.clone());
         self.saved = self.session.revision;
         self.session.modified = false;
@@ -295,7 +341,9 @@ impl Word {
         if let Some(index) = self.docs.iter().position(|doc| doc.key == key) {
             return Ok(&mut self.docs[index]);
         }
-        let path = PathBuf::from(key.strip_prefix("word:").ok_or_else(|| format!("{key} is not a Word tab"))?);
+        let path = PathBuf::from(
+            key.strip_prefix("word:").ok_or_else(|| format!("{key} is not a Word tab"))?,
+        );
         self.load(key, &path)?;
         Ok(self.docs.last_mut().expect("just loaded"))
     }
@@ -305,8 +353,10 @@ impl Word {
         if self.docs.iter().any(|doc| doc.key == key) {
             return Ok(());
         }
-        let bytes = std::fs::read(path).map_err(|e| format!("{} could not be read: {e}", path.display()))?;
-        let mut document = unluminous_word::read::open(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+        let bytes = std::fs::read(path)
+            .map_err(|e| format!("{} could not be read: {e}", path.display()))?;
+        let mut document =
+            unluminous_word::read::open(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
         // A template opens as a new document made from it, which is what double clicking one does.
         let template = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("dotx"));
         if template {
@@ -323,6 +373,8 @@ impl Word {
             view: View::new(&self.config),
             saved: 1,
             formatted_text: None,
+            drawn: 0,
+            keyboard: (false, false),
         });
         self.current = Some(key.to_owned());
         Ok(())
@@ -332,8 +384,16 @@ impl Word {
     pub fn new_document(&mut self, path: Option<&Path>) -> Result<String, String> {
         let mut session = Session::new(unluminous_word::new::blank());
         session.author = self.config.author.clone();
-        unluminous_word::new::set_property(&mut session.document, "dc:creator", &self.config.author);
-        unluminous_word::new::set_property(&mut session.document, "dcterms:created", &unluminous_word::session::now_iso());
+        unluminous_word::new::set_property(
+            &mut session.document,
+            "dc:creator",
+            &self.config.author,
+        );
+        unluminous_word::new::set_property(
+            &mut session.document,
+            "dcterms:created",
+            &unluminous_word::session::now_iso(),
+        );
         let key = match path {
             Some(path) => tab_key(path),
             None => {
@@ -341,7 +401,18 @@ impl Word {
                 format!("word:Untitled {}", self.untitled)
             }
         };
-        let mut doc = Doc { key: key.clone(), path: path.map(Path::to_path_buf), session, pages: Pages::default(), laid: 0, view: View::new(&self.config), saved: 0, formatted_text: None };
+        let mut doc = Doc {
+            key: key.clone(),
+            path: path.map(Path::to_path_buf),
+            session,
+            pages: Pages::default(),
+            laid: 0,
+            view: View::new(&self.config),
+            saved: 0,
+            formatted_text: None,
+            drawn: 0,
+            keyboard: (false, false),
+        };
         if path.is_some() {
             doc.save(None)?;
         }
@@ -353,7 +424,10 @@ impl Word {
 
     /// The document commands act on.
     pub fn current_doc(&mut self) -> Result<&mut Doc, String> {
-        let key = self.current.clone().or_else(|| self.docs.last().map(|d| d.key.clone())).ok_or("no Word document is open: open a .docx file, or run `plugins run word new`")?;
+        let key =
+            self.current.clone().or_else(|| self.docs.last().map(|d| d.key.clone())).ok_or(
+                "no Word document is open: open a .docx file, or run `plugins run word new`",
+            )?;
         self.doc(&key)
     }
 
@@ -407,7 +481,13 @@ impl UiProvider for Word {
         match self.doc(key) {
             Ok(doc) => crate::components::word::show(doc, &config, ui, look),
             Err(problem) => {
-                ui.painter().text(ui.max_rect().min + egui::vec2(24.0, 24.0), egui::Align2::LEFT_TOP, problem, egui::FontId::proportional(look.font_size), look.palette.text_dim);
+                ui.painter().text(
+                    ui.max_rect().min + egui::vec2(24.0, 24.0),
+                    egui::Align2::LEFT_TOP,
+                    problem,
+                    egui::FontId::proportional(look.font_size),
+                    look.palette.text_dim,
+                );
                 Vec::new()
             }
         }
@@ -422,9 +502,14 @@ impl UiProvider for Word {
         // A document with no file yet, and no name given, asks the window for one.
         if doc.path.is_none() && to.is_none() {
             let start = self.project.clone();
-            let chosen = rfd::FileDialog::new().set_title("Save Word Document").add_filter("Word document", &["docx"]).set_directory(start.unwrap_or_default()).save_file();
+            let chosen = rfd::FileDialog::new()
+                .set_title("Save Word Document")
+                .add_filter("Word document", &["docx"])
+                .set_directory(start.unwrap_or_default())
+                .save_file();
             let Some(chosen) = chosen else { return Err("not saved".to_owned()) };
-            let chosen = if chosen.extension().is_none() { chosen.with_extension("docx") } else { chosen };
+            let chosen =
+                if chosen.extension().is_none() { chosen.with_extension("docx") } else { chosen };
             let doc = self.doc(key)?;
             let saved = doc.save(Some(&chosen))?;
             let label = doc.label();

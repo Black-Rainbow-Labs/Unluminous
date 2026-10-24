@@ -85,9 +85,15 @@ pub fn story<'a>(document: &'a Document, id: &StoryId) -> Option<&'a Vec<Block>>
     Some(match id {
         StoryId::Body => &document.body,
         StoryId::Header(rid) => &document.headers.iter().find(|h| &h.id == rid)?.story.blocks,
-        StoryId::Footnote(n) => &document.footnotes.as_ref()?.notes.iter().find(|s| s.id() == Some(*n))?.blocks,
-        StoryId::Endnote(n) => &document.endnotes.as_ref()?.notes.iter().find(|s| s.id() == Some(*n))?.blocks,
-        StoryId::Comment(n) => &document.comments.as_ref()?.notes.iter().find(|s| s.id() == Some(*n))?.blocks,
+        StoryId::Footnote(n) => {
+            &document.footnotes.as_ref()?.notes.iter().find(|s| s.id() == Some(*n))?.blocks
+        }
+        StoryId::Endnote(n) => {
+            &document.endnotes.as_ref()?.notes.iter().find(|s| s.id() == Some(*n))?.blocks
+        }
+        StoryId::Comment(n) => {
+            &document.comments.as_ref()?.notes.iter().find(|s| s.id() == Some(*n))?.blocks
+        }
     })
 }
 
@@ -147,7 +153,10 @@ pub fn block_mut<'a>(blocks: &'a mut [Block], path: &[u32]) -> Option<&'a mut Bl
 }
 
 /// The list of blocks the last index of `path` indexes into, and that index.
-pub fn container_mut<'a>(blocks: &'a mut Vec<Block>, path: &[u32]) -> Option<(&'a mut Vec<Block>, usize)> {
+pub fn container_mut<'a>(
+    blocks: &'a mut Vec<Block>,
+    path: &[u32],
+) -> Option<(&'a mut Vec<Block>, usize)> {
     match path {
         [] => None,
         [only] => Some((blocks, *only as usize)),
@@ -164,11 +173,19 @@ pub fn container_mut<'a>(blocks: &'a mut Vec<Block>, path: &[u32]) -> Option<(&'
 }
 
 /// The paragraph a path names.
-pub fn paragraph<'a>(document: &'a Document, story: &StoryId, path: &[u32]) -> Option<&'a Paragraph> {
+pub fn paragraph<'a>(
+    document: &'a Document,
+    story: &StoryId,
+    path: &[u32],
+) -> Option<&'a Paragraph> {
     block(self::story(document, story)?, path)?.as_paragraph()
 }
 
-pub fn paragraph_mut<'a>(document: &'a mut Document, story: &StoryId, path: &[u32]) -> Option<&'a mut Paragraph> {
+pub fn paragraph_mut<'a>(
+    document: &'a mut Document,
+    story: &StoryId,
+    path: &[u32],
+) -> Option<&'a mut Paragraph> {
     block_mut(story_mut(document, story)?, path)?.as_paragraph_mut()
 }
 

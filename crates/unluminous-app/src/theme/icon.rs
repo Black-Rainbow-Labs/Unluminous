@@ -2040,16 +2040,25 @@ pub fn document(painter: &egui::Painter, centre: Pos2, color: Color32) {
     ];
     painter.add(egui::Shape::line(outline, stroke));
     painter.line_segment(
-        [Pos2::new(page.right() - fold, page.top()), Pos2::new(page.right() - fold, page.top() + fold)],
+        [
+            Pos2::new(page.right() - fold, page.top()),
+            Pos2::new(page.right() - fold, page.top() + fold),
+        ],
         Stroke::new(1.0, color),
     );
     painter.line_segment(
-        [Pos2::new(page.right() - fold, page.top() + fold), Pos2::new(page.right(), page.top() + fold)],
+        [
+            Pos2::new(page.right() - fold, page.top() + fold),
+            Pos2::new(page.right(), page.top() + fold),
+        ],
         Stroke::new(1.0, color),
     );
     for (row, width) in [(5.2, 6.0), (7.6, 6.0), (10.0, 3.6)] {
         let y = page.top() + row;
-        painter.line_segment([Pos2::new(page.left() + 2.0, y), Pos2::new(page.left() + 2.0 + width, y)], Stroke::new(1.0, color));
+        painter.line_segment(
+            [Pos2::new(page.left() + 2.0, y), Pos2::new(page.left() + 2.0 + width, y)],
+            Stroke::new(1.0, color),
+        );
     }
 }
 

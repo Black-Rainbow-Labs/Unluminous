@@ -36,7 +36,12 @@ struct EmbeddedFont {
 
 /// Write the pages as a PDF. `face` answers the font file a style is drawn with, and `picture` the
 /// pixels of a package part.
-pub fn write(pages: &Pages, title: &str, face: &dyn Fn(&CharStyle) -> Option<FaceBytes>, picture: &dyn Fn(&str) -> Option<Picture>) -> Vec<u8> {
+pub fn write(
+    pages: &Pages,
+    title: &str,
+    face: &dyn Fn(&CharStyle) -> Option<FaceBytes>,
+    picture: &dyn Fn(&str) -> Option<Picture>,
+) -> Vec<u8> {
     let mut fonts: Vec<EmbeddedFont> = Vec::new();
     let mut font_of: HashMap<(String, bool, bool), usize> = HashMap::new();
     let mut images: Vec<(String, Picture)> = Vec::new();
@@ -46,12 +51,23 @@ pub fn write(pages: &Pages, title: &str, face: &dyn Fn(&CharStyle) -> Option<Fac
         let mut c = String::new();
         let h = page.height;
         if let Some(bg) = page.background {
-            let _ = writeln!(c, "{} {} {} rg 0 0 {} {} re f", f(bg.0), f(bg.1), f(bg.2), page.width, h);
+            let _ =
+                writeln!(c, "{} {} {} rg 0 0 {} {} re f", f(bg.0), f(bg.1), f(bg.2), page.width, h);
         }
         for item in &page.items {
             match item {
                 Item::Fill { rect, color } => {
-                    let _ = writeln!(c, "{} {} {} rg {:.2} {:.2} {:.2} {:.2} re f", f(color.0), f(color.1), f(color.2), rect.x, h - rect.y - rect.h, rect.w, rect.h);
+                    let _ = writeln!(
+                        c,
+                        "{} {} {} rg {:.2} {:.2} {:.2} {:.2} re f",
+                        f(color.0),
+                        f(color.1),
+                        f(color.2),
+                        rect.x,
+                        h - rect.y - rect.h,
+                        rect.w,
+                        rect.h
+                    );
                 }
                 Item::Rule { x0, y0, x1, y1, width, color, kind } => {
                     let dash = match kind {
@@ -59,10 +75,28 @@ pub fn write(pages: &Pages, title: &str, face: &dyn Fn(&CharStyle) -> Option<Fac
                         RuleKind::Dashed => "[3 2] 0 d",
                         _ => "[] 0 d",
                     };
-                    let _ = writeln!(c, "{} {} {} RG {:.2} w {dash} {:.2} {:.2} m {:.2} {:.2} l S", f(color.0), f(color.1), f(color.2), width.max(0.1), x0, h - y0, x1, h - y1);
+                    let _ = writeln!(
+                        c,
+                        "{} {} {} RG {:.2} w {dash} {:.2} {:.2} m {:.2} {:.2} l S",
+                        f(color.0),
+                        f(color.1),
+                        f(color.2),
+                        width.max(0.1),
+                        x0,
+                        h - y0,
+                        x1,
+                        h - y1
+                    );
                     if *kind == RuleKind::Double {
                         let gap = width * 2.0;
-                        let _ = writeln!(c, "{:.2} {:.2} m {:.2} {:.2} l S", x0, h - y0 - gap, x1, h - y1 - gap);
+                        let _ = writeln!(
+                            c,
+                            "{:.2} {:.2} m {:.2} {:.2} l S",
+                            x0,
+                            h - y0 - gap,
+                            x1,
+                            h - y1 - gap
+                        );
                     }
                 }
                 Item::Picture { rect, part } => {
@@ -75,30 +109,64 @@ pub fn write(pages: &Pages, title: &str, face: &dyn Fn(&CharStyle) -> Option<Fac
                         }),
                     };
                     if let Some(index) = index {
-                        let _ = writeln!(c, "q {:.2} 0 0 {:.2} {:.2} {:.2} cm /Im{index} Do Q", rect.w, rect.h, rect.x, h - rect.y - rect.h);
+                        let _ = writeln!(
+                            c,
+                            "q {:.2} 0 0 {:.2} {:.2} {:.2} cm /Im{index} Do Q",
+                            rect.w,
+                            rect.h,
+                            rect.x,
+                            h - rect.y - rect.h
+                        );
                     }
                 }
                 Item::Placeholder { rect, .. } => {
-                    let _ = writeln!(c, "0.6 0.6 0.6 RG 0.5 w [] 0 d {:.2} {:.2} {:.2} {:.2} re S", rect.x, h - rect.y - rect.h, rect.w, rect.h);
+                    let _ = writeln!(
+                        c,
+                        "0.6 0.6 0.6 RG 0.5 w [] 0 d {:.2} {:.2} {:.2} {:.2} re S",
+                        rect.x,
+                        h - rect.y - rect.h,
+                        rect.w,
+                        rect.h
+                    );
                 }
                 Item::Text(text) => {
                     let key = (text.style.family.to_string(), text.style.bold, text.style.italic);
                     let index = *font_of.entry(key).or_insert_with(|| {
                         let found = face(&text.style);
-                        let collection = found.as_ref().is_some_and(|(bytes, index)| *index > 0 || bytes.starts_with(b"ttcf"));
+                        let collection = found
+                            .as_ref()
+                            .is_some_and(|(bytes, index)| *index > 0 || bytes.starts_with(b"ttcf"));
                         let (bytes, index) = match found {
-                            Some((bytes, index)) if !collection && FontRef::try_from_slice(&bytes).is_ok() => (Some(bytes), index),
+                            Some((bytes, index))
+                                if !collection && FontRef::try_from_slice(&bytes).is_ok() =>
+                            {
+                                (Some(bytes), index)
+                            }
                             _ => (None, 0),
                         };
-                        fonts.push(EmbeddedFont { name: format!("F{}", fonts.len()), bytes, index, used: HashMap::new() });
+                        fonts.push(EmbeddedFont {
+                            name: format!("F{}", fonts.len()),
+                            bytes,
+                            index,
+                            used: HashMap::new(),
+                        });
                         fonts.len() - 1
                     });
                     let font = &mut fonts[index];
                     let color = text.style.color;
-                    let _ = write!(c, "BT /{} {:.2} Tf {} {} {} rg ", font.name, text.style.size, f(color.r), f(color.g), f(color.b));
+                    let _ = write!(
+                        c,
+                        "BT /{} {:.2} Tf {} {} {} rg ",
+                        font.name,
+                        text.style.size,
+                        f(color.r),
+                        f(color.g),
+                        f(color.b)
+                    );
                     match &font.bytes {
                         Some(bytes) => {
-                            let parsed = FontRef::try_from_slice_and_index(bytes, font.index).expect("checked above");
+                            let parsed = FontRef::try_from_slice_and_index(bytes, font.index)
+                                .expect("checked above");
                             let units = parsed.units_per_em().unwrap_or(1000.0);
                             for (character, x) in text.text.chars().zip(&text.xs) {
                                 if character.is_control() {
@@ -107,13 +175,29 @@ pub fn write(pages: &Pages, title: &str, face: &dyn Fn(&CharStyle) -> Option<Fac
                                 let glyph = parsed.glyph_id(character);
                                 let advance = parsed.h_advance_unscaled(glyph) / units * 1000.0;
                                 font.used.insert(glyph.0, (character, advance));
-                                let _ = write!(c, "1 0 0 1 {:.2} {:.2} Tm <{:04X}> Tj ", x, h - text.baseline, glyph.0);
+                                let _ = write!(
+                                    c,
+                                    "1 0 0 1 {:.2} {:.2} Tm <{:04X}> Tj ",
+                                    x,
+                                    h - text.baseline,
+                                    glyph.0
+                                );
                             }
                         }
                         None => {
                             for (character, x) in text.text.chars().zip(&text.xs) {
-                                let byte = if (character as u32) < 256 && !character.is_control() { character as u32 as u8 } else { b'?' };
-                                let _ = write!(c, "1 0 0 1 {:.2} {:.2} Tm <{:02X}> Tj ", x, h - text.baseline, byte);
+                                let byte = if (character as u32) < 256 && !character.is_control() {
+                                    character as u32 as u8
+                                } else {
+                                    b'?'
+                                };
+                                let _ = write!(
+                                    c,
+                                    "1 0 0 1 {:.2} {:.2} Tm <{:02X}> Tj ",
+                                    x,
+                                    h - text.baseline,
+                                    byte
+                                );
                             }
                         }
                     }
@@ -137,7 +221,13 @@ fn deflate(bytes: &[u8]) -> Vec<u8> {
 }
 
 /// Lay the objects out, with the cross reference table.
-fn assemble(pages: &Pages, title: &str, contents: &[String], fonts: &[EmbeddedFont], images: &[(String, Picture)]) -> Vec<u8> {
+fn assemble(
+    pages: &Pages,
+    title: &str,
+    contents: &[String],
+    fonts: &[EmbeddedFont],
+    images: &[(String, Picture)],
+) -> Vec<u8> {
     let mut out: Vec<u8> = b"%PDF-1.7\n%\xE2\xE3\xCF\xD3\n".to_vec();
     let mut offsets: Vec<usize> = Vec::new();
     // Object numbers: 1 catalog, 2 pages, 3 info, then fonts, images, page objects and contents.
@@ -147,13 +237,33 @@ fn assemble(pages: &Pages, title: &str, contents: &[String], fonts: &[EmbeddedFo
         font_ids.push(next);
         next += if font.bytes.is_some() { 5 } else { 1 };
     }
-    let image_ids: Vec<usize> = images.iter().map(|_| { next += 1; next - 1 }).collect();
-    let page_ids: Vec<usize> = pages.pages.iter().map(|_| { next += 2; next - 2 }).collect();
+    let image_ids: Vec<usize> = images
+        .iter()
+        .map(|_| {
+            next += 1;
+            next - 1
+        })
+        .collect();
+    let page_ids: Vec<usize> = pages
+        .pages
+        .iter()
+        .map(|_| {
+            next += 2;
+            next - 2
+        })
+        .collect();
     let mut objects: Vec<(usize, Vec<u8>)> = Vec::new();
     let kids: Vec<String> = page_ids.iter().map(|id| format!("{id} 0 R")).collect();
     objects.push((1, b"<< /Type /Catalog /Pages 2 0 R >>".to_vec()));
-    objects.push((2, format!("<< /Type /Pages /Kids [{}] /Count {} >>", kids.join(" "), page_ids.len()).into_bytes()));
-    objects.push((3, format!("<< /Title ({}) /Producer (Unluminous) >>", pdf_string(title)).into_bytes()));
+    objects.push((
+        2,
+        format!("<< /Type /Pages /Kids [{}] /Count {} >>", kids.join(" "), page_ids.len())
+            .into_bytes(),
+    ));
+    objects.push((
+        3,
+        format!("<< /Title ({}) /Producer (Unluminous) >>", pdf_string(title)).into_bytes(),
+    ));
     for (font, id) in fonts.iter().zip(&font_ids) {
         match &font.bytes {
             None => objects.push((*id, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>".to_vec())),
@@ -213,15 +323,26 @@ fn assemble(pages: &Pages, title: &str, contents: &[String], fonts: &[EmbeddedFo
         stream.extend(b"\nendstream");
         objects.push((*id, stream));
     }
-    let font_resources: String = fonts.iter().zip(&font_ids).map(|(font, id)| format!("/{} {id} 0 R", font.name)).collect::<Vec<_>>().join(" ");
-    let image_resources: String = image_ids.iter().enumerate().map(|(i, id)| format!("/Im{i} {id} 0 R")).collect::<Vec<_>>().join(" ");
+    let font_resources: String = fonts
+        .iter()
+        .zip(&font_ids)
+        .map(|(font, id)| format!("/{} {id} 0 R", font.name))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let image_resources: String = image_ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| format!("/Im{i} {id} 0 R"))
+        .collect::<Vec<_>>()
+        .join(" ");
     for ((page, id), content) in pages.pages.iter().zip(&page_ids).zip(contents) {
         objects.push((*id, format!(
             "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {:.2} {:.2}] /Resources << /Font << {font_resources} >> /XObject << {image_resources} >> >> /Contents {} 0 R >>",
             page.width, page.height, id + 1
         ).into_bytes()));
         let packed = deflate(content.as_bytes());
-        let mut stream = format!("<< /Length {} /Filter /FlateDecode >>\nstream\n", packed.len()).into_bytes();
+        let mut stream =
+            format!("<< /Length {} /Filter /FlateDecode >>\nstream\n", packed.len()).into_bytes();
         stream.extend(packed);
         stream.extend(b"\nendstream");
         objects.push((id + 1, stream));
@@ -239,7 +360,10 @@ fn assemble(pages: &Pages, title: &str, contents: &[String], fonts: &[EmbeddedFo
     for offset in offsets.iter().skip(1) {
         out.extend(format!("{offset:010} 00000 n \n").as_bytes());
     }
-    out.extend(format!("trailer\n<< /Size {next} /Root 1 0 R /Info 3 0 R >>\nstartxref\n{xref}\n%%EOF\n").as_bytes());
+    out.extend(
+        format!("trailer\n<< /Size {next} /Root 1 0 R /Info 3 0 R >>\nstartxref\n{xref}\n%%EOF\n")
+            .as_bytes(),
+    );
     out
 }
 
@@ -263,7 +387,11 @@ mod tests {
     fn a_document_becomes_a_pdf_with_a_page_for_each_page() {
         let mut session = crate::session::Session::new(crate::new::blank());
         session.type_text("Hello (world)\u{c}second page");
-        let pages = crate::layout::lay_out(&session.document, &unluminous_core::FixedMetrics::default(), Default::default());
+        let pages = crate::layout::lay_out(
+            &session.document,
+            &unluminous_core::FixedMetrics::default(),
+            Default::default(),
+        );
         let pdf = write(&pages, "A (title)", &|_| None, &|_| None);
         let text = String::from_utf8_lossy(&pdf);
         assert!(text.starts_with("%PDF-1.7"));
@@ -271,7 +399,8 @@ mod tests {
         assert!(text.contains("/Helvetica"));
         assert!(text.trim_end().ends_with("%%EOF"));
         // Every object the cross reference table names starts where it says.
-        let xref_at: usize = text.rsplit("startxref\n").next().unwrap().lines().next().unwrap().parse().unwrap();
+        let xref_at: usize =
+            text.rsplit("startxref\n").next().unwrap().lines().next().unwrap().parse().unwrap();
         let table = &text[xref_at..];
         for (line, id) in table.lines().skip(3).take_while(|l| l.ends_with(" n ")).zip(1..) {
             let offset: usize = line[..10].parse().unwrap();

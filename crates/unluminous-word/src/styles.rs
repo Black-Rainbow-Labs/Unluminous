@@ -27,12 +27,20 @@ pub struct Theme {
 impl Theme {
     /// Read `word/theme/theme1.xml`, or Office's own theme when the document has none.
     pub fn of(document: &Document) -> Theme {
-        let rel = document.package.rels.get(&document.main).and_then(|rels| rels.of_kind(kind::THEME).next());
+        let rel = document
+            .package
+            .rels
+            .get(&document.main)
+            .and_then(|rels| rels.of_kind(kind::THEME).next());
         let root = rel
             .map(|rel| Package::resolve(&document.main, &rel.target))
             .and_then(|name| document.package.part(&name))
             .and_then(|bytes| xml::parse_bytes(bytes).ok());
-        let mut theme = Theme { major: "Calibri Light".into(), minor: "Calibri".into(), colours: office_colours() };
+        let mut theme = Theme {
+            major: "Calibri Light".into(),
+            minor: "Calibri".into(),
+            colours: office_colours(),
+        };
         let Some(root) = root else { return theme };
         let mut visit = |el: &El| match el.name.as_str() {
             "a:majorFont" => {
@@ -89,9 +97,18 @@ impl Theme {
 /// The Office theme's colours, for a document with no theme part.
 fn office_colours() -> HashMap<String, Rgb> {
     [
-        ("dk1", "000000"), ("lt1", "FFFFFF"), ("dk2", "44546A"), ("lt2", "E7E6E6"), ("accent1", "4472C4"),
-        ("accent2", "ED7D31"), ("accent3", "A5A5A5"), ("accent4", "FFC000"), ("accent5", "5B9BD5"),
-        ("accent6", "70AD47"), ("hlink", "0563C1"), ("folHlink", "954F72"),
+        ("dk1", "000000"),
+        ("lt1", "FFFFFF"),
+        ("dk2", "44546A"),
+        ("lt2", "E7E6E6"),
+        ("accent1", "4472C4"),
+        ("accent2", "ED7D31"),
+        ("accent3", "A5A5A5"),
+        ("accent4", "FFC000"),
+        ("accent5", "5B9BD5"),
+        ("accent6", "70AD47"),
+        ("hlink", "0563C1"),
+        ("folHlink", "954F72"),
     ]
     .into_iter()
     .map(|(name, hex)| (name.to_owned(), Rgb::parse(hex).expect("a fixed colour")))
@@ -120,14 +137,17 @@ impl<'a> Resolver<'a> {
             default_table: None,
             run_defaults: None,
             paragraph_defaults: None,
-            numbering: crate::numbering::Numbering::new(document.numbering.as_ref().map(|part| &part.root))
-                .with_styles(document.styles.as_ref().map(|part| &part.root)),
+            numbering: crate::numbering::Numbering::new(
+                document.numbering.as_ref().map(|part| &part.root),
+            )
+            .with_styles(document.styles.as_ref().map(|part| &part.root)),
             theme: Theme::of(document),
         };
         let Some(root) = document.styles.as_ref().map(|part| &part.root) else { return resolver };
         if let Some(defaults) = root.child("w:docDefaults") {
             resolver.run_defaults = defaults.child("w:rPrDefault").and_then(|d| d.child("w:rPr"));
-            resolver.paragraph_defaults = defaults.child("w:pPrDefault").and_then(|d| d.child("w:pPr"));
+            resolver.paragraph_defaults =
+                defaults.child("w:pPrDefault").and_then(|d| d.child("w:pPr"));
         }
         for style in root.children_named("w:style") {
             let Some(id) = style.attr("w:styleId") else { continue };
@@ -158,7 +178,9 @@ impl<'a> Resolver<'a> {
     /// The paragraph style a `w:pPr` names, or the default one.
     pub fn paragraph_style_id(&self, ppr: &El) -> Option<&'a str> {
         match ppr.val_of("w:pStyle") {
-            Some(id) => self.styles.get_key_value(id).map(|(key, _)| *key).or(self.default_paragraph),
+            Some(id) => {
+                self.styles.get_key_value(id).map(|(key, _)| *key).or(self.default_paragraph)
+            }
             None => self.default_paragraph,
         }
     }
@@ -212,7 +234,10 @@ impl<'a> Resolver<'a> {
         }
         let num = found.0.filter(|num| *num > 0)?;
         // A list a style links to takes its level from the level that names that style.
-        let level = found.1.or_else(|| style.and_then(|style| self.numbering.level_for_style(num, style))).unwrap_or(0);
+        let level = found
+            .1
+            .or_else(|| style.and_then(|style| self.numbering.level_for_style(num, style)))
+            .unwrap_or(0);
         Some((num, level.min(8)))
     }
 
@@ -254,7 +279,9 @@ impl<'a> Resolver<'a> {
             props::apply_toggles_absolute(&mut look, defaults);
         }
         let mut levels: Vec<&El> = Vec::new();
-        if let Some(rpr) = table_style.and_then(|id| self.style(id)).and_then(|style| style.child("w:rPr")) {
+        if let Some(rpr) =
+            table_style.and_then(|id| self.style(id)).and_then(|style| style.child("w:rPr"))
+        {
             levels.push(rpr);
         }
         let paragraph_chain: Vec<&El> = self
@@ -270,7 +297,8 @@ impl<'a> Resolver<'a> {
         }
         // Toggles: each chain inherits normally inside itself, and the two chains combine by flipping.
         for name in props::TOGGLES {
-            let in_chain = |chain: &[&El]| chain.iter().rev().find_map(|el| props::on_off(el, name));
+            let in_chain =
+                |chain: &[&El]| chain.iter().rev().find_map(|el| props::on_off(el, name));
             let combined = match (in_chain(&paragraph_chain), in_chain(&character_chain)) {
                 (Some(a), Some(b)) => Some(a ^ b),
                 (a, b) => a.or(b),
@@ -291,10 +319,14 @@ impl<'a> Resolver<'a> {
             .styles
             .values()
             .filter(|style| style.attr("w:type") == Some(kind))
-            .filter(|style| props::on_off(style, "w:semiHidden") != Some(true) && props::on_off(style, "w:hidden") != Some(true))
+            .filter(|style| {
+                props::on_off(style, "w:semiHidden") != Some(true)
+                    && props::on_off(style, "w:hidden") != Some(true)
+            })
             .map(|style| {
                 let id = style.attr("w:styleId").unwrap_or_default().to_owned();
-                let priority = style.val_of("w:uiPriority").and_then(|p| p.parse().ok()).unwrap_or(99);
+                let priority =
+                    style.val_of("w:uiPriority").and_then(|p| p.parse().ok()).unwrap_or(99);
                 (priority, id.clone(), self.name_of(&id))
             })
             .collect();

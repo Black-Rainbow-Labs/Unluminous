@@ -14,24 +14,33 @@ const BUILTIN: &[u8] = include_bytes!("../templates/builtin-styles.docx");
 
 /// The styles part of the built in template.
 fn template_styles() -> El {
-    let document = crate::read::open(BUILTIN).expect("the built in styles template is a document Word wrote");
+    let document =
+        crate::read::open(BUILTIN).expect("the built in styles template is a document Word wrote");
     document.styles.expect("the template has styles").root
 }
 
 /// Make sure the style with this id is defined, copying it from Word's own definition when it is not.
 pub fn ensure_style(document: &mut Document, id: &str) -> Result<(), String> {
-    if document.styles.as_ref().is_some_and(|part| part.root.children_named("w:style").any(|s| s.attr("w:styleId") == Some(id))) {
+    if document.styles.as_ref().is_some_and(|part| {
+        part.root.children_named("w:style").any(|s| s.attr("w:styleId") == Some(id))
+    }) {
         return Ok(());
     }
     let template = template_styles();
-    let find = |id: &str| template.children_named("w:style").find(|s| s.attr("w:styleId") == Some(id)).cloned();
+    let find = |id: &str| {
+        template.children_named("w:style").find(|s| s.attr("w:styleId") == Some(id)).cloned()
+    };
     let Some(_) = find(id) else {
-        return Err(format!("there is no style `{id}` in this document or among Word's built in styles"));
+        return Err(format!(
+            "there is no style `{id}` in this document or among Word's built in styles"
+        ));
     };
     ensure_styles_part(document);
     let mut wanted = vec![id.to_owned()];
     while let Some(next) = wanted.pop() {
-        let present = document.styles.as_ref().is_some_and(|p| p.root.children_named("w:style").any(|s| s.attr("w:styleId") == Some(next.as_str())));
+        let present = document.styles.as_ref().is_some_and(|p| {
+            p.root.children_named("w:style").any(|s| s.attr("w:styleId") == Some(next.as_str()))
+        });
         if present {
             continue;
         }
@@ -56,7 +65,12 @@ fn ensure_styles_part(document: &mut Document) {
     let mut root = template_styles();
     root.children.retain(|node| !matches!(node, Node::El(el) if el.name == "w:style"));
     let name = "word/styles.xml".to_owned();
-    add_part(document, &name, kind::STYLES, "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml");
+    add_part(
+        document,
+        &name,
+        kind::STYLES,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml",
+    );
     document.styles = Some(XmlPart { name, root, dirty: true });
 }
 
@@ -72,7 +86,12 @@ fn add_part(document: &mut Document, name: &str, rel_kind: &str, content_type: &
 fn numbering(document: &mut Document) -> &mut XmlPart {
     if document.numbering.is_none() {
         let name = "word/numbering.xml".to_owned();
-        add_part(document, &name, kind::NUMBERING, "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml");
+        add_part(
+            document,
+            &name,
+            kind::NUMBERING,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml",
+        );
         let root = El::new("w:numbering").with("mc:Ignorable", "w14 w15 wp14");
         document.package.set_part(&name, Vec::new());
         document.numbering = Some(XmlPart { name, root, dirty: true });
@@ -93,11 +112,14 @@ fn level(kind: ListKind, level: u8) -> El {
     let mut lvl = El::new("w:lvl").with("w:ilvl", level.to_string());
     lvl.put(El::new("w:start").with("w:val", "1"));
     let (format, text) = match kind {
-        ListKind::Bullet => ("bullet", match level % 3 {
-            0 => "\u{F0B7}".to_owned(),
-            1 => "o".to_owned(),
-            _ => "\u{F0A7}".to_owned(),
-        }),
+        ListKind::Bullet => (
+            "bullet",
+            match level % 3 {
+                0 => "\u{F0B7}".to_owned(),
+                1 => "o".to_owned(),
+                _ => "\u{F0A7}".to_owned(),
+            },
+        ),
         ListKind::Number => (
             match level % 3 {
                 0 => "decimal",
@@ -109,15 +131,31 @@ fn level(kind: ListKind, level: u8) -> El {
     };
     lvl.put(El::new("w:numFmt").with("w:val", format));
     lvl.put(El::new("w:lvlText").with("w:val", text));
-    lvl.put(El::new("w:lvlJc").with("w:val", if kind == ListKind::Number && level % 3 == 2 { "right" } else { "left" }));
-    lvl.put(El::new("w:pPr").with_child(El::new("w:ind").with("w:left", indent.to_string()).with("w:hanging", "360")));
+    lvl.put(
+        El::new("w:lvlJc").with(
+            "w:val",
+            if kind == ListKind::Number && level % 3 == 2 { "right" } else { "left" },
+        ),
+    );
+    lvl.put(
+        El::new("w:pPr").with_child(
+            El::new("w:ind").with("w:left", indent.to_string()).with("w:hanging", "360"),
+        ),
+    );
     if kind == ListKind::Bullet {
         let font = match level % 3 {
             0 => "Symbol",
             1 => "Courier New",
             _ => "Wingdings",
         };
-        lvl.put(El::new("w:rPr").with_child(El::new("w:rFonts").with("w:ascii", font).with("w:hAnsi", font).with("w:hint", "default")));
+        lvl.put(
+            El::new("w:rPr").with_child(
+                El::new("w:rFonts")
+                    .with("w:ascii", font)
+                    .with("w:hAnsi", font)
+                    .with("w:hint", "default"),
+            ),
+        );
     }
     lvl
 }
@@ -131,20 +169,36 @@ pub fn new_list(document: &mut Document, kind: ListKind) -> i64 {
         .filter_map(|el| el.attr("w:abstractNumId")?.parse::<i64>().ok())
         .max()
         .map_or(0, |n| n + 1);
-    let num_id = part.root.children_named("w:num").filter_map(|el| el.attr("w:numId")?.parse::<i64>().ok()).max().map_or(1, |n| n + 1);
-    let mut abstract_num = El::new("w:abstractNum").with("w:abstractNumId", abstract_id.to_string());
+    let num_id = part
+        .root
+        .children_named("w:num")
+        .filter_map(|el| el.attr("w:numId")?.parse::<i64>().ok())
+        .max()
+        .map_or(1, |n| n + 1);
+    let mut abstract_num =
+        El::new("w:abstractNum").with("w:abstractNumId", abstract_id.to_string());
     abstract_num.put(El::new("w:multiLevelType").with("w:val", "hybridMultilevel"));
     for n in 0..9 {
         abstract_num.children.push(Node::El(level(kind, n)));
     }
     // Every `w:abstractNum` comes before every `w:num` in the schema.
-    let first_num = part.root.children.iter().position(|node| matches!(node, Node::El(el) if el.name == "w:num"));
+    let first_num = part
+        .root
+        .children
+        .iter()
+        .position(|node| matches!(node, Node::El(el) if el.name == "w:num"));
     match first_num {
         Some(at) => part.root.children.insert(at, Node::El(abstract_num)),
         None => part.root.children.push(Node::El(abstract_num)),
     }
-    let num = El::new("w:num").with("w:numId", num_id.to_string()).with_child(El::new("w:abstractNumId").with("w:val", abstract_id.to_string()));
-    let last_num = part.root.children.iter().rposition(|node| matches!(node, Node::El(el) if el.name == "w:num"));
+    let num = El::new("w:num")
+        .with("w:numId", num_id.to_string())
+        .with_child(El::new("w:abstractNumId").with("w:val", abstract_id.to_string()));
+    let last_num = part
+        .root
+        .children
+        .iter()
+        .rposition(|node| matches!(node, Node::El(el) if el.name == "w:num"));
     // `w:numIdMacAtCleanup` and anything else after the lists stays last.
     match last_num {
         Some(at) => part.root.children.insert(at + 1, Node::El(num)),
@@ -173,7 +227,9 @@ mod tests {
     fn a_style_the_document_lacks_comes_with_the_styles_it_needs() {
         let mut document = crate::new::blank();
         if let Some(part) = document.styles.as_mut() {
-            part.root.children.retain(|n| !matches!(n, Node::El(el) if el.attr("w:styleId") == Some("Heading2")));
+            part.root
+                .children
+                .retain(|n| !matches!(n, Node::El(el) if el.attr("w:styleId") == Some("Heading2")));
         }
         ensure_style(&mut document, "Heading2").unwrap();
         let resolver = crate::styles::Resolver::new(&document);

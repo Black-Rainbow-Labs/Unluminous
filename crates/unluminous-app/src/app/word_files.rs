@@ -26,7 +26,9 @@ impl UnluminousApp {
         }
         let provider = self.plugin_ui.opened(WORD, WORD)?;
         provider.command("load", &[key.clone(), path.display().to_string()])?;
-        let label = path.file_name().map_or_else(|| path.display().to_string(), |name| name.to_string_lossy().into_owned());
+        let label = path
+            .file_name()
+            .map_or_else(|| path.display().to_string(), |name| name.to_string_lossy().into_owned());
         self.open_a_word_tab(&key, &label);
         Ok(())
     }
@@ -35,7 +37,11 @@ impl UnluminousApp {
     pub(crate) fn open_a_word_tab(&mut self, key: &str, label: &str) {
         self.files.open_plugin_tab(
             unluminous_core::Document::new(),
-            files::PluginTab { key: key.to_owned(), plugin: WORD.to_owned(), label: label.to_owned() },
+            files::PluginTab {
+                key: key.to_owned(),
+                plugin: WORD.to_owned(),
+                label: label.to_owned(),
+            },
         );
         self.show_the_editing_area_for_a_tab();
         self.focus = Focus::Plugin;
@@ -55,7 +61,11 @@ impl UnluminousApp {
     }
 
     /// Save the plugin tab at `index`, to `to` when it is Save As.
-    pub(crate) fn save_a_plugin_tab(&mut self, index: usize, to: Option<&Path>) -> Result<(), String> {
+    pub(crate) fn save_a_plugin_tab(
+        &mut self,
+        index: usize,
+        to: Option<&Path>,
+    ) -> Result<(), String> {
         let Some((plugin, key)) = self.keyed_plugin_tab(index) else { return Ok(()) };
         let Some(provider) = self.plugin_ui.provider(&plugin) else { return Ok(()) };
         provider.save(&key, to)
@@ -86,7 +96,11 @@ impl UnluminousApp {
     }
 
     /// Whether the window's menus should leave this chord for the plugin tab that holds the keyboard.
-    pub(crate) fn a_plugin_tab_claims(&mut self, key: egui::Key, modifiers: &egui::Modifiers) -> bool {
+    pub(crate) fn a_plugin_tab_claims(
+        &mut self,
+        key: egui::Key,
+        modifiers: &egui::Modifiers,
+    ) -> bool {
         if self.focus != Focus::Plugin {
             return false;
         }

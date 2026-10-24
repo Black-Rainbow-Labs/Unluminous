@@ -39,7 +39,11 @@ impl RealFonts {
         if let Some(found) = self.faces.borrow().get(&key) {
             return found.clone();
         }
-        let families = [fontdb::Family::Name(&style.family), fontdb::Family::Name("Calibri"), fontdb::Family::SansSerif];
+        let families = [
+            fontdb::Family::Name(&style.family),
+            fontdb::Family::Name("Calibri"),
+            fontdb::Family::SansSerif,
+        ];
         let query = fontdb::Query {
             families: &families,
             weight: if style.bold { fontdb::Weight::BOLD } else { fontdb::Weight::NORMAL },
@@ -49,7 +53,9 @@ impl RealFonts {
         let face = self.database.query(&query).and_then(|id| {
             self.database
                 .with_face_data(id, |data, index| {
-                    let font = ab_glyph::FontVec::try_from_vec_and_index(data.to_vec(), index).ok().map(FontArc::new)?;
+                    let font = ab_glyph::FontVec::try_from_vec_and_index(data.to_vec(), index)
+                        .ok()
+                        .map(FontArc::new)?;
                     Some((font, PairKerning::read(data, index).map(Arc::new)))
                 })
                 .flatten()
@@ -60,7 +66,8 @@ impl RealFonts {
 
     /// Whether a family is installed, for the tests that are about real fonts and say so when it is not.
     pub fn has(&self, family: &str) -> bool {
-        let query = fontdb::Query { families: &[fontdb::Family::Name(family)], ..Default::default() };
+        let query =
+            fontdb::Query { families: &[fontdb::Family::Name(family)], ..Default::default() };
         let found = self.database.query(&query).is_some();
         if !found {
             println!("{family} is not installed, so this test checked nothing");
@@ -80,17 +87,27 @@ impl RealFonts {
 
 impl FontMetrics for RealFonts {
     fn advance(&self, cluster: &str, style: &CharStyle) -> f32 {
-        let Some(font) = self.face(style) else { return style.size * 0.5 * cluster.chars().count() as f32 };
+        let Some(font) = self.face(style) else {
+            return style.size * 0.5 * cluster.chars().count() as f32;
+        };
         let scaled = font.as_scaled(Self::scale(&font, style.size));
         cluster.chars().next().map_or(0.0, |c| scaled.h_advance(font.glyph_id(c)))
     }
 
     fn line_metrics(&self, style: &CharStyle) -> LineMetrics {
         let Some(font) = self.face(style) else {
-            return LineMetrics { ascent: style.size * 0.9, descent: style.size * 0.3, line_gap: 0.0 };
+            return LineMetrics {
+                ascent: style.size * 0.9,
+                descent: style.size * 0.3,
+                line_gap: 0.0,
+            };
         };
         let scaled = font.as_scaled(Self::scale(&font, style.size));
-        LineMetrics { ascent: scaled.ascent(), descent: -scaled.descent(), line_gap: scaled.line_gap() }
+        LineMetrics {
+            ascent: scaled.ascent(),
+            descent: -scaled.descent(),
+            line_gap: scaled.line_gap(),
+        }
     }
 
     fn ascii_advances(&self, _style: &CharStyle) -> Option<Arc<[f32; 128]>> {

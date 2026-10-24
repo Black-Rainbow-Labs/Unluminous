@@ -50,10 +50,21 @@ impl Geometry {
     /// which is what Word assumes too.
     pub fn of(sect: &El) -> Geometry {
         let size = |attr: &str, fallback: f64| -> f32 {
-            twips(sect.child("w:pgSz").and_then(|el| el.attr(attr)).and_then(number).unwrap_or(fallback))
+            twips(
+                sect.child("w:pgSz")
+                    .and_then(|el| el.attr(attr))
+                    .and_then(number)
+                    .unwrap_or(fallback),
+            )
         };
         let margin = |attr: &str, fallback: f64| -> f32 {
-            twips(sect.child("w:pgMar").and_then(|el| el.attr(attr)).and_then(number).unwrap_or(fallback).abs())
+            twips(
+                sect.child("w:pgMar")
+                    .and_then(|el| el.attr(attr))
+                    .and_then(number)
+                    .unwrap_or(fallback)
+                    .abs(),
+            )
         };
         let mut geometry = Geometry {
             width: size("w:w", 12_240.0),
@@ -104,13 +115,17 @@ impl Geometry {
 
 fn references(sect: &El, name: &str) -> Vec<(String, String)> {
     sect.children_named(name)
-        .filter_map(|el| Some((el.attr("w:type").unwrap_or("default").to_owned(), el.attr("r:id")?.to_owned())))
+        .filter_map(|el| {
+            Some((el.attr("w:type").unwrap_or("default").to_owned(), el.attr("r:id")?.to_owned()))
+        })
         .collect()
 }
 
 /// The columns of a section, which share the text width with a gap between them.
 fn columns(sect: &El, text_width: f32) -> Vec<Column> {
-    let Some(cols) = sect.child("w:cols") else { return vec![Column { width: text_width, space: 0.0 }] };
+    let Some(cols) = sect.child("w:cols") else {
+        return vec![Column { width: text_width, space: 0.0 }];
+    };
     let explicit: Vec<Column> = cols
         .children_named("w:col")
         .map(|col| Column {
@@ -142,7 +157,8 @@ mod tests {
 
     #[test]
     fn two_equal_columns_share_the_width_with_the_gap() {
-        let sect = El::new("w:sectPr").with_child(El::new("w:cols").with("w:num", "2").with("w:space", "720"));
+        let sect = El::new("w:sectPr")
+            .with_child(El::new("w:cols").with("w:num", "2").with("w:space", "720"));
         let geometry = Geometry::of(&sect);
         assert_eq!(geometry.columns.len(), 2);
         assert_eq!(geometry.columns[0].width, (468.0 - 36.0) / 2.0);

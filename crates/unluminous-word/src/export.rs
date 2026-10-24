@@ -45,7 +45,12 @@ fn write_text(blocks: &[Block], out: &mut String) {
 }
 
 /// The runs of a paragraph as inline Markdown or HTML, by the function that wraps one run's text.
-fn inline(document: &Document, resolver: &Resolver, paragraph: &Paragraph, wrap: &dyn Fn(&str, &crate::props::RunLook, Option<String>) -> String) -> String {
+fn inline(
+    document: &Document,
+    resolver: &Resolver,
+    paragraph: &Paragraph,
+    wrap: &dyn Fn(&str, &crate::props::RunLook, Option<String>) -> String,
+) -> String {
     let mut out = String::new();
     let mut in_code = 0usize;
     let mut after_separate = Vec::new();
@@ -90,7 +95,12 @@ fn inline(document: &Document, resolver: &Resolver, paragraph: &Paragraph, wrap:
             },
         };
         let link = run.link().and_then(|el| match (el.attr("r:id"), el.attr("w:anchor")) {
-            (Some(id), _) => document.package.rels.get(&document.main).and_then(|r| r.by_id(id)).map(|r| r.target.clone()),
+            (Some(id), _) => document
+                .package
+                .rels
+                .get(&document.main)
+                .and_then(|r| r.by_id(id))
+                .map(|r| r.target.clone()),
             (None, Some(anchor)) => Some(format!("#{anchor}")),
             _ => None,
         });
@@ -109,15 +119,24 @@ pub fn to_markdown(document: &Document) -> String {
     out.trim_end().to_owned() + "\n"
 }
 
-fn markdown_blocks(document: &Document, resolver: &Resolver, counters: &mut crate::numbering::Counters, blocks: &[Block], out: &mut String) {
-    let escape = |text: &str| text.replace('\\', "\\\\").replace('*', "\\*").replace('_', "\\_").replace('`', "\\`");
+fn markdown_blocks(
+    document: &Document,
+    resolver: &Resolver,
+    counters: &mut crate::numbering::Counters,
+    blocks: &[Block],
+    out: &mut String,
+) {
+    let escape = |text: &str| {
+        text.replace('\\', "\\\\").replace('*', "\\*").replace('_', "\\_").replace('`', "\\`")
+    };
     let wrap = |text: &str, look: &crate::props::RunLook, link: Option<String>| {
         let core = escape(text);
         let trimmed = core.trim();
         if trimmed.is_empty() {
             return core;
         }
-        let (lead, trail) = (&core[..core.len() - core.trim_start().len()], &core[core.trim_end().len()..]);
+        let (lead, trail) =
+            (&core[..core.len() - core.trim_start().len()], &core[core.trim_end().len()..]);
         let mut body = trimmed.to_owned();
         if look.strike {
             body = format!("~~{body}~~");
@@ -141,7 +160,9 @@ fn markdown_blocks(document: &Document, resolver: &Resolver, counters: &mut crat
                 let text = text.replace('\n', "  \n");
                 if let Some((num, level)) = look.numbering {
                     let label = counters.next(&resolver.numbering, num, level);
-                    let bullet = label.as_ref().is_some_and(|l| !l.text.chars().any(|c| c.is_ascii_alphanumeric()));
+                    let bullet = label
+                        .as_ref()
+                        .is_some_and(|l| !l.text.chars().any(|c| c.is_ascii_alphanumeric()));
                     let marker = if bullet { "-".to_owned() } else { "1.".to_owned() };
                     out.push_str(&"   ".repeat(usize::from(level)));
                     out.push_str(&marker);
@@ -155,9 +176,15 @@ fn markdown_blocks(document: &Document, resolver: &Resolver, counters: &mut crat
                     continue;
                 }
                 match look.outline_level {
-                    Some(level) if level < 6 => out.push_str(&format!("{} {}\n\n", "#".repeat(usize::from(level) + 1), text.trim())),
+                    Some(level) if level < 6 => out.push_str(&format!(
+                        "{} {}\n\n",
+                        "#".repeat(usize::from(level) + 1),
+                        text.trim()
+                    )),
                     _ if look.style == "Title" => out.push_str(&format!("# {}\n\n", text.trim())),
-                    _ if look.style.contains("Quote") => out.push_str(&format!("> {}\n\n", text.trim())),
+                    _ if look.style.contains("Quote") => {
+                        out.push_str(&format!("> {}\n\n", text.trim()))
+                    }
                     _ => out.push_str(&format!("{}\n\n", text.trim())),
                 }
             }
@@ -204,7 +231,13 @@ pub fn to_html(document: &Document) -> String {
     )
 }
 
-fn html_blocks(document: &Document, resolver: &Resolver, counters: &mut crate::numbering::Counters, blocks: &[Block], out: &mut String) {
+fn html_blocks(
+    document: &Document,
+    resolver: &Resolver,
+    counters: &mut crate::numbering::Counters,
+    blocks: &[Block],
+    out: &mut String,
+) {
     let wrap = |text: &str, look: &crate::props::RunLook, link: Option<String>| {
         let mut style = format!("font-family:'{}';font-size:{}pt", look.font, look.size);
         if let Some(c) = look.color {
@@ -219,7 +252,10 @@ fn html_blocks(document: &Document, resolver: &Resolver, counters: &mut crate::n
         if look.small_caps {
             style.push_str(";font-variant:small-caps");
         }
-        let mut body = format!("<span style=\"{style}\">{}</span>", html_escape(text).replace('\n', "<br>").replace('\t', "&emsp;"));
+        let mut body = format!(
+            "<span style=\"{style}\">{}</span>",
+            html_escape(text).replace('\n', "<br>").replace('\t', "&emsp;")
+        );
         if look.bold {
             body = format!("<b>{body}</b>");
         }
@@ -260,26 +296,40 @@ fn html_blocks(document: &Document, resolver: &Resolver, counters: &mut crate::n
                     Align::Right => "right",
                     Align::Justify => "justify",
                 };
-                let mut style = format!("text-align:{align};margin-top:{}pt;margin-bottom:{}pt", look.space_before, look.space_after);
+                let mut style = format!(
+                    "text-align:{align};margin-top:{}pt;margin-bottom:{}pt",
+                    look.space_before, look.space_after
+                );
                 if look.indent_left != 0.0 {
                     style.push_str(&format!(";margin-left:{}pt", look.indent_left));
                 }
                 if look.indent_first != 0.0 {
                     style.push_str(&format!(";text-indent:{}pt", look.indent_first));
                 }
-                let label = look.numbering.and_then(|(num, level)| counters.next(&resolver.numbering, num, level)).map(|l| format!("{}&emsp;", html_escape(&l.text))).unwrap_or_default();
+                let label = look
+                    .numbering
+                    .and_then(|(num, level)| counters.next(&resolver.numbering, num, level))
+                    .map(|l| format!("{}&emsp;", html_escape(&l.text)))
+                    .unwrap_or_default();
                 let tag = match look.outline_level {
                     Some(level) if level < 6 => format!("h{}", level + 1),
                     _ => "p".to_owned(),
                 };
-                out.push_str(&format!("<{tag} style=\"{style}\">{label}{}</{tag}>\n", if text.is_empty() { "&nbsp;".to_owned() } else { text }));
+                out.push_str(&format!(
+                    "<{tag} style=\"{style}\">{label}{}</{tag}>\n",
+                    if text.is_empty() { "&nbsp;".to_owned() } else { text }
+                ));
             }
             Block::Table(t) => {
                 out.push_str("<table>\n");
                 for row in &t.rows {
                     out.push_str("<tr>");
                     for cell in &row.cells {
-                        if cell.props.child("w:vMerge").is_some_and(|m| m.attr("w:val").is_none_or(|v| v == "continue")) {
+                        if cell
+                            .props
+                            .child("w:vMerge")
+                            .is_some_and(|m| m.attr("w:val").is_none_or(|v| v == "continue"))
+                        {
                             continue;
                         }
                         let span = cell.props.val_of("w:gridSpan").unwrap_or("1");
@@ -316,7 +366,9 @@ fn base64(bytes: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
-        let n = (u32::from(chunk[0]) << 16) | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8) | u32::from(*chunk.get(2).unwrap_or(&0));
+        let n = (u32::from(chunk[0]) << 16)
+            | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8)
+            | u32::from(*chunk.get(2).unwrap_or(&0));
         for i in 0..4 {
             if i <= chunk.len() {
                 out.push(TABLE[((n >> (18 - 6 * i)) & 63) as usize] as char);
@@ -329,13 +381,19 @@ fn base64(bytes: &[u8]) -> String {
 }
 
 /// Every paragraph of the body with what an agent needs to know about it, for `plugins run word read`.
-pub fn paragraphs_value(document: &Document, from: usize, to: usize, with_runs: bool) -> Vec<serde_json::Value> {
+pub fn paragraphs_value(
+    document: &Document,
+    from: usize,
+    to: usize,
+    with_runs: bool,
+) -> Vec<serde_json::Value> {
     let resolver = Resolver::new(document);
     let mut counters = crate::numbering::Counters::default();
     let mut out = Vec::new();
     for (index, (path, p)) in position::paragraphs(&document.body).into_iter().enumerate() {
         let look = resolver.paragraph(&p.props, None);
-        let label = look.numbering.and_then(|(num, level)| counters.next(&resolver.numbering, num, level));
+        let label =
+            look.numbering.and_then(|(num, level)| counters.next(&resolver.numbering, num, level));
         if index + 1 < from || index + 1 > to {
             continue;
         }
@@ -347,7 +405,8 @@ pub fn paragraphs_value(document: &Document, from: usize, to: usize, with_runs: 
             "length": p.len(),
         });
         if let Some(label) = label {
-            value["list"] = serde_json::json!({ "label": label.text, "level": look.numbering.map(|(_, l)| l) });
+            value["list"] =
+                serde_json::json!({ "label": label.text, "level": look.numbering.map(|(_, l)| l) });
         }
         if let Some((_, row, cell)) = position::cell_of(&document.body, &path) {
             value["cell"] = serde_json::json!({ "row": row + 1, "column": cell + 1 });
@@ -411,7 +470,9 @@ mod tests {
     fn html_and_text_are_whole_documents() {
         let s = sample();
         let html = to_html(&s.document);
-        assert!(html.starts_with("<!doctype html>") && html.contains("<h1") && html.contains("<b>"));
+        assert!(
+            html.starts_with("<!doctype html>") && html.contains("<h1") && html.contains("<b>")
+        );
         assert!(html.contains("&amp;"));
         assert_eq!(to_text(&s.document).lines().count(), 4);
     }

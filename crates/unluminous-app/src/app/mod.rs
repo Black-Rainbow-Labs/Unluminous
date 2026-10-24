@@ -74,7 +74,6 @@ mod preview;
 pub mod project_tabs;
 pub mod realm;
 pub mod realm_files;
-pub mod word_files;
 pub mod realm_nodes;
 mod running;
 mod saving;
@@ -86,6 +85,7 @@ mod terminals;
 mod twins;
 mod updating;
 pub mod voice;
+pub mod word_files;
 mod zooming;
 
 use std::collections::HashMap;

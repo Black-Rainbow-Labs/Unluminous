@@ -26,11 +26,14 @@ fn canonical(el: &El) -> El {
     let mut out = El { children: Vec::new(), ..el.clone() };
     for node in &el.children {
         match node {
-            Node::El(child) if matches!(child.name.as_str(), "w:proofErr" | "w:lastRenderedPageBreak") => {}
+            Node::El(child)
+                if matches!(child.name.as_str(), "w:proofErr" | "w:lastRenderedPageBreak") => {}
             Node::El(child) => {
                 let child = canonical(child);
                 // Two `w:t` in a row are one stretch of text.
-                if let (Some(Node::El(previous)), "w:t") = (out.children.last_mut(), child.name.as_str()) {
+                if let (Some(Node::El(previous)), "w:t") =
+                    (out.children.last_mut(), child.name.as_str())
+                {
                     if previous.name == "w:t" {
                         let joined = format!("{}{}", previous.text(), child.text());
                         previous.children = vec![Node::Text(joined)];
@@ -56,10 +59,21 @@ fn canonical(el: &El) -> El {
 fn first_difference(a: &El, b: &El, path: &str) -> Option<String> {
     let here = format!("{path}/{}", a.name);
     if a.name != b.name || a.attrs != b.attrs {
-        return Some(format!("{here}: {:?} {:?} against {:?} {:?}", a.name, a.attrs, b.name, b.attrs));
+        return Some(format!(
+            "{here}: {:?} {:?} against {:?} {:?}",
+            a.name, a.attrs, b.name, b.attrs
+        ));
     }
     if a.children.len() != b.children.len() {
-        let names = |el: &El| el.children.iter().map(|n| match n { Node::El(e) => e.name.clone(), Node::Text(t) => format!("{t:?}") }).collect::<Vec<_>>();
+        let names = |el: &El| {
+            el.children
+                .iter()
+                .map(|n| match n {
+                    Node::El(e) => e.name.clone(),
+                    Node::Text(t) => format!("{t:?}"),
+                })
+                .collect::<Vec<_>>()
+        };
         return Some(format!("{here}: children {:?} against {:?}", names(a), names(b)));
     }
     for (x, y) in a.children.iter().zip(&b.children) {
@@ -80,11 +94,14 @@ fn first_difference(a: &El, b: &El, path: &str) -> Option<String> {
 fn every_fixture_saved_unchanged_keeps_every_part_and_element() {
     for file in fixtures() {
         let bytes = std::fs::read(&file).unwrap();
-        let document = unluminous_word::read::open(&bytes).unwrap_or_else(|e| panic!("{}: {e}", file.display()));
+        let document = unluminous_word::read::open(&bytes)
+            .unwrap_or_else(|e| panic!("{}: {e}", file.display()));
         let saved = unluminous_word::write::save(&document).unwrap();
         let before = unluminous_word::zip::read(&bytes).unwrap();
         let after = unluminous_word::zip::read(&saved).unwrap();
-        let names = |entries: &[unluminous_word::zip::Entry]| entries.iter().map(|e| e.name.clone()).collect::<Vec<_>>();
+        let names = |entries: &[unluminous_word::zip::Entry]| {
+            entries.iter().map(|e| e.name.clone()).collect::<Vec<_>>()
+        };
         assert_eq!(names(&before), names(&after), "{}: the parts", file.display());
         for (a, b) in before.iter().zip(&after) {
             if a.name == document.main {
@@ -104,9 +121,13 @@ fn every_fixture_saved_unchanged_keeps_every_part_and_element() {
 fn a_saved_fixture_reads_back_to_the_same_text() {
     for file in fixtures() {
         let document = unluminous_word::read::open(&std::fs::read(&file).unwrap()).unwrap();
-        let again = unluminous_word::read::open(&unluminous_word::write::save(&document).unwrap()).unwrap();
+        let again =
+            unluminous_word::read::open(&unluminous_word::write::save(&document).unwrap()).unwrap();
         let text = |d: &unluminous_word::Document| -> Vec<String> {
-            unluminous_word::position::paragraphs(&d.body).into_iter().map(|(_, p)| p.flat_text()).collect()
+            unluminous_word::position::paragraphs(&d.body)
+                .into_iter()
+                .map(|(_, p)| p.flat_text())
+                .collect()
         };
         assert_eq!(text(&document), text(&again), "{}", file.display());
     }

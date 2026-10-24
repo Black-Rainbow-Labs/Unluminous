@@ -2096,6 +2096,9 @@ mod tests {
         //   39,150   `task-2336` adding `tab new`, `explorer templates`, `save-template`, `template-set` and
         //            `template-remove`, the agent's half of file templates and of a tab with no file, each with a
         //            one line summary. The ceiling moves to 40,000.
+        //   TOKENS   `task-2341` adding the Word plugin's tool: 35 verbs, each summary cut to one line of
+        //            arguments first, which took 470 tokens off; the rest is the tool and its verb enum,
+        //            which no wording removes. The ceiling moves to 42,000.
         //
         // **The number being hard to hold is itself `task-1804` §4.2's finding**, and what
         // changed with it is that there is now an answer: `mcp serve --areas` equips an agent with
@@ -2103,7 +2106,7 @@ mod tests {
         // `editor,git` rather than 18,511 for all of it. This ceiling goes on saying when the
         // *default* has grown, which is what it is for; it is no longer the only lever there is.
         assert!(
-            grouped.len() / 4 < 40_000,
+            grouped.len() / 4 < 42_000,
             "grouped MCP schema exceeded budget: {} bytes",
             grouped.len()
         );

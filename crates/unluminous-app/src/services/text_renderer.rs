@@ -796,6 +796,13 @@ impl TextRenderer {
         moved
     }
 
+    /// The interface zoom every size asked of this renderer is divided by. A caller whose sizes are not
+    /// about the letters a person reads, such as a Word page whose text must stay the size of its page
+    /// (`task-2341`), multiplies by it first.
+    pub fn interface_zoom(&self) -> f32 {
+        self.interface_zoom.get()
+    }
+
     /// `style` at the size it is laid out at once the interface zoom is taken back out of it.
     fn unzoomed<'a>(&self, style: &'a CharStyle) -> std::borrow::Cow<'a, CharStyle> {
         let zoom = self.interface_zoom.get();

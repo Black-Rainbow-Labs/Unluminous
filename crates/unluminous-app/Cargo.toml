@@ -177,6 +177,8 @@ name = "layout_memory"
 path = "examples/layout_memory.rs"
 
 [dev-dependencies]
+# Reading a font file directly, to check the Word plugin measures what the file says. Already in the tree.
+ttf-parser.workspace = true
 egui_kittest.workspace = true
 # wgpu's own shader compiler, so a test can parse and validate `services/scene_blur.wgsl` with no graphics card.
 # The version is the one wgpu already builds.
