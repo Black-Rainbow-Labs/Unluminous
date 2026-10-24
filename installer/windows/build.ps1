@@ -10,7 +10,7 @@
   Anything a person would otherwise have to remember is in here rather than in a document.
 
 .PARAMETER SkipBuild
-  Use the binary already in target\release rather than running cargo.
+  Use the binary already in target\release (or in CARGO_TARGET_DIR\release) rather than running cargo.
 
 .PARAMETER Icon
   Redraw installer\icon\unluminous.ico, unluminous.icns and Unluminous.iconset before building. The drawn files are
@@ -42,7 +42,11 @@ $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Repo = Resolve-Path (Join-Path $Here '..\..')
 $Dist = Join-Path $Repo 'installer\dist'
 $Script = Join-Path $Here 'unluminous.iss'
-$BinaryDir = Join-Path $Repo 'target\release'
+# Where cargo put the build, which is `CARGO_TARGET_DIR` when it is set (`task-2341`). A ticket worktree
+# builds into a target folder outside the checkout, and reading `target\release` there packaged whatever an
+# older build had left in it: 1.14.0 shipped with the 1.13.0 build of its branch inside the installer.
+# `installer/macos/build-on-windows.ps1` already reads it the same way.
+$BinaryDir = if ($env:CARGO_TARGET_DIR) { Join-Path $env:CARGO_TARGET_DIR 'release' } else { Join-Path $Repo 'target\release' }
 
 function Write-Step([string] $Message) {
     Write-Host ''
@@ -275,6 +279,11 @@ if (-not (Test-Path $cli)) {
 $info = (Get-Item $exe).VersionInfo
 if ($info.ProductName -ne 'Unluminous') {
     throw "unluminous.exe has no version block, so it has no icon either. Install the Windows SDK (it comes with the C++ build tools) and build again."
+}
+# `task-2341`. The installer is named for `$version`, so the executable inside it has to be that version too.
+# A build left behind by an older release in the folder this reads is refused here instead of shipped.
+if ($info.ProductVersion -ne $version) {
+    throw "$exe is Unluminous $($info.ProductVersion), not $version. It is an older build; run without -SkipBuild, or check CARGO_TARGET_DIR."
 }
 
 # `task-2306`. The speech model and ONNX Runtime ship in the installer, so an installed Unluminous downloads
