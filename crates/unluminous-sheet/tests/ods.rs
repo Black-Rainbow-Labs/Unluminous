@@ -51,7 +51,9 @@ fn xlsx_of(name: &str) -> Workbook {
 
 fn same_value(a: &Value, b: &Value) -> bool {
     match (a, b) {
-        (Value::Number(x), Value::Number(y)) => (x - y).abs() <= 1e-9 * x.abs().max(y.abs()).max(1.0),
+        (Value::Number(x), Value::Number(y)) => {
+            (x - y).abs() <= 1e-9 * x.abs().max(y.abs()).max(1.0)
+        }
         (Value::Empty, Value::Text(t)) | (Value::Text(t), Value::Empty) => t.is_empty(),
         _ => a == b,
     }
@@ -62,7 +64,8 @@ fn same_value(a: &Value, b: &Value) -> bool {
 /// alignments an `.ods` has no word for are the default.
 fn look(book: &Workbook, xf: u32, lossy: bool) -> String {
     let s = &book.styles;
-    let (mut font, mut fill, mut border, mut format) = (s.font_of(xf), s.fill_of(xf), s.border_of(xf), s.xf(xf));
+    let (mut font, mut fill, mut border, mut format) =
+        (s.font_of(xf), s.fill_of(xf), s.border_of(xf), s.xf(xf));
     let near = |c: &Color| {
         let hex = c.to_hex(&s.theme);
         match u32::from_str_radix(hex.trim_start_matches('#'), 16) {
@@ -80,22 +83,42 @@ fn look(book: &Workbook, xf: u32, lossy: bool) -> String {
         if matches!(font.underline, unluminous_sheet::styles::Underline::DoubleAccounting) {
             font.underline = unluminous_sheet::styles::Underline::Double;
         }
-        if matches!(format.align.horizontal.as_deref(), Some("fill" | "distributed" | "centerContinuous")) {
+        if matches!(
+            format.align.horizontal.as_deref(),
+            Some("fill" | "distributed" | "centerContinuous")
+        ) {
             format.align.horizontal = Some("left".to_owned());
         }
         if matches!(format.align.vertical.as_deref(), Some("justify" | "distributed")) {
             format.align.vertical = None;
         }
-        for edge in [&mut border.left, &mut border.right, &mut border.top, &mut border.bottom, &mut border.diagonal] {
+        for edge in [
+            &mut border.left,
+            &mut border.right,
+            &mut border.top,
+            &mut border.bottom,
+            &mut border.diagonal,
+        ] {
             if matches!(
                 edge.style.as_str(),
-                "hair" | "dashDot" | "mediumDashDot" | "dashDotDot" | "mediumDashDotDot" | "slantDashDot"
+                "hair"
+                    | "dashDot"
+                    | "mediumDashDot"
+                    | "dashDotDot"
+                    | "mediumDashDotDot"
+                    | "slantDashDot"
             ) {
                 edge.style = "thin".to_owned();
             }
         }
     }
-    let edge = |e: &Edge| if e.is_none() { "none".to_owned() } else { format!("{}/{}", e.style, near(&e.color)) };
+    let edge = |e: &Edge| {
+        if e.is_none() {
+            "none".to_owned()
+        } else {
+            format!("{}/{}", e.style, near(&e.color))
+        }
+    };
     format!(
         "font {} {} b{} i{} u{:?} s{} {} | fill {:?} | border {} {} {} {} diag {} {}{} | align {:?} {:?} wrap{} indent{} rot{} shrink{} | lock {:?} hide {:?}",
         font.name,
@@ -140,7 +163,8 @@ fn differences(a: &Workbook, b: &Workbook, lossy: bool) -> Vec<String> {
         return vec![format!("sheets {sheets_a:?} against {sheets_b:?}")];
     }
     for (index, (sa, sb)) in a.sheets.iter().zip(&b.sheets).enumerate() {
-        let mut keys: BTreeSet<(u32, u32)> = sa.cells.keys().chain(sb.cells.keys()).copied().collect();
+        let mut keys: BTreeSet<(u32, u32)> =
+            sa.cells.keys().chain(sb.cells.keys()).copied().collect();
         keys.extend(sa.spills.values.keys().chain(sb.spills.values.keys()));
         for (r, c) in keys {
             let at = CellRef::new(r, c);
@@ -157,7 +181,9 @@ fn differences(a: &Workbook, b: &Workbook, lossy: bool) -> Vec<String> {
             }
             let (xa, xb) = (sa.cell(at).map_or(0, |x| x.style), sb.cell(at).map_or(0, |x| x.style));
             let (ca, cb) = (a.styles.format_code(xa), b.styles.format_code(xb));
-            let shown = |code: &str, book: &Workbook, v: &Value| Format::parse(code).render(v, book.date1904, 255).text;
+            let shown = |code: &str, book: &Workbook, v: &Value| {
+                Format::parse(code).render(v, book.date1904, 255).text
+            };
             let (ta, tb) = (shown(&ca, a, &va), shown(&cb, b, &vb));
             if ta != tb {
                 out.push(format!("{place} shows {ta:?} ({ca}) against {tb:?} ({cb})"));
@@ -186,7 +212,13 @@ fn name_list(book: &Workbook, lossy: bool) -> Vec<String> {
     let mut names: Vec<String> = book
         .names
         .iter()
-        .filter(|n| !lossy || (!n.hidden && !n.name.contains("_FilterDatabase") && !n.name.contains("Print_Titles") && !n.name.starts_with("Slicer_")))
+        .filter(|n| {
+            !lossy
+                || (!n.hidden
+                    && !n.name.contains("_FilterDatabase")
+                    && !n.name.contains("Print_Titles")
+                    && !n.name.starts_with("Slicer_"))
+        })
         .map(|d| format!("{:?}:{}={}", d.scope, d.name.trim_start_matches("_xlnm."), d.formula))
         .collect();
     names.sort();
@@ -209,21 +241,33 @@ fn feature_differences(a: &Workbook, b: &Workbook, index: usize, lossy: bool) ->
         format!("{m:?}")
     };
     note("merges", merges(sa), merges(sb));
-    let state = |s: &Sheet| if lossy && s.state == Visibility::VeryHidden { Visibility::Hidden } else { s.state };
+    let state = |s: &Sheet| {
+        if lossy && s.state == Visibility::VeryHidden {
+            Visibility::Hidden
+        } else {
+            s.state
+        }
+    };
     note("hidden", format!("{:?}", sa.state), format!("{:?}", state(sb)));
     note("tab color", tint(a, sa.tab_color), tint(b, sb.tab_color));
-    let hidden_rows = |s: &Sheet| s.rows.iter().filter(|(_, i)| i.hidden).map(|(r, _)| *r).collect::<Vec<_>>();
+    let hidden_rows =
+        |s: &Sheet| s.rows.iter().filter(|(_, i)| i.hidden).map(|(r, _)| *r).collect::<Vec<_>>();
     note("hidden rows", format!("{:?}", hidden_rows(sa)), format!("{:?}", hidden_rows(sb)));
     let hidden_cols = |s: &Sheet| (0..64).filter(|c| s.is_column_hidden(*c)).collect::<Vec<_>>();
     note("hidden columns", format!("{:?}", hidden_cols(sa)), format!("{:?}", hidden_cols(sb)));
     let widths = |s: &Sheet| {
         (0..32)
-            .filter_map(|c| s.column(c).and_then(|i| i.width.filter(|_| i.custom_width)).map(|w| (c, w.round())))
+            .filter_map(|c| {
+                s.column(c).and_then(|i| i.width.filter(|_| i.custom_width)).map(|w| (c, w.round()))
+            })
             .collect::<Vec<_>>()
     };
     note("custom widths", format!("{:?}", widths(sa)), format!("{:?}", widths(sb)));
     let heights = |s: &Sheet| {
-        s.rows.iter().filter_map(|(r, i)| i.height.map(|h| (*r, (h * 10.0).round() / 10.0))).collect::<Vec<_>>()
+        s.rows
+            .iter()
+            .filter_map(|(r, i)| i.height.map(|h| (*r, (h * 10.0).round() / 10.0)))
+            .collect::<Vec<_>>()
     };
     note("row heights", format!("{:?}", heights(sa)), format!("{:?}", heights(sb)));
     let notes = |s: &Sheet| {
@@ -250,14 +294,28 @@ fn feature_differences(a: &Workbook, b: &Workbook, index: usize, lossy: bool) ->
     };
     note("links", format!("{:?}", links(sa)), format!("{:?}", links(sb)));
     let validations = |s: &Sheet, other: &Sheet| {
-        let known: BTreeSet<String> = other.validations.iter().flat_map(|v| v.ranges.iter().map(|r| r.a1())).collect();
+        let known: BTreeSet<String> =
+            other.validations.iter().flat_map(|v| v.ranges.iter().map(|r| r.a1())).collect();
         let mut v: Vec<String> = s
             .validations
             .iter()
             .flat_map(|v| {
                 v.ranges.iter().map(move |r| {
-                    let operator = v.operator.clone().or_else(|| (!matches!(v.kind.as_str(), "list" | "custom")).then(|| "between".to_owned()));
-                    (r.a1(), format!("{} {} {:?} {:?} {:?}", r.a1(), v.kind, operator, v.formula1, v.formula2))
+                    let operator = v.operator.clone().or_else(|| {
+                        (!matches!(v.kind.as_str(), "list" | "custom"))
+                            .then(|| "between".to_owned())
+                    });
+                    (
+                        r.a1(),
+                        format!(
+                            "{} {} {:?} {:?} {:?}",
+                            r.a1(),
+                            v.kind,
+                            operator,
+                            v.formula1,
+                            v.formula2
+                        ),
+                    )
                 })
             })
             .filter(|(range, _)| !lossy || known.contains(range))
@@ -266,7 +324,11 @@ fn feature_differences(a: &Workbook, b: &Workbook, index: usize, lossy: bool) ->
         v.sort();
         v
     };
-    note("validations", format!("{:#?}", validations(sa, sb)), format!("{:#?}", validations(sb, sa)));
+    note(
+        "validations",
+        format!("{:#?}", validations(sa, sb)),
+        format!("{:#?}", validations(sb, sa)),
+    );
     let rules = |s: &Sheet| s.conditional.iter().map(|c| c.rules.len()).sum::<usize>();
     if lossy {
         // An `.ods` file written by Excel holds the rules that are a comparison or a formula.
@@ -304,8 +366,11 @@ fn what_excel_wrote_comes_back_the_same_after_unluminous_writes_it_as_ods() {
     let mut wrong = Vec::new();
     for name in names() {
         let first = unluminous_sheet::ods::read(&fixture(&format!("{name}.ods"))).unwrap();
-        let second = unluminous_sheet::ods::read(&unluminous_sheet::ods::write(&first).unwrap()).unwrap();
-        wrong.extend(differences(&first, &second, false).into_iter().map(|d| format!("{name}: {d}")));
+        let second =
+            unluminous_sheet::ods::read(&unluminous_sheet::ods::write(&first).unwrap()).unwrap();
+        wrong.extend(
+            differences(&first, &second, false).into_iter().map(|d| format!("{name}: {d}")),
+        );
     }
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));
 }
@@ -319,7 +384,17 @@ fn an_ods_file_starts_with_its_mimetype_stored_and_lists_its_parts() {
     assert!(text.contains("mimetypeapplication/vnd.oasis.opendocument.spreadsheet"), "{text}");
     let entries = unluminous_sheet::zip::read(&bytes).unwrap();
     let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
-    assert_eq!(names, ["mimetype", "META-INF/manifest.xml", "content.xml", "styles.xml", "settings.xml", "meta.xml"]);
+    assert_eq!(
+        names,
+        [
+            "mimetype",
+            "META-INF/manifest.xml",
+            "content.xml",
+            "styles.xml",
+            "settings.xml",
+            "meta.xml"
+        ]
+    );
 }
 
 #[test]
@@ -331,7 +406,11 @@ fn a_file_that_is_not_a_spreadsheet_is_refused_with_a_sentence() {
     let bytes = unluminous_sheet::zip::write(&entries).unwrap();
     let problem = unluminous_sheet::ods::read(&bytes).unwrap_err();
     assert!(problem.contains("not a spreadsheet"), "{problem}");
-    let no_content = unluminous_sheet::zip::write(&[unluminous_sheet::zip::Entry { name: "x".into(), data: vec![] }]).unwrap();
+    let no_content = unluminous_sheet::zip::write(&[unluminous_sheet::zip::Entry {
+        name: "x".into(),
+        data: vec![],
+    }])
+    .unwrap();
     assert!(unluminous_sheet::ods::read(&no_content).unwrap_err().contains("content.xml"));
     assert!(unluminous_sheet::ods::read(b"not a zip at all, just text").is_err());
 }
@@ -340,7 +419,12 @@ fn a_file_that_is_not_a_spreadsheet_is_refused_with_a_sentence() {
 fn built() -> Session {
     let mut s = Session::new(Workbook::new(), 46318.5);
     let at = |a: &str| CellRef::parse(a).unwrap();
-    let rows = [["Item", "Qty", "Price", "Total"], ["Tea", "3", "2.5", "=B2*C2"], ["Coffee", "2", "4", "=B3*C3"], ["Cake", "5", "3.25", "=B4*C4"]];
+    let rows = [
+        ["Item", "Qty", "Price", "Total"],
+        ["Tea", "3", "2.5", "=B2*C2"],
+        ["Coffee", "2", "4", "=B3*C3"],
+        ["Cake", "5", "3.25", "=B4*C4"],
+    ];
     for (r, row) in rows.iter().enumerate() {
         for (c, v) in row.iter().enumerate() {
             s.set_input(0, CellRef::new(r as u32, c as u32), v).unwrap();
@@ -356,19 +440,59 @@ fn built() -> Session {
     s.set_input(0, at("I1"), "TRUE").unwrap();
     s.set_input(0, at("I2"), "=1/0").unwrap();
     s.set_input(0, at("I3"), "=NOT(I1)").unwrap();
-    s.set_style(0, &[Range::parse("A1:D1").unwrap()], &StyleChange::Font(FontEdit { bold: Some(true), color: Some(Color::rgb(0x1F, 0x4E, 0x79)), ..Default::default() })).unwrap();
-    s.set_style(0, &[Range::parse("A1:D1").unwrap()], &StyleChange::Fill(Some(Color::rgb(0xDD, 0xEB, 0xF7)))).unwrap();
-    s.set_style(0, &[Range::parse("C2:D5").unwrap()], &StyleChange::NumberFormat("$#,##0.00".to_owned())).unwrap();
-    s.set_style(0, &[Range::parse("H3").unwrap()], &StyleChange::NumberFormat("0.0%".to_owned())).unwrap();
-    s.set_style(0, &[Range::parse("A5:D5").unwrap()], &StyleChange::Border(BorderEdit { sides: Sides::Top, edge: Edge::line("double", Color::Auto) })).unwrap();
+    s.set_style(
+        0,
+        &[Range::parse("A1:D1").unwrap()],
+        &StyleChange::Font(FontEdit {
+            bold: Some(true),
+            color: Some(Color::rgb(0x1F, 0x4E, 0x79)),
+            ..Default::default()
+        }),
+    )
+    .unwrap();
+    s.set_style(
+        0,
+        &[Range::parse("A1:D1").unwrap()],
+        &StyleChange::Fill(Some(Color::rgb(0xDD, 0xEB, 0xF7))),
+    )
+    .unwrap();
+    s.set_style(
+        0,
+        &[Range::parse("C2:D5").unwrap()],
+        &StyleChange::NumberFormat("$#,##0.00".to_owned()),
+    )
+    .unwrap();
+    s.set_style(0, &[Range::parse("H3").unwrap()], &StyleChange::NumberFormat("0.0%".to_owned()))
+        .unwrap();
+    s.set_style(
+        0,
+        &[Range::parse("A5:D5").unwrap()],
+        &StyleChange::Border(BorderEdit {
+            sides: Sides::Top,
+            edge: Edge::line("double", Color::Auto),
+        }),
+    )
+    .unwrap();
     s.set_input(0, at("A7"), "Merged").unwrap();
     s.merge(0, Range::parse("A7:C7").unwrap(), true).unwrap();
     s.freeze(0, 1, 1).unwrap();
     s.set_column_width(0, 0, 0, Some(16.0)).unwrap();
     s.set_row_height(0, 6, 6, Some(24.0)).unwrap();
     s.set_note(0, at("A2"), Some("Green tea"), "Jason").unwrap();
-    s.set_link(0, Range::parse("A9").unwrap(), Some(LinkTarget::External("https://example.com/".to_owned())), Some("Example".to_owned())).unwrap();
-    s.set_link(0, Range::parse("A10").unwrap(), Some(LinkTarget::Location("Notes!A1".to_owned())), Some("To notes".to_owned())).unwrap();
+    s.set_link(
+        0,
+        Range::parse("A9").unwrap(),
+        Some(LinkTarget::External("https://example.com/".to_owned())),
+        Some("Example".to_owned()),
+    )
+    .unwrap();
+    s.set_link(
+        0,
+        Range::parse("A10").unwrap(),
+        Some(LinkTarget::Location("Notes!A1".to_owned())),
+        Some("To notes".to_owned()),
+    )
+    .unwrap();
     s.add_validation(0, validation("B12", "list", None, "\"Low,Medium,High\"", None)).unwrap();
     s.add_validation(0, validation("B13:B15", "whole", Some("between"), "1", Some("10"))).unwrap();
     let dxf = {
@@ -380,8 +504,18 @@ fn built() -> Session {
         });
         (s.book.styles.dxfs.len() - 1) as u32
     };
-    s.add_conditional(0, vec![Range::parse("D2:D4").unwrap()], rule("cellIs", Some("greaterThan"), &["10"], dxf)).unwrap();
-    s.add_conditional(0, vec![Range::parse("B2:B4").unwrap()], rule("expression", None, &["MOD(B2,2)=1"], dxf)).unwrap();
+    s.add_conditional(
+        0,
+        vec![Range::parse("D2:D4").unwrap()],
+        rule("cellIs", Some("greaterThan"), &["10"], dxf),
+    )
+    .unwrap();
+    s.add_conditional(
+        0,
+        vec![Range::parse("B2:B4").unwrap()],
+        rule("expression", None, &["MOD(B2,2)=1"], dxf),
+    )
+    .unwrap();
     s.set_name("Taxrate", "0.2", None).unwrap();
     s.set_name("Quantities", "Sheet1!$B$2:$B$4", None).unwrap();
     let notes = s.add_sheet(Some("Notes"), None).unwrap();
@@ -396,7 +530,13 @@ fn built() -> Session {
     s
 }
 
-fn validation(range: &str, kind: &str, operator: Option<&str>, first: &str, second: Option<&str>) -> unluminous_sheet::model::Validation {
+fn validation(
+    range: &str,
+    kind: &str,
+    operator: Option<&str>,
+    first: &str,
+    second: Option<&str>,
+) -> unluminous_sheet::model::Validation {
     unluminous_sheet::model::Validation {
         ranges: vec![Range::parse(range).unwrap()],
         kind: kind.to_owned(),
@@ -414,7 +554,12 @@ fn validation(range: &str, kind: &str, operator: Option<&str>, first: &str, seco
     }
 }
 
-fn rule(kind: &str, operator: Option<&str>, formulas: &[&str], dxf: u32) -> unluminous_sheet::model::CfRule {
+fn rule(
+    kind: &str,
+    operator: Option<&str>,
+    formulas: &[&str],
+    dxf: u32,
+) -> unluminous_sheet::model::CfRule {
     unluminous_sheet::model::CfRule {
         kind: kind.to_owned(),
         dxf: Some(dxf),
@@ -453,7 +598,10 @@ fn a_workbook_built_here_keeps_its_features_through_an_ods_file() {
     assert_eq!(s.merges, vec![Range::parse("A7:C7").unwrap()]);
     assert!((s.column(0).and_then(|c| c.width).unwrap() - 16.0).abs() < 0.01);
     assert_eq!(s.rows.get(&6).and_then(|r| r.height), Some(24.0));
-    assert_eq!(s.notes.get(&(1, 0)).map(|n| (n.author.as_str(), n.text.as_str())), Some(("Jason", "Green tea")));
+    assert_eq!(
+        s.notes.get(&(1, 0)).map(|n| (n.author.as_str(), n.text.as_str())),
+        Some(("Jason", "Green tea"))
+    );
     assert_eq!(s.links.len(), 2);
     assert_eq!(s.validations.len(), 2);
     assert_eq!(s.validations[0].formula1.as_deref(), Some("\"Low,Medium,High\""));
@@ -462,9 +610,16 @@ fn a_workbook_built_here_keeps_its_features_through_an_ods_file() {
     assert_eq!(s.conditional.len(), 2);
     assert_eq!(s.conditional[0].rules[0].operator.as_deref(), Some("greaterThan"));
     assert_eq!(s.conditional[1].rules[0].formulas, vec!["MOD(B2,2)=1"]);
-    assert_eq!(s.spills.range_of((0, 5)), Some(Range::parse("F1:F3").unwrap()), "the sorted names are a spill");
+    assert_eq!(
+        s.spills.range_of((0, 5)),
+        Some(Range::parse("F1:F3").unwrap()),
+        "the sorted names are a spill"
+    );
     assert_eq!(back.sheets[1].name, "Notes");
-    assert_eq!(back.sheets[1].value_at(CellRef::parse("A2").unwrap()), Value::text("Line one\nline two  spaced"));
+    assert_eq!(
+        back.sheets[1].value_at(CellRef::parse("A2").unwrap()),
+        Value::text("Line one\nline two  spaced")
+    );
     assert_eq!(back.sheets[2].state, Visibility::Hidden);
     assert!(back.names.iter().any(|n| n.name == "Taxrate" && n.formula == "0.2"));
     assert!(back.names.iter().any(|n| n.name == "Quantities" && n.formula == "Sheet1!$B$2:$B$4"));
@@ -554,9 +709,18 @@ fn libreoffice_style_file() -> Vec<u8> {
  <config:config-item-map-entry config:name="Data"><config:config-item config:name="HorizontalSplitMode" config:type="short">2</config:config-item><config:config-item config:name="VerticalSplitMode" config:type="short">2</config:config-item><config:config-item config:name="HorizontalSplitPosition" config:type="int">2</config:config-item><config:config-item config:name="VerticalSplitPosition" config:type="int">1</config:config-item><config:config-item config:name="ZoomValue" config:type="int">125</config:config-item><config:config-item config:name="ShowGrid" config:type="boolean">false</config:config-item></config:config-item-map-entry>
 </config:config-item-map-named></config:config-item-map-entry></config:config-item-map-indexed></config:config-item-set></office:settings></office:document-settings>"##;
     let entries = vec![
-        unluminous_sheet::zip::Entry { name: "mimetype".into(), data: b"application/vnd.oasis.opendocument.spreadsheet".to_vec() },
-        unluminous_sheet::zip::Entry { name: "content.xml".into(), data: content.as_bytes().to_vec() },
-        unluminous_sheet::zip::Entry { name: "settings.xml".into(), data: settings.as_bytes().to_vec() },
+        unluminous_sheet::zip::Entry {
+            name: "mimetype".into(),
+            data: b"application/vnd.oasis.opendocument.spreadsheet".to_vec(),
+        },
+        unluminous_sheet::zip::Entry {
+            name: "content.xml".into(),
+            data: content.as_bytes().to_vec(),
+        },
+        unluminous_sheet::zip::Entry {
+            name: "settings.xml".into(),
+            data: settings.as_bytes().to_vec(),
+        },
     ];
     unluminous_sheet::zip::write(&entries).unwrap()
 }
@@ -580,11 +744,19 @@ fn a_file_in_the_form_libreoffice_writes_reads_with_its_settings_and_conditional
         Format::parse(&book.styles.format_code(cell.style)).render(&cell.value, false, 11).text
     };
     assert_eq!(shown("C1"), "25.5%");
-    assert_eq!(shown("D1"), "-1,234.50 \u{20AC}", "{}", book.styles.format_code(s.cell(at("D1")).unwrap().style));
+    assert_eq!(
+        shown("D1"),
+        "-1,234.50 \u{20AC}",
+        "{}",
+        book.styles.format_code(s.cell(at("D1")).unwrap().style)
+    );
     assert_eq!(shown("E1"), "24.10.2026");
     assert_eq!(shown("F1"), "1.23E+04");
     assert_eq!(s.value_at(at("E1")), Value::Number(46319.0));
-    assert!(matches!(s.value_at(at("D5")), Value::Number(n) if (n - 36.5 / 24.0).abs() < 1e-12), "a time of 36:30 is a day and a half");
+    assert!(
+        matches!(s.value_at(at("D5")), Value::Number(n) if (n - 36.5 / 24.0).abs() < 1e-12),
+        "a time of 36:30 is a day and a half"
+    );
     // Repeated rows and columns, and the widths and heights of their styles.
     for row in 1..=3 {
         assert_eq!(s.value_at(CellRef::new(row, 0)), Value::Number(7.0));
@@ -597,7 +769,11 @@ fn a_file_in_the_form_libreoffice_writes_reads_with_its_settings_and_conditional
     // Text with spaces, a span, a tab and a line break, and the look of its style.
     let text = s.cell(at("D2")).unwrap();
     assert_eq!(text.value, Value::text("Hello  red bold\tend\nnext\nsecond paragraph"));
-    assert!(text.rich.as_deref().is_some_and(|r| r.contains("<b/>") && r.contains("FFFF0000")), "{:?}", text.rich);
+    assert!(
+        text.rich.as_deref().is_some_and(|r| r.contains("<b/>") && r.contains("FFFF0000")),
+        "{:?}",
+        text.rich
+    );
     let xf = book.styles.xf(text.style);
     let font = book.styles.font_of(text.style);
     assert!(font.bold && font.italic);
@@ -616,7 +792,10 @@ fn a_file_in_the_form_libreoffice_writes_reads_with_its_settings_and_conditional
     assert_eq!(s.value_at(at("C5")), Value::Bool(true));
     assert_eq!(s.value_at(at("E5")), Value::text("from formula"));
     assert_eq!(s.cell(at("F5")).unwrap().formula.as_ref().unwrap().display(), "=SUM(A1,A2)");
-    assert_eq!(s.cell(at("C6")).unwrap().formula.as_ref().unwrap().array, Some(Range::parse("C6:C7").unwrap()));
+    assert_eq!(
+        s.cell(at("C6")).unwrap().formula.as_ref().unwrap().array,
+        Some(Range::parse("C6:C7").unwrap())
+    );
     assert_eq!(s.links.len(), 1);
     assert_eq!(s.links[0].target, LinkTarget::Location("'Hidden sheet'!B2".to_owned()));
     // Validations.
@@ -624,7 +803,10 @@ fn a_file_in_the_form_libreoffice_writes_reads_with_its_settings_and_conditional
     let list = &s.validations[0];
     assert_eq!((list.kind.as_str(), list.formula1.as_deref()), ("list", Some("Lists!$A$1:$A$3")));
     assert!(!list.allow_blank);
-    assert_eq!((list.error_title.as_deref(), list.error.as_deref()), (Some("Oops"), Some("Pick from the list")));
+    assert_eq!(
+        (list.error_title.as_deref(), list.error.as_deref()),
+        (Some("Oops"), Some("Pick from the list"))
+    );
     let number = &s.validations[1];
     assert_eq!((number.kind.as_str(), number.operator.as_deref()), ("decimal", Some("between")));
     assert_eq!((number.formula1.as_deref(), number.formula2.as_deref()), (Some("0"), Some("1")));
@@ -637,7 +819,9 @@ fn a_file_in_the_form_libreoffice_writes_reads_with_its_settings_and_conditional
     let dxf = s.conditional[0].rules[0].dxf.unwrap() as usize;
     assert_eq!(book.styles.dxfs[dxf].fill, Some(Color::rgb(0xC6, 0xEF, 0xCE)));
     // Names, the print range and the filter.
-    let name = |n: &str, scope: Option<usize>| book.names.iter().find(|d| d.name == n && d.scope == scope).map(|d| d.formula.clone());
+    let name = |n: &str, scope: Option<usize>| {
+        book.names.iter().find(|d| d.name == n && d.scope == scope).map(|d| d.formula.clone())
+    };
     assert_eq!(name("Rate", Some(0)).as_deref(), Some("0.2"));
     assert_eq!(name("Everything", None).as_deref(), Some("Data!$A$1:$D$5"));
     assert_eq!(name("_xlnm.Print_Area", Some(0)).as_deref(), Some("Data!$A$1:$D$20"));
@@ -673,7 +857,10 @@ fn inspect(path: &Path) -> serde_json::Value {
     let text = String::from_utf8_lossy(&output.stdout);
     let text = text.trim().trim_start_matches('\u{FEFF}');
     serde_json::from_str(text).unwrap_or_else(|e| {
-        panic!("Excel's answer did not read: {e}\n{text}\n{}", String::from_utf8_lossy(&output.stderr))
+        panic!(
+            "Excel's answer did not read: {e}\n{text}\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        )
     })
 }
 
@@ -682,7 +869,10 @@ fn excel_here() -> bool {
     if excel_is_installed() {
         return true;
     }
-    assert!(std::env::var("UNLUMINOUS_REQUIRE_EXCEL").is_err(), "UNLUMINOUS_REQUIRE_EXCEL is set and Excel is not installed");
+    assert!(
+        std::env::var("UNLUMINOUS_REQUIRE_EXCEL").is_err(),
+        "UNLUMINOUS_REQUIRE_EXCEL is set and Excel is not installed"
+    );
     println!("Excel is not installed here, so what it makes of Unluminous's files was not checked");
     false
 }
@@ -696,7 +886,9 @@ fn excel_disagrees(excel: &serde_json::Value, book: &Workbook) -> Vec<String> {
             let ours = book.sheets[index].value_at(at);
             let theirs = cell["value"].as_str().unwrap();
             let same = match (cell["kind"].as_str().unwrap(), &ours) {
-                ("number", Value::Number(n)) => (theirs.parse::<f64>().unwrap() - n).abs() <= 1e-9 * n.abs().max(1.0),
+                ("number", Value::Number(n)) => {
+                    (theirs.parse::<f64>().unwrap() - n).abs() <= 1e-9 * n.abs().max(1.0)
+                }
                 ("text", Value::Text(t)) => &**t == theirs,
                 ("bool", Value::Bool(b)) => theirs.eq_ignore_ascii_case(&b.to_string()),
                 ("error", Value::Error(e)) => e.text() == theirs,
@@ -704,14 +896,24 @@ fn excel_disagrees(excel: &serde_json::Value, book: &Workbook) -> Vec<String> {
                 _ => false,
             };
             if !same {
-                wrong.push(format!("{}!{at}: Excel {} {theirs}, Unluminous {ours:?}", sheet["name"], cell["kind"]));
+                wrong.push(format!(
+                    "{}!{at}: Excel {} {theirs}, Unluminous {ours:?}",
+                    sheet["name"], cell["kind"]
+                ));
             }
             let code = book.styles.format_code(book.sheets[index].cell(at).map_or(0, |c| c.style));
             let shown = Format::parse(&code).render(&ours, book.date1904, 255).text;
             let text = cell["text"].as_str().unwrap();
             // A column too narrow for its number shows hash marks, and a General number shows what fits.
-            if text != shown && !text.starts_with('#') && !matches!(ours, Value::Number(_)) && !shown.trim().is_empty() {
-                wrong.push(format!("{}!{at}: Excel shows {text:?}, Unluminous {shown:?}", sheet["name"]));
+            if text != shown
+                && !text.starts_with('#')
+                && !matches!(ours, Value::Number(_))
+                && !shown.trim().is_empty()
+            {
+                wrong.push(format!(
+                    "{}!{at}: Excel shows {text:?}, Unluminous {shown:?}",
+                    sheet["name"]
+                ));
             }
         }
     }
@@ -733,13 +935,20 @@ fn excel_opens_what_unluminous_writes_as_ods_with_the_same_values_and_no_repair(
         ["csv-source", "10-text", "11-styles"].iter().map(|n| (*n).to_owned()).collect()
     };
     for name in wanted {
-        cases.push((name.clone(), unluminous_sheet::ods::read(&fixture(&format!("{name}.ods"))).unwrap()));
+        cases.push((
+            name.clone(),
+            unluminous_sheet::ods::read(&fixture(&format!("{name}.ods"))).unwrap(),
+        ));
     }
     for (name, book) in cases {
         let path = folder.join(format!("{name}.ods"));
         std::fs::write(&path, unluminous_sheet::ods::write(&book).unwrap()).unwrap();
         let excel = inspect(&path);
-        assert_eq!(excel["repaired"], false, "{name}: Excel repaired the file: {}", excel["problem"]);
+        assert_eq!(
+            excel["repaired"], false,
+            "{name}: Excel repaired the file: {}",
+            excel["problem"]
+        );
         let wrong = excel_disagrees(&excel, &book);
         assert!(wrong.is_empty(), "{name}:\n{}", wrong.join("\n"));
         if name == "built" {
@@ -747,9 +956,20 @@ fn excel_opens_what_unluminous_writes_as_ods_with_the_same_values_and_no_repair(
             assert_eq!(data["merged"], serde_json::json!(["A7:C7"]));
             assert_eq!(data["notes"], serde_json::json!(["A2|Green tea"]));
             assert!(data["conditional"].as_i64().unwrap() >= 1, "{}", data["conditional"]);
-            assert!(data["validations"].as_array().unwrap().iter().any(|v| v == "B12|3|Low,Medium,High"), "{}", data["validations"]);
+            assert!(
+                data["validations"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|v| v == "B12|3|Low,Medium,High"),
+                "{}",
+                data["validations"]
+            );
             assert_eq!(data["links"].as_array().unwrap().len(), 2);
-            assert_eq!(excel["sheets"][2]["features"]["visible"], 0, "the hidden sheet stays hidden");
+            assert_eq!(
+                excel["sheets"][2]["features"]["visible"], 0,
+                "the hidden sheet stays hidden"
+            );
         }
         let _ = std::fs::remove_file(&path);
     }

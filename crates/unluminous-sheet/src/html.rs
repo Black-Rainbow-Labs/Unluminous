@@ -9,9 +9,6 @@ use crate::numfmt::Format;
 use crate::styles::{Edge, Underline};
 use crate::value::Value;
 
-/// The pixels one character of the default font is wide, for turning column widths into CSS.
-
-
 /// Escape text for HTML, with a line break as `<br>`.
 fn escape(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
@@ -22,7 +19,7 @@ fn escape(text: &str) -> String {
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
             '\r' => {}
-            '\n' => out.push_str("<br>"),
+            '\n' => out.push_str("<br style='mso-data-placement:same-cell'>"),
             c => out.push(c),
         }
     }
@@ -33,7 +30,7 @@ fn escape(text: &str) -> String {
 pub fn write(book: &Workbook) -> String {
     let title = book.sheets.first().map_or("", |s| s.name.as_str());
     let mut out = format!(
-        "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>{}</title>\n<style>\ntable {{ border-collapse: collapse; }}\ntd {{ padding: 1px 4px; vertical-align: bottom; }}\n</style>\n</head>\n<body>\n",
+        "<!DOCTYPE html>\n<html xmlns:x=\"urn:schemas-microsoft-com:office:excel\">\n<head>\n<meta charset=\"utf-8\">\n<title>{}</title>\n<style>\ntable {{ border-collapse: collapse; }}\ntd {{ padding: 1px 4px; vertical-align: bottom; }}\n</style>\n</head>\n<body>\n",
         escape(title)
     );
     for (index, sheet) in book.sheets.iter().enumerate() {
@@ -55,8 +52,12 @@ fn table(book: &Workbook, index: usize, sheet: &Sheet) -> String {
     let last_row = sheet.merges.iter().map(|m| m.last.row).fold(used.last.row, u32::max);
     let columns: Vec<u32> = (0..=last_col).filter(|c| !sheet.is_column_hidden(*c)).collect();
     for c in &columns {
-        let width = sheet.column(*c).and_then(|i| i.width).or(sheet.default_col_width).unwrap_or(8.43);
-        out.push_str(&format!("<col style=\"width:{}px\">\n", (width * crate::ods::pixels_per_character(book)).round()));
+        let width =
+            sheet.column(*c).and_then(|i| i.width).or(sheet.default_col_width).unwrap_or(8.43);
+        out.push_str(&format!(
+            "<col style=\"width:{}px\">\n",
+            (width * crate::ods::pixels_per_character(book)).round()
+        ));
     }
     let covered = covered(sheet);
     for r in 0..=last_row {
@@ -105,11 +106,22 @@ fn cell(book: &Workbook, index: usize, sheet: &Sheet, at: CellRef) -> String {
         }
     }
     if let Some(note) = sheet.notes.get(&(at.row, at.col)) {
-        attrs.push_str(&format!(" title=\"{}\"", escape(&note.text).replace("<br>", "&#10;")));
+        attrs.push_str(&format!(
+            " title=\"{}\"",
+            escape(&note.text).replace("<br style='mso-data-placement:same-cell'>", "&#10;")
+        ));
     }
-    let css = css(book, style, &value, shown.numeric);
+    let mut css = css(book, style, &value, shown.numeric);
+    // Excel reads the value, and the format it is shown with, from these, so a text that looks like a number
+    // stays text and a date stays a date.
+    attrs.push_str(&excel_value(&value));
+    if !matches!(value, Value::Text(_) | Value::Empty) && code != "General" {
+        let mso =
+            format!("mso-number-format:'{}'", code.replace('\'', "\\0027").replace('"', "\\0022"));
+        css = if css.is_empty() { mso } else { format!("{css};{mso}") };
+    }
     if !css.is_empty() {
-        attrs.push_str(&format!(" style=\"{css}\""));
+        attrs.push_str(&format!(" style=\"{}\"", css.replace('"', "&quot;")));
     }
     let text = escape(&shown.text);
     let body = match link_at(sheet, at) {
@@ -118,6 +130,17 @@ fn cell(book: &Workbook, index: usize, sheet: &Sheet, at: CellRef) -> String {
     };
     let _ = index;
     format!("<td{attrs}>{body}</td>")
+}
+
+/// The attributes Excel's own pages use to say what a cell holds: `x:num`, `x:bool`, `x:err` and `x:str`.
+fn excel_value(value: &Value) -> String {
+    match value {
+        Value::Number(n) => format!(" x:num=\"{n}\""),
+        Value::Bool(b) => format!(" x:bool=\"{}\"", b.to_string().to_uppercase()),
+        Value::Error(e) => format!(" x:err=\"{}\"", e.text()),
+        Value::Text(_) => " x:str".to_owned(),
+        Value::Empty => String::new(),
+    }
 }
 
 /// The address a cell links to.
@@ -132,7 +155,8 @@ fn link_at(sheet: &Sheet, at: CellRef) -> Option<String> {
 /// The inline style of a cell: font, colours, alignment and borders.
 fn css(book: &Workbook, xf: u32, value: &Value, numeric: bool) -> String {
     let styles = &book.styles;
-    let (font, fill, border, format) = (styles.font_of(xf), styles.fill_of(xf), styles.border_of(xf), styles.xf(xf));
+    let (font, fill, border, format) =
+        (styles.font_of(xf), styles.fill_of(xf), styles.border_of(xf), styles.xf(xf));
     let theme = &styles.theme;
     let default = styles.font_of(0);
     let mut css = Vec::new();
@@ -182,7 +206,12 @@ fn css(book: &Workbook, xf: u32, value: &Value, numeric: bool) -> String {
     if format.align.wrap {
         css.push("white-space:pre-wrap".to_owned());
     }
-    for (name, edge) in [("left", &border.left), ("right", &border.right), ("top", &border.top), ("bottom", &border.bottom)] {
+    for (name, edge) in [
+        ("left", &border.left),
+        ("right", &border.right),
+        ("top", &border.top),
+        ("bottom", &border.bottom),
+    ] {
         if let Some(text) = border_css(edge, theme) {
             css.push(format!("border-{name}:{text}"));
         }
@@ -203,7 +232,10 @@ fn border_css(edge: &Edge, theme: &[u32]) -> Option<String> {
         "dashed" | "dashDot" | "dashDotDot" | "slantDashDot" => ("1px", "dashed"),
         _ => ("1px", "solid"),
     };
-    let color = edge.color.resolve(theme).map_or("#000000".to_owned(), |(r, g, b)| format!("#{r:02X}{g:02X}{b:02X}"));
+    let color = edge
+        .color
+        .resolve(theme)
+        .map_or("#000000".to_owned(), |(r, g, b)| format!("#{r:02X}{g:02X}{b:02X}"));
     Some(format!("{width} {line} {color}"))
 }
 
@@ -216,14 +248,25 @@ mod tests {
     #[test]
     fn a_sheet_is_a_table_with_shown_text_merges_and_inline_formatting() {
         let mut book = Workbook::new();
-        let bold = book.styles.derive(0, &StyleChange::Font(FontEdit { bold: Some(true), ..Default::default() }));
+        let bold = book
+            .styles
+            .derive(0, &StyleChange::Font(FontEdit { bold: Some(true), ..Default::default() }));
         let money = book.styles.derive(0, &StyleChange::NumberFormat("#,##0.00".to_owned()));
         let s = &mut book.sheets[0];
-        s.set(CellRef::new(0, 0), Cell { value: Value::text("A & B"), style: bold, ..Default::default() });
-        s.set(CellRef::new(1, 0), Cell { value: Value::Number(1234.5), style: money, ..Default::default() });
+        s.set(
+            CellRef::new(0, 0),
+            Cell { value: Value::text("A & B"), style: bold, ..Default::default() },
+        );
+        s.set(
+            CellRef::new(1, 0),
+            Cell { value: Value::Number(1234.5), style: money, ..Default::default() },
+        );
         s.merges.push(crate::coord::Range::parse("A1:B1").unwrap());
         let html = write(&book);
-        assert!(html.contains("<td colspan=\"2\" style=\"font-weight:bold\">A &amp; B</td>"), "{html}");
+        assert!(
+            html.contains("<td colspan=\"2\" x:str style=\"font-weight:bold\">A &amp; B</td>"),
+            "{html}"
+        );
         assert!(html.contains("1,234.50</td>"));
         assert_eq!(html.matches("<td").count(), 3, "the merged cell's second half is not written");
     }

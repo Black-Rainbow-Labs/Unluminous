@@ -16,18 +16,22 @@ pub fn read(text: &str, sheet_name: &str, this_year: i64) -> Workbook {
 
 /// The fields of each line, cut where every line has a space between two runs of text.
 pub fn fixed_width_rows(text: &str) -> Vec<Vec<String>> {
-    let lines: Vec<Vec<char>> = text.trim_start_matches('\u{FEFF}').lines().map(|l| l.chars().collect()).collect();
+    let lines: Vec<Vec<char>> =
+        text.trim_start_matches('\u{FEFF}').lines().map(|l| l.chars().collect()).collect();
     let width = lines.iter().map(|l| l.len()).max().unwrap_or(0);
-    let occupied: Vec<bool> =
-        (0..width).map(|p| lines.iter().any(|l| l.get(p).is_some_and(|c| !c.is_whitespace()))).collect();
-    let starts: Vec<usize> = (0..width).filter(|p| occupied[*p] && (*p == 0 || !occupied[*p - 1])).collect();
+    let occupied: Vec<bool> = (0..width)
+        .map(|p| lines.iter().any(|l| l.get(p).is_some_and(|c| !c.is_whitespace())))
+        .collect();
+    let starts: Vec<usize> =
+        (0..width).filter(|p| occupied[*p] && (*p == 0 || !occupied[*p - 1])).collect();
     lines
         .iter()
         .map(|line| {
             let mut fields: Vec<String> = Vec::new();
             for (k, start) in starts.iter().enumerate() {
                 let end = starts.get(k + 1).copied().unwrap_or(line.len().max(*start));
-                let slice: String = line.get(*start..end.min(line.len())).unwrap_or(&[]).iter().collect();
+                let slice: String =
+                    line.get(*start..end.min(line.len())).unwrap_or(&[]).iter().collect();
                 fields.push(slice.trim().to_owned());
             }
             fields
@@ -67,7 +71,9 @@ fn drawn_width(text: &str, digit: f64) -> f64 {
     text.chars()
         .map(|c| match c {
             '0'..='9' => digit,
-            '.' | ',' | ':' | ';' | '\'' | ' ' | '|' | '!' | 'i' | 'l' | 'j' | 't' | 'f' | 'I' => digit * 0.4,
+            '.' | ',' | ':' | ';' | '\'' | ' ' | '|' | '!' | 'i' | 'l' | 'j' | 't' | 'f' | 'I' => {
+                digit * 0.4
+            }
             '-' | '(' | ')' | '/' | 'r' => digit * 0.5,
             _ => digit * 0.9,
         })
@@ -92,7 +98,11 @@ fn general_in(value: f64, chars: usize, date1904: bool) -> Option<String> {
         let whole = value.abs().trunc().to_string().len() + usize::from(value < 0.0);
         let decimals = chars.saturating_sub(whole + 1);
         let fixed = format!("{value:.decimals$}");
-        if fixed.contains('.') { fixed.trim_end_matches('0').trim_end_matches('.').to_owned() } else { fixed }
+        if fixed.contains('.') {
+            fixed.trim_end_matches('0').trim_end_matches('.').to_owned()
+        } else {
+            fixed
+        }
     };
     (text.chars().count() <= chars).then_some(text)
 }
@@ -115,13 +125,17 @@ fn piece(book: &Workbook, index: usize, at: CellRef, chars: usize, pixels: f64) 
     match &value {
         Value::Empty => None,
         Value::Text(t) => Some(Piece { text: t.to_string(), align: Align::Left }),
-        Value::Bool(_) | Value::Error(_) => {
-            Some(Piece { text: format.render(&value, book.date1904, chars).text, align: Align::Centre })
-        }
+        Value::Bool(_) | Value::Error(_) => Some(Piece {
+            text: format.render(&value, book.date1904, chars).text,
+            align: Align::Centre,
+        }),
         Value::Number(n) => {
             let hashes = || Piece { text: "#".repeat(chars), align: Align::Right };
             if format.is_general() {
-                return Some(general_in(*n, chars, book.date1904).map_or_else(hashes, |text| Piece { text, align: Align::Right }));
+                return Some(
+                    general_in(*n, chars, book.date1904)
+                        .map_or_else(hashes, |text| Piece { text, align: Align::Right }),
+                );
             }
             let shown = format.render(&value, book.date1904, chars);
             let mut text = shown.text.clone();
@@ -147,7 +161,9 @@ fn place(piece: &Piece, room: usize) -> String {
     match piece.align {
         Align::Left => format!("{text}{}", " ".repeat(spare)),
         Align::Right => format!("{}{text}", " ".repeat(spare)),
-        Align::Centre => format!("{}{text}{}", " ".repeat(spare / 2), " ".repeat(spare - spare / 2)),
+        Align::Centre => {
+            format!("{}{text}{}", " ".repeat(spare / 2), " ".repeat(spare - spare / 2))
+        }
     }
 }
 
@@ -157,11 +173,15 @@ fn place(piece: &Piece, room: usize) -> String {
 pub fn write(book: &Workbook, index: usize) -> String {
     let Some(sheet) = book.sheets.get(index) else { return String::new() };
     let Some(used) = sheet.used_range() else { return String::new() };
-    let sizes: Vec<(usize, f64)> = (0..=used.last.col).map(|c| column_size(book, sheet, c)).collect();
+    let sizes: Vec<(usize, f64)> =
+        (0..=used.last.col).map(|c| column_size(book, sheet, c)).collect();
     let mut out = String::new();
     for r in 0..=used.last.row {
-        let pieces: Vec<Option<Piece>> =
-            (0..=used.last.col).map(|c| piece(book, index, CellRef::new(r, c), sizes[c as usize].0, sizes[c as usize].1)).collect();
+        let pieces: Vec<Option<Piece>> = (0..=used.last.col)
+            .map(|c| {
+                piece(book, index, CellRef::new(r, c), sizes[c as usize].0, sizes[c as usize].1)
+            })
+            .collect();
         out.push_str(&line(&pieces, &sizes));
         out.push_str("\r\n");
     }
@@ -191,7 +211,11 @@ fn line(pieces: &[Option<Piece>], sizes: &[(usize, f64)]) -> String {
             }
         }
         let placed = place(p, room);
-        out.push_str(if c == last && p.align == Align::Left { placed.trim_end_matches(' ') } else { &placed });
+        out.push_str(if c == last && p.align == Align::Left {
+            placed.trim_end_matches(' ')
+        } else {
+            &placed
+        });
         c = next;
     }
     out

@@ -115,10 +115,8 @@ fn join_sections(
         _ => {
             let mut parts: Vec<String> = Vec::new();
             for (condition, code) in maps.iter().take(2) {
-                let prefix = condition
-                    .as_ref()
-                    .map(|(op, num)| format!("[{op}{num}]"))
-                    .unwrap_or_default();
+                let prefix =
+                    condition.as_ref().map(|(op, num)| format!("[{op}{num}]")).unwrap_or_default();
                 parts.push(format!("{prefix}{code}"));
             }
             parts.push(base.to_owned());
@@ -158,7 +156,8 @@ fn section_code(node: Node) -> String {
             "text-content" => out.push('@'),
             "boolean" => out.push_str("General"),
             name => {
-                let bracket = elapsed && first_time && matches!(name, "hours" | "minutes" | "seconds");
+                let bracket =
+                    elapsed && first_time && matches!(name, "hours" | "minutes" | "seconds");
                 if bracket {
                     first_time = false;
                 }
@@ -225,7 +224,8 @@ fn quote(text: &str) -> String {
 
 /// The colour a style's text properties name, as a format code colour.
 fn style_color(node: Node) -> Option<String> {
-    let props = node.children().find(|n| n.is_element() && n.tag_name().name() == "text-properties")?;
+    let props =
+        node.children().find(|n| n.is_element() && n.tag_name().name() == "text-properties")?;
     let hex = props.attribute((NS_FO, "color"))?;
     let rgb = u32::from_str_radix(hex.trim_start_matches('#'), 16).ok()?;
     if let Some((name, _)) = NAMED_COLORS.iter().find(|(_, c)| *c == rgb) {
@@ -275,7 +275,8 @@ fn number_code(node: Node, out: &mut String) {
     out.push_str(&digits.concat());
     let decimals = decimals.unwrap_or(0);
     if decimals > 0 {
-        let minimum = attr("min-decimal-places").and_then(|v| v.parse::<usize>().ok()).unwrap_or(decimals);
+        let minimum =
+            attr("min-decimal-places").and_then(|v| v.parse::<usize>().ok()).unwrap_or(decimals);
         out.push('.');
         out.push_str(&"0".repeat(minimum.min(decimals)));
         out.push_str(&"#".repeat(decimals - minimum.min(decimals)));
@@ -326,7 +327,8 @@ fn currency_code(node: Node) -> String {
     let language = node.attribute((NS_NUMBER, "language"));
     let country = node.attribute((NS_NUMBER, "country"));
     if let (Some(language), Some(country)) = (language, country) {
-        if let Some((_, _, lcid)) = LOCALES.iter().find(|(l, c, _)| *l == language && *c == country) {
+        if let Some((_, _, lcid)) = LOCALES.iter().find(|(l, c, _)| *l == language && *c == country)
+        {
             return format!("[${symbol}-{lcid}]");
         }
     }
@@ -414,7 +416,9 @@ fn plan(sections: &[Section]) -> (Vec<(String, Section)>, Section, bool) {
     if numbers.iter().any(|s| s.condition.is_some()) {
         let mapped = numbers
             .iter()
-            .filter_map(|s| s.condition.as_ref().map(|(op, num)| (format!("value(){op}{num}"), s.clone())))
+            .filter_map(|s| {
+                s.condition.as_ref().map(|(op, num)| (format!("value(){op}{num}"), s.clone()))
+            })
             .take(2)
             .collect();
         let rest = numbers.iter().find(|s| s.condition.is_none());
@@ -445,7 +449,6 @@ fn plan(sections: &[Section]) -> (Vec<(String, Section)>, Section, bool) {
     }
     (mapped, numbers[numbers.len() - 1].clone(), false)
 }
-
 
 /// Whether a section is the text section: it holds `@` and no digit placeholders.
 fn is_text_section(body: &str) -> bool {
@@ -503,7 +506,8 @@ fn color_of(name: &str) -> Option<u32> {
     if let Some((_, rgb)) = NAMED_COLORS.iter().find(|(n, _)| n.eq_ignore_ascii_case(name)) {
         return Some(*rgb);
     }
-    let index: usize = name.strip_prefix("Color").or_else(|| name.strip_prefix("color"))?.parse().ok()?;
+    let index: usize =
+        name.strip_prefix("Color").or_else(|| name.strip_prefix("color"))?.parse().ok()?;
     crate::styles::INDEXED.get(index + 7).map(|c| c & 0x00FF_FFFF)
 }
 
@@ -561,17 +565,37 @@ enum Piece {
     Fill(char),
     TextContent,
     General,
-    Number { integer: Vec<char>, embedded: Vec<(usize, String)>, decimals: Vec<char>, commas: usize },
-    Scientific { integer: usize, decimals: usize, exponent: usize },
-    Fraction { integer: bool, numerator: usize, denominator: Result<usize, String> },
+    Number {
+        integer: Vec<char>,
+        embedded: Vec<(usize, String)>,
+        decimals: Vec<char>,
+        commas: usize,
+    },
+    Scientific {
+        integer: usize,
+        decimals: usize,
+        exponent: usize,
+    },
+    Fraction {
+        integer: bool,
+        numerator: usize,
+        denominator: Result<usize, String>,
+    },
     Percent,
     Year(bool),
-    Month { long: bool, textual: bool },
+    Month {
+        long: bool,
+        textual: bool,
+    },
     Day(bool),
     DayOfWeek(bool),
     Hour(bool, bool),
     Minute(bool, bool),
-    Second { long: bool, elapsed: bool, places: usize },
+    Second {
+        long: bool,
+        elapsed: bool,
+        places: usize,
+    },
     AmPm,
 }
 
@@ -598,13 +622,19 @@ impl Pieces {
     /// The element name that suits the pieces.
     fn kind(&self) -> &'static str {
         let has = |f: fn(&Piece) -> bool| self.list.iter().any(f);
-        if has(|p| matches!(p, Piece::Year(_) | Piece::Month { .. } | Piece::Day(_) | Piece::DayOfWeek(_))) {
+        if has(|p| {
+            matches!(p, Piece::Year(_) | Piece::Month { .. } | Piece::Day(_) | Piece::DayOfWeek(_))
+        }) {
             "date-style"
-        } else if has(|p| matches!(p, Piece::Hour(..) | Piece::Minute(..) | Piece::Second { .. } | Piece::AmPm)) {
+        } else if has(|p| {
+            matches!(p, Piece::Hour(..) | Piece::Minute(..) | Piece::Second { .. } | Piece::AmPm)
+        }) {
             "time-style"
         } else if has(|p| matches!(p, Piece::Percent)) {
             "percentage-style"
-        } else if has(|p| matches!(p, Piece::TextContent)) && !has(|p| matches!(p, Piece::Number { .. })) {
+        } else if has(|p| matches!(p, Piece::TextContent))
+            && !has(|p| matches!(p, Piece::Number { .. }))
+        {
             "text-style"
         } else {
             "number-style"
@@ -622,7 +652,8 @@ fn scan_piece(chars: &[char], i: usize, list: &mut Vec<Piece>, elapsed: &mut boo
     let c = chars[i];
     match c {
         '"' => {
-            let end = chars[i + 1..].iter().position(|x| *x == '"').map_or(chars.len(), |p| i + 1 + p);
+            let end =
+                chars[i + 1..].iter().position(|x| *x == '"').map_or(chars.len(), |p| i + 1 + p);
             push_text(list, &chars[i + 1..end].iter().collect::<String>());
             end + 1
         }
@@ -752,7 +783,10 @@ fn scan_number(chars: &[char], i: usize, list: &mut Vec<Piece>) -> usize {
         } else if c == ',' && chars.get(at + 1).is_some_and(|n| "0#?".contains(*n)) {
             at += 1;
         } else if "-() ".contains(c) && !integer.is_empty() {
-            let literal_end = (at..chars.len()).take_while(|k| "-() ".contains(chars[*k])).last().map_or(at, |k| k + 1);
+            let literal_end = (at..chars.len())
+                .take_while(|k| "-() ".contains(chars[*k]))
+                .last()
+                .map_or(at, |k| k + 1);
             if chars.get(literal_end).is_some_and(|n| "0#?".contains(*n)) {
                 embedded.push((integer.len(), chars[at..literal_end].iter().collect()));
                 at = literal_end;
@@ -773,10 +807,16 @@ fn scan_number(chars: &[char], i: usize, list: &mut Vec<Piece>) -> usize {
     } else if chars.get(at) == Some(&'.') && integer.is_empty() {
         return at + 1;
     }
-    if matches!(chars.get(at), Some('E') | Some('e')) && matches!(chars.get(at + 1), Some('+') | Some('-')) {
+    if matches!(chars.get(at), Some('E') | Some('e'))
+        && matches!(chars.get(at + 1), Some('+') | Some('-'))
+    {
         let exponent = chars[at + 2..].iter().take_while(|c| **c == '0').count();
         if exponent > 0 {
-            list.push(Piece::Scientific { integer: integer.len(), decimals: decimals.len(), exponent });
+            list.push(Piece::Scientific {
+                integer: integer.len(),
+                decimals: decimals.len(),
+                exponent,
+            });
             return at + 2 + exponent;
         }
     }
@@ -785,7 +825,8 @@ fn scan_number(chars: &[char], i: usize, list: &mut Vec<Piece>) -> usize {
         commas += 1;
         at += 1;
     }
-    let grouped = chars[i..at.min(chars.len())].windows(2).any(|w| w[0] == ',' && "0#?".contains(w[1]));
+    let grouped =
+        chars[i..at.min(chars.len())].windows(2).any(|w| w[0] == ',' && "0#?".contains(w[1]));
     if integer.is_empty() && decimals.is_empty() {
         return at.max(i + 1);
     }
@@ -820,7 +861,10 @@ fn scan_fraction(chars: &[char], i: usize) -> Option<(Piece, usize)> {
     at += 1;
     let placeholders = digits(at);
     if placeholders > 0 {
-        return Some((Piece::Fraction { integer, numerator, denominator: Ok(placeholders) }, at + placeholders));
+        return Some((
+            Piece::Fraction { integer, numerator, denominator: Ok(placeholders) },
+            at + placeholders,
+        ));
     }
     let fixed: String = chars[at..].iter().take_while(|c| c.is_ascii_digit()).collect();
     if fixed.is_empty() {
@@ -849,7 +893,8 @@ fn resolve_minutes(list: &mut [Piece]) {
     for (n, k) in parts.iter().enumerate() {
         let Piece::Month { long, textual: false } = list[*k] else { continue };
         let after_hour = n > 0 && matches!(list[parts[n - 1]], Piece::Hour(..));
-        let before_second = parts.get(n + 1).is_some_and(|next| matches!(list[*next], Piece::Second { .. }));
+        let before_second =
+            parts.get(n + 1).is_some_and(|next| matches!(list[*next], Piece::Second { .. }));
         if after_hour || before_second {
             list[*k] = Piece::Minute(long, false);
         }
@@ -897,7 +942,12 @@ fn piece_xml(piece: &Piece) -> String {
 }
 
 /// A number element from its placeholders.
-fn number_xml(integer: &[char], embedded: &[(usize, String)], decimals: &[char], commas: usize) -> String {
+fn number_xml(
+    integer: &[char],
+    embedded: &[(usize, String)],
+    decimals: &[char],
+    commas: usize,
+) -> String {
     let grouping = integer.first() == Some(&',');
     let digits: Vec<&char> = integer.iter().filter(|c| **c != ',').collect();
     let min_integer = digits.iter().filter(|c| ***c == '0').count();
@@ -915,7 +965,10 @@ fn number_xml(integer: &[char], embedded: &[(usize, String)], decimals: &[char],
     let inner: String = embedded
         .iter()
         .map(|(position, text)| {
-            format!("<number:embedded-text number:position=\"{position}\">{}</number:embedded-text>", escape(text))
+            format!(
+                "<number:embedded-text number:position=\"{position}\">{}</number:embedded-text>",
+                escape(text)
+            )
         })
         .collect();
     if inner.is_empty() {
@@ -951,7 +1004,7 @@ mod tests {
         for (code, values) in [
             ("General", vec![1.5, -2.0]),
             ("0", vec![3.7]),
-            ("0.00", vec![3.14159]),
+            ("0.00", vec![3.25159]),
             ("#,##0.00", vec![1234567.891]),
             ("0%", vec![0.256]),
             ("0.0%", vec![0.256]),

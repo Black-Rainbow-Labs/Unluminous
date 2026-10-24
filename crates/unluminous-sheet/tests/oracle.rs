@@ -75,7 +75,9 @@ fn corpus_lines() -> Vec<String> {
     files.sort();
     files
         .iter()
-        .flat_map(|p| std::fs::read_to_string(p).unwrap().lines().map(str::to_owned).collect::<Vec<_>>())
+        .flat_map(|p| {
+            std::fs::read_to_string(p).unwrap().lines().map(str::to_owned).collect::<Vec<_>>()
+        })
         .filter(|l| !l.trim().is_empty())
         .collect()
 }

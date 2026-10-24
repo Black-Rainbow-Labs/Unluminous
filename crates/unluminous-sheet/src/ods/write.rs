@@ -7,8 +7,8 @@ use super::cellstyle::{font_face, number, write_cell_style};
 use super::cm_from_characters as cm_per_width;
 use super::numstyle::write_styles;
 use super::write_features::{
-    calcext_xml, dxf_style_xml, formula_body, map_condition, names_xml, print_ranges, range_address,
-    rich_runs, settings_xml, validation_xml,
+    calcext_xml, dxf_style_xml, formula_body, map_condition, names_xml, print_ranges,
+    range_address, rich_runs, settings_xml, validation_xml,
 };
 use super::MIME;
 use crate::coord::{CellRef, Range};
@@ -47,7 +47,9 @@ pub fn write(book: &Workbook) -> Result<Vec<u8>, String> {
 
 fn manifest() -> String {
     let entry = |path: &str, kind: &str| {
-        format!("<manifest:file-entry manifest:full-path=\"{path}\" manifest:media-type=\"{kind}\"/>")
+        format!(
+            "<manifest:file-entry manifest:full-path=\"{path}\" manifest:media-type=\"{kind}\"/>"
+        )
     };
     format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<manifest:manifest xmlns:manifest=\"urn:oasis:names:tc:opendocument:xmlns:manifest:1.0\" manifest:version=\"1.3\">{}{}{}{}{}</manifest:manifest>",
@@ -179,7 +181,10 @@ impl<'b> Writer<'b> {
             let mut rules: Vec<&crate::model::CfRule> = format.rules.iter().collect();
             rules.sort_by_key(|r| r.priority);
             for rule in rules {
-                let (Some(dxf), Some(condition)) = (rule.dxf, map_condition(rule, *range, &s.name)) else { continue };
+                let (Some(dxf), Some(condition)) = (rule.dxf, map_condition(rule, *range, &s.name))
+                else {
+                    continue;
+                };
                 let Some(style) = self.dxf_names.get(&dxf) else { continue };
                 xml.push_str(&format!(
                     "<style:map style:condition=\"{}\" style:apply-style-name=\"{style}\" style:base-cell-address=\"{}\"/>",
@@ -274,7 +279,8 @@ impl<'b> Writer<'b> {
         }
         xml.push_str(&self.columns(sheet, cols));
         xml.push_str(&self.rows(index, &extras, rows, cols));
-        let scoped: Vec<&crate::model::DefinedName> = book.names.iter().filter(|n| n.scope == Some(index)).collect();
+        let scoped: Vec<&crate::model::DefinedName> =
+            book.names.iter().filter(|n| n.scope == Some(index)).collect();
         xml.push_str(&names_xml(&scoped, book, &sheet.name));
         xml.push_str("</table:table>");
         xml
@@ -284,10 +290,16 @@ impl<'b> Writer<'b> {
         let display = sheet.state == crate::model::Visibility::Visible;
         let name = format!("ta{}", self.next());
         let tab = match sheet.tab_color {
-            Some(crate::styles::Color::Rgb(argb)) => format!(" tableooo:tab-color=\"#{:06X}\"", argb & 0x00FF_FFFF),
+            Some(crate::styles::Color::Rgb(argb)) => {
+                format!(" tableooo:tab-color=\"#{:06X}\"", argb & 0x00FF_FFFF)
+            }
             _ => String::new(),
         };
-        let namespace = if tab.is_empty() { "" } else { " xmlns:tableooo=\"http://openoffice.org/2009/table\"" };
+        let namespace = if tab.is_empty() {
+            ""
+        } else {
+            " xmlns:tableooo=\"http://openoffice.org/2009/table\""
+        };
         self.automatic.push_str(&format!(
             "<style:style style:name=\"{name}\" style:family=\"table\"><style:table-properties table:display=\"{display}\" style:writing-mode=\"lr-tb\"{tab}{namespace}/></style:style>"
         ));
@@ -330,7 +342,8 @@ impl<'b> Writer<'b> {
     /// The `table:table-column` elements.
     fn columns(&mut self, sheet: &Sheet, cols: u32) -> String {
         let pixels = super::pixels_per_character(self.book);
-        let default_width = sheet.default_col_width.unwrap_or(super::default_column_pixels(self.book) / pixels);
+        let default_width =
+            sheet.default_col_width.unwrap_or(super::default_column_pixels(self.book) / pixels);
         let mut specs: Vec<(String, bool, u32)> = Vec::new();
         for c in 0..cols {
             let info: Option<&ColumnInfo> = sheet.column(c);
@@ -374,7 +387,13 @@ impl<'b> Writer<'b> {
     }
 
     /// The `table:table-row` elements with their cells.
-    fn rows(&mut self, index: usize, extras: &BTreeMap<(u32, u32), Extra>, rows: u32, cols: u32) -> String {
+    fn rows(
+        &mut self,
+        index: usize,
+        extras: &BTreeMap<(u32, u32), Extra>,
+        rows: u32,
+        cols: u32,
+    ) -> String {
         let book = self.book;
         let sheet = &book.sheets[index];
         let covered = covered_cells(sheet);
@@ -397,7 +416,8 @@ impl<'b> Writer<'b> {
                 gap = 0;
             }
             let (height, hidden) = info.map_or((None, false), |i| (i.height, i.hidden));
-            let style = self.row_style(height.unwrap_or(sheet.default_row_height), height.is_none());
+            let style =
+                self.row_style(height.unwrap_or(sheet.default_row_height), height.is_none());
             xml.push_str(&format!("<table:table-row table:style-name=\"{style}\""));
             if hidden {
                 xml.push_str(" table:visibility=\"collapse\"");
@@ -439,7 +459,12 @@ impl<'b> Writer<'b> {
                 xml.push_str("<table:covered-table-cell/>");
             } else {
                 let extra = extras.get(&(r, c)).cloned().unwrap_or_default();
-                xml.push_str(&self.cell(index, CellRef::new(r, c), &extra, links.get(&(r, c)).copied()));
+                xml.push_str(&self.cell(
+                    index,
+                    CellRef::new(r, c),
+                    &extra,
+                    links.get(&(r, c)).copied(),
+                ));
             }
             next = c + 1;
         }
@@ -447,14 +472,22 @@ impl<'b> Writer<'b> {
     }
 
     /// One cell element.
-    fn cell(&mut self, index: usize, at: CellRef, extra: &Extra, link: Option<&Hyperlink>) -> String {
+    fn cell(
+        &mut self,
+        index: usize,
+        at: CellRef,
+        extra: &Extra,
+        link: Option<&Hyperlink>,
+    ) -> String {
         let book = self.book;
         let sheet = &book.sheets[index];
         let spilled;
         let cell: &Cell = match sheet.cells.get(&(at.row, at.col)) {
             Some(cell) => cell,
             None => {
-                spilled = Cell::value(sheet.spills.values.get(&(at.row, at.col)).cloned().unwrap_or_default());
+                spilled = Cell::value(
+                    sheet.spills.values.get(&(at.row, at.col)).cloned().unwrap_or_default(),
+                );
                 &spilled
             }
         };
@@ -528,7 +561,10 @@ impl<'b> Writer<'b> {
                         body.push_str(&inline(&run));
                     } else {
                         let style = self.text_style(&props);
-                        body.push_str(&format!("<text:span text:style-name=\"{style}\">{}</text:span>", inline(&run)));
+                        body.push_str(&format!(
+                            "<text:span text:style-name=\"{style}\">{}</text:span>",
+                            inline(&run)
+                        ));
                     }
                 }
                 return format!("<text:p>{body}</text:p>");
@@ -542,7 +578,11 @@ impl<'b> Writer<'b> {
             LinkTarget::External(url) => url.clone(),
             LinkTarget::Location(place) => format!("#{}", location_address(place)),
         };
-        format!("<text:a xlink:href=\"{}\" xlink:type=\"simple\">{}</text:a>", escape(&href), inline(shown))
+        format!(
+            "<text:a xlink:href=\"{}\" xlink:type=\"simple\">{}</text:a>",
+            escape(&href),
+            inline(shown)
+        )
     }
 
     // -----------------------------------------------------------------------------------------------
@@ -557,12 +597,21 @@ impl<'b> Writer<'b> {
         let validations = if self.validation_defs.is_empty() {
             String::new()
         } else {
-            let items: String = self.validation_defs.iter().map(|(name, xml)| xml.replacen("table:name=\"\"", &format!("table:name=\"{name}\""), 1)).collect();
+            let items: String = self
+                .validation_defs
+                .iter()
+                .map(|(name, xml)| {
+                    xml.replacen("table:name=\"\"", &format!("table:name=\"{name}\""), 1)
+                })
+                .collect();
             format!("<table:content-validations>{items}</table:content-validations>")
         };
-        let null_date = if book.date1904 { "<table:null-date table:date-value=\"1904-01-01\"/>" } else { "" };
-        let global: Vec<&crate::model::DefinedName> = book.names.iter().filter(|n| n.scope.is_none()).collect();
-        let names = names_xml(&global, book, book.sheets.first().map_or("Sheet1", |s| s.name.as_str()));
+        let null_date =
+            if book.date1904 { "<table:null-date table:date-value=\"1904-01-01\"/>" } else { "" };
+        let global: Vec<&crate::model::DefinedName> =
+            book.names.iter().filter(|n| n.scope.is_none()).collect();
+        let names =
+            names_xml(&global, book, book.sheets.first().map_or("Sheet1", |s| s.name.as_str()));
         let filters = database_ranges(book);
         format!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<office:document-content {NAMESPACES} office:version=\"1.3\"><office:font-face-decls>{faces}</office:font-face-decls><office:automatic-styles>{}</office:automatic-styles><office:body><office:spreadsheet><table:calculation-settings table:case-sensitive=\"false\" table:search-criteria-must-apply-to-whole-cell=\"true\" table:use-wildcards=\"true\" table:use-regular-expressions=\"false\" table:automatic-find-labels=\"false\">{null_date}</table:calculation-settings>{validations}{tables}{names}{filters}</office:spreadsheet></office:body></office:document-content>",
@@ -619,7 +668,10 @@ fn clamped(range: Range, used: Option<Range>) -> Range {
         return range;
     }
     let (last_row, last_col) = used.map_or((1000, 64), |u| (u.last.row + 1000, u.last.col + 64));
-    Range::new(range.first, CellRef::new(range.last.row.min(last_row), range.last.col.min(last_col)))
+    Range::new(
+        range.first,
+        CellRef::new(range.last.row.min(last_row), range.last.col.min(last_col)),
+    )
 }
 
 /// The cells under the top left cell of each merge.
@@ -646,8 +698,12 @@ fn link_map(sheet: &Sheet) -> HashMap<(u32, u32), &Hyperlink> {
 
 /// Rows with nothing in them, repeated.
 fn empty_rows(style: &str, count: u32, cols: u32) -> String {
-    let repeat = if count > 1 { format!(" table:number-rows-repeated=\"{count}\"") } else { String::new() };
-    format!("<table:table-row table:style-name=\"{style}\"{repeat}>{}</table:table-row>", repeated_empty(cols.max(1)))
+    let repeat =
+        if count > 1 { format!(" table:number-rows-repeated=\"{count}\"") } else { String::new() };
+    format!(
+        "<table:table-row table:style-name=\"{style}\"{repeat}>{}</table:table-row>",
+        repeated_empty(cols.max(1))
+    )
 }
 
 /// Cells with nothing in them, repeated.
@@ -672,8 +728,12 @@ fn location_address(place: &str) -> String {
 
 /// A note as an annotation.
 fn note_xml(note: &crate::model::Note) -> String {
-    let paragraphs: String = note.text.split('\n').map(|p| format!("<text:p>{}</text:p>", inline(p))).collect();
-    format!("<office:annotation><dc:creator>{}</dc:creator>{paragraphs}</office:annotation>", escape(&note.author))
+    let paragraphs: String =
+        note.text.split('\n').map(|p| format!("<text:p>{}</text:p>", inline(p))).collect();
+    format!(
+        "<office:annotation><dc:creator>{}</dc:creator>{paragraphs}</office:annotation>",
+        escape(&note.author)
+    )
 }
 
 /// The filter buttons of a workbook as database ranges.
@@ -736,7 +796,9 @@ fn value_attributes(value: &Value, code: &str, date1904: bool, formula: bool) ->
         Value::Empty => String::new(),
         Value::Number(n) => number_attributes(*n, code, date1904),
         Value::Bool(b) => format!(" office:value-type=\"boolean\" office:boolean-value=\"{b}\""),
-        Value::Error(e) => format!(" office:value-type=\"error\" office:string-value=\"{}\"", e.text()),
+        Value::Error(e) => {
+            format!(" office:value-type=\"error\" office:string-value=\"{}\"", e.text())
+        }
         Value::Text(t) => {
             if formula {
                 format!(" office:value-type=\"string\" office:string-value=\"{}\"", escape(t))
@@ -766,7 +828,10 @@ fn number_attributes(n: f64, code: &str, date1904: bool) -> String {
             let total = (n * 86400.0 * 1000.0).round() / 1000.0;
             let (h, rest) = ((total / 3600.0).floor(), total % 3600.0);
             let (m, s) = ((rest / 60.0).floor(), rest % 60.0);
-            return format!(" office:value-type=\"time\" office:time-value=\"PT{h:02}H{m:02}M{}S\"", seconds_text(s));
+            return format!(
+                " office:value-type=\"time\" office:time-value=\"PT{h:02}H{m:02}M{}S\"",
+                seconds_text(s)
+            );
         }
     }
     let kind = if lower.contains('%') { "percentage" } else { "float" };

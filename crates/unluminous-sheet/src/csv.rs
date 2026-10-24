@@ -24,8 +24,9 @@ pub fn decode(bytes: &[u8]) -> String {
         [0xEF, 0xBB, 0xBF, rest @ ..] => String::from_utf8_lossy(rest).into_owned(),
         [0xFF, 0xFE, rest @ ..] => utf16(rest, u16::from_le_bytes),
         [0xFE, 0xFF, rest @ ..] => utf16(rest, u16::from_be_bytes),
-        _ => String::from_utf8(bytes.to_vec())
-            .unwrap_or_else(|_| bytes.iter().map(|b| crate::functions::text::windows_1252(*b)).collect()),
+        _ => String::from_utf8(bytes.to_vec()).unwrap_or_else(|_| {
+            bytes.iter().map(|b| crate::functions::text::windows_1252(*b)).collect()
+        }),
     }
 }
 
@@ -55,9 +56,7 @@ fn windows_1252_byte(c: char) -> u8 {
     if (c as u32) < 0x80 {
         return c as u8;
     }
-    (0x80..=0xFFu8)
-        .find(|b| crate::functions::text::windows_1252(*b) == c)
-        .unwrap_or(b'?')
+    (0x80..=0xFFu8).find(|b| crate::functions::text::windows_1252(*b) == c).unwrap_or(b'?')
 }
 
 /// The separator a file uses: a tab, a semicolon or a comma, by which the first line holds most of
@@ -190,7 +189,9 @@ pub fn quote_field(text: &str, sep: char) -> String {
 /// Every row has as many fields as the sheet's used range has columns, and a blank row is a row of empty
 /// fields.
 pub fn write(book: &Workbook, sheet: usize, sep: char) -> String {
-    let Some(used) = book.sheets.get(sheet).and_then(|s| s.used_range()) else { return String::new() };
+    let Some(used) = book.sheets.get(sheet).and_then(|s| s.used_range()) else {
+        return String::new();
+    };
     let mut out = String::new();
     for r in 0..=used.last.row {
         let fields: Vec<String> = (0..=used.last.col)

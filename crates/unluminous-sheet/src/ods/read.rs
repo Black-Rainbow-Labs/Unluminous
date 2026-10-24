@@ -27,15 +27,19 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
     let entries = crate::zip::read(bytes)
         .map_err(|e| e.replace("which an .xlsx file is", "which an .ods file is"))?;
     let text = |name: &str| {
-        entries.iter().find(|e| e.name == name).map(|e| String::from_utf8_lossy(&e.data).into_owned())
+        entries
+            .iter()
+            .find(|e| e.name == name)
+            .map(|e| String::from_utf8_lossy(&e.data).into_owned())
     };
     if let Some(mime) = text("mimetype") {
         if !mime.trim().starts_with("application/vnd.oasis.opendocument.spreadsheet") {
             return Err(format!("this OpenDocument file is not a spreadsheet ({})", mime.trim()));
         }
     }
-    let content = text("content.xml")
-        .ok_or_else(|| "the file has no content.xml, so it is not an OpenDocument spreadsheet".to_owned())?;
+    let content = text("content.xml").ok_or_else(|| {
+        "the file has no content.xml, so it is not an OpenDocument spreadsheet".to_owned()
+    })?;
     let styles = text("styles.xml");
     let settings = text("settings.xml");
     let content_doc = parse_xml(&content, "content.xml")?;
@@ -81,7 +85,12 @@ fn read_documents(
     let sheet_names: Vec<String> =
         tables.iter().map(|t| attr(*t, NS_TABLE, "name").unwrap_or("Sheet").to_owned()).collect();
     for table in &tables {
-        let mut reader = SheetReader { book: &mut book, cells: &mut cells, features: &features, dynamic: Vec::new() };
+        let mut reader = SheetReader {
+            book: &mut book,
+            cells: &mut cells,
+            features: &features,
+            dynamic: Vec::new(),
+        };
         let sheet = reader.sheet(*table);
         book.sheets.push(sheet);
     }
@@ -102,7 +111,8 @@ fn is_table(node: Node) -> bool {
     node.is_element()
         && node.tag_name().namespace() == Some(NS_TABLE)
         && node.tag_name().name() == "table"
-        && !attr(node, NS_TABLE, "name").is_some_and(|n| n.starts_with("'file:") || n.starts_with("file:"))
+        && !attr(node, NS_TABLE, "name")
+            .is_some_and(|n| n.starts_with("'file:") || n.starts_with("file:"))
 }
 
 /// One column run of a table.
@@ -159,15 +169,25 @@ impl<'d> SheetReader<'_, 'd> {
         runs
     }
 
-    fn walk_columns(&self, node: Node<'d, 'd>, depth: u8, collapsed: bool, runs: &mut Vec<ColumnRun>) {
-        for c in node.children().filter(|n| n.is_element() && n.tag_name().namespace() == Some(NS_TABLE)) {
+    fn walk_columns(
+        &self,
+        node: Node<'d, 'd>,
+        depth: u8,
+        collapsed: bool,
+        runs: &mut Vec<ColumnRun>,
+    ) {
+        for c in
+            node.children().filter(|n| n.is_element() && n.tag_name().namespace() == Some(NS_TABLE))
+        {
             match c.tag_name().name() {
                 "table-column" => runs.push(self.column_run(c, depth, collapsed)),
                 "table-column-group" => {
                     let shut = attr(c, NS_TABLE, "display") == Some("false");
                     self.walk_columns(c, depth.saturating_add(1), shut, runs);
                 }
-                "table-columns" | "table-header-columns" => self.walk_columns(c, depth, collapsed, runs),
+                "table-columns" | "table-header-columns" => {
+                    self.walk_columns(c, depth, collapsed, runs)
+                }
                 _ => {}
             }
         }
@@ -181,7 +201,10 @@ impl<'d> SheetReader<'_, 'd> {
         let pixels = super::pixels_per_character(self.book);
         ColumnRun {
             repeat: repeated(c, "number-columns-repeated"),
-            width: bag.get("col.column-width").and_then(|w| points(w)).map(|pt| characters_from_cm(pt / 72.0 * 2.54, pixels)),
+            width: bag
+                .get("col.column-width")
+                .and_then(|w| points(w))
+                .map(|pt| characters_from_cm(pt / 72.0 * 2.54, pixels)),
             hidden: visibility != "visible",
             outline,
             collapsed: collapsed && outline > 0,
@@ -242,7 +265,13 @@ impl<'d> SheetReader<'_, 'd> {
         out
     }
 
-    fn rows(&mut self, table: Node<'d, 'd>, sheet: &mut Sheet, defaults: &[(u32, u32, u32)], out: &mut Collected) {
+    fn rows(
+        &mut self,
+        table: Node<'d, 'd>,
+        sheet: &mut Sheet,
+        defaults: &[(u32, u32, u32)],
+        out: &mut Collected,
+    ) {
         let mut list: Vec<(Node<'d, 'd>, u8, bool)> = Vec::new();
         collect_rows(table, 0, false, &mut list);
         let default_height = self.default_row_height(&list);
@@ -344,11 +373,14 @@ impl<'d> SheetReader<'_, 'd> {
             || defaults.iter().find(|(a, b, _)| *a <= col && col <= *b).map_or(0, |d| d.2),
             |s| self.cells.xf(s, &mut self.book.styles),
         );
-        let column_default = defaults.iter().find(|(a, b, _)| *a <= col && col <= *b).map_or(0, |d| d.2);
+        let column_default =
+            defaults.iter().find(|(a, b, _)| *a <= col && col <= *b).map_or(0, |d| d.2);
         let content = self.content(cell, xf, r, col, sheet, first);
         let validation = attr(cell, NS_TABLE, "content-validation-name");
         let has_maps = style_name.is_some_and(|s| !self.cells.maps(s).is_empty());
-        let reach = if content.is_some() { times.min(MOST_STYLED_COLUMNS) } else {
+        let reach = if content.is_some() {
+            times.min(MOST_STYLED_COLUMNS)
+        } else {
             if xf == column_default && validation.is_none() && !has_maps {
                 return;
             }
@@ -386,8 +418,12 @@ impl<'d> SheetReader<'_, 'd> {
         first: bool,
     ) -> Option<Cell> {
         let at = CellRef::new(r, col);
-        let cols = attr(cell, NS_TABLE, "number-columns-spanned").and_then(|v| v.parse::<u32>().ok()).unwrap_or(1);
-        let rows = attr(cell, NS_TABLE, "number-rows-spanned").and_then(|v| v.parse::<u32>().ok()).unwrap_or(1);
+        let cols = attr(cell, NS_TABLE, "number-columns-spanned")
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(1);
+        let rows = attr(cell, NS_TABLE, "number-rows-spanned")
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(1);
         if first && (cols > 1 || rows > 1) {
             sheet.merges.push(Range::new(at, CellRef::new(r + rows - 1, col + cols - 1)));
         }
@@ -396,8 +432,10 @@ impl<'d> SheetReader<'_, 'd> {
         }
         let mut value = self.value(cell);
         let mut formula = attr(cell, NS_TABLE, "formula").and_then(|f| self.formula(f, sheet));
-        let matrix_cols = attr(cell, NS_TABLE, "number-matrix-columns-spanned").and_then(|v| v.parse::<u32>().ok());
-        let matrix_rows = attr(cell, NS_TABLE, "number-matrix-rows-spanned").and_then(|v| v.parse::<u32>().ok());
+        let matrix_cols = attr(cell, NS_TABLE, "number-matrix-columns-spanned")
+            .and_then(|v| v.parse::<u32>().ok());
+        let matrix_rows =
+            attr(cell, NS_TABLE, "number-matrix-rows-spanned").and_then(|v| v.parse::<u32>().ok());
         if let Some(f) = formula.as_mut() {
             f.dynamic = spills(&f.expr);
         }
@@ -419,15 +457,27 @@ impl<'d> SheetReader<'_, 'd> {
         if value.is_empty() && formula.is_none() {
             return None;
         }
-        Some(Cell { value, formula, style: xf, rich: rich.map(|r| Arc::from(r.as_str())), extra: None })
+        Some(Cell {
+            value,
+            formula,
+            style: xf,
+            rich: rich.map(|r| Arc::from(r.as_str())),
+            extra: None,
+        })
     }
 
     /// A note and links in a cell.
     fn note_and_link(&mut self, cell: Node<'d, 'd>, at: CellRef, sheet: &mut Sheet) {
-        for annotation in cell.children().filter(|n| n.is_element() && n.tag_name().name() == "annotation") {
+        for annotation in
+            cell.children().filter(|n| n.is_element() && n.tag_name().name() == "annotation")
+        {
             let author = annotation
                 .children()
-                .find(|n| n.is_element() && n.tag_name().namespace() == Some(NS_DC) && n.tag_name().name() == "creator")
+                .find(|n| {
+                    n.is_element()
+                        && n.tag_name().namespace() == Some(NS_DC)
+                        && n.tag_name().name() == "creator"
+                })
                 .and_then(|n| n.text())
                 .unwrap_or("")
                 .to_owned();
@@ -445,7 +495,8 @@ impl<'d> SheetReader<'_, 'd> {
                 Some(place) => LinkTarget::Location(location_text(place)),
                 None => LinkTarget::External(href.to_owned()),
             };
-            let display: String = link.descendants().filter(|n| n.is_text()).filter_map(|n| n.text()).collect();
+            let display: String =
+                link.descendants().filter(|n| n.is_text()).filter_map(|n| n.text()).collect();
             sheet.links.push(Hyperlink {
                 range: Range::cell(at),
                 target,
@@ -460,12 +511,17 @@ impl<'d> SheetReader<'_, 'd> {
         let kind = attr(cell, NS_OFFICE, "value-type");
         let text = || {
             cell.children()
-                .filter(|n| n.is_element() && n.tag_name().name() == "p" && n.tag_name().namespace() == Some(NS_TEXT))
+                .filter(|n| {
+                    n.is_element()
+                        && n.tag_name().name() == "p"
+                        && n.tag_name().namespace() == Some(NS_TEXT)
+                })
                 .map(paragraph_text)
                 .collect::<Vec<_>>()
                 .join("\n")
         };
-        let number = |name: &str| attr(cell, NS_OFFICE, name).and_then(|v| v.trim().parse::<f64>().ok());
+        let number =
+            |name: &str| attr(cell, NS_OFFICE, name).and_then(|v| v.trim().parse::<f64>().ok());
         let calc_error = attr(cell, NS_CALCEXT, "value-type") == Some("error");
         match kind {
             Some("float") | Some("percentage") | Some("currency") => {
@@ -479,11 +535,13 @@ impl<'d> SheetReader<'_, 'd> {
                 .map_or(Value::Empty, Value::Number),
             Some("boolean") => Value::Bool(attr(cell, NS_OFFICE, "boolean-value") == Some("true")),
             Some("error") => {
-                let shown = attr(cell, NS_OFFICE, "string-value").map(str::to_owned).unwrap_or_else(text);
+                let shown =
+                    attr(cell, NS_OFFICE, "string-value").map(str::to_owned).unwrap_or_else(text);
                 Value::Error(ErrorKind::parse(&shown).unwrap_or(ErrorKind::Value))
             }
             Some("string") => {
-                let shown = attr(cell, NS_OFFICE, "string-value").map(str::to_owned).unwrap_or_else(text);
+                let shown =
+                    attr(cell, NS_OFFICE, "string-value").map(str::to_owned).unwrap_or_else(text);
                 match (calc_error, ErrorKind::parse(&shown)) {
                     (true, Some(kind)) => Value::Error(kind),
                     _ => Value::text(shown),
@@ -491,7 +549,11 @@ impl<'d> SheetReader<'_, 'd> {
             }
             _ => {
                 let shown = text();
-                if shown.is_empty() { Value::Empty } else { Value::text(shown) }
+                if shown.is_empty() {
+                    Value::Empty
+                } else {
+                    Value::text(shown)
+                }
             }
         }
     }
@@ -500,7 +562,11 @@ impl<'d> SheetReader<'_, 'd> {
     fn rich_text(&self, cell: Node<'d, 'd>) -> (Option<String>, Option<String>) {
         let paragraphs: Vec<Node> = cell
             .children()
-            .filter(|n| n.is_element() && n.tag_name().name() == "p" && n.tag_name().namespace() == Some(NS_TEXT))
+            .filter(|n| {
+                n.is_element()
+                    && n.tag_name().name() == "p"
+                    && n.tag_name().namespace() == Some(NS_TEXT)
+            })
             .collect();
         if paragraphs.is_empty() {
             return (None, None);
@@ -526,27 +592,39 @@ impl<'d> SheetReader<'_, 'd> {
             if let Some(bag) = bag {
                 xml.push_str(&run_properties(bag));
             }
-            xml.push_str(&format!("<t xml:space=\"preserve\">{}</t></r>", crate::xlsx::escape(text)));
+            xml.push_str(&format!(
+                "<t xml:space=\"preserve\">{}</t></r>",
+                crate::xlsx::escape(text)
+            ));
         }
         xml.push_str("</si>");
         (Some(xml), Some(plain))
     }
 
-    fn paragraph_runs(&self, node: Node<'d, 'd>, bag: Option<&Bag>, runs: &mut Vec<(String, Option<Bag>)>, any: &mut bool) {
+    fn paragraph_runs(
+        &self,
+        node: Node<'d, 'd>,
+        bag: Option<&Bag>,
+        runs: &mut Vec<(String, Option<Bag>)>,
+        any: &mut bool,
+    ) {
         for c in node.children() {
             if c.is_text() {
                 runs.push((c.text().unwrap_or("").to_owned(), bag.cloned()));
             } else if c.is_element() {
                 match c.tag_name().name() {
                     "span" => {
-                        let own = attr(c, NS_TEXT, "style-name").map(|s| self.cells.bag_of("text", s));
+                        let own =
+                            attr(c, NS_TEXT, "style-name").map(|s| self.cells.bag_of("text", s));
                         let own = own.filter(|b| !b.is_empty());
                         *any |= own.is_some();
                         self.paragraph_runs(c, own.as_ref().or(bag), runs, any);
                     }
                     "a" => self.paragraph_runs(c, bag, runs, any),
                     "s" => {
-                        let n = attr(c, NS_TEXT, "c").and_then(|v| v.parse::<usize>().ok()).unwrap_or(1);
+                        let n = attr(c, NS_TEXT, "c")
+                            .and_then(|v| v.parse::<usize>().ok())
+                            .unwrap_or(1);
                         runs.push((" ".repeat(n), bag.cloned()));
                     }
                     "tab" => runs.push(("\t".to_owned(), bag.cloned())),
@@ -571,8 +649,15 @@ impl<'d> SheetReader<'_, 'd> {
 }
 
 /// The `RowInfo`-free walk of the rows, flattening groups and header rows.
-fn collect_rows<'d>(node: Node<'d, 'd>, depth: u8, collapsed: bool, out: &mut Vec<(Node<'d, 'd>, u8, bool)>) {
-    for c in node.children().filter(|n| n.is_element() && n.tag_name().namespace() == Some(NS_TABLE)) {
+fn collect_rows<'d>(
+    node: Node<'d, 'd>,
+    depth: u8,
+    collapsed: bool,
+    out: &mut Vec<(Node<'d, 'd>, u8, bool)>,
+) {
+    for c in
+        node.children().filter(|n| n.is_element() && n.tag_name().namespace() == Some(NS_TABLE))
+    {
         match c.tag_name().name() {
             "table-row" => out.push((c, depth, collapsed)),
             "table-row-group" => {
@@ -606,7 +691,9 @@ pub fn paragraph_text(p: Node) -> String {
             out.push_str(c.text().unwrap_or(""));
         } else if c.is_element() {
             match c.tag_name().name() {
-                "s" => out.push_str(&" ".repeat(attr(c, NS_TEXT, "c").and_then(|v| v.parse().ok()).unwrap_or(1))),
+                "s" => out.push_str(
+                    &" ".repeat(attr(c, NS_TEXT, "c").and_then(|v| v.parse().ok()).unwrap_or(1)),
+                ),
                 "tab" => out.push('\t'),
                 "line-break" => out.push('\n'),
                 "span" | "a" => out.push_str(&paragraph_text(c)),
@@ -657,9 +744,30 @@ fn run_properties(bag: &Bag) -> String {
 /// The functions that return a whole array, which is how a matrix formula Excel wrote is told from a
 /// legacy array formula: the file marks both the same way.
 const SPILLING: [&str; 24] = [
-    "SEQUENCE", "SORT", "SORTBY", "FILTER", "UNIQUE", "RANDARRAY", "TEXTSPLIT", "VSTACK", "HSTACK", "TOCOL",
-    "TOROW", "WRAPCOLS", "WRAPROWS", "TAKE", "DROP", "CHOOSECOLS", "CHOOSEROWS", "EXPAND", "MAKEARRAY", "BYROW",
-    "BYCOL", "SCAN", "REDUCE", "MAP",
+    "SEQUENCE",
+    "SORT",
+    "SORTBY",
+    "FILTER",
+    "UNIQUE",
+    "RANDARRAY",
+    "TEXTSPLIT",
+    "VSTACK",
+    "HSTACK",
+    "TOCOL",
+    "TOROW",
+    "WRAPCOLS",
+    "WRAPROWS",
+    "TAKE",
+    "DROP",
+    "CHOOSECOLS",
+    "CHOOSEROWS",
+    "EXPAND",
+    "MAKEARRAY",
+    "BYROW",
+    "BYCOL",
+    "SCAN",
+    "REDUCE",
+    "MAP",
 ];
 
 /// Whether a formula calls a function that returns an array to spill.
@@ -707,7 +815,10 @@ pub fn kept_formula(a1: &str) -> Formula {
             let mut unknown = false;
             f.expr.walk(&mut |e| match e {
                 Expr::External(_) => unknown = true,
-                Expr::Call(name, _) if crate::functions::find(name).is_none() && (name.contains('.') || name.starts_with('_')) => {
+                Expr::Call(name, _)
+                    if crate::functions::find(name).is_none()
+                        && (name.contains('.') || name.starts_with('_')) =>
+                {
                     unknown = true;
                 }
                 _ => {}

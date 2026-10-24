@@ -25,7 +25,10 @@ impl<'d> Features<'d> {
     pub fn new(body: Node<'d, 'd>) -> Self {
         let mut validations = HashMap::new();
         if let Some(list) = child(body, "content-validations") {
-            for v in list.children().filter(|n| n.is_element() && n.tag_name().name() == "content-validation") {
+            for v in list
+                .children()
+                .filter(|n| n.is_element() && n.tag_name().name() == "content-validation")
+            {
                 if let Some(name) = attr(v, NS_TABLE, "name") {
                     validations.insert(name.to_owned(), v);
                 }
@@ -56,7 +59,10 @@ impl<'d> Features<'d> {
         }
         let mut priority = 1;
         if let Some(block) = child(table, "conditional-formats") {
-            for format in block.children().filter(|n| n.is_element() && n.tag_name().name() == "conditional-format") {
+            for format in block
+                .children()
+                .filter(|n| n.is_element() && n.tag_name().name() == "conditional-format")
+            {
                 if let Some(read) = read_calcext_format(format, cells, styles, &mut priority) {
                     sheet.conditional.push(read);
                 }
@@ -87,11 +93,14 @@ impl<'d> Features<'d> {
         if let Some(list) = child(body, "named-expressions") {
             read_name_list(list, None, book);
         }
-        for (index, table) in body.children().filter(|n| n.is_element() && n.tag_name().name() == "table").enumerate() {
+        for (index, table) in
+            body.children().filter(|n| n.is_element() && n.tag_name().name() == "table").enumerate()
+        {
             if let Some(list) = child(table, "named-expressions") {
                 read_name_list(list, Some(index), book);
             }
-            let has_area = book.names.iter().any(|n| n.name == "_xlnm.Print_Area" && n.scope == Some(index));
+            let has_area =
+                book.names.iter().any(|n| n.name == "_xlnm.Print_Area" && n.scope == Some(index));
             if let (Some(ranges), false) = (attr(table, NS_TABLE, "print-ranges"), has_area) {
                 let parts: Vec<String> = ranges
                     .split_whitespace()
@@ -112,7 +121,9 @@ impl<'d> Features<'d> {
     /// The filter buttons of database ranges.
     pub fn read_database_ranges(&self, body: Node<'d, 'd>, book: &mut Workbook) {
         let Some(list) = child(body, "database-ranges") else { return };
-        for range in list.children().filter(|n| n.is_element() && n.tag_name().name() == "database-range") {
+        for range in
+            list.children().filter(|n| n.is_element() && n.tag_name().name() == "database-range")
+        {
             if attr(range, NS_TABLE, "display-filter-buttons") != Some("true") {
                 continue;
             }
@@ -120,7 +131,8 @@ impl<'d> Features<'d> {
             let (sheet_name, _) = split_address(address);
             let a1 = super::formula::to_a1(&format!("[{address}]"));
             let cells = a1.rsplit_once('!').map_or(a1.as_str(), |(_, c)| c);
-            if let (Some(index), Some(range)) = (book.sheet_index(&sheet_name), Range::parse(cells)) {
+            if let (Some(index), Some(range)) = (book.sheet_index(&sheet_name), Range::parse(cells))
+            {
                 book.sheets[index].filter = Some(AutoFilter { range, columns: BTreeMap::new() });
             }
         }
@@ -144,10 +156,17 @@ fn read_name_list(list: Node, scope: Option<usize>, book: &mut Workbook) {
     for n in list.children().filter(|n| n.is_element()) {
         let Some(name) = attr(n, NS_TABLE, "name") else { continue };
         let formula = match n.tag_name().name() {
-            "named-range" => attr(n, NS_TABLE, "cell-range-address")
-                .map(|a| a.split_whitespace().map(|r| super::formula::to_a1(&format!("[{r}]"))).collect::<Vec<_>>().join(",")),
-            "named-expression" => attr(n, NS_TABLE, "expression")
-                .map(|e| super::formula::to_a1(e.strip_prefix("of:=").or_else(|| e.strip_prefix('=')).unwrap_or(e))),
+            "named-range" => attr(n, NS_TABLE, "cell-range-address").map(|a| {
+                a.split_whitespace()
+                    .map(|r| super::formula::to_a1(&format!("[{r}]")))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            }),
+            "named-expression" => attr(n, NS_TABLE, "expression").map(|e| {
+                super::formula::to_a1(
+                    e.strip_prefix("of:=").or_else(|| e.strip_prefix('=')).unwrap_or(e),
+                )
+            }),
             _ => None,
         };
         let Some(formula) = formula else { continue };
@@ -179,7 +198,10 @@ pub fn cells_to_ranges(positions: &[(u32, u32)]) -> Vec<Range> {
     for (row, row_runs) in runs {
         let mut next: Vec<(u32, u32, u32, u32)> = Vec::new();
         for (first, last) in row_runs {
-            match open.iter().position(|(a, b, _, bottom)| *a == first && *b == last && *bottom + 1 == row) {
+            match open
+                .iter()
+                .position(|(a, b, _, bottom)| *a == first && *b == last && *bottom + 1 == row)
+            {
                 Some(i) => {
                     let (a, b, top, _) = open.remove(i);
                     next.push((a, b, top, row));
@@ -226,11 +248,15 @@ fn read_validation(node: Node, ranges: Vec<Range>) -> Validation {
     for part in split_and(condition) {
         apply_condition_part(&part, &mut validation);
     }
-    if let Some(help) = child(node, "help-message").filter(|h| attr(*h, NS_TABLE, "display") != Some("false")) {
+    if let Some(help) =
+        child(node, "help-message").filter(|h| attr(*h, NS_TABLE, "display") != Some("false"))
+    {
         validation.prompt_title = attr(help, NS_TABLE, "title").map(str::to_owned);
         validation.prompt = message_text(help);
     }
-    if let Some(error) = child(node, "error-message").filter(|h| attr(*h, NS_TABLE, "display") != Some("false")) {
+    if let Some(error) =
+        child(node, "error-message").filter(|h| attr(*h, NS_TABLE, "display") != Some("false"))
+    {
         validation.error_title = attr(error, NS_TABLE, "title").map(str::to_owned);
         validation.error = message_text(error);
         validation.error_style = match attr(error, NS_TABLE, "message-type") {
@@ -246,7 +272,11 @@ fn read_validation(node: Node, ranges: Vec<Range>) -> Validation {
 fn message_text(node: Node) -> Option<String> {
     let text: Vec<String> = node
         .children()
-        .filter(|n| n.is_element() && n.tag_name().name() == "p" && n.tag_name().namespace() == Some(NS_TEXT))
+        .filter(|n| {
+            n.is_element()
+                && n.tag_name().name() == "p"
+                && n.tag_name().namespace() == Some(NS_TEXT)
+        })
         .map(super::read::paragraph_text)
         .collect();
     (!text.is_empty()).then(|| text.join("\n"))
@@ -267,7 +297,11 @@ fn split_and(condition: &str) -> Vec<String> {
             ')' | ']' if !quoted => depth -= 1,
             _ => {}
         }
-        if !quoted && depth == 0 && c == ' ' && chars[i..].iter().take(5).collect::<String>() == " and " {
+        if !quoted
+            && depth == 0
+            && c == ' '
+            && chars[i..].iter().take(5).collect::<String>() == " and "
+        {
             parts.push(std::mem::take(&mut current).trim().to_owned());
             i += 5;
             continue;
@@ -319,14 +353,18 @@ fn apply_condition_part(part: &str, v: &mut Validation) {
                 v.kind = "decimal".to_owned();
             }
             let args = call_args(part);
-            v.operator = Some(if name.ends_with("not-between") { "notBetween" } else { "between" }.to_owned());
+            v.operator = Some(
+                if name.ends_with("not-between") { "notBetween" } else { "between" }.to_owned(),
+            );
             v.formula1 = args.first().map(|a| value_text(a));
             v.formula2 = args.get(1).map(|a| value_text(a));
         }
         "cell-content-text-length-is-between" | "cell-content-text-length-is-not-between" => {
             v.kind = "textLength".to_owned();
             let args = call_args(part);
-            v.operator = Some(if name.ends_with("not-between") { "notBetween" } else { "between" }.to_owned());
+            v.operator = Some(
+                if name.ends_with("not-between") { "notBetween" } else { "between" }.to_owned(),
+            );
             v.formula1 = args.first().map(|a| value_text(a));
             v.formula2 = args.get(1).map(|a| value_text(a));
         }
@@ -336,7 +374,8 @@ fn apply_condition_part(part: &str, v: &mut Validation) {
         }
         "is-true-formula" => {
             v.kind = "custom".to_owned();
-            let args = part.find('(').map(|o| &part[o + 1..part.len().saturating_sub(1)]).unwrap_or("");
+            let args =
+                part.find('(').map(|o| &part[o + 1..part.len().saturating_sub(1)]).unwrap_or("");
             v.formula1 = Some(super::formula::to_a1(args));
         }
         "cell-content-text-length" | "cell-content" => comparison(part, name, v),
@@ -379,7 +418,8 @@ fn list_text(args: &[String]) -> String {
     if args.len() == 1 && args[0].starts_with('[') {
         return super::formula::to_a1(&args[0]);
     }
-    let items: Vec<String> = args.iter().map(|a| a.trim_matches('"').replace("\"\"", "\"")).collect();
+    let items: Vec<String> =
+        args.iter().map(|a| a.trim_matches('"').replace("\"\"", "\"")).collect();
     format!("\"{}\"", items.join(","))
 }
 
@@ -427,7 +467,8 @@ fn relative_formula(open_formula: &str, base: &str, first: CellRef) -> String {
     let a1 = super::formula::to_a1(open_formula);
     let (_, base_cell) = split_address(base);
     let Some(base_cell) = CellRef::parse(&base_cell) else { return a1 };
-    let (rows, cols) = (first.row as i64 - base_cell.row as i64, first.col as i64 - base_cell.col as i64);
+    let (rows, cols) =
+        (first.row as i64 - base_cell.row as i64, first.col as i64 - base_cell.col as i64);
     if rows == 0 && cols == 0 {
         return a1;
     }
@@ -438,7 +479,12 @@ fn relative_formula(open_formula: &str, base: &str, first: CellRef) -> String {
 }
 
 /// A rule from a style map's condition: `is-true-formula(...)`, `cell-content()>5`, `cell-content-is-between(1,5)`.
-fn rule_from_condition(condition: &str, base: &str, first: CellRef, priority: &mut i32) -> Option<CfRule> {
+fn rule_from_condition(
+    condition: &str,
+    base: &str,
+    first: CellRef,
+    priority: &mut i32,
+) -> Option<CfRule> {
     let condition = condition.strip_prefix("of:").unwrap_or(condition).trim();
     let name = condition.split('(').next().unwrap_or("");
     match name {
@@ -458,8 +504,11 @@ fn rule_from_condition(condition: &str, base: &str, first: CellRef, priority: &m
         }
         "cell-content-is-between" | "cell-content-is-not-between" => {
             let mut rule = blank_rule("cellIs", priority);
-            rule.operator = Some(if name.ends_with("not-between") { "notBetween" } else { "between" }.to_owned());
-            rule.formulas = call_args(condition).iter().map(|a| relative_formula(a, base, first)).collect();
+            rule.operator = Some(
+                if name.ends_with("not-between") { "notBetween" } else { "between" }.to_owned(),
+            );
+            rule.formulas =
+                call_args(condition).iter().map(|a| relative_formula(a, base, first)).collect();
             Some(rule)
         }
         "is-error" => {
@@ -523,15 +572,22 @@ fn read_calcext_format(
 }
 
 /// A rule from the value of a `calcext:condition`: `>5`, `between(1,5)`, `formula-is(A1>2)`, `duplicate`.
-fn calcext_condition(value: &str, base: &str, first: CellRef, priority: &mut i32) -> Option<CfRule> {
+fn calcext_condition(
+    value: &str,
+    base: &str,
+    first: CellRef,
+    priority: &mut i32,
+) -> Option<CfRule> {
     let value = value.trim();
     let name = value.split('(').next().unwrap_or("");
     let first_text = first.a1();
     match name {
         "between" | "not-between" => {
             let mut rule = blank_rule("cellIs", priority);
-            rule.operator = Some(if name == "not-between" { "notBetween" } else { "between" }.to_owned());
-            rule.formulas = call_args(value).iter().map(|a| relative_formula(a, base, first)).collect();
+            rule.operator =
+                Some(if name == "not-between" { "notBetween" } else { "between" }.to_owned());
+            rule.formulas =
+                call_args(value).iter().map(|a| relative_formula(a, base, first)).collect();
             Some(rule)
         }
         "formula-is" => {
@@ -558,12 +614,31 @@ fn calcext_condition(value: &str, base: &str, first: CellRef, priority: &mut i32
             Some(rule)
         }
         "begins-with" | "ends-with" | "contains-text" | "not-contains-text" => {
-            let text = call_args(value).first().map(|a| a.trim_matches('"').to_owned()).unwrap_or_default();
+            let text = call_args(value)
+                .first()
+                .map(|a| a.trim_matches('"').to_owned())
+                .unwrap_or_default();
             let (kind, operator, formula) = match name {
-                "begins-with" => ("beginsWith", "beginsWith", format!("LEFT({first_text},LEN(\"{text}\"))=\"{text}\"")),
-                "ends-with" => ("endsWith", "endsWith", format!("RIGHT({first_text},LEN(\"{text}\"))=\"{text}\"")),
-                "contains-text" => ("containsText", "containsText", format!("NOT(ISERROR(SEARCH(\"{text}\",{first_text})))")),
-                _ => ("notContainsText", "notContains", format!("ISERROR(SEARCH(\"{text}\",{first_text}))")),
+                "begins-with" => (
+                    "beginsWith",
+                    "beginsWith",
+                    format!("LEFT({first_text},LEN(\"{text}\"))=\"{text}\""),
+                ),
+                "ends-with" => (
+                    "endsWith",
+                    "endsWith",
+                    format!("RIGHT({first_text},LEN(\"{text}\"))=\"{text}\""),
+                ),
+                "contains-text" => (
+                    "containsText",
+                    "containsText",
+                    format!("NOT(ISERROR(SEARCH(\"{text}\",{first_text})))"),
+                ),
+                _ => (
+                    "notContainsText",
+                    "notContains",
+                    format!("ISERROR(SEARCH(\"{text}\",{first_text}))"),
+                ),
             };
             let mut rule = blank_rule(kind, priority);
             rule.operator = Some(operator.to_owned());
@@ -613,7 +688,8 @@ fn read_color_scale(node: Node, priority: &mut i32) -> CfRule {
         .children()
         .filter(|n| n.is_element() && n.tag_name().name() == "color-scale-entry")
         .map(|e| {
-            let color = attr(e, NS_CALCEXT, "color").and_then(Color::parse_hex).unwrap_or(Color::Auto);
+            let color =
+                attr(e, NS_CALCEXT, "color").and_then(Color::parse_hex).unwrap_or(Color::Auto);
             (read_cfvo(e), color)
         })
         .collect();
@@ -644,7 +720,9 @@ fn read_data_bar(node: Node, priority: &mut i32) -> CfRule {
 fn items(node: Node) -> HashMap<String, String> {
     node.children()
         .filter(|n| n.is_element() && n.tag_name().name() == "config-item")
-        .filter_map(|n| Some((attr(n, NS_CONFIG, "name")?.to_owned(), n.text().unwrap_or("").to_owned())))
+        .filter_map(|n| {
+            Some((attr(n, NS_CONFIG, "name")?.to_owned(), n.text().unwrap_or("").to_owned()))
+        })
         .collect()
 }
 
@@ -653,21 +731,34 @@ pub fn read_settings(doc: &Document, book: &mut Workbook) {
     for view in doc.descendants().filter(|n| {
         n.is_element()
             && n.tag_name().name() == "config-item-map-entry"
-            && child(*n, "config-item-map-named").is_some_and(|m| attr(m, NS_CONFIG, "name") == Some("Tables"))
+            && child(*n, "config-item-map-named")
+                .is_some_and(|m| attr(m, NS_CONFIG, "name") == Some("Tables"))
     }) {
         let top = items(view);
         if let Some(active) = top.get("ActiveTable").and_then(|n| book.sheet_index(n)) {
             book.active_sheet = active;
         }
-        let Some(tables) = view.children().find(|n| n.is_element() && attr(*n, NS_CONFIG, "name") == Some("Tables")) else {
+        let Some(tables) = view
+            .children()
+            .find(|n| n.is_element() && attr(*n, NS_CONFIG, "name") == Some("Tables"))
+        else {
             continue;
         };
         for entry in tables.children().filter(|n| n.is_element()) {
-            let Some(index) = attr(entry, NS_CONFIG, "name").and_then(|n| book.sheet_index(n)) else { continue };
+            let Some(index) = attr(entry, NS_CONFIG, "name").and_then(|n| book.sheet_index(n))
+            else {
+                continue;
+            };
             let table = items(entry);
-            let number = |key: &str| table.get(key).and_then(|v| v.trim().parse::<u32>().ok()).unwrap_or(0);
-            let cols = if number("HorizontalSplitMode") == 2 { number("HorizontalSplitPosition") } else { 0 };
-            let rows = if number("VerticalSplitMode") == 2 { number("VerticalSplitPosition") } else { 0 };
+            let number =
+                |key: &str| table.get(key).and_then(|v| v.trim().parse::<u32>().ok()).unwrap_or(0);
+            let cols = if number("HorizontalSplitMode") == 2 {
+                number("HorizontalSplitPosition")
+            } else {
+                0
+            };
+            let rows =
+                if number("VerticalSplitMode") == 2 { number("VerticalSplitPosition") } else { 0 };
             let sheet = &mut book.sheets[index];
             sheet.frozen = (rows > 0 || cols > 0).then_some((rows, cols));
             if let Some(zoom) = table.get("ZoomValue").and_then(|z| z.trim().parse::<u32>().ok()) {

@@ -50,8 +50,16 @@ fn operator_symbol(op: &str) -> &'static str {
 // Formulas.
 
 /// The `of:` body of a formula expression written in a cell of `sheet`.
-pub fn formula_body(expr: &Expr, text: &str, frozen: bool, book: &Workbook, sheet: usize, at: CellRef) -> String {
-    let local: Vec<String> = book.names.iter().filter(|n| n.scope == Some(sheet)).map(|n| n.name.clone()).collect();
+pub fn formula_body(
+    expr: &Expr,
+    text: &str,
+    frozen: bool,
+    book: &Workbook,
+    sheet: usize,
+    at: CellRef,
+) -> String {
+    let local: Vec<String> =
+        book.names.iter().filter(|n| n.scope == Some(sheet)).map(|n| n.name.clone()).collect();
     if frozen {
         return from_a1(text, &local);
     }
@@ -64,7 +72,9 @@ fn expand_tables(expr: &Expr, book: &Workbook, sheet: usize, at: CellRef) -> Exp
     let again = |e: &Expr| expand_tables(e, book, sheet, at);
     let boxed = |e: &Expr| Box::new(again(e));
     match expr {
-        Expr::Table(t) => table_reference(book, sheet, at, t).map_or_else(|| expr.clone(), Expr::Ref),
+        Expr::Table(t) => {
+            table_reference(book, sheet, at, t).map_or_else(|| expr.clone(), Expr::Ref)
+        }
         Expr::Neg(e) => Expr::Neg(boxed(e)),
         Expr::Plus(e) => Expr::Plus(boxed(e)),
         Expr::Percent(e) => Expr::Percent(boxed(e)),
@@ -81,7 +91,12 @@ fn expand_tables(expr: &Expr, book: &Workbook, sheet: usize, at: CellRef) -> Exp
 }
 
 /// The cells a structured reference names, as a reference on the table's sheet.
-fn table_reference(book: &Workbook, sheet: usize, at: CellRef, t: &TableRef) -> Option<crate::formula::Reference> {
+fn table_reference(
+    book: &Workbook,
+    sheet: usize,
+    at: CellRef,
+    t: &TableRef,
+) -> Option<crate::formula::Reference> {
     let table: &Table = match &t.table {
         Some(name) => book.table(name)?,
         None => book.table_at(sheet, at)?,
@@ -103,7 +118,11 @@ fn table_reference(book: &Workbook, sheet: usize, at: CellRef, t: &TableRef) -> 
     };
     let column = |name: &Option<std::sync::Arc<str>>, default: u32| match name {
         None => Some(default),
-        Some(n) => table.columns.iter().position(|c| c.eq_ignore_ascii_case(n)).map(|i| range.first.col + i as u32),
+        Some(n) => table
+            .columns
+            .iter()
+            .position(|c| c.eq_ignore_ascii_case(n))
+            .map(|i| range.first.col + i as u32),
     };
     let first_col = column(&t.first_column, range.first.col)?;
     let last_col = column(&t.last_column, range.last.col)?;
@@ -129,9 +148,22 @@ pub fn validation_xml(v: &Validation, name: &str, sheet: &str) -> String {
     if !v.show_dropdown {
         xml.push_str(" table:display-list=\"none\"");
     }
-    xml.push_str(&format!(" table:base-cell-address=\"{}\">", range_address(sheet, Range::cell(base))));
-    xml.push_str(&message_xml("help-message", v.prompt_title.as_deref(), v.prompt.as_deref(), None));
-    xml.push_str(&message_xml("error-message", v.error_title.as_deref(), v.error.as_deref(), v.error_style.as_deref()));
+    xml.push_str(&format!(
+        " table:base-cell-address=\"{}\">",
+        range_address(sheet, Range::cell(base))
+    ));
+    xml.push_str(&message_xml(
+        "help-message",
+        v.prompt_title.as_deref(),
+        v.prompt.as_deref(),
+        None,
+    ));
+    xml.push_str(&message_xml(
+        "error-message",
+        v.error_title.as_deref(),
+        v.error.as_deref(),
+        v.error_style.as_deref(),
+    ));
     xml.push_str("</table:content-validation>");
     xml
 }
@@ -149,7 +181,8 @@ fn message_xml(tag: &str, title: Option<&str>, text: Option<&str>, style: Option
     }
     match text {
         Some(t) => {
-            let paragraphs: String = t.split('\n').map(|p| format!("<text:p>{}</text:p>", escape(p))).collect();
+            let paragraphs: String =
+                t.split('\n').map(|p| format!("<text:p>{}</text:p>", escape(p))).collect();
             xml.push_str(&format!(">{paragraphs}</table:{tag}>"));
         }
         None => xml.push_str("/>"),
@@ -168,21 +201,38 @@ fn validation_condition(v: &Validation) -> String {
         _ => "",
     };
     let compare = |between: &str, op: &str| match v.operator.as_deref() {
-        Some("between") => format!("cell-content-is-between({},{})", arg(&v.formula1), arg(&v.formula2)),
-        Some("notBetween") => format!("cell-content-is-not-between({},{})", arg(&v.formula1), arg(&v.formula2)),
+        Some("between") => {
+            format!("cell-content-is-between({},{})", arg(&v.formula1), arg(&v.formula2))
+        }
+        Some("notBetween") => {
+            format!("cell-content-is-not-between({},{})", arg(&v.formula1), arg(&v.formula2))
+        }
         Some(o) => format!("{op}{}{}", operator_symbol(o), arg(&v.formula1)),
         None => between.to_owned(),
     };
     match v.kind.as_str() {
-        "list" => format!("of:cell-content-is-in-list({})", list_arguments(v.formula1.as_deref().unwrap_or(""))),
+        "list" => format!(
+            "of:cell-content-is-in-list({})",
+            list_arguments(v.formula1.as_deref().unwrap_or(""))
+        ),
         "custom" => format!("of:is-true-formula({})", arg(&v.formula1)),
         "textLength" => {
             let text = match v.operator.as_deref() {
-                Some("between") => format!("cell-content-text-length-is-between({},{})", arg(&v.formula1), arg(&v.formula2)),
+                Some("between") => format!(
+                    "cell-content-text-length-is-between({},{})",
+                    arg(&v.formula1),
+                    arg(&v.formula2)
+                ),
                 Some("notBetween") => {
-                    format!("cell-content-text-length-is-not-between({},{})", arg(&v.formula1), arg(&v.formula2))
+                    format!(
+                        "cell-content-text-length-is-not-between({},{})",
+                        arg(&v.formula1),
+                        arg(&v.formula2)
+                    )
                 }
-                Some(o) => format!("cell-content-text-length(){}{}", operator_symbol(o), arg(&v.formula1)),
+                Some(o) => {
+                    format!("cell-content-text-length(){}{}", operator_symbol(o), arg(&v.formula1))
+                }
                 None => "cell-content-text-length()>=0".to_owned(),
             };
             format!("of:{text}")
@@ -202,7 +252,11 @@ fn validation_condition(v: &Validation) -> String {
 fn list_arguments(formula: &str) -> String {
     let trimmed = formula.trim();
     match trimmed.strip_prefix('"').and_then(|t| t.strip_suffix('"')) {
-        Some(items) => items.split(',').map(|i| format!("\"{}\"", i.replace('"', "\"\""))).collect::<Vec<_>>().join(";"),
+        Some(items) => items
+            .split(',')
+            .map(|i| format!("\"{}\"", i.replace('"', "\"\"")))
+            .collect::<Vec<_>>()
+            .join(";"),
         None => from_a1(trimmed, &[]),
     }
 }
@@ -222,8 +276,8 @@ pub fn map_condition(rule: &CfRule, range: Range, sheet: &str) -> Option<String>
             Some(o) => format!("cell-content(){}{}", operator_symbol(o), arg(0)),
             None => return None,
         },
-        "expression" | "containsText" | "notContainsText" | "beginsWith" | "endsWith" | "containsBlanks"
-        | "notContainsBlanks" | "containsErrors" | "notContainsErrors" => {
+        "expression" | "containsText" | "notContainsText" | "beginsWith" | "endsWith"
+        | "containsBlanks" | "notContainsBlanks" | "containsErrors" | "notContainsErrors" => {
             format!("is-true-formula({})", arg(0))
         }
         "duplicateValues" => format!("is-true-formula(COUNTIF({all};[.{first}])>1)"),
@@ -261,7 +315,11 @@ pub fn dxf_style_xml(dxf: &Dxf, name: &str, data_style: Option<&str>) -> String 
         text.push_str(if i { " fo:font-style=\"italic\"" } else { " fo:font-style=\"normal\"" });
     }
     if let Some(s) = dxf.strike {
-        text.push_str(if s { " style:text-line-through-style=\"solid\"" } else { " style:text-line-through-style=\"none\"" });
+        text.push_str(if s {
+            " style:text-line-through-style=\"solid\""
+        } else {
+            " style:text-line-through-style=\"none\""
+        });
     }
     if let Some(u) = dxf.underline {
         text.push_str(if u == Underline::None {
@@ -273,7 +331,10 @@ pub fn dxf_style_xml(dxf: &Dxf, name: &str, data_style: Option<&str>) -> String 
     let data = data_style.map(|d| format!(" style:data-style-name=\"{d}\"")).unwrap_or_default();
     let mut xml = format!("<style:style style:name=\"{name}\" style:family=\"table-cell\"{data}>");
     if let Some(Color::Rgb(argb)) = dxf.fill {
-        xml.push_str(&format!("<style:table-cell-properties fo:background-color=\"#{:06X}\"/>", argb & 0x00FF_FFFF));
+        xml.push_str(&format!(
+            "<style:table-cell-properties fo:background-color=\"#{:06X}\"/>",
+            argb & 0x00FF_FFFF
+        ));
     }
     if !text.is_empty() {
         xml.push_str(&format!("<style:text-properties{text}/>"));
@@ -283,7 +344,11 @@ pub fn dxf_style_xml(dxf: &Dxf, name: &str, data_style: Option<&str>) -> String 
 }
 
 /// The `calcext:conditional-formats` element for the formats of a sheet, with the style each rule applies.
-pub fn calcext_xml(formats: &[ConditionalFormat], sheet: &str, style_of: &HashMap<u32, String>) -> String {
+pub fn calcext_xml(
+    formats: &[ConditionalFormat],
+    sheet: &str,
+    style_of: &HashMap<u32, String>,
+) -> String {
     let mut xml = String::new();
     for format in formats {
         let Some(first) = format.ranges.first() else { continue };
@@ -306,11 +371,23 @@ pub fn calcext_xml(formats: &[ConditionalFormat], sheet: &str, style_of: &HashMa
 }
 
 /// One rule as a `calcext` element.
-fn calcext_rule(rule: &CfRule, range: Range, sheet: &str, style_of: &HashMap<u32, String>) -> String {
+fn calcext_rule(
+    rule: &CfRule,
+    range: Range,
+    sheet: &str,
+    style_of: &HashMap<u32, String>,
+) -> String {
     let base = range_address(sheet, Range::cell(range.first));
-    let style = rule.dxf.and_then(|d| style_of.get(&d)).map(|s| format!(" calcext:apply-style-name=\"{s}\"")).unwrap_or_default();
+    let style = rule
+        .dxf
+        .and_then(|d| style_of.get(&d))
+        .map(|s| format!(" calcext:apply-style-name=\"{s}\""))
+        .unwrap_or_default();
     let condition = |value: String| {
-        format!("<calcext:condition{style} calcext:value=\"{}\" calcext:base-cell-address=\"{base}\"/>", escape(&value))
+        format!(
+            "<calcext:condition{style} calcext:value=\"{}\" calcext:base-cell-address=\"{base}\"/>",
+            escape(&value)
+        )
     };
     let arg = |i: usize| from_a1(rule.formulas.get(i).map_or("0", String::as_str), &[]);
     match rule.kind.as_str() {
@@ -323,9 +400,16 @@ fn calcext_rule(rule: &CfRule, range: Range, sheet: &str, style_of: &HashMap<u32
         "expression" => condition(format!("formula-is({})", arg(0))),
         "duplicateValues" => condition("duplicate".to_owned()),
         "uniqueValues" => condition("unique".to_owned()),
-        "aboveAverage" => condition(if rule.above_average.unwrap_or(true) { "above-average" } else { "below-average" }.to_owned()),
+        "aboveAverage" => condition(
+            if rule.above_average.unwrap_or(true) { "above-average" } else { "below-average" }
+                .to_owned(),
+        ),
         "top10" => {
-            let name = format!("{}-{}", if rule.bottom { "bottom" } else { "top" }, if rule.percent { "percent" } else { "elements" });
+            let name = format!(
+                "{}-{}",
+                if rule.bottom { "bottom" } else { "top" },
+                if rule.percent { "percent" } else { "elements" }
+            );
             condition(format!("{name}({})", rule.rank.unwrap_or(10)))
         }
         "containsText" | "notContainsText" | "beginsWith" | "endsWith" => {
@@ -346,14 +430,21 @@ fn calcext_rule(rule: &CfRule, range: Range, sheet: &str, style_of: &HashMap<u32
 /// A threshold as a `calcext` entry's attributes.
 fn cfvo_attrs(v: &crate::model::Cfvo, first: bool) -> String {
     let kind = match v.kind.as_str() {
-        "min" => if first { "minimum" } else { "auto-minimum" },
+        "min" => {
+            if first {
+                "minimum"
+            } else {
+                "auto-minimum"
+            }
+        }
         "max" => "maximum",
         "percentile" => "percentile",
         "percent" => "percent",
         "formula" => "formula",
         _ => "number",
     };
-    let value = v.value.as_ref().map(|v| format!(" calcext:value=\"{}\"", escape(v))).unwrap_or_default();
+    let value =
+        v.value.as_ref().map(|v| format!(" calcext:value=\"{}\"", escape(v))).unwrap_or_default();
     format!("calcext:type=\"{kind}\"{value}")
 }
 
@@ -367,7 +458,10 @@ fn color_scale_xml(rule: &CfRule) -> String {
                 Color::Rgb(argb) => format!("#{:06X}", argb & 0x00FF_FFFF),
                 _ => "#FFFFFF".to_owned(),
             };
-            format!("<calcext:color-scale-entry {} calcext:color=\"{hex}\"/>", cfvo_attrs(v, i == 0))
+            format!(
+                "<calcext:color-scale-entry {} calcext:color=\"{hex}\"/>",
+                cfvo_attrs(v, i == 0)
+            )
         })
         .collect();
     format!("<calcext:color-scale>{items}</calcext:color-scale>")
@@ -461,8 +555,16 @@ pub fn rich_runs(raw: &str) -> Vec<(String, String)> {
         match node.tag_name().name() {
             "t" => runs.push((node.text().unwrap_or("").to_owned(), String::new())),
             "r" => {
-                let text = node.children().find(|c| c.tag_name().name() == "t").and_then(|t| t.text()).unwrap_or("");
-                let props = node.children().find(|c| c.tag_name().name() == "rPr").map(run_style).unwrap_or_default();
+                let text = node
+                    .children()
+                    .find(|c| c.tag_name().name() == "t")
+                    .and_then(|t| t.text())
+                    .unwrap_or("");
+                let props = node
+                    .children()
+                    .find(|c| c.tag_name().name() == "rPr")
+                    .map(run_style)
+                    .unwrap_or_default();
                 runs.push((text.to_owned(), props));
             }
             _ => {}
@@ -479,7 +581,9 @@ fn run_style(rpr: roxmltree::Node) -> String {
             "b" => out.push_str(" fo:font-weight=\"bold\""),
             "i" => out.push_str(" fo:font-style=\"italic\""),
             "strike" => out.push_str(" style:text-line-through-style=\"solid\""),
-            "u" => out.push_str(" style:text-underline-style=\"solid\" style:text-underline-type=\"single\""),
+            "u" => out.push_str(
+                " style:text-underline-style=\"solid\" style:text-underline-type=\"single\"",
+            ),
             "sz" => {
                 if let Some(v) = p.attribute("val").and_then(|v| v.parse::<f64>().ok()) {
                     out.push_str(&format!(" fo:font-size=\"{}pt\"", number(v)));
@@ -519,14 +623,22 @@ pub fn settings_xml(book: &Workbook) -> String {
         items.push_str(&item("VerticalSplitMode", "short", if rows > 0 { "2" } else { "0" }));
         items.push_str(&item("HorizontalSplitPosition", "int", &cols.to_string()));
         items.push_str(&item("VerticalSplitPosition", "int", &rows.to_string()));
-        items.push_str(&item("ActiveSplitRange", "short", if rows > 0 && cols > 0 { "3" } else if rows > 0 { "2" } else { "2" }));
+        items.push_str(&item(
+            "ActiveSplitRange",
+            "short",
+            if rows > 0 && cols > 0 { "3" } else { "2" },
+        ));
         items.push_str(&item("PositionLeft", "int", "0"));
         items.push_str(&item("PositionRight", "int", &cols.to_string()));
         items.push_str(&item("PositionTop", "int", "0"));
         items.push_str(&item("PositionBottom", "int", &rows.to_string()));
         items.push_str(&item("ZoomType", "short", "0"));
         items.push_str(&item("ZoomValue", "int", &sheet.zoom.to_string()));
-        items.push_str(&item("ShowGrid", "boolean", if sheet.show_grid { "true" } else { "false" }));
+        items.push_str(&item(
+            "ShowGrid",
+            "boolean",
+            if sheet.show_grid { "true" } else { "false" },
+        ));
         tables.push_str(&format!(
             "<config:config-item-map-entry config:name=\"{}\">{items}</config:config-item-map-entry>",
             escape(&sheet.name)

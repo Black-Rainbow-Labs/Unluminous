@@ -28,7 +28,10 @@ pub fn parse(text: &str) -> Result<Json, String> {
     let value = value(&chars, &mut at)?;
     skip_space(&chars, &mut at);
     if at < chars.len() {
-        return Err(format!("unexpected {:?} after the end of the JSON value, at character {at}", chars[at]));
+        return Err(format!(
+            "unexpected {:?} after the end of the JSON value, at character {at}",
+            chars[at]
+        ));
     }
     Ok(value)
 }
@@ -66,7 +69,10 @@ fn object(chars: &[char], at: &mut usize) -> Result<Json, String> {
                 let key = string(chars, at)?;
                 skip_space(chars, at);
                 if chars.get(*at) != Some(&':') {
-                    return Err(format!("expected a colon after the key {key:?}, at character {}", *at));
+                    return Err(format!(
+                        "expected a colon after the key {key:?}, at character {}",
+                        *at
+                    ));
                 }
                 *at += 1;
                 members.push((key, value(chars, at)?));
@@ -122,12 +128,16 @@ fn string(chars: &[char], at: &mut usize) -> Result<String, String> {
 /// The character a `\uXXXX` escape names, joining a surrogate pair.
 fn unicode_escape(chars: &[char], at: &mut usize) -> Result<char, String> {
     let read_unit = |at: &mut usize| -> Result<u32, String> {
-        let hex: String = chars.get(*at..*at + 4).ok_or("the JSON ends inside a \\u escape")?.iter().collect();
+        let hex: String =
+            chars.get(*at..*at + 4).ok_or("the JSON ends inside a \\u escape")?.iter().collect();
         *at += 4;
         u32::from_str_radix(&hex, 16).map_err(|_| format!("{hex:?} is not a \\u escape"))
     };
     let high = read_unit(at)?;
-    if (0xD800..0xDC00).contains(&high) && chars.get(*at) == Some(&'\\') && chars.get(*at + 1) == Some(&'u') {
+    if (0xD800..0xDC00).contains(&high)
+        && chars.get(*at) == Some(&'\\')
+        && chars.get(*at + 1) == Some(&'u')
+    {
         *at += 2;
         let low = read_unit(at)?;
         let combined = 0x10000 + ((high - 0xD800) << 10) + (low.wrapping_sub(0xDC00) & 0x3FF);
@@ -165,10 +175,16 @@ pub fn compact(json: &Json) -> String {
         Json::Bool(b) => b.to_string(),
         Json::Number(n) => crate::formula::print::number(*n),
         Json::Text(t) => format!("{t:?}"),
-        Json::Array(items) => format!("[{}]", items.iter().map(compact).collect::<Vec<_>>().join(",")),
+        Json::Array(items) => {
+            format!("[{}]", items.iter().map(compact).collect::<Vec<_>>().join(","))
+        }
         Json::Object(members) => format!(
             "{{{}}}",
-            members.iter().map(|(k, v)| format!("{k:?}:{}", compact(v))).collect::<Vec<_>>().join(",")
+            members
+                .iter()
+                .map(|(k, v)| format!("{k:?}:{}", compact(v)))
+                .collect::<Vec<_>>()
+                .join(",")
         ),
     }
 }
@@ -190,7 +206,9 @@ fn rows_of(json: &Json) -> (Option<String>, Vec<Json>) {
     match json {
         Json::Array(items) => (None, items.clone()),
         Json::Object(members) => {
-            if let Some((key, Json::Array(items))) = members.iter().find(|(_, v)| matches!(v, Json::Array(_))) {
+            if let Some((key, Json::Array(items))) =
+                members.iter().find(|(_, v)| matches!(v, Json::Array(_)))
+            {
                 return (Some(key.clone()), items.clone());
             }
             (None, vec![json.clone()])
@@ -206,7 +224,9 @@ pub fn read(text: &str, sheet_name: &str) -> Result<Workbook, String> {
     let mut book = Workbook::new();
     let name = key.as_deref().unwrap_or(sheet_name);
     let mut sheet = Sheet::new(name.chars().take(31).collect::<String>());
-    let bold = book.styles.derive(0, &StyleChange::Font(FontEdit { bold: Some(true), ..Default::default() }));
+    let bold = book
+        .styles
+        .derive(0, &StyleChange::Font(FontEdit { bold: Some(true), ..Default::default() }));
     let objects = rows.iter().any(|r| matches!(r, Json::Object(_)));
     let mut next_row = 0u32;
     let mut keys: Vec<String> = Vec::new();
@@ -221,7 +241,10 @@ pub fn read(text: &str, sheet_name: &str) -> Result<Workbook, String> {
             }
         }
         for (c, k) in keys.iter().enumerate() {
-            sheet.set(CellRef::new(0, c as u32), Cell { value: Value::text(k), style: bold, ..Default::default() });
+            sheet.set(
+                CellRef::new(0, c as u32),
+                Cell { value: Value::text(k), style: bold, ..Default::default() },
+            );
         }
         next_row = 1;
     }
@@ -252,7 +275,11 @@ mod tests {
 
     #[test]
     fn an_array_of_objects_becomes_a_table_with_the_keys_as_headers() {
-        let book = read(r#"[{"name":"Tea","qty":3,"ok":true},{"name":"Milk","extra":null,"qty":1.5}]"#, "data").unwrap();
+        let book = read(
+            r#"[{"name":"Tea","qty":3,"ok":true},{"name":"Milk","extra":null,"qty":1.5}]"#,
+            "data",
+        )
+        .unwrap();
         let s = &book.sheets[0];
         let at = |r, c| s.value_at(CellRef::new(r, c));
         assert_eq!(at(0, 0), Value::text("name"));

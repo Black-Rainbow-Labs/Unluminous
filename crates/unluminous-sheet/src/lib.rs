@@ -27,15 +27,15 @@ pub mod coord;
 pub mod dates;
 pub mod edit;
 pub mod eval;
+pub mod fixedwidth;
 pub mod formula;
 pub mod functions;
-pub mod input;
-pub mod model;
 pub mod html;
+pub mod input;
 pub mod json;
+pub mod model;
 pub mod numfmt;
 pub mod ods;
-pub mod fixedwidth;
 pub mod styles;
 pub mod value;
 pub mod xlsx;
@@ -123,7 +123,10 @@ pub fn open(bytes: &[u8], kind: FileKind, name: &str, this_year: i64) -> Result<
         FileKind::Ods => ods::read(bytes),
         FileKind::Xml => xml2003::read(bytes),
         FileKind::Json => json::read(&csv::decode(bytes), name),
-        FileKind::Html => Err("A web page is not a workbook this version opens. It can be saved as one.".to_owned()),
+        FileKind::Html => {
+            Err("A web page is not a workbook this version opens. It can be saved as one."
+                .to_owned())
+        }
     }
 }
 
@@ -134,7 +137,11 @@ pub fn save(book: &Workbook, kind: FileKind) -> Result<Vec<u8>, String> {
 }
 
 /// A workbook as the bytes of a file, with the encoding a text file asks for.
-pub fn save_with(book: &Workbook, kind: FileKind, options: &SaveOptions) -> Result<Vec<u8>, String> {
+pub fn save_with(
+    book: &Workbook,
+    kind: FileKind,
+    options: &SaveOptions,
+) -> Result<Vec<u8>, String> {
     let sheet = book.active_sheet.min(book.sheets.len().saturating_sub(1));
     match kind {
         FileKind::Xlsx | FileKind::Xlsm => xlsx::write(book),
@@ -150,13 +157,15 @@ pub fn save_with(book: &Workbook, kind: FileKind, options: &SaveOptions) -> Resu
             &csv::write(book, sheet, '\t'),
             options.encoding.unwrap_or(csv::Encoding::Utf16Le),
         )),
-        FileKind::Prn => {
-            Ok(csv::encode(&fixedwidth::write(book, sheet), options.encoding.unwrap_or(csv::Encoding::Windows1252)))
-        }
+        FileKind::Prn => Ok(csv::encode(
+            &fixedwidth::write(book, sheet),
+            options.encoding.unwrap_or(csv::Encoding::Windows1252),
+        )),
         FileKind::Ods => ods::write(book),
         FileKind::Html => Ok(html::write(book).into_bytes()),
-        FileKind::Xml | FileKind::Json => {
-            Err("This version reads that kind of file but does not write it. Save as .xlsx or .ods.".to_owned())
-        }
+        FileKind::Xml | FileKind::Json => Err(
+            "This version reads that kind of file but does not write it. Save as .xlsx or .ods."
+                .to_owned(),
+        ),
     }
 }

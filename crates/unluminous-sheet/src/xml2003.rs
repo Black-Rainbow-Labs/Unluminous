@@ -11,13 +11,11 @@ use roxmltree::{Document, Node};
 use crate::coord::{column_name, CellRef, Range, MAX_COLS, MAX_ROWS};
 use crate::formula::Formula;
 use crate::model::{
-    ColumnInfo, DefinedName, Hyperlink, LinkTarget, Note, RowInfo, Sheet, Validation, Visibility, Workbook,
+    ColumnInfo, DefinedName, Hyperlink, LinkTarget, Note, RowInfo, Sheet, Validation, Visibility,
+    Workbook,
 };
 use crate::styles::{Alignment, Border, Color, Edge, Fill, Font, Underline, Xf};
 use crate::value::{ErrorKind, Value};
-
-/// The pixels one character of the default font is wide, for turning a width in points into characters.
-
 
 /// Read an XML Spreadsheet 2003 file.
 pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
@@ -230,7 +228,8 @@ fn border_from(node: Node) -> Border {
             (Some("Double"), _) => "double",
             _ => "thin",
         };
-        let color = attribute(side, "Color").and_then(Color::parse_hex).unwrap_or(Color::Indexed(64));
+        let color =
+            attribute(side, "Color").and_then(Color::parse_hex).unwrap_or(Color::Indexed(64));
         let edge = Edge::line(style, color);
         match attribute(side, "Position") {
             Some("Left") => border.left = edge,
@@ -251,7 +250,12 @@ fn border_from(node: Node) -> Border {
     border
 }
 
-fn read_sheet(node: Node, styles: &HashMap<String, u32>, book: &mut Workbook, index: usize) -> Sheet {
+fn read_sheet(
+    node: Node,
+    styles: &HashMap<String, u32>,
+    book: &mut Workbook,
+    index: usize,
+) -> Sheet {
     let mut sheet = Sheet::new("Sheet1");
     if let Some(table) = node.children().find(|n| is(*n, "Table")) {
         read_table(table, styles, book, &mut sheet);
@@ -283,7 +287,9 @@ fn read_table(table: Node, styles: &HashMap<String, u32>, book: &mut Workbook, s
             col = index.saturating_sub(1);
         }
         let span = attribute(column, "Span").and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
-        let width = attribute(column, "Width").and_then(|w| w.parse::<f64>().ok()).map(|w| characters_from_points(w, pixels));
+        let width = attribute(column, "Width")
+            .and_then(|w| w.parse::<f64>().ok())
+            .map(|w| characters_from_points(w, pixels));
         let hidden = attribute(column, "Hidden") == Some("1");
         let style = attribute(column, "StyleID").and_then(|s| styles.get(s)).copied().unwrap_or(0);
         if width.is_some() || hidden || style != 0 {
@@ -330,7 +336,13 @@ fn characters_from_points(points: f64, pixels_per_character: f64) -> f64 {
     ((pixels / pixels_per_character) * 100.0).round() / 100.0
 }
 
-fn read_cells(row: Node, r: u32, styles: &HashMap<String, u32>, book: &mut Workbook, sheet: &mut Sheet) {
+fn read_cells(
+    row: Node,
+    r: u32,
+    styles: &HashMap<String, u32>,
+    book: &mut Workbook,
+    sheet: &mut Sheet,
+) {
     let mut col = 0u32;
     for cell in row.children().filter(|n| is(*n, "Cell")) {
         if let Some(index) = attribute(cell, "Index").and_then(|i| i.parse::<u32>().ok()) {
@@ -338,7 +350,10 @@ fn read_cells(row: Node, r: u32, styles: &HashMap<String, u32>, book: &mut Workb
         }
         let at = CellRef::new(r, col);
         let style = attribute(cell, "StyleID").and_then(|s| styles.get(s)).copied().unwrap_or(0);
-        let value = cell.children().find(|n| is(*n, "Data")).map_or(Value::Empty, |d| data_value(d, book.date1904));
+        let value = cell
+            .children()
+            .find(|n| is(*n, "Data"))
+            .map_or(Value::Empty, |d| data_value(d, book.date1904));
         let formula = attribute(cell, "Formula").map(|f| formula_of(f, at));
         let mut made = crate::model::Cell { value, formula, style, rich: None, extra: None };
         if let Some(range) = attribute(cell, "ArrayRange").and_then(|a| array_range(a, at)) {
@@ -348,7 +363,8 @@ fn read_cells(row: Node, r: u32, styles: &HashMap<String, u32>, book: &mut Workb
             }
             sheet.array_formulas.push(range);
         }
-        let across = attribute(cell, "MergeAcross").and_then(|m| m.parse::<u32>().ok()).unwrap_or(0);
+        let across =
+            attribute(cell, "MergeAcross").and_then(|m| m.parse::<u32>().ok()).unwrap_or(0);
         let down = attribute(cell, "MergeDown").and_then(|m| m.parse::<u32>().ok()).unwrap_or(0);
         if across > 0 || down > 0 {
             sheet.merges.push(Range::new(at, CellRef::new(r + down, col + across)));
@@ -365,7 +381,8 @@ fn read_cells(row: Node, r: u32, styles: &HashMap<String, u32>, book: &mut Workb
             sheet.links.push(Hyperlink { range: Range::cell(at), target, display, tooltip: None });
         }
         if let Some(comment) = cell.children().find(|n| is(*n, "Comment")) {
-            let text: String = comment.descendants().filter(|n| n.is_text()).filter_map(|n| n.text()).collect();
+            let text: String =
+                comment.descendants().filter(|n| n.is_text()).filter_map(|n| n.text()).collect();
             let author = attribute(comment, "Author").unwrap_or("").to_owned();
             sheet.notes.insert((r, col), Note { author, text: text.trim().to_owned() });
         }
@@ -384,12 +401,17 @@ fn array_range(text: &str, at: CellRef) -> Option<Range> {
 
 /// A cell's value from its `Data` element.
 fn data_value(data: Node, date1904: bool) -> Value {
-    let text: String = data.descendants().filter(|n| n.is_text()).filter_map(|n| n.text()).collect();
+    let text: String =
+        data.descendants().filter(|n| n.is_text()).filter_map(|n| n.text()).collect();
     match attribute(data, "Type") {
         Some("Number") => text.trim().parse::<f64>().map_or(Value::Empty, Value::Number),
-        Some("Boolean") => Value::Bool(text.trim() == "1" || text.trim().eq_ignore_ascii_case("true")),
+        Some("Boolean") => {
+            Value::Bool(text.trim() == "1" || text.trim().eq_ignore_ascii_case("true"))
+        }
         Some("Error") => Value::Error(ErrorKind::parse(&text).unwrap_or(ErrorKind::Value)),
-        Some("DateTime") => crate::ods::date_serial(text.trim(), date1904).map_or(Value::Empty, Value::Number),
+        Some("DateTime") => {
+            crate::ods::date_serial(text.trim(), date1904).map_or(Value::Empty, Value::Number)
+        }
         _ => Value::text(text),
     }
 }
@@ -403,7 +425,11 @@ fn formula_of(text: &str, at: CellRef) -> Formula {
 
 fn read_options(options: Node, sheet: &mut Sheet, book: &mut Workbook, index: usize) {
     let number = |name: &str| {
-        options.children().find(|n| is(*n, name)).and_then(|n| n.text()).and_then(|t| t.trim().parse::<u32>().ok())
+        options
+            .children()
+            .find(|n| is(*n, name))
+            .and_then(|n| n.text())
+            .and_then(|t| t.trim().parse::<u32>().ok())
     };
     let has = |name: &str| options.children().any(|n| is(n, name));
     if has("FreezePanes") {
@@ -420,7 +446,11 @@ fn read_options(options: Node, sheet: &mut Sheet, book: &mut Workbook, index: us
         sheet.zoom = zoom;
     }
     if let Some(visible) = options.children().find(|n| is(*n, "Visible")).and_then(|n| n.text()) {
-        sheet.state = if visible.trim() == "SheetVeryHidden" { Visibility::VeryHidden } else { Visibility::Hidden };
+        sheet.state = if visible.trim() == "SheetVeryHidden" {
+            Visibility::VeryHidden
+        } else {
+            Visibility::Hidden
+        };
     }
     if has("Selected") {
         book.active_sheet = index;
@@ -429,7 +459,9 @@ fn read_options(options: Node, sheet: &mut Sheet, book: &mut Workbook, index: us
 
 fn read_names(names: Node, book: &mut Workbook, scope: Option<usize>) {
     for name in names.children().filter(|n| is(*n, "NamedRange")) {
-        let (Some(n), Some(refers)) = (attribute(name, "Name"), attribute(name, "RefersTo")) else { continue };
+        let (Some(n), Some(refers)) = (attribute(name, "Name"), attribute(name, "RefersTo")) else {
+            continue;
+        };
         let formula = r1c1_to_a1(refers.strip_prefix('=').unwrap_or(refers), 0, 0);
         book.names.push(DefinedName {
             name: n.to_owned(),
@@ -442,7 +474,9 @@ fn read_names(names: Node, book: &mut Workbook, scope: Option<usize>) {
 }
 
 fn read_validation(node: Node) -> Option<Validation> {
-    let text = |name: &str| node.children().find(|n| is(*n, name)).and_then(|n| n.text()).map(|t| t.trim().to_owned());
+    let text = |name: &str| {
+        node.children().find(|n| is(*n, name)).and_then(|n| n.text()).map(|t| t.trim().to_owned())
+    };
     let range = text("Range")?;
     let ranges: Vec<Range> = range
         .split(',')
@@ -478,7 +512,9 @@ fn read_validation(node: Node) -> Option<Validation> {
         operator,
         formula1: text("Value").or_else(|| text("Min")),
         formula2: text("Max"),
-        allow_blank: !node.children().any(|n| is(n, "IgnoreBlanks") && n.text().is_some_and(|t| t.trim() == "False")),
+        allow_blank: !node
+            .children()
+            .any(|n| is(n, "IgnoreBlanks") && n.text().is_some_and(|t| t.trim() == "False")),
         show_dropdown: true,
         prompt_title: None,
         prompt: text("InputMessage"),
@@ -534,7 +570,8 @@ pub fn r1c1_to_a1(text: &str, row: u32, col: u32) -> String {
             }
             continue;
         }
-        let word_start = i == 0 || !(chars[i - 1].is_alphanumeric() || "_.$".contains(chars[i - 1]));
+        let word_start =
+            i == 0 || !(chars[i - 1].is_alphanumeric() || "_.$".contains(chars[i - 1]));
         if (c == 'R' || c == 'r' || c == 'C' || c == 'c') && word_start {
             if let Some((reference, next)) = r1c1_reference(&chars, i, row, col) {
                 out.push_str(&reference);
@@ -596,7 +633,11 @@ fn r1c1_reference(chars: &[char], start: usize, row: u32, col: u32) -> Option<(S
 fn cell_text(r: (bool, i64), c: (bool, i64), row: u32, col: u32) -> Option<String> {
     let row_number = if r.0 { r.1 } else { row as i64 + 1 + r.1 };
     let col_number = if c.0 { c.1 } else { col as i64 + 1 + c.1 };
-    if row_number < 1 || col_number < 1 || col_number > MAX_COLS as i64 || row_number > MAX_ROWS as i64 {
+    if row_number < 1
+        || col_number < 1
+        || col_number > MAX_COLS as i64
+        || row_number > MAX_ROWS as i64
+    {
         return Some("#REF!".to_owned());
     }
     Some(format!(
@@ -661,7 +702,10 @@ mod tests {
         assert_eq!(s.name, "Data");
         assert_eq!(s.value_at(CellRef::new(0, 0)), Value::Number(1.5));
         assert_eq!(s.merges, vec![Range::parse("A1:B1").unwrap()]);
-        assert_eq!(s.cell(CellRef::new(2, 1)).unwrap().formula.as_ref().unwrap().display(), "=A1*2");
+        assert_eq!(
+            s.cell(CellRef::new(2, 1)).unwrap().formula.as_ref().unwrap().display(),
+            "=A1*2"
+        );
         assert_eq!(s.value_at(CellRef::new(2, 2)), Value::Number(46318.0));
         assert_eq!(s.value_at(CellRef::new(2, 3)), Value::Bool(true));
         assert_eq!(s.frozen, Some((1, 0)));

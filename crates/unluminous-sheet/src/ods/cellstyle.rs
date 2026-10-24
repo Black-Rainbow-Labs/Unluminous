@@ -10,9 +10,7 @@ use std::collections::{BTreeMap, HashMap};
 use roxmltree::Node;
 
 use super::numstyle::NS_STYLE;
-use crate::styles::{
-    Alignment, Border, Color, Dxf, Edge, Fill, Font, Styles, Underline, Xf,
-};
+use crate::styles::{Alignment, Border, Color, Dxf, Edge, Fill, Font, Styles, Underline, Xf};
 use crate::xlsx::escape;
 
 /// A style's properties, keyed `c.`, `t.` or `p.` and then the attribute's local name.
@@ -160,7 +158,9 @@ impl<'a> CellStyles<'a> {
         let name = bag
             .get("t.font-name")
             .map(|n| self.faces.get(n).cloned().unwrap_or_else(|| n.clone()))
-            .or_else(|| bag.get("t.font-family").map(|f| f.trim_matches('\'').trim_matches('"').to_owned()));
+            .or_else(|| {
+                bag.get("t.font-family").map(|f| f.trim_matches('\'').trim_matches('"').to_owned())
+            });
         if let Some(name) = name {
             if name != font.name {
                 font.name = name;
@@ -177,11 +177,12 @@ impl<'a> CellStyles<'a> {
             font.italic = style == "italic" || style == "oblique";
         }
         if let Some(style) = bag.get("t.text-underline-style") {
-            font.underline = match (style.as_str(), bag.get("t.text-underline-type").map(String::as_str)) {
-                ("none", _) => Underline::None,
-                (_, Some("double")) => Underline::Double,
-                _ => Underline::Single,
-            };
+            font.underline =
+                match (style.as_str(), bag.get("t.text-underline-type").map(String::as_str)) {
+                    ("none", _) => Underline::None,
+                    (_, Some("double")) => Underline::Double,
+                    _ => Underline::Single,
+                };
         }
         if let Some(style) = bag.get("t.text-line-through-style") {
             font.strike = style != "none";
@@ -206,15 +207,26 @@ impl<'a> CellStyles<'a> {
     /// A conditional format's style as a differential format.
     pub fn dxf(&self, name: &str) -> Dxf {
         let bag = self.bag(name);
-        let mut dxf = Dxf::default();
-        dxf.font_color = bag.get("t.color").and_then(|c| Color::parse_hex(c));
-        dxf.bold = bag.get("t.font-weight").map(|w| w == "bold");
-        dxf.italic = bag.get("t.font-style").map(|s| s == "italic");
-        dxf.strike = bag.get("t.text-line-through-style").map(|s| s != "none");
-        dxf.underline = bag.get("t.text-underline-style").map(|s| if s == "none" { Underline::None } else { Underline::Single });
-        dxf.fill = bag.get("c.background-color").and_then(|c| Color::parse_hex(c));
-        dxf.num_fmt = bag.get("data").and_then(|d| self.codes.get(d)).filter(|c| *c != "General").cloned();
-        dxf
+        Dxf {
+            font_color: bag.get("t.color").and_then(|c| Color::parse_hex(c)),
+            bold: bag.get("t.font-weight").map(|w| w == "bold"),
+            italic: bag.get("t.font-style").map(|s| s == "italic"),
+            strike: bag.get("t.text-line-through-style").map(|s| s != "none"),
+            underline: bag.get("t.text-underline-style").map(|s| {
+                if s == "none" {
+                    Underline::None
+                } else {
+                    Underline::Single
+                }
+            }),
+            fill: bag.get("c.background-color").and_then(|c| Color::parse_hex(c)),
+            num_fmt: bag
+                .get("data")
+                .and_then(|d| self.codes.get(d))
+                .filter(|c| *c != "General")
+                .cloned(),
+            ..Default::default()
+        }
     }
 }
 
@@ -254,11 +266,18 @@ fn fill_from(bag: &Bag) -> Fill {
 /// A border from the cell properties.
 fn border_from(bag: &Bag) -> Border {
     let side = |name: &str| {
-        bag.get(&format!("c.border-{name}")).or_else(|| bag.get("c.border")).map(|v| edge_from(v)).unwrap_or_default()
+        bag.get(&format!("c.border-{name}"))
+            .or_else(|| bag.get("c.border"))
+            .map(|v| edge_from(v))
+            .unwrap_or_default()
     };
     let down = bag.get("c.diagonal-tl-br").map(|v| edge_from(v));
     let up = bag.get("c.diagonal-bl-tr").map(|v| edge_from(v));
-    let diagonal = down.clone().filter(|e| !e.is_none()).or(up.clone().filter(|e| !e.is_none())).unwrap_or_default();
+    let diagonal = down
+        .clone()
+        .filter(|e| !e.is_none())
+        .or(up.clone().filter(|e| !e.is_none()))
+        .unwrap_or_default();
     Border {
         left: side("left"),
         right: side("right"),
@@ -278,7 +297,19 @@ fn edge_from(text: &str) -> Edge {
             color = c;
         } else if matches!(token, "none" | "hidden") {
             return Edge::default();
-        } else if matches!(token, "solid" | "dashed" | "dotted" | "double" | "dot-dash" | "dot-dot-dash" | "groove" | "ridge" | "inset" | "outset") {
+        } else if matches!(
+            token,
+            "solid"
+                | "dashed"
+                | "dotted"
+                | "double"
+                | "dot-dash"
+                | "dot-dot-dash"
+                | "groove"
+                | "ridge"
+                | "inset"
+                | "outset"
+        ) {
             line = match token {
                 "groove" | "ridge" | "inset" | "outset" => "solid",
                 other => other,
@@ -334,7 +365,11 @@ fn alignment_from(bag: &Bag) -> Alignment {
         }
         Some(angle) => {
             let degrees = angle.rem_euclid(360.0).round() as i32;
-            if degrees <= 90 { degrees } else { 90 + (360 - degrees) }
+            if degrees <= 90 {
+                degrees
+            } else {
+                90 + (360 - degrees)
+            }
         }
         None if bag.get("c.direction").is_some_and(|d| d == "ttb") => 255,
         None => 0,
@@ -378,7 +413,10 @@ pub fn write_cell_style(xf: &Xf, styles: &Styles, name: &str, data_style: &str) 
     let mut xml = format!(
         "<style:style style:name=\"{name}\" style:family=\"table-cell\" style:parent-style-name=\"Default\" style:data-style-name=\"{data_style}\">"
     );
-    xml.push_str(&format!("<style:table-cell-properties{}/>", cell_attrs(xf, &fill, &border, &styles.theme)));
+    xml.push_str(&format!(
+        "<style:table-cell-properties{}/>",
+        cell_attrs(xf, &fill, &border, &styles.theme)
+    ));
     xml.push_str(&format!("<style:text-properties{}/>", text_attrs(&font, &styles.theme)));
     let paragraph = paragraph_attrs(&xf.align);
     if !paragraph.is_empty() {
@@ -392,10 +430,17 @@ pub fn write_cell_style(xf: &Xf, styles: &Styles, name: &str, data_style: &str) 
 fn cell_attrs(xf: &Xf, fill: &Fill, border: &Border, theme: &[u32]) -> String {
     let mut out = String::new();
     match fill.paint().and_then(|c| c.resolve(theme)) {
-        Some((r, g, b)) => out.push_str(&format!(" fo:background-color=\"#{r:02X}{g:02X}{b:02X}\"")),
+        Some((r, g, b)) => {
+            out.push_str(&format!(" fo:background-color=\"#{r:02X}{g:02X}{b:02X}\""))
+        }
         None => out.push_str(" fo:background-color=\"transparent\""),
     }
-    for (name, edge) in [("top", &border.top), ("bottom", &border.bottom), ("left", &border.left), ("right", &border.right)] {
+    for (name, edge) in [
+        ("top", &border.top),
+        ("bottom", &border.bottom),
+        ("left", &border.left),
+        ("right", &border.right),
+    ] {
         out.push_str(&format!(" fo:border-{name}=\"{}\"", edge_text(edge, theme)));
     }
     if !border.diagonal.is_none() {
@@ -459,7 +504,10 @@ fn edge_text(edge: &Edge, theme: &[u32]) -> String {
         "hair" => ("0.5pt", "solid"),
         _ => ("thin", "solid"),
     };
-    let color = edge.color.resolve(theme).map_or("#000000".to_owned(), |(r, g, b)| format!("#{r:02X}{g:02X}{b:02X}"));
+    let color = edge
+        .color
+        .resolve(theme)
+        .map_or("#000000".to_owned(), |(r, g, b)| format!("#{r:02X}{g:02X}{b:02X}"));
     format!("{width} {line} {color}")
 }
 
@@ -481,9 +529,12 @@ fn text_attrs(font: &Font, theme: &[u32]) -> String {
     match font.underline {
         Underline::None => {}
         Underline::Double | Underline::DoubleAccounting => {
-            out.push_str(" style:text-underline-style=\"solid\" style:text-underline-type=\"double\"");
+            out.push_str(
+                " style:text-underline-style=\"solid\" style:text-underline-type=\"double\"",
+            );
         }
-        _ => out.push_str(" style:text-underline-style=\"solid\" style:text-underline-type=\"single\""),
+        _ => out
+            .push_str(" style:text-underline-style=\"solid\" style:text-underline-type=\"single\""),
     }
     if font.strike {
         out.push_str(" style:text-line-through-style=\"solid\"");
@@ -507,7 +558,10 @@ fn paragraph_attrs(align: &Alignment) -> String {
         _ => {}
     }
     if align.indent > 0 {
-        out.push_str(&format!(" fo:margin-left=\"{}pt\"", number(align.indent as f64 * INDENT_POINTS)));
+        out.push_str(&format!(
+            " fo:margin-left=\"{}pt\"",
+            number(align.indent as f64 * INDENT_POINTS)
+        ));
     }
     out
 }

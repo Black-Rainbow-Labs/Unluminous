@@ -11,7 +11,8 @@ use crate::value::ErrorKind;
 
 /// The prefixes a function name carries in an OpenDocument file for the functions its own standard
 /// does not define.
-const PREFIXES: [&str; 4] = ["COM.MICROSOFT.", "ORG.OPENOFFICE.", "ORG.LIBREOFFICE.", "COM.SUN.STAR.SHEET."];
+const PREFIXES: [&str; 4] =
+    ["COM.MICROSOFT.", "ORG.OPENOFFICE.", "ORG.LIBREOFFICE.", "COM.SUN.STAR.SHEET."];
 
 /// Functions Excel defines differently from OpenDocument, which Excel therefore writes with the
 /// `COM.MICROSOFT.` prefix even though they are old.
@@ -287,9 +288,8 @@ pub fn from_a1(body: &str, local_names: &[String]) -> String {
                 i += 1;
             }
             ' ' => {
-                let next_starts_operand = chars
-                    .get(i + 1)
-                    .is_some_and(|n| n.is_alphanumeric() || "_$'(".contains(*n));
+                let next_starts_operand =
+                    chars.get(i + 1).is_some_and(|n| n.is_alphanumeric() || "_$'(".contains(*n));
                 out.push(if was_reference && next_starts_operand { '!' } else { ' ' });
                 after_reference = was_reference && !next_starts_operand;
                 i += 1;
@@ -343,7 +343,10 @@ fn external_to_of(chars: &[char], start: usize, out: &mut String) -> usize {
     let (cells, next) = read_cells(chars, after + 1);
     let (first, last) = cells.split_once(':').map_or((cells.as_str(), None), |(a, b)| (a, Some(b)));
     let last = last.map(|l| format!(":.{l}")).unwrap_or_default();
-    out.push_str(&format!("['file:///external{number}.xlsx'#${}.{first}{last}]", of_sheet_name(&sheet)));
+    out.push_str(&format!(
+        "['file:///external{number}.xlsx'#${}.{first}{last}]",
+        of_sheet_name(&sheet)
+    ));
     next
 }
 
@@ -495,7 +498,8 @@ fn reference_or_word(
 
 /// A number, with the sign and digits of an exponent that the word ended before.
 fn number_word(chars: &[char], word: &str, next: usize) -> (String, usize, bool) {
-    let exponent = word.ends_with(['E', 'e']) && word[..word.len() - 1].bytes().any(|b| b.is_ascii_digit());
+    let exponent =
+        word.ends_with(['E', 'e']) && word[..word.len() - 1].bytes().any(|b| b.is_ascii_digit());
     if exponent && matches!(chars.get(next), Some('+') | Some('-')) {
         let mut text = word.to_owned();
         let mut i = next;
