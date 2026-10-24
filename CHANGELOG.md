@@ -6,6 +6,10 @@ Written by `tools/changelog.mjs` from the git history, and rewritten by `tools/r
 `tools/release.sh` on every release, so it cannot fall behind. One line per ticket; the version
 bumps the release script makes are left out, because they are the boundaries rather than the work.
 
+## 1.14.1 — 2026-10-24
+
+- The Windows installer packages the build from CARGO_TARGET_DIR, and refuses an executable of another version (`task-2341`)
+
 ## 1.14.0 — 2026-10-24
 
 - Word document engine: zip, model, reader and writer that keep everything, styles, lists, layout (`task-2341`)
