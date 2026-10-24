@@ -5550,13 +5550,18 @@ the code as it was.
 **On a busy Windows machine a program's end is seen through `session::Watching`** (`task-2353`).
 `alacritty_terminal`'s child watcher wakes the reader loop only once the loop has registered with its
 poller, so a program that ended before the loop's thread ran was never seen to end: the run said
-`running` for ever with its output on the screen. And the loop drains the pipe with one read that does
-not wait, while the console host writes on its own frame, so a last line that arrived after the exit
-was lost. `Watching::register` wakes the loop for a program that has already ended, and
-`Watching::next_child_event` reads until the pipe has been quiet for 250 ms. Both only showed under
-load: the window test passed every time on an idle machine and failed with 36 threads of
-`tools/perf-smooth/load.mjs` running. `a_program_that_ends_before_the_reader_starts_is_still_seen_to_end`
-starts the loop after the program has ended, so it fails on the old code every time.
+`running` for ever with its output on the screen. And the loop stops reading the moment it is told the
+program ended, while the console host writes on its own frame, so a last line that arrived after the exit
+was lost and the tab was empty. `Watching::register` wakes the loop for a program that has already ended.
+On Windows `Watching::next_child_event` sends the window `ChildExit` itself and never tells the loop, so
+the loop goes on reading until the session is closed. Waiting for the pipe to be quiet for 250 ms was
+tried first and still lost the line in a full suite run. Both faults only showed under load: the window
+test passed every time on an idle machine and failed with 36 threads of `tools/perf-smooth/load.mjs`
+running. `a_program_that_ends_before_the_reader_starts_is_still_seen_to_end` starts the loop after the
+program has ended, so it fails on the old code every time.
+
+**A window opened on a folder another test window just used waits for that window's writes**
+(`harness_in`), because what a project remembers is written on a thread (`project_state::save_later`).
 
 **Plugins contribute data, not types.** The answer to "should running node mean a Node plugin" is
 no: node is how JavaScript runs, and the JavaScript manifest says so itself with `run.file = node

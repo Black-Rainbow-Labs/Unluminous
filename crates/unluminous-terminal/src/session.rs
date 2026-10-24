@@ -171,83 +171,40 @@ pub type Waker = Arc<dyn Fn() + Send + Sync + 'static>;
 ///   the pseudoconsole is made, but it wakes the loop only once the loop has registered with its poller. A
 ///   program that ended first put its exit into a channel nothing was woken to read, and the tab said `running`
 ///   for ever. `register` asks whether the program has already ended and wakes the loop itself.
-/// - **What the console host wrote after the exit was lost.** The loop drains with one read that does not wait,
-///   and the console host writes to the pipe on its own timer, so a program's last line can arrive after the
-///   program has gone. `next_child_event` reads until the pipe has been quiet for `AFTER_EXIT_QUIET`, and the
-///   loop's drain is then handed what was read.
+/// - **What the console host wrote after the exit was lost.** On an exit the loop drains the pipe with one
+///   read that does not wait and stops reading. The console host writes to the pipe on its own frame, and on a
+///   busy machine a program's only line arrived after the program had gone, so the tab was empty. Waiting for
+///   the pipe to go quiet for a quarter of a second was tried and was not enough. So on Windows
+///   `next_child_event` tells the window the program ended and does **not** tell the loop: the loop goes on
+///   reading the pipe until the session is closed, which shuts it down, so whatever arrives later reaches the
+///   screen however late it is.
 struct Watching<T> {
     inner: T,
     scanner: crate::reported::Scanner,
+    /// Where the program's end is reported, because on Windows the loop is not told it.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    proxy: Proxy,
     /// The program's process handle, as a number so this stays `Send`, for asking whether it has ended.
     #[cfg(windows)]
     child: usize,
-    /// What was read after the program ended, handed to the loop before anything more from the pipe.
-    after_exit: std::collections::VecDeque<u8>,
+    /// Whether the program's end has been reported, so it is reported once.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    ended: bool,
 }
 
-/// How long the pipe has to be quiet after a program ends before what it wrote is taken as complete.
-///
-/// The console host writes to the pipe on its own frame, about every 16 ms when the machine is idle and later
-/// when it is not, so a quarter of a second is many frames. It is what closing a shell's tab now waits, once.
-#[cfg(windows)]
-const AFTER_EXIT_QUIET: std::time::Duration = std::time::Duration::from_millis(250);
-
-/// The longest a program's end is held back for what it still has to say, however much is still arriving.
-#[cfg(windows)]
-const AFTER_EXIT_LONGEST: std::time::Duration = std::time::Duration::from_secs(2);
-
-/// The most read after a program ends. The loop's drain hands the emulator at most `u16::MAX` bytes under
-/// one lock, and anything past that would be lost however long this waited.
-#[cfg(windows)]
-const AFTER_EXIT_MOST: usize = u16::MAX as usize;
-
 impl Watching<alacritty_terminal::tty::Pty> {
-    fn new(inner: alacritty_terminal::tty::Pty, scanner: crate::reported::Scanner) -> Self {
+    fn new(
+        inner: alacritty_terminal::tty::Pty,
+        scanner: crate::reported::Scanner,
+        proxy: Proxy,
+    ) -> Self {
         Self {
             #[cfg(windows)]
             child: inner.child_watcher().raw_handle() as usize,
             inner,
             scanner,
-            after_exit: std::collections::VecDeque::new(),
-        }
-    }
-}
-
-/// Read from `reader` into `into` until nothing has arrived for `quiet`, or for `longest` in all, or until
-/// `most` bytes are held.
-///
-/// A reader that would block is asked again every few milliseconds rather than waited on, because the
-/// console's pipe is read through a buffer filled by a thread of its own, which never blocks the caller.
-#[cfg(any(windows, test))]
-fn read_until_quiet(
-    reader: &mut impl std::io::Read,
-    into: &mut std::collections::VecDeque<u8>,
-    quiet: std::time::Duration,
-    longest: std::time::Duration,
-    most: usize,
-) {
-    let started = std::time::Instant::now();
-    let mut last = started;
-    let mut chunk = [0u8; 4096];
-    while into.len() < most && started.elapsed() < longest {
-        match reader.read(&mut chunk) {
-            Ok(0) => break,
-            Ok(read) => {
-                into.extend(&chunk[..read]);
-                last = std::time::Instant::now();
-            }
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
-                ) =>
-            {
-                if last.elapsed() >= quiet {
-                    break;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(10));
-            }
-            Err(_) => break,
+            proxy,
+            ended: false,
         }
     }
 }
@@ -263,15 +220,7 @@ fn has_ended(handle: usize) -> bool {
 
 impl<T: alacritty_terminal::tty::EventedReadWrite> std::io::Read for Watching<T> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let read = if self.after_exit.is_empty() {
-            self.inner.reader().read(buf)?
-        } else {
-            let read = buf.len().min(self.after_exit.len());
-            for (into, byte) in buf.iter_mut().zip(self.after_exit.drain(..read)) {
-                *into = byte;
-            }
-            read
-        };
+        let read = self.inner.reader().read(buf)?;
         self.scanner.read(&buf[..read]);
         Ok(read)
     }
@@ -329,21 +278,24 @@ impl<T: alacritty_terminal::tty::EventedReadWrite> alacritty_terminal::tty::Even
 }
 
 impl<T: alacritty_terminal::tty::EventedPty> alacritty_terminal::tty::EventedPty for Watching<T> {
-    /// The program's end, held back on Windows until what it wrote has stopped arriving.
+    /// On Windows, the program's end is sent to the window here and the loop is never told it.
     ///
-    /// The loop stops reading straight after this answers, with one drain that does not wait. That drain
-    /// reads `after_exit` first, so what is read here reaches the screen.
+    /// What the window receives is what the loop would have sent: `ChildExit` with the code, or `Exit` when no
+    /// code could be read. The loop goes on reading the pipe, so output the console host writes after the exit
+    /// still reaches the screen, and it stops when the session is closed. Everywhere else the loop is told, as
+    /// before: a Unix pseudoterminal holds what the program wrote, so the loop's one drain reads all of it.
     fn next_child_event(&mut self) -> Option<alacritty_terminal::tty::ChildEvent> {
         let event = self.inner.next_child_event();
         #[cfg(windows)]
-        if matches!(event, Some(alacritty_terminal::tty::ChildEvent::Exited(_))) {
-            read_until_quiet(
-                self.inner.reader(),
-                &mut self.after_exit,
-                AFTER_EXIT_QUIET,
-                AFTER_EXIT_LONGEST,
-                AFTER_EXIT_MOST,
-            );
+        if let Some(alacritty_terminal::tty::ChildEvent::Exited(status)) = event {
+            // A second wake can find the channel closed, which the watcher reports as another exit.
+            if !std::mem::replace(&mut self.ended, true) {
+                match status {
+                    Some(status) => self.proxy.send_event(Event::ChildExit(status)),
+                    None => self.proxy.send_event(Event::Exit),
+                }
+            }
+            return None;
         }
         event
     }
@@ -550,7 +502,8 @@ impl Session {
         // not answer: which folder the shell says it is in. See `Watching` and [`crate::reported`]. It is
         // always on, because a shell that reports its folder is followed and one that does not is unchanged.
         let reported = crate::reported::Reported::new();
-        let pty = Watching::new(pty, crate::reported::Scanner::new(reported.clone()));
+        let pty =
+            Watching::new(pty, crate::reported::Scanner::new(reported.clone()), proxy.clone());
         let event_loop = EventLoop::new(term.clone(), proxy, pty, true, false)?;
         let notifier = Notifier(event_loop.channel());
         event_loop.spawn();
@@ -2114,8 +2067,11 @@ Start-Sleep -Seconds 900"
         let (sender, events) = std::sync::mpsc::channel();
         let proxy = Proxy { events: sender, waker: Arc::new(|| {}) };
         let term = Arc::new(FairMutex::new(Term::new(config(), &size, proxy.clone())));
-        let pty =
-            Watching::new(pty, crate::reported::Scanner::new(crate::reported::Reported::new()));
+        let pty = Watching::new(
+            pty,
+            crate::reported::Scanner::new(crate::reported::Reported::new()),
+            proxy.clone(),
+        );
         let event_loop =
             EventLoop::new(term.clone(), proxy, pty, true, false).expect("make the loop");
         event_loop.spawn();
@@ -2159,78 +2115,119 @@ Start-Sleep -Seconds 900"
                 "the loop never said the program had ended"
             );
         }
-        // The loop drains before it says the program ended, and sends the exit after; wait for it to
-        // have let go of the grid.
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        let term = term.lock();
-        let text: String = (0..term.screen_lines())
-            .map(|line| {
-                let row = &term.grid()[Line(line as i32)];
-                (0..term.columns()).map(|column| row[Column(column)].c).collect::<String>()
-                    + "
-"
-            })
-            .collect();
-        assert!(text.contains(marker), "the screen holds {text:?}");
-    }
-
-    /// A reader with bytes that arrive on a timetable, as the console host writes them.
-    struct Arriving {
-        started: std::time::Instant,
-        chunks: std::collections::VecDeque<(u64, &'static [u8])>,
-    }
-
-    impl std::io::Read for Arriving {
-        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-            match self.chunks.front() {
-                Some((at, bytes)) if self.started.elapsed().as_millis() as u64 >= *at => {
-                    let bytes = *bytes;
-                    self.chunks.pop_front();
-                    buf[..bytes.len()].copy_from_slice(bytes);
-                    Ok(bytes.len())
-                }
-                _ => Err(std::io::ErrorKind::WouldBlock.into()),
-            }
+        // The console host may write the line after the exit was reported, and the loop goes on
+        // reading for exactly that reason, so the screen is watched rather than read once.
+        let screen_text = || {
+            let term = term.lock();
+            (0..term.screen_lines())
+                .map(|line| {
+                    let row = &term.grid()[Line(line as i32)];
+                    let text: String = (0..term.columns()).map(|at| row[Column(at)].c).collect();
+                    text + "\n"
+                })
+                .collect::<String>()
+        };
+        while !screen_text().contains(marker) {
+            assert!(std::time::Instant::now() < deadline, "the screen holds {:?}", screen_text());
+            std::thread::sleep(std::time::Duration::from_millis(25));
         }
     }
 
-    #[test]
-    fn bytes_that_arrive_after_the_program_ended_are_waited_for_until_the_pipe_is_quiet() {
-        // `task-2353`. Nothing is there when the exit is read, the line arrives 120 ms later, and a
-        // second piece 120 ms after that. A wait that stopped at the first empty read lost both.
-        let mut reader = Arriving {
-            started: std::time::Instant::now(),
-            chunks: [(120, &b"last "[..]), (240, &b"line"[..]), (2_000, &b"too late"[..])].into(),
-        };
-        let mut read = std::collections::VecDeque::new();
-        let quiet = std::time::Duration::from_millis(200);
-        read_until_quiet(&mut reader, &mut read, quiet, std::time::Duration::from_secs(5), 1 << 16);
-        assert_eq!(read.iter().copied().collect::<Vec<u8>>(), b"last line");
+    /// A pseudoterminal with nothing behind it whose program has just ended, which is all the
+    /// end-of-program half of [`Watching`] reads.
+    #[cfg(windows)]
+    struct Ended {
+        exits: std::collections::VecDeque<alacritty_terminal::tty::ChildEvent>,
     }
 
+    #[cfg(windows)]
+    impl std::io::Read for Ended {
+        fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+            Err(std::io::ErrorKind::WouldBlock.into())
+        }
+    }
+
+    #[cfg(windows)]
+    impl std::io::Write for Ended {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[cfg(windows)]
+    impl alacritty_terminal::tty::EventedReadWrite for Ended {
+        type Reader = Self;
+        type Writer = Self;
+
+        unsafe fn register(
+            &mut self,
+            _: &Arc<polling::Poller>,
+            _: polling::Event,
+            _: polling::PollMode,
+        ) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn reregister(
+            &mut self,
+            _: &Arc<polling::Poller>,
+            _: polling::Event,
+            _: polling::PollMode,
+        ) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn deregister(&mut self, _: &Arc<polling::Poller>) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn reader(&mut self) -> &mut Self {
+            self
+        }
+
+        fn writer(&mut self) -> &mut Self {
+            self
+        }
+    }
+
+    #[cfg(windows)]
+    impl alacritty_terminal::tty::EventedPty for Ended {
+        fn next_child_event(&mut self) -> Option<alacritty_terminal::tty::ChildEvent> {
+            self.exits.pop_front()
+        }
+    }
+
+    #[cfg(windows)]
     #[test]
-    fn waiting_for_a_quiet_pipe_stops_at_its_limits() {
-        let mut reader = Arriving {
-            started: std::time::Instant::now(),
-            chunks: (0..1_000).map(|at| (at * 5, &b"0123456789"[..])).collect(),
+    fn on_windows_the_window_is_told_a_program_ended_and_the_loop_goes_on_reading() {
+        // `task-2353`. The loop stops reading the moment it is told, and the console host can still
+        // be writing the program's last line, so the loop is never told: the window is, once, with
+        // the code. A second exit, which the watcher reports when its channel has closed, says nothing.
+        use alacritty_terminal::tty::{ChildEvent, EventedPty};
+        use std::os::windows::process::ExitStatusExt;
+        let (sender, events) = std::sync::mpsc::channel();
+        let mut watching = Watching {
+            inner: Ended {
+                exits: [
+                    ChildEvent::Exited(Some(std::process::ExitStatus::from_raw(5))),
+                    ChildEvent::Exited(None),
+                ]
+                .into(),
+            },
+            scanner: crate::reported::Scanner::new(crate::reported::Reported::new()),
+            proxy: Proxy { events: sender, waker: Arc::new(|| {}) },
+            child: 0,
+            ended: false,
         };
-        let mut read = std::collections::VecDeque::new();
-        let started = std::time::Instant::now();
-        let quiet = std::time::Duration::from_millis(200);
-        read_until_quiet(
-            &mut reader,
-            &mut read,
-            quiet,
-            std::time::Duration::from_millis(300),
-            1 << 16,
-        );
-        assert!(
-            started.elapsed() < std::time::Duration::from_secs(2),
-            "a stream that never stops is cut off"
-        );
-        read.clear();
-        read_until_quiet(&mut reader, &mut read, quiet, std::time::Duration::from_secs(30), 25);
-        assert!(read.len() < 40, "and so is one larger than the most it may hold");
+        assert!(watching.next_child_event().is_none(), "the loop is not told");
+        assert!(watching.next_child_event().is_none(), "nor the second time");
+        let told: Vec<Event> = events.try_iter().collect();
+        assert_eq!(told.len(), 1, "the window is told once: {told:?}");
+        assert!(matches!(&told[0], Event::ChildExit(status) if status.code() == Some(5)));
     }
 
     #[test]

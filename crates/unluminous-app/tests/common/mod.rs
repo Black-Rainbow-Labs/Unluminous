@@ -218,6 +218,11 @@ pub fn harness(text: &str) -> Harness<'static, UnluminousApp> {
 
 /// Build the application on a folder of its own, for a test that needs a second window.
 pub fn harness_in(folder: &std::path::Path) -> Harness<'static, UnluminousApp> {
+    // What a window before this one remembered about the project is written on a thread
+    // (`project_state::save_later`), so a second window opened at once could read the folder before
+    // the first one's state reached it. `a_split_project_opens_split_again` came back with one pane on
+    // a busy machine (`task-2353`). Closing a real window waits the same way.
+    unluminous_app::services::project_state::wait_for_the_writes();
     let folder = folder.to_path_buf();
     let mut harness = builder().with_size(vec2(WINDOW[0], WINDOW[1])).build_eframe(move |cc| {
         let mut app = UnluminousApp::new(folder);
