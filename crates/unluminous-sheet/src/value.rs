@@ -15,10 +15,17 @@ pub enum ErrorKind {
     GettingData,
     Spill,
     Calc,
+    /// A service the workbook needs is switched off or not available to this copy of the program.
+    Blocked,
+    Connect,
+    Field,
+    Unknown,
+    Python,
+    Busy,
 }
 
 impl ErrorKind {
-    pub const ALL: [ErrorKind; 10] = [
+    pub const ALL: [ErrorKind; 16] = [
         ErrorKind::Null,
         ErrorKind::Div0,
         ErrorKind::Value,
@@ -29,6 +36,12 @@ impl ErrorKind {
         ErrorKind::GettingData,
         ErrorKind::Spill,
         ErrorKind::Calc,
+        ErrorKind::Blocked,
+        ErrorKind::Connect,
+        ErrorKind::Field,
+        ErrorKind::Unknown,
+        ErrorKind::Python,
+        ErrorKind::Busy,
     ];
 
     /// How the error is written in a cell and in a file.
@@ -44,6 +57,30 @@ impl ErrorKind {
             ErrorKind::GettingData => "#GETTING_DATA",
             ErrorKind::Spill => "#SPILL!",
             ErrorKind::Calc => "#CALC!",
+            ErrorKind::Blocked => "#BLOCKED!",
+            ErrorKind::Connect => "#CONNECT!",
+            ErrorKind::Field => "#FIELD!",
+            ErrorKind::Unknown => "#UNKNOWN!",
+            ErrorKind::Python => "#PYTHON!",
+            ErrorKind::Busy => "#BUSY!",
+        }
+    }
+
+    /// How a cell in a file holds the error. Excel opens a file with `#BUSY!` in a cell as it is, and has
+    /// to repair one that holds any of the other newer kinds there: it writes those as `#VALUE!` beside
+    /// value metadata that names the real kind, so that is what is written. `#GETTING_DATA` is a state of
+    /// a calculation in progress and is not worth saving as such.
+    pub fn file_text(&self) -> &'static str {
+        match self {
+            ErrorKind::GettingData
+            | ErrorKind::Spill
+            | ErrorKind::Calc
+            | ErrorKind::Blocked
+            | ErrorKind::Connect
+            | ErrorKind::Field
+            | ErrorKind::Unknown
+            | ErrorKind::Python => "#VALUE!",
+            other => other.text(),
         }
     }
 
@@ -66,6 +103,14 @@ impl ErrorKind {
             ErrorKind::GettingData => 8.0,
             ErrorKind::Spill => 9.0,
             ErrorKind::Calc => 14.0,
+            ErrorKind::Connect => 10.0,
+            ErrorKind::Blocked => 11.0,
+            ErrorKind::Unknown => 12.0,
+            ErrorKind::Field => 13.0,
+            // Measured on Excel 16: a file holding #BUSY! reads as an error that ERROR.TYPE answers 0 for.
+            // Excel does not accept #PYTHON! in a cell of a file, so 19 is its documented number.
+            ErrorKind::Python => 19.0,
+            ErrorKind::Busy => 0.0,
         }
     }
 
@@ -82,6 +127,14 @@ impl ErrorKind {
             ErrorKind::GettingData => "The value is still being worked out.",
             ErrorKind::Spill => "The result needs more cells than are free beside the formula.",
             ErrorKind::Calc => "The calculation has no answer, such as an empty array.",
+            ErrorKind::Blocked => {
+                "The function needs a service of Excel's that this program does not have."
+            }
+            ErrorKind::Connect => "A connection to a data source could not be made.",
+            ErrorKind::Field => "A linked data type has no field of that name.",
+            ErrorKind::Unknown => "The value is of a kind this program does not know.",
+            ErrorKind::Python => "A Python cell failed to run.",
+            ErrorKind::Busy => "A service is still working on the value.",
         }
     }
 }
@@ -347,5 +400,35 @@ mod tests {
         let row = Array::row(vec![Value::Number(1.0), Value::Number(2.0)]);
         assert_eq!(row.stretched(5, 1), Value::Number(2.0));
         assert_eq!(row.stretched(0, 2), Value::Error(ErrorKind::NA));
+    }
+    #[test]
+    fn error_type_numbers_are_the_ones_excel_gives() {
+        let codes: Vec<f64> = ErrorKind::ALL.iter().map(ErrorKind::code).collect();
+        assert_eq!(
+            codes,
+            vec![
+                1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 14.0, 11.0, 10.0, 13.0, 12.0, 19.0,
+                0.0
+            ]
+        );
+    }
+
+    #[test]
+    fn only_the_errors_excel_reads_in_a_cell_are_written_as_they_are() {
+        let kept: Vec<ErrorKind> =
+            ErrorKind::ALL.into_iter().filter(|k| k.file_text() == k.text()).collect();
+        assert_eq!(
+            kept,
+            vec![
+                ErrorKind::Null,
+                ErrorKind::Div0,
+                ErrorKind::Value,
+                ErrorKind::Ref,
+                ErrorKind::Name,
+                ErrorKind::Num,
+                ErrorKind::NA,
+                ErrorKind::Busy
+            ]
+        );
     }
 }

@@ -928,6 +928,9 @@ fn row_col(ctx: &mut Ctx, args: &[Expr], rows: bool) -> Val {
 
 fn count_lines(ctx: &mut Ctx, args: &[Expr], rows: bool) -> Val {
     let v = ctx.eval(&args[0]);
+    if let Val::Value(Value::Error(e)) = v {
+        return Val::error(e);
+    }
     match ctx.dims(&v) {
         Some((r, c)) => Val::number(if rows { r } else { c } as f64),
         None => match v {
