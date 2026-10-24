@@ -6742,7 +6742,7 @@ dependencies = [
 
 [[package]]
 name = "unluminous-sheet"
-version = "1.12.0"
+version = "1.12.1"
 dependencies = [
  "crc32fast",
  "flate2",
