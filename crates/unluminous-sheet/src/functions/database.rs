@@ -198,7 +198,12 @@ fn column_named(table: &Table, header: &Value) -> Option<usize> {
 
 /// The database column a field argument picks: a name, or a position counted from 1. `None` is a
 /// field that was left out, which is allowed for the two counts.
-fn field_column(ctx: &mut Ctx, args: &[Expr], table: &Table, summary: Summary) -> Result<Option<usize>, ErrorKind> {
+fn field_column(
+    ctx: &mut Ctx,
+    args: &[Expr],
+    table: &Table,
+    summary: Summary,
+) -> Result<Option<usize>, ErrorKind> {
     let counts = matches!(summary, Summary::Count | Summary::CountAll);
     if matches!(args[1], Expr::Missing) {
         return if counts { Ok(None) } else { Err(ErrorKind::Value) };
@@ -271,10 +276,18 @@ fn truth(v: &Value) -> bool {
 }
 
 /// The condition one criteria cell makes, or none when the cell is blank.
-fn condition_at(ctx: &Ctx, area: &Area, table: &Table, cells: &Array, row: usize, column: usize) -> Option<Condition> {
+fn condition_at(
+    ctx: &Ctx,
+    area: &Area,
+    table: &Table,
+    cells: &Array,
+    row: usize,
+    column: usize,
+) -> Option<Condition> {
     let value = cells.get(row, column);
     let at = CellRef::new(area.range.first.row + row as u32, area.range.first.col + column as u32);
-    let formula = ctx.sheet_ref(area.sheet).and_then(|s| s.cell(at)).and_then(|c| c.formula.clone());
+    let formula =
+        ctx.sheet_ref(area.sheet).and_then(|s| s.cell(at)).and_then(|c| c.formula.clone());
     let field = column_named(table, cells.get(0, column));
     if let Some(field) = field {
         return match value {
@@ -293,7 +306,11 @@ fn condition_at(ctx: &Ctx, area: &Area, table: &Table, cells: &Array, row: usize
 /// Every criteria row as its list of conditions, ready to test records against.
 fn criteria_rows(ctx: &Ctx, area: &Area, table: &Table, cells: &Array) -> Vec<Vec<Condition>> {
     (1..cells.rows)
-        .map(|row| (0..cells.cols).filter_map(|col| condition_at(ctx, area, table, cells, row, col)).collect())
+        .map(|row| {
+            (0..cells.cols)
+                .filter_map(|col| condition_at(ctx, area, table, cells, row, col))
+                .collect()
+        })
         .collect()
 }
 
@@ -382,8 +399,12 @@ fn database_value(ctx: &mut Ctx, args: &[Expr], summary: Summary) -> Result<Valu
     let Some(column) = column else { return Ok(Value::Number(records.len() as f64)) };
     let cells: Vec<Value> = records.iter().map(|&r| table.cell(r, column).clone()).collect();
     match summary {
-        Summary::Count => Ok(Value::Number(cells.iter().filter(|v| matches!(v, Value::Number(_))).count() as f64)),
-        Summary::CountAll => Ok(Value::Number(cells.iter().filter(|v| !v.is_empty()).count() as f64)),
+        Summary::Count => {
+            Ok(Value::Number(cells.iter().filter(|v| matches!(v, Value::Number(_))).count() as f64))
+        }
+        Summary::CountAll => {
+            Ok(Value::Number(cells.iter().filter(|v| !v.is_empty()).count() as f64))
+        }
         Summary::Get => the_only(&cells),
         _ => summarise(&cells, summary),
     }

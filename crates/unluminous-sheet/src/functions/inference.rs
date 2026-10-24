@@ -161,22 +161,8 @@ pub const FUNCTIONS: &[Function] = &[
         "The probability from a Student's t test.",
         t_test,
     ),
-    r(
-        "Z.TEST",
-        2,
-        3,
-        "array, x, [sigma]",
-        "The one tailed probability from a z test.",
-        z_test,
-    ),
-    r(
-        "ZTEST",
-        2,
-        3,
-        "array, x, [sigma]",
-        "The one tailed probability from a z test.",
-        z_test,
-    ),
+    r("Z.TEST", 2, 3, "array, x, [sigma]", "The one tailed probability from a z test.", z_test),
+    r("ZTEST", 2, 3, "array, x, [sigma]", "The one tailed probability from a z test.", z_test),
     r(
         "PROB",
         3,
@@ -290,7 +276,11 @@ fn chisq_test_value(ctx: &mut Ctx, args: &[Expr]) -> Result<f64, ErrorKind> {
     if actual.len() != expected.len() {
         return Err(ErrorKind::NA);
     }
-    let df = if rows == 1 || cols == 1 { (rows * cols) as f64 - 1.0 } else { ((rows - 1) * (cols - 1)) as f64 };
+    let df = if rows == 1 || cols == 1 {
+        (rows * cols) as f64 - 1.0
+    } else {
+        ((rows - 1) * (cols - 1)) as f64
+    };
     if df < 1.0 {
         return Err(ErrorKind::NA);
     }
@@ -322,7 +312,8 @@ fn f_test_value(ctx: &mut Ctx, args: &[Expr]) -> Result<f64, ErrorKind> {
     if first.len() < 2 || second.len() < 2 {
         return Err(ErrorKind::Div0);
     }
-    let (v1, v2) = (sample_variance(&first).unwrap_or(0.0), sample_variance(&second).unwrap_or(0.0));
+    let (v1, v2) =
+        (sample_variance(&first).unwrap_or(0.0), sample_variance(&second).unwrap_or(0.0));
     if v1 == 0.0 || v2 == 0.0 {
         return Err(ErrorKind::Div0);
     }
@@ -364,11 +355,8 @@ fn paired_t(first: &[Option<f64>], second: &[Option<f64>]) -> Result<(f64, f64),
     if first.len() != second.len() {
         return Err(ErrorKind::NA);
     }
-    let differences: Vec<f64> = first
-        .iter()
-        .zip(second)
-        .filter_map(|(a, b)| Some((*a)? - (*b)?))
-        .collect();
+    let differences: Vec<f64> =
+        first.iter().zip(second).filter_map(|(a, b)| Some((*a)? - (*b)?)).collect();
     let n = differences.len() as f64;
     let variance = sample_variance(&differences).unwrap_or(0.0);
     if differences.len() < 2 || variance == 0.0 {
@@ -452,7 +440,8 @@ fn prob_value(ctx: &mut Ctx, args: &[Expr]) -> Result<f64, ErrorKind> {
         Some(e) => Some(scalar_number(ctx, e)?),
         None => None,
     };
-    let pairs: Vec<(f64, f64)> = xs.iter().zip(&ps).filter_map(|(x, p)| Some(((*x)?, (*p)?))).collect();
+    let pairs: Vec<(f64, f64)> =
+        xs.iter().zip(&ps).filter_map(|(x, p)| Some(((*x)?, (*p)?))).collect();
     let total: f64 = pairs.iter().map(|(_, p)| p).sum();
     if (total - 1.0).abs() > 9e-16 {
         return Err(ErrorKind::Num);

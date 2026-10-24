@@ -158,10 +158,16 @@ fn norm_from(column: &[f64], start: usize) -> f64 {
     column[start..].iter().map(|v| v * v).sum::<f64>().sqrt()
 }
 
-
 /// One Householder step: turn `column` into a single value on the diagonal at row `step` and apply the
 /// same reflection to the columns after it and to the right hand side.
-fn reflect(work: &mut [Vec<f64>], rhs: &mut [f64], column: usize, later: &[usize], step: usize, norm: f64) {
+fn reflect(
+    work: &mut [Vec<f64>],
+    rhs: &mut [f64],
+    column: usize,
+    later: &[usize],
+    step: usize,
+    norm: f64,
+) {
     let alpha = if work[column][step] > 0.0 { -norm } else { norm };
     let mut v = work[column][step..].to_vec();
     v[0] -= alpha;
@@ -194,7 +200,11 @@ fn longest_first(work: &[Vec<f64>], later_wins_ties: bool) -> Vec<usize> {
 
 /// Reduce the columns to upper triangular form, longest first, leaving out a column that is made of
 /// the ones before it. Returns the columns kept, in order.
-fn qr_dropping_dependent(work: &mut [Vec<f64>], rhs: &mut [f64], later_wins_ties: bool) -> Vec<usize> {
+fn qr_dropping_dependent(
+    work: &mut [Vec<f64>],
+    rhs: &mut [f64],
+    later_wins_ties: bool,
+) -> Vec<usize> {
     let candidates = longest_first(work, later_wins_ties);
     let first = candidates.first().map_or(0.0, |&c| norm_from(&work[c], 0));
     let mut kept = Vec::new();
@@ -249,8 +259,9 @@ fn fit(y: &[f64], columns: &[Vec<f64>], constant: bool) -> Fit {
     let mut rhs: Vec<f64> = y.iter().map(|v| v - y_mean).collect();
     let order = qr_dropping_dependent(&mut work, &mut rhs, constant);
     let rank = order.len();
-    let triangle: Vec<Vec<f64>> =
-        (0..rank).map(|i| (0..rank).map(|p| if p >= i { work[order[p]][i] } else { 0.0 }).collect()).collect();
+    let triangle: Vec<Vec<f64>> = (0..rank)
+        .map(|i| (0..rank).map(|p| if p >= i { work[order[p]][i] } else { 0.0 }).collect())
+        .collect();
     let mut beta = vec![0.0; rank];
     for i in (0..rank).rev() {
         let tail: f64 = (i + 1..rank).map(|p| triangle[i][p] * beta[p]).sum();
@@ -273,7 +284,17 @@ fn fit(y: &[f64], columns: &[Vec<f64>], constant: bool) -> Fit {
         .map(|a| (0..rank).map(|b| kept_means[a] * cov[a][b] * kept_means[b]).sum::<f64>())
         .sum();
     let intercept_error = sey * (1.0 / n as f64 + spread).sqrt();
-    Fit { coefficients, errors, intercept, intercept_error, constant, kept: rank, ssreg, ssresid, df }
+    Fit {
+        coefficients,
+        errors,
+        intercept,
+        intercept_error,
+        constant,
+        kept: rank,
+        ssreg,
+        ssresid,
+        df,
+    }
 }
 
 /// The coefficients and, when asked for, the five rows of statistics, as Excel lays them out.
@@ -341,7 +362,11 @@ fn predict(ctx: &mut Ctx, args: &[Expr], exponential: bool) -> Val {
 }
 
 /// The new points: one list of variable values for each point, and the shape the answer takes.
-fn new_points(ctx: &mut Ctx, args: &[Expr], known: &Known) -> Result<(Vec<Vec<f64>>, usize, usize), ErrorKind> {
+fn new_points(
+    ctx: &mut Ctx,
+    args: &[Expr],
+    known: &Known,
+) -> Result<(Vec<Vec<f64>>, usize, usize), ErrorKind> {
     let k = known.x.len();
     let Some(e) = present(args, 2) else {
         let n = known.y.len();
@@ -357,7 +382,8 @@ fn new_points(ctx: &mut Ctx, args: &[Expr], known: &Known) -> Result<(Vec<Vec<f6
         if new.rows != k {
             return Err(ErrorKind::Ref);
         }
-        let points = (0..new.cols).map(|c| (0..k).map(|r| numbers[r * new.cols + c]).collect()).collect();
+        let points =
+            (0..new.cols).map(|c| (0..k).map(|r| numbers[r * new.cols + c]).collect()).collect();
         return Ok((points, 1, new.cols));
     }
     if new.cols != k {
@@ -375,7 +401,8 @@ fn predictions(ctx: &mut Ctx, args: &[Expr], exponential: bool) -> Result<Array,
     let data = points
         .iter()
         .map(|p| {
-            let line = fitted.intercept + fitted.coefficients.iter().zip(p).map(|(m, x)| m * x).sum::<f64>();
+            let line = fitted.intercept
+                + fitted.coefficients.iter().zip(p).map(|(m, x)| m * x).sum::<f64>();
             Value::Number(if exponential { line.exp() } else { line })
         })
         .collect();

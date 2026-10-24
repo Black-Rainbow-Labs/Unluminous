@@ -553,7 +553,8 @@ fn gamma_dist(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
         gamma_p(alpha, x / beta)
     } else {
         if x == 0.0 {
-            return number(if alpha == 1.0 { 1.0 / beta } else if alpha < 1.0 { f64::INFINITY } else { 0.0 });
+            // Excel has no density at 0 unless the shape is above 1, where it is 0.
+            return if alpha > 1.0 { number(0.0) } else { Err(ErrorKind::Num) };
         }
         gamma_front(alpha, x / beta).exp() / x
     })
@@ -606,7 +607,8 @@ fn stirling_correction(x: f64) -> f64 {
     let r2 = r * r;
     r * (1.0 / 12.0
         - r2 * (1.0 / 360.0
-            - r2 * (1.0 / 1260.0 - r2 * (1.0 / 1680.0 - r2 * (1.0 / 1188.0 - r2 * 691.0 / 360_360.0)))))
+            - r2 * (1.0 / 1260.0
+                - r2 * (1.0 / 1680.0 - r2 * (1.0 / 1188.0 - r2 * 691.0 / 360_360.0)))))
 }
 
 /// ln(1 + u) - u, which is the small difference of two nearly equal numbers when u is small and is
@@ -641,7 +643,9 @@ fn gamma_front(a: f64, x: f64) -> f64 {
 /// from there, which is accurate to the last digit of a result in the thousands.
 pub fn ln_gamma(x: f64) -> f64 {
     if x >= 10.0 {
-        return (x - 0.5) * x.ln() - x + 0.5 * (2.0 * std::f64::consts::PI).ln() + stirling_correction(x);
+        return (x - 0.5) * x.ln() - x
+            + 0.5 * (2.0 * std::f64::consts::PI).ln()
+            + stirling_correction(x);
     }
     const G: f64 = 7.0;
     const C: [f64; 9] = [
@@ -688,9 +692,9 @@ fn ln_beta(a: f64, b: f64) -> f64 {
     }
     let ratio = (small / big).ln_1p();
     if small < 10.0 {
-        let difference = -small * big.ln() - (big + small - 0.5) * ratio + small
-            + stirling_correction(big)
-            - stirling_correction(big + small);
+        let difference =
+            -small * big.ln() - (big + small - 0.5) * ratio + small + stirling_correction(big)
+                - stirling_correction(big + small);
         return ln_gamma(small) + difference;
     }
     0.5 * (2.0 * std::f64::consts::PI).ln() + stirling_correction(a) + stirling_correction(b)
@@ -798,7 +802,13 @@ pub fn beta_i_pair(x: f64, y: f64, a: f64, b: f64) -> f64 {
 
 /// Solves `f(x) = target` for an increasing `f`, bisecting from `lo` to `hi` until the bracket is two
 /// neighbouring doubles. With `open_ended` the upper end is doubled until `f` reaches the target.
-pub fn solve_increasing(f: impl Fn(f64) -> f64, target: f64, lo: f64, hi: f64, open_ended: bool) -> f64 {
+pub fn solve_increasing(
+    f: impl Fn(f64) -> f64,
+    target: f64,
+    lo: f64,
+    hi: f64,
+    open_ended: bool,
+) -> f64 {
     let (mut lo, mut hi) = (lo, hi);
     if open_ended {
         let mut doublings = 0;

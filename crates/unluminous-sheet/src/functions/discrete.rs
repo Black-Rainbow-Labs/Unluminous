@@ -268,7 +268,11 @@ fn hypgeom_dist(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
 }
 
 /// The negative binomial probability of `f` failures before the `s`-th success, or of at most `f`.
-fn negative_binomial_value(ctx: &mut Ctx, a: &[Value], cumulative: bool) -> Result<Value, ErrorKind> {
+fn negative_binomial_value(
+    ctx: &mut Ctx,
+    a: &[Value],
+    cumulative: bool,
+) -> Result<Value, ErrorKind> {
     let (f, successes, p) = (int(ctx, &a[0])?, int(ctx, &a[1])?, num(ctx, &a[2])?);
     if f < 0 || successes < 1 || p <= 0.0 || p >= 1.0 || f > LONGEST_RUN {
         return Err(ErrorKind::Num);
@@ -296,7 +300,8 @@ mod tests {
     fn scaled_products_survive_values_a_double_cannot_hold() {
         // C(2000, 1000) is about 2e600, and the probability built from it is an ordinary number.
         let p = binomial_pmf(2000, 1000, 0.5).value();
-        assert!((p - 0.017_840_6).abs() < 1e-6, "{p}");
+        // The central binomial probability is 1 / sqrt(pi n) times (1 - 1 / 8n), here n = 1000.
+        assert!((p - 0.017_839_011).abs() < 1e-8, "{p}");
         assert_eq!(Scaled::power(0.5, 1100).value(), 0.0);
         assert!((Scaled::choose(10, 3).value() - 120.0).abs() < 1e-12);
     }

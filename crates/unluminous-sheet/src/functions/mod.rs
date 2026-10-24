@@ -19,6 +19,7 @@ pub mod date;
 pub mod discrete;
 pub mod dist;
 pub mod engineering;
+pub mod ets;
 pub mod financial;
 pub mod forecast;
 pub mod inference;
