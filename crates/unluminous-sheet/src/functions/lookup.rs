@@ -1347,10 +1347,14 @@ fn to_line(ctx: &mut Ctx, args: &[Expr], column: bool) -> Val {
         Ok(_) => return Val::error(ErrorKind::Value),
         Err(e) => return Val::error(e),
     };
-    let by_col = args.get(2).is_some_and(|e| {
-        let v = scalar(ctx, e);
-        crate::eval::to_bool(&v).unwrap_or(false)
-    });
+    // The scan order must read as a logical: text that is not one is #VALUE!.
+    let by_col = match args.get(2) {
+        None | Some(Expr::Missing) => false,
+        Some(e) => match crate::eval::to_bool(&scalar(ctx, e)) {
+            Ok(b) => b,
+            Err(e) => return Val::error(e),
+        },
+    };
     let mut values = Vec::new();
     let mut push = |v: &Value| {
         let skip = match ignore {
