@@ -503,7 +503,7 @@ fn read_styles(xml: &str, styles: &mut Styles) -> Result<(), String> {
 }
 
 /// The text of a shared string or inline string: its runs joined, phonetic guides left out. The XML is
-/// kept when it has formatting runs.
+/// kept when it has formatting runs or phonetic guides, which PHONETIC reads and the writer gives back.
 fn string_item(xml: &str, si: Node) -> (Arc<str>, Option<Arc<str>>) {
     let mut text = String::new();
     let mut rich = false;
@@ -516,6 +516,7 @@ fn string_item(xml: &str, si: Node) -> (Arc<str>, Option<Arc<str>>) {
                     text.push_str(t.text().unwrap_or(""));
                 }
             }
+            "rPh" | "phoneticPr" => rich = true,
             _ => {}
         }
     }
@@ -574,6 +575,10 @@ fn file_formula(text: &str, dynamic: bool) -> Formula {
                 Expr::Call(name, _)
                     if crate::functions::find(name).is_none() && !is_name_call(name) =>
                 {
+                    unknown = true;
+                }
+                // A function that needs a service of Excel's keeps the value the file saved.
+                Expr::Call(name, _) if crate::functions::find(name).is_some_and(|f| f.offline) => {
                     unknown = true;
                 }
                 _ => {}

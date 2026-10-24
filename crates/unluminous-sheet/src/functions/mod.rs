@@ -18,12 +18,18 @@ pub mod date;
 pub mod dist;
 pub mod engineering;
 pub mod financial;
+pub mod grouping;
 pub mod info;
 pub mod logical;
 pub mod lookup;
 pub mod math;
+pub mod regex;
+pub mod services;
 pub mod stats;
 pub mod text;
+pub mod text_bytes;
+pub mod web;
+mod xpath;
 
 pub type ScalarFn = fn(&mut Ctx, &[Value]) -> Result<Value, ErrorKind>;
 pub type RawFn = fn(&mut Ctx, &[Expr]) -> Val;
@@ -46,6 +52,9 @@ pub struct Function {
     /// One sentence.
     pub about: &'static str,
     pub category: &'static str,
+    /// The function needs a service of Excel's (a data connection, a cloud model, a stock feed). A cell
+    /// read from a file that holds one keeps the value the file saved, and one entered here is `#BLOCKED!`.
+    pub offline: bool,
 }
 
 impl std::fmt::Debug for Function {
@@ -66,7 +75,7 @@ pub const fn s(
     about: &'static str,
     f: ScalarFn,
 ) -> Function {
-    Function { name, min, max, imp: Imp::Scalar(f), args, about, category: "" }
+    Function { name, min, max, imp: Imp::Scalar(f), args, about, category: "", offline: false }
 }
 
 /// A raw function entry.
@@ -78,7 +87,27 @@ pub const fn r(
     about: &'static str,
     f: RawFn,
 ) -> Function {
-    Function { name, min, max, imp: Imp::Raw(f), args, about, category: "" }
+    Function { name, min, max, imp: Imp::Raw(f), args, about, category: "", offline: false }
+}
+
+/// A function that needs a service of Excel's: evaluating it is `#BLOCKED!`, and the hint says why.
+pub const fn offline(
+    name: &'static str,
+    min: usize,
+    max: usize,
+    args: &'static str,
+    about: &'static str,
+) -> Function {
+    Function {
+        name,
+        min,
+        max,
+        imp: Imp::Scalar(|_, _| Err(ErrorKind::Blocked)),
+        args,
+        about,
+        category: "",
+        offline: true,
+    }
 }
 
 const CATEGORIES: &[(&str, &[Function])] = &[
@@ -87,7 +116,18 @@ const CATEGORIES: &[(&str, &[Function])] = &[
     ("Statistical", dist::FUNCTIONS),
     ("Logical", logical::FUNCTIONS),
     ("Lookup", lookup::FUNCTIONS),
+    ("Lookup", grouping::FUNCTIONS),
     ("Text", text::FUNCTIONS),
+    ("Text", text_bytes::FUNCTIONS),
+    ("Text", regex::FUNCTIONS),
+    ("Web", web::FUNCTIONS),
+    ("Cube", services::CUBE),
+    ("Add-in and Automation", services::ADD_IN),
+    ("Lookup", services::LOOKUP),
+    ("Text", services::TEXT),
+    ("Information", services::INFORMATION),
+    ("Web", services::WEB),
+    ("Other", services::OTHER),
     ("Date and time", date::FUNCTIONS),
     ("Financial", financial::FUNCTIONS),
     ("Information", info::FUNCTIONS),
@@ -111,7 +151,11 @@ pub fn all() -> &'static [Function] {
 /// The function with this name, in upper case.
 pub fn find(name: &str) -> Option<&'static Function> {
     static BY_NAME: OnceLock<HashMap<&'static str, &'static Function>> = OnceLock::new();
-    BY_NAME.get_or_init(|| all().iter().map(|f| (f.name, f)).collect()).get(name).copied()
+    BY_NAME
+        .get_or_init(|| all().iter().map(|f| (f.name, f)).collect())
+        .get(name)
+        .copied()
+        .or_else(|| grouping::OPERATORS.iter().find(|f| f.name == name))
 }
 
 /// Functions whose value can change with nothing in the workbook changing.
