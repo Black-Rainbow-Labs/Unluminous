@@ -461,14 +461,6 @@ pub const FUNCTIONS: &[Function] = &[
         forecast,
     ),
     r(
-        "TREND",
-        1,
-        4,
-        "known_y's, [known_x's], [new_x's], [const]",
-        "Values on the regression line.",
-        trend,
-    ),
-    r(
         "FREQUENCY",
         2,
         2,
@@ -936,64 +928,6 @@ fn paired_line(ctx: &mut Ctx, ys: &Expr, xs: &Expr) -> Result<(f64, f64), ErrorK
     let (y, x): (Vec<f64>, Vec<f64>) =
         a.iter().zip(&b).filter_map(|(p, q)| Some(((*p)?, (*q)?))).unzip();
     line(&x, &y)
-}
-
-fn trend(ctx: &mut Ctx, args: &[Expr]) -> Val {
-    let (ys, rows, cols) = match numbers_at(ctx, &args[0]) {
-        Ok(v) => v,
-        Err(e) => return Val::error(e),
-    };
-    let xs: Vec<Option<f64>> = match args.get(1).filter(|e| !matches!(e, Expr::Missing)) {
-        Some(e) => match numbers_at(ctx, e) {
-            Ok((v, ..)) => v,
-            Err(e) => return Val::error(e),
-        },
-        None => (1..=ys.len()).map(|i| Some(i as f64)).collect(),
-    };
-    if xs.len() != ys.len() {
-        return Val::error(ErrorKind::Ref);
-    }
-    let with_constant = match args.get(3) {
-        Some(e) if !matches!(e, Expr::Missing) => {
-            let v = ctx.eval(e);
-            let v = ctx.single(v);
-            crate::eval::to_bool(&v).unwrap_or(true)
-        }
-        _ => true,
-    };
-    let (y, x): (Vec<f64>, Vec<f64>) =
-        ys.iter().zip(&xs).filter_map(|(p, q)| Some(((*p)?, (*q)?))).unzip();
-    if y.is_empty() {
-        return Val::error(ErrorKind::Value);
-    }
-    let all_alike = x.iter().all(|v| *v == x[0]);
-    let (slope, intercept) = if with_constant && all_alike {
-        // Every x is the same, so the line is flat through the mean of y, as Excel's least squares gives.
-        (0.0, mean(&y).unwrap_or(0.0))
-    } else if with_constant {
-        match line(&x, &y) {
-            Ok(l) => l,
-            Err(e) => return Val::error(e),
-        }
-    } else {
-        let sxx: f64 = x.iter().map(|a| a * a).sum();
-        if sxx == 0.0 {
-            return Val::error(ErrorKind::Div0);
-        }
-        (x.iter().zip(&y).map(|(a, b)| a * b).sum::<f64>() / sxx, 0.0)
-    };
-    let (new_x, nr, nc) = match args.get(2).filter(|e| !matches!(e, Expr::Missing)) {
-        Some(e) => match numbers_at(ctx, e) {
-            Ok(v) => v,
-            Err(e) => return Val::error(e),
-        },
-        None => (xs.clone(), rows, cols),
-    };
-    let data = new_x
-        .iter()
-        .map(|x| x.map_or(Value::Error(ErrorKind::Value), |x| Value::Number(slope * x + intercept)))
-        .collect();
-    Val::Array(Array::new(nr, nc, data))
 }
 
 fn frequency(ctx: &mut Ctx, args: &[Expr]) -> Val {
