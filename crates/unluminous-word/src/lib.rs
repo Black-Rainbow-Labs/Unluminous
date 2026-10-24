@@ -16,6 +16,7 @@ pub mod edit;
 pub mod export;
 pub mod kern;
 pub mod layout;
+pub mod math;
 pub mod media;
 pub mod model;
 pub mod new;

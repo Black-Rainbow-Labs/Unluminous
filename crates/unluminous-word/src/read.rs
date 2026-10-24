@@ -42,8 +42,18 @@ pub fn open(bytes: &[u8]) -> Result<Document, String> {
         footnotes: None,
         endnotes: None,
         comments: None,
+        ids: Arc::new(std::sync::atomic::AtomicI64::new(1)),
         package,
     };
+    let largest = document
+        .package
+        .parts
+        .iter()
+        .filter(|part| part.name.ends_with(".xml"))
+        .map(|part| largest_id(&part.data))
+        .max()
+        .unwrap_or(0);
+    document.ids = Arc::new(std::sync::atomic::AtomicI64::new(largest + 1));
     if let Some(body) = root.child("w:body") {
         let (blocks, section) = blocks_with_section(body);
         document.body = blocks;
@@ -269,10 +279,11 @@ fn inline(el: &El, wraps: &[Arc<Wrap>], paragraph: &mut Paragraph) {
     } else if name == "w:proofErr" {
         // Where the spelling checker last stopped, which Word works out again on opening.
     } else {
-        // `m:oMath`, `w:object` at paragraph level and anything newer: one character, written back whole.
+        // `m:oMath`, `m:oMathPara`, `w:subDoc` and anything newer: one character, written back whole and
+        // where it was, as a child of the paragraph rather than of a run.
         paragraph.runs.push(Run {
             props: no_props(),
-            content: Content::Object(el.clone()),
+            content: Content::ParagraphObject(el.clone()),
             wraps: wraps.to_vec(),
             attrs: Arc::default(),
         });

@@ -31,7 +31,7 @@ fn fixture_names() -> Vec<String> {
     let mut names: Vec<String> = std::fs::read_dir(folder())
         .unwrap()
         .filter_map(|entry| entry.ok().map(|e| e.path()))
-        .filter(|path| path.extension().is_some_and(|e| e == "docx"))
+        .filter(|path| path.extension().is_some_and(|e| e == "docx" || e == "dotx" || e == "docm"))
         .filter(|path| path.with_extension("word.json").exists())
         .map(|path| path.file_stem().unwrap().to_string_lossy().to_string())
         .collect();
@@ -76,17 +76,37 @@ fn word_order(blocks: &[Block]) -> Vec<(Vec<u32>, Option<&Paragraph>)> {
 /// as lines saying where they differ.
 fn compare(name: &str, fonts: &common::RealFonts) -> (usize, usize, usize, Vec<String>) {
     let report = report(name);
-    let path = folder().join(format!("{name}.docx"));
+    let path = ["docx", "dotx", "docm"]
+        .iter()
+        .map(|e| folder().join(format!("{name}.{e}")))
+        .find(|p| p.is_file())
+        .unwrap();
     let document = unluminous_word::read::open(&std::fs::read(path).unwrap()).unwrap();
     let pages = lay_out(&document, fonts, Options::default());
     let mut starts: Vec<(&Vec<u32>, usize)> = Vec::new();
+    let mut tops: Vec<f32> = Vec::new();
     for (index, page) in pages.pages.iter().enumerate() {
         for line in &page.carets {
             if line.story == unluminous_word::position::StoryId::Body
                 && !starts.iter().any(|(p, _)| **p == line.path)
             {
                 starts.push((&line.path, index + 1));
+                tops.push(line.top);
             }
+        }
+    }
+    // `PAGINATION_DUMP=<fixture>` prints where each paragraph starts in both layouts.
+    if std::env::var("PAGINATION_DUMP").is_ok_and(|d| d == name) {
+        let words = report["paragraphs"].as_array().cloned().unwrap_or_default();
+        for ((path, _), word) in word_order(&document.body).iter().zip(&words) {
+            let at = starts.iter().position(|(p, _)| *p == path);
+            let (page, top) = at.map_or((0, 0.0), |i| (starts[i].1, tops[i]));
+            println!(
+                "{path:?} ours {page} {top:.2} Word {} {} {:?}",
+                word["page"],
+                word["top"],
+                word["text"].as_str().unwrap_or("").chars().take(30).collect::<String>()
+            );
         }
     }
     let order = word_order(&document.body);
@@ -143,7 +163,8 @@ fn every_paragraph_of_every_fixture_starts_on_words_page() {
             "{name}: {ours} pages against Word's {words}; {} of {compared} paragraphs start on Word's page",
             compared.saturating_sub(misses.len())
         ));
-        for miss in misses.iter().take(6) {
+        let shown = if std::env::var("PAGINATION_ALL").is_ok() { usize::MAX } else { 6 };
+        for miss in misses.iter().take(shown) {
             lines.push(format!("    {miss}"));
         }
         if ours != words || !misses.is_empty() {

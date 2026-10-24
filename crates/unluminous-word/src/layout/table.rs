@@ -1,25 +1,130 @@
-//! A table into rows, each one piece that is placed whole.
+//! A table into rows, each of which can be cut between the lines of its cells.
 //!
-//! Column widths come from the table's grid. Each cell is laid out as a small story at its width less its
-//! margins, a row is as tall as its tallest cell (or its `w:trHeight`), and cells merged across columns
-//! (`w:gridSpan`) or down rows (`w:vMerge`) are drawn as one. Borders are the cell's own, else the
-//! table's, else the table style's, with `insideH` and `insideV` for the lines between cells.
+//! Column widths come from the table's grid, which is what Word laid the table out with when it saved it
+//! (measured on the six width cases of `table-widths`: fixed, autofit to contents, autofit to window,
+//! percentage, points and cells of different widths). A table with no usable grid, which other programs
+//! write, gets its widths from its cells' `w:tcW`, then from its content (task-2359, C6). Each cell is laid
+//! out as a small story at its width less its margins, a row is as tall as its tallest cell (or its
+//! `w:trHeight`), and cells merged across columns (`w:gridSpan`) or down rows (`w:vMerge`) are drawn as
+//! one. Borders are the cell's own, else the table's, else the table style's, with `insideH` and
+//! `insideV` for the lines between cells.
+//!
+//! A row is kept as its cells' lines rather than as one picture, so the page flow can split it where it
+//! runs off the page, as Word does unless the row says `w:cantSplit` (task-2359, C1).
 
 use super::{lay_out_blocks, Chunk, Ctx, Item, Rect, RuleKind};
-use crate::model::{Row, Table};
+use crate::model::{Block, Row, Table};
 use crate::numbering::Counters;
 use crate::position::StoryId;
 use crate::props::{self, number, twips, Border, Rgb};
 use crate::xml::El;
 
-/// A cell's content laid out, the x and width of its column span, and how many grid columns it spans.
-type LaidCell = (Chunk, f32, f32, usize);
+/// One cell of a laid out row: where it is, its lines, and how it is drawn.
+#[derive(Debug, Clone)]
+pub struct CellPiece {
+    /// The left edge and width of its column span, from the table's left.
+    pub x: f32,
+    pub w: f32,
+    /// Its content, one piece a line (a nested table's rows are pieces too), top to bottom.
+    pub lines: Vec<Chunk>,
+    /// Space after the last paragraph, which the cell's height includes.
+    pub after: f32,
+    /// Left, right, top and bottom margins.
+    pub margins: (f32, f32, f32, f32),
+    pub shading: Option<Rgb>,
+    /// Top, left, right and bottom borders.
+    pub borders: [Option<Border>; 4],
+    /// `w:vAlign`: top, center or bottom.
+    pub valign: String,
+    /// A cell merged into the one above: drawn by that one.
+    pub continues: bool,
+    /// How many rows a merge that starts here covers.
+    pub spans: usize,
+    /// Whether the cell below continues this one, so no bottom border is drawn between them.
+    pub merged_below: bool,
+    /// The height it is drawn at when that is not its row's: the rows a merge covers. 0 for the row's.
+    pub drawn_height: f32,
+}
 
-/// A row laid out, and whether it repeats at the top of each page as a header.
+impl CellPiece {
+    fn content_height(&self) -> f32 {
+        self.lines.iter().map(|l| l.height).sum::<f32>() + self.after
+    }
+}
+
+/// A row laid out: its pieces, how tall it is, and the rules for placing it.
 #[derive(Debug, Clone)]
 pub struct LaidRow {
+    /// The whole row drawn, for placing it in one piece.
     pub chunk: Chunk,
     pub header: bool,
+    /// `w:cantSplit`: the row moves to the next page whole rather than being cut.
+    pub cant_split: bool,
+    pub cells: Vec<CellPiece>,
+    /// `w:trHeight` and its rule (`atLeast`, `exact`), which a split row's parts keep.
+    pub set_height: (f32, Option<String>),
+    /// The table's left edge in the column.
+    pub left: f32,
+}
+
+impl LaidRow {
+    /// Cut the row so its first part is at most `available` tall: each cell keeps the lines that fit and
+    /// the rest go to the second part, which is drawn with the cells' top borders again. `None` when not
+    /// even one line of any cell fits, or when nothing would be left for the second part.
+    pub fn split(&self, available: f32) -> Option<(Chunk, LaidRow)> {
+        if self.set_height.1.as_deref() == Some("exact") {
+            return None;
+        }
+        let mut first: Vec<CellPiece> = Vec::with_capacity(self.cells.len());
+        let mut rest: Vec<CellPiece> = Vec::with_capacity(self.cells.len());
+        let mut moved = false;
+        let mut kept = false;
+        for cell in &self.cells {
+            let room = available - cell.margins.2 - cell.margins.3;
+            let mut used = 0.0;
+            let mut take = 0;
+            for line in &cell.lines {
+                if used + line.height > room + 0.01 {
+                    break;
+                }
+                used += line.height;
+                take += 1;
+            }
+            let (head, tail) = cell.lines.split_at(take);
+            kept |= !head.is_empty();
+            moved |= !tail.is_empty();
+            first.push(CellPiece {
+                lines: head.to_vec(),
+                after: if tail.is_empty() { cell.after } else { 0.0 },
+                merged_below: false,
+                drawn_height: 0.0,
+                ..cell.clone()
+            });
+            rest.push(CellPiece { lines: tail.to_vec(), drawn_height: 0.0, ..cell.clone() });
+        }
+        if !kept || !moved {
+            return None;
+        }
+        let chunk = draw_row(&first, available);
+        let rest_height = rest
+            .iter()
+            .filter(|c| !c.continues)
+            .map(|c| c.content_height() + c.margins.2 + c.margins.3)
+            .fold(0.0, f32::max)
+            .max(1.0);
+        let rest_chunk = draw_row(&rest, rest_height);
+        Some((
+            chunk,
+            LaidRow {
+                chunk: rest_chunk,
+                header: false,
+                cant_split: false,
+                cells: rest,
+                set_height: (0.0, None),
+                left: self.left,
+            },
+        ))
+    }
 }
 
 /// The table's settings: its own `w:tblPr` over its style's.
@@ -62,7 +167,13 @@ pub fn lay_out(
     let style_id = ctx.resolver.table_style_id(&table.props);
     let style_el = style_id.and_then(|id| ctx.resolver.style(id));
     let look = TableLook { own: &table.props, style: style_el.and_then(|s| s.child("w:tblPr")) };
-    let columns = column_widths(table, &look, width);
+    let margins = (
+        look.margin("w:left", 5.4).max(look.margin("w:start", 0.0)),
+        look.margin("w:right", 5.4).max(look.margin("w:end", 0.0)),
+        look.margin("w:top", 0.0),
+        look.margin("w:bottom", 0.0),
+    );
+    let columns = column_widths(ctx, table, &look, width, margins);
     let total: f32 = columns.iter().sum();
     let indent =
         look.get("w:tblInd").and_then(|el| el.attr("w:w")).and_then(number).map_or(0.0, twips);
@@ -71,12 +182,6 @@ pub fn lay_out(
         Some("right" | "end") => width - total,
         _ => indent,
     };
-    let margins = (
-        look.margin("w:left", 5.4).max(look.margin("w:start", 0.0)),
-        look.margin("w:right", 5.4).max(look.margin("w:end", 0.0)),
-        look.margin("w:top", 0.0),
-        look.margin("w:bottom", 0.0),
-    );
     let tbl_look = table.props.child("w:tblLook");
     let first_row_style = tbl_look.is_none_or(|l| {
         l.attr("w:firstRow") != Some("0")
@@ -84,34 +189,26 @@ pub fn lay_out(
                 .is_none_or(|v| u32::from_str_radix(v, 16).map_or(true, |bits| bits & 0x20 != 0))
     });
     let banded = tbl_look.is_none_or(|l| l.attr("w:noHBand") != Some("1"));
-    let mut out: Vec<LaidRow> = Vec::with_capacity(table.rows.len());
-    // Heights first, so a cell merged down several rows can make the last of them taller.
-    let mut laid_cells: Vec<Vec<Option<LaidCell>>> = Vec::new();
-    let mut heights: Vec<f32> = Vec::new();
+    // Every cell laid out first, so a cell merged down several rows can make the last of them taller.
+    let mut rows: Vec<Vec<CellPiece>> = Vec::with_capacity(table.rows.len());
+    let mut heights: Vec<f32> = Vec::with_capacity(table.rows.len());
     for (r, row) in table.rows.iter().enumerate() {
-        let mut cells = Vec::new();
+        let mut cells = Vec::with_capacity(row.cells.len());
         let mut column = grid_before(row);
         let mut tallest: f32 = 0.0;
         for (c, cell) in row.cells.iter().enumerate() {
-            let span = cell
-                .props
-                .val_of("w:gridSpan")
-                .and_then(|s| s.parse::<usize>().ok())
-                .unwrap_or(1)
-                .max(1);
-            let x: f32 = columns.iter().take(column).sum();
+            let span = span_of(cell);
+            let x: f32 = left + columns.iter().take(column).sum::<f32>();
             let w: f32 = columns.iter().skip(column).take(span).sum();
-            let continues = cell
-                .props
-                .child("w:vMerge")
-                .is_some_and(|m| m.attr("w:val").is_none_or(|v| v == "continue"));
-            let (left_margin, right_margin, top_margin, bottom_margin) =
-                cell_margins(&cell.props, margins);
-            let inner = (w - left_margin - right_margin).max(6.0);
+            let merge = cell.props.child("w:vMerge");
+            let continues = merge.is_some_and(|m| m.attr("w:val").is_none_or(|v| v == "continue"));
+            let restart = merge.and_then(|m| m.attr("w:val")) == Some("restart");
+            let cell_margins = cell_margins(&cell.props, margins);
+            let inner = (w - cell_margins.0 - cell_margins.1).max(6.0);
             let mut prefix = path.to_vec();
             prefix.extend([r as u32, c as u32]);
-            let mut chunks = Vec::new();
-            let mut pending = 0.0;
+            let mut lines = Vec::new();
+            let mut after = 0.0;
             lay_out_blocks(
                 ctx,
                 counters,
@@ -120,79 +217,12 @@ pub fn lay_out(
                 &mut prefix,
                 inner,
                 style_id,
-                &mut chunks,
-                &mut pending,
+                &mut lines,
+                &mut after,
             );
-            let content = super::stack(chunks);
-            let height = content.height + pending + top_margin + bottom_margin;
-            if !continues {
-                tallest = tallest.max(height);
-            }
-            cells.push(Some((content, x, w, span)));
-            column += span;
-        }
-        let rule = row.props.child("w:trHeight");
-        let set = rule.and_then(|h| h.attr("w:val")).and_then(number).map_or(0.0, twips);
-        let height = match rule.and_then(|h| h.attr("w:hRule")) {
-            Some("exact") => set,
-            _ => tallest.max(set),
-        };
-        heights.push(height.max(1.0));
-        laid_cells.push(cells);
-    }
-    // A merged cell taller than the rows it spans makes the last one taller.
-    for (r, row) in table.rows.iter().enumerate() {
-        for (c, cell) in row.cells.iter().enumerate() {
-            if cell.props.child("w:vMerge").and_then(|m| m.attr("w:val")) != Some("restart") {
-                continue;
-            }
-            let span = merged_rows(table, r, column_of(row, c));
-            let Some(Some((content, ..))) = laid_cells[r].get(c) else { continue };
-            let (_, _, top, bottom) = cell_margins(&cell.props, margins);
-            let need = content.height + top + bottom;
-            let have: f32 = heights[r..r + span].iter().sum();
-            if need > have {
-                heights[r + span - 1] += need - have;
-            }
-        }
-    }
-    for (r, row) in table.rows.iter().enumerate() {
-        let height = heights[r];
-        let mut chunk = Chunk { height, ..Chunk::default() };
-        let mut fills = Vec::new();
-        let mut rules = Vec::new();
-        for (c, cell) in row.cells.iter().enumerate() {
-            let Some(Some((content, x, w, _))) = laid_cells[r].get(c).cloned() else { continue };
-            let continues = cell
-                .props
-                .child("w:vMerge")
-                .is_some_and(|m| m.attr("w:val").is_none_or(|v| v == "continue"));
-            let restart =
-                cell.props.child("w:vMerge").and_then(|m| m.attr("w:val")) == Some("restart");
-            let rows_spanned = if restart { merged_rows(table, r, column_of(row, c)) } else { 1 };
-            let cell_height: f32 = heights[r..r + rows_spanned].iter().sum();
-            let x = left + x;
             let shading = cell.props.child("w:shd").and_then(props::shading).or_else(|| {
                 conditional_shading(style_el, r, table.rows.len(), first_row_style, banded)
             });
-            if let Some(color) = shading {
-                if !continues {
-                    fills.push(Item::Fill { rect: Rect::new(x, 0.0, w, cell_height), color });
-                }
-            }
-            if !continues {
-                let (left_margin, _, top_margin, bottom_margin) =
-                    cell_margins(&cell.props, margins);
-                let free = cell_height - content.height - top_margin - bottom_margin;
-                let shift = match cell.props.val_of("w:vAlign") {
-                    Some("center") => free.max(0.0) / 2.0,
-                    Some("bottom") => free.max(0.0),
-                    _ => 0.0,
-                };
-                chunk.absorb(content, x + left_margin, top_margin + shift);
-            }
-            // Borders: the cell's own, else the table's outer or inside line.
-            let last_row = r + rows_spanned >= table.rows.len();
             let first_column = c == 0;
             let last_column = c + 1 == row.cells.len();
             let tc = cell.props.child("w:tcBorders");
@@ -203,77 +233,276 @@ pub fn lay_out(
                     None => look.border(inside),
                 }
             };
-            let line = |x0: f32, y0: f32, x1: f32, y1: f32, b: Border| Item::Rule {
-                x0,
-                y0,
-                x1,
-                y1,
-                width: b.width,
-                color: b.color.unwrap_or(Rgb::BLACK),
-                kind: if b.double { RuleKind::Double } else { RuleKind::Solid },
-            };
-            if !continues {
-                if let Some(b) = side("w:top", "w:top", r == 0, "w:insideH") {
-                    rules.push(line(x, 0.0, x + w, 0.0, b));
-                }
-            }
-            if let Some(b) = side("w:left", "w:start", first_column, "w:insideV") {
-                rules.push(line(x, 0.0, x, height, b));
-            }
-            if let Some(b) = side("w:right", "w:end", last_column, "w:insideV") {
-                rules.push(line(x + w, 0.0, x + w, height, b));
-            }
+            let spans = if restart { merged_rows(table, r, column) } else { 1 };
+            let last_row = r + spans >= table.rows.len();
             let merged_below = table.rows.get(r + 1).is_some_and(|next| {
-                cell_at_column(next, column_of(row, c)).is_some_and(|below| {
+                cell_at_column(next, column).is_some_and(|below| {
                     below
                         .props
                         .child("w:vMerge")
                         .is_some_and(|m| m.attr("w:val").is_none_or(|v| v == "continue"))
                 })
             });
-            if !merged_below {
-                if let Some(b) =
-                    side("w:bottom", "w:bottom", last_row || r + 1 == table.rows.len(), "w:insideH")
-                {
-                    rules.push(line(x, height, x + w, height, b));
-                }
+            let piece = CellPiece {
+                x,
+                w,
+                lines,
+                after,
+                margins: cell_margins,
+                shading,
+                borders: [
+                    side("w:top", "w:top", r == 0, "w:insideH"),
+                    side("w:left", "w:start", first_column, "w:insideV"),
+                    side("w:right", "w:end", last_column, "w:insideV"),
+                    side("w:bottom", "w:bottom", last_row || r + 1 == table.rows.len(), "w:insideH"),
+                ],
+                valign: cell.props.val_of("w:vAlign").unwrap_or("top").to_owned(),
+                continues,
+                spans,
+                merged_below,
+                drawn_height: 0.0,
+            };
+            if !continues {
+                tallest = tallest.max(piece.content_height() + cell_margins.2 + cell_margins.3);
+            }
+            cells.push(piece);
+            column += span;
+        }
+        let (set, rule) = set_height(row);
+        let height = match rule.as_deref() {
+            Some("exact") => set,
+            _ => tallest.max(set),
+        };
+        heights.push(height.max(1.0));
+        rows.push(cells);
+    }
+    // A merged cell taller than the rows it spans makes the last one taller.
+    for r in 0..rows.len() {
+        for cell in &rows[r] {
+            if cell.spans <= 1 {
+                continue;
+            }
+            let need = cell.content_height() + cell.margins.2 + cell.margins.3;
+            let end = (r + cell.spans).min(heights.len());
+            let have: f32 = heights[r..end].iter().sum();
+            if need > have {
+                heights[end - 1] += need - have;
             }
         }
-        let mut items = fills;
-        items.append(&mut chunk.items);
-        items.extend(rules);
-        chunk.items = items;
+    }
+    let mut out: Vec<LaidRow> = Vec::with_capacity(rows.len());
+    for (r, cells) in rows.into_iter().enumerate() {
+        let row = &table.rows[r];
+        let height = heights[r];
+        // A merge's first cell is drawn the height of every row it covers.
+        let mut cells = cells;
+        for cell in &mut cells {
+            if cell.spans > 1 {
+                let end = (r + cell.spans).min(heights.len());
+                cell.drawn_height = heights[r..end].iter().sum();
+            }
+        }
+        let chunk = draw_row(&cells, height);
         let header = crate::props::on_off(&row.props, "w:tblHeader") == Some(true);
-        out.push(LaidRow { chunk, header });
+        let cant_split = crate::props::on_off(&row.props, "w:cantSplit") == Some(true)
+            || cells.iter().any(|c| c.spans > 1);
+        out.push(LaidRow { chunk, header, cant_split, cells, set_height: set_height(row), left });
     }
     out
 }
 
-/// Grid columns in points, scaled to the table's width when it states one as a percentage.
-fn column_widths(table: &Table, look: &TableLook, width: f32) -> Vec<f32> {
-    let mut columns: Vec<f32> = table.columns().into_iter().map(|w| twips(w as f64)).collect();
-    if columns.is_empty() || columns.iter().all(|w| *w <= 0.0) {
-        let count = table.rows.iter().map(|row| row.cells.len()).max().unwrap_or(1).max(1);
-        columns = vec![width / count as f32; count];
-    }
-    let stated = look.get("w:tblW");
-    let total: f32 = columns.iter().sum();
-    let want = match stated.and_then(|w| w.attr("w:type")) {
-        Some("pct") => stated
-            .and_then(|w| w.attr("w:w"))
-            .map(|w| match w.strip_suffix('%') {
-                Some(percent) => percent.parse::<f32>().unwrap_or(100.0) / 100.0,
-                None => w.parse::<f32>().unwrap_or(5000.0) / 5000.0,
-            })
-            .map(|fraction| width * fraction),
-        _ => None,
+/// `w:trHeight`: the height in points and its rule.
+fn set_height(row: &Row) -> (f32, Option<String>) {
+    let rule = row.props.child("w:trHeight");
+    let set = rule.and_then(|h| h.attr("w:val")).and_then(number).map_or(0.0, twips);
+    (set, rule.and_then(|h| h.attr("w:hRule")).map(str::to_owned))
+}
+
+/// Draw the cells of a row, or a part of one, `height` tall. The top and bottom borders are drawn where
+/// the part starts and ends, which for a split row is the cut, as Word draws it.
+fn draw_row(cells: &[CellPiece], height: f32) -> Chunk {
+    let mut chunk = Chunk { height, ..Chunk::default() };
+    let mut fills = Vec::new();
+    let mut rules = Vec::new();
+    let line = |x0: f32, y0: f32, x1: f32, y1: f32, b: Border| Item::Rule {
+        x0,
+        y0,
+        x1,
+        y1,
+        width: b.width,
+        color: b.color.unwrap_or(Rgb::BLACK),
+        kind: if b.double { RuleKind::Double } else { RuleKind::Solid },
     };
-    if let Some(want) = want {
+    for cell in cells {
+        let cell_height = if cell.drawn_height > 0.0 { cell.drawn_height } else { height };
+        if !cell.continues {
+            if let Some(color) = cell.shading {
+                fills.push(Item::Fill { rect: Rect::new(cell.x, 0.0, cell.w, cell_height), color });
+            }
+            let content: f32 = cell.lines.iter().map(|l| l.height).sum();
+            let free = cell_height - content - cell.margins.2 - cell.margins.3;
+            let shift = match cell.valign.as_str() {
+                "center" => free.max(0.0) / 2.0,
+                "bottom" => free.max(0.0),
+                _ => 0.0,
+            };
+            let mut y = cell.margins.2 + shift;
+            for piece in &cell.lines {
+                let h = piece.height;
+                chunk.absorb(piece.clone(), cell.x + cell.margins.0, y);
+                y += h;
+            }
+            if let Some(b) = cell.borders[0] {
+                rules.push(line(cell.x, 0.0, cell.x + cell.w, 0.0, b));
+            }
+        }
+        if let Some(b) = cell.borders[1] {
+            rules.push(line(cell.x, 0.0, cell.x, height, b));
+        }
+        if let Some(b) = cell.borders[2] {
+            rules.push(line(cell.x + cell.w, 0.0, cell.x + cell.w, height, b));
+        }
+        if !cell.merged_below {
+            if let Some(b) = cell.borders[3] {
+                rules.push(line(cell.x, height, cell.x + cell.w, height, b));
+            }
+        }
+    }
+    let mut items = fills;
+    items.append(&mut chunk.items);
+    items.extend(rules);
+    chunk.items = items;
+    chunk
+}
+
+/// How many grid columns a cell spans.
+fn span_of(cell: &crate::model::Cell) -> usize {
+    cell.props.val_of("w:gridSpan").and_then(|s| s.parse::<usize>().ok()).unwrap_or(1).max(1)
+}
+
+/// A width element (`w:tblW`, `w:tcW`) in points for a container `of` points wide: `dxa` is twips, `pct`
+/// is fiftieths of a percent (or a number with `%`), and `auto` or `nil` is no width.
+fn preferred(el: Option<&El>, of: f32) -> Option<f32> {
+    let el = el?;
+    let value = el.attr("w:w")?;
+    match el.attr("w:type").unwrap_or("dxa") {
+        "pct" => {
+            let fraction = match value.strip_suffix('%') {
+                Some(percent) => percent.parse::<f32>().ok()? / 100.0,
+                None => value.parse::<f32>().ok()? / 5000.0,
+            };
+            Some(of * fraction)
+        }
+        "dxa" => number(value).map(twips).filter(|w| *w > 0.0),
+        _ => None,
+    }
+}
+
+/// Grid columns in points. A grid Word wrote is the layout it drew; a table whose stated width is a
+/// percentage is scaled to it. With no grid, the widths come from the cells (task-2359, C6).
+fn column_widths(
+    ctx: &Ctx,
+    table: &Table,
+    look: &TableLook,
+    width: f32,
+    margins: (f32, f32, f32, f32),
+) -> Vec<f32> {
+    let grid: Vec<f32> = table.columns().into_iter().map(|w| twips(w as f64)).collect();
+    let stated = look.get("w:tblW");
+    let stated_width = preferred(stated, width);
+    let mut columns = if grid.is_empty() || grid.iter().all(|w| *w <= 0.0) {
+        widths_from_cells(ctx, table, width, stated_width, margins)
+    } else {
+        grid
+    };
+    let pct = stated.and_then(|w| w.attr("w:type")) == Some("pct");
+    if let (true, Some(want)) = (pct, stated_width) {
+        let total: f32 = columns.iter().sum();
         if total > 0.0 {
             columns.iter_mut().for_each(|w| *w *= want / total);
         }
     }
     columns
+}
+
+/// Column widths for a table with no grid: each column's `w:tcW` where a cell gives one, the rest
+/// shared so the table fills its stated width or, with none, fits its content within `width`.
+fn widths_from_cells(
+    ctx: &Ctx,
+    table: &Table,
+    width: f32,
+    stated: Option<f32>,
+    margins: (f32, f32, f32, f32),
+) -> Vec<f32> {
+    let count = table
+        .rows
+        .iter()
+        .map(|row| grid_before(row) + row.cells.iter().map(span_of).sum::<usize>())
+        .max()
+        .unwrap_or(1)
+        .max(1);
+    let available = stated.unwrap_or(width);
+    let mut fixed: Vec<Option<f32>> = vec![None; count];
+    let mut content: Vec<f32> = vec![0.0; count];
+    for row in &table.rows {
+        let mut column = grid_before(row);
+        for cell in &row.cells {
+            let span = span_of(cell);
+            if span == 1 && column < count {
+                if let Some(w) = preferred(cell.props.child("w:tcW"), available) {
+                    fixed[column] = Some(fixed[column].map_or(w, |f: f32| f.max(w)));
+                }
+                content[column] = content[column].max(natural_width(ctx, cell) + margins.0 + margins.1);
+            }
+            column += span;
+        }
+    }
+    let known: f32 = fixed.iter().flatten().sum();
+    let open: Vec<usize> = (0..count).filter(|c| fixed[*c].is_none()).collect();
+    let mut columns: Vec<f32> = fixed.iter().map(|f| f.unwrap_or(0.0)).collect();
+    if open.is_empty() {
+        return columns;
+    }
+    let left = (available - known).max(open.len() as f32 * 12.0);
+    let wanted: f32 = open.iter().map(|c| content[*c].max(12.0)).sum();
+    for c in &open {
+        let want = content[*c].max(12.0);
+        columns[*c] = match stated {
+            // A table with a width of its own fills it, sharing in proportion to the content.
+            Some(_) => left * want / wanted,
+            // Autofit to contents: the content's width when it all fits, otherwise in proportion.
+            None if wanted <= left => want,
+            None => left * want / wanted,
+        };
+    }
+    columns
+}
+
+/// The width a cell's content takes on one line: its widest paragraph laid out with no wrapping.
+fn natural_width(ctx: &Ctx, cell: &crate::model::Cell) -> f32 {
+    let mut widest: f32 = 0.0;
+    for block in &cell.blocks {
+        if let Block::Paragraph(paragraph) = block {
+            let mut counters = Counters::default();
+            let laid = super::paragraph::lay_out(
+                ctx,
+                &mut counters,
+                paragraph,
+                &StoryId::Body,
+                &[],
+                100_000.0,
+                None,
+            );
+            for line in &laid.lines {
+                for caret in &line.carets {
+                    if let Some((_, x)) = caret.stops.last() {
+                        widest = widest.max(*x);
+                    }
+                }
+            }
+        }
+    }
+    widest
 }
 
 fn grid_before(row: &Row) -> usize {
@@ -282,15 +511,7 @@ fn grid_before(row: &Row) -> usize {
 
 /// The grid column a cell starts at.
 fn column_of(row: &Row, cell: usize) -> usize {
-    grid_before(row)
-        + row
-            .cells
-            .iter()
-            .take(cell)
-            .map(|c| {
-                c.props.val_of("w:gridSpan").and_then(|s| s.parse::<usize>().ok()).unwrap_or(1)
-            })
-            .sum::<usize>()
+    grid_before(row) + row.cells.iter().take(cell).map(span_of).sum::<usize>()
 }
 
 fn cell_at_column(row: &Row, column: usize) -> Option<&crate::model::Cell> {

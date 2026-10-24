@@ -24,26 +24,11 @@ impl Tracking {
     fn wrap(&self, name: &str, document: &Document) -> Arc<Wrap> {
         Wrap::new(
             El::new(name)
-                .with("w:id", next_revision_id(document).to_string())
+                .with("w:id", document.next_id().to_string())
                 .with("w:author", self.author.clone())
                 .with("w:date", self.date.clone()),
         )
     }
-}
-
-/// A revision id larger than any in the document.
-fn next_revision_id(document: &Document) -> i64 {
-    let mut largest = 0i64;
-    for (_, paragraph) in position::paragraphs(&document.body) {
-        for run in &paragraph.runs {
-            for wrap in &run.wraps {
-                if let Some(id) = wrap.el.attr("w:id").and_then(|id| id.parse::<i64>().ok()) {
-                    largest = largest.max(id);
-                }
-            }
-        }
-    }
-    largest + 1
 }
 
 /// The run properties text typed at `offset` takes: the character before it, or after it at the start of
@@ -226,6 +211,7 @@ pub fn split_paragraph(document: &mut Document, at: &Pos, tracking: Option<&Trac
             None
         }
     };
+    let mark_id = document.next_id();
     let blocks = position::story_mut(document, &at.story).expect("the story");
     let Some((container, index)) = position::container_mut(blocks, &at.path) else {
         return at.clone();
@@ -253,11 +239,12 @@ pub fn split_paragraph(document: &mut Document, at: &Pos, tracking: Option<&Trac
         props.remove_children("w:numPr");
     }
     if tracking.is_some() {
-        // Word records an inserted paragraph mark on the paragraph that was split.
+        // Word records an inserted paragraph mark on the paragraph that was split, each with an id of
+        // its own (task-2359, D5).
         let mark_rpr = paragraph.props.child_or_insert("w:rPr");
         mark_rpr.put(
             El::new("w:ins")
-                .with("w:id", "0")
+                .with("w:id", mark_id.to_string())
                 .with("w:author", tracking.map_or("", |t| t.author.as_str()))
                 .with("w:date", tracking.map_or("", |t| t.date.as_str())),
         );
@@ -360,6 +347,9 @@ fn join_with_next(document: &mut Document, story: &StoryId, path: &[u32]) -> Opt
 pub fn delete_range(document: &mut Document, a: &Pos, b: &Pos, tracking: Option<&Tracking>) -> Pos {
     let (from, to) = if a <= b { (a.clone(), b.clone()) } else { (b.clone(), a.clone()) };
     if from.path == to.path {
+        let gone =
+            if tracking.is_none() { comments_referenced_between(document, &from, &to) } else { Vec::new() };
+        remove_comments(document, &gone);
         let offset = delete_in_paragraph(
             document,
             &from.story,
@@ -390,19 +380,100 @@ pub fn delete_range(document: &mut Document, a: &Pos, b: &Pos, tracking: Option<
         return from;
     }
     // One container: take the tail of the first paragraph and the head of the last, remove the blocks in
-    // between, and join what is left.
+    // between, and join what is left. The bookmark and comment marks of the paragraphs removed move to
+    // where the two halves meet, so no range is left with a start and no end (task-2359, D4).
+    let gone = comments_referenced_between(document, &from, &to);
     delete_in_paragraph(document, &from.story, &to.path, 0, to.offset, None);
     let first_index = *from.path.last().expect("a path");
     let last_index = *to.path.last().expect("a path");
+    let mut carried: Vec<Mark> = Vec::new();
     {
         let blocks = position::story_mut(document, &from.story).expect("the story");
         let (container, _) = position::container_mut(blocks, &from.path).expect("the container");
-        container.drain(first_index as usize + 1..last_index as usize);
+        for block in container.drain(first_index as usize + 1..last_index as usize) {
+            match block {
+                Block::Paragraph(paragraph) => carried.extend(paragraph.marks),
+                other => collect_marks(&other, &mut carried),
+            }
+        }
     }
     let len = position::paragraph(document, &from.story, &from.path).map_or(0, Paragraph::len);
     delete_in_paragraph(document, &from.story, &from.path, from.offset, len, None);
+    if let Some(paragraph) = position::paragraph_mut(document, &from.story, &from.path) {
+        let at = paragraph.len();
+        paragraph.marks.extend(carried.into_iter().map(|mark| Mark { offset: at, ..mark }));
+    }
     join_with_next(document, &from.story, &from.path);
+    if let Some(paragraph) = position::paragraph_mut(document, &from.story, &from.path) {
+        paragraph.marks.sort_by_key(|mark| mark.offset);
+    }
+    remove_comments(document, &gone);
     from
+}
+
+/// The marks inside a block that is not a paragraph (a table or a content control being deleted whole).
+fn collect_marks(block: &Block, out: &mut Vec<Mark>) {
+    for (_, paragraph) in position::paragraphs(std::slice::from_ref(block)) {
+        out.extend(paragraph.marks.iter().cloned());
+    }
+}
+
+/// The ids of the comments whose reference lies between two positions, which go when the text does.
+fn comments_referenced_between(document: &Document, from: &Pos, to: &Pos) -> Vec<String> {
+    let Some(blocks) = position::story(document, &from.story) else { return Vec::new() };
+    let mut ids = Vec::new();
+    for (path, paragraph) in position::paragraphs(blocks) {
+        if path < from.path || path > to.path {
+            continue;
+        }
+        let mut at = 0;
+        for run in &paragraph.runs {
+            let inside = (path > from.path || at >= from.offset) && (path < to.path || at < to.offset);
+            if let Content::Object(el) = &run.content {
+                if inside && el.name == "w:commentReference" {
+                    ids.extend(el.attr("w:id").map(str::to_owned));
+                }
+            }
+            at += run.len();
+        }
+    }
+    ids
+}
+
+/// Take comments out of the document: their range marks wherever they are and their text in the
+/// comments part.
+pub fn remove_comments(document: &mut Document, ids: &[String]) {
+    if ids.is_empty() {
+        return;
+    }
+    let is_range = |mark: &Mark| {
+        matches!(mark.el.name.as_str(), "w:commentRangeStart" | "w:commentRangeEnd")
+            && mark.el.attr("w:id").is_some_and(|id| ids.iter().any(|gone| gone == id))
+    };
+    fn visit(blocks: &mut [Block], is_range: &dyn Fn(&Mark) -> bool) {
+        for block in blocks {
+            match block {
+                Block::Paragraph(paragraph) => paragraph.marks.retain(|mark| !is_range(mark)),
+                Block::Table(table) => {
+                    for row in &mut table.rows {
+                        for cell in &mut row.cells {
+                            visit(&mut cell.blocks, is_range);
+                        }
+                    }
+                }
+                Block::Sdt(sdt) => visit(&mut sdt.blocks, is_range),
+                Block::Kept(_) => {}
+            }
+        }
+    }
+    visit(&mut document.body, &is_range);
+    if let Some(part) = document.comments.as_mut() {
+        let before = part.notes.len();
+        part.notes.retain(|note| {
+            note.el.attr("w:id").is_none_or(|id| !ids.iter().any(|gone| gone == id))
+        });
+        part.dirty |= part.notes.len() != before;
+    }
 }
 
 /// What one press of Backspace or Delete removes.

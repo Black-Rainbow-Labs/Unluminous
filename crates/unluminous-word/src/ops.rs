@@ -693,7 +693,7 @@ impl Session {
                 }
             };
             if let Some(header) = document.headers.iter_mut().find(|h| h.id == id) {
-                header.story.blocks = vec![Block::Paragraph(paragraph)];
+                replace_header_text(&mut header.story.blocks, paragraph);
                 header.dirty = true;
             }
             selection.clone()
@@ -782,7 +782,9 @@ impl Session {
                 author.split_whitespace().filter_map(|w| w.chars().next()).collect();
             let mut paragraph = Paragraph::new();
             paragraph.props.put(El::new("w:pStyle").with("w:val", "CommentText"));
-            paragraph.attrs.push(("w14:paraId".into(), random_para_id(id)));
+            let para_id = random_para_id(id);
+            paragraph.attrs.push(("w14:paraId".into(), para_id.clone()));
+            add_comment_to_side_parts(document, &para_id, &author);
             let reference_props = Arc::new(
                 El::new("w:rPr").with_child(El::new("w:rStyle").with("w:val", "CommentReference")),
             );
@@ -974,6 +976,14 @@ impl Session {
         }
         self.change(Scope::Whole, |document, selection, _| {
             let key = id.to_string();
+            let para = document
+                .comments
+                .as_ref()
+                .and_then(|p| p.notes.iter().find(|n| n.id() == Some(id)))
+                .and_then(last_para_id);
+            if let Some(para) = para {
+                remove_comment_from_side_parts(document, &para);
+            }
             if let Some(part) = document.comments.as_mut() {
                 part.notes.retain(|n| n.id() != Some(id));
                 part.dirty = true;
@@ -1380,6 +1390,34 @@ fn section_sect_mut<'a>(document: &'a mut Document, path: &Option<Vec<u32>>) -> 
     }
 }
 
+/// Put `paragraph`'s runs in place of the text of the first paragraph of a header story that holds
+/// text, keeping that paragraph's properties and everything else in the story: a logo, a table, the
+/// other paragraphs (task-2359, D2). A story with no paragraph of text gets `paragraph` added at its end.
+fn replace_header_text(blocks: &mut Vec<Block>, paragraph: Paragraph) {
+    let target = blocks.iter_mut().find_map(|block| match block {
+        Block::Paragraph(p) if !p.visible_text().trim().is_empty() => Some(p),
+        _ => None,
+    });
+    match target {
+        Some(existing) => {
+            // A picture or a shape in the paragraph stays where it is; the text after it is replaced.
+            existing.runs.retain(|run| {
+                run.content.picture().is_some() || matches!(run.content, Content::ParagraphObject(_))
+            });
+            existing.runs.extend(paragraph.runs);
+            let length = existing.len();
+            for mark in &mut existing.marks {
+                mark.offset = mark.offset.min(length);
+            }
+        }
+        // An empty header Word made is one empty paragraph, which the text goes into.
+        None => match blocks.iter_mut().find_map(Block::as_paragraph_mut) {
+            Some(existing) if existing.runs.is_empty() => existing.runs = paragraph.runs,
+            _ => blocks.push(Block::Paragraph(paragraph)),
+        },
+    }
+}
+
 /// A header or footer paragraph, with `{PAGE}` and `{NUMPAGES}` as fields.
 fn header_paragraph(style: &str, text: &str) -> Paragraph {
     let mut paragraph = Paragraph::new();
@@ -1657,6 +1695,91 @@ fn set_comment_extended(document: &mut Document, comment: i64, parent: Option<&s
     let _ = W15;
     let text = crate::write::whole_part(&root);
     document.package.set_part(&name, text.into_bytes());
+}
+
+const COMMENTS_IDS: &str = "http://schemas.microsoft.com/office/2016/09/relationships/commentsIds";
+const COMMENTS_EXTENSIBLE: &str =
+    "http://schemas.microsoft.com/office/2018/08/relationships/commentsExtensible";
+const PEOPLE: &str = "http://schemas.microsoft.com/office/2011/relationships/people";
+
+/// Change a part the main part points at with a relationship of type `kind`, when there is one, and
+/// write it back. Answers whether there was such a part.
+fn edit_related_part(document: &mut Document, kind: &str, edit: impl FnOnce(&mut El)) -> bool {
+    let Some(rel) = document
+        .package
+        .rels
+        .get(&document.main)
+        .and_then(|rels| rels.rels.iter().find(|r| r.kind == kind).cloned())
+    else {
+        return false;
+    };
+    let name = Package::resolve(&document.main, &rel.target);
+    let Some(mut root) = document.package.part(&name).and_then(|b| crate::xml::parse_bytes(b).ok())
+    else {
+        return false;
+    };
+    edit(&mut root);
+    document.package.set_part(&name, crate::write::whole_part(&root).into_bytes());
+    true
+}
+
+/// Record a new comment in the parts Word keeps beside the comments, those the file already has:
+/// `commentsIds` (a durable id for the comment's paragraph), `commentsExtensible` (that id and the date)
+/// and `people` (the author) (task-2359, D8).
+fn add_comment_to_side_parts(document: &mut Document, para: &str, author: &str) {
+    let durable = random_para_id(i64::from(para.len() as u32) + 7);
+    edit_related_part(document, COMMENTS_IDS, |root| {
+        root.children.push(Node::El(
+            El::new("w16cid:commentId")
+                .with("w16cid:paraId", para.to_owned())
+                .with("w16cid:durableId", durable.clone()),
+        ));
+    });
+    let date = now_iso();
+    edit_related_part(document, COMMENTS_EXTENSIBLE, |root| {
+        root.children.push(Node::El(
+            El::new("w16cex:commentExtensible")
+                .with("w16cex:durableId", durable.clone())
+                .with("w16cex:dateUtc", date.clone()),
+        ));
+    });
+    edit_related_part(document, PEOPLE, |root| {
+        let known = root.elements().any(|person| person.attr("w15:author") == Some(author));
+        if !known {
+            root.children.push(Node::El(
+                El::new("w15:person").with("w15:author", author.to_owned()).with_child(
+                    El::new("w15:presenceInfo")
+                        .with("w15:providerId", "None")
+                        .with("w15:userId", author.to_owned()),
+                ),
+            ));
+        }
+    });
+}
+
+/// Take a deleted comment out of `commentsIds`, `commentsExtensible` and `commentsExtended`.
+fn remove_comment_from_side_parts(document: &mut Document, para: &str) {
+    let mut durable: Option<String> = None;
+    edit_related_part(document, COMMENTS_IDS, |root| {
+        root.children.retain(|node| match node {
+            Node::El(el) if el.attr("w16cid:paraId") == Some(para) => {
+                durable = el.attr("w16cid:durableId").map(str::to_owned);
+                false
+            }
+            _ => true,
+        });
+    });
+    if let Some(durable) = durable {
+        edit_related_part(document, COMMENTS_EXTENSIBLE, |root| {
+            root.children.retain(|node| {
+                !matches!(node, Node::El(el) if el.attr("w16cex:durableId") == Some(durable.as_str()))
+            });
+        });
+    }
+    edit_related_part(document, COMMENTS_EXTENDED, |root| {
+        root.children
+            .retain(|node| !matches!(node, Node::El(el) if el.attr("w15:paraId") == Some(para)));
+    });
 }
 
 fn remove_comment_pieces(blocks: &mut [Block], id: &str) {

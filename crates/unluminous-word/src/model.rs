@@ -5,7 +5,7 @@
 //! `crate::props` reads and changes them through typed accessors. So a property Unluminous does not know
 //! is still there when the file is written, in the place the schema gives it.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use crate::package::Package;
@@ -49,6 +49,34 @@ pub struct Document {
     pub comments: Option<NotesPart>,
     /// Every part of the file as read, with the content types and relationships.
     pub package: Package,
+    /// The next `w:id` for a revision, a comment, a bookmark or a note Unluminous writes: larger than
+    /// every id in the file when it was read, and shared by the copies undo keeps so an id is never
+    /// given twice (task-2359, D5).
+    pub ids: Arc<AtomicI64>,
+}
+
+impl Document {
+    /// A `w:id` no other revision, comment range or bookmark in the document has.
+    pub fn next_id(&self) -> i64 {
+        self.ids.fetch_add(1, Ordering::Relaxed)
+    }
+}
+
+/// The largest `w:id="n"` in some XML, for seeding [`Document::ids`].
+pub fn largest_id(xml: &[u8]) -> i64 {
+    let needle = b"w:id=\"";
+    let mut largest = 0i64;
+    let mut at = 0;
+    while let Some(found) = xml[at..].windows(needle.len()).position(|w| w == needle) {
+        let start = at + found + needle.len();
+        let digits: Vec<u8> =
+            xml[start..].iter().take_while(|b| b.is_ascii_digit()).copied().collect();
+        if let Some(value) = std::str::from_utf8(&digits).ok().and_then(|d| d.parse::<i64>().ok()) {
+            largest = largest.max(value);
+        }
+        at = start;
+    }
+    largest
 }
 
 /// A part Unluminous reads and writes as a tree, written back as read until it changes.
@@ -162,6 +190,11 @@ pub enum Content {
     /// Everything else a run can hold: a picture, a note reference, a symbol, a comment reference,
     /// a non breaking or soft hyphen, `mc:AlternateContent`, an object.
     Object(El),
+    /// An element the schema puts directly in a paragraph rather than in a run: an equation
+    /// (`m:oMath`, `m:oMathPara`), a sub document (`w:subDoc`), or any element of another namespace. It
+    /// is one character in the flat text and is written back as a child of `w:p`, never inside a `w:r`,
+    /// which Word calls unreadable content (task-2359, D1).
+    ParagraphObject(El),
 }
 
 /// An element a run sits inside.
@@ -260,6 +293,7 @@ impl Content {
                 Some("separate") => FIELD_SEPARATE,
                 _ => FIELD_END,
             },
+            Content::ParagraphObject(_) => OBJECT,
             Content::Object(el) => match el.name.as_str() {
                 "w:noBreakHyphen" => '\u{2011}',
                 "w:softHyphen" => '\u{00AD}',

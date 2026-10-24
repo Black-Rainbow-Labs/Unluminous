@@ -158,6 +158,31 @@ function Get-RunsSafe {
     } catch { return $null }
 }
 
+# The lines Word broke a paragraph into: each line's text and the top of its first character, read with
+# the predefined \Line bookmark at the start of each line. Null when the document is too long to ask.
+function Get-Lines {
+    param($doc, $para)
+    if (-not $script:AskLines) { return $null }
+    $list = New-Object System.Collections.Generic.List[object]
+    try {
+        $r = $para.Range
+        $sel = $doc.ActiveWindow.Selection
+        $pos = $r.Start
+        $guard = 0
+        while ($pos -lt $r.End -and $guard -lt 400) {
+            $guard++
+            $sel.SetRange($pos, $pos)
+            $line = $doc.Bookmarks.Item('\Line').Range
+            if ($line.End -le $pos) { break }
+            $end = [math]::Min($line.End, $r.End)
+            $text = ([string]$doc.Range($pos, $end).Text) -replace "\r$", '' -replace "\u0007", ''
+            $list.Add([ordered]@{ text = $text; top = (Round2 ($doc.Range($pos, $pos).Information(6))); left = (Round2 ($doc.Range($pos, $pos).Information(5))); page = [int]$doc.Range($pos, $pos).Information(3) })
+            $pos = $end
+        }
+    } catch { return $null }
+    return , $list.ToArray()
+}
+
 # Reads one paragraph into the report shape.
 function Read-Paragraph {
     param($doc, $para, [int]$index)
@@ -185,6 +210,7 @@ function Read-Paragraph {
         left = (Round2 (Try-Get { $doc.Range($r.Start, $r.Start).Information(5) } 0))
         lastTop = (Round2 (Try-Get { $e = [math]::Max($r.Start, $r.End - 1); $doc.Range($e, $e).Information(6) } 0))
         runs = (Get-RunsSafe $doc $para)
+        lines = (Get-Lines $doc $para)
     }
 }
 
@@ -219,6 +245,8 @@ function Read-HeaderFooter {
     $o = [ordered]@{}
     foreach ($k in 1, 2, 3) {
         $o[$names[$k]] = Try-Get { $h = $collection.Item($k); if ($h.Exists) { ([string]$h.Range.Text) -replace "\r$", '' } else { '' } } ''
+        $o[$names[$k] + 'Pictures'] = Try-Get { $h = $collection.Item($k); if ($h.Exists) { [int]$h.Range.InlineShapes.Count } else { 0 } } 0
+        $o[$names[$k] + 'Tables'] = Try-Get { $h = $collection.Item($k); if ($h.Exists) { [int]$h.Range.Tables.Count } else { 0 } } 0
     }
     return $o
 }
@@ -289,7 +317,13 @@ function Get-Report {
         comments = (Map-Collection $doc.Comments { param($c) [ordered]@{ author = [string]$c.Author; text = [string]$c.Range.Text; scope = (Try-Get { [string]$c.Scope.Text } ''); done = (Try-Get { [bool]$c.Done } $false) } })
         revisions = (Map-Collection $doc.Revisions { param($r) [ordered]@{ type = [int]$r.Type; author = [string]$r.Author; text = (Try-Get { [string]$r.Range.Text } '') } })
         inlineShapes = (Map-Collection $doc.InlineShapes { param($s) [ordered]@{ width = (Round2 $s.Width); height = (Round2 $s.Height); type = [int]$s.Type } })
-        shapes = (Map-Collection $doc.Shapes { param($s) [ordered]@{ type = [int]$s.Type; width = (Round2 $s.Width); height = (Round2 $s.Height); left = (Round2 $s.Left); top = (Round2 $s.Top) } })
+        shapes = (Map-Collection $doc.Shapes { param($s) [ordered]@{ type = [int]$s.Type; width = (Round2 $s.Width); height = (Round2 $s.Height); left = (Round2 $s.Left); top = (Round2 $s.Top); wrap = (Try-Get { [int]$s.WrapFormat.Type } -1); side = (Try-Get { [int]$s.WrapFormat.Side } -1); text = (Try-Get { if ($s.TextFrame.HasText) { [string]$s.TextFrame.TextRange.Text } else { '' } } ''); page = (Try-Get { [int]$s.Anchor.Information(3) } 0); autoShape = (Try-Get { [int]$s.AutoShapeType } 0) } })
+        contentControls = (Map-Collection $doc.ContentControls { param($c) [ordered]@{ type = [int]$c.Type; title = [string]$c.Title; tag = [string]$c.Tag; text = (Try-Get { [string]$c.Range.Text } ''); checked = (Try-Get { [bool]$c.Checked } $false) } })
+        oMaths = (Map-Collection $doc.OMaths { param($m) [ordered]@{ text = (Try-Get { [string]$m.Range.Text } ''); type = (Try-Get { [int]$m.Type } 0) } })
+        settings = [ordered]@{ autoHyphenation = (Try-Get { [bool]$doc.AutoHyphenation } $false); hyphenationZone = (Round2 (Try-Get { $doc.HyphenationZone } 0)); consecutiveHyphensLimit = (Try-Get { [int]$doc.ConsecutiveHyphensLimit } 0); compatibilityMode = (Try-Get { [int]$doc.CompatibilityMode } 0) }
+        footnoteOptions = [ordered]@{ numberStyle = (Try-Get { [int]$doc.Footnotes.NumberStyle } 0); numberingRule = (Try-Get { [int]$doc.Footnotes.NumberingRule } 0); startingNumber = (Try-Get { [int]$doc.Footnotes.StartingNumber } 0); location = (Try-Get { [int]$doc.Footnotes.Location } 0) }
+        endnoteOptions = [ordered]@{ numberStyle = (Try-Get { [int]$doc.Endnotes.NumberStyle } 0); numberingRule = (Try-Get { [int]$doc.Endnotes.NumberingRule } 0); startingNumber = (Try-Get { [int]$doc.Endnotes.StartingNumber } 0); location = (Try-Get { [int]$doc.Endnotes.Location } 0) }
+        footnotePages = (Map-Collection $doc.Footnotes { param($n) [ordered]@{ reference = (Try-Get { [int]$n.Reference.Information(3) } 0); first = (Try-Get { [int]$doc.Range($n.Range.Start, $n.Range.Start).Information(3) } 0); last = (Try-Get { $e = [math]::Max($n.Range.Start, $n.Range.End - 1); [int]$doc.Range($e, $e).Information(3) } 0); mark = (Try-Get { [string]$n.Reference.Text } '') } })
         fields = (Map-Collection $doc.Fields { param($f) [ordered]@{ type = [int]$f.Type; code = (Try-Get { [string]$f.Code.Text } ''); result = (Try-Get { [string]$f.Result.Text } '') } })
         tablesOfContents = (Try-Get { [int]$doc.TablesOfContents.Count } 0)
         bookmarks = (Map-Collection $doc.Bookmarks { param($b) [string]$b.Name })
@@ -306,6 +340,8 @@ function Write-Report {
 }
 
 $fullPath = (Resolve-Path -LiteralPath $Path).Path
+# Asking for every line is slow, so it is done for documents of a few hundred paragraphs or fewer.
+$script:AskLines = $true
 $outPath = [IO.Path]::GetFullPath($Out)
 $handle = $null
 try {
@@ -319,6 +355,7 @@ try {
         return
     }
     $script:Doc = $doc
+    try { if ($doc.Paragraphs.Count -gt 400) { $script:AskLines = $false } } catch { }
     # Positions are only right in Print Layout view.
     try { $doc.ActiveWindow.View.Type = 3 } catch { try { $doc.Windows.Item(1).View.Type = 3 } catch { } }
     try { Write-Report (Get-Report $doc ([IO.Path]::GetFileName($fullPath))) $outPath }

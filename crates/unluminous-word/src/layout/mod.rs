@@ -10,6 +10,7 @@
 //! paragraph it is in, which offsets it holds and where each one is.
 
 pub mod fields;
+pub mod notes;
 pub mod paragraph;
 pub mod section;
 pub mod table;
@@ -258,6 +259,19 @@ pub struct Page {
     pub first: Option<Pos>,
     /// The page colour, when the document has one.
     pub background: Option<Rgb>,
+    /// The footnotes at the foot of this page, in order, with the lines of each that are here.
+    pub notes: Vec<NotePiece>,
+}
+
+/// Some lines of one footnote at the foot of a page.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NotePiece {
+    pub id: i64,
+    /// The note's lines `from..to` are on this page.
+    pub from: usize,
+    pub to: usize,
+    /// It began on an earlier page, so it is under the continuation separator.
+    pub continued: bool,
 }
 
 /// Everything the layout needs besides the document.
@@ -272,6 +286,9 @@ pub struct Ctx<'a> {
     /// Each footnote's number, by its id, in order of first reference.
     pub footnote_numbers: HashMap<i64, u32>,
     pub endnote_numbers: HashMap<i64, u32>,
+    /// The mark each note shows, in its numbering format.
+    pub footnote_marks: HashMap<i64, String>,
+    pub endnote_marks: HashMap<i64, String>,
     /// The part the story being laid out lives in, which its pictures' relationships belong to.
     pub part: String,
     /// The page being laid out, for PAGE and NUMPAGES in a header: `(number, pages)`.
@@ -339,34 +356,6 @@ impl Pages {
     }
 }
 
-/// Number the footnotes and endnotes in order of first reference.
-fn number_notes(document: &Document) -> (HashMap<i64, u32>, HashMap<i64, u32>) {
-    let mut footnotes = HashMap::new();
-    let mut endnotes = HashMap::new();
-    for (_, paragraph) in crate::position::paragraphs(&document.body) {
-        for run in &paragraph.runs {
-            if let crate::model::Content::Object(el) = &run.content {
-                let id = el.attr("w:id").and_then(|id| id.parse::<i64>().ok());
-                // A reference with `w:customMarkFollows` shows its own mark and is not counted.
-                let custom =
-                    el.attr("w:customMarkFollows").is_some_and(|v| v == "1" || v == "true");
-                match (el.name.as_str(), id) {
-                    ("w:footnoteReference", Some(id)) if !custom => {
-                        let next = footnotes.len() as u32 + 1;
-                        footnotes.entry(id).or_insert(next);
-                    }
-                    ("w:endnoteReference", Some(id)) if !custom => {
-                        let next = endnotes.len() as u32 + 1;
-                        endnotes.entry(id).or_insert(next);
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-    (footnotes, endnotes)
-}
-
 /// The document's default tab stop, from its settings.
 fn default_tab(document: &Document) -> f32 {
     document
@@ -381,7 +370,12 @@ fn default_tab(document: &Document) -> f32 {
 /// Lay the whole document out into pages.
 pub fn lay_out(document: &Document, metrics: &dyn FontMetrics, options: Options) -> Pages {
     let resolver = Resolver::new(document);
-    let (footnote_numbers, endnote_numbers) = number_notes(document);
+    let references = notes::references(document);
+    let footnote_options = notes::NoteOptions::of(document, false);
+    let endnote_options = notes::NoteOptions::of(document, true);
+    let (footnote_numbers, footnote_marks) =
+        notes::number(&references, false, &footnote_options, None);
+    let (endnote_numbers, endnote_marks) = notes::number(&references, true, &endnote_options, None);
     let mut ctx = Ctx {
         document,
         resolver: &resolver,
@@ -390,23 +384,96 @@ pub fn lay_out(document: &Document, metrics: &dyn FontMetrics, options: Options)
         show_marks: options.show_marks,
         footnote_numbers,
         endnote_numbers,
+        footnote_marks,
+        endnote_marks,
         part: document.main.clone(),
         page: None,
     };
-    let mut flow = Flow::new(document);
-    flow.note_heights = measure_footnotes(&ctx);
-    let mut counters = Counters::default();
     let sections = sections(document);
+    let mut pages = flow_document(&mut ctx, &sections, &references, endnote_options.section_end);
+    // Footnotes numbered again on each page can only be numbered once the pages are known, and a mark
+    // of another width can move a line, so the body is laid out a second time with those numbers.
+    if footnote_options.restart == notes::Restart::EachPage {
+        let mut on: HashMap<i64, usize> = HashMap::new();
+        for (index, page) in pages.iter().enumerate() {
+            for piece in page.notes.iter().filter(|p| !p.continued) {
+                on.entry(piece.id).or_insert(index);
+            }
+        }
+        let (_, marks) = notes::number(&references, false, &footnote_options, Some(&on));
+        if marks != ctx.footnote_marks {
+            ctx.footnote_marks = marks;
+            pages = flow_document(&mut ctx, &sections, &references, endnote_options.section_end);
+        }
+    }
+    decorate_pages(&mut pages, &mut ctx, &sections);
+    Pages { pages }
+}
+
+/// The body flowed into pages, with the endnotes at the end of each section or of the document.
+fn flow_document(
+    ctx: &mut Ctx,
+    sections: &[(Vec<(usize, &Block)>, Geometry)],
+    references: &[(bool, i64, usize)],
+    endnotes_by_section: bool,
+) -> Vec<Page> {
+    let document = ctx.document;
+    let mut flow = Flow::new(document);
+    flow.note_lines = measure_footnotes(ctx);
+    flow.bands = measure_bands(ctx);
+    let mut counters = Counters::default();
     for (index, (blocks, geometry)) in sections.iter().enumerate() {
         flow.start_section(index, geometry.clone());
         for (offset, block) in blocks.iter() {
-            flow_block(&mut flow, &ctx, &mut counters, block, vec![*offset as u32]);
+            flow_block(&mut flow, ctx, &mut counters, block, vec![*offset as u32]);
+        }
+        if endnotes_by_section {
+            let ids: Vec<i64> = references
+                .iter()
+                .filter(|(endnote, _, section)| *endnote && *section == index)
+                .map(|(_, id, _)| *id)
+                .collect();
+            flow.place_endnotes(ctx, &ids);
         }
     }
-    flow.place_endnotes(&ctx);
-    let mut pages = flow.finish();
-    decorate_pages(&mut pages, &mut ctx, &sections);
-    Pages { pages }
+    if !endnotes_by_section {
+        let ids: Vec<i64> =
+            references.iter().filter(|(endnote, ..)| *endnote).map(|(_, id, _)| *id).collect();
+        flow.place_endnotes(ctx, &ids);
+    }
+    flow.finish()
+}
+
+/// The height of every section's header and footer of each kind, which push the body down or up when
+/// they reach past the margins.
+fn measure_bands(ctx: &mut Ctx) -> HashMap<(usize, String), (f32, f32)> {
+    let mut out = HashMap::new();
+    for (index, (_, geometry)) in sections(ctx.document).iter().enumerate() {
+        for kind in ["default", "first", "even"] {
+            let mut heights = [0.0f32; 2];
+            for (slot, references) in [&geometry.headers, &geometry.footers].iter().enumerate() {
+                let Some((_, id)) = references.iter().find(|(k, _)| k == kind) else { continue };
+                let Some(header) = ctx.document.headers.iter().find(|h| &h.id == id) else {
+                    continue;
+                };
+                let saved = std::mem::replace(&mut ctx.part, header.name.clone());
+                ctx.page = Some((1, 1));
+                let mut counters = Counters::default();
+                let chunks = lay_out_story(
+                    ctx,
+                    &mut counters,
+                    &header.story.blocks,
+                    &StoryId::Header(id.clone()),
+                    geometry.text_width(),
+                );
+                ctx.page = None;
+                ctx.part = saved;
+                heights[slot] = chunks.iter().map(|c| c.height).sum();
+            }
+            out.insert((index, kind.to_owned()), (heights[0], heights[1]));
+        }
+    }
+    out
 }
 
 /// The body split into its sections: the blocks of each, by their index in the body, and its page.
@@ -494,11 +561,25 @@ struct Flow<'a> {
     /// The space after the last paragraph placed, added before the next.
     pending_after: f32,
     last_style: Option<(String, bool)>,
-    /// The footnotes on the current page, laid out, and their total height.
+    /// The height the footnotes at the foot of the current page take.
     notes_height: f32,
-    page_note_ids: Vec<i64>,
-    /// Each footnote's height, measured once at the text width.
-    note_heights: HashMap<i64, f32>,
+    /// The footnotes on the current page and the lines of each that are here.
+    page_notes: Vec<NotePiece>,
+    /// The lines of footnotes that did not fit on their page, which go first at the foot of the next.
+    carry: Vec<(i64, usize)>,
+    /// Each footnote's line heights, measured once at the text width.
+    note_lines: HashMap<i64, Vec<f32>>,
+    /// Paragraphs with keep with next, waiting for the block after them.
+    keep_chain: Vec<LaidParagraph>,
+    /// The height of each section's header and footer by kind (`default`, `first`, `even`).
+    bands: HashMap<(usize, String), (f32, f32)>,
+    even_and_odd: bool,
+    /// The current page's number as Word prints it, and how many pages its section has so far.
+    page_number: u32,
+    section_pages: u32,
+    /// Where the current page's body starts, and how far above the foot it ends.
+    page_top: f32,
+    page_bottom: f32,
 }
 
 impl<'a> Flow<'a> {
@@ -514,8 +595,20 @@ impl<'a> Flow<'a> {
             pending_after: 0.0,
             last_style: None,
             notes_height: 0.0,
-            page_note_ids: Vec::new(),
-            note_heights: HashMap::new(),
+            page_notes: Vec::new(),
+            carry: Vec::new(),
+            note_lines: HashMap::new(),
+            keep_chain: Vec::new(),
+            bands: HashMap::new(),
+            even_and_odd: document
+                .settings
+                .as_ref()
+                .and_then(|s| crate::props::on_off(&s.root, "w:evenAndOddHeaders"))
+                .unwrap_or(false),
+            page_number: 0,
+            section_pages: 0,
+            page_top: 72.0,
+            page_bottom: 72.0,
         }
     }
 
@@ -532,17 +625,51 @@ impl<'a> Flow<'a> {
     }
 
     fn bottom(&self) -> f32 {
-        self.geometry.height - self.geometry.bottom - self.notes_height
+        self.geometry.height - self.page_bottom - self.notes_height
+    }
+
+    /// The height a page's body has between its header and its footer.
+    fn room(&self) -> f32 {
+        self.geometry.height - self.page_top - self.page_bottom
+    }
+
+    /// Where the body starts and how far from the foot it ends on the next page: the margins, or the
+    /// header and footer when they reach past them (task-2359, C4).
+    fn bands_of_next_page(&self) -> (f32, f32) {
+        let number = match (self.section_pages, self.geometry.page_number_start) {
+            (0, Some(start)) => start,
+            _ => self.page_number + 1,
+        };
+        let kind = if self.section_pages == 0 && self.geometry.title_page {
+            "first"
+        } else if self.even_and_odd && number % 2 == 0 {
+            "even"
+        } else {
+            "default"
+        };
+        let (header, footer) =
+            self.bands.get(&(self.section, kind.to_owned())).copied().unwrap_or((0.0, 0.0));
+        let top = self.geometry.top.max(self.geometry.header + header);
+        let bottom = self.geometry.bottom.max(self.geometry.footer + footer);
+        (top, bottom)
     }
 
     fn new_page(&mut self) {
+        let (top, bottom) = self.bands_of_next_page();
+        self.page_number = match (self.section_pages, self.geometry.page_number_start) {
+            (0, Some(start)) => start,
+            _ => self.page_number + 1,
+        };
+        self.section_pages += 1;
+        self.page_top = top;
+        self.page_bottom = bottom;
         let number = self.pages.len() as u32 + 1;
         let geometry = &self.geometry;
         let body = Rect::new(
             geometry.left + geometry.gutter,
-            geometry.top,
+            top,
             geometry.text_width(),
-            geometry.height - geometry.top - geometry.bottom,
+            geometry.height - top - bottom,
         );
         let background = self
             .document
@@ -560,16 +687,27 @@ impl<'a> Flow<'a> {
             carets: Vec::new(),
             first: None,
             background,
+            notes: Vec::new(),
         });
         self.column = 0;
-        self.y = geometry.top;
-        self.column_top = geometry.top;
+        self.y = top;
+        self.column_top = top;
         self.pending_after = 0.0;
         self.notes_height = 0.0;
-        self.page_note_ids.clear();
+        self.page_notes.clear();
+        // What a footnote on the last page could not fit goes first at the foot of this one, under the
+        // continuation separator (task-2359, C8).
+        let carried = std::mem::take(&mut self.carry);
+        for (index, (id, from)) in carried.into_iter().enumerate() {
+            let separator = if index == 0 { NOTE_SEPARATOR } else { 0.0 };
+            self.take_note_lines(id, from, separator, true);
+        }
     }
 
     fn start_section(&mut self, index: usize, geometry: Geometry) {
+        // A section break ends a keep with next chain: nothing after it keeps with what is before it.
+        self.flush_keeps(None);
+        self.section_pages = 0;
         let start = geometry.start;
         let continuous = start == Start::Continuous
             && !self.pages.is_empty()
@@ -620,29 +758,76 @@ impl<'a> Flow<'a> {
         }
     }
 
-    /// The height a piece's footnotes need on this page, beyond those already here.
-    fn notes_for(&self, chunk: &Chunk) -> f32 {
-        let new: Vec<i64> =
-            chunk.notes.iter().copied().filter(|id| !self.page_note_ids.contains(id)).collect();
-        if new.is_empty() {
-            return 0.0;
+    /// The footnotes a piece refers to that are not on this page yet.
+    fn new_notes(&self, chunk: &Chunk) -> Vec<i64> {
+        let mut new: Vec<i64> = Vec::new();
+        for id in &chunk.notes {
+            let here = self.page_notes.iter().any(|piece| piece.id == *id);
+            let waiting = self.carry.iter().any(|(carried, _)| carried == id);
+            if !here && !waiting && !new.contains(id) {
+                new.push(*id);
+            }
         }
-        // Measured before the body was laid out, at the width of the text.
-        let separator = if self.page_note_ids.is_empty() { NOTE_SEPARATOR } else { 0.0 };
-        separator
-            + new.iter().map(|id| self.note_heights.get(id).copied().unwrap_or(14.0)).sum::<f32>()
+        new
     }
 
-    /// Put one piece at the current place, moving to the next column first when it does not fit.
+    /// The height a piece's new footnotes need on this page: all of them, and the least Word accepts,
+    /// which is every one but the last whole and the first line of the last.
+    fn notes_for(&self, chunk: &Chunk) -> (f32, f32) {
+        let new = self.new_notes(chunk);
+        if new.is_empty() {
+            return (0.0, 0.0);
+        }
+        let separator = if self.page_notes.is_empty() { NOTE_SEPARATOR } else { 0.0 };
+        let lines = |id: &i64| self.note_lines.get(id).cloned().unwrap_or_else(|| vec![14.0]);
+        let full = separator + new.iter().map(|id| lines(id).iter().sum::<f32>()).sum::<f32>();
+        let least = separator
+            + new[..new.len() - 1].iter().map(|id| lines(id).iter().sum::<f32>()).sum::<f32>()
+            + lines(new.last().expect("one")).first().copied().unwrap_or(0.0);
+        (full, least)
+    }
+
+    /// Put as many lines of a footnote as fit at the foot of this page, from line `from`, and keep the
+    /// rest for the next. At least one line goes here.
+    fn take_note_lines(&mut self, id: i64, from: usize, separator: f32, continued: bool) {
+        let lines = self.note_lines.get(&id).cloned().unwrap_or_else(|| vec![14.0]);
+        let room = self.bottom() - self.y - separator;
+        let mut used = 0.0;
+        let mut to = from;
+        while to < lines.len() && (used + lines[to] <= room + 0.01 || to == from) {
+            used += lines[to];
+            to += 1;
+        }
+        self.notes_height += separator + used;
+        self.page_notes.push(NotePiece { id, from, to, continued });
+        if let Some(page) = self.pages.last_mut() {
+            page.notes.push(NotePiece { id, from, to, continued });
+        }
+        if to < lines.len() {
+            self.carry.push((id, to));
+        }
+    }
+
+    /// Put one piece at the current place, moving to the next column first when it does not fit with
+    /// its footnotes. A piece whose last footnote does not fit whole stays when the note's first line
+    /// does, and the note continues on the next page.
     fn put(&mut self, mut chunk: Chunk) {
-        let need = chunk.height + self.notes_for(&chunk);
-        if self.y + need > self.bottom() + 0.01 && !self.at_top() {
-            self.next_column();
+        let (full, least) = self.notes_for(&chunk);
+        if self.y + chunk.height + full > self.bottom() + 0.01 && !self.at_top() {
+            let continues = full > least && self.y + chunk.height + least <= self.bottom() + 0.01;
+            if !continues {
+                self.next_column();
+            }
         }
         let (x, y, column_width) = (self.column_left(), self.y, self.column_width());
         chunk.shift(x, y);
-        self.notes_height += self.notes_for(&chunk);
-        self.page_note_ids.extend(chunk.notes.iter().copied());
+        let new = self.new_notes(&chunk);
+        self.y += chunk.height;
+        for id in new {
+            let separator = if self.page_notes.is_empty() { NOTE_SEPARATOR } else { 0.0 };
+            self.take_note_lines(id, 0, separator, false);
+        }
+        self.y -= chunk.height;
         let page = self.pages.last_mut().expect("a page");
         if page.first.is_none() {
             if let Some(line) = chunk.carets.iter().find(|line| line.story == StoryId::Body) {
@@ -664,32 +849,113 @@ impl<'a> Flow<'a> {
         }
     }
 
-    fn place_paragraph(&mut self, laid: LaidParagraph) {
-        if laid.page_break_before && !self.at_top() {
-            self.new_page();
-        }
-        let same = self
-            .last_style
+    /// The space Word leaves between two paragraphs: none between two of the same style that ask for
+    /// contextual spacing, otherwise the larger of the space after the first and before the second.
+    /// Measured against Word 16, a 6 line paragraph and the heading under it are 8 points apart, which is
+    /// the larger of the two 8s and not their sum.
+    fn gap(after: f32, last: &Option<(String, bool)>, laid: &LaidParagraph) -> f32 {
+        let same = last
             .as_ref()
             .is_some_and(|(style, contextual)| *style == laid.style && *contextual)
             && laid.contextual;
-        let after = if same { 0.0 } else { self.pending_after };
-        let before = if same { 0.0 } else { laid.space_before };
+        if same {
+            0.0
+        } else {
+            after.max(laid.space_before)
+        }
+    }
+
+    /// How much of a paragraph has to be on one page with what comes before it: its first line, its first
+    /// two with widow control, or all of it when its lines are kept together.
+    fn start_height(laid: &LaidParagraph) -> f32 {
+        let lines = if laid.keep_lines {
+            laid.lines.len()
+        } else if laid.widow_control {
+            2
+        } else {
+            1
+        };
+        laid.lines.iter().take(lines).map(|l| l.height).sum()
+    }
+
+    /// Place a paragraph. One with keep with next waits for the block after it, so the two can be put on
+    /// one page together (task-2359, C3).
+    fn place_paragraph(&mut self, laid: LaidParagraph) {
+        if laid.keep_next && !laid.lines.is_empty() {
+            self.keep_chain.push(laid);
+            return;
+        }
+        if !laid.page_break_before {
+            let after = self.keep_chain.last().map_or(0.0, |p| p.space_after);
+            let last = self.keep_chain.last().map(|p| (p.style.clone(), p.contextual));
+            let next = Self::gap(after, &last, &laid) + Self::start_height(&laid);
+            self.flush_keeps(Some(next));
+        } else {
+            self.flush_keeps(None);
+        }
+        self.place_paragraph_now(laid, None);
+    }
+
+    /// Place the paragraphs waiting with keep with next, now that the block after them is known: `next`
+    /// is the height of that block's start, with the gap above it, or `None` when nothing has to come with
+    /// them. Word moves the chain to the next page when the last lines of its first paragraph, the rest
+    /// of the chain and the start of the next block do not fit on this one, and gives up when they would
+    /// not fit on any page.
+    fn flush_keeps(&mut self, next: Option<f32>) {
+        let chain = std::mem::take(&mut self.keep_chain);
+        if chain.is_empty() {
+            return;
+        }
+        let Some(next) = next else {
+            for laid in chain {
+                self.place_paragraph_now(laid, None);
+            }
+            return;
+        };
+        let first = &chain[0];
+        let tail = if first.keep_lines {
+            first.lines.len()
+        } else if first.widow_control {
+            first.lines.len().min(2)
+        } else {
+            1
+        };
+        let mut together: f32 =
+            first.lines.iter().rev().take(tail).map(|l| l.height).sum::<f32>() + next;
+        for pair in chain.windows(2) {
+            let last = Some((pair[0].style.clone(), pair[0].contextual));
+            together += Self::gap(pair[0].space_after, &last, &pair[1]);
+            together += pair[1].lines.iter().map(|l| l.height).sum::<f32>();
+        }
+        let room = self.room();
+        let keep = (together <= room + 0.01).then_some((first.lines.len() - tail, together));
+        for (index, laid) in chain.into_iter().enumerate() {
+            self.place_paragraph_now(laid, if index == 0 { keep } else { None });
+        }
+    }
+
+    /// Place a paragraph's lines. `keep` is the line from which the rest of a keep with next chain has
+    /// to fit on the page, and how tall that rest is.
+    fn place_paragraph_now(&mut self, laid: LaidParagraph, keep: Option<(usize, f32)>) {
+        if laid.page_break_before && !self.at_top() {
+            self.new_page();
+        }
+        let gap = Self::gap(self.pending_after, &self.last_style, &laid);
         // Space before a paragraph at the top of a page is dropped, except on the first page.
-        // Word keeps the larger of the space after one paragraph and the space before the next, rather
-        // than both: measured against Word 16, a 6 line paragraph and the heading under it are 8 points
-        // apart, which is the larger of the two 8s and not their sum.
-        let gap = if self.at_top() && self.pages.len() > 1 { 0.0 } else { after.max(before) };
+        let gap = if self.at_top() && self.pages.len() > 1 { 0.0 } else { gap };
         let count = laid.lines.len();
         let first_lines: f32 =
             laid.lines.iter().take(if laid.widow_control { 2 } else { 1 }).map(|l| l.height).sum();
         let whole: f32 = laid.lines.iter().map(|l| l.height).sum();
         // Keep the whole paragraph together when asked, and at least its first two lines when widow
         // control is on, by starting it on the next column when they would not fit here.
-        let must_fit = if laid.keep_lines { whole } else { first_lines };
+        let mut must_fit = if laid.keep_lines { whole } else { first_lines };
+        if let Some((0, together)) = keep {
+            must_fit = must_fit.max(together);
+        }
         if !self.at_top() && self.y + gap + must_fit > self.bottom() + 0.01 {
             let fits_fresh =
-                must_fit <= self.geometry.height - self.geometry.top - self.geometry.bottom;
+                must_fit <= self.room();
             if fits_fresh {
                 self.next_column();
             }
@@ -698,6 +964,13 @@ impl<'a> Flow<'a> {
         self.y += gap;
         let mut lines = laid.lines.into_iter().enumerate().peekable();
         while let Some((index, line)) = lines.next() {
+            // The last lines of a paragraph kept with the next go to the next page with it.
+            if let Some((from, together)) = keep {
+                if from > 0 && index == from && !self.at_top() && self.y + together > self.bottom() + 0.01
+                {
+                    self.next_column();
+                }
+            }
             // Widow control: the last line is not left alone at the top of a page, so when the
             // second last line is the last one that fits, it moves with it.
             if laid.widow_control && count >= 3 && index == count - 2 {
@@ -715,32 +988,67 @@ impl<'a> Flow<'a> {
     }
 
     fn place_table(&mut self, rows: Vec<table::LaidRow>) {
+        let first = rows.first().map_or(0.0, |row| row.chunk.height);
+        let after = self.keep_chain.last().map_or(self.pending_after, |p| p.space_after);
+        self.flush_keeps(Some(after + first));
         self.y += self.pending_after;
         self.pending_after = 0.0;
         let headers: Vec<Chunk> =
             rows.iter().take_while(|row| row.header).map(|row| row.chunk.clone()).collect();
         for (index, row) in rows.into_iter().enumerate() {
-            if !self.at_top() && self.y + row.chunk.height > self.bottom() + 0.01 {
+            let mut row = row;
+            // Whether the column was just started for this table, with only repeated headers in it.
+            let mut fresh = self.at_top();
+            loop {
+                if self.y + row.chunk.height <= self.bottom() + 0.01 {
+                    self.put(row.chunk);
+                    break;
+                }
+                // A row that does not fit is cut between its cells' lines, unless it may not be cut
+                // and a fresh page would hold it whole (task-2359, C1).
+                let room = self.bottom() - self.y;
+                let page = self.room();
+                let may_cut = !row.cant_split || row.chunk.height > page;
+                if may_cut {
+                    if let Some((first, rest)) = row.split(room) {
+                        self.put(first);
+                        self.next_column();
+                        self.repeat_headers(&headers);
+                        row = rest;
+                        fresh = true;
+                        continue;
+                    }
+                }
+                if fresh || self.at_top() {
+                    // Nothing fits, not even a line: the row overflows this page as Word lets it.
+                    self.put(row.chunk);
+                    break;
+                }
                 self.next_column();
                 // Header rows repeat at the top of each page the table continues on.
                 if !row.header && index > 0 {
-                    for header in &headers {
-                        let mut copy = header.clone();
-                        copy.carets.clear();
-                        self.put(copy);
-                    }
+                    self.repeat_headers(&headers);
                 }
+                fresh = true;
             }
-            self.put(row.chunk);
         }
         self.last_style = None;
     }
 
-    fn place_endnotes(&mut self, ctx: &Ctx) {
+    /// Put copies of a table's header rows at the top of a page it continues on.
+    fn repeat_headers(&mut self, headers: &[Chunk]) {
+        for header in headers {
+            let mut copy = header.clone();
+            copy.carets.clear();
+            self.put(copy);
+        }
+    }
+
+    /// The endnotes `ids` after the text placed so far, under a separator.
+    fn place_endnotes(&mut self, ctx: &Ctx, ids: &[i64]) {
+        self.flush_keeps(None);
         let Some(part) = &self.document.endnotes else { return };
-        let mut numbered: Vec<(u32, i64)> =
-            ctx.endnote_numbers.iter().map(|(id, n)| (*n, *id)).collect();
-        numbered.sort();
+        let numbered: Vec<(u32, i64)> = ids.iter().map(|id| (0, *id)).collect();
         if numbered.is_empty() {
             return;
         }
@@ -769,7 +1077,12 @@ impl<'a> Flow<'a> {
         }
     }
 
-    fn finish(self) -> Vec<Page> {
+    fn finish(mut self) -> Vec<Page> {
+        self.flush_keeps(None);
+        // Footnote lines still waiting get pages of their own.
+        while !self.carry.is_empty() {
+            self.new_page();
+        }
         self.pages
     }
 }
@@ -777,8 +1090,8 @@ impl<'a> Flow<'a> {
 /// The height of the line above the footnotes.
 const NOTE_SEPARATOR: f32 = 10.0;
 
-/// Every footnote's height at the first section's text width.
-fn measure_footnotes(ctx: &Ctx) -> HashMap<i64, f32> {
+/// Every footnote's line heights at the first section's text width.
+fn measure_footnotes(ctx: &Ctx) -> HashMap<i64, Vec<f32>> {
     let Some(part) = &ctx.document.footnotes else { return HashMap::new() };
     let width = sections(ctx.document).first().map_or(468.0, |(_, g)| g.text_width());
     let mut counters = Counters::default();
@@ -790,7 +1103,7 @@ fn measure_footnotes(ctx: &Ctx) -> HashMap<i64, f32> {
             let chunks =
                 lay_out_story(ctx, &mut counters, &note.blocks, &StoryId::Footnote(id), width);
             paragraph::CURRENT_NOTE.with(|current| current.set(None));
-            Some((id, chunks.iter().map(|c| c.height).sum()))
+            Some((id, chunks.iter().map(|c| c.height).collect()))
         })
         .collect()
 }
@@ -976,62 +1289,46 @@ fn decorate_pages(
     ctx.page = None;
 }
 
-/// The footnotes referenced on a page, at its foot.
+/// The footnotes the flow put on a page, at its foot: the lines of each that are on this page, under the
+/// separator, or under the continuation separator, the whole width of the text, when the first note
+/// began on an earlier page.
 fn lay_out_footnotes(page: &mut Page, ctx: &Ctx, geometry: &Geometry) {
     let Some(part) = &ctx.document.footnotes else { return };
-    let mut ids: Vec<i64> = Vec::new();
-    for line in page.carets.iter().filter(|line| line.story == StoryId::Body) {
-        let Some(paragraph) = crate::position::paragraph(ctx.document, &line.story, &line.path)
-        else {
-            continue;
-        };
-        let mut at = 0;
-        for run in &paragraph.runs {
-            let len = run.len();
-            if at >= line.start && at < line.end.max(line.start + 1) {
-                if let crate::model::Content::Object(el) = &run.content {
-                    if el.name == "w:footnoteReference" {
-                        if let Some(id) = el.attr("w:id").and_then(|id| id.parse().ok()) {
-                            if !ids.contains(&id) {
-                                ids.push(id);
-                            }
-                        }
-                    }
-                }
-            }
-            at += len;
-        }
-    }
-    if ids.is_empty() {
+    if page.notes.is_empty() {
         return;
     }
     let mut counters = Counters::default();
     let mut chunks = Vec::new();
     let mut separator = Chunk { height: NOTE_SEPARATOR, ..Chunk::default() };
+    let length = if page.notes[0].continued { geometry.text_width() } else { 144.0 };
     separator.items.push(Item::Rule {
         x0: 0.0,
         y0: 5.0,
-        x1: 144.0,
+        x1: length,
         y1: 5.0,
         width: 0.5,
         color: Rgb::BLACK,
         kind: RuleKind::Solid,
     });
     chunks.push(separator);
-    for id in ids {
-        let Some(note) = part.notes.iter().find(|n| n.id() == Some(id)) else { continue };
-        paragraph::CURRENT_NOTE.with(|current| current.set(Some(id)));
-        chunks.extend(lay_out_story(
+    for piece in page.notes.clone() {
+        let Some(note) = part.notes.iter().find(|n| n.id() == Some(piece.id)) else { continue };
+        paragraph::CURRENT_NOTE.with(|current| current.set(Some(piece.id)));
+        let lines = lay_out_story(
             ctx,
             &mut counters,
             &note.blocks,
-            &StoryId::Footnote(id),
+            &StoryId::Footnote(piece.id),
             geometry.text_width(),
-        ));
+        );
         paragraph::CURRENT_NOTE.with(|current| current.set(None));
+        chunks.extend(
+            lines.into_iter().skip(piece.from).take(piece.to.saturating_sub(piece.from)),
+        );
     }
     let mut block = stack(chunks);
-    let y = geometry.height - geometry.bottom - block.height;
+    // At the foot of the body, which a tall footer can have moved up from the margin.
+    let y = page.body.bottom() - block.height;
     block.shift(geometry.left + geometry.gutter, y);
     page.items.extend(block.items);
     page.carets.extend(block.carets);

@@ -523,11 +523,11 @@ impl UnluminousApp {
                     .is_some_and(|tab| tab.plugin == super::word_files::WORD) =>
             {
                 let start = self.tree.root().to_path_buf();
-                if let Some(target) = rfd::FileDialog::new()
-                    .set_title("Save As")
-                    .add_filter("Word document", &["docx"])
-                    .set_directory(&start)
-                    .save_file()
+                let mut dialog = rfd::FileDialog::new().set_title("Save As").set_directory(&start);
+                for (name, extensions) in crate::services::word::SAVE_KINDS {
+                    dialog = dialog.add_filter(*name, extensions);
+                }
+                if let Some(target) = dialog.save_file()
                 {
                     let target = if target.extension().is_none() {
                         target.with_extension("docx")

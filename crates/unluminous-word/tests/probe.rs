@@ -145,3 +145,20 @@ fn fonts_probe() {
         }
     }
 }
+
+/// Our advance for each printable character in `PROBE_FAMILY` at `PROBE_SIZE`, as JSON, to compare with
+/// `tools/word-oracle/advances.ps1`.
+#[test]
+#[ignore]
+fn advances_probe() {
+    let fonts = common::RealFonts::new();
+    let family = std::env::var("PROBE_FAMILY").unwrap_or_else(|_| "Aptos".into());
+    let size: f32 = std::env::var("PROBE_SIZE").ok().and_then(|s| s.parse().ok()).unwrap_or(12.0);
+    let style = unluminous_core::CharStyle { family: family.as_str().into(), size, ..Default::default() };
+    let mut map = serde_json::Map::new();
+    for code in (32u32..=126).chain([0x2019, 0x201C, 0x201D, 0x2013, 0x2014, 0x2026]) {
+        let c = char::from_u32(code).unwrap();
+        map.insert(c.to_string(), serde_json::json!(fonts.advance(&c.to_string(), &style)));
+    }
+    println!("ADVANCES {}", serde_json::Value::Object(map));
+}

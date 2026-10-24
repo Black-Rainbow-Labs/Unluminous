@@ -51,8 +51,16 @@ enum Kind {
     },
     Float(Float),
     Label(String),
-    /// A footnote or endnote reference mark.
-    NoteMark(String),
+    /// A footnote or endnote reference mark, with the footnote's id when it is a reference to one in the
+    /// body, whose note goes at the foot of the page the line lands on.
+    NoteMark(String, Option<i64>),
+    /// An absolute position tab (`w:ptab`): to the left, centre or right of the margins or the indents,
+    /// with what lies after it aligned there (task-2359, D7).
+    PositionTab {
+        align: TabKind,
+        to_indent: bool,
+        leader: Option<char>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -74,7 +82,10 @@ impl Atom {
     }
 
     fn is_special(&self) -> bool {
-        matches!(self.kind, Kind::Tab | Kind::Line | Kind::Page | Kind::Column)
+        matches!(
+            self.kind,
+            Kind::Tab | Kind::Line | Kind::Page | Kind::Column | Kind::PositionTab { .. }
+        )
     }
 }
 
@@ -113,7 +124,37 @@ pub fn lay_out(
     width: f32,
     table_style: Option<&str>,
 ) -> LaidParagraph {
-    let look = ctx.resolver.paragraph(&paragraph.props, table_style);
+    prepare(ctx, counters, paragraph, story, path, width, table_style).laid(ctx)
+}
+
+/// A paragraph measured and ready to be broken into lines: its look, the looks of its runs and its atoms.
+/// The page flow breaks it one line at a time when the room a line has depends on where on the page it
+/// lands, beside a floating picture (task-2359, C2).
+#[derive(Debug, Clone)]
+pub struct Prepared {
+    pub look: ParaLook,
+    looks: Vec<Look>,
+    atoms: Vec<Atom>,
+    story: StoryId,
+    path: Vec<u32>,
+    pub width: f32,
+    length: usize,
+}
+
+/// Measure a paragraph into atoms, its list label first.
+pub fn prepare(
+    ctx: &Ctx,
+    counters: &mut Counters,
+    paragraph: &Paragraph,
+    story: &StoryId,
+    path: &[u32],
+    width: f32,
+    table_style: Option<&str>,
+) -> Prepared {
+    let mut look = ctx.resolver.paragraph(&paragraph.props, table_style);
+    if let Some(align) = display_equation_alignment(paragraph) {
+        look.align = align;
+    }
     let empty = El::new("w:rPr");
     let mark_rpr = paragraph.props.child("w:rPr").unwrap_or(&empty);
     let mark =
@@ -170,39 +211,145 @@ pub fn lay_out(
         }
     }
     collect_atoms(ctx, paragraph, table_style, &mut looks, &mut atoms);
-    let lines = break_lines(ctx, &look, &atoms, width);
-    let mut chunks: Vec<Chunk> = Vec::with_capacity(lines.len());
-    let count = lines.len();
-    for (index, line) in lines.into_iter().enumerate() {
-        let first = index == 0;
-        let last = index + 1 == count;
-        chunks.push(place_line(
+    Prepared {
+        look,
+        looks,
+        atoms,
+        story: story.clone(),
+        path: path.to_vec(),
+        width,
+        length: paragraph.len(),
+    }
+}
+
+impl Prepared {
+    /// Every line, each at the paragraph's own indents, as one piece the flow places.
+    pub fn laid(self, ctx: &Ctx) -> LaidParagraph {
+        let lines = break_lines(ctx, &self.look, &self.atoms, self.width);
+        let mut chunks: Vec<Chunk> = Vec::with_capacity(lines.len());
+        let count = lines.len();
+        for (index, line) in lines.into_iter().enumerate() {
+            let first = index == 0;
+            let bounds = self.bounds(first, None);
+            chunks.push(self.place(ctx, &line, first, index + 1 == count, bounds));
+        }
+        decorate_paragraph(&self.look, &mut chunks, self.width);
+        self.spacing(chunks)
+    }
+
+    /// The paragraph's spacing and keep rules around some placed lines.
+    pub fn spacing(&self, lines: Vec<Chunk>) -> LaidParagraph {
+        let look = &self.look;
+        let auto = 14.0;
+        LaidParagraph {
+            lines,
+            space_before: if look.before_auto { auto } else { look.space_before },
+            space_after: if look.after_auto { auto } else { look.space_after },
+            keep_next: look.keep_next,
+            keep_lines: look.keep_lines,
+            page_break_before: look.page_break_before,
+            widow_control: look.widow_control,
+            contextual: look.contextual,
+            style: look.style.clone(),
+        }
+    }
+
+    /// The pictures anchored in this paragraph that float.
+    pub fn floats(&self) -> Vec<Float> {
+        self.atoms
+            .iter()
+            .filter_map(|atom| match &atom.kind {
+                Kind::Float(float) => Some(float.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// How tall a line of this paragraph is, near enough to ask where it fits beside a picture.
+    pub fn line_height(&self) -> f32 {
+        let metrics = self.looks.get(1).unwrap_or(&self.looks[0]).metrics;
+        let natural = metrics.ascent + metrics.line_gap + metrics.descent;
+        match self.look.line {
+            LineRule::Auto(multiple) => natural * multiple.max(0.06),
+            LineRule::AtLeast(at_least) => natural.max(at_least),
+            LineRule::Exact(exact) => exact,
+        }
+    }
+
+    /// The left and right edge a line has: the paragraph's indents, narrowed to `room` (the part of the
+    /// column a floating picture leaves free) when there is one.
+    pub fn bounds(&self, first: bool, room: Option<(f32, f32)>) -> (f32, f32) {
+        let left = line_left(&self.look, first);
+        let right = self.width - self.look.indent_right;
+        match room {
+            Some((from, to)) => (left.max(from), right.min(to)),
+            None => (left, right),
+        }
+    }
+
+    /// The next line, from atom `from`, within `bounds`: its atoms, the atom after it, and whether it is
+    /// the paragraph's last.
+    pub fn next_line(
+        &self,
+        ctx: &Ctx,
+        from: usize,
+        first: bool,
+        bounds: (f32, f32),
+    ) -> (LineBuild, usize, bool) {
+        let (line, next) = next_line(ctx, &self.look, &self.atoms, from, first, bounds, self.width);
+        // A paragraph that ends in a line break has one more, empty line after it.
+        let last = next >= self.atoms.len() && !line.forced;
+        (line, next, last)
+    }
+
+    /// Whether every atom has been put on a line.
+    pub fn done(&self, next: usize) -> bool {
+        next >= self.atoms.len()
+    }
+
+    /// Place a line within `bounds`.
+    pub fn place(
+        &self,
+        ctx: &Ctx,
+        line: &LineBuild,
+        first: bool,
+        last: bool,
+        bounds: (f32, f32),
+    ) -> Chunk {
+        place_line(
             ctx,
-            &look,
-            &looks,
-            &atoms,
-            &line,
-            width,
+            &self.look,
+            &self.looks,
+            &self.atoms,
+            line,
+            self.width,
             first,
             last,
-            story,
-            path,
-            paragraph.len(),
-        ));
+            &self.story,
+            &self.path,
+            self.length,
+            bounds,
+        )
     }
-    decorate_paragraph(&look, &mut chunks, width);
-    let auto = 14.0;
-    LaidParagraph {
-        lines: chunks,
-        space_before: if look.before_auto { auto } else { look.space_before },
-        space_after: if look.after_auto { auto } else { look.space_after },
-        keep_next: look.keep_next,
-        keep_lines: look.keep_lines,
-        page_break_before: look.page_break_before,
-        widow_control: look.widow_control,
-        contextual: look.contextual,
-        style: look.style.clone(),
+}
+
+/// The alignment of a paragraph that holds a display equation (`m:oMathPara`) and nothing else: its
+/// `m:jc`, which is centred as a group when it says nothing, as Word draws it.
+fn display_equation_alignment(paragraph: &Paragraph) -> Option<Align> {
+    let mut display = None;
+    for run in &paragraph.runs {
+        match &run.content {
+            Content::ParagraphObject(el) if el.name == "m:oMathPara" => display = Some(el),
+            Content::Text(text) if text.trim().is_empty() => {}
+            _ => return None,
+        }
     }
+    let jc = display?.child("m:oMathParaPr").and_then(|p| p.child("m:jc")).and_then(|j| j.attr("m:val"));
+    Some(match jc {
+        Some("left") => Align::Left,
+        Some("right") => Align::Right,
+        _ => Align::Center,
+    })
 }
 
 /// The width of `text` in a look, grapheme by grapheme.
@@ -346,6 +493,24 @@ fn collect_atoms(
             Content::Object(el) => {
                 object_atom(ctx, run, el, &looks[look], look, start, start + len, atoms)
             }
+            Content::ParagraphObject(el) if el.name.starts_with("m:") => {
+                // An equation, drawn as its linear text in the equation font at the run's size.
+                let mut run_look = looks[look].run.clone();
+                run_look.font = crate::math::FONT.into();
+                looks.push(make_look(ctx, run_look, run.is_deleted(), run.is_inserted()));
+                let index = looks.len() - 1;
+                let text = crate::math::linear_text(el).replace('\u{000B}', " ");
+                push_text(ctx, &looks[index], index, &text, start, start + len, atoms, true);
+            }
+            Content::ParagraphObject(_) => atoms.push(Atom {
+                start,
+                end: start + len,
+                kind: Kind::Glyph(String::new()),
+                width: 0.0,
+                look,
+                small: false,
+                opportunity: true,
+            }),
             Content::FieldChar(_) | Content::Instr(_) => {}
         }
     }
@@ -428,24 +593,19 @@ fn object_atom(
     match el.name.as_str() {
         "w:footnoteReference" | "w:endnoteReference" => {
             let id = el.attr("w:id").and_then(|id| id.parse::<i64>().ok());
-            let numbers = if el.name == "w:footnoteReference" {
-                &ctx.footnote_numbers
+            let marks = if el.name == "w:footnoteReference" {
+                &ctx.footnote_marks
             } else {
-                &ctx.endnote_numbers
+                &ctx.endnote_marks
             };
-            let mark = id.and_then(|id| numbers.get(&id)).map_or(String::new(), |n| {
-                match el.name.as_str() {
-                    "w:endnoteReference" => {
-                        crate::numbering::format_number(i64::from(*n), "lowerRoman")
-                    }
-                    _ => n.to_string(),
-                }
-            });
+            // A custom mark is the text typed after the reference, so the reference shows nothing.
+            let mark = id.and_then(|id| marks.get(&id)).cloned().unwrap_or_default();
             let width = measure(ctx, look, &mark, false);
+            let footnote = id.filter(|_| el.name == "w:footnoteReference");
             atoms.push(Atom {
                 start,
                 end,
-                kind: Kind::NoteMark(mark),
+                kind: Kind::NoteMark(mark, footnote),
                 width,
                 look: index,
                 small: false,
@@ -459,7 +619,7 @@ fn object_atom(
             atoms.push(Atom {
                 start,
                 end,
-                kind: Kind::NoteMark(mark),
+                kind: Kind::NoteMark(mark, None),
                 width,
                 look: index,
                 small: false,
@@ -476,6 +636,45 @@ fn object_atom(
                 small: false,
                 opportunity: false,
             });
+        }
+        "w:ptab" => {
+            let align = match el.attr("w:alignment") {
+                Some("center") => TabKind::Center,
+                Some("right") => TabKind::Right,
+                _ => TabKind::Left,
+            };
+            let leader = match el.attr("w:leader") {
+                Some("dot") => Some('.'),
+                Some("hyphen") => Some('-'),
+                Some("underscore") => Some('_'),
+                Some("middleDot") => Some('·'),
+                _ => None,
+            };
+            atoms.push(Atom {
+                start,
+                end,
+                kind: Kind::PositionTab {
+                    align,
+                    to_indent: el.attr("w:relativeTo") == Some("indent"),
+                    leader,
+                },
+                width: 0.0,
+                look: index,
+                small: false,
+                opportunity: false,
+            });
+        }
+        "w:ruby" => {
+            // Phonetic guide text: the base is the text a reader sees; the guide above it is left out.
+            let mut base = String::new();
+            if let Some(el) = el.child("w:rubyBase") {
+                el.walk(&mut |node| {
+                    if node.name == "w:t" {
+                        base.push_str(&node.text());
+                    }
+                });
+            }
+            push_text(ctx, look, index, &base, start, end, atoms, true);
         }
         "w:noBreakHyphen" => {
             let width = measure(ctx, look, "-", false);
@@ -566,12 +765,8 @@ fn object_atom(
 /// The number of the note being laid out, which a note's own `w:footnoteRef` shows.
 fn note_number_for_ref(ctx: &Ctx, endnote: bool) -> String {
     let id = CURRENT_NOTE.with(|current| current.get());
-    let numbers = if endnote { &ctx.endnote_numbers } else { &ctx.footnote_numbers };
-    match id.and_then(|id| numbers.get(&id)) {
-        Some(n) if endnote => crate::numbering::format_number(i64::from(*n), "lowerRoman"),
-        Some(n) => n.to_string(),
-        None => String::new(),
-    }
+    let marks = if endnote { &ctx.endnote_marks } else { &ctx.footnote_marks };
+    id.and_then(|id| marks.get(&id)).cloned().unwrap_or_default()
 }
 
 thread_local! {
@@ -668,7 +863,7 @@ fn vml_size(style: &str) -> (f32, f32) {
 
 /// A line before it is placed: which atoms it holds and why it ended.
 #[derive(Debug, Clone, Default)]
-struct LineBuild {
+pub struct LineBuild {
     atoms: Vec<usize>,
     /// It ended with a line break the person typed, so a justified line is not stretched.
     forced: bool,
@@ -699,44 +894,77 @@ fn next_tab(ctx: &Ctx, look: &ParaLook, x: f32, first: bool) -> (f32, TabKind, O
     (next, TabKind::Left, None)
 }
 
-/// Fill lines greedily from segments.
+/// Where an absolute position tab stops and how it aligns what follows: the left edge, the middle or the
+/// right edge of the margins (the column) or of the paragraph's indents.
+fn position_tab(look: &ParaLook, align: TabKind, to_indent: bool, width: f32) -> (f32, TabKind) {
+    let (left, right) =
+        if to_indent { (look.indent_left, width - look.indent_right) } else { (0.0, width) };
+    let stop = match align {
+        TabKind::Center => (left + right) / 2.0,
+        TabKind::Right => right,
+        _ => left,
+    };
+    (stop, align)
+}
+
+/// Fill lines greedily from segments, each line at the paragraph's indents.
 fn break_lines(ctx: &Ctx, look: &ParaLook, atoms: &[Atom], width: f32) -> Vec<LineBuild> {
     let mut lines: Vec<LineBuild> = Vec::new();
-    let mut line = LineBuild::default();
-    let right = width - look.indent_right;
-    let mut pen = line_left(look, true);
-    let mut has_content = false;
     let mut index = 0;
-    let finish = |lines: &mut Vec<LineBuild>, line: &mut LineBuild, forced: bool| {
-        line.forced = forced;
-        lines.push(std::mem::take(line));
-    };
+    loop {
+        let first = lines.is_empty();
+        let bounds = (line_left(look, first), width - look.indent_right);
+        let (line, next) = next_line(ctx, look, atoms, index, first, bounds, width);
+        let forced = line.forced;
+        lines.push(line);
+        index = next;
+        if index >= atoms.len() {
+            // A paragraph that ends in a line break has one more, empty line after it.
+            if forced {
+                lines.push(LineBuild::default());
+            }
+            return lines;
+        }
+    }
+}
+
+/// One line filled greedily from segments, from atom `from`, between `left` and `right`: the line and the
+/// atom the next line starts at. A segment is the atoms up to and including the next place a line may
+/// break; one wider than a whole line is broken between graphemes.
+fn next_line(
+    ctx: &Ctx,
+    look: &ParaLook,
+    atoms: &[Atom],
+    from: usize,
+    first: bool,
+    (left, right): (f32, f32),
+    width: f32,
+) -> (LineBuild, usize) {
+    let mut line = LineBuild::default();
+    let mut pen = left;
+    let mut has_content = false;
+    let mut index = from;
     while index < atoms.len() {
         let atom = &atoms[index];
         if atom.is_special() {
             match atom.kind {
                 Kind::Tab => {
-                    let (stop, _, _) = next_tab(ctx, look, pen, lines.is_empty());
+                    let (stop, _, _) = next_tab(ctx, look, pen, first);
                     if stop > right + 0.01 && has_content {
-                        finish(&mut lines, &mut line, false);
-                        pen = line_left(look, false);
-                        has_content = false;
+                        return (line, index);
                     }
-                    let (stop, _, _) = next_tab(ctx, look, pen, lines.is_empty());
                     line.atoms.push(index);
                     pen = stop.max(pen);
                 }
-                Kind::Line => {
+                Kind::PositionTab { align, to_indent, .. } => {
                     line.atoms.push(index);
-                    finish(&mut lines, &mut line, true);
-                    pen = line_left(look, false);
-                    has_content = false;
+                    let (stop, _) = position_tab(look, align, to_indent, width);
+                    pen = stop.max(pen);
                 }
                 _ => {
                     line.atoms.push(index);
-                    finish(&mut lines, &mut line, true);
-                    pen = line_left(look, false);
-                    has_content = false;
+                    line.forced = true;
+                    return (line, index + 1);
                 }
             }
             index += 1;
@@ -760,20 +988,16 @@ fn break_lines(ctx: &Ctx, look: &ParaLook, atoms: &[Atom], width: f32) -> Vec<Li
             .sum();
         let fits = pen + total - trailing <= right + 0.01;
         if !fits && has_content {
-            finish(&mut lines, &mut line, false);
-            pen = line_left(look, false);
-            has_content = false;
+            return (line, index);
         }
-        if pen + total - trailing > right + 0.01 && !has_content {
+        if !fits {
             // Wider than a whole line: break between graphemes, at least one on each line.
             for (at, atom) in atoms.iter().enumerate().take(end).skip(index) {
                 if has_content
                     && pen + atom.width > right + 0.01
                     && !matches!(atom.kind, Kind::Space(_))
                 {
-                    finish(&mut lines, &mut line, false);
-                    pen = line_left(look, false);
-                    has_content = false;
+                    return (line, at);
                 }
                 line.atoms.push(at);
                 pen += atom.width;
@@ -788,10 +1012,7 @@ fn break_lines(ctx: &Ctx, look: &ParaLook, atoms: &[Atom], width: f32) -> Vec<Li
         }
         index = end;
     }
-    if !line.atoms.is_empty() || lines.is_empty() || lines.last().is_some_and(|l| l.forced) {
-        lines.push(line);
-    }
-    lines
+    (line, index)
 }
 
 /// Place one line: tabs, alignment, height, and what is drawn.
@@ -808,27 +1029,33 @@ fn place_line(
     story: &StoryId,
     path: &[u32],
     paragraph_len: usize,
+    (left, right): (f32, f32),
 ) -> Chunk {
-    let left = line_left(look, first);
-    let right = width - look.indent_right;
     // x of each atom on the line and its width, with tabs resolved.
     let mut xs: Vec<(f32, f32)> = Vec::with_capacity(line.atoms.len());
     let mut leaders: Vec<(f32, f32, char, usize)> = Vec::new();
     let mut pen = left;
     for (position, &index) in line.atoms.iter().enumerate() {
         let atom = &atoms[index];
-        if atom.kind == Kind::Tab {
-            let (stop, kind, leader) = next_tab(ctx, look, pen, first);
+        let tab = match &atom.kind {
+            Kind::Tab => Some(next_tab(ctx, look, pen, first)),
+            Kind::PositionTab { align, to_indent, leader } => {
+                let (stop, _) = position_tab(look, *align, *to_indent, width);
+                Some((stop, *align, *leader))
+            }
+            _ => None,
+        };
+        if let Some((stop, kind, leader)) = tab {
+            let is_tab = |i: usize| matches!(atoms[i].kind, Kind::Tab | Kind::PositionTab { .. });
             let following: f32 = line.atoms[position + 1..]
                 .iter()
-                .take_while(|&&i| atoms[i].kind != Kind::Tab)
+                .take_while(|&&i| !is_tab(i))
                 .map(|&i| atoms[i].width)
                 .sum();
             let decimal: f32 = line.atoms[position + 1..]
                 .iter()
                 .take_while(|&&i| {
-                    atoms[i].kind != Kind::Tab
-                        && !matches!(&atoms[i].kind, Kind::Glyph(g) if g == "." || g == ",")
+                    !is_tab(i) && !matches!(&atoms[i].kind, Kind::Glyph(g) if g == "." || g == ",")
                 })
                 .map(|&i| atoms[i].width)
                 .sum();
@@ -859,7 +1086,10 @@ fn place_line(
             !matches!(atoms[i].kind, Kind::Space(_) | Kind::Line | Kind::Page | Kind::Column)
         })
         .map_or(left, |(_, (x, w))| x + w);
-    let last_tab = line.atoms.iter().rposition(|&i| atoms[i].kind == Kind::Tab);
+    let last_tab = line
+        .atoms
+        .iter()
+        .rposition(|&i| matches!(atoms[i].kind, Kind::Tab | Kind::PositionTab { .. }));
     let extra = (right - content_end).max(0.0);
     match look.align {
         Align::Center => xs.iter_mut().for_each(|(x, _)| *x += extra / 2.0),
@@ -1015,8 +1245,10 @@ fn place_line(
         };
     }
     for &index in &line.atoms {
-        if let Kind::Float(float) = &atoms[index].kind {
-            chunk.floats.push(float.clone());
+        match &atoms[index].kind {
+            Kind::Float(float) => chunk.floats.push(float.clone()),
+            Kind::NoteMark(_, Some(id)) if *story == StoryId::Body => chunk.notes.push(*id),
+            _ => {}
         }
     }
     chunk
@@ -1070,7 +1302,7 @@ fn emit(
         let look = &looks[atom.look];
         let raise = raise_of(&look.run);
         let text = match &atom.kind {
-            Kind::Glyph(text) | Kind::Space(text) | Kind::Label(text) | Kind::NoteMark(text) => {
+            Kind::Glyph(text) | Kind::Space(text) | Kind::Label(text) | Kind::NoteMark(text, _) => {
                 Some(text)
             }
             Kind::Picture { w, h, part } => {

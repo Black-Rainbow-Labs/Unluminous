@@ -320,6 +320,10 @@ impl Doc {
             "dcterms:modified",
             &unluminous_word::session::now_iso(),
         );
+        // A document, a template or either with macros, by the extension it is saved with.
+        let extension =
+            path.extension().and_then(|e| e.to_str()).unwrap_or("docx").to_ascii_lowercase();
+        unluminous_word::write::prepare_for(&mut self.session.document, &extension);
         let bytes = unluminous_word::write::save(&self.session.document)?;
         crate::services::store::write_atomically(&path, &bytes)
             .map_err(|e| format!("{} could not be written: {e}", path.display()))?;
@@ -329,6 +333,14 @@ impl Doc {
         Ok(path)
     }
 }
+
+/// The kinds of file a Word document is saved as, for the Save As dialog, each with its extensions.
+pub const SAVE_KINDS: &[(&str, &[&str])] = &[
+    ("Word document", &["docx"]),
+    ("Word template", &["dotx"]),
+    ("Word macro-enabled document", &["docm"]),
+    ("Word macro-enabled template", &["dotm"]),
+];
 
 /// The provider.
 #[derive(Debug, Default)]
@@ -519,11 +531,13 @@ impl UiProvider for Word {
         // A document with no file yet asks where to go.
         if self.doc(key)?.path.is_none() {
             let start = self.project.clone();
-            let chosen = rfd::FileDialog::new()
+            let mut dialog = rfd::FileDialog::new()
                 .set_title("Save Word Document")
-                .add_filter("Word document", &["docx"])
-                .set_directory(start.unwrap_or_default())
-                .save_file();
+                .set_directory(start.unwrap_or_default());
+            for (name, extensions) in SAVE_KINDS {
+                dialog = dialog.add_filter(*name, extensions);
+            }
+            let chosen = dialog.save_file();
             let Some(chosen) = chosen else { return Err("Not saved".to_owned()) };
             let chosen =
                 if chosen.extension().is_none() { chosen.with_extension("docx") } else { chosen };

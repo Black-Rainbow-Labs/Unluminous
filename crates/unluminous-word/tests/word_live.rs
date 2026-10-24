@@ -262,17 +262,19 @@ fn every_fixture_saved_by_unluminous_opens_in_word_unrepaired() {
     let mut files: Vec<PathBuf> = std::fs::read_dir(&folder)
         .unwrap()
         .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.extension().is_some_and(|e| e == "docx"))
+        .filter(|p| p.extension().is_some_and(|e| e == "docx" || e == "dotx" || e == "docm"))
         .collect();
     files.sort();
     for file in files {
         let name = file.file_stem().unwrap().to_string_lossy().into_owned();
+        let extension = file.extension().unwrap().to_string_lossy().into_owned();
         let original = inspect_copy(&file, &name);
         let mut session =
             Session::new(unluminous_word::read::open(&std::fs::read(&file).unwrap()).unwrap());
         // An edit at the start of the body, so the main part is written from the model.
         session.type_text("Edited by Unluminous. ");
-        let path = scratch(&format!("{name}-edited.docx"));
+        unluminous_word::write::prepare_for(&mut session.document, &extension);
+        let path = scratch(&format!("{name}-edited.{extension}"));
         std::fs::write(&path, unluminous_word::write::save(&session.document).unwrap()).unwrap();
         let report = inspect(&path);
         assert_eq!(report["opened"], true, "{name}: Word did not open it: {}", report["error"]);
@@ -302,6 +304,10 @@ fn every_fixture_saved_by_unluminous_opens_in_word_unrepaired() {
             original["sections"].as_array().unwrap().len(),
             "{name}: the sections"
         );
+        for key in ["oMaths", "shapes", "contentControls", "bookmarks", "endnotes"] {
+            let count = |r: &Value| r[key].as_array().map_or(0, Vec::len);
+            assert_eq!(count(&report), count(&original), "{name}: the {key}");
+        }
         let first = texts(&report).into_iter().find(|t| !t.is_empty()).unwrap_or_default();
         assert!(
             first.starts_with("Edited by Unluminous."),
@@ -316,4 +322,184 @@ fn inspect_copy(file: &Path, name: &str) -> Value {
     let _ = name;
     serde_json::from_str(std::fs::read_to_string(report).unwrap().trim_start_matches('\u{feff}'))
         .unwrap()
+}
+
+fn fixture(name: &str) -> PathBuf {
+    let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    ["docx", "dotx", "docm"]
+        .iter()
+        .map(|e| folder.join(format!("{name}.{e}")))
+        .find(|p| p.is_file())
+        .unwrap_or_else(|| panic!("no fixture {name}"))
+}
+
+fn open_fixture(name: &str) -> Session {
+    Session::new(unluminous_word::read::open(&std::fs::read(fixture(name)).unwrap()).unwrap())
+}
+
+/// Save a session as `name`, have Word open it, and answer Word's report.
+fn saved_and_inspected(session: &mut Session, name: &str) -> Value {
+    let path = scratch(name);
+    let extension = path.extension().unwrap().to_string_lossy().into_owned();
+    unluminous_word::write::prepare_for(&mut session.document, &extension);
+    std::fs::write(&path, unluminous_word::write::save(&session.document).unwrap()).unwrap();
+    let report = inspect(&path);
+    assert_eq!(report["opened"], true, "{name}: Word did not open it: {}", report["error"]);
+    report
+}
+
+/// The text of one part of a saved document.
+fn saved_part(session: &Session, name: &str) -> String {
+    let bytes = unluminous_word::write::save(&session.document).unwrap();
+    let parts = unluminous_word::zip::read(&bytes).unwrap();
+    let part = parts.into_iter().find(|e| e.name == name).unwrap_or_else(|| panic!("no {name}"));
+    String::from_utf8(part.data).unwrap()
+}
+
+/// D1: an equation is written back as a child of the paragraph, and Word opens the file after an edit
+/// with every equation still an equation.
+#[test]
+fn an_edited_document_keeps_its_equations() {
+    if !word_is_installed() {
+        return;
+    }
+    let mut session = open_fixture("equations");
+    session.type_text("Edited. ");
+    let xml = saved_part(&session, "word/document.xml");
+    assert!(!xml.contains("<w:r><m:oMath"), "no equation inside a run");
+    let report = saved_and_inspected(&mut session, "equations-edited.docx");
+    assert_eq!(report["oMaths"].as_array().unwrap().len(), 3, "the three equations");
+}
+
+/// D2: setting a letterhead's text keeps its picture and its table.
+#[test]
+fn setting_header_text_keeps_the_letterheads_picture_and_table() {
+    if !word_is_installed() {
+        return;
+    }
+    let mut session = open_fixture("letterhead");
+    session.set_header_text(false, "default", "Black Rainbow Laboratories");
+    let report = saved_and_inspected(&mut session, "letterhead-edited.docx");
+    let header = &report["sections"][0]["headers"];
+    assert!(header["primary"].as_str().unwrap().contains("Black Rainbow Laboratories"));
+    assert_eq!(header["primaryPictures"], 1, "the logo");
+    assert_eq!(header["primaryTables"], 1, "the table");
+}
+
+/// D3: a template and a document saved as each of the four kinds open in Word as that kind, and a macro
+/// project is dropped when the file cannot hold one.
+#[test]
+fn a_document_saved_as_each_kind_opens_in_word() {
+    if !word_is_installed() {
+        return;
+    }
+    let saves = [
+        ("template", "template-as.docx"),
+        ("template", "template-as.dotx"),
+        ("kitchen-sink", "kitchen-as.docm"),
+        ("kitchen-sink", "kitchen-as.dotm"),
+        ("macros", "macros-as.docx"),
+    ];
+    for (from, to) in saves {
+        let mut session = open_fixture(from);
+        session.type_text("Saved again. ");
+        let report = saved_and_inspected(&mut session, to);
+        assert!(texts(&report).iter().any(|t| t.starts_with("Saved again.")), "{to}");
+    }
+    let mut session = open_fixture("kitchen-sink");
+    let main = session.document.main.clone();
+    session.document.package.set_part("word/vbaProject.bin", vec![0xD0, 0xCF, 0x11, 0xE0]);
+    session.document.package.rels_mut(&main).rels.push(unluminous_word::package::Rel {
+        id: "rIdVba".into(),
+        kind: "http://schemas.microsoft.com/office/2006/relationships/vbaProject".into(),
+        target: "vbaProject.bin".into(),
+        external: false,
+    });
+    unluminous_word::write::prepare_for(&mut session.document, "docx");
+    assert!(session.document.package.part("word/vbaProject.bin").is_none());
+    assert!(session.document.package.rels[&main].by_id("rIdVba").is_none());
+    saved_and_inspected(&mut session, "no-macros.docx");
+}
+
+/// D4: deleting across paragraphs that hold a bookmark and a comment range leaves both whole.
+#[test]
+fn deleting_across_marked_paragraphs_keeps_the_marks_whole() {
+    if !word_is_installed() {
+        return;
+    }
+    let mut session = open_fixture("marks");
+    let paragraphs = unluminous_word::position::paragraphs(&session.document.body);
+    let second = paragraphs[1].0.clone();
+    let fourth = paragraphs[3].0.clone();
+    session.select(Pos::new(second, 12), Pos::new(fourth, 3));
+    session.delete(unluminous_word::edit::Unit::Character);
+    let report = saved_and_inspected(&mut session, "marks-edited.docx");
+    assert!(report["bookmarks"].as_array().unwrap().iter().any(|b| b == "Span"));
+    assert_eq!(report["comments"].as_array().unwrap().len(), 1);
+    assert_eq!(report["paragraphs"].as_array().unwrap().len(), 3);
+}
+
+/// D5: twenty tracked Enters give twenty distinct revision ids, and Word opens the file.
+#[test]
+fn tracked_enters_have_ids_of_their_own() {
+    if !word_is_installed() {
+        return;
+    }
+    let mut session = Session::new(unluminous_word::new::blank());
+    session.author = "Unluminous Test".into();
+    session.set_tracking(true);
+    for n in 0..20 {
+        session.type_text(&format!("Line {n}"));
+        session.enter();
+    }
+    let mut ids = Vec::new();
+    for (_, p) in unluminous_word::position::paragraphs(&session.document.body) {
+        if let Some(ins) = p.props.child("w:rPr").and_then(|r| r.child("w:ins")) {
+            ids.push(ins.attr("w:id").unwrap().to_owned());
+        }
+    }
+    let distinct: std::collections::HashSet<&String> = ids.iter().collect();
+    assert_eq!(ids.len(), 20);
+    assert_eq!(distinct.len(), 20, "{ids:?}");
+    let report = saved_and_inspected(&mut session, "tracked-enters.docx");
+    assert!(!report["revisions"].as_array().unwrap().is_empty());
+}
+
+/// D6: a Strict file is written back in its own namespaces and opens after an edit.
+#[test]
+fn a_strict_document_opens_after_an_edit() {
+    if !word_is_installed() {
+        return;
+    }
+    let mut session = open_fixture("strict");
+    session.type_text("Edited. ");
+    let xml = saved_part(&session, "word/document.xml");
+    assert!(xml.contains("xmlns:w=\"http://purl.oclc.org/ooxml/wordprocessingml/main\""));
+    let report = saved_and_inspected(&mut session, "strict-edited.docx");
+    assert_eq!(report["tables"].as_array().unwrap().len(), 1);
+}
+
+/// D8: adding and deleting comments keeps the parts Word keeps beside them consistent.
+#[test]
+fn comments_added_and_deleted_keep_their_side_parts_consistent() {
+    if !word_is_installed() {
+        return;
+    }
+    let mut session = open_fixture("comments");
+    let before = session.comments().len();
+    select(&mut session, "Commented paragraph 2");
+    let added = session.add_comment("A new comment.");
+    let first = session.comments()[0]["id"].as_i64().unwrap();
+    session.delete_comment(first).unwrap();
+    assert!(session.comments().iter().any(|c| c["id"].as_i64() == Some(added)));
+    let count = |xml: String, tag: &str| xml.matches(tag).count();
+    let comments = count(saved_part(&session, "word/comments.xml"), "<w:comment ");
+    assert_eq!(comments, before);
+    let ids = count(saved_part(&session, "word/commentsIds.xml"), "<w16cid:commentId ");
+    let extensible =
+        count(saved_part(&session, "word/commentsExtensible.xml"), "<w16cex:commentExtensible ");
+    let extended = count(saved_part(&session, "word/commentsExtended.xml"), "<w15:commentEx ");
+    assert_eq!((ids, extensible, extended), (comments, comments, comments));
+    let report = saved_and_inspected(&mut session, "comments-edited.docx");
+    assert_eq!(report["comments"].as_array().unwrap().len(), before);
 }
