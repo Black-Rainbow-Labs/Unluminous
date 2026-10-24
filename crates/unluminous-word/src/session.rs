@@ -98,6 +98,17 @@ impl Session {
         }
     }
 
+    /// The formatting of the first selected character, which text typed over a selection takes, as in
+    /// Word (`task-2341`). `None` with no selection, or when the selection starts at a paragraph's end.
+    fn first_selected_props(&self) -> Option<Arc<El>> {
+        if self.selection.is_empty() {
+            return None;
+        }
+        let (from, _) = self.selection.ordered();
+        let paragraph = position::paragraph(&self.document, &from.story, &from.path)?;
+        (from.offset < paragraph.len()).then(|| edit::props_at(paragraph, from.offset + 1).0)
+    }
+
     fn tracking_info(&self) -> Option<Tracking> {
         self.tracking.then(|| Tracking {
             author: if self.author.is_empty() {
@@ -229,6 +240,7 @@ impl Session {
             }
             Arc::new(merged)
         });
+        let pending = pending.or_else(|| self.first_selected_props());
         let tracking = self.tracking_info();
         if joins {
             let selection = self.selection.clone();

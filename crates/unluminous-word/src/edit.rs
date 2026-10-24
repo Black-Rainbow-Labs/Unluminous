@@ -55,8 +55,16 @@ pub fn props_at(paragraph: &Paragraph, offset: usize) -> (Arc<El>, Vec<Arc<Wrap>
     let mut after: Option<&Run> = None;
     for run in &paragraph.runs {
         let len = run.len();
-        if at + len <= offset && !matches!(run.content, Content::FieldChar(_) | Content::Instr(_)) {
+        let field = matches!(run.content, Content::FieldChar(_) | Content::Instr(_));
+        // The run holding the character before `offset` is the one that starts before it, not only one
+        // that ends at or before it (`task-2341`). With only the second, typing in the middle of a run
+        // took the formatting of the run before that one: a spelling suggestion replacing a word after
+        // a bold word came out bold. Inside a run, the run is on both sides, so its wraps are kept too.
+        if (at < offset || at + len <= offset) && !field {
             before = Some(run);
+        }
+        if at < offset && offset < at + len && !field {
+            after = Some(run);
         }
         if at >= offset
             && after.is_none()
@@ -915,6 +923,20 @@ mod tests {
         let pos = insert_text(&mut doc, &pos, "\nthere", None, None);
         assert_eq!(texts(&doc), ["Hello,", "there world"]);
         assert_eq!(pos, Pos::new(vec![1], 5));
+    }
+
+    /// Typing in the middle of a plain run that follows a bold one stays plain (`task-2341`).
+    #[test]
+    fn typing_inside_a_run_takes_that_runs_formatting() {
+        let mut doc = document(&[""]);
+        let bold = Arc::new(El::new("w:rPr").with_child(El::new("w:b")));
+        let Block::Paragraph(p) = &mut doc.body[0] else { panic!() };
+        p.runs = vec![Run::text("bold", bold), Run::text(" plain words", no_props())];
+        insert_text(&mut doc, &Pos::new(vec![0], 8), "er", None, None);
+        assert_eq!(texts(&doc), ["bold plaerin words"]);
+        let Block::Paragraph(p) = &doc.body[0] else { panic!() };
+        assert_eq!(p.runs.len(), 2, "the typed letters join the plain run");
+        assert!(p.runs[1].props.child("w:b").is_none());
     }
 
     #[test]

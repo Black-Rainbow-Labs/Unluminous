@@ -122,10 +122,13 @@ pub fn show_menu(
     if menu.word.kind == Kind::Spelling {
         rows.push(("Add to Dictionary".to_owned(), Choice::Add));
     }
+    let layer = egui::LayerId::new(egui::Order::Foreground, ui.id().with("word-spelling"));
+    let painter = ui.ctx().layer_painter(layer);
+    let title = title_of(&menu);
+    let labels: Vec<&str> = rows.iter().map(|(label, _)| label.as_str()).collect();
+    let size = card_size(&painter, look, &title, &labels, area.width());
+    let (row, head, width) = (size.row, size.head, size.width);
     let scale = look.scale();
-    let row = 26.0 * scale;
-    let head = 26.0 * scale;
-    let width = 220.0 * scale;
     let height = head + row * rows.len() as f32 + 8.0 * scale;
     let below =
         origin + Vec2::new(line.x_of(start.offset) * zoom, (line.top + line.height) * zoom + 4.0);
@@ -138,8 +141,6 @@ pub fn show_menu(
     };
     let card = Rect::from_min_size(Pos2::new(x, y), Vec2::new(width, height));
     super::overlays::remember_popup(ui, card);
-    let layer = egui::LayerId::new(egui::Order::Foreground, ui.id().with("word-spelling"));
-    let painter = ui.ctx().layer_painter(layer);
     painter.rect_filled(card.translate(Vec2::new(0.0, 3.0)), 8.0, Color32::from_black_alpha(80)); // any ground: the shadow under a card
     painter.rect(
         card,
@@ -148,18 +149,11 @@ pub fn show_menu(
         Stroke::new(1.0, look.palette.control_border),
         egui::StrokeKind::Inside,
     );
-    let title = match menu.word.kind {
-        Kind::Spelling if menu.suggestions.is_empty() => {
-            format!("“{}”: no suggestions", menu.word.word)
-        }
-        Kind::Spelling => format!("“{}” is not in the dictionary", menu.word.word),
-        Kind::Repeated => format!("“{}” is repeated", menu.word.word),
-    };
     painter.text(
         card.left_top() + Vec2::new(12.0, head / 2.0 + 2.0),
         Align2::LEFT_CENTER,
         title,
-        FontId::proportional(look.font_size * 0.85),
+        title_font(look),
         look.palette.text_dim,
     );
     let mut chosen = None;
@@ -183,6 +177,57 @@ pub fn show_menu(
     }
     if let Some(choice) = chosen {
         choose(doc, choice, &menu.word.word, requests);
+    }
+}
+
+/// The line at the top of the card, which says what is wrong with the word.
+fn title_of(menu: &crate::services::word::SpellMenu) -> String {
+    match menu.word.kind {
+        Kind::Spelling if menu.suggestions.is_empty() => {
+            format!("“{}”: no suggestions", menu.word.word)
+        }
+        Kind::Spelling => format!("“{}” is not in the dictionary", menu.word.word),
+        Kind::Repeated => format!("“{}” is repeated", menu.word.word),
+    }
+}
+
+/// The font of the card's top line.
+fn title_font(look: &Look<'_>) -> FontId {
+    FontId::proportional(look.font_size * 0.85)
+}
+
+/// How tall a row and the top line are, and how wide the card is.
+struct CardSize {
+    row: f32,
+    head: f32,
+    width: f32,
+}
+
+/// Size the card to what it says (`task-2341`). The text follows the editor's font size, so a fixed width
+/// let the top line run out past the card's right edge at a large font. The card is at least 220 points
+/// wide, wide enough for its longest line, and never wider than the area it is drawn in.
+fn card_size(
+    painter: &egui::Painter,
+    look: &Look<'_>,
+    title: &str,
+    labels: &[&str],
+    room: f32,
+) -> CardSize {
+    let scale = look.scale();
+    let measure = |text: &str, font: FontId| {
+        painter.layout_no_wrap(text.to_owned(), font, Color32::PLACEHOLDER).size().x
+    };
+    let title_width = measure(title, title_font(look)) + 24.0;
+    let label_width = labels
+        .iter()
+        .map(|label| measure(label, FontId::proportional(look.font_size)) + 24.0)
+        .fold(0.0, f32::max);
+    let width =
+        (220.0 * scale).max(title_width).max(label_width).min((room - 8.0).max(220.0 * scale));
+    CardSize {
+        row: (26.0 * scale).max(look.font_size * 1.6),
+        head: (26.0 * scale).max(look.font_size * 0.85 * 1.8),
+        width,
     }
 }
 

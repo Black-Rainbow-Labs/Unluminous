@@ -346,6 +346,30 @@ fn an_agent_lists_spelling_errors_and_a_suggestion_replaces_one() {
     assert_eq!(run(&mut word, "spelling").value.as_array().unwrap().len(), 0);
 }
 
+/// **A suggestion takes the formatting of the word it replaces**, which in Word is the formatting of its
+/// first character. Found on the installed 1.14.1: in the kitchen sink document "su" of "summarises" is
+/// italic and the word before it is bold, and the suggestion "summarizes" came out bold.
+#[test]
+fn a_suggestion_keeps_the_formatting_of_the_word_it_replaces() {
+    use unluminous_word::position::Pos;
+    let (mut word, _) = word_with("kitchen-sink.docx");
+    let doc = word.current_doc().unwrap();
+    doc.session.select(Pos::new(vec![8], 14), Pos::new(vec![8], 14));
+    let before = doc.session.look_at_caret();
+    crate::components::word::spelling::right_click(doc, Pos::new(vec![8], 14));
+    let menu = doc.view.spell_menu.clone().expect("the card is open");
+    assert_eq!(menu.word.word, "summarises");
+    super::spelling::replace(doc, "summarizes");
+    let story = doc.session.selection.head.story.clone();
+    let text = unluminous_word::position::paragraph(&doc.session.document, &story, &[8])
+        .unwrap()
+        .flat_text();
+    assert!(text.starts_with("This report summarizes the"), "{text}");
+    let after = doc.session.look_at_caret();
+    assert_eq!((after.bold, after.italic), (before.bold, before.italic));
+    assert!(!after.bold, "the word is not bold");
+}
+
 /// **A right click on an underlined word selects it and opens its card**, and a right click elsewhere
 /// moves the caret there.
 #[test]
