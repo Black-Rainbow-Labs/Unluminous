@@ -31,10 +31,15 @@ pub mod formula;
 pub mod functions;
 pub mod input;
 pub mod model;
+pub mod html;
+pub mod json;
 pub mod numfmt;
+pub mod ods;
+pub mod fixedwidth;
 pub mod styles;
 pub mod value;
 pub mod xlsx;
+pub mod xml2003;
 pub mod zip;
 
 pub use coord::{CellRef, Range};
@@ -47,8 +52,22 @@ pub mod csv;
 pub enum FileKind {
     Xlsx,
     Xlsm,
+    /// Comma separated values. Saved as Excel's "CSV UTF-8" unless [`SaveOptions`] says otherwise.
     Csv,
+    /// Tab separated values with the extension `.tsv` or `.tab`.
     Tsv,
+    /// Excel's "Unicode Text": tab separated, UTF-16.
+    Txt,
+    /// Excel's "Formatted Text (Space delimited)": read by finding the columns in the text.
+    Prn,
+    /// An OpenDocument spreadsheet.
+    Ods,
+    /// A web page with a table for each sheet. Saved only.
+    Html,
+    /// XML Spreadsheet 2003. Read only.
+    Xml,
+    /// JSON: an array of objects or of arrays. Read only.
+    Json,
 }
 
 impl FileKind {
@@ -60,32 +79,84 @@ impl FileKind {
             "xlsm" => Ok(FileKind::Xlsm),
             "csv" => Ok(FileKind::Csv),
             "tsv" | "tab" => Ok(FileKind::Tsv),
+            "txt" => Ok(FileKind::Txt),
+            "prn" => Ok(FileKind::Prn),
+            "ods" => Ok(FileKind::Ods),
+            "html" | "htm" => Ok(FileKind::Html),
+            "xml" => Ok(FileKind::Xml),
+            "json" => Ok(FileKind::Json),
             "xls" => Err("This is an Excel 97-2003 workbook (.xls), a binary format this version does not read. Excel can save it as .xlsx.".to_owned()),
             "xlsb" => Err("This is an Excel binary workbook (.xlsb), which this version does not read. Excel can save it as .xlsx.".to_owned()),
-            "ods" => Err("This is an OpenDocument spreadsheet (.ods), which this version does not read. Excel or LibreOffice can save it as .xlsx.".to_owned()),
             other => Err(format!("A .{other} file is not a workbook this version opens.")),
         }
     }
+
+    /// Whether a file of this kind holds one sheet, so saving a workbook of several writes only the one showing.
+    pub fn holds_one_sheet(&self) -> bool {
+        matches!(self, FileKind::Csv | FileKind::Tsv | FileKind::Txt | FileKind::Prn)
+    }
+
+    /// Whether this version can write files of this kind.
+    pub fn can_save(&self) -> bool {
+        !matches!(self, FileKind::Xml | FileKind::Json)
+    }
+}
+
+/// What a text file is saved with, where Excel offers a choice.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SaveOptions {
+    /// How the text is encoded: UTF-8 with a byte order mark for a CSV (Excel's "CSV UTF-8") and UTF-16
+    /// for a `.txt` file (Excel's "Unicode Text") unless this says otherwise. `Windows1252` is Excel's
+    /// "CSV (Comma delimited)" and "Text (Tab delimited)", and `Utf8` is a CSV with no byte order mark.
+    pub encoding: Option<csv::Encoding>,
 }
 
 /// Read a workbook from a file's bytes.
 pub fn open(bytes: &[u8], kind: FileKind, name: &str, this_year: i64) -> Result<Workbook, String> {
     match kind {
         FileKind::Xlsx | FileKind::Xlsm => xlsx::read(bytes),
-        FileKind::Csv | FileKind::Tsv => {
-            let text = String::from_utf8(bytes.to_vec()).unwrap_or_else(|_| {
-                bytes.iter().map(|b| crate::functions::text::windows_1252(*b)).collect()
-            });
-            Ok(csv::read(&text, kind == FileKind::Tsv, name, this_year))
+        FileKind::Csv | FileKind::Tsv | FileKind::Txt => {
+            let text = csv::decode(bytes);
+            Ok(csv::read(&text, matches!(kind, FileKind::Tsv | FileKind::Txt), name, this_year))
         }
+        FileKind::Prn => Ok(fixedwidth::read(&csv::decode(bytes), name, this_year)),
+        FileKind::Ods => ods::read(bytes),
+        FileKind::Xml => xml2003::read(bytes),
+        FileKind::Json => json::read(&csv::decode(bytes), name),
+        FileKind::Html => Err("A web page is not a workbook this version opens. It can be saved as one.".to_owned()),
     }
 }
 
-/// A workbook as the bytes of a file. A CSV holds the sheet that is showing.
+/// A workbook as the bytes of a file. A CSV, tab separated or fixed width file holds the sheet that is
+/// showing.
 pub fn save(book: &Workbook, kind: FileKind) -> Result<Vec<u8>, String> {
+    save_with(book, kind, &SaveOptions::default())
+}
+
+/// A workbook as the bytes of a file, with the encoding a text file asks for.
+pub fn save_with(book: &Workbook, kind: FileKind, options: &SaveOptions) -> Result<Vec<u8>, String> {
+    let sheet = book.active_sheet.min(book.sheets.len().saturating_sub(1));
     match kind {
         FileKind::Xlsx | FileKind::Xlsm => xlsx::write(book),
-        FileKind::Csv => Ok(csv::write(book, book.active_sheet, ',').into_bytes()),
-        FileKind::Tsv => Ok(csv::write(book, book.active_sheet, '\t').into_bytes()),
+        FileKind::Csv => Ok(csv::encode(
+            &csv::write(book, sheet, ','),
+            options.encoding.unwrap_or(csv::Encoding::Utf8Bom),
+        )),
+        FileKind::Tsv => Ok(csv::encode(
+            &csv::write(book, sheet, '\t'),
+            options.encoding.unwrap_or(csv::Encoding::Utf8),
+        )),
+        FileKind::Txt => Ok(csv::encode(
+            &csv::write(book, sheet, '\t'),
+            options.encoding.unwrap_or(csv::Encoding::Utf16Le),
+        )),
+        FileKind::Prn => {
+            Ok(csv::encode(&fixedwidth::write(book, sheet), options.encoding.unwrap_or(csv::Encoding::Windows1252)))
+        }
+        FileKind::Ods => ods::write(book),
+        FileKind::Html => Ok(html::write(book).into_bytes()),
+        FileKind::Xml | FileKind::Json => {
+            Err("This version reads that kind of file but does not write it. Save as .xlsx or .ods.".to_owned())
+        }
     }
 }

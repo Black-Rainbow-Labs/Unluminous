@@ -3,6 +3,63 @@
 use crate::coord::CellRef;
 use crate::model::{Cell, Sheet, Workbook};
 
+/// How text is stored in a file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Encoding {
+    /// UTF-8 with a byte order mark: Excel's "CSV UTF-8".
+    Utf8Bom,
+    /// UTF-8 with no byte order mark.
+    Utf8,
+    /// Windows-1252, the code page of Excel's "CSV (Comma delimited)" and "Text (Tab delimited)" on a
+    /// Western Windows. A character it has no code for is written as `?`.
+    Windows1252,
+    /// UTF-16 little endian with a byte order mark: Excel's "Unicode Text".
+    Utf16Le,
+}
+
+/// File bytes as text: a byte order mark says UTF-8 or UTF-16, and a file with none is UTF-8 when it is
+/// valid UTF-8 and Windows-1252 otherwise, which is what Excel does with a text file it opens.
+pub fn decode(bytes: &[u8]) -> String {
+    match bytes {
+        [0xEF, 0xBB, 0xBF, rest @ ..] => String::from_utf8_lossy(rest).into_owned(),
+        [0xFF, 0xFE, rest @ ..] => utf16(rest, u16::from_le_bytes),
+        [0xFE, 0xFF, rest @ ..] => utf16(rest, u16::from_be_bytes),
+        _ => String::from_utf8(bytes.to_vec())
+            .unwrap_or_else(|_| bytes.iter().map(|b| crate::functions::text::windows_1252(*b)).collect()),
+    }
+}
+
+fn utf16(bytes: &[u8], unit: fn([u8; 2]) -> u16) -> String {
+    let units: Vec<u16> = bytes.chunks_exact(2).map(|pair| unit([pair[0], pair[1]])).collect();
+    String::from_utf16_lossy(&units)
+}
+
+/// Text as the bytes of a file.
+pub fn encode(text: &str, encoding: Encoding) -> Vec<u8> {
+    match encoding {
+        Encoding::Utf8Bom => [&[0xEF, 0xBB, 0xBF][..], text.as_bytes()].concat(),
+        Encoding::Utf8 => text.as_bytes().to_vec(),
+        Encoding::Windows1252 => text.chars().map(windows_1252_byte).collect(),
+        Encoding::Utf16Le => {
+            let mut out = vec![0xFF, 0xFE];
+            for unit in text.encode_utf16() {
+                out.extend(unit.to_le_bytes());
+            }
+            out
+        }
+    }
+}
+
+/// The Windows-1252 byte for a character, or `?` when the code page has none.
+fn windows_1252_byte(c: char) -> u8 {
+    if (c as u32) < 0x80 {
+        return c as u8;
+    }
+    (0x80..=0xFFu8)
+        .find(|b| crate::functions::text::windows_1252(*b) == c)
+        .unwrap_or(b'?')
+}
+
 /// The separator a file uses: a tab, a semicolon or a comma, by which the first line holds most of
 /// outside quotes. A `.tsv` file is always tab separated.
 pub fn separator(text: &str, tsv: bool) -> char {
@@ -72,9 +129,14 @@ pub fn split(text: &str, sep: char) -> Vec<Vec<String>> {
 /// A workbook from CSV text, each field typed the way Excel types it.
 pub fn read(text: &str, tsv: bool, sheet_name: &str, this_year: i64) -> Workbook {
     let sep = separator(text, tsv);
+    from_rows(split(text, sep), sheet_name, this_year)
+}
+
+/// A workbook of one sheet from rows of fields, each field typed the way Excel types a typed entry.
+pub fn from_rows(rows: Vec<Vec<String>>, sheet_name: &str, this_year: i64) -> Workbook {
     let mut book = Workbook::new();
     let mut sheet = Sheet::new(sheet_name.chars().take(31).collect::<String>());
-    for (r, row) in split(text, sep).into_iter().enumerate() {
+    for (r, row) in rows.into_iter().enumerate() {
         for (c, field) in row.into_iter().enumerate() {
             if field.is_empty() {
                 continue;
