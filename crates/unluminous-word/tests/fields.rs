@@ -155,3 +155,32 @@ fn a_locked_field_keeps_its_result_through_update() {
     session.update_fields(&laid);
     assert_ne!(field_list(&session.document)[0].2, "1999", "an unlocked date updates");
 }
+
+/// The text drawn on the first page, in order.
+fn drawn(pages: &Pages) -> String {
+    pages.pages[0]
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            layout::Item::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn field_codes_draw_the_code_in_braces_instead_of_the_result() {
+    let mut session = Session::new(unluminous_word::new::blank());
+    session.type_text("Words: ");
+    session.insert_field("NUMWORDS", "1");
+    let metrics = FixedMetrics::default();
+    let results = layout::lay_out(&session.document, &metrics, Options::default());
+    assert!(drawn(&results).contains("Words: 1"), "{}", drawn(&results));
+    let codes = layout::lay_out(
+        &session.document,
+        &metrics,
+        Options { show_codes: true, ..Options::default() },
+    );
+    assert!(drawn(&codes).contains("{ NUMWORDS }"), "{}", drawn(&codes));
+    assert!(!drawn(&codes).contains("Words: 1"));
+}

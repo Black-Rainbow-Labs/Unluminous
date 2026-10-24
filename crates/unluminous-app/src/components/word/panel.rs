@@ -74,6 +74,8 @@ pub fn show(
                 Level::References => references(ui, doc, requests),
                 Level::Review => review(ui, look, doc, requests),
                 Level::Document => document(ui, doc, requests),
+                Level::Proofing => proofing(ui, doc),
+                Level::Contents => contents(ui, doc, requests),
             }
         });
 }
@@ -670,6 +672,33 @@ fn insert(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
         doc.view.fields.remove("link");
         requests.push(Request::TakeTheKeyboard(true));
     }
+    heading(ui, "Field");
+    let code = doc.view.fields.entry("field").or_default();
+    let mut add_field = None;
+    ui.horizontal(|ui| {
+        let field = ui.add(
+            egui::TextEdit::singleline(code)
+                .hint_text(crate::components::controls::placeholder(
+                    "PAGE, DATE, AUTHOR, NUMWORDS, = 2 * 21",
+                    &egui::TextStyle::Body.resolve(ui.style()),
+                    crate::theme::color::text_faint(),
+                ))
+                .desired_width(190.0),
+        );
+        if (ui.button("Insert").clicked()
+            || field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
+            && !code.trim().is_empty()
+        {
+            add_field = Some(code.trim().to_owned());
+        }
+    });
+    if let Some(code) = add_field {
+        doc.session.insert_field(&code, "");
+        let pages = doc.pages.clone();
+        doc.session.update_fields(&pages);
+        doc.view.fields.remove("field");
+        requests.push(Request::TakeTheKeyboard(true));
+    }
     heading(ui, "Bookmark");
     let mark = doc.view.fields.entry("bookmark").or_default();
     let mut add_mark = None;
@@ -802,9 +831,30 @@ fn page(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     });
 }
 
+/// A row that opens a third level.
+fn deeper(ui: &mut egui::Ui, doc: &mut Doc, level: Level) {
+    let response = ui.button(format!("{} ›", level.name()));
+    if response.clicked() {
+        doc.view.panel.push(level);
+    }
+}
+
 fn references(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     heading(ui, "Table of contents");
-    actions_row(ui, doc, requests, &["table-of-contents", "update-fields"]);
+    actions_row(
+        ui,
+        doc,
+        requests,
+        &["table-of-contents", "update-table", "remove-table-of-contents", "table-of-figures"],
+    );
+    deeper(ui, doc, Level::Contents);
+    heading(ui, "Fields");
+    actions_row(
+        ui,
+        doc,
+        requests,
+        &["update-fields", "field-codes", "unlink-fields", "lock-fields", "unlock-fields"],
+    );
     heading(ui, "Notes");
     actions_row(ui, doc, requests, &["footnote", "endnote"]);
     heading(ui, "Captions");
@@ -818,7 +868,73 @@ fn references(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     }
 }
 
+/// Review -> Proofing: a tick box for each autocorrect rule.
+fn proofing(ui: &mut egui::Ui, doc: &mut Doc) {
+    heading(ui, "AutoCorrect as you type");
+    for (name, label) in unluminous_word::autocorrect::RULES {
+        let Some(slot) = doc.session.autocorrect_rules.slot(name) else { continue };
+        ui.checkbox(slot, *label);
+    }
+    ui.label(RichText::new("Ctrl+Z straight after a correction gives back what was typed.").weak());
+}
+
+/// References -> Table of contents: the custom table of contents.
+fn contents(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
+    use unluminous_word::references::TocOptions;
+    let field = |doc: &mut Doc, key: &'static str, default: &str| {
+        doc.view.fields.entry(key).or_insert_with(|| default.to_owned()).clone()
+    };
+    let mut levels: u8 = field(doc, "toc-levels", "3").parse().unwrap_or(3);
+    let mut pages = field(doc, "toc-pages", "true") == "true";
+    let mut right = field(doc, "toc-right", "true") == "true";
+    let mut links = field(doc, "toc-links", "true") == "true";
+    let mut leader = field(doc, "toc-leader", "dot");
+    heading(ui, "Table of contents");
+    ui.horizontal(|ui| {
+        ui.label("Show levels");
+        ui.add(egui::DragValue::new(&mut levels).range(1..=9));
+    });
+    ui.checkbox(&mut pages, "Show page numbers");
+    ui.add_enabled(pages, egui::Checkbox::new(&mut right, "Right align page numbers"));
+    ui.horizontal(|ui| {
+        ui.label("Tab leader");
+        for (label, value) in
+            [("None", "none"), ("Dots", "dot"), ("Dashes", "hyphen"), ("Line", "underscore")]
+        {
+            ui.radio_value(&mut leader, value.to_owned(), label);
+        }
+    });
+    ui.checkbox(&mut links, "Use hyperlinks instead of page numbers on the web");
+    doc.view.fields.insert("toc-levels", levels.to_string());
+    doc.view.fields.insert("toc-pages", pages.to_string());
+    doc.view.fields.insert("toc-right", right.to_string());
+    doc.view.fields.insert("toc-links", links.to_string());
+    doc.view.fields.insert("toc-leader", leader.clone());
+    let options = TocOptions {
+        levels,
+        page_numbers: pages,
+        right_align: right,
+        leader,
+        hyperlinks: links,
+        caption: None,
+    };
+    ui.horizontal(|ui| {
+        if ui.button("Insert").clicked() {
+            let laid = doc.pages.clone();
+            doc.session.insert_toc_with(&options, &laid);
+            requests.push(Request::TakeTheKeyboard(true));
+        }
+        if ui.button("Replace the table").clicked() {
+            let laid = doc.pages.clone();
+            if doc.session.remove_toc() {
+                doc.session.insert_toc_with(&options, &laid);
+            }
+        }
+    });
+}
+
 fn review(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<Request>) {
+    deeper(ui, doc, Level::Proofing);
     heading(ui, "Spelling");
     let mut spelling = doc.view.spelling;
     if ui.checkbox(&mut spelling, "Check spelling as you type").changed() {

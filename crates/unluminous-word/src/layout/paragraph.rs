@@ -400,6 +400,22 @@ fn collect_atoms(
         let len = run.len();
         let start = offset;
         offset += len;
+        if ctx.show_codes {
+            let shown = show_code(
+                ctx,
+                paragraph,
+                run,
+                table_style,
+                looks,
+                atoms,
+                start,
+                &mut fields,
+                &mut simple_done,
+            );
+            if shown.is_some() {
+                continue;
+            }
+        }
         if let Content::FieldChar(el) = &run.content {
             match el.attr("w:fldCharType") {
                 Some("begin") => fields.open.push((String::new(), true, None, false)),
@@ -532,6 +548,76 @@ fn collect_atoms(
 
 /// The atoms of a stretch of text, one grapheme each.
 #[allow(clippy::too_many_arguments)]
+/// With field codes showing: a field's begin draws `{ `, its code is drawn as text, its result is left
+/// out and its end draws ` }`; a simple field draws its whole code in braces once. Answers `Some` when the
+/// run was dealt with here, `None` for a run that is drawn as usual.
+#[allow(clippy::too_many_arguments)]
+fn show_code(
+    ctx: &Ctx,
+    paragraph: &Paragraph,
+    run: &crate::model::Run,
+    table_style: Option<&str>,
+    looks: &mut Vec<Look>,
+    atoms: &mut Vec<Atom>,
+    start: usize,
+    fields: &mut FieldState,
+    simple_done: &mut Option<u64>,
+) -> Option<()> {
+    let look = |looks: &mut Vec<Look>| {
+        let resolved = ctx.resolver.run(&paragraph.props, &run.props, table_style);
+        looks.push(make_look(ctx, resolved, false, false));
+        looks.len() - 1
+    };
+    match &run.content {
+        Content::FieldChar(el) => {
+            let index = look(looks);
+            match el.attr("w:fldCharType") {
+                Some("begin") => {
+                    fields.open.push((String::new(), true, None, false));
+                    push_text(ctx, &looks[index], index, "{ ", start, start, atoms, true);
+                }
+                Some("separate") => {
+                    if let Some(field) = fields.open.last_mut() {
+                        field.1 = false;
+                    }
+                }
+                _ => {
+                    if fields.open.pop().is_some() {
+                        push_text(ctx, &looks[index], index, " }", start, start, atoms, true);
+                    }
+                }
+            }
+            Some(())
+        }
+        Content::Instr(code) => {
+            let index = look(looks);
+            push_text(
+                ctx,
+                &looks[index],
+                index,
+                code.trim(),
+                start,
+                start + run.len(),
+                atoms,
+                true,
+            );
+            Some(())
+        }
+        // A result is not drawn while its code is.
+        _ if fields.open.iter().any(|field| !field.1) => Some(()),
+        _ => {
+            let simple = run.wraps.iter().find(|w| w.el.name == "w:fldSimple")?;
+            if *simple_done != Some(simple.id) {
+                *simple_done = Some(simple.id);
+                let index = look(looks);
+                let code = format!("{{ {} }}", simple.el.attr("w:instr").unwrap_or("").trim());
+                push_text(ctx, &looks[index], index, &code, start, start, atoms, true);
+            }
+            Some(())
+        }
+    }
+}
+
 fn push_text(
     ctx: &Ctx,
     look: &Look,

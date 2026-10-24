@@ -37,11 +37,19 @@ pub struct Config {
     pub marks: bool,
     /// Underline misspelled and repeated words as they are typed.
     pub spelling: bool,
+    /// Autocorrect and AutoFormat as you type.
+    pub autocorrect: unluminous_word::autocorrect::Rules,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { author: whoami(), zoom: 1.0, marks: false, spelling: true }
+        Config {
+            author: whoami(),
+            zoom: 1.0,
+            marks: false,
+            spelling: true,
+            autocorrect: Default::default(),
+        }
     }
 }
 
@@ -66,6 +74,14 @@ impl Config {
                 "zoom" => config.zoom = value.parse::<f32>().unwrap_or(1.0).clamp(0.25, 5.0),
                 "marks" => config.marks = value == "true",
                 "spelling" => config.spelling = value != "false",
+                // The rules switched off, by name.
+                "autocorrect.off" => {
+                    for name in value.split(',').map(str::trim) {
+                        if let Some(slot) = config.autocorrect.slot(name) {
+                            *slot = false;
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -75,9 +91,18 @@ impl Config {
     pub fn write(&self, folder: &Path) -> Result<(), String> {
         std::fs::create_dir_all(folder)
             .map_err(|e| format!("{} could not be made: {e}", folder.display()))?;
+        let off: Vec<&str> = unluminous_word::autocorrect::RULES
+            .iter()
+            .map(|(name, _)| *name)
+            .filter(|name| self.autocorrect.get(name) == Some(false))
+            .collect();
         let text = format!(
-            "# The Word plugin's settings. The author is the name on comments and tracked changes.\nauthor = {}\nzoom = {}\nmarks = {}\nspelling = {}\n",
-            self.author, self.zoom, self.marks, self.spelling
+            "# The Word plugin's settings. The author is the name on comments and tracked changes.\nauthor = {}\nzoom = {}\nmarks = {}\nspelling = {}\nautocorrect.off = {}\n",
+            self.author,
+            self.zoom,
+            self.marks,
+            self.spelling,
+            off.join(", ")
         );
         crate::services::store::write_atomically(&folder.join(Self::FILE), text.as_bytes())
             .map_err(|e| format!("{} could not be written: {e}", folder.join(Self::FILE).display()))
@@ -97,9 +122,24 @@ pub enum Level {
     References,
     Review,
     Document,
+    /// Third levels, each opened from the level `parent` names (task-2359, TDD 5.5).
+    Proofing,
+    Contents,
 }
 
 impl Level {
+    /// The third levels, which the root level does not list.
+    pub const DEEPER: &'static [Level] = &[Level::Proofing, Level::Contents];
+
+    /// The level a third level is opened from.
+    pub fn parent(self) -> Option<Level> {
+        match self {
+            Level::Proofing => Some(Level::Review),
+            Level::Contents => Some(Level::References),
+            _ => None,
+        }
+    }
+
     pub const ALL: &'static [Level] = &[
         Level::Text,
         Level::Paragraph,
@@ -124,13 +164,19 @@ impl Level {
             Level::References => "References",
             Level::Review => "Review",
             Level::Document => "Document",
+            Level::Proofing => "Proofing",
+            Level::Contents => "Table of contents",
         }
     }
 
     pub fn parse(name: &str) -> Option<Level> {
         std::iter::once(Level::Root)
             .chain(Level::ALL.iter().copied())
-            .find(|level| level.name().eq_ignore_ascii_case(name))
+            .chain(Level::DEEPER.iter().copied())
+            .find(|level| {
+                level.name().eq_ignore_ascii_case(name)
+                    || level.name().replace(' ', "-").eq_ignore_ascii_case(name)
+            })
     }
 
     /// One line under the level's name on the root level.
@@ -146,6 +192,8 @@ impl Level {
             Level::References => "Table of contents, footnotes, captions",
             Level::Review => "Track changes, comments, word count",
             Level::Document => "Properties, view, export",
+            Level::Proofing => "Autocorrect and AutoFormat as you type",
+            Level::Contents => "Levels, page numbers, leader, links",
         }
     }
 }
@@ -157,6 +205,8 @@ pub struct View {
     /// How far down the pages are scrolled, in screen points.
     pub scroll: f32,
     pub marks: bool,
+    /// Field codes drawn instead of their results (Alt+F9).
+    pub codes: bool,
     /// Underline misspelled and repeated words.
     pub spelling: bool,
     /// The card a right click on an underlined word opens, or F7: the word, and what it could be.
@@ -210,6 +260,7 @@ impl View {
             zoom: config.zoom,
             scroll: 0.0,
             marks: config.marks,
+            codes: false,
             spelling: config.spelling,
             spell_menu: None,
             navigation: false,
@@ -267,7 +318,7 @@ impl Doc {
         self.pages = layout::lay_out(
             &self.session.document,
             &fonts,
-            layout::Options { show_marks: self.view.marks },
+            layout::Options { show_marks: self.view.marks, show_codes: self.view.codes },
         );
         self.laid = self.session.revision;
         self.formatted_text = Some("window".into());
@@ -395,6 +446,7 @@ impl Word {
         let mut session = Session::new(document);
         session.author = self.config.author.clone();
         session.file = (!template).then(|| path.to_path_buf());
+        session.autocorrect_rules = self.config.autocorrect.clone();
         self.docs.push(Doc {
             key: key.to_owned(),
             path: (!template).then(|| path.to_path_buf()),
@@ -415,6 +467,7 @@ impl Word {
     pub fn new_document(&mut self, path: Option<&Path>) -> Result<String, String> {
         let mut session = Session::new(unluminous_word::new::blank());
         session.author = self.config.author.clone();
+        session.autocorrect_rules = self.config.autocorrect.clone();
         unluminous_word::new::set_property(
             &mut session.document,
             "dc:creator",
@@ -511,7 +564,21 @@ impl UiProvider for Word {
         self.current = Some(key.to_owned());
         let config = self.config.clone();
         match self.doc(key) {
-            Ok(doc) => crate::components::word::show(doc, &config, ui, look),
+            Ok(doc) => {
+                let requests = crate::components::word::show(doc, &config, ui, look);
+                // A rule switched in the Proofing level is every document's, and is written down.
+                let rules = doc.session.autocorrect_rules.clone();
+                if rules != self.config.autocorrect {
+                    self.config.autocorrect = rules.clone();
+                    for doc in &mut self.docs {
+                        doc.session.autocorrect_rules = rules.clone();
+                    }
+                    if let Some(folder) = &self.folder {
+                        let _ = self.config.write(folder);
+                    }
+                }
+                requests
+            }
             Err(problem) => {
                 ui.painter().text(
                     ui.max_rect().min + egui::vec2(24.0, 24.0),

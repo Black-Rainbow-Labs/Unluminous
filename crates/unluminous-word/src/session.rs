@@ -67,6 +67,8 @@ pub struct Session {
     pub modified: bool,
     /// The file the document was opened from or saved to, for the `FILENAME` and `FILESIZE` fields.
     pub file: Option<std::path::PathBuf>,
+    /// Which corrections are made as words are typed.
+    pub autocorrect_rules: crate::autocorrect::Rules,
     undo: Vec<Entry>,
     redo: Vec<Entry>,
 }
@@ -96,6 +98,7 @@ impl Session {
             revision: 1,
             modified: false,
             file: None,
+            autocorrect_rules: crate::autocorrect::Rules::default(),
             undo: Vec::new(),
             redo: Vec::new(),
         }

@@ -340,6 +340,8 @@ pub struct Ctx<'a> {
     pub default_tab: f32,
     /// Draw hidden text and the paragraph marks.
     pub show_marks: bool,
+    /// Draw each field as its code in braces instead of its result, as Word's Alt+F9 does.
+    pub show_codes: bool,
     /// Each footnote's number, by its id, in order of first reference.
     pub footnote_numbers: HashMap<i64, u32>,
     pub endnote_numbers: HashMap<i64, u32>,
@@ -361,6 +363,8 @@ pub struct Ctx<'a> {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Options {
     pub show_marks: bool,
+    /// Field codes instead of their results.
+    pub show_codes: bool,
 }
 
 /// The pages of a document.
@@ -444,6 +448,7 @@ pub fn lay_out(document: &Document, metrics: &dyn FontMetrics, options: Options)
         metrics,
         default_tab: default_tab(document),
         show_marks: options.show_marks,
+        show_codes: options.show_codes,
         footnote_numbers,
         endnote_numbers,
         footnote_marks,

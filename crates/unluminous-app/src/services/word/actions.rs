@@ -971,6 +971,17 @@ pub const ACTIONS: &[Action] = &[
     },
     // Document
     Action {
+        id: "field-codes",
+        label: "Show field codes",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.codes = !d.view.codes;
+            d.laid = 0;
+            Ok(String::new())
+        },
+    },
+    Action {
         id: "formatting-marks",
         label: "Show formatting marks",
         level: Level::Document,

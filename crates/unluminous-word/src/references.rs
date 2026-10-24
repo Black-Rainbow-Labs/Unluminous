@@ -896,14 +896,21 @@ fn set_field_result(paragraph: &mut Paragraph, index: usize, result: &str) {
     }
 }
 
-/// Replace each field in a paragraph with its result. Answers how many.
+/// Replace each field in a paragraph with its result. Answers how many. A mark after a removed code keeps
+/// its place in the text that is left.
 fn unlink_in(paragraph: &mut Paragraph) -> usize {
     let mut count = 0;
     let mut depth = 0;
     let mut in_code = false;
+    let mut offset = 0;
+    // Where each removed run started, and how long it was.
+    let mut removed: Vec<(usize, usize)> = Vec::new();
     let mut kept = Vec::with_capacity(paragraph.runs.len());
     for run in std::mem::take(&mut paragraph.runs) {
-        match &run.content {
+        let length = run.len();
+        let start = offset;
+        offset += length;
+        let drop = match &run.content {
             Content::FieldChar(el) => {
                 match el.attr("w:fldCharType") {
                     Some("begin") => {
@@ -919,11 +926,14 @@ fn unlink_in(paragraph: &mut Paragraph) -> usize {
                     }
                     _ => {}
                 }
-                continue;
+                true
             }
-            Content::Instr(_) => continue,
-            _ if depth > 0 && in_code => continue,
-            _ => {}
+            Content::Instr(_) => true,
+            _ => depth > 0 && in_code,
+        };
+        if drop {
+            removed.push((start, length));
+            continue;
         }
         let mut run = run;
         let before = run.wraps.len();
@@ -934,10 +944,18 @@ fn unlink_in(paragraph: &mut Paragraph) -> usize {
         kept.push(run);
     }
     paragraph.runs = kept;
-    // Marks past a removed field run keep their place in the text that is left.
-    let length = paragraph.len();
     for mark in &mut paragraph.marks {
-        mark.offset = mark.offset.min(length);
+        let shift: usize = removed
+            .iter()
+            .map(|&(start, length)| {
+                if start + length <= mark.offset {
+                    length
+                } else {
+                    mark.offset.saturating_sub(start).min(length)
+                }
+            })
+            .sum();
+        mark.offset -= shift;
     }
     paragraph.merge_runs();
     count

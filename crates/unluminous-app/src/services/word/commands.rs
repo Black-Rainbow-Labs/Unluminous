@@ -233,10 +233,38 @@ pub fn run(word: &mut Word, command: &str, arguments: &[String]) -> Result<Answe
                 Answer::said(format!("Saved {}", saved.display())).with(json!({ "path": saved }))
             );
         }
+        "autocorrect" => return autocorrect(word, arguments),
         _ => {}
     }
     let doc = word.current_doc()?;
     document_command(doc, command, arguments)
+}
+
+/// `autocorrect [<rule> on|off]`: the rules, or one switched, for every open document and the settings.
+fn autocorrect(word: &mut Word, arguments: &[String]) -> Result<Answer, String> {
+    use unluminous_word::autocorrect::RULES;
+    if let (Some(name), Some(value)) = (arguments.first(), on(arguments.get(1))) {
+        let slot = word.config.autocorrect.slot(name).ok_or_else(|| {
+            format!(
+                "{name} is not a rule: {}",
+                RULES.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")
+            )
+        })?;
+        *slot = value;
+        let rules = word.config.autocorrect.clone();
+        for doc in &mut word.docs {
+            doc.session.autocorrect_rules = rules.clone();
+        }
+        if let Some(folder) = &word.folder {
+            word.config.write(folder)?;
+        }
+        return Ok(Answer::said(format!("{name} is {}", if value { "on" } else { "off" })));
+    }
+    let list: Vec<_> = RULES
+        .iter()
+        .map(|(name, label)| json!({ "rule": name, "label": label, "on": word.config.autocorrect.get(name) }))
+        .collect();
+    Ok(Answer::said(format!("{} rules", list.len())).with(json!(list)))
 }
 
 /// A command about the current document.
@@ -529,10 +557,10 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                                 .join(", ")
                         )
                     })?;
-                    doc.view.panel = if level == Level::Root {
-                        vec![Level::Root]
-                    } else {
-                        vec![Level::Root, level]
+                    doc.view.panel = match (level, level.parent()) {
+                        (Level::Root, _) => vec![Level::Root],
+                        (_, Some(parent)) => vec![Level::Root, parent, level],
+                        _ => vec![Level::Root, level],
                     };
                 }
             }

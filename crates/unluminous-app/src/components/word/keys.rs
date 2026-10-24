@@ -16,7 +16,7 @@ use crate::services::word::Doc;
 /// The chords a Word tab answers itself: Word's own formatting, editing and navigation keys.
 pub fn claims(key: Key, modifiers: &Modifiers) -> bool {
     if !modifiers.command {
-        return matches!(key, Key::Tab | Key::F7 | Key::F9 | Key::Escape);
+        return matches!(key, Key::Tab | Key::F7 | Key::F9 | Key::F11 | Key::Escape);
     }
     // Saving, closing a tab, quitting and switching tabs stay the window's.
     !matches!(key, Key::S | Key::W | Key::Q | Key::O | Key::N | Key::Tab | Key::P | Key::Comma)
@@ -110,18 +110,22 @@ fn type_text(doc: &mut Doc, text: &str) {
     }
     doc.session.type_text(text);
     doc.view.reveal = true;
-    if text == " " {
-        markdown_habit(doc);
+    if text == " " && markdown_habit(doc) {
+        return;
+    }
+    // Autocorrect after the key that ends a word, as a step of its own that Ctrl+Z gives back.
+    if doc.session.autocorrect(text).is_some() {
+        doc.view.reveal = true;
     }
 }
 
 /// `# `, `## `, `- `, `* `, `1. ` and `> ` at the start of a paragraph become a heading, a list or a quote,
 /// and `---` then Enter a line. Each is its own undo step, so `Ctrl+Z` gives the characters back.
-fn markdown_habit(doc: &mut Doc) {
+fn markdown_habit(doc: &mut Doc) -> bool {
     let head = doc.session.selection.head.clone();
     let Some(paragraph) = position::paragraph(&doc.session.document, &head.story, &head.path)
     else {
-        return;
+        return false;
     };
     let text = paragraph.flat_text();
     let typed = &text[..head.offset.min(text.len())];
@@ -135,12 +139,13 @@ fn markdown_habit(doc: &mut Doc) {
         "> " => Some("quote"),
         _ => None,
     };
-    let Some(action) = action else { return };
+    let Some(action) = action else { return false };
     let marker = typed.len();
     doc.session.select(head.at(0), head.at(marker));
     doc.session.backspace(Unit::Character);
     let mut ignored = Vec::new();
     super::run_action(doc, action, &mut ignored);
+    true
 }
 
 fn key_press(doc: &mut Doc, key: Key, modifiers: &Modifiers, requests: &mut Vec<Request>) {
@@ -152,6 +157,20 @@ fn key_press(doc: &mut Doc, key: Key, modifiers: &Modifiers, requests: &mut Vec<
     }
     if command {
         let id = match (key, shift) {
+            // Word's heading chords are Ctrl+Alt with the number, and come before Ctrl+1 and Ctrl+2.
+            (Key::Num1, _) if modifiers.alt => Some("heading-1"),
+            (Key::Num2, _) if modifiers.alt => Some("heading-2"),
+            (Key::Num3, _) if modifiers.alt => Some("heading-3"),
+            // Ctrl+F9 opens the Insert level at its field box, where a code is typed and inserted.
+            (Key::F9, false) => {
+                doc.view.panel =
+                    vec![crate::services::word::Level::Root, crate::services::word::Level::Insert];
+                doc.view.fields.insert("field", String::new());
+                None
+            }
+            (Key::F9, true) => Some("unlink-fields"),
+            (Key::F11, false) => Some("lock-fields"),
+            (Key::F11, true) => Some("unlock-fields"),
             (Key::B, false) => Some("bold"),
             (Key::I, false) => Some("italic"),
             (Key::U, false) => Some("underline"),
@@ -162,9 +181,6 @@ fn key_press(doc: &mut Doc, key: Key, modifiers: &Modifiers, requests: &mut Vec<
             (Key::Num1, false) => Some("line-single"),
             (Key::Num2, false) => Some("line-double"),
             (Key::Num5, false) => Some("line-15"),
-            (Key::Num1, true) if modifiers.alt => Some("heading-1"),
-            (Key::Num2, true) if modifiers.alt => Some("heading-2"),
-            (Key::Num3, true) if modifiers.alt => Some("heading-3"),
             (Key::M, false) => Some("indent-more"),
             (Key::M, true) => Some("indent-less"),
             (Key::Z, false) => Some("undo"),
@@ -251,6 +267,8 @@ fn key_press(doc: &mut Doc, key: Key, modifiers: &Modifiers, requests: &mut Vec<
                 doc.session.select(head.at(0), head.at(3));
                 doc.session.backspace(Unit::Character);
                 super::run_action(doc, "horizontal-line", requests);
+            } else if !doc.session.border_line_on_enter() {
+                doc.session.autocorrect_before_enter();
             }
             doc.session.enter();
         }
@@ -282,6 +300,8 @@ fn key_press(doc: &mut Doc, key: Key, modifiers: &Modifiers, requests: &mut Vec<
             }
         }
         Key::F7 => super::run_action(doc, "spelling", requests),
+        // Alt+F9 and Shift+F9 show the field codes instead of the results, F9 updates the fields.
+        Key::F9 if modifiers.alt || shift => super::run_action(doc, "field-codes", requests),
         Key::F9 => super::run_action(doc, "update-fields", requests),
         Key::ArrowLeft => move_to(doc, char_step(doc, false), shift),
         Key::ArrowRight => move_to(doc, char_step(doc, true), shift),
