@@ -431,6 +431,16 @@ fn view(book: &Book) -> Item {
             check("Zero values", "zeros toggle", v.show_zeros),
             check("Right to left", "right-to-left toggle", v.right_to_left),
             sub(
+                "Status bar",
+                super::config::AGGREGATES
+                    .iter()
+                    .map(|name| {
+                        let on = book.view.aggregates.iter().any(|a| a == name);
+                        check(&status_label(name), &format!("status-bar toggle {name}"), on)
+                    })
+                    .collect(),
+            ),
+            sub(
                 "Calculation",
                 vec![
                     check("Automatic", "calc-mode automatic", book.session.book.calc.automatic),
@@ -454,6 +464,14 @@ fn view(book: &Book) -> Item {
             ),
         ],
     )
+}
+
+/// The name of a status bar figure as Excel's menu calls it.
+fn status_label(name: &str) -> String {
+    match name {
+        "numbers" => "Numerical Count".to_owned(),
+        other => capitalised(other),
+    }
 }
 
 fn sheet(book: &Book) -> Item {

@@ -25,6 +25,12 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Option<Resul
         "goto" => goto(sheet, args),
         "calculate" => calculate(sheet, args),
         "calc-mode" => calc_mode(sheet, args),
+        "status-bar" => status_bar(sheet, args),
+        "enter-direction" => setting(sheet, "enter", args),
+        "autocomplete" if args.first().map(String::as_str) == Some("list") => pick_from_list(sheet),
+        "autocomplete" => setting(sheet, "autocomplete", args),
+        "autocorrect" => setting(sheet, "autocorrect", args),
+        "custom-list" => custom_list(sheet, args),
         _ => return None,
     })
 }
@@ -197,4 +203,89 @@ pub fn shift_word(verb: &str, word: Option<&str>) -> Option<Shift> {
         ("delete", Some("left")) => Shift::Left,
         _ => return None,
     })
+}
+
+/// `status-bar average,count,sum` sets what the status area adds up; `status-bar toggle min` turns one on
+/// or off; no words says what it shows.
+fn status_bar(sheet: &mut Spreadsheet, args: &[String]) -> Result<Answer, String> {
+    let mut chosen = sheet.config.aggregates.clone();
+    match args.first().map(String::as_str) {
+        None => return Ok(Answer::said(chosen.join(", ")).with(json!(chosen))),
+        Some("toggle") => {
+            let name = args.get(1).ok_or("status-bar toggle needs a figure")?.to_lowercase();
+            if !super::config::AGGREGATES.contains(&name.as_str()) {
+                return Err(format!(
+                    "`{name}` is not one of {}",
+                    super::config::AGGREGATES.join(", ")
+                ));
+            }
+            match chosen.iter().position(|a| *a == name) {
+                Some(i) => {
+                    chosen.remove(i);
+                }
+                None => chosen.push(name),
+            }
+            chosen.sort_by_key(|a| super::config::AGGREGATES.iter().position(|x| x == a));
+        }
+        Some(_) => {
+            let mut config = sheet.config.clone();
+            config.set("aggregates", &args.join(","))?;
+            chosen = config.aggregates;
+        }
+    }
+    sheet.config.aggregates = chosen.clone();
+    sheet.write_the_settings()?;
+    Ok(Answer::said(format!("The status bar shows {}", chosen.join(", "))))
+}
+
+/// A setting of the plugin's own, `enter-direction right` or `autocomplete off`, written to its file.
+fn setting(sheet: &mut Spreadsheet, name: &str, args: &[String]) -> Result<Answer, String> {
+    let value = args.first().ok_or_else(|| format!("{name} needs a value"))?;
+    let mut config = sheet.config.clone();
+    config.set(name, value)?;
+    sheet.config = config;
+    sheet.write_the_settings()?;
+    Ok(Answer::said(format!("{name} is {value}")))
+}
+
+/// `custom-list add <a,b,c>`, `custom-list delete <n>`, or the lists with no words: the fill lists a
+/// person adds to Excel's own.
+fn custom_list(sheet: &mut Spreadsheet, args: &[String]) -> Result<Answer, String> {
+    match args.first().map(String::as_str) {
+        Some("add") => {
+            let list = args[1..].join(" ");
+            if list.split(',').filter(|w| !w.trim().is_empty()).count() < 2 {
+                return Err(
+                    "a custom list needs at least two entries, separated by commas".to_owned()
+                );
+            }
+            sheet.config.custom_lists.push(list);
+        }
+        Some("delete") => {
+            let n: usize = args
+                .get(1)
+                .and_then(|w| w.parse().ok())
+                .ok_or("custom-list delete needs a number from 1")?;
+            if n == 0 || n > sheet.config.custom_lists.len() {
+                return Err(format!("there is no custom list {n}"));
+            }
+            sheet.config.custom_lists.remove(n - 1);
+        }
+        None => {
+            let lists = sheet.config.custom_lists.clone();
+            return Ok(Answer::said(format!("{} custom lists", lists.len())).with(json!(lists)));
+        }
+        Some(other) => return Err(format!("custom-list takes add or delete, not `{other}`")),
+    }
+    sheet.write_the_settings()?;
+    Ok(Answer::said("Custom lists saved"))
+}
+
+/// `autocomplete list`: the entries of the column under the active cell, which Alt+Down opens as a list.
+fn pick_from_list(sheet: &mut Spreadsheet) -> Result<Answer, String> {
+    let book = sheet.current_book()?;
+    let at = book.view.cursor;
+    let entries = super::entry::column_entries(&book.session.book.sheets[book.view.sheet], at);
+    book.view.choices = true;
+    Ok(Answer::said(format!("{} entries", entries.len())).with(json!(entries)))
 }

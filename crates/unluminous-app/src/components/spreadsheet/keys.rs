@@ -119,6 +119,7 @@ pub fn start_typing(book: &mut Book, text: String) {
         focus: true,
         caret: None,
         chosen: 0,
+        no_complete: false,
     });
     book.view.marquee = None;
 }
@@ -138,6 +139,7 @@ pub fn start_editing(book: &mut Book, in_bar: bool) {
         focus: true,
         caret: None,
         chosen: 0,
+        no_complete: false,
     });
 }
 
@@ -302,7 +304,12 @@ fn moves(book: &mut Book, key: Key, m: Modifiers) -> bool {
         ArrowDown => step(book, 1, 0, extend, jump),
         ArrowLeft => step(book, 0, -1, extend, jump),
         ArrowRight => step(book, 0, 1, extend, jump),
-        Enter if !command && !m.alt => step_within(book, if m.shift { -1 } else { 1 }, 0),
+        Enter if !command && !m.alt => {
+            let (rows, cols) = enter_step(book.view.enter, m.shift);
+            if rows != 0 || cols != 0 {
+                step_within(book, rows, cols);
+            }
+        }
         Tab if !command => step_within(book, 0, if m.shift { -1 } else { 1 }),
         Home if command => {
             let frozen = book.session.book.sheets[book.view.sheet].frozen.unwrap_or((0, 0));
@@ -331,6 +338,19 @@ fn moves(book: &mut Book, key: Key, m: Modifiers) -> bool {
         book.view.extra = extra;
     }
     true
+}
+
+/// The step Enter takes, from the setting; Shift+Enter goes the other way.
+fn enter_step(
+    enter: crate::services::spreadsheet::config::EnterDirection,
+    back: bool,
+) -> (i64, i64) {
+    let (rows, cols) = enter.step();
+    if back {
+        (-rows, -cols)
+    } else {
+        (rows, cols)
+    }
 }
 
 fn is_arrow(key: Key) -> bool {
@@ -700,12 +720,15 @@ pub fn typing(ctx: &egui::Context, book: &mut Book, box_id: egui::Id, offered: &
         && (edit.pointing.is_some_and(|(_, end, _)| end == caret)
             || formula_text::points_at(&edit.text, caret));
     let list_open = !offered.names.is_empty();
+    let book_enter = book.view.enter;
     let mut finish = Finish::Typing;
     let mut moves: Vec<(i64, i64, bool)> = Vec::new();
     let mut cycle = false;
     let mut chosen = edit.chosen as i64;
     let mut complete = false;
     let mut toggle_mode = false;
+    let mut no_complete = false;
+    let typed_more = ctx.input(|i| i.events.iter().any(|e| matches!(e, Event::Text(_))));
     ctx.input_mut(|input| {
         input.events.retain(|event| {
             let Event::Key { key, pressed: true, modifiers: m, .. } = event else { return true };
@@ -726,7 +749,8 @@ pub fn typing(ctx: &egui::Context, book: &mut Book, box_id: egui::Id, offered: &
                     } else if command {
                         Finish::CommitEverywhere
                     } else {
-                        Finish::Commit { rows: if m.shift { -1 } else { 1 }, cols: 0 }
+                        let (rows, cols) = enter_step(book_enter, m.shift);
+                        Finish::Commit { rows, cols }
                     };
                     false
                 }
@@ -749,6 +773,10 @@ pub fn typing(ctx: &egui::Context, book: &mut Book, box_id: egui::Id, offered: &
                 Key::F2 => {
                     toggle_mode = true;
                     false
+                }
+                Key::Backspace | Key::Delete => {
+                    no_complete = true;
+                    true
                 }
                 Key::ArrowUp | Key::ArrowDown | Key::ArrowLeft | Key::ArrowRight
                     if typed && !command =>
@@ -773,6 +801,11 @@ pub fn typing(ctx: &egui::Context, book: &mut Book, box_id: egui::Id, offered: &
     let Some(edit) = book.view.edit.as_mut() else { return finish };
     if toggle_mode {
         edit.typed = !edit.typed;
+    }
+    if no_complete {
+        edit.no_complete = true;
+    } else if typed_more {
+        edit.no_complete = false;
     }
     if list_open {
         edit.chosen = chosen.rem_euclid(offered.names.len() as i64) as usize;

@@ -16,6 +16,7 @@ pub mod commands;
 pub mod conditional;
 pub mod config;
 pub mod display;
+pub mod entry;
 pub mod formula_text;
 pub mod verbs;
 pub mod view;

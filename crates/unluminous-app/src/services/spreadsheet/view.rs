@@ -25,6 +25,8 @@ pub struct Edit {
     pub caret: Option<usize>,
     /// The function the list is offering, by its row.
     pub chosen: usize,
+    /// Backspace was pressed, so AutoComplete does not finish the word, as in Excel.
+    pub no_complete: bool,
 }
 
 /// One level of the Format panel, and the path down to it.
@@ -278,6 +280,12 @@ pub struct View {
     pub end_mode: bool,
     /// The formula bar shows several lines, which Ctrl+Shift+U turns on and off.
     pub tall_bar: bool,
+    /// Where Enter moves the active cell, from the plugin's settings.
+    pub enter: super::config::EnterDirection,
+    /// The figures the status area shows about the selection, from the plugin's settings.
+    pub aggregates: Vec<String>,
+    /// Whether typing completes from the column, from the plugin's settings.
+    pub autocomplete: bool,
 }
 
 /// How the arrow keys change the selection.
@@ -323,6 +331,9 @@ impl Default for View {
             selecting: SelectMode::Normal,
             end_mode: false,
             tall_bar: false,
+            enter: super::config::EnterDirection::Down,
+            aggregates: super::config::Config::default().aggregates,
+            autocomplete: true,
         }
     }
 }

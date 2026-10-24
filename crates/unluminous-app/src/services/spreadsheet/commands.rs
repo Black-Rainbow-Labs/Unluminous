@@ -749,6 +749,7 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Result<Answe
                         focus: true,
                         caret: None,
                         chosen: 0,
+                        no_complete: false,
                     });
                     Ok(said(format!("Typing into {}", at.a1())))
                 }
