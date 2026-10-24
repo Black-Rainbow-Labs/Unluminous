@@ -232,3 +232,39 @@ fn a_tab_draws_a_frame_without_a_window() {
         output.textures_delta.clear();
     }
 }
+
+#[test]
+fn cells_carried_by_their_border_move_and_copy_as_excel_moves_them() {
+    let (mut sheet, _folder) = with_data("move");
+    run(&mut sheet, "formula D2 =B2*C2");
+    run(&mut sheet, "select B2:C3");
+    run(&mut sheet, "move-cells F2");
+    let cell = run(&mut sheet, "cell D2");
+    assert_eq!(
+        cell.value["formula"],
+        serde_json::json!("=F2*G2"),
+        "a formula follows the cells it names"
+    );
+    assert_eq!(run(&mut sheet, "cell F2").value["value"], serde_json::json!(3.5));
+    run(&mut sheet, "select F2:G2");
+    run(&mut sheet, "move-cells F8 copy values");
+    assert_eq!(run(&mut sheet, "cell G8").value["value"], serde_json::json!(4.0));
+    assert_eq!(
+        run(&mut sheet, "cell F2").value["value"],
+        serde_json::json!(3.5),
+        "a copy leaves the source"
+    );
+    run(&mut sheet, "select A2:A3");
+    run(&mut sheet, "move-cells H2 link");
+    assert_eq!(run(&mut sheet, "cell H3").value["formula"], serde_json::json!("=A3"));
+}
+
+#[test]
+fn autofit_rows_fits_the_tallest_text() {
+    let (mut sheet, _folder) = with_data("autofit");
+    run(&mut sheet, "format A2 size 24");
+    run(&mut sheet, "autofit rows A2");
+    let book = sheet.current_book().unwrap();
+    let height = book.session.book.sheets[0].rows.get(&1).and_then(|r| r.height).unwrap();
+    assert!(height > 30.0 && height < 34.0, "a 24 point row is about 32 points tall, not {height}");
+}

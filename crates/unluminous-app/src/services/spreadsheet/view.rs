@@ -234,8 +234,11 @@ pub enum Drag {
     ColumnEdge(u32, f32),
     /// Resizing a row from its bottom edge.
     RowEdge(u32, f32),
-    /// Pulling the fill handle.
-    Fill,
+    /// Pulling the fill handle; with the right button the series menu opens at the end.
+    Fill { right: bool },
+    /// Carrying the chosen cells by their border: where in the range they were picked up, and whether the
+    /// right button carries them, which asks what to do at the end.
+    Move { rows: u32, cols: u32, right: bool },
     /// Pointing at cells for a formula being typed.
     Point,
 }
@@ -309,6 +312,8 @@ pub struct View {
     pub aggregates: Vec<String>,
     /// Whether typing completes from the column, from the plugin's settings.
     pub autocomplete: bool,
+    /// The menu a right drag opened where it let go.
+    pub drop_menu: Option<(egui::Pos2, Vec<super::catalogue::Item>)>,
 }
 
 /// How the arrow keys change the selection.
@@ -357,6 +362,7 @@ impl Default for View {
             enter: super::config::EnterDirection::Down,
             aggregates: super::config::Config::default().aggregates,
             autocomplete: true,
+            drop_menu: None,
         }
     }
 }
@@ -456,6 +462,7 @@ impl View {
     /// Close every menu and panel that floats over the grid, which Escape and a click on the grid do.
     pub fn close_the_menus(&mut self) {
         self.menu = None;
+        self.drop_menu = None;
         self.book_menu = None;
         self.sheet_menu = None;
         self.filter_menu = None;

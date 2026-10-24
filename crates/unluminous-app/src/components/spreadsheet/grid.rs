@@ -216,6 +216,10 @@ pub struct GridOut {
     /// A filter button was pressed on this column.
     pub filter_menu: Option<(u32, Pos2)>,
     pub frame: Option<Frame>,
+    /// Commands the pointer asked for, run after the frame as a menu entry's are.
+    pub words: Vec<Vec<String>>,
+    /// A menu of commands to open where the pointer let go, as a right drag does.
+    pub drop_menu: Option<(Pos2, Vec<crate::services::spreadsheet::catalogue::Item>)>,
 }
 
 /// One cell's text, laid out, to draw after the fills and the borders.
@@ -694,6 +698,7 @@ fn read_the_pointer(
     let range = book.view.range();
     let handle = frame.range(book, range).right_bottom();
     let on_handle = !pointing && (p - handle).length() <= 5.0 && book.view.extra.is_empty();
+    let border = (!pointing && !on_handle).then(|| on_the_border(book, frame, p)).flatten();
     if response.hovered() {
         if column_edge.is_some() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeColumn);
@@ -701,9 +706,26 @@ fn read_the_pointer(
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeRow);
         } else if on_handle {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+        } else if border.is_some() || matches!(book.view.drag, Some(Drag::Move { .. })) {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Move);
         } else if frame.cells.contains(p) {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Cell);
         }
+    }
+    let secondary_drag = response.drag_started_by(egui::PointerButton::Secondary);
+    if secondary_drag && (border.is_some() || on_handle) {
+        out.pressed = true;
+        book.view.drag = Some(if on_handle {
+            Drag::Fill { right: true }
+        } else {
+            let grab = at;
+            Drag::Move {
+                rows: grab.row.saturating_sub(range.first.row).min(range.rows() - 1),
+                cols: grab.col.saturating_sub(range.first.col).min(range.cols() - 1),
+                right: true,
+            }
+        });
+        return;
     }
     if response.secondary_clicked() {
         out.pressed = true;
@@ -721,6 +743,33 @@ fn read_the_pointer(
             book.view.select_columns(col, col);
             out.acts.push(Act::AutoFitColumns);
             book.view.select_cell(CellRef::new(book.view.cursor.row.min(MAX_ROWS - 1), col));
+            return;
+        }
+        if let Some(row) = row_edge {
+            // A double click on a row's lower edge fits the row to what is in it, as for a column.
+            book.view.select_rows(row, row);
+            out.acts.push(Act::AutoFitRows);
+            book.view.select_cell(CellRef::new(row, book.view.cursor.col.min(MAX_COLS - 1)));
+            return;
+        }
+        if on_handle {
+            // A double click on the fill handle fills down as far as the column beside goes.
+            if let Some(to) = fill_down_extent(book) {
+                out.acts.push(Act::FillTo(to));
+            }
+            return;
+        }
+        if let Some(edge) = border {
+            // A double click on the active cell's border goes to the edge of the data that way.
+            let (rows, cols) = edge;
+            let sheet = &book.session.book.sheets[book.view.sheet];
+            let to = crate::services::spreadsheet::view::edge_of_data(
+                sheet,
+                book.view.cursor,
+                rows,
+                cols,
+            );
+            book.view.select_cell(to);
             return;
         }
         if frame.cells.contains(p) {
@@ -741,7 +790,13 @@ fn read_the_pointer(
         } else if let Some(row) = row_edge {
             book.view.drag = Some(Drag::RowEdge(row, axes.rows.size(row)));
         } else if on_handle {
-            book.view.drag = Some(Drag::Fill);
+            book.view.drag = Some(Drag::Fill { right: false });
+        } else if border.is_some() && response.drag_started() {
+            book.view.drag = Some(Drag::Move {
+                rows: at.row.saturating_sub(range.first.row).min(range.rows() - 1),
+                cols: at.col.saturating_sub(range.first.col).min(range.cols() - 1),
+                right: false,
+            });
         } else if !frame.cells.contains(p) && !in_columns && !in_rows {
             book.view.select_range(Range::new(
                 CellRef::new(0, 0),
@@ -843,7 +898,19 @@ fn read_the_pointer(
                 book.view.anchor = CellRef::new(from.max(target.row), MAX_COLS - 1);
                 scroll_by(book, Vec2::new(0.0, push.y) / frame.zoom);
             }
-            Some(Drag::Fill) => scroll_by(book, push / frame.zoom),
+            Some(Drag::Fill { .. }) => scroll_by(book, push / frame.zoom),
+            Some(Drag::Move { rows, cols, .. }) => {
+                scroll_by(book, push / frame.zoom);
+                let r = book.view.range();
+                let to = moved_to(target, rows, cols, r);
+                let shape = frame.range(book, to);
+                ui.painter_at(frame.cells).rect_stroke(
+                    shape,
+                    0,
+                    Stroke::new(2.0, ui.visuals().selection.stroke.color),
+                    egui::StrokeKind::Inside,
+                );
+            }
             _ => {}
         }
     }
@@ -881,25 +948,43 @@ fn read_the_pointer(
                     crate::services::spreadsheet::axis::points_to_height(height),
                 )));
             }
-            Some(Drag::Fill) => {
+            Some(Drag::Move { rows, cols, right }) => {
                 let target = frame.at(book, p.max(frame.cells.min));
                 let r = book.view.range();
-                // The fill goes the way the pointer went furthest: down or across.
-                let down = target.row as i64 - r.last.row as i64;
-                let up = r.first.row as i64 - target.row as i64;
-                let right = target.col as i64 - r.last.col as i64;
-                let left = r.first.col as i64 - target.col as i64;
-                let most = down.max(up).max(right).max(left);
-                if most > 0 {
-                    let to = if most == down {
-                        Range::new(r.first, CellRef::new(target.row, r.last.col))
-                    } else if most == right {
-                        Range::new(r.first, CellRef::new(r.last.row, target.col))
-                    } else if most == up {
-                        Range::new(CellRef::new(target.row, r.first.col), r.last)
+                let to = moved_to(target, rows, cols, r);
+                if to != r {
+                    let copy = modifiers.command;
+                    let insert = modifiers.shift;
+                    if right {
+                        out.drop_menu = Some((p, drop_items(to.first)));
                     } else {
-                        Range::new(CellRef::new(r.first.row, target.col), r.last)
-                    };
+                        let mut words = vec!["move-cells".to_owned(), to.first.a1()];
+                        if copy {
+                            words.push("copy".to_owned());
+                        }
+                        if insert {
+                            words.push(
+                                if to.first.row != r.first.row {
+                                    "shift-down"
+                                } else {
+                                    "shift-right"
+                                }
+                                .to_owned(),
+                            );
+                        }
+                        out.words.push(words);
+                    }
+                }
+            }
+            Some(Drag::Fill { right: true }) => {
+                let target = frame.at(book, p.max(frame.cells.min));
+                if let Some(to) = fill_target(book.view.range(), target) {
+                    out.drop_menu = Some((p, fill_items(to)));
+                }
+            }
+            Some(Drag::Fill { right: false }) => {
+                let target = frame.at(book, p.max(frame.cells.min));
+                if let Some(to) = fill_target(book.view.range(), target) {
                     out.acts.push(Act::FillTo(to));
                 }
             }
@@ -925,11 +1010,144 @@ fn read_the_pointer(
         && book.view.drag.is_some()
         && !matches!(
             book.view.drag,
-            Some(Drag::ColumnEdge(..)) | Some(Drag::RowEdge(..)) | Some(Drag::Fill)
+            Some(Drag::ColumnEdge(..))
+                | Some(Drag::RowEdge(..))
+                | Some(Drag::Fill { .. })
+                | Some(Drag::Move { .. })
         )
     {
         book.view.drag = None;
     }
+}
+
+/// Which edge of the current range the pointer is on, as the step it points along: up, down, left or
+/// right. The border is where the cells can be picked up and carried.
+fn on_the_border(book: &Book, frame: Frame, p: Pos2) -> Option<(i64, i64)> {
+    let r = book.view.range();
+    if r.is_whole_columns() || r.is_whole_rows() || !book.view.extra.is_empty() {
+        return None;
+    }
+    let rect = frame.range(book, r);
+    let near = |a: f32, b: f32| (a - b).abs() <= 3.0;
+    let within_x = p.x >= rect.left() - 3.0 && p.x <= rect.right() + 3.0;
+    let within_y = p.y >= rect.top() - 3.0 && p.y <= rect.bottom() + 3.0;
+    if within_x && near(p.y, rect.top()) {
+        Some((-1, 0))
+    } else if within_x && near(p.y, rect.bottom()) {
+        Some((1, 0))
+    } else if within_y && near(p.x, rect.left()) {
+        Some((0, if frame.rtl { 1 } else { -1 }))
+    } else if within_y && near(p.x, rect.right()) {
+        Some((0, if frame.rtl { -1 } else { 1 }))
+    } else {
+        None
+    }
+}
+
+/// Where carried cells land: the range the same size as the one picked up, placed so the cell it was
+/// picked up by is under the pointer.
+fn moved_to(target: CellRef, rows: u32, cols: u32, from: Range) -> Range {
+    let row = target.row.saturating_sub(rows).min(MAX_ROWS - from.rows());
+    let col = target.col.saturating_sub(cols).min(MAX_COLS - from.cols());
+    Range::new(CellRef::new(row, col), CellRef::new(row + from.rows() - 1, col + from.cols() - 1))
+}
+
+/// The range a double click on the fill handle fills: down to the last row of the block in the column
+/// beside the selection, left first, then right.
+fn fill_down_extent(book: &Book) -> Option<Range> {
+    let r = book.view.range();
+    let sheet = &book.session.book.sheets[book.view.sheet];
+    let filled = |row: u32, col: u32| !sheet.value_at(CellRef::new(row, col)).is_empty();
+    let beside = [r.first.col.checked_sub(1), Some(r.last.col + 1)];
+    for col in beside.into_iter().flatten() {
+        if !filled(r.last.row, col) && !filled(r.first.row, col) {
+            continue;
+        }
+        let mut last = r.last.row;
+        while last + 1 < MAX_ROWS && filled(last + 1, col) {
+            last += 1;
+        }
+        if last > r.last.row {
+            return Some(Range::new(r.first, CellRef::new(last, r.last.col)));
+        }
+    }
+    None
+}
+
+/// The range the fill handle is pulled to: the way the pointer went furthest.
+fn fill_target(r: Range, target: CellRef) -> Option<Range> {
+    let down = target.row as i64 - r.last.row as i64;
+    let up = r.first.row as i64 - target.row as i64;
+    let right = target.col as i64 - r.last.col as i64;
+    let left = r.first.col as i64 - target.col as i64;
+    let most = down.max(up).max(right).max(left);
+    if most <= 0 {
+        return None;
+    }
+    Some(if most == down {
+        Range::new(r.first, CellRef::new(target.row, r.last.col))
+    } else if most == right {
+        Range::new(r.first, CellRef::new(r.last.row, target.col))
+    } else if most == up {
+        Range::new(CellRef::new(target.row, r.first.col), r.last)
+    } else {
+        Range::new(CellRef::new(r.first.row, target.col), r.last)
+    })
+}
+
+/// The menu a right drag of the chosen cells opens where it lets go, as Excel's does.
+fn drop_items(to: CellRef) -> Vec<crate::services::spreadsheet::catalogue::Item> {
+    use crate::services::spreadsheet::catalogue::Item;
+    let at = to.a1();
+    let entry = |label: &str, more: &str| Item::Run {
+        label: label.to_owned(),
+        keys: "",
+        words: format!("move-cells {at} {more}").split_whitespace().map(str::to_owned).collect(),
+        checked: false,
+    };
+    vec![
+        entry("Move here", ""),
+        entry("Copy here", "copy"),
+        entry("Copy here as values only", "copy values"),
+        entry("Copy here as formats only", "copy formats"),
+        entry("Link here", "link"),
+        entry("Create hyperlink here", "hyperlink"),
+        Item::Line,
+        entry("Shift down and copy", "copy shift-down"),
+        entry("Shift right and copy", "copy shift-right"),
+        entry("Shift down and move", "shift-down"),
+        entry("Shift right and move", "shift-right"),
+    ]
+}
+
+/// The menu a right drag of the fill handle opens, as Excel's does.
+fn fill_items(to: Range) -> Vec<crate::services::spreadsheet::catalogue::Item> {
+    use crate::services::spreadsheet::catalogue::Item;
+    let target = to.a1();
+    let entry = |label: &str, how: &str| Item::Run {
+        label: label.to_owned(),
+        keys: "",
+        words: format!("fill-handle {target} {how}")
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect(),
+        checked: false,
+    };
+    vec![
+        entry("Copy cells", "copy"),
+        entry("Fill series", "series"),
+        entry("Fill formatting only", "formats"),
+        entry("Fill without formatting", "values"),
+        Item::Line,
+        entry("Fill days", "days"),
+        entry("Fill weekdays", "weekdays"),
+        entry("Fill months", "months"),
+        entry("Fill years", "years"),
+        Item::Line,
+        entry("Linear trend", "linear"),
+        entry("Growth trend", "growth"),
+        entry("Flash fill", "flash"),
+    ]
 }
 
 /// Follow a link: a web address in the browser, a place in the workbook by choosing it.

@@ -293,6 +293,7 @@ fn cell_size() -> Item {
             ask("Column width...", "Width in characters", "width"),
             ask("Row height...", "Height in points", "height"),
             run("AutoFit columns", "", "width auto"),
+            run("AutoFit rows", "", "height auto"),
             run("Default column width", "", "width default"),
             run("Default row height", "", "height default"),
             Item::Line,
@@ -659,14 +660,7 @@ fn scopes(book: &Book) -> Vec<(String, String)> {
 
 /// The Formulas level: functions, names, auditing and calculation, as Excel's Formulas tab groups them.
 pub fn formulas(book: &Book) -> Item {
-    sub(
-        "Formulas",
-        vec![
-            insert_function(),
-            run("AutoSum", "Alt+=", "autosum"),
-            names(book),
-        ],
-    )
+    sub("Formulas", vec![insert_function(), run("AutoSum", "Alt+=", "autosum"), names(book)])
 }
 
 /// The Format panel's first level.

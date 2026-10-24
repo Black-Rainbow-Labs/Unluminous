@@ -376,6 +376,7 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Result<Answe
             let rest = take_range(book, args);
             match rest.first().map(String::as_str) {
                 Some("default") => act(sheet, Act::Height(None)),
+                Some("auto") => act(sheet, Act::AutoFitRows),
                 Some(n) => act(
                     sheet,
                     Act::Height(Some(
@@ -757,13 +758,13 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Result<Answe
         }
         // The window's own names for the menu entries that put something on the screen.
         "open-tab" | "open-pane" => Ok(said(String::new())),
-        other if super::verbs::run(sheet, other, args).is_some() => {
-            super::verbs::run(sheet, other, args).expect("just checked")
-        }
-        other => Err(format!(
-            "there is no `{other}` command on `spreadsheet`: {}",
-            LIST.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")
-        )),
+        // The verbs round 2 added are in `verbs`, run once there.
+        other => super::verbs::run(sheet, other, args).unwrap_or_else(|| {
+            Err(format!(
+                "there is no `{other}` command on `spreadsheet`: {}",
+                LIST.iter().map(|(n, _)| *n).collect::<Vec<_>>().join(", ")
+            ))
+        }),
     }
 }
 

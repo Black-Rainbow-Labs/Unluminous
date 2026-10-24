@@ -251,6 +251,10 @@ fn after_the_grid(
     if let Some(p) = out.menu {
         book.view.menu = Some(p);
     }
+    asked.words.append(&mut out.words);
+    if let Some((p, items)) = out.drop_menu.take() {
+        book.view.drop_menu = Some((p, items));
+    }
     if let Some((col, p)) = out.filter_menu {
         book.filter_values = filter_values(book, col);
         book.view.filter_menu = Some((col, p));
@@ -964,6 +968,20 @@ fn show_floating(
         );
         if picked.is_some() {
             book.view.menu = None;
+        }
+    }
+    if let Some((at, items)) = book.view.drop_menu.clone() {
+        let got = menus::popup(
+            &ctx,
+            look,
+            egui::Id::new(("spreadsheet-drop-menu", &book.key)),
+            at,
+            &items,
+            240.0,
+        );
+        if got.is_some() {
+            book.view.drop_menu = None;
+            picked = got;
         }
     }
     if let Some((index, at)) = book.view.sheet_menu {

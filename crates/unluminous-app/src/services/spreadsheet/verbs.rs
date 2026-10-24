@@ -3,7 +3,7 @@
 //! one dispatcher an agent's words and a menu entry's reach stays one dispatcher.
 
 use serde_json::json;
-use unluminous_sheet::coord::CellRef;
+use unluminous_sheet::coord::{CellRef, Range};
 use unluminous_sheet::edit::Shift;
 use unluminous_sheet::model::{Split, ViewKind};
 
@@ -34,6 +34,27 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Option<Resul
         "insert-function" => insert_function(sheet, args),
         "arguments" => arguments(sheet, args),
         "names" => names(sheet, args),
+        "move-cells" => move_cells(sheet, args),
+        "autofit" => match args.first().map(String::as_str) {
+            Some("rows") | Some("row") => {
+                let book = match sheet.current_book() {
+                    Ok(b) => b,
+                    Err(e) => return Some(Err(e)),
+                };
+                super::commands::take_range(book, &args[1..]);
+                act(sheet, Act::AutoFitRows)
+            }
+            Some("columns") | Some("column") => {
+                let book = match sheet.current_book() {
+                    Ok(b) => b,
+                    Err(e) => return Some(Err(e)),
+                };
+                super::commands::take_range(book, &args[1..]);
+                act(sheet, Act::AutoFitColumns)
+            }
+            _ => Err("autofit takes rows or columns".to_owned()),
+        },
+        "fill-handle" => fill_handle(sheet, args),
         _ => return None,
     })
 }
@@ -459,6 +480,156 @@ fn paste_name(book: &mut Book, name: Option<&String>) -> Result<Answer, String> 
         }
     }
     Ok(Answer::said(format!("Pasted {name}")))
+}
+
+/// `move-cells <to> [copy] [values|formats|link|hyperlink] [shift-down|shift-right]`: what dragging the
+/// chosen cells by their border does, with Ctrl to copy and Shift to insert, and what each entry of the
+/// right drag menu does.
+fn move_cells(sheet: &mut Spreadsheet, args: &[String]) -> Result<Answer, String> {
+    let to = args
+        .first()
+        .and_then(|w| CellRef::parse(w))
+        .ok_or("move-cells needs where to, such as D4")?;
+    let words: Vec<&str> = args[1..].iter().map(String::as_str).collect();
+    let copy = words.contains(&"copy");
+    let mode = if words.contains(&"values") {
+        unluminous_sheet::edit::PasteMode::Values
+    } else if words.contains(&"formats") {
+        unluminous_sheet::edit::PasteMode::Formats
+    } else {
+        unluminous_sheet::edit::PasteMode::All
+    };
+    let shift = if words.contains(&"shift-down") {
+        Some(Shift::Down)
+    } else if words.contains(&"shift-right") {
+        Some(Shift::Right)
+    } else {
+        None
+    };
+    let book = sheet.current_book()?;
+    let from = book.view.range();
+    let index = book.view.sheet;
+    let size = (from.rows() - 1, from.cols() - 1);
+    let dest = Range::new(to, CellRef::new(to.row + size.0, to.col + size.1));
+    if words.contains(&"link") || words.contains(&"hyperlink") {
+        return link_cells(sheet, from, dest, words.contains(&"hyperlink"));
+    }
+    let mut source = from;
+    if let Some(shift) = shift {
+        book.session.insert(index, dest, shift)?;
+        source = after_insert(from, dest, shift);
+    }
+    let clip =
+        book.session.copy(index, source, !copy && mode == unluminous_sheet::edit::PasteMode::All);
+    let pasted = book.session.paste(&clip, index, Range::cell(to), mode)?;
+    if !copy && shift.is_some() {
+        // A move that inserted closes the gap the cells left, as Excel's Insert Cut Cells does.
+        let back = if shift == Some(Shift::Down) { Shift::Up } else { Shift::Left };
+        book.session.delete(index, source, back)?;
+    }
+    book.view.select_range(pasted);
+    book.changed();
+    Ok(Answer::said(format!(
+        "{} {} to {}",
+        if copy { "Copied" } else { "Moved" },
+        from.a1(),
+        pasted.a1()
+    )))
+}
+
+/// Where the source of a move is after cells were inserted at the destination.
+fn after_insert(from: Range, dest: Range, shift: Shift) -> Range {
+    let moves = match shift {
+        Shift::Down => {
+            from.first.row >= dest.first.row
+                && from.last.col >= dest.first.col
+                && from.first.col <= dest.last.col
+        }
+        _ => {
+            from.first.col >= dest.first.col
+                && from.last.row >= dest.first.row
+                && from.first.row <= dest.last.row
+        }
+    };
+    if !moves {
+        return from;
+    }
+    let (rows, cols) = match shift {
+        Shift::Down => (dest.rows() as i64, 0),
+        _ => (0, dest.cols() as i64),
+    };
+    Range::new(
+        from.first.offset(rows, cols).unwrap_or(from.first),
+        from.last.offset(rows, cols).unwrap_or(from.last),
+    )
+}
+
+/// Link Here and Create Hyperlink Here: formulas naming the source cells, or links to them.
+fn link_cells(
+    sheet: &mut Spreadsheet,
+    from: Range,
+    dest: Range,
+    hyperlink: bool,
+) -> Result<Answer, String> {
+    let book = sheet.current_book()?;
+    let name = unluminous_sheet::formula::print::sheet_name(
+        &book.session.book.sheets[book.view.sheet].name,
+    );
+    let mut inputs = Vec::new();
+    for r in 0..from.rows() {
+        for c in 0..from.cols() {
+            let source = CellRef::new(from.first.row + r, from.first.col + c);
+            let target = CellRef::new(dest.first.row + r, dest.first.col + c);
+            inputs.push((target, source));
+        }
+    }
+    let index = book.view.sheet;
+    if hyperlink {
+        for (target, source) in &inputs {
+            let shown = super::display::shown(
+                &book.session.book,
+                &book.session.book.sheets[index],
+                *source,
+                255,
+            )
+            .text;
+            book.session.set_input(index, *target, &shown)?;
+            let place =
+                unluminous_sheet::model::LinkTarget::Location(format!("{name}!{}", source.a1()));
+            book.session.set_link(index, Range::cell(*target), Some(place), None)?;
+        }
+    } else {
+        let typed: Vec<(CellRef, String)> =
+            inputs.iter().map(|(t, s)| (*t, format!("={}", s.a1()))).collect();
+        book.session.set_inputs(index, &typed)?;
+    }
+    book.view.select_range(dest);
+    book.changed();
+    Ok(Answer::said(format!("Linked {} to {}", dest.a1(), from.a1())))
+}
+
+/// `fill-handle <target> copy|series|formats|values|days|weekdays|months|years|linear|growth|flash`: what
+/// the menu a right drag of the fill handle opens does.
+fn fill_handle(sheet: &mut Spreadsheet, args: &[String]) -> Result<Answer, String> {
+    let book = sheet.current_book()?;
+    let target = args
+        .first()
+        .and_then(|w| Range::parse(w))
+        .ok_or("fill-handle needs the range to fill, such as A1:A10")?;
+    let how = args.get(1).map(String::as_str).unwrap_or("series");
+    match how {
+        "series" => act(sheet, Act::FillTo(target)),
+        "copy" => {
+            let source = book.view.range();
+            let index = book.view.sheet;
+            let clip = book.session.copy(index, source, false);
+            book.session.paste(&clip, index, target, unluminous_sheet::edit::PasteMode::All)?;
+            book.view.select_range(target);
+            book.changed();
+            Ok(Answer::said(format!("Copied into {}", target.a1())))
+        }
+        other => Err(format!("fill-handle takes copy or series here, not `{other}`")),
+    }
 }
 
 /// `autocomplete list`: the entries of the column under the active cell, which Alt+Down opens as a list.
