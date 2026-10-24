@@ -169,6 +169,7 @@ pub fn read_cache(book: &Workbook, id: u32, definition: &str) -> Option<PivotCac
         calculated_items,
         definition_part: definition.to_owned(),
         records_part,
+        dirty: false,
     })
 }
 

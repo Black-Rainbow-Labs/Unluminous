@@ -168,6 +168,7 @@ fn rewrite_cache_list(book: &mut Workbook) {
     let mut entries: Vec<(u32, String)> = listed_caches(book)
         .into_iter()
         .filter(|(id, _)| !modelled.contains(id))
+        .filter(|(_, rid)| book.kept.workbook_rels.iter().any(|r| r.id == *rid))
         .collect();
     for cache in &book.pivots.caches {
         let rid = book
@@ -286,4 +287,22 @@ pub fn sync_all(book: &mut Workbook) {
         let _ = (&valid, &xml);
     }
     let _ = (XML_HEAD, REL_CACHE_RECORDS);
+}
+
+/// Bring the parts of every cache and table that changed up to date, after a change around them.
+pub fn sync_dirty(book: &mut Workbook) {
+    if !book.pivots.removed_parts.is_empty() {
+        sync_all(book);
+    }
+    for c in 0..book.pivots.caches.len() {
+        if book.pivots.caches[c].dirty {
+            sync_cache(book, c);
+            book.pivots.caches[c].dirty = false;
+        }
+    }
+    for t in 0..book.pivots.tables.len() {
+        if book.pivots.tables[t].dirty {
+            sync_table(book, t);
+        }
+    }
 }

@@ -289,6 +289,8 @@ pub struct PivotCache {
     /// Where the definition and the records were read from or last written.
     pub definition_part: String,
     pub records_part: String,
+    /// Changed since its parts were written.
+    pub dirty: bool,
 }
 
 /// What a refresh changed in the items of a field, so a table can follow: for each old item, its new place.
@@ -322,6 +324,7 @@ impl PivotCache {
             calculated_items: Vec::new(),
             definition_part: String::new(),
             records_part: String::new(),
+            dirty: true,
         };
         cache.read_source(book, sheet, range, false)?;
         Ok(cache)

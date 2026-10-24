@@ -541,6 +541,9 @@ impl Session {
             ),
             _ => return Err("insert shifts cells down or right".to_owned()),
         };
+        if let Some(why) = self.book.pivots.refuse_edit(sheet, axis == Axis::Rows, at, count, band) {
+            return Err(why);
+        }
         self.remember_whole(match axis {
             Axis::Rows => "Insert rows",
             Axis::Columns => "Insert columns",
@@ -567,6 +570,9 @@ impl Session {
             ),
             _ => return Err("delete shifts cells up or left".to_owned()),
         };
+        if let Some(why) = self.book.pivots.refuse_edit(sheet, axis == Axis::Rows, at, count, band) {
+            return Err(why);
+        }
         self.remember_whole(match axis {
             Axis::Rows => "Delete rows",
             Axis::Columns => "Delete columns",
@@ -742,6 +748,8 @@ impl Session {
                 }
             }
         }
+        self.book.pivots.shift(sheet, &name, &shift_range);
+        crate::pivot::xml::sync_dirty(&mut self.book);
         self.engine.rebuild(&self.book);
         self.recalculate_all();
     }
@@ -800,6 +808,8 @@ impl Session {
                 }
             }
         }
+        self.book.pivots.sheet_renamed(&old, name);
+        crate::pivot::xml::sync_dirty(&mut self.book);
         self.engine.rebuild(&self.book);
         self.recalculate_all();
         Ok(())
@@ -830,6 +840,8 @@ impl Session {
                 }
             }
         }
+        self.book.pivots.sheet_deleted(sheet);
+        crate::pivot::xml::sync_dirty(&mut self.book);
         self.book.sheets.remove(sheet);
         self.book.tables.retain(|t| t.sheet != sheet);
         self.book.names.retain(|n| n.scope != Some(sheet));
@@ -937,6 +949,7 @@ impl Session {
     }
 
     fn reindex_after_sheet_move(&mut self, map: impl Fn(usize) -> usize) {
+        self.book.pivots.sheets_moved(&map);
         for t in &mut self.book.tables {
             t.sheet = map(t.sheet);
         }

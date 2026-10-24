@@ -29,6 +29,7 @@ pub mod query;
 pub mod session;
 pub mod session_calc;
 pub mod session_group;
+pub mod shift;
 pub mod show;
 pub mod table;
 pub mod xml;
