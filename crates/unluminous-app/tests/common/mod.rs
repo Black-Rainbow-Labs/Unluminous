@@ -697,7 +697,11 @@ pub fn settle(
     what: &str,
     ready: impl Fn(&UnluminousApp) -> bool,
 ) {
-    for _ in 0..600 {
+    // A deadline rather than 600 turns: under load a turn takes longer and the count ran out first,
+    // and an update test that gave up left its scripted address set for the tests after it
+    // (`task-2353`).
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    while std::time::Instant::now() < deadline {
         pump(harness);
         if ready(harness.state()) {
             pump(harness);
