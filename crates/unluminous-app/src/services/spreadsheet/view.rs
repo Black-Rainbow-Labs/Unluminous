@@ -25,6 +25,8 @@ pub struct Edit {
     pub caret: Option<usize>,
     /// The function the list is offering, by its row.
     pub chosen: usize,
+    /// Backspace was pressed, so AutoComplete does not finish the word, as in Excel.
+    pub no_complete: bool,
 }
 
 /// One level of the Format panel, and the path down to it.
@@ -42,6 +44,146 @@ pub struct Prompt {
     /// A second field, for a link's shown text or a rule's second value.
     pub second: Option<(String, String)>,
     pub focus: bool,
+    /// The fields of a larger box, such as Paste Special or Sort, in place of `text` and `second`.
+    pub fields: Vec<Field>,
+}
+
+impl Prompt {
+    /// A box of several fields that runs `verb` with what they say when OK is pressed.
+    pub fn form(verb: Vec<String>, title: impl Into<String>, fields: Vec<Field>) -> Prompt {
+        Prompt {
+            verb,
+            title: title.into(),
+            label: String::new(),
+            text: String::new(),
+            second: None,
+            focus: true,
+            fields,
+        }
+    }
+
+    /// The words OK runs: the verb, then what the fields say.
+    pub fn answer(&self) -> Vec<String> {
+        let mut words = self.verb.clone();
+        if self.fields.is_empty() {
+            words.push(self.text.clone());
+            if let Some((_, second)) = &self.second {
+                if !second.is_empty() {
+                    words.push(second.clone());
+                }
+            }
+            return words;
+        }
+        for field in &self.fields {
+            field.push_words(&mut words);
+        }
+        words
+    }
+
+    /// The field a word names: its key, or its label with spaces written as dashes.
+    pub fn field_mut(&mut self, name: &str) -> Option<&mut Field> {
+        let wanted = name.to_lowercase().replace(' ', "-");
+        self.fields.iter_mut().find(|f| {
+            f.key.eq_ignore_ascii_case(&wanted)
+                || f.label.to_lowercase().replace(' ', "-") == wanted
+        })
+    }
+}
+
+/// What a field of a box takes.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FieldKind {
+    /// Typed text.
+    Text,
+    /// One of these, each a label and the word it puts into the command.
+    Choice(Vec<(String, String)>),
+    /// A switch: on puts the field's key into the command.
+    Check,
+}
+
+/// One field of a box.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Field {
+    pub label: String,
+    /// The word the command reads the field by.
+    pub key: String,
+    pub kind: FieldKind,
+    /// The text typed, the word of the choice made, or `on` for a switch that is on.
+    pub value: String,
+    /// The value goes into the command alone, without its key in front.
+    pub positional: bool,
+}
+
+impl Field {
+    pub fn text(label: &str, key: &str, value: &str) -> Field {
+        Field {
+            label: label.to_owned(),
+            key: key.to_owned(),
+            kind: FieldKind::Text,
+            value: value.to_owned(),
+            positional: false,
+        }
+    }
+
+    /// A text field whose value goes into the command with no key in front.
+    pub fn bare(label: &str, value: &str) -> Field {
+        Field {
+            positional: true,
+            ..Field::text(label, &label.to_lowercase().replace(' ', "-"), value)
+        }
+    }
+
+    pub fn choice(label: &str, key: &str, options: &[(&str, &str)], value: &str) -> Field {
+        Field {
+            label: label.to_owned(),
+            key: key.to_owned(),
+            kind: FieldKind::Choice(
+                options.iter().map(|(l, w)| ((*l).to_owned(), (*w).to_owned())).collect(),
+            ),
+            value: value.to_owned(),
+            positional: true,
+        }
+    }
+
+    pub fn check(label: &str, key: &str, on: bool) -> Field {
+        Field {
+            label: label.to_owned(),
+            key: key.to_owned(),
+            kind: FieldKind::Check,
+            value: if on { "on".to_owned() } else { String::new() },
+            positional: false,
+        }
+    }
+
+    pub fn is_on(&self) -> bool {
+        self.value == "on"
+    }
+
+    /// Put what the field says into the command's words.
+    fn push_words(&self, words: &mut Vec<String>) {
+        match &self.kind {
+            FieldKind::Check => {
+                if self.is_on() {
+                    words.push(self.key.clone());
+                }
+            }
+            FieldKind::Choice(_) => {
+                if !self.value.is_empty() {
+                    words.push(self.value.clone());
+                }
+            }
+            FieldKind::Text => {
+                let value = self.value.trim();
+                if value.is_empty() {
+                    return;
+                }
+                if !self.positional {
+                    words.push(self.key.clone());
+                }
+                words.push(value.to_owned());
+            }
+        }
+    }
 }
 
 /// The find bar.
@@ -97,8 +239,11 @@ pub struct View {
     /// The range kept chosen while Enter or Tab walks the active cell through it, when the active cell is
     /// not at one of its corners.
     pub held: Option<Range>,
-    /// How far the cells past the frozen ones are scrolled, in points at a zoom of one.
+    /// How far the cells past the frozen ones are scrolled, in points at a zoom of one. In a split window
+    /// this is the bottom right pane's scroll.
     pub scroll: egui::Vec2,
+    /// A split window's other scroll: across for the panes at the left, down for the panes at the top.
+    pub split_scroll: egui::Vec2,
     pub zoom: f32,
     pub edit: Option<Edit>,
     pub panel: Option<PanelPath>,
@@ -129,6 +274,29 @@ pub struct View {
     pub axes: Option<Axes>,
     /// The grid's rectangle and where its cells start, last frame, for a command that asks where a cell is.
     pub drawn: Option<egui::Rect>,
+    /// Extend or Add mode, which F8 and Shift+F8 turn on, shown in the status area.
+    pub selecting: SelectMode,
+    /// End was pressed, so the next arrow goes to the edge of the data.
+    pub end_mode: bool,
+    /// The formula bar shows several lines, which Ctrl+Shift+U turns on and off.
+    pub tall_bar: bool,
+    /// Where Enter moves the active cell, from the plugin's settings.
+    pub enter: super::config::EnterDirection,
+    /// The figures the status area shows about the selection, from the plugin's settings.
+    pub aggregates: Vec<String>,
+    /// Whether typing completes from the column, from the plugin's settings.
+    pub autocomplete: bool,
+}
+
+/// How the arrow keys change the selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SelectMode {
+    #[default]
+    Normal,
+    /// The arrows grow the selection, as if Shift were held.
+    Extend,
+    /// The next range chosen is added to the ones already chosen.
+    Add,
 }
 
 impl Default for View {
@@ -140,6 +308,7 @@ impl Default for View {
             extra: Vec::new(),
             held: None,
             scroll: egui::Vec2::ZERO,
+            split_scroll: egui::Vec2::ZERO,
             zoom: 1.0,
             edit: None,
             panel: None,
@@ -159,6 +328,12 @@ impl Default for View {
             take_keys: false,
             axes: None,
             drawn: None,
+            selecting: SelectMode::Normal,
+            end_mode: false,
+            tall_bar: false,
+            enter: super::config::EnterDirection::Down,
+            aggregates: super::config::Config::default().aggregates,
+            autocomplete: true,
         }
     }
 }
@@ -297,12 +472,38 @@ pub fn claims_key(key: egui::Key, modifiers: egui::Modifiers) -> bool {
                 | Num0
                 | Backtick
                 | Colon
+                | Num7
+                | Num8
+                | E
+                | O
+                | P
+                | Q
+                | V
+                | Quote
+                | Period
+                | Backspace
+                | F2
+                | F3
+                | F9
         );
     }
     if modifiers.alt {
-        return matches!(key, Equals | Plus | ArrowDown | Enter);
+        return matches!(
+            key,
+            Equals
+                | Plus
+                | ArrowDown
+                | ArrowLeft
+                | ArrowRight
+                | Enter
+                | Q
+                | F1
+                | F10
+                | PageUp
+                | PageDown
+        );
     }
-    matches!(key, F2 | F3 | F4 | F9 | F11 | Delete | Space)
+    matches!(key, F2 | F3 | F4 | F5 | F7 | F8 | F9 | F10 | F11 | F12 | Delete | Space | End)
 }
 
 /// Where Ctrl and an arrow goes from `at`: to the end of the run of filled cells it is in, or to the next

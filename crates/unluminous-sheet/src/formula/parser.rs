@@ -463,6 +463,10 @@ impl Parser {
         let start = self.at;
         while matches!(self.peek(), Some(c) if c.is_alphanumeric() || matches!(c, '_' | '.' | '\\' | '?' | '$'))
         {
+            // `B1.:B9` trims leading empty cells: the dot belongs to the operator and not to the word.
+            if self.peek() == Some('.') && self.peek_at(1) == Some(':') {
+                break;
+            }
             self.at += 1;
         }
         self.chars[start..self.at].iter().collect()
@@ -537,6 +541,7 @@ impl Parser {
                 ("SINGLE", 1) => return Ok(Expr::Implicit(Box::new(args.remove(0)))),
                 _ => {}
             }
+            let name = keep_unknown_prefix(&word, name);
             return Ok(Expr::Call(Arc::from(name.as_str()), args));
         }
         // A sheet name: `Sheet1!A1`, or the first of a 3D span `Sheet1:Sheet3!A1`.
@@ -570,7 +575,8 @@ impl Parser {
             return Err(format!("`{word}` is not a cell, a range or a name"));
         }
         // An external reference `[1]Sheet1!A1` never reaches here; this is a defined name or a parameter.
-        let name = word.strip_prefix("_xlpm.").unwrap_or(&word);
+        let name =
+            word.strip_prefix("_xlpm.").or_else(|| word.strip_prefix("_xleta.")).unwrap_or(&word);
         Ok(Expr::Name(Arc::from(name)))
     }
 
@@ -583,18 +589,23 @@ impl Parser {
     ) -> Result<Option<Expr>, String> {
         if let Some(first) = point(word) {
             let save = self.at;
+            let trim = self.trim_start();
             if self.eat(':') {
+                let trim = self.trim_end(trim);
                 let second = self.word();
                 if let Some(last) = point(&second) {
                     let (first, last) = ordered(first, last);
-                    return Ok(Some(Expr::Ref(Reference {
+                    let range = Expr::Ref(Reference {
                         sheet,
                         sheet_last,
                         first,
                         last,
                         shape: Shape::Range,
-                    })));
+                    });
+                    return Ok(Some(trimmed_range(range, trim)));
                 }
+                self.at = save;
+            } else {
                 self.at = save;
             }
             return Ok(Some(Expr::Ref(Reference {
@@ -608,24 +619,47 @@ impl Parser {
         // Whole columns: `A:C`, `$A:$C`.
         if let Some((a, a_abs)) = column_part(word) {
             let save = self.at;
+            let trim = self.trim_start();
             if self.eat(':') {
+                let trim = self.trim_end(trim);
                 let second = self.word();
                 if let Some((b, b_abs)) = column_part(&second) {
                     let (mut first, mut last) = Reference::whole_columns(a.min(b), a.max(b));
                     first.col_abs = a_abs;
                     last.col_abs = b_abs;
-                    return Ok(Some(Expr::Ref(Reference {
+                    let columns = Expr::Ref(Reference {
                         sheet,
                         sheet_last,
                         first,
                         last,
                         shape: Shape::Columns,
-                    })));
+                    });
+                    return Ok(Some(trimmed_range(columns, trim)));
                 }
             }
             self.at = save;
         }
         Ok(None)
+    }
+
+    /// A `.` before the `:` of a range, which trims the empty cells at its start: `B1.:B9`.
+    fn trim_start(&mut self) -> bool {
+        let lead = self.peek() == Some('.') && self.peek_at(1) == Some(':');
+        if lead {
+            self.at += 1;
+        }
+        lead
+    }
+
+    /// A `.` after the `:` of a range, which trims the empty cells at its end: `B1:.B9`. Answers which of the
+    /// two trims the range has, as `(leading, trailing)`.
+    fn trim_end(&mut self, leading: bool) -> (bool, bool) {
+        let trailing = self.peek() == Some('.')
+            && matches!(self.peek_at(1), Some(c) if c.is_alphanumeric() || c == '$');
+        if trailing {
+            self.at += 1;
+        }
+        (leading, trailing)
     }
 
     /// Arguments after `(`, up to and including `)`. An argument left out is [`Expr::Missing`].
@@ -796,6 +830,29 @@ pub fn canonical_function(name: &str) -> String {
     upper
 }
 
+/// A range, wrapped in the function that trims its empty edges when the formula wrote `.:`, `:.` or `.:.`.
+fn trimmed_range(range: Expr, (leading, trailing): (bool, bool)) -> Expr {
+    let name = match (leading, trailing) {
+        (false, false) => return range,
+        (true, true) => "_TRO_ALL",
+        (true, false) => "_TRO_LEADING",
+        (false, true) => "_TRO_TRAILING",
+    };
+    Expr::Call(Arc::from(name), vec![range])
+}
+
+/// The name a call is kept under. A function this version does not have keeps the `_xlfn.` or `_xlws.`
+/// prefix a file wrote it with, so the formula is written back as it was read and Excel still knows it.
+fn keep_unknown_prefix(written: &str, canonical: String) -> String {
+    let upper = written.to_ascii_uppercase();
+    let prefixed = upper.starts_with("_XLFN.") || upper.starts_with("_XLWS.");
+    if prefixed && crate::functions::find(&canonical).is_none() {
+        written.to_owned()
+    } else {
+        canonical
+    }
+}
+
 /// Read the inside of a structured reference.
 fn table_ref(table: Option<Arc<str>>, text: &str) -> TableRef {
     let inner = &text[1..text.len().saturating_sub(1)];
@@ -964,5 +1021,35 @@ mod tests {
         let Expr::Table(t) = parse("[@[Unit price]]").unwrap() else { panic!() };
         assert_eq!(t.items, vec![Arc::from("this row")]);
         assert_eq!(t.first_column.as_deref(), Some("Unit price"));
+    }
+    #[test]
+    fn the_trim_operators_are_functions_that_print_back_as_the_operators() {
+        for (text, printed) in [
+            ("SUM(B1:.B9)", "SUM(B1:.B9)"),
+            ("SUM(B1.:B9)", "SUM(B1.:B9)"),
+            ("SUM(B1.:.B9)", "SUM(B1.:.B9)"),
+            ("SUM(A:.A)", "SUM(A:.A)"),
+            ("SUM(Sheet2!B1.:.B9)", "SUM(Sheet2!B1.:.B9)"),
+            ("SUM(_xlfn._TRO_ALL(B1:B9))", "SUM(B1.:.B9)"),
+        ] {
+            assert_eq!(round(text), printed, "{text}");
+        }
+        let Expr::Call(name, args) = parse("B1:.B9").unwrap() else { panic!() };
+        assert_eq!(&*name, "_TRO_TRAILING");
+        assert_eq!(args.len(), 1);
+        assert_eq!(print(&parse("B1.:.B9").unwrap(), true), "_xlfn._TRO_ALL(B1:B9)");
+    }
+
+    #[test]
+    fn every_error_kind_reads_as_a_literal_and_a_function_name_in_a_file_is_an_eta_name() {
+        for kind in ErrorKind::ALL {
+            assert_eq!(parse(kind.text()).unwrap(), Expr::Error(kind), "{kind}");
+        }
+        assert_eq!(
+            print(&parse("_xlfn.GROUPBY(A1:A4,B1:B4,_xleta.SUM)").unwrap(), true),
+            "_xlfn.GROUPBY(A1:A4,B1:B4,_xleta.SUM)"
+        );
+        assert_eq!(round("_xlfn.GROUPBY(A1:A4,B1:B4,_xleta.SUM)"), "GROUPBY(A1:A4,B1:B4,SUM)");
+        assert_eq!(round("_xlfn.NOSUCHFUNCTION(1)"), "_xlfn.NOSUCHFUNCTION(1)");
     }
 }

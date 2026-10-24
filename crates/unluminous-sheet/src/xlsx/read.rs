@@ -525,7 +525,7 @@ fn read_styles(xml: &str, styles: &mut Styles) -> Result<(), String> {
 }
 
 /// The text of a shared string or inline string: its runs joined, phonetic guides left out. The XML is
-/// kept when it has formatting runs.
+/// kept when it has formatting runs or phonetic guides, which PHONETIC reads and the writer gives back.
 fn string_item(xml: &str, si: Node) -> (Arc<str>, Option<Arc<str>>) {
     let mut text = String::new();
     let mut rich = false;
@@ -538,6 +538,7 @@ fn string_item(xml: &str, si: Node) -> (Arc<str>, Option<Arc<str>>) {
                     text.push_str(t.text().unwrap_or(""));
                 }
             }
+            "rPh" | "phoneticPr" => rich = true,
             _ => {}
         }
     }
@@ -596,6 +597,10 @@ fn file_formula(text: &str, dynamic: bool) -> Formula {
                 Expr::Call(name, _)
                     if crate::functions::find(name).is_none() && !is_name_call(name) =>
                 {
+                    unknown = true;
+                }
+                // A function that needs a service of Excel's keeps the value the file saved.
+                Expr::Call(name, _) if crate::functions::find(name).is_some_and(|f| f.offline) => {
                     unknown = true;
                 }
                 _ => {}
@@ -910,8 +915,22 @@ fn read_sheet(
                                     formula = Some(made);
                                 }
                                 Some("dataTable") => {
-                                    // A What If data table: kept as its values.
-                                    let _ = f_text;
+                                    let cell =
+                                        |name: &str| f.attribute(name).and_then(CellRef::parse);
+                                    sheet.data_tables.push(DataTable {
+                                        range: f
+                                            .attribute("ref")
+                                            .and_then(Range::parse)
+                                            .unwrap_or(Range::cell(at)),
+                                        two_d: bool_attr(f, "dt2D"),
+                                        row_input: bool_attr(f, "dtr"),
+                                        r1: cell("r1"),
+                                        r2: cell("r2"),
+                                        attrs: attrs_of(
+                                            f,
+                                            &["t", "ref", "dt2D", "dtr", "r1", "r2"],
+                                        ),
+                                    });
                                 }
                                 _ => {
                                     if !f_text.is_empty() {

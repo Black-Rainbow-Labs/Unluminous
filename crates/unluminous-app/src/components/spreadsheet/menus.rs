@@ -36,7 +36,11 @@ fn ask_of(item: &Item) -> Option<Prompt> {
             text: initial.clone(),
             second: second.clone().map(|label| (label, String::new())),
             focus: true,
+            fields: Vec::new(),
         }),
+        Item::Form { title, words, fields, .. } => {
+            Some(Prompt::form(words.clone(), title.clone(), fields.clone()))
+        }
         _ => None,
     }
 }
@@ -186,7 +190,7 @@ fn popup_level(
                     open = None;
                 }
             }
-            Item::Ask { label, .. } => {
+            Item::Ask { label, .. } | Item::Form { label, .. } => {
                 if controls::menu_row(ui, label, "", true, false, 0.0) {
                     picked = ask_of(item).map(Picked::Ask);
                 }
@@ -251,7 +255,9 @@ fn found_rows(
             {
                 picked = Some(Picked::Words(words.clone()));
             }
-            Item::Ask { .. } if controls::menu_row(ui, &path, "", true, false, 0.0) => {
+            Item::Ask { .. } | Item::Form { .. }
+                if controls::menu_row(ui, &path, "", true, false, 0.0) =>
+            {
                 picked = ask_of(&item).map(Picked::Ask);
             }
             Item::Colors { words, none, label } => {
@@ -478,7 +484,7 @@ pub fn panel(
                             picked = Some(Picked::Words(words.clone()));
                         }
                     }
-                    Item::Ask { label, .. } => {
+                    Item::Ask { label, .. } | Item::Form { label, .. } => {
                         if controls::menu_row(ui, label, "", true, false, 0.0) {
                             picked = ask_of(item).map(Picked::Ask);
                         }
@@ -541,41 +547,51 @@ pub fn prompt_box(
                     .size(13.5),
             );
             ui.add_space(6.0);
-            ui.label(egui::RichText::new(&prompt.label).color(look.palette.text_dim).size(11.5));
             let font = egui::FontId::proportional(13.0);
-            let first = ui.text_box(
-                egui::TextEdit::singleline(&mut prompt.text)
-                    .id(id.with("first"))
-                    .font(font.clone())
-                    .desired_width(320.0)
-                    .hint_text(controls::placeholder(
-                        &prompt.label,
-                        &font,
-                        look.palette.text_faint,
-                    )),
-            );
-            first.widget_info(|| {
-                egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, prompt.label.clone())
-            });
-            if prompt.focus {
-                first.request_focus();
-                prompt.focus = false;
-            }
-            if let Some((label, text)) = prompt.second.as_mut() {
-                ui.add_space(4.0);
+            if !prompt.fields.is_empty() {
+                form_fields(ui, look, id, prompt, &font);
+            } else {
                 ui.label(
-                    egui::RichText::new(label.as_str()).color(look.palette.text_dim).size(11.5),
+                    egui::RichText::new(&prompt.label).color(look.palette.text_dim).size(11.5),
                 );
-                let second = ui.text_box(
-                    egui::TextEdit::singleline(text)
-                        .id(id.with("second"))
+                let first = ui.text_box(
+                    egui::TextEdit::singleline(&mut prompt.text)
+                        .id(id.with("first"))
                         .font(font.clone())
-                        .desired_width(320.0),
+                        .desired_width(320.0)
+                        .hint_text(controls::placeholder(
+                            &prompt.label,
+                            &font,
+                            look.palette.text_faint,
+                        )),
                 );
-                let name = label.clone();
-                second.widget_info(|| {
-                    egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, name.clone())
+                first.widget_info(|| {
+                    egui::WidgetInfo::labeled(
+                        egui::WidgetType::TextEdit,
+                        true,
+                        prompt.label.clone(),
+                    )
                 });
+                if prompt.focus {
+                    first.request_focus();
+                    prompt.focus = false;
+                }
+                if let Some((label, text)) = prompt.second.as_mut() {
+                    ui.add_space(4.0);
+                    ui.label(
+                        egui::RichText::new(label.as_str()).color(look.palette.text_dim).size(11.5),
+                    );
+                    let second = ui.text_box(
+                        egui::TextEdit::singleline(text)
+                            .id(id.with("second"))
+                            .font(font.clone())
+                            .desired_width(320.0),
+                    );
+                    let name = label.clone();
+                    second.widget_info(|| {
+                        egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, name.clone())
+                    });
+                }
             }
             ui.add_space(8.0);
             ui.horizontal(|ui| {
@@ -588,14 +604,7 @@ pub fn prompt_box(
                 let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
                 let escape = ui.input(|i| i.key_pressed(egui::Key::Escape));
                 if ok.clicked() || enter {
-                    let mut words = prompt.verb.clone();
-                    words.push(prompt.text.clone());
-                    if let Some((_, second)) = &prompt.second {
-                        if !second.is_empty() {
-                            words.push(second.clone());
-                        }
-                    }
-                    answer = Some(Answered::Ok(words));
+                    answer = Some(Answered::Ok(prompt.answer()));
                 }
                 if cancel.clicked() || escape {
                     answer = Some(Answered::Cancel);
@@ -604,6 +613,70 @@ pub fn prompt_box(
         });
     });
     answer
+}
+
+/// The fields of a larger box: a label over each text field, a row of choices, a switch.
+fn form_fields(
+    ui: &mut egui::Ui,
+    look: &Look<'_>,
+    id: egui::Id,
+    prompt: &mut Prompt,
+    font: &egui::FontId,
+) {
+    use crate::services::spreadsheet::view::FieldKind;
+    let focus = std::mem::take(&mut prompt.focus);
+    let mut first_text = true;
+    for (i, field) in prompt.fields.iter_mut().enumerate() {
+        ui.add_space(3.0);
+        match &field.kind {
+            FieldKind::Text => {
+                ui.label(egui::RichText::new(&field.label).color(look.palette.text_dim).size(11.5));
+                let response = ui.text_box(
+                    egui::TextEdit::singleline(&mut field.value)
+                        .id(id.with(("field", i)))
+                        .font(font.clone())
+                        .desired_width(320.0),
+                );
+                let name = field.label.clone();
+                response.widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, name.clone())
+                });
+                if focus && first_text {
+                    response.request_focus();
+                }
+                first_text = false;
+            }
+            FieldKind::Choice(options) => {
+                ui.label(egui::RichText::new(&field.label).color(look.palette.text_dim).size(11.5));
+                let options = options.clone();
+                ui.horizontal_wrapped(|ui| {
+                    for (label, word) in &options {
+                        let on = field.value == *word;
+                        let response = ui.selectable_label(on, label.as_str());
+                        let name = format!("{}: {label}", field.label);
+                        response.widget_info(|| {
+                            egui::WidgetInfo::selected(
+                                egui::WidgetType::RadioButton,
+                                true,
+                                on,
+                                name.clone(),
+                            )
+                        });
+                        if response.clicked() {
+                            field.value = word.clone();
+                        }
+                    }
+                });
+            }
+            FieldKind::Check => {
+                let mut on = field.is_on();
+                let response = ui.checkbox(&mut on, field.label.as_str());
+                if response.changed() {
+                    field.value = if on { "on".to_owned() } else { String::new() };
+                }
+            }
+        }
+    }
 }
 
 /// What the find bar asked for.

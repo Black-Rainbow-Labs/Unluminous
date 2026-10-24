@@ -197,6 +197,15 @@ fn shift_modelled_text(book: &mut Workbook, sheet: usize, edit: &StructuralEdit)
         chart.from.0 = shift_anchor(chart.from.0, &own, edit);
         chart.to.0 = shift_anchor(chart.to.0, &own, edit);
     }
+    // A data table whose cells were all deleted goes with them.
+    s.data_tables.retain_mut(|t| {
+        let Some(range) = shift_own_range(t.range, &own, edit) else { return false };
+        t.range = range;
+        for c in [&mut t.r1, &mut t.r2].into_iter().flatten() {
+            *c = shift_cell_range(Range::cell(*c), &own, edit).first;
+        }
+        true
+    });
     let view = &mut s.view;
     for sel in &mut view.selections {
         sel.ranges = sel.ranges.iter().map(|r| shift_cell_range(*r, &own, edit)).collect();
@@ -213,6 +222,18 @@ fn shift_modelled_text(book: &mut Workbook, sheet: usize, edit: &StructuralEdit)
     for picture in &mut s.pictures {
         picture.from.0 = shift_anchor(picture.from.0, &own, edit);
         picture.to.0 = shift_anchor(picture.to.0, &own, edit);
+    }
+}
+
+/// A range on `own` after the edit, or `None` when it was wholly deleted.
+fn shift_own_range(range: Range, own: &str, edit: &StructuralEdit) -> Option<Range> {
+    match edit {
+        StructuralEdit::Lines { sheet, axis, at, count, band }
+            if own.eq_ignore_ascii_case(sheet) =>
+        {
+            shift_range(range, *axis, *at, *count, *band)
+        }
+        _ => Some(range),
     }
 }
 

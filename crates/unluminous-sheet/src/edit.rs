@@ -1170,15 +1170,16 @@ impl Session {
         Ok(())
     }
 
-    /// Change how a sheet is shown: the view kind, headings, zeros, formulas, right to left.
+    /// Change how a sheet is shown: the view kind, headings, zeros, formulas, right to left. Not an undo
+    /// step, as these are not in Excel, but saved with the file.
     pub fn set_view(
         &mut self,
         sheet: usize,
         change: impl FnOnce(&mut crate::model::SheetView),
     ) -> Result<(), String> {
         self.check_sheet(sheet)?;
-        self.remember_whole("Change view");
         change(&mut self.book.sheets[sheet].view);
+        self.modified = true;
         Ok(())
     }
 

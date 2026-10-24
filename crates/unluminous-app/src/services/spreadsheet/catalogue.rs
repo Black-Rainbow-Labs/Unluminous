@@ -6,6 +6,7 @@
 //! same call into [`super::commands::run`]. A test walks the tree and runs every entry.
 
 use super::display::SWATCHES;
+use super::view::Field;
 use super::Book;
 
 /// One entry.
@@ -27,6 +28,13 @@ pub enum Item {
         second: Option<String>,
         initial: String,
     },
+    /// Ask for several fields in a box, then run the words with what they say.
+    Form {
+        label: String,
+        title: String,
+        words: Vec<String>,
+        fields: Vec<Field>,
+    },
     /// A level of its own.
     Sub {
         label: String,
@@ -46,6 +54,7 @@ impl Item {
         match self {
             Item::Run { label, .. }
             | Item::Ask { label, .. }
+            | Item::Form { label, .. }
             | Item::Sub { label, .. }
             | Item::Colors { label, .. } => label,
             Item::Line => "",
@@ -84,6 +93,16 @@ fn ask2(label: &str, field: &str, second: &str, text: &str) -> Item {
         words: words(text),
         second: Some(second.to_owned()),
         initial: String::new(),
+    }
+}
+
+/// A box of several fields. The title is the label without its trailing dots.
+pub fn form(label: &str, text: &str, fields: Vec<Field>) -> Item {
+    Item::Form {
+        label: label.to_owned(),
+        title: label.trim_end_matches("...").to_owned(),
+        words: words(text),
+        fields,
     }
 }
 
@@ -375,17 +394,60 @@ fn data(book: &Book) -> Item {
 
 fn view(book: &Book) -> Item {
     let s = &book.session.book.sheets[book.view.sheet];
+    let v = &s.view;
+    let kind = |k: unluminous_sheet::model::ViewKind| v.kind == k;
     sub(
         "View",
         vec![
+            check("Normal", "view normal", kind(unluminous_sheet::model::ViewKind::Normal)),
+            check(
+                "Page break preview",
+                "view page-break",
+                kind(unluminous_sheet::model::ViewKind::PageBreakPreview),
+            ),
+            check(
+                "Page layout",
+                "view layout",
+                kind(unluminous_sheet::model::ViewKind::PageLayout),
+            ),
+            Item::Line,
             run("Freeze panes here", "", "freeze"),
             run("Freeze top row", "", "freeze rows 1"),
             run("Freeze first column", "", "freeze columns 1"),
             run("Unfreeze panes", "", "freeze off"),
             check(
+                "Split",
+                if v.split.is_some() { "split off" } else { "split window" },
+                v.split.is_some(),
+            ),
+            Item::Line,
+            check(
                 "Gridlines",
                 if s.show_grid { "gridlines off" } else { "gridlines on" },
                 s.show_grid,
+            ),
+            check("Headings", "headings toggle", v.show_headings),
+            check("Show formulas", "show-formulas toggle", v.show_formulas),
+            check("Zero values", "zeros toggle", v.show_zeros),
+            check("Right to left", "right-to-left toggle", v.right_to_left),
+            sub(
+                "Status bar",
+                super::config::AGGREGATES
+                    .iter()
+                    .map(|name| {
+                        let on = book.view.aggregates.iter().any(|a| a == name);
+                        check(&status_label(name), &format!("status-bar toggle {name}"), on)
+                    })
+                    .collect(),
+            ),
+            sub(
+                "Calculation",
+                vec![
+                    check("Automatic", "calc-mode automatic", book.session.book.calc.automatic),
+                    check("Manual", "calc-mode manual", !book.session.book.calc.automatic),
+                    run("Calculate now", "F9", "calculate all"),
+                    run("Calculate sheet", "Shift+F9", "calculate sheet"),
+                ],
             ),
             sub(
                 "Zoom",
@@ -402,6 +464,14 @@ fn view(book: &Book) -> Item {
             ),
         ],
     )
+}
+
+/// The name of a status bar figure as Excel's menu calls it.
+fn status_label(name: &str) -> String {
+    match name {
+        "numbers" => "Numerical Count".to_owned(),
+        other => capitalised(other),
+    }
 }
 
 fn sheet(book: &Book) -> Item {
@@ -440,7 +510,8 @@ fn insert() -> Item {
     sub(
         "Insert",
         vec![
-            run("Rows above", "Ctrl+Shift+=", "insert rows"),
+            run("Cells...", "Ctrl+Shift+=", "insert ask"),
+            run("Rows above", "", "insert rows"),
             run("Columns left", "", "insert columns"),
             run("Cells, shifting down", "", "insert down"),
             run("Cells, shifting right", "", "insert right"),
@@ -466,7 +537,8 @@ fn delete() -> Item {
     sub(
         "Delete",
         vec![
-            run("Rows", "Ctrl+-", "delete rows"),
+            run("Cells...", "Ctrl+-", "delete ask"),
+            run("Rows", "", "delete rows"),
             run("Columns", "", "delete columns"),
             run("Cells, shifting up", "", "delete up"),
             run("Cells, shifting left", "", "delete left"),
@@ -569,6 +641,7 @@ pub fn everything(book: &Book) -> Vec<Item> {
             vec![
                 run("Undo", "Ctrl+Z", "undo"),
                 run("Redo", "Ctrl+Y", "redo"),
+                run("Repeat", "F4", "repeat"),
                 Item::Line,
                 run("Cut", "Ctrl+X", "cut"),
                 run("Copy", "Ctrl+C", "copy"),
@@ -582,6 +655,7 @@ pub fn everything(book: &Book) -> Vec<Item> {
                 run("Fill right", "Ctrl+R", "fill right"),
                 run("Find...", "Ctrl+F", "find-bar"),
                 run("Replace...", "Ctrl+H", "find-bar replace"),
+                run("Go to...", "Ctrl+G", "goto"),
             ],
         ),
         insert(),

@@ -170,6 +170,30 @@ pub enum Act {
         kind: ChartKind,
         title: Option<String>,
     },
+    /// Do the last change again on the selection, as F4 does, or redo when there is something to redo, as
+    /// Ctrl+Y does.
+    Repeat {
+        redo_first: bool,
+    },
+}
+
+impl Act {
+    /// Whether F4 repeats this change: one that changes the workbook and makes sense again on other cells.
+    pub fn repeats(&self) -> bool {
+        !matches!(
+            self,
+            Act::Select(_)
+                | Act::ShowSheet(_)
+                | Act::Copy { .. }
+                | Act::Undo
+                | Act::Redo
+                | Act::Repeat { .. }
+                | Act::Zoom(_)
+                | Act::Recalculate
+                | Act::RenameSheet(..)
+                | Act::Name { .. }
+        )
+    }
 }
 
 /// What a change answered: a line for the status bar.
@@ -238,9 +262,31 @@ pub fn author() -> String {
 
 /// Make one change. `copied` is the cells this window copied last, which Copy sets and Paste reads.
 pub fn apply(book: &mut Book, copied: &mut Option<Copied>, act: Act) -> Said {
+    let act = match act {
+        Act::Repeat { redo_first } if redo_first && book.session.can_redo() => Act::Redo,
+        Act::Repeat { .. } => match book.last.clone() {
+            Some(last) => again(book, last),
+            None => return Err("There is nothing to repeat.".to_owned()),
+        },
+        other => other,
+    };
+    let remembered = act.repeats().then(|| act.clone());
     let said = apply_inner(book, copied, act);
+    if said.is_ok() {
+        if let Some(act) = remembered {
+            book.last = Some(act);
+        }
+    }
     book.changed();
     said
+}
+
+/// The last change made again where the selection is now: typing goes into the active cell.
+fn again(book: &Book, last: Act) -> Act {
+    match last {
+        Act::Type { text, .. } => Act::Type { at: book.view.cursor, text },
+        other => other,
+    }
 }
 
 fn apply_inner(book: &mut Book, copied: &mut Option<Copied>, act: Act) -> Said {
@@ -266,9 +312,10 @@ fn apply_inner(book: &mut Book, copied: &mut Option<Copied>, act: Act) -> Said {
             if s.book.sheets[index].state != Visibility::Visible {
                 s.set_sheet_visibility(index, Visibility::Visible)?;
             }
+            // Each sheet keeps its own selection and scroll, as Excel's do.
+            super::keep_view(&mut book.session, &book.view);
             book.view.sheet = index;
-            book.view.select_cell(CellRef::new(0, 0));
-            book.view.scroll = egui::Vec2::ZERO;
+            super::restore_view(&book.session.book, &mut book.view);
             book.view.edit = None;
             Ok(String::new())
         }
@@ -742,6 +789,7 @@ fn apply_inner(book: &mut Book, copied: &mut Option<Copied>, act: Act) -> Said {
             book.session.add_chart(sheet, chart)?;
             Ok(format!("Made a {} chart of {}", kind.name(), region.a1()))
         }
+        Act::Repeat { .. } => Ok(String::new()),
     }
 }
 

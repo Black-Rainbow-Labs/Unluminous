@@ -845,17 +845,8 @@ impl<'a> Writer<'a> {
             Value::Empty => (None, None),
             Value::Number(n) => (None, Some(number_text(*n))),
             Value::Bool(b) => (Some("b"), Some(if *b { "1" } else { "0" }.to_owned())),
-            // The newer errors are written as #VALUE!, which is what Excel writes beside the rich value that
-            // carries the real one; Excel works the real one out again when it calculates.
-            Value::Error(e) => (
-                Some("e"),
-                Some(match e {
-                    crate::value::ErrorKind::Spill
-                    | crate::value::ErrorKind::Calc
-                    | crate::value::ErrorKind::GettingData => "#VALUE!".to_owned(),
-                    other => other.text().to_owned(),
-                }),
-            ),
+            // The newer errors are written the way Excel can read them back: see `ErrorKind::file_text`.
+            Value::Error(e) => (Some("e"), Some(e.file_text().to_owned())),
             Value::Text(t) => {
                 if cell.formula.is_some() || spilled {
                     (Some("str"), Some(escape(t)))
@@ -905,11 +896,34 @@ impl<'a> Writer<'a> {
                 out.push_str(&format!("<f{kept}>{}</f>", escape(&text)));
             }
         }
+        if cell.formula.is_none() {
+            if let Some(t) = sheet.data_tables.iter().find(|t| t.range.first == at) {
+                out.push_str(&data_table_xml(t));
+            }
+        }
         if let Some(v) = value_text {
             out.push_str(&format!("<v>{v}</v>"));
         }
         out.push_str("</c>");
     }
+}
+
+/// The `f` element of a What If data table, written on its first results cell.
+fn data_table_xml(t: &DataTable) -> String {
+    let mut a = vec![("t".to_owned(), "dataTable".to_owned()), ("ref".to_owned(), t.range.a1())];
+    if t.two_d {
+        a.push(("dt2D".to_owned(), "1".to_owned()));
+    }
+    if t.row_input {
+        a.push(("dtr".to_owned(), "1".to_owned()));
+    }
+    for (k, c) in [("r1", t.r1), ("r2", t.r2)] {
+        if let Some(c) = c {
+            a.push((k.to_owned(), c.a1()));
+        }
+    }
+    a.extend(t.attrs.iter().cloned());
+    format!("<f{}/>", attrs_text(&a))
 }
 
 /// Whether a dynamic formula is written as a dynamic array: when it spilled or could return an array.
@@ -931,6 +945,10 @@ fn is_dynamic_shape(f: &crate::formula::Formula) -> bool {
 
 /// Functions that return an array with no range among their arguments.
 const ARRAY_FUNCTIONS: &[&str] = &[
+    "FILTERXML",
+    "GROUPBY",
+    "PIVOTBY",
+    "REGEXEXTRACT",
     "SEQUENCE",
     "RANDARRAY",
     "MUNIT",

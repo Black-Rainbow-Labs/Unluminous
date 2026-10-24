@@ -69,10 +69,16 @@ pub fn show(
     let copied_text = sheet.clip.as_ref().map(|c| c.text.clone());
     let list_on = sheet.config.function_list;
     let paper = sheet.config.paper;
+    let enter = sheet.config.enter;
+    let aggregates = sheet.config.aggregates.clone();
+    let autocomplete = sheet.config.autocomplete;
     let mut asked = Asked::default();
     {
         let book = &mut sheet.books[index];
         book.view.paper = paper;
+        book.view.enter = enter;
+        book.view.aggregates = aggregates;
+        book.view.autocomplete = autocomplete;
         draw(ui, area, book, look, copied_text.as_deref(), list_on, &mut asked);
     }
     finish(sheet, key, asked)
@@ -145,6 +151,7 @@ fn draw(
             let mut k = keys::Keys::default();
             keys::grid(&ctx, book, copied, &mut k);
             asked.acts.extend(k.acts);
+            asked.words.extend(k.words);
             name_box = k.name_box;
         }
     }
@@ -555,7 +562,7 @@ fn show_list_button(
     let at = book.view.cursor;
     let has_list =
         book.session.validation_at(book.view.sheet, at).is_some_and(|v| v.kind == "list");
-    if !has_list || book.view.edit.is_some() {
+    if (!has_list && !book.view.choices) || book.view.edit.is_some() {
         return;
     }
     let cell = frame.cell(book, at);
@@ -564,22 +571,29 @@ fn show_list_button(
         Vec2::new(18.0, cell.height().max(16.0)),
     );
     let response = ui.interact(button, ui.id().with(("list-button", &book.key)), Sense::click());
-    ui.painter().rect(
-        button,
-        CornerRadius::same(3),
-        look.palette.control,
-        Stroke::new(1.0, look.palette.control_border),
-        egui::StrokeKind::Inside,
-    );
-    icon::chevron_down(ui.painter(), button.center(), look.palette.text_dim);
-    response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Allowed values")
-    });
-    if response.clicked() {
-        book.view.choices = !book.view.choices;
+    if has_list {
+        ui.painter().rect(
+            button,
+            CornerRadius::same(3),
+            look.palette.control,
+            Stroke::new(1.0, look.palette.control_border),
+            egui::StrokeKind::Inside,
+        );
+        icon::chevron_down(ui.painter(), button.center(), look.palette.text_dim);
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Allowed values")
+        });
+        if response.clicked() {
+            book.view.choices = !book.view.choices;
+        }
     }
     if book.view.choices {
-        let values = book.session.list_choices(book.view.sheet, at);
+        let values = if has_list {
+            book.session.list_choices(book.view.sheet, at)
+        } else {
+            let sheet = &book.session.book.sheets[book.view.sheet];
+            crate::services::spreadsheet::entry::column_entries(sheet, at)
+        };
         let id = egui::Id::new(("spreadsheet-choices", &book.key));
         match menus::choices(
             ui.ctx(),
@@ -855,26 +869,49 @@ fn commit_open_edit(book: &mut Book, asked: &mut Asked) {
     }
 }
 
-/// `Sum 12  Average 4  Count 3` for a selection of more than one cell, as Excel's status bar shows.
+/// The status area: the mode (`Ready`, `Enter`, `Edit`, `Point`, and `Extend Selection` or `Add to
+/// Selection`), then for a selection of more than one cell the figures the settings choose, `Average 4
+/// Count 3 Sum 12`, as Excel's status bar shows, then the zoom.
 pub fn summary_text(book: &Book) -> String {
+    let mut parts = vec![mode_text(book)];
     let ranges = book.view.ranges();
-    if ranges.iter().map(|r| r.len()).sum::<u64>() <= 1 {
-        return format!("{}%", (book.view.zoom * 100.0).round());
-    }
-    let summary = book.session.summary(book.view.sheet, &ranges);
-    let n = |v: f64| unluminous_sheet::numfmt::general(v, 11);
-    let mut parts = Vec::new();
-    if let Some(avg) = summary.average() {
-        parts.push(format!("Average {}", n(avg)));
-    }
-    if summary.count > 0 {
-        parts.push(format!("Count {}", summary.count));
-    }
-    if summary.numbers > 0 {
-        parts.push(format!("Sum {}", n(summary.sum)));
+    if ranges.iter().map(|r| r.len()).sum::<u64>() > 1 {
+        let summary = book.session.summary(book.view.sheet, &ranges);
+        let n = |v: f64| unluminous_sheet::numfmt::general(v, 11);
+        for name in &book.view.aggregates {
+            let figure = match name.as_str() {
+                "average" => summary.average().map(|a| format!("Average {}", n(a))),
+                "count" => (summary.count > 0).then(|| format!("Count {}", summary.count)),
+                "numbers" => {
+                    (summary.numbers > 0).then(|| format!("Numerical Count {}", summary.numbers))
+                }
+                "min" => summary.min.map(|m| format!("Min {}", n(m))),
+                "max" => summary.max.map(|m| format!("Max {}", n(m))),
+                "sum" => (summary.numbers > 0).then(|| format!("Sum {}", n(summary.sum))),
+                _ => None,
+            };
+            parts.extend(figure);
+        }
     }
     parts.push(format!("{}%", (book.view.zoom * 100.0).round()));
     parts.join("    ")
+}
+
+/// Excel's cell mode: what typing does now.
+pub fn mode_text(book: &Book) -> String {
+    use crate::services::spreadsheet::view::SelectMode;
+    let mode = match &book.view.edit {
+        Some(edit) if edit.pointing.is_some() => "Point",
+        Some(edit) if edit.typed => "Enter",
+        Some(_) => "Edit",
+        None => "Ready",
+    };
+    match book.view.selecting {
+        SelectMode::Extend => format!("{mode}    Extend Selection"),
+        SelectMode::Add => format!("{mode}    Add to Selection"),
+        SelectMode::Normal if book.view.end_mode => format!("{mode}    End Mode"),
+        SelectMode::Normal => mode.to_owned(),
+    }
 }
 
 /// The Format panel at its level.
@@ -1079,15 +1116,30 @@ fn finish(sheet: &mut Spreadsheet, key: &str, asked: Asked) -> Vec<Request> {
     let mut requests = asked.requests;
     let Some(index) = sheet.books.iter().position(|b| b.key == key) else { return requests };
     if let Some((edit, how)) = asked.commit {
+        let config = sheet.config.clone();
         let book = &mut sheet.books[index];
         let mut copied = sheet.clip.take();
+        let typed = typed_with_options(book, &edit, &config);
         let act = match how {
             Finish::CommitEverywhere => Act::TypeEverywhere(edit.text.clone()),
             Finish::CommitArray => Act::ArrayFormula(edit.text.clone()),
-            _ => Act::Type { at: edit.at, text: edit.text.clone() },
+            _ => Act::Type { at: edit.at, text: typed.clone() },
         };
+        let link = (config.auto_links && matches!(how, Finish::Commit { .. }))
+            .then(|| crate::services::spreadsheet::entry::typed_link(&typed))
+            .flatten();
         match actions::apply(book, &mut copied, act) {
             Ok(_) => {
+                if let Some(unluminous_sheet::model::LinkTarget::External(target)) = link {
+                    let at = book.view.cursor;
+                    book.view.select_cell(edit.at);
+                    let _ = actions::apply(
+                        book,
+                        &mut copied,
+                        Act::Link { target: Some(target), text: None },
+                    );
+                    book.view.select_cell(at);
+                }
                 if let Finish::Commit { rows, cols } = how {
                     if rows != 0 || cols != 0 {
                         book.view.select_cell(edit.at);
@@ -1137,6 +1189,27 @@ fn finish(sheet: &mut Spreadsheet, key: &str, asked: Asked) -> Vec<Request> {
     }
     requests.extend(sheet.asking());
     requests
+}
+
+/// What typing into a cell writes once Excel's options have had their turn: AutoComplete finishes the
+/// one entry of the column the text starts, and AutoCorrect fixes the common slips.
+fn typed_with_options(
+    book: &Book,
+    edit: &Edit,
+    config: &crate::services::spreadsheet::config::Config,
+) -> String {
+    use crate::services::spreadsheet::entry;
+    let sheet = &book.session.book.sheets[edit.sheet.min(book.session.book.sheets.len() - 1)];
+    let mut text = edit.text.clone();
+    if config.autocomplete && !edit.no_complete {
+        if let Some(full) = entry::complete(sheet, edit.at, &text) {
+            text = full;
+        }
+    }
+    if config.autocorrect {
+        text = entry::autocorrect(&text);
+    }
+    text
 }
 
 /// The list the plugin's pane would hold, if a pane is ever asked for: the workbooks open.

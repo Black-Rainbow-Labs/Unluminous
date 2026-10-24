@@ -92,6 +92,20 @@ pub fn show_cell_box(ui: &mut egui::Ui, book: &mut Book, frame: Frame, ink: &Ink
         Stroke::new(2.0, ink.accent),
         egui::StrokeKind::Outside,
     );
+    let suggestion = (book.view.autocomplete && !edit.no_complete && !edit.text.contains('\n'))
+        .then(|| crate::services::spreadsheet::entry::complete(sheet, at, &edit.text))
+        .flatten();
+    if let Some(full) = suggestion {
+        let rest: String = full.chars().skip(edit.text.chars().count()).collect();
+        let x = rect.left() + 3.0 * zoom + galley.size().x;
+        painter.text(
+            egui::Pos2::new(x, rect.top() + 1.0),
+            egui::Align2::LEFT_TOP,
+            rest,
+            egui::FontId::proportional(size),
+            ink.text.gamma_multiply(0.45),
+        );
+    }
     let edit = book.view.edit.as_mut().expect("checked");
     let wanted_focus = edit.focus && !edit.in_bar;
     let inner = rect.shrink2(Vec2::new(3.0 * zoom, 1.0));
