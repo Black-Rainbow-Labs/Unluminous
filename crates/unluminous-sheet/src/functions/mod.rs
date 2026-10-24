@@ -13,6 +13,7 @@ use crate::eval::{to_bool, to_text, Ctx, Val};
 use crate::formula::Expr;
 use crate::value::{ErrorKind, Value};
 
+pub mod casemap;
 pub mod complex;
 pub mod criteria;
 pub mod database;
@@ -301,6 +302,50 @@ pub fn numbers_at(
         }
     }
     Ok((out, rows, cols))
+}
+
+/// What a function that reads a cell answers for every cell of a reference: one value for one cell, and an
+/// array the shape of the range for several, as Excel's dynamic arrays spill it.
+pub fn each_cell(
+    ctx: &mut Ctx,
+    area: &crate::eval::Area,
+    f: impl Fn(&mut Ctx, crate::coord::CellRef) -> Value,
+) -> Val {
+    let r = area.range;
+    if r.len() == 1 {
+        return Val::Value(f(ctx, r.first));
+    }
+    let (rows, cols) = (r.rows() as usize, r.cols() as usize);
+    if rows * cols > 4_000_000 {
+        return Val::error(ErrorKind::Num);
+    }
+    let mut data = Vec::with_capacity(rows * cols);
+    for row in r.first.row..=r.last.row {
+        for col in r.first.col..=r.last.col {
+            data.push(f(ctx, crate::coord::CellRef::new(row, col)));
+        }
+    }
+    Val::Array(crate::value::Array::new(rows, cols, data))
+}
+
+/// An argument with a range of several cells cut to its first cell, as `N` and `T` read one.
+pub fn first_cell(ctx: &mut Ctx, expr: &Expr) -> Val {
+    match ctx.eval(expr) {
+        Val::Ref(area) => Val::Ref(crate::eval::Area {
+            range: crate::coord::Range::cell(area.range.first),
+            sheet_last: area.sheet,
+            ..area
+        }),
+        Val::Refs(areas) => match areas.first() {
+            Some(area) => Val::Ref(crate::eval::Area {
+                range: crate::coord::Range::cell(area.range.first),
+                sheet_last: area.sheet,
+                ..area.clone()
+            }),
+            None => Val::error(ErrorKind::Value),
+        },
+        other => other,
+    }
 }
 
 /// A function of one number, for the many entries that are only that.

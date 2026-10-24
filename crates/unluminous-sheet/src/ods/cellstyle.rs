@@ -385,6 +385,7 @@ fn alignment_from(bag: &Bag) -> Alignment {
         indent,
         rotation,
         shrink: bag.get("c.shrink-to-fit").is_some_and(|s| s == "true"),
+        ..Alignment::default()
     }
 }
 

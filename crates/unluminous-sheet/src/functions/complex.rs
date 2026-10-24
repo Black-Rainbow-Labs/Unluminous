@@ -132,57 +132,61 @@ struct Complex {
     unit: Option<char>,
 }
 
-/// The value an argument supplies: a single cell, or the first element of an array. A range of several
-/// cells outside the formula's own row or column is `#VALUE!`, and a left out argument is `#N/A`.
-fn scalar(ctx: &mut Ctx, expr: &Expr) -> Result<Value, ErrorKind> {
-    if matches!(expr, Expr::Missing) {
-        return Err(ErrorKind::NA);
-    }
-    let val = ctx.eval(expr);
-    match ctx.single(val) {
-        Value::Error(e) => Err(e),
-        other => Ok(other),
-    }
-}
-
 /// The text a function answers with, or the error it ends in.
-fn text_val(result: Result<String, ErrorKind>) -> Val {
-    Val::Value(result.map_or_else(Value::Error, Value::text))
+fn text_value(result: Result<String, ErrorKind>) -> Value {
+    result.map_or_else(Value::Error, Value::text)
 }
 
 /// The number a function answers with, or the error it ends in.
-fn number_val(result: Result<f64, ErrorKind>) -> Val {
-    Val::Value(match result {
+fn number_value_of(result: Result<f64, ErrorKind>) -> Value {
+    match result {
         Ok(n) if n.is_finite() => Value::Number(if n == 0.0 { 0.0 } else { n }),
         Ok(_) => Value::Error(ErrorKind::Num),
         Err(e) => Value::Error(e),
-    })
+    }
+}
+
+/// Apply a function of single values over the arguments, spreading over any that are arrays, as Excel's
+/// dynamic arrays do. A range of several cells is not spread: it is the one cell in the formula's own row
+/// or column, or `#VALUE!`, because these functions came from the Analysis ToolPak and take values. A left
+/// out argument is `#N/A`.
+fn lifted(ctx: &mut Ctx, args: &[Expr], f: impl Fn(bool, &[Value]) -> Value) -> Val {
+    let vals: Vec<Val> = args
+        .iter()
+        .map(|a| {
+            if matches!(a, Expr::Missing) {
+                return Val::error(ErrorKind::NA);
+            }
+            match ctx.eval(a) {
+                v @ (Val::Ref(_) | Val::Refs(_)) => Val::Value(ctx.single(v)),
+                other => other,
+            }
+        })
+        .collect();
+    ctx.lift_vals(vals, |ctx, values| f(ctx.date1904(), values))
 }
 
 /// A function of one complex number that answers with a complex number as text.
 fn text_of(ctx: &mut Ctx, args: &[Expr], f: fn(Pair) -> Result<Pair, ErrorKind>) -> Val {
-    text_val(complex_arg(ctx, &args[0]).and_then(|z| show(f((z.re, z.im))?, z.unit)))
+    lifted(ctx, args, |d, v| {
+        text_value(to_complex(&v[0], d).and_then(|z| show(f((z.re, z.im))?, z.unit)))
+    })
 }
 
 /// A function of one complex number that answers with a number.
 fn number_of(ctx: &mut Ctx, args: &[Expr], f: fn(Pair) -> Result<f64, ErrorKind>) -> Val {
-    number_val(complex_arg(ctx, &args[0]).and_then(|z| f((z.re, z.im))))
+    lifted(ctx, args, |d, v| number_value_of(to_complex(&v[0], d).and_then(|z| f((z.re, z.im)))))
 }
 
 /// A function of two complex numbers, which must use the same unit letter or be `#NUM!`.
 fn text_of_two(ctx: &mut Ctx, args: &[Expr], f: fn(Pair, Pair) -> Result<Pair, ErrorKind>) -> Val {
-    let result = complex_arg(ctx, &args[0]).and_then(|x| {
-        let y = complex_arg(ctx, &args[1])?;
-        let unit = merge_units(x.unit, y.unit).ok_or(ErrorKind::Num)?;
-        show(f((x.re, x.im), (y.re, y.im))?, unit)
-    });
-    text_val(result)
-}
-
-/// The complex number an argument holds.
-fn complex_arg(ctx: &mut Ctx, expr: &Expr) -> Result<Complex, ErrorKind> {
-    let value = scalar(ctx, expr)?;
-    to_complex(&value, ctx.date1904())
+    lifted(ctx, args, |d, v| {
+        text_value(to_complex(&v[0], d).and_then(|x| {
+            let y = to_complex(&v[1], d)?;
+            let unit = merge_units(x.unit, y.unit).ok_or(ErrorKind::Num)?;
+            show(f((x.re, x.im), (y.re, y.im))?, unit)
+        }))
+    })
 }
 
 /// The unit two operands share: either one's letter when the other has none, and `None` for a clash.
@@ -213,11 +217,19 @@ const LARGEST_TYPED: f64 = 9.99999999999999e307;
 
 /// One number inside a complex number, read the way typing reads it. Spaces round it are ignored.
 fn number_part(text: &str, date1904: bool) -> Option<f64> {
-    let n = crate::input::number_from_text(text, date1904)?;
+    // Typing leaves a number smaller than the smallest normal one as text, where a complex number
+    // reads it as 0.
+    let n = match crate::input::number_from_text(text, date1904) {
+        Some(n) => n,
+        None => match text.trim().parse::<f64>() {
+            Ok(n) if n.abs() <= f64::MIN_POSITIVE => n,
+            _ => return None,
+        },
+    };
     if !n.is_finite() || n.abs() > LARGEST_TYPED {
         return None;
     }
-    if n != 0.0 && n.abs() < f64::MIN_POSITIVE {
+    if n != 0.0 && n.abs() <= f64::MIN_POSITIVE {
         return (n.abs() >= 1e-309).then_some(0.0);
     }
     if n == 0.0 && underflowed(text) {
@@ -372,21 +384,24 @@ fn positional(digits: &str, exponent: i32) -> String {
 
 /// `COMPLEX(real_num, i_num, [suffix])`.
 fn complex(ctx: &mut Ctx, args: &[Expr]) -> Val {
-    let result = (|| {
-        let re = number_arg(ctx, &args[0])?;
-        let im = number_arg(ctx, &args[1])?;
-        let unit = match args.get(2) {
-            None | Some(Expr::Missing) => 'i',
-            Some(expr) => suffix_of(&scalar(ctx, expr)?)?,
-        };
-        show((re, im), Some(unit))
-    })();
-    text_val(result)
+    let args = if matches!(args.get(2), Some(Expr::Missing)) { &args[..2] } else { args };
+    lifted(ctx, args, |d, v| {
+        text_value((|| {
+            let re = number_value(&v[0], d)?;
+            let im = number_value(&v[1], d)?;
+            let unit = match v.get(2) {
+                None => 'i',
+                Some(value) => suffix_of(value)?,
+            };
+            show((re, im), Some(unit))
+        })())
+    })
 }
 
 /// The suffix argument of `COMPLEX`: `i`, `j`, or nothing, which means `i`.
 fn suffix_of(value: &Value) -> Result<char, ErrorKind> {
     match value {
+        Value::Error(e) => Err(*e),
         Value::Empty => Ok('i'),
         Value::Text(t) => match &**t {
             "" | "i" => Ok('i'),
@@ -395,12 +410,6 @@ fn suffix_of(value: &Value) -> Result<char, ErrorKind> {
         },
         _ => Err(ErrorKind::Value),
     }
-}
-
-/// An argument that must be a number: text is read as typing reads it, a logical is `#VALUE!`.
-fn number_arg(ctx: &mut Ctx, expr: &Expr) -> Result<f64, ErrorKind> {
-    let value = scalar(ctx, expr)?;
-    number_value(&value, ctx.date1904())
 }
 
 /// A value as the number a plain numeric argument means.
@@ -416,11 +425,12 @@ fn number_value(value: &Value, date1904: bool) -> Result<f64, ErrorKind> {
 
 /// `IMPOWER(inumber, number)`.
 fn power(ctx: &mut Ctx, args: &[Expr]) -> Val {
-    let result = complex_arg(ctx, &args[0]).and_then(|z| {
-        let n = number_arg(ctx, &args[1])?;
-        show(raise((z.re, z.im), n)?, z.unit)
-    });
-    text_val(result)
+    lifted(ctx, args, |d, v| {
+        text_value(to_complex(&v[0], d).and_then(|z| {
+            let n = number_value(&v[1], d)?;
+            show(raise((z.re, z.im), n)?, z.unit)
+        }))
+    })
 }
 
 /// `IMSUM` and `IMPRODUCT`: every value of every argument in order, the first fault ending the work. A
@@ -456,7 +466,7 @@ fn accumulate(
         }
         show(total, unit)
     })();
-    text_val(result)
+    Val::Value(text_value(result))
 }
 
 /// Every value an argument holds, a range and an array row by row, empty cells included.
@@ -904,9 +914,14 @@ type BesselFn = fn(i64, f64) -> Result<f64, ErrorKind>;
 
 /// `BESSELJ(x, n)` and its relatives: `x` is a number and `n` an order that is truncated, not rounded.
 fn bessel(ctx: &mut Ctx, args: &[Expr], f: BesselFn) -> Val {
-    let result = (|| {
-        let x = number_arg(ctx, &args[0])?;
-        let n = number_arg(ctx, &args[1])?;
+    lifted(ctx, args, |d, v| number_value_of(bessel_of(d, v, f)))
+}
+
+/// One Bessel value from an `x` and an order.
+fn bessel_of(d: bool, v: &[Value], f: BesselFn) -> Result<f64, ErrorKind> {
+    {
+        let x = number_value(&v[0], d)?;
+        let n = number_value(&v[1], d)?;
         if !(0.0..100_000_000.0).contains(&n) {
             return Err(ErrorKind::Num);
         }
@@ -916,8 +931,7 @@ fn bessel(ctx: &mut Ctx, args: &[Expr], f: BesselFn) -> Val {
         } else {
             Err(ErrorKind::Num)
         }
-    })();
-    number_val(result)
+    }
 }
 
 /// Two over pi as the Numerical Recipes routines type it, to nine digits, which is what the answers are

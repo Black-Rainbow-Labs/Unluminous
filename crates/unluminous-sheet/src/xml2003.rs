@@ -205,6 +205,7 @@ fn alignment_from(node: Node) -> Alignment {
         indent: attribute(node, "Indent").and_then(|i| i.parse().ok()).unwrap_or(0),
         rotation: if rotate < 0 { 90 - rotate } else { rotate },
         shrink: attribute(node, "ShrinkToFit") == Some("1"),
+        ..Alignment::default()
     }
 }
 
@@ -384,7 +385,7 @@ fn read_cells(
             let text: String =
                 comment.descendants().filter(|n| n.is_text()).filter_map(|n| n.text()).collect();
             let author = attribute(comment, "Author").unwrap_or("").to_owned();
-            sheet.notes.insert((r, col), Note { author, text: text.trim().to_owned() });
+            sheet.notes.insert((r, col), Note::new(author, text.trim()));
         }
         if !made.is_blank() {
             sheet.cells.insert((r, col), std::mem::take(&mut made));

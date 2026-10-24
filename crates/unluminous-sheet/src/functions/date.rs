@@ -21,14 +21,13 @@ pub const FUNCTIONS: &[Function] = &[
         let (h, m, sec) =
             (num(ctx, &a[0])?.trunc(), num(ctx, &a[1])?.trunc(), num(ctx, &a[2])?.trunc());
         let total = h * 3600.0 + m * 60.0 + sec;
-        if total < 0.0 || h > 32767.0 {
+        if total < 0.0 || h > 32767.0 || m > 32767.0 || sec > 32767.0 {
             return Err(ErrorKind::Num);
         }
         number((total / 86_400.0).fract())
     }),
     s("DATEVALUE", 1, 1, "date_text", "A date written as text, as a serial number.", |ctx, a| {
-        let t = super::text_of(&a[0])?;
-        let n = crate::input::number_from_text(&t, ctx.date1904()).ok_or(ErrorKind::Value)?;
+        let n = date_time_text(ctx, &a[0])?;
         number(n.floor())
     }),
     s(
@@ -38,8 +37,7 @@ pub const FUNCTIONS: &[Function] = &[
         "time_text",
         "A time written as text, as a fraction of a day.",
         |ctx, a| {
-            let t = super::text_of(&a[0])?;
-            let n = crate::input::number_from_text(&t, ctx.date1904()).ok_or(ErrorKind::Value)?;
+            let n = date_time_text(ctx, &a[0])?;
             number(n.fract())
         },
     ),
@@ -93,6 +91,9 @@ pub const FUNCTIONS: &[Function] = &[
     ),
     s("WEEKNUM", 1, 2, "serial_number, [return_type]", "The week of the year.", |ctx, a| {
         let n = serial(ctx, &a[0])?;
+        if matches!(a.get(1), Some(Value::Bool(_))) {
+            return Err(ErrorKind::Value);
+        }
         let kind = opt_num(ctx, a, 1, 1.0)?.trunc() as i64;
         if kind == 21 {
             return number(iso_week(n, ctx.date1904()) as f64);
@@ -105,6 +106,9 @@ pub const FUNCTIONS: &[Function] = &[
             14 => 4,
             15 => 5,
             16 => 6,
+            // Excel also takes a return type above 21 and counts the week from Monday, as for 2; the
+            // numbers that are not a return type at all (0, 3 to 10, 18 to 20, negative) are refused.
+            22.. => 1,
             _ => return Err(ErrorKind::Num),
         };
         let (y, _, _) = dates::date(n, ctx.date1904()).ok_or(ErrorKind::Num)?;
@@ -192,15 +196,7 @@ pub const FUNCTIONS: &[Function] = &[
                     }
                 }
                 "YM" => (months % 12) as f64,
-                "YD" => {
-                    let mut start = dates::serial(y2, m1 as i64, d1 as i64, ctx.date1904())
-                        .ok_or(ErrorKind::Num)?;
-                    if start > s2 {
-                        start = dates::serial(y2 - 1, m1 as i64, d1 as i64, ctx.date1904())
-                            .ok_or(ErrorKind::Num)?;
-                    }
-                    s2 - start
-                }
+                "YD" => days_ignoring_years((y1, m1, d1), (y2, m2, d2)) as f64,
                 _ => return Err(ErrorKind::Num),
             })
         },
@@ -313,6 +309,34 @@ pub(super) fn days360(start: (i64, u32, u32), end: (i64, u32, u32), european: bo
     (y2 - y1) * 360 + (m2 - m1) * 30 + (d2 - d1)
 }
 
+/// DATEDIF's "YD" as Excel counts it, which is not the days between the dates with the years taken out.
+/// It adds the lengths of the whole months from the start's month on, taking each from the calendar of
+/// the year it falls in counting from the start's year, and then the days left over. When the end day is
+/// before the start day the leftover borrows the length of the month before the end's month, in the
+/// end's year. That is why 15 January 2020 to 10 October 2026 is 269 days: the months from January to
+/// August are those of 2020.
+fn days_ignoring_years(start: (i64, u32, u32), end: (i64, u32, u32)) -> i64 {
+    let (sy, sm, sd) = start;
+    let (ey, em, ed) = end;
+    let mut months = (em as i64 - sm as i64).rem_euclid(12);
+    let borrows = ed < sd;
+    if borrows {
+        months = if months == 0 { 11 } else { months - 1 };
+    }
+    let mut days: i64 = (0..months)
+        .map(|k| {
+            let at = sm as i64 - 1 + k;
+            i64::from(dates::days_in_month(sy + at.div_euclid(12), at.rem_euclid(12) as u32 + 1))
+        })
+        .sum();
+    days += ed as i64 - sd as i64;
+    if borrows {
+        let (year, month) = if em == 1 { (ey - 1, 12) } else { (ey, em - 1) };
+        days += i64::from(dates::days_in_month(year, month));
+    }
+    days
+}
+
 /// Which days of the week are the weekend, Monday first.
 fn weekend_mask(ctx: &mut Ctx, weekend: Option<&Expr>) -> Result<[bool; 7], ErrorKind> {
     let Some(e) = weekend.filter(|e| !matches!(e, Expr::Missing)) else {
@@ -322,7 +346,7 @@ fn weekend_mask(ctx: &mut Ctx, weekend: Option<&Expr>) -> Result<[bool; 7], Erro
     let v = ctx.single(v);
     match v {
         Value::Text(t) => {
-            if t.len() != 7 || !t.chars().all(|c| c == '0' || c == '1') || &*t == "1111111" {
+            if t.len() != 7 || !t.chars().all(|c| c == '0' || c == '1') {
                 return Err(ErrorKind::Value);
             }
             let mut mask = [false; 7];
@@ -404,13 +428,41 @@ fn workday(
     weekend: Option<&Expr>,
     extra: Option<&Expr>,
 ) -> Val {
+    // An array of day counts gives an array of dates, as Excel's dynamic arrays do.
+    let counts = ctx.eval(days);
+    if let Val::Array(array) = &counts {
+        if array.data.len() > 1 {
+            let mut data = Vec::with_capacity(array.data.len());
+            for v in array.data.clone() {
+                let one = Val::Value(v);
+                data.push(match workday_for(ctx, start, one, weekend, extra) {
+                    Ok(d) => Value::Number(d),
+                    Err(e) => Value::Error(e),
+                });
+            }
+            return Val::Array(crate::value::Array::new(array.rows, array.cols, data));
+        }
+    }
+    workday_for(ctx, start, counts, weekend, extra).map_or_else(Val::error, Val::number)
+}
+
+/// The date `days` working days from `start`.
+fn workday_for(
+    ctx: &mut Ctx,
+    start: &Expr,
+    days: Val,
+    weekend: Option<&Expr>,
+    extra: Option<&Expr>,
+) -> Result<f64, ErrorKind> {
     let go = |ctx: &mut Ctx| -> Result<f64, ErrorKind> {
         let s0 = scalar_serial(ctx, start)?;
-        let v = ctx.eval(days);
-        let v = ctx.single(v);
+        let v = ctx.single(days);
         let n = ctx.number(&v)?.trunc();
         let mask = weekend_mask(ctx, weekend)?;
         let off = holidays(ctx, extra)?;
+        if n != 0.0 && mask.iter().all(|m| *m) {
+            return Err(ErrorKind::Value);
+        }
         let step = if n >= 0.0 { 1.0 } else { -1.0 };
         let mut left = n.abs();
         let mut d = s0;
@@ -426,7 +478,7 @@ fn workday(
         }
         Ok(d)
     };
-    go(ctx).map_or_else(Val::error, Val::number)
+    go(ctx)
 }
 
 /// Days between two dates in the US (NASD) 30/360 count that YEARFRAC basis 0 and the bond functions use.
@@ -481,6 +533,16 @@ pub(super) fn yearfrac(s1: f64, s2: f64, basis: i64, date1904: bool) -> Result<f
         4 => days360(d1, d2, true) as f64 / 360.0,
         _ => return Err(ErrorKind::Num),
     })
+}
+
+/// The serial a date or time written as text stands for. A number is not text, so it is not a date.
+fn date_time_text(ctx: &Ctx, value: &Value) -> Result<f64, ErrorKind> {
+    match value {
+        Value::Text(t) => {
+            crate::input::date_time_from_text(t, ctx.date1904()).ok_or(ErrorKind::Value)
+        }
+        _ => Err(ErrorKind::Value),
+    }
 }
 
 #[cfg(test)]

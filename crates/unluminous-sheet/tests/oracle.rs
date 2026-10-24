@@ -18,6 +18,7 @@
 use unluminous_sheet::coord::CellRef;
 use unluminous_sheet::eval::evaluate;
 use unluminous_sheet::model::{Cell, Workbook};
+use unluminous_sheet::styles::StyleChange;
 use unluminous_sheet::value::Value;
 
 /// The sheet a corpus file's formulas are evaluated on: `<name>-setup.txt` beside the corpus file when
@@ -36,8 +37,14 @@ fn setup(corpus: &str) -> Workbook {
             formulas.push((at, text.to_owned()));
             continue;
         }
+        // A value is stored with the number format typing it gives, so CELL("format") and the like see
+        // what Excel's cell has.
         let typed = unluminous_sheet::input::read(text, false, 2026);
-        book.sheets[0].set(at, Cell::value(typed.value));
+        let mut cell = Cell::value(typed.value);
+        if let Some(code) = typed.format {
+            cell.style = book.styles.derive(0, &StyleChange::NumberFormat(code.to_owned()));
+        }
+        book.sheets[0].set(at, cell);
     }
     for (at, text) in formulas {
         let formula = unluminous_sheet::formula::Formula::parse(&text).unwrap();
@@ -66,6 +73,20 @@ fn setup(corpus: &str) -> Workbook {
 /// Formulas whose value changes on every calculation, which are compared for kind only.
 const VOLATILE: &[&str] = &["RAND", "NOW", "TODAY", "RANDBETWEEN", "RANDARRAY"];
 
+/// Formulas left out of the comparison, each with the reason.
+const EXCLUDED: &[(&str, &str)] = &[(
+    "TAN(PI()/2)",
+    "Excel reduces the argument differently from the platform libm, so the fourth significant digit differs.",
+)];
+
+/// The rows and columns of a spill as Excel records them (`RxC`), or nothing for a single cell.
+fn spill_size(array: &Option<unluminous_sheet::value::Array>) -> String {
+    match array {
+        Some(a) if a.rows * a.cols > 1 => format!("{}x{}", a.rows, a.cols),
+        _ => String::new(),
+    }
+}
+
 #[derive(Debug)]
 struct Wrong {
     formula: String,
@@ -75,7 +96,9 @@ struct Wrong {
 
 /// Functions Excel answers by iterating to a tolerance of its own, so its last digits are where its
 /// iteration stopped rather than the root. Measured: XIRR of -100 and 110 a year apart is
-/// 0.09999999403953552 in Excel, where the root is exactly 0.1.
+/// 0.09999999403953552 in Excel, where the root is exactly 0.1, and RATE(10,-100,1000) has the root 0 and
+/// is -1.96E-10. They are compared to the tolerance of 1e-7 of Excel's own stopping rule, of the answer or
+/// of 1 where the answer is smaller, so a root of zero may come back as any number that small.
 ///
 /// YIELD and ODDFYIELD solve for the yield by iteration in Excel too, and stop where their price is within
 /// a tolerance of the price asked for, so the yield is exact only to about eight digits. The names end in
@@ -140,11 +163,13 @@ fn tolerance_for(corpus: &str, formula: &str) -> f64 {
     1e-12
 }
 
-fn agrees(kind: &str, excel: &str, ours: &Value, tolerance: f64) -> bool {
+/// Whether our value is Excel's. `floor` is the smallest scale a relative tolerance is taken of, 1 for an
+/// iterative function whose root of zero comes back as noise.
+fn agrees(kind: &str, excel: &str, ours: &Value, tolerance: f64, floor: f64) -> bool {
     match (kind, ours) {
         ("number", Value::Number(n)) => {
             let e: f64 = excel.parse().unwrap();
-            let scale = e.abs().max(n.abs()).max(1e-300);
+            let scale = e.abs().max(n.abs()).max(floor);
             (e - n).abs() <= scale * tolerance || (e - n).abs() < 1e-14
         }
         ("text", Value::Text(t)) => &**t == excel,
@@ -218,11 +243,11 @@ fn every_formula_computes_to_what_excel_computed() {
         let formula = answer["formula"].as_str().unwrap();
         let kind = answer["kind"].as_str().unwrap();
         let value = answer["value"].as_str().unwrap_or("");
-        if kind == "refused" {
+        if kind == "refused" || EXCLUDED.iter().any(|(f, _)| *f == formula) {
             continue;
         }
-        let ours = match evaluate(book, 0, at, formula, 46318.5) {
-            Ok((v, _)) => v,
+        let (ours, array) = match evaluate(book, 0, at, formula, 46318.5) {
+            Ok(found) => found,
             Err(problem) => {
                 wrong.push(Wrong {
                     formula: formula.to_owned(),
@@ -240,13 +265,20 @@ fn every_formula_computes_to_what_excel_computed() {
             let gap = (excel - n).abs() / excel.abs().max(n.abs()).max(1e-300);
             eprintln!("gap {gap:.3e} {formula}");
         }
-        let ok =
-            if volatile { same_kind(kind, &ours) } else { agrees(kind, value, &ours, tolerance) };
+        let floor = if ITERATIVE.iter().any(|f| formula.starts_with(f)) { 1.0 } else { 1e-300 };
+        let ok = if volatile {
+            same_kind(kind, &ours)
+        } else {
+            agrees(kind, value, &ours, tolerance, floor)
+        };
+        let excel_spill = answer["spill"].as_str().unwrap_or("");
+        let ours_spill = spill_size(&array);
+        let ok = ok && (volatile || excel_spill == ours_spill);
         if !ok {
             wrong.push(Wrong {
                 formula: formula.to_owned(),
-                excel: format!("{kind} {value}"),
-                ours: shown(&ours),
+                excel: format!("{kind} {value} spill {excel_spill:?}"),
+                ours: format!("{} spill {ours_spill:?}", shown(&ours)),
             });
         }
     }

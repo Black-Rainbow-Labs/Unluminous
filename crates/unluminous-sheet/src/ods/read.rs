@@ -487,7 +487,7 @@ impl<'d> SheetReader<'_, 'd> {
                 .map(paragraph_text)
                 .collect::<Vec<_>>()
                 .join("\n");
-            sheet.notes.insert((at.row, at.col), Note { author, text });
+            sheet.notes.insert((at.row, at.col), Note::new(author, text));
         }
         for link in cell.descendants().filter(|n| n.is_element() && n.tag_name().name() == "a") {
             let Some(href) = attr(link, NS_XLINK, "href") else { continue };
@@ -833,6 +833,7 @@ pub fn kept_formula(a1: &str) -> Formula {
             array: None,
             array_member: None,
             frozen: true,
+            attrs: None,
         },
     }
 }

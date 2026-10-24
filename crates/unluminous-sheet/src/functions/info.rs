@@ -28,21 +28,19 @@ pub const FUNCTIONS: &[Function] = &[
         Ok(Value::Bool(a[0] == Value::Error(ErrorKind::NA)))
     }),
     s("ISEVEN", 1, 1, "number", "TRUE for an even number.", |ctx, a| {
-        Ok(Value::Bool(num(ctx, &a[0])?.trunc() % 2.0 == 0.0))
+        Ok(Value::Bool(parity_number(ctx, &a[0])?.trunc() % 2.0 == 0.0))
     }),
     s("ISODD", 1, 1, "number", "TRUE for an odd number.", |ctx, a| {
-        Ok(Value::Bool(num(ctx, &a[0])?.trunc() % 2.0 != 0.0))
+        Ok(Value::Bool(parity_number(ctx, &a[0])?.trunc() % 2.0 != 0.0))
     }),
     r("ISREF", 1, 1, "value", "TRUE for a reference.", |ctx, a| {
         Val::Value(Value::Bool(matches!(ctx.eval(&a[0]), Val::Ref(_) | Val::Refs(_))))
     }),
     r("ISFORMULA", 1, 1, "reference", "TRUE for a cell holding a formula.", |ctx, a| {
         match ctx.eval(&a[0]) {
-            Val::Ref(area) => Val::Value(Value::Bool(
-                ctx.book.sheets[area.sheet]
-                    .cell(area.range.first)
-                    .is_some_and(|c| c.formula.is_some()),
-            )),
+            Val::Ref(area) => super::each_cell(ctx, &area, |ctx, at| {
+                Value::Bool(ctx.book.sheets[area.sheet].cell(at).is_some_and(|c| c.formula.is_some()))
+            }),
             Val::Value(Value::Error(e)) => Val::error(e),
             _ => Val::error(ErrorKind::Value),
         }
@@ -59,8 +57,10 @@ pub const FUNCTIONS: &[Function] = &[
         "value",
         "The type of a value: 1 number, 2 text, 4 logical, 16 error, 64 array.",
         |ctx, a| {
+            let literal_array = matches!(a[0], Expr::Array(_));
             let v = ctx.eval(&a[0]);
             match v {
+                Val::Array(_) if literal_array => Val::number(64.0),
                 Val::Array(arr) if arr.data.len() > 1 => Val::number(64.0),
                 Val::Ref(area) if area.range.len() > 1 => Val::number(64.0),
                 Val::Lambda(_) => Val::number(128.0),
@@ -71,11 +71,14 @@ pub const FUNCTIONS: &[Function] = &[
             }
         },
     ),
-    s("N", 1, 1, "value", "A value as a number: text is 0.", |_, a| match &a[0] {
-        Value::Number(n) => Ok(Value::Number(*n)),
-        Value::Bool(b) => Ok(Value::Number(f64::from(u8::from(*b)))),
-        Value::Error(e) => Err(*e),
-        _ => Ok(Value::Number(0.0)),
+    r("N", 1, 1, "value", "A value as a number: text is 0.", |ctx, a| {
+        let v = super::first_cell(ctx, &a[0]);
+        ctx.lift_vals(vec![v], |_, v| match &v[0] {
+            Value::Number(n) => Value::Number(*n),
+            Value::Bool(b) => Value::Number(f64::from(u8::from(*b))),
+            Value::Error(e) => Value::Error(*e),
+            _ => Value::Number(0.0),
+        })
     }),
     r(
         "CELL",
@@ -154,6 +157,14 @@ fn cell(ctx: &mut Ctx, args: &[Expr]) -> Val {
             Val::number(if ctx.book.styles.xf(style).locked.unwrap_or(true) { 1.0 } else { 0.0 })
         }
         _ => Val::error(ErrorKind::Value),
+    }
+}
+
+/// The number ISEVEN and ISODD test: a logical is refused, where arithmetic would take it as 1 or 0.
+fn parity_number(ctx: &Ctx, v: &Value) -> Result<f64, ErrorKind> {
+    match v {
+        Value::Bool(_) => Err(ErrorKind::Value),
+        other => num(ctx, other),
     }
 }
 
@@ -281,32 +292,51 @@ fn working_directory() -> String {
 
 /// CELL("format")'s short code for a number format.
 fn format_letter(code: &str) -> String {
-    let f = crate::numfmt::Format::parse(code);
     if code == "General" {
         return "G".to_owned();
     }
-    if f.is_date() {
-        return "D1".to_owned();
+    if crate::numfmt::Format::parse(code).is_date() {
+        return date_letter(code).to_owned();
     }
-    let decimals = code
-        .split(';')
-        .next()
-        .unwrap_or("")
+    let positive = code.split(';').next().unwrap_or("");
+    let decimals = positive
         .split('.')
         .nth(1)
-        .map_or(0, |d| d.chars().take_while(|c| *c == '0').count());
-    let kind = if code.contains('%') {
+        .map_or(0, |d| d.chars().take_while(|c| matches!(*c, '0' | '#' | '?')).count());
+    let kind = if positive.contains('%') {
         "P"
-    } else if code.contains("E+") {
+    } else if positive.contains("E+") {
         "S"
-    } else if code.contains('$') {
+    } else if positive.contains('$') {
         "C"
-    } else if code.contains(',') {
+    } else if positive.contains(',') {
         ","
     } else {
         "F"
     };
-    format!("{kind}{decimals}")
+    let colour = if negative_has_a_colour(code) { "-" } else { "" };
+    format!("{kind}{decimals}{colour}")
+}
+
+/// The D code of a date or time format; a format Excel has no code for is D1.
+fn date_letter(code: &str) -> &'static str {
+    match code.to_ascii_lowercase().as_str() {
+        "d-mmm-yy" | "dd-mmm-yy" => "D1",
+        "d-mmm" | "dd-mmm" => "D2",
+        "mmm-yy" => "D3",
+        "m/d/yy" | "m/d/yyyy" | "mm/dd/yy" | "m/d/yy h:mm" | "m/d/yyyy h:mm" => "D4",
+        "mm/dd" => "D5",
+        "h:mm:ss am/pm" => "D6",
+        "h:mm am/pm" => "D7",
+        "h:mm:ss" => "D8",
+        "h:mm" => "D9",
+        _ => "D1",
+    }
+}
+
+/// Whether a number format colours its negative numbers, which CELL("color") reports.
+fn negative_has_a_colour(code: &str) -> bool {
+    code.split(';').nth(1).is_some_and(|s| s.contains('['))
 }
 
 #[cfg(test)]

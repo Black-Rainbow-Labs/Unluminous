@@ -69,6 +69,9 @@ struct Pattern {
     groups: usize,
     /// The name of each group that has one, with its number.
     names: Vec<(String, usize)>,
+    /// The pattern held to a match that starts where the text does and is not empty, which is how PCRE
+    /// tries again after an empty match before it moves on a character.
+    not_empty: Option<Regex>,
 }
 
 /// The case sensitivity argument at `at`: 0 (the default) matches case, 1 does not. Anything else is `#VALUE!`.
@@ -101,7 +104,13 @@ fn compile(pattern: &str, caseless: bool) -> Result<Pattern, ErrorKind> {
     let groups = re.captures_len().saturating_sub(1);
     let names =
         re.capture_names().enumerate().filter_map(|(i, n)| n.map(|n| (n.to_owned(), i))).collect();
-    Ok(Pattern { re, groups, names })
+    let not_empty = RegexBuilder::new(&format!(r"\A(?:{translated})(?!\A)"))
+        .backtrack_limit(400_000)
+        .delegate_size_limit(4_000_000)
+        .delegate_dfa_size_limit(4_000_000)
+        .build()
+        .ok();
+    Ok(Pattern { re, groups, names, not_empty })
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -127,6 +136,20 @@ fn all_matches(p: &Pattern, text: &str) -> Result<Vec<Found>, ErrorKind> {
         let groups = (1..=p.groups).map(|i| caps.get(i).map(|m| (m.start(), m.end()))).collect();
         out.push(Found { start: whole.start(), end: whole.end(), groups });
         at = if whole.end() > whole.start() { whole.end() } else { next_char(text, whole.end()) };
+        // After an empty match PCRE looks for one that is not empty at the same place before moving on.
+        if whole.end() == whole.start() && whole.end() < text.len() {
+            let from = whole.end();
+            if let Some(again) = &p.not_empty {
+                if let Some(caps) = again.captures(&text[from..]).map_err(|_| ErrorKind::Value)? {
+                    let m = caps.get(0).ok_or(ErrorKind::Value)?;
+                    let groups = (1..=p.groups)
+                        .map(|i| caps.get(i).map(|g| (g.start() + from, g.end() + from)))
+                        .collect();
+                    out.push(Found { start: from, end: from + m.end(), groups });
+                    at = from + m.end();
+                }
+            }
+        }
         if out.len() > 1_000_000 {
             return Err(ErrorKind::Value);
         }

@@ -382,6 +382,14 @@ fn the_only(cells: &[Value]) -> Result<Value, ErrorKind> {
 }
 
 fn database(ctx: &mut Ctx, args: &[Expr], summary: Summary) -> Val {
+    // Criteria written as an array is spread over, as Excel's dynamic arrays do, and each element of it
+    // is a value where a range is needed, so each answer is #VALUE!.
+    if let Val::Array(array) = ctx.eval(&args[2]) {
+        if array.data.len() > 1 {
+            let errors = vec![Value::Error(ErrorKind::Value); array.data.len()];
+            return Val::Array(crate::value::Array::new(array.rows, array.cols, errors));
+        }
+    }
     match database_value(ctx, args, summary) {
         Ok(v) => Val::Value(v),
         Err(e) => Val::error(e),

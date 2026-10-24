@@ -3,7 +3,7 @@
 use std::cmp::Ordering;
 
 use super::criteria::Criterion;
-use super::math::{aligned, clipped, ifs_mask};
+use super::math::{aligned, clipped, IfsParts};
 use super::{gather, gather_val, num, number, numbers_at, r, s, Function, Gather, MANY};
 use crate::eval::{Ctx, Val};
 use crate::formula::Expr;
@@ -75,8 +75,10 @@ pub const FUNCTIONS: &[Function] = &[
         MANY,
         "criteria_range1, criteria1, ...",
         "How many cells meet every criterion.",
-        |ctx, a| match ifs_mask(ctx, a, None) {
-            Ok((mask, ..)) => Val::number(mask.iter().filter(|m| **m).count() as f64),
+        |ctx, a| match IfsParts::read(ctx, a, None) {
+            Ok(parts) => {
+                parts.answer(ctx, |mask| Value::Number(mask.iter().filter(|m| **m).count() as f64))
+            }
             Err(e) => Val::error(e),
         },
     ),
@@ -356,6 +358,9 @@ pub const FUNCTIONS: &[Function] = &[
     r("SKEW.P", 1, MANY, "number1, [number2], ...", "The skewness of a population.", |ctx, a| {
         over(ctx, a, Gather::Numbers, |n| {
             let c = n.len() as f64;
+            if c < 3.0 {
+                return Err(ErrorKind::Div0);
+            }
             let m = mean(n).ok_or(ErrorKind::Div0)?;
             let sd = population_variance(n).ok_or(ErrorKind::Div0)?.sqrt();
             if sd == 0.0 {
@@ -649,22 +654,28 @@ fn ifs_over(ctx: &mut Ctx, args: &[Expr], f: fn(&[f64]) -> Result<f64, ErrorKind
         Val::Value(Value::Error(e)) => return Val::error(e),
         _ => return Val::error(ErrorKind::Value),
     };
-    let (mask, rows, cols) = match ifs_mask(ctx, &args[1..], Some(area)) {
-        Ok(m) => m,
+    let parts = match IfsParts::read(ctx, &args[1..], Some(area)) {
+        Ok(p) => p,
         Err(e) => return Val::error(e),
     };
-    let values = ctx.read_range(area.sheet, aligned(&area, rows, cols));
-    let mut numbers = Vec::new();
-    for (i, keep) in mask.iter().enumerate() {
-        if *keep {
-            match &values.data[i] {
-                Value::Number(n) => numbers.push(*n),
-                Value::Error(e) => return Val::error(*e),
-                _ => {}
+    let values = ctx.read_range(area.sheet, aligned(&area, parts.rows, parts.cols));
+    parts.answer(ctx, |mask| {
+        let mut numbers = Vec::new();
+        for (i, keep) in mask.iter().enumerate() {
+            if *keep {
+                match &values.data[i] {
+                    Value::Number(n) => numbers.push(*n),
+                    Value::Error(e) => return Value::Error(*e),
+                    _ => {}
+                }
             }
         }
-    }
-    f(&numbers).map_or_else(Val::error, Val::number)
+        match f(&numbers) {
+            Ok(n) if n.is_finite() => Value::Number(n),
+            Ok(_) => Value::Error(ErrorKind::Num),
+            Err(e) => Value::Error(e),
+        }
+    })
 }
 
 fn count(ctx: &mut Ctx, args: &[Expr]) -> Val {
