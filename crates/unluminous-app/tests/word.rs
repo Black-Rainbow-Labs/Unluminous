@@ -74,7 +74,7 @@ fn a_document_word_made_opens_as_its_pages() {
 fn typing_formats_with_words_chords_and_undoes() {
     let (_, mut harness) = a_word_window("unluminous-word-typing", "blank.docx");
     assert_eq!(view(&mut harness)["current"]["keyboard"], true, "the new tab holds the keyboard");
-    type_text(&mut harness, "# A heading ");
+    type_text(&mut harness, "# A heading");
     harness.key_press(Key::Enter);
     steady(&mut harness);
     type_text(&mut harness, "plain ");
