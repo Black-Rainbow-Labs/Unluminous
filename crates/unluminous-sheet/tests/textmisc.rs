@@ -45,7 +45,8 @@ fn a_function_this_version_lacks_is_written_back_with_its_prefix_and_its_hidden_
     assert!(book.names.iter().any(|n| n.name == "_xlfn.FUTUREFUNC" && n.hidden));
     let written = unluminous_sheet::xlsx::write(&book).unwrap();
     let sheet = part(&written, "xl/worksheets/sheet1.xml");
-    assert!(sheet.contains("<f>_xlfn.FUTUREFUNC(C1,2)</f>"), "{sheet}");
+    // Excel marked the cell calculate always (`ca`), which is kept with the formula.
+    assert!(sheet.contains("<f ca=\"1\">_xlfn.FUTUREFUNC(C1,2)</f>"), "{sheet}");
     let workbook = part(&written, "xl/workbook.xml");
     assert!(workbook.contains("name=\"_xlfn.FUTUREFUNC\" hidden=\"1\""), "{workbook}");
 }

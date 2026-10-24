@@ -228,7 +228,9 @@ fn shift_modelled_text(book: &mut Workbook, sheet: usize, edit: &StructuralEdit)
 /// A range on `own` after the edit, or `None` when it was wholly deleted.
 fn shift_own_range(range: Range, own: &str, edit: &StructuralEdit) -> Option<Range> {
     match edit {
-        StructuralEdit::Lines { sheet, axis, at, count, band } if own.eq_ignore_ascii_case(sheet) => {
+        StructuralEdit::Lines { sheet, axis, at, count, band }
+            if own.eq_ignore_ascii_case(sheet) =>
+        {
             shift_range(range, *axis, *at, *count, *band)
         }
         _ => Some(range),
