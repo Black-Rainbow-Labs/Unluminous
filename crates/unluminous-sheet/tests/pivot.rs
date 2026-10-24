@@ -54,6 +54,7 @@ fn workbook(spec: &Json) -> Workbook {
             for (c, v) in row.as_array().unwrap().iter().enumerate() {
                 let value = match v {
                     Json::Null => continue,
+                    Json::Object(o) => Value::Error(unluminous_sheet::ErrorKind::parse(o["e"].as_str().unwrap()).unwrap()),
                     Json::String(s) => Value::text(s),
                     Json::Bool(b) => Value::Bool(*b),
                     other => Value::Number(other.as_f64().unwrap()),
@@ -146,6 +147,9 @@ fn build(session: &mut Session, spec: &Json, case: &Json) -> Result<usize, Strin
     if let Some(layout) = case["layout"].as_str() {
         session.pivot_set_form(t, form_of(layout))?;
     }
+    for cf in case["calc_fields"].as_array().into_iter().flatten() {
+        session.pivot_add_calculated_field(t, cf["name"].as_str().unwrap(), cf["formula"].as_str().unwrap())?;
+    }
     for (i, n) in names(&case["rows"]).iter().enumerate() {
         let f = field_index(session, t, n);
         session.pivot_move_field(t, f, Area::Rows, Some(i))?;
@@ -157,6 +161,10 @@ fn build(session: &mut Session, spec: &Json, case: &Json) -> Result<usize, Strin
     for (i, n) in names(&case["pages"]).iter().enumerate() {
         let f = field_index(session, t, n);
         session.pivot_move_field(t, f, Area::Pages, Some(i))?;
+    }
+    for ci in case["calc_items"].as_array().into_iter().flatten() {
+        let f = field_index(session, t, ci["field"].as_str().unwrap());
+        session.pivot_add_calculated_item(t, f, ci["name"].as_str().unwrap(), ci["formula"].as_str().unwrap())?;
     }
     for v in case["values"].as_array().into_iter().flatten() {
         let f = field_index(session, t, v["field"].as_str().unwrap());
@@ -193,6 +201,9 @@ fn build(session: &mut Session, spec: &Json, case: &Json) -> Result<usize, Strin
         let col = g.get("col").and_then(Json::as_bool).unwrap_or(true);
         session.pivot_set_grand_totals(t, row, col)?;
     }
+    for g in case["group"].as_array().into_iter().flatten() {
+        group(session, t, g)?;
+    }
     field_options(session, t, case)?;
     if let Some(sel) = case["page_select"].as_object() {
         for (name, item) in sel {
@@ -203,6 +214,30 @@ fn build(session: &mut Session, spec: &Json, case: &Json) -> Result<usize, Strin
     }
     let _ = spec;
     Ok(t)
+}
+
+fn group(session: &mut Session, t: usize, g: &Json) -> Result<(), String> {
+    use unluminous_sheet::pivot::cache::GroupBy;
+    let f = field_index(session, t, g["field"].as_str().unwrap());
+    match g["kind"].as_str().unwrap() {
+        "date" => {
+            let by: Vec<GroupBy> = names(&g["by"])
+                .iter()
+                .map(|b| GroupBy::from_xml(b).unwrap_or_else(|| panic!("group by {b}")))
+                .collect();
+            session.pivot_group_dates(t, f, &by, g["start"].as_f64(), g["end"].as_f64(), g["step"].as_f64())
+        }
+        "number" => session.pivot_group_numbers(t, f, g["start"].as_f64(), g["end"].as_f64(), g["step"].as_f64().unwrap()),
+        _ => {
+            let mut chosen = Vec::new();
+            for members in g["groups"].as_array().unwrap() {
+                let positions: Vec<usize> =
+                    names(members).iter().map(|m| item_position(session, t, f, m)).collect();
+                chosen.push((None, positions));
+            }
+            session.pivot_group_items(t, f, &chosen)
+        }
+    }
 }
 
 fn form_of(name: &str) -> Form {
@@ -448,4 +483,284 @@ fn pivots_match_excel() {
     }
     println!("{} of {} cases match Excel", checked - failed.len(), checked);
     assert!(failed.is_empty(), "{} cases differ from Excel", failed.len());
+}
+
+/// An element and everything in it with its attributes in alphabetical order, so two writers that put
+/// attributes in different orders can be compared.
+fn canonical(xml: &str) -> String {
+    fn node(n: roxmltree::Node, out: &mut String) {
+        out.push('<');
+        out.push_str(n.tag_name().name());
+        let mut attrs: Vec<(&str, &str)> = n
+            .attributes()
+            .filter(|a| a.namespace().is_none())
+            .map(|a| (a.name(), a.value()))
+            .collect();
+        attrs.sort();
+        for (k, v) in attrs {
+            out.push_str(&format!(" {k}=\"{v}\""));
+        }
+        out.push('>');
+        for c in n.children().filter(|c| c.is_element()) {
+            node(c, out);
+        }
+        out.push_str("</>");
+    }
+    let wrapped = format!("<w xmlns:r=\"r\" xmlns:x14=\"x14\">{xml}</w>");
+    let doc = roxmltree::Document::parse(&wrapped).unwrap();
+    let mut out = String::new();
+    for c in doc.root_element().children().filter(|c| c.is_element()) {
+        node(c, &mut out);
+    }
+    out
+}
+
+/// The pieces of a `pivotTableDefinition` that say how the table is laid out.
+fn sections(xml: &str) -> Vec<(String, String)> {
+    let doc = roxmltree::Document::parse(xml).unwrap();
+    let root = doc.root_element();
+    let mut out = Vec::new();
+    let mut head: Vec<(String, String)> = root
+        .attributes()
+        .filter(|a| a.namespace().is_none() && !matches!(a.name(), "name" | "cacheId" | "chartFormat" | "uid" | "ignorable"))
+        .map(|a| (a.name().to_owned(), a.value().to_owned()))
+        .collect();
+    head.sort();
+    out.push(("head".to_owned(), format!("{head:?}")));
+    for c in root.children().filter(|c| c.is_element()) {
+        let name = c.tag_name().name();
+        if matches!(name, "extLst" | "chartFormats" | "formats") {
+            continue;
+        }
+        out.push((name.to_owned(), canonical(&xml[c.range()])));
+    }
+    out
+}
+
+#[test]
+fn pivot_xml_matches_excel() {
+    let spec = read_json("cases.json");
+    let text = std::fs::read_to_string(root().join("excel-xml.jsonl")).unwrap();
+    let only = std::env::var("PIVOT_CASE").ok();
+    let mut failed = 0;
+    let mut checked = 0;
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        let want: Json = serde_json::from_str(line).unwrap();
+        let id = want["id"].as_str().unwrap();
+        if only.as_deref().is_some_and(|o| o != id) {
+            continue;
+        }
+        let Some(case) = spec["cases"].as_array().unwrap().iter().find(|c| c["id"] == id) else { continue };
+        let mut session = Session::new(workbook(&spec), 46319.5);
+        let t = match build(&mut session, &spec, case) {
+            Ok(t) => t,
+            Err(e) => {
+                println!("--- {id}: building failed: {e}");
+                failed += 1;
+                continue;
+            }
+        };
+        checked += 1;
+        let table = session.book.pivots.tables[t].clone();
+        let cache = session.book.pivots.caches[table.cache].clone();
+        let ours = unluminous_sheet::pivot::xml_write::table_definition(
+            &table,
+            &cache,
+            &mut session.book.styles,
+            cache.id,
+        );
+        let ours = sections(&ours);
+        let mut theirs_xml = format!(
+            "<pivotTableDefinition {}>",
+            want["head"].as_str().unwrap().replace("xr:uid", "uid").replace("mc:Ignorable", "ignorable")
+        );
+        for s in ["location", "pivotFields", "rowFields", "rowItems", "colFields", "colItems", "pageFields", "dataFields", "pivotTableStyleInfo", "filters"] {
+            theirs_xml.push_str(want[s].as_str().unwrap());
+        }
+        theirs_xml.push_str("</pivotTableDefinition>");
+        let theirs = sections(&theirs_xml);
+        let mut problems = Vec::new();
+        for (name, want_xml) in &theirs {
+            match ours.iter().find(|(n, _)| n == name) {
+                Some((_, our_xml)) if our_xml == want_xml => {}
+                Some((_, our_xml)) => problems.push(format!("{name}:
+      Excel {want_xml}
+      ours  {our_xml}")),
+                None => problems.push(format!("{name}: missing in ours; Excel {want_xml}")),
+            }
+        }
+        for (name, _) in &ours {
+            if !theirs.iter().any(|(n, _)| n == name) {
+                problems.push(format!("{name}: ours has it, Excel does not"));
+            }
+        }
+        if !problems.is_empty() {
+            failed += 1;
+            println!("--- {id}");
+            for p in problems.iter().take(6) {
+                println!("    {p}");
+            }
+        }
+    }
+    println!("{} of {} tables match Excel's XML", checked - failed, checked);
+    assert_eq!(failed, 0, "{failed} tables differ from Excel's XML");
+}
+
+/// Change the source after a pivot was built, and refresh it.
+fn apply_after(session: &mut Session, case: &Json, t: usize) -> Result<(), String> {
+    let Some(edits) = case["after"].as_array() else { return Ok(()) };
+    for edit in edits {
+        let sheet = session.book.sheet_index(edit["sheet"].as_str().unwrap()).unwrap();
+        let at = CellRef::parse(edit["cell"].as_str().unwrap()).unwrap();
+        let value = match &edit["value"] {
+            Json::Null => Value::Empty,
+            Json::String(s) => Value::text(s),
+            other => Value::Number(other.as_f64().unwrap()),
+        };
+        session.set_value(sheet, at, value)?;
+    }
+    session.pivot_refresh(t)
+}
+
+fn problems_for(session: &Session, t: usize, want: &Json) -> Vec<String> {
+    let table = &session.book.pivots.tables[t];
+    let sheet = table.sheet;
+    let mut problems = Vec::new();
+    let range = want["range"].as_str().unwrap();
+    if table.full_range().a1() != range {
+        problems.push(format!("range: Excel {range}, ours {}", table.full_range().a1()));
+    }
+    let first = Range::parse(range).unwrap().first;
+    for (i, row) in want["cells"].as_array().unwrap().iter().enumerate() {
+        for (j, cell) in row.as_array().unwrap().iter().enumerate() {
+            let at = CellRef::new(first.row + i as u32, first.col + j as u32);
+            if let Some(p) = compare_cell(session, sheet, at, cell) {
+                problems.push(p);
+            }
+        }
+    }
+    problems
+}
+
+#[test]
+fn a_refresh_after_the_source_changed_matches_excel() {
+    let spec = read_json("cases.json");
+    let text = std::fs::read_to_string(root().join("excel-refresh.jsonl")).unwrap_or_default();
+    let only = std::env::var("PIVOT_CASE").ok();
+    let mut failed = 0;
+    let mut checked = 0;
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        let want: Json = serde_json::from_str(line).unwrap();
+        let id = want["id"].as_str().unwrap();
+        if only.as_deref().is_some_and(|o| o != id) {
+            continue;
+        }
+        let Some(case) = spec["cases"].as_array().unwrap().iter().find(|c| c["id"] == id) else { continue };
+        let mut session = Session::new(workbook(&spec), 46319.5);
+        let built = build(&mut session, &spec, case).and_then(|t| apply_after(&mut session, case, t).map(|_| t));
+        checked += 1;
+        let problems = match built {
+            Ok(t) => problems_for(&session, t, &want),
+            Err(e) => vec![format!("failed: {e}")],
+        };
+        if !problems.is_empty() {
+            failed += 1;
+            println!("--- {id}");
+            problems.iter().take(14).for_each(|p| println!("    {p}"));
+        }
+    }
+    println!("{} of {} refreshed tables match Excel", checked - failed, checked);
+    assert_eq!(failed, 0);
+}
+
+fn excel_is_installed() -> bool {
+    cfg!(windows)
+        && std::process::Command::new("reg")
+            .args(["query", "HKCR\\Excel.Application"])
+            .output()
+            .is_ok_and(|o| o.status.success())
+}
+
+/// Write every case as a workbook into a folder, as the files Excel is then asked to open.
+fn write_workbooks(spec: &Json, dir: &std::path::Path, only: &Option<Vec<String>>) -> Vec<(String, Session, usize)> {
+    std::fs::create_dir_all(dir).unwrap();
+    let mut built = Vec::new();
+    for case in spec["cases"].as_array().unwrap() {
+        let id = case["id"].as_str().unwrap().to_owned();
+        if only.as_ref().is_some_and(|o| !o.contains(&id)) {
+            continue;
+        }
+        let mut session = Session::new(workbook(spec), 46319.5);
+        let Ok(t) = build(&mut session, spec, case) else { continue };
+        let bytes = unluminous_sheet::xlsx::write(&session.book).unwrap();
+        std::fs::write(dir.join(format!("{id}.xlsx")), bytes).unwrap();
+        built.push((id, session, t));
+    }
+    built
+}
+
+/// `PIVOT_EXPORT=<folder>` writes the workbooks the Excel test opens, so Excel's answers can be recorded.
+#[test]
+fn export_workbooks_when_asked() {
+    let Ok(dir) = std::env::var("PIVOT_EXPORT") else { return };
+    let spec = read_json("cases.json");
+    let built = write_workbooks(&spec, std::path::Path::new(&dir), &None);
+    println!("{} workbooks written to {dir}", built.len());
+}
+
+#[test]
+fn excel_opens_and_refreshes_what_we_write() {
+    if !excel_is_installed() {
+        assert!(
+            std::env::var("UNLUMINOUS_REQUIRE_EXCEL").is_err(),
+            "UNLUMINOUS_REQUIRE_EXCEL is set and Excel is not installed"
+        );
+        println!("Excel is not installed here, so the pivot tables written here were not opened in it");
+        return;
+    }
+    let spec = read_json("cases.json");
+    let only: Option<Vec<String>> = std::env::var("PIVOT_CASE").ok().map(|v| v.split(',').map(str::to_owned).collect());
+    let dir = std::env::temp_dir().join(format!("unluminous-pivots-{}", std::process::id()));
+    let mut built = write_workbooks(&spec, &dir, &only);
+    let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2).unwrap().to_path_buf();
+    let script = repo.join("tools").join("excel-oracle").join("pivot-check.ps1");
+    let mut command = std::process::Command::new("pwsh");
+    command
+        .args(["-NoProfile", "-File"])
+        .arg(&script)
+        .arg("-Cases")
+        .arg(root().join("cases.json"))
+        .arg("-Open")
+        .arg(&dir);
+    if let Some(only) = &only {
+        command.arg("-Only").arg(only.join(","));
+    }
+    let output = command.output().expect("pwsh runs");
+    let text = String::from_utf8_lossy(&output.stdout).into_owned();
+    let mut failed = 0;
+    let mut checked = 0;
+    for line in text.lines().filter(|l| l.trim_start().starts_with('{')) {
+        let want: Json = serde_json::from_str(line).unwrap();
+        let id = want["id"].as_str().unwrap().to_owned();
+        let Some(slot) = built.iter_mut().find(|(i, _, _)| *i == id) else { continue };
+        let case = spec["cases"].as_array().unwrap().iter().find(|c| c["id"] == id.as_str()).unwrap();
+        checked += 1;
+        let mut problems = Vec::new();
+        if want["repaired"].as_bool() == Some(true) {
+            problems.push("Excel had to repair the file".to_owned());
+        }
+        if let Err(e) = apply_after(&mut slot.1, case, slot.2) {
+            problems.push(format!("our refresh failed: {e}"));
+        }
+        problems.extend(problems_for(&slot.1, slot.2, &want));
+        if !problems.is_empty() {
+            failed += 1;
+            println!("--- {id}");
+            problems.iter().take(14).for_each(|p| println!("    {p}"));
+        }
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    println!("{} of {} tables Excel refreshed match", checked - failed, checked);
+    assert!(checked > 0, "Excel answered nothing: {}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(failed, 0);
 }

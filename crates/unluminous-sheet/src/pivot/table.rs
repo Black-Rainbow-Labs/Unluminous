@@ -330,7 +330,24 @@ impl Default for Options {
             show_headers: true,
             page_over_then_down: false,
             page_wrap: 0,
-            attrs: Vec::new(),
+            attrs: [
+                ("applyNumberFormats", "0"),
+                ("applyBorderFormats", "0"),
+                ("applyFontFormats", "0"),
+                ("applyPatternFormats", "0"),
+                ("applyAlignmentFormats", "0"),
+                ("applyWidthHeightFormats", "1"),
+                ("updatedVersion", "8"),
+                ("minRefreshableVersion", "3"),
+                ("useAutoFormatting", "1"),
+                ("itemPrintTitles", "1"),
+                ("createdVersion", "8"),
+                ("indent", "0"),
+                ("multipleFieldFilters", "0"),
+            ]
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect(),
         }
     }
 }
@@ -456,6 +473,13 @@ impl PivotTable {
     /// value fields).
     pub fn values_on_rows(&self) -> bool {
         self.rows.contains(&AxisEntry::Values)
+    }
+
+    /// Where the Values entry is among the entries of its area, when it is not the last one.
+    pub fn values_position(&self) -> Option<usize> {
+        let axis = if self.values_on_rows() { self.row_axis() } else { self.col_axis() };
+        let at = axis.iter().position(|e| *e == AxisEntry::Values)?;
+        (at + 1 != axis.len()).then_some(at)
     }
 
     /// The row area, with the Values entry put in when there are two value fields and none is there.

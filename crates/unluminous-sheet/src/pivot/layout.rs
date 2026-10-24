@@ -320,7 +320,7 @@ impl Builder<'_, '_> {
                 }
             }
             if self.rows && pf.blank_row {
-                self.out.push(line(LineKind::Blank, Vec::new(), child, None, li));
+                self.out.push(line(LineKind::Blank, path.clone(), child, None, li));
             }
             path.pop();
         }

@@ -19,7 +19,8 @@ param(
     [string]$Open,
     [string[]]$Only,
     [string]$Save,
-    [switch]$Pre
+    [switch]$Pre,
+    [switch]$Isolate
 )
 $ErrorActionPreference = 'Stop'
 if ($Only) { $Only = @($Only | ForEach-Object { $_ -split ',' }) }
@@ -39,11 +40,12 @@ function Write-Dataset($book, $name, $set) {
     $cols = $set.headers.Count
     $rows = $set.rows.Count
     $arr = New-Object 'object[,]' ($rows + 1), $cols
+    $errors = @()
     for ($c = 0; $c -lt $cols; $c++) { $arr[0, $c] = $set.headers[$c] }
     for ($r = 0; $r -lt $rows; $r++) {
         for ($c = 0; $c -lt $cols; $c++) {
             $v = $set.rows[$r][$c]
-            if ($null -ne $v) { $arr[($r + 1), $c] = $v }
+            if ($v -is [pscustomobject]) { $errors += , @(($r + 2), ($c + 1)) } elseif ($null -ne $v) { $arr[($r + 1), $c] = $v }
         }
     }
     for ($c = 0; $c -lt $cols; $c++) {
@@ -51,6 +53,7 @@ function Write-Dataset($book, $name, $set) {
         if ($fmt -and $fmt -ne 'General') { $sheet.Range($sheet.Cells(2, $c + 1), $sheet.Cells($rows + 1, $c + 1)).NumberFormat = $fmt }
     }
     $sheet.Range($sheet.Cells(1, 1), $sheet.Cells($rows + 1, $cols)).Value2 = $arr
+    foreach ($e in $errors) { $sheet.Cells($e[0], $e[1]).Formula = '=NA()' }
     return $sheet
 }
 
@@ -120,6 +123,13 @@ function Group-Field($excel, $pt, $g) {
 function Build-Pivot($excel, $book, $case, $dataSheet) {
     $sheet = $book.Worksheets.Add([Type]::Missing, $book.Worksheets.Item($book.Worksheets.Count))
     $sheet.Name = "P_" + $case.id.Substring(0, [Math]::Min(25, $case.id.Length))
+    if ($Isolate) {
+        # Excel shares a cache between tables with the same source, so each case reads a copy of its own.
+        $dataSheet.Copy([Type]::Missing, $book.Worksheets.Item($book.Worksheets.Count))
+        $dataSheet = $book.Worksheets.Item($book.Worksheets.Count)
+        $dataSheet.Name = 'D_' + $case.id.Substring(0, [Math]::Min(25, $case.id.Length))
+        $sheet.Move([Type]::Missing, $book.Worksheets.Item($book.Worksheets.Count))
+    }
     $last = $dataSheet.UsedRange
     $source = "'" + $dataSheet.Name + "'!" + $last.Address($true, $true, -4150)
     $cache = $book.PivotCaches().Create(1, $source)
@@ -210,6 +220,11 @@ try {
             $pre = $null
             if ($pt) {
                 if ($Pre) { $pre = Dump-Pivot $sheet $pt }
+                foreach ($edit in @($case.after)) {
+                    if (-not $edit) { continue }
+                    $target = $book.Worksheets.Item($edit.sheet).Range($edit.cell)
+                    if ($null -eq $edit.value) { $target.ClearContents() | Out-Null } else { $target.Value2 = $edit.value }
+                }
                 $pt.RefreshTable() | Out-Null
                 $post = Dump-Pivot $sheet $pt
             }

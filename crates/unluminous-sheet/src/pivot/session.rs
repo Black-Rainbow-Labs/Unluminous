@@ -158,9 +158,12 @@ impl Session {
         self.remember_whole("Delete PivotTable");
         let table = self.book.pivots.tables.remove(t);
         self.clear_cells(table.sheet, table.full_range(), table.has_cells);
+        self.book.pivots.removed_parts.push(table.part.clone());
         let cache = table.cache;
         if !self.book.pivots.tables.iter().any(|x| x.cache == cache) {
-            self.book.pivots.caches.remove(cache);
+            let gone = self.book.pivots.caches.remove(cache);
+            self.book.pivots.removed_parts.push(gone.definition_part);
+            self.book.pivots.removed_parts.push(gone.records_part);
             for x in &mut self.book.pivots.tables {
                 if x.cache > cache {
                     x.cache -= 1;
@@ -607,9 +610,22 @@ impl Session {
             return Err("There is no such field.".to_owned());
         }
         self.remember_whole("Sort PivotTable");
-        let pf = &mut self.book.pivots.tables[t].fields[field];
+        let cache_index = self.book.pivots.tables[t].cache;
+        let table = &mut self.book.pivots.tables[t];
+        let pf = &mut table.fields[field];
         pf.sort = order;
         pf.auto_sort = by_value.map(|data| AutoSort { data });
+        if by_value.is_none() && order != SortType::Manual {
+            let items = self.book.pivots.caches[cache_index].fields[field].items().to_vec();
+            pf.items.sort_by(|a, b| {
+                let ord = items[a.x].order(&items[b.x]);
+                if order == SortType::Descending {
+                    ord.reverse()
+                } else {
+                    ord
+                }
+            });
+        }
         self.relayout(t)
     }
 

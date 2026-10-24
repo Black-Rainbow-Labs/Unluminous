@@ -22,12 +22,17 @@ pub mod cache;
 pub mod calcfield;
 pub mod compute;
 pub mod group;
+pub mod groups;
 pub mod items;
 pub mod layout;
 pub mod session;
+pub mod session_calc;
+pub mod session_group;
 pub mod show;
 pub mod table;
 pub mod xml;
+pub mod xml_read;
+pub mod xml_write;
 
 pub use cache::{CacheField, CacheSource, CacheValue, PivotCache};
 pub use table::{DataField, PivotField, PivotTable};
@@ -37,6 +42,8 @@ pub use table::{DataField, PivotField, PivotTable};
 pub struct Pivots {
     pub caches: Vec<PivotCache>,
     pub tables: Vec<PivotTable>,
+    /// Parts of tables and caches that were deleted, to be taken out of the file.
+    pub removed_parts: Vec<String>,
 }
 
 impl Pivots {

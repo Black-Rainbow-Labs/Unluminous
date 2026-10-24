@@ -110,6 +110,9 @@ pub struct Calc<'a> {
     leaf_of: Vec<Option<(usize, usize)>>,
     excluded_rows: HashSet<Vec<usize>>,
     excluded_cols: HashSet<Vec<usize>>,
+    /// The nodes of calculated items on the rows and on the columns, with the formula of each.
+    calc_rows: HashMap<usize, Expr>,
+    calc_cols: HashMap<usize, Expr>,
 }
 
 impl<'a> Calc<'a> {
@@ -136,6 +139,8 @@ impl<'a> Calc<'a> {
             leaf_of: Vec::new(),
             excluded_rows: HashSet::new(),
             excluded_cols: HashSet::new(),
+            calc_rows: HashMap::new(),
+            calc_cols: HashMap::new(),
         };
         calc.prepare();
         calc.run();
@@ -285,7 +290,100 @@ impl<'a> Calc<'a> {
             self.scan();
         }
         self.fill_empty_items();
+        self.add_calculated_items();
         self.sort_all();
+    }
+
+    /// Under every parent, a node for each calculated item of the next field.
+    fn add_calculated_items(&mut self) {
+        for rows in [true, false] {
+            let fields = if rows { self.rows.fields.clone() } else { self.cols.fields.clone() };
+            for (i, &f) in fields.iter().enumerate() {
+                let entries: Vec<(usize, Expr)> = self.table.fields[f]
+                    .items
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, e)| e.calculated)
+                    .filter_map(|(pos, e)| {
+                        let item = self.cache.calculated_items.iter().find(|c| c.field == f && c.item == e.x)?;
+                        Some((pos, calcfield::parse(&item.formula).ok()?))
+                    })
+                    .collect();
+                if entries.is_empty() {
+                    continue;
+                }
+                let parents: Vec<usize> = {
+                    let axis = if rows { &self.rows } else { &self.cols };
+                    (0..axis.nodes.len()).filter(|&n| axis.nodes[n].level == i && !axis.nodes[n].children.is_empty()).collect()
+                };
+                for p in parents {
+                    for (pos, expr) in &entries {
+                        let axis = if rows { &mut self.rows } else { &mut self.cols };
+                        let id = axis.nodes.len();
+                        axis.nodes.push(Node { parent: Some(p), level: i + 1, item: *pos, children: Vec::new() });
+                        axis.nodes[p].children.push(id);
+                        let map = if rows { &mut self.calc_rows } else { &mut self.calc_cols };
+                        map.insert(id, expr.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    /// The figure of a calculated item: its formula over the figures of the other items under the same parent.
+    fn calculated_value(&self, r: usize, c: usize, d: usize) -> Option<CellVal> {
+        let (rows, node, expr) = if let Some(e) = self.calc_rows.get(&r) {
+            (true, r, e)
+        } else if let Some(e) = self.calc_cols.get(&c) {
+            (false, c, e)
+        } else {
+            return None;
+        };
+        let axis = if rows { &self.rows } else { &self.cols };
+        let parent = axis.nodes[node].parent?;
+        let field = axis.fields[axis.nodes[node].level - 1];
+        let lookup = |_f: Option<&str>, name: &str| -> Result<f64, ErrorKind> {
+            let sibling = axis.nodes[parent]
+                .children
+                .iter()
+                .copied()
+                .find(|s| *s != node && self.label(field, axis.nodes[*s].item).eq_ignore_ascii_case(name))
+                .ok_or(ErrorKind::Ref)?;
+            let v = if rows { self.raw(sibling, c, d, None) } else { self.raw(r, sibling, d, None) };
+            match v {
+                CellVal::Num(n) => Ok(n),
+                CellVal::Empty => Ok(0.0),
+                CellVal::Err(e) => Err(e),
+            }
+        };
+        Some(match calcfield::evaluate(expr, &lookup) {
+            Ok(n) => CellVal::Num(n),
+            Err(e) => CellVal::Err(e),
+        })
+    }
+
+    /// The calculated items under a node add their figures to its total.
+    fn calculated_extra(&self, r: usize, c: usize, d: usize) -> f64 {
+        let mut extra = 0.0;
+        if !self.calc_rows.is_empty() {
+            for &k in &self.rows.nodes[r].children {
+                if self.calc_rows.contains_key(&k) {
+                    if let Some(CellVal::Num(n)) = self.calculated_value(k, c, d) {
+                        extra += n;
+                    }
+                }
+            }
+        }
+        if !self.calc_cols.is_empty() {
+            for &k in &self.cols.nodes[c].children {
+                if self.calc_cols.contains_key(&k) {
+                    if let Some(CellVal::Num(n)) = self.calculated_value(r, k, d) {
+                        extra += n;
+                    }
+                }
+            }
+        }
+        extra
     }
 
     /// Whether a record is let through by the filter fields and by every field on an axis.
@@ -533,6 +631,25 @@ impl<'a> Calc<'a> {
     /// The figure of value field `d` in the cell of two nodes, before Show Values As. A function other than
     /// the value field's own can be asked for, which is what a subtotal row of another function does.
     pub fn raw(&self, r: usize, c: usize, d: usize, func: Option<Func>) -> CellVal {
+        if !self.calc_rows.is_empty() || !self.calc_cols.is_empty() {
+            if let Some(v) = self.calculated_value(r, c, d) {
+                return v;
+            }
+            let plain = self.raw_plain(r, c, d, func);
+            let extra = self.calculated_extra(r, c, d);
+            if extra != 0.0 && func.unwrap_or(self.table.data[d].func) == Func::Sum {
+                return match plain {
+                    CellVal::Num(n) => CellVal::Num(n + extra),
+                    CellVal::Empty => CellVal::Num(extra),
+                    e => e,
+                };
+            }
+            return plain;
+        }
+        self.raw_plain(r, c, d, func)
+    }
+
+    fn raw_plain(&self, r: usize, c: usize, d: usize, func: Option<Func>) -> CellVal {
         let Some(cell) = self.cells.get(&(r, c)) else { return CellVal::Empty };
         let Some(field) = self.table.data.get(d) else { return CellVal::Empty };
         let func = func.unwrap_or(field.func);

@@ -354,3 +354,36 @@ fn call(
         _ => return Err(ErrorKind::Name),
     })
 }
+
+/// A formula written the way Excel stores a calculated item's: every item named with its field.
+pub fn print_with_field(expr: &Expr, field: &str) -> String {
+    let quote = |s: &str| {
+        if s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '.') {
+            s.to_owned()
+        } else {
+            format!("'{}'", s.replace('\'', "''"))
+        }
+    };
+    match expr {
+        Expr::Number(n) => crate::xlsx::write::number_text(*n),
+        Expr::Name(n) => format!("{}[{}]", quote(field), quote(n)),
+        Expr::Item(f, i) => format!("{}[{}]", quote(f), quote(i)),
+        Expr::Neg(e) => format!("-{}", print_with_field(e, field)),
+        Expr::Binary(op, a, b) => {
+            format!("{}{}{}", print_with_field(a, field), op, print_with_field(b, field))
+        }
+        Expr::Compare(op, a, b) => {
+            let text = match op {
+                'n' => "<>".to_owned(),
+                'l' => "<=".to_owned(),
+                'g' => ">=".to_owned(),
+                c => c.to_string(),
+            };
+            format!("{}{}{}", print_with_field(a, field), text, print_with_field(b, field))
+        }
+        Expr::Call(name, args) => {
+            let args: Vec<String> = args.iter().map(|a| print_with_field(a, field)).collect();
+            format!("{name}({})", args.join(","))
+        }
+    }
+}
