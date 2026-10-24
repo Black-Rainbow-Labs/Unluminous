@@ -6,7 +6,10 @@
 //! probability above one half is solved from its complement, which keeps the digits of a result near
 //! 1 or near a tail that a subtraction from 1 would lose.
 
-use super::dist::{beta_i, gamma_p, gamma_q, normal_cdf, normal_inverse, t_cdf};
+use super::dist::{
+    beta_i_pair, beta_inverse_pair, gamma_p, gamma_q, normal_cdf, normal_inverse, solve_increasing,
+    t_two_tail_inverse,
+};
 use super::stats::{mean, sample_variance};
 use super::{gather, int, num, number, numbers_at, opt, r, s, Function, Gather};
 use crate::eval::{Ctx, Val};
@@ -184,43 +187,6 @@ pub const FUNCTIONS: &[Function] = &[
     ),
 ];
 
-/// Solves `f(x) = target` for an increasing `f`, bisecting from `lo` to `hi` until the bracket is two
-/// neighbouring doubles. With `open_ended` the upper end is doubled until `f` reaches the target.
-fn solve_increasing(f: impl Fn(f64) -> f64, target: f64, lo: f64, hi: f64, open_ended: bool) -> f64 {
-    let (mut lo, mut hi) = (lo, hi);
-    if open_ended {
-        let mut doublings = 0;
-        while f(hi) < target && doublings < 1100 {
-            lo = hi;
-            hi *= 2.0;
-            doublings += 1;
-        }
-    }
-    for _ in 0..2200 {
-        let mid = lo + (hi - lo) / 2.0;
-        if mid <= lo || mid >= hi {
-            break;
-        }
-        if f(mid) < target {
-            lo = mid;
-        } else {
-            hi = mid;
-        }
-    }
-    lo + (hi - lo) / 2.0
-}
-
-/// The x with I_x(a, b) = p and its complement 1 - x, each found directly so neither loses digits.
-fn beta_inverse_pair(p: f64, a: f64, b: f64) -> (f64, f64) {
-    if p <= 0.5 {
-        let x = solve_increasing(|x| beta_i(x, a, b), p, 0.0, 1.0, false);
-        (x, 1.0 - x)
-    } else {
-        let y = solve_increasing(|y| beta_i(y, b, a), 1.0 - p, 0.0, 1.0, false);
-        (1.0 - y, y)
-    }
-}
-
 /// A number argument that is left empty falls back to `default`.
 fn number_or(ctx: &Ctx, a: &[Value], i: usize, default: f64) -> Result<f64, ErrorKind> {
     match opt(a, i) {
@@ -244,7 +210,8 @@ fn beta_dist_legacy(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
     if alpha <= 0.0 || beta <= 0.0 || low == high || x < low || x > high {
         return Err(ErrorKind::Num);
     }
-    number(beta_i((x - low) / (high - low), alpha, beta))
+    let t = (x - low) / (high - low);
+    number(beta_i_pair(t, (high - x) / (high - low), alpha, beta))
 }
 
 /// F.INV, or F.INV.RT and FINV when `right` is set.
@@ -282,12 +249,6 @@ fn gamma_inv(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
         solve_increasing(|x| -gamma_q(alpha, x), -(1.0 - p), 0.0, start, true)
     };
     number(x * beta)
-}
-
-/// The t that leaves `alpha` in both tails together, for `df` degrees of freedom.
-fn t_two_tail_inverse(alpha: f64, df: f64) -> f64 {
-    let (u, w) = beta_inverse_pair(alpha, df / 2.0, 0.5);
-    (df * w / u).sqrt()
 }
 
 fn confidence_t(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
@@ -366,8 +327,9 @@ fn f_test_value(ctx: &mut Ctx, args: &[Expr]) -> Result<f64, ErrorKind> {
         return Err(ErrorKind::Div0);
     }
     let (d1, d2, f) = ((first.len() - 1) as f64, (second.len() - 1) as f64, v1 / v2);
-    let right = beta_i(d2 / (d2 + d1 * f), d2 / 2.0, d1 / 2.0);
-    let left = beta_i(d1 * f / (d1 * f + d2), d1 / 2.0, d2 / 2.0);
+    let s = d2 + d1 * f;
+    let right = beta_i_pair(d2 / s, d1 * f / s, d2 / 2.0, d1 / 2.0);
+    let left = beta_i_pair(d1 * f / s, d2 / s, d1 / 2.0, d2 / 2.0);
     Ok((2.0 * right.min(left)).min(1.0))
 }
 
@@ -388,7 +350,7 @@ fn t_test_value(ctx: &mut Ctx, args: &[Expr]) -> Result<f64, ErrorKind> {
         2 => pooled_t(&present(&first), &present(&second))?,
         _ => welch_t(&present(&first), &present(&second))?,
     };
-    let both = beta_i(df / (df + t * t), df / 2.0, 0.5);
+    let both = beta_i_pair(df / (df + t * t), t * t / (df + t * t), df / 2.0, 0.5);
     Ok(if tails == 1.0 { both / 2.0 } else { both })
 }
 

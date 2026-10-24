@@ -443,16 +443,11 @@ fn collect(
             }
         }
         Expr::Table(t) => {
-            let table = match &t.table {
-                Some(n) => book.table(n),
-                None => None,
-            };
-            match table {
-                Some(table) => found.precedents.push(Precedent::Range {
-                    first: table.sheet,
-                    last: table.sheet,
-                    range: table.range,
-                }),
+            match t.table.as_ref().and_then(|_| crate::eval::table_area(book, t, sheet, None).ok())
+            {
+                Some((on, range)) => {
+                    found.precedents.push(Precedent::Range { first: on, last: on, range })
+                }
                 None => found.volatile = true,
             }
         }

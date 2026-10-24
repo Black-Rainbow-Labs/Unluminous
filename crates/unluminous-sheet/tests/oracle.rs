@@ -18,13 +18,29 @@ use unluminous_sheet::eval::evaluate;
 use unluminous_sheet::model::{Cell, Workbook};
 use unluminous_sheet::value::Value;
 
-/// The sheet every formula is evaluated on.
-fn setup() -> Workbook {
+/// The sheet a corpus file's formulas are evaluated on: `<name>-setup.txt` beside the corpus file when
+/// there is one, and `setup.txt` otherwise. A setup line that starts with `=` after the cell is a formula,
+/// whose value is worked out once every cell is in place.
+fn setup(corpus: &str) -> Workbook {
+    let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/oracle");
+    let own = folder.join(format!("{corpus}-setup.txt"));
+    let path = if own.exists() { own } else { folder.join("setup.txt") };
     let mut book = Workbook::new();
-    for line in include_str!("oracle/setup.txt").lines() {
+    let mut formulas = Vec::new();
+    for line in std::fs::read_to_string(path).unwrap().lines() {
         let Some((at, text)) = line.split_once('=') else { continue };
+        let at = CellRef::parse(at).unwrap();
+        if text.starts_with('=') && text.len() > 1 {
+            formulas.push((at, text.to_owned()));
+            continue;
+        }
         let typed = unluminous_sheet::input::read(text, false, 2026);
-        book.sheets[0].set(CellRef::parse(at).unwrap(), Cell::value(typed.value));
+        book.sheets[0].set(at, Cell::value(typed.value));
+    }
+    for (at, text) in formulas {
+        let formula = unluminous_sheet::formula::Formula::parse(&text).unwrap();
+        let (value, _) = evaluate(&book, 0, at, &text[1..], 46318.5).unwrap();
+        book.sheets[0].set(at, Cell { value, formula: Some(formula), ..Default::default() });
     }
     book
 }
@@ -44,6 +60,30 @@ struct Wrong {
 /// 0.09999999403953552 in Excel, where the root is exactly 0.1.
 const ITERATIVE: &[&str] = &["IRR", "XIRR", "RATE"];
 
+/// The relative tolerance a formula is held to.
+///
+/// An inverse distribution with a huge number of degrees of freedom is where Excel itself is not
+/// exact, because it finds the answer by iterating to a tolerance of its own. Measured against the
+/// exact t quantile, whose expansion in 1/df is known: at 1E+10 degrees of freedom `T.INV(0.975, 1E+10)`
+/// is 1.95996440862 in Excel and 1.95996398478 exactly, 4.2e-7 apart, and ours is the exact one. At
+/// 1E+6 Excel is 4.6e-12 from the exact value where ours is 1.1e-12 from it, and its other inverses
+/// are up to 3e-11 from ours. The cumulative functions and densities agree with Excel to 1e-12 at
+/// those sizes, and are held to it. At 1E+10 Excel answers `#NUM!` for `CHISQ.INV.RT` and
+/// `GAMMA.INV`, where it gives up iterating, so those two are not in the corpus.
+fn tolerance_for(formula: &str) -> f64 {
+    if ITERATIVE.iter().any(|f| formula.starts_with(f)) {
+        return 1e-7;
+    }
+    let inverse = formula.contains("INV") || formula.starts_with("CONFIDENCE.T");
+    if inverse && (formula.contains("1E+10") || formula.contains("10000000000")) {
+        return 1e-6;
+    }
+    if inverse && (formula.contains("1E+6") || formula.contains("1000000")) {
+        return 1e-10;
+    }
+    1e-12
+}
+
 fn agrees(kind: &str, excel: &str, ours: &Value, tolerance: f64) -> bool {
     match (kind, ours) {
         ("number", Value::Number(n)) => {
@@ -61,8 +101,19 @@ fn agrees(kind: &str, excel: &str, ours: &Value, tolerance: f64) -> bool {
     }
 }
 
-/// Every answer line of every corpus file, in file name order.
-fn corpus_lines() -> Vec<String> {
+/// Whether a value is of the kind Excel answered, which is all that is compared for a volatile formula.
+fn same_kind(kind: &str, ours: &Value) -> bool {
+    matches!(
+        (kind, ours),
+        ("number", Value::Number(_))
+            | ("text", Value::Text(_))
+            | ("bool", Value::Bool(_))
+            | ("error", Value::Error(_))
+    )
+}
+
+/// Every answer line of every corpus file, in file name order, with the name of the file it is from.
+fn corpus_files() -> Vec<(String, Vec<String>)> {
     let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/oracle");
     let only = std::env::var("ORACLE").ok();
     let mut files: Vec<_> = std::fs::read_dir(&folder)
@@ -75,9 +126,17 @@ fn corpus_lines() -> Vec<String> {
     files.sort();
     files
         .iter()
-        .flat_map(|p| std::fs::read_to_string(p).unwrap().lines().map(str::to_owned).collect::<Vec<_>>())
-        .filter(|l| !l.trim().is_empty())
+        .map(|p| {
+            let lines = std::fs::read_to_string(p).unwrap();
+            let lines = lines.lines().filter(|l| !l.trim().is_empty()).map(str::to_owned).collect();
+            (p.file_stem().unwrap().to_string_lossy().into_owned(), lines)
+        })
         .collect()
+}
+
+/// Every answer line of every corpus file.
+fn corpus_lines() -> Vec<String> {
+    corpus_files().into_iter().flat_map(|(_, lines)| lines).collect()
 }
 
 fn shown(v: &Value) -> String {
@@ -90,11 +149,15 @@ fn shown(v: &Value) -> String {
 
 #[test]
 fn every_formula_computes_to_what_excel_computed() {
-    let book = setup();
+    let mut books: std::collections::HashMap<String, Workbook> = std::collections::HashMap::new();
     let at = CellRef::parse("Z100").unwrap();
     let mut wrong = Vec::new();
     let mut checked = 0;
-    for line in corpus_lines() {
+    for (corpus, line) in corpus_files()
+        .into_iter()
+        .flat_map(|(name, lines)| lines.into_iter().map(move |l| (name.clone(), l)))
+    {
+        let book = books.entry(corpus.clone()).or_insert_with(|| setup(&corpus));
         let answer: serde_json::Value = serde_json::from_str(&line).unwrap();
         let formula = answer["formula"].as_str().unwrap();
         let kind = answer["kind"].as_str().unwrap();
@@ -102,7 +165,7 @@ fn every_formula_computes_to_what_excel_computed() {
         if kind == "refused" {
             continue;
         }
-        let ours = match evaluate(&book, 0, at, formula, 46318.5) {
+        let ours = match evaluate(book, 0, at, formula, 46318.5) {
             Ok((v, _)) => v,
             Err(problem) => {
                 wrong.push(Wrong {
@@ -115,12 +178,9 @@ fn every_formula_computes_to_what_excel_computed() {
         };
         checked += 1;
         let volatile = VOLATILE.iter().any(|f| formula.contains(f));
-        let tolerance = if ITERATIVE.iter().any(|f| formula.starts_with(f)) { 1e-7 } else { 1e-12 };
-        let ok = if volatile {
-            matches!((kind, &ours), ("number", Value::Number(_)))
-        } else {
-            agrees(kind, value, &ours, tolerance)
-        };
+        let tolerance = tolerance_for(formula);
+        let ok =
+            if volatile { same_kind(kind, &ours) } else { agrees(kind, value, &ours, tolerance) };
         if !ok {
             wrong.push(Wrong {
                 formula: formula.to_owned(),
@@ -138,5 +198,55 @@ fn every_formula_computes_to_what_excel_computed() {
         "{} of {checked} formulas differ from Excel:\n{}",
         wrong.len(),
         report.join("\n")
+    );
+}
+
+/// The function names called in a formula: every identifier directly followed by an opening bracket and
+/// not part of a longer name, so `T(` is not found inside `TEXT(` and `ERF(` is not found inside `ERF.PRECISE(`.
+fn called_names(formula: &str) -> std::collections::BTreeSet<String> {
+    let chars: Vec<char> = formula.chars().collect();
+    let part_of_name = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '.';
+    let mut names = std::collections::BTreeSet::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if !part_of_name(chars[i]) {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < chars.len() && part_of_name(chars[i]) {
+            i += 1;
+        }
+        if i < chars.len() && chars[i] == '(' && chars[start].is_ascii_alphabetic() {
+            names.insert(chars[start..i].iter().collect::<String>().to_ascii_uppercase());
+        }
+    }
+    names
+}
+
+/// Every function must be called in at least five corpus formulas, so each has an error case and the
+/// argument kinds it takes covered by what Excel answered.
+// Switched on once every lane has merged, because the lanes that add functions bring their own cases and the
+// audit's probe corpus is imported by another lane. The coordinator removes the ignore.
+#[test]
+#[ignore]
+fn every_function_has_five_oracle_cases() {
+    let mut cases: std::collections::BTreeMap<&str, usize> =
+        unluminous_sheet::functions::all().iter().map(|f| (f.name, 0)).collect();
+    for line in corpus_lines() {
+        let answer: serde_json::Value = serde_json::from_str(&line).unwrap();
+        for name in called_names(answer["formula"].as_str().unwrap()) {
+            if let Some(count) = cases.get_mut(name.as_str()) {
+                *count += 1;
+            }
+        }
+    }
+    let short: Vec<String> =
+        cases.iter().filter(|(_, n)| **n < 5).map(|(name, n)| format!("{name} ({n})")).collect();
+    assert!(
+        short.is_empty(),
+        "{} functions have fewer than five oracle cases: {}",
+        short.len(),
+        short.join(", ")
     );
 }

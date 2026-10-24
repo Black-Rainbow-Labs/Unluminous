@@ -102,7 +102,7 @@ pub const FUNCTIONS: &[Function] = &[
         Some(e) => match ctx.eval(e) {
             Val::Ref(area) => Val::number((area.sheet_last - area.sheet + 1) as f64),
             Val::Value(Value::Error(e)) => Val::error(e),
-            _ => Val::error(ErrorKind::Value),
+            _ => Val::error(ErrorKind::NA),
         },
     }),
 ];

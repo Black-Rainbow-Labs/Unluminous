@@ -194,8 +194,15 @@ pub const FUNCTIONS: &[Function] = &[
         "link_location, [friendly_name]",
         "A link; the cell shows the friendly name.",
         |ctx, a| {
+            if let Val::Value(Value::Error(e)) = ctx.eval(&a[0]) {
+                return Val::error(e);
+            }
             let shown = a.get(1).unwrap_or(&a[0]);
             let v = ctx.eval(shown);
+            // A friendly name of several cells shows them all, as any formula returning a range does.
+            if ctx.dims(&v).is_some_and(|(r, c)| r * c > 1) {
+                return ctx.array(v).map_or_else(Val::error, Val::Array);
+            }
             Val::Value(ctx.single(v))
         },
     ),

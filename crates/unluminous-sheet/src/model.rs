@@ -207,6 +207,16 @@ pub struct RowInfo {
 pub struct Note {
     pub author: String,
     pub text: String,
+    /// Shown all the time rather than when the pointer is over the cell.
+    pub visible: bool,
+    /// The `comment` element's other attributes, such as the `xr:uid` a threaded comment is matched by.
+    pub attrs: Vec<(String, String)>,
+}
+
+impl Note {
+    pub fn new(author: impl Into<String>, text: impl Into<String>) -> Self {
+        Self { author: author.into(), text: text.into(), visible: false, attrs: Vec::new() }
+    }
 }
 
 /// A link on a cell.
@@ -232,6 +242,65 @@ pub struct AutoFilter {
     pub range: Range,
     /// Criteria by column offset within the range.
     pub columns: BTreeMap<u32, FilterCriteria>,
+    /// How the filtered range was last sorted, which Excel shows in the Sort dialog and reapplies.
+    pub sort: Option<SortState>,
+}
+
+/// The sort levels a filter or a table remembers (`sortState`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SortState {
+    pub range: Range,
+    pub conditions: Vec<SortCondition>,
+    /// Sort left to right rather than top to bottom.
+    pub columns: bool,
+    pub case_sensitive: bool,
+    /// Other attributes, such as the sort method, kept.
+    pub attrs: Vec<(String, String)>,
+}
+
+/// One sort level: the column (or row) it sorts by and how.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SortCondition {
+    pub range: Range,
+    pub descending: bool,
+    pub by: SortBy,
+    /// A custom list such as `Low,Medium,High`, sorting in its order.
+    pub custom_list: Option<String>,
+    /// The differential format whose fill or font colour is sorted on top.
+    pub dxf: Option<u32>,
+    pub icon_set: Option<String>,
+    pub icon_id: Option<u32>,
+}
+
+/// What a sort level compares.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SortBy {
+    #[default]
+    Value,
+    CellColor,
+    FontColor,
+    Icon,
+}
+
+impl SortBy {
+    pub fn name(self) -> &'static str {
+        match self {
+            SortBy::Value => "value",
+            SortBy::CellColor => "cellColor",
+            SortBy::FontColor => "fontColor",
+            SortBy::Icon => "icon",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        Some(match text {
+            "value" | "values" => SortBy::Value,
+            "cellColor" | "cell-color" | "fill" => SortBy::CellColor,
+            "fontColor" | "font-color" | "color" => SortBy::FontColor,
+            "icon" => SortBy::Icon,
+            _ => return None,
+        })
+    }
 }
 
 /// What one filtered column keeps.
@@ -399,6 +468,8 @@ pub struct Sheet {
     pub tab_color: Option<crate::styles::Color>,
     pub zoom: u32,
     pub show_grid: bool,
+    /// Everything else `sheetView` says: split panes, the selection, the scroll position, headings.
+    pub view: SheetView,
     /// In characters of the default font.
     pub default_col_width: Option<f64>,
     /// In points.
@@ -409,6 +480,104 @@ pub struct Sheet {
     pub array_formulas: Vec<Range>,
     /// A chart sheet, a dialog sheet or a macro sheet, kept as its part and shown as a tab with no grid.
     pub kept_part: Option<KeptSheet>,
+}
+
+/// What a sheet's `sheetView` says beyond the frozen panes, the zoom and the gridlines, which [`Sheet`]
+/// holds itself because the grid reads them on every frame.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SheetView {
+    pub kind: ViewKind,
+    /// The zoom of each view kind, as `zoomScaleNormal`, `zoomScalePageLayoutView` and
+    /// `zoomScaleSheetLayoutView` say it.
+    pub zoom_normal: Option<u32>,
+    pub zoom_layout: Option<u32>,
+    pub zoom_page_break: Option<u32>,
+    pub show_headings: bool,
+    pub show_zeros: bool,
+    pub show_formulas: bool,
+    pub right_to_left: bool,
+    /// The first cell showing at the top left: the scroll position.
+    pub top_left: Option<CellRef>,
+    /// Panes split by the split bars rather than frozen.
+    pub split: Option<Split>,
+    /// The first cell showing in the bottom right pane of frozen panes, and which pane is active.
+    pub pane_top_left: Option<CellRef>,
+    pub active_pane: Option<String>,
+    /// Frozen panes that were split first (`frozenSplit`).
+    pub frozen_split: bool,
+    pub selections: Vec<Selection>,
+    /// Other `sheetView` attributes (`colorId`, `defaultGridColor`, `showRuler` and the like), kept.
+    pub extra: Vec<(String, String)>,
+    /// The sheet's views for other workbook windows, kept as XML.
+    pub others: Vec<String>,
+}
+
+impl Default for SheetView {
+    fn default() -> Self {
+        Self {
+            kind: ViewKind::Normal,
+            zoom_normal: None,
+            zoom_layout: None,
+            zoom_page_break: None,
+            show_headings: true,
+            show_zeros: true,
+            show_formulas: false,
+            right_to_left: false,
+            top_left: None,
+            split: None,
+            pane_top_left: None,
+            active_pane: None,
+            frozen_split: false,
+            selections: Vec::new(),
+            extra: Vec::new(),
+            others: Vec::new(),
+        }
+    }
+}
+
+/// Which of Excel's three views a sheet shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ViewKind {
+    #[default]
+    Normal,
+    PageBreakPreview,
+    PageLayout,
+}
+
+impl ViewKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            ViewKind::Normal => "normal",
+            ViewKind::PageBreakPreview => "pageBreakPreview",
+            ViewKind::PageLayout => "pageLayout",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        Some(match text {
+            "normal" => ViewKind::Normal,
+            "pageBreakPreview" | "page-break" => ViewKind::PageBreakPreview,
+            "pageLayout" | "layout" => ViewKind::PageLayout,
+            _ => return None,
+        })
+    }
+}
+
+/// Panes split by the split bars: the split's position in twentieths of a point from the top left of the
+/// grid, and the first cell showing in the bottom right pane.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Split {
+    pub x: f64,
+    pub y: f64,
+    pub top_left: Option<CellRef>,
+}
+
+/// The cells chosen in one pane, and the active cell among them.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Selection {
+    pub pane: Option<String>,
+    pub active: CellRef,
+    pub ranges: Vec<Range>,
 }
 
 /// A sheet that is not a worksheet: its part, its relationship type and its content type.

@@ -1,12 +1,12 @@
 //! Least squares fits of any number of variables: LINEST, LOGEST, GROWTH and TREND.
 //!
-//! The fit is a Householder QR decomposition that takes the column with the most left in it at every
-//! step, which is how Excel finds a column that is a combination of the others: when what is left of
-//! the best remaining column falls below 6.74e-7 of the first one (measured against Excel by
-//! shifting a column by amounts either side), that column and every one after it are dropped. A
-//! dropped column gets the coefficient 0 and the standard error 0 and takes a degree of freedom away
-//! from the count. With an intercept the columns and the values are centred first, so a column that
-//! is a constant has nothing left in it, and the intercept is worked out from the means afterwards.
+//! The fit is a Householder QR decomposition that takes the columns from the longest to the shortest,
+//! which is how Excel finds a column that is a combination of the others: when what is left of a
+//! column after the ones before it falls below 6.74e-7 of the first column's length (measured against
+//! Excel by shifting a column by amounts either side), that column is dropped. A dropped column gets
+//! the coefficient 0 and the standard error 0 and takes a degree of freedom away from the count. With
+//! an intercept the columns and the values are centred first, so a column that is a constant has
+//! nothing left in it, and the intercept is worked out from the means afterwards.
 
 use super::{r, Function};
 use crate::eval::{to_bool, Ctx, Val};
@@ -73,12 +73,8 @@ struct Fit {
     df: f64,
 }
 
-/// A list of values as numbers: an error anywhere is the answer, anything else that is not a number
-/// is a `#VALUE!`.
+/// A list of values as numbers. Anything that is not a number, an error included, is `#VALUE!`.
 fn numbers_in(values: &[Value]) -> Result<Vec<f64>, ErrorKind> {
-    if let Some(Value::Error(e)) = values.iter().find(|v| v.is_error()) {
-        return Err(*e);
-    }
     values
         .iter()
         .map(|v| match v {
@@ -115,7 +111,7 @@ fn flag(ctx: &mut Ctx, args: &[Expr], i: usize, default: bool) -> Result<bool, E
 fn read_known(ctx: &mut Ctx, args: &[Expr]) -> Result<Known, ErrorKind> {
     let y = array_of(ctx, &args[0])?;
     if y.rows != 1 && y.cols != 1 {
-        return Err(ErrorKind::Ref);
+        return read_flattened(ctx, args, &y);
     }
     let by_rows = y.rows == 1 && y.cols > 1;
     let values = numbers_in(&y.data)?;
@@ -132,6 +128,16 @@ fn read_known(ctx: &mut Ctx, args: &[Expr]) -> Result<Known, ErrorKind> {
         None => vec![(1..=n).map(|i| i as f64).collect()],
     };
     Ok(Known { y: values, x, by_rows })
+}
+
+/// Known y values given as a block are read in row order, as one variable of x the same size.
+fn read_flattened(ctx: &mut Ctx, args: &[Expr], y: &Array) -> Result<Known, ErrorKind> {
+    let Some(e) = present(args, 1) else { return Err(ErrorKind::Ref) };
+    let x = array_of(ctx, e)?;
+    if x.rows != y.rows || x.cols != y.cols {
+        return Err(ErrorKind::Ref);
+    }
+    Ok(Known { y: numbers_in(&y.data)?, x: vec![numbers_in(&x.data)?], by_rows: false })
 }
 
 /// An array split into one list of numbers for each variable.
@@ -152,23 +158,10 @@ fn norm_from(column: &[f64], start: usize) -> f64 {
     column[start..].iter().map(|v| v * v).sum::<f64>().sqrt()
 }
 
-/// The position among `order[step..]` whose column has the most left below row `step`, and how much.
-/// With an intercept a tie goes to the later column and without one to the earlier, as Excel does.
-fn largest_remaining(work: &[Vec<f64>], order: &[usize], step: usize, tie_to_last: bool) -> (usize, f64) {
-    let mut best = (step, -1.0);
-    for pos in step..order.len() {
-        let norm = norm_from(&work[order[pos]], step);
-        if norm > best.1 || (tie_to_last && norm == best.1) {
-            best = (pos, norm);
-        }
-    }
-    best
-}
 
-/// One Householder step: turn column `order[step]` into a single value on the diagonal and apply the
+/// One Householder step: turn `column` into a single value on the diagonal at row `step` and apply the
 /// same reflection to the columns after it and to the right hand side.
-fn reflect(work: &mut [Vec<f64>], rhs: &mut [f64], order: &[usize], step: usize, norm: f64) {
-    let column = order[step];
+fn reflect(work: &mut [Vec<f64>], rhs: &mut [f64], column: usize, later: &[usize], step: usize, norm: f64) {
     let alpha = if work[column][step] > 0.0 { -norm } else { norm };
     let mut v = work[column][step..].to_vec();
     v[0] -= alpha;
@@ -180,30 +173,44 @@ fn reflect(work: &mut [Vec<f64>], rhs: &mut [f64], order: &[usize], step: usize,
             *t -= scale * a;
         }
     };
-    for &other in &order[step + 1..] {
+    for &other in later {
         apply(&mut work[other][step..]);
     }
     apply(&mut rhs[step..]);
     work[column][step] = alpha;
 }
 
-/// Reduce the columns to upper triangular form, returning their final order and how many are kept.
-fn pivoted_qr(work: &mut [Vec<f64>], rhs: &mut [f64], tie_to_last: bool) -> (Vec<usize>, usize) {
+/// The columns from the longest to the shortest. With an intercept two of equal length go later one
+/// first and without one earlier first, which is the choice Excel makes between a column and a copy.
+fn longest_first(work: &[Vec<f64>], later_wins_ties: bool) -> Vec<usize> {
+    let lengths: Vec<f64> = work.iter().map(|c| norm_from(c, 0)).collect();
     let mut order: Vec<usize> = (0..work.len()).collect();
-    let (mut rank, mut first) = (0, 0.0);
-    for step in 0..work.len().min(rhs.len()) {
-        let (pos, norm) = largest_remaining(work, &order, step, tie_to_last);
-        if step == 0 {
-            first = norm;
-        }
-        if norm == 0.0 || norm <= DROP_RATIO * first {
+    order.sort_by(|&a, &b| {
+        let by_length = lengths[b].partial_cmp(&lengths[a]).unwrap_or(std::cmp::Ordering::Equal);
+        by_length.then(if later_wins_ties { b.cmp(&a) } else { a.cmp(&b) })
+    });
+    order
+}
+
+/// Reduce the columns to upper triangular form, longest first, leaving out a column that is made of
+/// the ones before it. Returns the columns kept, in order.
+fn qr_dropping_dependent(work: &mut [Vec<f64>], rhs: &mut [f64], later_wins_ties: bool) -> Vec<usize> {
+    let candidates = longest_first(work, later_wins_ties);
+    let first = candidates.first().map_or(0.0, |&c| norm_from(&work[c], 0));
+    let mut kept = Vec::new();
+    for (i, &column) in candidates.iter().enumerate() {
+        let step = kept.len();
+        if step >= rhs.len() {
             break;
         }
-        order.swap(step, pos);
-        reflect(work, rhs, &order, step, norm);
-        rank += 1;
+        let left = norm_from(&work[column], step);
+        if left == 0.0 || left <= DROP_RATIO * first {
+            continue;
+        }
+        reflect(work, rhs, column, &candidates[i + 1..], step, left);
+        kept.push(column);
     }
-    (order, rank)
+    kept
 }
 
 /// The inverse of an upper triangular matrix.
@@ -240,7 +247,8 @@ fn fit(y: &[f64], columns: &[Vec<f64>], constant: bool) -> Fit {
     let mut work: Vec<Vec<f64>> =
         columns.iter().zip(&means).map(|(c, m)| c.iter().map(|v| v - m).collect()).collect();
     let mut rhs: Vec<f64> = y.iter().map(|v| v - y_mean).collect();
-    let (order, rank) = pivoted_qr(&mut work, &mut rhs, constant);
+    let order = qr_dropping_dependent(&mut work, &mut rhs, constant);
+    let rank = order.len();
     let triangle: Vec<Vec<f64>> =
         (0..rank).map(|i| (0..rank).map(|p| if p >= i { work[order[p]][i] } else { 0.0 }).collect()).collect();
     let mut beta = vec![0.0; rank];

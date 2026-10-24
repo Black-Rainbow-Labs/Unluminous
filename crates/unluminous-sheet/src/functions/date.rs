@@ -253,7 +253,9 @@ pub const FUNCTIONS: &[Function] = &[
 
 fn serial(ctx: &Ctx, v: &Value) -> Result<f64, ErrorKind> {
     let n = num(ctx, v)?;
-    if n < 0.0 {
+    // The last day Excel keeps is 31 December 9999, which is 2,958,465 and, in the 1904 system, 1,462 fewer.
+    let last = 2_958_466.0 - if ctx.date1904() { 1462.0 } else { 0.0 };
+    if n < 0.0 || n >= last {
         return Err(ErrorKind::Num);
     }
     Ok(n)
@@ -278,6 +280,10 @@ fn iso_week(n: f64, date1904: bool) -> i64 {
     let day = n.floor();
     let weekday = (dates::weekday(day, date1904) as i64 + 6) % 7; // Monday 0
     let thursday = day - weekday as f64 + 3.0;
+    // Day 0 and the days of its week belong to the last ISO week of 1899.
+    if thursday < 1.0 {
+        return 52;
+    }
     let (y, _, _) = dates::date(thursday, date1904).unwrap_or((1900, 1, 1));
     let jan1 = dates::serial(y, 1, 1, date1904).unwrap_or(1.0);
     ((thursday - jan1) / 7.0).floor() as i64 + 1

@@ -428,6 +428,22 @@ fn read_styles(xml: &str, styles: &mut Styles) -> Result<(), String> {
                             .and_then(|v| v.parse().ok())
                             .unwrap_or(0),
                         shrink: bool_attr(a, "shrinkToFit"),
+                        reading_order: a
+                            .attribute("readingOrder")
+                            .and_then(|v| v.parse().ok())
+                            .unwrap_or(0),
+                        extra: attrs_of(
+                            a,
+                            &[
+                                "horizontal",
+                                "vertical",
+                                "wrapText",
+                                "indent",
+                                "textRotation",
+                                "shrinkToFit",
+                                "readingOrder",
+                            ],
+                        ),
                     });
                     let protection = child(x, "protection");
                     styles.xfs.push(Xf {
@@ -444,6 +460,12 @@ fn read_styles(xml: &str, styles: &mut Styles) -> Result<(), String> {
                             .and_then(|p| p.attribute("hidden"))
                             .map(|v| v == "1" || v == "true"),
                         quote_prefix: bool_attr(x, "quotePrefix"),
+                        pivot_button: bool_attr(x, "pivotButton"),
+                        applies: x
+                            .attributes()
+                            .filter(|a| a.name().starts_with("apply"))
+                            .map(|a| (a.name().to_owned(), a.value().to_owned()))
+                            .collect(),
                     });
                 }
             }
@@ -588,9 +610,112 @@ fn file_formula(text: &str, dynamic: bool) -> Formula {
             array: None,
             array_member: None,
             frozen: true,
+            attrs: None,
         },
     }
 }
+
+/// A `sortState` element: the sorted range and its levels.
+pub(crate) fn read_sort_state(node: Node) -> Option<SortState> {
+    let range = node.attribute("ref").and_then(Range::parse)?;
+    let conditions = node
+        .children()
+        .filter(|n| n.is_element() && n.tag_name().name() == "sortCondition")
+        .filter_map(|c| {
+            Some(SortCondition {
+                range: c.attribute("ref").and_then(Range::parse)?,
+                descending: bool_attr(c, "descending"),
+                by: c.attribute("sortBy").and_then(SortBy::parse).unwrap_or_default(),
+                custom_list: c.attribute("customList").map(str::to_owned),
+                dxf: c.attribute("dxfId").and_then(|v| v.parse().ok()),
+                icon_set: c.attribute("iconSet").map(str::to_owned),
+                icon_id: c.attribute("iconId").and_then(|v| v.parse().ok()),
+            })
+        })
+        .collect();
+    Some(SortState {
+        range,
+        conditions,
+        columns: bool_attr(node, "columnSort"),
+        case_sensitive: bool_attr(node, "caseSensitive"),
+        attrs: attrs_of(node, &["ref", "columnSort", "caseSensitive"]),
+    })
+}
+
+/// The first `sheetView` into the model, and any other as XML.
+fn read_sheet_views(xml: &str, section: Node, sheet: &mut Sheet) {
+    let mut views =
+        section.children().filter(|n| n.is_element() && n.tag_name().name() == "sheetView");
+    let Some(view) = views.next() else { return };
+    sheet.view.others = views.map(|v| raw(xml, v).to_owned()).collect();
+    let flag = |name: &str, default: bool| match view.attribute(name) {
+        Some(v) => v == "1" || v == "true",
+        None => default,
+    };
+    let number = |name: &str| view.attribute(name).and_then(|z| z.parse::<u32>().ok());
+    sheet.show_grid = flag("showGridLines", true);
+    sheet.zoom = number("zoomScale").unwrap_or(100);
+    let v = &mut sheet.view;
+    v.kind = view.attribute("view").and_then(ViewKind::parse).unwrap_or_default();
+    v.zoom_normal = number("zoomScaleNormal");
+    v.zoom_layout = number("zoomScalePageLayoutView");
+    v.zoom_page_break = number("zoomScaleSheetLayoutView");
+    v.show_headings = flag("showRowColHeaders", true);
+    v.show_zeros = flag("showZeros", true);
+    v.show_formulas = flag("showFormulas", false);
+    v.right_to_left = flag("rightToLeft", false);
+    v.top_left = view.attribute("topLeftCell").and_then(CellRef::parse);
+    v.extra = attrs_of(view, VIEW_MODELLED);
+    if let Some(pane) = child(view, "pane") {
+        let split =
+            |name: &str| pane.attribute(name).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+        let top_left = pane.attribute("topLeftCell").and_then(CellRef::parse);
+        v.active_pane = pane.attribute("activePane").map(str::to_owned);
+        match pane.attribute("state") {
+            Some("frozen") | Some("frozenSplit") => {
+                v.frozen_split = pane.attribute("state") == Some("frozenSplit");
+                v.pane_top_left = top_left;
+                sheet.frozen = Some((split("ySplit") as u32, split("xSplit") as u32));
+            }
+            _ => v.split = Some(Split { x: split("xSplit"), y: split("ySplit"), top_left }),
+        }
+    }
+    for s in view.children().filter(|n| n.is_element() && n.tag_name().name() == "selection") {
+        let ranges: Vec<Range> = s
+            .attribute("sqref")
+            .unwrap_or("A1")
+            .split_whitespace()
+            .filter_map(Range::parse)
+            .collect();
+        let active = s
+            .attribute("activeCell")
+            .and_then(CellRef::parse)
+            .or_else(|| ranges.first().map(|r| r.first))
+            .unwrap_or(CellRef::new(0, 0));
+        sheet.view.selections.push(Selection {
+            pane: s.attribute("pane").map(str::to_owned),
+            active,
+            ranges,
+        });
+    }
+}
+
+/// The `sheetView` attributes the model reads; every other one is kept.
+const VIEW_MODELLED: &[&str] = &[
+    "tabSelected",
+    "showGridLines",
+    "zoomScale",
+    "zoomScaleNormal",
+    "zoomScalePageLayoutView",
+    "zoomScaleSheetLayoutView",
+    "view",
+    "showRowColHeaders",
+    "showZeros",
+    "showFormulas",
+    "rightToLeft",
+    "topLeftCell",
+    "workbookViewId",
+];
 
 /// A call that may be a LAMBDA in Name Manager rather than an unknown function: a name with no dot.
 fn is_name_call(name: &str) -> bool {
@@ -627,27 +752,7 @@ fn read_sheet(
                 sheet.raw.elements.push((name.to_owned(), raw(xml, section).to_owned()));
             }
             "dimension" => {}
-            "sheetViews" => {
-                if let Some(view) = child(section, "sheetView") {
-                    sheet.show_grid =
-                        !matches!(view.attribute("showGridLines"), Some("0") | Some("false"));
-                    sheet.zoom =
-                        view.attribute("zoomScale").and_then(|z| z.parse().ok()).unwrap_or(100);
-                    if let Some(pane) = child(view, "pane") {
-                        if matches!(pane.attribute("state"), Some("frozen") | Some("frozenSplit")) {
-                            let cols = pane
-                                .attribute("xSplit")
-                                .and_then(|v| v.parse::<f64>().ok())
-                                .unwrap_or(0.0) as u32;
-                            let rows = pane
-                                .attribute("ySplit")
-                                .and_then(|v| v.parse::<f64>().ok())
-                                .unwrap_or(0.0) as u32;
-                            sheet.frozen = Some((rows, cols));
-                        }
-                    }
-                }
-            }
+            "sheetViews" => read_sheet_views(xml, section, sheet),
             "sheetFormatPr" => {
                 sheet.default_row_height = section
                     .attribute("defaultRowHeight")
@@ -815,6 +920,12 @@ fn read_sheet(
                                 }
                             }
                         }
+                        if let (Some(made), Some(f)) = (&mut formula, child(c, "f")) {
+                            let kept = attrs_of(f, &["t", "ref", "si"]);
+                            if !kept.is_empty() {
+                                made.attrs = Some(Arc::from(attrs_text(&kept).as_str()));
+                            }
+                        }
                         let extra_attrs = attrs_of(c, &["r", "s", "t", "cm"]);
                         let extra = (!extra_attrs.is_empty())
                             .then(|| Arc::from(attrs_text(&extra_attrs).as_str()));
@@ -911,7 +1022,8 @@ fn read_sheet(
                         };
                         columns.insert(id, criteria);
                     }
-                    sheet.filter = Some(AutoFilter { range, columns });
+                    let sort = child(section, "sortState").and_then(read_sort_state);
+                    sheet.filter = Some(AutoFilter { range, columns, sort });
                 }
             }
             "legacyDrawing" => {
@@ -942,6 +1054,11 @@ fn read_sheet(
             let comments_part = resolve(part, &rel.target);
             if let Some(cx) = text(&comments_part) {
                 read_notes(&cx, sheet);
+            }
+            for vml in rels.iter().filter(|r| r.kind == REL_VML) {
+                if let Some(v) = text(&resolve(part, &vml.target)) {
+                    read_note_visibility(&v, sheet);
+                }
             }
             // Kept as bytes; regenerated only if a note changes.
         }
@@ -1137,6 +1254,26 @@ fn read_notes(xml: &str, sheet: &mut Sheet) {
             .cloned()
             .unwrap_or_default();
         let text = child(c, "text").map(|t| string_item(xml, t).0.to_string()).unwrap_or_default();
-        sheet.notes.insert((at.row, at.col), Note { author, text });
+        let attrs = attrs_of(c, &["ref", "authorId"]);
+        sheet.notes.insert((at.row, at.col), Note { author, text, visible: false, attrs });
+    }
+}
+
+/// Which notes the VML drawing shows all the time: a shape whose client data says `Visible`. VML is not
+/// always well formed XML, so it is read as text.
+fn read_note_visibility(vml: &str, sheet: &mut Sheet) {
+    for shape in vml.split("<v:shape ").skip(1) {
+        let shape = shape.split("</v:shape>").next().unwrap_or("");
+        let number = |tag: &str| -> Option<u32> {
+            let start = shape.find(&format!("<x:{tag}>"))? + tag.len() + 4;
+            let end = shape[start..].find('<')? + start;
+            shape[start..end].trim().parse().ok()
+        };
+        let (Some(row), Some(col)) = (number("Row"), number("Column")) else { continue };
+        if shape.contains("<x:Visible") {
+            if let Some(note) = sheet.notes.get_mut(&(row, col)) {
+                note.visible = true;
+            }
+        }
     }
 }

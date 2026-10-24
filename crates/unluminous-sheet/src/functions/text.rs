@@ -325,14 +325,19 @@ pub const FUNCTIONS: &[Function] = &[
             Ok(x) => x,
             Err(e) => return Val::error(e),
         };
-        let strict = a
-            .get(1)
-            .map(|e| {
+        // The format is 0 for a concise form or 1 for a strict one, and anything else is an error.
+        let strict = match a.get(1) {
+            None => false,
+            Some(e) => {
                 let v = ctx.eval(e);
                 let v = ctx.single(v);
-                ctx.number(&v).unwrap_or(0.0) == 1.0
-            })
-            .unwrap_or(false);
+                match ctx.number(&v) {
+                    Ok(n) if n == 0.0 || n == 1.0 => n == 1.0,
+                    Ok(_) => return Val::error(ErrorKind::Value),
+                    Err(e) => return Val::error(e),
+                }
+            }
+        };
         let text = if strict {
             let rows: Vec<String> = array
                 .rows_iter()
