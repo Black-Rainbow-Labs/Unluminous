@@ -416,6 +416,7 @@ fn read_options(root: Node) -> Options {
                     | "showHeaders"
                     | "pageOverThenDown"
                     | "pageWrap"
+                    | "dataPosition"
                     | "uid"
             ) && a.namespace().is_none()
         })
@@ -426,8 +427,14 @@ fn read_options(root: Node) -> Options {
 
 fn read_fields(book: &Workbook, table: &mut PivotTable, list: Node, expected: usize) -> Option<()> {
     let mut fields = Vec::new();
-    for pf in children(list, "pivotField") {
-        fields.push(read_field(book, pf)?);
+    let cache = &book.pivots.caches[table.cache];
+    for (i, pf) in children(list, "pivotField").enumerate() {
+        let mut field = read_field(book, pf)?;
+        // A format the field has because its source cells have it is not a format the person chose.
+        if number::<u32>(pf, "numFmtId") == cache.fields.get(i).map(|f| f.num_fmt_id) {
+            field.num_fmt = None;
+        }
+        fields.push(field);
     }
     if fields.len() != expected {
         return None;

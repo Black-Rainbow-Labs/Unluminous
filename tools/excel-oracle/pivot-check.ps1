@@ -239,7 +239,18 @@ try {
             try {
                 $pt = Build-Pivot $excel $book $case $sheets[$case.data]
                 $dump = Dump-Pivot $pt.Parent $pt
-                [pscustomobject]@{ id = $case.id; repaired = $false; range = $dump.range; data = $dump.data; cells = $dump.cells } | ConvertTo-Json -Compress -Depth 8
+                $answers = @()
+                foreach ($f in @($case.formulas)) {
+                    if (-not $f) { continue }
+                    $cell = $pt.Parent.Range('Z1')
+                    $cell.Formula2 = '=' + $f
+                    $v = $cell.Value2
+                    $kind = if ($null -eq $v) { 'empty' } elseif ($v -is [double]) { 'number' } elseif ($v -is [bool]) { 'bool' } elseif ($v -is [int]) { 'error' } else { 'text' }
+                    $shown = if ($kind -eq 'number') { $v.ToString('R', $inv) } elseif ($kind -eq 'error') { $cell.Text } else { "$v" }
+                    $answers += [pscustomobject]@{ f = $f; k = $kind; v = $shown }
+                    $cell.Clear() | Out-Null
+                }
+                [pscustomobject]@{ id = $case.id; repaired = $false; range = $dump.range; data = $dump.data; cells = $dump.cells; formulas = $answers } | ConvertTo-Json -Compress -Depth 8
             } catch {
                 [pscustomobject]@{ id = $case.id; error = $_.Exception.Message + ' @' + $_.InvocationInfo.ScriptLineNumber } | ConvertTo-Json -Compress
             }

@@ -25,6 +25,7 @@ pub mod group;
 pub mod groups;
 pub mod items;
 pub mod layout;
+pub mod query;
 pub mod session;
 pub mod session_calc;
 pub mod session_group;

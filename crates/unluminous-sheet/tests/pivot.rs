@@ -441,6 +441,28 @@ fn run_case(session: &mut Session, spec: &Json, case: &Json, want: &Json) -> Vec
             }
         }
     }
+    for (k, f) in want["formulas"].as_array().into_iter().flatten().enumerate() {
+        let formula = format!("={}", f["f"].as_str().unwrap());
+        let z1 = CellRef::parse("Z1").unwrap();
+        if let Err(e) = session.set_input(sheet, z1, &formula) {
+            problems.push(format!("formula {k} {formula}: {e}"));
+            continue;
+        }
+        let got = session.book.sheets[sheet].value_at(z1);
+        let kind = f["k"].as_str().unwrap();
+        let text = f["v"].as_str().unwrap();
+        let ok = match (&got, kind) {
+            (Value::Number(n), "number") => (n - text.parse::<f64>().unwrap()).abs() <= 1e-9 * n.abs().max(1.0),
+            (Value::Text(t), "text") => &**t == text,
+            (Value::Error(e), "error") => e.text() == text,
+            (Value::Bool(b), "bool") => text.eq_ignore_ascii_case(if *b { "true" } else { "false" }),
+            _ => false,
+        };
+        if !ok {
+            problems.push(format!("{formula}: Excel {kind}:{text}, ours {got:?}"));
+        }
+        let _ = session.clear(sheet, &[Range::cell(z1)], unluminous_sheet::edit::Clear::All);
+    }
     // Nothing outside the range.
     let table_range = Range::parse(range).unwrap();
     for (&(r, c), cell) in &session.book.sheets[sheet].cells {
@@ -719,7 +741,21 @@ fn excel_opens_and_refreshes_what_we_write() {
         return;
     }
     let spec = read_json("cases.json");
-    let only: Option<Vec<String>> = std::env::var("PIVOT_CASE").ok().map(|v| v.split(',').map(str::to_owned).collect());
+    // Excel takes a few seconds for each table, so a run opens a sample of the cases and the ones that
+    // refresh after the source changed. PIVOT_EXCEL_ALL=1 opens every one; PIVOT_CASE=a,b opens some.
+    let mut only: Option<Vec<String>> =
+        std::env::var("PIVOT_CASE").ok().map(|v| v.split(',').map(str::to_owned).collect());
+    if only.is_none() && std::env::var("PIVOT_EXCEL_ALL").is_err() {
+        let cases = spec["cases"].as_array().unwrap();
+        only = Some(
+            cases
+                .iter()
+                .enumerate()
+                .filter(|(i, c)| i % 12 == 0 || c.get("after").is_some())
+                .map(|(_, c)| c["id"].as_str().unwrap().to_owned())
+                .collect(),
+        );
+    }
     let dir = std::env::temp_dir().join(format!("unluminous-pivots-{}", std::process::id()));
     let mut built = write_workbooks(&spec, &dir, &only);
     let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2).unwrap().to_path_buf();
@@ -763,4 +799,73 @@ fn excel_opens_and_refreshes_what_we_write() {
     println!("{} of {} tables Excel refreshed match", checked - failed, checked);
     assert!(checked > 0, "Excel answered nothing: {}", String::from_utf8_lossy(&output.stderr));
     assert_eq!(failed, 0);
+}
+
+#[test]
+fn what_is_written_is_read_back_as_the_same_pivot_table() {
+    let spec = read_json("cases.json");
+    let expected = expected();
+    let mut failed = Vec::new();
+    let mut checked = 0;
+    for case in spec["cases"].as_array().unwrap() {
+        let id = case["id"].as_str().unwrap();
+        if !expected.contains_key(id) {
+            continue;
+        }
+        let mut session = Session::new(workbook(&spec), 46319.5);
+        let Ok(t) = build(&mut session, &spec, case) else { continue };
+        let bytes = unluminous_sheet::xlsx::write(&session.book).unwrap();
+        let back = unluminous_sheet::xlsx::read(&bytes).unwrap();
+        checked += 1;
+        let ours = &session.book.pivots;
+        if back.pivots.tables.len() != 1 || back.pivots.caches.len() != 1 {
+            failed.push(format!("{id}: {} tables and {} caches came back", back.pivots.tables.len(), back.pivots.caches.len()));
+            continue;
+        }
+        let (a, b) = (&ours.tables[t], &back.pivots.tables[0]);
+        let mut differences = Vec::new();
+        if a.fields != b.fields {
+            let at = a.fields.iter().zip(b.fields.iter()).position(|(x, y)| x != y).unwrap_or(0);
+            differences.push(format!("field {at}: {:?} against {:?}", a.fields.get(at), b.fields.get(at)));
+        }
+        if a.row_axis() != b.row_axis() || a.col_axis() != b.col_axis() {
+            differences.push("axes".to_owned());
+        }
+        if a.pages != b.pages {
+            differences.push(format!("pages {:?} against {:?}", a.pages, b.pages));
+        }
+        if a.data != b.data {
+            differences.push(format!("data {:?} against {:?}", a.data, b.data));
+        }
+        if a.options != b.options {
+            differences.push(format!("options {:?} against {:?}", a.options, b.options));
+        }
+        if a.style != b.style {
+            differences.push("style".to_owned());
+        }
+        if a.location != b.location {
+            differences.push(format!("location {} against {}", a.location.a1(), b.location.a1()));
+        }
+        let (ca, cb) = (&ours.caches[a.cache], &back.pivots.caches[0]);
+        if ca.records != cb.records {
+            differences.push("records".to_owned());
+        }
+        if ca.source != cb.source {
+            differences.push("source".to_owned());
+        }
+        for (i, (x, y)) in ca.fields.iter().zip(cb.fields.iter()).enumerate() {
+            let mut x2 = x.clone();
+            // A field the file did not list is listed when a table needs it; the items are the same.
+            if x2.shared.is_empty() {
+                x2.shared = y.shared.clone();
+            }
+            if &x2 != y {
+                differences.push(format!("cache field {i}: {x:?} against {y:?}"));
+            }
+        }
+        if !differences.is_empty() {
+            failed.push(format!("{id}: {}", differences.join("; ")));
+        }
+    }
+    assert!(failed.is_empty(), "{} of {} differ:\n{}", failed.len(), checked, failed.join("\n"));
 }

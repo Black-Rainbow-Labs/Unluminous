@@ -22,6 +22,7 @@ pub mod info;
 pub mod logical;
 pub mod lookup;
 pub mod math;
+pub mod pivot;
 pub mod stats;
 pub mod text;
 
@@ -92,6 +93,7 @@ const CATEGORIES: &[(&str, &[Function])] = &[
     ("Financial", financial::FUNCTIONS),
     ("Information", info::FUNCTIONS),
     ("Engineering", engineering::FUNCTIONS),
+    ("Lookup", pivot::FUNCTIONS),
 ];
 
 /// Every function, with its category, sorted by name.
