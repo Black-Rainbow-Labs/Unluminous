@@ -213,7 +213,22 @@ impl Session {
         self.check_sheet(sheet)?;
         self.allowed(sheet, Guard::Forbidden)?;
         let shape = chartdata::shape_of(&self.book, sheet, range);
-        let series = chartdata::layout_series(&self.book, sheet, range, shape);
+        let xy = matches!(
+            ty,
+            ChartType::ScatterMarkers
+                | ChartType::ScatterSmooth
+                | ChartType::ScatterSmoothNoMarkers
+                | ChartType::ScatterLines
+                | ChartType::ScatterLinesNoMarkers
+                | ChartType::Bubble
+                | ChartType::Bubble3D
+        );
+        let series = if xy {
+            let bubble = matches!(ty, ChartType::Bubble | ChartType::Bubble3D);
+            chartdata::layout_xy(&self.book, sheet, range, shape.header_row, bubble)
+        } else {
+            chartdata::layout_series(&self.book, sheet, range, shape)
+        };
         if series.is_empty() || range.rows() == 0 {
             return Err("The data range is not valid.".to_owned());
         }

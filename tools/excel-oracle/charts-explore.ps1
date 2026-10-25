@@ -10,6 +10,7 @@ param(
     [Parameter(Mandatory = $true)][string]$CodeFile
 )
 $ErrorActionPreference = 'Stop'
+$Out = [IO.Path]::GetFullPath($Out)
 $excel = New-Object -ComObject Excel.Application
 $excel.DisplayAlerts = $false
 $excel.Visible = $false

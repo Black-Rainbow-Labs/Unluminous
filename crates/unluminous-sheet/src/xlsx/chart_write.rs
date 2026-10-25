@@ -251,7 +251,7 @@ fn group_xml(chart: &Chart, index: usize, g: &Group, ids: &[(u32, u32)], is_text
     out.push_str(&group_head(g));
     let mut sers = String::new();
     for i in members {
-        sers.push_str(&series_xml(&chart.series[i], g.kind, ids[i], "ser", is_text));
+        sers.push_str(&series_xml(&chart.series[i], g.kind, ids[i], "c:ser", is_text));
     }
     out.push_str(&sers);
     if let Some(labels) = &g.labels {
@@ -427,13 +427,15 @@ fn group_tail(g: &Group) -> String {
                 out.push_str(&num_val("gapWidth", w));
             }
             let split = match g.split_by {
-                SplitBy::Auto => "auto",
-                SplitBy::Position => "pos",
-                SplitBy::Value => "val",
-                SplitBy::Percent => "percent",
-                SplitBy::Custom => "cust",
+                SplitBy::Auto => None,
+                SplitBy::Position => Some("pos"),
+                SplitBy::Value => Some("val"),
+                SplitBy::Percent => Some("percent"),
+                SplitBy::Custom => Some("cust"),
             };
-            out.push_str(&format!("<c:splitType val=\"{split}\"/>"));
+            if let Some(split) = split {
+                out.push_str(&format!("<c:splitType val=\"{split}\"/>"));
+            }
             if let Some(at) = g.split_at {
                 out.push_str(&num_val("splitPos", f64_text(at)));
             }
@@ -446,9 +448,6 @@ fn group_tail(g: &Group) -> String {
             }
         }
         GroupKind::Bubble => {
-            if g.bubble_3d {
-                out.push_str("<c:bubble3D val=\"1\"/>");
-            }
             if let Some(s) = g.bubble_scale {
                 out.push_str(&num_val("bubbleScale", s));
             }
@@ -466,12 +465,19 @@ fn group_tail(g: &Group) -> String {
 }
 
 /// A formula as a series reference, or an array constant as a literal.
-fn data_xml(tag: &str, formula: &str, text: bool) -> String {
+fn data_xml(tag: &str, formula: &str, text: bool, filtered: bool) -> String {
     if let Some(inner) = formula.strip_prefix('{').and_then(|f| f.strip_suffix('}')) {
         return literal_xml(tag, inner);
     }
-    let (kind, cache) = if text { ("strRef", "") } else { ("numRef", "") };
-    format!("<c:{tag}><c:{kind}><c:f>{}</c:f>{cache}</c:{kind}></c:{tag}>", escape(formula))
+    let kind = if text { "strRef" } else { "numRef" };
+    if filtered {
+        // A series filtered out of the chart names its cells in an extension, not in `c:f`.
+        return format!(
+            "<c:{tag}><c:{kind}><c:extLst><c:ext uri=\"{{02D57815-91ED-43cb-92C2-25804820EDAC}}\"><c15:formulaRef><c15:sqref>{}</c15:sqref></c15:formulaRef></c:ext></c:extLst></c:{kind}></c:{tag}>",
+            escape(formula)
+        );
+    }
+    format!("<c:{tag}><c:{kind}><c:f>{}</c:f></c:{kind}></c:{tag}>", escape(formula))
 }
 
 /// An array constant as a `numLit` or `strLit`.
@@ -492,7 +498,10 @@ fn literal_xml(tag: &str, inner: &str) -> String {
     out
 }
 
-fn name_xml(name: &str) -> String {
+fn name_xml(name: &str, filtered: bool) -> String {
+    if filtered && !name.starts_with('"') {
+        return format!("<c:tx>{}</c:tx>", data_xml("x", name, true, true).replace("<c:x>", "").replace("</c:x>", ""));
+    }
     if let Some(text) = name.strip_prefix('"').and_then(|n| n.strip_suffix('"')) {
         return format!("<c:tx><c:v>{}</c:v></c:tx>", escape(&text.replace("\"\"", "\"")));
     }
@@ -504,7 +513,7 @@ fn series_xml(s: &ChartSeries, kind: GroupKind, ids: (u32, u32), tag: &str, is_t
     let f = &s.fmt;
     let mut out = format!("<{tag}><c:idx val=\"{}\"/><c:order val=\"{}\"/>", ids.0, ids.1);
     if let Some(name) = &s.name {
-        out.push_str(&name_xml(name));
+        out.push_str(&name_xml(name, tag == "c15:ser"));
     }
     out.push_str(opt(&f.sp_pr));
     let (marker, xy) = match kind {
@@ -552,13 +561,14 @@ fn series_xml(s: &ChartSeries, kind: GroupKind, ids: (u32, u32), tag: &str, is_t
         }
     }
     let text = s.categories.as_deref().is_some_and(is_text);
+    let filtered = tag == "c15:ser";
     if xy {
         if let Some(x) = &s.categories {
-            out.push_str(&data_xml("xVal", x, text));
+            out.push_str(&data_xml("xVal", x, text, filtered));
         }
-        out.push_str(&data_xml("yVal", &s.values, false));
+        out.push_str(&data_xml("yVal", &s.values, false, filtered));
         if let Some(sizes) = &s.sizes {
-            out.push_str(&data_xml("bubbleSize", sizes, false));
+            out.push_str(&data_xml("bubbleSize", sizes, false, filtered));
         }
         if kind == GroupKind::Bubble {
             if let Some(b) = f.bubble_3d {
@@ -567,9 +577,9 @@ fn series_xml(s: &ChartSeries, kind: GroupKind, ids: (u32, u32), tag: &str, is_t
         }
     } else {
         if let Some(c) = &s.categories {
-            out.push_str(&data_xml("cat", c, text));
+            out.push_str(&data_xml("cat", c, text, filtered));
         }
-        out.push_str(&data_xml("val", &s.values, false));
+        out.push_str(&data_xml("val", &s.values, false, filtered));
         if kind == GroupKind::Bar {
             if let Some(shape) = &f.shape {
                 out.push_str(&format!("<c:shape val=\"{shape}\"/>"));

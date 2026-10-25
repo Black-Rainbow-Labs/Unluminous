@@ -98,7 +98,10 @@ fn quoted(text: &str) -> String {
 /// A reference gives its formula; numbers or words written into the chart give an array constant.
 fn formula_in(ser: Node, part: &str) -> Option<String> {
     let holder = child(ser, part)?;
-    if let Some(f) = holder.descendants().find(|d| d.is_element() && d.tag_name().name() == "f") {
+    let reference = holder
+        .descendants()
+        .find(|d| d.is_element() && matches!(d.tag_name().name(), "f" | "sqref"));
+    if let Some(f) = reference {
         return f.text().map(|t| t.trim().to_owned());
     }
     if part == "tx" {
@@ -273,7 +276,8 @@ fn read_group(
     g.bubble_scale = number(node, "bubbleScale");
     g.show_negative_bubbles = flag(node, "showNegBubbles");
     g.size_represents = val(node, "sizeRepresents").map(str::to_owned);
-    g.bubble_3d = flag(node, "bubble3D").unwrap_or(false);
+    g.bubble_3d = flag(node, "bubble3D").unwrap_or(false)
+        || children(node, "ser").any(|s| flag(s, "bubble3D") == Some(true));
     g.of_pie = if val(node, "ofPieType") == Some("bar") { OfPieKind::Bar } else { OfPieKind::Pie };
     g.split_by = match val(node, "splitType") {
         Some("val") => SplitBy::Value,

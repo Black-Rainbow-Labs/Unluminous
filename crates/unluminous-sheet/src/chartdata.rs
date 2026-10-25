@@ -317,3 +317,34 @@ pub fn recommend(book: &Workbook, sheet: usize, range: Range) -> Vec<ChartType> 
     }
     vec![T::ColumnClustered, T::LineMarkers, T::ColumnStacked, T::AreaStacked, T::BarClustered]
 }
+
+/// Lay a selection out for a scatter or bubble chart: the first column holds X, and each other column is a
+/// Y series; a bubble chart takes its sizes from the column after each Y, or draws equal bubbles.
+pub fn layout_xy(book: &Workbook, sheet: usize, range: Range, header_row: bool, bubble: bool) -> Vec<ChartSeries> {
+    let name = &book.sheets[sheet].name;
+    let top = range.first.row + u32::from(header_row);
+    let column = |col: u32| absolute(name, Range::new(CellRef::new(top, col), CellRef::new(range.last.row, col)));
+    let title = |col: u32| header_row.then(|| absolute(name, Range::cell(CellRef::new(range.first.row, col))));
+    if range.cols() == 1 {
+        return vec![ChartSeries::new(title(range.first.col), None, column(range.first.col))];
+    }
+    let x = column(range.first.col);
+    let mut out = Vec::new();
+    let mut col = range.first.col + 1;
+    while col <= range.last.col {
+        let mut s = ChartSeries::new(title(col), Some(x.clone()), column(col));
+        col += 1;
+        if bubble {
+            let count = range.last.row + 1 - top;
+            s.sizes = Some(if col <= range.last.col {
+                let sizes = column(col);
+                col += 1;
+                sizes
+            } else {
+                format!("{{{}}}", vec!["1"; count as usize].join(","))
+            });
+        }
+        out.push(s);
+    }
+    out
+}

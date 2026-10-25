@@ -2,11 +2,14 @@
 # type, title, legend, series formulas, series chart types and axis groups, data labels, trendlines, error
 # bars, the axes' bounds and units, and the position. Chart sheets are included.
 #
-#   pwsh tools/excel-oracle/charts-inspect.ps1 -Path book.xlsx
-param([Parameter(Mandatory = $true)][string]$Path)
+# Several files can be given; Excel is started once, because opening a workbook with many charts is slow.
+# The answer is a JSON array with one object a file.
+#
+#   pwsh tools/excel-oracle/charts-inspect.ps1 -Path book.xlsx,other.xlsx
+param([Parameter(Mandatory = $true)][string[]]$Path)
 $ErrorActionPreference = 'Stop'
+$Path = @($Path | ForEach-Object { $_ -split ',' })
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
-$full = (Resolve-Path -LiteralPath $Path).Path
 $excel = New-Object -ComObject Excel.Application
 $excel.DisplayAlerts = $false
 $excel.Visible = $false
@@ -89,39 +92,44 @@ function Describe-Chart($chart, $name) {
 }
 
 try {
-    $repaired = $false
-    $problem = ''
-    try {
-        $book = $excel.Workbooks.Open($full, 0, $true)
-    } catch {
-        $repaired = $true
-        $problem = $_.Exception.Message
-        $book = $excel.Workbooks.Open($full, 0, $true, 5, '', '', $true, 2, '', $false, $false, 0, $false, $false, 1)
-    }
-    $repaired = $repaired -or ($book.Windows.Item(1).Caption -match 'Repaired')
-    $charts = @()
-    foreach ($sheet in $book.Sheets) {
-        $isChartSheet = $false
-        try { $null = $sheet.ChartObjects; } catch { $isChartSheet = $true }
-        if ($sheet.Type -eq -4109) {
-            $d = Describe-Chart $sheet ('sheet:' + $sheet.Name)
-            $d.sheet = $sheet.Name
-            $charts += $d
-        } else {
-            foreach ($co in $sheet.ChartObjects()) {
-                $d = Describe-Chart $co.Chart $co.Name
+    $results = @()
+    foreach ($file in $Path) {
+        $full = (Resolve-Path -LiteralPath $file).Path
+        $repaired = $false
+        $problem = ''
+        try {
+            $book = $excel.Workbooks.Open($full, 0, $true)
+        } catch {
+            $repaired = $true
+            $problem = $_.Exception.Message
+            $book = $excel.Workbooks.Open($full, 0, $true, 5, '', '', $true, 2, '', $false, $false, 0, $false, $false, 1)
+        }
+        $repaired = $repaired -or ($book.Windows.Item(1).Caption -match 'Repaired')
+        $charts = @()
+        foreach ($sheet in $book.Sheets) {
+            $isChartSheet = $false
+            try { $null = $sheet.ChartObjects; } catch { $isChartSheet = $true }
+            if ($sheet.Type -eq -4109) {
+                $d = Describe-Chart $sheet ('sheet:' + $sheet.Name)
                 $d.sheet = $sheet.Name
-                $d.left = [math]::Round($co.Left, 1); $d.top = [math]::Round($co.Top, 1)
-                $d.width = [math]::Round($co.Width, 1); $d.height = [math]::Round($co.Height, 1)
-                $d.topLeft = $co.TopLeftCell.Address($false, $false)
-                $d.bottomRight = $co.BottomRightCell.Address($false, $false)
-                $d.alt = Try-Get { $co.ShapeRange.AlternativeText }
                 $charts += $d
+            } else {
+                foreach ($co in $sheet.ChartObjects()) {
+                    $d = Describe-Chart $co.Chart $co.Name
+                    $d.sheet = $sheet.Name
+                    $d.left = [math]::Round($co.Left, 1); $d.top = [math]::Round($co.Top, 1)
+                    $d.width = [math]::Round($co.Width, 1); $d.height = [math]::Round($co.Height, 1)
+                    $d.topLeft = $co.TopLeftCell.Address($false, $false)
+                    $d.bottomRight = $co.BottomRightCell.Address($false, $false)
+                    $d.alt = Try-Get { $co.ShapeRange.AlternativeText }
+                    $charts += $d
+                }
             }
         }
+        $book.Close($false)
+        $results += [ordered]@{ path = $full; repaired = $repaired; problem = $problem; charts = $charts }
     }
-    $book.Close($false)
-    [ordered]@{ repaired = $repaired; problem = $problem; charts = $charts } | ConvertTo-Json -Depth 12 -Compress
+    ConvertTo-Json -InputObject @($results) -Depth 14 -Compress
 } finally {
     $excel.Quit()
     [void][Runtime.InteropServices.Marshal]::ReleaseComObject($excel)
