@@ -1338,7 +1338,8 @@ fn aggregate_of(which: u32, values: &[Value]) -> Result<f64, ErrorKind> {
         }
         7 => sample_variance(&numbers).ok_or(ErrorKind::Div0)?.sqrt(),
         8 => population_variance(&numbers).ok_or(ErrorKind::Div0)?.sqrt(),
-        9 => numbers.iter().sum(),
+        // An empty sum is +0, where Rust's own sum of nothing is -0.
+        9 => numbers.iter().sum::<f64>() + 0.0,
         10 => sample_variance(&numbers).ok_or(ErrorKind::Div0)?,
         11 => population_variance(&numbers).ok_or(ErrorKind::Div0)?,
         _ => return Err(ErrorKind::Value),

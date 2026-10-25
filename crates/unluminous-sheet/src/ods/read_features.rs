@@ -133,7 +133,8 @@ impl<'d> Features<'d> {
             let cells = a1.rsplit_once('!').map_or(a1.as_str(), |(_, c)| c);
             if let (Some(index), Some(range)) = (book.sheet_index(&sheet_name), Range::parse(cells))
             {
-                book.sheets[index].filter = Some(AutoFilter { range, columns: BTreeMap::new(), sort: None });
+                book.sheets[index].filter =
+                    Some(AutoFilter { range, columns: BTreeMap::new(), sort: None });
             }
         }
     }
@@ -457,6 +458,12 @@ fn blank_rule(kind: &str, priority: &mut i32) -> CfRule {
         data_bar: None,
         attrs: Vec::new(),
         raw_children: String::new(),
+        std_dev: None,
+        equal_average: false,
+        time_period: None,
+        icon_set: None,
+        data_bar_options: None,
+        x14: None,
     };
     *priority += 1;
     rule

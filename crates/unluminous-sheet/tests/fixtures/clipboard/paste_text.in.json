@@ -1,0 +1,146 @@
+[
+ {
+  "name": "text_grid",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "settext",
+    "value": "1\t2\t3\r\n4\t5\t6\r\n"
+   },
+   {
+    "do": "paste",
+    "at": "A1"
+   }
+  ],
+  "dump": [
+   "A1:E5"
+  ]
+ },
+ {
+  "name": "text_typed",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "settext",
+    "value": "hello\t12\t1/2/2023\t007\tTRUE\r\n-5\t+5\t1,234.5\t50%\t$3.50\r\n1e3\t0.5\t(12)\t12:30\tNaN"
+   },
+   {
+    "do": "paste",
+    "at": "A1"
+   }
+  ],
+  "dump": [
+   "A1:E5"
+  ]
+ },
+ {
+  "name": "text_formula_like",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "settext",
+    "value": "=1+2\t+3\t-4\t@A1\t=A1\r\n"
+   },
+   {
+    "do": "paste",
+    "at": "A1"
+   }
+  ],
+  "dump": [
+   "A1:E5"
+  ]
+ },
+ {
+  "name": "text_quoted",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "settext",
+    "value": "\"a\tb\"\t\"line1\nline2\"\t\"say \"\"hi\"\"\"\t\"12\"\r\n"
+   },
+   {
+    "do": "paste",
+    "at": "A1"
+   }
+  ],
+  "dump": [
+   "A1:E5"
+  ]
+ },
+ {
+  "name": "text_one_column",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "settext",
+    "value": "alpha\r\nbeta\r\ngamma\r\n"
+   },
+   {
+    "do": "paste",
+    "at": "A1"
+   }
+  ],
+  "dump": [
+   "A1:E5"
+  ]
+ },
+ {
+  "name": "text_no_newline",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "settext",
+    "value": "x\ty"
+   },
+   {
+    "do": "paste",
+    "at": "A1"
+   }
+  ],
+  "dump": [
+   "A1:E5"
+  ]
+ },
+ {
+  "name": "text_spaces",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "settext",
+    "value": " lead\ttrail \t  both  \r\n"
+   },
+   {
+    "do": "paste",
+    "at": "A1"
+   }
+  ],
+  "dump": [
+   "A1:E5"
+  ]
+ },
+ {
+  "name": "text_blank_cells",
+  "formats": true,
+  "cells": {},
+  "steps": [
+   {
+    "do": "settext",
+    "value": "a\t\tc\r\n\r\nx\ty\r\n"
+   },
+   {
+    "do": "paste",
+    "at": "A1"
+   }
+  ],
+  "dump": [
+   "A1:E5"
+  ]
+ }
+]

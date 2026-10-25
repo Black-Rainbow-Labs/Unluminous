@@ -1,0 +1,336 @@
+{
+  "printer": "Microsoft Print to PDF on Ne00:",
+  "font": "Consolas",
+  "size": 14,
+  "workbook": "pages-consolas.xlsx",
+  "sheets": [
+    {
+      "sheet": "letter-p",
+      "failure": "",
+      "pages": 24,
+      "hbreaks": [
+        {
+          "row": 40,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 79,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 118,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 8,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 15,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 22,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 29,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 36,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 5,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "a4-l",
+      "failure": "",
+      "pages": 20,
+      "hbreaks": [
+        {
+          "row": 28,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 55,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 82,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 109,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 11,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 21,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 31,
+          "manual": false
+        }
+      ],
+      "hcount": 4,
+      "vcount": 4,
+      "attempts": 4,
+      "paper": 9,
+      "orientation": 2,
+      "zoom": "100"
+    },
+    {
+      "sheet": "fit-1x1",
+      "failure": "",
+      "pages": 1,
+      "hbreaks": [],
+      "vbreaks": [],
+      "hcount": 0,
+      "vcount": 0,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "False"
+    },
+    {
+      "sheet": "fit-2x3",
+      "failure": "",
+      "pages": 4,
+      "hbreaks": [
+        {
+          "row": 106,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 21,
+          "manual": false
+        }
+      ],
+      "hcount": 1,
+      "vcount": 2,
+      "attempts": 4,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "False"
+    },
+    {
+      "sheet": "scale-70",
+      "failure": "",
+      "pages": 12,
+      "hbreaks": [
+        {
+          "row": 56,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 111,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 11,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 21,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 31,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 4,
+      "attempts": 4,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "70"
+    },
+    {
+      "sheet": "titles-both",
+      "failure": "",
+      "pages": 32,
+      "hbreaks": [
+        {
+          "row": 40,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 77,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 114,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 8,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 13,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 18,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 23,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 33,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 38,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 7,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "widths",
+      "failure": "",
+      "pages": 44,
+      "hbreaks": [
+        {
+          "row": 40,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 79,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 118,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 5,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 9,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 13,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 16,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 23,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 27,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 31,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 35,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 38,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 10,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    }
+  ]
+}

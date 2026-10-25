@@ -1,0 +1,102 @@
+import fs from 'node:fs';
+const out = [];
+const people = [['Name', 'Dept', 'Sal'], ['Ann', 'Sales', 50], ['Bob', 'Support', 60], ['Cy', 'Sales', 70], ['Di', 'Eng', 90], ['Ed', 'sales', 40], ['Flo', 'Eng', 90], ['Gus', 'Sales', 50], ['Ann', 'Sales', 50]];
+function sheetOf(rows, col0 = 0, row0 = 1) {
+  const cells = {};
+  rows.forEach((r, i) => r.forEach((v, j) => { if (v !== null) cells[String.fromCharCode(65 + col0 + j) + (row0 + i)] = v; }));
+  return cells;
+}
+function adv(name, crit, extra = {}, op = {}, more = {}) {
+  const cells = { ...sheetOf(people), ...sheetOf(crit, 4), ...more };
+  out.push({ name: 'adv-' + name, sheets: { Sheet1: cells }, ...extra, op: { kind: 'advanced-filter', range: 'A1:C9', criteria: crit.length ? `E1:${String.fromCharCode(65 + 4 + crit[0].length - 1)}${crit.length}` : undefined, ...op } });
+}
+adv('basic', [['Dept'], ['Sales']]);
+adv('prefix', [['Dept'], ['S']]);
+adv('exact', [['Dept'], ["'=Sales"]]);
+adv('exact-wild', [['Dept'], ["'=S*s"]]);
+adv('exact-blank', [['Dept'], ["'="]], {}, {}, { B5: null });
+adv('ne-blank', [['Dept'], ["'<>"]]);
+adv('gt-text', [['Dept'], ['>Support']]);
+adv('numbers-text-mix', [['Sal'], ['>=60']], {}, {}, { C4: 'n/a' });
+adv('unique-case', [['Dept'], ['Sales']], {}, { unique: true }, { A9: 'ann', B9: 'sales' });
+adv('unique-copy-subset', [['Sal'], ['>=50']], {}, { copyTo: 'J1:K1', unique: true }, { J1: 'Dept', K1: 'Sal' });
+adv('only-header-criteria', [['Dept']]);
+adv('two-fields-same-name-or', [['Dept', 'Dept'], ['Sales', 'Eng']]);
+adv('wild-star', [['Dept'], ['S*s']]);
+adv('wild-q', [['Dept'], ['?ales']]);
+adv('and', [['Dept', 'Sal'], ['Sales', '>50']]);
+adv('and-same-col', [['Sal', 'Sal'], ['>40', '<90']]);
+adv('or', [['Dept'], ['Sales'], ['Eng']]);
+adv('and-or', [['Dept', 'Sal'], ['Sales', '>55'], ['Eng', null]]);
+adv('ops', [['Sal'], ['>=60']]);
+adv('ne', [['Dept'], ['<>Sales']]);
+adv('lt', [['Sal'], ['<50']]);
+adv('eq-num', [['Sal'], ['=50']]);
+adv('plain-num', [['Sal'], [50]]);
+adv('blank-row', [['Dept'], [null]]);
+adv('blank-row-after', [['Dept'], ['Sales'], [null]]);
+adv('computed', [['Calc'], ['=C2>AVERAGE($C$2:$C$9)']]);
+adv('computed-blank-header', [[null], ['=C2>AVERAGE($C$2:$C$9)']]);
+adv('computed-name-header', [['Sal'], ['=C2>AVERAGE($C$2:$C$9)']]);
+adv('computed-mixed', [['Dept', 'Calc'], ['Sales', '=C2>50']]);
+adv('case', [['Dept'], ['SALES']]);
+adv('empty-criteria-cell-col', [['Dept', 'Sal'], ['Sales', null]]);
+adv('header-not-in-list', [['Zzz'], ['Sales']]);
+adv('unique-in-place', [['Dept'], ['Sales']], {}, { unique: true });
+adv('unique-all', [], {}, { unique: true });
+adv('unique-with-criteria-all-cols', [['Sal'], ['>=50']], {}, { unique: true });
+adv('copy-single', [['Dept'], ['Sales']], {}, { copyTo: 'J1' });
+adv('copy-headers-subset', [['Dept'], ['Sales']], { }, { copyTo: 'J1:K1' }, { J1: 'Sal', K1: 'Name' });
+adv('copy-unique', [['Sal'], ['>=50']], {}, { copyTo: 'J1', unique: true });
+adv('copy-no-criteria', [], {}, { copyTo: 'J1' });
+adv('copy-no-criteria-unique', [], {}, { copyTo: 'J1', unique: true });
+adv('copy-overwrite', [['Dept'], ['Sales']], {}, { copyTo: 'J1:L1' }, { J1: 'Name', K1: 'Dept', L1: 'Sal', J2: 'old', K5: 'old', L9: 'old', J9: 'old', J20: 'old', M2: 'beside' });
+adv('copy-subset-notfound', [['Dept'], ['Sales']], {}, { copyTo: 'J1:K1' }, { J1: 'Sal', K1: 'Nope' });
+adv('copy-formats', [['Dept'], ['Sales']], { dumpFormat: true, formats: [{ range: 'C2:C3', numfmt: '0.00', fill: 'FF0000' }] }, { copyTo: 'J1' });
+adv('copy-formula-col', [['Dept'], ['Sales']], {}, { copyTo: 'J1' }, { D1: 'Dbl', D2: '=C2*2', D3: '=C3*2', D4: '=C4*2', D5: '=C5*2', D6: '=C6*2', D7: '=C7*2', D8: '=C8*2', D9: '=C9*2' });
+out.forEach(s => { if (s.name.startsWith('adv-') && s.op.range === 'A1:C9' && s.sheets.Sheet1.D1) s.op.range = 'A1:D9'; });
+// in-place with existing hidden / filter
+adv('in-place-twice', [['Dept'], ['Sales']], {}, {}, {});
+out[out.length - 1].op = [out[out.length - 1].op, { kind: 'advanced-filter', range: 'A1:C9', criteria: 'E1:E2' }];
+adv('after-autofilter', [['Dept'], ['Sales']], { setup: [{ kind: 'filter-on', range: 'A1:C9' }] });
+// Consolidate
+const s1 = [[null, 'Jan', 'Feb'], ['apple', 1, 2], ['pear', 3, 4], ['kiwi', 5, 6]];
+const s2 = [[null, 'Feb', 'Jan'], ['pear', 10, 20], ['apple', 30, 40], ['plum', 50, 60]];
+const s3 = [[null, 'Jan', 'Feb'], ['apple', 100, 200], ['kiwi', 300, 400]];
+function con(name, o) {
+  out.push({ name: 'con-' + name, sheets: { Sheet1: sheetOf(s1), Sheet2: sheetOf(s2), Sheet3: sheetOf(s3), Dest: {} }, dumpOutline: true,
+    op: { kind: 'consolidate', sheet: 'Dest', destination: 'A1', sources: ['Sheet1!R1C1:R4C3', 'Sheet2!R1C1:R4C3'], function: 'sum', ...o } });
+}
+con('position-sum', {});
+con('position-sum-data-only', { sources: ['Sheet1!R2C2:R4C3', 'Sheet2!R2C2:R4C3'] });
+con('top-row', { topRow: true });
+con('left-col', { leftColumn: true });
+con('both', { topRow: true, leftColumn: true });
+con('both-three', { topRow: true, leftColumn: true, sources: ['Sheet1!R1C1:R4C3', 'Sheet2!R1C1:R4C3', 'Sheet3!R1C1:R3C3'] });
+for (const f of ['count', 'average', 'max', 'min', 'product', 'countnums', 'stdev', 'stdevp', 'var', 'varp']) con('fn-' + f, { topRow: true, leftColumn: true, function: f, sources: ['Sheet1!R1C1:R4C3', 'Sheet2!R1C1:R4C3', 'Sheet3!R1C1:R3C3'] });
+con('links-both', { topRow: true, leftColumn: true, links: true });
+con('links-position', { links: true, sources: ['Sheet1!R2C2:R4C3', 'Sheet2!R2C2:R4C3'] });
+con('links-top', { topRow: true, links: true });
+con('links-left', { leftColumn: true, links: true });
+con('links-three', { topRow: true, leftColumn: true, links: true, sources: ['Sheet1!R1C1:R4C3', 'Sheet2!R1C1:R4C3', 'Sheet3!R1C1:R3C3'] });
+con('single-source', { topRow: true, leftColumn: true, sources: ['Sheet1!R1C1:R4C3'] });
+con('dest-elsewhere', { destination: 'C3', topRow: true, leftColumn: true });
+con('dest-has-data', { topRow: true, leftColumn: true });
+out[out.length - 1].sheets.Dest = { A1: 'old', B1: 'old', E9: 'old', A2: 'old' };
+con('same-sheet-sources', { topRow: true, leftColumn: true, sources: ['Sheet1!R1C1:R4C3', 'Sheet1!R1C1:R2C3'] });
+con('text-in-data', { topRow: true, leftColumn: true });
+out[out.length - 1].sheets.Sheet2.B2 = 'text';
+con('blank-in-data', { topRow: true, leftColumn: true, function: 'count' });
+delete out[out.length - 1].sheets.Sheet2.B2;
+con('count-text', { topRow: true, leftColumn: true, function: 'count' });
+out[out.length - 1].sheets.Sheet2.B2 = 'text';
+con('labels-case', { topRow: true, leftColumn: true });
+out[out.length - 1].sheets.Sheet2.A3 = 'APPLE';
+con('different-sizes', { sources: ['Sheet1!R1C1:R4C3', 'Sheet2!R1C1:R2C2'] });
+con('different-sizes-labels', { topRow: true, leftColumn: true, sources: ['Sheet1!R1C1:R4C3', 'Sheet2!R1C1:R3C2'] });
+con('formulas-source', { topRow: true, leftColumn: true });
+out[out.length - 1].sheets.Sheet2.B2 = '=1+1';
+con('whole-data-no-labels-links', { sources: ['Sheet1!R2C1:R4C3', 'Sheet2!R2C1:R4C3'], links: true });
+fs.writeFileSync(new URL('./adv.json', import.meta.url), JSON.stringify(out.filter(s => s.name.startsWith('adv-'))));
+fs.writeFileSync(new URL('./consolidate.json', import.meta.url), JSON.stringify(out.filter(s => s.name.startsWith('con-'))));
+console.log(out.length);

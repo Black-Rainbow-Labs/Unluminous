@@ -1,0 +1,4 @@
+02-protection-combo|Unable to get the Insert property of the Range class
+07-table-delheader|Unable to get the Delete property of the Range class
+18-formulas-delrow3|Unable to get the Delete property of the Range class
+18-formulas-delrow5|You can't change part of an array.

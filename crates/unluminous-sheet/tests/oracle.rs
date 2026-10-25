@@ -317,12 +317,21 @@ fn called_names(formula: &str) -> std::collections::BTreeSet<String> {
     names
 }
 
+/// Functions the formula oracle cannot ask Excel about, each with the reason and where it is checked.
+const NO_EXCEL_ANSWER: &[(&str, &str)] = &[
+    (
+        "PY",
+        "Excel 16 waits for the Python in Excel service without end when PY is entered through COM:          `PY(\"1\")` and `PY(#N/A,0)` each held Excel for the whole 90 to 600 seconds allowed. Our          answer is tested in functions/services.rs.",
+    ),
+    (
+        "GETPIVOTDATA",
+        "It reads a pivot table, which the oracle's setup cells cannot build. Its cases are compared with          Excel's answers on Excel built pivots in tests/pivot.rs.",
+    ),
+];
+
 /// Every function must be called in at least five corpus formulas, so each has an error case and the
 /// argument kinds it takes covered by what Excel answered.
-// Switched on once every lane has merged, because the lanes that add functions bring their own cases and the
-// audit's probe corpus is imported by another lane. The coordinator removes the ignore.
 #[test]
-#[ignore]
 fn every_function_has_five_oracle_cases() {
     let mut cases: std::collections::BTreeMap<&str, usize> =
         unluminous_sheet::functions::all().iter().map(|f| (f.name, 0)).collect();
@@ -334,8 +343,11 @@ fn every_function_has_five_oracle_cases() {
             }
         }
     }
-    let short: Vec<String> =
-        cases.iter().filter(|(_, n)| **n < 5).map(|(name, n)| format!("{name} ({n})")).collect();
+    let short: Vec<String> = cases
+        .iter()
+        .filter(|(name, n)| **n < 5 && !NO_EXCEL_ANSWER.iter().any(|(f, _)| f == *name))
+        .map(|(name, n)| format!("{name} ({n})"))
+        .collect();
     assert!(
         short.is_empty(),
         "{} functions have fewer than five oracle cases: {}",

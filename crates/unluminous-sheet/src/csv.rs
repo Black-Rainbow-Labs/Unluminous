@@ -30,6 +30,17 @@ pub fn decode(bytes: &[u8]) -> String {
     }
 }
 
+/// How a text file's bytes were encoded, so saving it again writes it the same way, as Excel keeps the
+/// format a text file was opened in.
+pub fn encoding_of(bytes: &[u8]) -> Encoding {
+    match bytes {
+        [0xEF, 0xBB, 0xBF, ..] => Encoding::Utf8Bom,
+        [0xFF, 0xFE, ..] => Encoding::Utf16Le,
+        _ if std::str::from_utf8(bytes).is_ok() => Encoding::Utf8,
+        _ => Encoding::Windows1252,
+    }
+}
+
 fn utf16(bytes: &[u8], unit: fn([u8; 2]) -> u16) -> String {
     let units: Vec<u16> = bytes.chunks_exact(2).map(|pair| unit([pair[0], pair[1]])).collect();
     String::from_utf16_lossy(&units)

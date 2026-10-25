@@ -1,0 +1,377 @@
+[
+ {
+  "name": "justify_basic",
+  "formats": false,
+  "cells": {
+   "A1": "The quick brown fox jumps over the lazy dog and keeps running through the field until night",
+   "A2": "second line"
+  },
+  "widths": {
+   "A": 20
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A8"
+   }
+  ],
+  "dump": [
+   "A1:B12"
+  ]
+ },
+ {
+  "name": "justify_many",
+  "formats": false,
+  "cells": {
+   "A1": "one two three",
+   "A2": "four five",
+   "A3": "six seven eight nine",
+   "A4": "ten"
+  },
+  "widths": {
+   "A": 12
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A8"
+   }
+  ],
+  "dump": [
+   "A1:B12"
+  ]
+ },
+ {
+  "name": "justify_wide",
+  "formats": false,
+  "cells": {
+   "A1": "a b",
+   "A2": "c d"
+  },
+  "widths": {
+   "A": 40
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A5"
+   }
+  ],
+  "dump": [
+   "A1:B12"
+  ]
+ },
+ {
+  "name": "justify_multi_col",
+  "formats": false,
+  "cells": {
+   "A1": "one two three four five six seven",
+   "B1": "x"
+  },
+  "widths": {
+   "A": 10,
+   "B": 10
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:B6"
+   }
+  ],
+  "dump": [
+   "A1:C12"
+  ]
+ },
+ {
+  "name": "justify_number",
+  "formats": false,
+  "cells": {
+   "A1": 5,
+   "A2": "text"
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A4"
+   }
+  ],
+  "dump": [
+   "A1:B6"
+  ]
+ },
+ {
+  "name": "justify_small_range",
+  "formats": false,
+  "cells": {
+   "A1": "The quick brown fox jumps over the lazy dog and keeps running through the field until night",
+   "A2": "second line"
+  },
+  "widths": {
+   "A": 20
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A2"
+   }
+  ],
+  "dump": [
+   "A1:B12"
+  ]
+ },
+ {
+  "name": "justify_long_word",
+  "formats": false,
+  "cells": {
+   "A1": "abcdefghijklmnopqrstuvwxyz short"
+  },
+  "widths": {
+   "A": 10
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A5"
+   }
+  ],
+  "dump": [
+   "A1:B12"
+  ]
+ },
+ {
+  "name": "justify_text_then_blank",
+  "formats": false,
+  "cells": {
+   "A1": "alpha beta gamma delta",
+   "A3": "zeta"
+  },
+  "widths": {
+   "A": 14
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A6"
+   }
+  ],
+  "dump": [
+   "A1:B12"
+  ]
+ },
+ {
+  "name": "justify_w7",
+  "formats": false,
+  "cells": {
+   "A1": "Mary had a little lamb whose fleece was white as snow, and everywhere that Mary went the lamb was sure to go."
+  },
+  "widths": {
+   "A": 7
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A3"
+   }
+  ],
+  "dump": [
+   "A1:B40"
+  ]
+ },
+ {
+  "name": "justify_w9",
+  "formats": false,
+  "cells": {
+   "A1": "WIDE MMMM wide Wiggle WWW narrow iiii llll jjj fill ill-will 12345 67890 (parens) [brackets] {braces} @at #hash $dollar %percent"
+  },
+  "widths": {
+   "A": 9
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A3"
+   }
+  ],
+  "dump": [
+   "A1:B40"
+  ]
+ },
+ {
+  "name": "justify_w15",
+  "formats": false,
+  "cells": {
+   "A1": "It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness 1,234,567.89 units."
+  },
+  "widths": {
+   "A": 15
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A3"
+   }
+  ],
+  "dump": [
+   "A1:B40"
+  ]
+ },
+ {
+  "name": "justify_w22",
+  "formats": false,
+  "cells": {
+   "A1": "Quantity: 1000 units @ $12.50 each = $12,500.00 total (incl. 8.25% tax); ship by 2024-12-31 to ACME Corp., Dept. #42."
+  },
+  "widths": {
+   "A": 22
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A3"
+   }
+  ],
+  "dump": [
+   "A1:B40"
+  ]
+ },
+ {
+  "name": "justify_w30",
+  "formats": false,
+  "cells": {
+   "A1": "Mary had a little lamb whose fleece was white as snow, and everywhere that Mary went the lamb was sure to go."
+  },
+  "widths": {
+   "A": 30
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A3"
+   }
+  ],
+  "dump": [
+   "A1:B40"
+  ]
+ },
+ {
+  "name": "justify_w37",
+  "formats": false,
+  "cells": {
+   "A1": "WIDE MMMM wide Wiggle WWW narrow iiii llll jjj fill ill-will 12345 67890 (parens) [brackets] {braces} @at #hash $dollar %percent"
+  },
+  "widths": {
+   "A": 37
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A3"
+   }
+  ],
+  "dump": [
+   "A1:B40"
+  ]
+ },
+ {
+  "name": "justify_w50",
+  "formats": false,
+  "cells": {
+   "A1": "It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness 1,234,567.89 units."
+  },
+  "widths": {
+   "A": 50
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A3"
+   }
+  ],
+  "dump": [
+   "A1:B40"
+  ]
+ },
+ {
+  "name": "justify_w64",
+  "formats": false,
+  "cells": {
+   "A1": "Quantity: 1000 units @ $12.50 each = $12,500.00 total (incl. 8.25% tax); ship by 2024-12-31 to ACME Corp., Dept. #42."
+  },
+  "widths": {
+   "A": 64
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A3"
+   }
+  ],
+  "dump": [
+   "A1:B40"
+  ]
+ },
+ {
+  "name": "justify_paragraphs",
+  "formats": false,
+  "cells": {
+   "A1": "Mary had a little lamb whose fleece was white as snow, and everywhere that Mary went the lamb was sure to go.",
+   "A2": "and a second line",
+   "A4": "It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness 1,234,567.89 units."
+  },
+  "widths": {
+   "A": 25
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A6"
+   }
+  ],
+  "dump": [
+   "A1:B40"
+  ]
+ },
+ {
+  "name": "justify_bold",
+  "formats": false,
+  "cells": {
+   "A1": {
+    "v": "Mary had a little lamb whose fleece was white as snow, and everywhere that Mary went the lamb was sure to go.",
+    "bold": true
+   }
+  },
+  "widths": {
+   "A": 25
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:A3"
+   }
+  ],
+  "dump": [
+   "A1:B40"
+  ]
+ },
+ {
+  "name": "justify_three_columns",
+  "formats": false,
+  "cells": {
+   "A1": "Mary had a little lamb whose fleece was white as snow, and everywhere that Mary went the lamb was sure to go."
+  },
+  "widths": {
+   "A": 8,
+   "B": 8,
+   "C": 12
+  },
+  "steps": [
+   {
+    "do": "justify",
+    "at": "A1:C3"
+   }
+  ],
+  "dump": [
+   "A1:D40"
+  ]
+ }
+]

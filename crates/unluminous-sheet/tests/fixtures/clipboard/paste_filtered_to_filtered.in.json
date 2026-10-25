@@ -1,0 +1,178 @@
+[
+ {
+  "name": "y_f2f_single",
+  "formats": false,
+  "cells": {
+   "A1": "h",
+   "C1": "h2",
+   "A2": 1,
+   "C2": 100,
+   "A3": 2,
+   "C3": 200,
+   "A4": 3,
+   "C4": 300,
+   "A5": 4,
+   "C5": 400,
+   "A6": 5,
+   "C6": 500,
+   "A7": 6,
+   "C7": 600,
+   "A8": 7,
+   "C8": 700
+  },
+  "steps": [
+   {
+    "do": "filter",
+    "at": "A1:A8",
+    "field": 1,
+    "criteria": "<>2",
+    "operator": 1,
+    "criteria2": "<>5"
+   },
+   {
+    "do": "copy",
+    "at": "A2:A8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C2",
+    "paste": -4163
+   }
+  ],
+  "dump": [
+   "A1:E9"
+  ]
+ },
+ {
+  "name": "y_f2f_multi_same",
+  "formats": false,
+  "cells": {
+   "A1": "h",
+   "C1": "h2",
+   "A2": 1,
+   "C2": 100,
+   "A3": 2,
+   "C3": 200,
+   "A4": 3,
+   "C4": 300,
+   "A5": 4,
+   "C5": 400,
+   "A6": 5,
+   "C6": 500,
+   "A7": 6,
+   "C7": 600,
+   "A8": 7,
+   "C8": 700
+  },
+  "steps": [
+   {
+    "do": "filter",
+    "at": "A1:A8",
+    "field": 1,
+    "criteria": "<>2",
+    "operator": 1,
+    "criteria2": "<>5"
+   },
+   {
+    "do": "copy",
+    "at": "A2:A8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C2:C6",
+    "paste": -4163
+   }
+  ],
+  "dump": [
+   "A1:E9"
+  ]
+ },
+ {
+  "name": "y_f2f_multi_7",
+  "formats": false,
+  "cells": {
+   "A1": "h",
+   "C1": "h2",
+   "A2": 1,
+   "C2": 100,
+   "A3": 2,
+   "C3": 200,
+   "A4": 3,
+   "C4": 300,
+   "A5": 4,
+   "C5": 400,
+   "A6": 5,
+   "C6": 500,
+   "A7": 6,
+   "C7": 600,
+   "A8": 7,
+   "C8": 700
+  },
+  "steps": [
+   {
+    "do": "filter",
+    "at": "A1:A8",
+    "field": 1,
+    "criteria": "<>2",
+    "operator": 1,
+    "criteria2": "<>5"
+   },
+   {
+    "do": "copy",
+    "at": "A2:A6"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C2:C6",
+    "paste": -4163
+   }
+  ],
+  "dump": [
+   "A1:E9"
+  ]
+ },
+ {
+  "name": "y_f2f_two_cols",
+  "formats": false,
+  "cells": {
+   "A1": "h",
+   "C1": "h2",
+   "A2": 1,
+   "C2": 100,
+   "A3": 2,
+   "C3": 200,
+   "A4": 3,
+   "C4": 300,
+   "A5": 4,
+   "C5": 400,
+   "A6": 5,
+   "C6": 500,
+   "A7": 6,
+   "C7": 600,
+   "A8": 7,
+   "C8": 700
+  },
+  "steps": [
+   {
+    "do": "filter",
+    "at": "A1:A8",
+    "field": 1,
+    "criteria": "<>2",
+    "operator": 1,
+    "criteria2": "<>5"
+   },
+   {
+    "do": "copy",
+    "at": "A2:C8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "D2",
+    "paste": -4163
+   }
+  ],
+  "dump": [
+   "A1:E9"
+  ]
+ }
+]

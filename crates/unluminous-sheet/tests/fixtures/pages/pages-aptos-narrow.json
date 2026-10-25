@@ -1,0 +1,286 @@
+{
+  "printer": "Microsoft Print to PDF on Ne00:",
+  "font": "Aptos Narrow",
+  "size": 11,
+  "workbook": "pages-aptos-narrow.xlsx",
+  "sheets": [
+    {
+      "sheet": "letter-p",
+      "failure": "",
+      "pages": 15,
+      "hbreaks": [
+        {
+          "row": 50,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 99,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 4,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "a4-l",
+      "failure": "",
+      "pages": 16,
+      "hbreaks": [
+        {
+          "row": 36,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 71,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 106,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 14,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 27,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 40,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 3,
+      "attempts": 1,
+      "paper": 9,
+      "orientation": 2,
+      "zoom": "100"
+    },
+    {
+      "sheet": "fit-1x1",
+      "failure": "",
+      "pages": 1,
+      "hbreaks": [],
+      "vbreaks": [],
+      "hcount": 0,
+      "vcount": 0,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "False"
+    },
+    {
+      "sheet": "fit-2x3",
+      "failure": "",
+      "pages": 4,
+      "hbreaks": [
+        {
+          "row": 110,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 21,
+          "manual": false
+        }
+      ],
+      "hcount": 1,
+      "vcount": 2,
+      "attempts": 4,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "False"
+    },
+    {
+      "sheet": "scale-70",
+      "failure": "",
+      "pages": 8,
+      "hbreaks": [
+        {
+          "row": 72,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 14,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 27,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 40,
+          "manual": false
+        }
+      ],
+      "hcount": 1,
+      "vcount": 3,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "70"
+    },
+    {
+      "sheet": "titles-both",
+      "failure": "",
+      "pages": 18,
+      "hbreaks": [
+        {
+          "row": 50,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 97,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 17,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 24,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 31,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 38,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 5,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "widths",
+      "failure": "",
+      "pages": 27,
+      "hbreaks": [
+        {
+          "row": 50,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 99,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 6,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 11,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 15,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 25,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 29,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 34,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 38,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 8,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    }
+  ]
+}

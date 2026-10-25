@@ -1,0 +1,1171 @@
+[
+ {
+  "name": "first_name",
+  "formats": false,
+  "cells": {
+   "A1": "John Smith",
+   "A2": "Mary Jones",
+   "A3": "Alan Turing",
+   "A4": "Grace Hopper",
+   "A5": "Ada Lovelace",
+   "A6": "Linus Torvalds",
+   "B1": "John"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B6"
+   }
+  ],
+  "dump": [
+   "A1:B6"
+  ]
+ },
+ {
+  "name": "first_name_2",
+  "formats": false,
+  "cells": {
+   "A1": "John Smith",
+   "A2": "Mary Jones",
+   "A3": "Alan Turing",
+   "A4": "Grace Hopper",
+   "A5": "Ada Lovelace",
+   "A6": "Linus Torvalds",
+   "B1": "John",
+   "B2": "Mary"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B6"
+   }
+  ],
+  "dump": [
+   "A1:B6"
+  ]
+ },
+ {
+  "name": "last_name",
+  "formats": false,
+  "cells": {
+   "A1": "John Smith",
+   "A2": "Mary Jones",
+   "A3": "Alan Turing",
+   "A4": "Grace Hopper",
+   "A5": "Ada Lovelace",
+   "A6": "Linus Torvalds",
+   "B1": "Smith"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B6"
+   }
+  ],
+  "dump": [
+   "A1:B6"
+  ]
+ },
+ {
+  "name": "last_comma_first",
+  "formats": false,
+  "cells": {
+   "A1": "John Smith",
+   "A2": "Mary Jones",
+   "A3": "Alan Turing",
+   "A4": "Grace Hopper",
+   "A5": "Ada Lovelace",
+   "A6": "Linus Torvalds",
+   "B1": "Smith, John"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B6"
+   }
+  ],
+  "dump": [
+   "A1:B6"
+  ]
+ },
+ {
+  "name": "initials",
+  "formats": false,
+  "cells": {
+   "A1": "John Smith",
+   "A2": "Mary Jones",
+   "A3": "Alan Turing",
+   "A4": "Grace Hopper",
+   "A5": "Ada Lovelace",
+   "A6": "Linus Torvalds",
+   "B1": "J.S."
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B6"
+   }
+  ],
+  "dump": [
+   "A1:B6"
+  ]
+ },
+ {
+  "name": "initials_nodots",
+  "formats": false,
+  "cells": {
+   "A1": "John Smith",
+   "A2": "Mary Jones",
+   "A3": "Alan Turing",
+   "A4": "Grace Hopper",
+   "A5": "Ada Lovelace",
+   "A6": "Linus Torvalds",
+   "B1": "JS",
+   "B2": "MJ"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B6"
+   }
+  ],
+  "dump": [
+   "A1:B6"
+  ]
+ },
+ {
+  "name": "upper",
+  "formats": false,
+  "cells": {
+   "A1": "John Smith",
+   "A2": "Mary Jones",
+   "A3": "Alan Turing",
+   "A4": "Grace Hopper",
+   "A5": "Ada Lovelace",
+   "A6": "Linus Torvalds",
+   "B1": "JOHN SMITH"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B6"
+   }
+  ],
+  "dump": [
+   "A1:B6"
+  ]
+ },
+ {
+  "name": "lower",
+  "formats": false,
+  "cells": {
+   "A1": "John Smith",
+   "A2": "Mary Jones",
+   "A3": "Alan Turing",
+   "A4": "Grace Hopper",
+   "A5": "Ada Lovelace",
+   "A6": "Linus Torvalds",
+   "B1": "john smith"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B6"
+   }
+  ],
+  "dump": [
+   "A1:B6"
+  ]
+ },
+ {
+  "name": "proper",
+  "formats": false,
+  "cells": {
+   "A1": "john smith",
+   "A2": "mary jones",
+   "A3": "alan turing",
+   "A4": "grace hopper",
+   "B1": "John Smith"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B4"
+   }
+  ],
+  "dump": [
+   "A1:B4"
+  ]
+ },
+ {
+  "name": "proper_mixed",
+  "formats": false,
+  "cells": {
+   "A1": "jOHN sMITH",
+   "A2": "mARY jONES",
+   "A3": "aLAN tURING",
+   "B1": "John Smith",
+   "B2": "Mary Jones"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "email_user",
+  "formats": false,
+  "cells": {
+   "A1": "john.smith@example.com",
+   "A2": "mary.jones@corp.org",
+   "A3": "alan@turing.net",
+   "A4": "grace.hopper@navy.mil",
+   "B1": "john.smith"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B4"
+   }
+  ],
+  "dump": [
+   "A1:B4"
+  ]
+ },
+ {
+  "name": "email_domain",
+  "formats": false,
+  "cells": {
+   "A1": "john.smith@example.com",
+   "A2": "mary.jones@corp.org",
+   "A3": "alan@turing.net",
+   "A4": "grace.hopper@navy.mil",
+   "B1": "example.com"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B4"
+   }
+  ],
+  "dump": [
+   "A1:B4"
+  ]
+ },
+ {
+  "name": "email_tld",
+  "formats": false,
+  "cells": {
+   "A1": "john.smith@example.com",
+   "A2": "mary.jones@corp.org",
+   "A3": "alan@turing.net",
+   "A4": "grace.hopper@navy.mil",
+   "B1": "com",
+   "B2": "org"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B4"
+   }
+  ],
+  "dump": [
+   "A1:B4"
+  ]
+ },
+ {
+  "name": "digits",
+  "formats": false,
+  "cells": {
+   "A1": "ABC-123",
+   "A2": "XYZ-9",
+   "A3": "QRS-4567",
+   "A4": "LMN-88",
+   "B1": "123"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B4"
+   }
+  ],
+  "dump": [
+   "A1:B4"
+  ]
+ },
+ {
+  "name": "letters",
+  "formats": false,
+  "cells": {
+   "A1": "ABC-123",
+   "A2": "XYZ-9",
+   "A3": "QRS-4567",
+   "A4": "LMN-88",
+   "B1": "ABC"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B4"
+   }
+  ],
+  "dump": [
+   "A1:B4"
+  ]
+ },
+ {
+  "name": "digits_2",
+  "formats": false,
+  "cells": {
+   "A1": "ABC-123",
+   "A2": "XYZ-9",
+   "A3": "QRS-4567",
+   "A4": "LMN-88",
+   "B1": "123",
+   "B2": "9"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B4"
+   }
+  ],
+  "dump": [
+   "A1:B4"
+  ]
+ },
+ {
+  "name": "phone",
+  "formats": false,
+  "cells": {
+   "A1": "5551234567",
+   "A2": "5559876543",
+   "A3": "4155550100",
+   "A4": "2125550199",
+   "B1": "(555) 123-4567"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B4"
+   }
+  ],
+  "dump": [
+   "A1:B4"
+  ]
+ },
+ {
+  "name": "phone_dash",
+  "formats": false,
+  "cells": {
+   "A1": "5551234567",
+   "A2": "5559876543",
+   "A3": "4155550100",
+   "B1": "555-123-4567"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "date_iso_to_us",
+  "formats": false,
+  "cells": {
+   "A1": {
+    "v": "2023-01-15",
+    "nf": "@"
+   },
+   "A2": {
+    "v": "2024-12-01",
+    "nf": "@"
+   },
+   "A3": {
+    "v": "2022-07-09",
+    "nf": "@"
+   },
+   "A4": {
+    "v": "2021-03-30",
+    "nf": "@"
+   },
+   "B1": {
+    "v": "01/15/2023",
+    "nf": "@"
+   }
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B4"
+   }
+  ],
+  "dump": [
+   "A1:B4"
+  ]
+ },
+ {
+  "name": "date_year",
+  "formats": false,
+  "cells": {
+   "A1": "2023-01-15",
+   "A2": "2024-12-01",
+   "A3": "2022-07-09",
+   "B1": "2023"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "date_year_text",
+  "formats": false,
+  "cells": {
+   "A1": {
+    "v": "2023-01-15",
+    "nf": "@"
+   },
+   "A2": {
+    "v": "2024-12-01",
+    "nf": "@"
+   },
+   "A3": {
+    "v": "2022-07-09",
+    "nf": "@"
+   },
+   "B1": {
+    "v": "2023",
+    "nf": "@"
+   }
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "date_dmy",
+  "formats": false,
+  "cells": {
+   "A1": {
+    "v": "2023-01-15",
+    "nf": "@"
+   },
+   "A2": {
+    "v": "2024-12-01",
+    "nf": "@"
+   },
+   "A3": {
+    "v": "2022-07-09",
+    "nf": "@"
+   },
+   "B1": {
+    "v": "15.01.2023",
+    "nf": "@"
+   },
+   "B2": {
+    "v": "01.12.2024",
+    "nf": "@"
+   }
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "join_last_first",
+  "formats": false,
+  "cells": {
+   "A1": "John",
+   "A2": "Mary",
+   "A3": "Alan",
+   "A4": "Grace",
+   "B1": "Smith",
+   "B2": "Jones",
+   "B3": "Turing",
+   "B4": "Hopper",
+   "C1": "Smith, John"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "C1:C4"
+   }
+  ],
+  "dump": [
+   "A1:C4"
+  ]
+ },
+ {
+  "name": "join_space",
+  "formats": false,
+  "cells": {
+   "A1": "John",
+   "A2": "Mary",
+   "A3": "Alan",
+   "B1": "Smith",
+   "B2": "Jones",
+   "B3": "Turing",
+   "C1": "John Smith"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "C1:C3"
+   }
+  ],
+  "dump": [
+   "A1:C3"
+  ]
+ },
+ {
+  "name": "join_literal",
+  "formats": false,
+  "cells": {
+   "A1": "John",
+   "A2": "Mary",
+   "A3": "Alan",
+   "B1": "Smith",
+   "B2": "Jones",
+   "B3": "Turing",
+   "C1": "Mr. John Smith",
+   "C2": "Mr. Mary Jones"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "C1:C3"
+   }
+  ],
+  "dump": [
+   "A1:C3"
+  ]
+ },
+ {
+  "name": "join_paren",
+  "formats": false,
+  "cells": {
+   "A1": "John",
+   "A2": "Mary",
+   "A3": "Alan",
+   "B1": "Smith",
+   "B2": "Jones",
+   "B3": "Turing",
+   "C1": "John (Smith)"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "C1:C3"
+   }
+  ],
+  "dump": [
+   "A1:C3"
+  ]
+ },
+ {
+  "name": "first3",
+  "formats": false,
+  "cells": {
+   "A1": "ABCDEF",
+   "A2": "GHIJKL",
+   "A3": "MNOPQR",
+   "A4": "STUVWX",
+   "B1": "ABC"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B4"
+   }
+  ],
+  "dump": [
+   "A1:B4"
+  ]
+ },
+ {
+  "name": "last2",
+  "formats": false,
+  "cells": {
+   "A1": "ABCDEF",
+   "A2": "GHIJKL",
+   "A3": "MNOPQR",
+   "A4": "STUVWX",
+   "B1": "EF"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B4"
+   }
+  ],
+  "dump": [
+   "A1:B4"
+  ]
+ },
+ {
+  "name": "mid",
+  "formats": false,
+  "cells": {
+   "A1": "ABCDEF",
+   "A2": "GHIJKL",
+   "A3": "MNOPQR",
+   "A4": "STUVWX",
+   "B1": "CD"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B4"
+   }
+  ],
+  "dump": [
+   "A1:B4"
+  ]
+ },
+ {
+  "name": "between_parens",
+  "formats": false,
+  "cells": {
+   "A1": "Item (ABC) x",
+   "A2": "Item (QRS) y",
+   "A3": "Thing (Z) w",
+   "B1": "ABC"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "before_dash",
+  "formats": false,
+  "cells": {
+   "A1": "red-apple",
+   "A2": "green-pear",
+   "A3": "yellow-banana",
+   "B1": "red"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "after_dash",
+  "formats": false,
+  "cells": {
+   "A1": "red-apple",
+   "A2": "green-pear",
+   "A3": "yellow-banana",
+   "B1": "apple"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "swap_dash",
+  "formats": false,
+  "cells": {
+   "A1": "red-apple",
+   "A2": "green-pear",
+   "A3": "yellow-banana",
+   "B1": "apple-red"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "prefix",
+  "formats": false,
+  "cells": {
+   "A1": "alpha",
+   "A2": "beta",
+   "A3": "gamma",
+   "B1": "ID-alpha"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "suffix",
+  "formats": false,
+  "cells": {
+   "A1": "alpha",
+   "A2": "beta",
+   "A3": "gamma",
+   "B1": "alpha_2023"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "remove_spaces",
+  "formats": false,
+  "cells": {
+   "A1": "a b c",
+   "A2": "d e f",
+   "A3": "g h i",
+   "B1": "abc"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "replace_spaces",
+  "formats": false,
+  "cells": {
+   "A1": "a b c",
+   "A2": "d e f",
+   "A3": "g h i",
+   "B1": "a_b_c"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "city_state",
+  "formats": false,
+  "cells": {
+   "A1": "Austin, TX",
+   "A2": "Boston, MA",
+   "A3": "Denver, CO",
+   "B1": "TX"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "city",
+  "formats": false,
+  "cells": {
+   "A1": "Austin, TX",
+   "A2": "Boston, MA",
+   "A3": "Denver, CO",
+   "B1": "Austin"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "number_prefix",
+  "formats": false,
+  "cells": {
+   "A1": "12 apples",
+   "A2": "7 pears",
+   "A3": "100 plums",
+   "B1": "12"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "number_suffix",
+  "formats": false,
+  "cells": {
+   "A1": "apples 12",
+   "A2": "pears 7",
+   "A3": "plums 100",
+   "B1": "12"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "first_letter",
+  "formats": false,
+  "cells": {
+   "A1": "alpha",
+   "A2": "beta",
+   "A3": "gamma",
+   "B1": "A"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "first_word_upper",
+  "formats": false,
+  "cells": {
+   "A1": "hello world",
+   "A2": "good night",
+   "A3": "see you",
+   "B1": "HELLO"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "three_part",
+  "formats": false,
+  "cells": {
+   "A1": "John Q Smith",
+   "A2": "Mary R Jones",
+   "A3": "Alan M Turing",
+   "B1": "J. Q. S."
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "middle_initial",
+  "formats": false,
+  "cells": {
+   "A1": "John Q Smith",
+   "A2": "Mary R Jones",
+   "A3": "Alan M Turing",
+   "B1": "Q"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "url_host",
+  "formats": false,
+  "cells": {
+   "A1": "https://www.example.com/a",
+   "A2": "https://news.site.org/b",
+   "A3": "http://foo.net/c",
+   "B1": "www.example.com"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "ambiguous",
+  "formats": false,
+  "cells": {
+   "A1": "abc",
+   "A2": "def",
+   "A3": "ghi",
+   "B1": "x"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "no_pattern",
+  "formats": false,
+  "cells": {
+   "A1": "abc",
+   "A2": "def",
+   "A3": "ghi",
+   "B1": "zzz",
+   "B2": "q"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "copy_same",
+  "formats": false,
+  "cells": {
+   "A1": "abc",
+   "A2": "def",
+   "A3": "ghi",
+   "B1": "abc"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "empty_in_middle",
+  "formats": false,
+  "cells": {
+   "A1": "John Smith",
+   "A2": "",
+   "A3": "Alan Turing",
+   "B1": "John"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "numbers_to_text",
+  "formats": false,
+  "cells": {
+   "A1": 1234,
+   "A2": 5678,
+   "A3": 9012,
+   "B1": "#1234"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "only_one_row",
+  "formats": false,
+  "cells": {
+   "A1": "John Smith",
+   "B1": "John"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B1"
+   }
+  ],
+  "dump": [
+   "A1:B1"
+  ]
+ },
+ {
+  "name": "two_examples_conflict",
+  "formats": false,
+  "cells": {
+   "A1": "John Smith",
+   "A2": "Mary Jones",
+   "A3": "Alan Turing",
+   "A4": "Grace Hopper",
+   "A5": "Ada Lovelace",
+   "A6": "Linus Torvalds",
+   "B1": "John",
+   "B2": "Smith"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B6"
+   }
+  ],
+  "dump": [
+   "A1:B6"
+  ]
+ },
+ {
+  "name": "year_range",
+  "formats": false,
+  "cells": {
+   "A1": "1999-2005",
+   "A2": "2001-2010",
+   "A3": "1988-1995",
+   "B1": "1999"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ },
+ {
+  "name": "uppercase_last",
+  "formats": false,
+  "cells": {
+   "A1": "John Smith",
+   "A2": "Mary Jones",
+   "A3": "Alan Turing",
+   "A4": "Grace Hopper",
+   "A5": "Ada Lovelace",
+   "A6": "Linus Torvalds",
+   "B1": "Smith, JOHN"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B6"
+   }
+  ],
+  "dump": [
+   "A1:B6"
+  ]
+ },
+ {
+  "name": "trim",
+  "formats": false,
+  "cells": {
+   "A1": "  a  ",
+   "A2": " b",
+   "A3": "c  ",
+   "B1": "a"
+  },
+  "steps": [
+   {
+    "do": "flashfill",
+    "at": "B1:B3"
+   }
+  ],
+  "dump": [
+   "A1:B3"
+  ]
+ }
+]

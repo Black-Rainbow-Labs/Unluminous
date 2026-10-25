@@ -91,7 +91,7 @@ pub fn rect_of(book: &Book, frame: Frame, chart: &Chart) -> Rect {
 /// Draw the pictures the sheet's drawing places over its cells.
 pub fn show_pictures(ui: &egui::Ui, book: &mut Book, frame: Frame) {
     let painter = ui.painter_at(frame.cells);
-    let pictures = book.session.book.sheets[book.view.sheet].pictures.clone();
+    let pictures = book.session.book.sheets[book.view.sheet].pictures();
     for picture in pictures {
         let px =
             |emu: i64| (emu / unluminous_sheet::xlsx::chart::EMU_PER_PIXEL) as f32 * frame.zoom;

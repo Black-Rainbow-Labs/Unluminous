@@ -1,0 +1,8633 @@
+{
+ "datasets": {
+  "sales": {
+   "headers": [
+    "Region",
+    "Product",
+    "Channel",
+    "Date",
+    "Units",
+    "Price",
+    "Amount"
+   ],
+   "formats": [
+    "General",
+    "General",
+    "General",
+    "m/d/yyyy",
+    "General",
+    "General",
+    "General"
+   ],
+   "rows": [
+    [
+     "North",
+     "Apples",
+     "Web",
+     45292,
+     120,
+     0.5,
+     60.0
+    ],
+    [
+     "South",
+     "Figs",
+     "Web",
+     45321,
+     80,
+     0.75,
+     60.0
+    ],
+    [
+     "East",
+     "Plums",
+     "Store",
+     45350,
+     45,
+     1.2,
+     54.0
+    ],
+    [
+     "West",
+     "Pears",
+     "Store",
+     45379,
+     30,
+     2.5,
+     75.0
+    ],
+    [
+     "North",
+     "Pears",
+     "Web",
+     45408,
+     200,
+     0.4,
+     80.0
+    ],
+    [
+     null,
+     "Apples",
+     "Web",
+     45437,
+     150,
+     0.3,
+     45.0
+    ],
+    [
+     "East",
+     "Figs",
+     "Store",
+     45466,
+     15,
+     3.1,
+     46.5
+    ],
+    [
+     "West",
+     "Plums",
+     "Store",
+     45495,
+     60,
+     1.9,
+     114.0
+    ],
+    [
+     "North",
+     "Plums",
+     "Web",
+     45524,
+     95,
+     0.5,
+     47.5
+    ],
+    [
+     "South",
+     "Pears",
+     "Web",
+     45553,
+     10,
+     0.75,
+     7.5
+    ],
+    [
+     "East",
+     "Apples",
+     "Store",
+     45582,
+     70,
+     1.2,
+     84.0
+    ],
+    [
+     "West",
+     "Figs",
+     "Store",
+     45611,
+     null,
+     2.5,
+     null
+    ],
+    [
+     "North",
+     "Figs",
+     "Web",
+     45640,
+     125,
+     0.4,
+     50.0
+    ],
+    [
+     "South",
+     "Plums",
+     "Web",
+     45669,
+     85,
+     0.3,
+     25.5
+    ],
+    [
+     "East",
+     "Pears",
+     "Store",
+     45698,
+     50,
+     3.1,
+     155.0
+    ],
+    [
+     "West",
+     "Apples",
+     "Store",
+     45307,
+     35,
+     1.9,
+     66.5
+    ],
+    [
+     "North",
+     "Apples",
+     "Web",
+     45336,
+     205,
+     0.5,
+     102.5
+    ],
+    [
+     "South",
+     "Figs",
+     "Web",
+     45365,
+     155,
+     0.75,
+     116.25
+    ],
+    [
+     "East",
+     "Plums",
+     "Store",
+     45394,
+     20,
+     1.2,
+     24.0
+    ],
+    [
+     "West",
+     "Pears",
+     "Store",
+     45423,
+     65,
+     2.5,
+     162.5
+    ],
+    [
+     "North",
+     "Pears",
+     "Web",
+     45452,
+     100,
+     0.4,
+     40.0
+    ],
+    [
+     "South",
+     "Apples",
+     "Web",
+     45481,
+     15,
+     0.3,
+     4.5
+    ],
+    [
+     "East",
+     "Figs",
+     "Store",
+     45510,
+     75,
+     3.1,
+     232.5
+    ],
+    [
+     "West",
+     "Plums",
+     "Store",
+     45539,
+     38,
+     1.9,
+     72.2
+    ]
+   ]
+  },
+  "edge": {
+   "headers": [
+    "Group",
+    "Sub",
+    "Val",
+    "Wt"
+   ],
+   "formats": [
+    "General",
+    "General",
+    "General",
+    "General"
+   ],
+   "rows": [
+    [
+     "g1",
+     "x",
+     10,
+     1
+    ],
+    [
+     "g1",
+     "y",
+     -10,
+     2
+    ],
+    [
+     "g2",
+     "x",
+     0,
+     3
+    ],
+    [
+     "g2",
+     "y",
+     0,
+     4
+    ],
+    [
+     "g3",
+     "x",
+     5,
+     5
+    ],
+    [
+     "g3",
+     "y",
+     5,
+     6
+    ],
+    [
+     "g4",
+     "x",
+     5,
+     7
+    ],
+    [
+     "g4",
+     "y",
+     20,
+     8
+    ],
+    [
+     "g4",
+     "z",
+     7,
+     9
+    ],
+    [
+     "g5",
+     "x",
+     {
+      "e": "#N/A"
+     },
+     10
+    ],
+    [
+     "g5",
+     "y",
+     3,
+     11
+    ],
+    [
+     "g6",
+     "x",
+     2.5,
+     12
+    ],
+    [
+     "g6",
+     "z",
+     -1.25,
+     13
+    ]
+   ]
+  },
+  "sparse": {
+   "headers": [
+    "A",
+    "B",
+    "C",
+    "V"
+   ],
+   "formats": [
+    "General",
+    "General",
+    "General",
+    "General"
+   ],
+   "rows": [
+    [
+     "x",
+     "p",
+     "m",
+     1
+    ],
+    [
+     "y",
+     "q",
+     "m",
+     2
+    ],
+    [
+     "z",
+     "p",
+     "n",
+     3
+    ],
+    [
+     "x",
+     "q",
+     "n",
+     4
+    ],
+    [
+     "y",
+     "p",
+     "n",
+     5
+    ]
+   ]
+  },
+  "mixed": {
+   "headers": [
+    "Key",
+    "When",
+    "Flag",
+    "N"
+   ],
+   "formats": [
+    "General",
+    "m/d/yyyy h:mm",
+    "General",
+    "0.0"
+   ],
+   "rows": [
+    [
+     "a",
+     45292.25,
+     true,
+     1.5
+    ],
+    [
+     "b",
+     45292.75,
+     false,
+     2.5
+    ],
+    [
+     "a",
+     45293.5,
+     true,
+     3.5
+    ],
+    [
+     7,
+     45294.0,
+     false,
+     4.5
+    ],
+    [
+     "c",
+     45299.1,
+     true,
+     5.5
+    ],
+    [
+     3,
+     45300.9,
+     false,
+     6.5
+    ]
+   ]
+  },
+  "fmts": {
+   "headers": [
+    "K",
+    "Plain",
+    "Two",
+    "Thousands",
+    "Percent",
+    "Money",
+    "Science",
+    "Day",
+    "Clock",
+    "Quoted"
+   ],
+   "formats": [
+    "General",
+    "General",
+    "0.00",
+    "#,##0",
+    "0%",
+    "$#,##0.00",
+    "0.00E+00",
+    "m/d/yyyy",
+    "h:mm",
+    "\"x\"0"
+   ],
+   "rows": [
+    [
+     "a",
+     1,
+     1.5,
+     1234,
+     0.25,
+     10.5,
+     12345,
+     45292,
+     0.25,
+     3
+    ],
+    [
+     "b",
+     2,
+     2.5,
+     2345,
+     0.5,
+     20.25,
+     23456,
+     45293,
+     0.5,
+     4
+    ],
+    [
+     "a",
+     3,
+     3.5,
+     3456,
+     0.75,
+     30,
+     34567,
+     45294,
+     0.75,
+     5
+    ],
+    [
+     "c",
+     4,
+     4.5,
+     4567,
+     0.1,
+     40,
+     45678,
+     45295,
+     0.1,
+     6
+    ]
+   ]
+  }
+ },
+ "cases": [
+  {
+   "id": "a1",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "a2",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "a3",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "a4",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "a5",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular"
+  },
+  {
+   "id": "a6",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline"
+  },
+  {
+   "id": "a7",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "pages": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "b1",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "b2",
+   "data": "sales",
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "b3",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "b4",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "values_on": "rows"
+  },
+  {
+   "id": "b5",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "values_pos": 1
+  },
+  {
+   "id": "b6",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "b7",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular"
+  },
+  {
+   "id": "b8",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline"
+  },
+  {
+   "id": "b9",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "subtotal_at": "bottom"
+    }
+   }
+  },
+  {
+   "id": "b10",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "grand": {
+    "row": false,
+    "col": false
+   }
+  },
+  {
+   "id": "b11",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular",
+   "fields": {
+    "Region": {
+     "subtotals": "off"
+    }
+   }
+  },
+  {
+   "id": "b12",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline",
+   "repeat": true
+  },
+  {
+   "id": "b13",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "blank_row": true
+    }
+   }
+  },
+  {
+   "id": "b14",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "values_on": "rows"
+  },
+  {
+   "id": "f_sum",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "f_count",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "count"
+    }
+   ]
+  },
+  {
+   "id": "f_average",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "average"
+    }
+   ]
+  },
+  {
+   "id": "f_max",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "max"
+    }
+   ]
+  },
+  {
+   "id": "f_min",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "min"
+    }
+   ]
+  },
+  {
+   "id": "f_product",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "product"
+    }
+   ]
+  },
+  {
+   "id": "f_countnums",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "countnums"
+    }
+   ]
+  },
+  {
+   "id": "f_stdev",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "stdev"
+    }
+   ]
+  },
+  {
+   "id": "f_stdevp",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "stdevp"
+    }
+   ]
+  },
+  {
+   "id": "f_var",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "var"
+    }
+   ]
+  },
+  {
+   "id": "f_varp",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "varp"
+    }
+   ]
+  },
+  {
+   "id": "f_count_text",
+   "data": "sales",
+   "rows": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Region",
+     "func": "count"
+    }
+   ]
+  },
+  {
+   "id": "f_countnums_text",
+   "data": "sales",
+   "rows": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Region",
+     "func": "countnums"
+    }
+   ]
+  },
+  {
+   "id": "f_sum_text",
+   "data": "sales",
+   "rows": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Region",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "f_sum_date",
+   "data": "sales",
+   "rows": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Date",
+     "func": "max"
+    }
+   ]
+  },
+  {
+   "id": "f_fmt",
+   "data": "sales",
+   "rows": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Price",
+     "func": "average",
+     "fmt": "0.00"
+    },
+    {
+     "field": "Date",
+     "func": "min"
+    }
+   ]
+  },
+  {
+   "id": "f_name",
+   "data": "sales",
+   "rows": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Price",
+     "func": "average",
+     "name": "Avg Px"
+    }
+   ]
+  },
+  {
+   "id": "e_count_blank",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "count"
+    }
+   ]
+  },
+  {
+   "id": "e_avg_blank",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "average"
+    }
+   ]
+  },
+  {
+   "id": "e_max_blank",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "max"
+    }
+   ]
+  },
+  {
+   "id": "e_prod_blank",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "product"
+    }
+   ]
+  },
+  {
+   "id": "e_stdev_blank",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "stdev"
+    }
+   ]
+  },
+  {
+   "id": "s_percentrow",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentrow"
+    }
+   ]
+  },
+  {
+   "id": "s_percentcolumn",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentcolumn"
+    }
+   ]
+  },
+  {
+   "id": "s_percenttotal",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percenttotal"
+    }
+   ]
+  },
+  {
+   "id": "s_index",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "index"
+    }
+   ]
+  },
+  {
+   "id": "s_percentparentrow",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentparentrow"
+    }
+   ]
+  },
+  {
+   "id": "s_percentparentcolumn",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentparentcolumn"
+    }
+   ]
+  },
+  {
+   "id": "s_difference",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "difference",
+     "base": "Region",
+     "item": "(previous)"
+    }
+   ]
+  },
+  {
+   "id": "s_percentof",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentof",
+     "base": "Region",
+     "item": "North"
+    }
+   ]
+  },
+  {
+   "id": "s_percentdifference",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentdifference",
+     "base": "Region",
+     "item": "(previous)"
+    }
+   ]
+  },
+  {
+   "id": "s_running",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "running",
+     "base": "Region"
+    }
+   ]
+  },
+  {
+   "id": "s_percentrunning",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentrunning",
+     "base": "Region"
+    }
+   ]
+  },
+  {
+   "id": "s_rankasc",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "rankasc",
+     "base": "Region"
+    }
+   ]
+  },
+  {
+   "id": "s_rankdesc",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "rankdesc",
+     "base": "Region"
+    }
+   ]
+  },
+  {
+   "id": "s_percentparent",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentparent",
+     "base": "Region"
+    }
+   ]
+  },
+  {
+   "id": "s_percentparent2",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentparent",
+     "base": "Region"
+    }
+   ]
+  },
+  {
+   "id": "s_percentparent3",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentparent",
+     "base": "Product"
+    }
+   ]
+  },
+  {
+   "id": "s_diff_cols",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "difference",
+     "base": "Product",
+     "item": "(previous)"
+    }
+   ]
+  },
+  {
+   "id": "s_default_names",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "stdev",
+     "auto_name": true
+    }
+   ]
+  },
+  {
+   "id": "n_sum",
+   "data": "sales",
+   "rows": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "auto_name": true
+    }
+   ]
+  },
+  {
+   "id": "n_count",
+   "data": "sales",
+   "rows": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "count",
+     "auto_name": true
+    }
+   ]
+  },
+  {
+   "id": "n_average",
+   "data": "sales",
+   "rows": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "average",
+     "auto_name": true
+    }
+   ]
+  },
+  {
+   "id": "n_max",
+   "data": "sales",
+   "rows": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "max",
+     "auto_name": true
+    }
+   ]
+  },
+  {
+   "id": "n_min",
+   "data": "sales",
+   "rows": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "min",
+     "auto_name": true
+    }
+   ]
+  },
+  {
+   "id": "n_product",
+   "data": "sales",
+   "rows": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "product",
+     "auto_name": true
+    }
+   ]
+  },
+  {
+   "id": "n_countnums",
+   "data": "sales",
+   "rows": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "countnums",
+     "auto_name": true
+    }
+   ]
+  },
+  {
+   "id": "n_stdev",
+   "data": "sales",
+   "rows": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "stdev",
+     "auto_name": true
+    }
+   ]
+  },
+  {
+   "id": "n_stdevp",
+   "data": "sales",
+   "rows": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "stdevp",
+     "auto_name": true
+    }
+   ]
+  },
+  {
+   "id": "n_var",
+   "data": "sales",
+   "rows": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "var",
+     "auto_name": true
+    }
+   ]
+  },
+  {
+   "id": "n_varp",
+   "data": "sales",
+   "rows": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "varp",
+     "auto_name": true
+    }
+   ]
+  },
+  {
+   "id": "v1",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "values_pos": 1
+  },
+  {
+   "id": "v2",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "values_on": "rows",
+   "values_pos": 1
+  },
+  {
+   "id": "v3",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "values_on": "rows",
+   "values_pos": 2
+  },
+  {
+   "id": "v4",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "v5",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular"
+  },
+  {
+   "id": "v6",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline"
+  },
+  {
+   "id": "v7",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular",
+   "fields": {
+    "Region": {
+     "subtotals": [
+      "sum",
+      "count",
+      "average"
+     ]
+    }
+   }
+  },
+  {
+   "id": "v8",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "subtotals": [
+      "sum",
+      "count",
+      "average"
+     ]
+    }
+   }
+  },
+  {
+   "id": "v9",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline",
+   "fields": {
+    "Region": {
+     "subtotals": "off"
+    }
+   }
+  },
+  {
+   "id": "v10",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": "v11",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "sort": "desc",
+     "sort_by": "Sum of Units"
+    }
+   }
+  },
+  {
+   "id": "v12",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "hide": [
+      "North"
+     ]
+    }
+   }
+  },
+  {
+   "id": "v13",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Channel": {
+     "hide": [
+      "Web"
+     ]
+    }
+   }
+  },
+  {
+   "id": "v14",
+   "data": "sales",
+   "rows": [
+    "Product"
+   ],
+   "pages": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "page_select": {
+    "Region": "North"
+   }
+  },
+  {
+   "id": "v15",
+   "data": "sales",
+   "rows": [
+    "Product"
+   ],
+   "pages": [
+    "Region",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "v16",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular",
+   "grand": {
+    "row": false,
+    "col": false
+   }
+  },
+  {
+   "id": "v17",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline",
+   "fields": {
+    "Region": {
+     "subtotal_at": "bottom"
+    }
+   }
+  },
+  {
+   "id": "v18",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular"
+  },
+  {
+   "id": "v19",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "compact"
+  },
+  {
+   "id": "v20",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline",
+   "fields": {
+    "Product": {
+     "subtotals": "off"
+    }
+   }
+  },
+  {
+   "id": "v21",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "values_on": "rows"
+  },
+  {
+   "id": "v22",
+   "data": "sales",
+   "cols": [
+    "Channel",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "v23",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular",
+   "repeat": true
+  },
+  {
+   "id": "v24",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular",
+   "fields": {
+    "Region": {
+     "blank_row": true
+    }
+   }
+  },
+  {
+   "id": "v25",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline",
+   "fields": {
+    "Region": {
+     "blank_row": true
+    }
+   }
+  },
+  {
+   "id": "v26",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "sort": "asc"
+    }
+   }
+  },
+  {
+   "id": "w1",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Product": {
+     "sort": "desc",
+     "sort_by": "Sum of Units"
+    }
+   }
+  },
+  {
+   "id": "w2",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Product": {
+     "sort": "desc",
+     "sort_by": "Sum of Units"
+    }
+   }
+  },
+  {
+   "id": "w3",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "sort": "asc",
+     "sort_by": "Sum of Amount"
+    }
+   }
+  },
+  {
+   "id": "w4",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "order": [
+      "West",
+      "East",
+      "North"
+     ]
+    }
+   }
+  },
+  {
+   "id": "w5",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Product": {
+     "filter": {
+      "type": "begins",
+      "value": "P"
+     }
+    }
+   }
+  },
+  {
+   "id": "w6",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Product": {
+     "filter": {
+      "type": "top",
+      "value": 2,
+      "data": "Sum of Units"
+     }
+    }
+   }
+  },
+  {
+   "id": "w7",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "filter": {
+      "type": "vgt",
+      "value": 300,
+      "data": "Sum of Units"
+     }
+    }
+   }
+  },
+  {
+   "id": "w8",
+   "data": "sales",
+   "rows": [
+    "Product"
+   ],
+   "pages": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "multi_page": true,
+     "hide": [
+      "North",
+      "East"
+     ]
+    }
+   }
+  },
+  {
+   "id": "w9",
+   "data": "sales",
+   "rows": [
+    "Product"
+   ],
+   "pages": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "multi_page": true,
+     "hide": [
+      "North",
+      "East",
+      "South"
+     ]
+    }
+   }
+  },
+  {
+   "id": "w10",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "sort": "desc"
+    },
+    "Product": {
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": "w11",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "filter": {
+      "type": "contains",
+      "value": "o"
+     }
+    }
+   }
+  },
+  {
+   "id": "w12",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "filter": {
+      "type": "topsum",
+      "value": 1200,
+      "data": "Sum of Units"
+     }
+    }
+   }
+  },
+  {
+   "id": "w13",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "filter": {
+      "type": "toppercent",
+      "value": 50,
+      "data": "Sum of Units"
+     }
+    }
+   }
+  },
+  {
+   "id": "w14",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "filter": {
+      "type": "vbetween",
+      "value": 200,
+      "value2": 400,
+      "data": "Sum of Units"
+     }
+    }
+   }
+  },
+  {
+   "id": "w15",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "show_all_items": true
+    }
+   }
+  },
+  {
+   "id": "w16",
+   "data": "sales",
+   "rows": [
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Channel": {
+     "show_all_items": true
+    },
+    "Product": {
+     "show_all_items": true
+    }
+   }
+  },
+  {
+   "id": "cd1",
+   "data": "sales",
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "layout": "compact"
+  },
+  {
+   "id": "cd2",
+   "data": "sales",
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "values_on": "rows",
+   "layout": "compact"
+  },
+  {
+   "id": "cd3",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "values_on": "rows",
+   "layout": "compact"
+  },
+  {
+   "id": "cd5",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "layout": "compact"
+  },
+  {
+   "id": "cd6",
+   "data": "sales",
+   "cols": [
+    "Channel"
+   ],
+   "layout": "compact"
+  },
+  {
+   "id": "cd7",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "layout": "compact"
+  },
+  {
+   "id": "cd8",
+   "data": "sales",
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "compact"
+  },
+  {
+   "id": "cd9",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "compact",
+   "grand": {
+    "row": false,
+    "col": false
+   }
+  },
+  {
+   "id": "cd10",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "compact"
+  },
+  {
+   "id": "cd11",
+   "data": "sales",
+   "pages": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "compact"
+  },
+  {
+   "id": "cd12",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "compact",
+   "grand": {
+    "row": true,
+    "col": false
+   }
+  },
+  {
+   "id": "cd13",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "compact",
+   "grand": {
+    "row": false,
+    "col": true
+   }
+  },
+  {
+   "id": "td1",
+   "data": "sales",
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular"
+  },
+  {
+   "id": "td2",
+   "data": "sales",
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "values_on": "rows",
+   "layout": "tabular"
+  },
+  {
+   "id": "td3",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "values_on": "rows",
+   "layout": "tabular"
+  },
+  {
+   "id": "td5",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "layout": "tabular"
+  },
+  {
+   "id": "td6",
+   "data": "sales",
+   "cols": [
+    "Channel"
+   ],
+   "layout": "tabular"
+  },
+  {
+   "id": "td7",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "layout": "tabular"
+  },
+  {
+   "id": "td8",
+   "data": "sales",
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular"
+  },
+  {
+   "id": "td9",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular",
+   "grand": {
+    "row": false,
+    "col": false
+   }
+  },
+  {
+   "id": "td10",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular"
+  },
+  {
+   "id": "td11",
+   "data": "sales",
+   "pages": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular"
+  },
+  {
+   "id": "td12",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular",
+   "grand": {
+    "row": true,
+    "col": false
+   }
+  },
+  {
+   "id": "td13",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular",
+   "grand": {
+    "row": false,
+    "col": true
+   }
+  },
+  {
+   "id": "od1",
+   "data": "sales",
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline"
+  },
+  {
+   "id": "od2",
+   "data": "sales",
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "values_on": "rows",
+   "layout": "outline"
+  },
+  {
+   "id": "od3",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "values_on": "rows",
+   "layout": "outline"
+  },
+  {
+   "id": "od5",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "layout": "outline"
+  },
+  {
+   "id": "od6",
+   "data": "sales",
+   "cols": [
+    "Channel"
+   ],
+   "layout": "outline"
+  },
+  {
+   "id": "od7",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "layout": "outline"
+  },
+  {
+   "id": "od8",
+   "data": "sales",
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline"
+  },
+  {
+   "id": "od9",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline",
+   "grand": {
+    "row": false,
+    "col": false
+   }
+  },
+  {
+   "id": "od10",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline"
+  },
+  {
+   "id": "od11",
+   "data": "sales",
+   "pages": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline"
+  },
+  {
+   "id": "od12",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline",
+   "grand": {
+    "row": true,
+    "col": false
+   }
+  },
+  {
+   "id": "od13",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline",
+   "grand": {
+    "row": false,
+    "col": true
+   }
+  },
+  {
+   "id": "rel_difference_r2a",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "difference",
+     "base": "Region",
+     "item": "(previous)"
+    }
+   ],
+   "rows": [
+    "Region",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_percentof_r2a",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentof",
+     "base": "Region",
+     "item": "North"
+    }
+   ],
+   "rows": [
+    "Region",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_percentdifference_r2a",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentdifference",
+     "base": "Region",
+     "item": "(previous)"
+    }
+   ],
+   "rows": [
+    "Region",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_running_r2a",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "running",
+     "base": "Region"
+    }
+   ],
+   "rows": [
+    "Region",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_percentrunning_r2a",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentrunning",
+     "base": "Region"
+    }
+   ],
+   "rows": [
+    "Region",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_rankasc_r2a",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "rankasc",
+     "base": "Region"
+    }
+   ],
+   "rows": [
+    "Region",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_rankdesc_r2a",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "rankdesc",
+     "base": "Region"
+    }
+   ],
+   "rows": [
+    "Region",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_percentparent_r2a",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentparent",
+     "base": "Region"
+    }
+   ],
+   "rows": [
+    "Region",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_difference_r2b",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "difference",
+     "base": "Product",
+     "item": "(previous)"
+    }
+   ],
+   "rows": [
+    "Region",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_percentof_r2b",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentof",
+     "base": "Product",
+     "item": "Plums"
+    }
+   ],
+   "rows": [
+    "Region",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_percentdifference_r2b",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentdifference",
+     "base": "Product",
+     "item": "(previous)"
+    }
+   ],
+   "rows": [
+    "Region",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_running_r2b",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "running",
+     "base": "Product"
+    }
+   ],
+   "rows": [
+    "Region",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_percentrunning_r2b",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentrunning",
+     "base": "Product"
+    }
+   ],
+   "rows": [
+    "Region",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_rankasc_r2b",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "rankasc",
+     "base": "Product"
+    }
+   ],
+   "rows": [
+    "Region",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_rankdesc_r2b",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "rankdesc",
+     "base": "Product"
+    }
+   ],
+   "rows": [
+    "Region",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_percentparent_r2b",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentparent",
+     "base": "Product"
+    }
+   ],
+   "rows": [
+    "Region",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_difference_c2a",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "difference",
+     "base": "Channel",
+     "item": "(previous)"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_percentof_c2a",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentof",
+     "base": "Channel",
+     "item": "Web"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_percentdifference_c2a",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentdifference",
+     "base": "Channel",
+     "item": "(previous)"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_running_c2a",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "running",
+     "base": "Channel"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_percentrunning_c2a",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentrunning",
+     "base": "Channel"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_rankasc_c2a",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "rankasc",
+     "base": "Channel"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_rankdesc_c2a",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "rankdesc",
+     "base": "Channel"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_percentparent_c2a",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentparent",
+     "base": "Channel"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_difference_c2b",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "difference",
+     "base": "Product",
+     "item": "(previous)"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_percentof_c2b",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentof",
+     "base": "Product",
+     "item": "Plums"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_percentdifference_c2b",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentdifference",
+     "base": "Product",
+     "item": "(previous)"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_running_c2b",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "running",
+     "base": "Product"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_percentrunning_c2b",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentrunning",
+     "base": "Product"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_rankasc_c2b",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "rankasc",
+     "base": "Product"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_rankdesc_c2b",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "rankdesc",
+     "base": "Product"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_percentparent_c2b",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentparent",
+     "base": "Product"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_difference_c2c",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "difference",
+     "base": "Region",
+     "item": "(previous)"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_percentof_c2c",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentof",
+     "base": "Region",
+     "item": "North"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_percentdifference_c2c",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentdifference",
+     "base": "Region",
+     "item": "(previous)"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_running_c2c",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "running",
+     "base": "Region"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_percentrunning_c2c",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentrunning",
+     "base": "Region"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_rankasc_c2c",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "rankasc",
+     "base": "Region"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_rankdesc_c2c",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "rankdesc",
+     "base": "Region"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_percentparent_c2c",
+   "data": "sales",
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentparent",
+     "base": "Region"
+    }
+   ],
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ]
+  },
+  {
+   "id": "rel_difference_next",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "difference",
+     "base": "Region",
+     "item": "(next)"
+    }
+   ]
+  },
+  {
+   "id": "rel_percentdifference_next",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentdifference",
+     "base": "Region",
+     "item": "(next)"
+    }
+   ]
+  },
+  {
+   "id": "two_percentrow",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentrow"
+    }
+   ]
+  },
+  {
+   "id": "sub_percentrow",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentrow"
+    }
+   ],
+   "layout": "tabular"
+  },
+  {
+   "id": "two_percentcolumn",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentcolumn"
+    }
+   ]
+  },
+  {
+   "id": "sub_percentcolumn",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentcolumn"
+    }
+   ],
+   "layout": "tabular"
+  },
+  {
+   "id": "two_percenttotal",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percenttotal"
+    }
+   ]
+  },
+  {
+   "id": "sub_percenttotal",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percenttotal"
+    }
+   ],
+   "layout": "tabular"
+  },
+  {
+   "id": "two_index",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "index"
+    }
+   ]
+  },
+  {
+   "id": "sub_index",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "index"
+    }
+   ],
+   "layout": "tabular"
+  },
+  {
+   "id": "two_percentparentrow",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentparentrow"
+    }
+   ]
+  },
+  {
+   "id": "sub_percentparentrow",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentparentrow"
+    }
+   ],
+   "layout": "tabular"
+  },
+  {
+   "id": "two_percentparentcolumn",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentparentcolumn"
+    }
+   ]
+  },
+  {
+   "id": "sub_percentparentcolumn",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentparentcolumn"
+    }
+   ],
+   "layout": "tabular"
+  },
+  {
+   "id": "edge_percentrow",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "cols": [
+    "Sub"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "sum",
+     "show": "percentrow"
+    }
+   ]
+  },
+  {
+   "id": "edge_percentcolumn",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "cols": [
+    "Sub"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "sum",
+     "show": "percentcolumn"
+    }
+   ]
+  },
+  {
+   "id": "edge_percenttotal",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "cols": [
+    "Sub"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "sum",
+     "show": "percenttotal"
+    }
+   ]
+  },
+  {
+   "id": "edge_index",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "cols": [
+    "Sub"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "sum",
+     "show": "index"
+    }
+   ]
+  },
+  {
+   "id": "edge_percentparentrow",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "cols": [
+    "Sub"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "sum",
+     "show": "percentparentrow"
+    }
+   ]
+  },
+  {
+   "id": "edge_percentparentcolumn",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "cols": [
+    "Sub"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "sum",
+     "show": "percentparentcolumn"
+    }
+   ]
+  },
+  {
+   "id": "edge_rel_difference",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "cols": [
+    "Sub"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "sum",
+     "show": "difference",
+     "base": "Group",
+     "item": "(previous)"
+    }
+   ]
+  },
+  {
+   "id": "edge_rel_percentof",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "cols": [
+    "Sub"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "sum",
+     "show": "percentof",
+     "base": "Group",
+     "item": "g3"
+    }
+   ]
+  },
+  {
+   "id": "edge_rel_percentdifference",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "cols": [
+    "Sub"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "sum",
+     "show": "percentdifference",
+     "base": "Group",
+     "item": "(previous)"
+    }
+   ]
+  },
+  {
+   "id": "edge_rel_running",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "cols": [
+    "Sub"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "sum",
+     "show": "running",
+     "base": "Group"
+    }
+   ]
+  },
+  {
+   "id": "edge_rel_percentrunning",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "cols": [
+    "Sub"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "sum",
+     "show": "percentrunning",
+     "base": "Group"
+    }
+   ]
+  },
+  {
+   "id": "edge_rel_rankasc",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "cols": [
+    "Sub"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "sum",
+     "show": "rankasc",
+     "base": "Group"
+    }
+   ]
+  },
+  {
+   "id": "edge_rel_rankdesc",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "cols": [
+    "Sub"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "sum",
+     "show": "rankdesc",
+     "base": "Group"
+    }
+   ]
+  },
+  {
+   "id": "edge_rel_percentparent",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "cols": [
+    "Sub"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "sum",
+     "show": "percentparent",
+     "base": "Group"
+    }
+   ]
+  },
+  {
+   "id": "edge_f_sum",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "edge_g_sum",
+   "data": "edge",
+   "rows": [
+    "Sub"
+   ],
+   "cols": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Wt",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "edge_f_count",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "count"
+    }
+   ]
+  },
+  {
+   "id": "edge_g_count",
+   "data": "edge",
+   "rows": [
+    "Sub"
+   ],
+   "cols": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Wt",
+     "func": "count"
+    }
+   ]
+  },
+  {
+   "id": "edge_f_average",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "average"
+    }
+   ]
+  },
+  {
+   "id": "edge_g_average",
+   "data": "edge",
+   "rows": [
+    "Sub"
+   ],
+   "cols": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Wt",
+     "func": "average"
+    }
+   ]
+  },
+  {
+   "id": "edge_f_max",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "max"
+    }
+   ]
+  },
+  {
+   "id": "edge_g_max",
+   "data": "edge",
+   "rows": [
+    "Sub"
+   ],
+   "cols": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Wt",
+     "func": "max"
+    }
+   ]
+  },
+  {
+   "id": "edge_f_min",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "min"
+    }
+   ]
+  },
+  {
+   "id": "edge_g_min",
+   "data": "edge",
+   "rows": [
+    "Sub"
+   ],
+   "cols": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Wt",
+     "func": "min"
+    }
+   ]
+  },
+  {
+   "id": "edge_f_product",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "product"
+    }
+   ]
+  },
+  {
+   "id": "edge_g_product",
+   "data": "edge",
+   "rows": [
+    "Sub"
+   ],
+   "cols": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Wt",
+     "func": "product"
+    }
+   ]
+  },
+  {
+   "id": "edge_f_countnums",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "countnums"
+    }
+   ]
+  },
+  {
+   "id": "edge_g_countnums",
+   "data": "edge",
+   "rows": [
+    "Sub"
+   ],
+   "cols": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Wt",
+     "func": "countnums"
+    }
+   ]
+  },
+  {
+   "id": "edge_f_stdev",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "stdev"
+    }
+   ]
+  },
+  {
+   "id": "edge_g_stdev",
+   "data": "edge",
+   "rows": [
+    "Sub"
+   ],
+   "cols": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Wt",
+     "func": "stdev"
+    }
+   ]
+  },
+  {
+   "id": "edge_f_stdevp",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "stdevp"
+    }
+   ]
+  },
+  {
+   "id": "edge_g_stdevp",
+   "data": "edge",
+   "rows": [
+    "Sub"
+   ],
+   "cols": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Wt",
+     "func": "stdevp"
+    }
+   ]
+  },
+  {
+   "id": "edge_f_var",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "var"
+    }
+   ]
+  },
+  {
+   "id": "edge_g_var",
+   "data": "edge",
+   "rows": [
+    "Sub"
+   ],
+   "cols": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Wt",
+     "func": "var"
+    }
+   ]
+  },
+  {
+   "id": "edge_f_varp",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "varp"
+    }
+   ]
+  },
+  {
+   "id": "edge_g_varp",
+   "data": "edge",
+   "rows": [
+    "Sub"
+   ],
+   "cols": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Wt",
+     "func": "varp"
+    }
+   ]
+  },
+  {
+   "id": "edge_text_fn",
+   "data": "edge",
+   "rows": [
+    "Sub"
+   ],
+   "values": [
+    {
+     "field": "Group",
+     "func": "count"
+    },
+    {
+     "field": "Group",
+     "func": "max"
+    },
+    {
+     "field": "Group",
+     "func": "average"
+    },
+    {
+     "field": "Group",
+     "func": "product"
+    }
+   ]
+  },
+  {
+   "id": "sp1",
+   "data": "sparse",
+   "rows": [
+    "A",
+    "B"
+   ],
+   "values": [
+    {
+     "field": "V",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "sp2",
+   "data": "sparse",
+   "rows": [
+    "A",
+    "B"
+   ],
+   "values": [
+    {
+     "field": "V",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "B": {
+     "show_all_items": true
+    }
+   }
+  },
+  {
+   "id": "sp3",
+   "data": "sparse",
+   "rows": [
+    "A"
+   ],
+   "cols": [
+    "B"
+   ],
+   "values": [
+    {
+     "field": "V",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "A": {
+     "show_all_items": true
+    },
+    "B": {
+     "show_all_items": true
+    }
+   }
+  },
+  {
+   "id": "sp4",
+   "data": "sparse",
+   "rows": [
+    "A",
+    "B"
+   ],
+   "cols": [
+    "C"
+   ],
+   "values": [
+    {
+     "field": "V",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "A": {
+     "show_all_items": true
+    },
+    "B": {
+     "show_all_items": true
+    },
+    "C": {
+     "show_all_items": true
+    }
+   }
+  },
+  {
+   "id": "sp5",
+   "data": "sparse",
+   "rows": [
+    "A"
+   ],
+   "pages": [
+    "C"
+   ],
+   "values": [
+    {
+     "field": "V",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "A": {
+     "show_all_items": true
+    }
+   },
+   "page_select": {
+    "C": "n"
+   }
+  },
+  {
+   "id": "mx1",
+   "data": "mixed",
+   "rows": [
+    "Key"
+   ],
+   "values": [
+    {
+     "field": "N",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "mx2",
+   "data": "mixed",
+   "rows": [
+    "Key"
+   ],
+   "values": [
+    {
+     "field": "N",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Key": {
+     "sort": "desc"
+    }
+   }
+  },
+  {
+   "id": "mx3",
+   "data": "mixed",
+   "rows": [
+    "When"
+   ],
+   "values": [
+    {
+     "field": "N",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "mx4",
+   "data": "mixed",
+   "rows": [
+    "Flag"
+   ],
+   "values": [
+    {
+     "field": "N",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "mx5",
+   "data": "mixed",
+   "rows": [
+    "Flag"
+   ],
+   "cols": [
+    "Key"
+   ],
+   "values": [
+    {
+     "field": "N",
+     "func": "count"
+    }
+   ]
+  },
+  {
+   "id": "mx6",
+   "data": "mixed",
+   "rows": [
+    "N"
+   ],
+   "values": [
+    {
+     "field": "Flag",
+     "func": "count"
+    }
+   ]
+  },
+  {
+   "id": "g1",
+   "data": "sales",
+   "rows": [
+    "Date"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Date",
+     "kind": "date",
+     "by": [
+      "months",
+      "years"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "g2",
+   "data": "sales",
+   "rows": [
+    "Date"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Date",
+     "kind": "date",
+     "by": [
+      "quarters"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "g3",
+   "data": "sales",
+   "rows": [
+    "Date"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Date",
+     "kind": "date",
+     "by": [
+      "months"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "g4",
+   "data": "sales",
+   "rows": [
+    "Date"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Date",
+     "kind": "date",
+     "by": [
+      "years",
+      "quarters",
+      "months"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "g5",
+   "data": "sales",
+   "rows": [
+    "Units"
+   ],
+   "values": [
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Units",
+     "kind": "number",
+     "start": 0,
+     "end": 250,
+     "step": 50
+    }
+   ]
+  },
+  {
+   "id": "g6",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Region",
+     "kind": "manual",
+     "groups": [
+      [
+       "North",
+       "South"
+      ],
+      [
+       "East",
+       "West"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "g7",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Revenue",
+     "func": "sum"
+    }
+   ],
+   "calc_fields": [
+    {
+     "name": "Revenue",
+     "formula": "=Units*Price"
+    }
+   ]
+  },
+  {
+   "id": "g8",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "calc_items": [
+    {
+     "field": "Region",
+     "name": "NS",
+     "formula": "=North+South"
+    }
+   ]
+  },
+  {
+   "id": "g9",
+   "data": "sales",
+   "rows": [
+    "Date"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "g11",
+   "data": "sales",
+   "rows": [
+    "Date"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Date",
+     "kind": "date",
+     "by": [
+      "days"
+     ],
+     "step": 30
+    }
+   ]
+  },
+  {
+   "id": "g12",
+   "data": "sales",
+   "rows": [
+    "Date"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Date",
+     "kind": "date",
+     "by": [
+      "years"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "g13",
+   "data": "sales",
+   "rows": [
+    "Date"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Date",
+     "kind": "date",
+     "by": [
+      "months",
+      "years"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "gA",
+   "data": "sales",
+   "rows": [
+    "Price"
+   ],
+   "values": [
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Price",
+     "kind": "number",
+     "start": 0,
+     "end": 4,
+     "step": 0.5
+    }
+   ]
+  },
+  {
+   "id": "gB",
+   "data": "sales",
+   "rows": [
+    "Units"
+   ],
+   "values": [
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Units",
+     "kind": "number",
+     "step": 50
+    }
+   ]
+  },
+  {
+   "id": "gC",
+   "data": "sales",
+   "rows": [
+    "Date"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Date",
+     "kind": "date",
+     "by": [
+      "days"
+     ],
+     "step": 7,
+     "start": 45292,
+     "end": 45500
+    }
+   ]
+  },
+  {
+   "id": "gD",
+   "data": "sales",
+   "rows": [
+    "Date"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Date",
+     "kind": "date",
+     "by": [
+      "days"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "gE",
+   "data": "sales",
+   "rows": [
+    "Date"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Date",
+     "kind": "date",
+     "by": [
+      "years"
+     ],
+     "start": 45352,
+     "end": 45658
+    }
+   ]
+  },
+  {
+   "id": "gF",
+   "data": "sales",
+   "rows": [
+    "Date"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Date",
+     "kind": "date",
+     "by": [
+      "months"
+     ],
+     "start": 45306,
+     "end": 45600
+    }
+   ]
+  },
+  {
+   "id": "gH",
+   "data": "sales",
+   "cols": [
+    "Date"
+   ],
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Date",
+     "kind": "date",
+     "by": [
+      "months",
+      "years"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "gI",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Product",
+     "kind": "manual",
+     "groups": [
+      [
+       "Apples",
+       "Pears"
+      ],
+      [
+       "Figs",
+       "Plums"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "id": "gK",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "calc_items": [
+    {
+     "field": "Product",
+     "name": "AP",
+     "formula": "=Apples+Pears"
+    }
+   ]
+  },
+  {
+   "id": "gL",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "calc_items": [
+    {
+     "field": "Channel",
+     "name": "Both",
+     "formula": "=Store+Web"
+    }
+   ]
+  },
+  {
+   "id": "gM",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "calc_items": [
+    {
+     "field": "Region",
+     "name": "NS2",
+     "formula": "=North*2-South"
+    }
+   ]
+  },
+  {
+   "id": "gN",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    },
+    {
+     "field": "Net",
+     "func": "sum"
+    }
+   ],
+   "calc_fields": [
+    {
+     "name": "Net",
+     "formula": "=Amount-Units"
+    }
+   ]
+  },
+  {
+   "id": "gO",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Rate",
+     "func": "sum"
+    }
+   ],
+   "calc_fields": [
+    {
+     "name": "Rate",
+     "formula": "=Amount/Units"
+    }
+   ]
+  },
+  {
+   "id": "gP",
+   "data": "sales",
+   "rows": [
+    "Date",
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Date",
+     "kind": "date",
+     "by": [
+      "quarters"
+     ]
+    }
+   ],
+   "layout": "tabular"
+  },
+  {
+   "id": "mf1",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "outline"
+    },
+    "Product": {
+     "layout": "tabular"
+    }
+   }
+  },
+  {
+   "id": "mf2",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "tabular"
+    },
+    "Product": {
+     "layout": "outline"
+    }
+   }
+  },
+  {
+   "id": "mf3",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Product": {
+     "layout": "tabular"
+    }
+   }
+  },
+  {
+   "id": "mf5",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline",
+   "fields": {
+    "Region": {
+     "layout": "compact"
+    }
+   }
+  },
+  {
+   "id": "cs1",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "compact",
+   "fields": {
+    "Region": {
+     "subtotals": [
+      "sum",
+      "count",
+      "average",
+      "max",
+      "min",
+      "product",
+      "countnums",
+      "stdev",
+      "stdevp",
+      "var",
+      "varp"
+     ]
+    }
+   }
+  },
+  {
+   "id": "cs2",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "compact",
+   "fields": {
+    "Region": {
+     "subtotals": [
+      "automatic",
+      "sum"
+     ]
+    }
+   }
+  },
+  {
+   "id": "cs3",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "layout": "compact",
+   "fields": {
+    "Region": {
+     "subtotals": [
+      "average"
+     ]
+    }
+   }
+  },
+  {
+   "id": "cs4",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "compact",
+   "fields": {
+    "Channel": {
+     "subtotals": [
+      "sum",
+      "count"
+     ]
+    }
+   }
+  },
+  {
+   "id": "cs5",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "compact",
+   "fields": {
+    "Region": {
+     "blank_row": true,
+     "subtotal_at": "bottom"
+    },
+    "Product": {
+     "blank_row": true
+    }
+   }
+  },
+  {
+   "id": "cs6",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "compact",
+   "fields": {
+    "Product": {
+     "subtotal_at": "bottom"
+    }
+   }
+  },
+  {
+   "id": "cs7",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "compact",
+   "fields": {
+    "Channel": {
+     "subtotals": "off"
+    }
+   }
+  },
+  {
+   "id": "cs8",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "compact",
+   "grand": {
+    "row": false,
+    "col": true
+   },
+   "fields": {
+    "Region": {
+     "subtotals": "off"
+    }
+   }
+  },
+  {
+   "id": "os1",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline",
+   "fields": {
+    "Region": {
+     "subtotals": [
+      "sum",
+      "count",
+      "average",
+      "max",
+      "min",
+      "product",
+      "countnums",
+      "stdev",
+      "stdevp",
+      "var",
+      "varp"
+     ]
+    }
+   }
+  },
+  {
+   "id": "os2",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline",
+   "fields": {
+    "Region": {
+     "subtotals": [
+      "automatic",
+      "sum"
+     ]
+    }
+   }
+  },
+  {
+   "id": "os3",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline",
+   "fields": {
+    "Region": {
+     "subtotals": [
+      "average"
+     ]
+    }
+   }
+  },
+  {
+   "id": "os4",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline",
+   "fields": {
+    "Channel": {
+     "subtotals": [
+      "sum",
+      "count"
+     ]
+    }
+   }
+  },
+  {
+   "id": "os5",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline",
+   "fields": {
+    "Region": {
+     "blank_row": true,
+     "subtotal_at": "bottom"
+    },
+    "Product": {
+     "blank_row": true
+    }
+   }
+  },
+  {
+   "id": "os6",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline",
+   "fields": {
+    "Product": {
+     "subtotal_at": "bottom"
+    }
+   }
+  },
+  {
+   "id": "os7",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline",
+   "fields": {
+    "Channel": {
+     "subtotals": "off"
+    }
+   }
+  },
+  {
+   "id": "os8",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "outline",
+   "grand": {
+    "row": false,
+    "col": true
+   },
+   "fields": {
+    "Region": {
+     "subtotals": "off"
+    }
+   }
+  },
+  {
+   "id": "ts1",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular",
+   "fields": {
+    "Region": {
+     "subtotals": [
+      "sum",
+      "count",
+      "average",
+      "max",
+      "min",
+      "product",
+      "countnums",
+      "stdev",
+      "stdevp",
+      "var",
+      "varp"
+     ]
+    }
+   }
+  },
+  {
+   "id": "ts2",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular",
+   "fields": {
+    "Region": {
+     "subtotals": [
+      "automatic",
+      "sum"
+     ]
+    }
+   }
+  },
+  {
+   "id": "ts3",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular",
+   "fields": {
+    "Region": {
+     "subtotals": [
+      "average"
+     ]
+    }
+   }
+  },
+  {
+   "id": "ts4",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular",
+   "fields": {
+    "Channel": {
+     "subtotals": [
+      "sum",
+      "count"
+     ]
+    }
+   }
+  },
+  {
+   "id": "ts5",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular",
+   "fields": {
+    "Region": {
+     "blank_row": true,
+     "subtotal_at": "bottom"
+    },
+    "Product": {
+     "blank_row": true
+    }
+   }
+  },
+  {
+   "id": "ts6",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular",
+   "fields": {
+    "Product": {
+     "subtotal_at": "bottom"
+    }
+   }
+  },
+  {
+   "id": "ts7",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular",
+   "fields": {
+    "Channel": {
+     "subtotals": "off"
+    }
+   }
+  },
+  {
+   "id": "ts8",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular",
+   "grand": {
+    "row": false,
+    "col": true
+   },
+   "fields": {
+    "Region": {
+     "subtotals": "off"
+    }
+   }
+  },
+  {
+   "id": "vf1",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "vf2",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Units",
+     "func": "count"
+    },
+    {
+     "field": "Units",
+     "func": "average"
+    }
+   ],
+   "cols": [
+    "Channel"
+   ]
+  },
+  {
+   "id": "vf3",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Units",
+     "func": "count"
+    },
+    {
+     "field": "Units",
+     "func": "average"
+    }
+   ],
+   "values_on": "rows"
+  },
+  {
+   "id": "vf4",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "fmt": "#,##0.00"
+    },
+    {
+     "field": "Amount",
+     "func": "average",
+     "fmt": "0%"
+    }
+   ]
+  },
+  {
+   "id": "vf5",
+   "data": "sales",
+   "rows": [
+    "Price"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "vf6",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "name": "Total Units"
+    },
+    {
+     "field": "Amount",
+     "func": "sum",
+     "name": "Total Amount"
+    }
+   ],
+   "cols": [
+    "Channel"
+   ]
+  },
+  {
+   "id": "vf7",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percenttotal"
+    },
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percentrow"
+    }
+   ],
+   "cols": [
+    "Channel"
+   ]
+  },
+  {
+   "id": "vf8",
+   "data": "sales",
+   "cols": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "values_on": "rows"
+  },
+  {
+   "id": "vf9",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    },
+    {
+     "field": "Price",
+     "func": "average"
+    }
+   ],
+   "values_pos": 2
+  },
+  {
+   "id": "vf10",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "values_on": "rows",
+   "values_pos": 3,
+   "layout": "tabular"
+  },
+  {
+   "id": "vf11",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "values_on": "rows",
+   "values_pos": 1,
+   "layout": "outline"
+  },
+  {
+   "id": "cp1",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "captions": {
+    "grand": "Everything",
+    "row_header": "Areas",
+    "col_header": "Routes"
+   }
+  },
+  {
+   "id": "cp3",
+   "data": "edge",
+   "rows": [
+    "Group"
+   ],
+   "values": [
+    {
+     "field": "Val",
+     "func": "sum"
+    }
+   ],
+   "captions": {
+    "error": "ERR"
+   }
+  },
+  {
+   "id": "cp4",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular",
+   "captions": {
+    "grand": "All"
+   }
+  },
+  {
+   "id": "cp5",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "caption": "Area"
+    }
+   },
+   "layout": "tabular"
+  },
+  {
+   "id": "cp7",
+   "data": "sales",
+   "rows": [
+    "Date"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Date": {
+     "numfmt": "d-mmm-yy"
+    }
+   }
+  },
+  {
+   "id": "cp8",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "pages": [
+    "Date"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "gp1",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "formulas": [
+    "GETPIVOTDATA(\"Units\",$A$6)",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Region\",\"North\")",
+    "GETPIVOTDATA(\"Sum of Units\",$A$6,\"Region\",\"North\",\"Channel\",\"Web\")",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Channel\",\"Store\")",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Region\",\"Nowhere\")",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Region\",\"East\",\"Channel\",\"Web\")",
+    "GETPIVOTDATA(\"Nothing\",$A$6)",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Region\")",
+    "GETPIVOTDATA(\"Units\",B8)",
+    "GETPIVOTDATA(\"units\",$A$6,\"region\",\"north\")",
+    "GETPIVOTDATA(\"Units\",A1)",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Region\",\"(blank)\")",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Product\",\"Figs\")",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Channel\",\"Web\",\"Region\",\"North\")"
+   ]
+  },
+  {
+   "id": "gp2",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "formulas": [
+    "GETPIVOTDATA(\"Amount\",$A$6,\"Region\",\"East\",\"Product\",\"Figs\")",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Product\",\"Figs\")",
+    "GETPIVOTDATA(\"Amount\",$A$6,\"Region\",\"West\")",
+    "GETPIVOTDATA(\"Sum of Amount\",$A$6)",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Region\",\"West\",\"Product\",\"Figs\")",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Region\",\"East\",\"Product\",\"Plums\")"
+   ]
+  },
+  {
+   "id": "gp3",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "formulas": [
+    "GETPIVOTDATA(\"Units\",$A$6,\"Region\",\"East\",\"Channel\",\"Store\",\"Product\",\"Figs\")",
+    "GETPIVOTDATA(\"Amount\",$A$6,\"Channel\",\"Web\")",
+    "GETPIVOTDATA(\"Amount\",$A$6,\"Region\",\"North\")",
+    "GETPIVOTDATA(\"Units\",$A$6)",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Channel\",\"Store\",\"Product\",\"Figs\")"
+   ]
+  },
+  {
+   "id": "gp4",
+   "data": "sales",
+   "rows": [
+    "Product"
+   ],
+   "pages": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "page_select": {
+    "Region": "North"
+   },
+   "formulas": [
+    "GETPIVOTDATA(\"Units\",$A$6,\"Product\",\"Apples\")",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Region\",\"North\",\"Product\",\"Apples\")",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Region\",\"South\",\"Product\",\"Apples\")",
+    "GETPIVOTDATA(\"Units\",$A$6)"
+   ]
+  },
+  {
+   "id": "gp5",
+   "data": "sales",
+   "rows": [
+    "Date"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "formulas": [
+    "GETPIVOTDATA(\"Units\",$A$6,\"Date\",45292)",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Date\",DATE(2024,1,30))",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Date\",\"1/16/2024\")"
+   ]
+  },
+  {
+   "id": "gp6",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular",
+   "grand": {
+    "row": false,
+    "col": false
+   },
+   "formulas": [
+    "GETPIVOTDATA(\"Units\",$A$6)",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Region\",\"East\")",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Region\",\"East\",\"Product\",\"Figs\")"
+   ]
+  },
+  {
+   "id": "gp7",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "values_on": "rows",
+   "formulas": [
+    "GETPIVOTDATA(\"Amount\",$A$6,\"Region\",\"East\",\"Channel\",\"Store\")",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Channel\",\"Web\")",
+    "GETPIVOTDATA(\"Amount\",$A$6)"
+   ]
+  },
+  {
+   "id": "gp8",
+   "data": "mixed",
+   "rows": [
+    "Key"
+   ],
+   "values": [
+    {
+     "field": "N",
+     "func": "sum"
+    }
+   ],
+   "formulas": [
+    "GETPIVOTDATA(\"N\",$A$6,\"Key\",7)",
+    "GETPIVOTDATA(\"N\",$A$6,\"Key\",\"a\")",
+    "GETPIVOTDATA(\"N\",$A$6,\"Key\",\"7\")"
+   ]
+  },
+  {
+   "id": "gp9",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "subtotal_at": "bottom"
+    }
+   },
+   "formulas": [
+    "GETPIVOTDATA(\"Units\",$A$6,\"Region\",\"East\")",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Region\",\"East\",\"Product\",\"Figs\")"
+   ]
+  },
+  {
+   "id": "gp10",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "subtotals": [
+      "average"
+     ]
+    }
+   },
+   "formulas": [
+    "GETPIVOTDATA(\"Units\",$A$6,\"Region\",\"East\")",
+    "GETPIVOTDATA(\"Units\",$A$6,\"Region\",\"East\",\"Product\",\"Figs\")"
+   ]
+  },
+  {
+   "id": "r1",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "after": [
+    {
+     "sheet": "Data_sales",
+     "cell": "E2",
+     "value": 1000
+    }
+   ]
+  },
+  {
+   "id": "r2",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "after": [
+    {
+     "sheet": "Data_sales",
+     "cell": "A3",
+     "value": "Central"
+    }
+   ]
+  },
+  {
+   "id": "r3",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "after": [
+    {
+     "sheet": "Data_sales",
+     "cell": "B2",
+     "value": "Kiwis"
+    }
+   ]
+  },
+  {
+   "id": "r4",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "after": [
+    {
+     "sheet": "Data_sales",
+     "cell": "A4",
+     "value": null
+    }
+   ]
+  },
+  {
+   "id": "r5",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "sort": "asc"
+    }
+   },
+   "after": [
+    {
+     "sheet": "Data_sales",
+     "cell": "A3",
+     "value": "Central"
+    }
+   ]
+  },
+  {
+   "id": "r6",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "sort": "desc",
+     "sort_by": "Sum of Units"
+    }
+   },
+   "after": [
+    {
+     "sheet": "Data_sales",
+     "cell": "E3",
+     "value": 5000
+    },
+    {
+     "sheet": "Data_sales",
+     "cell": "E2",
+     "value": 1
+    }
+   ]
+  },
+  {
+   "id": "r7",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "order": [
+      "West",
+      "East"
+     ]
+    }
+   },
+   "after": [
+    {
+     "sheet": "Data_sales",
+     "cell": "A3",
+     "value": "Central"
+    }
+   ]
+  },
+  {
+   "id": "r8",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "hide": [
+      "North"
+     ]
+    }
+   },
+   "after": [
+    {
+     "sheet": "Data_sales",
+     "cell": "A3",
+     "value": "Central"
+    }
+   ]
+  },
+  {
+   "id": "r9",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "after": [
+    {
+     "sheet": "Data_sales",
+     "cell": "A2",
+     "value": "East"
+    },
+    {
+     "sheet": "Data_sales",
+     "cell": "A6",
+     "value": "East"
+    },
+    {
+     "sheet": "Data_sales",
+     "cell": "A10",
+     "value": "East"
+    },
+    {
+     "sheet": "Data_sales",
+     "cell": "A14",
+     "value": "East"
+    },
+    {
+     "sheet": "Data_sales",
+     "cell": "A18",
+     "value": "East"
+    },
+    {
+     "sheet": "Data_sales",
+     "cell": "A22",
+     "value": "East"
+    }
+   ]
+  },
+  {
+   "id": "r10",
+   "data": "sales",
+   "rows": [
+    "Product"
+   ],
+   "pages": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "page_select": {
+    "Region": "North"
+   },
+   "after": [
+    {
+     "sheet": "Data_sales",
+     "cell": "A2",
+     "value": "East"
+    },
+    {
+     "sheet": "Data_sales",
+     "cell": "A6",
+     "value": "East"
+    },
+    {
+     "sheet": "Data_sales",
+     "cell": "A10",
+     "value": "East"
+    },
+    {
+     "sheet": "Data_sales",
+     "cell": "A14",
+     "value": "East"
+    },
+    {
+     "sheet": "Data_sales",
+     "cell": "A18",
+     "value": "East"
+    },
+    {
+     "sheet": "Data_sales",
+     "cell": "A22",
+     "value": "East"
+    }
+   ]
+  },
+  {
+   "id": "r11",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Revenue",
+     "func": "sum"
+    }
+   ],
+   "calc_fields": [
+    {
+     "name": "Revenue",
+     "formula": "=Units*Price"
+    }
+   ],
+   "after": [
+    {
+     "sheet": "Data_sales",
+     "cell": "E2",
+     "value": 1000
+    },
+    {
+     "sheet": "Data_sales",
+     "cell": "F3",
+     "value": 9
+    }
+   ]
+  },
+  {
+   "id": "r12",
+   "data": "sales",
+   "rows": [
+    "Date"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Date",
+     "kind": "date",
+     "by": [
+      "months",
+      "years"
+     ]
+    }
+   ],
+   "after": [
+    {
+     "sheet": "Data_sales",
+     "cell": "D2",
+     "value": 45000
+    }
+   ]
+  },
+  {
+   "id": "r13",
+   "data": "sales",
+   "rows": [
+    "Units"
+   ],
+   "values": [
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Units",
+     "kind": "number",
+     "start": 0,
+     "end": 250,
+     "step": 50
+    }
+   ],
+   "after": [
+    {
+     "sheet": "Data_sales",
+     "cell": "E2",
+     "value": 300
+    }
+   ]
+  },
+  {
+   "id": "r14",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Units",
+     "func": "count"
+    }
+   ],
+   "after": [
+    {
+     "sheet": "Data_sales",
+     "cell": "E2",
+     "value": "text"
+    }
+   ]
+  },
+  {
+   "id": "r15",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "after": [
+    {
+     "sheet": "Data_sales",
+     "cell": "C2",
+     "value": "Online"
+    },
+    {
+     "sheet": "Data_sales",
+     "cell": "A5",
+     "value": "Central"
+    }
+   ]
+  },
+  {
+   "id": "r16",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "sort": "asc"
+    }
+   },
+   "after": [
+    {
+     "sheet": "Data_sales",
+     "cell": "A2",
+     "value": "Zulu"
+    }
+   ]
+  },
+  {
+   "id": "r17",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "tabular",
+   "fields": {
+    "Product": {
+     "hide": [
+      "Figs"
+     ]
+    }
+   },
+   "after": [
+    {
+     "sheet": "Data_sales",
+     "cell": "B3",
+     "value": "Kiwis"
+    }
+   ]
+  },
+  {
+   "id": "r18",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum",
+     "show": "percenttotal"
+    }
+   ],
+   "after": [
+    {
+     "sheet": "Data_sales",
+     "cell": "A3",
+     "value": "Central"
+    }
+   ]
+  },
+  {
+   "id": "r19",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "filter": {
+      "type": "begins",
+      "value": "N"
+     }
+    }
+   },
+   "after": [
+    {
+     "sheet": "Data_sales",
+     "cell": "A3",
+     "value": "Nord"
+    }
+   ]
+  },
+  {
+   "id": "r20",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "filter": {
+      "type": "top",
+      "value": 2,
+      "data": "Sum of Units"
+     }
+    }
+   },
+   "after": [
+    {
+     "sheet": "Data_sales",
+     "cell": "E3",
+     "value": 5000
+    }
+   ]
+  },
+  {
+   "id": "nm1",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Units",
+     "func": "count"
+    }
+   ]
+  },
+  {
+   "id": "nm2",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "count"
+    },
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "nm3",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "nm4",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Units",
+     "func": "count"
+    },
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "nm5",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Units",
+     "func": "average"
+    },
+    {
+     "field": "Units",
+     "func": "max"
+    },
+    {
+     "field": "Units",
+     "func": "min"
+    }
+   ]
+  },
+  {
+   "id": "nm6",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "sum"
+    },
+    {
+     "field": "Units",
+     "func": "count"
+    }
+   ]
+  },
+  {
+   "id": "nm7",
+   "data": "sales",
+   "rows": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Region",
+     "func": "count"
+    },
+    {
+     "field": "Region",
+     "func": "max"
+    }
+   ]
+  },
+  {
+   "id": "nm8",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    },
+    {
+     "field": "Amount",
+     "func": "count"
+    },
+    {
+     "field": "Units",
+     "func": "count"
+    }
+   ]
+  },
+  {
+   "id": "nm9",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "count"
+    },
+    {
+     "field": "Units",
+     "func": "countnums"
+    },
+    {
+     "field": "Units",
+     "func": "count"
+    }
+   ]
+  },
+  {
+   "id": "nm10",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "average"
+    },
+    {
+     "field": "Units",
+     "func": "average"
+    }
+   ]
+  },
+  {
+   "id": "ft1",
+   "data": "fmts",
+   "rows": [
+    "K"
+   ],
+   "values": [
+    {
+     "field": "Plain",
+     "func": "sum"
+    },
+    {
+     "field": "Two",
+     "func": "sum"
+    },
+    {
+     "field": "Thousands",
+     "func": "sum"
+    },
+    {
+     "field": "Percent",
+     "func": "sum"
+    },
+    {
+     "field": "Money",
+     "func": "sum"
+    },
+    {
+     "field": "Science",
+     "func": "sum"
+    },
+    {
+     "field": "Day",
+     "func": "sum"
+    },
+    {
+     "field": "Clock",
+     "func": "sum"
+    },
+    {
+     "field": "Quoted",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "ft2",
+   "data": "fmts",
+   "rows": [
+    "Two"
+   ],
+   "values": [
+    {
+     "field": "Plain",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "ft3",
+   "data": "fmts",
+   "rows": [
+    "Day"
+   ],
+   "values": [
+    {
+     "field": "Plain",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "ft4",
+   "data": "fmts",
+   "rows": [
+    "K"
+   ],
+   "values": [
+    {
+     "field": "Day",
+     "func": "max"
+    },
+    {
+     "field": "Clock",
+     "func": "min"
+    },
+    {
+     "field": "Percent",
+     "func": "average"
+    }
+   ]
+  },
+  {
+   "id": "ft5",
+   "data": "fmts",
+   "rows": [
+    "Percent"
+   ],
+   "values": [
+    {
+     "field": "Plain",
+     "func": "sum"
+    }
+   ]
+  },
+  {
+   "id": "ft6",
+   "data": "fmts",
+   "rows": [
+    "K"
+   ],
+   "values": [
+    {
+     "field": "Two",
+     "func": "sum",
+     "show": "percenttotal"
+    },
+    {
+     "field": "Money",
+     "func": "sum",
+     "show": "difference",
+     "base": "K",
+     "item": "(previous)"
+    }
+   ]
+  },
+  {
+   "id": "cp2a",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "captions": {
+    "empty": "none"
+   }
+  },
+  {
+   "id": "cp2c",
+   "data": "sales",
+   "rows": [
+    "Region"
+   ],
+   "cols": [
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "captions": {
+    "empty": ""
+   }
+  },
+  {
+   "id": "mf6",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "compact",
+   "fields": {
+    "Channel": {
+     "layout": "outline"
+    }
+   }
+  },
+  {
+   "id": "mf7",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "layout": "compact",
+   "fields": {
+    "Product": {
+     "layout": "outline"
+    }
+   }
+  },
+  {
+   "id": "gB2",
+   "data": "sales",
+   "rows": [
+    "Price"
+   ],
+   "values": [
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Price",
+     "kind": "number",
+     "step": 1
+    }
+   ]
+  },
+  {
+   "id": "gB3",
+   "data": "sales",
+   "rows": [
+    "Price"
+   ],
+   "values": [
+    {
+     "field": "Amount",
+     "func": "sum"
+    }
+   ],
+   "group": [
+    {
+     "field": "Price",
+     "kind": "number",
+     "step": 0.5,
+     "start": 0.25
+    }
+   ]
+  },
+  {
+   "id": "f3_ccc",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "compact"
+    },
+    "Product": {
+     "layout": "compact"
+    },
+    "Channel": {
+     "layout": "compact"
+    }
+   }
+  },
+  {
+   "id": "f3_cco",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "compact"
+    },
+    "Product": {
+     "layout": "compact"
+    },
+    "Channel": {
+     "layout": "outline"
+    }
+   }
+  },
+  {
+   "id": "f3_cct",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "compact"
+    },
+    "Product": {
+     "layout": "compact"
+    },
+    "Channel": {
+     "layout": "tabular"
+    }
+   }
+  },
+  {
+   "id": "f3_coc",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "compact"
+    },
+    "Product": {
+     "layout": "outline"
+    },
+    "Channel": {
+     "layout": "compact"
+    }
+   }
+  },
+  {
+   "id": "f3_coo",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "compact"
+    },
+    "Product": {
+     "layout": "outline"
+    },
+    "Channel": {
+     "layout": "outline"
+    }
+   }
+  },
+  {
+   "id": "f3_cot",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "compact"
+    },
+    "Product": {
+     "layout": "outline"
+    },
+    "Channel": {
+     "layout": "tabular"
+    }
+   }
+  },
+  {
+   "id": "f3_ctc",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "compact"
+    },
+    "Product": {
+     "layout": "tabular"
+    },
+    "Channel": {
+     "layout": "compact"
+    }
+   }
+  },
+  {
+   "id": "f3_cto",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "compact"
+    },
+    "Product": {
+     "layout": "tabular"
+    },
+    "Channel": {
+     "layout": "outline"
+    }
+   }
+  },
+  {
+   "id": "f3_ctt",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "compact"
+    },
+    "Product": {
+     "layout": "tabular"
+    },
+    "Channel": {
+     "layout": "tabular"
+    }
+   }
+  },
+  {
+   "id": "f3_occ",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "outline"
+    },
+    "Product": {
+     "layout": "compact"
+    },
+    "Channel": {
+     "layout": "compact"
+    }
+   }
+  },
+  {
+   "id": "f3_oco",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "outline"
+    },
+    "Product": {
+     "layout": "compact"
+    },
+    "Channel": {
+     "layout": "outline"
+    }
+   }
+  },
+  {
+   "id": "f3_oct",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "outline"
+    },
+    "Product": {
+     "layout": "compact"
+    },
+    "Channel": {
+     "layout": "tabular"
+    }
+   }
+  },
+  {
+   "id": "f3_ooc",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "outline"
+    },
+    "Product": {
+     "layout": "outline"
+    },
+    "Channel": {
+     "layout": "compact"
+    }
+   }
+  },
+  {
+   "id": "f3_ooo",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "outline"
+    },
+    "Product": {
+     "layout": "outline"
+    },
+    "Channel": {
+     "layout": "outline"
+    }
+   }
+  },
+  {
+   "id": "f3_oot",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "outline"
+    },
+    "Product": {
+     "layout": "outline"
+    },
+    "Channel": {
+     "layout": "tabular"
+    }
+   }
+  },
+  {
+   "id": "f3_otc",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "outline"
+    },
+    "Product": {
+     "layout": "tabular"
+    },
+    "Channel": {
+     "layout": "compact"
+    }
+   }
+  },
+  {
+   "id": "f3_oto",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "outline"
+    },
+    "Product": {
+     "layout": "tabular"
+    },
+    "Channel": {
+     "layout": "outline"
+    }
+   }
+  },
+  {
+   "id": "f3_ott",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "outline"
+    },
+    "Product": {
+     "layout": "tabular"
+    },
+    "Channel": {
+     "layout": "tabular"
+    }
+   }
+  },
+  {
+   "id": "f3_tcc",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "tabular"
+    },
+    "Product": {
+     "layout": "compact"
+    },
+    "Channel": {
+     "layout": "compact"
+    }
+   }
+  },
+  {
+   "id": "f3_tco",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "tabular"
+    },
+    "Product": {
+     "layout": "compact"
+    },
+    "Channel": {
+     "layout": "outline"
+    }
+   }
+  },
+  {
+   "id": "f3_tct",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "tabular"
+    },
+    "Product": {
+     "layout": "compact"
+    },
+    "Channel": {
+     "layout": "tabular"
+    }
+   }
+  },
+  {
+   "id": "f3_toc",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "tabular"
+    },
+    "Product": {
+     "layout": "outline"
+    },
+    "Channel": {
+     "layout": "compact"
+    }
+   }
+  },
+  {
+   "id": "f3_too",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "tabular"
+    },
+    "Product": {
+     "layout": "outline"
+    },
+    "Channel": {
+     "layout": "outline"
+    }
+   }
+  },
+  {
+   "id": "f3_tot",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "tabular"
+    },
+    "Product": {
+     "layout": "outline"
+    },
+    "Channel": {
+     "layout": "tabular"
+    }
+   }
+  },
+  {
+   "id": "f3_ttc",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "tabular"
+    },
+    "Product": {
+     "layout": "tabular"
+    },
+    "Channel": {
+     "layout": "compact"
+    }
+   }
+  },
+  {
+   "id": "f3_tto",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "tabular"
+    },
+    "Product": {
+     "layout": "tabular"
+    },
+    "Channel": {
+     "layout": "outline"
+    }
+   }
+  },
+  {
+   "id": "f3_ttt",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product",
+    "Channel"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "tabular"
+    },
+    "Product": {
+     "layout": "tabular"
+    },
+    "Channel": {
+     "layout": "tabular"
+    }
+   }
+  },
+  {
+   "id": "f2_cc",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "compact"
+    },
+    "Product": {
+     "layout": "compact"
+    }
+   }
+  },
+  {
+   "id": "f2_co",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "compact"
+    },
+    "Product": {
+     "layout": "outline"
+    }
+   }
+  },
+  {
+   "id": "f2_ct",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "compact"
+    },
+    "Product": {
+     "layout": "tabular"
+    }
+   }
+  },
+  {
+   "id": "f2_oc",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "outline"
+    },
+    "Product": {
+     "layout": "compact"
+    }
+   }
+  },
+  {
+   "id": "f2_oo",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "outline"
+    },
+    "Product": {
+     "layout": "outline"
+    }
+   }
+  },
+  {
+   "id": "f2_ot",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "outline"
+    },
+    "Product": {
+     "layout": "tabular"
+    }
+   }
+  },
+  {
+   "id": "f2_tc",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "tabular"
+    },
+    "Product": {
+     "layout": "compact"
+    }
+   }
+  },
+  {
+   "id": "f2_to",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "tabular"
+    },
+    "Product": {
+     "layout": "outline"
+    }
+   }
+  },
+  {
+   "id": "f2_tt",
+   "data": "sales",
+   "rows": [
+    "Region",
+    "Product"
+   ],
+   "values": [
+    {
+     "field": "Units",
+     "func": "sum"
+    }
+   ],
+   "fields": {
+    "Region": {
+     "layout": "tabular"
+    },
+    "Product": {
+     "layout": "tabular"
+    }
+   }
+  }
+ ]
+}

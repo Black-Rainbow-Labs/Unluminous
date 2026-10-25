@@ -1,0 +1,542 @@
+[
+ {
+  "name": "op2_add_all",
+  "sheets": [
+   "Sheet2"
+  ],
+  "cells": {
+   "B1": 2,
+   "B2": 3,
+   "B3": 4,
+   "A1": {
+    "f": "=\"a\"&\"b\""
+   },
+   "A2": {
+    "f": "=TRUE"
+   },
+   "A3": {
+    "f": "=B1"
+   },
+   "A4": {
+    "f": "=$B$1+Sheet2!A1"
+   },
+   "A5": {
+    "f": "=SUM(B1:B3)"
+   },
+   "A7": -3.5,
+   "A8": {
+    "f": "=B2"
+   },
+   "C1": 5,
+   "C3": "txt",
+   "C4": true,
+   "C5": {
+    "f": "=\"t\""
+   },
+   "C6": {
+    "f": "=1+1"
+   },
+   "C7": -2.25,
+   "C8": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd"
+   },
+   "Sheet2!A1": 100
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:A8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4104,
+    "op": 2
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op2_divide_all",
+  "sheets": [
+   "Sheet2"
+  ],
+  "cells": {
+   "B1": 2,
+   "B2": 3,
+   "B3": 4,
+   "A1": {
+    "f": "=\"a\"&\"b\""
+   },
+   "A2": {
+    "f": "=TRUE"
+   },
+   "A3": {
+    "f": "=B1"
+   },
+   "A4": {
+    "f": "=$B$1+Sheet2!A1"
+   },
+   "A5": {
+    "f": "=SUM(B1:B3)"
+   },
+   "A7": -3.5,
+   "A8": {
+    "f": "=B2"
+   },
+   "C1": 5,
+   "C3": "txt",
+   "C4": true,
+   "C5": {
+    "f": "=\"t\""
+   },
+   "C6": {
+    "f": "=1+1"
+   },
+   "C7": -2.25,
+   "C8": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd"
+   },
+   "Sheet2!A1": 100
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:A8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4104,
+    "op": 5
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op2_add_values",
+  "sheets": [
+   "Sheet2"
+  ],
+  "cells": {
+   "B1": 2,
+   "B2": 3,
+   "B3": 4,
+   "A1": {
+    "f": "=\"a\"&\"b\""
+   },
+   "A2": {
+    "f": "=TRUE"
+   },
+   "A3": {
+    "f": "=B1"
+   },
+   "A4": {
+    "f": "=$B$1+Sheet2!A1"
+   },
+   "A5": {
+    "f": "=SUM(B1:B3)"
+   },
+   "A7": -3.5,
+   "A8": {
+    "f": "=B2"
+   },
+   "C1": 5,
+   "C3": "txt",
+   "C4": true,
+   "C5": {
+    "f": "=\"t\""
+   },
+   "C6": {
+    "f": "=1+1"
+   },
+   "C7": -2.25,
+   "C8": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd"
+   },
+   "Sheet2!A1": 100
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:A8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4163,
+    "op": 2
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op2_divide_values",
+  "sheets": [
+   "Sheet2"
+  ],
+  "cells": {
+   "B1": 2,
+   "B2": 3,
+   "B3": 4,
+   "A1": {
+    "f": "=\"a\"&\"b\""
+   },
+   "A2": {
+    "f": "=TRUE"
+   },
+   "A3": {
+    "f": "=B1"
+   },
+   "A4": {
+    "f": "=$B$1+Sheet2!A1"
+   },
+   "A5": {
+    "f": "=SUM(B1:B3)"
+   },
+   "A7": -3.5,
+   "A8": {
+    "f": "=B2"
+   },
+   "C1": 5,
+   "C3": "txt",
+   "C4": true,
+   "C5": {
+    "f": "=\"t\""
+   },
+   "C6": {
+    "f": "=1+1"
+   },
+   "C7": -2.25,
+   "C8": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd"
+   },
+   "Sheet2!A1": 100
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:A8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4163,
+    "op": 5
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op2_add_formulas",
+  "sheets": [
+   "Sheet2"
+  ],
+  "cells": {
+   "B1": 2,
+   "B2": 3,
+   "B3": 4,
+   "A1": {
+    "f": "=\"a\"&\"b\""
+   },
+   "A2": {
+    "f": "=TRUE"
+   },
+   "A3": {
+    "f": "=B1"
+   },
+   "A4": {
+    "f": "=$B$1+Sheet2!A1"
+   },
+   "A5": {
+    "f": "=SUM(B1:B3)"
+   },
+   "A7": -3.5,
+   "A8": {
+    "f": "=B2"
+   },
+   "C1": 5,
+   "C3": "txt",
+   "C4": true,
+   "C5": {
+    "f": "=\"t\""
+   },
+   "C6": {
+    "f": "=1+1"
+   },
+   "C7": -2.25,
+   "C8": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd"
+   },
+   "Sheet2!A1": 100
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:A8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4123,
+    "op": 2
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op2_divide_formulas",
+  "sheets": [
+   "Sheet2"
+  ],
+  "cells": {
+   "B1": 2,
+   "B2": 3,
+   "B3": 4,
+   "A1": {
+    "f": "=\"a\"&\"b\""
+   },
+   "A2": {
+    "f": "=TRUE"
+   },
+   "A3": {
+    "f": "=B1"
+   },
+   "A4": {
+    "f": "=$B$1+Sheet2!A1"
+   },
+   "A5": {
+    "f": "=SUM(B1:B3)"
+   },
+   "A7": -3.5,
+   "A8": {
+    "f": "=B2"
+   },
+   "C1": 5,
+   "C3": "txt",
+   "C4": true,
+   "C5": {
+    "f": "=\"t\""
+   },
+   "C6": {
+    "f": "=1+1"
+   },
+   "C7": -2.25,
+   "C8": {
+    "v": 44000,
+    "nf": "yyyy-mm-dd"
+   },
+   "Sheet2!A1": 100
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:A8"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4123,
+    "op": 5
+   }
+  ],
+  "dump": [
+   "A1:D8"
+  ]
+ },
+ {
+  "name": "op2_skip_blanks_values",
+  "cells": {
+   "A1": 1,
+   "A3": 3,
+   "C1": 10,
+   "C2": 20,
+   "C3": 30
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:A3"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4163,
+    "skip": true
+   }
+  ],
+  "dump": [
+   "A1:D4"
+  ]
+ },
+ {
+  "name": "op2_skip_blanks_all",
+  "cells": {
+   "A1": {
+    "v": 1,
+    "bold": true
+   },
+   "A3": 3,
+   "C1": {
+    "v": 10,
+    "italic": true
+   },
+   "C2": {
+    "v": 20,
+    "italic": true
+   },
+   "C3": 30
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:A3"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4104,
+    "skip": true
+   }
+  ],
+  "dump": [
+   "A1:D4"
+  ]
+ },
+ {
+  "name": "op2_skip_blanks_add",
+  "cells": {
+   "A1": 1,
+   "A3": 3,
+   "C1": 10,
+   "C2": 20,
+   "C3": 30
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:A3"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4163,
+    "op": 2,
+    "skip": true
+   }
+  ],
+  "dump": [
+   "A1:D4"
+  ]
+ },
+ {
+  "name": "op2_transpose_add",
+  "cells": {
+   "A1": 1,
+   "A2": 2,
+   "A3": 3,
+   "C1": 10,
+   "D1": 20,
+   "E1": 30,
+   "C2": 5
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:A3"
+   },
+   {
+    "do": "pastespecial",
+    "at": "C1",
+    "paste": -4163,
+    "op": 2,
+    "transpose": true
+   }
+  ],
+  "dump": [
+   "A1:F4"
+  ]
+ },
+ {
+  "name": "op2_transpose_formulas",
+  "cells": {
+   "A1": 1,
+   "B1": {
+    "f": "=A1+1"
+   },
+   "A2": {
+    "f": "=$A$1*2"
+   },
+   "B2": {
+    "f": "=B1+A2"
+   },
+   "D1": 7
+  },
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:B2"
+   },
+   {
+    "do": "pastespecial",
+    "at": "D1",
+    "paste": -4104,
+    "transpose": true
+   }
+  ],
+  "dump": [
+   "A1:F4"
+  ]
+ },
+ {
+  "name": "op2_transpose_formats_merge",
+  "cells": {
+   "A1": {
+    "v": 1,
+    "bold": true
+   },
+   "B1": {
+    "v": "x",
+    "fill": 255
+   },
+   "C1": {
+    "v": 3,
+    "nf": "0.0"
+   },
+   "A2": 4
+  },
+  "merge": [
+   "A2:B2"
+  ],
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:C2"
+   },
+   {
+    "do": "pastespecial",
+    "at": "E1",
+    "paste": -4104,
+    "transpose": true
+   }
+  ],
+  "dump": [
+   "A1:G4"
+  ]
+ }
+]

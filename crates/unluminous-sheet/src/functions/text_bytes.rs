@@ -85,7 +85,8 @@ pub const FUNCTIONS: &[Function] = &[
         1,
         "text",
         "Full width characters for half width ones in a Japanese language.",
-        |_, a| Ok(Value::text(text_of(&a[0])?)),
+        // An English Excel does not have JIS: Excel 16 reads it as an unknown name whatever it is given.
+        |_, _| Err(ErrorKind::Name),
     ),
     super::r("PHONETIC", 1, 1, "reference", "The phonetic guide of a cell's text.", phonetic),
     s("BAHTTEXT", 1, 1, "number", "A number as Thai words for baht and satang.", |ctx, a| {
@@ -238,7 +239,7 @@ mod tests {
             ("SEARCHB(\"B\",\"abcabc\")", "2"),
             ("REPLACEB(\"日本語\",2,1,\"X\")", "日X語"),
             ("DBCS(\"ｱｲｳ\")", "ｱｲｳ"),
-            ("JIS(\"abc\")", "abc"),
+            ("JIS(\"abc\")", "#NAME?"),
         ]);
     }
 

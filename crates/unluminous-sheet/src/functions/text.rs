@@ -515,6 +515,8 @@ fn find(ctx: &mut Ctx, a: &[Value], case_sensitive: bool) -> Result<Value, Error
     if start < 1.0
         || start as usize > hay_chars.len() + usize::from(needle.is_empty())
         || start as usize > hay_chars.len() && !needle.is_empty()
+        // SEARCH, unlike FIND, finds nothing in an empty text even when it looks for nothing.
+        || !case_sensitive && start as usize > hay_chars.len()
     {
         return Err(ErrorKind::Value);
     }

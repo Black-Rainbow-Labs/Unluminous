@@ -1,0 +1,31 @@
+# The edits the tests make to the feature workbooks, one a line: name|workbook|operation|arguments
+#   combo|<sheet index>|<row to delete after the two inserted rows>
+#       Insert two whole rows at the top, insert one whole column at the left, delete one whole row, rename the sheet to Renamed.
+#   movesheet|<from>|<to>      move a sheet to a position (both counted from 0, chart sheets included)
+#   delsheet|<index>           delete a sheet
+# Excel performs each of them through edit-features.ps1 and the engine through tests/features.rs, and the two results are compared.
+02-protection-combo|02-protection.xlsx|combo|0|3
+03-pagesetup-combo|03-pagesetup.xlsx|combo|0|10
+04-outline-combo|04-outline.xlsx|combo|0|5
+05-condfmt-combo|05-condfmt.xlsx|combo|0|6
+06-validation-combo|06-validation.xlsx|combo|0|6
+07-table-combo|07-table.xlsx|combo|0|6
+08-filter-toptenSheet-combo|08-filter.xlsx|combo|0|8
+08-filter-dateSheet-combo|08-filter.xlsx|combo|2|8
+08-filter-sortSheet-combo|08-filter.xlsx|combo|4|8
+09-comments-combo|09-comments.xlsx|combo|0|3
+12-hyperlinks-combo|12-hyperlinks.xlsx|combo|0|3
+13-names-combo|13-names.xlsx|combo|0|4
+14-charts-combo|14-charts.xlsx|combo|1|5
+15-shapes-combo|15-shapes.xlsx|combo|0|5
+16-sparklines-combo|16-sparklines.xlsx|combo|0|5
+17-pivot-combo|17-pivot.xlsx|combo|0|6
+17-pivot-pivotsheet-combo|17-pivot.xlsx|combo|1|30
+07-table-delheader|07-table.xlsx|combo|0|3
+18-formulas-delrow3|18-formulas.xlsx|combo|0|3
+18-formulas-delrow5|18-formulas.xlsx|combo|0|5
+03-pagesetup-move01|03-pagesetup.xlsx|movesheet|0|1
+08-filter-move04|08-filter.xlsx|movesheet|0|4
+13-names-move01|13-names.xlsx|movesheet|0|1
+13-names-delsheet0|13-names.xlsx|delsheet|0
+13-names-delsheet1|13-names.xlsx|delsheet|1

@@ -13,6 +13,11 @@ flate2.workspace = true
 crc32fast.workspace = true
 # Reading SpreadsheetML. Already in the tree. XML is written by hand with one escaping function.
 roxmltree.workspace = true
+# Sheet and workbook protection passwords are stored as Excel stores them: a salted SHA-512 hash, spun
+# 100,000 times, in base64. All three crates are already in the tree through other users.
+sha2.workspace = true
+base64.workspace = true
+getrandom.workspace = true
 # Regular expressions for REGEXTEST, REGEXEXTRACT and REGEXREPLACE.
 fancy-regex.workspace = true
 

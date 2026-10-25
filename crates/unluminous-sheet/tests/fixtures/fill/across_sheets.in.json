@@ -1,0 +1,168 @@
+[
+ {
+  "name": "across_all",
+  "formats": true,
+  "sheets": [
+   "Sheet2",
+   "Sheet3"
+  ],
+  "cells": {
+   "A1": {
+    "v": 1,
+    "bold": true,
+    "nf": "0.00"
+   },
+   "B1": {
+    "f": "=A1*2",
+    "fill": 255
+   },
+   "A2": "x",
+   "Sheet2!A1": 99,
+   "Sheet2!C3": 7,
+   "Sheet3!B2": "old"
+  },
+  "steps": [
+   {
+    "do": "fillacross",
+    "at": "A1:B2",
+    "sheets": [
+     "Sheet1",
+     "Sheet2",
+     "Sheet3"
+    ],
+    "type": -4104
+   }
+  ],
+  "dump": [
+   "A1:C4",
+   "Sheet2!A1:C4",
+   "Sheet3!A1:C4"
+  ]
+ },
+ {
+  "name": "across_contents",
+  "formats": true,
+  "sheets": [
+   "Sheet2",
+   "Sheet3"
+  ],
+  "cells": {
+   "A1": {
+    "v": 1,
+    "bold": true,
+    "nf": "0.00"
+   },
+   "B1": {
+    "f": "=A1*2",
+    "fill": 255
+   },
+   "A2": "x",
+   "Sheet2!A1": 99,
+   "Sheet2!C3": 7,
+   "Sheet3!B2": "old"
+  },
+  "steps": [
+   {
+    "do": "fillacross",
+    "at": "A1:B2",
+    "sheets": [
+     "Sheet1",
+     "Sheet2",
+     "Sheet3"
+    ],
+    "type": 2
+   }
+  ],
+  "dump": [
+   "A1:C4",
+   "Sheet2!A1:C4",
+   "Sheet3!A1:C4"
+  ]
+ },
+ {
+  "name": "across_formats",
+  "formats": true,
+  "sheets": [
+   "Sheet2",
+   "Sheet3"
+  ],
+  "cells": {
+   "A1": {
+    "v": 1,
+    "bold": true,
+    "nf": "0.00"
+   },
+   "B1": {
+    "f": "=A1*2",
+    "fill": 255
+   },
+   "A2": "x",
+   "Sheet2!A1": 99,
+   "Sheet2!C3": 7,
+   "Sheet3!B2": "old"
+  },
+  "steps": [
+   {
+    "do": "fillacross",
+    "at": "A1:B2",
+    "sheets": [
+     "Sheet1",
+     "Sheet2",
+     "Sheet3"
+    ],
+    "type": -4122
+   }
+  ],
+  "dump": [
+   "A1:C4",
+   "Sheet2!A1:C4",
+   "Sheet3!A1:C4"
+  ]
+ },
+ {
+  "name": "across_sheet_ref",
+  "formats": true,
+  "sheets": [
+   "Sheet2",
+   "Sheet3"
+  ],
+  "cells": {
+   "A1": {
+    "v": 1,
+    "bold": true,
+    "nf": "0.00"
+   },
+   "B1": {
+    "f": "=A1*2",
+    "fill": 255
+   },
+   "A2": "x",
+   "Sheet2!A1": 99,
+   "Sheet2!C3": 7,
+   "Sheet3!B2": "old",
+   "A3": {
+    "f": "=Sheet2!C3+A1"
+   },
+   "B3": {
+    "f": "=$A$1+A2"
+   }
+  },
+  "steps": [
+   {
+    "do": "fillacross",
+    "at": "A1:B2",
+    "sheets": [
+     "Sheet1",
+     "Sheet2",
+     "Sheet3"
+    ],
+    "type": -4104
+   }
+  ],
+  "dump": [
+   "A1:C4",
+   "Sheet2!A1:C4",
+   "Sheet3!A1:C4"
+  ]
+ }
+]
