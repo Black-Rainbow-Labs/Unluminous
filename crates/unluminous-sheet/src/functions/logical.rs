@@ -8,8 +8,8 @@
 use std::sync::Arc;
 
 use super::{r, s, Function, MANY};
-use crate::eval::{to_bool, Ctx, Lambda, Val};
-use crate::formula::Expr;
+use crate::eval::{cell_name, equal, to_bool, Ctx, Lambda, Val};
+use crate::formula::{Expr, Shape};
 use crate::value::{Array, ErrorKind, Value};
 
 pub const FUNCTIONS: &[Function] = &[
@@ -166,8 +166,11 @@ fn ifs(ctx: &mut Ctx, args: &[Expr]) -> Val {
     if args.len() % 2 != 0 {
         return Val::error(ErrorKind::Value);
     }
-    for pair in args.chunks(2) {
+    for (k, pair) in args.chunks(2).enumerate() {
         let test = ctx.eval(&pair[0]);
+        if ctx.dims(&test).is_some_and(|d| d != (1, 1)) {
+            return ifs_over_arrays(ctx, test, &args[2 * k + 1..]);
+        }
         let v = ctx.single(test);
         match to_bool(&v) {
             Ok(true) => return ctx.eval(&pair[1]),
@@ -176,6 +179,23 @@ fn ifs(ctx: &mut Ctx, args: &[Expr]) -> Val {
         }
     }
     Val::error(ErrorKind::NA)
+}
+
+/// IFS once a test is an array: every remaining test and value is computed and each position of the
+/// answer takes the value of the first test that is true there. `rest` starts at the first value.
+fn ifs_over_arrays(ctx: &mut Ctx, first_test: Val, rest: &[Expr]) -> Val {
+    let mut all = vec![first_test];
+    all.extend(rest.iter().map(|e| ctx.eval(e)));
+    ctx.lift_vals(all, |_, v| {
+        for pair in v.chunks(2) {
+            match to_bool(&pair[0]) {
+                Ok(true) => return pair[1].clone(),
+                Ok(false) => {}
+                Err(e) => return Value::Error(e),
+            }
+        }
+        Value::Error(ErrorKind::NA)
+    })
 }
 
 fn if_error(ctx: &mut Ctx, args: &[Expr], only_na: bool) -> Val {
@@ -210,7 +230,8 @@ fn if_error(ctx: &mut Ctx, args: &[Expr], only_na: bool) -> Val {
     }
 }
 
-/// AND, OR and XOR: count the true values among logicals and numbers, text in ranges being skipped.
+/// AND, OR and XOR: count the true values among logicals and numbers, text that is not TRUE or FALSE
+/// being skipped.
 fn logicals(ctx: &mut Ctx, args: &[Expr], decide: fn(usize, usize) -> bool) -> Val {
     let values = ctx.values(args);
     let (mut trues, mut seen) = (0, 0);
@@ -225,13 +246,13 @@ fn logicals(ctx: &mut Ctx, args: &[Expr], decide: fn(usize, usize) -> bool) -> V
                 seen += 1;
                 trues += usize::from(*n != 0.0);
             }
-            (Value::Text(_), false) => match to_bool(&v) {
-                Ok(b) => {
+            // Text that is not TRUE or FALSE is left out, as text in a range is.
+            (Value::Text(_), false) => {
+                if let Ok(b) = to_bool(&v) {
                     seen += 1;
                     trues += usize::from(b);
                 }
-                Err(e) => return Val::error(e),
-            },
+            }
             _ => {}
         }
     }
@@ -243,24 +264,53 @@ fn logicals(ctx: &mut Ctx, args: &[Expr], decide: fn(usize, usize) -> bool) -> V
 
 fn switch(ctx: &mut Ctx, args: &[Expr]) -> Val {
     let value = ctx.eval(&args[0]);
+    if ctx.dims(&value).is_some_and(|d| d != (1, 1)) {
+        return switch_over_arrays(ctx, value, &args[1..]);
+    }
     let value = ctx.single(value);
     if let Value::Error(e) = value {
         return Val::error(e);
     }
     let pairs = &args[1..];
-    for pair in pairs.chunks(2) {
+    for (k, pair) in pairs.chunks(2).enumerate() {
         if pair.len() == 1 {
             return ctx.eval(&pair[0]);
         }
         let candidate = ctx.eval(&pair[0]);
+        if ctx.dims(&candidate).is_some_and(|d| d != (1, 1)) {
+            return switch_over_arrays(ctx, Val::Value(value), &pairs[2 * k..]);
+        }
         let candidate = ctx.single(candidate);
-        if crate::eval::equal(&value, &candidate)
-            && !matches!((&value, &candidate), (Value::Empty, Value::Text(_)))
-        {
+        if matches_switch(&value, &candidate) {
             return ctx.eval(&pair[1]);
         }
     }
     Val::error(ErrorKind::NA)
+}
+
+/// Whether SWITCH's expression equals one of its values.
+fn matches_switch(value: &Value, candidate: &Value) -> bool {
+    equal(value, candidate) && !matches!((value, candidate), (Value::Empty, Value::Text(_)))
+}
+
+/// SWITCH once the expression or a value is an array: everything is computed and each position of the
+/// answer is what SWITCH gives for the values at that position. `rest` starts at a value.
+fn switch_over_arrays(ctx: &mut Ctx, expression: Val, rest: &[Expr]) -> Val {
+    let mut all = vec![expression];
+    all.extend(rest.iter().map(|e| ctx.eval(e)));
+    ctx.lift_vals(all, |_, v| {
+        if let Value::Error(e) = &v[0] {
+            return Value::Error(*e);
+        }
+        for pair in v[1..].chunks(2) {
+            match pair {
+                [default] => return default.clone(),
+                [candidate, result] if matches_switch(&v[0], candidate) => return result.clone(),
+                _ => {}
+            }
+        }
+        Value::Error(ErrorKind::NA)
+    })
 }
 
 fn let_fn(ctx: &mut Ctx, args: &[Expr]) -> Val {
@@ -269,27 +319,61 @@ fn let_fn(ctx: &mut Ctx, args: &[Expr]) -> Val {
     }
     let depth = ctx.scope.len();
     for pair in args[..args.len() - 1].chunks(2) {
-        let Expr::Name(name) = &pair[0] else {
+        let Some(name) = let_name(&pair[0]) else {
             ctx.scope.truncate(depth);
             return Val::error(ErrorKind::Value);
         };
         let value = ctx.eval(&pair[1]);
-        ctx.scope.push((name.clone(), value));
+        ctx.scope.push((name, value));
     }
     let result = ctx.eval(&args[args.len() - 1]);
     ctx.scope.truncate(depth);
     result
 }
 
+/// The name a LET gives a value. Excel lets it look like a cell, `LET(A1, 2, A1)`.
+fn let_name(e: &Expr) -> Option<Arc<str>> {
+    match e {
+        Expr::Name(n) => Some(n.clone()),
+        Expr::Ref(r)
+            if r.sheet.is_none()
+                && r.shape == Shape::Cell
+                && !r.first.row_abs
+                && !r.first.col_abs =>
+        {
+            Some(Arc::from(cell_name(r.first.row, r.first.col).as_str()))
+        }
+        _ => None,
+    }
+}
+
+/// The name of a LAMBDA parameter written `[name]`, which may be left out when the LAMBDA is called.
+fn optional_parameter(e: &Expr) -> Option<Arc<str>> {
+    match e {
+        Expr::Table(t)
+            if t.table.is_none() && t.items.is_empty() && t.last_column == t.first_column =>
+        {
+            t.first_column.clone().filter(|_| t.text.starts_with('[') && !t.text.starts_with("[@"))
+        }
+        _ => None,
+    }
+}
+
 fn lambda(ctx: &mut Ctx, args: &[Expr]) -> Val {
     let mut params = Vec::new();
+    let mut required = None;
     for p in &args[..args.len() - 1] {
-        match p {
-            Expr::Name(n) => params.push(n.clone()),
+        match (p, optional_parameter(p)) {
+            (_, Some(name)) => {
+                required.get_or_insert(params.len());
+                params.push(name);
+            }
+            (Expr::Name(n), None) if required.is_none() => params.push(n.clone()),
             _ => return Val::error(ErrorKind::Value),
         }
     }
     Val::Lambda(Arc::new(Lambda {
+        required: required.unwrap_or(params.len()),
         params,
         body: Arc::new(args[args.len() - 1].clone()),
         scope: ctx.scope.clone(),
@@ -305,7 +389,8 @@ fn function_as_lambda(expr: &Expr) -> Option<Arc<Lambda>> {
     let params: Vec<Arc<str>> =
         (1..=function.max.min(2)).map(|i| Arc::from(format!("_argument{i}"))).collect();
     let body = Expr::Call(Arc::from(upper), params.iter().cloned().map(Expr::Name).collect());
-    Some(Arc::new(Lambda { params, body: Arc::new(body), scope: Vec::new() }))
+    let required = 1.min(params.len());
+    Some(Arc::new(Lambda { params, required, body: Arc::new(body), scope: Vec::new() }))
 }
 
 fn lambda_arg(ctx: &mut Ctx, expr: &Expr) -> Result<Arc<Lambda>, ErrorKind> {
@@ -324,6 +409,23 @@ fn array_arg(ctx: &mut Ctx, expr: &Expr) -> Result<Array, ErrorKind> {
     ctx.array(v)
 }
 
+/// Whether a LAMBDA can be called with this many values: at least its required parameters and no more
+/// than it has. The helpers below refuse the whole call otherwise, not each cell of it.
+fn takes(f: &Lambda, count: usize) -> bool {
+    count >= f.required && count <= f.params.len()
+}
+
+/// What a LAMBDA gave back for one cell of a result. A LAMBDA that gives several values where one cell
+/// is wanted makes the whole result `#CALC!`.
+fn one_value(ctx: &mut Ctx, v: Val) -> Result<Value, ErrorKind> {
+    match v {
+        Val::Array(a) if a.data.len() > 1 => Err(ErrorKind::Calc),
+        Val::Ref(area) if area.range.len() > 1 => Err(ErrorKind::Calc),
+        Val::Lambda(_) => Err(ErrorKind::Calc),
+        other => Ok(ctx.single(other)),
+    }
+}
+
 fn map(ctx: &mut Ctx, args: &[Expr]) -> Val {
     let f = match lambda_arg(ctx, &args[args.len() - 1]) {
         Ok(f) => f,
@@ -331,10 +433,16 @@ fn map(ctx: &mut Ctx, args: &[Expr]) -> Val {
     };
     let mut arrays = Vec::new();
     for e in &args[..args.len() - 1] {
-        match array_arg(ctx, e) {
-            Ok(a) => arrays.push(a),
-            Err(e) => return Val::error(e),
+        match ctx.eval(e) {
+            Val::Lambda(_) => return Val::error(ErrorKind::Value),
+            v => match ctx.array(v) {
+                Ok(a) => arrays.push(a),
+                Err(e) => return Val::error(e),
+            },
         }
+    }
+    if !takes(&f, arrays.len()) {
+        return Val::error(ErrorKind::Value);
     }
     let rows = arrays.iter().map(|a| a.rows).max().unwrap_or(1);
     let cols = arrays.iter().map(|a| a.cols).max().unwrap_or(1);
@@ -343,7 +451,10 @@ fn map(ctx: &mut Ctx, args: &[Expr]) -> Val {
         for c in 0..cols {
             let values = arrays.iter().map(|a| Val::Value(a.stretched(r, c))).collect();
             let v = ctx.invoke_with(&f, values);
-            data.push(ctx.single(v));
+            match one_value(ctx, v) {
+                Ok(v) => data.push(v),
+                Err(e) => return Val::error(e),
+            }
         }
     }
     Val::Array(Array::new(rows, cols, data))
@@ -359,12 +470,17 @@ fn fold(ctx: &mut Ctx, args: &[Expr], keep_steps: bool) -> Val {
         Ok(f) => f,
         Err(e) => return Val::error(e),
     };
+    if !takes(&f, 2) {
+        return Val::error(ErrorKind::Value);
+    }
     let mut steps = Vec::new();
     for v in &array.data {
         acc = ctx.invoke_with(&f, vec![acc, Val::Value(v.clone())]);
         if keep_steps {
-            let single = ctx.single(acc.clone());
-            steps.push(single);
+            match one_value(ctx, acc.clone()) {
+                Ok(single) => steps.push(single),
+                Err(e) => return Val::error(e),
+            }
         }
     }
     if keep_steps {
@@ -383,6 +499,9 @@ fn by(ctx: &mut Ctx, args: &[Expr], rows: bool) -> Val {
         Ok(f) => f,
         Err(e) => return Val::error(e),
     };
+    if !takes(&f, 1) {
+        return Val::error(ErrorKind::Value);
+    }
     let count = if rows { array.rows } else { array.cols };
     let mut out = Vec::with_capacity(count);
     for i in 0..count {
@@ -392,7 +511,10 @@ fn by(ctx: &mut Ctx, args: &[Expr], rows: bool) -> Val {
             Array::column((0..array.rows).map(|r| array.get(r, i).clone()).collect())
         };
         let v = ctx.invoke_with(&f, vec![Val::Array(slice)]);
-        out.push(ctx.single(v));
+        match one_value(ctx, v) {
+            Ok(v) => out.push(v),
+            Err(e) => return Val::error(e),
+        }
     }
     Val::Array(if rows { Array::column(out) } else { Array::row(out) })
 }
@@ -414,18 +536,22 @@ fn make_array(ctx: &mut Ctx, args: &[Expr]) -> Val {
         Ok(f) => f,
         Err(e) => return Val::error(e),
     };
+    if !takes(&f, 2) {
+        return Val::error(ErrorKind::Value);
+    }
     let (rows, cols) = (dims[0] as usize, dims[1] as usize);
     let mut data = Vec::with_capacity(rows * cols);
     for r in 0..rows {
         for c in 0..cols {
-            let v = ctx.invoke_with(
-                &f,
-                vec![
-                    Val::Value(Value::Number(r as f64 + 1.0)),
-                    Val::Value(Value::Number(c as f64 + 1.0)),
-                ],
-            );
-            data.push(ctx.single(v));
+            let numbers = vec![
+                Val::Value(Value::Number(r as f64 + 1.0)),
+                Val::Value(Value::Number(c as f64 + 1.0)),
+            ];
+            let v = ctx.invoke_with(&f, numbers);
+            match one_value(ctx, v) {
+                Ok(v) => data.push(v),
+                Err(e) => return Val::error(e),
+            }
         }
     }
     Val::Array(Array::new(rows, cols, data))
@@ -460,6 +586,21 @@ mod tests {
             ("SUM(MAP({1,2,3},LAMBDA(x,x*10)))", "60"),
             ("SUM(MAKEARRAY(2,2,LAMBDA(r,c,r*c)))", "9"),
             ("SUM(BYROW({1,2;3,4},LAMBDA(r,SUM(r))))", "10"),
+            ("LAMBDA(x,[y],ISOMITTED(y))(1)", "TRUE"),
+            ("LAMBDA(x,[y],ISOMITTED(y))(1,2)", "FALSE"),
+            ("LAMBDA([x],ISOMITTED(x))()", "TRUE"),
+            ("LAMBDA(x,y,x+y)(1)", "#VALUE!"),
+            ("LAMBDA(x,x)(1,2)", "#VALUE!"),
+            ("MAP({1,2,3},LAMBDA(x,{1,2}))", "#CALC!"),
+            ("MAP({1,2,3},LAMBDA(x,x),LAMBDA(y,y))", "#VALUE!"),
+            ("MAKEARRAY(2,2,LAMBDA(r,r))", "#VALUE!"),
+            ("BYROW({1,2;3,4},LAMBDA(r,r))", "#CALC!"),
+            ("LET(A1,2,A1+1)", "3"),
+            ("LET(A1,2,B1)", "#NAME?"),
+            ("AND(TRUE,\"x\")", "TRUE"),
+            ("AND(\"x\")", "#VALUE!"),
+            ("SUM(IFS({TRUE,FALSE},1,TRUE,2))", "3"),
+            ("SUM(SWITCH({1,2},1,10,2,20))", "30"),
         ]);
     }
 }

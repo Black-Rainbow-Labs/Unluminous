@@ -116,6 +116,20 @@ fn read_data_bar_main(db: Node) -> DataBarExt {
     }
 }
 
+/// Move an icon set that a reader of another format wrote as XML in `raw_children` into the model.
+pub fn lift_icon_set(rule: &mut CfRule) {
+    if !rule.raw_children.starts_with("<iconSet") {
+        return;
+    }
+    let wrapped = format!("<r>{}</r>", rule.raw_children);
+    if let Ok(doc) = roxmltree::Document::parse(&wrapped) {
+        if let Some(n) = doc.root_element().first_element_child() {
+            rule.icon_set = Some(read_icon_set(n));
+            rule.raw_children.clear();
+        }
+    }
+}
+
 /// A main-part `cfRule`.
 pub(super) fn read_rule(xml: &str, r: Node) -> CfRule {
     let mut rule = CfRule::new(r.attribute("type").unwrap_or(""));

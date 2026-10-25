@@ -1,0 +1,495 @@
+[
+ {
+  "name": "fmt_autofill_formats",
+  "formats": true,
+  "cells": {
+   "A1": {
+    "v": 1,
+    "nf": "0.00",
+    "bold": true,
+    "fill": 255
+   },
+   "A2": {
+    "v": 2,
+    "nf": "0.00",
+    "italic": true
+   },
+   "B1": {
+    "v": "Jan",
+    "bold": true,
+    "fill": 65280
+   },
+   "C1": {
+    "v": 44941,
+    "nf": "yyyy-mm-dd",
+    "color": 16711680
+   },
+   "D1": {
+    "f": "=A1*2",
+    "nf": "0.0",
+    "bold": true
+   },
+   "E1": {
+    "v": 5,
+    "nf": "0%"
+   },
+   "A6": "keep",
+   "B6": {
+    "v": "keep",
+    "italic": true
+   },
+   "C6": 7,
+   "A7": {
+    "v": "x",
+    "bold": true
+   }
+  },
+  "steps": [
+   {
+    "do": "autofill",
+    "at": "A1:A2",
+    "to": "A1:A8",
+    "type": 3
+   },
+   {
+    "do": "autofill",
+    "at": "B1",
+    "to": "B1:B8",
+    "type": 3
+   },
+   {
+    "do": "autofill",
+    "at": "C1",
+    "to": "C1:C8",
+    "type": 3
+   },
+   {
+    "do": "autofill",
+    "at": "D1",
+    "to": "D1:D8",
+    "type": 3
+   },
+   {
+    "do": "autofill",
+    "at": "E1",
+    "to": "E1:E8",
+    "type": 3
+   }
+  ],
+  "dump": [
+   "A1:E9"
+  ]
+ },
+ {
+  "name": "fmt_autofill_values",
+  "formats": true,
+  "cells": {
+   "A1": {
+    "v": 1,
+    "nf": "0.00",
+    "bold": true,
+    "fill": 255
+   },
+   "A2": {
+    "v": 2,
+    "nf": "0.00",
+    "italic": true
+   },
+   "B1": {
+    "v": "Jan",
+    "bold": true,
+    "fill": 65280
+   },
+   "C1": {
+    "v": 44941,
+    "nf": "yyyy-mm-dd",
+    "color": 16711680
+   },
+   "D1": {
+    "f": "=A1*2",
+    "nf": "0.0",
+    "bold": true
+   },
+   "E1": {
+    "v": 5,
+    "nf": "0%"
+   },
+   "A6": "keep",
+   "B6": {
+    "v": "keep",
+    "italic": true
+   },
+   "C6": 7,
+   "A7": {
+    "v": "x",
+    "bold": true
+   }
+  },
+  "steps": [
+   {
+    "do": "autofill",
+    "at": "A1:A2",
+    "to": "A1:A8",
+    "type": 4
+   },
+   {
+    "do": "autofill",
+    "at": "B1",
+    "to": "B1:B8",
+    "type": 4
+   },
+   {
+    "do": "autofill",
+    "at": "C1",
+    "to": "C1:C8",
+    "type": 4
+   },
+   {
+    "do": "autofill",
+    "at": "D1",
+    "to": "D1:D8",
+    "type": 4
+   },
+   {
+    "do": "autofill",
+    "at": "E1",
+    "to": "E1:E8",
+    "type": 4
+   }
+  ],
+  "dump": [
+   "A1:E9"
+  ]
+ },
+ {
+  "name": "fmt_autofill_default",
+  "formats": true,
+  "cells": {
+   "A1": {
+    "v": 1,
+    "nf": "0.00",
+    "bold": true,
+    "fill": 255
+   },
+   "A2": {
+    "v": 2,
+    "nf": "0.00",
+    "italic": true
+   },
+   "B1": {
+    "v": "Jan",
+    "bold": true,
+    "fill": 65280
+   },
+   "C1": {
+    "v": 44941,
+    "nf": "yyyy-mm-dd",
+    "color": 16711680
+   },
+   "D1": {
+    "f": "=A1*2",
+    "nf": "0.0",
+    "bold": true
+   },
+   "E1": {
+    "v": 5,
+    "nf": "0%"
+   },
+   "A6": "keep",
+   "B6": {
+    "v": "keep",
+    "italic": true
+   },
+   "C6": 7,
+   "A7": {
+    "v": "x",
+    "bold": true
+   }
+  },
+  "steps": [
+   {
+    "do": "autofill",
+    "at": "A1:A2",
+    "to": "A1:A8",
+    "type": 0
+   },
+   {
+    "do": "autofill",
+    "at": "B1",
+    "to": "B1:B8",
+    "type": 0
+   },
+   {
+    "do": "autofill",
+    "at": "C1",
+    "to": "C1:C8",
+    "type": 0
+   },
+   {
+    "do": "autofill",
+    "at": "D1",
+    "to": "D1:D8",
+    "type": 0
+   },
+   {
+    "do": "autofill",
+    "at": "E1",
+    "to": "E1:E8",
+    "type": 0
+   }
+  ],
+  "dump": [
+   "A1:E9"
+  ]
+ },
+ {
+  "name": "fmt_autofill_copy",
+  "formats": true,
+  "cells": {
+   "A1": {
+    "v": 1,
+    "nf": "0.00",
+    "bold": true,
+    "fill": 255
+   },
+   "A2": {
+    "v": 2,
+    "nf": "0.00",
+    "italic": true
+   },
+   "B1": {
+    "v": "Jan",
+    "bold": true,
+    "fill": 65280
+   },
+   "C1": {
+    "v": 44941,
+    "nf": "yyyy-mm-dd",
+    "color": 16711680
+   },
+   "D1": {
+    "f": "=A1*2",
+    "nf": "0.0",
+    "bold": true
+   },
+   "E1": {
+    "v": 5,
+    "nf": "0%"
+   },
+   "A6": "keep",
+   "B6": {
+    "v": "keep",
+    "italic": true
+   },
+   "C6": 7,
+   "A7": {
+    "v": "x",
+    "bold": true
+   }
+  },
+  "steps": [
+   {
+    "do": "autofill",
+    "at": "A1:A2",
+    "to": "A1:A8",
+    "type": 1
+   },
+   {
+    "do": "autofill",
+    "at": "B1",
+    "to": "B1:B8",
+    "type": 1
+   },
+   {
+    "do": "autofill",
+    "at": "C1",
+    "to": "C1:C8",
+    "type": 1
+   },
+   {
+    "do": "autofill",
+    "at": "D1",
+    "to": "D1:D8",
+    "type": 1
+   },
+   {
+    "do": "autofill",
+    "at": "E1",
+    "to": "E1:E8",
+    "type": 1
+   }
+  ],
+  "dump": [
+   "A1:E9"
+  ]
+ },
+ {
+  "name": "fmt_autofill_note_validation",
+  "formats": true,
+  "cells": {
+   "A1": {
+    "v": 1,
+    "bold": true
+   }
+  },
+  "notes": {
+   "A1": "a note"
+  },
+  "validation": [
+   {
+    "at": "A1",
+    "type": 1,
+    "op": 1,
+    "f1": "1",
+    "f2": "10"
+   }
+  ],
+  "cf": [
+   {
+    "at": "A1",
+    "op": 5,
+    "f1": "0",
+    "fill": 255
+   }
+  ],
+  "steps": [
+   {
+    "do": "autofill",
+    "at": "A1",
+    "to": "A1:A4",
+    "type": 1
+   }
+  ],
+  "dump": [
+   "A1:A5"
+  ]
+ },
+ {
+  "name": "fmt_dataseries",
+  "formats": true,
+  "cells": {
+   "A1": {
+    "v": 44956,
+    "nf": "yyyy-mm-dd",
+    "bold": true,
+    "fill": 255
+   },
+   "B1": {
+    "v": 1,
+    "nf": "0.00",
+    "italic": true
+   },
+   "C1": {
+    "v": "Item 1",
+    "bold": true
+   }
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1:A5",
+    "rowcol": 2,
+    "type": 3,
+    "date": 1,
+    "step": 1
+   },
+   {
+    "do": "dataseries",
+    "at": "B1:B5",
+    "rowcol": 2,
+    "type": -4132,
+    "step": 2
+   },
+   {
+    "do": "dataseries",
+    "at": "C1:C5",
+    "rowcol": 2,
+    "type": 4
+   }
+  ],
+  "dump": [
+   "A1:C6"
+  ]
+ },
+ {
+  "name": "ds_single_cell_stop",
+  "formats": false,
+  "cells": {
+   "A1": 1
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1",
+    "rowcol": 2,
+    "type": -4132,
+    "step": 2,
+    "stop": 9
+   }
+  ],
+  "dump": [
+   "A1:A8"
+  ]
+ },
+ {
+  "name": "ds_single_cell_stop_rows",
+  "formats": false,
+  "cells": {
+   "A1": 1
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1",
+    "rowcol": 1,
+    "type": -4132,
+    "step": 2,
+    "stop": 9
+   }
+  ],
+  "dump": [
+   "A1:H2"
+  ]
+ },
+ {
+  "name": "ds_single_cell_growth",
+  "formats": false,
+  "cells": {
+   "A1": 1
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1",
+    "rowcol": 2,
+    "type": 2,
+    "step": 2,
+    "stop": 40
+   }
+  ],
+  "dump": [
+   "A1:A9"
+  ]
+ },
+ {
+  "name": "ds_single_cell_date",
+  "formats": false,
+  "cells": {
+   "A1": 44957
+  },
+  "steps": [
+   {
+    "do": "dataseries",
+    "at": "A1",
+    "rowcol": 2,
+    "type": 3,
+    "date": 3,
+    "step": 1,
+    "stop": 45077
+   }
+  ],
+  "dump": [
+   "A1:A8"
+  ]
+ }
+]

@@ -154,8 +154,7 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
                 }
             }
             "calcPr" => {
-                book.calc.automatic = child.attribute("calcMode") != Some("manual");
-                book.calc.attrs = attrs_of(child, &["calcMode", "fullCalcOnLoad"]);
+                book.calc = calc_settings(child);
             }
             name => book.raw.push((name.to_owned(), raw(&workbook_xml, child).to_owned())),
         }
@@ -257,7 +256,7 @@ fn decode(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
-fn read_theme(xml: &str, styles: &mut Styles) {
+pub(crate) fn read_theme(xml: &str, styles: &mut Styles) {
     let Ok(doc) = Document::parse(xml) else { return };
     let order = [
         "dk1", "lt1", "dk2", "lt2", "accent1", "accent2", "accent3", "accent4", "accent5",
@@ -288,6 +287,40 @@ fn read_theme(xml: &str, styles: &mut Styles) {
         .and_then(|f| f.children().find(|n| n.has_tag_name((DRAWING_NS, "latin"))))
         .and_then(|l| l.attribute("typeface"))
         .map(str::to_owned);
+}
+
+/// The calculation settings of a `calcPr` element: the mode, whether circular references are iterated and
+/// how far, and whether numbers are kept as shown. The other attributes are kept as they were.
+fn calc_settings(n: Node) -> CalcSettings {
+    let flag = |name: &str, default: bool| match n.attribute(name) {
+        Some("1") | Some("true") => true,
+        Some("0") | Some("false") => false,
+        _ => default,
+    };
+    CalcSettings {
+        automatic: n.attribute("calcMode") != Some("manual"),
+        iterate: flag("iterate", false),
+        iterate_count: n
+            .attribute("iterateCount")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_ITERATE_COUNT),
+        iterate_delta: n
+            .attribute("iterateDelta")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_ITERATE_DELTA),
+        full_precision: flag("fullPrecision", true),
+        attrs: attrs_of(
+            n,
+            &[
+                "calcMode",
+                "fullCalcOnLoad",
+                "iterate",
+                "iterateCount",
+                "iterateDelta",
+                "fullPrecision",
+            ],
+        ),
+    }
 }
 
 pub(super) fn bool_attr(n: Node, name: &str) -> bool {
@@ -538,7 +571,7 @@ fn read_styles(xml: &str, styles: &mut Styles) -> Result<(), String> {
 }
 
 /// The text of a shared string or inline string: its runs joined, phonetic guides left out. The XML is
-/// kept when it has formatting runs.
+/// kept when it has formatting runs or phonetic guides, which PHONETIC reads and the writer gives back.
 fn string_item(xml: &str, si: Node) -> (Arc<str>, Option<Arc<str>>) {
     let mut text = String::new();
     let mut rich = false;
@@ -551,6 +584,7 @@ fn string_item(xml: &str, si: Node) -> (Arc<str>, Option<Arc<str>>) {
                     text.push_str(t.text().unwrap_or(""));
                 }
             }
+            "rPh" | "phoneticPr" => rich = true,
             _ => {}
         }
     }
@@ -599,7 +633,7 @@ fn read_metadata(xml: &str) -> (Option<u32>, bool) {
 }
 
 /// Read a formula from a file, keeping it frozen when it cannot be computed here.
-fn file_formula(text: &str, dynamic: bool) -> Formula {
+pub(crate) fn file_formula(text: &str, dynamic: bool) -> Formula {
     match Formula::parse_kept(text) {
         Ok(mut f) => {
             f.dynamic = dynamic;
@@ -609,6 +643,10 @@ fn file_formula(text: &str, dynamic: bool) -> Formula {
                 Expr::Call(name, _)
                     if crate::functions::find(name).is_none() && !is_name_call(name) =>
                 {
+                    unknown = true;
+                }
+                // A function that needs a service of Excel's keeps the value the file saved.
+                Expr::Call(name, _) if crate::functions::find(name).is_some_and(|f| f.offline) => {
                     unknown = true;
                 }
                 _ => {}
@@ -765,7 +803,12 @@ fn read_sheet(
                 if let Some(outline) = child(section, "outlinePr") {
                     sheet.outline = read_outline_settings(outline);
                 }
+                crate::pages::xml::read_sheet_pr(&mut sheet.page, section);
                 sheet.raw.elements.push((name.to_owned(), raw(xml, section).to_owned()));
+            }
+            "printOptions" | "pageMargins" | "pageSetup" | "headerFooter" | "rowBreaks"
+            | "colBreaks" => {
+                crate::pages::xml::read_element(&mut sheet.page, section);
             }
             "dimension" => {}
             "sheetViews" => read_sheet_views(xml, section, sheet),

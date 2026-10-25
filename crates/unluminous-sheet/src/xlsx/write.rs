@@ -396,6 +396,7 @@ impl<'a> Writer<'a> {
         if !book.calc.automatic {
             calc.push(("calcMode".to_owned(), "manual".to_owned()));
         }
+        calc.extend(iteration_attributes(&book.calc));
         out.push_str(&format!("<calcPr{}/>", attrs_text(&calc)));
         for name in [
             "oleSize",
@@ -476,7 +477,8 @@ impl<'a> Writer<'a> {
         out.push_str(XML_HEAD);
         out.push_str(&format!("<worksheet{}>", namespaces_text(&namespaces, MAIN_NS)));
         // sheetPr, with the tab colour written into it.
-        out.push_str(&sheet_pr(&raw("sheetPr"), sheet.tab_color, &sheet.outline));
+        let sheet_pr_xml = sheet_pr(&raw("sheetPr"), sheet.tab_color, &sheet.outline);
+        out.push_str(&crate::pages::xml::with_page_set_up_pr(&sheet_pr_xml, &sheet.page));
         let dimension = sheet.used_range().map_or("A1".to_owned(), |r| r.a1());
         out.push_str(&format!("<dimension ref=\"{dimension}\"/>"));
         out.push_str(&sheet_views(sheet, index == book.active_sheet));
@@ -604,11 +606,12 @@ impl<'a> Writer<'a> {
             "ignoredErrors",
             "smartTags",
         ] {
-            out.push_str(&raw(name));
-            // A sheet with no margins gets Excel's default ones, in their place in the schema's order: before
-            // `pageSetup` and before the drawing, or Excel refuses the file.
-            if name == "pageMargins" && sheet.page_margins_missing() {
-                out.push_str("<pageMargins left=\"0.7\" right=\"0.7\" top=\"0.75\" bottom=\"0.75\" header=\"0.3\" footer=\"0.3\"/>");
+            // The page setup elements come from the model, which writes margins on every sheet, as Excel does.
+            let modelled = crate::pages::xml::write_element(&sheet.page, name, &r);
+            if modelled.is_empty() {
+                out.push_str(&raw(name));
+            } else {
+                out.push_str(&modelled);
             }
         }
         // The drawing: kept as it was, with the charts made here added to it, or a new one holding them.
@@ -855,17 +858,8 @@ impl<'a> Writer<'a> {
             Value::Empty => (None, None),
             Value::Number(n) => (None, Some(number_text(*n))),
             Value::Bool(b) => (Some("b"), Some(if *b { "1" } else { "0" }.to_owned())),
-            // The newer errors are written as #VALUE!, which is what Excel writes beside the rich value that
-            // carries the real one; Excel works the real one out again when it calculates.
-            Value::Error(e) => (
-                Some("e"),
-                Some(match e {
-                    crate::value::ErrorKind::Spill
-                    | crate::value::ErrorKind::Calc
-                    | crate::value::ErrorKind::GettingData => "#VALUE!".to_owned(),
-                    other => other.text().to_owned(),
-                }),
-            ),
+            // The newer errors are written the way Excel can read them back: see `ErrorKind::file_text`.
+            Value::Error(e) => (Some("e"), Some(e.file_text().to_owned())),
             Value::Text(t) => {
                 if cell.formula.is_some() || spilled {
                     (Some("str"), Some(escape(t)))
@@ -946,6 +940,24 @@ fn data_table_xml(t: &DataTable) -> String {
 }
 
 /// Whether a dynamic formula is written as a dynamic array: when it spilled or could return an array.
+/// The `calcPr` attributes for iteration and precision, written only where they differ from Excel's own.
+fn iteration_attributes(calc: &CalcSettings) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    if calc.iterate {
+        out.push(("iterate".to_owned(), "1".to_owned()));
+    }
+    if calc.iterate_count != DEFAULT_ITERATE_COUNT {
+        out.push(("iterateCount".to_owned(), calc.iterate_count.to_string()));
+    }
+    if calc.iterate_delta != DEFAULT_ITERATE_DELTA {
+        out.push(("iterateDelta".to_owned(), number_text(calc.iterate_delta)));
+    }
+    if !calc.full_precision {
+        out.push(("fullPrecision".to_owned(), "0".to_owned()));
+    }
+    out
+}
+
 fn is_dynamic_shape(f: &crate::formula::Formula) -> bool {
     let mut arrayish = false;
     f.expr.walk(&mut |e| match e {
@@ -964,6 +976,10 @@ fn is_dynamic_shape(f: &crate::formula::Formula) -> bool {
 
 /// Functions that return an array with no range among their arguments.
 const ARRAY_FUNCTIONS: &[&str] = &[
+    "FILTERXML",
+    "GROUPBY",
+    "PIVOTBY",
+    "REGEXEXTRACT",
     "SEQUENCE",
     "RANDARRAY",
     "MUNIT",
@@ -976,17 +992,6 @@ const ARRAY_FUNCTIONS: &[&str] = &[
     "MMULT",
     "TRANSPOSE",
 ];
-
-trait PageMargins {
-    fn page_margins_missing(&self) -> bool;
-}
-
-impl PageMargins for Sheet {
-    /// Excel writes page margins on every sheet; a sheet made here gets the defaults.
-    fn page_margins_missing(&self) -> bool {
-        !self.raw.elements.iter().any(|(n, _)| n == "pageMargins")
-    }
-}
 
 /// Whether a chart's categories are words rather than numbers, which decides how the file names them.
 fn categories_are_text(book: &Workbook, formula: &str) -> bool {
