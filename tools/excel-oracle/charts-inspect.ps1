@@ -51,6 +51,12 @@ function Describe-Chart($chart, $name) {
     $o.plotVisibleOnly = Try-Get { [bool]$chart.PlotVisibleOnly }
     $o.blanks = Try-Get { $chart.DisplayBlanksAs }
     $o.style = Try-Get { $chart.ChartStyle }
+    if ($o.type -lt 117) {
+        $o.gapWidth = Try-Get { $chart.ChartGroups(1).GapWidth }
+        $o.overlap = Try-Get { $chart.ChartGroups(1).Overlap }
+        $o.firstSliceAngle = Try-Get { $chart.ChartGroups(1).FirstSliceAngle }
+        $o.groups = Try-Get { $chart.ChartGroups().Count }
+    }
     $series = @()
     $n = Try-Get { $chart.SeriesCollection().Count }
     # The Office 2016 chart types (117 and up) have no axes, trendlines or error bars in the object model, and
@@ -90,6 +96,8 @@ function Describe-Chart($chart, $name) {
         $e.explosion = Try-Get { $s.Explosion }
         $e.smooth = Try-Get { [bool]$s.Smooth }
         $e.filtered = Try-Get { [bool]$s.IsFiltered }
+        $e.fill = Try-Get { $s.Format.Fill.ForeColor.RGB }
+        $e.errorKind = Try-Get { if ($s.HasErrorBars) { 1 } }
         $series += $e
     }
     $o.series = $series

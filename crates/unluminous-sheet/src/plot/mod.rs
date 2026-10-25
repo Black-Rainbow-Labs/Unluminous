@@ -327,9 +327,23 @@ fn plot_axes(book: &Workbook, chart: &Chart, series: &[PlotSeries], size: PlotSi
             reverse: axis.reverse,
         };
         if value_like {
+            let percent = spec.groups.iter().any(|g| g.axes.contains(&axis.id) && g.grouping == Grouping::PercentStacked);
             let (lo, hi) = data_extent(chart, series, axis, is_x_of_scatter).unwrap_or((0.0, 1.0));
-            let scale = scale::value_scale(lo, hi, fixed_of(axis), length);
-            pa.ticks = scale::ticks(&scale).into_iter().map(|v| (v, tick_text(v, axis, format))).collect();
+            let fixed = fixed_of(axis);
+            let scale = if percent {
+                // A 100 percent chart runs from 0 to 100 percent in tenths, whatever the data.
+                AxisScale {
+                    min: fixed.min.unwrap_or(0.0),
+                    max: fixed.max.unwrap_or(1.0),
+                    major: fixed.major.unwrap_or(if length < 150.0 { 0.2 } else { 0.1 }),
+                    minor: fixed.minor.unwrap_or(0.02),
+                    log: false,
+                }
+            } else {
+                scale::value_scale(lo, hi, fixed, length)
+            };
+            let tick_format = if percent && axis.num_fmt.as_ref().is_none_or(|f| f.1) { "0%" } else { format };
+            pa.ticks = scale::ticks(&scale).into_iter().map(|v| (v, tick_text(v, axis, tick_format))).collect();
             pa.scale = Some(scale);
         } else {
             let longest = series
