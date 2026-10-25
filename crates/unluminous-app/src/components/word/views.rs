@@ -311,13 +311,55 @@ pub fn status(
     ui.painter().rect_filled(rect, 0.0, look.ground(look.palette.panel));
     ui.painter()
         .line_segment([rect.left_top(), rect.right_top()], Stroke::new(1.0, look.palette.divider));
-    let mut inner = ui.new_child(
+    let inner_rect = rect.shrink2(Vec2::new(10.0, 2.0));
+    // A size that fits the strip's height, whatever the editor's font is.
+    let size = (look.font_size * 0.8).min(rect.height() * 0.5);
+    let gap = size * 0.9;
+    // The view buttons, the zoom slider and the percent at the right first, so the items at the left are
+    // given only the room that is left and never run under them.
+    let mut right = ui.new_child(
         egui::UiBuilder::new()
-            .max_rect(rect.shrink2(Vec2::new(10.0, 2.0)))
+            .max_rect(inner_rect)
+            .layout(egui::Layout::right_to_left(egui::Align::Center)),
+    );
+    right.set_clip_rect(rect);
+    right.spacing_mut().item_spacing.x = gap * 0.5;
+    status_right(&mut right, doc, size, rect.height());
+    let right_edge = right.min_rect().left() - gap;
+    let mut left = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(Rect::from_min_max(
+                inner_rect.min,
+                egui::pos2(right_edge.max(inner_rect.left()), inner_rect.bottom()),
+            ))
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
     );
-    inner.set_clip_rect(rect);
-    let size = look.font_size * 0.88;
+    left.set_clip_rect(Rect::from_min_max(
+        rect.min,
+        egui::pos2(right_edge.max(rect.left()), rect.bottom()),
+    ));
+    left.spacing_mut().item_spacing.x = gap;
+    status_left(&mut left, doc, size);
+}
+
+/// A status item that is a quiet button: true when it was pressed. Left out, answering false, when the
+/// room left is narrower than its words.
+fn status_item(ui: &mut egui::Ui, text: &str, name: &str, size: f32) -> bool {
+    let font = egui::FontId::proportional(size);
+    let width = ui.ctx().fonts_mut(|f| {
+        f.layout_no_wrap(text.to_owned(), font, egui::Color32::PLACEHOLDER).size().x
+    }) + ui.spacing().button_padding.x * 2.0;
+    if width > ui.available_width() {
+        return false;
+    }
+    let button = egui::Button::new(egui::RichText::new(text).size(size)).frame(false);
+    let response = ui.add(button);
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name));
+    response.clicked()
+}
+
+/// The page, the words, the language and Track Changes, each a press away from its level.
+fn status_left(ui: &mut egui::Ui, doc: &mut Doc, size: f32) {
     let page = doc.pages.find(&doc.session.selection.head).map_or(1, |(i, _)| i + 1);
     let stats = doc.session.stats(Some(&doc.pages));
     let words = if doc.session.selection.is_empty() {
@@ -328,53 +370,48 @@ pub fn status(
     };
     let tracking = if doc.session.tracking { "Track Changes: On" } else { "Track Changes: Off" };
     let language = doc.session.language_at_caret();
-    let item = |ui: &mut egui::Ui, text: &str, name: &str| -> bool {
-        let button = egui::Button::new(egui::RichText::new(text).size(size)).frame(false);
-        let response = ui.add(button);
-        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name));
-        response.clicked()
-    };
-    if item(&mut inner, &format!("Page {page} of {}", doc.pages.pages.len()), "Status: page") {
+    if status_item(ui, &format!("Page {page} of {}", doc.pages.pages.len()), "Status: page", size) {
         doc.view.goto = Some(String::new());
     }
-    if item(&mut inner, &words, "Status: words") {
+    if status_item(ui, &words, "Status: words", size) {
         doc.view.panel = vec![Level::Root, Level::Review];
     }
-    if item(&mut inner, &language, "Status: language") {
+    if status_item(ui, &language, "Status: language", size) {
         doc.view.panel = vec![Level::Root, Level::Review];
     }
-    if item(&mut inner, tracking, "Status: track changes") {
+    if status_item(ui, tracking, "Status: track changes", size) {
         let on = !doc.session.tracking;
         doc.session.set_tracking(on);
     }
-    inner.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        let percent = (doc.view.zoom * 100.0).round();
-        if item(ui, &format!("{percent}%"), "Status: zoom") {
-            doc.view.panel = vec![Level::Root, Level::Document];
+}
+
+/// The zoom percent, the zoom slider and the three view buttons, laid out from the right.
+fn status_right(ui: &mut egui::Ui, doc: &mut Doc, size: f32, height: f32) {
+    let percent = (doc.view.zoom * 100.0).round();
+    if status_item(ui, &format!("{percent}%"), "Status: zoom", size) {
+        doc.view.panel = vec![Level::Root, Level::Document];
+    }
+    let mut zoom = doc.view.zoom;
+    let slider = egui::Slider::new(&mut zoom, 0.1..=5.0).logarithmic(true).show_value(false);
+    if ui.add_sized(Vec2::new(110.0, height - 6.0), slider).changed() {
+        doc.view.zoom = zoom;
+    }
+    ui.add_space(8.0);
+    for (mode, label) in
+        [(Mode::Outline, "Outline"), (Mode::Print, "Print Layout"), (Mode::Read, "Read Mode")]
+    {
+        let chosen = doc.view.mode == mode;
+        let button =
+            egui::Button::new(egui::RichText::new(label).size(size)).selected(chosen).frame(chosen);
+        let response = ui.add(button);
+        let name = format!("View: {label}");
+        response.widget_info(|| {
+            egui::WidgetInfo::selected(egui::WidgetType::Button, true, chosen, &name)
+        });
+        if response.clicked() {
+            doc.view.mode = mode;
+            doc.laid = u64::MAX;
+            doc.view.reveal = true;
         }
-        let mut zoom = doc.view.zoom;
-        let slider = egui::Slider::new(&mut zoom, 0.1..=5.0).logarithmic(true).show_value(false);
-        if ui.add_sized(Vec2::new(110.0, rect.height() - 6.0), slider).changed() {
-            doc.view.zoom = zoom;
-        }
-        ui.add_space(8.0);
-        for (mode, label) in
-            [(Mode::Outline, "Outline"), (Mode::Print, "Print Layout"), (Mode::Read, "Read Mode")]
-        {
-            let chosen = doc.view.mode == mode;
-            let button = egui::Button::new(egui::RichText::new(label).size(size))
-                .selected(chosen)
-                .frame(chosen);
-            let response = ui.add(button);
-            let name = format!("View: {label}");
-            response.widget_info(|| {
-                egui::WidgetInfo::selected(egui::WidgetType::Button, true, chosen, &name)
-            });
-            if response.clicked() {
-                doc.view.mode = mode;
-                doc.laid = u64::MAX;
-                doc.view.reveal = true;
-            }
-        }
-    });
+    }
 }
