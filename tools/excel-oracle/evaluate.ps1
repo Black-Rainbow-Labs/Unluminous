@@ -27,6 +27,8 @@ try {
             $sheet.Range($cell).Formula2 = $value
         }
     }
+    # Wide enough that an error such as #CONNECT! is shown as itself rather than as ####.
+    $sheet.Range('Z1').EntireColumn.ColumnWidth = 60
     foreach ($formula in Get-Content -LiteralPath $Formulas -Encoding UTF8) {
         if (-not $formula -or $formula.StartsWith("#!")) { continue }
         $target = $sheet.Range('Z100')

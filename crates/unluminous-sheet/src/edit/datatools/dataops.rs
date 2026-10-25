@@ -428,6 +428,11 @@ impl Session {
             let (value, _, number_format) = self.prepare(sheet, at, &text)?;
             (value, number_format)
         };
+        // A date written with a month name shows as `d-mmm-yy`, as it does when typed.
+        let by_name = matches!(format, ColumnFormat::Date(_))
+            && !matches!(value, Value::Text(_))
+            && date_with_month_name(field).is_some();
+        let number_format = if by_name { Some("d-mmm-yy") } else { number_format };
         if let Some(code) = number_format {
             if self.book.styles.format_code(style) == "General" {
                 style = self.book.styles.derive(style, &StyleChange::NumberFormat(code.to_owned()));
@@ -445,7 +450,9 @@ impl Session {
             ColumnFormat::Text if field.is_empty() => String::new(),
             ColumnFormat::Text => format!("'{field}"),
             ColumnFormat::General | ColumnFormat::Skip => field.to_owned(),
-            ColumnFormat::Date(order) => match date_in_order(field, order) {
+            ColumnFormat::Date(order) => match date_in_order(field, order)
+                .or_else(|| date_with_month_name(field))
+            {
                 Some(typed) => typed,
                 // Text that is not a date in that order is read as it would be typed, and stays text when it
                 // is not a date that way either.
@@ -478,6 +485,42 @@ fn date_parts(text: &str) -> Option<[i64; 3]> {
     }
     let n = |i: usize| parts[i].parse::<i64>().ok();
     Some([n(0)?, n(1)?, n(2)?])
+}
+
+/// A date written with the name of the month (`Jan 2 2024`, `2 January 2024`) as `m/d/yyyy`.
+fn date_with_month_name(text: &str) -> Option<String> {
+    const MONTHS: [&str; 12] =
+        ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+    let parts: Vec<&str> = text
+        .split(|c: char| c.is_whitespace() || c == ',' || c == '-')
+        .filter(|p| !p.is_empty())
+        .collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    let month = parts.iter().position(|p| p.len() >= 3 && p.chars().all(char::is_alphabetic))?;
+    let name = parts[month].to_lowercase();
+    let m = MONTHS.iter().position(|m| name.starts_with(m))? as i64 + 1;
+    let numbers: Vec<i64> = parts
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| *i != month)
+        .map(|(_, p)| p.parse::<i64>().ok())
+        .collect::<Option<_>>()?;
+    let (d, y) = if numbers[0] > 31 || parts[0].len() == 4 {
+        (numbers[1], numbers[0])
+    } else {
+        (numbers[0], numbers[1])
+    };
+    let y = if y < 30 {
+        2000 + y
+    } else if y < 100 {
+        1900 + y
+    } else {
+        y
+    };
+    (d >= 1 && d <= i64::from(crate::dates::days_in_month(y, m as u32)))
+        .then(|| format!("{m}/{d}/{y}"))
 }
 
 /// A text read as a date whose parts come in this order, written the way a person types it in a US

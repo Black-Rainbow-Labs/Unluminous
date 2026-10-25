@@ -1,0 +1,72 @@
+[
+  {
+    "name": "copy_text",
+    "error": "",
+    "cells": [],
+    "widths": {
+      "A": 8.38,
+      "B": 8.38,
+      "C": 8.38,
+      "D": 8.38,
+      "E": 8.38,
+      "F": 8.38,
+      "G": 8.38,
+      "H": 8.38
+    },
+    "hidden_rows": [],
+    "clipboard": "plain\t12.50\t2023-03-15\t\"tab\there\"\t\"line1\nline2\"\tsay \"hi\"\t lead\t#DIV/0!\r\nTRUE\t50%\t(3)\t25.0\t\tx,y\ttrail \t1,234,567\r\nalpha\t12\t\"a\r\nb\"\t\"\"\t\"\t0.000012345\t\t\r\n"
+  },
+  {
+    "name": "copy_text_blanks",
+    "error": "",
+    "cells": [],
+    "widths": {
+      "A": 8.38,
+      "B": 8.38,
+      "C": 8.38,
+      "D": 8.38,
+      "E": 8.38,
+      "F": 8.38,
+      "G": 8.38,
+      "H": 8.38
+    },
+    "hidden_rows": [],
+    "clipboard": "1\t\t3\r\n\tx\t\r\n"
+  },
+  {
+    "name": "copy_text_one_cell",
+    "error": "",
+    "cells": [],
+    "widths": {
+      "A": 8.38,
+      "B": 8.38,
+      "C": 8.38,
+      "D": 8.38,
+      "E": 8.38,
+      "F": 8.38,
+      "G": 8.38,
+      "H": 8.38
+    },
+    "hidden_rows": [],
+    "clipboard": "solo\r\n"
+  },
+  {
+    "name": "copy_text_hidden_row",
+    "error": "",
+    "cells": [],
+    "widths": {
+      "A": 8.38,
+      "B": 8.38,
+      "C": 8.38,
+      "D": 8.38,
+      "E": 8.38,
+      "F": 8.38,
+      "G": 8.38,
+      "H": 8.38
+    },
+    "hidden_rows": [
+      2
+    ],
+    "clipboard": "1\r\n3\r\n"
+  }
+]

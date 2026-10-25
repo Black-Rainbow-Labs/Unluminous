@@ -71,6 +71,10 @@ fn every_entry_in_the_menus_runs_the_words_it_names() {
                     w.push("#FF0000".to_owned());
                     out.push(w);
                 }
+                // A box of fields runs what OK would run with the fields as they open.
+                catalogue::Item::Form { words, fields, title, .. } => out.push(
+                    view::Prompt::form(words.clone(), title.clone(), fields.clone()).answer(),
+                ),
                 catalogue::Item::Sub { items, .. } => leaves(items, out),
                 catalogue::Item::Line => {}
             }
@@ -226,5 +230,89 @@ fn a_tab_draws_a_frame_without_a_window() {
             },
         );
         output.textures_delta.clear();
+    }
+}
+
+#[test]
+fn cells_carried_by_their_border_move_and_copy_as_excel_moves_them() {
+    let (mut sheet, _folder) = with_data("move");
+    run(&mut sheet, "formula D2 =B2*C2");
+    run(&mut sheet, "select B2:C3");
+    run(&mut sheet, "move-cells F2");
+    let cell = run(&mut sheet, "cell D2");
+    assert_eq!(
+        cell.value["formula"],
+        serde_json::json!("=F2*G2"),
+        "a formula follows the cells it names"
+    );
+    assert_eq!(run(&mut sheet, "cell F2").value["value"], serde_json::json!(3.5));
+    run(&mut sheet, "select F2:G2");
+    run(&mut sheet, "move-cells F8 copy values");
+    assert_eq!(run(&mut sheet, "cell G8").value["value"], serde_json::json!(4.0));
+    assert_eq!(
+        run(&mut sheet, "cell F2").value["value"],
+        serde_json::json!(3.5),
+        "a copy leaves the source"
+    );
+    run(&mut sheet, "select A2:A3");
+    run(&mut sheet, "move-cells H2 link");
+    assert_eq!(run(&mut sheet, "cell H3").value["formula"], serde_json::json!("=A3"));
+}
+
+#[test]
+fn autofit_rows_fits_the_tallest_text() {
+    let (mut sheet, _folder) = with_data("autofit");
+    run(&mut sheet, "format A2 size 24");
+    run(&mut sheet, "autofit rows A2");
+    let book = sheet.current_book().unwrap();
+    let height = book.session.book.sheets[0].rows.get(&1).and_then(|r| r.height).unwrap();
+    assert!(height > 30.0 && height < 34.0, "a 24 point row is about 32 points tall, not {height}");
+}
+
+/// The literal words a usage line offers after its verb, such as `on` and `off` in
+/// `show-formulas [on|off|toggle]`: every alternative written with `|` that is a plain lower case word.
+fn offered_words(usage: &str) -> Vec<String> {
+    let usage = usage.split(": ").next().unwrap_or("");
+    let mut words = Vec::new();
+    for token in usage.split_whitespace().skip(1) {
+        let parts: Vec<&str> = token.split('|').collect();
+        if parts.len() < 2 {
+            continue;
+        }
+        for (i, part) in parts.iter().enumerate() {
+            // Only the bracket that opens the group may lead and only the one that closes it may trail;
+            // `[scope]|edit` is an optional argument beside a word, not two words.
+            let mut word = *part;
+            if i == 0 {
+                word = word.trim_start_matches('[');
+            }
+            if i + 1 == parts.len() {
+                word = word.trim_end_matches(',').trim_end_matches(']');
+            }
+            if !word.is_empty() && word.chars().all(|c| c.is_ascii_lowercase() || c == '-') {
+                words.push(word.to_owned());
+            }
+        }
+    }
+    words
+}
+
+#[test]
+fn every_verb_in_the_help_is_one_the_provider_runs_and_takes_the_words_it_lists() {
+    for (verb, usage) in super::commands::LIST {
+        // Each verb starts from the same data, because one may close or change the workbook.
+        let (mut sheet, _folder) = with_data("help");
+        let unknown = format!("there is no `{verb}` command");
+        if let Err(e) = sheet.command(verb, &[]) {
+            assert!(!e.contains(&unknown), "`{verb}` is in the help but nothing runs it");
+        }
+        for word in offered_words(usage) {
+            if let Err(e) = sheet.command(verb, &[word.clone()]) {
+                assert!(
+                    !e.contains(&format!("not `{word}`")),
+                    "`{verb}` lists `{word}` in its help and refuses it: {e}"
+                );
+            }
+        }
     }
 }
