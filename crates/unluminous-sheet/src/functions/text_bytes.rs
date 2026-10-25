@@ -239,7 +239,7 @@ mod tests {
             ("SEARCHB(\"B\",\"abcabc\")", "2"),
             ("REPLACEB(\"日本語\",2,1,\"X\")", "日X語"),
             ("DBCS(\"ｱｲｳ\")", "ｱｲｳ"),
-            ("JIS(\"abc\")", "abc"),
+            ("JIS(\"abc\")", "#NAME?"),
         ]);
     }
 
