@@ -117,7 +117,10 @@ fn entries(doc: &Doc, at: &Pos) -> Vec<MenuEntry> {
     let word = word_at(doc, at);
     if !word.is_empty() {
         let meanings = unluminous_word::thesaurus::synonyms(&word);
-        let mut synonyms: Vec<String> = meanings.into_iter().flat_map(|m| m.synonyms).collect();
+        // The most common meaning's words, as Word's Synonyms list offers: every sense together put a
+        // rare or anatomical sense of a word beside its everyday one.
+        let mut synonyms: Vec<String> =
+            meanings.into_iter().map(|m| m.synonyms).find(|s| !s.is_empty()).unwrap_or_default();
         synonyms.dedup();
         if !synonyms.is_empty() {
             out.push(line());
@@ -217,8 +220,11 @@ pub fn show(
     requests: &mut Vec<Request>,
 ) {
     let Some(menu) = doc.view.context_menu.clone() else { return };
-    let row = 24.0 * look.scale();
-    let width = 250.0 * look.scale();
+    // Sized as the window's own menus are, by their row height, not by the document's font: a large editor
+    // font made every row of this menu taller than the lines of the page it was opened over.
+    let row = look.menu_row_height;
+    let text = row * 0.48;
+    let width = row * 8.5;
     let height =
         menu.entries.iter().map(|e| if e.label == "-" { 7.0 } else { row }).sum::<f32>() + 8.0;
     let mut at = menu.at;
@@ -240,16 +246,13 @@ pub fn show(
                         continue;
                     }
                     if entry.id.is_empty() {
-                        ui.label(
-                            egui::RichText::new(&entry.label).weak().size(look.font_size * 0.9),
-                        );
+                        ui.label(egui::RichText::new(&entry.label).weak().size(text * 0.92));
                         continue;
                     }
                     let enabled = enabled(doc, &entry.id);
-                    let button =
-                        egui::Button::new(egui::RichText::new(&entry.label).size(look.font_size))
-                            .frame(false)
-                            .min_size(Vec2::new(width - 16.0, row));
+                    let button = egui::Button::new(egui::RichText::new(&entry.label).size(text))
+                        .frame(false)
+                        .min_size(Vec2::new(width - 16.0, row));
                     let response = ui.add_enabled(enabled, button);
                     response.widget_info(|| {
                         egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, &entry.label)

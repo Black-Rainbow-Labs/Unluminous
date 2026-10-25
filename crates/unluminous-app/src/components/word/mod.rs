@@ -121,7 +121,8 @@ pub fn show(doc: &mut Doc, config: &Config, ui: &mut egui::Ui, look: &Look<'_>) 
     }
     if doc.view.context_menu.is_some() {
         context_menu::show(ui, look, doc, pages, &mut requests);
-    } else {
+    } else if doc.view.mode != crate::services::word::Mode::Read {
+        // Read Mode takes no editing, so it offers no formatting bubble over a selection.
         overlays::show(ui, look, doc, pages, &mut requests);
     }
     format_bar::show(ui, look, doc, bar, &mut requests);
