@@ -100,9 +100,9 @@ Sheet[Renamed].Links = 0
 Sheet[Renamed].ChartObjects = 0
 Sheet[Renamed].Shapes = 0
 Sheet[Renamed].SparklineGroups = 3
-Sheet[Renamed].Sparkline[1] = type=3 source=C4:F6 loc=I4:I6 color=9592887 markers=False neg=True count=3
-Sheet[Renamed].Sparkline[2] = type=2 source=C4:F6 loc=H4:H6 color=9592887 markers=False neg=True count=3
-Sheet[Renamed].Sparkline[3] = type=1 source=C4:F6 loc=G4:G6 color=255 markers=True neg=False count=3
+Sheet[Renamed].Sparkline[1] = loc=G4:G6 type=1 source=C4:F6 color=255 markers=True neg=False count=3
+Sheet[Renamed].Sparkline[2] = loc=H4:H6 type=2 source=C4:F6 color=9592887 markers=False neg=True count=3
+Sheet[Renamed].Sparkline[3] = loc=I4:I6 type=3 source=C4:F6 color=9592887 markers=False neg=True count=3
 Sheet[Renamed].PivotTables = 0
 Sheet[Renamed].UsedRange = B3:F6
 Sheet[Renamed].Cell[B3].Style = Normal

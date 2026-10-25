@@ -50,6 +50,10 @@ fn excel_is_installed() -> bool {
 
 /// True when Excel can be asked; says so when it cannot, and fails when the run requires Excel.
 fn excel_available(what: &str) -> bool {
+    if std::env::var("FEATURES_NO_EXCEL").is_ok() {
+        println!("FEATURES_NO_EXCEL is set, so {what} was not checked");
+        return false;
+    }
     if excel_is_installed() {
         return true;
     }
@@ -61,6 +65,11 @@ fn excel_available(what: &str) -> bool {
     false
 }
 
+/// Whether `FEATURES_ONLY` (a comma list of name prefixes) leaves this workbook or edit in the run.
+fn selected(name: &str) -> bool {
+    std::env::var("FEATURES_ONLY").map_or(true, |only| only.split(',').any(|p| name.starts_with(p)))
+}
+
 /// The names of the workbooks in the features folder, sorted.
 fn fixture_names() -> Vec<String> {
     let mut names: Vec<String> = std::fs::read_dir(features_folder())
@@ -68,6 +77,7 @@ fn fixture_names() -> Vec<String> {
         .filter_map(|e| e.ok())
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .filter(|n| n.ends_with(".xlsx") || n.ends_with(".xlsm"))
+        .filter(|n| selected(n))
         .collect();
     names.sort();
     names
@@ -190,11 +200,10 @@ fn excel_features(files: &[PathBuf], into: &Path) -> BTreeMap<String, BTreeMap<S
         .arg(into)
         .output()
         .expect("pwsh runs");
-    assert!(
-        output.status.success(),
-        "inspect-features.ps1 failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    // The script's exit status is that of its last command; a dump that is missing is reported by name below.
+    if !output.status.success() {
+        eprintln!("inspect-features.ps1: {}", String::from_utf8_lossy(&output.stderr));
+    }
     files
         .iter()
         .map(|f| {
@@ -219,7 +228,6 @@ fn round_trip(file: &str, into: &Path) -> PathBuf {
 }
 
 #[test]
-#[ignore = "engine faults: iterative calculation of circular cells (20-calcprops P1!D1, D2), REGEXTEST (18-formulas Q4) and the hidden defined name _xlfn.REGEXTEST dropped on write; run with --ignored"]
 fn every_feature_workbook_round_trips() {
     let into = scratch_folder("round-trip");
     let mut report: Vec<String> = Vec::new();
@@ -329,14 +337,13 @@ fn snapshot(book: &Workbook) -> Vec<String> {
 }
 
 #[test]
-#[ignore = "engine faults in how an edit moves kept parts: page breaks, conditional format order and priority, slicer and note anchors, picture size, sparklines, pivot chart link, and no refusal on a protected sheet; run with --ignored"]
 fn every_edit_matches_what_excel_does() {
     let into = scratch_folder("edits");
     let refusals = excel_refusals();
     let expected_dir = features_folder().join("expected-edits");
     let mut report: Vec<String> = Vec::new();
     let mut written = Vec::new();
-    for case in edit_cases() {
+    for case in edit_cases().into_iter().filter(|c| selected(&c.name)) {
         let mut session = Session::new(read_book(&features_folder().join(&case.file)), NOW);
         let result = perform(&mut session, &case);
         if let Some(message) = refusals.get(&case.name) {

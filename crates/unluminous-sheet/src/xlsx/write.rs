@@ -1586,17 +1586,21 @@ fn vml_xml(sheet: &Sheet) -> String {
     for (i, ((row, col), note)) in sheet.notes.iter().enumerate() {
         let (visibility, visible) =
             if note.visible { ("visible", "<x:Visible/>") } else { ("hidden", "") };
+        // Excel places the box of a note one row above its cell, except on the first row.
+        let top = row.saturating_sub(1);
+        let (top_offset, bottom_offset) = if *row == 0 { (2, 16) } else { (9, 12) };
         out.push_str(&format!(
             "<v:shape id=\"_x0000_s{}\" type=\"#_x0000_t202\" style=\"position:absolute;margin-left:59.25pt;margin-top:1.5pt;width:108pt;height:59.25pt;z-index:{};visibility:{visibility}\" fillcolor=\"#ffffe1\" o:insetmode=\"auto\">\
 <v:fill color2=\"#ffffe1\"/><v:shadow on=\"t\" color=\"black\" obscured=\"t\"/><v:path o:connecttype=\"none\"/>\
 <v:textbox style=\"mso-direction-alt:auto\"><div style=\"text-align:left\"></div></v:textbox>\
-<x:ClientData ObjectType=\"Note\"><x:MoveWithCells/><x:SizeWithCells/><x:Anchor>{}, 15, {}, 2, {}, 15, {}, 16</x:Anchor><x:AutoFill>False</x:AutoFill><x:Row>{row}</x:Row><x:Column>{col}</x:Column>{visible}</x:ClientData></v:shape>",
+<x:ClientData ObjectType=\"Note\"><x:MoveWithCells/><x:SizeWithCells/><x:Anchor>{}, 15, {top}, {}, {}, 15, {}, {}</x:Anchor><x:AutoFill>False</x:AutoFill><x:Row>{row}</x:Row><x:Column>{col}</x:Column>{visible}</x:ClientData></v:shape>",
             1025 + i,
             i + 1,
             col + 1,
-            row,
+            top_offset,
             col + 3,
-            row + 4
+            top + 4,
+            bottom_offset
         ));
     }
     out.push_str("</xml>");

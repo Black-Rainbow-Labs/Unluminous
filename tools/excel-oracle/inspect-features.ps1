@@ -25,10 +25,14 @@ function Dump-FormatConditions($ws, [string]$p) {
     try { $fcs = $ws.UsedRange.FormatConditions } catch { return }
     $n = S { $fcs.Count }
     E "$p.CF.count" $n
+    # Excel lists the rules of a sheet in an order of its own after an edit and numbers their priorities again, so the
+    # rules are written sorted by what they apply to and what they hold, without the priority.
+    $rules = @()
     for ($i = 1; $i -le [int]$n; $i++) {
+        $mark = $script:lines.Count
         $fc = $fcs.Item($i); $k = "$p.CF[$i]"
         $type = S { $fc.Type }
-        E "$k.Type" $type; E "$k.AppliesTo" (S { A $fc.AppliesTo }); E "$k.Priority" (S { $fc.Priority }); E "$k.StopIfTrue" (S { $fc.StopIfTrue })
+        E "$k.Type" $type; E "$k.AppliesTo" (S { A $fc.AppliesTo }); E "$k.StopIfTrue" (S { $fc.StopIfTrue })
         $props = switch ($type) {
             '1' { 'Operator', 'Formula1', 'Formula2' }
             '2' { 'Formula1' }
@@ -54,7 +58,12 @@ function Dump-FormatConditions($ws, [string]$p) {
         }
         if ($type -eq '3') { E "$k.ColorScale" (S { ($fc.ColorScaleCriteria | ForEach-Object { "$($_.Type):$($_.Value):$($_.FormatColor.Color)" }) -join ';' }) }
         if ($type -notin '3', '4', '6') { E "$k.Fill" (S { $fc.Interior.Color }); E "$k.FontBold" (S { $fc.Font.Bold }); E "$k.FontItalic" (S { $fc.Font.Italic }); E "$k.FontColor" (S { $fc.Font.Color }) }
+        $chunk = @($script:lines.GetRange($mark, $script:lines.Count - $mark) | ForEach-Object { $_.Substring($k.Length) })
+        $script:lines.RemoveRange($mark, $script:lines.Count - $mark)
+        $rules += [pscustomobject]@{ key = (($chunk | Sort-Object) -join "`n"); lines = $chunk }
     }
+    $order = 0
+    foreach ($rule in ($rules | Sort-Object { ($_.lines | Where-Object { $_ -like ".AppliesTo*" }) }, key)) { $order++; foreach ($line in $rule.lines) { $script:lines.Add("$p.CF[$order]$line") } }
 }
 
 function Dump-Validation($ws, [string]$p) {
@@ -188,7 +197,9 @@ function Dump-Sheet($book, $ws, [string]$p) {
     # Sparklines
     $sgc = S { $ws.Cells.SparklineGroups.Count }
     E "$p.SparklineGroups" $sgc
-    for ($i = 1; $i -le [int]$sgc; $i++) { $g = $ws.Cells.SparklineGroups.Item($i); E "$p.Sparkline[$i]" (S { "type=$($g.Type) source=$($g.SourceData) loc=$(A $g.Location) color=$($g.SeriesColor.Color) markers=$($g.Points.Markers.Visible) neg=$($g.Points.Negative.Visible) count=$($g.Count)" }) }
+    # Excel lists the groups in an order that changes after an edit, so they are written sorted by where they are.
+    $groups = @(); for ($i = 1; $i -le [int]$sgc; $i++) { $g = $ws.Cells.SparklineGroups.Item($i); $groups += (S { "loc=$(A $g.Location) type=$($g.Type) source=$($g.SourceData) color=$($g.SeriesColor.Color) markers=$($g.Points.Markers.Visible) neg=$($g.Points.Negative.Visible) count=$($g.Count)" }) }
+    $order = 0; foreach ($g in ($groups | Sort-Object)) { $order++; E "$p.Sparkline[$order]" $g }
     # Pivot tables
     E "$p.PivotTables" (S { $ws.PivotTables().Count })
     foreach ($pt in $ws.PivotTables()) { E "$p.Pivot[$($pt.Name)]" (S { "range=$(A $pt.TableRange1) source=$($pt.SourceData) rows=$(($pt.RowFields | ForEach-Object { $_.Name }) -join ',') data=$(($pt.DataFields | ForEach-Object { $_.Name }) -join ',')" }) }

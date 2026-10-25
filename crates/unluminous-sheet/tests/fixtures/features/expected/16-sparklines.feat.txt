@@ -99,9 +99,9 @@ Sheet[Spark].Links = 0
 Sheet[Spark].ChartObjects = 0
 Sheet[Spark].Shapes = 0
 Sheet[Spark].SparklineGroups = 3
-Sheet[Spark].Sparkline[1] = type=1 source=B2:E5 loc=F2:F5 color=255 markers=True neg=False count=4
-Sheet[Spark].Sparkline[2] = type=2 source=B2:E5 loc=G2:G5 color=9592887 markers=False neg=True count=4
-Sheet[Spark].Sparkline[3] = type=3 source=B2:E5 loc=H2:H5 color=9592887 markers=False neg=True count=4
+Sheet[Spark].Sparkline[1] = loc=F2:F5 type=1 source=B2:E5 color=255 markers=True neg=False count=4
+Sheet[Spark].Sparkline[2] = loc=G2:G5 type=2 source=B2:E5 color=9592887 markers=False neg=True count=4
+Sheet[Spark].Sparkline[3] = loc=H2:H5 type=3 source=B2:E5 color=9592887 markers=False neg=True count=4
 Sheet[Spark].PivotTables = 0
 Sheet[Spark].UsedRange = A1:E5
 Sheet[Spark].Cell[A1].Style = Normal
