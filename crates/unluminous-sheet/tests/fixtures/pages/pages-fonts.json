@@ -6,6 +6,7 @@
       "size": 9,
       "pixels_of_10_chars": 65.0,
       "pixels_of_1_char": 11.0,
+      "default_column_pixels": 56.0,
       "row_height": 12.0,
       "default_rows_then_tiny_rows_first_break": 329,
       "columns_per_page": {
@@ -40,6 +41,7 @@
       "size": 10,
       "pixels_of_10_chars": 75.0,
       "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
       "row_height": 12.75,
       "default_rows_then_tiny_rows_first_break": 263,
       "columns_per_page": {
@@ -74,6 +76,7 @@
       "size": 11,
       "pixels_of_10_chars": 75.0,
       "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
       "row_height": 15.0,
       "default_rows_then_tiny_rows_first_break": 183,
       "columns_per_page": {
@@ -108,6 +111,7 @@
       "size": 12,
       "pixels_of_10_chars": 85.0,
       "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
       "row_height": 15.75,
       "default_rows_then_tiny_rows_first_break": 123,
       "columns_per_page": {
@@ -142,6 +146,7 @@
       "size": 14,
       "pixels_of_10_chars": 107.0,
       "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
       "row_height": 18.75,
       "default_rows_then_tiny_rows_first_break": 38,
       "columns_per_page": {
@@ -176,6 +181,7 @@
       "size": 9,
       "pixels_of_10_chars": 75.0,
       "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
       "row_height": 12.0,
       "default_rows_then_tiny_rows_first_break": 435,
       "columns_per_page": {
@@ -210,6 +216,7 @@
       "size": 10,
       "pixels_of_10_chars": 75.0,
       "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
       "row_height": 12.75,
       "default_rows_then_tiny_rows_first_break": 303,
       "columns_per_page": {
@@ -244,6 +251,7 @@
       "size": 11,
       "pixels_of_10_chars": 85.0,
       "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
       "row_height": 14.25,
       "default_rows_then_tiny_rows_first_break": 229,
       "columns_per_page": {
@@ -278,6 +286,7 @@
       "size": 12,
       "pixels_of_10_chars": 97.0,
       "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
       "row_height": 15.0,
       "default_rows_then_tiny_rows_first_break": 169,
       "columns_per_page": {
@@ -312,6 +321,7 @@
       "size": 14,
       "pixels_of_10_chars": 117.0,
       "pixels_of_1_char": 18.0,
+      "default_column_pixels": 96.0,
       "row_height": 18.0,
       "default_rows_then_tiny_rows_first_break": 40,
       "columns_per_page": {
@@ -346,6 +356,7 @@
       "size": 9,
       "pixels_of_10_chars": 65.0,
       "pixels_of_1_char": 11.0,
+      "default_column_pixels": 56.0,
       "row_height": 12.0,
       "default_rows_then_tiny_rows_first_break": 349,
       "columns_per_page": {
@@ -380,6 +391,7 @@
       "size": 10,
       "pixels_of_10_chars": 65.0,
       "pixels_of_1_char": 11.0,
+      "default_column_pixels": 56.0,
       "row_height": 12.75,
       "default_rows_then_tiny_rows_first_break": 283,
       "columns_per_page": {
@@ -414,6 +426,7 @@
       "size": 11,
       "pixels_of_10_chars": 75.0,
       "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
       "row_height": 15.0,
       "default_rows_then_tiny_rows_first_break": 251,
       "columns_per_page": {
@@ -448,6 +461,7 @@
       "size": 12,
       "pixels_of_10_chars": 85.0,
       "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
       "row_height": 15.75,
       "default_rows_then_tiny_rows_first_break": 149,
       "columns_per_page": {
@@ -482,6 +496,7 @@
       "size": 14,
       "pixels_of_10_chars": 97.0,
       "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
       "row_height": 18.75,
       "default_rows_then_tiny_rows_first_break": 40,
       "columns_per_page": {
@@ -516,6 +531,7 @@
       "size": 9,
       "pixels_of_10_chars": 75.0,
       "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
       "row_height": 12.0,
       "default_rows_then_tiny_rows_first_break": 435,
       "columns_per_page": {
@@ -550,6 +566,7 @@
       "size": 10,
       "pixels_of_10_chars": 75.0,
       "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
       "row_height": 12.75,
       "default_rows_then_tiny_rows_first_break": 303,
       "columns_per_page": {
@@ -584,6 +601,7 @@
       "size": 11,
       "pixels_of_10_chars": 85.0,
       "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
       "row_height": 14.25,
       "default_rows_then_tiny_rows_first_break": 229,
       "columns_per_page": {
@@ -618,6 +636,7 @@
       "size": 12,
       "pixels_of_10_chars": 97.0,
       "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
       "row_height": 15.0,
       "default_rows_then_tiny_rows_first_break": 169,
       "columns_per_page": {
@@ -652,6 +671,7 @@
       "size": 14,
       "pixels_of_10_chars": 117.0,
       "pixels_of_1_char": 18.0,
+      "default_column_pixels": 96.0,
       "row_height": 18.0,
       "default_rows_then_tiny_rows_first_break": 40,
       "columns_per_page": {
@@ -686,6 +706,7 @@
       "size": 9,
       "pixels_of_10_chars": 65.0,
       "pixels_of_1_char": 11.0,
+      "default_column_pixels": 56.0,
       "row_height": 12.0,
       "default_rows_then_tiny_rows_first_break": 283,
       "columns_per_page": {
@@ -720,6 +741,7 @@
       "size": 10,
       "pixels_of_10_chars": 75.0,
       "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
       "row_height": 13.5,
       "default_rows_then_tiny_rows_first_break": 216,
       "columns_per_page": {
@@ -754,6 +776,7 @@
       "size": 11,
       "pixels_of_10_chars": 85.0,
       "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
       "row_height": 15.0,
       "default_rows_then_tiny_rows_first_break": 143,
       "columns_per_page": {
@@ -788,6 +811,7 @@
       "size": 12,
       "pixels_of_10_chars": 97.0,
       "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
       "row_height": 15.75,
       "default_rows_then_tiny_rows_first_break": 76,
       "columns_per_page": {
@@ -822,6 +846,7 @@
       "size": 14,
       "pixels_of_10_chars": 107.0,
       "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
       "row_height": 18.75,
       "default_rows_then_tiny_rows_first_break": 36,
       "columns_per_page": {
@@ -856,6 +881,7 @@
       "size": 9,
       "pixels_of_10_chars": 65.0,
       "pixels_of_1_char": 11.0,
+      "default_column_pixels": 56.0,
       "row_height": 12.0,
       "default_rows_then_tiny_rows_first_break": 202,
       "columns_per_page": {
@@ -890,6 +916,7 @@
       "size": 10,
       "pixels_of_10_chars": 75.0,
       "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
       "row_height": 14.25,
       "default_rows_then_tiny_rows_first_break": 163,
       "columns_per_page": {
@@ -924,6 +951,7 @@
       "size": 11,
       "pixels_of_10_chars": 85.0,
       "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
       "row_height": 16.5,
       "default_rows_then_tiny_rows_first_break": 69,
       "columns_per_page": {
@@ -958,6 +986,7 @@
       "size": 12,
       "pixels_of_10_chars": 97.0,
       "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
       "row_height": 17.25,
       "default_rows_then_tiny_rows_first_break": 39,
       "columns_per_page": {
@@ -992,6 +1021,7 @@
       "size": 14,
       "pixels_of_10_chars": 107.0,
       "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
       "row_height": 20.25,
       "default_rows_then_tiny_rows_first_break": 34,
       "columns_per_page": {
@@ -1026,6 +1056,7 @@
       "size": 9,
       "pixels_of_10_chars": 85.0,
       "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
       "row_height": 11.25,
       "default_rows_then_tiny_rows_first_break": 323,
       "columns_per_page": {
@@ -1060,6 +1091,7 @@
       "size": 10,
       "pixels_of_10_chars": 85.0,
       "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
       "row_height": 12.75,
       "default_rows_then_tiny_rows_first_break": 269,
       "columns_per_page": {
@@ -1094,6 +1126,7 @@
       "size": 11,
       "pixels_of_10_chars": 107.0,
       "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
       "row_height": 14.25,
       "default_rows_then_tiny_rows_first_break": 176,
       "columns_per_page": {
@@ -1128,6 +1161,7 @@
       "size": 12,
       "pixels_of_10_chars": 107.0,
       "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
       "row_height": 15.0,
       "default_rows_then_tiny_rows_first_break": 129,
       "columns_per_page": {
@@ -1162,6 +1196,7 @@
       "size": 14,
       "pixels_of_10_chars": 127.0,
       "pixels_of_1_char": 19.0,
+      "default_column_pixels": 104.0,
       "row_height": 18.0,
       "default_rows_then_tiny_rows_first_break": 38,
       "columns_per_page": {
@@ -1196,6 +1231,7 @@
       "size": 9,
       "pixels_of_10_chars": 75.0,
       "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
       "row_height": 11.25,
       "default_rows_then_tiny_rows_first_break": 336,
       "columns_per_page": {
@@ -1230,6 +1266,7 @@
       "size": 10,
       "pixels_of_10_chars": 75.0,
       "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
       "row_height": 12.75,
       "default_rows_then_tiny_rows_first_break": 269,
       "columns_per_page": {
@@ -1264,6 +1301,7 @@
       "size": 11,
       "pixels_of_10_chars": 85.0,
       "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
       "row_height": 14.25,
       "default_rows_then_tiny_rows_first_break": 196,
       "columns_per_page": {
@@ -1298,6 +1336,7 @@
       "size": 12,
       "pixels_of_10_chars": 97.0,
       "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
       "row_height": 15.0,
       "default_rows_then_tiny_rows_first_break": 129,
       "columns_per_page": {
@@ -1332,6 +1371,7 @@
       "size": 14,
       "pixels_of_10_chars": 107.0,
       "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
       "row_height": 18.0,
       "default_rows_then_tiny_rows_first_break": 39,
       "columns_per_page": {
@@ -1366,6 +1406,7 @@
       "size": 9,
       "pixels_of_10_chars": 75.0,
       "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
       "row_height": 12.0,
       "default_rows_then_tiny_rows_first_break": 349,
       "columns_per_page": {
@@ -1400,6 +1441,7 @@
       "size": 10,
       "pixels_of_10_chars": 75.0,
       "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
       "row_height": 12.75,
       "default_rows_then_tiny_rows_first_break": 289,
       "columns_per_page": {
@@ -1434,6 +1476,7 @@
       "size": 11,
       "pixels_of_10_chars": 85.0,
       "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
       "row_height": 15.0,
       "default_rows_then_tiny_rows_first_break": 251,
       "columns_per_page": {
@@ -1468,6 +1511,7 @@
       "size": 12,
       "pixels_of_10_chars": 97.0,
       "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
       "row_height": 15.75,
       "default_rows_then_tiny_rows_first_break": 156,
       "columns_per_page": {
@@ -1502,6 +1546,7 @@
       "size": 14,
       "pixels_of_10_chars": 107.0,
       "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
       "row_height": 18.75,
       "default_rows_then_tiny_rows_first_break": 40,
       "columns_per_page": {
@@ -1536,6 +1581,7 @@
       "size": 9,
       "pixels_of_10_chars": 75.0,
       "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
       "row_height": 12.0,
       "default_rows_then_tiny_rows_first_break": 475,
       "columns_per_page": {
@@ -1570,6 +1616,7 @@
       "size": 10,
       "pixels_of_10_chars": 85.0,
       "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
       "row_height": 13.5,
       "default_rows_then_tiny_rows_first_break": 411,
       "columns_per_page": {
@@ -1604,6 +1651,7 @@
       "size": 11,
       "pixels_of_10_chars": 97.0,
       "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
       "row_height": 15.0,
       "default_rows_then_tiny_rows_first_break": 323,
       "columns_per_page": {
@@ -1638,6 +1686,7 @@
       "size": 12,
       "pixels_of_10_chars": 107.0,
       "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
       "row_height": 15.75,
       "default_rows_then_tiny_rows_first_break": 259,
       "columns_per_page": {
@@ -1672,6 +1721,7 @@
       "size": 14,
       "pixels_of_10_chars": 117.0,
       "pixels_of_1_char": 18.0,
+      "default_column_pixels": 96.0,
       "row_height": 18.75,
       "default_rows_then_tiny_rows_first_break": 115,
       "columns_per_page": {
@@ -1706,6 +1756,7 @@
       "size": 9,
       "pixels_of_10_chars": 75.0,
       "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
       "row_height": 12.0,
       "default_rows_then_tiny_rows_first_break": 349,
       "columns_per_page": {
@@ -1740,6 +1791,7 @@
       "size": 10,
       "pixels_of_10_chars": 75.0,
       "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
       "row_height": 12.75,
       "default_rows_then_tiny_rows_first_break": 289,
       "columns_per_page": {
@@ -1774,6 +1826,7 @@
       "size": 11,
       "pixels_of_10_chars": 85.0,
       "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
       "row_height": 14.25,
       "default_rows_then_tiny_rows_first_break": 223,
       "columns_per_page": {
@@ -1808,6 +1861,7 @@
       "size": 12,
       "pixels_of_10_chars": 97.0,
       "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
       "row_height": 15.75,
       "default_rows_then_tiny_rows_first_break": 156,
       "columns_per_page": {
@@ -1842,6 +1896,7 @@
       "size": 14,
       "pixels_of_10_chars": 117.0,
       "pixels_of_1_char": 18.0,
+      "default_column_pixels": 96.0,
       "row_height": 18.0,
       "default_rows_then_tiny_rows_first_break": 40,
       "columns_per_page": {
@@ -1876,6 +1931,7 @@
       "size": 9,
       "pixels_of_10_chars": 85.0,
       "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
       "row_height": 12.0,
       "default_rows_then_tiny_rows_first_break": 363,
       "columns_per_page": {
@@ -1910,6 +1966,7 @@
       "size": 10,
       "pixels_of_10_chars": 97.0,
       "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
       "row_height": 12.75,
       "default_rows_then_tiny_rows_first_break": 296,
       "columns_per_page": {
@@ -1944,6 +2001,7 @@
       "size": 11,
       "pixels_of_10_chars": 97.0,
       "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
       "row_height": 14.25,
       "default_rows_then_tiny_rows_first_break": 236,
       "columns_per_page": {
@@ -1978,6 +2036,7 @@
       "size": 12,
       "pixels_of_10_chars": 107.0,
       "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
       "row_height": 15.0,
       "default_rows_then_tiny_rows_first_break": 176,
       "columns_per_page": {
@@ -2012,6 +2071,7 @@
       "size": 14,
       "pixels_of_10_chars": 127.0,
       "pixels_of_1_char": 19.0,
+      "default_column_pixels": 104.0,
       "row_height": 18.0,
       "default_rows_then_tiny_rows_first_break": 49,
       "columns_per_page": {
@@ -2046,6 +2106,7 @@
       "size": 9,
       "pixels_of_10_chars": 65.0,
       "pixels_of_1_char": 11.0,
+      "default_column_pixels": 56.0,
       "row_height": 15.0,
       "default_rows_then_tiny_rows_first_break": 355,
       "columns_per_page": {
@@ -2080,6 +2141,7 @@
       "size": 10,
       "pixels_of_10_chars": 75.0,
       "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
       "row_height": 15.0,
       "default_rows_then_tiny_rows_first_break": 275,
       "columns_per_page": {
@@ -2114,6 +2176,7 @@
       "size": 11,
       "pixels_of_10_chars": 85.0,
       "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
       "row_height": 16.5,
       "default_rows_then_tiny_rows_first_break": 187,
       "columns_per_page": {
@@ -2148,6 +2211,7 @@
       "size": 12,
       "pixels_of_10_chars": 85.0,
       "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
       "row_height": 18.0,
       "default_rows_then_tiny_rows_first_break": 115,
       "columns_per_page": {
@@ -2182,6 +2246,7 @@
       "size": 14,
       "pixels_of_10_chars": 107.0,
       "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
       "row_height": 18.75,
       "default_rows_then_tiny_rows_first_break": 37,
       "columns_per_page": {
@@ -2216,6 +2281,7 @@
       "size": 9,
       "pixels_of_10_chars": 75.0,
       "pixels_of_1_char": 12.0,
+      "default_column_pixels": 64.0,
       "row_height": 14.25,
       "default_rows_then_tiny_rows_first_break": 183,
       "columns_per_page": {
@@ -2250,6 +2316,7 @@
       "size": 10,
       "pixels_of_10_chars": 85.0,
       "pixels_of_1_char": 13.0,
+      "default_column_pixels": 72.0,
       "row_height": 15.0,
       "default_rows_then_tiny_rows_first_break": 103,
       "columns_per_page": {
@@ -2284,6 +2351,7 @@
       "size": 11,
       "pixels_of_10_chars": 97.0,
       "pixels_of_1_char": 16.0,
+      "default_column_pixels": 80.0,
       "row_height": 16.5,
       "default_rows_then_tiny_rows_first_break": 39,
       "columns_per_page": {
@@ -2318,6 +2386,7 @@
       "size": 12,
       "pixels_of_10_chars": 107.0,
       "pixels_of_1_char": 17.0,
+      "default_column_pixels": 88.0,
       "row_height": 19.5,
       "default_rows_then_tiny_rows_first_break": 36,
       "columns_per_page": {
@@ -2352,6 +2421,7 @@
       "size": 14,
       "pixels_of_10_chars": 127.0,
       "pixels_of_1_char": 19.0,
+      "default_column_pixels": 104.0,
       "row_height": 21.0,
       "default_rows_then_tiny_rows_first_break": 32,
       "columns_per_page": {

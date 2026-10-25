@@ -93,6 +93,9 @@ function Full-Variants {
     $v += Variant 'size-heights' 130 40 { param($ws) foreach ($r in 1..130) { $ws.Rows.Item($r).RowHeight = 8 + ($r * 5 % 37) } }
     $v += Variant 'size-wide-cols' 100 24 { param($ws) $ws.Columns.Item('A:X').ColumnWidth = 30 }
     $v += Variant 'size-tall-rows' 60 20 { param($ws) $ws.Rows.Item('1:60').RowHeight = 40 }
+    foreach ($h in 10, 12.5, 13, 14, 16, 17, 19, 20, 25, 40) {
+        $v += Variant "rowheight-$h" 130 12 { param($ws, $a) $ws.Rows.Item('1:130').RowHeight = [double]$a.h } @{ h = $h }
+    }
     $v += Variant 'size-tiny' 130 40 { param($ws) $ws.Columns.Item('A:AN').ColumnWidth = 1.5; $ws.Rows.Item('1:130').RowHeight = 6 }
     $v += Variant 'headings' 130 40 { param($ws) $ws.PageSetup.PrintHeadings = $true }
     $v += Variant 'gridlines' 130 40 { param($ws) $ws.PageSetup.PrintGridlines = $true }
@@ -131,9 +134,8 @@ $groups = @(
 
 # ---- running them -------------------------------------------------------------------------------------
 
-# The breaks of a collection, by index. Walking the collection with foreach gives locations of 0, and asking for
-# `Item($i)` fails with "Invalid index" while Excel is still computing the breaks, so a failure returns $null and
-# the caller reads again.
+# The breaks of a collection, by index. `Item($i)` fails with "Invalid index" for a few breaks (for the break after
+# the data, it seems), so the ones that can be read are returned with the count Excel gave.
 function Break-List($breaks) {
     $list = @()
     $n = [int]$breaks.Count
@@ -142,27 +144,23 @@ function Break-List($breaks) {
             $b = $breaks.Item($i)
             $loc = $b.Location
             $list += [pscustomobject]@{ row = [int]$loc.Row; col = [int]$loc.Column; manual = ($b.Type -eq -4135) }
-        } catch { return $null }
+        } catch { break }
     }
-    return , $list
+    return [pscustomobject]@{ count = $n; list = $list }
 }
 
 # Excel computes page breaks on its own schedule, and a read straight after a change can return fewer breaks than
 # there are pages. Read again until the breaks and the page count agree, up to six times.
 function Read-Breaks($ws) {
     $ws.Activate()
-    for ($attempt = 1; $attempt -le 6; $attempt++) {
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
         $pages = [int]$ws.PageSetup.Pages.Count
         $h = Break-List $ws.HPageBreaks
         $v = Break-List $ws.VPageBreaks
-        if ($null -ne $h -and $null -ne $v -and ((@($h).Count + 1) * (@($v).Count + 1) -eq $pages -or $attempt -ge 3)) {
-            return [pscustomobject]@{ pages = $pages; hbreaks = $h; vbreaks = $v; attempts = $attempt }
-        }
-        if ($attempt -eq 6) {
-            return [pscustomobject]@{ pages = $pages; hbreaks = @($h); vbreaks = @($v); attempts = $attempt }
-        }
+        if (@($h.list).Count -eq $h.count -and @($v.list).Count -eq $v.count) { break }
         Start-Sleep -Milliseconds 700
     }
+    return [pscustomobject]@{ pages = $pages; hbreaks = @($h.list); vbreaks = @($v.list); hcount = $h.count; vcount = $v.count; attempts = $attempt }
 }
 
 # How many columns of one width fit on the first page, found from the first vertical break.
@@ -212,6 +210,8 @@ try {
                 $answer.pages = $read.pages
                 $answer.hbreaks = $read.hbreaks
                 $answer.vbreaks = $read.vbreaks
+                $answer.hcount = $read.hcount
+                $answer.vcount = $read.vcount
                 $answer.attempts = $read.attempts
             } catch { $answer.failure = "$failure | read: $_" }
             $answer.paper = [int]$ps.PaperSize
@@ -241,6 +241,7 @@ try {
         $rowsSheet = $book.Worksheets.Add([Type]::Missing, $ws)
         $rowsSheet.Range('A1:A1500').Value2 = [double]1.5
         $rowsSheet.Rows.Item('41:1500').RowHeight = [double]0.75
+        $plain = $book.Worksheets.Add([Type]::Missing, $rowsSheet)
         $fonts = @()
         $names = 'Calibri', 'Arial', 'Times New Roman', 'Aptos Narrow', 'Aptos', 'Segoe UI', 'Verdana', 'Tahoma', 'Consolas', 'Courier New', 'Cambria', 'Georgia', 'Trebuchet MS', 'Comic Sans MS'
         foreach ($name in $names) {
@@ -256,8 +257,16 @@ try {
                     $perPage = [ordered]@{}
                     foreach ($chars in 1, 3, 8.43, 12, 20, 40) { $perPage["$chars"] = Columns-Per-Page $ws $chars }
                     $rowBreak = 0
-                    if ([int]$rowsSheet.HPageBreaks.Count -ge 1) { $rowBreak = [int]$rowsSheet.HPageBreaks.Item(1).Location.Row }
-                    $fonts += [pscustomobject]@{ font = $name; size = $size; pixels_of_10_chars = $p10; pixels_of_1_char = $p1; row_height = [double]$rowsSheet.Rows.Item(1).Height; default_rows_then_tiny_rows_first_break = $rowBreak; columns_per_page = $perPage }
+                    # Excel sometimes answers with a break from the font before; read until two reads in a row agree.
+                    $previous = -1
+                    for ($try = 0; $try -lt 8; $try++) {
+                        $rowBreak = 0
+                        if ([int]$rowsSheet.HPageBreaks.Count -ge 1) { $rowBreak = [int]$rowsSheet.HPageBreaks.Item(1).Location.Row }
+                        if ($rowBreak -eq $previous) { break }
+                        $previous = $rowBreak
+                        Start-Sleep -Milliseconds 400
+                    }
+                    $fonts += [pscustomobject]@{ font = $name; size = $size; pixels_of_10_chars = $p10; pixels_of_1_char = $p1; default_column_pixels = [double]$plain.Columns.Item(3).Width / 0.75; row_height = [double]$rowsSheet.Rows.Item(1).Height; default_rows_then_tiny_rows_first_break = $rowBreak; columns_per_page = $perPage }
                     Write-Host ("  {0} {1}: p10={2} p1={3} rows-break={4} per page {5}" -f $name, $size, $p10, $p1, $rowBreak, (($perPage.Values | ForEach-Object { $_.per_page }) -join ','))
                 } catch { Write-Host "  $name $size failed: $_" }
             }

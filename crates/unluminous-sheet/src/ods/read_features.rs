@@ -133,7 +133,8 @@ impl<'d> Features<'d> {
             let cells = a1.rsplit_once('!').map_or(a1.as_str(), |(_, c)| c);
             if let (Some(index), Some(range)) = (book.sheet_index(&sheet_name), Range::parse(cells))
             {
-                book.sheets[index].filter = Some(AutoFilter { range, columns: BTreeMap::new(), sort: None });
+                book.sheets[index].filter =
+                    Some(AutoFilter { range, columns: BTreeMap::new(), sort: None });
             }
         }
     }

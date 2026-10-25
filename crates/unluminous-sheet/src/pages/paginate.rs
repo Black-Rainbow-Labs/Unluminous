@@ -17,11 +17,10 @@
 //! - Excel behaves as if the sheet had one more row and column after the last, so a page that ends exactly full
 //!   reports a break after the data. That page is not printed.
 //! - A page with nothing on it is not printed.
-//! - Fitting to pages takes the largest scale from 100 down at which the sheet needs no more pages than asked,
-//!   and manual breaks are ignored while it is on. Fitting one page wide matches Excel every time. When several
-//!   pages wide are asked and the columns fill the last page exactly, Excel takes a scale 1% to 8% lower than the
-//!   largest that fits, by a rule that depends on the number of columns and pages and not on the rows, and that
-//!   was not found (about a hundred combinations were measured, see `tests/pages.rs`).
+//! - Fitting to pages takes the smaller of the largest scale from 100 down at which the sheet needs no more
+//!   pages than asked, and an estimate (see `estimate`); manual breaks are ignored while it is on, and Excel lists
+//!   only the manual breaks of an axis that has any. For Calibri 11 this gives Excel's scale in every combination
+//!   measured. In the other default fonts five fits differ by a percent or two (`tests/pages.rs`).
 
 use std::collections::BTreeSet;
 
@@ -44,6 +43,10 @@ pub use super::metrics::Metrics;
 pub const PRINTER_DPI: f64 = 600.0;
 /// Printer pixels in a point.
 const PIXELS_PER_POINT: f64 = PRINTER_DPI / 72.0;
+/// What the estimate of a fitted scale takes off a page, in printer pixels.
+const FIT_ALLOWANCE: f64 = 12.0;
+/// How much of an average element each page after the first costs the estimate of a fitted scale.
+const FIT_BOUNDARY: f64 = 0.875;
 /// What an element must leave free at the far edge of a page: one screen pixel, which is six printer pixels.
 const EDGE: f64 = 6.0;
 
@@ -118,6 +121,24 @@ fn cut_axis(
         cuts.push(Break { at: index, manual: forced });
         start = index;
     }
+}
+
+/// What Excel's estimate of the scale for `pages` pages along an axis comes to. It is
+/// `round(100 * pages * room / (length + 0.875 * (pages - 1) * average))`: the length of the axis at full scale,
+/// and for every page after the first most of one average element, against the room in `pages` pages less
+/// twelve pixels. Measured over a hundred and fifty combinations of columns and pages, it and the largest scale
+/// that fits agree with Excel's in all of them when the smaller of the two is taken. `None` when the axis is not
+/// fitted or has nothing on it.
+fn estimate(axis: &Axis, room: f64, pages: usize) -> Option<u32> {
+    let real = &axis.sizes[..axis.sizes.len() - 1];
+    let total: f64 = real.iter().sum();
+    let shown = real.iter().filter(|s| **s > 0.0).count();
+    if pages == 0 || total <= 0.0 || shown == 0 {
+        return None;
+    }
+    let average = total / shown as f64;
+    let needed = total + FIT_BOUNDARY * (pages as f64 - 1.0) * average;
+    Some((100.0 * pages as f64 * (room - FIT_ALLOWANCE) / needed).round().clamp(10.0, 100.0) as u32)
 }
 
 /// How many pages hold something of the area: the cuts that start before the first element past the end.
@@ -297,8 +318,10 @@ impl<'a> Job<'a> {
         }
     }
 
-    /// The largest scale from 100 down at which the sheet needs no more pages than the setup allows. Fitting
-    /// never enlarges.
+    /// The scale that fitting to pages gives, which never enlarges. Excel takes the smaller of two scales: the
+    /// largest from 100 down at which the pages of the sheet can be laid out in the pages asked for, and an
+    /// estimate that sets the sheet's length against that many pages, each but the first costing most of a
+    /// column or row (see [`estimate`]).
     fn fit_scale(&self) -> u32 {
         let (wide, tall) = (self.setup.fit_to_width as usize, self.setup.fit_to_height as usize);
         let fits = |scale: u32| {
@@ -309,7 +332,11 @@ impl<'a> Job<'a> {
                     && (tall == 0 || pages_needed(&row_cuts, area.last.row + 1) <= tall)
             })
         };
-        (10..=100).rev().find(|&scale| fits(scale)).unwrap_or(10)
+        let largest = (10..=100).rev().find(|&scale| fits(scale)).unwrap_or(10);
+        let estimates = self.axes.iter().flat_map(|(rows, cols)| {
+            [estimate(cols, self.room.0, wide), estimate(rows, self.room.1, tall)]
+        });
+        estimates.flatten().fold(largest, u32::min).max(10)
     }
 
     /// The cuts of one area on both axes. Manual breaks count unless the sheet is fitted to pages.
@@ -329,7 +356,17 @@ impl<'a> Job<'a> {
         )
     }
 
-    /// Lay the sheet out at a scale.
+    /// The breaks of an axis as Excel lists them. A sheet fitted to pages is laid out without its manual breaks, but
+    /// Excel lists only the manual breaks of an axis that has any, and none of the automatic ones.
+    fn listed(&self, cuts: Vec<Break>, manual: &[u32], axis: &Axis) -> Vec<Break> {
+        let kept = manual_cuts(manual, axis);
+        if self.setup.fit_to_page && !kept.is_empty() {
+            return kept.into_iter().map(|at| Break { at, manual: true }).collect();
+        }
+        cuts.into_iter().skip(1).collect()
+    }
+
+    /// Lay the sheet out.
     fn lay_out(&self) -> PageLayout {
         let scale = self.scale();
         let mut layout = self.blank(scale);
@@ -337,10 +374,11 @@ impl<'a> Job<'a> {
         for (i, area) in self.areas.iter().enumerate() {
             let (row_cuts, col_cuts) = self.cuts(i, scale);
             spans.extend(page_ranges(i, *area, &row_cuts, &col_cuts, self.setup.page_order));
+            let (rows, cols) = &self.axes[i];
             layout.areas.push(AreaLayout {
                 range: *area,
-                row_breaks: row_cuts.into_iter().skip(1).collect(),
-                col_breaks: col_cuts.into_iter().skip(1).collect(),
+                row_breaks: self.listed(row_cuts, &self.setup.row_break_rows(), rows),
+                col_breaks: self.listed(col_cuts, &self.setup.col_break_cols(), cols),
             });
         }
         spans.retain(|(_, body)| page_has_content(self.sheet, body));

@@ -42,6 +42,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 4,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -85,6 +87,8 @@
           "manual": false
         }
       ],
+      "hcount": 3,
+      "vcount": 3,
       "attempts": 1,
       "paper": 1,
       "orientation": 2,
@@ -128,6 +132,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 4,
       "attempts": 1,
       "paper": 5,
       "orientation": 1,
@@ -166,6 +172,8 @@
           "manual": false
         }
       ],
+      "hcount": 3,
+      "vcount": 2,
       "attempts": 1,
       "paper": 5,
       "orientation": 2,
@@ -209,6 +217,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 4,
       "attempts": 1,
       "paper": 9,
       "orientation": 1,
@@ -247,6 +257,8 @@
           "manual": false
         }
       ],
+      "hcount": 3,
+      "vcount": 2,
       "attempts": 1,
       "paper": 9,
       "orientation": 2,
@@ -275,6 +287,8 @@
           "manual": false
         }
       ],
+      "hcount": 1,
+      "vcount": 2,
       "attempts": 1,
       "paper": 8,
       "orientation": 1,
@@ -303,6 +317,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 1,
       "attempts": 1,
       "paper": 8,
       "orientation": 2,
@@ -336,6 +352,8 @@
           "manual": false
         }
       ],
+      "hcount": 1,
+      "vcount": 3,
       "attempts": 1,
       "paper": 3,
       "orientation": 1,
@@ -364,6 +382,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 1,
       "attempts": 1,
       "paper": 3,
       "orientation": 2,
@@ -422,6 +442,8 @@
           "manual": false
         }
       ],
+      "hcount": 3,
+      "vcount": 6,
       "attempts": 1,
       "paper": 11,
       "orientation": 1,
@@ -485,6 +507,8 @@
           "manual": false
         }
       ],
+      "hcount": 6,
+      "vcount": 4,
       "attempts": 1,
       "paper": 11,
       "orientation": 2,
@@ -533,7 +557,9 @@
           "manual": false
         }
       ],
-      "attempts": 3,
+      "hcount": 2,
+      "vcount": 5,
+      "attempts": 1,
       "paper": 7,
       "orientation": 1,
       "zoom": "100"
@@ -581,6 +607,8 @@
           "manual": false
         }
       ],
+      "hcount": 4,
+      "vcount": 3,
       "attempts": 1,
       "paper": 7,
       "orientation": 2,
@@ -619,6 +647,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 3,
       "attempts": 1,
       "paper": 12,
       "orientation": 1,
@@ -657,6 +687,8 @@
           "manual": false
         }
       ],
+      "hcount": 3,
+      "vcount": 2,
       "attempts": 1,
       "paper": 12,
       "orientation": 2,
@@ -695,6 +727,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 3,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -748,6 +782,8 @@
           "manual": false
         }
       ],
+      "hcount": 3,
+      "vcount": 5,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -791,7 +827,9 @@
           "manual": false
         }
       ],
-      "attempts": 3,
+      "hcount": 2,
+      "vcount": 4,
+      "attempts": 1,
       "paper": 1,
       "orientation": 1,
       "zoom": "100"
@@ -829,6 +867,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 3,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -840,6 +880,8 @@
       "pages": 1,
       "hbreaks": [],
       "vbreaks": [],
+      "hcount": 0,
+      "vcount": 0,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -857,6 +899,8 @@
           "manual": false
         }
       ],
+      "hcount": 0,
+      "vcount": 1,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -885,6 +929,8 @@
           "manual": false
         }
       ],
+      "hcount": 1,
+      "vcount": 2,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -923,6 +969,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 3,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -966,6 +1014,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 4,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -1019,6 +1069,8 @@
           "manual": false
         }
       ],
+      "hcount": 3,
+      "vcount": 5,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -1082,6 +1134,8 @@
           "manual": false
         }
       ],
+      "hcount": 4,
+      "vcount": 6,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -1170,7 +1224,9 @@
           "manual": false
         }
       ],
-      "attempts": 3,
+      "hcount": 5,
+      "vcount": 10,
+      "attempts": 1,
       "paper": 1,
       "orientation": 1,
       "zoom": "200"
@@ -1338,7 +1394,9 @@
           "manual": false
         }
       ],
-      "attempts": 3,
+      "hcount": 11,
+      "vcount": 20,
+      "attempts": 1,
       "paper": 1,
       "orientation": 1,
       "zoom": "400"
@@ -1349,6 +1407,8 @@
       "pages": 1,
       "hbreaks": [],
       "vbreaks": [],
+      "hcount": 0,
+      "vcount": 0,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -1360,6 +1420,8 @@
       "pages": 1,
       "hbreaks": [],
       "vbreaks": [],
+      "hcount": 0,
+      "vcount": 0,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -1377,6 +1439,8 @@
           "manual": false
         }
       ],
+      "hcount": 0,
+      "vcount": 1,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -1405,7 +1469,9 @@
           "manual": false
         }
       ],
-      "attempts": 3,
+      "hcount": 1,
+      "vcount": 2,
+      "attempts": 1,
       "paper": 1,
       "orientation": 1,
       "zoom": "False"
@@ -1433,6 +1499,8 @@
           "manual": false
         }
       ],
+      "hcount": 1,
+      "vcount": 2,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -1444,6 +1512,8 @@
       "pages": 1,
       "hbreaks": [],
       "vbreaks": [],
+      "hcount": 0,
+      "vcount": 0,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -1461,6 +1531,8 @@
           "manual": false
         }
       ],
+      "hcount": 0,
+      "vcount": 1,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -1489,7 +1561,9 @@
           "manual": false
         }
       ],
-      "attempts": 3,
+      "hcount": 1,
+      "vcount": 2,
+      "attempts": 1,
       "paper": 1,
       "orientation": 1,
       "zoom": "False"
@@ -1527,7 +1601,9 @@
           "manual": false
         }
       ],
-      "attempts": 3,
+      "hcount": 2,
+      "vcount": 3,
+      "attempts": 1,
       "paper": 1,
       "orientation": 1,
       "zoom": "False"
@@ -1570,7 +1646,9 @@
           "manual": false
         }
       ],
-      "attempts": 3,
+      "hcount": 2,
+      "vcount": 4,
+      "attempts": 1,
       "paper": 1,
       "orientation": 1,
       "zoom": "False"
@@ -1598,6 +1676,8 @@
           "manual": false
         }
       ],
+      "hcount": 1,
+      "vcount": 2,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -1609,6 +1689,8 @@
       "pages": 1,
       "hbreaks": [],
       "vbreaks": [],
+      "hcount": 0,
+      "vcount": 0,
       "attempts": 1,
       "paper": 1,
       "orientation": 2,
@@ -1620,6 +1702,8 @@
       "pages": 1,
       "hbreaks": [],
       "vbreaks": [],
+      "hcount": 0,
+      "vcount": 0,
       "attempts": 1,
       "paper": 9,
       "orientation": 1,
@@ -1631,6 +1715,8 @@
       "pages": 1,
       "hbreaks": [],
       "vbreaks": [],
+      "hcount": 0,
+      "vcount": 0,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -1674,6 +1760,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 4,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -1722,6 +1810,8 @@
           "manual": false
         }
       ],
+      "hcount": 3,
+      "vcount": 4,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -1765,6 +1855,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 4,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -1813,6 +1905,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 5,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -1861,6 +1955,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 5,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -1909,6 +2005,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 5,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -1957,6 +2055,8 @@
           "manual": false
         }
       ],
+      "hcount": 4,
+      "vcount": 3,
       "attempts": 1,
       "paper": 1,
       "orientation": 2,
@@ -1985,7 +2085,9 @@
           "manual": false
         }
       ],
-      "attempts": 3,
+      "hcount": 1,
+      "vcount": 2,
+      "attempts": 1,
       "paper": 1,
       "orientation": 1,
       "zoom": "False"
@@ -2033,6 +2135,8 @@
           "manual": false
         }
       ],
+      "hcount": 3,
+      "vcount": 4,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -2081,6 +2185,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 5,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -2129,6 +2235,8 @@
           "manual": false
         }
       ],
+      "hcount": 3,
+      "vcount": 4,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -2192,6 +2300,8 @@
           "manual": false
         }
       ],
+      "hcount": 5,
+      "vcount": 5,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -2245,6 +2355,8 @@
           "manual": false
         }
       ],
+      "hcount": 4,
+      "vcount": 4,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -2293,6 +2405,8 @@
           "manual": false
         }
       ],
+      "hcount": 3,
+      "vcount": 4,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -2341,6 +2455,8 @@
           "manual": false
         }
       ],
+      "hcount": 3,
+      "vcount": 4,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -2369,7 +2485,9 @@
           "manual": false
         }
       ],
-      "attempts": 3,
+      "hcount": 1,
+      "vcount": 2,
+      "attempts": 1,
       "paper": 1,
       "orientation": 1,
       "zoom": "False"
@@ -2402,6 +2520,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 2,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -2440,6 +2560,8 @@
           "manual": false
         }
       ],
+      "hcount": 1,
+      "vcount": 4,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -2478,6 +2600,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 3,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -2511,6 +2635,8 @@
           "manual": false
         }
       ],
+      "hcount": 1,
+      "vcount": 3,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -2554,6 +2680,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 4,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -2577,6 +2705,8 @@
           "manual": false
         }
       ],
+      "hcount": 1,
+      "vcount": 1,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -2600,6 +2730,8 @@
           "manual": false
         }
       ],
+      "hcount": 1,
+      "vcount": 1,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -2611,7 +2743,9 @@
       "pages": 2,
       "hbreaks": [],
       "vbreaks": [],
-      "attempts": 3,
+      "hcount": 0,
+      "vcount": 0,
+      "attempts": 1,
       "paper": 1,
       "orientation": 1,
       "zoom": "100"
@@ -2649,6 +2783,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 3,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -2692,7 +2828,9 @@
           "manual": false
         }
       ],
-      "attempts": 3,
+      "hcount": 3,
+      "vcount": 3,
+      "attempts": 1,
       "paper": 1,
       "orientation": 1,
       "zoom": "100"
@@ -2714,9 +2852,45 @@
         }
       ],
       "vbreaks": [
-        null
+        {
+          "row": 1,
+          "col": 6,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 12,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 16,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 21,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 26,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 31,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 36,
+          "manual": false
+        }
       ],
-      "attempts": 6,
+      "hcount": 2,
+      "vcount": 8,
+      "attempts": 4,
       "paper": 1,
       "orientation": 1,
       "zoom": "100"
@@ -2726,7 +2900,21 @@
       "failure": "",
       "pages": 25,
       "hbreaks": [
-        null
+        {
+          "row": 28,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 56,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 81,
+          "col": 1,
+          "manual": false
+        }
       ],
       "vbreaks": [
         {
@@ -2750,7 +2938,9 @@
           "manual": false
         }
       ],
-      "attempts": 6,
+      "hcount": 4,
+      "vcount": 4,
+      "attempts": 4,
       "paper": 1,
       "orientation": 1,
       "zoom": "100"
@@ -2828,6 +3018,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 11,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -2866,7 +3058,329 @@
           "manual": false
         }
       ],
+      "hcount": 3,
+      "vcount": 2,
       "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "rowheight-10",
+      "failure": "",
+      "pages": 4,
+      "hbreaks": [
+        {
+          "row": 72,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 1,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "rowheight-12.5",
+      "failure": "",
+      "pages": 6,
+      "hbreaks": [
+        {
+          "row": 57,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 113,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "rowheight-13",
+      "failure": "",
+      "pages": 6,
+      "hbreaks": [
+        {
+          "row": 55,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 109,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "rowheight-14",
+      "failure": "",
+      "pages": 6,
+      "hbreaks": [
+        {
+          "row": 51,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 101,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "rowheight-16",
+      "failure": "",
+      "pages": 6,
+      "hbreaks": [
+        {
+          "row": 45,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 89,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 2,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "rowheight-17",
+      "failure": "",
+      "pages": 8,
+      "hbreaks": [
+        {
+          "row": 42,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 83,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 124,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "rowheight-19",
+      "failure": "",
+      "pages": 8,
+      "hbreaks": [
+        {
+          "row": 38,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 75,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 112,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "rowheight-20",
+      "failure": "",
+      "pages": 8,
+      "hbreaks": [
+        {
+          "row": 36,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 71,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 106,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 3,
+      "vcount": 1,
+      "attempts": 1,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "rowheight-25",
+      "failure": "",
+      "pages": 10,
+      "hbreaks": [
+        {
+          "row": 29,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 57,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 85,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 4,
+      "vcount": 1,
+      "attempts": 4,
+      "paper": 1,
+      "orientation": 1,
+      "zoom": "100"
+    },
+    {
+      "sheet": "rowheight-40",
+      "failure": "",
+      "pages": 16,
+      "hbreaks": [
+        {
+          "row": 18,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 35,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 52,
+          "col": 1,
+          "manual": false
+        }
+      ],
+      "vbreaks": [
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        }
+      ],
+      "hcount": 7,
+      "vcount": 1,
+      "attempts": 4,
       "paper": 1,
       "orientation": 1,
       "zoom": "100"
@@ -2889,6 +3403,8 @@
           "manual": false
         }
       ],
+      "hcount": 1,
+      "vcount": 1,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -2932,6 +3448,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 4,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -2975,6 +3493,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 4,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -3018,6 +3538,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 4,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -3061,6 +3583,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 4,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -3104,6 +3628,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 4,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -3114,10 +3640,26 @@
       "failure": "",
       "pages": 12,
       "hbreaks": [
-        null
+        {
+          "row": 48,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 95,
+          "col": 1,
+          "manual": false
+        },
+        {
+          "row": 142,
+          "col": 1,
+          "manual": false
+        }
       ],
       "vbreaks": [],
-      "attempts": 6,
+      "hcount": 11,
+      "vcount": 0,
+      "attempts": 4,
       "paper": 1,
       "orientation": 1,
       "zoom": "100"
@@ -3128,9 +3670,60 @@
       "pages": 25,
       "hbreaks": [],
       "vbreaks": [
-        null
+        {
+          "row": 1,
+          "col": 10,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 19,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 28,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 37,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 46,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 55,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 64,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 73,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 82,
+          "manual": false
+        },
+        {
+          "row": 1,
+          "col": 91,
+          "manual": false
+        }
       ],
-      "attempts": 6,
+      "hcount": 0,
+      "vcount": 24,
+      "attempts": 4,
       "paper": 1,
       "orientation": 1,
       "zoom": "100"
@@ -3147,6 +3740,8 @@
           "manual": false
         }
       ],
+      "hcount": 0,
+      "vcount": 1,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -3158,6 +3753,8 @@
       "pages": 1,
       "hbreaks": [],
       "vbreaks": [],
+      "hcount": 0,
+      "vcount": 0,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -3201,6 +3798,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 4,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
@@ -3244,6 +3843,8 @@
           "manual": false
         }
       ],
+      "hcount": 2,
+      "vcount": 4,
       "attempts": 1,
       "paper": 1,
       "orientation": 1,
