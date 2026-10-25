@@ -96,6 +96,9 @@ pub struct SparklineGroup {
     pub right_to_left: bool,
     pub min: AxisBound,
     pub max: AxisBound,
+    /// The custom minimum and maximum the file holds even when the axis is not set to use them.
+    pub min_value: Option<f64>,
+    pub max_value: Option<f64>,
     /// A date axis: the range holding the dates, as a formula.
     pub date_axis: Option<String>,
     pub colors: SparklineColors,
@@ -121,6 +124,8 @@ impl Default for SparklineGroup {
             right_to_left: false,
             min: AxisBound::Automatic,
             max: AxisBound::Automatic,
+            min_value: None,
+            max_value: None,
             date_axis: None,
             colors: SparklineColors::default(),
             sparklines: Vec::new(),
@@ -180,6 +185,8 @@ fn read_group(e: &Elem) -> SparklineGroup {
         right_to_left: flag(e, "rightToLeft"),
         min: read_bound(e, "minAxisType", "manualMin"),
         max: read_bound(e, "maxAxisType", "manualMax"),
+        min_value: e.attr("manualMin").and_then(|v| v.parse().ok()),
+        max_value: e.attr("manualMax").and_then(|v| v.parse().ok()),
         ..SparklineGroup::default()
     };
     const MODELLED: &[&str] = &[
@@ -255,10 +262,18 @@ fn color_elem(name: &str, c: &Color) -> Elem {
     e
 }
 
-fn bound_attrs(e: &mut Elem, kind_attr: &str, manual_attr: &str, b: AxisBound) {
+fn bound_attrs(e: &mut Elem, kind_attr: &str, manual_attr: &str, b: AxisBound, kept: Option<f64>) {
+    let keep = |e: &mut Elem| {
+        if let Some(v) = kept {
+            e.set_attr(manual_attr, &crate::xlsx::write::number_text(v));
+        }
+    };
     match b {
-        AxisBound::Automatic => {}
-        AxisBound::SameForAll => e.set_attr(kind_attr, "group"),
+        AxisBound::Automatic => keep(e),
+        AxisBound::SameForAll => {
+            e.set_attr(kind_attr, "group");
+            keep(e);
+        }
         AxisBound::Custom(v) => {
             e.set_attr(kind_attr, "custom");
             e.set_attr(manual_attr, &crate::xlsx::write::number_text(v));
@@ -282,8 +297,8 @@ fn group_elem(g: &SparklineGroup, declared: &dyn Fn(&str) -> bool) -> Elem {
     if g.date_axis.is_some() {
         e.set_attr("dateAxis", "1");
     }
-    bound_attrs(&mut e, "minAxisType", "manualMin", g.min);
-    bound_attrs(&mut e, "maxAxisType", "manualMax", g.max);
+    bound_attrs(&mut e, "minAxisType", "manualMin", g.min, g.min_value);
+    bound_attrs(&mut e, "maxAxisType", "manualMax", g.max, g.max_value);
     for (name, on) in [
         ("markers", g.markers),
         ("high", g.high),

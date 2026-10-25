@@ -888,7 +888,7 @@ impl Sheet {
             .filter(|o| !o.hidden)
             .filter_map(|o| {
                 let part = o.picture.as_ref()?.part.clone();
-                let r = o.bounds(self);
+                let r = o.frame_rect(self);
                 let end = cell_at(self, r.right(), r.bottom());
                 let start = cell_at(self, r.x, r.y);
                 Some(Picture { from: start, to: end, part })

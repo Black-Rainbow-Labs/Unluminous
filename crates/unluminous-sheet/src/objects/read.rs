@@ -208,7 +208,6 @@ fn fallback_picture(tree: &Elem, rels: &[Relationship], drawing_part: &str) -> O
 
 /// Everything needed to turn elements into objects.
 pub struct Context<'a> {
-    pub sheet: &'a Sheet,
     pub rels: &'a [Relationship],
     pub drawing_part: &'a str,
 }
@@ -249,12 +248,6 @@ fn build(cx: &Context, tree: Elem, anchor: Option<(Anchor, &Elem)>, wrapped: boo
         wrapped,
     };
     fill_body(cx, &mut obj);
-    if client.is_some() && obj.rotation == 0.0 {
-        obj.frame_size = {
-            let r = obj.anchor.rect(cx.sheet);
-            (r.w, r.h)
-        };
-    }
     obj
 }
 
@@ -294,9 +287,9 @@ fn fill_body(cx: &Context, obj: &mut DrawingObject) {
 }
 
 /// Every object in a drawing part except charts, bottom first.
-pub fn read_drawing(sheet: &Sheet, xml: &str, rels: &[Relationship], drawing_part: &str) -> Vec<DrawingObject> {
+pub fn read_drawing(xml: &str, rels: &[Relationship], drawing_part: &str) -> Vec<DrawingObject> {
     let Some(root) = xmltree::parse(xml) else { return Vec::new() };
-    let cx = Context { sheet, rels, drawing_part };
+    let cx = Context { rels, drawing_part };
     let mut objects = Vec::new();
     for child in root.elems() {
         let Some(anchor_el) = anchor_of(child) else { continue };
@@ -322,7 +315,7 @@ mod tests {
     #[test]
     fn a_shape_is_read_with_its_anchor_looks_and_text() {
         let sheet = Sheet::new("S");
-        let objects = read_drawing(&sheet, DRAWING, &[], "xl/drawings/drawing1.xml");
+        let objects = read_drawing(DRAWING, &[], "xl/drawings/drawing1.xml");
         assert_eq!(objects.len(), 1);
         let o = &objects[0];
         assert_eq!((o.id, o.name.as_str(), o.descr.as_str()), (4, "Rect1", "A box"));
@@ -343,6 +336,6 @@ mod tests {
     #[test]
     fn a_chart_anchor_is_not_an_object() {
         let xml = "<xdr:wsDr xmlns:xdr=\"x\"><xdr:twoCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:graphicFrame><xdr:nvGraphicFramePr><xdr:cNvPr id=\"2\" name=\"Chart 1\"/></xdr:nvGraphicFramePr><a:graphic xmlns:a=\"a\"><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"/></a:graphic></xdr:graphicFrame></xdr:twoCellAnchor></xdr:wsDr>";
-        assert!(read_drawing(&Sheet::new("S"), xml, &[], "p").is_empty());
+        assert!(read_drawing(xml, &[], "p").is_empty());
     }
 }

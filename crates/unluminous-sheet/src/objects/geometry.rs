@@ -64,13 +64,26 @@ impl Rect {
 
 /// A column's width in pixels as Excel lays it out.
 fn column_pixels(sheet: &Sheet, col: u32) -> i64 {
+    let per_character = if sheet.drawing.char_px > 0.0 { sheet.drawing.char_px } else { 7.0 };
+    let default = match sheet.default_col_width {
+        Some(w) => w * per_character,
+        // A column nothing sets is 72 pixels with Aptos Narrow and 64 with Calibri.
+        None if per_character >= 8.0 => 72.0,
+        None => DEFAULT_COLUMN_CHARACTERS * per_character,
+    };
     match sheet.column(col) {
         Some(info) if info.hidden => 0,
-        Some(info) => {
-            (info.width.or(sheet.default_col_width).unwrap_or(DEFAULT_COLUMN_CHARACTERS) * 7.0)
-                .round() as i64
-        }
-        None => (sheet.default_col_width.unwrap_or(DEFAULT_COLUMN_CHARACTERS) * 7.0).round() as i64,
+        Some(info) => info.width.map_or(default, |w| w * per_character).round() as i64,
+        None => default.round() as i64,
+    }
+}
+
+/// Record, on every sheet, how many pixels a character of the workbook's default font is wide, which the
+/// positions of objects depend on.
+pub fn set_metrics(book: &mut crate::model::Workbook) {
+    let per_character = crate::ods::pixels_per_character(book);
+    for sheet in &mut book.sheets {
+        sheet.drawing.char_px = per_character;
     }
 }
 

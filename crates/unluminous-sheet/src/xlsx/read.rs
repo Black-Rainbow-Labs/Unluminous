@@ -241,6 +241,7 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
     }
     crate::pivot::xml::attach(&mut book);
     // Formulas read from a file are computed once now, except the ones that cannot be.
+    crate::objects::geometry::set_metrics(&mut book);
     Ok(book)
 }
 
@@ -1339,7 +1340,7 @@ pub(crate) fn read_drawing_objects(
     let drawing_part = resolve(sheet_part, target);
     let Some(xml) = text(&drawing_part) else { return };
     let rels = parse_rels(&text(&rels_path(&drawing_part)).unwrap_or_default());
-    let objects = crate::objects::read::read_drawing(sheet, &xml, &rels, &drawing_part);
+    let objects = crate::objects::read::read_drawing(&xml, &rels, &drawing_part);
     sheet.drawing.objects.extend(objects);
 }
 

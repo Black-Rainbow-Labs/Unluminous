@@ -14,6 +14,10 @@ mod cellstyles;
 mod protect;
 mod theme;
 mod whatif;
+mod objects;
+mod sparklines;
+pub use objects::{Alignment, Distribution, TextFormat, ZOrder};
+pub use sparklines::SparklinePoints;
 
 pub use protect::Guard;
 pub(crate) mod datatools;

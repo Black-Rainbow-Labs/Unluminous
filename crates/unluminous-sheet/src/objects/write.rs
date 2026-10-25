@@ -87,7 +87,9 @@ fn wrap_in_anchor(obj: &DrawingObject) -> Elem {
     };
     let mut anchor = Elem::new(&format!("{p}{local}"));
     write_anchor(&mut anchor, &obj.anchor);
-    anchor.push(obj.tree.clone());
+    let mut tree = obj.tree.clone();
+    tree.attrs.retain(|(n, v)| !((n == "xmlns:xdr" && v == SPREADSHEET_DRAWING_NS) || (n == "xmlns:a" && v == DRAWING_NS)));
+    anchor.push(tree);
     let mut client = Elem::new(&format!("{p}clientData"));
     if !obj.locked {
         client.set_attr("fLocksWithSheet", "0");
@@ -160,6 +162,11 @@ fn sync_sheet(book: &mut Workbook, index: usize) {
         .get(&part)
         .and_then(|b| xmltree::parse(&String::from_utf8_lossy(b)))
         .unwrap_or_else(empty_drawing);
+    for (n, uri) in [("xmlns:xdr", SPREADSHEET_DRAWING_NS), ("xmlns:a", DRAWING_NS)] {
+        if root.attr(n).is_none() {
+            root.set_attr(n, uri);
+        }
+    }
     let sheet = &book.sheets[index];
     let mut made: Vec<Elem> = sheet
         .drawing

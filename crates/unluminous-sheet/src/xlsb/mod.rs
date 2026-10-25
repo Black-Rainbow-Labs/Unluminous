@@ -128,6 +128,7 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
             book.kept.legacy.push((entry.name.clone(), Arc::new(entry.data.clone())));
         }
     }
+    crate::objects::geometry::set_metrics(&mut book);
     Ok(book)
 }
 

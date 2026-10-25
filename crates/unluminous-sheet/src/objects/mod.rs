@@ -13,6 +13,7 @@
 //! and 3D models are kept as they are and located by their anchor.
 
 pub mod geometry;
+pub mod make;
 pub mod props;
 pub mod read;
 pub mod sparkline;
@@ -498,32 +499,26 @@ pub struct DrawingObject {
 }
 
 impl DrawingObject {
-    /// The rectangle the object's anchor covers on a sheet. For a turned object that is the box round the
-    /// turned shape.
-    pub fn bounds(&self, sheet: &Sheet) -> Rect {
+    /// The object's own frame before it is turned about its centre, which is what the anchor covers
+    /// (Excel's Left, Top, Width and Height).
+    pub fn frame_rect(&self, sheet: &Sheet) -> Rect {
         self.anchor.rect(sheet)
     }
 
-    /// The object's own frame before it is turned about its centre.
-    pub fn frame_rect(&self, sheet: &Sheet) -> Rect {
-        let bounds = self.anchor.rect(sheet);
+    /// The box round the object as it is drawn, turned.
+    pub fn bounds(&self, sheet: &Sheet) -> Rect {
+        let frame = self.frame_rect(sheet);
         if self.rotation.rem_euclid(360.0) == 0.0 {
-            return bounds;
-        }
-        let (cx, cy) = bounds.centre();
-        let (w, h) = self.frame_size;
-        Rect::new((cx - w as f64 / 2.0).round() as i64, (cy - h as f64 / 2.0).round() as i64, w, h)
-    }
-
-    /// Put the object's own frame at a rectangle; the anchor covers the frame turned by the rotation.
-    pub fn set_frame(&mut self, sheet: &Sheet, frame: Rect) {
-        self.frame_size = (frame.w, frame.h);
-        let bounds = if self.rotation.rem_euclid(360.0) == 0.0 {
             frame
         } else {
             frame.rotated_bounds(self.rotation)
-        };
-        self.anchor.set_rect(sheet, bounds);
+        }
+    }
+
+    /// Put the object's frame at a rectangle.
+    pub fn set_frame(&mut self, sheet: &Sheet, frame: Rect) {
+        self.frame_size = (frame.w, frame.h);
+        self.anchor.set_rect(sheet, frame);
     }
 
     /// Whether the object is a picture or shape this version can draw from its own data.
@@ -536,6 +531,8 @@ impl DrawingObject {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Drawing {
     pub objects: Vec<DrawingObject>,
+    /// Pixels a character of the default font is wide (7 for Calibri, 8 for Aptos Narrow), which positions depend on; 0 until known.
+    pub char_px: f64,
     /// The drawing part is written again from `objects` when this is set.
     pub changed: bool,
 }
