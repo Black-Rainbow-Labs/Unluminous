@@ -341,11 +341,11 @@ fn every_function_has_five_oracle_cases() {
             }
         }
     }
-    let short: Vec<String> =
-        cases
-            .iter()
-            .filter(|(name, n)| **n < 5 && !NO_EXCEL_ANSWER.iter().any(|(f, _)| f == *name))
-            .map(|(name, n)| format!("{name} ({n})")).collect();
+    let short: Vec<String> = cases
+        .iter()
+        .filter(|(name, n)| **n < 5 && !NO_EXCEL_ANSWER.iter().any(|(f, _)| f == *name))
+        .map(|(name, n)| format!("{name} ({n})"))
+        .collect();
     assert!(
         short.is_empty(),
         "{} functions have fewer than five oracle cases: {}",

@@ -25,6 +25,7 @@
 
 pub mod calc;
 pub mod cfb;
+pub mod conditional;
 pub mod coord;
 pub mod dates;
 pub mod edit;
@@ -39,6 +40,7 @@ pub mod json;
 pub mod model;
 pub mod numfmt;
 pub mod ods;
+pub mod outline;
 pub mod pages;
 pub mod pivot;
 pub mod refshift;

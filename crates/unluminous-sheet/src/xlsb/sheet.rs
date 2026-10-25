@@ -580,6 +580,12 @@ fn begin_rule(data: &[u8], ctx: &Context, state: &State) -> Option<RuleInProgres
         data_bar: None,
         attrs: Vec::new(),
         raw_children: String::new(),
+        std_dev: None,
+        equal_average: false,
+        time_period: None,
+        icon_set: None,
+        data_bar_options: None,
+        x14: None,
     };
     Some(RuleInProgress {
         rule,
@@ -632,6 +638,7 @@ fn end_rule(state: &mut State) {
     } else if let Some((index, flags)) = work.percent_icon {
         work.rule.kind = "iconSet".to_owned();
         work.rule.raw_children = icon_set_xml(index, flags, &work.thresholds);
+        crate::xlsx::cf::lift_icon_set(&mut work.rule);
     } else if work.kind == 1 {
         work.rule.kind = "cellIs".to_owned();
     } else if !work.rule.formulas.is_empty() {

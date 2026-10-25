@@ -477,7 +477,7 @@ impl<'a> Writer<'a> {
         out.push_str(XML_HEAD);
         out.push_str(&format!("<worksheet{}>", namespaces_text(&namespaces, MAIN_NS)));
         // sheetPr, with the tab colour written into it.
-        let sheet_pr_xml = sheet_pr(&raw("sheetPr"), sheet.tab_color, &book.styles.theme);
+        let sheet_pr_xml = sheet_pr(&raw("sheetPr"), sheet.tab_color, &sheet.outline);
         out.push_str(&crate::pages::xml::with_page_set_up_pr(&sheet_pr_xml, &sheet.page));
         let dimension = sheet.used_range().map_or("A1".to_owned(), |r| r.a1());
         out.push_str(&format!("<dimension ref=\"{dimension}\"/>"));
@@ -488,6 +488,13 @@ impl<'a> Writer<'a> {
             format_attrs.push(("defaultColWidth".to_owned(), number_text(w)));
         }
         format_attrs.extend(sheet.raw.format_attrs.iter().cloned());
+        let (row_depth, column_depth) = deepest_outline(sheet);
+        if row_depth > 0 {
+            format_attrs.push(("outlineLevelRow".to_owned(), row_depth.to_string()));
+        }
+        if column_depth > 0 {
+            format_attrs.push(("outlineLevelCol".to_owned(), column_depth.to_string()));
+        }
         out.push_str(&format!("<sheetFormatPr{}/>", attrs_text(&format_attrs)));
         if !sheet.columns.is_empty() {
             out.push_str("<cols>");
@@ -543,8 +550,8 @@ impl<'a> Writer<'a> {
             out.push_str("</mergeCells>");
         }
         out.push_str(&raw("phoneticPr"));
-        for cf in &sheet.conditional {
-            out.push_str(&conditional(cf, &book.styles.theme));
+        for (index, cf) in sheet.conditional.iter().enumerate() {
+            out.push_str(&super::cf::write_main(cf, &sheet.name, index));
         }
         if !sheet.validations.is_empty() {
             out.push_str(&format!("<dataValidations count=\"{}\">", sheet.validations.len()));
@@ -764,7 +771,10 @@ impl<'a> Writer<'a> {
             }
             out.push_str("</tableParts>");
         }
-        out.push_str(&raw("extLst"));
+        out.push_str(&extension_list(
+            &raw("extLst"),
+            &super::cf::write_extension(sheet, &book.styles),
+        ));
         out.push_str("</worksheet>");
         Ok((out, rels))
     }
@@ -1043,7 +1053,7 @@ fn rich_text_of(raw: &str) -> String {
     unescape_office(&text)
 }
 
-fn color_attrs(c: &Color) -> String {
+pub(super) fn color_attrs(c: &Color) -> String {
     match c {
         Color::Auto => " auto=\"1\"".to_owned(),
         Color::Rgb(argb) => format!(" rgb=\"{argb:08X}\""),
@@ -1058,33 +1068,71 @@ fn color_attrs(c: &Color) -> String {
     }
 }
 
-fn sheet_pr(raw: &str, tab: Option<Color>, _theme: &[u32]) -> String {
-    let tab_xml = tab.map(|c| format!("<tabColor{}/>", color_attrs(&c))).unwrap_or_default();
-    if raw.is_empty() {
-        return if tab_xml.is_empty() {
-            String::new()
-        } else {
-            format!("<sheetPr>{tab_xml}</sheetPr>")
-        };
+/// The `outlinePr` element for settings that differ from Excel's, or nothing when none does.
+fn outline_pr(outline: &OutlineSettings) -> String {
+    let mut a = String::new();
+    if outline.apply_styles {
+        a.push_str(" applyStyles=\"1\"");
     }
-    // Take out any tab colour, then put the current one first.
-    let mut body = raw.to_owned();
-    while let Some(start) = body.find("<tabColor") {
+    if !outline.summary_below {
+        a.push_str(" summaryBelow=\"0\"");
+    }
+    if !outline.summary_right {
+        a.push_str(" summaryRight=\"0\"");
+    }
+    if !outline.show_symbols {
+        a.push_str(" showOutlineSymbols=\"0\"");
+    }
+    if a.is_empty() {
+        String::new()
+    } else {
+        format!("<outlinePr{a}/>")
+    }
+}
+
+/// Remove every element named `name` (written `<name .../>`) from the XML of `sheetPr`.
+fn strip_empty_element(body: &mut String, name: &str) {
+    let open = format!("<{name}");
+    while let Some(start) = body.find(&open) {
         let end = body[start..].find("/>").map(|e| start + e + 2).unwrap_or(body.len());
         body.replace_range(start..end, "");
     }
-    if tab_xml.is_empty() {
-        return body;
+}
+
+/// `sheetPr` with the tab colour and the outline settings written into it, in the order the schema has them.
+fn sheet_pr(raw: &str, tab: Option<Color>, outline: &OutlineSettings) -> String {
+    let tab_xml = tab.map(|c| format!("<tabColor{}/>", color_attrs(&c))).unwrap_or_default();
+    let inner = format!("{tab_xml}{}", outline_pr(outline));
+    if raw.is_empty() {
+        return if inner.is_empty() {
+            String::new()
+        } else {
+            format!("<sheetPr>{inner}</sheetPr>")
+        };
+    }
+    // Take out any tab colour and outline settings, then put the current ones first.
+    let mut body = raw.to_owned();
+    strip_empty_element(&mut body, "tabColor");
+    strip_empty_element(&mut body, "outlinePr");
+    if inner.is_empty() {
+        return if body == "<sheetPr></sheetPr>" { String::new() } else { body };
     }
     if let Some(stripped) = body.strip_suffix("/>") {
         if !stripped.contains('>') {
-            return format!("{stripped}>{tab_xml}</sheetPr>");
+            return format!("{stripped}>{inner}</sheetPr>");
         }
     }
     match body.find('>') {
-        Some(gt) => format!("{}{}{}", &body[..=gt], tab_xml, &body[gt + 1..]),
+        Some(gt) => format!("{}{}{}", &body[..=gt], inner, &body[gt + 1..]),
         None => body,
     }
+}
+
+/// The deepest outline level of the rows and of the columns, which `sheetFormatPr` states.
+fn deepest_outline(sheet: &Sheet) -> (u8, u8) {
+    let rows = sheet.rows.values().map(|r| r.outline).max().unwrap_or(0);
+    let columns = sheet.columns.iter().map(|c| c.outline).max().unwrap_or(0);
+    (rows, columns)
 }
 
 fn sheet_views(sheet: &Sheet, selected: bool) -> String {
@@ -1276,73 +1324,15 @@ fn auto_filter(filter: &AutoFilter) -> String {
     out
 }
 
-fn conditional(cf: &ConditionalFormat, _theme: &[u32]) -> String {
-    let sqref: Vec<String> = cf.ranges.iter().map(Range::a1).collect();
-    let mut out = format!("<conditionalFormatting sqref=\"{}\">", sqref.join(" "));
-    for rule in &cf.rules {
-        let mut a = vec![("type".to_owned(), rule.kind.clone())];
-        if let Some(d) = rule.dxf {
-            a.push(("dxfId".to_owned(), d.to_string()));
-        }
-        a.push(("priority".to_owned(), rule.priority.to_string()));
-        if rule.stop {
-            a.push(("stopIfTrue".to_owned(), "1".to_owned()));
-        }
-        if let Some(above) = rule.above_average {
-            if !above {
-                a.push(("aboveAverage".to_owned(), "0".to_owned()));
-            }
-        }
-        if rule.percent {
-            a.push(("percent".to_owned(), "1".to_owned()));
-        }
-        if rule.bottom {
-            a.push(("bottom".to_owned(), "1".to_owned()));
-        }
-        if let Some(op) = &rule.operator {
-            a.push(("operator".to_owned(), op.clone()));
-        }
-        if let Some(t) = &rule.text {
-            a.push(("text".to_owned(), t.clone()));
-        }
-        if let Some(r) = rule.rank {
-            a.push(("rank".to_owned(), r.to_string()));
-        }
-        a.extend(rule.attrs.iter().cloned());
-        out.push_str(&format!("<cfRule{}>", attrs_text(&a)));
-        for f in &rule.formulas {
-            out.push_str(&format!("<formula>{}</formula>", escape(f)));
-        }
-        let cfvo = |c: &Cfvo| {
-            format!(
-                "<cfvo type=\"{}\"{}/>",
-                escape(&c.kind),
-                c.value.as_ref().map(|v| format!(" val=\"{}\"", escape(v))).unwrap_or_default()
-            )
-        };
-        if let Some(scale) = &rule.color_scale {
-            out.push_str("<colorScale>");
-            for (c, _) in scale {
-                out.push_str(&cfvo(c));
-            }
-            for (_, color) in scale {
-                out.push_str(&format!("<color{}/>", color_attrs(color)));
-            }
-            out.push_str("</colorScale>");
-        }
-        if let Some((lo, hi, color)) = &rule.data_bar {
-            out.push_str(&format!(
-                "<dataBar>{}{}<color{}/></dataBar>",
-                cfvo(lo),
-                cfvo(hi),
-                color_attrs(color)
-            ));
-        }
-        out.push_str(&rule.raw_children);
-        out.push_str("</cfRule>");
+/// The worksheet's `extLst`: the extensions that were kept, with the conditional formats' extension added.
+fn extension_list(kept: &str, conditional: &str) -> String {
+    if conditional.is_empty() {
+        return kept.to_owned();
     }
-    out.push_str("</conditionalFormatting>");
-    out
+    if kept.is_empty() {
+        return format!("<extLst>{conditional}</extLst>");
+    }
+    kept.replacen("<extLst>", &format!("<extLst>{conditional}"), 1)
 }
 
 fn validation(v: &Validation) -> String {

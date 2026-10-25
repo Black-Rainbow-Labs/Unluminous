@@ -199,6 +199,12 @@ fn add_conditional(session: &mut Session, c: &J) {
         data_bar: None,
         attrs: Vec::new(),
         raw_children: String::new(),
+        std_dev: None,
+        equal_average: false,
+        time_period: None,
+        icon_set: None,
+        data_bar_options: None,
+        x14: None,
     };
     session.add_conditional(sheet, vec![range], rule).unwrap();
 }
