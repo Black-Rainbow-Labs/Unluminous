@@ -393,7 +393,10 @@ pub struct Validation {
 }
 
 /// A chart drawn on a sheet, read from its drawing and chart parts.
-#[derive(Debug, Clone, PartialEq)]
+///
+/// `kind`, `title` and `series` are what most code uses; `spec` holds the rest (groups, axes, legend,
+/// labels, trendlines) and each series' `fmt` its formatting.
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Chart {
     /// Where it sits: the top left and bottom right cells, with offsets in EMUs.
     pub from: (CellRef, i64, i64),
@@ -405,10 +408,12 @@ pub struct Chart {
     pub part: String,
     /// Made in this session rather than read: written as new drawing and chart parts.
     pub new: bool,
+    pub spec: crate::chartspec::ChartSpec,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ChartKind {
+    #[default]
     Column,
     Bar,
     Line,
@@ -457,12 +462,18 @@ pub struct Picture {
     pub part: String,
 }
 
-/// One series of a chart: formulas for its name, categories and values.
-#[derive(Debug, Clone, PartialEq)]
+/// One series of a chart: formulas for its name, categories and values. A scatter or bubble series keeps
+/// its X values in `categories`.
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ChartSeries {
     pub name: Option<String>,
     pub categories: Option<String>,
     pub values: String,
+    /// A bubble series' sizes.
+    pub sizes: Option<String>,
+    /// Which of the spec's groups draws the series.
+    pub group: usize,
+    pub fmt: crate::chartspec::SeriesFormat,
 }
 
 /// A sheet.

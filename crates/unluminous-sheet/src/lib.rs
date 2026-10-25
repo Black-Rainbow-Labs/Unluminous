@@ -23,6 +23,8 @@
 )]
 
 pub mod calc;
+pub mod chartspec;
+pub mod charttype;
 pub mod coord;
 pub mod dates;
 pub mod edit;
