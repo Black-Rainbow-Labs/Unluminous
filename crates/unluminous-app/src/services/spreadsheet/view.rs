@@ -289,6 +289,8 @@ pub struct View {
     pub sheet_menu: Option<(usize, egui::Pos2)>,
     /// The list under a filter button: its column and where it opened.
     pub filter_menu: Option<(u32, egui::Pos2)>,
+    /// The Sort popup's levels, trace arrows, the Evaluate Formula stepper and the review panels.
+    pub audit: super::view_a::AuditState,
     /// The chart chosen with a click, by its place in the sheet's list.
     pub chart: Option<usize>,
     /// The list under a cell with a list rule, opened with its arrow or Alt+Down.
@@ -350,6 +352,7 @@ impl Default for View {
             renaming: None,
             sheet_menu: None,
             filter_menu: None,
+            audit: Default::default(),
             chart: None,
             choices: false,
             reveal: false,
