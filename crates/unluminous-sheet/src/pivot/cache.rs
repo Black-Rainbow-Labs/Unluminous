@@ -414,8 +414,8 @@ impl PivotCache {
                         .items
                         .iter()
                         .any(|v| crate::pivot::group::item_text(v) == y.to_string());
-                    if !named && !missing.contains(&(y as i64)) {
-                        missing.push(y as i64);
+                    if !named && !missing.contains(&y) {
+                        missing.push(y);
                     }
                 }
             }
