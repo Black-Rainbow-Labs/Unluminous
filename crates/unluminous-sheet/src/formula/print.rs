@@ -59,6 +59,10 @@ impl Printer {
             Expr::Name(n) => {
                 if self.for_file && self.is_param(n) {
                     out.push_str("_xlpm.");
+                } else if self.for_file && crate::functions::find(&n.to_ascii_uppercase()).is_some()
+                {
+                    // A function named where a value goes, such as the SUM in `GROUPBY(A:A,B:B,SUM)`.
+                    out.push_str("_xleta.");
                 }
                 out.push_str(n);
             }
@@ -88,6 +92,9 @@ impl Printer {
                 if wrap {
                     out.push(')');
                 }
+            }
+            Expr::Call(name, args) if !self.for_file && trim_operator(name, args).is_some() => {
+                out.push_str(&trim_operator(name, args).unwrap_or_default());
             }
             Expr::Call(name, args) => {
                 if self.for_file {
@@ -169,6 +176,29 @@ impl Printer {
             }
         }
     }
+}
+
+/// A range trimmed by one of the operators, written as the formula bar writes it: `B1.:B9`, `B1:.B9`, `B1.:.B9`.
+fn trim_operator(name: &str, args: &[Expr]) -> Option<String> {
+    let (leading, trailing) = match name {
+        "_TRO_ALL" => (true, true),
+        "_TRO_LEADING" => (true, false),
+        "_TRO_TRAILING" => (false, true),
+        _ => return None,
+    };
+    let [Expr::Ref(r)] = args else { return None };
+    if r.shape == Shape::Cell {
+        return None;
+    }
+    let text = reference(r);
+    let colon = text.rfind(':')?;
+    let (head, tail) = text.split_at(colon);
+    Some(format!(
+        "{head}{}:{}{}",
+        if leading { "." } else { "" },
+        if trailing { "." } else { "" },
+        &tail[1..]
+    ))
 }
 
 /// The parameter names a LET or a LAMBDA binds, upper case.
@@ -303,6 +333,25 @@ pub fn file_prefix(name: &str) -> &'static str {
 
 /// Functions added after Excel 2007, which a file writes with `_xlfn.`.
 pub const FUTURE_FUNCTIONS: &[&str] = &[
+    "_TRO_ALL",
+    "_TRO_LEADING",
+    "_TRO_TRAILING",
+    "COPILOT",
+    "DETECTLANGUAGE",
+    "ENCODEURL",
+    "FILTERXML",
+    "GROUPBY",
+    "IMAGE",
+    "PERCENTOF",
+    "PIVOTBY",
+    "PY",
+    "REGEXEXTRACT",
+    "REGEXREPLACE",
+    "REGEXTEST",
+    "STOCKHISTORY",
+    "TRANSLATE",
+    "TRIMRANGE",
+    "WEBSERVICE",
     "ACOT",
     "ACOTH",
     "AGGREGATE",
@@ -354,6 +403,10 @@ pub const FUTURE_FUNCTIONS: &[&str] = &[
     "F.TEST",
     "FLOOR.MATH",
     "FLOOR.PRECISE",
+    "FORECAST.ETS",
+    "FORECAST.ETS.CONFINT",
+    "FORECAST.ETS.SEASONALITY",
+    "FORECAST.ETS.STAT",
     "FORECAST.LINEAR",
     "FORMULATEXT",
     "GAMMA",
@@ -362,6 +415,7 @@ pub const FUTURE_FUNCTIONS: &[&str] = &[
     "GAMMALN.PRECISE",
     "GAUSS",
     "HSTACK",
+    "HYPGEOM.DIST",
     "IFNA",
     "IFS",
     "IMCOSH",

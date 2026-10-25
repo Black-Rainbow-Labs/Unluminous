@@ -103,6 +103,14 @@ impl<'a> Writer<'a> {
         // Sheet parts first, so the workbook knows their relationship ids and paths.
         let mut sheet_parts: Vec<(String, String, String)> = Vec::new(); // (rel id, part, rel type)
         let mut workbook_rels: Vec<Relationship> = book.kept.workbook_rels.clone();
+        // A sheet made in this session gets a part name no existing sheet uses, wherever it sits among them.
+        for sheet in &book.sheets {
+            let existing =
+                sheet.kept_part.as_ref().map_or(sheet.raw.part.as_str(), |k| k.part.as_str());
+            if !existing.is_empty() {
+                self.taken.insert(existing.to_owned());
+            }
+        }
         for (index, sheet) in book.sheets.iter().enumerate() {
             if let Some(kept) = &sheet.kept_part {
                 let id = next_id(&workbook_rels);
@@ -396,6 +404,7 @@ impl<'a> Writer<'a> {
         if !book.calc.automatic {
             calc.push(("calcMode".to_owned(), "manual".to_owned()));
         }
+        calc.extend(iteration_attributes(&book.calc));
         out.push_str(&format!("<calcPr{}/>", attrs_text(&calc)));
         for name in [
             "oleSize",
@@ -416,8 +425,20 @@ impl<'a> Writer<'a> {
 
     /// The names, with a hidden `_xlnm._FilterDatabase` for each sheet that has a filter.
     fn defined_names(&self) -> Vec<DefinedName> {
-        let mut names: Vec<DefinedName> =
-            self.book.names.iter().filter(|n| n.name != "_xlnm._FilterDatabase").cloned().collect();
+        // A sheet with filter buttons gets its `_FilterDatabase` from the filter; one with an Advanced Filter
+        // keeps the name it was given, since nothing else says where its list is.
+        let mut names: Vec<DefinedName> = self
+            .book
+            .names
+            .iter()
+            .filter(|n| {
+                n.name != "_xlnm._FilterDatabase"
+                    || n.scope
+                        .and_then(|s| self.book.sheets.get(s))
+                        .is_none_or(|s| s.filter.is_none())
+            })
+            .cloned()
+            .collect();
         for (i, sheet) in self.book.sheets.iter().enumerate() {
             if let Some(filter) = &sheet.filter {
                 let range = filter.range;
@@ -476,7 +497,8 @@ impl<'a> Writer<'a> {
         out.push_str(XML_HEAD);
         out.push_str(&format!("<worksheet{}>", namespaces_text(&namespaces, MAIN_NS)));
         // sheetPr, with the tab colour written into it.
-        out.push_str(&sheet_pr(&raw("sheetPr"), sheet.tab_color, &book.styles.theme));
+        let sheet_pr_xml = sheet_pr(&raw("sheetPr"), sheet.tab_color, &sheet.outline);
+        out.push_str(&crate::pages::xml::with_page_set_up_pr(&sheet_pr_xml, &sheet.page));
         let dimension = sheet.used_range().map_or("A1".to_owned(), |r| r.a1());
         out.push_str(&format!("<dimension ref=\"{dimension}\"/>"));
         out.push_str(&sheet_views(sheet, index == book.active_sheet));
@@ -486,6 +508,13 @@ impl<'a> Writer<'a> {
             format_attrs.push(("defaultColWidth".to_owned(), number_text(w)));
         }
         format_attrs.extend(sheet.raw.format_attrs.iter().cloned());
+        let (row_depth, column_depth) = deepest_outline(sheet);
+        if row_depth > 0 {
+            format_attrs.push(("outlineLevelRow".to_owned(), row_depth.to_string()));
+        }
+        if column_depth > 0 {
+            format_attrs.push(("outlineLevelCol".to_owned(), column_depth.to_string()));
+        }
         out.push_str(&format!("<sheetFormatPr{}/>", attrs_text(&format_attrs)));
         if !sheet.columns.is_empty() {
             out.push_str("<cols>");
@@ -541,8 +570,8 @@ impl<'a> Writer<'a> {
             out.push_str("</mergeCells>");
         }
         out.push_str(&raw("phoneticPr"));
-        for cf in &sheet.conditional {
-            out.push_str(&conditional(cf, &book.styles.theme));
+        for (index, cf) in sheet.conditional.iter().enumerate() {
+            out.push_str(&super::cf::write_main(cf, &sheet.name, index));
         }
         if !sheet.validations.is_empty() {
             out.push_str(&format!("<dataValidations count=\"{}\">", sheet.validations.len()));
@@ -597,11 +626,12 @@ impl<'a> Writer<'a> {
             "ignoredErrors",
             "smartTags",
         ] {
-            out.push_str(&raw(name));
-            // A sheet with no margins gets Excel's default ones, in their place in the schema's order: before
-            // `pageSetup` and before the drawing, or Excel refuses the file.
-            if name == "pageMargins" && sheet.page_margins_missing() {
-                out.push_str("<pageMargins left=\"0.7\" right=\"0.7\" top=\"0.75\" bottom=\"0.75\" header=\"0.3\" footer=\"0.3\"/>");
+            // The page setup elements come from the model, which writes margins on every sheet, as Excel does.
+            let modelled = crate::pages::xml::write_element(&sheet.page, name, &r);
+            if modelled.is_empty() {
+                out.push_str(&raw(name));
+            } else {
+                out.push_str(&modelled);
             }
         }
         // The drawing: kept as it was, with the charts made here added to it, or a new one holding them.
@@ -761,7 +791,10 @@ impl<'a> Writer<'a> {
             }
             out.push_str("</tableParts>");
         }
-        out.push_str(&raw("extLst"));
+        out.push_str(&extension_list(
+            &raw("extLst"),
+            &super::cf::write_extension(sheet, &book.styles),
+        ));
         out.push_str("</worksheet>");
         Ok((out, rels))
     }
@@ -845,17 +878,8 @@ impl<'a> Writer<'a> {
             Value::Empty => (None, None),
             Value::Number(n) => (None, Some(number_text(*n))),
             Value::Bool(b) => (Some("b"), Some(if *b { "1" } else { "0" }.to_owned())),
-            // The newer errors are written as #VALUE!, which is what Excel writes beside the rich value that
-            // carries the real one; Excel works the real one out again when it calculates.
-            Value::Error(e) => (
-                Some("e"),
-                Some(match e {
-                    crate::value::ErrorKind::Spill
-                    | crate::value::ErrorKind::Calc
-                    | crate::value::ErrorKind::GettingData => "#VALUE!".to_owned(),
-                    other => other.text().to_owned(),
-                }),
-            ),
+            // The newer errors are written the way Excel can read them back: see `ErrorKind::file_text`.
+            Value::Error(e) => (Some("e"), Some(e.file_text().to_owned())),
             Value::Text(t) => {
                 if cell.formula.is_some() || spilled {
                     (Some("str"), Some(escape(t)))
@@ -905,6 +929,11 @@ impl<'a> Writer<'a> {
                 out.push_str(&format!("<f{kept}>{}</f>", escape(&text)));
             }
         }
+        if cell.formula.is_none() {
+            if let Some(t) = sheet.data_tables.iter().find(|t| t.range.first == at) {
+                out.push_str(&data_table_xml(t));
+            }
+        }
         if let Some(v) = value_text {
             out.push_str(&format!("<v>{v}</v>"));
         }
@@ -912,7 +941,43 @@ impl<'a> Writer<'a> {
     }
 }
 
+/// The `f` element of a What If data table, written on its first results cell.
+fn data_table_xml(t: &DataTable) -> String {
+    let mut a = vec![("t".to_owned(), "dataTable".to_owned()), ("ref".to_owned(), t.range.a1())];
+    if t.two_d {
+        a.push(("dt2D".to_owned(), "1".to_owned()));
+    }
+    if t.row_input {
+        a.push(("dtr".to_owned(), "1".to_owned()));
+    }
+    for (k, c) in [("r1", t.r1), ("r2", t.r2)] {
+        if let Some(c) = c {
+            a.push((k.to_owned(), c.a1()));
+        }
+    }
+    a.extend(t.attrs.iter().cloned());
+    format!("<f{}/>", attrs_text(&a))
+}
+
 /// Whether a dynamic formula is written as a dynamic array: when it spilled or could return an array.
+/// The `calcPr` attributes for iteration and precision, written only where they differ from Excel's own.
+fn iteration_attributes(calc: &CalcSettings) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    if calc.iterate {
+        out.push(("iterate".to_owned(), "1".to_owned()));
+    }
+    if calc.iterate_count != DEFAULT_ITERATE_COUNT {
+        out.push(("iterateCount".to_owned(), calc.iterate_count.to_string()));
+    }
+    if calc.iterate_delta != DEFAULT_ITERATE_DELTA {
+        out.push(("iterateDelta".to_owned(), number_text(calc.iterate_delta)));
+    }
+    if !calc.full_precision {
+        out.push(("fullPrecision".to_owned(), "0".to_owned()));
+    }
+    out
+}
+
 fn is_dynamic_shape(f: &crate::formula::Formula) -> bool {
     let mut arrayish = false;
     f.expr.walk(&mut |e| match e {
@@ -931,6 +996,10 @@ fn is_dynamic_shape(f: &crate::formula::Formula) -> bool {
 
 /// Functions that return an array with no range among their arguments.
 const ARRAY_FUNCTIONS: &[&str] = &[
+    "FILTERXML",
+    "GROUPBY",
+    "PIVOTBY",
+    "REGEXEXTRACT",
     "SEQUENCE",
     "RANDARRAY",
     "MUNIT",
@@ -943,17 +1012,6 @@ const ARRAY_FUNCTIONS: &[&str] = &[
     "MMULT",
     "TRANSPOSE",
 ];
-
-trait PageMargins {
-    fn page_margins_missing(&self) -> bool;
-}
-
-impl PageMargins for Sheet {
-    /// Excel writes page margins on every sheet; a sheet made here gets the defaults.
-    fn page_margins_missing(&self) -> bool {
-        !self.raw.elements.iter().any(|(n, _)| n == "pageMargins")
-    }
-}
 
 /// Whether a chart's categories are words rather than numbers, which decides how the file names them.
 fn categories_are_text(book: &Workbook, formula: &str) -> bool {
@@ -986,6 +1044,34 @@ pub fn number_text(n: f64) -> String {
     }
 }
 
+/// A number with up to 17 significant digits and no trailing zeros, which is how Excel writes the threshold it
+/// works out for a filter: 4.65 is `4.6500000000000004` and 7.5 is `7.5`.
+pub(crate) fn full_precision(n: f64) -> String {
+    if n == 0.0 || !n.is_finite() {
+        return number_text(n);
+    }
+    let exact = format!("{:.16e}", n);
+    let (mantissa, exponent) = exact.split_once('e').unwrap_or((&exact, "0"));
+    let exponent: i32 = exponent.parse().unwrap_or(0);
+    let negative = mantissa.starts_with('-');
+    let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
+    let digits = digits.trim_end_matches('0');
+    let digits = if digits.is_empty() { "0" } else { digits };
+    let point = exponent + 1;
+    let body = if point <= 0 {
+        format!("0.{}{}", "0".repeat((-point) as usize), digits)
+    } else if (point as usize) >= digits.len() {
+        format!("{}{}", digits, "0".repeat(point as usize - digits.len()))
+    } else {
+        format!("{}.{}", &digits[..point as usize], &digits[point as usize..])
+    };
+    if negative {
+        format!("-{body}")
+    } else {
+        body
+    }
+}
+
 /// A shared string item from the XML a rich string was read with, which was an `si` or an `is`.
 fn rich_si(raw: &str) -> String {
     let trimmed = raw.trim();
@@ -1015,7 +1101,7 @@ fn rich_text_of(raw: &str) -> String {
     unescape_office(&text)
 }
 
-fn color_attrs(c: &Color) -> String {
+pub(super) fn color_attrs(c: &Color) -> String {
     match c {
         Color::Auto => " auto=\"1\"".to_owned(),
         Color::Rgb(argb) => format!(" rgb=\"{argb:08X}\""),
@@ -1030,33 +1116,71 @@ fn color_attrs(c: &Color) -> String {
     }
 }
 
-fn sheet_pr(raw: &str, tab: Option<Color>, _theme: &[u32]) -> String {
-    let tab_xml = tab.map(|c| format!("<tabColor{}/>", color_attrs(&c))).unwrap_or_default();
-    if raw.is_empty() {
-        return if tab_xml.is_empty() {
-            String::new()
-        } else {
-            format!("<sheetPr>{tab_xml}</sheetPr>")
-        };
+/// The `outlinePr` element for settings that differ from Excel's, or nothing when none does.
+fn outline_pr(outline: &OutlineSettings) -> String {
+    let mut a = String::new();
+    if outline.apply_styles {
+        a.push_str(" applyStyles=\"1\"");
     }
-    // Take out any tab colour, then put the current one first.
-    let mut body = raw.to_owned();
-    while let Some(start) = body.find("<tabColor") {
+    if !outline.summary_below {
+        a.push_str(" summaryBelow=\"0\"");
+    }
+    if !outline.summary_right {
+        a.push_str(" summaryRight=\"0\"");
+    }
+    if !outline.show_symbols {
+        a.push_str(" showOutlineSymbols=\"0\"");
+    }
+    if a.is_empty() {
+        String::new()
+    } else {
+        format!("<outlinePr{a}/>")
+    }
+}
+
+/// Remove every element named `name` (written `<name .../>`) from the XML of `sheetPr`.
+fn strip_empty_element(body: &mut String, name: &str) {
+    let open = format!("<{name}");
+    while let Some(start) = body.find(&open) {
         let end = body[start..].find("/>").map(|e| start + e + 2).unwrap_or(body.len());
         body.replace_range(start..end, "");
     }
-    if tab_xml.is_empty() {
-        return body;
+}
+
+/// `sheetPr` with the tab colour and the outline settings written into it, in the order the schema has them.
+fn sheet_pr(raw: &str, tab: Option<Color>, outline: &OutlineSettings) -> String {
+    let tab_xml = tab.map(|c| format!("<tabColor{}/>", color_attrs(&c))).unwrap_or_default();
+    let inner = format!("{tab_xml}{}", outline_pr(outline));
+    if raw.is_empty() {
+        return if inner.is_empty() {
+            String::new()
+        } else {
+            format!("<sheetPr>{inner}</sheetPr>")
+        };
+    }
+    // Take out any tab colour and outline settings, then put the current ones first.
+    let mut body = raw.to_owned();
+    strip_empty_element(&mut body, "tabColor");
+    strip_empty_element(&mut body, "outlinePr");
+    if inner.is_empty() {
+        return if body == "<sheetPr></sheetPr>" { String::new() } else { body };
     }
     if let Some(stripped) = body.strip_suffix("/>") {
         if !stripped.contains('>') {
-            return format!("{stripped}>{tab_xml}</sheetPr>");
+            return format!("{stripped}>{inner}</sheetPr>");
         }
     }
     match body.find('>') {
-        Some(gt) => format!("{}{}{}", &body[..=gt], tab_xml, &body[gt + 1..]),
+        Some(gt) => format!("{}{}{}", &body[..=gt], inner, &body[gt + 1..]),
         None => body,
     }
+}
+
+/// The deepest outline level of the rows and of the columns, which `sheetFormatPr` states.
+fn deepest_outline(sheet: &Sheet) -> (u8, u8) {
+    let rows = sheet.rows.values().map(|r| r.outline).max().unwrap_or(0);
+    let columns = sheet.columns.iter().map(|c| c.outline).max().unwrap_or(0);
+    (rows, columns)
 }
 
 fn sheet_views(sheet: &Sheet, selected: bool) -> String {
@@ -1205,7 +1329,7 @@ pub(crate) fn sort_state_xml(sort: &SortState) -> String {
     out
 }
 
-fn auto_filter(filter: &AutoFilter) -> String {
+pub(crate) fn auto_filter(filter: &AutoFilter) -> String {
     let mut out = format!("<autoFilter ref=\"{}\"", filter.range.a1());
     if filter.columns.is_empty() && filter.sort.is_none() {
         out.push_str("/>");
@@ -1213,33 +1337,7 @@ fn auto_filter(filter: &AutoFilter) -> String {
     }
     out.push('>');
     for (col, criteria) in &filter.columns {
-        match criteria {
-            FilterCriteria::Raw(xml) => out.push_str(xml),
-            FilterCriteria::Values { values, blank } => {
-                out.push_str(&format!(
-                    "<filterColumn colId=\"{col}\"><filters{}>",
-                    if *blank { " blank=\"1\"" } else { "" }
-                ));
-                for v in values {
-                    out.push_str(&format!("<filter val=\"{}\"/>", escape(v)));
-                }
-                out.push_str("</filters></filterColumn>");
-            }
-            FilterCriteria::Custom { conditions, and } => {
-                out.push_str(&format!(
-                    "<filterColumn colId=\"{col}\"><customFilters{}>",
-                    if *and { " and=\"1\"" } else { "" }
-                ));
-                for (op, v) in conditions {
-                    out.push_str(&format!(
-                        "<customFilter operator=\"{}\" val=\"{}\"/>",
-                        escape(op),
-                        escape(v)
-                    ));
-                }
-                out.push_str("</customFilters></filterColumn>");
-            }
-        }
+        out.push_str(&filter_column_xml(*col, criteria));
     }
     if let Some(sort) = &filter.sort {
         out.push_str(&sort_state_xml(sort));
@@ -1248,73 +1346,130 @@ fn auto_filter(filter: &AutoFilter) -> String {
     out
 }
 
-fn conditional(cf: &ConditionalFormat, _theme: &[u32]) -> String {
-    let sqref: Vec<String> = cf.ranges.iter().map(Range::a1).collect();
-    let mut out = format!("<conditionalFormatting sqref=\"{}\">", sqref.join(" "));
-    for rule in &cf.rules {
-        let mut a = vec![("type".to_owned(), rule.kind.clone())];
-        if let Some(d) = rule.dxf {
-            a.push(("dxfId".to_owned(), d.to_string()));
+/// The `filterColumn` element for one column's criteria.
+pub(crate) fn filter_column_xml(col: u32, criteria: &FilterCriteria) -> String {
+    let number = |n: f64| full_precision(n);
+    let inner = match criteria {
+        FilterCriteria::Raw(xml) => return xml.clone(),
+        FilterCriteria::Values { values, blank } => filters_xml(values, &[], *blank, ""),
+        // A filter that names years, months or days of the date tree is written in an extension, which is
+        // where Excel keeps it.
+        FilterCriteria::Dates { values, groups, blank } => format!(
+            "<extLst><ext uri=\"{DATE_FILTER_URI}\" xmlns:xlrd2=\"{RICHDATA2_NS}\"><xlrd2:filterColumn>{}</xlrd2:filterColumn></ext></extLst>",
+            filters_xml(values, groups, *blank, "xlrd2:")
+        ),
+        // Equal to a word or equal to nothing is how Excel writes "this value or blank": a list of values.
+        FilterCriteria::Custom { conditions, and: false }
+            if conditions.len() == 2
+                && conditions.iter().all(|(op, _)| op == "equal")
+                && conditions.iter().filter(|(_, v)| v.is_empty()).count() == 1 =>
+        {
+            let values: Vec<String> = conditions.iter().filter(|(_, v)| !v.is_empty()).map(|(_, v)| v.clone()).collect();
+            filters_xml(&values, &[], true, "")
         }
-        a.push(("priority".to_owned(), rule.priority.to_string()));
-        if rule.stop {
-            a.push(("stopIfTrue".to_owned(), "1".to_owned()));
-        }
-        if let Some(above) = rule.above_average {
-            if !above {
-                a.push(("aboveAverage".to_owned(), "0".to_owned()));
+        FilterCriteria::Custom { conditions, and } => {
+            let mut s = format!("<customFilters{}>", if *and { " and=\"1\"" } else { "" });
+            for (op, v) in conditions {
+                // Equal is the default and Excel leaves the attribute out.
+                if op == "equal" {
+                    s.push_str(&format!("<customFilter val=\"{}\"/>", escape(v)));
+                } else {
+                    s.push_str(&format!(
+                        "<customFilter operator=\"{}\" val=\"{}\"/>",
+                        escape(op),
+                        escape(v)
+                    ));
+                }
             }
+            s.push_str("</customFilters>");
+            s
         }
-        if rule.percent {
-            a.push(("percent".to_owned(), "1".to_owned()));
-        }
-        if rule.bottom {
-            a.push(("bottom".to_owned(), "1".to_owned()));
-        }
-        if let Some(op) = &rule.operator {
-            a.push(("operator".to_owned(), op.clone()));
-        }
-        if let Some(t) = &rule.text {
-            a.push(("text".to_owned(), t.clone()));
-        }
-        if let Some(r) = rule.rank {
-            a.push(("rank".to_owned(), r.to_string()));
-        }
-        a.extend(rule.attrs.iter().cloned());
-        out.push_str(&format!("<cfRule{}>", attrs_text(&a)));
-        for f in &rule.formulas {
-            out.push_str(&format!("<formula>{}</formula>", escape(f)));
-        }
-        let cfvo = |c: &Cfvo| {
-            format!(
-                "<cfvo type=\"{}\"{}/>",
-                escape(&c.kind),
-                c.value.as_ref().map(|v| format!(" val=\"{}\"", escape(v))).unwrap_or_default()
-            )
-        };
-        if let Some(scale) = &rule.color_scale {
-            out.push_str("<colorScale>");
-            for (c, _) in scale {
-                out.push_str(&cfvo(c));
+        FilterCriteria::Top10 { top, percent, value, threshold } => {
+            let mut s = String::from("<top10");
+            if !*top {
+                s.push_str(" top=\"0\"");
             }
-            for (_, color) in scale {
-                out.push_str(&format!("<color{}/>", color_attrs(color)));
+            if *percent {
+                s.push_str(" percent=\"1\"");
             }
-            out.push_str("</colorScale>");
+            s.push_str(&format!(" val=\"{}\"", number(*value)));
+            if let Some(t) = threshold {
+                s.push_str(&format!(" filterVal=\"{}\"", number(*t)));
+            }
+            s.push_str("/>");
+            s
         }
-        if let Some((lo, hi, color)) = &rule.data_bar {
-            out.push_str(&format!(
-                "<dataBar>{}{}<color{}/></dataBar>",
-                cfvo(lo),
-                cfvo(hi),
-                color_attrs(color)
-            ));
+        FilterCriteria::Dynamic { kind, value, max } => {
+            let mut s = format!("<dynamicFilter type=\"{}\"", escape(kind));
+            if let Some(v) = value {
+                s.push_str(&format!(" val=\"{}\"", number(*v)));
+            }
+            if let Some(m) = max {
+                s.push_str(&format!(" maxVal=\"{}\"", number(*m)));
+            }
+            s.push_str("/>");
+            s
         }
-        out.push_str(&rule.raw_children);
-        out.push_str("</cfRule>");
+        FilterCriteria::Color { cell, dxf } => {
+            format!("<colorFilter dxfId=\"{dxf}\"{}/>", if *cell { "" } else { " cellColor=\"0\"" })
+        }
+        FilterCriteria::Icon { set, id } => {
+            // "No icon" has no id.
+            let id = if (*id as i64) < 0 { String::new() } else { format!(" iconId=\"{id}\"") };
+            format!("<iconFilter iconSet=\"{}\"{id}/>", escape(set))
+        }
+    };
+    format!("<filterColumn colId=\"{col}\">{inner}</filterColumn>")
+}
+
+const DATE_FILTER_URI: &str = "{1AD28BCE-077C-4C59-8B6E-1921CE8616D4}";
+pub(crate) const RICHDATA2_NS: &str =
+    "http://schemas.microsoft.com/office/spreadsheetml/2017/richdata2";
+
+fn filters_xml(values: &[String], groups: &[DateGroup], blank: bool, prefix: &str) -> String {
+    let mut s = format!("<{prefix}filters{}>", if blank { " blank=\"1\"" } else { "" });
+    // The values are in the order the filter menu lists them: numbers from the smallest, then text.
+    let mut values: Vec<&String> = values.iter().collect();
+    values.sort_by(|a, b| match (a.parse::<f64>(), b.parse::<f64>()) {
+        (Ok(x), Ok(y)) => x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal),
+        (Ok(_), Err(_)) => std::cmp::Ordering::Less,
+        (Err(_), Ok(_)) => std::cmp::Ordering::Greater,
+        (Err(_), Err(_)) => crate::edit::datatools::collate::compare(a, b, false),
+    });
+    for v in values {
+        s.push_str(&format!("<{prefix}filter val=\"{}\"/>", escape(v)));
     }
-    out.push_str("</conditionalFormatting>");
-    out
+    // The newest year comes first, then the months of it, then the days of the month.
+    let mut groups: Vec<&DateGroup> = groups.iter().collect();
+    groups.sort_by_key(|g| (std::cmp::Reverse(g.year), g.month, g.day));
+    for g in groups {
+        s.push_str(&format!("<{prefix}dateGroupItem year=\"{}\"", g.year));
+        for (name, part) in [
+            ("month", g.month),
+            ("day", g.day),
+            ("hour", g.hour),
+            ("minute", g.minute),
+            ("second", g.second),
+        ] {
+            if let Some(p) = part {
+                s.push_str(&format!(" {name}=\"{p}\""));
+            }
+        }
+        s.push_str(&format!(" dateTimeGrouping=\"{}\"/>", g.grouping.name()));
+    }
+    s.push_str(&format!("</{prefix}filters>"));
+    s
+}
+
+/// The worksheet's `extLst`: the extensions that were kept, with the conditional formats' extension added.
+fn extension_list(kept: &str, conditional: &str) -> String {
+    if conditional.is_empty() {
+        return kept.to_owned();
+    }
+    if kept.is_empty() {
+        return format!("<extLst>{conditional}</extLst>");
+    }
+    kept.replacen("<extLst>", &format!("<extLst>{conditional}"), 1)
 }
 
 fn validation(v: &Validation) -> String {
@@ -1528,86 +1683,17 @@ fn styles_xml(styles: &Styles) -> String {
         out.push_str("</border>");
     }
     out.push_str("</borders>");
-    out.push_str(styles.raw_cell_style_xfs.as_deref().unwrap_or("<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>"));
+    out.push_str(&format!("<cellStyleXfs count=\"{}\">", styles.style_xfs.len()));
+    for x in &styles.style_xfs {
+        out.push_str(&xf_xml(styles, x, false));
+    }
+    out.push_str("</cellStyleXfs>");
     out.push_str(&format!("<cellXfs count=\"{}\">", styles.xfs.len()));
     for x in &styles.xfs {
-        let mut a = format!(
-            "<xf numFmtId=\"{}\" fontId=\"{}\" fillId=\"{}\" borderId=\"{}\" xfId=\"{}\"",
-            x.num_fmt, x.font, x.fill, x.border, x.xf_id
-        );
-        if x.applies.is_empty() {
-            for (flag, on) in [
-                ("applyNumberFormat", x.num_fmt != 0),
-                ("applyFont", x.font != 0),
-                ("applyFill", x.fill != 0),
-                ("applyBorder", x.border != 0),
-                ("applyAlignment", !x.align.is_default()),
-                ("applyProtection", x.locked.is_some() || x.hidden.is_some()),
-            ] {
-                if on {
-                    a.push_str(&format!(" {flag}=\"1\""));
-                }
-            }
-        } else {
-            a.push_str(&attrs_text(&x.applies));
-        }
-        if x.quote_prefix {
-            a.push_str(" quotePrefix=\"1\"");
-        }
-        if x.pivot_button {
-            a.push_str(" pivotButton=\"1\"");
-        }
-        let mut inner = String::new();
-        if !x.align.is_default() {
-            let al = &x.align;
-            let mut s = String::from("<alignment");
-            if let Some(h) = &al.horizontal {
-                s.push_str(&format!(" horizontal=\"{}\"", escape(h)));
-            }
-            if let Some(v) = &al.vertical {
-                s.push_str(&format!(" vertical=\"{}\"", escape(v)));
-            }
-            if al.rotation != 0 {
-                s.push_str(&format!(" textRotation=\"{}\"", al.rotation));
-            }
-            if al.wrap {
-                s.push_str(" wrapText=\"1\"");
-            }
-            if al.indent > 0 {
-                s.push_str(&format!(" indent=\"{}\"", al.indent));
-            }
-            if al.shrink {
-                s.push_str(" shrinkToFit=\"1\"");
-            }
-            if al.reading_order != 0 {
-                s.push_str(&format!(" readingOrder=\"{}\"", al.reading_order));
-            }
-            s.push_str(&attrs_text(&al.extra));
-            s.push_str("/>");
-            inner.push_str(&s);
-        }
-        if x.locked.is_some() || x.hidden.is_some() {
-            inner.push_str("<protection");
-            if let Some(l) = x.locked {
-                inner.push_str(&format!(" locked=\"{}\"", u8::from(l)));
-            }
-            if let Some(h) = x.hidden {
-                inner.push_str(&format!(" hidden=\"{}\"", u8::from(h)));
-            }
-            inner.push_str("/>");
-        }
-        if inner.is_empty() {
-            out.push_str(&a);
-            out.push_str("/>");
-        } else {
-            out.push_str(&a);
-            out.push('>');
-            out.push_str(&inner);
-            out.push_str("</xf>");
-        }
+        out.push_str(&xf_xml(styles, x, true));
     }
     out.push_str("</cellXfs>");
-    out.push_str(styles.raw_cell_styles.as_deref().unwrap_or("<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>"));
+    out.push_str(&cell_styles_xml(styles));
     out.push_str(&format!("<dxfs count=\"{}\">", styles.dxfs.len()));
     for d in &styles.dxfs {
         match &d.raw {
@@ -1624,6 +1710,118 @@ fn styles_xml(styles: &Styles) -> String {
         out.push_str(e);
     }
     out.push_str("</styleSheet>");
+    out
+}
+
+/// One `xf` of `cellXfs` (`cell_xf`) or `cellStyleXfs`. A cell format names its cell style with `xfId`,
+/// and when the file gave no `apply` flags they are worked out as Excel writes them: a flag is on when the
+/// format's value for that group differs from its style's. A style's own format has no flags unless the
+/// file had them, which means every group is part of the style.
+fn xf_xml(styles: &Styles, x: &Xf, cell_xf: bool) -> String {
+    let mut a = format!(
+        "<xf numFmtId=\"{}\" fontId=\"{}\" fillId=\"{}\" borderId=\"{}\"",
+        x.num_fmt, x.font, x.fill, x.border
+    );
+    if cell_xf {
+        a.push_str(&format!(" xfId=\"{}\"", x.xf_id));
+    }
+    if !x.applies.is_empty() {
+        a.push_str(&attrs_text(&x.applies));
+    } else if cell_xf {
+        let base = styles.style_xfs.get(x.xf_id as usize).cloned().unwrap_or_default();
+        for (flag, on) in [
+            ("applyNumberFormat", x.num_fmt != base.num_fmt),
+            ("applyFont", x.font != base.font),
+            ("applyFill", x.fill != base.fill),
+            ("applyBorder", x.border != base.border),
+            ("applyAlignment", x.align != base.align),
+            ("applyProtection", (x.locked, x.hidden) != (base.locked, base.hidden)),
+        ] {
+            if on {
+                a.push_str(&format!(" {flag}=\"1\""));
+            }
+        }
+    }
+    if x.quote_prefix {
+        a.push_str(" quotePrefix=\"1\"");
+    }
+    if x.pivot_button {
+        a.push_str(" pivotButton=\"1\"");
+    }
+    let mut inner = String::new();
+    if !x.align.is_default() {
+        let al = &x.align;
+        let mut s = String::from("<alignment");
+        if let Some(h) = &al.horizontal {
+            s.push_str(&format!(" horizontal=\"{}\"", escape(h)));
+        }
+        if let Some(v) = &al.vertical {
+            s.push_str(&format!(" vertical=\"{}\"", escape(v)));
+        }
+        if al.rotation != 0 {
+            s.push_str(&format!(" textRotation=\"{}\"", al.rotation));
+        }
+        if al.wrap {
+            s.push_str(" wrapText=\"1\"");
+        }
+        if al.indent > 0 {
+            s.push_str(&format!(" indent=\"{}\"", al.indent));
+        }
+        if al.shrink {
+            s.push_str(" shrinkToFit=\"1\"");
+        }
+        if al.reading_order != 0 {
+            s.push_str(&format!(" readingOrder=\"{}\"", al.reading_order));
+        }
+        s.push_str(&attrs_text(&al.extra));
+        s.push_str("/>");
+        inner.push_str(&s);
+    }
+    if x.locked.is_some() || x.hidden.is_some() {
+        inner.push_str("<protection");
+        if let Some(l) = x.locked {
+            inner.push_str(&format!(" locked=\"{}\"", u8::from(l)));
+        }
+        if let Some(h) = x.hidden {
+            inner.push_str(&format!(" hidden=\"{}\"", u8::from(h)));
+        }
+        inner.push_str("/>");
+    }
+    if inner.is_empty() {
+        a.push_str("/>");
+    } else {
+        a.push('>');
+        a.push_str(&inner);
+        a.push_str("</xf>");
+    }
+    a
+}
+
+/// `cellStyles`: the names of the cell styles, with the attributes Excel writes in its order.
+fn cell_styles_xml(styles: &Styles) -> String {
+    let mut out = format!("<cellStyles count=\"{}\">", styles.cell_styles.len());
+    for s in &styles.cell_styles {
+        let mut a = format!(" name=\"{}\" xfId=\"{}\"", escape(&s.name), s.xf_id);
+        if let Some(id) = s.builtin_id {
+            a.push_str(&format!(" builtinId=\"{id}\""));
+        }
+        if let Some(level) = s.i_level {
+            a.push_str(&format!(" iLevel=\"{level}\""));
+        }
+        if s.hidden {
+            a.push_str(" hidden=\"1\"");
+        }
+        if s.custom_builtin {
+            a.push_str(" customBuiltin=\"1\"");
+        }
+        a.push_str(&attrs_text(&s.other));
+        if s.children.is_empty() {
+            out.push_str(&format!("<cellStyle{a}/>"));
+        } else {
+            out.push_str(&format!("<cellStyle{a}>{}</cellStyle>", s.children));
+        }
+    }
+    out.push_str("</cellStyles>");
     out
 }
 

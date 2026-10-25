@@ -1,0 +1,1250 @@
+[
+ {
+  "name": "paste_all",
+  "cells": {
+   "A1": {
+    "v": 5,
+    "nf": "0.00",
+    "bold": true,
+    "fill": 255,
+    "border": true
+   },
+   "A2": 3,
+   "A3": {
+    "v": "abc",
+    "italic": true
+   },
+   "B1": {
+    "f": "=A1*2",
+    "color": 16711680
+   },
+   "B2": {
+    "v": 7,
+    "nf": "#,##0"
+   },
+   "B3": {
+    "f": "=SUM(A1:A2)",
+    "fill": 65280
+   },
+   "C1": {
+    "v": "mid",
+    "align": -4108
+   },
+   "E1": {
+    "v": 99,
+    "nf": "0%",
+    "italic": true
+   },
+   "E2": "zz",
+   "F1": {
+    "f": "=E1+1",
+    "fill": 16776960
+   },
+   "F2": {
+    "v": 4,
+    "bold": true
+   },
+   "G3": 8
+  },
+  "notes": {
+   "A1": "source note",
+   "E2": "old note"
+  },
+  "validation": [
+   {
+    "at": "A1:A3",
+    "type": 1,
+    "op": 1,
+    "f1": "1",
+    "f2": "10"
+   },
+   {
+    "at": "E1:E3",
+    "type": 2,
+    "op": 1,
+    "f1": "100",
+    "f2": "200"
+   }
+  ],
+  "cf": [
+   {
+    "at": "B2:B3",
+    "op": 5,
+    "f1": "3",
+    "fill": 255
+   },
+   {
+    "at": "F1:F3",
+    "op": 6,
+    "f1": "2",
+    "fill": 65280
+   }
+  ],
+  "widths": {
+   "A": 20,
+   "B": 5,
+   "E": 12
+  },
+  "merge": [
+   "C2:C3"
+  ],
+  "dump": [
+   "A1:H4"
+  ],
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:C3"
+   },
+   {
+    "do": "pastespecial",
+    "at": "E1",
+    "paste": -4104
+   }
+  ]
+ },
+ {
+  "name": "paste_formulas",
+  "cells": {
+   "A1": {
+    "v": 5,
+    "nf": "0.00",
+    "bold": true,
+    "fill": 255,
+    "border": true
+   },
+   "A2": 3,
+   "A3": {
+    "v": "abc",
+    "italic": true
+   },
+   "B1": {
+    "f": "=A1*2",
+    "color": 16711680
+   },
+   "B2": {
+    "v": 7,
+    "nf": "#,##0"
+   },
+   "B3": {
+    "f": "=SUM(A1:A2)",
+    "fill": 65280
+   },
+   "C1": {
+    "v": "mid",
+    "align": -4108
+   },
+   "E1": {
+    "v": 99,
+    "nf": "0%",
+    "italic": true
+   },
+   "E2": "zz",
+   "F1": {
+    "f": "=E1+1",
+    "fill": 16776960
+   },
+   "F2": {
+    "v": 4,
+    "bold": true
+   },
+   "G3": 8
+  },
+  "notes": {
+   "A1": "source note",
+   "E2": "old note"
+  },
+  "validation": [
+   {
+    "at": "A1:A3",
+    "type": 1,
+    "op": 1,
+    "f1": "1",
+    "f2": "10"
+   },
+   {
+    "at": "E1:E3",
+    "type": 2,
+    "op": 1,
+    "f1": "100",
+    "f2": "200"
+   }
+  ],
+  "cf": [
+   {
+    "at": "B2:B3",
+    "op": 5,
+    "f1": "3",
+    "fill": 255
+   },
+   {
+    "at": "F1:F3",
+    "op": 6,
+    "f1": "2",
+    "fill": 65280
+   }
+  ],
+  "widths": {
+   "A": 20,
+   "B": 5,
+   "E": 12
+  },
+  "merge": [
+   "C2:C3"
+  ],
+  "dump": [
+   "A1:H4"
+  ],
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:C3"
+   },
+   {
+    "do": "pastespecial",
+    "at": "E1",
+    "paste": -4123
+   }
+  ]
+ },
+ {
+  "name": "paste_values",
+  "cells": {
+   "A1": {
+    "v": 5,
+    "nf": "0.00",
+    "bold": true,
+    "fill": 255,
+    "border": true
+   },
+   "A2": 3,
+   "A3": {
+    "v": "abc",
+    "italic": true
+   },
+   "B1": {
+    "f": "=A1*2",
+    "color": 16711680
+   },
+   "B2": {
+    "v": 7,
+    "nf": "#,##0"
+   },
+   "B3": {
+    "f": "=SUM(A1:A2)",
+    "fill": 65280
+   },
+   "C1": {
+    "v": "mid",
+    "align": -4108
+   },
+   "E1": {
+    "v": 99,
+    "nf": "0%",
+    "italic": true
+   },
+   "E2": "zz",
+   "F1": {
+    "f": "=E1+1",
+    "fill": 16776960
+   },
+   "F2": {
+    "v": 4,
+    "bold": true
+   },
+   "G3": 8
+  },
+  "notes": {
+   "A1": "source note",
+   "E2": "old note"
+  },
+  "validation": [
+   {
+    "at": "A1:A3",
+    "type": 1,
+    "op": 1,
+    "f1": "1",
+    "f2": "10"
+   },
+   {
+    "at": "E1:E3",
+    "type": 2,
+    "op": 1,
+    "f1": "100",
+    "f2": "200"
+   }
+  ],
+  "cf": [
+   {
+    "at": "B2:B3",
+    "op": 5,
+    "f1": "3",
+    "fill": 255
+   },
+   {
+    "at": "F1:F3",
+    "op": 6,
+    "f1": "2",
+    "fill": 65280
+   }
+  ],
+  "widths": {
+   "A": 20,
+   "B": 5,
+   "E": 12
+  },
+  "merge": [
+   "C2:C3"
+  ],
+  "dump": [
+   "A1:H4"
+  ],
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:C3"
+   },
+   {
+    "do": "pastespecial",
+    "at": "E1",
+    "paste": -4163
+   }
+  ]
+ },
+ {
+  "name": "paste_formats",
+  "cells": {
+   "A1": {
+    "v": 5,
+    "nf": "0.00",
+    "bold": true,
+    "fill": 255,
+    "border": true
+   },
+   "A2": 3,
+   "A3": {
+    "v": "abc",
+    "italic": true
+   },
+   "B1": {
+    "f": "=A1*2",
+    "color": 16711680
+   },
+   "B2": {
+    "v": 7,
+    "nf": "#,##0"
+   },
+   "B3": {
+    "f": "=SUM(A1:A2)",
+    "fill": 65280
+   },
+   "C1": {
+    "v": "mid",
+    "align": -4108
+   },
+   "E1": {
+    "v": 99,
+    "nf": "0%",
+    "italic": true
+   },
+   "E2": "zz",
+   "F1": {
+    "f": "=E1+1",
+    "fill": 16776960
+   },
+   "F2": {
+    "v": 4,
+    "bold": true
+   },
+   "G3": 8
+  },
+  "notes": {
+   "A1": "source note",
+   "E2": "old note"
+  },
+  "validation": [
+   {
+    "at": "A1:A3",
+    "type": 1,
+    "op": 1,
+    "f1": "1",
+    "f2": "10"
+   },
+   {
+    "at": "E1:E3",
+    "type": 2,
+    "op": 1,
+    "f1": "100",
+    "f2": "200"
+   }
+  ],
+  "cf": [
+   {
+    "at": "B2:B3",
+    "op": 5,
+    "f1": "3",
+    "fill": 255
+   },
+   {
+    "at": "F1:F3",
+    "op": 6,
+    "f1": "2",
+    "fill": 65280
+   }
+  ],
+  "widths": {
+   "A": 20,
+   "B": 5,
+   "E": 12
+  },
+  "merge": [
+   "C2:C3"
+  ],
+  "dump": [
+   "A1:H4"
+  ],
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:C3"
+   },
+   {
+    "do": "pastespecial",
+    "at": "E1",
+    "paste": -4122
+   }
+  ]
+ },
+ {
+  "name": "paste_comments",
+  "cells": {
+   "A1": {
+    "v": 5,
+    "nf": "0.00",
+    "bold": true,
+    "fill": 255,
+    "border": true
+   },
+   "A2": 3,
+   "A3": {
+    "v": "abc",
+    "italic": true
+   },
+   "B1": {
+    "f": "=A1*2",
+    "color": 16711680
+   },
+   "B2": {
+    "v": 7,
+    "nf": "#,##0"
+   },
+   "B3": {
+    "f": "=SUM(A1:A2)",
+    "fill": 65280
+   },
+   "C1": {
+    "v": "mid",
+    "align": -4108
+   },
+   "E1": {
+    "v": 99,
+    "nf": "0%",
+    "italic": true
+   },
+   "E2": "zz",
+   "F1": {
+    "f": "=E1+1",
+    "fill": 16776960
+   },
+   "F2": {
+    "v": 4,
+    "bold": true
+   },
+   "G3": 8
+  },
+  "notes": {
+   "A1": "source note",
+   "E2": "old note"
+  },
+  "validation": [
+   {
+    "at": "A1:A3",
+    "type": 1,
+    "op": 1,
+    "f1": "1",
+    "f2": "10"
+   },
+   {
+    "at": "E1:E3",
+    "type": 2,
+    "op": 1,
+    "f1": "100",
+    "f2": "200"
+   }
+  ],
+  "cf": [
+   {
+    "at": "B2:B3",
+    "op": 5,
+    "f1": "3",
+    "fill": 255
+   },
+   {
+    "at": "F1:F3",
+    "op": 6,
+    "f1": "2",
+    "fill": 65280
+   }
+  ],
+  "widths": {
+   "A": 20,
+   "B": 5,
+   "E": 12
+  },
+  "merge": [
+   "C2:C3"
+  ],
+  "dump": [
+   "A1:H4"
+  ],
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:C3"
+   },
+   {
+    "do": "pastespecial",
+    "at": "E1",
+    "paste": -4144
+   }
+  ]
+ },
+ {
+  "name": "paste_validation",
+  "cells": {
+   "A1": {
+    "v": 5,
+    "nf": "0.00",
+    "bold": true,
+    "fill": 255,
+    "border": true
+   },
+   "A2": 3,
+   "A3": {
+    "v": "abc",
+    "italic": true
+   },
+   "B1": {
+    "f": "=A1*2",
+    "color": 16711680
+   },
+   "B2": {
+    "v": 7,
+    "nf": "#,##0"
+   },
+   "B3": {
+    "f": "=SUM(A1:A2)",
+    "fill": 65280
+   },
+   "C1": {
+    "v": "mid",
+    "align": -4108
+   },
+   "E1": {
+    "v": 99,
+    "nf": "0%",
+    "italic": true
+   },
+   "E2": "zz",
+   "F1": {
+    "f": "=E1+1",
+    "fill": 16776960
+   },
+   "F2": {
+    "v": 4,
+    "bold": true
+   },
+   "G3": 8
+  },
+  "notes": {
+   "A1": "source note",
+   "E2": "old note"
+  },
+  "validation": [
+   {
+    "at": "A1:A3",
+    "type": 1,
+    "op": 1,
+    "f1": "1",
+    "f2": "10"
+   },
+   {
+    "at": "E1:E3",
+    "type": 2,
+    "op": 1,
+    "f1": "100",
+    "f2": "200"
+   }
+  ],
+  "cf": [
+   {
+    "at": "B2:B3",
+    "op": 5,
+    "f1": "3",
+    "fill": 255
+   },
+   {
+    "at": "F1:F3",
+    "op": 6,
+    "f1": "2",
+    "fill": 65280
+   }
+  ],
+  "widths": {
+   "A": 20,
+   "B": 5,
+   "E": 12
+  },
+  "merge": [
+   "C2:C3"
+  ],
+  "dump": [
+   "A1:H4"
+  ],
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:C3"
+   },
+   {
+    "do": "pastespecial",
+    "at": "E1",
+    "paste": 6
+   }
+  ]
+ },
+ {
+  "name": "paste_theme",
+  "cells": {
+   "A1": {
+    "v": 5,
+    "nf": "0.00",
+    "bold": true,
+    "fill": 255,
+    "border": true
+   },
+   "A2": 3,
+   "A3": {
+    "v": "abc",
+    "italic": true
+   },
+   "B1": {
+    "f": "=A1*2",
+    "color": 16711680
+   },
+   "B2": {
+    "v": 7,
+    "nf": "#,##0"
+   },
+   "B3": {
+    "f": "=SUM(A1:A2)",
+    "fill": 65280
+   },
+   "C1": {
+    "v": "mid",
+    "align": -4108
+   },
+   "E1": {
+    "v": 99,
+    "nf": "0%",
+    "italic": true
+   },
+   "E2": "zz",
+   "F1": {
+    "f": "=E1+1",
+    "fill": 16776960
+   },
+   "F2": {
+    "v": 4,
+    "bold": true
+   },
+   "G3": 8
+  },
+  "notes": {
+   "A1": "source note",
+   "E2": "old note"
+  },
+  "validation": [
+   {
+    "at": "A1:A3",
+    "type": 1,
+    "op": 1,
+    "f1": "1",
+    "f2": "10"
+   },
+   {
+    "at": "E1:E3",
+    "type": 2,
+    "op": 1,
+    "f1": "100",
+    "f2": "200"
+   }
+  ],
+  "cf": [
+   {
+    "at": "B2:B3",
+    "op": 5,
+    "f1": "3",
+    "fill": 255
+   },
+   {
+    "at": "F1:F3",
+    "op": 6,
+    "f1": "2",
+    "fill": 65280
+   }
+  ],
+  "widths": {
+   "A": 20,
+   "B": 5,
+   "E": 12
+  },
+  "merge": [
+   "C2:C3"
+  ],
+  "dump": [
+   "A1:H4"
+  ],
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:C3"
+   },
+   {
+    "do": "pastespecial",
+    "at": "E1",
+    "paste": 13
+   }
+  ]
+ },
+ {
+  "name": "paste_except_borders",
+  "cells": {
+   "A1": {
+    "v": 5,
+    "nf": "0.00",
+    "bold": true,
+    "fill": 255,
+    "border": true
+   },
+   "A2": 3,
+   "A3": {
+    "v": "abc",
+    "italic": true
+   },
+   "B1": {
+    "f": "=A1*2",
+    "color": 16711680
+   },
+   "B2": {
+    "v": 7,
+    "nf": "#,##0"
+   },
+   "B3": {
+    "f": "=SUM(A1:A2)",
+    "fill": 65280
+   },
+   "C1": {
+    "v": "mid",
+    "align": -4108
+   },
+   "E1": {
+    "v": 99,
+    "nf": "0%",
+    "italic": true
+   },
+   "E2": "zz",
+   "F1": {
+    "f": "=E1+1",
+    "fill": 16776960
+   },
+   "F2": {
+    "v": 4,
+    "bold": true
+   },
+   "G3": 8
+  },
+  "notes": {
+   "A1": "source note",
+   "E2": "old note"
+  },
+  "validation": [
+   {
+    "at": "A1:A3",
+    "type": 1,
+    "op": 1,
+    "f1": "1",
+    "f2": "10"
+   },
+   {
+    "at": "E1:E3",
+    "type": 2,
+    "op": 1,
+    "f1": "100",
+    "f2": "200"
+   }
+  ],
+  "cf": [
+   {
+    "at": "B2:B3",
+    "op": 5,
+    "f1": "3",
+    "fill": 255
+   },
+   {
+    "at": "F1:F3",
+    "op": 6,
+    "f1": "2",
+    "fill": 65280
+   }
+  ],
+  "widths": {
+   "A": 20,
+   "B": 5,
+   "E": 12
+  },
+  "merge": [
+   "C2:C3"
+  ],
+  "dump": [
+   "A1:H4"
+  ],
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:C3"
+   },
+   {
+    "do": "pastespecial",
+    "at": "E1",
+    "paste": 7
+   }
+  ]
+ },
+ {
+  "name": "paste_widths",
+  "cells": {
+   "A1": {
+    "v": 5,
+    "nf": "0.00",
+    "bold": true,
+    "fill": 255,
+    "border": true
+   },
+   "A2": 3,
+   "A3": {
+    "v": "abc",
+    "italic": true
+   },
+   "B1": {
+    "f": "=A1*2",
+    "color": 16711680
+   },
+   "B2": {
+    "v": 7,
+    "nf": "#,##0"
+   },
+   "B3": {
+    "f": "=SUM(A1:A2)",
+    "fill": 65280
+   },
+   "C1": {
+    "v": "mid",
+    "align": -4108
+   },
+   "E1": {
+    "v": 99,
+    "nf": "0%",
+    "italic": true
+   },
+   "E2": "zz",
+   "F1": {
+    "f": "=E1+1",
+    "fill": 16776960
+   },
+   "F2": {
+    "v": 4,
+    "bold": true
+   },
+   "G3": 8
+  },
+  "notes": {
+   "A1": "source note",
+   "E2": "old note"
+  },
+  "validation": [
+   {
+    "at": "A1:A3",
+    "type": 1,
+    "op": 1,
+    "f1": "1",
+    "f2": "10"
+   },
+   {
+    "at": "E1:E3",
+    "type": 2,
+    "op": 1,
+    "f1": "100",
+    "f2": "200"
+   }
+  ],
+  "cf": [
+   {
+    "at": "B2:B3",
+    "op": 5,
+    "f1": "3",
+    "fill": 255
+   },
+   {
+    "at": "F1:F3",
+    "op": 6,
+    "f1": "2",
+    "fill": 65280
+   }
+  ],
+  "widths": {
+   "A": 20,
+   "B": 5,
+   "E": 12
+  },
+  "merge": [
+   "C2:C3"
+  ],
+  "dump": [
+   "A1:H4"
+  ],
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:C3"
+   },
+   {
+    "do": "pastespecial",
+    "at": "E1",
+    "paste": 8
+   }
+  ]
+ },
+ {
+  "name": "paste_formulas_nf",
+  "cells": {
+   "A1": {
+    "v": 5,
+    "nf": "0.00",
+    "bold": true,
+    "fill": 255,
+    "border": true
+   },
+   "A2": 3,
+   "A3": {
+    "v": "abc",
+    "italic": true
+   },
+   "B1": {
+    "f": "=A1*2",
+    "color": 16711680
+   },
+   "B2": {
+    "v": 7,
+    "nf": "#,##0"
+   },
+   "B3": {
+    "f": "=SUM(A1:A2)",
+    "fill": 65280
+   },
+   "C1": {
+    "v": "mid",
+    "align": -4108
+   },
+   "E1": {
+    "v": 99,
+    "nf": "0%",
+    "italic": true
+   },
+   "E2": "zz",
+   "F1": {
+    "f": "=E1+1",
+    "fill": 16776960
+   },
+   "F2": {
+    "v": 4,
+    "bold": true
+   },
+   "G3": 8
+  },
+  "notes": {
+   "A1": "source note",
+   "E2": "old note"
+  },
+  "validation": [
+   {
+    "at": "A1:A3",
+    "type": 1,
+    "op": 1,
+    "f1": "1",
+    "f2": "10"
+   },
+   {
+    "at": "E1:E3",
+    "type": 2,
+    "op": 1,
+    "f1": "100",
+    "f2": "200"
+   }
+  ],
+  "cf": [
+   {
+    "at": "B2:B3",
+    "op": 5,
+    "f1": "3",
+    "fill": 255
+   },
+   {
+    "at": "F1:F3",
+    "op": 6,
+    "f1": "2",
+    "fill": 65280
+   }
+  ],
+  "widths": {
+   "A": 20,
+   "B": 5,
+   "E": 12
+  },
+  "merge": [
+   "C2:C3"
+  ],
+  "dump": [
+   "A1:H4"
+  ],
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:C3"
+   },
+   {
+    "do": "pastespecial",
+    "at": "E1",
+    "paste": 11
+   }
+  ]
+ },
+ {
+  "name": "paste_values_nf",
+  "cells": {
+   "A1": {
+    "v": 5,
+    "nf": "0.00",
+    "bold": true,
+    "fill": 255,
+    "border": true
+   },
+   "A2": 3,
+   "A3": {
+    "v": "abc",
+    "italic": true
+   },
+   "B1": {
+    "f": "=A1*2",
+    "color": 16711680
+   },
+   "B2": {
+    "v": 7,
+    "nf": "#,##0"
+   },
+   "B3": {
+    "f": "=SUM(A1:A2)",
+    "fill": 65280
+   },
+   "C1": {
+    "v": "mid",
+    "align": -4108
+   },
+   "E1": {
+    "v": 99,
+    "nf": "0%",
+    "italic": true
+   },
+   "E2": "zz",
+   "F1": {
+    "f": "=E1+1",
+    "fill": 16776960
+   },
+   "F2": {
+    "v": 4,
+    "bold": true
+   },
+   "G3": 8
+  },
+  "notes": {
+   "A1": "source note",
+   "E2": "old note"
+  },
+  "validation": [
+   {
+    "at": "A1:A3",
+    "type": 1,
+    "op": 1,
+    "f1": "1",
+    "f2": "10"
+   },
+   {
+    "at": "E1:E3",
+    "type": 2,
+    "op": 1,
+    "f1": "100",
+    "f2": "200"
+   }
+  ],
+  "cf": [
+   {
+    "at": "B2:B3",
+    "op": 5,
+    "f1": "3",
+    "fill": 255
+   },
+   {
+    "at": "F1:F3",
+    "op": 6,
+    "f1": "2",
+    "fill": 65280
+   }
+  ],
+  "widths": {
+   "A": 20,
+   "B": 5,
+   "E": 12
+  },
+  "merge": [
+   "C2:C3"
+  ],
+  "dump": [
+   "A1:H4"
+  ],
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:C3"
+   },
+   {
+    "do": "pastespecial",
+    "at": "E1",
+    "paste": 12
+   }
+  ]
+ },
+ {
+  "name": "paste_merging_cf",
+  "cells": {
+   "A1": {
+    "v": 5,
+    "nf": "0.00",
+    "bold": true,
+    "fill": 255,
+    "border": true
+   },
+   "A2": 3,
+   "A3": {
+    "v": "abc",
+    "italic": true
+   },
+   "B1": {
+    "f": "=A1*2",
+    "color": 16711680
+   },
+   "B2": {
+    "v": 7,
+    "nf": "#,##0"
+   },
+   "B3": {
+    "f": "=SUM(A1:A2)",
+    "fill": 65280
+   },
+   "C1": {
+    "v": "mid",
+    "align": -4108
+   },
+   "E1": {
+    "v": 99,
+    "nf": "0%",
+    "italic": true
+   },
+   "E2": "zz",
+   "F1": {
+    "f": "=E1+1",
+    "fill": 16776960
+   },
+   "F2": {
+    "v": 4,
+    "bold": true
+   },
+   "G3": 8
+  },
+  "notes": {
+   "A1": "source note",
+   "E2": "old note"
+  },
+  "validation": [
+   {
+    "at": "A1:A3",
+    "type": 1,
+    "op": 1,
+    "f1": "1",
+    "f2": "10"
+   },
+   {
+    "at": "E1:E3",
+    "type": 2,
+    "op": 1,
+    "f1": "100",
+    "f2": "200"
+   }
+  ],
+  "cf": [
+   {
+    "at": "B2:B3",
+    "op": 5,
+    "f1": "3",
+    "fill": 255
+   },
+   {
+    "at": "F1:F3",
+    "op": 6,
+    "f1": "2",
+    "fill": 65280
+   }
+  ],
+  "widths": {
+   "A": 20,
+   "B": 5,
+   "E": 12
+  },
+  "merge": [
+   "C2:C3"
+  ],
+  "dump": [
+   "A1:H4"
+  ],
+  "steps": [
+   {
+    "do": "copy",
+    "at": "A1:C3"
+   },
+   {
+    "do": "pastespecial",
+    "at": "E1",
+    "paste": 14
+   }
+  ]
+ }
+]

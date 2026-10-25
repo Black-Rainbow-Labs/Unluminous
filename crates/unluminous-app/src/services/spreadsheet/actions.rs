@@ -119,6 +119,8 @@ pub enum Act {
     Height(Option<f64>),
     /// Fit the chosen columns to what is in them.
     AutoFitColumns,
+    /// Fit the chosen rows to the tallest text in them.
+    AutoFitRows,
     Hide {
         rows: bool,
     },
@@ -170,6 +172,30 @@ pub enum Act {
         kind: ChartKind,
         title: Option<String>,
     },
+    /// Do the last change again on the selection, as F4 does, or redo when there is something to redo, as
+    /// Ctrl+Y does.
+    Repeat {
+        redo_first: bool,
+    },
+}
+
+impl Act {
+    /// Whether F4 repeats this change: one that changes the workbook and makes sense again on other cells.
+    pub fn repeats(&self) -> bool {
+        !matches!(
+            self,
+            Act::Select(_)
+                | Act::ShowSheet(_)
+                | Act::Copy { .. }
+                | Act::Undo
+                | Act::Redo
+                | Act::Repeat { .. }
+                | Act::Zoom(_)
+                | Act::Recalculate
+                | Act::RenameSheet(..)
+                | Act::Name { .. }
+        )
+    }
 }
 
 /// What a change answered: a line for the status bar.
@@ -238,9 +264,31 @@ pub fn author() -> String {
 
 /// Make one change. `copied` is the cells this window copied last, which Copy sets and Paste reads.
 pub fn apply(book: &mut Book, copied: &mut Option<Copied>, act: Act) -> Said {
+    let act = match act {
+        Act::Repeat { redo_first } if redo_first && book.session.can_redo() => Act::Redo,
+        Act::Repeat { .. } => match book.last.clone() {
+            Some(last) => again(book, last),
+            None => return Err("There is nothing to repeat.".to_owned()),
+        },
+        other => other,
+    };
+    let remembered = act.repeats().then(|| act.clone());
     let said = apply_inner(book, copied, act);
+    if said.is_ok() {
+        if let Some(act) = remembered {
+            book.last = Some(act);
+        }
+    }
     book.changed();
     said
+}
+
+/// The last change made again where the selection is now: typing goes into the active cell.
+fn again(book: &Book, last: Act) -> Act {
+    match last {
+        Act::Type { text, .. } => Act::Type { at: book.view.cursor, text },
+        other => other,
+    }
 }
 
 fn apply_inner(book: &mut Book, copied: &mut Option<Copied>, act: Act) -> Said {
@@ -266,9 +314,10 @@ fn apply_inner(book: &mut Book, copied: &mut Option<Copied>, act: Act) -> Said {
             if s.book.sheets[index].state != Visibility::Visible {
                 s.set_sheet_visibility(index, Visibility::Visible)?;
             }
+            // Each sheet keeps its own selection and scroll, as Excel's do.
+            super::keep_view(&mut book.session, &book.view);
             book.view.sheet = index;
-            book.view.select_cell(CellRef::new(0, 0));
-            book.view.scroll = egui::Vec2::ZERO;
+            super::restore_view(&book.session.book, &mut book.view);
             book.view.edit = None;
             Ok(String::new())
         }
@@ -541,6 +590,16 @@ fn apply_inner(book: &mut Book, copied: &mut Option<Copied>, act: Act) -> Said {
             }
             Ok(String::new())
         }
+        Act::AutoFitRows => {
+            for r in &ranges {
+                let rows = clip_whole(&s.book.sheets[sheet], *r);
+                for row in rows.first.row..=rows.last.row.min(rows.first.row + 4096) {
+                    let height = fitted_height(&s.book, sheet, row);
+                    s.set_row_height(sheet, row, row, height)?;
+                }
+            }
+            Ok(String::new())
+        }
         Act::Hide { rows } => {
             for r in &ranges {
                 if rows {
@@ -742,6 +801,7 @@ fn apply_inner(book: &mut Book, copied: &mut Option<Copied>, act: Act) -> Said {
             book.session.add_chart(sheet, chart)?;
             Ok(format!("Made a {} chart of {}", kind.name(), region.a1()))
         }
+        Act::Repeat { .. } => Ok(String::new()),
     }
 }
 
@@ -806,6 +866,39 @@ pub fn fitted_width(book: &unluminous_sheet::Workbook, sheet: usize, col: u32) -
         return None;
     }
     Some(super::axis::points_to_width((widest as f32) * 7.0 + 12.0))
+}
+
+/// The height that fits a row's tallest text, in points: the font's line, times the lines a wrapped cell
+/// breaks into, as Excel's AutoFit works it out. `None` is the default height, for a row with nothing
+/// taller than the default font in it.
+pub fn fitted_height(book: &unluminous_sheet::Workbook, sheet: usize, row: u32) -> Option<f64> {
+    let s = &book.sheets[sheet];
+    let mut tallest: f64 = 0.0;
+    for (&(_, col), cell) in s.cells.range((row, 0)..=(row, u32::MAX)) {
+        if cell.value.is_empty() {
+            continue;
+        }
+        let font = book.styles.font_of(cell.style);
+        let align = book.styles.xf(cell.style).align;
+        let code = book.styles.format_code(cell.style);
+        let text = unluminous_sheet::numfmt::Format::parse(&code)
+            .render(&cell.value, book.date1904, 255)
+            .text;
+        let mut lines = text.lines().count().max(1);
+        if align.wrap {
+            let width_points = super::axis::Axis::columns(s).size(col) as f64;
+            let chars_per_line = ((width_points - 5.0) / (font.size * 0.55)).max(1.0);
+            lines = text
+                .lines()
+                .map(|line| (line.chars().count() as f64 / chars_per_line).ceil().max(1.0) as usize)
+                .sum::<usize>()
+                .max(1);
+        }
+        // A line is about one and a third of the font's size, as Excel's default rows are 15 points for 11.
+        let line = (font.size * 4.0 / 3.0 * 4.0).round() / 4.0 + 0.5;
+        tallest = tallest.max(line * lines as f64);
+    }
+    (tallest > s.default_row_height + 0.01).then_some(tallest)
 }
 
 /// A chart over a block: the first column as the categories and every other column a series, the first row

@@ -248,13 +248,22 @@ pub const FUNCTIONS: &[Function] = &[
     s("SQRT", 1, 1, "number", "The square root.", |ctx, a| {
         unary(ctx, a, |x| if x < 0.0 { Err(ErrorKind::Num) } else { Ok(x.sqrt()) })
     }),
-    s("SQRTPI", 1, 1, "number", "The square root of the number times pi.", |ctx, a| {
-        unary(ctx, a, |x| {
-            if x < 0.0 {
-                Err(ErrorKind::Num)
-            } else {
-                Ok((x * std::f64::consts::PI).sqrt())
-            }
+    r("SQRTPI", 1, 1, "number", "The square root of the number times pi.", |ctx, a| {
+        // A range of several cells is an error here, though an array written in the formula is worked
+        // through value by value; a logical is an error either way.
+        let given = ctx.eval(&a[0]);
+        if matches!(given, Val::Ref(_) | Val::Refs(_))
+            && ctx.dims(&given).is_none_or(|(r, c)| r * c > 1)
+        {
+            return Val::error(ErrorKind::Value);
+        }
+        ctx.lift_vals(vec![given], |ctx, v| match &v[0] {
+            Value::Bool(_) => Value::Error(ErrorKind::Value),
+            other => match num(ctx, other) {
+                Ok(x) if x >= 0.0 => Value::Number((x * std::f64::consts::PI).sqrt()),
+                Ok(_) => Value::Error(ErrorKind::Num),
+                Err(e) => Value::Error(e),
+            },
         })
     }),
     s("EXP", 1, 1, "number", "e raised to a power.", |ctx, a| unary(ctx, a, |x| Ok(x.exp()))),
@@ -308,14 +317,25 @@ pub const FUNCTIONS: &[Function] = &[
             number(y.atan2(x))
         },
     ),
-    s("SINH", 1, 1, "number", "The hyperbolic sine.", |ctx, a| unary(ctx, a, |x| Ok(x.sinh()))),
-    s("COSH", 1, 1, "number", "The hyperbolic cosine.", |ctx, a| unary(ctx, a, |x| Ok(x.cosh()))),
+    s("SINH", 1, 1, "number", "The hyperbolic sine.", |ctx, a| {
+        unary(ctx, a, |x| exp_safe(x).map(f64::sinh))
+    }),
+    s("COSH", 1, 1, "number", "The hyperbolic cosine.", |ctx, a| {
+        unary(ctx, a, |x| exp_safe(x).map(f64::cosh))
+    }),
     s("TANH", 1, 1, "number", "The hyperbolic tangent.", |ctx, a| unary(ctx, a, |x| Ok(x.tanh()))),
     s("ASINH", 1, 1, "number", "The inverse hyperbolic sine.", |ctx, a| {
-        unary(ctx, a, |x| Ok(x.asinh()))
+        // Excel squares the number, so one whose square overflows is an error.
+        unary(ctx, a, |x| if (x * x).is_infinite() { Err(ErrorKind::Num) } else { Ok(x.asinh()) })
     }),
     s("ACOSH", 1, 1, "number", "The inverse hyperbolic cosine.", |ctx, a| {
-        unary(ctx, a, |x| if x < 1.0 { Err(ErrorKind::Num) } else { Ok(x.acosh()) })
+        unary(ctx, a, |x| {
+            if x < 1.0 || (x * x).is_infinite() {
+                Err(ErrorKind::Num)
+            } else {
+                Ok(x.acosh())
+            }
+        })
     }),
     s("ATANH", 1, 1, "number", "The inverse hyperbolic tangent.", |ctx, a| {
         unary(ctx, a, |x| if x.abs() >= 1.0 { Err(ErrorKind::Num) } else { Ok(x.atanh()) })
@@ -429,25 +449,13 @@ pub const FUNCTIONS: &[Function] = &[
             number(n.powf(k))
         },
     ),
-    s(
+    r(
         "MULTINOMIAL",
         1,
         MANY,
         "number1, [number2], ...",
         "The multinomial of numbers.",
-        |ctx, a| {
-            let mut total = 0.0;
-            let mut denominator = 1.0;
-            for v in a {
-                let n = num(ctx, v)?.trunc();
-                if n < 0.0 {
-                    return Err(ErrorKind::Num);
-                }
-                total += n;
-                denominator *= factorial(n)?;
-            }
-            number(factorial(total)? / denominator)
-        },
+        multinomial,
     ),
     r("GCD", 1, MANY, "number1, [number2], ...", "The greatest common divisor.", |ctx, args| {
         let n = match gather(ctx, args, Gather::Numbers) {
@@ -490,7 +498,11 @@ pub const FUNCTIONS: &[Function] = &[
         "bottom, top",
         "A random whole number between two numbers. Changes on every calculation.",
         |ctx, a| {
-            let (lo, hi) = (num(ctx, &a[0])?.ceil(), num(ctx, &a[1])?.floor());
+            if a.iter().any(|v| matches!(v, Value::Bool(_))) {
+                return Err(ErrorKind::Value);
+            }
+            // Excel rounds both bounds up, so 2.1 and 2.9 can only give 3.
+            let (lo, hi) = (num(ctx, &a[0])?.ceil(), num(ctx, &a[1])?.ceil());
             if lo > hi {
                 return Err(ErrorKind::Num);
             }
@@ -545,6 +557,16 @@ pub const FUNCTIONS: &[Function] = &[
         Err(e) => Val::error(e),
     }),
     r("MUNIT", 1, 1, "dimension", "The identity matrix.", |ctx, a| {
+        let given = ctx.eval(&a[0]);
+        if ctx.dims(&given).is_some_and(|(r, c)| r * c > 1) {
+            // Given several dimensions, Excel answers an array of the same shape holding the first
+            // value of each identity matrix.
+            return ctx.lift_vals(vec![given], |ctx, v| match ctx.number(&v[0]) {
+                Ok(n) if (1.0..=4096.0).contains(&n.trunc()) => Value::Number(1.0),
+                Ok(_) => Value::Error(ErrorKind::Value),
+                Err(e) => Value::Error(e),
+            });
+        }
         let n = match scalar_arg(ctx, a, 0, 0.0) {
             Ok(n) => n.trunc(),
             Err(e) => return Val::error(e),
@@ -631,16 +653,67 @@ pub const FUNCTIONS: &[Function] = &[
                 Err(e) => return Val::error(e),
             }
         }
-        let coefficients = match gather(ctx, &a[3..], Gather::Numbers) {
+        let coefficients = match series_coefficients(ctx, &a[3]) {
             Ok(c) => c,
             Err(e) => return Val::error(e),
         };
         let (x, n, m) = (scalars[0], scalars[1], scalars[2]);
+        if x == 0.0 && (0..coefficients.len()).any(|i| n + i as f64 * m == 0.0) {
+            return Val::error(ErrorKind::Num);
+        }
         Val::number(
             coefficients.iter().enumerate().map(|(i, c)| c * x.powf(n + i as f64 * m)).sum(),
         )
     }),
 ];
+
+/// MULTINOMIAL: the factorial of the sum over the product of the factorials, of numbers typed or read from
+/// ranges and arrays. Empty cells are left out, and text or a logical in a range, or a logical typed, is an error.
+fn multinomial(ctx: &mut Ctx, args: &[Expr]) -> Val {
+    let mut numbers = Vec::new();
+    for arg in args {
+        let v = ctx.eval(arg);
+        let mut values = Vec::new();
+        ctx.values_of(v, &mut values);
+        for (value, from_range) in values {
+            let n = match (&value, from_range) {
+                (Value::Error(e), _) => return Val::error(*e),
+                (Value::Number(n), _) => *n,
+                (Value::Empty, _) => continue,
+                (Value::Text(t), false) => {
+                    match crate::input::number_from_text(t, ctx.date1904()) {
+                        Some(n) => n,
+                        None => return Val::error(ErrorKind::Value),
+                    }
+                }
+                _ => return Val::error(ErrorKind::Value),
+            };
+            numbers.push(n.trunc());
+        }
+    }
+    if numbers.iter().any(|n| *n < 0.0) {
+        return Val::error(ErrorKind::Num);
+    }
+    let denominator = numbers.iter().try_fold(1.0, |acc, n| factorial(*n).map(|f| acc * f));
+    match (factorial(numbers.iter().sum()), denominator) {
+        (Ok(top), Ok(bottom)) => Val::number(top / bottom),
+        (Err(e), _) | (_, Err(e)) => Val::error(e),
+    }
+}
+
+/// The coefficients of SERIESSUM, in order. Empty cells count as 0, and text or a logical is an error.
+fn series_coefficients(ctx: &mut Ctx, expr: &Expr) -> Result<Vec<f64>, ErrorKind> {
+    let (values, ..) = super::flat(ctx, expr)?;
+    values
+        .into_iter()
+        .map(|v| match v {
+            Value::Number(n) => Ok(n),
+            Value::Empty => Ok(0.0),
+            Value::Error(e) => Err(e),
+            _ => Err(ErrorKind::Value),
+        })
+        .collect()
+}
 
 fn precise_up(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
     let x = num(ctx, &a[0])?;
@@ -654,6 +727,16 @@ fn precise_up(ctx: &mut Ctx, a: &[Value]) -> Result<Value, ErrorKind> {
 /// A quotient rounded to fifteen significant digits, so 1.0000000000000002 is ceiled to 1 rather than 2.
 fn clean(q: f64) -> f64 {
     round_significant(q, 15)
+}
+
+/// The hyperbolic functions are worked out from e^x, which overflows past 709.78, so Excel answers
+/// `#NUM!` there although the result itself would still fit in a double.
+fn exp_safe(x: f64) -> Result<f64, ErrorKind> {
+    if x.abs() > 709.782_712_893_384 {
+        Err(ErrorKind::Num)
+    } else {
+        Ok(x)
+    }
 }
 
 /// Excel refuses the trigonometric functions for angles too large to have meaningful digits.
@@ -879,77 +962,102 @@ fn sumif(ctx: &mut Ctx, args: &[Expr]) -> Val {
     })
 }
 
-/// The criteria ranges and criteria of a *IFS function, matched cell by cell. `first` is the range every
-/// criteria range must be the size of, the sum range for SUMIFS. Answers which positions meet every
-/// criterion and the rows and columns read, a whole column being clipped to the rows in use.
-pub fn ifs_mask(
-    ctx: &mut Ctx,
-    pairs: &[Expr],
-    first: Option<Area>,
-) -> Result<(Vec<bool>, usize, usize), ErrorKind> {
-    if pairs.len() % 2 != 0 || pairs.is_empty() {
-        return Err(ErrorKind::Value);
-    }
-    let date1904 = ctx.date1904();
-    let mut shape: Option<(Area, usize, usize)> = None;
-    if let Some(area) = first {
-        let (_, rr, cc) = clipped(ctx, &area)?;
-        shape = Some((area, rr, cc));
-    }
-    let mut mask: Option<Vec<bool>> = None;
-    for pair in pairs.chunks(2) {
-        let area = match ctx.eval(&pair[0]) {
-            Val::Ref(area) => area,
-            Val::Value(Value::Error(e)) => return Err(e),
-            _ => return Err(ErrorKind::Value),
-        };
-        let crit = ctx.eval(&pair[1]);
-        let crit = ctx.single(crit);
-        if let Value::Error(e) = crit {
-            return Err(e);
-        }
-        let (base, rr, cc) = match shape {
-            Some(s) => s,
-            None => {
-                let (_, rr, cc) = clipped(ctx, &area)?;
-                shape = Some((area, rr, cc));
-                (area, rr, cc)
-            }
-        };
-        if area.range.rows() != base.range.rows() || area.range.cols() != base.range.cols() {
+/// The criteria ranges and criteria of a *IFS function, read once, matched cell by cell. A criterion may be an
+/// array, and then the function answers once for each of its values, as SUMIFS(B1:B4, A1:A4, {1,3}) does.
+pub struct IfsParts {
+    /// The values of each criteria range, in the shape of the first.
+    ranges: Vec<Vec<Value>>,
+    /// The criteria, as they were given: single values or arrays.
+    criteria: Vec<Val>,
+    /// The rows and columns read, a whole column being clipped to the rows in use.
+    pub rows: usize,
+    pub cols: usize,
+}
+
+impl IfsParts {
+    /// Read the pairs of criteria range and criterion. `first` is the range every criteria range must be the
+    /// size of, the sum range for SUMIFS.
+    pub fn read(ctx: &mut Ctx, pairs: &[Expr], first: Option<Area>) -> Result<Self, ErrorKind> {
+        if pairs.len() % 2 != 0 || pairs.is_empty() {
             return Err(ErrorKind::Value);
         }
-        let values = ctx.read_range(area.sheet, aligned(&area, rr, cc));
-        let criterion = Criterion::parse(&crit, date1904);
-        let m = mask.get_or_insert_with(|| vec![true; rr * cc]);
-        for (i, v) in values.data.iter().enumerate() {
-            if m[i] && !criterion.matches(v) {
-                m[i] = false;
+        let mut shape: Option<(Area, usize, usize)> = None;
+        if let Some(area) = first {
+            let (_, rr, cc) = clipped(ctx, &area)?;
+            shape = Some((area, rr, cc));
+        }
+        let (mut ranges, mut criteria) = (Vec::new(), Vec::new());
+        for pair in pairs.chunks(2) {
+            let area = match ctx.eval(&pair[0]) {
+                Val::Ref(area) => area,
+                Val::Value(Value::Error(e)) => return Err(e),
+                _ => return Err(ErrorKind::Value),
+            };
+            criteria.push(ctx.eval(&pair[1]));
+            let (base, rr, cc) = match shape {
+                Some(s) => s,
+                None => {
+                    let (_, rr, cc) = clipped(ctx, &area)?;
+                    shape = Some((area, rr, cc));
+                    (area, rr, cc)
+                }
+            };
+            if area.range.rows() != base.range.rows() || area.range.cols() != base.range.cols() {
+                return Err(ErrorKind::Value);
+            }
+            ranges.push(ctx.read_range(area.sheet, aligned(&area, rr, cc)).data);
+        }
+        let (_, rows, cols) = shape.ok_or(ErrorKind::Value)?;
+        Ok(Self { ranges, criteria, rows, cols })
+    }
+
+    /// Which positions meet every criterion, given one value for each criterion.
+    fn mask(&self, criteria: &[Value], date1904: bool) -> Vec<bool> {
+        let mut mask = vec![true; self.rows * self.cols];
+        for (values, criterion) in self.ranges.iter().zip(criteria) {
+            let criterion = Criterion::parse(criterion, date1904);
+            for (keep, value) in mask.iter_mut().zip(values) {
+                if *keep && !criterion.matches(value) {
+                    *keep = false;
+                }
             }
         }
+        mask
     }
-    let (_, rr, cc) = shape.ok_or(ErrorKind::Value)?;
-    Ok((mask.unwrap_or_default(), rr, cc))
+
+    /// The answer of a calculation over the positions that meet every criterion, which is an array when a
+    /// criterion is one. A criterion that is an error is the answer.
+    pub fn answer(&self, ctx: &mut Ctx, f: impl Fn(&[bool]) -> Value) -> Val {
+        let date1904 = ctx.date1904();
+        ctx.lift_vals(self.criteria.clone(), |_, criteria| {
+            match criteria.iter().find(|c| c.is_error()) {
+                Some(error) => error.clone(),
+                None => f(&self.mask(criteria, date1904)),
+            }
+        })
+    }
 }
 
 fn sumifs(ctx: &mut Ctx, args: &[Expr]) -> Val {
     let Val::Ref(sum_area) = ctx.eval(&args[0]) else { return Val::error(ErrorKind::Value) };
-    let (mask, r, c) = match ifs_mask(ctx, &args[1..], Some(sum_area)) {
-        Ok(m) => m,
+    let parts = match IfsParts::read(ctx, &args[1..], Some(sum_area)) {
+        Ok(p) => p,
         Err(e) => return Val::error(e),
     };
-    let sums = ctx.read_range(sum_area.sheet, aligned(&sum_area, r, c));
-    let mut total = 0.0;
-    for (i, keep) in mask.iter().enumerate() {
-        if *keep {
-            match sums.data.get(i) {
-                Some(Value::Number(n)) => total += n,
-                Some(Value::Error(e)) => return Val::error(*e),
-                _ => {}
+    let sums = ctx.read_range(sum_area.sheet, aligned(&sum_area, parts.rows, parts.cols));
+    parts.answer(ctx, |mask| {
+        let mut total = 0.0;
+        for (i, keep) in mask.iter().enumerate() {
+            if *keep {
+                match sums.data.get(i) {
+                    Some(Value::Number(n)) => total += n,
+                    Some(Value::Error(e)) => return Value::Error(*e),
+                    _ => {}
+                }
             }
         }
-    }
-    Val::number(total)
+        Value::Number(total)
+    })
 }
 
 /// An area's values as a flat list, a whole column clipped to the rows in use, and the shape read.
@@ -1008,7 +1116,12 @@ fn pairs(ctx: &mut Ctx, args: &[Expr], f: fn(f64, f64) -> f64) -> Val {
     if x.len() != y.len() {
         return Val::error(ErrorKind::NA);
     }
-    Val::number(x.iter().zip(&y).filter_map(|(a, b)| Some(f((*a)?, (*b)?))).sum())
+    let terms: Vec<f64> = x.iter().zip(&y).filter_map(|(a, b)| Some(f((*a)?, (*b)?))).collect();
+    // With no pair of numbers there is nothing to add, which Excel reports as a division by zero.
+    if terms.is_empty() {
+        return Val::error(ErrorKind::Div0);
+    }
+    Val::number(terms.iter().sum())
 }
 
 fn scalar_arg(ctx: &mut Ctx, args: &[Expr], i: usize, default: f64) -> Result<f64, ErrorKind> {
@@ -1108,12 +1221,14 @@ fn is_subtotal_cell(ctx: &Ctx, sheet: usize, at: crate::coord::CellRef) -> bool 
 }
 
 /// The values a SUBTOTAL or AGGREGATE reads: by cell, so hidden rows and nested subtotals can be left out.
+/// Only the array forms of AGGREGATE (14 to 19) take an array or a value; the others take references.
 fn subtotal_values(
     ctx: &mut Ctx,
     args: &[Expr],
     skip_hidden: bool,
     skip_errors: bool,
     skip_nested: bool,
+    arrays: bool,
 ) -> Result<Vec<Value>, ErrorKind> {
     let mut out = Vec::new();
     for arg in args {
@@ -1127,10 +1242,10 @@ fn subtotal_values(
                 }
             }
             Val::Value(Value::Error(e)) if !skip_errors => return Err(e),
-            Val::Array(a) => {
+            Val::Array(a) if arrays => {
                 out.extend(a.data.into_iter().filter(|v| !(skip_errors && v.is_error())))
             }
-            Val::Value(v) => out.push(v),
+            Val::Value(v) if arrays => out.push(v),
             _ => return Err(ErrorKind::Value),
         }
     }
@@ -1223,7 +1338,8 @@ fn aggregate_of(which: u32, values: &[Value]) -> Result<f64, ErrorKind> {
         }
         7 => sample_variance(&numbers).ok_or(ErrorKind::Div0)?.sqrt(),
         8 => population_variance(&numbers).ok_or(ErrorKind::Div0)?.sqrt(),
-        9 => numbers.iter().sum(),
+        // An empty sum is +0, where Rust's own sum of nothing is -0.
+        9 => numbers.iter().sum::<f64>() + 0.0,
         10 => sample_variance(&numbers).ok_or(ErrorKind::Div0)?,
         11 => population_variance(&numbers).ok_or(ErrorKind::Div0)?,
         _ => return Err(ErrorKind::Value),
@@ -1240,7 +1356,7 @@ fn subtotal(ctx: &mut Ctx, args: &[Expr]) -> Val {
         101..=111 => (which - 100, true),
         _ => return Val::error(ErrorKind::Value),
     };
-    match subtotal_values(ctx, &args[1..], skip_hidden, false, true) {
+    match subtotal_values(ctx, &args[1..], skip_hidden, false, true, false) {
         Ok(values) => aggregate_of(base, &values).map_or_else(Val::error, Val::number),
         Err(e) => Val::error(e),
     }
@@ -1262,10 +1378,11 @@ fn aggregate(ctx: &mut Ctx, args: &[Expr]) -> Val {
     let skip_hidden = matches!(options, 1 | 3 | 5 | 7);
     let skip_errors = matches!(options, 2 | 3 | 6 | 7);
     if which <= 13 {
-        let values = match subtotal_values(ctx, &args[2..], skip_hidden, skip_errors, skip_nested) {
-            Ok(v) => v,
-            Err(e) => return Val::error(e),
-        };
+        let values =
+            match subtotal_values(ctx, &args[2..], skip_hidden, skip_errors, skip_nested, false) {
+                Ok(v) => v,
+                Err(e) => return Val::error(e),
+            };
         return match which {
             1..=11 => aggregate_of(which, &values).map_or_else(Val::error, Val::number),
             12 => {
@@ -1281,10 +1398,11 @@ fn aggregate(ctx: &mut Ctx, args: &[Expr]) -> Val {
         };
     }
     // 14 to 19 take an array and a k.
-    let values = match subtotal_values(ctx, &args[2..3], skip_hidden, skip_errors, skip_nested) {
-        Ok(v) => v,
-        Err(e) => return Val::error(e),
-    };
+    let values =
+        match subtotal_values(ctx, &args[2..3], skip_hidden, skip_errors, skip_nested, true) {
+            Ok(v) => v,
+            Err(e) => return Val::error(e),
+        };
     let k = match scalar_arg(ctx, args, 3, f64::NAN) {
         Ok(k) if !k.is_nan() => k,
         Ok(_) => return Val::error(ErrorKind::Value),

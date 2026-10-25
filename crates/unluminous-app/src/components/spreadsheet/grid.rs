@@ -108,11 +108,17 @@ const EDGE_GRAB: f32 = 4.0;
 /// Where the grid is on the screen this frame, and how to turn a cell into a rectangle and back.
 #[derive(Debug, Clone, Copy)]
 pub struct Frame {
-    /// The cells' area, under the column header and right of the row header.
+    /// The cells' area, under the column header and beside the row header.
     pub cells: Rect,
     pub zoom: f32,
     pub frozen: (u32, u32),
     pub scroll: Vec2,
+    /// A right to left sheet: column A is at the right and the row header down the right side.
+    pub rtl: bool,
+    /// The strip of column letters above these cells and the strip of row numbers beside them, which are
+    /// empty when the sheet hides its headings.
+    pub column_header: Rect,
+    pub row_header: Rect,
 }
 
 impl Frame {
@@ -121,7 +127,20 @@ impl Frame {
         let axes = book.view.axes.as_ref().expect("axes are built before drawing");
         let start = axes.columns.start(col);
         let shift = if col >= self.frozen.1 { self.scroll.x } else { 0.0 };
-        self.cells.left() + (start - shift) * self.zoom
+        if self.rtl {
+            self.cells.right() - (start - shift + axes.columns.size(col)) * self.zoom
+        } else {
+            self.cells.left() + (start - shift) * self.zoom
+        }
+    }
+
+    /// Whether a point is on the strip of column letters or on the strip of row numbers.
+    pub fn in_column_header(&self, p: Pos2) -> bool {
+        self.column_header.contains(p)
+    }
+
+    pub fn in_row_header(&self, p: Pos2) -> bool {
+        self.row_header.contains(p)
     }
 
     pub fn y(&self, book: &Book, row: u32) -> f32 {
@@ -152,7 +171,11 @@ impl Frame {
     /// The cell under a point, which may be outside the cells' area (for a drag past the edge).
     pub fn at(&self, book: &Book, p: Pos2) -> CellRef {
         let axes = book.view.axes.as_ref().expect("axes are built before drawing");
-        let local = (p - self.cells.min) / self.zoom;
+        let local = if self.rtl {
+            Vec2::new(self.cells.right() - p.x, p.y - self.cells.top()) / self.zoom
+        } else {
+            (p - self.cells.min) / self.zoom
+        };
         let frozen_w = axes.columns.start(self.frozen.1);
         let frozen_h = axes.rows.start(self.frozen.0);
         let x = if local.x < frozen_w { local.x } else { local.x + self.scroll.x };
@@ -193,6 +216,10 @@ pub struct GridOut {
     /// A filter button was pressed on this column.
     pub filter_menu: Option<(u32, Pos2)>,
     pub frame: Option<Frame>,
+    /// Commands the pointer asked for, run after the frame as a menu entry's are.
+    pub words: Vec<Vec<String>>,
+    /// A menu of commands to open where the pointer let go, as a right drag does.
+    pub drop_menu: Option<(Pos2, Vec<crate::services::spreadsheet::catalogue::Item>)>,
 }
 
 /// One cell's text, laid out, to draw after the fills and the borders.
@@ -252,63 +279,269 @@ pub fn show(
         let sheet = &book.session.book.sheets[book.view.sheet];
         book.view.axes(sheet, revision);
     }
-    let sheet_index = book.view.sheet;
-    let frozen = book.session.book.sheets[sheet_index].frozen.unwrap_or((0, 0));
-    let cells = Rect::from_min_max(
-        Pos2::new(area.left() + ROW_HEADER * zoom, area.top() + COLUMN_HEADER * zoom),
-        area.max,
-    );
-    let frame = Frame { cells, zoom, frozen, scroll: book.view.scroll };
-    book.view.drawn = Some(cells);
-    out.frame = Some(frame);
-    let painter = ui.painter_at(area);
-
-    // The pointer first, so a press this frame is drawn this frame.
+    let layout = Layout::of(area, book, zoom);
+    let mut panes = layout.panes(book);
+    book.view.drawn = Some(layout.cells);
+    // The pointer first, so a press this frame is drawn this frame. It is read by the pane under it.
     let response =
         ui.interact(area, ui.id().with(("spreadsheet-grid", &book.key)), Sense::click_and_drag());
     response.widget_info(|| {
         egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "Spreadsheet grid")
     });
-    read_the_wheel(ui, &response, book, frame, zoom);
-    let frame = Frame { scroll: book.view.scroll, ..frame };
-    read_the_pointer(ui, &response, book, frame, area, pointing, out);
-    let frame = Frame { scroll: book.view.scroll, ..frame };
-    out.frame = Some(frame);
+    let under = pointer_pane(&response, &panes);
+    read_the_wheel(ui, &response, book, panes[under].frame, zoom, panes[under].scrolls);
+    panes = layout.panes(book);
+    let split = read_the_split_bars(ui, &response, book, &layout);
+    if !split {
+        read_the_pointer(ui, &response, book, panes[under].frame, area, pointing, out);
+    }
+    panes = layout.panes(book);
+    let main = panes.last().expect("at least one pane").frame;
+    out.frame = Some(main);
+    ui.painter_at(layout.cells).rect_filled(layout.cells, 0, ink.paper);
+    let mut formats: HashMap<u32, Format> = HashMap::new();
+    for pane in &panes {
+        draw_pane(ui, look, book, rules, pane.frame, &ink, &mut formats);
+        draw_selection(ui, book, pane.frame, &ink, look);
+    }
+    draw_dividers(ui, &layout, &panes, look);
+    for pane in &panes {
+        draw_headers(ui, book, pane, &ink, look);
+    }
+    draw_corner(ui, &layout, &ink, look);
+}
 
-    painter.rect_filled(cells, 0, ink.paper);
+/// Where the parts of the grid go this frame: the header strips, and the cells beside them.
+#[derive(Debug, Clone, Copy)]
+pub struct Layout {
+    pub area: Rect,
+    pub cells: Rect,
+    pub zoom: f32,
+    pub rtl: bool,
+    pub headings: bool,
+    /// The split position in points from the cells' top left, when the window is split rather than
+    /// frozen.
+    pub split: Option<Vec2>,
+}
+
+/// One pane of a split window: its frame, and which of the view's two scroll positions it reads across
+/// and down (`false` is the main scroll, `true` the split's own).
+#[derive(Debug, Clone, Copy)]
+pub struct Pane {
+    pub frame: Frame,
+    pub scrolls: (bool, bool),
+}
+
+impl Layout {
+    pub fn of(area: Rect, book: &Book, zoom: f32) -> Layout {
+        let sheet = &book.session.book.sheets[book.view.sheet];
+        let headings = sheet.view.show_headings;
+        let rtl = sheet.view.right_to_left;
+        let (rw, ch) =
+            if headings { (ROW_HEADER * zoom, COLUMN_HEADER * zoom) } else { (0.0, 0.0) };
+        let cells = if rtl {
+            Rect::from_min_max(
+                Pos2::new(area.left(), area.top() + ch),
+                Pos2::new(area.right() - rw, area.bottom()),
+            )
+        } else {
+            Rect::from_min_max(Pos2::new(area.left() + rw, area.top() + ch), area.max)
+        };
+        let split = sheet.frozen.is_none().then(|| sheet.view.split.as_ref()).flatten().map(|sp| {
+            // A split is saved in twentieths of a point from the window's top left, headers included.
+            let x = if sp.x > 0.0 { (sp.x as f32 / 20.0 - rw / zoom).max(8.0) * zoom } else { 0.0 };
+            let y = if sp.y > 0.0 { (sp.y as f32 / 20.0 - ch / zoom).max(8.0) * zoom } else { 0.0 };
+            Vec2::new(x.min(cells.width() - 8.0), y.min(cells.height() - 8.0))
+        });
+        Layout { area, cells, zoom, rtl, headings, split }
+    }
+
+    /// The panes: one, or two or four for a split window, the main pane (bottom right) last.
+    pub fn panes(&self, book: &Book) -> Vec<Pane> {
+        let sheet = &book.session.book.sheets[book.view.sheet];
+        let frozen = sheet.frozen.unwrap_or((0, 0));
+        let make = |cells: Rect, scrolls: (bool, bool)| {
+            let scroll = Vec2::new(
+                if scrolls.0 { book.view.split_scroll.x } else { book.view.scroll.x },
+                if scrolls.1 { book.view.split_scroll.y } else { book.view.scroll.y },
+            );
+            let column_header = Rect::from_min_max(
+                Pos2::new(cells.left(), self.area.top()),
+                Pos2::new(cells.right(), self.cells.top()),
+            );
+            let row_header = if self.rtl {
+                Rect::from_min_max(
+                    Pos2::new(self.cells.right(), cells.top()),
+                    Pos2::new(self.area.right(), cells.bottom()),
+                )
+            } else {
+                Rect::from_min_max(
+                    Pos2::new(self.area.left(), cells.top()),
+                    Pos2::new(self.cells.left(), cells.bottom()),
+                )
+            };
+            let frozen = if self.split.is_some() { (0, 0) } else { frozen };
+            let frame = Frame {
+                cells,
+                zoom: self.zoom,
+                frozen,
+                scroll,
+                rtl: self.rtl,
+                column_header,
+                row_header,
+            };
+            Pane { frame, scrolls }
+        };
+        let Some(split) = self.split else { return vec![make(self.cells, (false, false))] };
+        let c = self.cells;
+        let (sx, sy) = (split.x, split.y);
+        // In a right to left sheet the first pane across is the one at the right.
+        let (first_x, second_x) = if self.rtl {
+            ((c.right() - sx, c.right()), (c.left(), c.right() - sx))
+        } else {
+            ((c.left(), c.left() + sx), (c.left() + sx, c.right()))
+        };
+        let cols: Vec<((f32, f32), bool)> = if sx > 0.0 {
+            vec![(first_x, true), (second_x, false)]
+        } else {
+            vec![((c.left(), c.right()), false)]
+        };
+        let rows: Vec<((f32, f32), bool)> = if sy > 0.0 {
+            vec![((c.top(), c.top() + sy), true), ((c.top() + sy, c.bottom()), false)]
+        } else {
+            vec![((c.top(), c.bottom()), false)]
+        };
+        let mut panes = Vec::new();
+        for ((top, bottom), own_y) in &rows {
+            for ((left, right), own_x) in &cols {
+                let rect = Rect::from_min_max(Pos2::new(*left, *top), Pos2::new(*right, *bottom));
+                panes.push(make(rect, (*own_x, *own_y)));
+            }
+        }
+        panes
+    }
+}
+
+/// The pane the pointer is over, or the main pane.
+fn pointer_pane(response: &egui::Response, panes: &[Pane]) -> usize {
+    let main = panes.len() - 1;
+    let Some(p) = response.hover_pos().or_else(|| response.interact_pointer_pos()) else {
+        return main;
+    };
+    panes
+        .iter()
+        .position(|pane| {
+            let f = pane.frame;
+            f.cells.contains(p)
+                || (f.column_header.contains(p))
+                || (f.row_header.contains(p) && p.y >= f.cells.top() && p.y < f.cells.bottom())
+        })
+        .unwrap_or(main)
+}
+
+/// Dragging a split bar moves it; dragged back to the edge it removes the split. Answers whether the
+/// pointer is on a split bar, so the cells do not read the same drag.
+fn read_the_split_bars(
+    ui: &egui::Ui,
+    response: &egui::Response,
+    book: &mut Book,
+    layout: &Layout,
+) -> bool {
+    let Some(split) = layout.split else { return false };
+    let Some(p) = response.hover_pos().or_else(|| response.interact_pointer_pos()) else {
+        return false;
+    };
+    let c = layout.cells;
+    let bar_x = if layout.rtl { c.right() - split.x } else { c.left() + split.x };
+    let bar_y = c.top() + split.y;
+    let id = egui::Id::new(("split-bar", &book.key));
+    let held: Option<(bool, bool)> = ui.ctx().data(|d| d.get_temp(id));
+    let near_x = split.x > 0.0 && (p.x - bar_x).abs() <= 4.0;
+    let near_y = split.y > 0.0 && (p.y - bar_y).abs() <= 4.0;
+    let grip = held.unwrap_or((near_x, near_y));
+    if !(grip.0 || grip.1) {
+        return false;
+    }
+    ui.ctx().set_cursor_icon(match grip {
+        (true, true) => egui::CursorIcon::Move,
+        (true, false) => egui::CursorIcon::ResizeColumn,
+        _ => egui::CursorIcon::ResizeRow,
+    });
+    if response.drag_started() {
+        ui.ctx().data_mut(|d| d.insert_temp(id, grip));
+    }
+    if response.dragged() || response.drag_stopped() {
+        let header =
+            if layout.headings { Vec2::new(ROW_HEADER, COLUMN_HEADER) } else { Vec2::ZERO };
+        let along = if layout.rtl { c.right() - p.x } else { p.x - c.left() };
+        if let Some(sp) = book.session.book.sheets[book.view.sheet].view.split.clone() {
+            let mut next = sp;
+            if grip.0 {
+                next.x = if along < 8.0 {
+                    0.0
+                } else {
+                    ((along / layout.zoom + header.x) * 20.0) as f64
+                };
+            }
+            if grip.1 {
+                let down = p.y - c.top();
+                next.y =
+                    if down < 8.0 { 0.0 } else { ((down / layout.zoom + header.y) * 20.0) as f64 };
+            }
+            if response.drag_stopped() {
+                ui.ctx().data_mut(|d| d.remove::<(bool, bool)>(id));
+                let gone = next.x <= 0.0 && next.y <= 0.0;
+                let _ = book.session.split(book.view.sheet, (!gone).then_some(next));
+                book.changed();
+            } else {
+                book.session.book.sheets[book.view.sheet].view.split = Some(next);
+                book.changed();
+            }
+        }
+    }
+    true
+}
+
+/// The cells of one pane: a frozen sheet's four parts, or the one part a pane of a split window has.
+fn draw_pane(
+    ui: &egui::Ui,
+    look: &Look<'_>,
+    book: &Book,
+    rules: &Rules,
+    frame: Frame,
+    ink: &Ink,
+    formats: &mut HashMap<u32, Format>,
+) {
+    let cells = frame.cells;
+    let frozen = frame.frozen;
+    let zoom = frame.zoom;
     let (first_row, last_row, first_col, last_col) = frame.visible(book);
     // The four parts of a frozen sheet: the corner that never moves, the rows along the top, the columns
     // down the left, and the scrolled part, each clipped to itself.
     let frozen_w = book.view.axes.as_ref().map_or(0.0, |a| a.columns.start(frozen.1)) * zoom;
     let frozen_h = book.view.axes.as_ref().map_or(0.0, |a| a.rows.start(frozen.0)) * zoom;
+    let across = |from: f32, to: f32| {
+        if frame.rtl {
+            (cells.right() - to, cells.right() - from)
+        } else {
+            (cells.left() + from, cells.left() + to)
+        }
+    };
+    let rect = |x: (f32, f32), top: f32, bottom: f32| {
+        Rect::from_min_max(Pos2::new(x.0, top), Pos2::new(x.1, bottom))
+    };
+    let fixed = across(0.0, frozen_w);
+    let moving = across(frozen_w, cells.width());
     let parts = [
-        (0..frozen.0, 0..frozen.1, Rect::from_min_size(cells.min, Vec2::new(frozen_w, frozen_h))),
-        (
-            0..frozen.0,
-            first_col..last_col + 1,
-            Rect::from_min_max(
-                Pos2::new(cells.left() + frozen_w, cells.top()),
-                Pos2::new(cells.right(), cells.top() + frozen_h),
-            ),
-        ),
-        (
-            first_row..last_row + 1,
-            0..frozen.1,
-            Rect::from_min_max(
-                Pos2::new(cells.left(), cells.top() + frozen_h),
-                Pos2::new(cells.left() + frozen_w, cells.bottom()),
-            ),
-        ),
+        (0..frozen.0, 0..frozen.1, rect(fixed, cells.top(), cells.top() + frozen_h)),
+        (0..frozen.0, first_col..last_col + 1, rect(moving, cells.top(), cells.top() + frozen_h)),
+        (first_row..last_row + 1, 0..frozen.1, rect(fixed, cells.top() + frozen_h, cells.bottom())),
         (
             first_row..last_row + 1,
             first_col..last_col + 1,
-            Rect::from_min_max(
-                Pos2::new(cells.left() + frozen_w, cells.top() + frozen_h),
-                cells.max,
-            ),
+            rect(moving, cells.top() + frozen_h, cells.bottom()),
         ),
     ];
-    let mut formats: HashMap<u32, Format> = HashMap::new();
     for (rows, cols, clip) in parts.iter().cloned() {
         if rows.is_empty() || cols.is_empty() || clip.width() <= 0.0 || clip.height() <= 0.0 {
             continue;
@@ -320,36 +553,53 @@ pub fn show(
             book,
             rules,
             frame,
-            &ink,
+            ink,
             rows.start,
             rows.end - 1,
             cols.start,
             cols.end - 1,
             clip,
-            &mut formats,
+            formats,
         );
     }
-    // The line under the frozen rows and right of the frozen columns.
+    let painter = ui.painter_at(cells);
+    // The line under the frozen rows and beside the frozen columns.
     if frozen.0 > 0 {
+        let y = cells.top() + frozen_h;
         painter.line_segment(
-            [
-                Pos2::new(cells.left(), cells.top() + frozen_h),
-                Pos2::new(cells.right(), cells.top() + frozen_h),
-            ],
+            [Pos2::new(cells.left(), y), Pos2::new(cells.right(), y)],
             Stroke::new(1.5, look.palette.text_faint),
         );
     }
     if frozen.1 > 0 {
+        let x = fixed.1.max(fixed.0) - if frame.rtl { frozen_w } else { 0.0 };
         painter.line_segment(
-            [
-                Pos2::new(cells.left() + frozen_w, cells.top()),
-                Pos2::new(cells.left() + frozen_w, cells.bottom()),
-            ],
+            [Pos2::new(x, cells.top()), Pos2::new(x, cells.bottom())],
             Stroke::new(1.5, look.palette.text_faint),
         );
     }
-    draw_selection(ui, book, frame, &ink, look);
-    draw_headers(ui, area, book, frame, &ink, look, first_row, last_row, first_col, last_col);
+}
+
+/// The split bars between the panes of a split window.
+fn draw_dividers(ui: &egui::Ui, layout: &Layout, panes: &[Pane], look: &Look<'_>) {
+    let Some(split) = layout.split else { return };
+    let painter = ui.painter_at(layout.area);
+    let c = layout.cells;
+    let stroke = Stroke::new(4.0, look.palette.divider);
+    if split.x > 0.0 {
+        let x = if layout.rtl { c.right() - split.x } else { c.left() + split.x };
+        painter.line_segment([Pos2::new(x, layout.area.top()), Pos2::new(x, c.bottom())], stroke);
+    }
+    if split.y > 0.0 {
+        let y = c.top() + split.y;
+        let (left, right) = if layout.rtl {
+            (c.left(), layout.area.right())
+        } else {
+            (layout.area.left(), c.right())
+        };
+        painter.line_segment([Pos2::new(left, y), Pos2::new(right, y)], stroke);
+    }
+    let _ = panes;
 }
 
 /// The wheel scrolls; with Shift it scrolls across; with Ctrl it zooms.
@@ -359,6 +609,7 @@ fn read_the_wheel(
     book: &mut Book,
     frame: Frame,
     zoom: f32,
+    scrolls: (bool, bool),
 ) {
     if !response.contains_pointer() {
         return;
@@ -383,8 +634,11 @@ fn read_the_wheel(
     let max_y = (axes.rows.end(used.row.max(book.view.cursor.row))
         + frame.cells.height() / zoom * 2.0)
         .min(axes.rows.total());
-    book.view.scroll.x = (book.view.scroll.x - delta.x / zoom).clamp(0.0, max_x);
-    book.view.scroll.y = (book.view.scroll.y - delta.y / zoom).clamp(0.0, max_y);
+    let x = if scrolls.0 { &mut book.view.split_scroll.x } else { &mut book.view.scroll.x };
+    let dx = if frame.rtl { -delta.x } else { delta.x };
+    *x = (*x - dx / zoom).clamp(0.0, max_x);
+    let y = if scrolls.1 { &mut book.view.split_scroll.y } else { &mut book.view.scroll.y };
+    *y = (*y - delta.y / zoom).clamp(0.0, max_y);
 }
 
 /// Presses, drags and double clicks on the cells and the headers.
@@ -400,16 +654,23 @@ fn read_the_pointer(
     let pointer = response.hover_pos().or_else(|| response.interact_pointer_pos());
     let Some(p) = pointer else { return };
     let modifiers = ui.input(|i| i.modifiers);
-    let in_columns = p.y < frame.cells.top() && p.x >= frame.cells.left();
-    let in_rows = p.x < frame.cells.left() && p.y >= frame.cells.top();
+    let in_columns = frame.in_column_header(p);
+    let in_rows = frame.in_row_header(p);
     let at = frame.at(book, p);
     let axes = book.view.axes.clone().expect("built");
     // The edge of a header under the pointer, for the resize cursor and the drag.
     let column_edge = in_columns
         .then(|| {
             let col = at.col;
-            let right = frame.x(book, col) + axes.columns.size(col) * frame.zoom;
-            let left = frame.x(book, col);
+            let (left, right) = {
+                let a = frame.x(book, col);
+                let b = a + axes.columns.size(col) * frame.zoom;
+                if frame.rtl {
+                    (b, a)
+                } else {
+                    (a, b)
+                }
+            };
             if (p.x - right).abs() <= EDGE_GRAB {
                 Some(col)
             } else if (p.x - left).abs() <= EDGE_GRAB && col > 0 {
@@ -437,6 +698,7 @@ fn read_the_pointer(
     let range = book.view.range();
     let handle = frame.range(book, range).right_bottom();
     let on_handle = !pointing && (p - handle).length() <= 5.0 && book.view.extra.is_empty();
+    let border = (!pointing && !on_handle).then(|| on_the_border(book, frame, p)).flatten();
     if response.hovered() {
         if column_edge.is_some() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeColumn);
@@ -444,9 +706,26 @@ fn read_the_pointer(
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeRow);
         } else if on_handle {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+        } else if border.is_some() || matches!(book.view.drag, Some(Drag::Move { .. })) {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Move);
         } else if frame.cells.contains(p) {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Cell);
         }
+    }
+    let secondary_drag = response.drag_started_by(egui::PointerButton::Secondary);
+    if secondary_drag && (border.is_some() || on_handle) {
+        out.pressed = true;
+        book.view.drag = Some(if on_handle {
+            Drag::Fill { right: true }
+        } else {
+            let grab = at;
+            Drag::Move {
+                rows: grab.row.saturating_sub(range.first.row).min(range.rows() - 1),
+                cols: grab.col.saturating_sub(range.first.col).min(range.cols() - 1),
+                right: true,
+            }
+        });
+        return;
     }
     if response.secondary_clicked() {
         out.pressed = true;
@@ -464,6 +743,33 @@ fn read_the_pointer(
             book.view.select_columns(col, col);
             out.acts.push(Act::AutoFitColumns);
             book.view.select_cell(CellRef::new(book.view.cursor.row.min(MAX_ROWS - 1), col));
+            return;
+        }
+        if let Some(row) = row_edge {
+            // A double click on a row's lower edge fits the row to what is in it, as for a column.
+            book.view.select_rows(row, row);
+            out.acts.push(Act::AutoFitRows);
+            book.view.select_cell(CellRef::new(row, book.view.cursor.col.min(MAX_COLS - 1)));
+            return;
+        }
+        if on_handle {
+            // A double click on the fill handle fills down as far as the column beside goes.
+            if let Some(to) = fill_down_extent(book) {
+                out.acts.push(Act::FillTo(to));
+            }
+            return;
+        }
+        if let Some(edge) = border {
+            // A double click on the active cell's border goes to the edge of the data that way.
+            let (rows, cols) = edge;
+            let sheet = &book.session.book.sheets[book.view.sheet];
+            let to = crate::services::spreadsheet::view::edge_of_data(
+                sheet,
+                book.view.cursor,
+                rows,
+                cols,
+            );
+            book.view.select_cell(to);
             return;
         }
         if frame.cells.contains(p) {
@@ -484,8 +790,14 @@ fn read_the_pointer(
         } else if let Some(row) = row_edge {
             book.view.drag = Some(Drag::RowEdge(row, axes.rows.size(row)));
         } else if on_handle {
-            book.view.drag = Some(Drag::Fill);
-        } else if p.x < frame.cells.left() && p.y < frame.cells.top() {
+            book.view.drag = Some(Drag::Fill { right: false });
+        } else if border.is_some() && response.drag_started() {
+            book.view.drag = Some(Drag::Move {
+                rows: at.row.saturating_sub(range.first.row).min(range.rows() - 1),
+                cols: at.col.saturating_sub(range.first.col).min(range.cols() - 1),
+                right: false,
+            });
+        } else if !frame.cells.contains(p) && !in_columns && !in_rows {
             book.view.select_range(Range::new(
                 CellRef::new(0, 0),
                 CellRef::new(MAX_ROWS - 1, MAX_COLS - 1),
@@ -586,7 +898,19 @@ fn read_the_pointer(
                 book.view.anchor = CellRef::new(from.max(target.row), MAX_COLS - 1);
                 scroll_by(book, Vec2::new(0.0, push.y) / frame.zoom);
             }
-            Some(Drag::Fill) => scroll_by(book, push / frame.zoom),
+            Some(Drag::Fill { .. }) => scroll_by(book, push / frame.zoom),
+            Some(Drag::Move { rows, cols, .. }) => {
+                scroll_by(book, push / frame.zoom);
+                let r = book.view.range();
+                let to = moved_to(target, rows, cols, r);
+                let shape = frame.range(book, to);
+                ui.painter_at(frame.cells).rect_stroke(
+                    shape,
+                    0,
+                    Stroke::new(2.0, ui.visuals().selection.stroke.color),
+                    egui::StrokeKind::Inside,
+                );
+            }
             _ => {}
         }
     }
@@ -624,25 +948,43 @@ fn read_the_pointer(
                     crate::services::spreadsheet::axis::points_to_height(height),
                 )));
             }
-            Some(Drag::Fill) => {
+            Some(Drag::Move { rows, cols, right }) => {
                 let target = frame.at(book, p.max(frame.cells.min));
                 let r = book.view.range();
-                // The fill goes the way the pointer went furthest: down or across.
-                let down = target.row as i64 - r.last.row as i64;
-                let up = r.first.row as i64 - target.row as i64;
-                let right = target.col as i64 - r.last.col as i64;
-                let left = r.first.col as i64 - target.col as i64;
-                let most = down.max(up).max(right).max(left);
-                if most > 0 {
-                    let to = if most == down {
-                        Range::new(r.first, CellRef::new(target.row, r.last.col))
-                    } else if most == right {
-                        Range::new(r.first, CellRef::new(r.last.row, target.col))
-                    } else if most == up {
-                        Range::new(CellRef::new(target.row, r.first.col), r.last)
+                let to = moved_to(target, rows, cols, r);
+                if to != r {
+                    let copy = modifiers.command;
+                    let insert = modifiers.shift;
+                    if right {
+                        out.drop_menu = Some((p, drop_items(to.first)));
                     } else {
-                        Range::new(CellRef::new(r.first.row, target.col), r.last)
-                    };
+                        let mut words = vec!["move-cells".to_owned(), to.first.a1()];
+                        if copy {
+                            words.push("copy".to_owned());
+                        }
+                        if insert {
+                            words.push(
+                                if to.first.row != r.first.row {
+                                    "shift-down"
+                                } else {
+                                    "shift-right"
+                                }
+                                .to_owned(),
+                            );
+                        }
+                        out.words.push(words);
+                    }
+                }
+            }
+            Some(Drag::Fill { right: true }) => {
+                let target = frame.at(book, p.max(frame.cells.min));
+                if let Some(to) = fill_target(book.view.range(), target) {
+                    out.drop_menu = Some((p, fill_items(to)));
+                }
+            }
+            Some(Drag::Fill { right: false }) => {
+                let target = frame.at(book, p.max(frame.cells.min));
+                if let Some(to) = fill_target(book.view.range(), target) {
                     out.acts.push(Act::FillTo(to));
                 }
             }
@@ -668,11 +1010,144 @@ fn read_the_pointer(
         && book.view.drag.is_some()
         && !matches!(
             book.view.drag,
-            Some(Drag::ColumnEdge(..)) | Some(Drag::RowEdge(..)) | Some(Drag::Fill)
+            Some(Drag::ColumnEdge(..))
+                | Some(Drag::RowEdge(..))
+                | Some(Drag::Fill { .. })
+                | Some(Drag::Move { .. })
         )
     {
         book.view.drag = None;
     }
+}
+
+/// Which edge of the current range the pointer is on, as the step it points along: up, down, left or
+/// right. The border is where the cells can be picked up and carried.
+fn on_the_border(book: &Book, frame: Frame, p: Pos2) -> Option<(i64, i64)> {
+    let r = book.view.range();
+    if r.is_whole_columns() || r.is_whole_rows() || !book.view.extra.is_empty() {
+        return None;
+    }
+    let rect = frame.range(book, r);
+    let near = |a: f32, b: f32| (a - b).abs() <= 3.0;
+    let within_x = p.x >= rect.left() - 3.0 && p.x <= rect.right() + 3.0;
+    let within_y = p.y >= rect.top() - 3.0 && p.y <= rect.bottom() + 3.0;
+    if within_x && near(p.y, rect.top()) {
+        Some((-1, 0))
+    } else if within_x && near(p.y, rect.bottom()) {
+        Some((1, 0))
+    } else if within_y && near(p.x, rect.left()) {
+        Some((0, if frame.rtl { 1 } else { -1 }))
+    } else if within_y && near(p.x, rect.right()) {
+        Some((0, if frame.rtl { -1 } else { 1 }))
+    } else {
+        None
+    }
+}
+
+/// Where carried cells land: the range the same size as the one picked up, placed so the cell it was
+/// picked up by is under the pointer.
+fn moved_to(target: CellRef, rows: u32, cols: u32, from: Range) -> Range {
+    let row = target.row.saturating_sub(rows).min(MAX_ROWS - from.rows());
+    let col = target.col.saturating_sub(cols).min(MAX_COLS - from.cols());
+    Range::new(CellRef::new(row, col), CellRef::new(row + from.rows() - 1, col + from.cols() - 1))
+}
+
+/// The range a double click on the fill handle fills: down to the last row of the block in the column
+/// beside the selection, left first, then right.
+fn fill_down_extent(book: &Book) -> Option<Range> {
+    let r = book.view.range();
+    let sheet = &book.session.book.sheets[book.view.sheet];
+    let filled = |row: u32, col: u32| !sheet.value_at(CellRef::new(row, col)).is_empty();
+    let beside = [r.first.col.checked_sub(1), Some(r.last.col + 1)];
+    for col in beside.into_iter().flatten() {
+        if !filled(r.last.row, col) && !filled(r.first.row, col) {
+            continue;
+        }
+        let mut last = r.last.row;
+        while last + 1 < MAX_ROWS && filled(last + 1, col) {
+            last += 1;
+        }
+        if last > r.last.row {
+            return Some(Range::new(r.first, CellRef::new(last, r.last.col)));
+        }
+    }
+    None
+}
+
+/// The range the fill handle is pulled to: the way the pointer went furthest.
+fn fill_target(r: Range, target: CellRef) -> Option<Range> {
+    let down = target.row as i64 - r.last.row as i64;
+    let up = r.first.row as i64 - target.row as i64;
+    let right = target.col as i64 - r.last.col as i64;
+    let left = r.first.col as i64 - target.col as i64;
+    let most = down.max(up).max(right).max(left);
+    if most <= 0 {
+        return None;
+    }
+    Some(if most == down {
+        Range::new(r.first, CellRef::new(target.row, r.last.col))
+    } else if most == right {
+        Range::new(r.first, CellRef::new(r.last.row, target.col))
+    } else if most == up {
+        Range::new(CellRef::new(target.row, r.first.col), r.last)
+    } else {
+        Range::new(CellRef::new(r.first.row, target.col), r.last)
+    })
+}
+
+/// The menu a right drag of the chosen cells opens where it lets go, as Excel's does.
+fn drop_items(to: CellRef) -> Vec<crate::services::spreadsheet::catalogue::Item> {
+    use crate::services::spreadsheet::catalogue::Item;
+    let at = to.a1();
+    let entry = |label: &str, more: &str| Item::Run {
+        label: label.to_owned(),
+        keys: "",
+        words: format!("move-cells {at} {more}").split_whitespace().map(str::to_owned).collect(),
+        checked: false,
+    };
+    vec![
+        entry("Move here", ""),
+        entry("Copy here", "copy"),
+        entry("Copy here as values only", "copy values"),
+        entry("Copy here as formats only", "copy formats"),
+        entry("Link here", "link"),
+        entry("Create hyperlink here", "hyperlink"),
+        Item::Line,
+        entry("Shift down and copy", "copy shift-down"),
+        entry("Shift right and copy", "copy shift-right"),
+        entry("Shift down and move", "shift-down"),
+        entry("Shift right and move", "shift-right"),
+    ]
+}
+
+/// The menu a right drag of the fill handle opens, as Excel's does.
+fn fill_items(to: Range) -> Vec<crate::services::spreadsheet::catalogue::Item> {
+    use crate::services::spreadsheet::catalogue::Item;
+    let target = to.a1();
+    let entry = |label: &str, how: &str| Item::Run {
+        label: label.to_owned(),
+        keys: "",
+        words: format!("fill-handle {target} {how}")
+            .split_whitespace()
+            .map(str::to_owned)
+            .collect(),
+        checked: false,
+    };
+    vec![
+        entry("Copy cells", "copy"),
+        entry("Fill series", "series"),
+        entry("Fill formatting only", "formats"),
+        entry("Fill without formatting", "values"),
+        Item::Line,
+        entry("Fill days", "days"),
+        entry("Fill weekdays", "weekdays"),
+        entry("Fill months", "months"),
+        entry("Fill years", "years"),
+        Item::Line,
+        entry("Linear trend", "linear"),
+        entry("Growth trend", "growth"),
+        entry("Flash fill", "flash"),
+    ]
 }
 
 /// Follow a link: a web address in the browser, a place in the workbook by choosing it.
@@ -839,6 +1314,7 @@ fn draw_cells(
                 .clone(),
         };
         let mut shown: Shown = display::shown_in(workbook, style, &value, chars, &format);
+        display::adjust_for_the_view(workbook, sheet, at, &value, &mut shown);
         apply_effect(&mut shown, &effect);
         // The fill, over the gridlines. A merged cell with no fill is painted with the paper, which hides
         // the gridlines inside it.
@@ -993,6 +1469,9 @@ fn draw_cells(
                 extra_left += axes.columns.size(c - 1) * zoom;
                 c -= 1;
             }
+            if frame.rtl {
+                std::mem::swap(&mut extra_left, &mut extra_right);
+            }
             clip_rect = Rect::from_min_max(
                 Pos2::new(rect.left() - extra_left, rect.top()),
                 Pos2::new(rect.right() + extra_right, rect.bottom()),
@@ -1014,8 +1493,14 @@ fn draw_cells(
             Down::Bottom => rect.bottom() - block - 1.5 * zoom,
         };
         let mut positions = Vec::new();
+        // A right to left sheet mirrors the alignment: text that starts at the left starts at the right.
+        let across = match (frame.rtl, shown.across) {
+            (true, Across::Left | Across::Fill | Across::Justify) => Across::Right,
+            (true, Across::Right) => Across::Left,
+            (_, other) => other,
+        };
         for (i, w) in widths.iter().enumerate() {
-            let x = match shown.across {
+            let x = match across {
                 Across::Left | Across::Fill | Across::Justify => inner.left(),
                 Across::Right => inner.right() - filter_room - w,
                 Across::Center | Across::CenterAcross => rect.center().x - w / 2.0,
@@ -1272,52 +1757,33 @@ fn around(rect: Rect, hole: Rect) -> Vec<Rect> {
     parts
 }
 
-/// The column letters along the top and the row numbers down the left, the chosen ones lit.
-#[allow(clippy::too_many_arguments)]
-fn draw_headers(
-    ui: &egui::Ui,
-    area: Rect,
-    book: &Book,
-    frame: Frame,
-    ink: &Ink,
-    look: &Look<'_>,
-    first_row: u32,
-    last_row: u32,
-    first_col: u32,
-    last_col: u32,
-) {
-    let painter = ui.painter_at(area);
+/// The column letters above a pane and the row numbers beside it, the chosen ones lit.
+fn draw_headers(ui: &egui::Ui, book: &Book, pane: &Pane, ink: &Ink, look: &Look<'_>) {
+    let frame = pane.frame;
+    if frame.column_header.height() <= 0.0 {
+        return;
+    }
     let zoom = frame.zoom;
-    let top_strip = Rect::from_min_max(
-        Pos2::new(area.left(), area.top()),
-        Pos2::new(area.right(), frame.cells.top()),
-    );
-    let left_strip = Rect::from_min_max(
-        Pos2::new(area.left(), frame.cells.top()),
-        Pos2::new(frame.cells.left(), area.bottom()),
-    );
-    painter.rect_filled(top_strip, 0, ink.header);
-    painter.rect_filled(left_strip, 0, ink.header);
     let axes = book.view.axes.as_ref().expect("built");
+    let (first_row, last_row, first_col, last_col) = frame.visible(book);
     let chosen_cols: Vec<(u32, u32)> =
         book.view.ranges().iter().map(|r| (r.first.col, r.last.col)).collect();
     let chosen_rows: Vec<(u32, u32)> =
         book.view.ranges().iter().map(|r| (r.first.row, r.last.row)).collect();
     let font = egui::FontId::proportional((11.0 * zoom).clamp(7.0, 20.0));
     let divider = Stroke::new(1.0, look.palette.divider);
-    let columns = (0..frame.frozen.1).chain(first_col..=last_col);
-    let col_painter = ui.painter_at(Rect::from_min_max(
-        Pos2::new(frame.cells.left(), area.top()),
-        Pos2::new(area.right(), frame.cells.top()),
-    ));
-    for col in columns {
+    let col_painter = ui.painter_at(frame.column_header);
+    col_painter.rect_filled(frame.column_header, 0, ink.header);
+    for col in (0..frame.frozen.1).chain(first_col..=last_col) {
         let size = axes.columns.size(col) * zoom;
         if size <= 0.0 {
             continue;
         }
         let x = frame.x(book, col);
-        let rect =
-            Rect::from_min_size(Pos2::new(x, top_strip.top()), Vec2::new(size, top_strip.height()));
+        let rect = Rect::from_min_size(
+            Pos2::new(x, frame.column_header.top()),
+            Vec2::new(size, frame.column_header.height()),
+        );
         let lit = chosen_cols.iter().any(|(a, b)| *a <= col && col <= *b);
         if lit {
             col_painter.rect_filled(rect, 0, ink.header_chosen);
@@ -1330,64 +1796,81 @@ fn draw_headers(
             );
         }
         col_painter.line_segment([rect.right_top(), rect.right_bottom()], divider);
+        let text = if lit { look.palette.text_strong } else { ink.header_text };
         col_painter.text(
             rect.center(),
             egui::Align2::CENTER_CENTER,
             column_name(col),
             font.clone(),
-            if lit { look.palette.text_strong } else { ink.header_text },
+            text,
         );
     }
-    let rows = (0..frame.frozen.0).chain(first_row..=last_row);
-    let row_painter = ui.painter_at(Rect::from_min_max(
-        Pos2::new(area.left(), frame.cells.top()),
-        Pos2::new(frame.cells.left(), area.bottom()),
-    ));
-    for row in rows {
+    let row_painter = ui.painter_at(frame.row_header);
+    row_painter.rect_filled(frame.row_header, 0, ink.header);
+    for row in (0..frame.frozen.0).chain(first_row..=last_row) {
         let size = axes.rows.size(row) * zoom;
         if size <= 0.0 {
             continue;
         }
         let y = frame.y(book, row);
         let rect = Rect::from_min_size(
-            Pos2::new(left_strip.left(), y),
-            Vec2::new(left_strip.width(), size),
+            Pos2::new(frame.row_header.left(), y),
+            Vec2::new(frame.row_header.width(), size),
         );
         let lit = chosen_rows.iter().any(|(a, b)| *a <= row && row <= *b);
         if lit {
             row_painter.rect_filled(rect, 0, ink.header_chosen);
+            let edge = if frame.rtl { rect.left() + 1.0 } else { rect.right() - 1.0 };
             row_painter.line_segment(
-                [rect.right_top() - Vec2::new(1.0, 0.0), rect.right_bottom() - Vec2::new(1.0, 0.0)],
+                [Pos2::new(edge, rect.top()), Pos2::new(edge, rect.bottom())],
                 Stroke::new(2.0, ink.accent),
             );
         }
         row_painter.line_segment([rect.left_bottom(), rect.right_bottom()], divider);
+        let text = if lit { look.palette.text_strong } else { ink.header_text };
         row_painter.text(
             rect.center(),
             egui::Align2::CENTER_CENTER,
             (row + 1).to_string(),
             font.clone(),
-            if lit { look.palette.text_strong } else { ink.header_text },
+            text,
         );
     }
-    // The corner, which chooses everything.
-    let corner = Rect::from_min_max(area.min, frame.cells.min);
+}
+
+/// The corner where the two header strips meet, which chooses everything.
+fn draw_corner(ui: &egui::Ui, layout: &Layout, ink: &Ink, look: &Look<'_>) {
+    if !layout.headings {
+        return;
+    }
+    let painter = ui.painter_at(layout.area);
+    let corner = if layout.rtl {
+        Rect::from_min_max(
+            Pos2::new(layout.cells.right(), layout.area.top()),
+            Pos2::new(layout.area.right(), layout.cells.top()),
+        )
+    } else {
+        Rect::from_min_max(layout.area.min, layout.cells.min)
+    };
     painter.rect_filled(corner, 0, ink.header);
-    let c = corner.right_bottom() - Vec2::splat(4.0);
+    let c = if layout.rtl {
+        Pos2::new(corner.left() + 4.0, corner.bottom() - 4.0)
+    } else {
+        corner.right_bottom() - Vec2::splat(4.0)
+    };
     let s = (corner.height() * 0.45).min(10.0);
+    let along = if layout.rtl { s } else { -s };
     painter.add(Shape::convex_polygon(
-        vec![c, c - Vec2::new(s, 0.0), c - Vec2::new(0.0, s)],
+        vec![c, c + Vec2::new(along, 0.0), c - Vec2::new(0.0, s)],
         look.palette.text_faint,
         Stroke::NONE,
     ));
-    painter.line_segment(
-        [Pos2::new(area.left(), frame.cells.top()), Pos2::new(area.right(), frame.cells.top())],
-        divider,
-    );
-    painter.line_segment(
-        [Pos2::new(frame.cells.left(), area.top()), Pos2::new(frame.cells.left(), area.bottom())],
-        divider,
-    );
+    let divider = Stroke::new(1.0, look.palette.divider);
+    let a = layout.area;
+    let c = layout.cells;
+    painter.line_segment([Pos2::new(a.left(), c.top()), Pos2::new(a.right(), c.top())], divider);
+    let x = if layout.rtl { c.right() } else { c.left() };
+    painter.line_segment([Pos2::new(x, a.top()), Pos2::new(x, a.bottom())], divider);
 }
 
 /// Scroll so the active cell is in view, which a move with the keyboard asks for.
