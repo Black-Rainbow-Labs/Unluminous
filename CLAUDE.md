@@ -7601,3 +7601,33 @@ is `overlays::remember_popup` and `overlays::a_popup_covers`; a new popup calls 
 
 Spell check is `unluminous_word::spell` (SCOWL en_US through `spellbook`, inflated only on first use) and
 `services::word::spelling`, which caches each paragraph's result by its checked text. TDD section 13 has the rules.
+
+### Word round 2 (`task-2359`)
+
+`tasks/task-2358-word-round2-tdd.md` is the design and `tasks/task-2358-word-gap-matrix.md` the status of every
+Word feature. Rules it left:
+
+- **Word itself settles every disagreement.** A new rule gets a fixture made by `tools/word-oracle/make-fixtures.ps1`
+  and Word's report beside it. Office's property objects (`BuiltInDocumentProperties`, `CustomDocumentProperties`)
+  answer only through `InvokeMember`, in both scripts.
+- **A Word started through COM can stay running after `Quit`.** `convert.ps1` stops the process that owns its
+  document's window. A Word killed while it opened a file marks that path in `Resiliency\DisabledItems` and asks
+  about it on every later open, which hangs a script with no window; a Word PDF reflow asks a question
+  `DisplayAlerts` does not stop, so `convert.ps1` sets `DisableConvertPdfWarning` for the run and puts it back.
+- **Files Word reads for us**: `.doc`, `.rtf`, `.odt`, `.wps` and `.pdf` open through `unluminous_word::convert`
+  (the script compiled in), on a thread, as `services::word::files::Waiting`. The tab holds the document under the
+  original file with no `path`, so Save asks for a `.docx`. `.txt`, `.md` and `.html` open with Open as Document.
+  Save As `.rtf` and `.odt` go through Word; `.txt`, `.html`, `.md` and `.pdf` are copies.
+- **Encryption is `unluminous_word::crypto`** (ECMA-376 agile, checked against Word both ways). An encrypted file
+  waits in its tab for the password and is encrypted again when saved. Restrict Editing and Password to Modify are
+  `Session::may_edit`, which every edit asks; a refusal is `Session::refused`, said as a notice.
+- **AutoRecover is on, AutoSave is off.** `files::keep_the_files` runs from `catch_up`: a copy in
+  `<settings>/recovery/<hash>.asd` every ten minutes, offered on the next open, taken away on save or close.
+- **New Word Document reads `Normal.dotm` and the locale only in the released binary**
+  (`files::allow_the_office_template`, called from `main`).
+- **A keystroke lays out one paragraph** (`layout::lay_out_cached`); `tests/cache.rs` checks cached pages are the
+  pages on every fixture.
+- **Every Word verb has a section in `unluminous-cli/docs/word.md`**, and
+  `every_word_verb_has_a_paragraph_in_its_reference` fails without it.
+- **Field results are checked against Word's**: `tests/fields.rs` compares `Session::evaluated_fields` with the
+  results Word gave every code and switch in `field-codes.docx`.

@@ -505,3 +505,141 @@ fn comments_added_and_deleted_keep_their_side_parts_consistent() {
     let report = saved_and_inspected(&mut session, "comments-edited.docx");
     assert_eq!(report["comments"].as_array().unwrap().len(), before);
 }
+
+/// Word's report on a file opened with a password.
+fn inspect_with_password(path: &Path, password: &str) -> Value {
+    let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/word-oracle/inspect.ps1");
+    let out = path.with_extension("word.json");
+    let _ = std::fs::remove_file(&out);
+    let status = std::process::Command::new("pwsh")
+        .args(["-NoProfile", "-NonInteractive", "-File"])
+        .arg(&script)
+        .arg("-Path")
+        .arg(path)
+        .arg("-Out")
+        .arg(&out)
+        .arg("-Password")
+        .arg(password)
+        .status()
+        .expect("pwsh runs");
+    assert!(status.success(), "inspect.ps1 failed on {}", path.display());
+    serde_json::from_str(std::fs::read_to_string(&out).unwrap().trim_start_matches('\u{feff}'))
+        .unwrap()
+}
+
+/// Round 2 (task-2359): a text box, a table style, a split table, a wrapped picture, a cross reference,
+/// a caption, a custom table of contents, a modified style, an equation, a tracked formatting change, a
+/// locked tracking password and a custom property, written by Unluminous and each found by Word.
+#[test]
+fn a_document_using_round_two_features_opens_in_word_as_written() {
+    if !word_is_installed() {
+        return;
+    }
+    let mut s = Session::new(unluminous_word::new::blank());
+    s.author = "Unluminous Test".into();
+    s.type_text("Report\nSummary\nA paragraph that refers to the summary.\nFirst\nLast paragraph.");
+    select(&mut s, "Summary");
+    s.apply_style("Heading1").unwrap();
+    s.modify_style("Heading1", "font", "Arial").unwrap();
+    s.modify_style("Heading1", "size", "20").unwrap();
+    // A table with a style, split after its first row.
+    select(&mut s, "First");
+    s.selection = Selection::caret(s.selection.anchor.clone());
+    s.insert_table(3, 2);
+    s.type_text("Top");
+    s.apply_table_style("GridTable4-Accent1", None).unwrap();
+    let rows = unluminous_word::position::paragraphs(&s.document.body);
+    let in_table = rows.iter().find(|(path, _)| path.len() > 1).map(|(path, _)| path.clone()).unwrap();
+    let mut second_row = in_table.clone();
+    second_row[1] = 1;
+    s.selection = Selection::caret(Pos::new(second_row, 0));
+    s.split_table().unwrap();
+    // A picture wrapped square, and a text box with words in it.
+    select(&mut s, "A paragraph");
+    s.selection = Selection::caret(s.selection.anchor.clone());
+    unluminous_word::media::insert_picture(&mut s, &png(), "png", 60.0, 30.0, "wrapped.png").unwrap();
+    let at = s.selection.head.clone();
+    s.select_object(Pos::new(at.path.clone(), at.offset.saturating_sub('\u{FFFC}'.len_utf8())));
+    s.set_object_wrap("square").unwrap();
+    select(&mut s, "Last paragraph.");
+    s.selection = Selection::caret(s.selection.anchor.clone());
+    s.insert_textbox(144.0, 72.0).unwrap();
+    s.type_text("Words in a box");
+    // A cross reference to the heading, a caption, and a table of contents with hyphen leaders.
+    let pages = unluminous_word::layout::lay_out(&s.document, &unluminous_core::FixedMetrics::default(), Default::default());
+    select(&mut s, "refers to the summary");
+    s.selection = Selection::caret(s.selection.head.clone());
+    let heading = s.find("Summary", true, true)[0].anchor.path.clone();
+    s.insert_cross_reference(&heading, "text", &pages).unwrap();
+    select(&mut s, "Report");
+    s.insert_caption("Figure", " The report", true, &pages);
+    select(&mut s, "Report");
+    s.selection = Selection::caret(s.selection.anchor.clone());
+    let options = unluminous_word::references::TocOptions { levels: 2, leader: "hyphen".into(), ..Default::default() };
+    s.insert_toc_with(&options, &pages);
+    // An equation, copied from the equations fixture.
+    let equations = unluminous_word::read::open(&std::fs::read(fixture("equations")).unwrap()).unwrap();
+    let equation = equations
+        .body
+        .iter()
+        .find(|b| matches!(b, unluminous_word::model::Block::Paragraph(p) if p.runs.iter().any(|r| matches!(&r.content, unluminous_word::model::Content::ParagraphObject(el) if el.name.starts_with("m:")))))
+        .cloned()
+        .expect("the fixture has an equation paragraph");
+    s.document.body.push(equation);
+    // A custom property, then tracked formatting under locked tracking.
+    unluminous_word::properties::set_custom(&mut s.document, "Reviewer", "text", "Jason").unwrap();
+    unluminous_word::properties::set_extended(&mut s.document, "Company", "Black Rainbow Labs");
+    s.set_tracking(true);
+    select(&mut s, "Last");
+    s.toggle("w:b");
+    s.lock_tracking("tracked");
+
+    let path = scratch("round-two.docx");
+    std::fs::write(&path, unluminous_word::write::save(&s.document).unwrap()).unwrap();
+    let report = inspect(&path);
+    assert_eq!(report["opened"], true, "Word did not open it: {}", report["error"]);
+    let shapes = report["shapes"].as_array().unwrap();
+    assert!(shapes.iter().any(|sh| sh["text"].as_str().unwrap_or("").contains("Words in a box")), "the text box: {shapes:?}");
+    assert!(shapes.iter().any(|sh| sh["wrap"] == 0), "the picture is wrapped square: {shapes:?}");
+    let tables = report["tableStyles"].as_array().unwrap();
+    assert_eq!(tables.len(), 2, "the table was split in two: {tables:?}");
+    assert!(tables.iter().all(|t| t.as_str().unwrap_or("").starts_with("Grid Table 4")), "{tables:?}");
+    let fields = report["fields"].as_array().unwrap();
+    let has_code = |code: &str| fields.iter().any(|f| f["code"].as_str().unwrap_or("").trim_start().starts_with(code));
+    assert!(has_code("REF _Ref"), "the cross reference: {fields:?}");
+    assert!(has_code("SEQ Figure"), "the caption: {fields:?}");
+    assert!(fields.iter().any(|f| f["code"].as_str().unwrap_or("").contains("TOC") && f["code"].as_str().unwrap_or("").contains("\\o \"1-2\"")), "the custom contents: {fields:?}");
+    assert_eq!(report["tablesOfContents"], 1);
+    assert_eq!(report["oMaths"].as_array().unwrap().len(), 1, "the equation");
+    assert_eq!(report["heading1"]["font"], "Arial");
+    assert_eq!(report["heading1"]["size"], 20.0);
+    assert!(report["revisions"].as_array().unwrap().iter().any(|r| r["type"] == 3), "the formatting change is a property revision: {}", report["revisions"]);
+    assert_eq!(report["protection"]["type"], 0, "Word sees tracked changes locked (wdAllowOnlyRevisions)");
+    assert_eq!(report["protection"]["trackRevisions"], true);
+    assert!(report["customProperties"].as_array().unwrap().iter().any(|p| p["name"] == "Reviewer" && p["value"] == "Jason"));
+    assert_eq!(report["properties"]["company"], "Black Rainbow Labs");
+}
+
+/// An encrypted document and one with a password to modify, written by Unluminous: Word opens the first
+/// with the password and reads its words, and opens the second unrepaired. That Word asks for the
+/// password to modify, and takes Unluminous's hash for it, was checked by hand against Word 16 with
+/// `Documents.Open` for writing, which `inspect.ps1` does not do because it opens every file read only.
+#[test]
+fn encrypted_and_write_reserved_documents_open_in_word() {
+    if !word_is_installed() {
+        return;
+    }
+    let mut session = open_fixture("paragraphs");
+    let plain = unluminous_word::write::save(&session.document).unwrap();
+    let encrypted = unluminous_word::crypto::encrypt(&plain, "s3cret").unwrap();
+    let path = scratch("encrypted.docx");
+    std::fs::write(&path, &encrypted).unwrap();
+    let report = inspect_with_password(&path, "s3cret");
+    assert_eq!(report["opened"], true, "Word did not open it: {}", report["error"]);
+    assert_eq!(report["paragraphs"].as_array().unwrap().len(), 22);
+    assert_eq!(report["protection"]["hasPassword"], true);
+    session.set_password_to_modify("modify");
+    saved_and_inspected(&mut session, "write-reserved.docx");
+    let settings = saved_part(&session, "word/settings.xml");
+    assert!(settings.contains("<w:writeProtection") && settings.contains("w:hash="), "{settings}");
+}

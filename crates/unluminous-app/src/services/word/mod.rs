@@ -47,6 +47,8 @@ pub struct Config {
     pub dark_paper: bool,
     /// AutoSave: save a document that has a file a few seconds after its last change. Off by default.
     pub autosave: bool,
+    /// Field shading a document opens with: `never`, `selected` or `always`.
+    pub field_shading: &'static str,
     /// AutoRecover: write a copy of a changed document every ten minutes, offered after a crash. On by
     /// default.
     pub autorecover: bool,
@@ -64,7 +66,18 @@ impl Default for Config {
             dark_paper: false,
             autosave: false,
             autorecover: true,
+            field_shading: "selected",
         }
+    }
+}
+
+/// A field shading setting by name: `never`, `selected` (or `when-selected`) or `always`.
+pub fn shading_kind(name: &str) -> Option<&'static str> {
+    match name.trim().to_ascii_lowercase().as_str() {
+        "never" | "off" => Some("never"),
+        "selected" | "when-selected" | "when selected" => Some("selected"),
+        "always" | "on" => Some("always"),
+        _ => None,
     }
 }
 
@@ -91,6 +104,7 @@ impl Config {
                 "spelling" => config.spelling = value != "false",
                 "paper" => config.dark_paper = value == "theme",
                 "autosave" => config.autosave = value == "true",
+                "field_shading" => config.field_shading = shading_kind(value).unwrap_or("selected"),
                 "autorecover" => config.autorecover = value != "false",
                 // The rules switched off, by name.
                 "autocorrect.off" => {
@@ -119,7 +133,7 @@ impl Config {
             .filter(|name| self.autocorrect.get(name) == Some(false))
             .collect();
         let text = format!(
-            "# The Word plugin's settings. The author is the name on comments and tracked changes.\nauthor = {}\nzoom = {}\nmarks = {}\nspelling = {}\nautocorrect.off = {}\npaper = {}\nautosave = {}\nautorecover = {}\n",
+            "# The Word plugin's settings. The author is the name on comments and tracked changes.\nauthor = {}\nzoom = {}\nmarks = {}\nspelling = {}\nautocorrect.off = {}\npaper = {}\nautosave = {}\nautorecover = {}\nfield_shading = {}\n",
             self.author,
             self.zoom,
             self.marks,
@@ -127,7 +141,8 @@ impl Config {
             off.join(", "),
             if self.dark_paper { "theme" } else { "light" },
             self.autosave,
-            self.autorecover
+            self.autorecover,
+            self.field_shading
         );
         let mut text = text;
         for (action, chord) in &self.chords {
@@ -338,6 +353,11 @@ pub struct View {
     pub multiple: bool,
     /// The drawing grid over the text.
     pub gridlines: bool,
+    /// Field shading, Word's grey behind a field: `never`, `selected` (Word's default: while the caret or
+    /// the selection is in it) or `always`.
+    pub field_shading: &'static str,
+    /// The fields of the story the shading was last worked out for, at a revision.
+    pub field_ranges: Option<(u64, StoryId, Vec<(Pos, Pos)>)>,
     /// The page drawn in the theme's colours rather than as white paper.
     pub dark: bool,
     /// Outline view: the deepest level shown, 10 for body text too.
@@ -620,6 +640,8 @@ impl View {
             ruler_drag: None,
             multiple: false,
             gridlines: false,
+            field_shading: config.field_shading,
+            field_ranges: None,
             dark: false,
             outline_level: 10,
             outline_collapsed: Default::default(),

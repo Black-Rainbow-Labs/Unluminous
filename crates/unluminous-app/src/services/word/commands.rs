@@ -1039,6 +1039,11 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                     doc.view.navigation_tab = 1;
                 }
                 Some("ruler") => doc.view.ruler = on(arguments.get(1)).unwrap_or(!doc.view.ruler),
+                Some("field-shading") => {
+                    let kind = arguments.get(1).map(String::as_str).unwrap_or("selected");
+                    doc.view.field_shading = super::shading_kind(kind)
+                        .ok_or_else(|| format!("field shading is always, selected or never, not {kind}"))?;
+                }
                 Some("gridlines") => doc.view.gridlines = on(arguments.get(1)).unwrap_or(!doc.view.gridlines),
                 Some("multiple") => doc.view.multiple = on(arguments.get(1)).unwrap_or(!doc.view.multiple),
                 Some(mode @ ("read" | "outline" | "print")) => {
@@ -1062,7 +1067,7 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                 super::Mode::Read => "read",
                 super::Mode::Outline => "outline",
             };
-            Ok(Answer::said("View").with(json!({ "zoom": doc.view.zoom, "marks": doc.view.marks, "navigation": doc.view.navigation, "ruler": doc.view.ruler, "mode": mode, "multiple": doc.view.multiple, "gridlines": doc.view.gridlines, "paper": if doc.view.dark { "theme" } else { "light" } })))
+            Ok(Answer::said("View").with(json!({ "zoom": doc.view.zoom, "marks": doc.view.marks, "navigation": doc.view.navigation, "ruler": doc.view.ruler, "mode": mode, "multiple": doc.view.multiple, "gridlines": doc.view.gridlines, "fieldShading": doc.view.field_shading, "paper": if doc.view.dark { "theme" } else { "light" } })))
         }
         "panel" => {
             match arguments.first().map(String::as_str) {

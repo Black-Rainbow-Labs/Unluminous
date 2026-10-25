@@ -911,6 +911,52 @@ $fixtures['columns-balance'] = {
     $doc.Sections.Item(3).PageSetup.TextColumns.SetCount(1)
 }
 
+# One paragraph a field code and switch, Word's results the expected values for `tests/fields.rs`. Nothing
+# here depends on the clock or on where the file is: DATE, TIME, FILESIZE and FILENAME \p are left out.
+$fixtures['field-codes'] = {
+    param($word, $doc)
+    # Office's property objects answer only through InvokeMember.
+    $bt = [System.__ComObject]
+    foreach ($pair in @(@('Title', 'Field codes'), @('Subject', 'every switch'), @('Keywords', 'oracle fields'))) {
+        $property = $bt.InvokeMember('Item', 'GetProperty', $null, $doc.BuiltInDocumentProperties, @($pair[0]))
+        [void]$bt.InvokeMember('Value', 'SetProperty', $null, $property, @($pair[1]))
+    }
+    [void]$bt.InvokeMember('Add', 'InvokeMethod', $null, $doc.CustomDocumentProperties, @('Project', $false, 4, 'Unluminous'))
+    Add-Para $doc 'Field codes' 'Heading 1' | Out-Null
+    $amount = Add-Para $doc '1234.5'
+    $r = $amount.Range; $r.SetRange($r.Start, $r.End - 1); [void]$doc.Bookmarks.Add('Amount', $r)
+    $name = Add-Para $doc 'mixed Case words'
+    $r = $name.Range; $r.SetRange($r.Start, $r.End - 1); [void]$doc.Bookmarks.Add('Name', $r)
+    $codes = @(
+        'PAGE', 'PAGE \* ROMAN', 'PAGE \* OrdText', 'NUMPAGES', 'NUMPAGES \* CardText', 'SECTION', 'SECTIONPAGES',
+        'AUTHOR', 'AUTHOR \* Upper', 'TITLE', 'TITLE \* Lower', 'SUBJECT \* FirstCap', 'KEYWORDS \* Caps',
+        'DOCPROPERTY Project', 'DOCPROPERTY Title', 'FILENAME',
+        'SEQ Item', 'SEQ Item', 'SEQ Item \c', 'SEQ Item \* ROMAN', 'SEQ Item \* roman', 'SEQ Item \* ALPHABETIC',
+        'SEQ Item \* alphabetic', 'SEQ Item \* Ordinal', 'SEQ Item \* CardText', 'SEQ Item \* OrdText', 'SEQ Item \* Hex',
+        'SEQ Item \r 20', 'SEQ Other \* Arabic',
+        '= 2+3*4', '= 10/4 \# "0.00"', '= 1234.5 \# "#,##0.00"', '= 7 \# "$#,##0.00"', '= Amount * 2',
+        '= 5 > 3', 'IF 1 = 1 "yes" "no"', 'IF Amount > 1000 "big" "small"', 'COMPARE 3 > 2',
+        'REF Name', 'REF Name \* Upper', 'REF Name \* FirstCap', 'STYLEREF "Heading 1"',
+        'CREATEDATE \@ "yyyy"', '= 1234 \* DollarText', '= 42 \* CardText', '= 3 \* Ordinal'
+    )
+    foreach ($code in $codes) {
+        Add-Para $doc 'Field: ' | Out-Null
+        [void](Add-FieldAtEnd $doc -1 $code)
+    }
+    Add-Para $doc 'Table:' | Out-Null
+    $table = Add-Table $doc 4 2
+    $table.Cell(1, 1).Range.Text = '10'; $table.Cell(1, 2).Range.Text = '1'
+    $table.Cell(2, 1).Range.Text = '20'; $table.Cell(2, 2).Range.Text = '2'
+    $table.Cell(3, 1).Range.Text = '30'; $table.Cell(3, 2).Range.Text = '3'
+    $cell = $table.Cell(4, 1).Range; $cell.SetRange($cell.Start, $cell.Start); [void]$doc.Fields.Add($cell, -1, '= SUM(ABOVE)', $false)
+    $cell = $table.Cell(4, 2).Range; $cell.SetRange($cell.Start, $cell.Start); [void]$doc.Fields.Add($cell, -1, '= AVERAGE(ABOVE) \# "0.0"', $false)
+    Add-Para $doc 'After the table.' | Out-Null
+    # Saved first and repaginated, so FILENAME, NUMPAGES and SECTIONPAGES are what Word answers for the file.
+    $doc.SaveAs2((Join-Path $OutDir 'field-codes.docx'), 16)
+    $doc.Repaginate()
+    [void]$doc.Fields.Update()
+}
+
 # Fixtures saved in another format than .docx: the extension and the WdSaveFormat.
 $script:Formats = @{ 'template' = @('dotx', 14); 'macros' = @('docm', 13); 'strict' = @('docx', 24) }
 

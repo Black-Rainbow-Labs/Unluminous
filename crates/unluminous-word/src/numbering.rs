@@ -344,6 +344,11 @@ fn cardinal_text(value: i64) -> String {
             0 => format!("{} hundred", ONES[(v / 100) as usize]),
             rest => format!("{} hundred {}", ONES[(v / 100) as usize], cardinal_text(rest)),
         },
+        // Word spells a field's number out to 999,999 (`\* CardText`, `\* DollarText`).
+        v if v < 1_000_000 => match v % 1000 {
+            0 => format!("{} thousand", cardinal_text(v / 1000)),
+            rest => format!("{} thousand {}", cardinal_text(v / 1000), cardinal_text(rest)),
+        },
         v => v.to_string(),
     }
 }

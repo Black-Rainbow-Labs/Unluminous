@@ -1788,6 +1788,8 @@ fn document(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
     actions_row(ui, doc, requests, &["read-mode", "print-layout", "outline-view", "new-window"]);
     heading(ui, "Show");
     actions_row(ui, doc, requests, &["ruler", "gridlines", "formatting-marks", "navigation", "field-codes"]);
+    heading(ui, "Field shading");
+    actions_row(ui, doc, requests, &["field-shading-always", "field-shading-selected", "field-shading-never"]);
     heading(ui, "Zoom");
     let mut percent = doc.view.fields.get("zoom").cloned().unwrap_or_else(|| format!("{:.0}", doc.view.zoom * 100.0));
     let mut set = false;

@@ -175,3 +175,25 @@ fn the_reference_leads_with_what_an_agent_needs_before_anything_else() {
         "the opening should say how to list the commands"
     );
 }
+
+/// Every verb of the Word plugin has a section in `unluminous-cli/docs/word.md`, and the document names
+/// no verb the plugin does not have (task-2359, TDD 5.7).
+#[test]
+fn every_word_verb_has_a_paragraph_in_its_reference() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/word.md");
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|problem| panic!("could not read {}: {problem}", path.display()))
+        .replace("
+", "
+");
+    let verbs: Vec<&str> = crate::plugins::WORD.iter().map(|(verb, _)| *verb).collect();
+    let missing: Vec<&&str> = verbs.iter().filter(|verb| !text.contains(&format!("### {verb}
+"))).collect();
+    assert!(
+        missing.is_empty(),
+        "unluminous-cli/docs/word.md has no `### <verb>` section for: {missing:?}. Add one with a paragraph and an example."
+    );
+    let documented: Vec<&str> = text.lines().filter_map(|line| line.strip_prefix("### ")).collect();
+    let stale: Vec<&&str> = documented.iter().filter(|verb| !verbs.contains(verb)).collect();
+    assert!(stale.is_empty(), "unluminous-cli/docs/word.md documents verbs the Word plugin does not have: {stale:?}");
+}

@@ -354,35 +354,13 @@ impl Session {
 
     fn update_fields_where(&mut self, pages: &Pages, only: Option<(StoryId, Vec<Path>)>) -> usize {
         let mut count = if only.is_none() { self.update_tocs(pages) } else { 0 };
-        let stats = self.stats(Some(pages));
-        let mut page_map: HashMap<Path, u32> = HashMap::new();
-        for page in &pages.pages {
-            for line in page.carets.iter().filter(|l| l.story == StoryId::Body) {
-                page_map.entry(line.path.clone()).or_insert(page.number);
-            }
-        }
-        let file = self.file.as_ref().map(|path| {
-            let name =
-                path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
-            (name, path.display().to_string())
-        });
-        let file_size = self.file.as_ref().and_then(|p| std::fs::metadata(p).ok()).map(|m| m.len());
+        let page_map = body_pages(pages);
         let toc_paths: Vec<Path> =
             find_tocs(&self.document).into_iter().filter_map(|t| t.sdt).collect();
         // First every result, with the document as it is; then each written in.
         let mut results: Vec<(StoryId, Path, usize, String)> = Vec::new();
         {
-            let mut env = Env {
-                document: Some(&self.document),
-                now: crate::session::now_iso(),
-                file,
-                file_size,
-                pages: page_map.clone(),
-                page_count: pages.pages.len() as u32,
-                words: stats.words,
-                characters: stats.characters,
-                ..Env::default()
-            };
+            let mut env = self.field_env(pages);
             for story in story_order(&self.document) {
                 let Some(blocks) = position::story(&self.document, &story) else { continue };
                 for (path, paragraph) in position::paragraphs(blocks) {
@@ -700,6 +678,58 @@ pub fn field_list(document: &Document) -> Vec<(usize, String, String)> {
         }
     }
     out
+}
+
+/// The page each body paragraph starts on, by its path.
+fn body_pages(pages: &Pages) -> HashMap<Path, u32> {
+    let mut page_map: HashMap<Path, u32> = HashMap::new();
+    for page in &pages.pages {
+        for line in page.carets.iter().filter(|l| l.story == StoryId::Body) {
+            page_map.entry(line.path.clone()).or_insert(page.number);
+        }
+    }
+    page_map
+}
+
+impl Session {
+    /// What a field update works from: the file, the pages, the counts and the time now.
+    fn field_env(&self, pages: &Pages) -> Env<'_> {
+        let stats = self.stats(Some(pages));
+        let file = self.file.as_ref().map(|path| {
+            let name =
+                path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+            (name, path.display().to_string())
+        });
+        let file_size = self.file.as_ref().and_then(|p| std::fs::metadata(p).ok()).map(|m| m.len());
+        Env {
+            document: Some(&self.document),
+            now: crate::session::now_iso(),
+            file,
+            file_size,
+            pages: body_pages(pages),
+            page_count: pages.pages.len() as u32,
+            words: stats.words,
+            characters: stats.characters,
+            ..Env::default()
+        }
+    }
+
+    /// Every field of the body in order, its code and the result the evaluator works out for it, `None`
+    /// for a field it keeps the stored result of. A test compares these with Word's results.
+    pub fn evaluated_fields(&self, pages: &Pages) -> Vec<(String, Option<String>)> {
+        let mut env = self.field_env(pages);
+        let mut out = Vec::new();
+        for (path, paragraph) in position::paragraphs(&self.document.body) {
+            env.at = path.clone();
+            env.page = env.pages.get(&path).copied().unwrap_or(1);
+            env.cells = table_cells(&self.document.body, &path);
+            for field in field_spans(paragraph) {
+                let result = fields::evaluate(&field.code, &mut env);
+                out.push((field.code.trim().to_owned(), result));
+            }
+        }
+        out
+    }
 }
 
 /// The page a body paragraph starts on.

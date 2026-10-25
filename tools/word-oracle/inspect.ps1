@@ -1,6 +1,6 @@
 # Opens a .docx read only in Word and writes what Word reports about it as JSON.
 # Usage: pwsh -NoProfile -File tools/word-oracle/inspect.ps1 -Path <file.docx> -Out <out.json>
-param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Out)
+param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Out, [string]$Password = '')
 
 . "$PSScriptRoot/WordCom.ps1"
 $MIXED = 9999999
@@ -285,6 +285,25 @@ function Map-Collection {
 }
 
 # Reads a built in document property by name through late binding.
+# The custom properties, through InvokeMember: a DocumentProperty answers nothing to ordinary late binding.
+function Read-Custom {
+    param($doc)
+    $list = New-Object System.Collections.Generic.List[object]
+    try {
+        $bt = [System.__ComObject]
+        $props = $doc.CustomDocumentProperties
+        $count = [int]$bt.InvokeMember('Count', 'GetProperty', $null, $props, $null)
+        for ($i = 1; $i -le $count; $i++) {
+            $p = $bt.InvokeMember('Item', 'GetProperty', $null, $props, @($i))
+            $list.Add([ordered]@{
+                name = [string]$bt.InvokeMember('Name', 'GetProperty', $null, $p, $null)
+                value = [string]$bt.InvokeMember('Value', 'GetProperty', $null, $p, $null)
+            })
+        }
+    } catch { }
+    return , $list
+}
+
 function Read-BuiltIn {
     param($doc, [string]$name)
     try {
@@ -331,7 +350,11 @@ function Get-Report {
         tablesOfContents = (Try-Get { [int]$doc.TablesOfContents.Count } 0)
         bookmarks = (Map-Collection $doc.Bookmarks { param($b) [string]$b.Name })
         hyperlinks = (Map-Collection $doc.Hyperlinks { param($h) [ordered]@{ address = [string]$h.Address; subAddress = [string]$h.SubAddress; text = [string]$h.TextToDisplay } })
-        properties = [ordered]@{ title = (Read-BuiltIn $doc 'Title'); subject = (Read-BuiltIn $doc 'Subject'); author = (Read-BuiltIn $doc 'Author'); keywords = (Read-BuiltIn $doc 'Keywords') }
+        properties = [ordered]@{ title = (Read-BuiltIn $doc 'Title'); subject = (Read-BuiltIn $doc 'Subject'); author = (Read-BuiltIn $doc 'Author'); keywords = (Read-BuiltIn $doc 'Keywords'); company = (Read-BuiltIn $doc 'Company'); manager = (Read-BuiltIn $doc 'Manager'); category = (Read-BuiltIn $doc 'Category') }
+        customProperties = (Read-Custom $doc)
+        tableStyles = (Map-Collection $doc.Tables { param($t) (Try-Get { [string]$t.Style.NameLocal } '') })
+        protection = [ordered]@{ type = (Try-Get { [int]$doc.ProtectionType } -1); trackRevisions = (Try-Get { [bool]$doc.TrackRevisions } $false); writeReserved = (Try-Get { [bool]$doc.WriteReserved } $false); hasPassword = (Try-Get { [bool]$doc.HasPassword } $false) }
+        heading1 = [ordered]@{ font = (Try-Get { [string]$doc.Styles.Item(-2).Font.Name } ''); size = (Try-Get { Round2 $doc.Styles.Item(-2).Font.Size } 0) }
     }
 }
 
@@ -351,7 +374,8 @@ try {
     $handle = Start-WordApp
     $word = $handle.App
     try {
-        $doc = $word.Documents.Open($fullPath, $false, $true, $false)
+        # An encrypted document is opened with its password; Word ignores one given for a document with none.
+        $doc = $word.Documents.Open($fullPath, $false, $true, $false, $Password)
     } catch {
         $report = [ordered]@{ file = [IO.Path]::GetFileName($fullPath); opened = $false; error = $_.Exception.Message }
         Write-Report $report $outPath

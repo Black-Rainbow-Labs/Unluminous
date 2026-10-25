@@ -541,8 +541,13 @@ pub fn numeric_picture(value: f64, picture: &str) -> String {
         }
         whole = grouped;
     }
+    // A `#` with no digit to show is a space, measured against Word: `= 7 \# "$#,##0.00"` is `$   7.00`. The
+    // grouping comma is shown only between digits.
+    let places = whole_part.chars().filter(|c| matches!(c, '0' | '#')).count();
+    let shown = whole.chars().filter(char::is_ascii_digit).count();
+    let padding = " ".repeat(places.saturating_sub(shown));
     let number = if fraction.is_empty() { whole } else { format!("{whole}.{fraction}") };
-    format!("{sign}{prefix}{number}{suffix}")
+    format!("{sign}{prefix}{padding}{number}{suffix}")
 }
 
 /// `IF` and `COMPARE`: numbers compared as numbers, anything else as text, with `*` and `?` as wildcards
@@ -1112,7 +1117,7 @@ mod tests {
         assert_eq!(run("=2+3*4").as_deref(), Some("14"));
         assert_eq!(run(r#"= (10 - 4) / 4 \# "0.00""#).as_deref(), Some("1.50"));
         assert_eq!(run(r##"= 1234567.891 \# "#,##0.00""##).as_deref(), Some("1,234,567.89"));
-        assert_eq!(run(r#"= -42 \# "$#,##0.00;($#,##0.00)""#).as_deref(), Some("($42.00)"));
+        assert_eq!(run(r#"= -42 \# "$#,##0.00;($#,##0.00)""#).as_deref(), Some("($  42.00)"));
         assert_eq!(run(r#"= 0.25 \# "0%""#).as_deref(), Some("25%"));
         assert_eq!(run("= MAX(1, 7, 3) + MIN(4, 2)").as_deref(), Some("9"));
         assert_eq!(run("= ROUND(2.567, 1)").as_deref(), Some("2.6"));

@@ -15,6 +15,48 @@ use crate::xml::El;
 /// Word's hanging indent step: one default tab stop, half an inch.
 const STEP_TWIPS: i64 = 720;
 
+/// Where every outermost field of a story starts and ends: a complex field from its begin character to
+/// its end character, and a `w:fldSimple` over the runs it wraps. Field shading and Next Field read it.
+pub fn field_ranges(document: &Document, story: &crate::position::StoryId) -> Vec<(Pos, Pos)> {
+    let Some(blocks) = position::story(document, story) else { return Vec::new() };
+    let mut fields: Vec<(Pos, Pos)> = Vec::new();
+    for (path, paragraph) in position::paragraphs(blocks) {
+        let mut offset = 0;
+        let mut open: Vec<usize> = Vec::new();
+        let mut simple: Option<(u64, usize, usize)> = None;
+        let at = |offset: usize| Pos { story: story.clone(), path: path.clone(), offset };
+        for run in &paragraph.runs {
+            match run.content.character() {
+                Some(FIELD_BEGIN) => open.push(offset),
+                Some(FIELD_END) => {
+                    if let Some(start) = open.pop() {
+                        if open.is_empty() {
+                            fields.push((at(start), at(offset + run.len())));
+                        }
+                    }
+                }
+                _ => {}
+            }
+            let wrap = run.wraps.iter().find(|w| w.el.name == "w:fldSimple").map(|w| w.id);
+            match (wrap, simple) {
+                (Some(id), Some((open_id, start, _))) if id == open_id => simple = Some((id, start, offset + run.len())),
+                (wrap, previous) => {
+                    if let Some((_, start, end)) = previous {
+                        fields.push((at(start), at(end)));
+                    }
+                    simple = wrap.map(|id| (id, offset, offset + run.len()));
+                }
+            }
+            offset += run.len();
+        }
+        if let Some((_, start, end)) = simple {
+            fields.push((at(start), at(end)));
+        }
+    }
+    fields.sort_by(|a, b| a.0.cmp(&b.0));
+    fields
+}
+
 impl Session {
     /// Ctrl+T and Ctrl+Shift+T: indent every line but the first one more step, or one less.
     pub fn hanging_indent(&mut self, more: bool) {
@@ -279,27 +321,7 @@ impl Session {
     pub fn select_next_field(&mut self, forward: bool) -> Result<(), String> {
         let head = self.selection.ordered().1.clone();
         let tail = self.selection.ordered().0.clone();
-        let blocks = position::story(&self.document, &head.story).ok_or("the story has gone")?;
-        let mut fields: Vec<(Pos, Pos)> = Vec::new();
-        for (path, paragraph) in position::paragraphs(blocks) {
-            let mut offset = 0;
-            let mut open: Vec<usize> = Vec::new();
-            for run in &paragraph.runs {
-                match run.content.character() {
-                    Some(FIELD_BEGIN) => open.push(offset),
-                    Some(FIELD_END) => {
-                        if let Some(start) = open.pop() {
-                            if open.is_empty() {
-                                let pos = Pos { story: head.story.clone(), path: path.clone(), offset: start };
-                                fields.push((pos.clone(), pos.at(offset + run.len())));
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-                offset += run.len();
-            }
-        }
+        let fields = field_ranges(&self.document, &head.story);
         let chosen = if forward {
             fields.into_iter().find(|(start, _)| *start > tail || (*start == tail && head == tail))
         } else {
@@ -388,6 +410,21 @@ fn heading_level(style: &str) -> Option<u8> {
 mod tests {
     use super::*;
     use crate::position::StoryId;
+
+    #[test]
+    fn field_ranges_cover_each_outermost_field() {
+        let mut session = typed("Page ");
+        session.insert_field("PAGE", "1");
+        session.type_text(" of ");
+        session.insert_field("NUMPAGES", "3");
+        let fields = field_ranges(&session.document, &StoryId::Body);
+        assert_eq!(fields.len(), 2);
+        let text = position::paragraphs(&session.document.body)[0].1.flat_text();
+        assert!(fields[0].0.offset >= "Page ".len() && fields[0].1.offset < fields[1].0.offset, "{fields:?} in {text:?}");
+        session.selection = crate::position::Selection::caret(Pos::new(vec![0], 0));
+        session.select_next_field(true).unwrap();
+        assert_eq!(session.selection.ordered().0.offset, fields[0].0.offset);
+    }
 
     fn typed(text: &str) -> Session {
         let mut session = Session::new(crate::new::blank());

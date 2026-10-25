@@ -2014,6 +2014,36 @@ pub const ACTIONS: &[Action] = &[
         },
     },
     Action {
+        id: "field-shading-always",
+        label: "Field Shading Always",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.field_shading = "always";
+            done("Fields are shaded")
+        },
+    },
+    Action {
+        id: "field-shading-selected",
+        label: "Field Shading When Selected",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.field_shading = "selected";
+            done("A field is shaded while it is selected")
+        },
+    },
+    Action {
+        id: "field-shading-never",
+        label: "Field Shading Never",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.field_shading = "never";
+            done("Fields are not shaded")
+        },
+    },
+    Action {
         id: "new-window",
         label: "New Window",
         level: Level::Document,

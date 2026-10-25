@@ -184,3 +184,41 @@ fn field_codes_draw_the_code_in_braces_instead_of_the_result() {
     assert!(drawn(&codes).contains("{ NUMWORDS }"), "{}", drawn(&codes));
     assert!(!drawn(&codes).contains("Words: 1"));
 }
+
+/// Every field code and switch in `field-codes.docx`, updated by Unluminous, gives the result Word gave it
+/// (TDD section 8). The fixture is made by `make-fixtures.ps1`, which has Word update every field before
+/// it saves, and `field-codes.word.json` holds Word's results in document order.
+#[test]
+fn every_field_code_and_switch_gives_words_result() {
+    let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let bytes = std::fs::read(folder.join("field-codes.docx")).unwrap();
+    let report: serde_json::Value = serde_json::from_str(
+        std::fs::read_to_string(folder.join("field-codes.word.json")).unwrap().trim_start_matches('\u{feff}'),
+    )
+    .unwrap();
+    let mut session = Session::new(unluminous_word::read::open(&bytes).unwrap());
+    session.file = Some(folder.join("field-codes.docx"));
+    // What the evaluator works out, so a field it does not understand cannot pass on Word's stored result.
+    let ours = session.evaluated_fields(&pages(&session));
+    let words: Vec<(String, String)> = report["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| {
+            let code = f["code"].as_str().unwrap_or_default().trim().to_owned();
+            let result = f["result"].as_str().unwrap_or_default().trim_end_matches('\r').to_owned();
+            (code, result)
+        })
+        .collect();
+    assert_eq!(ours.len(), words.len(), "the same fields: ours {ours:?}");
+    let mut wrong = Vec::new();
+    for ((code, result), (word_code, word_result)) in ours.iter().zip(&words) {
+        assert_eq!(code.split_whitespace().collect::<Vec<_>>(), word_code.split_whitespace().collect::<Vec<_>>());
+        match result {
+            Some(result) if result.trim() == word_result.trim() => {}
+            Some(result) => wrong.push(format!("{code}: ours {result:?}, Word's {word_result:?}")),
+            None => wrong.push(format!("{code}: not worked out, Word's {word_result:?}")),
+        }
+    }
+    assert!(wrong.is_empty(), "fields that disagree with Word:\n{}", wrong.join("\n"));
+}

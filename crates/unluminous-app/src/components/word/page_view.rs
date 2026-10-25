@@ -136,6 +136,7 @@ pub fn show(
     let fonts = WordFonts::new(look.renderer);
     let zoom = doc.view.zoom;
     let selection = doc.session.selection.clone();
+    keep_the_field_ranges(doc);
     let showing: Vec<(usize, Pos2, Rect)> = tops
         .iter()
         .zip(&doc.pages.pages)
@@ -168,6 +169,7 @@ pub fn show(
             paint_gridlines(&painter, doc, page, origin, zoom);
         }
         let to_screen = |x: f32, y: f32| origin + Vec2::new(x * zoom, y * zoom);
+        paint_field_shading(&painter, doc, page, &selection, zoom, origin);
         paint_selection(&painter, page, &selection, zoom, origin);
         if doc.view.marks {
             paint_marks(&painter, page, to_screen);
@@ -505,6 +507,57 @@ fn picture_texture(ui: &egui::Ui, doc: &mut Doc, part: &str) -> Option<egui::Tex
         });
     doc.view.pictures.insert(part.to_owned(), texture.clone());
     texture
+}
+
+/// Word's grey behind a field: every field with `always`, the ones the caret or the selection is in with
+/// `selected`. The fields are worked out once a revision.
+fn paint_field_shading(
+    painter: &egui::Painter,
+    doc: &Doc,
+    page: &unluminous_word::layout::Page,
+    selection: &Selection,
+    zoom: f32,
+    origin: Pos2,
+) {
+    if doc.view.field_shading == "never" {
+        return;
+    }
+    let Some((_, story, fields)) = &doc.view.field_ranges else { return };
+    let (from, to) = selection.ordered();
+    // Word's field shading is a light grey on white paper, and the theme's quiet ink on dark paper.
+    let colour = if doc.view.dark {
+        crate::theme::color::text_dim().gamma_multiply(0.25)
+    } else {
+        Color32::from_rgb(0xD9, 0xD9, 0xD9)
+    };
+    for (start, end) in fields {
+        let shown = doc.view.field_shading == "always"
+            || (from.story == *story && *from <= *end && *to >= *start);
+        if !shown {
+            continue;
+        }
+        for line in page.carets.iter().filter(|l| l.story == *story) {
+            let Some((x0, x1)) = covered(line, start, end) else { continue };
+            let rect = Rect::from_min_max(
+                origin + Vec2::new(x0 * zoom, line.top * zoom),
+                origin + Vec2::new(x1 * zoom, (line.top + line.height) * zoom),
+            );
+            painter.rect_filled(rect, 0.0, colour);
+        }
+    }
+}
+
+/// The fields of the selection's story, worked out again when the document changed.
+pub fn keep_the_field_ranges(doc: &mut Doc) {
+    if doc.view.field_shading == "never" {
+        return;
+    }
+    let story = doc.session.selection.head.story.clone();
+    let fresh = matches!(&doc.view.field_ranges, Some((revision, s, _)) if *revision == doc.session.revision && *s == story);
+    if !fresh {
+        let fields = unluminous_word::shortcuts::field_ranges(&doc.session.document, &story);
+        doc.view.field_ranges = Some((doc.session.revision, story, fields));
+    }
 }
 
 /// The selection, as a band behind each line it covers.
