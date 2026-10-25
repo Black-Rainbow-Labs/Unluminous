@@ -111,6 +111,7 @@ pub fn show(
     }
     let (tops, total) = page_tops(doc, area.width());
     doc.view.scroll = doc.view.scroll.clamp(0.0, (total - area.height()).max(0.0));
+    doc.view.viewport_height = area.height();
     if doc.view.reveal {
         reveal(doc, area, &tops);
         doc.view.reveal = false;
@@ -588,6 +589,16 @@ fn paint_caret(ui: &egui::Ui, painter: &egui::Painter, doc: &Doc, area: Rect, to
     }
 }
 
+/// Where the caret is drawn on the screen, for a menu that opens at it.
+pub fn caret_point(doc: &Doc, area: Rect) -> Option<Pos2> {
+    let (tops, _) = page_tops(doc, area.width());
+    let (index, line) = doc.pages.find(&doc.session.selection.head)?;
+    let zoom = doc.view.zoom;
+    let origin = area.min + Vec2::new(tops[index].x, tops[index].y - doc.view.scroll);
+    let x = line.x_of(doc.session.selection.head.offset);
+    Some(origin + Vec2::new(x * zoom, (line.top + line.height) * zoom))
+}
+
 /// Scroll the caret onto the screen.
 fn reveal(doc: &mut Doc, area: Rect, tops: &[Pos2]) {
     let Some((index, line)) = doc.pages.find(&doc.session.selection.head) else { return };
@@ -665,8 +676,18 @@ fn pointer(
         && response.hovered()
         && !super::overlays::a_popup_covers(ui, at);
     if right_pressed {
-        if let Some(pos) = hit(doc) {
-            super::spelling::right_click(doc, pos);
+        // A right press on a picture or a shape selects it first, so the menu is the object's.
+        let on_object = super::objects::press(doc, area, at);
+        doc.view.object_drag = None;
+        if on_object {
+            let pos = doc.session.selected_object().expect("the press selected it");
+            super::context_menu::open(doc, at, pos);
+        } else if let Some(pos) = hit(doc) {
+            // A misspelled word gets its spelling card; anything else the right click menu.
+            super::spelling::right_click(doc, pos.clone());
+            if doc.view.spell_menu.is_none() {
+                super::context_menu::open(doc, at, pos);
+            }
         }
         return;
     }

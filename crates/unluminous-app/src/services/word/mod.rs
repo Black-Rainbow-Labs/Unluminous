@@ -9,6 +9,7 @@
 pub mod actions;
 pub mod commands;
 pub mod fonts;
+pub mod print;
 pub mod spelling;
 #[cfg(test)]
 mod tests;
@@ -39,6 +40,8 @@ pub struct Config {
     pub spelling: bool,
     /// Autocorrect and AutoFormat as you type.
     pub autocorrect: unluminous_word::autocorrect::Rules,
+    /// Chords a person moved: `chord.<action> = <chord>` lines, `none` taking a chord away.
+    pub chords: Vec<(String, String)>,
 }
 
 impl Default for Config {
@@ -49,6 +52,7 @@ impl Default for Config {
             marks: false,
             spelling: true,
             autocorrect: Default::default(),
+            chords: Vec::new(),
         }
     }
 }
@@ -82,6 +86,10 @@ impl Config {
                         }
                     }
                 }
+                key if key.trim().starts_with("chord.") => {
+                    let action = key.trim().trim_start_matches("chord.").to_owned();
+                    config.chords.push((action, value.to_owned()));
+                }
                 _ => {}
             }
         }
@@ -104,6 +112,10 @@ impl Config {
             self.spelling,
             off.join(", ")
         );
+        let mut text = text;
+        for (action, chord) in &self.chords {
+            text.push_str(&format!("chord.{action} = {chord}\n"));
+        }
         crate::services::store::write_atomically(&folder.join(Self::FILE), text.as_bytes())
             .map_err(|e| format!("{} could not be written: {e}", folder.join(Self::FILE).display()))
     }
@@ -127,12 +139,13 @@ pub enum Level {
     Contents,
     TableProperties,
     Picture,
+    Print,
 }
 
 impl Level {
     /// The third levels, which the root level does not list.
     pub const DEEPER: &'static [Level] =
-        &[Level::Proofing, Level::Contents, Level::TableProperties, Level::Picture];
+        &[Level::Proofing, Level::Contents, Level::TableProperties, Level::Picture, Level::Print];
 
     /// The level a third level is opened from.
     pub fn parent(self) -> Option<Level> {
@@ -140,6 +153,7 @@ impl Level {
             Level::Proofing => Some(Level::Review),
             Level::Contents => Some(Level::References),
             Level::TableProperties | Level::Picture => Some(Level::Insert),
+            Level::Print => Some(Level::Document),
             _ => None,
         }
     }
@@ -172,6 +186,7 @@ impl Level {
             Level::Contents => "Table of contents",
             Level::TableProperties => "Table properties",
             Level::Picture => "Picture",
+            Level::Print => "Print",
         }
     }
 
@@ -202,6 +217,7 @@ impl Level {
             Level::Contents => "Levels, page numbers, leader, links",
             Level::TableProperties => "Alignment, width, rows, cells, style, borders",
             Level::Picture => "Size, wrap, position, crop, alt text, order",
+            Level::Print => "Pages, copies, odd or even, pages per sheet, preview",
         }
     }
 }
@@ -254,6 +270,16 @@ pub struct View {
     /// A press inside the selection is carrying it: on release it moves to where the pointer is, or is
     /// copied there with Ctrl held, as Word's drag and drop of text does (task-2359, M20).
     pub carrying: bool,
+    /// The last places an edit was made, oldest first, for Go Back (Shift+F5).
+    pub edits: Vec<Pos>,
+    /// F8's extend mode: 0 off, then how many times F8 was pressed.
+    pub extend: u8,
+    /// How tall the pages' area was when it was last drawn, in screen points.
+    pub viewport_height: f32,
+    /// The right click menu, while it is open.
+    pub context_menu: Option<ContextMenu>,
+    /// Shift+F10 asked for the menu at the caret; the page view opens it, because it knows where that is.
+    pub menu_at_caret: bool,
     /// A picture, shape or text box being moved, resized or cropped by its handles.
     pub object_drag: Option<crate::components::word::objects::ObjectDrag>,
     /// The selected picture's handles crop it (the Crop action) rather than resize it.
@@ -266,6 +292,24 @@ pub struct View {
     pub copied_format: Option<unluminous_word::xml::El>,
     /// The picture textures, by package part.
     pub pictures: std::collections::HashMap<String, Option<egui::TextureHandle>>,
+}
+
+/// The right click menu: where it opened, what it offers, and what was under the pointer.
+#[derive(Debug, Clone)]
+pub struct ContextMenu {
+    pub at: egui::Pos2,
+    pub entries: Vec<MenuEntry>,
+    /// The word under the pointer, which a synonym replaces.
+    pub word: String,
+    pub pos: Pos,
+}
+
+/// One row of the right click menu: its words and the action id it runs. A row of `-` is a line, and a
+/// row with no id is a heading.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MenuEntry {
+    pub label: String,
+    pub id: String,
 }
 
 /// The last paste, which Paste Options can paste again another way.
@@ -441,6 +485,11 @@ impl View {
             dragging: false,
             carrying: false,
             object_drag: None,
+            context_menu: None,
+            edits: Vec::new(),
+            extend: 0,
+            viewport_height: 600.0,
+            menu_at_caret: false,
             cropping: false,
             clicks: (0.0, egui::Pos2::ZERO, 0),
             fields: Default::default(),
@@ -718,6 +767,7 @@ impl UiProvider for Word {
         spelling::use_folder(self.folder.as_deref());
         if let Some(folder) = &self.folder {
             self.config = Config::read(folder);
+            crate::components::word::keys::set_chords(&self.config.chords);
         }
         self.open = true;
         Ok(())

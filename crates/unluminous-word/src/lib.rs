@@ -39,6 +39,7 @@ pub mod restyle;
 pub mod review;
 pub mod search;
 pub mod session;
+pub mod shortcuts;
 pub mod spell;
 pub mod styles;
 pub mod tables;

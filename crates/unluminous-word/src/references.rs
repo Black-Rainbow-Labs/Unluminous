@@ -340,7 +340,20 @@ impl Session {
     /// the body, the headers and footers and the notes, in document order so `SEQ` counts. A locked field
     /// keeps its result. Answers how many fields changed.
     pub fn update_fields(&mut self, pages: &Pages) -> usize {
-        let mut count = self.update_tocs(pages);
+        self.update_fields_where(pages, None)
+    }
+
+    /// Update the fields in the paragraphs the selection covers, as F9 and the right click menu's Update
+    /// Field do; every other field keeps its result. `SEQ` still counts from the top of the document.
+    pub fn update_selected_fields(&mut self, pages: &Pages) -> usize {
+        let (from, to) = (self.selection.ordered().0.clone(), self.selection.ordered().1.clone());
+        let paths: Vec<Path> =
+            crate::edit::covered(&self.document, &from, &to).into_iter().map(|(path, _, _)| path).collect();
+        self.update_fields_where(pages, Some((from.story, paths)))
+    }
+
+    fn update_fields_where(&mut self, pages: &Pages, only: Option<(StoryId, Vec<Path>)>) -> usize {
+        let mut count = if only.is_none() { self.update_tocs(pages) } else { 0 };
         let stats = self.stats(Some(pages));
         let mut page_map: HashMap<Path, u32> = HashMap::new();
         for page in &pages.pages {
@@ -383,8 +396,9 @@ impl Session {
                         if field.locked {
                             continue;
                         }
+                        let wanted = only.as_ref().is_none_or(|(s, paths)| *s == story && paths.contains(&path));
                         if let Some(result) = fields::evaluate(&field.code, &mut env) {
-                            if result != field.result {
+                            if result != field.result && wanted {
                                 results.push((story.clone(), path.clone(), index, result));
                             }
                         }

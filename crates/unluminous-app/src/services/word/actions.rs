@@ -71,6 +71,23 @@ fn paragraph_toggle(doc: &mut Doc, name: &'static str) -> Result<String, String>
     Ok(String::new())
 }
 
+fn underline_kind(doc: &mut Doc, kind: &'static str) -> Result<String, String> {
+    let on = doc.session.look_at_caret().underline != props::Underline::parse(kind);
+    doc.session.format(move |rpr| props::set_val(rpr, "w:u", on.then_some(kind)));
+    Ok(String::new())
+}
+
+/// The selection's size, a point at a time, as Ctrl+] and Ctrl+[ step it.
+fn font_step(doc: &mut Doc, by: f32) -> Result<String, String> {
+    let size = (doc.session.look_at_caret().size + by).clamp(1.0, 1638.0);
+    let half_points = ((size * 2.0).round() as i64).to_string();
+    doc.session.format(move |rpr| {
+        props::set_val(rpr, "w:sz", Some(half_points.as_str()));
+        props::set_val(rpr, "w:szCs", Some(half_points.as_str()));
+    });
+    Ok(String::new())
+}
+
 fn style(doc: &mut Doc, id: &'static str) -> Result<String, String> {
     doc.session.apply_style_where_it_fits(id)?;
     Ok(String::new())
@@ -1372,7 +1389,7 @@ pub const ACTIONS: &[Action] = &[
         level: Level::Picture,
         slash: false,
         run: |d| {
-            d.view.panel = vec![Level::Insert, Level::Picture];
+            d.view.panel = vec![Level::Root, Level::Insert, Level::Picture];
             done("")
         },
     },
@@ -1382,9 +1399,489 @@ pub const ACTIONS: &[Action] = &[
         level: Level::Picture,
         slash: false,
         run: |d| {
-            d.view.panel = vec![Level::Insert, Level::Picture];
+            d.view.panel = vec![Level::Root, Level::Insert, Level::Picture];
             done("")
         },
+    },
+    Action {
+        id: "font-dialog",
+        label: "Font",
+        level: Level::Text,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Text];
+            done("")
+        },
+    },
+    Action {
+        id: "paragraph-dialog",
+        label: "Paragraph",
+        level: Level::Paragraph,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Paragraph];
+            done("")
+        },
+    },
+    Action {
+        id: "styles-level",
+        label: "Styles",
+        level: Level::Styles,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Styles];
+            done("")
+        },
+    },
+    Action {
+        id: "insert-link",
+        label: "Link",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Insert];
+            d.view.fields.insert("link", String::new());
+            done("Type the address in the panel")
+        },
+    },
+    Action {
+        id: "edit-link",
+        label: "Edit hyperlink",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            let at = d.session.selection.head.clone();
+            let (address, _) = d.session.hyperlink_at(&at).ok_or("the caret is not on a link")?;
+            d.view.panel = vec![Level::Root, Level::Insert];
+            d.view.fields.insert("link", address);
+            done("Change the address in the panel")
+        },
+    },
+    Action {
+        id: "insert-row-above",
+        label: "Insert row above",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.table_op("row-above").map(|()| String::new()),
+    },
+    Action {
+        id: "insert-row-below",
+        label: "Insert row below",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.table_op("row-below").map(|()| String::new()),
+    },
+    Action {
+        id: "insert-column-left",
+        label: "Insert column to the left",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.table_op("column-left").map(|()| String::new()),
+    },
+    Action {
+        id: "insert-column-right",
+        label: "Insert column to the right",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.table_op("column-right").map(|()| String::new()),
+    },
+    Action {
+        id: "delete-row",
+        label: "Delete row",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.table_op("delete-row").map(|()| String::new()),
+    },
+    Action {
+        id: "delete-column",
+        label: "Delete column",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.table_op("delete-column").map(|()| String::new()),
+    },
+    Action {
+        id: "delete-table",
+        label: "Delete table",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.table_op("delete-table").map(|()| String::new()),
+    },
+    Action {
+        id: "split-cells",
+        label: "Split cells",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.table_op("split").map(|()| String::new()),
+    },
+    Action {
+        id: "table-properties",
+        label: "Table properties",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Insert, Level::TableProperties];
+            done("")
+        },
+    },
+    Action {
+        id: "borders-and-shading",
+        label: "Borders and shading",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Insert, Level::TableProperties];
+            done("")
+        },
+    },
+    Action {
+        id: "update-field",
+        label: "Update field",
+        level: Level::References,
+        slash: false,
+        run: |d| {
+            let pages = d.pages.clone();
+            let count = d.session.update_selected_fields(&pages);
+            Ok(format!("{count} fields updated"))
+        },
+    },
+    Action {
+        id: "edit-field",
+        label: "Edit field",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Insert];
+            d.view.fields.insert("field", String::new());
+            done("Type the field code in the panel")
+        },
+    },
+    Action {
+        id: "go-to-note",
+        label: "Go to note",
+        level: Level::References,
+        slash: false,
+        run: |d| {
+            let at = d.session.selection.head.clone();
+            let story = d.session.note_at(&at).ok_or("the caret is not at a note reference")?;
+            let pos = unluminous_word::position::Pos { story, path: vec![0], offset: 0 };
+            d.session.select(pos.clone(), pos);
+            done("")
+        },
+    },
+    Action {
+        id: "convert-note",
+        label: "Convert note",
+        level: Level::References,
+        slash: false,
+        run: |d| d.session.convert_note().map(|()| String::new()),
+    },
+    Action {
+        id: "remove-header",
+        label: "Remove header or footer",
+        level: Level::Page,
+        slash: false,
+        run: |d| d.session.remove_header_at_caret().map(|()| String::new()),
+    },
+    Action {
+        id: "close-header",
+        label: "Close header and footer",
+        level: Level::Page,
+        slash: false,
+        run: |d| {
+            let first = d.pages.pages.iter().find_map(|p| p.first.clone()).unwrap_or_default();
+            d.session.select(first.clone(), first);
+            done("")
+        },
+    },
+    Action {
+        id: "list-bullet",
+        label: "List Bullet style",
+        level: Level::Lists,
+        slash: false,
+        run: |d| style(d, "ListBullet"),
+    },
+    Action {
+        id: "hanging-indent",
+        label: "Hanging indent",
+        level: Level::Paragraph,
+        slash: false,
+        run: |d| {
+            d.session.hanging_indent(true);
+            done("")
+        },
+    },
+    Action {
+        id: "reduce-hanging-indent",
+        label: "Reduce hanging indent",
+        level: Level::Paragraph,
+        slash: false,
+        run: |d| {
+            d.session.hanging_indent(false);
+            done("")
+        },
+    },
+    Action {
+        id: "reset-paragraph",
+        label: "Reset paragraph formatting",
+        level: Level::Paragraph,
+        slash: false,
+        run: |d| {
+            d.session.reset_paragraph();
+            done("")
+        },
+    },
+    Action {
+        id: "toggle-space-before",
+        label: "Twelve points before",
+        level: Level::Paragraph,
+        slash: false,
+        run: |d| {
+            d.session.toggle_space_before();
+            done("")
+        },
+    },
+    Action {
+        id: "double-underline",
+        label: "Double underline",
+        level: Level::Text,
+        slash: false,
+        run: |d| underline_kind(d, "double"),
+    },
+    Action {
+        id: "underline-words",
+        label: "Underline words only",
+        level: Level::Text,
+        slash: false,
+        run: |d| underline_kind(d, "words"),
+    },
+    Action {
+        id: "symbol-font",
+        label: "Symbol font",
+        level: Level::Text,
+        slash: false,
+        run: |d| {
+            d.session.symbol_font();
+            done("")
+        },
+    },
+    Action {
+        id: "cycle-case",
+        label: "Change case",
+        level: Level::Text,
+        slash: false,
+        run: |d| {
+            let text = d.session.selected_text();
+            let how = if text.chars().any(char::is_lowercase) && text.chars().any(char::is_uppercase) {
+                "lower"
+            } else if text.chars().any(char::is_lowercase) {
+                "upper"
+            } else {
+                "title"
+            };
+            d.session.change_case(how);
+            done("")
+        },
+    },
+    Action {
+        id: "grow-font-one",
+        label: "Grow font one point",
+        level: Level::Text,
+        slash: false,
+        run: |d| font_step(d, 1.0),
+    },
+    Action {
+        id: "shrink-font-one",
+        label: "Shrink font one point",
+        level: Level::Text,
+        slash: false,
+        run: |d| font_step(d, -1.0),
+    },
+    Action {
+        id: "bookmark-dialog",
+        label: "Bookmark",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Insert];
+            d.view.fields.insert("bookmark", String::new());
+            done("Type the bookmark name in the panel")
+        },
+    },
+    Action {
+        id: "next-field",
+        label: "Next field",
+        level: Level::References,
+        slash: false,
+        run: |d| d.session.select_next_field(true).map(|()| String::new()),
+    },
+    Action {
+        id: "previous-field",
+        label: "Previous field",
+        level: Level::References,
+        slash: false,
+        run: |d| d.session.select_next_field(false).map(|()| String::new()),
+    },
+    Action {
+        id: "ellipsis",
+        label: "Ellipsis",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.type_text("\u{2026}");
+            done("")
+        },
+    },
+    Action {
+        id: "copyright",
+        label: "Copyright sign",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.type_text("\u{a9}");
+            done("")
+        },
+    },
+    Action {
+        id: "registered",
+        label: "Registered sign",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.type_text("\u{ae}");
+            done("")
+        },
+    },
+    Action {
+        id: "trademark",
+        label: "Trademark sign",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.type_text("\u{2122}");
+            done("")
+        },
+    },
+    Action {
+        id: "nonbreaking-space",
+        label: "Nonbreaking space",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.type_text("\u{a0}");
+            done("")
+        },
+    },
+    Action {
+        id: "em-dash",
+        label: "Em dash",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.type_text("\u{2014}");
+            done("")
+        },
+    },
+    Action {
+        id: "en-dash",
+        label: "En dash",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.type_text("\u{2013}");
+            done("")
+        },
+    },
+    Action {
+        id: "section-sign",
+        label: "Section sign",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.type_text("\u{a7}");
+            done("")
+        },
+    },
+    Action {
+        id: "paragraph-sign",
+        label: "Paragraph sign",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.type_text("\u{b6}");
+            done("")
+        },
+    },
+    Action {
+        id: "nonbreaking-hyphen",
+        label: "Nonbreaking hyphen",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.insert_hyphen(false);
+            done("")
+        },
+    },
+    Action {
+        id: "optional-hyphen",
+        label: "Optional hyphen",
+        level: Level::Insert,
+        slash: false,
+        run: |d| {
+            d.session.insert_hyphen(true);
+            done("")
+        },
+    },
+    Action {
+        id: "unicode-toggle",
+        label: "Toggle character code",
+        level: Level::Insert,
+        slash: false,
+        run: |d| d.session.toggle_unicode().map(|()| String::new()),
+    },
+    Action {
+        id: "promote-heading",
+        label: "Promote heading",
+        level: Level::Styles,
+        slash: false,
+        run: |d| d.session.promote_heading(true).map(|()| String::new()),
+    },
+    Action {
+        id: "demote-heading",
+        label: "Demote heading",
+        level: Level::Styles,
+        slash: false,
+        run: |d| d.session.promote_heading(false).map(|()| String::new()),
+    },
+    Action {
+        id: "move-paragraph-up",
+        label: "Move paragraph up",
+        level: Level::Paragraph,
+        slash: false,
+        run: |d| d.session.move_paragraph(true).map(|()| String::new()),
+    },
+    Action {
+        id: "move-paragraph-down",
+        label: "Move paragraph down",
+        level: Level::Paragraph,
+        slash: false,
+        run: |d| d.session.move_paragraph(false).map(|()| String::new()),
+    },
+    Action {
+        id: "print",
+        label: "Print",
+        level: Level::Document,
+        slash: false,
+        run: |d| {
+            d.view.panel = vec![Level::Root, Level::Document, Level::Print];
+            done("")
+        },
+    },
+    Action {
+        id: "print-now",
+        label: "Print every page",
+        level: Level::Document,
+        slash: false,
+        run: |d| super::print::print(d, &super::print::PrintOptions::default()),
     },
 ];
 
@@ -1411,6 +1908,13 @@ pub fn applies(id: &str, doc: &Doc) -> bool {
             doc.session.selected_object().is_some()
         }
         "crop" | "reset-picture" => doc.session.object_info().is_some_and(|i| i.kind == "Picture"),
+        "insert-row-above" | "insert-row-below" | "insert-column-left" | "insert-column-right" | "delete-row"
+        | "delete-column" | "delete-table" | "split-cells" | "table-properties" | "borders-and-shading" => {
+            doc.session.cell_at_caret().is_some()
+        }
+        "edit-link" => doc.session.hyperlink_at(head).is_some(),
+        "go-to-note" | "convert-note" => doc.session.note_at(head).is_some(),
+        "remove-header" | "close-header" => matches!(head.story, StoryId::Header(_)),
         "update-table" | "remove-table-of-contents" => {
             !unluminous_word::references::find_tocs(&doc.session.document).is_empty()
         }

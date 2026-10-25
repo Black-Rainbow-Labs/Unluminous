@@ -78,6 +78,7 @@ pub fn show(
                 Level::Contents => contents(ui, doc, requests),
                 Level::TableProperties => table_properties(ui, doc, requests),
                 Level::Picture => picture(ui, doc, requests),
+                Level::Print => print(ui, doc, requests),
             }
         });
 }
@@ -913,6 +914,92 @@ fn references(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
 /// Insert -> Table properties: the table's alignment and width, the selected rows' height and whether
 /// they repeat or break across pages, the selected cells' vertical alignment, the table style with its
 /// options, and borders.
+/// The print options read from the Print level's fields.
+fn print_options(doc: &mut Doc) -> Result<crate::services::word::print::PrintOptions, String> {
+    use crate::services::word::print::{parse_range, Parity, PrintOptions};
+    doc.ensure_pages();
+    let field = |doc: &Doc, name: &str| doc.view.fields.get(name).cloned().unwrap_or_default();
+    let count = doc.pages.pages.len();
+    Ok(PrintOptions {
+        pages: parse_range(&field(doc, "print-pages"), count)?,
+        parity: match field(doc, "print-parity").as_str() {
+            "odd" => Parity::Odd,
+            "even" => Parity::Even,
+            _ => Parity::All,
+        },
+        copies: field(doc, "print-copies").trim().parse().unwrap_or(1).clamp(1, 99),
+        per_sheet: field(doc, "print-per-sheet").trim().parse().unwrap_or(1),
+    })
+}
+
+/// The Print level (Ctrl+P): which pages, how many copies, odd or even, pages per sheet, then Print,
+/// which hands the PDF to the system's print dialog, or Preview, which opens it in a tab.
+fn print(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
+    heading(ui, "Pages");
+    ui.horizontal(|ui| {
+        ui.label("Pages");
+        let pages = doc.view.fields.entry("print-pages").or_default();
+        ui.add(
+            egui::TextEdit::singleline(pages)
+                .hint_text(crate::components::controls::placeholder(
+                    "all, or 1-3, 5",
+                    &egui::TextStyle::Body.resolve(ui.style()),
+                    crate::theme::color::text_faint(),
+                ))
+                .desired_width(120.0),
+        );
+    });
+    ui.horizontal(|ui| {
+        for (label, value) in [("All pages", "all"), ("Odd pages", "odd"), ("Even pages", "even")] {
+            let chosen = doc.view.fields.get("print-parity").map_or("all", String::as_str) == value;
+            if ui.selectable_label(chosen, label).clicked() {
+                doc.view.fields.insert("print-parity", value.to_owned());
+            }
+        }
+    });
+    heading(ui, "Copies and sheets");
+    ui.horizontal(|ui| {
+        ui.label("Copies");
+        let copies = doc.view.fields.entry("print-copies").or_insert_with(|| "1".to_owned());
+        ui.add(egui::TextEdit::singleline(copies).desired_width(40.0));
+    });
+    ui.horizontal(|ui| {
+        ui.label("Pages per sheet");
+        for value in ["1", "2", "4"] {
+            let chosen = doc.view.fields.get("print-per-sheet").map_or("1", String::as_str) == value;
+            if ui.selectable_label(chosen, value).clicked() {
+                doc.view.fields.insert("print-per-sheet", value.to_owned());
+            }
+        }
+    });
+    ui.add_space(6.0);
+    let (mut print_now, mut preview) = (false, false);
+    ui.horizontal(|ui| {
+        print_now = ui.button("Print").clicked();
+        preview = ui.button("Preview").clicked();
+    });
+    if print_now || preview {
+        let result = print_options(doc).and_then(|options| {
+            if preview {
+                crate::services::word::print::write_pdf(doc, &options).map(|path| {
+                    requests.push(Request::OpenFile(path.clone()));
+                    format!("Preview of {}", path.display())
+                })
+            } else {
+                crate::services::word::print::print(doc, &options)
+            }
+        });
+        match result {
+            Ok(said) => requests.push(Request::Message(said)),
+            Err(problem) => requests.push(Request::Notice { text: problem, kind: crate::components::toast::Kind::Problem }),
+        }
+    }
+    ui.label(
+        RichText::new("Print hands a PDF of the pages to the system's print dialog, where the printer, duplex and paper are chosen.")
+            .weak(),
+    );
+}
+
 /// The selected picture, shape or text box: its size, how text wraps round it, where it sits, its crop,
 /// its alt text and its place in the stack (task-2359, TDD 5.3).
 fn picture(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
@@ -1431,6 +1518,7 @@ fn review(ui: &mut egui::Ui, look: &Look<'_>, doc: &mut Doc, requests: &mut Vec<
 }
 
 fn document(ui: &mut egui::Ui, doc: &mut Doc, requests: &mut Vec<Request>) {
+    deeper(ui, doc, Level::Print);
     heading(ui, "Properties");
     for (label, element) in [
         ("Title", "dc:title"),

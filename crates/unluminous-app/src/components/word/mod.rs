@@ -5,6 +5,7 @@
 //! open the panel; everything else is a level of the panel, a name in the `Ctrl+/` search, or a `/` at the
 //! start of an empty paragraph.
 
+pub mod context_menu;
 pub mod format_bar;
 pub mod keys;
 pub mod navigation;
@@ -62,7 +63,14 @@ pub fn show(doc: &mut Doc, config: &Config, ui: &mut egui::Ui, look: &Look<'_>) 
         let rect = Rect::from_min_max(egui::pos2(pages.right(), body.top()), body.max);
         panel::show(ui, look, doc, rect, &mut requests);
     }
-    overlays::show(ui, look, doc, pages, &mut requests);
+    if std::mem::take(&mut doc.view.menu_at_caret) {
+        context_menu::open_at_caret(doc, pages);
+    }
+    if doc.view.context_menu.is_some() {
+        context_menu::show(ui, look, doc, pages, &mut requests);
+    } else {
+        overlays::show(ui, look, doc, pages, &mut requests);
+    }
     format_bar::show(ui, look, doc, bar, &mut requests);
     requests
 }

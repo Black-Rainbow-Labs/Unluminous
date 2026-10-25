@@ -119,6 +119,34 @@ pub enum Item {
 }
 
 impl Item {
+    /// Scale the item by `s` about the page's top left corner, then move it by `(dx, dy)`, as printing
+    /// several pages on one sheet does.
+    pub fn scale(&mut self, s: f32, dx: f32, dy: f32) {
+        match self {
+            Item::Text(text) => {
+                text.baseline = text.baseline * s + dy;
+                for x in &mut text.xs {
+                    *x = *x * s + dx;
+                }
+                text.style.size *= s;
+            }
+            Item::Fill { rect, .. }
+            | Item::Picture { rect, .. }
+            | Item::Shape { rect, .. }
+            | Item::Placeholder { rect, .. }
+            | Item::Object { rect, .. } => {
+                *rect = Rect::new(rect.x * s + dx, rect.y * s + dy, rect.w * s, rect.h * s);
+            }
+            Item::Rule { x0, y0, x1, y1, width, .. } => {
+                *x0 = *x0 * s + dx;
+                *x1 = *x1 * s + dx;
+                *y0 = *y0 * s + dy;
+                *y1 = *y1 * s + dy;
+                *width *= s;
+            }
+        }
+    }
+
     /// Move the item by `(dx, dy)`.
     pub fn shift(&mut self, dx: f32, dy: f32) {
         match self {
@@ -319,7 +347,7 @@ impl Chunk {
 }
 
 /// One laid out page.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Page {
     pub width: f32,
     pub height: f32,

@@ -804,6 +804,34 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
             super::paste_again(doc, how)?;
             Ok(Answer::said("Paste changed"))
         }
+        "print" => {
+            // print [pages] [--copies n] [--odd|--even] [--per-sheet 2|4] [--to <file>]
+            let value = |name: &str| arguments.iter().position(|a| a == name).and_then(|i| arguments.get(i + 1)).cloned();
+            doc.ensure_pages();
+            let count = doc.pages.pages.len();
+            let range = arguments.first().filter(|a| !a.starts_with("--")).cloned().unwrap_or_default();
+            let options = super::print::PrintOptions {
+                pages: super::print::parse_range(&range, count)?,
+                parity: if flag(arguments, "--odd") {
+                    super::print::Parity::Odd
+                } else if flag(arguments, "--even") {
+                    super::print::Parity::Even
+                } else {
+                    super::print::Parity::All
+                },
+                copies: value("--copies").and_then(|c| c.parse().ok()).unwrap_or(1),
+                per_sheet: value("--per-sheet").and_then(|c| c.parse().ok()).unwrap_or(1),
+            };
+            match value("--to") {
+                Some(to) => {
+                    let sheets = super::print::sheets(&doc.pages, &options);
+                    let bytes = pdf_bytes(doc, &sheets);
+                    crate::services::store::write_atomically(Path::new(&to), &bytes).map_err(|e| format!("{to} could not be written: {e}"))?;
+                    Ok(Answer::said(format!("{} sheets written to {to}", sheets.pages.len())).with(json!({ "sheets": sheets.pages.len(), "path": to })))
+                }
+                None => super::print::print(doc, &options).map(Answer::said),
+            }
+        }
         "undo" => Ok(Answer::said(if session.undo() { "Undone" } else { "Nothing to undo" })),
         "redo" => Ok(Answer::said(if session.redo() { "Redone" } else { "Nothing to redo" })),
         "export" => {
@@ -1573,6 +1601,13 @@ pub fn insert_picture_file(
 }
 
 /// Export the document, beside itself or to `to`.
+/// The bytes of a PDF of `pages`, with the document's title and its fonts and pictures.
+pub(crate) fn pdf_bytes(doc: &Doc, pages: &unluminous_word::layout::Pages) -> Vec<u8> {
+    let title = unluminous_word::new::property(&doc.session.document, "dc:title").unwrap_or_else(|| doc.label());
+    let document = &doc.session.document;
+    unluminous_word::pdf::write(pages, &title, &|style| pdf_face(style), &|part| pdf_picture(document, part))
+}
+
 pub fn export_to(doc: &mut Doc, kind: &str, to: Option<&Path>) -> Result<String, String> {
     let path = to
         .map(Path::to_path_buf)
@@ -1586,12 +1621,8 @@ pub fn export_to(doc: &mut Doc, kind: &str, to: Option<&Path>) -> Result<String,
         "html" => unluminous_word::export::to_html(&doc.session.document).into_bytes(),
         "pdf" => {
             doc.ensure_pages();
-            let title = unluminous_word::new::property(&doc.session.document, "dc:title")
-                .unwrap_or_else(|| doc.label());
-            let document = &doc.session.document;
-            unluminous_word::pdf::write(&doc.pages, &title, &|style| pdf_face(style), &|part| {
-                pdf_picture(document, part)
-            })
+            let pages = doc.pages.clone();
+            pdf_bytes(doc, &pages)
         }
         other => return Err(format!("{other} is not a format: pdf, html, md or txt")),
     };

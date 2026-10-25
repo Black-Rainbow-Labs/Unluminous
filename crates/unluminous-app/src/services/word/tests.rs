@@ -118,6 +118,9 @@ fn an_agent_types_formats_and_undoes() {
     run(&mut word, "select 1 0 1 5");
     run(&mut word, "format bold on");
     run(&mut word, "paragraph align center");
+    // A linked style applied to part of a paragraph formats only that part, as Word does, so the caret
+    // goes into the paragraph first.
+    run(&mut word, "select 1 2 1 2");
     run(&mut word, "style Heading 1");
     let read = run(&mut word, "read --runs");
     let first = &read.value[0];

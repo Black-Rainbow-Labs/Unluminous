@@ -771,6 +771,129 @@ impl Session {
         });
     }
 
+    /// Turn the footnote whose reference is at the caret into an endnote, or an endnote into a
+    /// footnote: the note's text moves to the other part under a new number, its styles and its own
+    /// reference mark change kind, and the reference in the text names it.
+    pub fn convert_note(&mut self) -> Result<(), String> {
+        let at = self.selection.ordered().0.clone();
+        let paragraph = position::paragraph(&self.document, &at.story, &at.path).ok_or("the caret is not in text")?;
+        let mut offset = 0;
+        let mut found = None;
+        for run in &paragraph.runs {
+            if (offset == at.offset || offset + run.len() == at.offset) && found.is_none() {
+                if let Content::Object(el) = &run.content {
+                    if matches!(el.name.as_str(), "w:footnoteReference" | "w:endnoteReference") {
+                        found = Some((el.name == "w:endnoteReference", el.attr("w:id").and_then(|i| i.parse::<i64>().ok())));
+                    }
+                }
+            }
+            offset += run.len();
+        }
+        let (from_endnote, Some(old_id)) = found.ok_or("the caret is not at a footnote or endnote reference")? else {
+            return Err("the note has no number".into());
+        };
+        for style in ["FootnoteText", "FootnoteReference", "EndnoteText", "EndnoteReference"] {
+            let _ = builtin::ensure_style(&mut self.document, style);
+        }
+        self.change(Scope::Whole, move |document, selection, _| {
+            let to_endnote = !from_endnote;
+            let source = if from_endnote { document.endnotes.as_mut() } else { document.footnotes.as_mut() };
+            let Some(source) = source else { return selection.clone() };
+            let Some(index) = source.notes.iter().position(|n| n.id() == Some(old_id)) else { return selection.clone() };
+            let mut note = source.notes.remove(index);
+            source.dirty = true;
+            let new_id = ensure_notes_part(document, to_endnote);
+            let (kind, text_style, reference_style, own) = if to_endnote {
+                ("w:endnote", "EndnoteText", "EndnoteReference", "w:endnoteRef")
+            } else {
+                ("w:footnote", "FootnoteText", "FootnoteReference", "w:footnoteRef")
+            };
+            note.el.name = kind.into();
+            note.el.set_attr("w:id", new_id.to_string());
+            let (old_text, old_reference) =
+                if from_endnote { ("EndnoteText", "EndnoteReference") } else { ("FootnoteText", "FootnoteReference") };
+            for block in &mut note.blocks {
+                let Block::Paragraph(p) = block else { continue };
+                if p.props.val_of("w:pStyle") == Some(old_text) {
+                    p.props.put(El::new("w:pStyle").with("w:val", text_style));
+                }
+                for run in &mut p.runs {
+                    if let Content::Object(el) = &mut run.content {
+                        if matches!(el.name.as_str(), "w:footnoteRef" | "w:endnoteRef") {
+                            el.name = own.into();
+                        }
+                    }
+                    if run.props.val_of("w:rStyle") == Some(old_reference) {
+                        let mut props = (*run.props).clone();
+                        props.put(El::new("w:rStyle").with("w:val", reference_style));
+                        run.props = Arc::new(props);
+                    }
+                }
+            }
+            let target = if to_endnote { document.endnotes.as_mut() } else { document.footnotes.as_mut() };
+            if let Some(target) = target {
+                target.notes.push(note);
+                target.dirty = true;
+            }
+            if let Some(p) = position::paragraph_mut(document, &at.story, &at.path) {
+                for run in &mut p.runs {
+                    if let Content::Object(el) = &mut run.content {
+                        let name = if from_endnote { "w:endnoteReference" } else { "w:footnoteReference" };
+                        if el.name == name && el.attr("w:id") == Some(old_id.to_string().as_str()) {
+                            el.name = if to_endnote { "w:endnoteReference" } else { "w:footnoteReference" }.into();
+                            el.set_attr("w:id", new_id.to_string());
+                            if run.props.val_of("w:rStyle") == Some(old_reference) {
+                                let mut props = (*run.props).clone();
+                                props.put(El::new("w:rStyle").with("w:val", reference_style));
+                                run.props = Arc::new(props);
+                            }
+                        }
+                    }
+                }
+            }
+            selection.clone()
+        });
+        Ok(())
+    }
+
+    /// The note whose reference is at or just before `at`: its story.
+    pub fn note_at(&self, at: &Pos) -> Option<StoryId> {
+        let paragraph = position::paragraph(&self.document, &at.story, &at.path)?;
+        let mut offset = 0;
+        for run in &paragraph.runs {
+            if offset == at.offset || offset + run.len() == at.offset {
+                if let Content::Object(el) = &run.content {
+                    let id = el.attr("w:id").and_then(|i| i.parse::<i64>().ok());
+                    match (el.name.as_str(), id) {
+                        ("w:footnoteReference", Some(id)) => return Some(StoryId::Footnote(id)),
+                        ("w:endnoteReference", Some(id)) => return Some(StoryId::Endnote(id)),
+                        _ => {}
+                    }
+                }
+            }
+            offset += run.len();
+        }
+        None
+    }
+
+    /// Empty the header or footer the caret is in, keeping its paragraph's formatting, as Word's Remove
+    /// Header does.
+    pub fn remove_header_at_caret(&mut self) -> Result<(), String> {
+        let StoryId::Header(rid) = self.selection.head.story.clone() else {
+            return Err("the caret is not in a header or footer".into());
+        };
+        self.change(Scope::Story, move |document, selection, _| {
+            if let Some(blocks) = position::story_mut(document, &StoryId::Header(rid.clone())) {
+                let props = blocks.iter().find_map(|b| b.as_paragraph()).map(|p| p.props.clone()).unwrap_or_default();
+                let mut paragraph = Paragraph::new();
+                paragraph.props = props;
+                *blocks = vec![Block::Paragraph(paragraph)];
+            }
+            Selection::caret(Pos { story: selection.head.story.clone(), path: vec![0], offset: 0 })
+        });
+        Ok(())
+    }
+
     // ---- Comments ----
 
     /// Add a comment on the selection (or the word at the caret) by the session's author. Answers its id.

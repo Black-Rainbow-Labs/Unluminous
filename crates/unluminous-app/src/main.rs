@@ -433,6 +433,8 @@ fn main() -> eframe::Result {
             app.allow_language_servers();
             // And open the microphone for dictation and for "Sable", which a test's window never does.
             app.allow_the_microphone();
+            // And hand a Word document's PDF to the system's print dialog, which a test's window never does.
+            unluminous_app::services::word::print::allow_printing();
             // And read the ACP registry when the AI Configuration page is shown, which a test's window does not.
             app.endpoints.acp.read_when_shown();
             // The Background grid's thumbnails for every picture already there, on a thread, so the grid opens
