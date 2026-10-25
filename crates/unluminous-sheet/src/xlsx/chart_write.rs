@@ -863,75 +863,63 @@ fn axis_xml(a: &Axis, spec: &ChartSpec) -> String {
 
 /// The elements a kind of axis has after `crosses`.
 fn axis_tail(a: &Axis, spec: &ChartSpec) -> String {
-    let mut out = String::new();
     match a.kind {
-        AxisKind::Value => {
-            let between = a.between.unwrap_or_else(|| between_by_default(a, spec));
-            out.push_str(&format!(
-                "<c:crossBetween val=\"{}\"/>",
-                if between { "between" } else { "midCat" }
-            ));
-            if let Some(u) = a.major_unit {
-                out.push_str(&num_val("majorUnit", f64_text(u)));
-            }
-            if let Some(u) = a.minor_unit {
-                out.push_str(&num_val("minorUnit", f64_text(u)));
-            }
-            out.push_str(opt(&a.display_units));
-        }
-        AxisKind::Category => {
-            if let Some(v) = a.auto {
-                out.push_str(&bool_val("auto", v));
-            }
-            if let Some(v) = &a.label_align {
-                out.push_str(&format!("<c:lblAlgn val=\"{v}\"/>"));
-            }
-            if let Some(v) = a.label_offset {
-                out.push_str(&num_val("lblOffset", v));
-            }
-            if let Some(v) = a.label_skip {
-                out.push_str(&num_val("tickLblSkip", v));
-            }
-            if let Some(v) = a.mark_skip {
-                out.push_str(&num_val("tickMarkSkip", v));
-            }
-            if let Some(v) = a.no_multi_level {
-                out.push_str(&bool_val("noMultiLvlLbl", v));
-            }
-        }
-        AxisKind::Date => {
-            if let Some(v) = a.auto {
-                out.push_str(&bool_val("auto", v));
-            }
-            if let Some(v) = a.label_offset {
-                out.push_str(&num_val("lblOffset", v));
-            }
-            if let Some(u) = a.base_unit {
-                out.push_str(&format!("<c:baseTimeUnit val=\"{}\"/>", u.xml()));
-            }
-            if let Some(u) = a.major_unit {
-                out.push_str(&num_val("majorUnit", f64_text(u)));
-            }
-            if let Some(u) = a.major_time_unit {
-                out.push_str(&format!("<c:majorTimeUnit val=\"{}\"/>", u.xml()));
-            }
-            if let Some(u) = a.minor_unit {
-                out.push_str(&num_val("minorUnit", f64_text(u)));
-            }
-            if let Some(u) = a.minor_time_unit {
-                out.push_str(&format!("<c:minorTimeUnit val=\"{}\"/>", u.xml()));
-            }
-        }
-        AxisKind::Series => {
-            if let Some(v) = a.label_skip {
-                out.push_str(&num_val("tickLblSkip", v));
-            }
-            if let Some(v) = a.mark_skip {
-                out.push_str(&num_val("tickMarkSkip", v));
-            }
-        }
+        AxisKind::Value => value_axis_tail(a, spec),
+        AxisKind::Category => category_axis_tail(a),
+        AxisKind::Date => date_axis_tail(a),
+        AxisKind::Series => format!("{}{}", opt_num("tickLblSkip", a.label_skip), opt_num("tickMarkSkip", a.mark_skip)),
     }
-    out
+}
+
+/// An optional number as an element.
+fn opt_num<T: std::fmt::Display>(tag: &str, v: Option<T>) -> String {
+    v.map(|v| num_val(tag, v)).unwrap_or_default()
+}
+
+/// An optional number as an element, written as Excel writes numbers.
+fn opt_f64(tag: &str, v: Option<f64>) -> String {
+    v.map(|v| num_val(tag, f64_text(v))).unwrap_or_default()
+}
+
+fn opt_bool(tag: &str, v: Option<bool>) -> String {
+    v.map(|v| bool_val(tag, v)).unwrap_or_default()
+}
+
+fn value_axis_tail(a: &Axis, spec: &ChartSpec) -> String {
+    let between = a.between.unwrap_or_else(|| between_by_default(a, spec));
+    format!(
+        "<c:crossBetween val=\"{}\"/>{}{}{}",
+        if between { "between" } else { "midCat" },
+        opt_f64("majorUnit", a.major_unit),
+        opt_f64("minorUnit", a.minor_unit),
+        opt(&a.display_units)
+    )
+}
+
+fn category_axis_tail(a: &Axis) -> String {
+    let align = a.label_align.as_ref().map(|v| format!("<c:lblAlgn val=\"{v}\"/>")).unwrap_or_default();
+    format!(
+        "{}{align}{}{}{}{}",
+        opt_bool("auto", a.auto),
+        opt_num("lblOffset", a.label_offset),
+        opt_num("tickLblSkip", a.label_skip),
+        opt_num("tickMarkSkip", a.mark_skip),
+        opt_bool("noMultiLvlLbl", a.no_multi_level)
+    )
+}
+
+fn date_axis_tail(a: &Axis) -> String {
+    let unit = |tag: &str, u: Option<TimeUnit>| u.map(|u| format!("<c:{tag} val=\"{}\"/>", u.xml())).unwrap_or_default();
+    format!(
+        "{}{}{}{}{}{}{}",
+        opt_bool("auto", a.auto),
+        opt_num("lblOffset", a.label_offset),
+        unit("baseTimeUnit", a.base_unit),
+        opt_f64("majorUnit", a.major_unit),
+        unit("majorTimeUnit", a.major_time_unit),
+        opt_f64("minorUnit", a.minor_unit),
+        unit("minorTimeUnit", a.minor_time_unit)
+    )
 }
 
 /// Whether a value axis crosses between categories when nothing says: area and scatter charts cross at them.

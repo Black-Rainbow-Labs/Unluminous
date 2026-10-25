@@ -253,10 +253,31 @@ fn read_group(
     series: &mut Vec<ChartSeries>,
 ) -> Group {
     let mut g = Group { kind, three_d, grouping: Grouping::Standard, ..Group::default() };
+    read_layout_fields(node, &mut g);
+    read_line_fields(xml, node, &mut g);
+    read_pie_fields(xml, node, &mut g);
+    read_xy_fields(node, &mut g);
+    g.labels = child(node, "dLbls").map(|d| read_labels(xml, d));
+    g.band_formats = raw_child(xml, node, "bandFmts");
+    g.axes = children(node, "axId").filter_map(|a| a.attribute("val")?.parse().ok()).collect();
+    let (ext, filtered) = split_filtered(xml, node);
+    g.ext = ext;
+    let plain = children(node, "ser").map(|s| (s, false));
+    for (ser, is_filtered) in plain.chain(filtered.into_iter().map(|s| (s, true))) {
+        let mut s = read_series(xml, ser, kind);
+        s.group = index;
+        s.fmt.filtered = is_filtered;
+        series.push(s);
+    }
+    g
+}
+
+/// How a group's bars or columns are arranged.
+fn read_layout_fields(node: Node, g: &mut Group) {
     g.horizontal = val(node, "barDir") == Some("bar");
     g.grouping = match val(node, "grouping") {
-        Some(g) => Grouping::from_xml(g),
-        None if kind == GroupKind::Bar => Grouping::Clustered,
+        Some(v) => Grouping::from_xml(v),
+        None if g.kind == GroupKind::Bar => Grouping::Clustered,
         None => Grouping::Standard,
     };
     g.vary_colors = flag(node, "varyColors");
@@ -264,20 +285,26 @@ fn read_group(
     g.overlap = number(node, "overlap");
     g.gap_depth = number(node, "gapDepth");
     g.shape = val(node, "shape").map(str::to_owned);
+}
+
+/// The lines, bars and markers a line, area, stock or bar group may add.
+fn read_line_fields(xml: &str, node: Node, g: &mut Group) {
     g.series_lines = child(node, "serLines").is_some();
     g.drop_lines = child(node, "dropLines").is_some();
     g.hi_low_lines = child(node, "hiLowLines").is_some();
     g.up_down_bars = child(node, "upDownBars").map(|u| number(u, "gapWidth").unwrap_or(150));
     g.marker = flag(node, "marker");
     g.smooth = flag(node, "smooth");
-    g.scatter_style = val(node, "scatterStyle").map(str::to_owned);
-    g.radar_style = val(node, "radarStyle").map(str::to_owned);
-    g.wireframe = flag(node, "wireframe").unwrap_or(false);
-    g.bubble_scale = number(node, "bubbleScale");
-    g.show_negative_bubbles = flag(node, "showNegBubbles");
-    g.size_represents = val(node, "sizeRepresents").map(str::to_owned);
-    g.bubble_3d = flag(node, "bubble3D").unwrap_or(false)
-        || children(node, "ser").any(|s| flag(s, "bubble3D") == Some(true));
+    g.raw_lines = [
+        raw_child(xml, node, "dropLines"),
+        raw_child(xml, node, "hiLowLines"),
+        raw_child(xml, node, "upDownBars"),
+        raw_child(xml, node, "serLines"),
+    ];
+}
+
+/// The angle, hole and split of pie, doughnut and pie of pie groups.
+fn read_pie_fields(xml: &str, node: Node, g: &mut Group) {
     g.of_pie = if val(node, "ofPieType") == Some("bar") { OfPieKind::Bar } else { OfPieKind::Pie };
     g.split_by = match val(node, "splitType") {
         Some("val") => SplitBy::Value,
@@ -291,29 +318,18 @@ fn read_group(
     g.custom_split = raw_child(xml, node, "custSplit");
     g.first_slice_angle = number(node, "firstSliceAng");
     g.hole_size = number(node, "holeSize");
-    g.labels = child(node, "dLbls").map(|d| read_labels(xml, d));
-    g.raw_lines = [
-        raw_child(xml, node, "dropLines"),
-        raw_child(xml, node, "hiLowLines"),
-        raw_child(xml, node, "upDownBars"),
-        raw_child(xml, node, "serLines"),
-    ];
-    g.band_formats = raw_child(xml, node, "bandFmts");
-    g.axes = children(node, "axId").filter_map(|a| a.attribute("val")?.parse().ok()).collect();
-    let (ext, filtered) = split_filtered(xml, node);
-    g.ext = ext;
-    for ser in children(node, "ser") {
-        let mut s = read_series(xml, ser, kind);
-        s.group = index;
-        series.push(s);
-    }
-    for ser in filtered {
-        let mut s = read_series(xml, ser, kind);
-        s.group = index;
-        s.fmt.filtered = true;
-        series.push(s);
-    }
-    g
+}
+
+/// The styles of scatter, radar, bubble and surface groups.
+fn read_xy_fields(node: Node, g: &mut Group) {
+    g.scatter_style = val(node, "scatterStyle").map(str::to_owned);
+    g.radar_style = val(node, "radarStyle").map(str::to_owned);
+    g.wireframe = flag(node, "wireframe").unwrap_or(false);
+    g.bubble_scale = number(node, "bubbleScale");
+    g.show_negative_bubbles = flag(node, "showNegBubbles");
+    g.size_represents = val(node, "sizeRepresents").map(str::to_owned);
+    g.bubble_3d = flag(node, "bubble3D").unwrap_or(false)
+        || children(node, "ser").any(|s| flag(s, "bubble3D") == Some(true));
 }
 
 /// A group's extension list without the series Excel filtered out of the chart, and those series.
