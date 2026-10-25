@@ -291,6 +291,8 @@ pub struct View {
     pub filter_menu: Option<(u32, egui::Pos2)>,
     /// The Sort popup's levels, trace arrows, the Evaluate Formula stepper and the review panels.
     pub audit: super::view_a::AuditState,
+    /// The clipboard and fill buttons, the print preview, the PivotTable Fields pane and the slicers.
+    pub lane_b: super::view_b::State,
     /// The chart chosen with a click, by its place in the sheet's list.
     pub chart: Option<usize>,
     /// The list under a cell with a list rule, opened with its arrow or Alt+Down.
@@ -353,6 +355,7 @@ impl Default for View {
             sheet_menu: None,
             filter_menu: None,
             audit: Default::default(),
+            lane_b: Default::default(),
             chart: None,
             choices: false,
             reveal: false,

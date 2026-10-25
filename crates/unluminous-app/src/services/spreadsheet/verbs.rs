@@ -55,7 +55,10 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Option<Resul
             _ => Err("autofit takes rows or columns".to_owned()),
         },
         "fill-handle" => fill_handle(sheet, args),
-        _ => return super::verbs_a::run(sheet, verb, args),
+        _ => {
+            return super::verbs_a::run(sheet, verb, args)
+                .or_else(|| super::verbs_b::run(sheet, verb, args))
+        }
     })
 }
 

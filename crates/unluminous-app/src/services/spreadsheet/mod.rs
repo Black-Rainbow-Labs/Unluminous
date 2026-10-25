@@ -26,14 +26,24 @@ pub mod verbs_a_data;
 pub mod verbs_a_outline;
 pub mod verbs_a_read;
 pub mod verbs_a_review;
+pub mod print;
 pub mod verbs_a_whatif;
+pub mod verbs_b;
+pub mod verbs_b_clip;
+pub mod verbs_b_files;
+pub mod verbs_b_page;
+pub mod verbs_b_pivot;
+pub mod verbs_b_pivot_more;
 pub mod view;
 pub mod view_a;
+pub mod view_b;
 
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tests_a;
+#[cfg(test)]
+mod tests_b;
 
 use std::path::{Path, PathBuf};
 

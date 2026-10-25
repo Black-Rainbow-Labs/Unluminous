@@ -480,6 +480,16 @@ fn apply_inner(book: &mut Book, copied: &mut Option<Copied>, act: Act) -> Said {
         Act::FillTo(target) => {
             s.fill_series(sheet, range, target)?;
             book.view.select_range(target);
+            book.view.lane_b.after = Some(super::view_b::After {
+                kind: super::view_b::AfterKind::Fill,
+                sheet,
+                target,
+                dest: target,
+                source: range,
+                clip: None,
+                revision: book.revision + 1,
+                open: false,
+            });
             Ok(String::new())
         }
         Act::Copy { cut } => {
@@ -510,6 +520,17 @@ fn apply_inner(book: &mut Book, copied: &mut Option<Copied>, act: Act) -> Said {
                 book.view.marquee = None;
             }
             book.view.select_range(pasted);
+            // `apply` counts this change once more, so the button is valid for the next revision.
+            book.view.lane_b.after = Some(super::view_b::After {
+                kind: super::view_b::AfterKind::Paste,
+                sheet,
+                target: pasted,
+                dest: range,
+                source: from.clip.range,
+                clip: Some(from.clip.clone()),
+                revision: book.revision + 1,
+                open: false,
+            });
             Ok(String::new())
         }
         Act::PasteText(text) => {
