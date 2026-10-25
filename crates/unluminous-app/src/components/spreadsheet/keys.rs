@@ -44,6 +44,10 @@ fn page_columns(book: &Book) -> i64 {
 
 /// Read the keys meant for the grid while no cell is being typed into.
 pub fn grid(ctx: &egui::Context, book: &mut Book, copied: Option<&str>, keys: &mut Keys) {
+    // A popup that wants letters, or the print preview, takes its keys first.
+    if super::keys_b::intercept(ctx, book, keys) {
+        return;
+    }
     let events = ctx.input_mut(|input| {
         let mut taken = Vec::new();
         input.events.retain(|event| {
@@ -881,6 +885,19 @@ pub fn put_reference(edit: &mut Edit, start: usize, end: usize, range: Range) ->
     text.extend(chars[end.min(chars.len())..].iter());
     edit.text = text;
     edit.pointing = Some((start, new_end, range));
+    new_end
+}
+
+/// Put text where a reference was being pointed at, as clicking a PivotTable cell puts a `GETPIVOTDATA` call.
+/// It is not a reference the arrow keys move again, so nothing is remembered as pointed at.
+pub fn put_text(edit: &mut Edit, start: usize, end: usize, shown: &str) -> usize {
+    let chars: Vec<char> = edit.text.chars().collect();
+    let mut text: String = chars[..start.min(chars.len())].iter().collect();
+    text.push_str(shown);
+    let new_end = text.chars().count();
+    text.extend(chars[end.min(chars.len())..].iter());
+    edit.text = text;
+    edit.pointing = None;
     new_end
 }
 

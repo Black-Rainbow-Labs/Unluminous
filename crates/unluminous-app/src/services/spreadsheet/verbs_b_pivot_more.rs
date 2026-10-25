@@ -20,6 +20,11 @@ fn said(text: impl Into<String>) -> Answer {
     Answer::said(text)
 }
 
+/// Whether a name typed matches a stored one; a menu writes spaces as underscores.
+fn same_name(stored: &str, typed: &str) -> bool {
+    stored.eq_ignore_ascii_case(typed) || stored.replace(' ', "_").eq_ignore_ascii_case(typed)
+}
+
 /// Run `slicer`, `timeline` and `getpivotdata`.
 pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Option<Out> {
     Some(match verb {
@@ -33,7 +38,14 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Option<Out> 
 pub fn on_table(sheet: &mut Spreadsheet, what: &str, args: &[String]) -> Option<Out> {
     let known = matches!(
         what,
-        "sort" | "items" | "page" | "filter" | "group" | "ungroup" | "calculated-field" | "calculated-item"
+        "sort"
+            | "items"
+            | "page"
+            | "filter"
+            | "group"
+            | "ungroup"
+            | "calculated-field"
+            | "calculated-item"
     );
     if !known {
         return None;
@@ -118,7 +130,10 @@ fn items(book: &mut Book, t: usize, args: &[String]) -> Out {
     let how = args.get(1).map(String::as_str).unwrap_or("list");
     let names = item_texts(book, t, f);
     let wanted: Vec<usize> = match args.get(2) {
-        Some(list) => list.split(',').map(|n| item_position(book, t, f, n.trim())).collect::<Result<_, _>>()?,
+        Some(list) => list
+            .split(',')
+            .map(|n| item_position(book, t, f, n.trim()))
+            .collect::<Result<_, _>>()?,
         None => Vec::new(),
     };
     for (position, _) in names.iter().enumerate() {
@@ -258,7 +273,14 @@ fn group(book: &mut Book, t: usize, args: &[String]) -> Result<String, String> {
                 .split(',')
                 .map(group_unit)
                 .collect::<Result<_, _>>()?;
-            book.session.pivot_group_dates(t, f, &units, number("start")?, number("end")?, number("step")?)?;
+            book.session.pivot_group_dates(
+                t,
+                f,
+                &units,
+                number("start")?,
+                number("end")?,
+                number("step")?,
+            )?;
         }
         Some("numbers") => {
             let step = number("step")?.ok_or("numbers need a step")?;
@@ -267,7 +289,8 @@ fn group(book: &mut Book, t: usize, args: &[String]) -> Result<String, String> {
         Some("items") => {
             let mut chosen = Vec::new();
             for word in &args[2..] {
-                let (name, list) = word.split_once('=').ok_or("an item group is written name=item,item")?;
+                let (name, list) =
+                    word.split_once('=').ok_or("an item group is written name=item,item")?;
                 let positions: Vec<usize> = list
                     .split(',')
                     .map(|n| item_position(book, t, f, n.trim()))
@@ -304,7 +327,11 @@ fn calculated_field(book: &mut Book, t: usize, args: &[String]) -> Result<String
 
 /// `pivot calculated-item <field> <name> <formula>`.
 fn calculated_item(book: &mut Book, t: usize, args: &[String]) -> Result<String, String> {
-    let f = field_in(book, t, args.first().ok_or("calculated-item takes a field, a name and a formula")?)?;
+    let f = field_in(
+        book,
+        t,
+        args.first().ok_or("calculated-item takes a field, a name and a formula")?,
+    )?;
     let name = args.get(1).ok_or("calculated-item takes a name and a formula")?;
     book.session.pivot_add_calculated_item(t, f, name, &args[2..].join(" "))?;
     Ok(format!("Added the calculated item {name}"))
@@ -321,13 +348,14 @@ fn slicer(sheet: &mut Spreadsheet, args: &[String]) -> Out {
     match how {
         "add" => add_slicer(book, rest),
         "list" => {
-            let list: Vec<_> = book.view.lane_b.slicers.iter().map(|s| slicer_json(book, s)).collect();
+            let list: Vec<_> =
+                book.view.lane_b.slicers.iter().map(|s| slicer_json(book, s)).collect();
             Ok(said(format!("{} slicers", list.len())).with(json!(list)))
         }
         "select" => select_in_slicer(book, rest),
         "delete" => {
             let name = rest.first().ok_or("delete takes the slicer's name")?;
-            book.view.lane_b.slicers.retain(|s| !s.name.eq_ignore_ascii_case(name));
+            book.view.lane_b.slicers.retain(|s| !same_name(&s.name, name));
             Ok(said(format!("Deleted {name}")))
         }
         other => Err(format!("slicer takes add, list, select or delete; got `{other}`")),
@@ -344,7 +372,8 @@ fn add_slicer(book: &mut Book, args: &[String]) -> Out {
     let at = after(&rest, "at")
         .and_then(|w| super::commands::parse_range(book, w))
         .map_or(CellRef::new(1, table.location.last.col + 2), |(_, r)| r.first);
-    let slicer = Slicer { name: name.clone(), pivot: table.name.clone(), field, sheet: book.view.sheet, at };
+    let slicer =
+        Slicer { name: name.clone(), pivot: table.name.clone(), field, sheet: book.view.sheet, at };
     book.view.lane_b.slicers.retain(|s| !s.name.eq_ignore_ascii_case(&name));
     book.view.lane_b.slicers.push(slicer.clone());
     Ok(said(format!("Added the slicer {name}")).with(slicer_json(book, &slicer)))
@@ -381,7 +410,7 @@ fn select_in_slicer(book: &mut Book, args: &[String]) -> Out {
         .lane_b
         .slicers
         .iter()
-        .find(|s| s.name.eq_ignore_ascii_case(name))
+        .find(|s| same_name(&s.name, name))
         .cloned()
         .ok_or_else(|| format!("there is no slicer `{name}`"))?;
     let t = table_named(book, &s.pivot)?;
@@ -415,14 +444,24 @@ fn timeline(sheet: &mut Spreadsheet, args: &[String]) -> Out {
             let table = &book.session.book.pivots.tables[t];
             let cache = &book.session.book.pivots.caches[table.cache];
             if !cache.is_date_field(f) {
-                return Err(format!("`{}` holds no dates, so a timeline cannot use it", table.caption(cache, f)));
+                return Err(format!(
+                    "`{}` holds no dates, so a timeline cannot use it",
+                    table.caption(cache, f)
+                ));
             }
             let field = table.caption(cache, f);
             let name = after(&words, "name").map(str::to_owned).unwrap_or_else(|| field.clone());
             let at = after(&words, "at")
                 .and_then(|w| super::commands::parse_range(book, w))
                 .map_or(CellRef::new(1, table.location.last.col + 2), |(_, r)| r.first);
-            let made = Timeline { name: name.clone(), pivot: table.name.clone(), field, sheet: book.view.sheet, at, span: None };
+            let made = Timeline {
+                name: name.clone(),
+                pivot: table.name.clone(),
+                field,
+                sheet: book.view.sheet,
+                at,
+                span: None,
+            };
             book.view.lane_b.timelines.retain(|x| !x.name.eq_ignore_ascii_case(&name));
             book.view.lane_b.timelines.push(made);
             Ok(said(format!("Added the timeline {name}")))
@@ -440,7 +479,7 @@ fn timeline(sheet: &mut Spreadsheet, args: &[String]) -> Out {
         "select" => select_in_timeline(book, rest),
         "delete" => {
             let name = rest.first().ok_or("delete takes the timeline's name")?;
-            book.view.lane_b.timelines.retain(|x| !x.name.eq_ignore_ascii_case(name));
+            book.view.lane_b.timelines.retain(|x| !same_name(&x.name, name));
             Ok(said(format!("Deleted {name}")))
         }
         other => Err(format!("timeline takes add, list, select or delete; got `{other}`")),
@@ -452,7 +491,8 @@ fn date_of(word: &str) -> Result<f64, String> {
     if let Ok(n) = word.parse::<f64>() {
         return Ok(n);
     }
-    unluminous_sheet::input::date_time_from_text(word, false).ok_or_else(|| format!("`{word}` is not a date"))
+    unluminous_sheet::input::date_time_from_text(word, false)
+        .ok_or_else(|| format!("`{word}` is not a date"))
 }
 
 fn select_in_timeline(book: &mut Book, args: &[String]) -> Out {
@@ -462,11 +502,14 @@ fn select_in_timeline(book: &mut Book, args: &[String]) -> Out {
         .lane_b
         .timelines
         .iter()
-        .position(|x| x.name.eq_ignore_ascii_case(name))
+        .position(|x| same_name(&x.name, name))
         .ok_or_else(|| format!("there is no timeline `{name}`"))?;
     let span = match args.get(1).map(String::as_str) {
         Some("all") | None => None,
-        Some(from) => Some((date_of(from)?, date_of(args.get(2).ok_or("select takes a first and a last date")?)?)),
+        Some(from) => Some((
+            date_of(from)?,
+            date_of(args.get(2).ok_or("select takes a first and a last date")?)?,
+        )),
     };
     let x = book.view.lane_b.timelines[index].clone();
     let t = table_named(book, &x.pivot)?;
@@ -519,7 +562,11 @@ pub fn getpivotdata_text(book: &Book, sheet: usize, at: CellRef) -> Option<Strin
     let d = data_field_of(r, c, table.data.len())?;
     let mut parts = vec![
         format!("\"{}\"", table.data.get(d)?.name.replace('"', "\"\"")),
-        format!("${}${}", unluminous_sheet::coord::column_name(table.location.first.col), table.location.first.row + 1),
+        format!(
+            "${}${}",
+            unluminous_sheet::coord::column_name(table.location.first.col),
+            table.location.first.row + 1
+        ),
     ];
     pairs(book, t, &table.row_axis(), r, &mut parts);
     pairs(book, t, &table.col_axis(), c, &mut parts);

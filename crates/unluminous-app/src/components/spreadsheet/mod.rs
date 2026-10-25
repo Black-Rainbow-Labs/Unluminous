@@ -11,9 +11,13 @@ pub mod chart;
 pub mod editor;
 pub mod grid;
 pub mod keys;
+pub mod keys_b;
 pub mod menus;
 pub mod overlay_a;
 pub mod panes_a;
+pub mod panes_b;
+pub mod panes_b_pivot;
+pub mod preview;
 
 use egui::{CornerRadius, Pos2, Rect, Sense, Stroke, Vec2};
 use unluminous_sheet::coord::{column_name, CellRef};
@@ -200,6 +204,7 @@ fn draw(
     show_input_message(ui, book, frame, look);
     show_note_under_the_pointer(ui, book, frame, look);
     panes_a::show(ui, book, frame, look, &mut asked.words);
+    panes_b::show(ui, book, frame, look, &mut asked.words);
     show_sheet_tabs(ui, sheets, book, look, asked);
     // The panel is drawn from the frame after `Format` opened it, when the grid has made room for it.
     if book.view.panel.is_some() && panel_area.width() > 40.0 {
@@ -228,6 +233,16 @@ fn after_the_grid(
     let ctx = ui.ctx();
     asked.acts.append(&mut out.acts);
     if let Some(range) = out.point {
+        // Pointing at a figure of a PivotTable writes a GETPIVOTDATA call, as Excel does.
+        let pivot_call = (range.len() == 1)
+            .then(|| {
+                crate::services::spreadsheet::verbs_b_pivot_more::getpivotdata_text(
+                    book,
+                    book.view.sheet,
+                    range.first,
+                )
+            })
+            .flatten();
         if let Some(edit) = book.view.edit.as_mut() {
             let id = if edit.in_bar {
                 editor::bar_box_id(&book.key)
@@ -239,7 +254,10 @@ fn after_the_grid(
                 Some((start, end, _)) if end == caret => (start, end),
                 _ => (caret, caret),
             };
-            let new_end = keys::put_reference(edit, start, end, range);
+            let new_end = match &pivot_call {
+                Some(call) => keys::put_text(edit, start, end, call),
+                None => keys::put_reference(edit, start, end, range),
+            };
             edit.focus = true;
             edit.caret = Some(new_end);
         }

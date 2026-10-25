@@ -35,7 +35,10 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Option<Out> 
 }
 
 /// A change to the sheet showing, noted so the grid and the preview draw it again.
-fn change(sheet: &mut Spreadsheet, f: impl FnOnce(&mut Session, usize) -> Result<(), String>) -> Result<(), String> {
+fn change(
+    sheet: &mut Spreadsheet,
+    f: impl FnOnce(&mut Session, usize) -> Result<(), String>,
+) -> Result<(), String> {
     let book = sheet.current_book()?;
     let index = book.view.sheet;
     f(&mut book.session, index)?;
@@ -101,7 +104,9 @@ fn paper_code(word: &str) -> Option<u32> {
 
 fn paper(sheet: &mut Spreadsheet, args: &[String]) -> Result<String, String> {
     let word = args.join(" ");
-    let code = paper_code(&word).ok_or_else(|| format!("there is no paper size `{word}`; try Letter, Legal, A3, A4 or A5"))?;
+    let code = paper_code(&word).ok_or_else(|| {
+        format!("there is no paper size `{word}`; try Letter, Legal, A3, A4 or A5")
+    })?;
     change(sheet, |s, i| s.set_paper_size(i, code))?;
     Ok(format!("Paper size {word}"))
 }
@@ -131,7 +136,10 @@ fn margins(sheet: &mut Spreadsheet, args: &[String]) -> Result<String, String> {
             }
             m
         }
-        _ => return Err("margins take normal, narrow, wide, or left right top bottom [header footer] in inches".to_owned()),
+        _ => return Err(
+            "margins take normal, narrow, wide, or left right top bottom [header footer] in inches"
+                .to_owned(),
+        ),
     };
     change(sheet, |s, i| s.set_margins(i, m))?;
     Ok("Margins set".to_owned())
@@ -388,8 +396,10 @@ fn print_titles(sheet: &mut Spreadsheet, args: &[String]) -> Out {
         match args[i].as_str() {
             "clear" => (rows, cols) = (None, None),
             "rows" | "columns" | "cols" => {
-                let word = args.get(i + 1).ok_or("rows and columns take a range such as 1:2 or A:B")?;
-                let range = Range::parse(word).ok_or_else(|| format!("`{word}` is not rows or columns"))?;
+                let word =
+                    args.get(i + 1).ok_or("rows and columns take a range such as 1:2 or A:B")?;
+                let range =
+                    Range::parse(word).ok_or_else(|| format!("`{word}` is not rows or columns"))?;
                 if args[i] == "rows" {
                     rows = Some((range.first.row, range.last.row));
                 } else {
@@ -397,7 +407,9 @@ fn print_titles(sheet: &mut Spreadsheet, args: &[String]) -> Out {
                 }
                 i += 1;
             }
-            other => return Err(format!("print-titles takes rows, columns or clear; got `{other}`")),
+            other => {
+                return Err(format!("print-titles takes rows, columns or clear; got `{other}`"))
+            }
         }
         i += 1;
     }
@@ -418,11 +430,14 @@ fn page_break(sheet: &mut Spreadsheet, args: &[String]) -> Out {
     let how = args.first().map(String::as_str).unwrap_or("list");
     if how == "list" {
         let layout = print::layout_of(book);
-        return Ok(said("Page breaks").with(json!({ "rows": layout.row_break_rows(), "columns": layout.col_break_cols() })));
+        return Ok(said("Page breaks")
+            .with(json!({ "rows": layout.row_break_rows(), "columns": layout.col_break_cols() })));
     }
     let rest = &args[1..];
     let at = match rest.first() {
-        Some(w) => parse_range(book, w).map(|(_, r)| r.first).ok_or_else(|| format!("`{w}` is not a cell"))?,
+        Some(w) => parse_range(book, w)
+            .map(|(_, r)| r.first)
+            .ok_or_else(|| format!("`{w}` is not a cell"))?,
         None => book.view.cursor,
     };
     match how {
@@ -451,12 +466,18 @@ fn print_preview(sheet: &mut Spreadsheet, args: &[String]) -> Out {
         }
         "next" => state.page = (state.page + 1).min(total.saturating_sub(1)),
         "previous" => state.page = state.page.saturating_sub(1),
+        "first" => state.page = 0,
         "page" => {
-            let n: usize = args.get(1).and_then(|w| w.parse().ok()).ok_or("page takes a page number")?;
+            let n: usize =
+                args.get(1).and_then(|w| w.parse().ok()).ok_or("page takes a page number")?;
             state.page = n.saturating_sub(1).min(total.saturating_sub(1));
         }
         "open" | "show" => {}
-        other => return Err(format!("print-preview takes open, close, next, previous or page; got `{other}`")),
+        other => {
+            return Err(format!(
+                "print-preview takes open, close, next, previous or page; got `{other}`"
+            ))
+        }
     }
     let page = state.page;
     let mut measurer = print::Measurer::new();
@@ -495,7 +516,9 @@ fn print_now(sheet: &mut Spreadsheet, args: &[String]) -> Out {
     let (bytes, layout) = print::pdf_bytes(book);
     let target = match args.first() {
         Some(file) => super::verbs_b_files::resolve(sheet, file),
-        None => std::env::temp_dir().join("unluminous-print").join(format!("{}.pdf", sheet.current_book()?.name())),
+        None => std::env::temp_dir()
+            .join("unluminous-print")
+            .join(format!("{}.pdf", sheet.current_book()?.name())),
     };
     if let Some(folder) = target.parent() {
         let _ = std::fs::create_dir_all(folder);
@@ -505,7 +528,8 @@ fn print_now(sheet: &mut Spreadsheet, args: &[String]) -> Out {
     if args.is_empty() {
         send_to_the_printer(&target);
     }
-    Ok(said(format!("{} pages", layout.page_count())).with(json!({ "file": target.display().to_string(), "pages": layout.page_count() })))
+    Ok(said(format!("{} pages", layout.page_count()))
+        .with(json!({ "file": target.display().to_string(), "pages": layout.page_count() })))
 }
 
 /// Ask the operating system to print a PDF. A test never prints, and `UNLUMINOUS_PRINT=off` stops it.
@@ -516,7 +540,9 @@ fn send_to_the_printer(file: &std::path::Path) {
     #[cfg(windows)]
     {
         let command = format!("Start-Process -FilePath '{}' -Verb Print", file.display());
-        let _ = std::process::Command::new("powershell").args(["-NoProfile", "-Command", &command]).spawn();
+        let _ = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-Command", &command])
+            .spawn();
     }
     #[cfg(not(windows))]
     {
@@ -536,7 +562,11 @@ fn read_back(sheet: &mut Spreadsheet) -> Out {
     Ok(said(format!("{} pages", layout.page_count())).with(value))
 }
 
-fn setup_json(book: &Book, page: &PageSetup, layout: &unluminous_sheet::pages::layout::PageLayout) -> Json {
+fn setup_json(
+    book: &Book,
+    page: &PageSetup,
+    layout: &unluminous_sheet::pages::layout::PageLayout,
+) -> Json {
     let hf = &page.header_footer;
     let paper = unluminous_sheet::pages::paper::paper(page.paper_size);
     json!({

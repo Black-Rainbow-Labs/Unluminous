@@ -987,7 +987,12 @@ fn read_the_pointer(
             Some(Drag::Fill { right: false }) => {
                 let target = frame.at(book, p.max(frame.cells.min));
                 if let Some(to) = fill_target(book.view.range(), target) {
-                    out.acts.push(Act::FillTo(to));
+                    if modifiers.command {
+                        // Ctrl with the fill handle turns a series into a copy and a copy into a series.
+                        out.words.push(vec!["fill-handle".to_owned(), to.a1(), "series".to_owned(), "control".to_owned()]);
+                    } else {
+                        out.acts.push(Act::FillTo(to));
+                    }
                 }
             }
             _ => {}

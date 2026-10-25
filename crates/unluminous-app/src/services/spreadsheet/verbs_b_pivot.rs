@@ -42,6 +42,16 @@ fn pivot(sheet: &mut Spreadsheet, args: &[String]) -> Out {
         "create" | "new" | "insert" => create(sheet, rest),
         "list" => pivots(sheet),
         "refresh-all" => refresh_all(sheet),
+        "pane" => {
+            let book = sheet.current_book()?;
+            let on = match rest.first().map(String::as_str) {
+                Some("off") => false,
+                Some("on") => true,
+                _ => !book.view.lane_b.pivot_pane,
+            };
+            book.view.lane_b.pivot_pane = on;
+            Ok(said(format!("PivotTable Fields {}", if on { "open" } else { "closed" })))
+        }
         _ => {
             if let Some(answer) = super::verbs_b_pivot_more::on_table(sheet, &what, rest) {
                 return answer;
@@ -57,7 +67,11 @@ pub fn table_of(book: &Book, args: &[String]) -> Result<(usize, Vec<String>), St
     let pivots = &book.session.book.pivots;
     if let Some(i) = words.iter().position(|w| w.eq_ignore_ascii_case("in")) {
         let name = words.get(i + 1).ok_or("`in` takes the name of a PivotTable")?.clone();
-        let t = pivots.find(&name).ok_or_else(|| format!("there is no PivotTable named `{name}`"))?;
+        // A menu writes a name with spaces as underscores, because the words of a menu entry are split at spaces.
+        let t = pivots
+            .find(&name)
+            .or_else(|| pivots.find(&name.replace('_', " ")))
+            .ok_or_else(|| format!("there is no PivotTable named `{name}`"))?;
         words.drain(i..=i + 1);
         return Ok((t, words));
     }
@@ -72,7 +86,11 @@ pub fn table_of(book: &Book, args: &[String]) -> Result<(usize, Vec<String>), St
 }
 
 /// The field a word names: its caption, its name in the source, or `#3` for the third.
-pub fn field_of(table: &PivotTable, cache: &unluminous_sheet::pivot::PivotCache, word: &str) -> Result<usize, String> {
+pub fn field_of(
+    table: &PivotTable,
+    cache: &unluminous_sheet::pivot::PivotCache,
+    word: &str,
+) -> Result<usize, String> {
     if let Some(n) = word.strip_prefix('#').and_then(|n| n.parse::<usize>().ok()) {
         if n >= 1 && n <= cache.fields.len() {
             return Ok(n - 1);
@@ -140,14 +158,30 @@ pub const SHOW_AS: [(&str, ShowAs); 15] = [
 ];
 
 fn show_as_of(word: &str) -> Result<ShowAs, String> {
-    SHOW_AS
-        .iter()
-        .find(|(name, _)| *name == word)
-        .map(|(_, s)| *s)
-        .ok_or_else(|| format!("Show Values As takes {}; got `{word}`", SHOW_AS.map(|(n, _)| n).join(", ")))
+    SHOW_AS.iter().find(|(name, _)| *name == word).map(|(_, s)| *s).ok_or_else(|| {
+        format!("Show Values As takes {}; got `{word}`", SHOW_AS.map(|(n, _)| n).join(", "))
+    })
 }
 
-fn show_as_name(show: ShowAs) -> &'static str {
+/// The word that names a summary function, the inverse of [`func_of`].
+pub fn func_word(func: Func) -> &'static str {
+    match func {
+        Func::Sum => "sum",
+        Func::Count => "count",
+        Func::Average => "average",
+        Func::Max => "max",
+        Func::Min => "min",
+        Func::Product => "product",
+        Func::CountNums => "count-numbers",
+        Func::StdDev => "stddev",
+        Func::StdDevP => "stddevp",
+        Func::Var => "var",
+        Func::VarP => "varp",
+    }
+}
+
+/// The word that names a Show Values As setting.
+pub fn show_as_name(show: ShowAs) -> &'static str {
     SHOW_AS.iter().find(|(_, s)| *s == show).map_or("normal", |(n, _)| n)
 }
 
@@ -195,7 +229,8 @@ fn source_of(book: &Book, args: &[String]) -> Result<PivotSource, String> {
         chosen
     };
     if book.session.book.sheets[index].value_at(range.first).is_empty() && range.len() == 1 {
-        return Err("Choose the cells with the data, or a cell in it, before making a PivotTable.".to_owned());
+        return Err("Choose the cells with the data, or a cell in it, before making a PivotTable."
+            .to_owned());
     }
     Ok(PivotSource::Range { sheet: index, range })
 }
@@ -237,7 +272,11 @@ fn on_table(sheet: &mut Spreadsheet, what: &str, args: &[String]) -> Out {
     book.changed();
     book.view.axes = None;
     let live = t.min(book.session.book.pivots.tables.len().saturating_sub(1));
-    let value = if book.session.book.pivots.tables.is_empty() { Json::Null } else { table_json(book, live) };
+    let value = if book.session.book.pivots.tables.is_empty() {
+        Json::Null
+    } else {
+        table_json(book, live)
+    };
     Ok(said(answer).with(value))
 }
 
@@ -246,7 +285,8 @@ fn add_field(book: &mut Book, t: usize, args: &[String]) -> Result<String, Strin
     let word = args.first().ok_or("add takes a field and an area")?;
     let f = field_in(book, t, word)?;
     let area_word = args.get(1).map(String::as_str).unwrap_or("rows");
-    let position = after(args, "at").and_then(|n| n.parse::<usize>().ok()).map(|n| n.saturating_sub(1));
+    let position =
+        after(args, "at").and_then(|n| n.parse::<usize>().ok()).map(|n| n.saturating_sub(1));
     if matches!(area_word, "values" | "value" | "data") {
         let func = args.iter().skip(2).find_map(|w| func_of(w).ok()).unwrap_or(Func::Sum);
         let name = after(args, "name");
@@ -262,7 +302,8 @@ fn move_field(book: &mut Book, t: usize, args: &[String]) -> Result<String, Stri
     let word = args.first().ok_or("move takes a field and an area")?;
     let f = field_in(book, t, word)?;
     let area_word = args.get(1).ok_or("move takes an area: rows, columns, filters or remove")?;
-    let position = after(args, "at").and_then(|n| n.parse::<usize>().ok()).map(|n| n.saturating_sub(1));
+    let position =
+        after(args, "at").and_then(|n| n.parse::<usize>().ok()).map(|n| n.saturating_sub(1));
     book.session.pivot_move_field(t, f, area_of(area_word)?, position)?;
     Ok(format!("Moved {word} to {area_word}"))
 }
@@ -304,13 +345,24 @@ fn data_of(table: &PivotTable, word: &str) -> Result<usize, String> {
 fn value_settings(book: &mut Book, t: usize, args: &[String]) -> Result<String, String> {
     let word = args.first().ok_or("value takes the value field to change")?;
     let d = data_of(&book.session.book.pivots.tables[t], word)?;
-    let mut s = ValueSettings::default();
-    s.name = after(args, "name").map(str::to_owned);
-    if let Some(f) = after(args, "summarize").or_else(|| after(args, "summary")) {
-        s.func = Some(func_of(f)?);
+    let mut s =
+        ValueSettings { name: after(args, "name").map(str::to_owned), ..ValueSettings::default() };
+    // A summary or a Show Values As choice may be written bare, as the settings form writes it.
+    let bare = |keyed: Option<&str>, known: &dyn Fn(&str) -> bool| -> Option<String> {
+        keyed.map(str::to_owned).or_else(|| {
+            args.iter().skip(1).enumerate().find_map(|(i, w)| {
+                let key_before = i > 0 && is_key(&args[i]);
+                (!key_before && known(w)).then(|| w.clone())
+            })
+        })
+    };
+    if let Some(f) =
+        bare(after(args, "summarize").or_else(|| after(args, "summary")), &|w| func_of(w).is_ok())
+    {
+        s.func = Some(func_of(&f)?);
     }
-    if let Some(w) = after(args, "show") {
-        s.show = Some(show_as_of(w)?);
+    if let Some(w) = bare(after(args, "show"), &|w| SHOW_AS.iter().any(|(n, _)| *n == w)) {
+        s.show = Some(show_as_of(&w)?);
     }
     if let Some(w) = after(args, "base-field") {
         s.base_field = Some(field_in(book, t, w)?);
@@ -325,8 +377,29 @@ fn value_settings(book: &mut Book, t: usize, args: &[String]) -> Result<String, 
     Ok(format!("Changed value field {word}"))
 }
 
+/// Whether a word names the setting that the next word gives a value to.
+fn is_key(word: &str) -> bool {
+    matches!(
+        word,
+        "name"
+            | "summarize"
+            | "summary"
+            | "show"
+            | "base-field"
+            | "base-item"
+            | "numfmt"
+            | "subtotals"
+    )
+}
+
 /// The base item of Show Values As: `previous`, `next`, or an item of the base field by name.
-fn base_item(book: &Book, t: usize, base_field: Option<usize>, d: usize, word: &str) -> Result<u32, String> {
+fn base_item(
+    book: &Book,
+    t: usize,
+    base_field: Option<usize>,
+    d: usize,
+    word: &str,
+) -> Result<u32, String> {
     match word {
         "previous" => return Ok(unluminous_sheet::pivot::BASE_PREVIOUS),
         "next" => return Ok(unluminous_sheet::pivot::BASE_NEXT),
@@ -346,7 +419,9 @@ fn field_settings(book: &mut Book, t: usize, args: &[String]) -> Result<String, 
     if let Some(n) = after(args, "name") {
         s.name = Some((n != "none").then(|| n.to_owned()));
     }
-    if let Some(w) = after(args, "form") {
+    if let Some(w) = after(args, "form")
+        .or_else(|| args.iter().skip(1).map(String::as_str).find(|w| form_of(w).is_ok()))
+    {
         s.form = Some(form_of(w)?);
     }
     if let Some(w) = after(args, "subtotals") {
@@ -395,7 +470,8 @@ fn subtotals_of(word: &str) -> Result<Subtotals, String> {
 /// `pivot move-values rows|columns [at <n>]`: where the Values entry sits.
 fn move_values(book: &mut Book, t: usize, args: &[String]) -> Result<String, String> {
     let area = area_of(args.first().map(String::as_str).unwrap_or("columns"))?;
-    let position = after(args, "at").and_then(|n| n.parse::<usize>().ok()).map(|n| n.saturating_sub(1));
+    let position =
+        after(args, "at").and_then(|n| n.parse::<usize>().ok()).map(|n| n.saturating_sub(1));
     book.session.pivot_move_values(t, area, position)?;
     Ok("Moved the values".to_owned())
 }
@@ -426,10 +502,17 @@ fn option(book: &mut Book, t: usize, args: &[String]) -> Result<String, String> 
     let key = args.first().ok_or("option takes a name and a value")?.to_ascii_lowercase();
     let value = args.get(1..).unwrap_or(&[]).join(" ");
     let text = (!value.is_empty() && value != "none").then(|| value.clone());
-    let headers = if key == "headers" { Some(on_off(args.get(1).map(String::as_str))?) } else { None };
+    let headers =
+        if key == "headers" { Some(on_off(args.get(1).map(String::as_str))?) } else { None };
     let known = matches!(
         key.as_str(),
-        "headers" | "grand-total-caption" | "error-caption" | "empty-caption" | "row-header-caption" | "column-header-caption" | "data-caption"
+        "headers"
+            | "grand-total-caption"
+            | "error-caption"
+            | "empty-caption"
+            | "row-header-caption"
+            | "column-header-caption"
+            | "data-caption"
     );
     if !known {
         return Err("option takes headers, grand-total-caption, error-caption, empty-caption, row-header-caption, column-header-caption or data-caption".to_owned());
@@ -478,7 +561,8 @@ fn change_source(book: &mut Book, t: usize, args: &[String]) -> Result<String, S
 /// `pivot move-table <cell>`: Move PivotTable.
 fn move_table(book: &mut Book, t: usize, args: &[String]) -> Result<String, String> {
     let word = args.first().ok_or("move-table takes the cell to move to")?;
-    let (sheet, range) = parse_range(book, word).ok_or_else(|| format!("`{word}` is not a cell"))?;
+    let (sheet, range) =
+        parse_range(book, word).ok_or_else(|| format!("`{word}` is not a cell"))?;
     book.session.pivot_move(t, sheet, range.first)?;
     Ok(format!("Moved the PivotTable to {}", range.first.a1()))
 }
@@ -497,12 +581,13 @@ fn refresh_all(sheet: &mut Spreadsheet) -> Out {
 /// `pivots`: every pivot table of the workbook.
 fn pivots(sheet: &mut Spreadsheet) -> Out {
     let book = sheet.current_book()?;
-    let all: Vec<Json> = (0..book.session.book.pivots.tables.len()).map(|t| table_json(book, t)).collect();
+    let all: Vec<Json> =
+        (0..book.session.book.pivots.tables.len()).map(|t| table_json(book, t)).collect();
     Ok(said(format!("{} PivotTables", all.len())).with(json!(all)))
 }
 
 /// The area a field is in, and its place there.
-fn area_of_field(table: &PivotTable, f: usize) -> (&'static str, Option<usize>) {
+pub fn area_of_field(table: &PivotTable, f: usize) -> (&'static str, Option<usize>) {
     let place = |axis: &[AxisEntry]| axis.iter().position(|e| *e == AxisEntry::Field(f));
     if let Some(p) = place(&table.rows) {
         return ("rows", Some(p + 1));
@@ -541,13 +626,15 @@ pub fn table_json(book: &Book, t: usize) -> Json {
     let values: Vec<Json> = table
         .data
         .iter()
-        .map(|d| json!({
-            "name": d.name,
-            "field": table.caption(cache, d.field),
-            "summarize": d.func.xml(),
-            "showAs": show_as_name(d.show),
-            "numFmt": d.num_fmt,
-        }))
+        .map(|d| {
+            json!({
+                "name": d.name,
+                "field": table.caption(cache, d.field),
+                "summarize": func_word(d.func),
+                "showAs": show_as_name(d.show),
+                "numFmt": d.num_fmt,
+            })
+        })
         .collect();
     json!({
         "name": table.name,

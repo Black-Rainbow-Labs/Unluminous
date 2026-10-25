@@ -482,7 +482,7 @@ pub const SPREADSHEET: &[(&str, &str)] = &[
     ("export", "export pdf|html|ods|txt|csv|xlsx [file]: a copy in another format"),
     ("save-as-xlsx", "save-as-xlsx: save a workbook read from .xls, .xlsb, .xml or .json as .xlsx"),
     ("pivots", "pivots: every PivotTable with its fields, areas and value fields"),
-    ("pivot", "pivot create [range|table] [at <cell>] [name <n>], or pivot fields|add|move|remove|value|field|layout|totals|option|style|refresh|source|move-table|delete|sort|items|page|filter|group|ungroup|calculated-field|calculated-item|refresh-all <words> [in <pivot>]"),
+    ("pivot", "pivot create [range|table] [at <cell>] [name <n>], or pivot pane|fields|add|move|remove|value|field|layout|totals|option|style|refresh|source|move-table|delete|sort|items|page|filter|group|ungroup|calculated-field|calculated-item|refresh-all <words> [in <pivot>]"),
     ("slicer", "slicer add <field> [in <pivot>] [at <cell>] [name <n>], or slicer list|select|delete <name> [<item>,<item>|all]"),
     ("timeline", "timeline add <date field> [in <pivot>] [at <cell>], or timeline list|select|delete <name> [<from> <to>|all]"),
     ("getpivotdata", "getpivotdata [cell]: the GETPIVOTDATA formula for a cell of a PivotTable"),

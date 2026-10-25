@@ -46,7 +46,7 @@ fn clock_text(hour: u8, minute: u8) -> String {
 
 /// Finds the font file a style prints with and measures text in it, remembering what it found.
 pub struct Measurer {
-    faces: HashMap<(String, bool, bool), Option<(Arc<Vec<u8>>, u32)>>,
+    faces: HashMap<(String, bool, bool), Option<unluminous_word::pdf::FaceBytes>>,
 }
 
 impl Measurer {
@@ -63,7 +63,7 @@ impl Measurer {
             .or_insert_with(|| crate::services::word::commands::pdf_face(style))
             .clone();
         let parsed = face.as_ref().and_then(|(bytes, index)| {
-            FontRef::try_from_slice_and_index(bytes, *index).ok().map(|f| f)
+            FontRef::try_from_slice_and_index(bytes, *index).ok()
         });
         let mut at = x;
         let mut out = Vec::new();
@@ -110,8 +110,7 @@ pub fn pdf_pages(book: &Book, layout: &PageLayout, measurer: &mut Measurer) -> P
         layout,
         scale: layout.scale as f32 / 100.0,
     };
-    let mut pages: Vec<PdfPage> =
-        layout.pages.iter().map(|p| job.page(p, measurer)).collect();
+    let mut pages: Vec<PdfPage> = layout.pages.iter().map(|p| job.page(p, measurer)).collect();
     for (i, notes) in layout.note_pages.iter().enumerate() {
         pages.push(job.note_page(notes, layout.pages.len() + i, measurer));
     }
@@ -209,7 +208,8 @@ impl Job<'_> {
         let chars = display::chars_in(rect.w / self.scale);
         let mut shown = display::shown(self.book, self.sheet, at, chars);
         if shown.error {
-            shown.text = unluminous_sheet::pages::layout::printed_error(self.layout.errors, &shown.text);
+            shown.text =
+                unluminous_sheet::pages::layout::printed_error(self.layout.errors, &shown.text);
         }
         if let (Some((r, g, b)), false) = (shown.fill, self.layout.black_and_white) {
             items.push(Item::Fill { rect, color: Rgb(r, g, b) });
@@ -509,9 +509,12 @@ pub fn pdf_bytes(book: &Book) -> (Vec<u8>, PageLayout) {
     let mut measurer = Measurer::new();
     let pages = pdf_pages(book, &layout, &mut measurer);
     let title = book.name();
-    let bytes = unluminous_word::pdf::write(&pages, &title, &|style| {
-        crate::services::word::commands::pdf_face(style)
-    }, &|_| None);
+    let bytes = unluminous_word::pdf::write(
+        &pages,
+        &title,
+        &|style| crate::services::word::commands::pdf_face(style),
+        &|_| None,
+    );
     (bytes, layout)
 }
 

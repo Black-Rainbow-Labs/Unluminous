@@ -80,7 +80,9 @@ fn encoding_of(args: &[String]) -> Result<Option<Encoding>, String> {
         "plain" | "ansi" | "windows-1252" => Encoding::Windows1252,
         "unicode" | "utf16" | "utf-16" => Encoding::Utf16Le,
         other => {
-            return Err(format!("an encoding is utf8, utf8-no-bom, plain or unicode; got `{other}`"))
+            return Err(format!(
+                "an encoding is utf8, utf8-no-bom, plain or unicode; got `{other}`"
+            ))
         }
     }))
 }

@@ -534,11 +534,15 @@ fn apply_inner(book: &mut Book, copied: &mut Option<Copied>, act: Act) -> Said {
             Ok(String::new())
         }
         Act::PasteText(text) => {
-            let rows: Vec<Vec<String>> = unluminous_sheet::csv::split(&text, '\t');
-            if rows.is_empty() {
+            // Text from another program: tab separated cells, entered the way Excel enters pasted text, so a
+            // cell that begins with `=` is text unless the person asks for formulas.
+            if text.is_empty() {
                 return Ok(String::new());
             }
-            apply_inner(book, copied, Act::TypeRows { at: cursor, rows })
+            let options = unluminous_sheet::edit::clipboard::ExternalPaste::default();
+            let pasted = s.paste_text(sheet, cursor, &text, options)?;
+            book.view.select_range(pasted);
+            Ok(String::new())
         }
         Act::Sort { column, ascending } => {
             let region = block(book);

@@ -61,7 +61,7 @@ pub fn read_paste_words(words: &[String]) -> Result<PasteAsk, String> {
     let mut number_formats = false;
     for word in words {
         let w = word.to_ascii_lowercase();
-        ask.asked_nothing = false;
+        ask.asked_nothing = ask.asked_nothing && matches!(w.as_str(), "special" | "insert");
         match w.as_str() {
             "special" | "insert" => {}
             "link" => ask.link = true,
@@ -209,7 +209,8 @@ pub fn paste_external(sheet: &mut Spreadsheet, args: &[String], html: bool) -> O
     let book = sheet.current_book()?;
     let (at, rest) = super::verbs_a::take_cell(book, args);
     let formulas = flag(rest, "formulas");
-    let text: Vec<&str> = rest.iter().filter(|w| !w.eq_ignore_ascii_case("formulas")).map(|s| s.as_str()).collect();
+    let text: Vec<&str> =
+        rest.iter().filter(|w| !w.eq_ignore_ascii_case("formulas")).map(|s| s.as_str()).collect();
     let text = text.join(" ").replace("\\t", "\t").replace("\\n", "\n");
     let index = book.view.sheet;
     let options = ExternalPaste { formulas };
@@ -313,7 +314,8 @@ pub fn fill_options(sheet: &mut Spreadsheet, args: &[String]) -> Out {
         .filter(|a| a.kind == AfterKind::Fill && a.revision == book.revision)
         .ok_or("The Auto Fill Options button is gone: the workbook changed after the fill.")?;
     let word = args.first().map(String::as_str).unwrap_or("series");
-    let kind = fill_kind_of(word).ok_or_else(|| format!("fill-options takes a kind of fill; got `{word}`"))?;
+    let kind = fill_kind_of(word)
+        .ok_or_else(|| format!("fill-options takes a kind of fill; got `{word}`"))?;
     book.session.undo();
     book.session.fill_series_with(state.sheet, state.source, state.target, kind, &lists)?;
     finish_fill(book, state.sheet, state.source, state.target);
@@ -396,7 +398,8 @@ pub fn fill_across(sheet: &mut Spreadsheet, args: &[String]) -> Out {
         _ => (&args[..0], args),
     };
     take_range(book, range_words);
-    let names = rest.first().ok_or("fill-across needs the sheets to fill, such as Sheet2,Sheet3")?;
+    let names =
+        rest.first().ok_or("fill-across needs the sheets to fill, such as Sheet2,Sheet3")?;
     let mut others = Vec::new();
     for name in names.split(',') {
         let index = book

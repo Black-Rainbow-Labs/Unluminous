@@ -7,7 +7,8 @@ use super::*;
 
 /// A provider opened on a scratch project folder of its own, and that folder.
 fn opened(name: &str) -> (Spreadsheet, std::path::PathBuf) {
-    let folder = std::env::temp_dir().join(format!("unluminous-sheet-b-{name}-{}", std::process::id()));
+    let folder =
+        std::env::temp_dir().join(format!("unluminous-sheet-b-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&folder);
     std::fs::create_dir_all(&folder).unwrap();
     let mut sheet = Spreadsheet::new();
@@ -50,7 +51,10 @@ fn paste_special_adds_the_copied_numbers_to_the_numbers_under_them() {
     let (mut sheet, _folder) = with_columns("paste-add");
     run(&mut sheet, "copy A1:A3");
     run(&mut sheet, "paste-special B1 add");
-    assert_eq!([number(&mut sheet, "B1"), number(&mut sheet, "B2"), number(&mut sheet, "B3")], [11.0, 22.0, 33.0]);
+    assert_eq!(
+        [number(&mut sheet, "B1"), number(&mut sheet, "B2"), number(&mut sheet, "B3")],
+        [11.0, 22.0, 33.0]
+    );
     run(&mut sheet, "undo");
     run(&mut sheet, "copy A1:A3");
     run(&mut sheet, "paste B1 multiply");
@@ -91,7 +95,10 @@ fn insert_copied_makes_room_and_the_paste_options_button_pastes_again() {
     let (mut sheet, _folder) = with_columns("insert-copied");
     run(&mut sheet, "copy A1:A2");
     run(&mut sheet, "insert-copied A3 down");
-    assert_eq!([number(&mut sheet, "A3"), number(&mut sheet, "A4"), number(&mut sheet, "A5")], [1.0, 2.0, 3.0]);
+    assert_eq!(
+        [number(&mut sheet, "A3"), number(&mut sheet, "A4"), number(&mut sheet, "A5")],
+        [1.0, 2.0, 3.0]
+    );
     run(&mut sheet, "undo");
     run(&mut sheet, "formula D1 =A1*2");
     run(&mut sheet, "copy D1");
@@ -127,7 +134,11 @@ fn the_fill_handle_menu_fills_a_series_a_copy_or_a_trend() {
     run(&mut sheet, "fill-handle A1:A5 series");
     assert_eq!(number(&mut sheet, "A5"), 5.0);
     run(&mut sheet, "fill-options copy");
-    assert_eq!([number(&mut sheet, "A3"), number(&mut sheet, "A4")], [1.0, 2.0], "copy cells repeats");
+    assert_eq!(
+        [number(&mut sheet, "A3"), number(&mut sheet, "A4")],
+        [1.0, 2.0],
+        "copy cells repeats"
+    );
     run(&mut sheet, "write C1 [[2],[4]]");
     run(&mut sheet, "select C1:C2");
     run(&mut sheet, "fill-handle C1:C4 growth");
@@ -296,7 +307,8 @@ fn a_pivot_table_is_made_from_the_data_and_summarises_it() {
     run(&mut sheet, "pivot add Units values sum");
     let read = run(&mut sheet, "read E1:F5 values").value;
     let rows = read["rows"].as_array().unwrap();
-    let flat: Vec<String> = rows.iter().flat_map(|r| r.as_array().unwrap().iter().map(|v| v.to_string())).collect();
+    let flat: Vec<String> =
+        rows.iter().flat_map(|r| r.as_array().unwrap().iter().map(|v| v.to_string())).collect();
     let joined = flat.join(" ");
     assert!(joined.contains("East") && joined.contains("10"), "{joined}");
     assert!(joined.contains("West") && joined.contains("8"), "{joined}");
@@ -353,7 +365,10 @@ fn pivot_filters_sorts_slicers_and_refresh_follow_the_data() {
     run(&mut sheet, "pivot filter Item clear in Sales");
     run(&mut sheet, "write C2 100");
     run(&mut sheet, "pivot refresh in Sales");
-    assert!(read_text(&mut sheet, "E1:F6").contains("109"), "the refreshed pivot sees the new number");
+    assert!(
+        read_text(&mut sheet, "E1:F6").contains("109"),
+        "the refreshed pivot sees the new number"
+    );
     run(&mut sheet, "pivot refresh-all");
     assert_eq!(run(&mut sheet, "slicer list").value.as_array().unwrap().len(), 1);
     run(&mut sheet, "slicer delete Items");
@@ -375,7 +390,10 @@ fn clicking_a_pivot_cell_in_a_formula_gives_getpivotdata_and_it_reads_the_same_f
     let at = found[0].as_str().unwrap().split('!').nth(1).unwrap().to_owned();
     let row: u32 = at[1..].parse().unwrap();
     let figure = format!("F{row}");
-    let formula = run(&mut sheet, &format!("getpivotdata {figure}")).value["formula"].as_str().unwrap().to_owned();
+    let formula = run(&mut sheet, &format!("getpivotdata {figure}")).value["formula"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     assert!(formula.starts_with("GETPIVOTDATA(\"Sum of Units\",$E$1,"), "{formula}");
     assert!(formula.contains("\"Region\",\"East\""), "{formula}");
     run(&mut sheet, &format!("formula J1 ={formula}"));
@@ -387,7 +405,10 @@ fn clicking_a_pivot_cell_in_a_formula_gives_getpivotdata_and_it_reads_the_same_f
 fn pivot_groups_calculated_fields_and_timelines_are_refused_or_made_in_the_engine_words() {
     let (mut sheet, _folder) = opened("pivot-more");
     run(&mut sheet, "new dates.xlsx");
-    run(&mut sheet, "write A1 [[\"Day\",\"Units\"],[\"2026-01-05\",1],[\"2026-02-10\",2],[\"2026-02-20\",3]]");
+    run(
+        &mut sheet,
+        "write A1 [[\"Day\",\"Units\"],[\"2026-01-05\",1],[\"2026-02-10\",2],[\"2026-02-20\",3]]",
+    );
     run(&mut sheet, "format B2:B4 number 0");
     run(&mut sheet, "pivot create A1:B4 at D1 name P");
     run(&mut sheet, "pivot add Units values sum in P");
@@ -438,7 +459,8 @@ fn a_workbook_in_a_legacy_format_must_be_saved_as_xlsx() {
 #[test]
 fn other_formats_open_in_a_tab() {
     let (mut sheet, folder) = opened("open-formats");
-    std::fs::write(folder.join("data.json"), "[{\"a\":1,\"b\":\"x\"},{\"a\":2,\"b\":\"y\"}]").unwrap();
+    std::fs::write(folder.join("data.json"), "[{\"a\":1,\"b\":\"x\"},{\"a\":2,\"b\":\"y\"}]")
+        .unwrap();
     run(&mut sheet, "open data.json");
     assert_eq!(number(&mut sheet, "A2"), 1.0);
     std::fs::write(folder.join("cols.prn"), "Name    Qty\nTea       4\n").unwrap();
@@ -472,4 +494,58 @@ fn header_and_footer_sections_split_and_join() {
     let parts = verbs_b_page::split_sections("&LLeft&CMiddle &&&P&RRight");
     assert_eq!(parts, ["Left".to_owned(), "Middle &&&P".to_owned(), "Right".to_owned()]);
     assert_eq!(verbs_b_page::join_sections(&parts), "&LLeft&CMiddle &&&P&RRight");
+}
+
+// ------------------------------------------------------------------------------------------------ drawing
+
+/// Draw one frame of the tab with no window behind it, as `a_tab_draws_a_frame_without_a_window` does.
+fn draw_a_frame(sheet: &mut Spreadsheet) {
+    let key = sheet.current.clone().unwrap();
+    let settings = crate::settings::Settings::default();
+    let renderer = crate::services::text_renderer::TextRenderer::new();
+    let ctx = egui::Context::default();
+    let mut output = ctx.run_ui(
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1400.0, 900.0),
+            )),
+            ..Default::default()
+        },
+        |ui| {
+            let look = Look::of(&settings, &renderer).holding_the_keyboard(true);
+            sheet.tab_keyed(&key, ui, &look);
+        },
+    );
+    output.textures_delta.clear();
+}
+
+#[test]
+fn every_popup_of_this_lane_draws_a_frame() {
+    let (mut sheet, _folder) = with_sales("frames");
+    run(&mut sheet, "pivot create A1:C6 at E1 name Sales");
+    run(&mut sheet, "pivot add Region rows in Sales");
+    run(&mut sheet, "pivot add Units values sum in Sales");
+    run(&mut sheet, "slicer add Region in Sales at J1");
+    run(&mut sheet, "timeline list");
+    run(&mut sheet, "copy A1:A3");
+    run(&mut sheet, "paste-special A8 transpose");
+    for setup in [
+        "paste-special",
+        "view page-break",
+        "view layout",
+        "print-preview open",
+        "pivot pane on",
+        "select E2",
+    ] {
+        run(&mut sheet, setup);
+        draw_a_frame(&mut sheet);
+    }
+    run(&mut sheet, "select A1:A2");
+    run(&mut sheet, "fill-handle A1:A5 copy");
+    assert!(
+        sheet.current_book().unwrap().view.lane_b.after.is_some(),
+        "Auto Fill Options is offered"
+    );
+    draw_a_frame(&mut sheet);
 }
