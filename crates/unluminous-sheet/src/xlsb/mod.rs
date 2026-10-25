@@ -84,6 +84,7 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
         extern_names: &extern_names,
     };
     book.names = defined_names(&info, &env);
+    crate::xls::keep_external_links(&mut book, &supbooks);
     book.tables = tables;
     let mut parsed: Vec<String> = vec![workbook_part.clone()];
     parsed.append(&mut parsed_extra);
@@ -202,12 +203,15 @@ fn read_sheet(
         if rel.kind == REL_DRAWING {
             sheet.charts.extend(crate::xlsx::chart::read_charts(part, &rel.target, text));
             sheet.pictures.extend(crate::xlsx::chart::read_pictures(part, &rel.target, text));
-            sheet.raw.rels.push(rel.clone());
-            sheet
-                .raw
-                .elements
-                .push(("drawing".to_owned(), format!("<drawing r:id=\"{}\"/>", rel.id)));
-            xml_parts.extend(parts_below(&resolve(part, &rel.target), files, text));
+            let drawing = resolve(part, &rel.target);
+            if drawing_can_be_kept(&drawing, text) {
+                sheet.raw.rels.push(rel.clone());
+                sheet
+                    .raw
+                    .elements
+                    .push(("drawing".to_owned(), format!("<drawing r:id=\"{}\"/>", rel.id)));
+                xml_parts.extend(parts_below(&drawing, files, text));
+            }
         }
     }
 }
@@ -372,4 +376,11 @@ fn keep_drawings(
             book.kept.parts.push((part.clone(), Arc::new(data.to_vec())));
         }
     }
+}
+
+/// Whether a drawing can be written into an `.xlsx` file as it is. A drawing that holds a form control
+/// or a slicer depends on parts this reader does not carry across, and Excel refuses the file when
+/// they are missing, so the charts and pictures in such a drawing are written from the model instead.
+fn drawing_can_be_kept(part: &str, text: &dyn Fn(&str) -> Option<String>) -> bool {
+    text(part).is_some_and(|xml| !xml.contains("compatExt") && !xml.contains("slicer"))
 }

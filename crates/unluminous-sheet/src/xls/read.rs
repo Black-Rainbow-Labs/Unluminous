@@ -65,6 +65,7 @@ fn build(records: &[Record], g: &Globals) -> Result<Workbook, String> {
         extern_names: &g.extern_names,
     };
     book.names = defined_names(g, &env);
+    super::keep_external_links(&mut book, &g.supbooks);
     let by_offset: HashMap<usize, usize> =
         records.iter().enumerate().map(|(i, r)| (r.offset, i)).collect();
     let dxfs = sheet::DxfPool::default();

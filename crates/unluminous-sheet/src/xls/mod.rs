@@ -19,6 +19,53 @@ pub mod styles;
 
 pub use read::read;
 
+/// Give each workbook a formula refers to an external link part, so the `[1]` in a formula written to
+/// an `.xlsx` file names something. The link holds the other workbook's address and sheet names and no
+/// cached values.
+pub(crate) fn keep_external_links(book: &mut crate::model::Workbook, supbooks: &[ptg::SupBook]) {
+    use crate::model::Relationship;
+    use crate::xlsx::{escape, REL_NS};
+    use std::sync::Arc;
+    const KIND: &str =
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLink";
+    const FILE: &str =
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/externalLinkPath";
+    const TYPE: &str =
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.externalLink+xml";
+    let mut references = String::new();
+    let mut number = 0;
+    for supbook in supbooks {
+        let ptg::SupBook::External { url, sheets } = supbook else { continue };
+        number += 1;
+        let names: String =
+            sheets.iter().map(|s| format!("<sheetName val=\"{}\"/>", escape(s))).collect();
+        let part = format!("xl/externalLinks/externalLink{number}.xml");
+        let xml = format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<externalLink xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"{REL_NS}\"><externalBook r:id=\"rId1\"><sheetNames>{names}</sheetNames></externalBook></externalLink>"
+        );
+        let rels = format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"{FILE}\" Target=\"{}\" TargetMode=\"External\"/></Relationships>",
+            escape(url)
+        );
+        let rels_part = format!("xl/externalLinks/_rels/externalLink{number}.xml.rels");
+        book.kept.parts.push((part.clone(), Arc::new(xml.into_bytes())));
+        book.kept.parts.push((rels_part, Arc::new(rels.into_bytes())));
+        book.kept.overrides.push((format!("/{part}"), TYPE.to_owned()));
+        let id = format!("rIdExt{number}");
+        book.kept.workbook_rels.push(Relationship {
+            id: id.clone(),
+            kind: KIND.to_owned(),
+            target: format!("externalLinks/externalLink{number}.xml"),
+            external: false,
+        });
+        references.push_str(&format!("<externalReference r:id=\"{id}\"/>"));
+    }
+    if !references.is_empty() {
+        let xml = format!("<externalReferences>{references}</externalReferences>");
+        book.raw.push(("externalReferences".to_owned(), xml));
+    }
+}
+
 /// Record types, by the names the file format specification gives them.
 pub mod id {
     pub const BOF: u16 = 0x0809;
