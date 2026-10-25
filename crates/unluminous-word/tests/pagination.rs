@@ -122,7 +122,20 @@ fn compare(name: &str, fonts: &common::RealFonts) -> (usize, usize, usize, Vec<S
         }
         compared += 1;
         let word_page = word["page"].as_u64().unwrap_or(0) as usize;
-        let our_page = starts.iter().find(|(p, _)| *p == path).map_or(0, |(_, page)| *page);
+        let mut our_page = starts.iter().find(|(p, _)| *p == path).map_or(0, |(_, page)| *page);
+        // A cell that continues a merge down has no text of its own on the page; Word gives it the page of
+        // the cell the merge starts in, which is the same cell a row or more above.
+        if our_page == 0 && path.len() >= 4 {
+            let row = path.len() - 3;
+            for above in (0..path[row]).rev() {
+                let mut up = path.clone();
+                up[row] = above;
+                if let Some((_, page)) = starts.iter().find(|(p, _)| **p == up) {
+                    our_page = *page;
+                    break;
+                }
+            }
+        }
         if word_page != our_page {
             misses.push(format!(
                 "{path:?} {:?}: ours {our_page}, Word {word_page}",

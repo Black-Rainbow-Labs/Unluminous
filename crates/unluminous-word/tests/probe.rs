@@ -184,3 +184,22 @@ fn width_probe() {
         }
     }
 }
+
+/// The footnote lines on each page of `PROBE_FIXTURE`: where each starts and how tall it is.
+#[test]
+#[ignore]
+fn notes_probe() {
+    let fonts = common::RealFonts::new();
+    let name = std::env::var("PROBE_FIXTURE").unwrap_or_else(|_| "notes".into());
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/fixtures/{name}.docx"));
+    let document = unluminous_word::read::open(&std::fs::read(&path).unwrap()).unwrap();
+    let pages = unluminous_word::layout::lay_out(&document, &fonts, Default::default());
+    for (n, page) in pages.pages.iter().enumerate() {
+        println!("page {} notes {:?}", n + 1, page.notes);
+        for line in &page.carets {
+            if matches!(line.story, unluminous_word::position::StoryId::Footnote(_)) {
+                println!("  {:.2} +{:.2}", line.top, line.height);
+            }
+        }
+    }
+}

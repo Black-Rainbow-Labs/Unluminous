@@ -79,18 +79,25 @@ impl LaidRow {
         let mut rest: Vec<CellPiece> = Vec::with_capacity(self.cells.len());
         let mut moved = false;
         let mut kept = false;
+        let top_border =
+            self.cells.iter().filter_map(|c| c.borders[0]).map(|b| b.width).fold(0.0, f32::max);
         for cell in &self.cells {
-            let room = available - cell.margins.2 - cell.margins.3;
+            let room = available - cell.margins.2 - cell.margins.3 - top_border;
             let mut used = 0.0;
             let mut take = 0;
             for line in &cell.lines {
-                if used + line.height > room + 0.01 {
+                if used + line.height - line.slack > room + 0.01 {
                     break;
                 }
                 used += line.height;
                 take += 1;
             }
+            let take = keep_two_lines(&cell.lines, take);
             let (head, tail) = cell.lines.split_at(take);
+            // A cell that would start on the next page takes the whole row there, as Word does.
+            if head.is_empty() && !tail.is_empty() && !cell.continues {
+                return None;
+            }
             kept |= !head.is_empty();
             moved |= !tail.is_empty();
             first.push(CellPiece {
@@ -124,6 +131,30 @@ impl LaidRow {
                 left: self.left,
             },
         ))
+    }
+}
+
+/// Where a cell's lines may be cut, given that the first `take` fit: a paragraph cut there keeps two of
+/// its lines on each side, as widow control keeps them in the body. Measured on long-table.docx, Word
+/// moves a row whole to the next page when only one line of its four line cell would fit.
+fn keep_two_lines(lines: &[Chunk], take: usize) -> usize {
+    let path = |line: &Chunk| line.carets.first().map(|c| c.path.clone());
+    if take == 0 || take >= lines.len() || path(&lines[take - 1]) != path(&lines[take]) {
+        return take;
+    }
+    let paragraph = path(&lines[take]);
+    let start = lines[..take].iter().rposition(|l| path(l) != paragraph).map_or(0, |i| i + 1);
+    let end =
+        lines[take..].iter().position(|l| path(l) != paragraph).map_or(lines.len(), |i| i + take);
+    let (before, after) = (take - start, end - take);
+    if before >= 2 && after >= 2 {
+        take
+    } else if before >= 2 && before + after >= 4 {
+        // Two lines go over with the last one.
+        end - 2
+    } else {
+        // The paragraph goes over whole.
+        start
     }
 }
 
@@ -267,7 +298,10 @@ pub fn lay_out(
                 merged_below,
                 drawn_height: 0.0,
             };
-            if !continues {
+            // A cell merged down several rows is as tall as all of them together, so it does not make its
+            // first row taller; the loop after this gives the last row what the rows together lack. Word
+            // draws tables.docx's "Merged down two rows" across its two rows, each the height of its own text.
+            if !continues && spans <= 1 {
                 tallest = tallest.max(piece.content_height() + cell_margins.2 + cell_margins.3);
             }
             cells.push(piece);
@@ -280,6 +314,21 @@ pub fn lay_out(
         };
         heights.push(height.max(1.0));
         rows.push(cells);
+    }
+    // A row is as tall as its text and the width of the border along its top, and the last row the
+    // border along its bottom too: measured on table-widths.docx, each one line row with 0.5 point borders
+    // is 25.5 points in Word against 25.0 for its text and spacing.
+    for (r, cells) in rows.iter().enumerate() {
+        let top = cells.iter().filter_map(|c| c.borders[0]).map(|b| b.width).fold(0.0, f32::max);
+        let bottom = if r + 1 == rows.len() {
+            cells.iter().filter_map(|c| c.borders[3]).map(|b| b.width).fold(0.0, f32::max)
+        } else {
+            0.0
+        };
+        let (_, rule) = set_height(&table.rows[r]);
+        if rule.as_deref() != Some("exact") {
+            heights[r] += top + bottom;
+        }
     }
     // A merged cell taller than the rows it spans makes the last one taller.
     for r in 0..rows.len() {
@@ -327,6 +376,8 @@ fn set_height(row: &Row) -> (f32, Option<String>) {
 /// the part starts and ends, which for a split row is the cut, as Word draws it.
 fn draw_row(cells: &[CellPiece], height: f32) -> Chunk {
     let mut chunk = Chunk { height, ..Chunk::default() };
+    // The text starts under the border along the row's top, which the row's height includes.
+    let top_border = cells.iter().filter_map(|c| c.borders[0]).map(|b| b.width).fold(0.0, f32::max);
     let mut fills = Vec::new();
     let mut rules = Vec::new();
     let line = |x0: f32, y0: f32, x1: f32, y1: f32, b: Border| Item::Rule {
@@ -351,7 +402,7 @@ fn draw_row(cells: &[CellPiece], height: f32) -> Chunk {
                 "bottom" => free.max(0.0),
                 _ => 0.0,
             };
-            let mut y = cell.margins.2 + shift;
+            let mut y = cell.margins.2 + shift + top_border;
             for piece in &cell.lines {
                 let h = piece.height;
                 chunk.absorb(piece.clone(), cell.x + cell.margins.0, y);

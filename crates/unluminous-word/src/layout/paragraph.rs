@@ -1343,7 +1343,13 @@ fn place_line(
         }
         LineRule::Exact(exact) => (exact, exact - below.min(exact * 0.25)),
     };
-    let mut chunk = Chunk { height, ..Chunk::default() };
+    let slack = match look.line {
+        LineRule::Auto(multiple) if multiple > 1.0 && picture + below <= natural * multiple => {
+            height - natural
+        }
+        _ => 0.0,
+    };
+    let mut chunk = Chunk { height, slack, ..Chunk::default() };
     emit(ctx, looks, atoms, line, &xs, baseline, height, &mut chunk);
     if let (Some((look_index, _)), Some((x, w))) = (hyphen, xs.last()) {
         let look_of = &looks[look_index];

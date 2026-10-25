@@ -267,6 +267,10 @@ pub enum Anchor {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Chunk {
     pub height: f32,
+    /// The part of `height` below the letters that line spacing adds, which may hang into the bottom
+    /// margin when this is the last line on a page (task-2359, C4). Measured on headers.docx: Word puts
+    /// two lines of 1.16 spacing from 687 points on a page whose text ends at 720.
+    pub slack: f32,
     pub items: Vec<Item>,
     pub carets: Vec<CaretLine>,
     /// The footnotes this piece refers to, which go at the foot of the page it lands on.
@@ -553,6 +557,7 @@ fn flow_document(
 ) -> Vec<Page> {
     let document = ctx.document;
     let mut flow = Flow::new(document);
+    flow.separator = separator_height(ctx);
     flow.note_lines = measure_footnotes(ctx);
     flow.bands = measure_bands(ctx);
     let mut counters = Counters::default();
@@ -731,6 +736,8 @@ struct Flow<'a> {
     column_bottoms: Vec<f32>,
     /// A lower limit than the page's for where a column ends, while columns are being balanced.
     limit: Option<f32>,
+    /// How tall the footnote separator is: its paragraph's line in the footnotes part.
+    separator: f32,
     /// The space between paragraphs is the sum of after and before rather than the larger.
     sum_spacing: bool,
 }
@@ -768,6 +775,7 @@ impl<'a> Flow<'a> {
             in_columns: Vec::new(),
             column_bottoms: Vec::new(),
             limit: None,
+            separator: NOTE_SEPARATOR,
             sum_spacing: document
                 .settings
                 .as_ref()
@@ -868,7 +876,7 @@ impl<'a> Flow<'a> {
         // continuation separator (task-2359, C8).
         let carried = std::mem::take(&mut self.carry);
         for (index, (id, from)) in carried.into_iter().enumerate() {
-            let separator = if index == 0 { NOTE_SEPARATOR } else { 0.0 };
+            let separator = if index == 0 { self.separator } else { 0.0 };
             self.take_note_lines(id, from, separator, true);
         }
     }
@@ -1110,10 +1118,28 @@ impl<'a> Flow<'a> {
         if !self.at_top() && self.y + gap + height > self.bottom() + 0.01 {
             self.next_column();
         }
+        // A picture with top and bottom wrapping takes its paragraph to the next page, picture and all, when
+        // the lines widow control keeps together do not fit under it, as Word does: the wrapping fixture's
+        // picture 12 points below a paragraph at 604 points leaves room for one line on page 1, so the
+        // paragraph goes to page 2 and its text starts under the picture at 156.
+        let floats = prepared.floats();
+        // The text under the picture has to start with as many lines as widow control keeps together.
+        let first_lines = if rules.widow_control { 2.0 * height } else { height };
+        let blocks_the_page = floats.iter().any(|float| {
+            float.wrap == "topandbottom" && {
+                let page = self.pages.last().expect("a page");
+                let rect =
+                    float_rect(float, page, self.column_left(), self.y + gap, self.column_width());
+                rect.bottom() + float.distances.1 + first_lines > self.bottom() + 0.01
+            }
+        });
+        if blocks_the_page && !self.at_top() {
+            self.next_column();
+        }
         let gap = if self.at_top() && self.pages.len() > 1 { 0.0 } else { gap };
         self.y += gap;
         let top = self.y;
-        for float in prepared.floats() {
+        for float in floats {
             self.register_float(&float, top);
         }
         let mut index = 0;
@@ -1182,7 +1208,7 @@ impl<'a> Flow<'a> {
         if new.is_empty() {
             return (0.0, 0.0);
         }
-        let separator = if self.page_notes.is_empty() { NOTE_SEPARATOR } else { 0.0 };
+        let separator = if self.page_notes.is_empty() { self.separator } else { 0.0 };
         let lines = |id: &i64| self.note_lines.get(id).cloned().unwrap_or_else(|| vec![14.0]);
         let full = separator + new.iter().map(|id| lines(id).iter().sum::<f32>()).sum::<f32>();
         let least = separator
@@ -1217,8 +1243,9 @@ impl<'a> Flow<'a> {
     /// does, and the note continues on the next page.
     fn put(&mut self, mut chunk: Chunk) {
         let (full, least) = self.notes_for(&chunk);
-        if self.y + chunk.height + full > self.bottom() + 0.01 && !self.at_top() {
-            let continues = full > least && self.y + chunk.height + least <= self.bottom() + 0.01;
+        let needs = chunk.height - chunk.slack;
+        if self.y + needs + full > self.bottom() + 0.01 && !self.at_top() {
+            let continues = full > least && self.y + needs + least <= self.bottom() + 0.01;
             if !continues {
                 self.next_column();
             }
@@ -1234,7 +1261,7 @@ impl<'a> Flow<'a> {
         let new = self.new_notes(&chunk);
         self.y += chunk.height;
         for id in new {
-            let separator = if self.page_notes.is_empty() { NOTE_SEPARATOR } else { 0.0 };
+            let separator = if self.page_notes.is_empty() { self.separator } else { 0.0 };
             self.take_note_lines(id, 0, separator, false);
         }
         self.y -= chunk.height;
@@ -1288,14 +1315,16 @@ impl<'a> Flow<'a> {
     /// How much of a paragraph has to be on one page with what comes before it: its first line, its first
     /// two with widow control, or all of it when its lines are kept together.
     fn start_height(laid: &LaidParagraph) -> f32 {
-        let lines = if laid.keep_lines {
+        let lines = if laid.keep_lines || (laid.widow_control && laid.lines.len() < 4) {
             laid.lines.len()
         } else if laid.widow_control {
             2
         } else {
             1
         };
-        laid.lines.iter().take(lines).map(|l| l.height).sum()
+        // The last of those lines may hang its line spacing into the bottom margin.
+        laid.lines.iter().take(lines).map(|l| l.height).sum::<f32>()
+            - laid.lines.iter().take(lines).last().map_or(0.0, |l| l.slack)
     }
 
     /// Place a paragraph. One with keep with next waits for the block after it, so the two can be put on
@@ -1364,12 +1393,17 @@ impl<'a> Flow<'a> {
         // Space before a paragraph at the top of a page is dropped, except on the first page.
         let gap = if self.at_top() && self.pages.len() > 1 { 0.0 } else { gap };
         let count = laid.lines.len();
-        let first_lines: f32 =
-            laid.lines.iter().take(if laid.widow_control { 2 } else { 1 }).map(|l| l.height).sum();
-        let whole: f32 = laid.lines.iter().map(|l| l.height).sum();
+        let first_count = if laid.widow_control { 2 } else { 1 };
+        let first_lines: f32 = laid.lines.iter().take(first_count).map(|l| l.height).sum::<f32>()
+            - laid.lines.iter().take(first_count).last().map_or(0.0, |l| l.slack);
+        let whole: f32 = laid.lines.iter().map(|l| l.height).sum::<f32>()
+            - laid.lines.last().map_or(0.0, |l| l.slack);
         // Keep the whole paragraph together when asked, and at least its first two lines when widow
         // control is on, by starting it on the next column when they would not fit here.
-        let mut must_fit = if laid.keep_lines { whole } else { first_lines };
+        // With widow control a paragraph of three lines cannot be split at all, since each side of a
+        // break keeps two of its lines.
+        let mut must_fit =
+            if laid.keep_lines || (laid.widow_control && count < 4) { whole } else { first_lines };
         if let Some((0, together)) = keep {
             must_fit = must_fit.max(together);
         }
@@ -1396,8 +1430,8 @@ impl<'a> Flow<'a> {
             // Widow control: the last line is not left alone at the top of a page, so when the
             // second last line is the last one that fits, it moves with it.
             if laid.widow_control && count >= 3 && index == count - 2 {
-                let next_height = lines.peek().map_or(0.0, |(_, l)| l.height);
-                if self.y + line.height <= self.bottom() + 0.01
+                let next_height = lines.peek().map_or(0.0, |(_, l)| l.height - l.slack);
+                if self.y + line.height - line.slack <= self.bottom() + 0.01
                     && self.y + line.height + next_height > self.bottom() + 0.01
                 {
                     self.next_column();
@@ -1726,6 +1760,25 @@ fn decorate_pages(
     ctx.page = None;
 }
 
+/// How tall the footnote separator is: the paragraph that holds it in the footnotes part, laid out as
+/// any paragraph is. Word's separator paragraph is a line of the Normal font at single spacing with no
+/// space after it, 15 points for Aptos 12, and the footnotes start under it; measured on
+/// long-footnote.docx, whose ten note lines then leave too little room for two more body lines.
+fn separator_height(ctx: &Ctx) -> f32 {
+    let Some(part) = &ctx.document.footnotes else { return NOTE_SEPARATOR };
+    let Some(note) = part.notes.iter().find(|n| n.el.attr("w:type") == Some("separator")) else {
+        return NOTE_SEPARATOR;
+    };
+    let pieces =
+        lay_out_story(ctx, &mut Counters::default(), &note.blocks, &StoryId::Footnote(-1), 468.0);
+    let height: f32 = pieces.iter().map(|p| p.height).sum();
+    if height > 0.0 {
+        height
+    } else {
+        NOTE_SEPARATOR
+    }
+}
+
 /// The footnotes the flow put on a page, at its foot: the lines of each that are on this page, under the
 /// separator, or under the continuation separator, the whole width of the text, when the first note
 /// began on an earlier page.
@@ -1736,7 +1789,7 @@ fn lay_out_footnotes(page: &mut Page, ctx: &Ctx, geometry: &Geometry) {
     }
     let mut counters = Counters::default();
     let mut chunks = Vec::new();
-    let mut separator = Chunk { height: NOTE_SEPARATOR, ..Chunk::default() };
+    let mut separator = Chunk { height: separator_height(ctx), ..Chunk::default() };
     let length = if page.notes[0].continued { geometry.text_width() } else { 144.0 };
     separator.items.push(Item::Rule {
         x0: 0.0,
