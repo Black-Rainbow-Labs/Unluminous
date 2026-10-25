@@ -42,6 +42,7 @@ pub mod numfmt;
 pub mod ods;
 pub mod outline;
 pub mod pages;
+pub mod pivot;
 pub mod refshift;
 pub mod styles;
 pub mod value;

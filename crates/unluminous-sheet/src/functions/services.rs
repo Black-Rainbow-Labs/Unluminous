@@ -60,15 +60,8 @@ pub const ADD_IN: &[Function] = &[
     ),
 ];
 
-/// The functions that look something up outside the workbook or inside a pivot table.
+/// The functions that look something up outside the workbook or .
 pub const LOOKUP: &[Function] = &[
-    offline(
-        "GETPIVOTDATA",
-        2,
-        255,
-        "data_field, pivot_table, [field1, item1], ...",
-        "Needs Excel's service: reads a pivot table.",
-    ),
     offline(
         "IMAGE",
         1,
@@ -169,7 +162,6 @@ mod tests {
             "CUBEVALUE",
             "DETECTLANGUAGE",
             "EUROCONVERT",
-            "GETPIVOTDATA",
             "IMAGE",
             "PY",
             "REGISTER.ID",
