@@ -333,8 +333,13 @@ fn the_right_click_menu_offers_what_is_under_the_pointer() {
 /// **A picture is selected, resized by a corner handle and wrapped from its menu.**
 #[test]
 fn a_picture_is_resized_by_its_handle_and_wrapped_from_its_menu() {
-    let (folder, mut harness) = a_word_window("unluminous-word-picture", "blank.docx");
+    // The picture is written before the window opens, so the folder pane lists it in every run rather
+    // than whenever the folder watch next looks.
+    let folder = a_word_folder("unluminous-word-picture", &["blank.docx"]);
     write_sample_picture(&folder.join("picture.png"));
+    let mut harness = harness_in(&folder);
+    did(&mut harness, "tab open blank.docx");
+    steady(&mut harness);
     type_text(&mut harness, "Before after");
     did(&mut harness, "plugins run word select 1 7");
     did(
