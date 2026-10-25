@@ -12,6 +12,11 @@ use crate::coord::{CellRef, Range};
 use crate::model::{Chart, ChartSeries, KeptSheet};
 use crate::xlsx::chart_drawing::{CT_CHART_SHEET, REL_CHART_SHEET};
 
+/// A change to a fill colour: `None` leaves it, `Some(None)` removes it.
+pub type FillChange = Option<Option<(u8, u8, u8)>>;
+/// A change to a line: its sRGB colour and width in points.
+pub type LineChange = Option<Option<((u8, u8, u8), f64)>>;
+
 /// Which axis of a chart an option is for. A scatter or bubble chart's category axis is its X axis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AxisSelector {
@@ -83,9 +88,9 @@ pub struct GroupOptions {
 #[derive(Debug, Clone, Default)]
 pub struct SeriesOptions {
     /// An sRGB fill colour; `Some(None)` removes the fill.
-    pub fill: Option<Option<(u8, u8, u8)>>,
+    pub fill: FillChange,
     /// An sRGB line colour and its width in points; `Some(None)` removes the line.
-    pub line: Option<Option<((u8, u8, u8), f64)>>,
+    pub line: LineChange,
     pub marker_symbol: Option<String>,
     pub marker_size: Option<u32>,
     pub smooth: Option<bool>,
@@ -102,6 +107,65 @@ pub struct SeriesSource {
     pub sizes: Option<Option<String>>,
 }
 
+/// A part of a chart the Format pane can format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChartElement {
+    ChartArea,
+    PlotArea,
+    Title,
+    Legend,
+    Axis(AxisSelector),
+    AxisTitle(AxisSelector),
+    /// The data labels of a series, or of every series.
+    DataLabels(Option<usize>),
+}
+
+/// Fill, border and text of an element: `None` leaves a setting alone and a nested `None` removes it.
+#[derive(Debug, Clone, Default)]
+pub struct ElementFormat {
+    pub fill: FillChange,
+    pub line: LineChange,
+    pub font_color: Option<(u8, u8, u8)>,
+    pub font_size: Option<f64>,
+    pub bold: Option<bool>,
+    pub italic: Option<bool>,
+}
+
+/// A `txPr` with the text settings given, over the ones the old one had.
+fn merge_tx_pr(old: &Option<String>, f: &ElementFormat) -> Option<String> {
+    let old_text = old.as_deref().unwrap_or("");
+    let attr = |name: &str| -> Option<String> {
+        let at = old_text.find("<a:defRPr")?;
+        let rest = &old_text[at..old_text[at..].find('>').map_or(old_text.len(), |e| at + e)];
+        let key = format!(" {name}=\"");
+        let from = rest.find(&key)? + key.len();
+        Some(rest[from..rest[from..].find('"')? + from].to_owned())
+    };
+    let size = f.font_size.map(|s| ((s * 100.0).round() as i64).to_string()).or_else(|| attr("sz"));
+    let bold = f.bold.map(|b| u8::from(b).to_string()).or_else(|| attr("b"));
+    let italic = f.italic.map(|b| u8::from(b).to_string()).or_else(|| attr("i"));
+    let mut attrs = String::new();
+    for (name, value) in [("sz", size), ("b", bold), ("i", italic)] {
+        if let Some(v) = value {
+            attrs.push_str(&format!(" {name}=\"{v}\""));
+        }
+    }
+    let colour = match f.font_color {
+        Some(c) => srgb_fill(Some(c)),
+        None => old_text
+            .find("<a:solidFill>")
+            .and_then(|a| old_text[a..].find("</a:solidFill>").map(|e| old_text[a..a + e + 14].to_owned()))
+            .unwrap_or_default(),
+    };
+    Some(format!(
+        "<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr{attrs}>{colour}</a:defRPr></a:pPr><a:endParaRPr lang=\"en-US\"/></a:p></c:txPr>"
+    ))
+}
+
+fn wants_text(f: &ElementFormat) -> bool {
+    f.font_color.is_some() || f.font_size.is_some() || f.bold.is_some() || f.italic.is_some()
+}
+
 /// How big and where a new chart is, in cells.
 const NEW_ROWS: u32 = 15;
 const NEW_COLUMNS: u32 = 8;
@@ -114,7 +178,10 @@ fn srgb_fill(color: Option<(u8, u8, u8)>) -> String {
 }
 
 /// An `spPr` with the fill and line it was given, over what it had.
-fn merge_sp_pr(old: &Option<String>, fill: Option<Option<(u8, u8, u8)>>, line: Option<Option<((u8, u8, u8), f64)>>) -> Option<String> {
+fn merge_sp_pr(old: &Option<String>, fill: FillChange, line: LineChange) -> Option<String> {
+    if fill.is_none() && line.is_none() {
+        return old.clone();
+    }
     let kept = |tag: &str| -> Option<String> {
         let xml = old.as_deref()?;
         let open = xml.find(&format!("<{tag}"))?;
@@ -221,6 +288,9 @@ impl Session {
     ) -> Result<usize, String> {
         self.check_sheet(sheet)?;
         self.allowed(sheet, Guard::Forbidden)?;
+        if ty == ChartType::Map {
+            return Err("A map chart looks its regions up on Bing Maps, which a chart made here cannot do.".to_owned());
+        }
         let shape = chartdata::shape_of(&self.book, sheet, range);
         let xy = matches!(
             ty,
@@ -692,6 +762,73 @@ impl Session {
         })
     }
 
+    /// Format an element of the chart: fill, border and text (the Format pane).
+    pub fn set_element_format(&mut self, sheet: usize, index: usize, element: ChartElement, format: ElementFormat) -> Result<(), String> {
+        self.change_chart("Format chart element", sheet, index, |chart| {
+            let text = wants_text(&format);
+            match element {
+                ChartElement::ChartArea => {
+                    let raw = &mut chart.spec.raw;
+                    raw.sp_pr = merge_sp_pr(&raw.sp_pr, format.fill, format.line);
+                    if text {
+                        raw.tx_pr = merge_tx_pr(&raw.tx_pr, &format);
+                    }
+                }
+                ChartElement::PlotArea => {
+                    let raw = &mut chart.spec.raw;
+                    raw.plot_sp_pr = merge_sp_pr(&raw.plot_sp_pr, format.fill, format.line);
+                }
+                ChartElement::Title => {
+                    let t = &mut chart.spec.title;
+                    t.sp_pr = merge_sp_pr(&t.sp_pr, format.fill, format.line);
+                    if text {
+                        t.tx_pr = merge_tx_pr(&t.tx_pr, &format);
+                    }
+                }
+                ChartElement::Legend => {
+                    let l = chart.spec.legend.as_mut().ok_or("The chart has no legend.")?;
+                    l.sp_pr = merge_sp_pr(&l.sp_pr, format.fill, format.line);
+                    if text {
+                        l.tx_pr = merge_tx_pr(&l.tx_pr, &format);
+                    }
+                }
+                ChartElement::Axis(which) | ChartElement::AxisTitle(which) => {
+                    let id = axis_id(chart, which).ok_or("The chart has no such axis.")?;
+                    let a = chart.spec.axis_mut(id).ok_or("The chart has no such axis.")?;
+                    if matches!(element, ChartElement::AxisTitle(_)) {
+                        let t = a.title.as_mut().ok_or("The axis has no title.")?;
+                        t.format.sp_pr = merge_sp_pr(&t.format.sp_pr, format.fill, format.line);
+                        if text {
+                            t.format.tx_pr = merge_tx_pr(&t.format.tx_pr, &format);
+                        }
+                    } else {
+                        if format.fill.is_some() || format.line.is_some() {
+                            a.sp_pr = merge_sp_pr(&a.sp_pr, format.fill, format.line);
+                        }
+                        if text {
+                            a.tx_pr = merge_tx_pr(&a.tx_pr, &format);
+                        }
+                    }
+                }
+                ChartElement::DataLabels(series) => {
+                    let range: Vec<usize> = match series {
+                        Some(s) if s < chart.series.len() => vec![s],
+                        Some(_) => return Err("There is no such series.".to_owned()),
+                        None => (0..chart.series.len()).collect(),
+                    };
+                    for i in range {
+                        let l = chart.series[i].fmt.labels.as_mut().ok_or("The series has no data labels.")?;
+                        l.fields.sp_pr = merge_sp_pr(&l.fields.sp_pr, format.fill, format.line);
+                        if text {
+                            l.fields.tx_pr = merge_tx_pr(&l.fields.tx_pr, &format);
+                        }
+                    }
+                }
+            }
+            Ok(())
+        })
+    }
+
     /// Hide a series from the chart without removing it (`Chart Filters`).
     pub fn filter_series(&mut self, sheet: usize, index: usize, series: usize, hidden: bool) -> Result<(), String> {
         self.change_chart("Chart filters", sheet, index, |chart| {
@@ -732,10 +869,8 @@ impl Session {
 
 /// Where the legend goes by default for a type: Excel's is on the right, and at the bottom for
 /// charts made with several series on the Office 2013 styles.
-fn legend_default(ty: ChartType) -> LegendPosition {
-    match ty {
-        _ => LegendPosition::Bottom,
-    }
+fn legend_default(_ty: ChartType) -> LegendPosition {
+    LegendPosition::Bottom
 }
 
 /// Give a chart made with only a coarse kind the groups and axes of that kind.
@@ -778,22 +913,55 @@ fn use_date_axis(chart: &mut Chart) {
     }
 }
 
-/// The default data labels Excel gives a type: the value, outside the end for pies.
+/// Types whose data labels have no position setting: Excel gives them none.
+fn labels_have_no_position(ty: ChartType) -> bool {
+    use ChartType as T;
+    ty.is_extended()
+        || matches!(
+            ty,
+            T::Doughnut
+                | T::DoughnutExploded
+                | T::ColumnStacked
+                | T::ColumnStacked100
+                | T::BarStacked
+                | T::BarStacked100
+                | T::AreaStacked
+                | T::AreaStacked100
+                | T::Area
+                | T::Radar
+                | T::RadarMarkers
+                | T::RadarFilled
+                | T::Column3DClustered
+                | T::Column3DStacked
+                | T::Column3DStacked100
+                | T::Column3D
+                | T::Bar3DClustered
+                | T::Bar3DStacked
+                | T::Bar3DStacked100
+                | T::Line3D
+                | T::Area3D
+                | T::Area3DStacked
+                | T::Area3DStacked100
+                | T::Pie3D
+                | T::Pie3DExploded
+        )
+}
+
+/// The default data labels Excel gives a type: the value, outside the end for columns and bars.
 fn default_labels(ty: ChartType) -> DataLabels {
-    let pie = matches!(ty, ChartType::Pie | ChartType::PieExploded | ChartType::Pie3D | ChartType::Pie3DExploded | ChartType::Doughnut | ChartType::DoughnutExploded | ChartType::PieOfPie | ChartType::BarOfPie);
+    use ChartType as T;
+    let pie = matches!(ty, T::Pie | T::PieExploded | T::PieOfPie | T::BarOfPie);
+    let position = if labels_have_no_position(ty) {
+        None
+    } else if matches!(ty, T::ColumnClustered | T::BarClustered) {
+        Some(LabelPosition::OutsideEnd)
+    } else if pie {
+        Some(LabelPosition::BestFit)
+    } else {
+        Some(LabelPosition::Above)
+    };
     DataLabels {
-        fields: LabelFields {
-            show_value: true,
-            position: (!matches!(ty, ChartType::Doughnut | ChartType::DoughnutExploded | ChartType::ColumnStacked | ChartType::ColumnStacked100 | ChartType::BarStacked | ChartType::BarStacked100 | ChartType::AreaStacked | ChartType::AreaStacked100 | ChartType::Area | ChartType::Radar | ChartType::RadarMarkers | ChartType::RadarFilled)
-                && !ty.is_extended()
-                && !matches!(ty, ChartType::Column3DClustered | ChartType::Column3DStacked | ChartType::Column3DStacked100 | ChartType::Column3D | ChartType::Bar3DClustered | ChartType::Bar3DStacked | ChartType::Bar3DStacked100 | ChartType::Line3D | ChartType::Area3D | ChartType::Area3DStacked | ChartType::Area3DStacked100 | ChartType::Pie3D | ChartType::Pie3DExploded))
-            .then(|| match ty {
-                ChartType::ColumnClustered | ChartType::BarClustered => LabelPosition::OutsideEnd,
-                _ if pie => LabelPosition::BestFit,
-                _ => LabelPosition::Above,
-            }),
-            ..LabelFields::default()
-        },
+        fields: LabelFields { show_value: true, position, ..LabelFields::default() },
         show_leader_lines: pie.then_some(true),
         ..DataLabels::default()
     }

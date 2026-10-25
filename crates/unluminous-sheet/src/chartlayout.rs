@@ -199,9 +199,8 @@ fn set_title(chart: &mut Chart, layout: &Layout) {
 fn set_axes(chart: &mut Chart, layout: &Layout) {
     let Some(group) = chart.spec.groups.first() else { return };
     let ids = group.axes.clone();
-    let scatter = matches!(group.kind, GroupKind::Scatter | GroupKind::Bubble);
     for (position, id) in ids.iter().take(2).enumerate() {
-        let is_value = position == 1 || (scatter && position == 0 && false);
+        let is_value = position == 1;
         let Some(axis) = chart.spec.axis_mut(*id) else { continue };
         let (shown, titled, major, minor) = if is_value {
             (layout.value_axis, layout.value_title, layout.value_major, layout.value_minor)

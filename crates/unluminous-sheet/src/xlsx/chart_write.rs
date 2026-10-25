@@ -589,9 +589,47 @@ fn series_xml(s: &ChartSeries, kind: GroupKind, ids: (u32, u32), tag: &str, is_t
             out.push_str(&bool_val("smooth", sm));
         }
     }
-    out.push_str(opt(&f.ext));
+    out.push_str(&series_ext(s));
     out.push_str(&format!("</{tag}>"));
     out
+}
+
+/// The cell of the category at a position, for a categories formula that is one row or column.
+fn category_cell(categories: &str, position: u32) -> Option<String> {
+    let (sheet, area) = categories.rsplit_once('!').map_or(("", categories), |(s, a)| (s, a));
+    let range = crate::coord::Range::parse(&area.replace('$', ""))?;
+    let at = if range.rows() > 1 {
+        crate::coord::CellRef::new(range.first.row + position, range.first.col)
+    } else {
+        crate::coord::CellRef::new(range.first.row, range.first.col + position)
+    };
+    if !range.contains(at) {
+        return None;
+    }
+    let cell = format!("${}${}", crate::coord::column_name(at.col), at.row + 1);
+    Some(if sheet.is_empty() { cell } else { format!("{sheet}!{cell}") })
+}
+
+/// A series' extension list: what it had, and the categories filtered out of it.
+fn series_ext(s: &ChartSeries) -> String {
+    let f = &s.fmt;
+    let cells: Vec<String> = s
+        .categories
+        .as_deref()
+        .map(|c| f.filtered_categories.iter().filter_map(|p| category_cell(c, *p)).collect())
+        .unwrap_or_default();
+    if cells.is_empty() {
+        return opt(&f.ext).to_owned();
+    }
+    let mut filter = format!("<c:ext uri=\"{{02D57815-91ED-43cb-92C2-25804820EDAC}}\" xmlns:c15=\"{C15_NS}\"><c15:categoryFilterExceptions>");
+    for cell in cells {
+        filter.push_str(&format!("<c15:categoryFilterException><c15:sqref>{}</c15:sqref><c15:invertIfNegative val=\"0\"/><c15:bubble3D val=\"0\"/></c15:categoryFilterException>", escape(&cell)));
+    }
+    filter.push_str("</c15:categoryFilterExceptions></c:ext>");
+    match &f.ext {
+        Some(list) => list.replacen("</c:extLst>", &format!("{filter}</c:extLst>"), 1),
+        None => format!("<c:extLst>{filter}</c:extLst>"),
+    }
 }
 
 fn marker_xml(m: &Marker) -> String {
@@ -914,8 +952,7 @@ mod tests {
     use crate::xlsx::chart_read::parse;
 
     fn column_chart() -> Chart {
-        let mut chart = Chart::default();
-        chart.title = Some("Sales & costs".to_owned());
+        let mut chart = Chart { title: Some("Sales & costs".to_owned()), ..Chart::default() };
         chart.series.push(ChartSeries::new(
             Some("S!$B$1".to_owned()),
             Some("S!$A$2:$A$4".to_owned()),

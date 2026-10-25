@@ -356,9 +356,11 @@ fn read_series(xml: &str, ser: Node, kind: GroupKind) -> ChartSeries {
         bubble_3d: flag(ser, "bubble3D"),
         shape: val(ser, "shape").map(str::to_owned),
         picture_options: raw_child(xml, ser, "pictureOptions"),
-        ext: raw_child(xml, ser, "extLst"),
         ..SeriesFormat::default()
     };
+    let (ext, hidden_cells) = split_category_filter(xml, ser);
+    fmt.ext = ext;
+    fmt.filtered_categories = hidden_cells.iter().filter_map(|c| category_position(categories.as_deref(), c)).collect();
     fmt.points = children(ser, "dPt").map(|p| read_point(xml, p)).collect();
     fmt.trendlines = children(ser, "trendline").map(|t| read_trendline(xml, t)).collect();
     fmt.error_bars = children(ser, "errBars").map(|e| read_error_bars(xml, e, scatter)).collect();
@@ -370,6 +372,41 @@ fn read_series(xml: &str, ser: Node, kind: GroupKind) -> ChartSeries {
         group: 0,
         fmt,
     }
+}
+
+/// A series' extension list without the categories Excel filtered out of it, and the cells of those.
+///
+/// Excel keeps the filtered categories of a series as `c15:categoryFilterException` elements, each naming
+/// the cell of one category; they are written again from the model.
+fn split_category_filter(xml: &str, ser: Node) -> (Option<String>, Vec<String>) {
+    let Some(list) = child(ser, "extLst") else { return (None, Vec::new()) };
+    let mut kept = String::new();
+    let mut cells = Vec::new();
+    for ext in children(list, "ext") {
+        let holder = ext.children().find(|c| c.is_element() && c.tag_name().name() == "categoryFilterExceptions");
+        match holder {
+            Some(h) => cells.extend(
+                h.children()
+                    .filter(|c| c.is_element())
+                    .filter_map(|e| e.children().find(|c| c.is_element() && c.tag_name().name() == "sqref"))
+                    .filter_map(|n| n.text().map(str::to_owned)),
+            ),
+            None => kept.push_str(raw(xml, ext)),
+        }
+    }
+    ((!kept.is_empty()).then(|| format!("<c:extLst>{kept}</c:extLst>")), cells)
+}
+
+/// Where a cell falls in a categories formula that is one row or one column: its position from the start.
+fn category_position(categories: Option<&str>, cell: &str) -> Option<u32> {
+    let categories = categories?;
+    let area = categories.rsplit_once('!').map_or(categories, |(_, a)| a).replace('$', "");
+    let range = crate::coord::Range::parse(&area)?;
+    let at = crate::coord::CellRef::parse(cell.rsplit_once('!').map_or(cell, |(_, c)| c))?;
+    if !range.contains(at) {
+        return None;
+    }
+    Some(if range.rows() > 1 { at.row - range.first.row } else { at.col - range.first.col })
 }
 
 fn read_marker(xml: &str, m: Node) -> Marker {

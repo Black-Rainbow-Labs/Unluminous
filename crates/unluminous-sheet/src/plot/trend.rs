@@ -80,7 +80,7 @@ pub fn evaluate(kind: TrendKind, c: &[f64], x: f64) -> f64 {
 }
 
 fn moving_average(points: &[(f64, f64)], period: usize, name: String) -> Option<TrendResult> {
-    if period < 2 || points.len() <= period - 1 {
+    if period < 2 || points.len() < period {
         return None;
     }
     let samples = (period - 1..points.len())

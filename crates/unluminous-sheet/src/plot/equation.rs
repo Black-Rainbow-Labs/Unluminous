@@ -66,7 +66,7 @@ pub fn text(kind: TrendKind, c: &[f64], _intercept: Option<f64>) -> String {
 }
 
 fn caret(v: f64) -> String {
-    format!("{}", superscript_number(v))
+    superscript_number(v)
 }
 
 fn superscript_number(v: f64) -> String {
