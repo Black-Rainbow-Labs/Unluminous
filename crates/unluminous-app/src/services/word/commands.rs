@@ -252,14 +252,39 @@ pub fn run(word: &mut Word, command: &str, arguments: &[String]) -> Result<Answe
             return Ok(Answer::said(format!("Opened {}", path.display())));
         }
         "new" => {
-            let path = arguments.first().map(PathBuf::from);
-            let key = word.new_document(path.as_deref())?;
+            // new [path] [--template <file>]
+            let template = arguments.iter().position(|a| a == "--template").and_then(|i| arguments.get(i + 1)).map(PathBuf::from);
+            let path = arguments
+                .iter()
+                .enumerate()
+                .find(|(i, a)| !a.starts_with("--") && (*i == 0 || arguments[i - 1] != "--template"))
+                .map(|(_, a)| PathBuf::from(a));
+            let key = word.new_from(path.as_deref(), template.as_deref())?;
             let label = word.doc(&key)?.label();
             word.outbox.push(Request::OpenKeyedTab { key: key.clone(), label: label.clone() });
             return Ok(Answer::said(format!("New document {label}")).with(json!({ "key": key })));
         }
+        // The Word menu's Open as Document: a file dialog, then the file opened as a document.
+        "open-as-document" if arguments.is_empty() => {
+            let chosen = rfd::FileDialog::new()
+                .set_title("Open as Document")
+                .set_directory(word.project.clone().unwrap_or_default())
+                .add_filter("Documents", &["docx", "dotx", "docm", "dotm", "doc", "rtf", "odt", "wps", "pdf", "txt", "md", "html", "htm"])
+                .pick_file()
+                .ok_or("Nothing was opened")?;
+            let words = vec!["--as-document".to_owned(), chosen.display().to_string()];
+            return run(word, "open", &words);
+        }
+        "open-as-document" => {
+            let mut words = vec!["--as-document".to_owned()];
+            words.extend(arguments.iter().cloned());
+            return run(word, "open", &words);
+        }
         "open" => {
-            let path = PathBuf::from(rest(arguments, 0));
+            // open [--as-document] <path>: a .txt, .md, .html or .pdf opens as a Word document with the flag.
+            let as_document = flag(arguments, "--as-document");
+            let words: Vec<String> = arguments.iter().filter(|a| *a != "--as-document").cloned().collect();
+            let path = PathBuf::from(rest(&words, 0));
             let path = match (path.is_relative(), &word.project) {
                 (true, Some(project)) => project.join(path),
                 _ => path,
@@ -267,16 +292,25 @@ pub fn run(word: &mut Word, command: &str, arguments: &[String]) -> Result<Answe
             if !path.is_file() {
                 return Err(format!("{} is not a file", path.display()));
             }
+            if as_document {
+                let key = super::tab_key(&path);
+                word.load(&key, &path)?;
+                let label = super::files::name_of(&path);
+                word.outbox.push(Request::OpenKeyedTab { key: key.clone(), label });
+                return Ok(Answer::said(format!("Opening {} as a document", path.display())).with(json!({ "key": key })));
+            }
             word.outbox.push(Request::OpenFile(path.clone()));
             return Ok(Answer::said(format!("Opening {}", path.display()))
                 .with(json!({ "key": super::tab_key(&path) })));
         }
         "docs" => {
-            let docs: Vec<serde_json::Value> = word
+            let mut docs: Vec<serde_json::Value> = word
                 .docs
                 .iter()
-                .map(|d| json!({ "key": d.key, "path": d.path, "modified": d.modified(), "pages": d.pages.pages.len(), "current": word.current.as_deref() == Some(d.key.as_str()) }))
+                .map(|d| json!({ "key": d.key, "path": d.path, "convertedFrom": d.converted_from, "encrypted": d.password.is_some(), "modified": d.modified(), "pages": d.pages.pages.len(), "current": word.current.as_deref() == Some(d.key.as_str()) }))
                 .collect();
+            // A tab still waiting for Word, or for a password, is listed with what it is waiting for.
+            docs.extend(word.waiting.iter().map(|(key, waiting)| json!({ "key": key, "waiting": waiting.sentence() })));
             return Ok(Answer::said(format!("{} documents open", docs.len())).with(json!(docs)));
         }
         "use" => {
@@ -312,6 +346,30 @@ pub fn run(word: &mut Word, command: &str, arguments: &[String]) -> Result<Answe
             );
         }
         "autocorrect" => return autocorrect(word, arguments),
+        "password" => {
+            let password = rest(arguments, 0);
+            let key = word
+                .current
+                .clone()
+                .filter(|k| word.waiting.iter().any(|(w, _)| w == k))
+                .or_else(|| word.waiting.first().map(|(k, _)| k.clone()))
+                .ok_or("no document is waiting for a password")?;
+            word.give_password(&key, &password)?;
+            return Ok(Answer::said(format!("Opened {}", word.doc(&key)?.label())));
+        }
+        "autosave" | "autorecover" => {
+            let value = on(arguments.first());
+            let slot = if command == "autosave" { &mut word.config.autosave } else { &mut word.config.autorecover };
+            if let Some(value) = value {
+                *slot = value;
+                if let Some(folder) = &word.folder {
+                    word.config.write(folder)?;
+                }
+            }
+            let now = if command == "autosave" { word.config.autosave } else { word.config.autorecover };
+            let name = if command == "autosave" { "AutoSave" } else { "AutoRecover" };
+            return Ok(Answer::said(format!("{name} is {}", if now { "on" } else { "off" })).with(json!({ "on": now })));
+        }
         "link" if arguments.first().map(String::as_str) == Some("open") => {
             let doc = word.current_doc()?;
             let at = doc.session.selection.head.clone();
@@ -943,30 +1001,27 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
             let said = export_with(doc, kind, to.as_deref(), how)?;
             Ok(Answer::said(said))
         }
-        "properties" => {
-            let names = [
-                ("title", "dc:title"),
-                ("subject", "dc:subject"),
-                ("author", "dc:creator"),
-                ("keywords", "cp:keywords"),
-                ("description", "dc:description"),
-            ];
-            if let (Some(name), true) = (arguments.first(), arguments.len() > 1) {
-                let el = names.iter().find(|(n, _)| n == name).map(|(_, el)| *el).ok_or_else(|| format!("{name} is not a property: title, subject, author, keywords or description"))?;
-                let value = rest(arguments, 1);
-                unluminous_word::new::set_property(&mut session.document, el, &value);
-                session.revision += 1;
-                session.modified = true;
-                return Ok(Answer::said(format!("{name} is {value}")));
-            }
-            let values: serde_json::Map<String, serde_json::Value> = names
-                .iter()
-                .map(|(n, el)| {
-                    (n.to_string(), json!(unluminous_word::new::property(&session.document, el)))
-                })
-                .collect();
-            Ok(Answer::said("Properties").with(serde_json::Value::Object(values)))
+        "properties" => properties(doc, arguments),
+        "unlock" => {
+            session.unlock_for_editing(&rest(arguments, 0))?;
+            Ok(Answer::said("The document can be changed"))
         }
+        "protect" => protect(doc, arguments),
+        "recover" => match arguments.first().map(String::as_str) {
+            Some("restore") => {
+                doc.restore_recovery()?;
+                Ok(Answer::said("Restored the recovered copy; save it to keep it"))
+            }
+            Some("discard") => {
+                doc.discard_recovery();
+                Ok(Answer::said("Kept the file and threw the recovered copy away"))
+            }
+            _ => Ok(Answer::said(match &doc.timing.offer {
+                Some((_, when)) => format!("A recovered copy from {when} is offered: recover restore or recover discard"),
+                None => "There is no recovered copy".into(),
+            })
+            .with(json!({ "offered": doc.timing.offer.is_some() }))),
+        },
         "view" => {
             match arguments.first().map(String::as_str) {
                 Some("zoom") => {
@@ -1567,6 +1622,151 @@ fn table(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
         op => session.table_op(op)?,
     }
     Ok(Answer::said(format!("table {what}")))
+}
+
+/// `properties [<name> <value>]`, `properties statistics` and `properties custom [<name> <kind> <value> | remove
+/// <name>]`: Word's Properties dialog, its Summary, Statistics and Custom tabs.
+fn properties(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
+    use unluminous_word::properties as extra;
+    let core = [
+        ("title", "dc:title"),
+        ("subject", "dc:subject"),
+        ("author", "dc:creator"),
+        ("keywords", "cp:keywords"),
+        ("comments", "dc:description"),
+        ("description", "dc:description"),
+        ("category", "cp:category"),
+        ("status", "cp:contentStatus"),
+    ];
+    let app = [("manager", "Manager"), ("company", "Company")];
+    match arguments.first().map(String::as_str) {
+        Some("statistics") => {
+            doc.ensure_pages();
+            let document = &doc.session.document;
+            let text = unluminous_word::export::to_text(document);
+            let words = text.split_whitespace().count();
+            let characters = text.chars().filter(|c| *c != '\n' && *c != '\r').count();
+            let spaces = text.chars().filter(|c| *c == ' ').count();
+            let paragraphs = unluminous_word::position::paragraphs(&document.body)
+                .iter()
+                .filter(|(_, p)| !p.flat_text().trim().is_empty())
+                .count();
+            let lines: usize = doc.pages.pages.iter().map(|p| p.carets.iter().filter(|l| l.story == StoryId::Body).count()).sum();
+            let property = |name: &str| unluminous_word::new::property(document, name);
+            let value = json!({
+                "created": property("dcterms:created"),
+                "modified": property("dcterms:modified"),
+                "printed": property("cp:lastPrinted"),
+                "lastSavedBy": property("cp:lastModifiedBy"),
+                "revision": property("cp:revision"),
+                "editingMinutes": extra::extended(document, "TotalTime"),
+                "pages": doc.pages.pages.len(),
+                "words": words,
+                "characters": characters - spaces,
+                "charactersWithSpaces": characters,
+                "lines": lines,
+                "paragraphs": paragraphs,
+            });
+            Ok(Answer::said(format!("{} pages, {words} words", doc.pages.pages.len())).with(value))
+        }
+        Some("custom") => {
+            let document = &mut doc.session.document;
+            match (arguments.get(1).map(String::as_str), arguments.get(2)) {
+                (Some("remove"), Some(name)) => {
+                    extra::remove_custom(document, name)?;
+                    doc.session.revision += 1;
+                    doc.session.modified = true;
+                    Ok(Answer::said(format!("Removed {name}")))
+                }
+                (Some(name), Some(kind)) => {
+                    // A kind of two words, `yes or no`, is written yes-or-no or as the two words quoted.
+                    let kind = kind.replace('-', " ");
+                    let value = rest(arguments, 3);
+                    extra::set_custom(document, name, &kind, &value)?;
+                    doc.session.revision += 1;
+                    doc.session.modified = true;
+                    Ok(Answer::said(format!("{name} is {value}")))
+                }
+                _ => {
+                    let list: Vec<serde_json::Value> = extra::custom(document)
+                        .into_iter()
+                        .map(|c| json!({ "name": c.name, "kind": c.kind, "value": c.value }))
+                        .collect();
+                    Ok(Answer::said(format!("{} custom properties", list.len())).with(json!(list)))
+                }
+            }
+        }
+        Some(name) if arguments.len() > 1 => {
+            let value = rest(arguments, 1);
+            let document = &mut doc.session.document;
+            if let Some((_, el)) = core.iter().find(|(n, _)| *n == name) {
+                unluminous_word::new::set_property(document, el, &value);
+            } else if let Some((_, el)) = app.iter().find(|(n, _)| *n == name) {
+                extra::set_extended(document, el, &value);
+            } else {
+                return Err(format!("{name} is not a property: title, subject, author, manager, company, category, keywords, comments or status"));
+            }
+            doc.session.revision += 1;
+            doc.session.modified = true;
+            Ok(Answer::said(format!("{name} is {value}")))
+        }
+        _ => {
+            let document = &doc.session.document;
+            let mut values: serde_json::Map<String, serde_json::Value> = core
+                .iter()
+                .filter(|(n, _)| *n != "description")
+                .map(|(n, el)| (n.to_string(), json!(unluminous_word::new::property(document, el))))
+                .collect();
+            for (name, el) in app {
+                values.insert(name.to_owned(), json!(extra::extended(document, el)));
+            }
+            values.insert("description".into(), values["comments"].clone());
+            Ok(Answer::said("Properties").with(serde_json::Value::Object(values)))
+        }
+    }
+}
+
+/// `protect`: what protects the document; `protect password <password>|none` encrypts it when saved,
+/// `protect modify <password>|none` sets Password to Modify, `protect restrict <readOnly|comments|
+/// trackedChanges|forms> <password>` is Restrict Editing, and `protect stop <password>` ends it.
+fn protect(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
+    let session = &mut doc.session;
+    match arguments.first().map(String::as_str) {
+        Some("password") => {
+            let password = rest(arguments, 1);
+            let off = password.is_empty() || password == "none";
+            doc.password = (!off).then_some(password);
+            session.revision += 1;
+            session.modified = true;
+            Ok(Answer::said(if off { "The document is not encrypted when it is saved" } else { "The document is encrypted with the password when it is saved" }))
+        }
+        Some("modify") => {
+            let password = rest(arguments, 1);
+            let password = if password == "none" { String::new() } else { password };
+            session.set_password_to_modify(&password);
+            Ok(Answer::said(if password.is_empty() { "Password to Modify is off" } else { "Opening the document to change it needs the password" }))
+        }
+        Some("restrict") => {
+            let kind = arguments.get(1).ok_or("protect restrict takes readOnly, comments, trackedChanges or forms, and a password")?;
+            session.restrict_editing(kind, &rest(arguments, 2))?;
+            Ok(Answer::said(format!("Restrict Editing allows {kind}")))
+        }
+        Some("stop") => {
+            session.stop_protection(&rest(arguments, 1))?;
+            Ok(Answer::said("Restrict Editing is off"))
+        }
+        Some(other) => Err(format!("protect takes password, modify, restrict or stop, not {other}")),
+        None => {
+            let modify = session.document.settings.as_ref().is_some_and(|s| s.root.child("w:writeProtection").is_some());
+            let value = json!({
+                "encrypted": doc.password.is_some(),
+                "passwordToModify": modify,
+                "readOnly": session.read_only,
+                "restrict": session.protection,
+            });
+            Ok(Answer::said("Protection").with(value))
+        }
+    }
 }
 
 /// The height of each row of the caret's table as the layout drew it, for Distribute Rows.

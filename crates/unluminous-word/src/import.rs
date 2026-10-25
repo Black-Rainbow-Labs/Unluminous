@@ -189,10 +189,25 @@ pub fn markdown_to_html(text: &str) -> String {
     out
 }
 
+/// A file that is not a Word document opened as one, by its extension: `txt` as text, `md` and
+/// `markdown` as Markdown, `html` and `htm` as HTML (Open as Document).
+pub fn document_from(extension: &str, text: &str) -> Document {
+    let mut document = crate::new::blank();
+    let paragraphs = match extension.to_ascii_lowercase().as_str() {
+        "md" | "markdown" => from_markdown(&mut document, text),
+        "html" | "htm" => from_html(&mut document, text),
+        _ => from_text(text),
+    };
+    fill(document, paragraphs)
+}
+
 /// A new document holding these paragraphs, its styles brought from the built in template as the
 /// paragraphs name them.
 pub fn document_of(paragraphs: Vec<Paragraph>) -> Document {
-    let mut document = crate::new::blank();
+    fill(crate::new::blank(), paragraphs)
+}
+
+fn fill(mut document: Document, paragraphs: Vec<Paragraph>) -> Document {
     let mut styles: Vec<String> = Vec::new();
     for paragraph in &paragraphs {
         if let Some(id) = paragraph.props.val_of("w:pStyle") {

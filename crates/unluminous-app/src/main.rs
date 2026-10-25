@@ -435,6 +435,8 @@ fn main() -> eframe::Result {
             app.allow_the_microphone();
             // And hand a Word document's PDF to the system's print dialog, which a test's window never does.
             unluminous_app::services::word::print::allow_printing();
+            // And start a new Word document from Word's own Normal.dotm and the locale's page size.
+            unluminous_app::services::word::files::allow_the_office_template();
             // And read the ACP registry when the AI Configuration page is shown, which a test's window does not.
             app.endpoints.acp.read_when_shown();
             // The Background grid's thumbnails for every picture already there, on a thread, so the grid opens

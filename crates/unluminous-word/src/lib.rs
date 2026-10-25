@@ -14,6 +14,7 @@
 pub mod autocorrect;
 pub mod builtin;
 pub mod clipboard;
+pub mod convert;
 pub mod crypto;
 pub mod edit;
 pub mod export;
@@ -35,6 +36,7 @@ pub mod order;
 pub mod package;
 pub mod pdf;
 pub mod position;
+pub mod properties;
 pub mod props;
 pub mod read;
 pub mod references;

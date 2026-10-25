@@ -8,6 +8,7 @@
 
 pub mod actions;
 pub mod commands;
+pub mod files;
 pub mod fonts;
 pub mod print;
 pub mod spelling;
@@ -44,6 +45,11 @@ pub struct Config {
     pub chords: Vec<(String, String)>,
     /// `paper = theme` draws the page in the theme's colours; `light`, the default, as white paper.
     pub dark_paper: bool,
+    /// AutoSave: save a document that has a file a few seconds after its last change. Off by default.
+    pub autosave: bool,
+    /// AutoRecover: write a copy of a changed document every ten minutes, offered after a crash. On by
+    /// default.
+    pub autorecover: bool,
 }
 
 impl Default for Config {
@@ -56,6 +62,8 @@ impl Default for Config {
             autocorrect: Default::default(),
             chords: Vec::new(),
             dark_paper: false,
+            autosave: false,
+            autorecover: true,
         }
     }
 }
@@ -82,6 +90,8 @@ impl Config {
                 "marks" => config.marks = value == "true",
                 "spelling" => config.spelling = value != "false",
                 "paper" => config.dark_paper = value == "theme",
+                "autosave" => config.autosave = value == "true",
+                "autorecover" => config.autorecover = value != "false",
                 // The rules switched off, by name.
                 "autocorrect.off" => {
                     for name in value.split(',').map(str::trim) {
@@ -109,13 +119,15 @@ impl Config {
             .filter(|name| self.autocorrect.get(name) == Some(false))
             .collect();
         let text = format!(
-            "# The Word plugin's settings. The author is the name on comments and tracked changes.\nauthor = {}\nzoom = {}\nmarks = {}\nspelling = {}\nautocorrect.off = {}\npaper = {}\n",
+            "# The Word plugin's settings. The author is the name on comments and tracked changes.\nauthor = {}\nzoom = {}\nmarks = {}\nspelling = {}\nautocorrect.off = {}\npaper = {}\nautosave = {}\nautorecover = {}\n",
             self.author,
             self.zoom,
             self.marks,
             self.spelling,
             off.join(", "),
-            if self.dark_paper { "theme" } else { "light" }
+            if self.dark_paper { "theme" } else { "light" },
+            self.autosave,
+            self.autorecover
         );
         let mut text = text;
         for (action, chord) in &self.chords {
@@ -651,6 +663,14 @@ pub struct Doc {
     pub laid_reading: Option<(i32, i32)>,
     /// The paragraphs the last layout laid out, which a keystroke's layout takes again.
     pub layout_cache: std::cell::RefCell<layout::LayoutCache>,
+    /// The file this document was opened from when it is not a `.docx` (a `.doc`, `.rtf`, `.txt` or `.md`
+    /// opened as a document): Save then asks for a `.docx` name. `path` is `None` for such a document.
+    pub converted_from: Option<PathBuf>,
+    /// The password an encrypted document was opened with, or Encrypt with Password set: saving encrypts
+    /// with it.
+    pub password: Option<String>,
+    /// When it last changed and was last copied, for AutoSave and AutoRecover.
+    pub timing: files::Timing,
 }
 
 impl std::fmt::Debug for Doc {
@@ -664,6 +684,28 @@ impl std::fmt::Debug for Doc {
 }
 
 impl Doc {
+    /// A document just opened or made, with nothing laid out yet.
+    fn new(key: String, path: Option<PathBuf>, session: Session, config: &Config, saved: u64) -> Doc {
+        Doc {
+            key,
+            path,
+            session,
+            pages: Pages::default(),
+            laid: 0,
+            windows: Vec::new(),
+            laid_reading: None,
+            layout_cache: Default::default(),
+            view: View::new(config),
+            saved,
+            formatted_text: None,
+            drawn: 0,
+            keyboard: (false, false),
+            converted_from: None,
+            password: None,
+            timing: Default::default(),
+        }
+    }
+
     /// Lay the document out again if it changed since it was last laid out.
     pub fn lay_out(&mut self, renderer: &crate::services::text_renderer::TextRenderer) {
         let reading = (self.view.mode == Mode::Read).then_some(self.view.read_size).flatten();
@@ -708,20 +750,27 @@ impl Doc {
 
     /// The name shown on the tab.
     pub fn label(&self) -> String {
-        match &self.path {
-            Some(path) => path
-                .file_name()
-                .map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned()),
+        match self.path.as_ref().or(self.converted_from.as_ref()) {
+            Some(path) => files::name_of(path),
             None => self.key.trim_start_matches("word:").to_owned(),
         }
     }
 
-    /// Write the document to its file, or to `to`.
+    /// Write the document to its file, or to `to`. A `.docx`, `.dotx`, `.docm` or `.dotm` becomes the
+    /// document's file; `.rtf` and `.odt` (through Word) and `.txt`, `.html`, `.md` and `.pdf` are copies,
+    /// and the document keeps the file it had.
     pub fn save(&mut self, to: Option<&Path>) -> Result<PathBuf, String> {
         let path = to
             .map(Path::to_path_buf)
             .or_else(|| self.path.clone())
-            .ok_or("this document has never been saved, so it needs a name: use Save As")?;
+            .ok_or_else(|| match &self.converted_from {
+                Some(from) => format!("{} was opened from another format, so it needs a .docx name: use Save As", files::name_of(from)),
+                None => "this document has never been saved, so it needs a name: use Save As".to_owned(),
+            })?;
+        let kind = path.extension().and_then(|e| e.to_str()).unwrap_or("docx").to_ascii_lowercase();
+        if !matches!(kind.as_str(), "docx" | "dotx" | "docm" | "dotm") {
+            return self.save_a_copy(&path, &kind);
+        }
         let author = self.session.author.clone();
         unluminous_word::new::set_property(
             &mut self.session.document,
@@ -740,14 +789,38 @@ impl Doc {
         let extension =
             path.extension().and_then(|e| e.to_str()).unwrap_or("docx").to_ascii_lowercase();
         unluminous_word::write::prepare_for(&mut self.session.document, &extension);
-        let bytes = unluminous_word::write::save(&self.session.document)?;
+        let mut bytes = unluminous_word::write::save(&self.session.document)?;
+        if let Some(password) = self.password.as_deref().filter(|p| !p.is_empty()) {
+            bytes = unluminous_word::crypto::encrypt(&bytes, password)?;
+        }
         crate::services::store::write_atomically(&path, &bytes)
             .map_err(|e| format!("{} could not be written: {e}", path.display()))?;
         self.path = Some(path.clone());
+        self.converted_from = None;
         self.session.file = Some(path.clone());
         self.saved = self.session.revision;
         self.session.modified = false;
         Ok(path)
+    }
+
+    /// Save As a format that is not Word's own: `.rtf` and `.odt` through Word, `.txt`, `.html`, `.md` and
+    /// `.pdf` by Unluminous. The document keeps its own file and stays modified if it was.
+    fn save_a_copy(&mut self, path: &Path, kind: &str) -> Result<PathBuf, String> {
+        if unluminous_word::convert::saved_through_word(kind) {
+            let mut document = self.session.document.clone();
+            unluminous_word::write::prepare_for(&mut document, "docx");
+            let bytes = unluminous_word::write::save(&document)?;
+            files::save_through_word(&bytes, path, kind)?;
+            return Ok(path.to_path_buf());
+        }
+        match kind {
+            "txt" | "html" | "htm" | "md" | "pdf" => {
+                let kind = if kind == "htm" { "html" } else { kind };
+                commands::export_with(self, kind, Some(path), commands::PdfHow { tagged: true, outline: true, pdfa: false })?;
+                Ok(path.to_path_buf())
+            }
+            other => Err(format!(".{other} is not a format a Word document is saved as: use .docx, .dotx, .docm, .dotm, .rtf, .odt, .pdf, .html, .md or .txt")),
+        }
     }
 }
 
@@ -757,6 +830,12 @@ pub const SAVE_KINDS: &[(&str, &[&str])] = &[
     ("Word template", &["dotx"]),
     ("Word macro-enabled document", &["docm"]),
     ("Word macro-enabled template", &["dotm"]),
+    ("PDF", &["pdf"]),
+    ("Rich Text Format (needs Word)", &["rtf"]),
+    ("OpenDocument Text (needs Word)", &["odt"]),
+    ("Web page", &["html"]),
+    ("Markdown", &["md"]),
+    ("Plain text", &["txt"]),
 ];
 
 /// The provider.
@@ -775,6 +854,10 @@ pub struct Word {
     untitled: u32,
     /// The Settings page's author field while it is being typed in.
     pub author_field: Option<String>,
+    /// Tabs whose document is not ready: a conversion, a password, a failure.
+    pub waiting: Vec<(String, files::Waiting)>,
+    /// The password field of a tab waiting for one.
+    pub password_field: String,
 }
 
 impl Word {
@@ -787,11 +870,91 @@ impl Word {
         if let Some(index) = self.docs.iter().position(|doc| doc.key == key) {
             return Ok(&mut self.docs[index]);
         }
-        let path = PathBuf::from(
-            key.strip_prefix("word:").ok_or_else(|| format!("{key} is not a Word tab"))?,
-        );
-        self.load(key, &path)?;
-        Ok(self.docs.last_mut().expect("just loaded"))
+        if !self.waiting.iter().any(|(k, _)| k == key) {
+            let path = PathBuf::from(
+                key.strip_prefix("word:").ok_or_else(|| format!("{key} is not a Word tab"))?,
+            );
+            self.load(key, &path)?;
+        }
+        self.finish_waiting(key);
+        if let Some((_, waiting)) = self.waiting.iter().find(|(k, _)| k == key) {
+            return Err(waiting.sentence());
+        }
+        self.docs.iter_mut().find(|doc| doc.key == key).ok_or_else(|| format!("{key} is not open"))
+    }
+
+    /// A conversion that has finished becomes its document.
+    fn finish_waiting(&mut self, key: &str) {
+        let Some(index) = self.waiting.iter().position(|(k, _)| k == key) else { return };
+        let files::Waiting::Converting { path, answer } = &self.waiting[index].1 else { return };
+        let path = path.clone();
+        let result = match answer.try_recv() {
+            Ok(result) => result,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => Err("Word stopped before it finished".into()),
+        };
+        self.waiting.remove(index);
+        let opened = result.and_then(|bytes| unluminous_word::read::open(&bytes));
+        match opened {
+            Ok(document) => {
+                self.push_doc(key, document, None, Some(path));
+                self.outbox.push(Request::Message(format!("Word converted {}. Save asks for a .docx name.", files::name_of(self.docs.last().and_then(|d| d.converted_from.as_deref()).unwrap_or(Path::new(""))))));
+            }
+            Err(problem) => self.waiting.push((key.to_owned(), files::Waiting::Failed { path, problem })),
+        }
+    }
+
+    /// Give an encrypted document waiting under `key` its password.
+    pub fn give_password(&mut self, key: &str, password: &str) -> Result<(), String> {
+        let index = self
+            .waiting
+            .iter()
+            .position(|(k, w)| k == key && matches!(w, files::Waiting::Password { .. }))
+            .ok_or("no document is waiting for a password")?;
+        let files::Waiting::Password { path, bytes, problem } = &mut self.waiting[index].1 else { unreachable!() };
+        let opened = unluminous_word::crypto::decrypt(bytes, password).and_then(|b| unluminous_word::read::open(&b));
+        match opened {
+            Ok(document) => {
+                let path = path.clone();
+                self.waiting.remove(index);
+                self.push_doc(key, document, Some(path), None);
+                if let Some(doc) = self.docs.last_mut() {
+                    doc.password = Some(password.to_owned());
+                }
+                self.password_field.clear();
+                Ok(())
+            }
+            Err(_) => {
+                *problem = Some("that password is not right".into());
+                Err("that password is not right".into())
+            }
+        }
+    }
+
+    /// Add a document read or converted under `key`: `path` is the file it saves to, `converted_from` the
+    /// file it came from when that is not a Word document.
+    fn push_doc(&mut self, key: &str, mut document: unluminous_word::model::Document, path: Option<PathBuf>, converted_from: Option<PathBuf>) {
+        // A template opens as a new document made from it, which is what double clicking one does.
+        let template = path
+            .as_ref()
+            .and_then(|p| p.extension())
+            .is_some_and(|e| e.eq_ignore_ascii_case("dotx") || e.eq_ignore_ascii_case("dotm"));
+        if template {
+            unluminous_word::new::set_property(&mut document, "dc:creator", "");
+        }
+        let path = if template { None } else { path };
+        let mut session = Session::new(document);
+        session.author = self.config.author.clone();
+        session.file = path.clone();
+        session.autocorrect_rules = self.config.autocorrect.clone();
+        let mut doc = Doc::new(key.to_owned(), path, session, &self.config, 1);
+        doc.converted_from = converted_from;
+        if let Some(folder) = &self.folder {
+            doc.timing.offer = files::recovery_for(folder, key, doc.path.as_deref())
+                .map(|(copy, at)| (copy, files::when(at)));
+        }
+        self.docs.push(doc);
+        self.current = Some(key.to_owned());
     }
 
     /// Read a document from disk into a new `Doc`.
@@ -799,41 +962,69 @@ impl Word {
         if self.docs.iter().any(|doc| doc.key == key) {
             return Ok(());
         }
+        self.waiting.retain(|(k, _)| k != key);
+        let extension = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
+        // A .doc, .rtf, .odt, .wps or .pdf is converted by Word, on a thread.
+        if unluminous_word::convert::opened_through_word(&extension) {
+            self.waiting.push((key.to_owned(), files::start_converting(path)));
+            self.current = Some(key.to_owned());
+            return Ok(());
+        }
         let bytes = std::fs::read(path)
             .map_err(|e| format!("{} could not be read: {e}", path.display()))?;
-        let mut document =
-            unluminous_word::read::open(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
-        // A template opens as a new document made from it, which is what double clicking one does.
-        let template = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("dotx"));
-        if template {
-            unluminous_word::new::set_property(&mut document, "dc:creator", "");
+        // Text, Markdown and HTML open as a document made from them.
+        if matches!(extension.as_str(), "txt" | "md" | "markdown" | "html" | "htm") {
+            let text = String::from_utf8_lossy(&bytes);
+            let document = unluminous_word::import::document_from(&extension, &text);
+            self.push_doc(key, document, None, Some(path.to_path_buf()));
+            return Ok(());
         }
-        let mut session = Session::new(document);
-        session.author = self.config.author.clone();
-        session.file = (!template).then(|| path.to_path_buf());
-        session.autocorrect_rules = self.config.autocorrect.clone();
-        self.docs.push(Doc {
-            key: key.to_owned(),
-            path: (!template).then(|| path.to_path_buf()),
-            session,
-            pages: Pages::default(),
-            laid: 0,
-            windows: Vec::new(),
-            laid_reading: None,
-            layout_cache: Default::default(),
-            view: View::new(&self.config),
-            saved: 1,
-            formatted_text: None,
-            drawn: 0,
-            keyboard: (false, false),
-        });
-        self.current = Some(key.to_owned());
+        if unluminous_word::crypto::is_encrypted(&bytes) {
+            self.waiting.push((
+                key.to_owned(),
+                files::Waiting::Password { path: path.to_path_buf(), bytes, problem: None },
+            ));
+            self.current = Some(key.to_owned());
+            return Ok(());
+        }
+        let document =
+            unluminous_word::read::open(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+        self.push_doc(key, document, Some(path.to_path_buf()), None);
         Ok(())
     }
 
     /// A new, empty document, untitled until it is saved, or at `path` when one is given.
     pub fn new_document(&mut self, path: Option<&Path>) -> Result<String, String> {
-        let mut session = Session::new(unluminous_word::new::blank());
+        self.new_from(path, None)
+    }
+
+    /// A new document made from `template` (a `.dotx` or `.dotm`), or from Word's `Normal.dotm` when
+    /// there is one and no template is named, or the shipped blank with the locale's page size.
+    pub fn new_from(&mut self, path: Option<&Path>, template: Option<&Path>) -> Result<String, String> {
+        let normal = files::office_template();
+        let from = template.map(Path::to_path_buf).or(normal);
+        let document = match &from {
+            Some(template) => {
+                let bytes = std::fs::read(template).map_err(|e| format!("{} could not be read: {e}", template.display()))?;
+                let mut document = unluminous_word::read::open(&bytes).map_err(|e| format!("{}: {e}", template.display()))?;
+                // The new document is a document, not the template, and keeps no macros.
+                unluminous_word::write::prepare_for(&mut document, "docx");
+                for name in ["dc:title", "dc:subject", "cp:keywords", "dc:description", "cp:lastModifiedBy"] {
+                    if unluminous_word::new::property(&document, name).is_some() {
+                        unluminous_word::new::set_property(&mut document, name, "");
+                    }
+                }
+                document
+            }
+            None => unluminous_word::new::blank(),
+        };
+        let mut session = Session::new(document);
+        if from.is_none() {
+            if let Some(locale) = files::machine_locale() {
+                let _ = session.set_page_size(files::locale_page_size(&locale));
+                session.modified = false;
+            }
+        }
         session.author = self.config.author.clone();
         session.autocorrect_rules = self.config.autocorrect.clone();
         unluminous_word::new::set_property(
@@ -853,21 +1044,7 @@ impl Word {
                 format!("word:Untitled {}", self.untitled)
             }
         };
-        let mut doc = Doc {
-            key: key.clone(),
-            path: path.map(Path::to_path_buf),
-            session,
-            pages: Pages::default(),
-            laid: 0,
-            windows: Vec::new(),
-            laid_reading: None,
-            layout_cache: Default::default(),
-            view: View::new(&self.config),
-            saved: 0,
-            formatted_text: None,
-            drawn: 0,
-            keyboard: (false, false),
-        };
+        let mut doc = Doc::new(key.clone(), path.map(Path::to_path_buf), session, &self.config, 0);
         if path.is_some() {
             doc.save(None)?;
         }
@@ -968,16 +1145,7 @@ impl UiProvider for Word {
                 }
                 requests
             }
-            Err(problem) => {
-                ui.painter().text(
-                    ui.max_rect().min + egui::vec2(24.0, 24.0),
-                    egui::Align2::LEFT_TOP,
-                    problem,
-                    egui::FontId::proportional(look.font_size),
-                    look.palette.text_dim,
-                );
-                Vec::new()
-            }
+            Err(problem) => self.draw_waiting(base, &problem, ui, look),
         }
     }
 
@@ -1010,12 +1178,17 @@ impl UiProvider for Word {
 
     fn save(&mut self, key: &str) -> Result<String, String> {
         let (key, _) = split_window_key(key);
-        // A document with no file yet asks where to go.
+        // A document with no file yet asks where to go; one converted from another format offers its own
+        // name as a .docx.
         if self.doc(key)?.path.is_none() {
-            let start = self.project.clone();
+            let converted = self.doc(key)?.converted_from.clone();
+            let start = converted.as_ref().and_then(|p| p.parent().map(Path::to_path_buf)).or_else(|| self.project.clone());
             let mut dialog = rfd::FileDialog::new()
                 .set_title("Save Word Document")
                 .set_directory(start.unwrap_or_default());
+            if let Some(name) = converted.as_ref().and_then(|p| p.file_stem()) {
+                dialog = dialog.set_file_name(format!("{}.docx", name.to_string_lossy()));
+            }
             for (name, extensions) in SAVE_KINDS {
                 dialog = dialog.add_filter(*name, extensions);
             }
@@ -1026,6 +1199,9 @@ impl UiProvider for Word {
             return self.save_as(key, &chosen);
         }
         let saved = self.doc(key)?.save(None)?;
+        if let Some(folder) = &self.folder {
+            files::forget_recovery(folder, key);
+        }
         Ok(format!("Saved {}", saved.display()))
     }
 
@@ -1046,6 +1222,11 @@ impl UiProvider for Word {
             return;
         }
         self.docs.retain(|doc| doc.key != key);
+        self.waiting.retain(|(k, _)| k != key);
+        // A document closed on purpose leaves no copy to recover.
+        if let Some(folder) = &self.folder {
+            files::forget_recovery(folder, key);
+        }
         if self.current.as_deref() == Some(key) {
             self.current = self.docs.last().map(|d| d.key.clone());
         }
@@ -1073,6 +1254,11 @@ impl UiProvider for Word {
 
     fn asking(&mut self) -> Vec<Request> {
         std::mem::take(&mut self.outbox)
+    }
+
+    /// AutoSave, AutoRecover and conversions finishing, once a frame.
+    fn catch_up(&mut self) -> bool {
+        self.keep_the_files(std::time::Instant::now())
     }
 
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {

@@ -5,6 +5,7 @@
 //! open the panel; everything else is a level of the panel, a name in the `Ctrl+/` search, or a `/` at the
 //! start of an empty paragraph.
 
+pub mod banner;
 pub mod context_menu;
 pub mod format_bar;
 pub mod keys;
@@ -45,7 +46,10 @@ pub fn show(doc: &mut Doc, config: &Config, ui: &mut egui::Ui, look: &Look<'_>) 
         if doc.view.navigation { (NAVIGATION * scale).min(area.width() * 0.3) } else { 0.0 };
     let status_height = views::STATUS * scale;
     let status = Rect::from_min_max(egui::pos2(area.left(), area.bottom() - status_height), area.max);
-    let body = Rect::from_min_max(egui::pos2(area.left(), bar.bottom()), egui::pos2(area.right(), status.top()));
+    // A document opened read only, or with a recovered copy to offer, has a strip under the bar.
+    let banner_height = if banner::wanted(doc) { banner::HEIGHT * scale } else { 0.0 };
+    let banner = Rect::from_min_size(egui::pos2(area.left(), bar.bottom()), Vec2::new(area.width(), banner_height));
+    let body = Rect::from_min_max(egui::pos2(area.left(), banner.bottom()), egui::pos2(area.right(), status.top()));
     let ruler_height =
         if doc.view.ruler && doc.view.mode == crate::services::word::Mode::Print { views::RULER * scale } else { 0.0 };
     let ruler = Rect::from_min_max(
@@ -77,6 +81,10 @@ pub fn show(doc: &mut Doc, config: &Config, ui: &mut egui::Ui, look: &Look<'_>) 
             _ => keys::handle(ui, doc, &mut requests),
         }
     }
+    // An edit the document's protection refused says why.
+    if let Some(refused) = doc.session.refused.take() {
+        requests.push(Request::Notice { text: refused, kind: crate::components::toast::Kind::Problem });
+    }
     doc.lay_out(look.renderer);
     match doc.view.mode {
         crate::services::word::Mode::Outline => outline::show(ui, look, doc, pages, &mut requests),
@@ -103,6 +111,9 @@ pub fn show(doc: &mut Doc, config: &Config, ui: &mut egui::Ui, look: &Look<'_>) 
         overlays::show(ui, look, doc, pages, &mut requests);
     }
     format_bar::show(ui, look, doc, bar, &mut requests);
+    if banner_height > 0.0 {
+        banner::show(ui, look, doc, banner, &mut requests);
+    }
     requests
 }
 

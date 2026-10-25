@@ -218,6 +218,9 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_SystemInformation",
     # `RegGetValueW`, the Windows version a reported issue names. See `services/issue_report.rs`.
     "Win32_System_Registry",
+    # `GetUserDefaultLocaleName`, which decides whether a new Word document is Letter or A4. See
+    # `services/word/files.rs`.
+    "Win32_Globalization",
     # `CryptProtectData`, which encrypts the browser's session cookies for the current user the way
     # Chromium encrypts its own. See `services/browser_session.rs`.
     "Win32_Security_Cryptography",
