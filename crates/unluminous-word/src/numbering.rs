@@ -122,6 +122,8 @@ pub struct Label {
     pub align: crate::props::Align,
     /// The level's own run properties, applied over the paragraph mark's for the label.
     pub rpr: Option<El>,
+    /// `w:lvlPicBulletId`: the picture bullet (`w:numPicBullet`) drawn instead of the text.
+    pub picture: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -217,6 +219,7 @@ impl Counters {
             },
             align: lvl.val_of("w:lvlJc").map(crate::props::Align::parse).unwrap_or_default(),
             rpr: lvl.child("w:rPr").cloned(),
+            picture: lvl.val_of("w:lvlPicBulletId").map(str::to_owned),
         })
     }
 }
@@ -235,6 +238,21 @@ pub fn format_number(value: i64, format: &str) -> String {
         "cardinalText" => capitalise(&cardinal_text(value)),
         "ordinalText" => capitalise(&ordinal_text(value)),
         "decimalEnclosedParen" => format!("({value})"),
+        // ① to ⑳, then plain numbers, as Word draws past twenty.
+        "decimalEnclosedCircle" if (1..=20).contains(&value) => {
+            char::from_u32(0x2460 + value as u32 - 1)
+                .map_or_else(|| value.to_string(), String::from)
+        }
+        "decimalEnclosedFullstop" if (1..=20).contains(&value) => {
+            char::from_u32(0x2488 + value as u32 - 1)
+                .map_or_else(|| value.to_string(), String::from)
+        }
+        "decimalFullWidth" => value
+            .to_string()
+            .chars()
+            .map(|c| char::from_u32(c as u32 - '0' as u32 + 0xFF10).unwrap_or(c))
+            .collect(),
+        "hex" => format!("{value:X}"),
         _ => value.to_string(),
     }
 }

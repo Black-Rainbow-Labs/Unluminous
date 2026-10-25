@@ -176,18 +176,37 @@ pub fn prepare(
             }
             let mut run = ctx.resolver.run(&paragraph.props, &label_rpr, table_style);
             run.underline = Underline::None;
+            let size = run.drawn_size();
             looks.push(make_look(ctx, run, false, false));
             let index = looks.len() - 1;
-            let width = measure(ctx, &looks[index], &label.text, false);
-            atoms.push(Atom {
-                start: 0,
-                end: 0,
-                kind: Kind::Label(label.text.clone()),
-                width,
-                look: index,
-                small: false,
-                opportunity: false,
-            });
+            // A picture bullet is drawn at the height of the text, in place of the label's characters.
+            let bullet = label
+                .picture
+                .as_deref()
+                .and_then(|id| super::drawing::picture_bullet(ctx, id, size));
+            match bullet {
+                Some(picture) => atoms.push(Atom {
+                    start: 0,
+                    end: 0,
+                    width: picture.width,
+                    kind: Kind::Picture(Box::new(picture)),
+                    look: index,
+                    small: false,
+                    opportunity: false,
+                }),
+                None => {
+                    let width = measure(ctx, &looks[index], &label.text, false);
+                    atoms.push(Atom {
+                        start: 0,
+                        end: 0,
+                        kind: Kind::Label(label.text.clone()),
+                        width,
+                        look: index,
+                        small: false,
+                        opportunity: false,
+                    });
+                }
+            }
             match label.suffix {
                 Suffix::Tab => atoms.push(Atom {
                     start: 0,

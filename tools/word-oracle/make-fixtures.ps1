@@ -487,10 +487,10 @@ $fixtures['long'] = {
 $fixtures['builtin-styles'] = {
     param($word, $doc)
     # One paragraph per built in paragraph style, so Word writes each definition into styles.xml.
-    $names = @('Normal', 'Title', 'Subtitle') + (1..9 | ForEach-Object { "Heading $_" }) + @('Quote', 'Intense Quote', 'No Spacing', 'List Paragraph', 'Caption', 'TOC Heading', 'TOC 1', 'TOC 2', 'TOC 3', 'Footnote Text', 'Endnote Text', 'Header', 'Footer')
+    $names = @('Normal', 'Title', 'Subtitle') + (1..9 | ForEach-Object { "Heading $_" }) + @('Quote', 'Intense Quote', 'No Spacing', 'List Paragraph', 'Caption', 'TOC Heading') + (1..9 | ForEach-Object { "TOC $_" }) + @('Footnote Text', 'Endnote Text', 'Header', 'Footer', 'List Bullet', 'List Bullet 2', 'List Bullet 3', 'List Number', 'List Number 2', 'List Number 3', 'List', 'List Continue', 'Table of Figures', 'HTML Preformatted', 'Block Text', 'Body Text', 'Plain Text', 'Bibliography', 'Index 1', 'Envelope Address', 'Signature', 'Salutation', 'Closing', 'Date')
     foreach ($n in $names) { Add-Para $doc "$n paragraph" $n | Out-Null }
     # Character styles applied to a word in their own paragraphs.
-    foreach ($n in 'Strong', 'Emphasis', 'Intense Emphasis', 'Subtle Emphasis', 'Hyperlink', 'Footnote Reference') {
+    foreach ($n in 'Strong', 'Emphasis', 'Intense Emphasis', 'Subtle Emphasis', 'Hyperlink', 'Footnote Reference', 'Endnote Reference', 'Placeholder Text', 'Book Title', 'Subtle Reference', 'Intense Reference', 'FollowedHyperlink', 'HTML Code', 'Page Number', 'Line Number') {
         $p = Add-Para $doc "Sample $n text"
         $doc.Range($p.Range.Start + 7, $p.Range.Start + 7 + $n.Length).Style = $n
     }
@@ -498,6 +498,14 @@ $fixtures['builtin-styles'] = {
     $t = Add-Table $doc 2 2
     $t.Style = 'Table Grid'
     for ($r = 1; $r -le 2; $r++) { for ($c = 1; $c -le 2; $c++) { $t.Cell($r, $c).Range.Text = "G${r}${c}" } }
+    # Word's plain, grid and list table styles, so a table style can be applied from the built in set
+    # (task-2359, TDD 5.4). Each in a small table of its own, which is what makes Word write it.
+    foreach ($n in 'Table Grid Light', 'Plain Table 1', 'Plain Table 2', 'Plain Table 3', 'Plain Table 4', 'Plain Table 5', 'Grid Table 1 Light', 'Grid Table 2', 'Grid Table 4', 'Grid Table 4 - Accent 1', 'Grid Table 5 Dark', 'List Table 1 Light', 'List Table 2', 'List Table 3', 'List Table 4 - Accent 1') {
+        Add-Para $doc "$n style:" | Out-Null
+        $t = Add-Table $doc 2 2
+        try { $t.Style = $n } catch { Write-Host "   no table style $n" }
+        for ($r = 1; $r -le 2; $r++) { for ($c = 1; $c -le 2; $c++) { $t.Cell($r, $c).Range.Text = "$r$c" } }
+    }
 }
 
 $fixtures['blank'] = {

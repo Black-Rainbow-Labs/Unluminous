@@ -137,10 +137,7 @@ fn fields(doc: &mut Doc, arguments: &[String]) -> Result<Answer, String> {
                 .iter()
                 .map(|(n, code, result)| format!("{n}: {code} = {result}"))
                 .collect::<Vec<_>>()
-                .join(
-                    "
-",
-                );
+                .join("\n");
             Ok(Answer::said(said).with(json!(list
                 .iter()
                 .map(|(n, code, result)| json!({ "paragraph": n, "code": code, "result": result }))
@@ -579,9 +576,48 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
                 Some("restart") => {
                     session.restart_list(arguments.get(1).and_then(|n| n.parse().ok()).unwrap_or(1))
                 }
+                Some("continue") => session.continue_numbering()?,
+                Some("value") => session.set_numbering_value(
+                    arguments.get(1).and_then(|n| n.parse().ok()).ok_or("list value takes a number")?,
+                )?,
+                Some("bullet-symbol" | "symbol") => {
+                    let symbol = arguments
+                        .get(1)
+                        .and_then(|s| s.chars().next())
+                        .ok_or("list symbol takes the character to use")?;
+                    session.define_bullet(symbol, arguments.get(2).map(String::as_str))?
+                }
+                Some("format") => session.define_number_format(
+                    arguments.get(1).ok_or("list format takes a number format, such as upperRoman")?,
+                    arguments.get(2).map_or("", String::as_str),
+                    arguments.get(3).map_or(".", String::as_str),
+                )?,
+                Some("indents") => session.set_list_indents(
+                    points(arguments.get(1))?,
+                    arguments.get(2).and_then(|h| h.parse().ok()).unwrap_or(18.0),
+                )?,
+                Some("define") => {
+                    // Each word after `define` is one level, `format:text`, such as decimal:%1.
+                    let levels: Vec<unluminous_word::lists::LevelDefinition> = arguments[1..]
+                        .iter()
+                        .enumerate()
+                        .map(|(i, spec)| {
+                            let (format, text) = spec.split_once(':').unwrap_or((spec.as_str(), "%1."));
+                            unluminous_word::lists::LevelDefinition {
+                                format: format.to_owned(),
+                                text: text.to_owned(),
+                                start: 1,
+                                indent: 36.0 * (i as f32 + 1.0),
+                                hanging: 18.0,
+                                font: None,
+                            }
+                        })
+                        .collect();
+                    session.define_multilevel(&levels)?
+                }
                 other => {
                     return Err(format!(
-                        "list takes bullet, number, deeper, shallower or restart, not {other:?}"
+                        "list takes bullet, number, deeper, shallower, restart, continue, value, symbol, format, indents or define, not {other:?}"
                     ))
                 }
             }
@@ -681,6 +717,19 @@ fn document_command(doc: &mut Doc, command: &str, arguments: &[String]) -> Resul
             Ok(Answer::said(format!("Cross reference to paragraph {n} added")))
         }
         "link" => link(doc, arguments),
+        "thesaurus" | "synonyms" => {
+            let word = match arguments.first() {
+                Some(word) => word.clone(),
+                None => doc.session.selected_text(),
+            };
+            let meanings: Vec<serde_json::Value> =
+                unluminous_word::thesaurus::synonyms(word.trim())
+                    .into_iter()
+                    .map(|m| json!({ "partOfSpeech": m.part_of_speech, "synonyms": m.synonyms }))
+                    .collect();
+            Ok(Answer::said(format!("{} meanings of {}", meanings.len(), word.trim()))
+                .with(json!(meanings)))
+        }
         "language" => {
             let tag = arguments.first().ok_or("language takes a tag such as en-US or fr-FR")?;
             session.set_language(tag);

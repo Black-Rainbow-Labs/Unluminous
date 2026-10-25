@@ -176,6 +176,37 @@ fn part_of(ctx: &Ctx, el: &El) -> Option<String> {
     (!rel.external).then(|| crate::package::Package::resolve(&ctx.part, &rel.target))
 }
 
+/// A picture bullet: the `w:numPicBullet` numbered `id` in the numbering part, as a picture `size`
+/// points square (Word draws a picture bullet at the height of the text), found through the numbering
+/// part's own relationships.
+pub fn picture_bullet(ctx: &Ctx, id: &str, size: f32) -> Option<Float> {
+    let part = ctx.document.numbering.as_ref()?;
+    let bullet = part
+        .root
+        .children_named("w:numPicBullet")
+        .find(|b| b.attr("w:numPicBulletId") == Some(id))?;
+    let mut embed: Option<String> = None;
+    bullet.walk(&mut |node| {
+        if embed.is_none() {
+            if node.name == "v:imagedata" {
+                embed = node.attr("r:id").map(str::to_owned);
+            } else if node.name == "a:blip" {
+                embed = node.attr("r:embed").map(str::to_owned);
+            }
+        }
+    });
+    let rel = ctx.document.package.rels.get(&part.name)?.by_id(&embed?)?.clone();
+    if rel.external {
+        return None;
+    }
+    let mut float = vml(ctx, bullet).float;
+    float.part = crate::package::Package::resolve(&part.name, &rel.target);
+    float.width = size;
+    float.height = size;
+    float.label = "Picture".into();
+    Some(float)
+}
+
 /// `a:srcRect`: how much of each side of the picture is cut off, as fractions (left, top, right, bottom).
 fn crop(pic: &El) -> Option<(f32, f32, f32, f32)> {
     let rect = descendant(pic, "a:srcRect")?;
