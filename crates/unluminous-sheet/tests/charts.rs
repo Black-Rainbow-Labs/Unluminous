@@ -47,18 +47,22 @@ static EXCEL: std::sync::Mutex<()> = std::sync::Mutex::new(());
 fn inspect_many(paths: &[PathBuf]) -> Vec<serde_json::Value> {
     let _one_at_a_time = EXCEL.lock().unwrap_or_else(|e| e.into_inner());
     let script = repo_root().join("tools/excel-oracle/charts-inspect.ps1");
-    let mut command = std::process::Command::new("pwsh");
-    command.args(["-NoProfile", "-File"]).arg(&script).arg("-Path");
-    command.arg(paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(","));
-    let output = command.output().expect("pwsh runs");
-    let text = String::from_utf8_lossy(&output.stdout);
-    let text = text.trim().trim_start_matches('\u{FEFF}');
-    let value: serde_json::Value = serde_json::from_str(text).unwrap_or_else(|e| {
-        panic!("Excel's answer did not read: {e}\n{text}\n{}", String::from_utf8_lossy(&output.stderr))
-    });
-    value.as_array().cloned().unwrap_or_else(|| vec![value])
+    // Other programs on a busy machine sometimes close the Excel this one started; a second try is made.
+    let mut last = String::new();
+    for _ in 0..3 {
+        let mut command = std::process::Command::new("pwsh");
+        command.args(["-NoProfile", "-File"]).arg(&script).arg("-Path");
+        command.arg(paths.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join(","));
+        let output = command.output().expect("pwsh runs");
+        let text = String::from_utf8_lossy(&output.stdout);
+        let text = text.trim().trim_start_matches('\u{FEFF}');
+        match serde_json::from_str::<serde_json::Value>(text) {
+            Ok(value) => return value.as_array().cloned().unwrap_or_else(|| vec![value]),
+            Err(e) => last = format!("{e}\n{text}\n{}", String::from_utf8_lossy(&output.stderr)),
+        }
+    }
+    panic!("Excel's answer did not read: {last}");
 }
-
 fn scratch(name: &str) -> PathBuf {
     let folder = std::env::temp_dir().join(format!("unluminous-sheet-charts-{}", std::process::id()));
     std::fs::create_dir_all(&folder).unwrap();
@@ -167,7 +171,31 @@ fn every_type_can_be_inserted() {
     assert!(s.book.sheets[0].charts.len() > 40);
 }
 
-/// All the checks that need Excel, in one test so that Excel is started once for them all.
+/// The parts of a package under some folders, by name.
+fn parts_under(bytes: &[u8], folders: &[&str]) -> Vec<(String, Vec<u8>)> {
+    let mut out: Vec<(String, Vec<u8>)> = unluminous_sheet::zip::read(bytes)
+        .unwrap()
+        .into_iter()
+        .filter(|e| folders.iter().any(|f| e.name.starts_with(f)))
+        .map(|e| (e.name, e.data))
+        .collect();
+    out.sort();
+    out
+}
+
+#[test]
+fn a_workbook_written_back_with_no_edit_keeps_every_chart_part_byte_for_byte() {
+    for name in ["14-charts.xlsx", "20-calcprops.xlsx"] {
+        let original = fixture(name);
+        let book = unluminous_sheet::xlsx::read(&original).unwrap();
+        let again = unluminous_sheet::xlsx::write(&book).unwrap();
+        let folders = ["xl/charts/", "xl/chartsheets/", "xl/drawings/"];
+        assert_eq!(parts_under(&original, &folders), parts_under(&again, &folders), "{name}");
+    }
+}
+
+/// All the checks that need Excel, in one test so that Excel is started once for them all. Opening
+/// `14-charts.xlsx` takes Excel nearly a minute, so it is opened once.
 #[test]
 fn excel_agrees_with_what_is_read_written_and_made() {
     if !excel_available() {
@@ -176,7 +204,6 @@ fn excel_agrees_with_what_is_read_written_and_made() {
     let original = scratch("14-original.xlsx");
     std::fs::write(&original, fixture("14-charts.xlsx")).unwrap();
     let book = unluminous_sheet::xlsx::read(&fixture("14-charts.xlsx")).unwrap();
-    let copy = save(&book, "14-copy.xlsx");
     let mut dirty = book.clone();
     for sheet in &mut dirty.sheets {
         for chart in &mut sheet.charts {
@@ -186,10 +213,8 @@ fn excel_agrees_with_what_is_read_written_and_made() {
     let regenerated = save(&dirty, "14-regenerated.xlsx");
     let made = every_type_workbook();
     let all_types = save(&made.book, "all-types.xlsx");
-    let seen = inspect_many(&[original, copy, regenerated, all_types]);
-    let [a, b, c, d] = &seen[..] else { panic!("four answers expected") };
-    assert_eq!(b["repaired"], false, "{}", b["problem"]);
-    assert_eq!(a["charts"], b["charts"], "a copy with no edit is the same to Excel");
+    let seen = inspect_many(&[original, regenerated, all_types]);
+    let [a, c, d] = &seen[..] else { panic!("three answers expected") };
     assert_eq!(c["repaired"], false, "{}", c["problem"]);
     let (left, right) = (a["charts"].as_array().unwrap(), c["charts"].as_array().unwrap());
     assert_eq!(left.len(), right.len());
@@ -198,6 +223,7 @@ fn excel_agrees_with_what_is_read_written_and_made() {
             assert_eq!(x[key], y[key], "{} {key}", x["name"]);
         }
         assert_eq!(x["series"], y["series"], "{}", x["name"]);
+        assert_eq!(x["axes"], y["axes"], "{}", x["name"]);
     }
     assert_eq!(d["repaired"], false, "{}", d["problem"]);
     let charts = d["charts"].as_array().unwrap();

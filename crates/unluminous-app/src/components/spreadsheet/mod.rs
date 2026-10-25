@@ -8,6 +8,7 @@
 //! two functions an agent's commands reach.
 
 pub mod chart;
+pub mod chart_paint;
 pub mod editor;
 pub mod grid;
 pub mod keys;

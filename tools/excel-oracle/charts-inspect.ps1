@@ -138,7 +138,9 @@ try {
                 }
             }
         }
+        [Console]::Error.WriteLine("closing")
         $book.Close($false)
+        [Console]::Error.WriteLine("closed")
         $results += [ordered]@{ path = $full; repaired = $repaired; problem = $problem; charts = $charts }
     }
     ConvertTo-Json -InputObject @($results) -Depth 14 -Compress
