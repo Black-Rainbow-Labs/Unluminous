@@ -30,19 +30,14 @@ pub(super) fn dropped_parts(book: &Workbook) -> BTreeSet<String> {
 }
 
 impl<'a> Writer<'a> {
-    /// The text of a chart's categories is text rather than numbers.
-    fn text_test(&self) -> impl Fn(&str) -> bool + 'a {
-        let book = self.book;
-        move |f: &str| categories_are_text(book, f)
-    }
-
     /// The part a chart is written to, with its content type.
     fn chart_bytes(&self, chart: &Chart) -> Vec<u8> {
         if chart.spec.ex.is_some() {
             return crate::xlsx::chartex::write(chart).into_bytes();
         }
-        let is_text = self.text_test();
-        crate::xlsx::chart_write::chart_xml(chart, &is_text).into_bytes()
+        let book = self.book;
+        let resolve = move |f: &str| crate::chartdata::resolve(book, 0, f);
+        crate::xlsx::chart_write::chart_xml(chart, &crate::xlsx::chart_write::Env { resolve: &resolve }).into_bytes()
     }
 
     /// Charts read from the file and changed since are written from the model over the part they came from.

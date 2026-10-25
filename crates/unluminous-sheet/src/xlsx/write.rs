@@ -962,15 +962,6 @@ const ARRAY_FUNCTIONS: &[&str] = &[
     "TRANSPOSE",
 ];
 
-/// Whether a chart's categories are words rather than numbers, which decides how the file names them.
-fn categories_are_text(book: &Workbook, formula: &str) -> bool {
-    let Some((sheet, area)) = formula.rsplit_once('!') else { return false };
-    let name = sheet.trim_matches('\'').replace("''", "'");
-    let Some(index) = book.sheet_index(&name) else { return false };
-    let Some(range) = Range::parse(&area.replace('$', "")) else { return false };
-    matches!(book.sheets[index].value_at(range.first), crate::value::Value::Text(_))
-}
-
 fn absolute(range: Range) -> String {
     let p = |c: CellRef| format!("${}${}", column_name(c.col), c.row + 1);
     if range.first == range.last {

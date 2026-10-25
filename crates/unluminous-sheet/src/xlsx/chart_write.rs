@@ -5,15 +5,63 @@
 
 use super::escape;
 use crate::chartspec::*;
+use crate::chartdata::Resolved;
 use crate::model::{Chart, ChartSeries};
+use crate::value::Value;
 
 const CHART_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/chart";
 const DRAWING_NS: &str = "http://schemas.openxmlformats.org/drawingml/2006/main";
 const REL_NS: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const C15_NS: &str = "http://schemas.microsoft.com/office/drawing/2012/chart";
 
-/// What the writer asks of the workbook: whether a formula's cells hold text.
-pub type TextTest<'a> = &'a dyn Fn(&str) -> bool;
+/// What the writer asks of the workbook: the cells a formula names, for the caches Excel keeps beside every
+/// reference and for telling text categories from numbers.
+pub struct Env<'a> {
+    pub resolve: &'a dyn Fn(&str) -> Resolved,
+}
+
+impl Env<'_> {
+    /// Whether the cells a formula names hold text.
+    fn is_text(&self, formula: &str) -> bool {
+        (self.resolve)(formula).values.iter().any(|v| matches!(v, Value::Text(_)))
+    }
+
+    /// The cache of a reference to text.
+    fn string_cache(&self, formula: &str) -> String {
+        let r = (self.resolve)(formula);
+        if r.values.is_empty() {
+            return String::new();
+        }
+        let mut out = format!("<c:strCache><c:ptCount val=\"{}\"/>", r.texts.len());
+        for (i, t) in r.texts.iter().enumerate() {
+            if !t.is_empty() {
+                out.push_str(&format!("<c:pt idx=\"{i}\"><c:v>{}</c:v></c:pt>", escape(t)));
+            }
+        }
+        out.push_str("</c:strCache>");
+        out
+    }
+
+    /// The cache of a reference to numbers.
+    fn number_cache(&self, formula: &str) -> String {
+        let r = (self.resolve)(formula);
+        if r.values.is_empty() {
+            return String::new();
+        }
+        let code = if r.format.is_empty() { "General" } else { r.format.as_str() };
+        let mut out = format!("<c:numCache><c:formatCode>{}</c:formatCode><c:ptCount val=\"{}\"/>", escape(code), r.values.len());
+        for (i, v) in r.values.iter().enumerate() {
+            if let Value::Number(n) = v {
+                out.push_str(&format!("<c:pt idx=\"{i}\"><c:v>{n}</c:v></c:pt>"));
+            }
+        }
+        out.push_str("</c:numCache>");
+        out
+    }
+}
+
+/// What the writer is given to look cells up with.
+pub type TextTest<'a> = &'a Env<'a>;
 
 fn opt(xml: &Option<String>) -> &str {
     xml.as_deref().unwrap_or("")
@@ -458,7 +506,7 @@ fn bubble_tail(g: &Group) -> String {
 }
 
 /// A formula as a series reference, or an array constant as a literal.
-fn data_xml(tag: &str, formula: &str, text: bool, filtered: bool) -> String {
+fn data_xml(tag: &str, formula: &str, text: bool, filtered: bool, env: TextTest) -> String {
     if let Some(inner) = formula.strip_prefix('{').and_then(|f| f.strip_suffix('}')) {
         return literal_xml(tag, inner);
     }
@@ -470,7 +518,8 @@ fn data_xml(tag: &str, formula: &str, text: bool, filtered: bool) -> String {
             escape(formula)
         );
     }
-    format!("<c:{tag}><c:{kind}><c:f>{}</c:f></c:{kind}></c:{tag}>", escape(formula))
+    let cache = if text { env.string_cache(formula) } else { env.number_cache(formula) };
+    format!("<c:{tag}><c:{kind}><c:f>{}</c:f>{cache}</c:{kind}></c:{tag}>", escape(formula))
 }
 
 /// An array constant as a `numLit` or `strLit`.
@@ -491,14 +540,14 @@ fn literal_xml(tag: &str, inner: &str) -> String {
     out
 }
 
-fn name_xml(name: &str, filtered: bool) -> String {
+fn name_xml(name: &str, filtered: bool, env: TextTest) -> String {
     if filtered && !name.starts_with('"') {
-        return format!("<c:tx>{}</c:tx>", data_xml("x", name, true, true).replace("<c:x>", "").replace("</c:x>", ""));
+        return format!("<c:tx>{}</c:tx>", data_xml("x", name, true, true, env).replace("<c:x>", "").replace("</c:x>", ""));
     }
     if let Some(text) = name.strip_prefix('"').and_then(|n| n.strip_suffix('"')) {
         return format!("<c:tx><c:v>{}</c:v></c:tx>", escape(&text.replace("\"\"", "\"")));
     }
-    format!("<c:tx><c:strRef><c:f>{}</c:f></c:strRef></c:tx>", escape(name))
+    format!("<c:tx><c:strRef><c:f>{}</c:f>{}</c:strRef></c:tx>", escape(name), env.string_cache(name))
 }
 
 /// One series, with its elements in the order its kind's schema gives them.
@@ -506,7 +555,7 @@ fn series_xml(s: &ChartSeries, kind: GroupKind, ids: (u32, u32), tag: &str, is_t
     let filtered = tag == "c15:ser";
     let mut out = format!("<{tag}><c:idx val=\"{}\"/><c:order val=\"{}\"/>", ids.0, ids.1);
     if let Some(name) = &s.name {
-        out.push_str(&name_xml(name, filtered));
+        out.push_str(&name_xml(name, filtered, is_text));
     }
     out.push_str(opt(&s.fmt.sp_pr));
     out.push_str(&series_options(s, kind));
@@ -560,24 +609,24 @@ fn series_decorations(s: &ChartSeries, kind: GroupKind) -> String {
 /// The cells of a series, and what follows them.
 fn series_data(s: &ChartSeries, kind: GroupKind, is_text: TextTest, filtered: bool) -> String {
     let f = &s.fmt;
-    let text = s.categories.as_deref().is_some_and(is_text);
+    let text = s.categories.as_deref().is_some_and(|c| is_text.is_text(c));
     let mut out = String::new();
     if matches!(kind, GroupKind::Scatter | GroupKind::Bubble) {
         if let Some(x) = &s.categories {
-            out.push_str(&data_xml("xVal", x, text, filtered));
+            out.push_str(&data_xml("xVal", x, text, filtered, is_text));
         }
-        out.push_str(&data_xml("yVal", &s.values, false, filtered));
+        out.push_str(&data_xml("yVal", &s.values, false, filtered, is_text));
         if let Some(sizes) = &s.sizes {
-            out.push_str(&data_xml("bubbleSize", sizes, false, filtered));
+            out.push_str(&data_xml("bubbleSize", sizes, false, filtered, is_text));
         }
         if kind == GroupKind::Bubble {
             out.push_str(&f.bubble_3d.map(|b| bool_val("bubble3D", b)).unwrap_or_default());
         }
     } else {
         if let Some(c) = &s.categories {
-            out.push_str(&data_xml("cat", c, text, filtered));
+            out.push_str(&data_xml("cat", c, text, filtered, is_text));
         }
-        out.push_str(&data_xml("val", &s.values, false, filtered));
+        out.push_str(&data_xml("val", &s.values, false, filtered, is_text));
         if let (GroupKind::Bar, Some(shape)) = (kind, &f.shape) {
             out.push_str(&format!("<c:shape val=\"{shape}\"/>"));
         }
@@ -968,7 +1017,7 @@ mod tests {
         chart.spec.axes[1].title = Some(AxisTitle { text: "Units".to_owned(), ..AxisTitle::default() });
         chart.spec.axes[1].log_base = Some(10.0);
         chart.spec.axes[1].min = Some(1.0);
-        let xml = chart_xml(&chart, &|_| true);
+        let xml = chart_xml(&chart, &Env { resolve: &|_| Resolved::default() });
         let back = parse(&xml).expect("the chart reads back");
         assert_eq!(back.title, chart.title);
         assert_eq!(back.series[0].fmt.trendlines, chart.series[0].fmt.trendlines);
