@@ -85,6 +85,10 @@ fn scenario(sheet: &mut Spreadsheet, args: &[String]) -> Out {
         })).collect();
         return Ok(Answer::said(format!("{} scenarios", list.len())).with(json!(list)));
     }
+    if word == "pane" {
+        book.view.audit.scenarios_open = super::verbs_a::on_off(args.get(1).map(String::as_str))?;
+        return Ok(Answer::said("Scenario Manager"));
+    }
     let name = args.get(1).cloned().unwrap_or_default();
     let rest = args.to_vec();
     edit(sheet, move |book| scenario_change(book, word_of(&rest), &name, &rest))

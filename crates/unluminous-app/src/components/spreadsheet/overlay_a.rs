@@ -484,3 +484,36 @@ pub fn filter_extras(ui: &mut egui::Ui, column: &str) -> Option<super::menus::Pi
     }
     picked
 }
+
+/// Whether the pointer is on an outline box or a level button, so the press folds and selects nothing.
+pub fn over_outline(
+    ui: &egui::Ui,
+    book: &Book,
+    layout: &Layout,
+    frame: super::grid::Frame,
+) -> bool {
+    let Some(p) = ui.ctx().pointer_interact_pos() else { return false };
+    let index = book.view.sheet;
+    let sheet = &book.session.book.sheets[index];
+    if !sheet.outline.show_symbols || !layout.headings {
+        return false;
+    }
+    let corner = Rect::from_min_max(layout.area.min, layout.cells.min);
+    let (rows, columns) = book.session.outline_depth(index);
+    if rows == 0 && columns == 0 {
+        return false;
+    }
+    if corner.contains(p) {
+        return true;
+    }
+    let side = 9.0 * frame.zoom.clamp(0.8, 1.5);
+    if frame.row_header.contains(p) && p.x < frame.row_header.left() + 3.0 + side {
+        let at = frame.at(book, Pos2::new(frame.cells.left() + 1.0, p.y));
+        return outline::extent(sheet, Dim::Rows, at.row).is_some();
+    }
+    if frame.column_header.contains(p) && p.y < frame.column_header.top() + 2.0 + side {
+        let at = frame.at(book, Pos2::new(p.x, frame.cells.top() + 1.0));
+        return outline::extent(sheet, Dim::Columns, at.col).is_some();
+    }
+    false
+}

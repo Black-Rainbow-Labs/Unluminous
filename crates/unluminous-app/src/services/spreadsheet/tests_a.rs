@@ -393,3 +393,20 @@ fn the_read_back_verbs_answer_json() {
     assert_eq!(go(&mut sheet, "protection").value["sheet"], json!(null));
     assert_eq!(go(&mut sheet, "outline").value["rowLevels"], json!(0));
 }
+
+#[test]
+fn the_keyboard_opens_a_filter_menu_and_the_panes_open_and_close() {
+    let mut sheet = with_items("panes");
+    go(&mut sheet, "filter A1:C5");
+    go(&mut sheet, "select B1");
+    go(&mut sheet, "autocomplete list");
+    assert_eq!(sheet.current_book().unwrap().view.audit.open_filter, Some(1));
+    go(&mut sheet, "scenario pane on");
+    go(&mut sheet, "comment pane on");
+    go(&mut sheet, "watch show");
+    go(&mut sheet, "sort-draft show");
+    let audit = &sheet.current_book().unwrap().view.audit;
+    assert!(audit.scenarios_open && audit.comments_open && audit.watch_open && audit.sort.open);
+    go(&mut sheet, "scenario pane off");
+    assert!(!sheet.current_book().unwrap().view.audit.scenarios_open);
+}

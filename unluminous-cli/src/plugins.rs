@@ -436,7 +436,7 @@ pub const SPREADSHEET: &[(&str, &str)] = &[
     ("rules", "rules [range], or rules add|edit|delete|move|applies|stop <priority> ...: conditional formats; add takes the words of conditional and icons <set> [reverse] [icon-only], bar <#hex> [border <#hex>] [solid]"),
     ("goal-seek", "goal-seek <set cell> <to value> <by changing cell>"),
     ("data-table", "data-table <range> [row <cell>] [column <cell>], or data-table remove <cell>"),
-    ("scenario", "scenario list|add|edit|delete|show|summary <name> [cells] [values a,b] [comment text]"),
+    ("scenario", "scenario list|add|edit|delete|show|summary|pane <name> [cells] [values a,b] [comment text]"),
     ("protect", "protect sheet|book [password <p>] [allow format-cells,sort,...] [no-contents] [no-objects] [no-scenarios] [structure] [windows]"),
     ("unprotect", "unprotect [sheet|book] [password <p>]"),
     ("edit-range", "edit-range list|add|remove|unlock <title> [ranges] [password <p>]: Allow Edit Ranges"),

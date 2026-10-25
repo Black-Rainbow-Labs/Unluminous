@@ -636,6 +636,12 @@ fn fill_handle(sheet: &mut Spreadsheet, args: &[String]) -> Result<Answer, Strin
 fn pick_from_list(sheet: &mut Spreadsheet) -> Result<Answer, String> {
     let book = sheet.current_book()?;
     let at = book.view.cursor;
+    if let Some(filter) = &book.session.book.sheets[book.view.sheet].filter {
+        if at.row == filter.range.first.row && (filter.range.first.col..=filter.range.last.col).contains(&at.col) {
+            book.view.audit.open_filter = Some(at.col);
+            return Ok(Answer::said("Filter menu"));
+        }
+    }
     let entries = super::entry::column_entries(&book.session.book.sheets[book.view.sheet], at);
     book.view.choices = true;
     Ok(Answer::said(format!("{} entries", entries.len())).with(json!(entries)))

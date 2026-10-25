@@ -292,7 +292,8 @@ pub fn show(
     read_the_wheel(ui, &response, book, panes[under].frame, zoom, panes[under].scrolls);
     panes = layout.panes(book);
     let split = read_the_split_bars(ui, &response, book, &layout);
-    if !split {
+    let on_outline = super::overlay_a::over_outline(ui, book, &layout, panes[under].frame);
+    if !split && !on_outline {
         read_the_pointer(ui, &response, book, panes[under].frame, area, pointing, out);
     }
     panes = layout.panes(book);

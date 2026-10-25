@@ -67,4 +67,8 @@ pub struct AuditState {
     pub comments_open: bool,
     /// The cell whose error indicator menu is open.
     pub error_menu: Option<CellRef>,
+    /// The Scenario Manager pane is open.
+    pub scenarios_open: bool,
+    /// A filter button's menu was asked for with the keyboard: its column.
+    pub open_filter: Option<u32>,
 }
