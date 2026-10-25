@@ -10,6 +10,7 @@ use unluminous_sheet::edit::review::special::{areas_of, Kinds, Special};
 use unluminous_sheet::edit::review::trace::Reach;
 
 use super::verbs_a::{after, author, edit, flag, keyword, take_cell, Out};
+use super::view::{Field, Prompt};
 use super::view_a::Arrow;
 use super::{Book, Spreadsheet};
 use crate::services::plugin_ui::Answer;
@@ -24,6 +25,7 @@ pub fn run(sheet: &mut Spreadsheet, verb: &str, args: &[String]) -> Option<Out> 
         "evaluate" => evaluate(sheet, args),
         "watch" => watch(sheet, args),
         "statistics" => statistics(sheet),
+        "error-menu" => error_menu(sheet, args),
         _ => return None,
     })
 }
@@ -41,6 +43,16 @@ fn comment(sheet: &mut Spreadsheet, args: &[String]) -> Out {
         let book = sheet.current_book()?;
         book.view.audit.comments_open = super::verbs_a::on_off(args.get(1).map(String::as_str))?;
         return Ok(Answer::said("Comments pane"));
+    }
+    if matches!(word, "new" | "reply") {
+        let book = sheet.current_book()?;
+        let (at, tail) = take_cell(book, &args[1..]);
+        if tail.is_empty() {
+            let verb = vec!["comment".to_owned(), word.to_owned(), at.a1()];
+            let fields = vec![Field::bare("Comment", "")];
+            book.view.prompt = Some(Prompt::form(verb, "Comment", fields));
+            return Ok(Answer::said(String::new()));
+        }
     }
     let word = word.to_owned();
     let rest = args[1..].to_vec();
@@ -69,9 +81,11 @@ fn comment_change(book: &mut Book, word: &str, rest: &[String]) -> Result<String
             Some(n) => session.delete_thread_message(index, at, n)?,
             None => session.delete_thread(index, at)?,
         },
-        other => return Err(format!(
+        other => {
+            return Err(format!(
             "comment takes new, reply, edit, resolve, reopen, delete, list or pane, not `{other}`"
-        )),
+        ))
+        }
     }
     Ok(format!("Comment on {} changed", at.a1()))
 }
@@ -111,6 +125,9 @@ pub fn note_more(sheet: &mut Spreadsheet, args: &[String]) -> Option<Out> {
         after_cell.to_vec()
     };
     let has_cell = probe.len() != args.len();
+    if probe.first().map(String::as_str) == Some("edit") && probe.len() == 1 {
+        return Some(note_prompt(sheet));
+    }
     let words: Vec<String> = if has_cell { args[1..].to_vec() } else { args.to_vec() };
     let first = words.first()?.clone();
     if !matches!(first.as_str(), "show" | "hide" | "next" | "previous" | "size" | "box" | "convert")
@@ -119,6 +136,39 @@ pub fn note_more(sheet: &mut Spreadsheet, args: &[String]) -> Option<Out> {
     }
     let target = if has_cell { Some(args[0].clone()) } else { None };
     Some(edit(sheet, move |book| note_change(book, &first, target.as_deref(), &words[1..])))
+}
+
+/// Shift+F2: a box holding the active cell's note, which OK writes back.
+fn note_prompt(sheet: &mut Spreadsheet) -> Out {
+    let book = sheet.current_book()?;
+    let at = book.view.cursor;
+    let text = book.session.book.sheets[book.view.sheet]
+        .notes
+        .get(&(at.row, at.col))
+        .map(|n| n.text.clone())
+        .unwrap_or_default();
+    let verb = vec!["note".to_owned(), at.a1()];
+    book.view.prompt = Some(Prompt::form(verb, "Note", vec![Field::bare("Note", &text)]));
+    Ok(Answer::said(String::new()))
+}
+
+/// `error-menu [cell]` opens the menu of an error indicator, as Alt+Shift+F10 does.
+fn error_menu(sheet: &mut Spreadsheet, args: &[String]) -> Out {
+    let book = sheet.current_book()?;
+    let at = super::verbs_a::cell_or_active(book, args.first().map(String::as_str))?;
+    let found = book.session.check_errors(
+        Some(book.view.sheet),
+        Some(Range::cell(at)),
+        ErrorOptions::default(),
+    );
+    let f = found.first().ok_or("There is no error indicator on this cell.")?;
+    let items = crate::components::spreadsheet::overlay_a::error_menu(at, f.rule, f.message());
+    let origin = book
+        .view
+        .drawn
+        .map_or(egui::Pos2::new(120.0, 120.0), |r| r.min + egui::Vec2::new(80.0, 60.0));
+    book.view.drop_menu = Some((origin, items));
+    Ok(Answer::said(f.message()))
 }
 
 fn note_change(
@@ -308,7 +358,10 @@ fn trace(sheet: &mut Spreadsheet, args: &[String]) -> Out {
         }
         "precedents" => walk(book, index, at, true, all),
         "dependents" => walk(book, index, at, false, all),
-        _ => error_arrows(book, index, at)?,
+        _ => {
+            let cell = super::verbs_a::cell_or_active(book, rest.first().map(String::as_str))?;
+            error_arrows(book, index, cell)?
+        }
     };
     let count = arrows.len();
     if count == 0 && word != "error" {

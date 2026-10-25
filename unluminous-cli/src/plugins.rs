@@ -449,6 +449,7 @@ pub const SPREADSHEET: &[(&str, &str)] = &[
     ("evaluate", "evaluate <cell>, then evaluate evaluate|in|out|restart|finish|close: Evaluate Formula"),
     ("watch", "watch list|add|remove|show|hide [cell]: the Watch Window"),
     ("statistics", "statistics: Workbook Statistics"),
+    ("error-menu", "error-menu [cell]: the menu of the error indicator on a cell"),
     ("validation", "validation [range]: the data validation rules, read back"),
     ("comments", "comments [cell]: the threads and notes, read back"),
     ("protection", "protection: the sheet, workbook and edit range protection, read back"),

@@ -660,7 +660,9 @@ fn scopes(book: &Book) -> Vec<(String, String)> {
 
 /// The Formulas level: functions, names, auditing and calculation, as Excel's Formulas tab groups them.
 pub fn formulas(book: &Book) -> Item {
-    sub("Formulas", vec![insert_function(), run("AutoSum", "Alt+=", "autosum"), names(book)])
+    let mut items = vec![insert_function(), run("AutoSum", "Alt+=", "autosum"), names(book)];
+    items.push(sub("Formula auditing", super::catalogue_a::auditing(book)));
+    sub("Formulas", items)
 }
 
 /// The Format panel's first level.
@@ -675,6 +677,13 @@ pub fn panel_root(book: &Book) -> Vec<Item> {
         cell_size(),
         rules(),
         data(book),
+        super::catalogue_a::sort_and_filter(book),
+        super::catalogue_a::data_tools(book),
+        super::catalogue_a::outline(book),
+        super::catalogue_a::manage_rules(book),
+        super::catalogue_a::review(book),
+        super::catalogue_a::protection(),
+        super::catalogue_a::styles_and_themes(book),
         view(book),
         sheet(book),
     ]
@@ -782,6 +791,13 @@ pub fn everything(book: &Book) -> Vec<Item> {
         ),
         rules(),
         data(book),
+        super::catalogue_a::sort_and_filter(book),
+        super::catalogue_a::data_tools(book),
+        super::catalogue_a::outline(book),
+        super::catalogue_a::manage_rules(book),
+        super::catalogue_a::review(book),
+        super::catalogue_a::protection(),
+        super::catalogue_a::styles_and_themes(book),
         view(book),
         sheet(book),
     ]

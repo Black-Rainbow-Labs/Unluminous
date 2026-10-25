@@ -123,7 +123,12 @@ fn outline_change(book: &mut Book, word: &str, rest: &[String]) -> Result<String
             Ok("Summary position set".to_owned())
         }
         "symbols" => {
-            book.session.set_outline_symbols(index, on_off(rest.first().map(String::as_str))?)?;
+            let now = book.session.book.sheets[index].outline.show_symbols;
+            let on = match rest.first().map(String::as_str) {
+                Some("toggle") => !now,
+                other => on_off(other)?,
+            };
+            book.session.set_outline_symbols(index, on)?;
             Ok("Outline symbols set".to_owned())
         }
         "styles" => {

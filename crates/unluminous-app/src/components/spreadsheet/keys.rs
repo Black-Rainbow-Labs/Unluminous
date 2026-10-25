@@ -476,6 +476,8 @@ fn command_chords(book: &mut Book, key: Key, m: Modifiers, keys: &mut Keys) {
         }),
         Num8 if shift => select_current_region(book),
         Num8 => keys.words.push(say("outline symbols toggle")),
+        OpenBracket => keys.words.push(say(if shift { "goto-special precedents all" } else { "goto-special precedents" })),
+        CloseBracket => keys.words.push(say(if shift { "goto-special dependents all" } else { "goto-special dependents" })),
         Num9 => keys.acts.push(if shift {
             Act::Unhide { rows: true }
         } else {

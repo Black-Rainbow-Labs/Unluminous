@@ -12,6 +12,7 @@
 pub mod actions;
 pub mod axis;
 pub mod catalogue;
+pub mod catalogue_a;
 pub mod commands;
 pub mod conditional;
 pub mod config;
