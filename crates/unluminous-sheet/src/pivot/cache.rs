@@ -363,7 +363,8 @@ impl PivotCache {
                     Some(cell) => (book.sheets[sheet].value_at(at), cell.style),
                     None => (book.sheets[sheet].value_at(at), 0),
                 };
-                let is_date = matches!(value, Value::Number(_)) && date_formats.is_date(book, style);
+                let is_date =
+                    matches!(value, Value::Number(_)) && date_formats.is_date(book, style);
                 record.push(CacheValue::from_cell(&value, is_date));
             }
             records.push(record);
@@ -425,11 +426,8 @@ impl PivotCache {
     /// Whether a field is a date field: every value in it is a date or blank.
     pub fn is_date_field(&self, field: usize) -> bool {
         let f = &self.fields[field];
-        let values: Vec<&CacheValue> = if f.shared.is_empty() {
-            Vec::new()
-        } else {
-            f.shared.iter().collect()
-        };
+        let values: Vec<&CacheValue> =
+            if f.shared.is_empty() { Vec::new() } else { f.shared.iter().collect() };
         let mut any = false;
         for v in values {
             match v {
@@ -474,7 +472,10 @@ fn header_names(book: &Workbook, sheet: usize, range: Range) -> Result<Vec<Strin
     for c in range.first.col..=range.last.col {
         let value = book.sheets[sheet].value_at(CellRef::new(range.first.row, c));
         if value.is_empty() {
-            return Err("The header row of the source has an empty cell. Every field needs a name.".to_owned());
+            return Err(
+                "The header row of the source has an empty cell. Every field needs a name."
+                    .to_owned(),
+            );
         }
         let mut name = crate::eval::to_text(&value).unwrap_or_default();
         if names.iter().any(|n| n.eq_ignore_ascii_case(&name)) {
@@ -539,7 +540,8 @@ fn rebuild_shared(
         if !field.database {
             continue;
         }
-        let was_listed = keep && old.iter().any(|f| f.database && f.name == field.name && !f.shared.is_empty());
+        let was_listed =
+            keep && old.iter().any(|f| f.database && f.name == field.name && !f.shared.is_empty());
         if !was_listed {
             field.shared.clear();
             continue;
@@ -569,7 +571,8 @@ fn rebuild_shared(
                 shared.push(present[key].clone());
             }
         }
-        let moved: Vec<Option<usize>> = before.iter().map(|v| index.get(&v.key()).copied()).collect();
+        let moved: Vec<Option<usize>> =
+            before.iter().map(|v| index.get(&v.key()).copied()).collect();
         remaps.push(ItemRemap { field: i, moved, count: shared.len() });
         field.shared = shared;
     }

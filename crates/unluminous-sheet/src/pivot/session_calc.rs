@@ -8,7 +8,12 @@ use crate::edit::Session;
 
 impl Session {
     /// Add a calculated field: a formula over the sums of other fields.
-    pub fn pivot_add_calculated_field(&mut self, t: usize, name: &str, formula: &str) -> Result<usize, String> {
+    pub fn pivot_add_calculated_field(
+        &mut self,
+        t: usize,
+        name: &str,
+        formula: &str,
+    ) -> Result<usize, String> {
         self.check_table(t)?;
         let cache_index = self.book.pivots.tables[t].cache;
         let formula = formula.trim().trim_start_matches('=').trim().to_owned();
@@ -85,7 +90,9 @@ impl Session {
         let item = cache.fields[field].shared.len() - 1;
         cache.calculated_items.push(CalculatedItem { field, formula: text, item });
         for t2 in 0..self.book.pivots.tables.len() {
-            if self.book.pivots.tables[t2].cache == cache_index && !self.book.pivots.tables[t2].fields[field].items.is_empty() {
+            if self.book.pivots.tables[t2].cache == cache_index
+                && !self.book.pivots.tables[t2].fields[field].items.is_empty()
+            {
                 let mut entry = ItemEntry::new(item);
                 entry.calculated = true;
                 self.book.pivots.tables[t2].fields[field].items.push(entry);

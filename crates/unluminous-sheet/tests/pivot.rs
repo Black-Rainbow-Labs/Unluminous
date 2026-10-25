@@ -8,7 +8,6 @@
 //!
 //! `PIVOT_CASE=<id>` runs one case and prints what both sides have.
 
-
 use std::collections::HashMap;
 
 use serde_json::Value as Json;
@@ -54,7 +53,9 @@ fn workbook(spec: &Json) -> Workbook {
             for (c, v) in row.as_array().unwrap().iter().enumerate() {
                 let value = match v {
                     Json::Null => continue,
-                    Json::Object(o) => Value::Error(unluminous_sheet::ErrorKind::parse(o["e"].as_str().unwrap()).unwrap()),
+                    Json::Object(o) => Value::Error(
+                        unluminous_sheet::ErrorKind::parse(o["e"].as_str().unwrap()).unwrap(),
+                    ),
                     Json::String(s) => Value::text(s),
                     Json::Bool(b) => Value::Bool(*b),
                     other => Value::Number(other.as_f64().unwrap()),
@@ -65,7 +66,10 @@ fn workbook(spec: &Json) -> Workbook {
                 } else {
                     book.styles.derive(0, &StyleChange::NumberFormat(code.to_owned()))
                 };
-                sheet.cells.insert(((r + 1) as u32, c as u32), Cell { value, style, ..Default::default() });
+                sheet.cells.insert(
+                    ((r + 1) as u32, c as u32),
+                    Cell { value, style, ..Default::default() },
+                );
             }
         }
         book.sheets.push(sheet);
@@ -121,11 +125,7 @@ fn show_of(name: &str) -> ShowAs {
 fn field_index(session: &Session, t: usize, name: &str) -> usize {
     let table = &session.book.pivots.tables[t];
     let cache = &session.book.pivots.caches[table.cache];
-    cache
-        .fields
-        .iter()
-        .position(|f| f.name == name)
-        .unwrap_or_else(|| panic!("no field {name}"))
+    cache.fields.iter().position(|f| f.name == name).unwrap_or_else(|| panic!("no field {name}"))
 }
 
 fn names(j: &Json) -> Vec<String> {
@@ -143,12 +143,21 @@ fn build(session: &mut Session, spec: &Json, case: &Json) -> Result<usize, Strin
     let data = session.book.sheet_index(&data_name).unwrap();
     let used = session.book.sheets[data].used_range().unwrap();
     let at = CellRef::parse(case["at"].as_str().unwrap_or("A6")).unwrap();
-    let t = session.pivot_create(PivotSource::Range { sheet: data, range: used }, sheet, at, Some("PT1"))?;
+    let t = session.pivot_create(
+        PivotSource::Range { sheet: data, range: used },
+        sheet,
+        at,
+        Some("PT1"),
+    )?;
     if let Some(layout) = case["layout"].as_str() {
         session.pivot_set_form(t, form_of(layout))?;
     }
     for cf in case["calc_fields"].as_array().into_iter().flatten() {
-        session.pivot_add_calculated_field(t, cf["name"].as_str().unwrap(), cf["formula"].as_str().unwrap())?;
+        session.pivot_add_calculated_field(
+            t,
+            cf["name"].as_str().unwrap(),
+            cf["formula"].as_str().unwrap(),
+        )?;
     }
     for (i, n) in names(&case["rows"]).iter().enumerate() {
         let f = field_index(session, t, n);
@@ -164,11 +173,21 @@ fn build(session: &mut Session, spec: &Json, case: &Json) -> Result<usize, Strin
     }
     for ci in case["calc_items"].as_array().into_iter().flatten() {
         let f = field_index(session, t, ci["field"].as_str().unwrap());
-        session.pivot_add_calculated_item(t, f, ci["name"].as_str().unwrap(), ci["formula"].as_str().unwrap())?;
+        session.pivot_add_calculated_item(
+            t,
+            f,
+            ci["name"].as_str().unwrap(),
+            ci["formula"].as_str().unwrap(),
+        )?;
     }
     for v in case["values"].as_array().into_iter().flatten() {
         let f = field_index(session, t, v["field"].as_str().unwrap());
-        let d = session.pivot_add_value(t, f, func_of(v["func"].as_str().unwrap()), v["name"].as_str())?;
+        let d = session.pivot_add_value(
+            t,
+            f,
+            func_of(v["func"].as_str().unwrap()),
+            v["name"].as_str(),
+        )?;
         let mut settings = ValueSettings::default();
         if let Some(show) = v["show"].as_str() {
             settings.show = Some(show_of(show));
@@ -177,7 +196,8 @@ fn build(session: &mut Session, spec: &Json, case: &Json) -> Result<usize, Strin
             settings.base_field = Some(field_index(session, t, base));
         }
         if let Some(item) = v["item"].as_str() {
-            settings.base_item = Some(base_item(session, t, settings.base_field.unwrap_or(0), item));
+            settings.base_item =
+                Some(base_item(session, t, settings.base_field.unwrap_or(0), item));
         }
         if let Some(fmt) = v["fmt"].as_str() {
             settings.num_fmt = Some(Some(fmt.to_owned()));
@@ -237,9 +257,22 @@ fn group(session: &mut Session, t: usize, g: &Json) -> Result<(), String> {
                 .iter()
                 .map(|b| GroupBy::from_xml(b).unwrap_or_else(|| panic!("group by {b}")))
                 .collect();
-            session.pivot_group_dates(t, f, &by, g["start"].as_f64(), g["end"].as_f64(), g["step"].as_f64())
+            session.pivot_group_dates(
+                t,
+                f,
+                &by,
+                g["start"].as_f64(),
+                g["end"].as_f64(),
+                g["step"].as_f64(),
+            )
         }
-        "number" => session.pivot_group_numbers(t, f, g["start"].as_f64(), g["end"].as_f64(), g["step"].as_f64().unwrap()),
+        "number" => session.pivot_group_numbers(
+            t,
+            f,
+            g["start"].as_f64(),
+            g["end"].as_f64(),
+            g["step"].as_f64().unwrap(),
+        ),
         _ => {
             let mut chosen = Vec::new();
             for members in g["groups"].as_array().unwrap() {
@@ -351,7 +384,8 @@ fn field_options(session: &mut Session, t: usize, case: &Json) -> Result<(), Str
                 Json::String(s) => s.clone(),
                 other => other.to_string(),
             });
-            let top = !matches!(filter["type"].as_str(), Some("bottom" | "bottompercent" | "bottomsum"));
+            let top =
+                !matches!(filter["type"].as_str(), Some("bottom" | "bottompercent" | "bottomsum"));
             session.pivot_set_filter(
                 t,
                 f,
@@ -467,10 +501,14 @@ fn run_case(session: &mut Session, spec: &Json, case: &Json, want: &Json) -> Vec
         let kind = f["k"].as_str().unwrap();
         let text = f["v"].as_str().unwrap();
         let ok = match (&got, kind) {
-            (Value::Number(n), "number") => (n - text.parse::<f64>().unwrap()).abs() <= 1e-9 * n.abs().max(1.0),
+            (Value::Number(n), "number") => {
+                (n - text.parse::<f64>().unwrap()).abs() <= 1e-9 * n.abs().max(1.0)
+            }
             (Value::Text(t), "text") => &**t == text,
             (Value::Error(e), "error") => e.text() == text,
-            (Value::Bool(b), "bool") => text.eq_ignore_ascii_case(if *b { "true" } else { "false" }),
+            (Value::Bool(b), "bool") => {
+                text.eq_ignore_ascii_case(if *b { "true" } else { "false" })
+            }
             _ => false,
         };
         if !ok {
@@ -482,7 +520,11 @@ fn run_case(session: &mut Session, spec: &Json, case: &Json, want: &Json) -> Vec
     let table_range = Range::parse(range).unwrap();
     for (&(r, c), cell) in &session.book.sheets[sheet].cells {
         if !table_range.contains(CellRef::new(r, c)) && !cell.value.is_empty() {
-            problems.push(format!("{}: we have {:?} outside the table", CellRef::new(r, c).a1(), cell.value));
+            problems.push(format!(
+                "{}: we have {:?} outside the table",
+                CellRef::new(r, c).a1(),
+                cell.value
+            ));
         }
     }
     problems
@@ -562,7 +604,10 @@ fn sections(xml: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let mut head: Vec<(String, String)> = root
         .attributes()
-        .filter(|a| a.namespace().is_none() && !matches!(a.name(), "name" | "cacheId" | "chartFormat" | "uid" | "ignorable"))
+        .filter(|a| {
+            a.namespace().is_none()
+                && !matches!(a.name(), "name" | "cacheId" | "chartFormat" | "uid" | "ignorable")
+        })
         .map(|a| (a.name().to_owned(), a.value().to_owned()))
         .collect();
     head.sort();
@@ -590,7 +635,9 @@ fn pivot_xml_matches_excel() {
         if only.as_deref().is_some_and(|o| o != id) {
             continue;
         }
-        let Some(case) = spec["cases"].as_array().unwrap().iter().find(|c| c["id"] == id) else { continue };
+        let Some(case) = spec["cases"].as_array().unwrap().iter().find(|c| c["id"] == id) else {
+            continue;
+        };
         let mut session = Session::new(workbook(&spec), 46319.5);
         let t = match build(&mut session, &spec, case) {
             Ok(t) => t,
@@ -612,9 +659,24 @@ fn pivot_xml_matches_excel() {
         let ours = sections(&ours);
         let mut theirs_xml = format!(
             "<pivotTableDefinition {}>",
-            want["head"].as_str().unwrap().replace("xr:uid", "uid").replace("mc:Ignorable", "ignorable")
+            want["head"]
+                .as_str()
+                .unwrap()
+                .replace("xr:uid", "uid")
+                .replace("mc:Ignorable", "ignorable")
         );
-        for s in ["location", "pivotFields", "rowFields", "rowItems", "colFields", "colItems", "pageFields", "dataFields", "pivotTableStyleInfo", "filters"] {
+        for s in [
+            "location",
+            "pivotFields",
+            "rowFields",
+            "rowItems",
+            "colFields",
+            "colItems",
+            "pageFields",
+            "dataFields",
+            "pivotTableStyleInfo",
+            "filters",
+        ] {
             theirs_xml.push_str(want[s].as_str().unwrap());
         }
         theirs_xml.push_str("</pivotTableDefinition>");
@@ -623,9 +685,11 @@ fn pivot_xml_matches_excel() {
         for (name, want_xml) in &theirs {
             match ours.iter().find(|(n, _)| n == name) {
                 Some((_, our_xml)) if our_xml == want_xml => {}
-                Some((_, our_xml)) => problems.push(format!("{name}:
+                Some((_, our_xml)) => problems.push(format!(
+                    "{name}:
       Excel {want_xml}
-      ours  {our_xml}")),
+      ours  {our_xml}"
+                )),
                 None => problems.push(format!("{name}: missing in ours; Excel {want_xml}")),
             }
         }
@@ -695,9 +759,12 @@ fn a_refresh_after_the_source_changed_matches_excel() {
         if only.as_deref().is_some_and(|o| o != id) {
             continue;
         }
-        let Some(case) = spec["cases"].as_array().unwrap().iter().find(|c| c["id"] == id) else { continue };
+        let Some(case) = spec["cases"].as_array().unwrap().iter().find(|c| c["id"] == id) else {
+            continue;
+        };
         let mut session = Session::new(workbook(&spec), 46319.5);
-        let built = build(&mut session, &spec, case).and_then(|t| apply_after(&mut session, case, t).map(|_| t));
+        let built = build(&mut session, &spec, case)
+            .and_then(|t| apply_after(&mut session, case, t).map(|_| t));
         checked += 1;
         let problems = match built {
             Ok(t) => problems_for(&session, t, &want),
@@ -722,7 +789,11 @@ fn excel_is_installed() -> bool {
 }
 
 /// Write every case as a workbook into a folder, as the files Excel is then asked to open.
-fn write_workbooks(spec: &Json, dir: &std::path::Path, only: &Option<Vec<String>>) -> Vec<(String, Session, usize)> {
+fn write_workbooks(
+    spec: &Json,
+    dir: &std::path::Path,
+    only: &Option<Vec<String>>,
+) -> Vec<(String, Session, usize)> {
     std::fs::create_dir_all(dir).unwrap();
     let mut built = Vec::new();
     for case in spec["cases"].as_array().unwrap() {
@@ -755,7 +826,9 @@ fn excel_opens_and_refreshes_what_we_write() {
             std::env::var("UNLUMINOUS_REQUIRE_EXCEL").is_err(),
             "UNLUMINOUS_REQUIRE_EXCEL is set and Excel is not installed"
         );
-        println!("Excel is not installed here, so the pivot tables written here were not opened in it");
+        println!(
+            "Excel is not installed here, so the pivot tables written here were not opened in it"
+        );
         return;
     }
     let spec = read_json("cases.json");
@@ -776,7 +849,8 @@ fn excel_opens_and_refreshes_what_we_write() {
     }
     let dir = std::env::temp_dir().join(format!("unluminous-pivots-{}", std::process::id()));
     let mut built = write_workbooks(&spec, &dir, &only);
-    let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2).unwrap().to_path_buf();
+    let repo =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2).unwrap().to_path_buf();
     let script = repo.join("tools").join("excel-oracle").join("pivot-check.ps1");
     let mut command = std::process::Command::new("pwsh");
     command
@@ -797,7 +871,8 @@ fn excel_opens_and_refreshes_what_we_write() {
         let want: Json = serde_json::from_str(line).unwrap();
         let id = want["id"].as_str().unwrap().to_owned();
         let Some(slot) = built.iter_mut().find(|(i, _, _)| *i == id) else { continue };
-        let case = spec["cases"].as_array().unwrap().iter().find(|c| c["id"] == id.as_str()).unwrap();
+        let case =
+            spec["cases"].as_array().unwrap().iter().find(|c| c["id"] == id.as_str()).unwrap();
         checked += 1;
         let mut problems = Vec::new();
         if want["repaired"].as_bool() == Some(true) {
@@ -837,14 +912,22 @@ fn what_is_written_is_read_back_as_the_same_pivot_table() {
         checked += 1;
         let ours = &session.book.pivots;
         if back.pivots.tables.len() != 1 || back.pivots.caches.len() != 1 {
-            failed.push(format!("{id}: {} tables and {} caches came back", back.pivots.tables.len(), back.pivots.caches.len()));
+            failed.push(format!(
+                "{id}: {} tables and {} caches came back",
+                back.pivots.tables.len(),
+                back.pivots.caches.len()
+            ));
             continue;
         }
         let (a, b) = (&ours.tables[t], &back.pivots.tables[0]);
         let mut differences = Vec::new();
         if a.fields != b.fields {
             let at = a.fields.iter().zip(b.fields.iter()).position(|(x, y)| x != y).unwrap_or(0);
-            differences.push(format!("field {at}: {:?} against {:?}", a.fields.get(at), b.fields.get(at)));
+            differences.push(format!(
+                "field {at}: {:?} against {:?}",
+                a.fields.get(at),
+                b.fields.get(at)
+            ));
         }
         if a.row_axis() != b.row_axis() || a.col_axis() != b.col_axis() {
             differences.push("axes".to_owned());
@@ -900,7 +983,10 @@ fn show_grids(session: &Session, want: &Json) {
     for i in 0..rows {
         let mut line = String::new();
         for j in 0..cols {
-            let excel = want["cells"].get(i as usize).and_then(|r| r.get(j as usize)).filter(|c| !c.is_null());
+            let excel = want["cells"]
+                .get(i as usize)
+                .and_then(|r| r.get(j as usize))
+                .filter(|c| !c.is_null());
             let excel = excel.map(|c| c["t"].as_str().unwrap_or("").to_owned()).unwrap_or_default();
             let at = CellRef::new(range.first.row + i, range.first.col + j);
             let ours = match session.book.sheets[table.sheet].value_at(at) {
@@ -909,7 +995,11 @@ fn show_grids(session: &Session, want: &Json) {
                 Value::Text(t) => t.to_string(),
                 other => format!("{other:?}"),
             };
-            let mark = if excel == ours || (excel.len() > 6 && ours.starts_with(&excel[..4])) { " " } else { "*" };
+            let mark = if excel == ours || (excel.len() > 6 && ours.starts_with(&excel[..4])) {
+                " "
+            } else {
+                "*"
+            };
             line.push_str(&format!("{:<20}{}", format!("{excel} / {ours}"), mark));
         }
         println!("{line}");

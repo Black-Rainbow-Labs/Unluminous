@@ -4,7 +4,8 @@ use super::cache::{CacheField, CacheValue, FieldGroup, GroupBy, PivotCache, Rang
 use crate::numfmt::Format;
 use crate::value::Value;
 
-const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTHS: [&str; 12] =
+    ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /// The text of a date or a number in the format of a field, for the names of group items.
 fn shown(cache: &PivotCache, field: usize, n: f64, date1904: bool) -> String {
@@ -35,7 +36,15 @@ fn rank(g: GroupBy) -> u8 {
 }
 
 /// The group items of a grouping by a period of a date.
-fn date_items(by: GroupBy, start: f64, end: f64, interval: f64, first: &str, last: &str, date1904: bool) -> Vec<CacheValue> {
+fn date_items(
+    by: GroupBy,
+    start: f64,
+    end: f64,
+    interval: f64,
+    first: &str,
+    last: &str,
+    date1904: bool,
+) -> Vec<CacheValue> {
     let mut items = vec![CacheValue::text(&format!("<{first}"))];
     match by {
         GroupBy::Years => {
@@ -53,7 +62,9 @@ fn date_items(by: GroupBy, start: f64, end: f64, interval: f64, first: &str, las
             }
         }
         GroupBy::Hours => (0..24).for_each(|h| items.push(CacheValue::text(&h.to_string()))),
-        GroupBy::Minutes | GroupBy::Seconds => (0..60).for_each(|h| items.push(CacheValue::text(&h.to_string()))),
+        GroupBy::Minutes | GroupBy::Seconds => {
+            (0..60).for_each(|h| items.push(CacheValue::text(&h.to_string())))
+        }
         GroupBy::Days | GroupBy::Range => {}
     }
     items.push(CacheValue::text(&format!(">{last}")));
@@ -86,7 +97,8 @@ pub fn group_dates(
     let mut added = Vec::new();
     for g in order {
         let interval = if g == GroupBy::Days { step.unwrap_or(1.0) } else { 1.0 };
-        let (first, last) = (shown(cache, field, start, date1904), shown(cache, field, end, date1904));
+        let (first, last) =
+            (shown(cache, field, start, date1904), shown(cache, field, end, date1904));
         let mut items = date_items(g, start, end, interval, &first, &last, date1904);
         if g == GroupBy::Days && interval > 1.0 {
             let mut at = start;
@@ -161,7 +173,11 @@ pub fn group_numbers(
         let upper = if whole { at + step - 1.0 } else { at + step };
         // The last range runs up to an end that was given, and a whole range when it was not.
         let upper = if !auto_end && at + step >= end { end } else { upper };
-        let label = format!("{}-{}", shown(cache, field, at, date1904), shown(cache, field, upper, date1904));
+        let label = format!(
+            "{}-{}",
+            shown(cache, field, at, date1904),
+            shown(cache, field, upper, date1904)
+        );
         items.push(CacheValue::text(&label));
         at += step;
     }
@@ -195,7 +211,10 @@ pub fn group_items(
     cache.ensure_shared(field);
     let shared_len = cache.fields[field].shared.len();
     let existing = (0..cache.fields.len()).find(|&i| {
-        cache.fields[i].group.as_ref().is_some_and(|g| g.base == Some(field) && g.discrete.is_some())
+        cache.fields[i]
+            .group
+            .as_ref()
+            .is_some_and(|g| g.base == Some(field) && g.discrete.is_some())
     });
     let target = match existing {
         Some(i) => i,
@@ -225,7 +244,11 @@ pub fn group_items(
             Some(n) => n.clone(),
             None => (1..)
                 .map(|n| format!("Group{n}"))
-                .find(|n| !items.iter().any(|i| matches!(i, CacheValue::Text(t) if t.eq_ignore_ascii_case(n))))
+                .find(|n| {
+                    !items
+                        .iter()
+                        .any(|i| matches!(i, CacheValue::Text(t) if t.eq_ignore_ascii_case(n)))
+                })
                 .unwrap_or_default(),
         };
         items.push(CacheValue::text(&name));
@@ -264,7 +287,9 @@ pub fn ungroup(cache: &mut PivotCache, field: usize) -> Result<Vec<usize>, Strin
     }
     let base = group.base.unwrap_or(field);
     let removed: Vec<usize> = (0..cache.fields.len())
-        .filter(|&i| i != base && cache.fields[i].group.as_ref().is_some_and(|g| g.base == Some(base)))
+        .filter(|&i| {
+            i != base && cache.fields[i].group.as_ref().is_some_and(|g| g.base == Some(base))
+        })
         .collect();
     for &i in removed.iter().rev() {
         cache.fields.remove(i);

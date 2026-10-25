@@ -14,7 +14,8 @@ use super::xml_read::{
     REL_CACHE_RECORDS, REL_PIVOT_TABLE,
 };
 use super::xml_write::{
-    cache_definition, cache_records, cache_rels, table_definition, table_rels, used_fields, XML_HEAD,
+    cache_definition, cache_records, cache_rels, table_definition, table_rels, used_fields,
+    XML_HEAD,
 };
 use crate::model::{Relationship, Workbook};
 use crate::xlsx::{escape, REL_NS};
@@ -23,14 +24,17 @@ const CT_CACHE_DEFINITION: &str =
     "application/vnd.openxmlformats-officedocument.spreadsheetml.pivotCacheDefinition+xml";
 const CT_CACHE_RECORDS: &str =
     "application/vnd.openxmlformats-officedocument.spreadsheetml.pivotCacheRecords+xml";
-const CT_PIVOT_TABLE: &str = "application/vnd.openxmlformats-officedocument.spreadsheetml.pivotTable+xml";
+const CT_PIVOT_TABLE: &str =
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.pivotTable+xml";
 
 /// Read the pivot tables a file has into the model. A cache or a table this version does not understand
 /// stays as the bytes it was.
 pub fn attach(book: &mut Workbook) {
-    let workbook_part = if book.part.is_empty() { "xl/workbook.xml".to_owned() } else { book.part.clone() };
+    let workbook_part =
+        if book.part.is_empty() { "xl/workbook.xml".to_owned() } else { book.part.clone() };
     for (id, rid) in listed_caches(book) {
-        let Some(rel) = book.kept.workbook_rels.iter().find(|r| r.id == rid && r.kind == REL_CACHE_DEFINITION)
+        let Some(rel) =
+            book.kept.workbook_rels.iter().find(|r| r.id == rid && r.kind == REL_CACHE_DEFINITION)
         else {
             continue;
         };
@@ -44,8 +48,13 @@ pub fn attach(book: &mut Workbook) {
     }
     for sheet in 0..book.sheets.len() {
         let part = book.sheets[sheet].raw.part.clone();
-        let rels: Vec<Relationship> =
-            book.sheets[sheet].raw.rels.iter().filter(|r| r.kind == REL_PIVOT_TABLE).cloned().collect();
+        let rels: Vec<Relationship> = book.sheets[sheet]
+            .raw
+            .rels
+            .iter()
+            .filter(|r| r.kind == REL_PIVOT_TABLE)
+            .cloned()
+            .collect();
         for rel in rels {
             let table_part = join_path(&part, &rel.target);
             if let Some(table) = read_table(book, sheet, &table_part) {
@@ -61,7 +70,11 @@ fn fresh_part(book: &Workbook, pattern: &str) -> String {
         .map(|n| pattern.replace("{}", &n.to_string()))
         .find(|p| {
             book.kept.get(p).is_none()
-                && !book.pivots.caches.iter().any(|c| c.definition_part == *p || c.records_part == *p)
+                && !book
+                    .pivots
+                    .caches
+                    .iter()
+                    .any(|c| c.definition_part == *p || c.records_part == *p)
                 && !book.pivots.tables.iter().any(|t| t.part == *p)
         })
         .unwrap_or_default()
@@ -175,7 +188,9 @@ fn rewrite_cache_list(book: &mut Workbook) {
             .kept
             .workbook_rels
             .iter()
-            .find(|r| r.kind == REL_CACHE_DEFINITION && join_path(&wb, &r.target) == cache.definition_part)
+            .find(|r| {
+                r.kind == REL_CACHE_DEFINITION && join_path(&wb, &r.target) == cache.definition_part
+            })
             .map(|r| r.id.clone());
         if let Some(rid) = rid {
             entries.push((cache.id, rid));
@@ -249,7 +264,8 @@ fn ensure_sheet_rel(book: &mut Workbook, sheet: usize, part: &str) {
         book.sheets[sheet].raw.part.clone()
     };
     let rels = &mut book.sheets[sheet].raw.rels;
-    let present = rels.iter().any(|r| r.kind == REL_PIVOT_TABLE && join_path(&base, &r.target) == part);
+    let present =
+        rels.iter().any(|r| r.kind == REL_PIVOT_TABLE && join_path(&base, &r.target) == part);
     if !present {
         let id = next_rel_id(rels);
         rels.push(Relationship {
@@ -269,10 +285,19 @@ pub fn sync_all(book: &mut Workbook) {
         book.kept.remove(part);
         book.kept.remove(&rels_path(part));
         for sheet in &mut book.sheets {
-            let base = if sheet.raw.part.is_empty() { "xl/worksheets/sheet.xml".to_owned() } else { sheet.raw.part.clone() };
-            sheet.raw.rels.retain(|r| !(r.kind == REL_PIVOT_TABLE && join_path(&base, &r.target) == *part));
+            let base = if sheet.raw.part.is_empty() {
+                "xl/worksheets/sheet.xml".to_owned()
+            } else {
+                sheet.raw.part.clone()
+            };
+            sheet
+                .raw
+                .rels
+                .retain(|r| !(r.kind == REL_PIVOT_TABLE && join_path(&base, &r.target) == *part));
         }
-        book.kept.workbook_rels.retain(|r| !(r.kind == REL_CACHE_DEFINITION && join_path(&wb, &r.target) == *part));
+        book.kept
+            .workbook_rels
+            .retain(|r| !(r.kind == REL_CACHE_DEFINITION && join_path(&wb, &r.target) == *part));
     }
     // Cache ids that are no longer in the model and have no definition left are dropped from the list.
     rewrite_cache_list(book);

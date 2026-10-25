@@ -8,7 +8,14 @@ use crate::coord::{CellRef, Range};
 impl Pivots {
     /// The reason Excel refuses to insert or delete some rows or columns, when a pivot table is in the way:
     /// one cannot change part of a table, only all of it or none of it.
-    pub fn refuse_edit(&self, sheet: usize, rows: bool, at: u32, count: i64, band: Option<(u32, u32)>) -> Option<String> {
+    pub fn refuse_edit(
+        &self,
+        sheet: usize,
+        rows: bool,
+        at: u32,
+        count: i64,
+        band: Option<(u32, u32)>,
+    ) -> Option<String> {
         let message = "Cannot change this part of a PivotTable report.";
         for t in self.tables.iter().filter(|t| t.sheet == sheet) {
             let r = t.full_range();

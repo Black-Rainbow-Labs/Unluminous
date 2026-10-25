@@ -237,7 +237,10 @@ fn notes(bytes: &[u8]) -> std::collections::BTreeMap<(u32, u32), Note> {
                 if let Some((row, col, author)) = current.take() {
                     let _ = r.u8();
                     let text = wide_string(&mut r).unwrap_or_default();
-                    out.insert((row, col), Note { author, text, visible: false, attrs: Vec::new() });
+                    out.insert(
+                        (row, col),
+                        Note { author, text, visible: false, attrs: Vec::new() },
+                    );
                 }
             }
             _ => {}

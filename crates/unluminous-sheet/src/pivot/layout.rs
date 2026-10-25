@@ -144,7 +144,13 @@ struct Shape {
 }
 
 impl Shape {
-    fn of(table: &PivotTable, rows: &[Level], cols: &[Level], n_rows: usize, n_cols: usize) -> Shape {
+    fn of(
+        table: &PivotTable,
+        rows: &[Level],
+        cols: &[Level],
+        n_rows: usize,
+        n_cols: usize,
+    ) -> Shape {
         let n_data = table.data.len();
         let has_real_cols = cols.iter().any(|l| matches!(l, Level::Field(..)));
         let mut label_col = Vec::new();
@@ -170,11 +176,8 @@ impl Shape {
             data_row_label = true;
         }
         let height = if has_real_cols { 1 + cols.len() as u32 } else { 1 };
-        let first_header_row = if has_real_cols || !cols.iter().any(|l| matches!(l, Level::Values)) {
-            1
-        } else {
-            0
-        };
+        let first_header_row =
+            if has_real_cols || !cols.iter().any(|l| matches!(l, Level::Values)) { 1 } else { 0 };
         Shape {
             width,
             height,
@@ -299,7 +302,8 @@ impl Builder<'_, '_> {
         for child in children {
             let item = axis.nodes[child].item;
             path.push(Seg::Item(item));
-            let is_leaf_line = last || axis.nodes[child].children.is_empty() && !more_real && !values_after;
+            let is_leaf_line =
+                last || axis.nodes[child].children.is_empty() && !more_real && !values_after;
             if is_leaf_line {
                 self.out.push(line(LineKind::Leaf, path.clone(), child, data, li));
             } else {
@@ -334,7 +338,14 @@ impl Builder<'_, '_> {
         }
     }
 
-    fn subtotal_lines(&mut self, li: usize, node: usize, data: Option<usize>, values_after: bool, path: &[Seg]) {
+    fn subtotal_lines(
+        &mut self,
+        li: usize,
+        node: usize,
+        data: Option<usize>,
+        values_after: bool,
+        path: &[Seg],
+    ) {
         let f = match self.levels[li] {
             Level::Field(f, _) => f,
             Level::Values => return,
@@ -383,14 +394,16 @@ fn seg_label(calc: &Calc, levels: &[Level], at: usize, seg: Seg) -> String {
 fn total_label(calc: &Calc, levels: &[Level], l: &Line) -> String {
     let table = calc.table;
     if l.kind == LineKind::Grand {
-        let caption = table.options.grand_total_caption.clone().unwrap_or_else(|| "Grand Total".to_owned());
+        let caption =
+            table.options.grand_total_caption.clone().unwrap_or_else(|| "Grand Total".to_owned());
         return match l.path.first() {
             Some(Seg::Data(d)) => format!("Total {}", table.data[*d].name),
             _ => caption,
         };
     }
     // A subtotal: the item at its level, then what it adds up.
-    let item = l.path.get(l.level).map(|s| seg_label(calc, levels, l.level, *s)).unwrap_or_default();
+    let item =
+        l.path.get(l.level).map(|s| seg_label(calc, levels, l.level, *s)).unwrap_or_default();
     let word = match (l.func, l.path.get(l.level + 1)) {
         (Some(f), _) => f.subtotal_label().to_owned(),
         (None, Some(Seg::Data(d))) => table.data[*d].name.clone(),
@@ -488,7 +501,9 @@ fn label_value(calc: &Calc, levels: &[Level], at: usize, seg: Seg) -> (Value, Op
             v @ (super::cache::CacheValue::Number(_) | super::cache::CacheValue::Date(_)) => {
                 (v.to_value(), Some(calc.field_format(*f)))
             }
-            super::cache::CacheValue::Bool(b) => (Value::text(if b { "TRUE" } else { "FALSE" }), None),
+            super::cache::CacheValue::Bool(b) => {
+                (Value::text(if b { "TRUE" } else { "FALSE" }), None)
+            }
             v => (v.to_value(), None),
         },
         _ => (Value::text(seg_label(calc, levels, at, seg)), None),
@@ -509,7 +524,8 @@ fn corner_cells(calc: &Calc, shape: &Shape, rows: &[Level], cols: &[Level], out:
     // Column captions.
     if shape.has_real_cols {
         if opts.form == Form::Compact {
-            let caption = opts.col_header_caption.clone().unwrap_or_else(|| "Column Labels".to_owned());
+            let caption =
+                opts.col_header_caption.clone().unwrap_or_else(|| "Column Labels".to_owned());
             out.put_text(0, shape.width, &caption, Role::Caption);
         } else {
             for (i, level) in cols.iter().enumerate() {
@@ -530,7 +546,9 @@ fn corner_cells(calc: &Calc, shape: &Shape, rows: &[Level], cols: &[Level], out:
     // every other column is named after the first field in it.
     let mut written: Vec<u32> = Vec::new();
     let any_compact = opts.form == Form::Compact
-        || rows.iter().any(|l| matches!(l, Level::Field(f, _) if table.fields[*f].form == Form::Compact));
+        || rows
+            .iter()
+            .any(|l| matches!(l, Level::Field(f, _) if table.fields[*f].form == Form::Compact));
     for (i, level) in rows.iter().enumerate() {
         let col = shape.label_col[i];
         if written.contains(&col) {
@@ -558,7 +576,12 @@ fn col_header_cells(calc: &Calc, shape: &Shape, levels: &[Level], lines: &[Line]
         if levels.iter().any(|l| matches!(l, Level::Values)) {
             for (j, l) in lines.iter().enumerate() {
                 if let Some(Seg::Data(d)) = l.path.last() {
-                    out.put_text(0, shape.width + j as u32, &calc.table.data[*d].name, Role::ColLabel);
+                    out.put_text(
+                        0,
+                        shape.width + j as u32,
+                        &calc.table.data[*d].name,
+                        Role::ColLabel,
+                    );
                 }
             }
         }
@@ -602,7 +625,14 @@ fn changed_col(previous: Option<&Line>, l: &Line, at: usize) -> bool {
 // ----------------------------------------------------------------------------------------------------
 // Figures.
 
-fn data_cells(calc: &Calc, shape: &Shape, n_data: usize, rows: &[Line], cols: &[Line], out: &mut Out) {
+fn data_cells(
+    calc: &Calc,
+    shape: &Shape,
+    n_data: usize,
+    rows: &[Line],
+    cols: &[Line],
+    out: &mut Out,
+) {
     if n_data == 0 {
         return;
     }
@@ -676,7 +706,7 @@ fn page_cells(calc: &Calc, laid: &mut Laid) {
         laid.cells.push(LaidCell {
             row: k as u32,
             col: 1,
-            value: Value::text(&calc.page_text(page)),
+            value: Value::text(calc.page_text(page)),
             role: Role::PageItem,
             format: None,
             indent: 0,

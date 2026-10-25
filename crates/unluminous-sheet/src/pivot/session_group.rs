@@ -22,7 +22,8 @@ impl Session {
         if field >= cache.fields.len() {
             return Err("There is no such field.".to_owned());
         }
-        let added = groups::group_dates(&mut cache, field, by, start, end, step, self.book.date1904)?;
+        let added =
+            groups::group_dates(&mut cache, field, by, start, end, step, self.book.date1904)?;
         self.remember_whole("Group PivotTable field");
         self.book.pivots.caches[cache_index] = cache;
         self.add_group_fields(cache_index, added.len());
@@ -81,7 +82,10 @@ impl Session {
         for (name, positions) in chosen {
             let mut xs = Vec::new();
             for &p in positions {
-                let item = self.book.pivots.tables[t].fields[field].items.get(p).ok_or("There is no such item.")?;
+                let item = self.book.pivots.tables[t].fields[field]
+                    .items
+                    .get(p)
+                    .ok_or("There is no such item.")?;
                 xs.push(item.x);
             }
             members.push((name.clone(), xs));

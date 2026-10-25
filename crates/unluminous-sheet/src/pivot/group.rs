@@ -57,7 +57,7 @@ fn range_index(range: &super::cache::RangePr, n: f64, count: usize) -> usize {
     if n < start {
         return 0;
     }
-    if n > end + if range.group_by == GroupBy::Range { 0.0 } else { 0.0 } {
+    if n > end {
         return count - 1;
     }
     match range.group_by {

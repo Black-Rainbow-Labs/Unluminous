@@ -106,11 +106,21 @@ fn a_change_to_the_source_shows_after_a_refresh_and_not_before() {
 fn value_field_settings_change_what_is_shown_and_how() {
     let mut s = session();
     let t = regions(&mut s);
-    s.pivot_value_settings(t, 0, ValueSettings { show: Some(ShowAs::PercentOfTotal), ..Default::default() }).unwrap();
+    s.pivot_value_settings(
+        t,
+        0,
+        ValueSettings { show: Some(ShowAs::PercentOfTotal), ..Default::default() },
+    )
+    .unwrap();
     assert!((number(&s, 1, "B4") - 100.0 / 210.0).abs() < 1e-12);
     let cell = s.book.sheets[1].cell(at("B4")).unwrap();
     assert_eq!(s.book.styles.format_code(cell.style), "0.00%");
-    s.pivot_value_settings(t, 0, ValueSettings { func: Some(Func::Count), show: Some(ShowAs::Normal), ..Default::default() }).unwrap();
+    s.pivot_value_settings(
+        t,
+        0,
+        ValueSettings { func: Some(Func::Count), show: Some(ShowAs::Normal), ..Default::default() },
+    )
+    .unwrap();
     assert_eq!(text(&s, 1, "B3"), "Count of Units");
     assert_eq!(number(&s, 1, "B4"), 2.0);
 }
@@ -125,14 +135,23 @@ fn a_pivot_table_follows_rows_inserted_above_it_and_above_its_source() {
     s.insert(0, Range::parse("A1:A3").unwrap(), Shift::WholeRows).unwrap();
     s.set_input(0, at("C5"), "7").unwrap();
     s.pivot_refresh(t).unwrap();
-    assert_eq!(s.book.pivots.caches[0].source, unluminous_sheet::pivot::CacheSource::Range { sheet: "Data".into(), range: Range::parse("A4:C10").unwrap() });
+    assert_eq!(
+        s.book.pivots.caches[0].source,
+        unluminous_sheet::pivot::CacheSource::Range {
+            sheet: "Data".into(),
+            range: Range::parse("A4:C10").unwrap()
+        }
+    );
     assert_eq!(number(&s, 1, "B9"), 210.0 - 10.0 + 7.0);
     let bytes = unluminous_sheet::xlsx::write(&s.book).unwrap();
     let back = unluminous_sheet::xlsx::read(&bytes).unwrap();
     assert_eq!(back.pivots.tables[0].location.a1(), "A5:B9");
     assert_eq!(
         back.pivots.caches[0].source,
-        unluminous_sheet::pivot::CacheSource::Range { sheet: "Data".into(), range: Range::parse("A4:C10").unwrap() }
+        unluminous_sheet::pivot::CacheSource::Range {
+            sheet: "Data".into(),
+            range: Range::parse("A4:C10").unwrap()
+        }
     );
 }
 
@@ -143,7 +162,10 @@ fn rows_cannot_be_inserted_or_deleted_through_a_pivot_table() {
     let err = s.insert(1, Range::parse("A5:A5").unwrap(), Shift::WholeRows).unwrap_err();
     assert!(err.contains("PivotTable"), "{err}");
     assert!(s.delete(1, Range::parse("A5:A5").unwrap(), Shift::WholeRows).is_err());
-    assert!(s.insert(1, Range::parse("A3:A3").unwrap(), Shift::WholeRows).is_ok(), "above the table is fine");
+    assert!(
+        s.insert(1, Range::parse("A3:A3").unwrap(), Shift::WholeRows).is_ok(),
+        "above the table is fine"
+    );
 }
 
 #[test]
@@ -183,7 +205,8 @@ fn deleting_a_pivot_table_clears_its_cells_and_its_parts() {
     s.pivot_delete(t).unwrap();
     assert!(s.book.sheets[1].value_at(at("A4")).is_empty());
     assert!(!part_names(&s.book).iter().any(|n| n.contains("pivot")));
-    let book = unluminous_sheet::xlsx::read(&unluminous_sheet::xlsx::write(&s.book).unwrap()).unwrap();
+    let book =
+        unluminous_sheet::xlsx::read(&unluminous_sheet::xlsx::write(&s.book).unwrap()).unwrap();
     assert!(book.pivots.tables.is_empty());
     assert!(!book.raw.iter().any(|(n, _)| n == "pivotCaches"));
 }
@@ -245,7 +268,11 @@ fn sorting_and_filtering_are_one_undo_step_each() {
 fn changing_the_source_reads_the_new_range() {
     let mut s = session();
     let t = regions(&mut s);
-    s.pivot_change_source(t, PivotSource::Range { sheet: 0, range: Range::parse("A1:C4").unwrap() }).unwrap();
+    s.pivot_change_source(
+        t,
+        PivotSource::Range { sheet: 0, range: Range::parse("A1:C4").unwrap() },
+    )
+    .unwrap();
     let t = 0;
     s.pivot_move_field(t, 0, Area::Rows, None).unwrap();
     s.pivot_add_value(t, 2, Func::Sum, None).unwrap();
@@ -259,20 +286,34 @@ fn the_written_file_names_its_pivot_parts_where_excel_looks() {
     let bytes = unluminous_sheet::xlsx::write(&s.book).unwrap();
     let entries = unluminous_sheet::zip::read(&bytes).unwrap();
     let get = |name: &str| -> String {
-        String::from_utf8(entries.iter().find(|e| e.name == name).unwrap_or_else(|| panic!("{name}")).data.clone()).unwrap()
+        String::from_utf8(
+            entries
+                .iter()
+                .find(|e| e.name == name)
+                .unwrap_or_else(|| panic!("{name}"))
+                .data
+                .clone(),
+        )
+        .unwrap()
     };
     let workbook = get("xl/workbook.xml");
     assert!(workbook.contains("<pivotCaches><pivotCache cacheId=\"1\" r:id=\""), "{workbook}");
     let rels = get("xl/_rels/workbook.xml.rels");
     assert!(rels.contains("pivotCacheDefinition1.xml"), "{rels}");
-    let sheet_rels = entries.iter().filter(|e| e.name.starts_with("xl/worksheets/_rels/")).map(|e| String::from_utf8_lossy(&e.data).into_owned()).collect::<String>();
+    let sheet_rels = entries
+        .iter()
+        .filter(|e| e.name.starts_with("xl/worksheets/_rels/"))
+        .map(|e| String::from_utf8_lossy(&e.data).into_owned())
+        .collect::<String>();
     assert!(sheet_rels.contains("../pivotTables/pivotTable1.xml"), "{sheet_rels}");
     let types = get("[Content_Types].xml");
     for part in ["pivotTable1", "pivotCacheDefinition1", "pivotCacheRecords1"] {
         assert!(types.contains(part), "{part} has a content type");
     }
-    assert!(get("xl/pivotTables/_rels/pivotTable1.xml.rels").contains("../pivotCache/pivotCacheDefinition1.xml"));
-    assert!(get("xl/pivotCache/_rels/pivotCacheDefinition1.xml.rels").contains("pivotCacheRecords1.xml"));
+    assert!(get("xl/pivotTables/_rels/pivotTable1.xml.rels")
+        .contains("../pivotCache/pivotCacheDefinition1.xml"));
+    assert!(get("xl/pivotCache/_rels/pivotCacheDefinition1.xml.rels")
+        .contains("pivotCacheRecords1.xml"));
     let table = get("xl/pivotTables/pivotTable1.xml");
     assert!(table.contains("<location ref=\"A3:B7\""), "{table}");
 }
@@ -282,7 +323,10 @@ fn grouping_and_ungrouping_are_undoable() {
     let mut s = session();
     let t = regions(&mut s);
     s.pivot_group_items(t, 0, &[(None, vec![0, 1])]).unwrap();
-    assert!(text(&s, 1, "A4").starts_with("Group") || (4..12).any(|r| text(&s, 1, &format!("A{r}")).starts_with("Group")));
+    assert!(
+        text(&s, 1, "A4").starts_with("Group")
+            || (4..12).any(|r| text(&s, 1, &format!("A{r}")).starts_with("Group"))
+    );
     s.undo().unwrap();
     assert!(!(4..12).any(|r| text(&s, 1, &format!("A{r}")).starts_with("Group")));
 }

@@ -11,8 +11,8 @@ use super::cache::{CacheSource, PivotCache};
 use super::compute::Calc;
 use super::layout::{lay_out, Laid};
 use super::table::{
-    AutoSort, AxisEntry, DataField, Filter, FilterKind, ItemEntry, PageField, PivotTable, StyleInfo,
-    Subtotals,
+    AutoSort, AxisEntry, DataField, Filter, FilterKind, ItemEntry, PageField, PivotTable,
+    StyleInfo, Subtotals,
 };
 use super::{Form, Func, ShowAs, SortType};
 use crate::coord::{CellRef, Range};
@@ -227,12 +227,18 @@ impl Session {
         let old_cache_fields: Vec<String> = {
             let table = &self.book.pivots.tables[t];
             // The names the old fields had, from the table's own captions when it set them.
-            table.fields.iter().enumerate().map(|(i, f)| f.name.clone().unwrap_or_else(|| format!("#{i}"))).collect()
+            table
+                .fields
+                .iter()
+                .enumerate()
+                .map(|(i, f)| f.name.clone().unwrap_or_else(|| format!("#{i}")))
+                .collect()
         };
         let _ = old_cache_fields;
         let table = &mut self.book.pivots.tables[t];
         let form = table.options.form;
-        let mut fresh = PivotTable::new(&table.name, table.sheet, cache_index, table.location.first, &cache);
+        let mut fresh =
+            PivotTable::new(&table.name, table.sheet, cache_index, table.location.first, &cache);
         fresh.options = table.options.clone();
         fresh.style = table.style.clone();
         fresh.part = table.part.clone();
@@ -398,7 +404,12 @@ impl Session {
     }
 
     /// Where the Values entry is: in the row area or the column area, at a place among the fields.
-    pub fn pivot_move_values(&mut self, t: usize, area: Area, position: Option<usize>) -> Result<(), String> {
+    pub fn pivot_move_values(
+        &mut self,
+        t: usize,
+        area: Area,
+        position: Option<usize>,
+    ) -> Result<(), String> {
         self.check_table(t)?;
         self.remember_whole("Move PivotTable values");
         let table = &mut self.book.pivots.tables[t];
@@ -467,7 +478,12 @@ impl Session {
     }
 
     /// Change a value field's name, function, Show Values As setting or number format.
-    pub fn pivot_value_settings(&mut self, t: usize, data: usize, s: ValueSettings) -> Result<(), String> {
+    pub fn pivot_value_settings(
+        &mut self,
+        t: usize,
+        data: usize,
+        s: ValueSettings,
+    ) -> Result<(), String> {
         self.check_table(t)?;
         if data >= self.book.pivots.tables[t].data.len() {
             return Err("There is no such value field.".to_owned());
@@ -475,15 +491,21 @@ impl Session {
         if let Some(name) = &s.name {
             let table = &self.book.pivots.tables[t];
             let cache = &self.book.pivots.caches[table.cache];
-            let clash = table.data.iter().enumerate().any(|(i, d)| i != data && d.name.eq_ignore_ascii_case(name))
-                || (0..cache.fields.len()).any(|f| table.caption(cache, f).eq_ignore_ascii_case(name));
+            let clash = table
+                .data
+                .iter()
+                .enumerate()
+                .any(|(i, d)| i != data && d.name.eq_ignore_ascii_case(name))
+                || (0..cache.fields.len())
+                    .any(|f| table.caption(cache, f).eq_ignore_ascii_case(name));
             if clash {
                 return Err("A PivotTable field name already exists.".to_owned());
             }
         }
         self.remember_whole("Change PivotTable value field");
         let table = &mut self.book.pivots.tables[t];
-        let inherited = inherited_format(&self.book.pivots.caches[table.cache], table.data[data].field);
+        let inherited =
+            inherited_format(&self.book.pivots.caches[table.cache], table.data[data].field);
         let d = &mut table.data[data];
         if let Some(func) = s.func {
             let old_default = format!("{} of ", d.func.label());
@@ -499,7 +521,8 @@ impl Session {
             d.show = show;
             if let Some(id) = show.default_format() {
                 if d.num_fmt.is_none() || d.num_fmt == inherited {
-                    d.num_fmt = Some(crate::styles::builtin_format(id).unwrap_or("General").to_owned());
+                    d.num_fmt =
+                        Some(crate::styles::builtin_format(id).unwrap_or("General").to_owned());
                 }
             }
         }
@@ -516,7 +539,12 @@ impl Session {
     }
 
     /// Change how a field is laid out and what it shows.
-    pub fn pivot_field_settings(&mut self, t: usize, field: usize, s: FieldSettings) -> Result<(), String> {
+    pub fn pivot_field_settings(
+        &mut self,
+        t: usize,
+        field: usize,
+        s: FieldSettings,
+    ) -> Result<(), String> {
         self.check_table(t)?;
         if field >= self.book.pivots.tables[t].fields.len() {
             return Err("There is no such field.".to_owned());
@@ -633,7 +661,13 @@ impl Session {
     }
 
     /// Put an item first, last or at a place in its field, which is what dragging it does.
-    pub fn pivot_move_item(&mut self, t: usize, field: usize, from: usize, to: usize) -> Result<(), String> {
+    pub fn pivot_move_item(
+        &mut self,
+        t: usize,
+        field: usize,
+        from: usize,
+        to: usize,
+    ) -> Result<(), String> {
         self.check_table(t)?;
         let len = self.book.pivots.tables[t].fields.get(field).map_or(0, |f| f.items.len());
         if from >= len || to >= len {
@@ -649,7 +683,13 @@ impl Session {
     }
 
     /// Show or hide an item.
-    pub fn pivot_set_item_visible(&mut self, t: usize, field: usize, item: usize, visible: bool) -> Result<(), String> {
+    pub fn pivot_set_item_visible(
+        &mut self,
+        t: usize,
+        field: usize,
+        item: usize,
+        visible: bool,
+    ) -> Result<(), String> {
         self.check_table(t)?;
         let ok = self.book.pivots.tables[t].fields.get(field).is_some_and(|f| item < f.items.len());
         if !ok {
@@ -669,7 +709,12 @@ impl Session {
     }
 
     /// Show only one item of a filter field.
-    pub fn pivot_set_page_item(&mut self, t: usize, field: usize, item: Option<usize>) -> Result<(), String> {
+    pub fn pivot_set_page_item(
+        &mut self,
+        t: usize,
+        field: usize,
+        item: Option<usize>,
+    ) -> Result<(), String> {
         self.check_table(t)?;
         self.remember_whole("Filter PivotTable");
         let table = &mut self.book.pivots.tables[t];
@@ -684,7 +729,12 @@ impl Session {
     }
 
     /// Put a label, value or top N filter on a field. Showing every item again clears it.
-    pub fn pivot_set_filter(&mut self, t: usize, field: usize, filter: Option<Filter>) -> Result<(), String> {
+    pub fn pivot_set_filter(
+        &mut self,
+        t: usize,
+        field: usize,
+        filter: Option<Filter>,
+    ) -> Result<(), String> {
         self.check_table(t)?;
         if field >= self.book.pivots.tables[t].fields.len() {
             return Err("There is no such field.".to_owned());
@@ -721,7 +771,11 @@ impl Session {
         let (laid, empty) = {
             let table = &self.book.pivots.tables[t];
             let cache = &self.book.pivots.caches[table.cache];
-            if table.rows.is_empty() && table.cols.is_empty() && table.pages.is_empty() && table.data.is_empty() {
+            if table.rows.is_empty()
+                && table.cols.is_empty()
+                && table.pages.is_empty()
+                && table.data.is_empty()
+            {
                 (Laid::default(), true)
             } else {
                 let calc = Calc::build(table, cache, self.book.date1904);
@@ -744,7 +798,10 @@ impl Session {
         } else {
             Range::new(
                 CellRef::new(top, anchor.col),
-                CellRef::new(top + laid.rows.max(1) - 1, anchor.col + laid.cols.max(laid.page_cols()).max(1) - 1),
+                CellRef::new(
+                    top + laid.rows.max(1) - 1,
+                    anchor.col + laid.cols.max(laid.page_cols()).max(1) - 1,
+                ),
             )
         };
         self.refuse_overlap(t, sheet, new_range)?;
@@ -759,7 +816,10 @@ impl Session {
         } else {
             Range::new(
                 anchor,
-                CellRef::new(anchor.row + (laid.rows - laid.page_rows).max(1) - 1, anchor.col + laid.cols.max(1) - 1),
+                CellRef::new(
+                    anchor.row + (laid.rows - laid.page_rows).max(1) - 1,
+                    anchor.col + laid.cols.max(1) - 1,
+                ),
             )
         };
         table.first_header_row = laid.first_header_row;
@@ -775,9 +835,13 @@ impl Session {
     }
 
     fn refuse_overlap(&self, t: usize, sheet: usize, range: Range) -> Result<(), String> {
-        let clash = self.book.pivots.tables.iter().enumerate().any(|(i, x)| {
-            i != t && x.sheet == sheet && x.full_range().intersects(&range)
-        });
+        let clash = self
+            .book
+            .pivots
+            .tables
+            .iter()
+            .enumerate()
+            .any(|(i, x)| i != t && x.sheet == sheet && x.full_range().intersects(&range));
         if clash {
             return Err("A PivotTable report cannot overlap another PivotTable report.".to_owned());
         }
@@ -804,9 +868,11 @@ impl Session {
         let mut styles: HashMap<String, u32> = HashMap::new();
         for cell in &laid.cells {
             let style = match &cell.format {
-                Some(code) if code != "General" => *styles.entry(code.clone()).or_insert_with(|| {
-                    self.book.styles.derive(0, &StyleChange::NumberFormat(code.clone()))
-                }),
+                Some(code) if code != "General" => {
+                    *styles.entry(code.clone()).or_insert_with(|| {
+                        self.book.styles.derive(0, &StyleChange::NumberFormat(code.clone()))
+                    })
+                }
                 _ => 0,
             };
             let at = CellRef::new(origin.row + cell.row, origin.col + cell.col);

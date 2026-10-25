@@ -261,11 +261,10 @@ impl<'a> Calc<'a> {
                         let refs: Vec<(String, usize)> = names
                             .iter()
                             .filter_map(|n| {
-                                let f = self
-                                    .cache
-                                    .fields
-                                    .iter()
-                                    .position(|f| f.database && f.name.eq_ignore_ascii_case(n))?;
+                                let f =
+                                    self.cache.fields.iter().position(|f| {
+                                        f.database && f.name.eq_ignore_ascii_case(n)
+                                    })?;
                                 Some((n.to_ascii_lowercase(), f))
                             })
                             .collect();
@@ -314,7 +313,11 @@ impl<'a> Calc<'a> {
                     .enumerate()
                     .filter(|(_, e)| e.calculated)
                     .filter_map(|(pos, e)| {
-                        let item = self.cache.calculated_items.iter().find(|c| c.field == f && c.item == e.x)?;
+                        let item = self
+                            .cache
+                            .calculated_items
+                            .iter()
+                            .find(|c| c.field == f && c.item == e.x)?;
                         Some((pos, calcfield::parse(&item.formula).ok()?))
                     })
                     .collect();
@@ -323,13 +326,20 @@ impl<'a> Calc<'a> {
                 }
                 let parents: Vec<usize> = {
                     let axis = if rows { &self.rows } else { &self.cols };
-                    (0..axis.nodes.len()).filter(|&n| axis.nodes[n].level == i && !axis.nodes[n].children.is_empty()).collect()
+                    (0..axis.nodes.len())
+                        .filter(|&n| axis.nodes[n].level == i && !axis.nodes[n].children.is_empty())
+                        .collect()
                 };
                 for p in parents {
                     for (pos, expr) in &entries {
                         let axis = if rows { &mut self.rows } else { &mut self.cols };
                         let id = axis.nodes.len();
-                        axis.nodes.push(Node { parent: Some(p), level: i + 1, item: *pos, children: Vec::new() });
+                        axis.nodes.push(Node {
+                            parent: Some(p),
+                            level: i + 1,
+                            item: *pos,
+                            children: Vec::new(),
+                        });
                         axis.nodes[p].children.push(id);
                         let map = if rows { &mut self.calc_rows } else { &mut self.calc_cols };
                         map.insert(id, expr.clone());
@@ -353,15 +363,13 @@ impl<'a> Calc<'a> {
         let field = axis.fields[axis.nodes[node].level - 1];
         let lookup = |_f: Option<&str>, name: &str| -> Result<f64, ErrorKind> {
             // An item the parent does not have adds up to nothing.
-            let Some(sibling) = axis.nodes[parent]
-                .children
-                .iter()
-                .copied()
-                .find(|s| *s != node && self.label(field, axis.nodes[*s].item).eq_ignore_ascii_case(name))
-            else {
+            let Some(sibling) = axis.nodes[parent].children.iter().copied().find(|s| {
+                *s != node && self.label(field, axis.nodes[*s].item).eq_ignore_ascii_case(name)
+            }) else {
                 return Ok(0.0);
             };
-            let v = if rows { self.raw(sibling, c, d, None) } else { self.raw(r, sibling, d, None) };
+            let v =
+                if rows { self.raw(sibling, c, d, None) } else { self.raw(r, sibling, d, None) };
             match v {
                 CellVal::Num(n) => Ok(n),
                 CellVal::Empty => Ok(0.0),
@@ -392,7 +400,11 @@ impl<'a> Calc<'a> {
         let mut extra = 0.0;
         for &k in &axis.nodes[node].children {
             if calc.contains_key(&k) {
-                let value = if rows { self.calculated_value(k, c, d) } else { self.calculated_value(r, k, d) };
+                let value = if rows {
+                    self.calculated_value(k, c, d)
+                } else {
+                    self.calculated_value(r, k, d)
+                };
                 if let Some(CellVal::Num(n)) = value {
                     extra += n;
                 }
@@ -518,8 +530,12 @@ impl<'a> Calc<'a> {
         for rows in [true, false] {
             let fields = if rows { self.rows.fields.clone() } else { self.cols.fields.clone() };
             for (level, &f) in fields.iter().enumerate() {
-                let filters: Vec<Filter> =
-                    self.table.fields[f].filters.iter().filter(|x| x.kind.is_value()).cloned().collect();
+                let filters: Vec<Filter> = self.table.fields[f]
+                    .filters
+                    .iter()
+                    .filter(|x| x.kind.is_value())
+                    .cloned()
+                    .collect();
                 for filter in filters {
                     changed |= self.apply_value_filter(rows, level, f, &filter);
                 }
@@ -528,7 +544,13 @@ impl<'a> Calc<'a> {
         changed
     }
 
-    fn apply_value_filter(&mut self, rows: bool, level: usize, field: usize, filter: &Filter) -> bool {
+    fn apply_value_filter(
+        &mut self,
+        rows: bool,
+        level: usize,
+        field: usize,
+        filter: &Filter,
+    ) -> bool {
         let d = filter.data.unwrap_or(0).min(self.table.data.len().saturating_sub(1));
         if self.table.data.is_empty() {
             return false;
@@ -610,7 +632,9 @@ impl<'a> Calc<'a> {
                     .collect();
                 keyed.sort_by(|a, b| {
                     let ord = match (a.1, b.1) {
-                        (Some(x), Some(y)) => x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal),
+                        (Some(x), Some(y)) => {
+                            x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal)
+                        }
                         (Some(_), None) => return std::cmp::Ordering::Less,
                         (None, Some(_)) => return std::cmp::Ordering::Greater,
                         (None, None) => std::cmp::Ordering::Equal,
@@ -702,8 +726,6 @@ impl<'a> Calc<'a> {
         }
         if pf.items.iter().any(|i| i.hidden) && pf.multi_page {
             "(Multiple Items)".to_owned()
-        } else if pf.multi_page && pf.items.iter().any(|i| i.hidden) {
-            "(Multiple Items)".to_owned()
         } else {
             "(All)".to_owned()
         }
@@ -723,7 +745,12 @@ fn descend(axis: &mut Axis, index: &mut HashMap<(usize, usize), usize>, path: &[
             Some(&n) => n,
             None => {
                 let id = axis.nodes.len();
-                axis.nodes.push(Node { parent: Some(at), level: i + 1, item, children: Vec::new() });
+                axis.nodes.push(Node {
+                    parent: Some(at),
+                    level: i + 1,
+                    item,
+                    children: Vec::new(),
+                });
                 axis.nodes[at].children.push(id);
                 index.insert((at, item), id);
                 id

@@ -30,7 +30,12 @@ pub fn iso(serial: f64, date1904: bool) -> String {
     let whole = serial.floor();
     let (y, m, d) = crate::dates::date(whole, date1904).unwrap_or((1900, 1, 1));
     let seconds = ((serial - whole) * 86400.0).round() as u32;
-    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}", seconds / 3600, seconds / 60 % 60, seconds % 60)
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}",
+        seconds / 3600,
+        seconds / 60 % 60,
+        seconds % 60
+    )
 }
 
 fn value_xml(v: &CacheValue, date1904: bool) -> String {
@@ -64,7 +69,14 @@ struct Stats {
 }
 
 fn stats_of(values: impl Iterator<Item = CacheValue>) -> Stats {
-    let mut s = Stats { integer: true, min: f64::INFINITY, max: f64::NEG_INFINITY, min_date: f64::INFINITY, max_date: f64::NEG_INFINITY, ..Default::default() };
+    let mut s = Stats {
+        integer: true,
+        min: f64::INFINITY,
+        max: f64::NEG_INFINITY,
+        min_date: f64::INFINITY,
+        max_date: f64::NEG_INFINITY,
+        ..Default::default()
+    };
     for v in values {
         match v {
             CacheValue::Blank => s.blank = true,
@@ -96,7 +108,7 @@ fn lists_items(cache: &PivotCache, f: usize, used: &[bool]) -> bool {
     if !field.shared.is_empty() || used[f] || field.group.is_some() {
         return true;
     }
-    cache.records.iter().any(|r| matches!(r[f], CacheValue::Text(_) | CacheValue::Bool(_) | CacheValue::Error(_)))
+    cache.records.iter().any(|r| matches!(r[f], CacheValue::Text(_) | CacheValue::Bool(_)))
 }
 
 /// The items a listed field has: its shared items, or the distinct values in order of first appearance.
@@ -133,7 +145,12 @@ pub fn used_fields(cache_index: usize, tables: &[PivotTable], count: usize) -> V
 }
 
 /// The definition part of a cache.
-pub fn cache_definition(cache: &PivotCache, used: &[bool], date1904: bool, records_rid: &str) -> String {
+pub fn cache_definition(
+    cache: &PivotCache,
+    used: &[bool],
+    date1904: bool,
+    records_rid: &str,
+) -> String {
     let mut out = String::from(XML_HEAD);
     out.push_str(&format!("<pivotCacheDefinition xmlns=\"{MAIN_NS}\" xmlns:r=\"{REL_NS}\""));
     attr(&mut out, "r:id", records_rid);
@@ -175,7 +192,13 @@ pub fn cache_definition(cache: &PivotCache, used: &[bool], date1904: bool, recor
     out
 }
 
-fn cache_field(cache: &PivotCache, f: usize, field: &CacheField, used: &[bool], date1904: bool) -> String {
+fn cache_field(
+    cache: &PivotCache,
+    f: usize,
+    field: &CacheField,
+    used: &[bool],
+    date1904: bool,
+) -> String {
     let mut out = String::from("<cacheField");
     attr(&mut out, "name", &field.name);
     attr(&mut out, "numFmtId", &field.num_fmt_id.to_string());
@@ -348,7 +371,12 @@ pub fn cache_records(cache: &PivotCache, used: &[bool], date1904: bool) -> Strin
 // The table.
 
 /// The definition part of a table.
-pub fn table_definition(table: &PivotTable, cache: &PivotCache, styles: &mut Styles, cache_id: u32) -> String {
+pub fn table_definition(
+    table: &PivotTable,
+    cache: &PivotCache,
+    styles: &mut Styles,
+    cache_id: u32,
+) -> String {
     let mut out = String::from(XML_HEAD);
     out.push_str(&format!("<pivotTableDefinition xmlns=\"{MAIN_NS}\""));
     attr(&mut out, "name", &table.name);
@@ -463,6 +491,12 @@ pub fn table_definition(table: &PivotTable, cache: &PivotCache, styles: &mut Sty
     out.push_str(&filters(table));
     if let Some(x) = &table.kept.ext_lst {
         out.push_str(x);
+    } else if table.data.len() >= 2
+        && !table.values_on_rows()
+        && !table.cols.iter().any(|e| matches!(e, AxisEntry::Field(_)))
+    {
+        // With only the value fields across the top Excel leaves out the row that says Values.
+        out.push_str("<extLst><ext uri=\"{962EF5D1-5CA2-4c93-8EF4-DBF5C05439D2}\" xmlns:x14=\"http://schemas.microsoft.com/office/spreadsheetml/2009/9/main\"><x14:pivotTableDefinition hideValuesRow=\"1\" xmlns:xm=\"http://schemas.microsoft.com/office/excel/2006/main\"/></ext></extLst>");
     }
     out.push_str("</pivotTableDefinition>");
     out
@@ -491,12 +525,20 @@ fn pivot_fields(table: &PivotTable, cache: &PivotCache, styles: &mut Styles) -> 
     out
 }
 
-fn pivot_field(table: &PivotTable, cache: &PivotCache, f: usize, pf: &PivotField, styles: &mut Styles) -> String {
+fn pivot_field(
+    table: &PivotTable,
+    cache: &PivotCache,
+    f: usize,
+    pf: &PivotField,
+    styles: &mut Styles,
+) -> String {
     let mut out = String::from("<pivotField");
     if let Some(n) = &pf.name {
         attr(&mut out, "name", n);
     }
-    let axis = if table.rows.contains(&AxisEntry::Field(f)) || table.row_axis().contains(&AxisEntry::Field(f)) {
+    let axis = if table.rows.contains(&AxisEntry::Field(f))
+        || table.row_axis().contains(&AxisEntry::Field(f))
+    {
         Some("axisRow")
     } else if table.col_axis().contains(&AxisEntry::Field(f)) {
         Some("axisCol")
@@ -526,7 +568,11 @@ fn pivot_field(table: &PivotTable, cache: &PivotCache, f: usize, pf: &PivotField
         attr(&mut out, "showAll", "0");
     }
     if pf.sort != SortType::Manual {
-        attr(&mut out, "sortType", if pf.sort == SortType::Ascending { "ascending" } else { "descending" });
+        attr(
+            &mut out,
+            "sortType",
+            if pf.sort == SortType::Ascending { "ascending" } else { "descending" },
+        );
     }
     if pf.blank_row {
         attr(&mut out, "insertBlankRow", "1");
@@ -647,7 +693,11 @@ fn items_xml(tag: &str, lines: &[Line], has_values: bool) -> String {
         let r = if l.kind == LineKind::Grand {
             0
         } else {
-            xs.iter().zip(previous.iter()).take_while(|(a, b)| a == b).count().min(xs.len().saturating_sub(1))
+            xs.iter()
+                .zip(previous.iter())
+                .take_while(|(a, b)| a == b)
+                .count()
+                .min(xs.len().saturating_sub(1))
         };
         previous = xs.clone();
         body.push_str("<i");
@@ -794,18 +844,18 @@ fn filter_column(f: &Filter) -> String {
         FilterKind::CaptionGreaterThanOrEqual | FilterKind::ValueGreaterThanOrEqual => {
             (vec![(Some("greaterThanOrEqual"), v1.clone())], false)
         }
-        FilterKind::CaptionLessThan | FilterKind::ValueLessThan => (vec![(Some("lessThan"), v1.clone())], false),
+        FilterKind::CaptionLessThan | FilterKind::ValueLessThan => {
+            (vec![(Some("lessThan"), v1.clone())], false)
+        }
         FilterKind::CaptionLessThanOrEqual | FilterKind::ValueLessThanOrEqual => {
             (vec![(Some("lessThanOrEqual"), v1.clone())], false)
         }
-        FilterKind::CaptionBetween | FilterKind::ValueBetween => (
-            vec![(Some("greaterThanOrEqual"), v1.clone()), (Some("lessThanOrEqual"), v2)],
-            true,
-        ),
-        FilterKind::CaptionNotBetween | FilterKind::ValueNotBetween => (
-            vec![(Some("lessThan"), v1.clone()), (Some("greaterThan"), v2)],
-            false,
-        ),
+        FilterKind::CaptionBetween | FilterKind::ValueBetween => {
+            (vec![(Some("greaterThanOrEqual"), v1.clone()), (Some("lessThanOrEqual"), v2)], true)
+        }
+        FilterKind::CaptionNotBetween | FilterKind::ValueNotBetween => {
+            (vec![(Some("lessThan"), v1.clone()), (Some("greaterThan"), v2)], false)
+        }
         FilterKind::Count | FilterKind::Percent | FilterKind::Sum => {
             let mut s = String::from("<top10");
             if !f.top {

@@ -622,7 +622,8 @@ impl Session {
             _ => return Err("insert shifts cells down or right".to_owned()),
         };
         self.refuse_structural(sheet, axis, at, count, band)?;
-        if let Some(why) = self.book.pivots.refuse_edit(sheet, axis == Axis::Rows, at, count, band) {
+        if let Some(why) = self.book.pivots.refuse_edit(sheet, axis == Axis::Rows, at, count, band)
+        {
             return Err(why);
         }
         self.remember_whole(match axis {
@@ -652,7 +653,8 @@ impl Session {
             _ => return Err("delete shifts cells up or left".to_owned()),
         };
         self.refuse_structural(sheet, axis, at, count, band)?;
-        if let Some(why) = self.book.pivots.refuse_edit(sheet, axis == Axis::Rows, at, count, band) {
+        if let Some(why) = self.book.pivots.refuse_edit(sheet, axis == Axis::Rows, at, count, band)
+        {
             return Err(why);
         }
         self.remember_whole(match axis {
@@ -899,9 +901,9 @@ impl Session {
         if band.is_none() {
             page_edits::shift_page_breaks(&mut s.page, axis, at, count);
         }
+        s.spills = Spills::default();
         self.book.pivots.shift(sheet, &name, &shift_range);
         crate::pivot::xml::sync_dirty(&mut self.book);
-        s.spills = Spills::default();
         // A table whose every row was deleted goes with them, as it does in Excel.
         self.book.tables.retain_mut(|t| {
             if t.sheet != sheet {

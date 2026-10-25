@@ -213,7 +213,10 @@ impl Parser {
             }
         }
         if start == self.at {
-            return Err(format!("Unexpected {} in the formula.", self.chars.get(self.at).unwrap_or(&' ')));
+            return Err(format!(
+                "Unexpected {} in the formula.",
+                self.chars.get(self.at).unwrap_or(&' ')
+            ));
         }
         Ok(self.chars[start..self.at].iter().collect())
     }
@@ -258,10 +261,7 @@ pub fn items_in(expr: &Expr, out: &mut Vec<(Option<String>, String)>) {
 }
 
 /// Compute a formula, asking `lookup` for what each name is.
-pub fn evaluate(
-    expr: &Expr,
-    lookup: &dyn Fn(Option<&str>, &str) -> Result<f64, ErrorKind>,
-) -> Result<f64, ErrorKind> {
+pub fn evaluate(expr: &Expr, lookup: Lookup<'_>) -> Result<f64, ErrorKind> {
     Ok(match expr {
         Expr::Number(n) => *n,
         Expr::Name(n) => lookup(None, n)?,
@@ -309,11 +309,7 @@ pub fn evaluate(
     })
 }
 
-fn call(
-    name: &str,
-    args: &[Expr],
-    lookup: &dyn Fn(Option<&str>, &str) -> Result<f64, ErrorKind>,
-) -> Result<f64, ErrorKind> {
+fn call(name: &str, args: &[Expr], lookup: Lookup<'_>) -> Result<f64, ErrorKind> {
     let arg = |i: usize| -> Result<f64, ErrorKind> {
         args.get(i).ok_or(ErrorKind::Value).and_then(|e| evaluate(e, lookup))
     };
@@ -387,3 +383,6 @@ pub fn print_with_field(expr: &Expr, field: &str) -> String {
         }
     }
 }
+
+/// Finds the figure of a field, given the field's name and the name of an item when there is one.
+type Lookup<'a> = &'a dyn Fn(Option<&str>, &str) -> Result<f64, ErrorKind>;

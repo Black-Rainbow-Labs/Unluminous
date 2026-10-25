@@ -115,8 +115,12 @@ impl Acc {
             Func::Max => CellVal::Num(if self.numbers == 0 { 0.0 } else { self.max }),
             Func::Min => CellVal::Num(if self.numbers == 0 { 0.0 } else { self.min }),
             Func::Product => finite(if self.numbers == 0 { 0.0 } else { self.product }),
-            Func::StdDev => self.variance(true).map_or(CellVal::Err(ErrorKind::Div0), |v| finite(v.sqrt())),
-            Func::StdDevP => self.variance(false).map_or(CellVal::Err(ErrorKind::Div0), |v| finite(v.sqrt())),
+            Func::StdDev => {
+                self.variance(true).map_or(CellVal::Err(ErrorKind::Div0), |v| finite(v.sqrt()))
+            }
+            Func::StdDevP => {
+                self.variance(false).map_or(CellVal::Err(ErrorKind::Div0), |v| finite(v.sqrt()))
+            }
             Func::Var => self.variance(true).map_or(CellVal::Err(ErrorKind::Div0), finite),
             Func::VarP => self.variance(false).map_or(CellVal::Err(ErrorKind::Div0), finite),
         }

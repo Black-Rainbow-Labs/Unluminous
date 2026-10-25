@@ -44,10 +44,22 @@ impl Pivots {
                 return Err(ErrorKind::Ref);
             }
         }
-        let row = find_line(&table.lines.rows, &prefix(&row_items)?, d, table.row_axis().contains(&AxisEntry::Values), !row_fields.is_empty())
-            .ok_or(ErrorKind::Ref)?;
-        let col = find_line(&table.lines.cols, &prefix(&col_items)?, d, table.col_axis().contains(&AxisEntry::Values), !col_fields.is_empty())
-            .ok_or(ErrorKind::Ref)?;
+        let row = find_line(
+            &table.lines.rows,
+            &prefix(&row_items)?,
+            d,
+            table.row_axis().contains(&AxisEntry::Values),
+            !row_fields.is_empty(),
+        )
+        .ok_or(ErrorKind::Ref)?;
+        let col = find_line(
+            &table.lines.cols,
+            &prefix(&col_items)?,
+            d,
+            table.col_axis().contains(&AxisEntry::Values),
+            !col_fields.is_empty(),
+        )
+        .ok_or(ErrorKind::Ref)?;
         let r = table.location.first.row + table.first_data_row + row as u32;
         let c = table.location.first.col + table.first_data_col + col as u32;
         match book.sheets[table.sheet].value_at(CellRef::new(r, c)) {
@@ -92,11 +104,18 @@ fn find_data(table: &PivotTable, cache: &super::cache::PivotCache, name: &str) -
 
 fn find_field(table: &PivotTable, cache: &super::cache::PivotCache, name: &str) -> Option<usize> {
     let same = |a: &str| a.eq_ignore_ascii_case(name.trim());
-    (0..cache.fields.len()).find(|f| same(&table.caption(cache, *f))).or_else(|| (0..cache.fields.len()).find(|f| same(&cache.fields[*f].name)))
+    (0..cache.fields.len())
+        .find(|f| same(&table.caption(cache, *f)))
+        .or_else(|| (0..cache.fields.len()).find(|f| same(&cache.fields[*f].name)))
 }
 
 /// The position among a field's items of the one a value names.
-fn find_item(table: &PivotTable, cache: &super::cache::PivotCache, field: usize, item: &Value) -> Option<usize> {
+fn find_item(
+    table: &PivotTable,
+    cache: &super::cache::PivotCache,
+    field: usize,
+    item: &Value,
+) -> Option<usize> {
     let items = cache.fields[field].items();
     table.fields[field].items.iter().position(|entry| {
         if let Some(name) = &entry.name {
@@ -107,16 +126,26 @@ fn find_item(table: &PivotTable, cache: &super::cache::PivotCache, field: usize,
         match (items.get(entry.x), item) {
             (Some(CacheValue::Text(a)), Value::Text(b)) => a.eq_ignore_ascii_case(b),
             (Some(CacheValue::Blank), Value::Text(b)) => b.eq_ignore_ascii_case("(blank)"),
-            (Some(CacheValue::Number(a) | CacheValue::Date(a)), Value::Number(b)) => (a - b).abs() < 1e-9,
+            (Some(CacheValue::Number(a) | CacheValue::Date(a)), Value::Number(b)) => {
+                (a - b).abs() < 1e-9
+            }
             (Some(CacheValue::Bool(a)), Value::Bool(b)) => a == b,
-            (Some(CacheValue::Number(a)), Value::Text(b)) => crate::value::number_to_text(*a) == **b,
+            (Some(CacheValue::Number(a)), Value::Text(b)) => {
+                crate::value::number_to_text(*a) == **b
+            }
             _ => false,
         }
     })
 }
 
 /// The line that adds up the records of some items: its position in the axis.
-fn find_line(lines: &[Line], items: &[usize], d: usize, has_values: bool, has_fields: bool) -> Option<usize> {
+fn find_line(
+    lines: &[Line],
+    items: &[usize],
+    d: usize,
+    has_values: bool,
+    has_fields: bool,
+) -> Option<usize> {
     if lines.is_empty() {
         return None;
     }
@@ -139,13 +168,17 @@ fn find_line(lines: &[Line], items: &[usize], d: usize, has_values: bool, has_fi
             LineKind::Subtotal => item_path(l) == items,
             LineKind::Leaf | LineKind::Header => {
                 let p = item_path(l);
-                p == items && (!items.is_empty() || l.path.iter().all(|s| matches!(s, Seg::Data(_))))
+                p == items
+                    && (!items.is_empty() || l.path.iter().all(|s| matches!(s, Seg::Data(_))))
             }
             LineKind::Blank => false,
         }
     };
     // The figure shown for the items: the Automatic subtotal first, then a custom one.
-    let best = lines.iter().position(|l| matches(l) && l.func.is_none()).or_else(|| lines.iter().position(matches));
+    let best = lines
+        .iter()
+        .position(|l| matches(l) && l.func.is_none())
+        .or_else(|| lines.iter().position(matches));
     if best.is_none() && items.is_empty() && !has_fields {
         // An axis with no fields has one line that holds the figures.
         return lines.iter().position(|l| l.kind == LineKind::Leaf && wanted_data(l));

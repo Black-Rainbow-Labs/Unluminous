@@ -8,7 +8,8 @@ use unluminous_sheet::edit::Session;
 use unluminous_sheet::{CellRef, Value, Workbook};
 
 fn fixture(name: &str) -> Vec<u8> {
-    let path: PathBuf = [env!("CARGO_MANIFEST_DIR"), "tests", "fixtures", "pivot", name].iter().collect();
+    let path: PathBuf =
+        [env!("CARGO_MANIFEST_DIR"), "tests", "fixtures", "pivot", name].iter().collect();
     std::fs::read(path).unwrap()
 }
 
@@ -21,7 +22,10 @@ fn snapshot(book: &Workbook, t: usize) -> BTreeMap<(u32, u32), (Value, String)> 
     for at in range.cells() {
         if let Some(cell) = sheet.cell(at) {
             if !cell.value.is_empty() {
-                out.insert((at.row, at.col), (cell.value.clone(), book.styles.format_code(cell.style)));
+                out.insert(
+                    (at.row, at.col),
+                    (cell.value.clone(), book.styles.format_code(cell.style)),
+                );
             }
         }
     }
@@ -30,12 +34,17 @@ fn snapshot(book: &Workbook, t: usize) -> BTreeMap<(u32, u32), (Value, String)> 
 
 fn same(a: &Value, b: &Value) -> bool {
     match (a, b) {
-        (Value::Number(x), Value::Number(y)) => (x - y).abs() <= 1e-9 * x.abs().max(y.abs()).max(1e-300),
+        (Value::Number(x), Value::Number(y)) => {
+            (x - y).abs() <= 1e-9 * x.abs().max(y.abs()).max(1e-300)
+        }
         _ => a == b,
     }
 }
 
-fn differences(before: &BTreeMap<(u32, u32), (Value, String)>, after: &BTreeMap<(u32, u32), (Value, String)>) -> Vec<String> {
+fn differences(
+    before: &BTreeMap<(u32, u32), (Value, String)>,
+    after: &BTreeMap<(u32, u32), (Value, String)>,
+) -> Vec<String> {
     let mut out = Vec::new();
     for (k, (v, f)) in before {
         let at = CellRef::new(k.0, k.1).a1();
@@ -52,7 +61,11 @@ fn differences(before: &BTreeMap<(u32, u32), (Value, String)>, after: &BTreeMap<
     }
     for k in after.keys() {
         if !before.contains_key(k) {
-            out.push(format!("{}: we have {:?} and Excel nothing", CellRef::new(k.0, k.1).a1(), after[k].0));
+            out.push(format!(
+                "{}: we have {:?} and Excel nothing",
+                CellRef::new(k.0, k.1).a1(),
+                after[k].0
+            ));
         }
     }
     out
@@ -92,10 +105,19 @@ fn every_pivot_excel_built_is_read_and_laid_out_again_to_its_cells() {
         }
         let problems = differences(&before, &snapshot(&session.book, t));
         if !problems.is_empty() {
-            failed.push(format!("{name}: {}", problems.iter().take(4).cloned().collect::<Vec<_>>().join("; ")));
+            failed.push(format!(
+                "{name}: {}",
+                problems.iter().take(4).cloned().collect::<Vec<_>>().join("; ")
+            ));
         }
     }
-    assert!(failed.is_empty(), "{} of {} differ:\n{}", failed.len(), session.book.pivots.tables.len(), failed.join("\n"));
+    assert!(
+        failed.is_empty(),
+        "{} of {} differ:\n{}",
+        failed.len(),
+        session.book.pivots.tables.len(),
+        failed.join("\n")
+    );
 }
 
 #[test]
@@ -115,5 +137,7 @@ fn a_pivot_nothing_changed_is_written_back_byte_for_byte() {
     ] {
         assert_eq!(before.get(name), after.get(name), "{name} is written as it was read");
     }
-    assert!(String::from_utf8_lossy(&after["xl/workbook.xml"]).contains("<pivotCache cacheId=\"3\""));
+    assert!(
+        String::from_utf8_lossy(&after["xl/workbook.xml"]).contains("<pivotCache cacheId=\"3\"")
+    );
 }

@@ -437,7 +437,13 @@ pub struct PivotTable {
 
 impl PivotTable {
     /// A table over a cache with nothing on it yet, placed at a cell.
-    pub fn new(name: &str, sheet: usize, cache: usize, at: CellRef, cache_ref: &PivotCache) -> PivotTable {
+    pub fn new(
+        name: &str,
+        sheet: usize,
+        cache: usize,
+        at: CellRef,
+        cache_ref: &PivotCache,
+    ) -> PivotTable {
         let form = Form::Compact;
         PivotTable {
             name: name.to_owned(),
@@ -545,14 +551,21 @@ impl PivotTable {
     /// function is applied, moving on to the next free number if the final name is taken as well.
     pub fn default_data_name(&self, cache: &PivotCache, field: usize, func: Func) -> String {
         let caption = self.caption(cache, field);
-        let has_text = cache.records.iter().any(|r| matches!(r.get(field), Some(CacheValue::Text(_) | CacheValue::Error(_))));
+        let has_text = cache
+            .records
+            .iter()
+            .any(|r| matches!(r.get(field), Some(CacheValue::Text(_) | CacheValue::Error(_))));
         let first = if has_text { Func::Count } else { Func::Sum };
         let taken = |n: &str| {
             self.data.iter().any(|d| d.name.eq_ignore_ascii_case(n))
                 || (0..cache.fields.len()).any(|f| self.caption(cache, f).eq_ignore_ascii_case(n))
         };
         let spelt = |label: &str, n: usize| {
-            if n < 2 { format!("{label} of {caption}") } else { format!("{label} of {caption}{n}") }
+            if n < 2 {
+                format!("{label} of {caption}")
+            } else {
+                format!("{label} of {caption}{n}")
+            }
         };
         let start = (1..).find(|n| !taken(&spelt(first.label(), *n))).unwrap_or(1);
         (start..).map(|n| spelt(func.label(), n)).find(|n| !taken(n)).unwrap_or_default()

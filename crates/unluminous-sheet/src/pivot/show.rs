@@ -52,7 +52,11 @@ impl Calc<'_> {
         if let Some(i) = self.rows.fields.iter().position(|f| *f == field) {
             return Some(BaseField { rows: true, level: i + 1 });
         }
-        self.cols.fields.iter().position(|f| *f == field).map(|i| BaseField { rows: false, level: i + 1 })
+        self.cols
+            .fields
+            .iter()
+            .position(|f| *f == field)
+            .map(|i| BaseField { rows: false, level: i + 1 })
     }
 
     fn axis_of(&self, rows: bool) -> &Axis {
@@ -86,7 +90,8 @@ impl Calc<'_> {
                 _ => CellVal::Empty,
             };
         };
-        let below: Vec<usize> = axis.chain(node).iter().skip(b.level + 1).map(|n| axis.nodes[*n].item).collect();
+        let below: Vec<usize> =
+            axis.chain(node).iter().skip(b.level + 1).map(|n| axis.nodes[*n].item).collect();
         let under = |s: usize| -> Option<CellVal> { axis.follow(s, &below).map(at) };
         let parent = axis.nodes[a].parent.unwrap_or(0);
         let siblings = &axis.nodes[parent].children;
@@ -143,7 +148,8 @@ impl Calc<'_> {
                 let mut ahead: Vec<f64> = Vec::new();
                 for s in siblings.iter() {
                     if let Some(CellVal::Num(y)) = under(*s) {
-                        let before = if field.show == ShowAs::RankAscending { y < x } else { y > x };
+                        let before =
+                            if field.show == ShowAs::RankAscending { y < x } else { y > x };
                         if before && !ahead.contains(&y) {
                             ahead.push(y);
                         }

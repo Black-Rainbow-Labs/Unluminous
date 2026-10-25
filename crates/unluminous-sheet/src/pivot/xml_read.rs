@@ -29,11 +29,10 @@ pub const REL_PIVOT_TABLE: &str =
 
 /// The cache ids the workbook lists, with the relationship that names each one's definition.
 pub fn listed_caches(book: &Workbook) -> Vec<(u32, String)> {
-    let Some((_, xml)) = book.raw.iter().find(|(n, _)| n == "pivotCaches") else { return Vec::new() };
-    let wrapped = format!(
-        "<w xmlns=\"{MAIN_NS}\" xmlns:r=\"{}\">{xml}</w>",
-        crate::xlsx::REL_NS
-    );
+    let Some((_, xml)) = book.raw.iter().find(|(n, _)| n == "pivotCaches") else {
+        return Vec::new();
+    };
+    let wrapped = format!("<w xmlns=\"{MAIN_NS}\" xmlns:r=\"{}\">{xml}</w>", crate::xlsx::REL_NS);
     let Ok(doc) = Document::parse(&wrapped) else { return Vec::new() };
     let mut out = Vec::new();
     for n in doc.descendants().filter(|n| n.has_tag_name((MAIN_NS, "pivotCache"))) {
@@ -156,7 +155,10 @@ pub fn read_cache(book: &Workbook, id: u32, definition: &str) -> Option<PivotCac
     }
     let attrs = root
         .attributes()
-        .filter(|a| !matches!(a.name(), "id" | "recordCount") && a.namespace().is_none_or(|ns| ns != crate::xlsx::REL_NS))
+        .filter(|a| {
+            !matches!(a.name(), "id" | "recordCount")
+                && a.namespace().is_none_or(|ns| ns != crate::xlsx::REL_NS)
+        })
         .map(|a| (a.name().to_owned(), a.value().to_owned()))
         .collect();
     Some(PivotCache {
@@ -218,7 +220,8 @@ fn read_cache_field(book: &Workbook, cf: Node) -> Option<CacheField> {
 }
 
 fn read_group(book: &Workbook, g: Node) -> Option<FieldGroup> {
-    let mut group = FieldGroup { par: number(g, "par"), base: number(g, "base"), ..Default::default() };
+    let mut group =
+        FieldGroup { par: number(g, "par"), base: number(g, "base"), ..Default::default() };
     for c in g.children().filter(Node::is_element) {
         match c.tag_name().name() {
             "rangePr" => {
@@ -235,9 +238,8 @@ fn read_group(book: &Workbook, g: Node) -> Option<FieldGroup> {
                 });
             }
             "discretePr" => {
-                group.discrete = Some(
-                    children(c, "x").map(|x| number::<usize>(x, "v").unwrap_or(0)).collect(),
-                );
+                group.discrete =
+                    Some(children(c, "x").map(|x| number::<usize>(x, "v").unwrap_or(0)).collect());
             }
             "groupItems" => {
                 for item in c.children().filter(Node::is_element) {
@@ -279,17 +281,19 @@ pub fn iso_serial(text: &str, date1904: bool) -> Option<f64> {
     Some(serial + (hours * 3600.0 + minutes * 60.0 + seconds) / 86400.0)
 }
 
-fn read_records(book: &Workbook, part: &str, fields: &[CacheField]) -> Option<Vec<Vec<CacheValue>>> {
+fn read_records(
+    book: &Workbook,
+    part: &str,
+    fields: &[CacheField],
+) -> Option<Vec<Vec<CacheValue>>> {
     let xml = text_of(book, part)?;
     let doc = Document::parse(&xml).ok()?;
     let mut records = Vec::new();
     let database: Vec<usize> = (0..fields.len()).filter(|i| fields[*i].database).collect();
     for r in children(doc.root_element(), "r") {
         let mut record = vec![CacheValue::Blank; fields.len()];
-        let mut at = 0;
-        for item in r.children().filter(Node::is_element) {
+        for (at, item) in r.children().filter(Node::is_element).enumerate() {
             let f = *database.get(at)?;
-            at += 1;
             record[f] = if item.tag_name().name() == "x" {
                 let index: usize = number(item, "v").unwrap_or(0);
                 fields[f].shared.get(index).cloned().unwrap_or(CacheValue::Blank)
@@ -307,7 +311,8 @@ fn read_calculated_items(root: Node) -> Vec<CalculatedItem> {
     let mut out = Vec::new();
     for c in children(list, "calculatedItem") {
         let formula = c.attribute("formula").unwrap_or("").to_owned();
-        let reference = c.descendants().find(|n| n.is_element() && n.tag_name().name() == "reference");
+        let reference =
+            c.descendants().find(|n| n.is_element() && n.tag_name().name() == "reference");
         let (Some(reference), true) = (reference, true) else { continue };
         let field: usize = number(reference, "field").unwrap_or(0);
         let item: usize = child(reference, "x").and_then(|x| number(x, "v")).unwrap_or(0);
@@ -332,7 +337,13 @@ pub fn read_table(book: &Workbook, sheet: usize, part: &str) -> Option<PivotTabl
     let field_count = book.pivots.caches[cache].fields.len();
     let location = child(root, "location")?;
     let range = Range::parse(location.attribute("ref")?)?;
-    let mut table = PivotTable::new(root.attribute("name")?, sheet, cache, range.first, &book.pivots.caches[cache]);
+    let mut table = PivotTable::new(
+        root.attribute("name")?,
+        sheet,
+        cache,
+        range.first,
+        &book.pivots.caches[cache],
+    );
     table.part = part.to_owned();
     table.location = range;
     table.has_cells = true;
@@ -368,6 +379,7 @@ pub fn read_table(book: &Workbook, sheet: usize, part: &str) -> Option<PivotTabl
     Some(table)
 }
 
+#[allow(clippy::field_reassign_with_default)]
 fn read_options(root: Node) -> Options {
     let mut o = Options::default();
     o.form = if flag(root, "compact", true) {
@@ -496,7 +508,8 @@ fn read_field(book: &Workbook, pf: Node) -> Option<PivotField> {
             field.subtotals.funcs.push(func);
         }
     }
-    field.subtotals.automatic = flag(pf, "defaultSubtotal", true) && field.subtotals.funcs.is_empty();
+    field.subtotals.automatic =
+        flag(pf, "defaultSubtotal", true) && field.subtotals.funcs.is_empty();
     for a in pf.attributes() {
         if !FIELD_KNOWN.contains(&a.name()) {
             field.attrs.push((a.name().to_owned(), a.value().to_owned()));
@@ -522,7 +535,9 @@ fn read_field(book: &Workbook, pf: Node) -> Option<PivotField> {
 }
 
 fn raw_contains_repeat(ext: Node) -> bool {
-    ext.descendants().any(|n| n.is_element() && n.tag_name().name() == "pivotField" && flag(n, "fillDownLabels", false))
+    ext.descendants().any(|n| {
+        n.is_element() && n.tag_name().name() == "pivotField" && flag(n, "fillDownLabels", false)
+    })
 }
 
 fn read_items(field: &mut PivotField, items: Node) -> Option<()> {
@@ -590,7 +605,8 @@ fn read_data(book: &Workbook, table: &mut PivotTable, list: Node) -> Option<()> 
             None => ShowAs::Normal,
             Some(s) => ShowAs::from_xml(s)?,
         };
-        for ext in d.descendants().filter(|n| n.is_element() && n.tag_name().name() == "dataField") {
+        for ext in d.descendants().filter(|n| n.is_element() && n.tag_name().name() == "dataField")
+        {
             if let Some(s) = ext.attribute("pivotShowAs") {
                 data.show = ShowAs::from_xml(s)?;
             }
