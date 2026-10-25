@@ -1899,10 +1899,22 @@ fn decorate_pages(
         .unwrap_or(false);
     let mut first_of_section: HashMap<usize, usize> = HashMap::new();
     let mut number = 0u32;
+    let mirror = ctx
+        .document
+        .settings
+        .as_ref()
+        .and_then(|s| crate::props::on_off(&s.root, "w:mirrorMargins"))
+        .unwrap_or(false);
+    let mut line_number = 0u32;
     for (index, page) in pages.iter_mut().enumerate() {
         let section = page.section;
         let geometry =
             &sections.get(section).map_or_else(|| sections[0].1.clone(), |(_, g)| g.clone());
+        if !first_of_section.contains_key(&section) && geometry.line_numbers.as_ref().is_some_and(|l| l.2 == "newSection") {
+            line_number = 0;
+        }
+        place_vertically(page, geometry);
+        number_lines(page, ctx, geometry, &mut line_number);
         let is_first = !first_of_section.contains_key(&section);
         first_of_section.entry(section).or_insert(index);
         number = match (is_first, geometry.page_number_start) {
@@ -1943,8 +1955,105 @@ fn decorate_pages(
             page.carets.extend(block.carets);
         }
         lay_out_footnotes(page, ctx, geometry);
+        draw_page_border(page, geometry);
+        // Mirrored margins: on an even page the inside margin is on the right.
+        if mirror && page.number % 2 == 0 {
+            let dx = geometry.right - geometry.left - geometry.gutter;
+            if dx.abs() > 0.01 {
+                for item in &mut page.items {
+                    item.shift(dx, 0.0);
+                }
+                for line in &mut page.carets {
+                    line.shift(dx, 0.0);
+                }
+                page.body.x += dx;
+            }
+        }
     }
     ctx.page = None;
+}
+
+/// `w:vAlign` center or bottom: the body's text moved down into the room under it.
+fn place_vertically(page: &mut Page, geometry: &Geometry) {
+    if !matches!(geometry.vertical_align.as_str(), "center" | "bottom") {
+        return;
+    }
+    let lowest = page
+        .carets
+        .iter()
+        .filter(|l| l.story == StoryId::Body)
+        .map(|l| l.top + l.height)
+        .fold(f32::MIN, f32::max);
+    if lowest == f32::MIN {
+        return;
+    }
+    let free = page.body.y + page.body.h - lowest;
+    if free <= 0.5 {
+        return;
+    }
+    let dy = if geometry.vertical_align == "center" { free / 2.0 } else { free };
+    for item in &mut page.items {
+        item.shift(0.0, dy);
+    }
+    for line in &mut page.carets {
+        line.shift(0.0, dy);
+    }
+}
+
+/// `w:lnNumType`: every `count by` line of the body numbered in the left margin, right aligned the
+/// distance before the text, in the Normal style's font, restarting each page unless the section says
+/// otherwise. Lines in tables, headers and notes are not counted, as Word does not count them.
+fn number_lines(page: &mut Page, ctx: &Ctx, geometry: &Geometry, line_number: &mut u32) {
+    let Some((count_by, start, restart, distance)) = &geometry.line_numbers else { return };
+    if restart == "newPage" {
+        *line_number = 0;
+    }
+    let run = ctx.resolver.run(&crate::xml::El::new("w:pPr"), &crate::xml::El::new("w:rPr"), None);
+    let style = CharStyle {
+        family: run.font.clone(),
+        size: run.size,
+        bold: false,
+        italic: false,
+        underline: false,
+        strikethrough: false,
+        color: unluminous_core::Color::rgb(0, 0, 0),
+    };
+    let mut items = Vec::new();
+    let mut lines: Vec<&CaretLine> = page.carets.iter().filter(|l| l.story == StoryId::Body && l.path.len() == 1).collect();
+    lines.sort_by(|a, b| a.top.total_cmp(&b.top));
+    for line in lines {
+        *line_number += 1;
+        let n = *line_number + start - 1;
+        if n % count_by != 0 {
+            continue;
+        }
+        let text = n.to_string();
+        let widths: Vec<f32> = text.chars().map(|c| ctx.metrics.advance(&c.to_string(), &style)).collect();
+        let total: f32 = widths.iter().sum();
+        let mut x = page.body.x - distance - total;
+        let mut xs = Vec::with_capacity(widths.len());
+        for w in &widths {
+            xs.push(x);
+            x += w;
+        }
+        items.push(Item::Text(TextItem { baseline: line.baseline, style: style.clone(), text, xs }));
+    }
+    page.items.extend(items);
+}
+
+/// `w:pgBorders`: a box round the page, its distance from the page's edge or from the text.
+fn draw_page_border(page: &mut Page, geometry: &Geometry) {
+    let Some((width, colour, space, from_text)) = geometry.page_border else { return };
+    let (x0, y0, x1, y1) = if from_text {
+        (page.body.x - space, page.body.y - space, page.body.x + page.body.w + space, page.body.y + page.body.h + space)
+    } else {
+        (space, space, page.width - space, page.height - space)
+    };
+    let rule = |x0: f32, y0: f32, x1: f32, y1: f32| Item::Rule { x0, y0, x1, y1, width, color: colour, kind: RuleKind::Solid };
+    page.items.push(rule(x0, y0, x1, y0));
+    page.items.push(rule(x0, y1, x1, y1));
+    page.items.push(rule(x0, y0, x0, y1));
+    page.items.push(rule(x1, y0, x1, y1));
 }
 
 /// How tall the footnote separator is: the paragraph that holds it in the footnotes part, laid out as

@@ -26,6 +26,7 @@ pub mod media;
 pub mod model;
 pub mod new;
 pub mod numbering;
+pub mod page_setup;
 pub mod pictures;
 pub mod ops;
 pub mod order;

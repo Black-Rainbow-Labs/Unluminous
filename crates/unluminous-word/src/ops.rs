@@ -1520,6 +1520,11 @@ fn header_paragraph(style: &str, text: &str) -> Paragraph {
 }
 
 /// A new, empty header or footer part, registered with the package. Answers its relationship id.
+/// A new, empty header or footer part with its relationship, for another module. Answers its id.
+pub(crate) fn new_header_part_for(document: &mut Document, footer: bool) -> String {
+    new_header_part(document, footer)
+}
+
 fn new_header_part(document: &mut Document, footer: bool) -> String {
     let stem = if footer { "word/footer" } else { "word/header" };
     let name = document.package.unused_name(stem, "xml");
