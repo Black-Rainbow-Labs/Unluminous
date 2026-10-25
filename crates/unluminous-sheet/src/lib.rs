@@ -40,6 +40,7 @@ pub mod model;
 pub mod numfmt;
 pub mod ods;
 pub mod pages;
+pub mod pivot;
 pub mod refshift;
 pub mod styles;
 pub mod value;

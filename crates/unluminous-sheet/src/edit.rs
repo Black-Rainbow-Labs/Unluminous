@@ -131,7 +131,7 @@ pub enum Shift {
 #[derive(Debug, Clone)]
 pub struct Session {
     pub book: Workbook,
-    engine: Engine,
+    pub(crate) engine: Engine,
     undo: Vec<Step>,
     redo: Vec<Step>,
     /// Changed since it was opened or saved.
@@ -304,7 +304,7 @@ impl Session {
         self.push(Step { label: label.to_owned(), before: Before::Cells { sheet, cells, styles } });
     }
 
-    fn remember_whole(&mut self, label: &str) {
+    pub(crate) fn remember_whole(&mut self, label: &str) {
         let mut copy = self.book.clone();
         copy.circular = None;
         self.push(Step { label: label.to_owned(), before: Before::Whole(Box::new(copy)) });
@@ -622,6 +622,10 @@ impl Session {
             _ => return Err("insert shifts cells down or right".to_owned()),
         };
         self.refuse_structural(sheet, axis, at, count, band)?;
+        if let Some(why) = self.book.pivots.refuse_edit(sheet, axis == Axis::Rows, at, count, band)
+        {
+            return Err(why);
+        }
         self.remember_whole(match axis {
             Axis::Rows => "Insert rows",
             Axis::Columns => "Insert columns",
@@ -649,6 +653,10 @@ impl Session {
             _ => return Err("delete shifts cells up or left".to_owned()),
         };
         self.refuse_structural(sheet, axis, at, count, band)?;
+        if let Some(why) = self.book.pivots.refuse_edit(sheet, axis == Axis::Rows, at, count, band)
+        {
+            return Err(why);
+        }
         self.remember_whole(match axis {
             Axis::Rows => "Delete rows",
             Axis::Columns => "Delete columns",
@@ -894,6 +902,8 @@ impl Session {
             page_edits::shift_page_breaks(&mut s.page, axis, at, count);
         }
         s.spills = Spills::default();
+        self.book.pivots.shift(sheet, &name, &shift_range);
+        crate::pivot::xml::sync_dirty(&mut self.book);
         // A table whose every row was deleted goes with them, as it does in Excel.
         self.book.tables.retain_mut(|t| {
             if t.sheet != sheet {
@@ -970,6 +980,8 @@ impl Session {
                 }
             }
         }
+        self.book.pivots.sheet_renamed(&old, name);
+        crate::pivot::xml::sync_dirty(&mut self.book);
         self.engine.rebuild(&self.book);
         self.recalculate_all();
         Ok(())
@@ -1015,6 +1027,8 @@ impl Session {
                 }
             }
         }
+        self.book.pivots.sheet_deleted(sheet);
+        crate::pivot::xml::sync_dirty(&mut self.book);
         self.book.sheets.remove(sheet);
         self.book.tables.retain(|t| t.sheet != sheet);
         self.book.names.retain(|n| n.scope != Some(sheet));
@@ -1122,6 +1136,7 @@ impl Session {
     }
 
     fn reindex_after_sheet_move(&mut self, map: impl Fn(usize) -> usize) {
+        self.book.pivots.sheets_moved(&map);
         for t in &mut self.book.tables {
             t.sheet = map(t.sheet);
         }
@@ -2197,7 +2212,7 @@ impl Session {
         summary
     }
 
-    fn check_sheet(&self, sheet: usize) -> Result<(), String> {
+    pub(crate) fn check_sheet(&self, sheet: usize) -> Result<(), String> {
         match self.book.sheets.get(sheet) {
             Some(s) if s.kept_part.is_some() => {
                 Err(format!("{} is a chart sheet, which has no cells", s.name))

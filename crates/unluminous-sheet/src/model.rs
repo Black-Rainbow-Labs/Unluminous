@@ -41,6 +41,8 @@ pub struct Workbook {
     pub dynamic_cm: Option<u32>,
     /// The path of the workbook part, `xl/workbook.xml` in every file Excel writes.
     pub part: String,
+    /// The pivot tables and the caches of data they summarise.
+    pub pivots: crate::pivot::Pivots,
 }
 
 /// The calculation settings in `calcPr`.

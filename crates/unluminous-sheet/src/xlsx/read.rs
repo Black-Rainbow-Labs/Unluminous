@@ -239,6 +239,7 @@ pub fn read(bytes: &[u8]) -> Result<Workbook, String> {
             }
         }
     }
+    crate::pivot::xml::attach(&mut book);
     // Formulas read from a file are computed once now, except the ones that cannot be.
     Ok(book)
 }

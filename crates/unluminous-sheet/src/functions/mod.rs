@@ -30,11 +30,12 @@ pub mod info;
 pub mod logical;
 pub mod lookup;
 pub mod math;
+pub mod pivot;
 pub mod precise;
 pub mod regex;
 pub mod regression;
-pub mod services;
 pub mod securities;
+pub mod services;
 pub mod stats;
 pub mod text;
 pub mod text_bytes;
@@ -157,6 +158,7 @@ const CATEGORIES: &[(&str, &[Function])] = &[
     ("Financial", securities::FUNCTIONS),
     ("Information", info::FUNCTIONS),
     ("Engineering", engineering::FUNCTIONS),
+    ("Lookup", pivot::FUNCTIONS),
     ("Engineering", complex::FUNCTIONS),
 ];
 

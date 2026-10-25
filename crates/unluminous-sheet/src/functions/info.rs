@@ -39,7 +39,9 @@ pub const FUNCTIONS: &[Function] = &[
     r("ISFORMULA", 1, 1, "reference", "TRUE for a cell holding a formula.", |ctx, a| {
         match ctx.eval(&a[0]) {
             Val::Ref(area) => super::each_cell(ctx, &area, |ctx, at| {
-                Value::Bool(ctx.book.sheets[area.sheet].cell(at).is_some_and(|c| c.formula.is_some()))
+                Value::Bool(
+                    ctx.book.sheets[area.sheet].cell(at).is_some_and(|c| c.formula.is_some()),
+                )
             }),
             Val::Value(Value::Error(e)) => Val::error(e),
             _ => Val::error(ErrorKind::Value),
